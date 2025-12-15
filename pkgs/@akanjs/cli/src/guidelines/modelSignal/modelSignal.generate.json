@@ -1,0 +1,201 @@
+{
+  "title": "Model Signal",
+  "description": "How to create and implement model.signal.ts files in Akan.js",
+  "scans": [
+    {
+      "type": "source",
+      "description": "Core signal implementation files",
+      "path": "pkgs/@akanjs/signal/src/*.ts"
+    },
+    {
+      "type": "source",
+      "description": "Signal decorator implementation",
+      "path": "pkgs/@akanjs/signal/src/decorator/*.ts"
+    },
+    {
+      "type": "source",
+      "description": "DbSignal and other signal higher-order functions",
+      "path": "pkgs/@akanjs/signal/src/function/*.ts"
+    },
+    {
+      "type": "source",
+      "description": "Signal helper functions (resolve, emit, done, subscribe)",
+      "path": "pkgs/@akanjs/signal/src/helper/*.ts"
+    },
+    {
+      "type": "source",
+      "description": "Signal converts to nestjs module",
+      "path": "pkgs/@akanjs/server/src/module.ts"
+    },
+    {
+      "type": "example",
+      "description": "Signal converts to nestjs controller",
+      "path": "pkgs/@akanjs/server/src/controller.ts"
+    },
+    {
+      "type": "example",
+      "description": "Signal converts to nestjs resolver",
+      "path": "pkgs/@akanjs/server/src/resolver.ts"
+    },
+    {
+      "type": "example",
+      "description": "Signal converts to nestjs processor",
+      "path": "pkgs/@akanjs/server/src/processor.ts"
+    },
+    {
+      "type": "example",
+      "description": "Signal converts to nestjs websocket",
+      "path": "pkgs/@akanjs/server/src/websocket.ts"
+    },
+    {
+      "type": "example",
+      "description": "DbSignal usage examples",
+      "path": "{apps,libs}/*/lib/*/*.signal.ts",
+      "filterText": "extends DbSignal",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "@Query.Public decorator examples",
+      "path": "{apps,libs}/*/lib/*/*.signal.ts",
+      "filterText": "@Query.Public",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "@Query.User decorator examples",
+      "path": "{apps,libs}/*/lib/*/*.signal.ts",
+      "filterText": "@Query.User",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "@Query.Admin decorator examples",
+      "path": "{apps,libs}/*/lib/*/*.signal.ts",
+      "filterText": "@Query.Admin",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "@Mutation.User decorator examples",
+      "path": "{apps,libs}/*/lib/*/*.signal.ts",
+      "filterText": "@Mutation.User",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "@Mutation.Admin decorator examples",
+      "path": "{apps,libs}/*/lib/*/*.signal.ts",
+      "filterText": "@Mutation.Admin",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "@Message decorator examples",
+      "path": "{apps,libs}/*/lib/*/*.signal.ts",
+      "filterText": "@Message",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "@Process decorator examples",
+      "path": "{apps,libs}/*/lib/*/*.signal.ts",
+      "filterText": "@Process",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "@Pubsub decorator examples",
+      "path": "{apps,libs}/*/lib/*/*.signal.ts",
+      "filterText": "@Pubsub",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "How to create slice signals with modelListIn<SliceName>",
+      "path": "{apps,libs}/*/lib/*/*.signal.ts",
+      "filterText": "ListIn",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "How to create slice insights with modelInsightIn<SliceName>",
+      "path": "{apps,libs}/*/lib/*/*.signal.ts",
+      "filterText": "InsightIn",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Complete real-time chat implementation",
+      "path": "libs/social/lib/chatRoom/chatRoom.signal.ts",
+      "sample": 1
+    },
+    {
+      "type": "example",
+      "description": "Background processing examples",
+      "path": "apps/akasys/lib/dbBackup/dbBackup.signal.ts",
+      "sample": 1
+    },
+    {
+      "type": "example",
+      "description": "Search functionality examples",
+      "path": "libs/util/lib/_search/search.signal.ts",
+      "sample": 1
+    },
+    {
+      "type": "example",
+      "description": "API argument decorators usage",
+      "path": "{apps,libs}/*/lib/*/*.signal.ts",
+      "filterText": "@Arg",
+      "sample": 4
+    },
+    {
+      "type": "example",
+      "description": "Examples of @Self() decorator usage",
+      "path": "{apps,libs}/*/lib/*/*.signal.ts",
+      "filterText": "@Self()",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Error handling in signals",
+      "path": "{apps,libs}/*/lib/*/*.signal.ts",
+      "filterText": "try {",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "Client-side signal imports",
+      "path": "{apps,libs}/*/lib/*/*.store.ts",
+      "filterText": "import {",
+      "sample": 3
+    }
+  ],
+  "update": {
+    "filePath": "./modelSignal.instruction.md",
+    "contents": [
+      "Purpose and role of model.signal.ts files",
+      "Signal class structure and core components",
+      "DbSignal and other higher-order functions",
+      "Endpoint decorators (@Query, @Mutation, @Message, @Process, @Pubsub)",
+      "Parameter decorators (@Arg.Query, @Arg.Param, @Arg.Body, @Self, etc.)",
+      "Return helper functions (resolve, emit, done, subscribe)",
+      "Slice pattern for data access (modelListIn<SliceName>, modelInsightIn<SliceName>)",
+      "Client-side signal usage (direct API calls, store integration)",
+      "React component integration with signals",
+      "Real-time communication with Message and Pubsub",
+      "Background processing with Process decorator",
+      "Advanced patterns and best practices",
+      "Troubleshooting and debugging tips",
+      "Type safety and code generation"
+    ],
+    "rules": [
+      "Signal should be pure JavaScript/TypeScript, and should not use any other libraries or frameworks. It is imported and converted from both server and client side.",
+      "Always use parameter decorators (@Arg.*) for all method parameters in signals.",
+      "Always use appropriate helper functions to return data (resolve, emit, done, subscribe).",
+      "Always specify explicit return types in decorators and helper functions.",
+      "Follow consistent naming conventions for signals, especially for slice methods."
+    ]
+  },
+  "page": "/[lang]/akanjs/(docs)/docs/module/signal/page.tsx"
+}

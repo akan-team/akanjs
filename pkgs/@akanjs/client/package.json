@@ -1,0 +1,49 @@
+{
+  "name": "@akanjs/client",
+  "version": "0.9.60-canary.9",
+  "sourceType": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akan-team/akanjs.git",
+    "directory": "pkgs/@akanjs/base"
+  },
+  "main": "./index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@capacitor/core": "7.4.2",
+    "@capacitor/device": "7.0.1",
+    "@capacitor/haptics": "^7.0.2",
+    "@capacitor/keyboard": "^7.0.2",
+    "@capacitor/preferences": "7.0.1",
+    "capacitor-plugin-safe-area": "^3.0.4",
+    "clsx": "^2.1.1",
+    "js-cookie": "^3.0.5",
+    "jwt-decode": "^4.0.0",
+    "next": "16.0.7",
+    "react": "19.2.1",
+    "react-device-detect": "^2.2.3"
+  },
+  "exports": {
+    ".": {
+      "require": "./cjs/index.js",
+      "import": "./esm/index.js",
+      "types": "./index.d.ts"
+    },
+    "./src/createFont": {
+      "require": "./cjs/src/createFont.cjs",
+      "import": "./esm/src/createFont.js"
+    },
+    "./src/navigation": {
+      "require": "./cjs/src/navigation.cjs",
+      "import": "./esm/src/navigation.js"
+    }
+  },
+  "esbuild": {
+    "platform": "browser"
+  }
+}

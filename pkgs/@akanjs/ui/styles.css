@@ -1,0 +1,624 @@
+@source "./**/*";
+@plugin "tailwindcss-animation-delay";
+@plugin "tailwind-scrollbar";
+@plugin "tailwindcss-radix";
+
+html,
+body {
+  margin: 0;
+  /* -webkit-touch-callout: none;
+  -webkit-user-select: none; */
+}
+
+/* invisible scrollbar */
+::-webkit-scrollbar {
+  display: none;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* *,
+::before,
+::after {
+  box-sizing: border-box;
+  border-width: 0;
+  border-style: solid;
+  border-color: currentColor;
+  background-color: transparent;
+} */
+
+/* .body {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+} */
+.img {
+  -webkit-user-drag: none;
+}
+.rounded-btn {
+  --rounded-btn: 0.75rem;
+}
+.animate-delay-2000 {
+  animation-delay: 2000ms;
+}
+.animate-delay-3000 {
+  animation-delay: 3000ms;
+}
+.animate-delay-4000 {
+  animation-delay: 4000ms;
+}
+.animate-delay-5000 {
+  animation-delay: 5000ms;
+}
+
+/* 게시판 상세보기시 유튜브 */
+.btn-ghost:hover {
+  opacity: 0.5;
+  transition: all 0.3s;
+  background-color: transparent;
+}
+.btn {
+  text-transform: none;
+  font-weight: normal;
+}
+.page-content {
+  @apply h-screen overflow-y-auto;
+}
+
+@property --percentage {
+  initial-value: 100%;
+  inherits: false;
+  syntax: "<percentage>";
+}
+
+.chart {
+  background: conic-gradient(rgb(244, 62, 21) var(--percentage), white 0);
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  animation: timer 10s infinite linear;
+}
+
+@keyframes timer {
+  to {
+    --percentage: 0%;
+  }
+}
+
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+@utility centric {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+@utility container {
+  margin-inline: auto;
+  padding-inline: 2rem;
+}
+
+/* Always-included keyframes (non-theme animations) */
+@keyframes smaller {
+  0% {
+    scale: 1;
+    height: 100%;
+  }
+  100% {
+    scale: 0;
+    height: 0;
+  }
+}
+
+@keyframes bigger {
+  0% {
+    transform: scale(0.5);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes flyOut {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -100%);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -140%);
+  }
+}
+
+@keyframes drop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -140%);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -100%);
+  }
+}
+
+@keyframes fadeOut {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes flash {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.2;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(0, 0);
+  }
+  50% {
+    transform: scale(1.5, 1.5);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
+}
+
+@keyframes shrink {
+  0% {
+    transform: scale(1, 1);
+  }
+  50% {
+    transform: scale(1.5, 1.5);
+  }
+  100% {
+    transform: scale(0, 0);
+  }
+}
+
+@keyframes slideDown {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+@keyframes menuOpen {
+  0% {
+    opacity: 0;
+    width: 0;
+  }
+  100% {
+    opacity: 1;
+    width: 80px;
+  }
+}
+
+@keyframes menuClose {
+  0% {
+    opacity: 1;
+    width: 80px;
+  }
+  100% {
+    opacity: 0;
+    width: 0;
+  }
+}
+
+@keyframes backdrop-blur {
+  0% {
+    backdrop-filter: blur(0);
+  }
+  100% {
+    backdrop-filter: blur(5px);
+  }
+}
+
+@keyframes zoomIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes bottomUp {
+  0% {
+    transform: translateY(100%);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes bottomDown {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes wave {
+  0% {
+    box-shadow:
+      0 0 0 0 rgba(219, 39, 119, 0.3),
+      0 0 0 1em rgba(219, 39, 119, 0.3),
+      0 0 0 2em rgba(219, 39, 119, 0.3),
+      0 0 0 3em rgba(219, 39, 119, 0.3);
+  }
+  100% {
+    box-shadow:
+      0 0 0 1em rgba(219, 39, 119, 0.3),
+      0 0 0 2em rgba(219, 39, 119, 0.3),
+      0 0 0 3em rgba(219, 39, 119, 0.3),
+      0 0 0 4em rgba(219, 39, 119, 0);
+  }
+}
+
+@keyframes translateUp {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-60%);
+  }
+}
+
+@keyframes tranlateLeft {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes tranlateRight {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes floatUpDown {
+  0% {
+    transform: translateY(0%);
+  }
+  50% {
+    transform: translateY(10%);
+  }
+  100% {
+    transform: translateY(0%);
+  }
+}
+
+@keyframes floatDownUp {
+  0% {
+    transform: translateY(10%);
+  }
+  50% {
+    transform: translateY(0%);
+  }
+  100% {
+    transform: translateY(10%);
+  }
+}
+
+@keyframes scanDown {
+  0% {
+    top: -100%;
+  }
+  100% {
+    top: 200%;
+  }
+}
+
+/* Programmatic Animations */
+@keyframes fadeInRight5 {
+  0% {
+    opacity: 0;
+    translate: 5% 0;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes fadeInRight15 {
+  0% {
+    opacity: 0;
+    translate: 15% 0;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes fadeInRight30 {
+  0% {
+    opacity: 0;
+    translate: 30% 0;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes fadeInRight100 {
+  0% {
+    opacity: 0;
+    translate: 100% 0;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes fadeInLeft5 {
+  0% {
+    opacity: 0;
+    translate: -5% 0;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes fadeInLeft15 {
+  0% {
+    opacity: 0;
+    translate: -15% 0;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes fadeInLeft30 {
+  0% {
+    opacity: 0;
+    translate: -30% 0;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes fadeInLeft100 {
+  0% {
+    opacity: 0;
+    translate: -100% 0;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes fadeInUp5 {
+  0% {
+    opacity: 0;
+    translate: 0 5%;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes fadeInUp15 {
+  0% {
+    opacity: 0;
+    translate: 0 15%;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes fadeInUp30 {
+  0% {
+    opacity: 0;
+    translate: 0 30%;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes fadeInUp100 {
+  0% {
+    opacity: 0;
+    translate: 0 100%;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes fadeInDown5 {
+  0% {
+    opacity: 0;
+    translate: 0 -5%;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes fadeInDown15 {
+  0% {
+    opacity: 0;
+    translate: 0 -15%;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes fadeInDown30 {
+  0% {
+    opacity: 0;
+    translate: 0 -30%;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes fadeInDown100 {
+  0% {
+    opacity: 0;
+    translate: 0 -100%;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@theme {
+  /* Theme Extensions */
+  --color-primary-light: hsl(var(--primary-light) / <alpha-value>);
+  --color-primary-dark: hsl(var(--primary-dark) / <alpha-value>);
+  --color-secondary-light: hsl(var(--secondary-light) / <alpha-value>);
+  --color-secondary-dark: hsl(var(--secondary-dark) / <alpha-value>);
+
+  /* Animation Variables */
+  --animate-smaller: smaller 0.15s ease-in-out forwards;
+  --animate-bigger: bigger 1s ease-in-out forwards;
+  --animate-fadeIn: fadeIn 0.15s ease-in-out forwards;
+  --animate-fadeIn_750ms: fadeIn 0.75s ease-in-out forwards;
+  --animate-fadeOut: fadeOut 0.15s ease-in-out forwards;
+  --animate-flyOut: flyOut 0.15s ease-in-out forwards;
+  --animate-drop: drop 0.15s ease-in-out forwards;
+  --animate-flash: flash 1s linear infinite;
+  --animate-spin: spin 1s linear infinite;
+  --animate-backdrop-blur: backdrop-blur-sm 2s ease-in-out forwards;
+  --animate-pop: pop 0.5s ease-in-out forwards;
+  --animate-shrink: shrink 0.15s ease-in-out forwards;
+  --animate-menuOpen: menuOpen 0.3s ease-in-out forwards;
+  --animate-menuClose: menuClose 0.3s ease-in-out forwards;
+  --animate-slideDown: slideDown 300ms cubic-bezier(0.87, 0, 0.13, 1);
+  --animate-slideUp: slideUp 300ms cubic-bezier(0.87, 0, 0.13, 1);
+  --animate-zoomIn: zoomIn 0.15s ease-in-out forwards;
+  --animate-wave: wave 1s linear infinite;
+  --animate-translateUp: translateUp 0.5s ease-in-out 0.5s forwards;
+  --animate-bottomUp: bottomUp 0.5s ease-in-out 0.5s forwards;
+  --animate-translateLeft: tranlateLeft 0.15s ease-in-out forwards;
+  --animate-translateRight: tranlateRight 0.15s ease-in-out forwards;
+  --animate-floatUpDown: floatUpDown 3s linear forwards infinite;
+  --animate-floatDownUp: floatDownUp 3s linear forwards infinite;
+  --animate-scanDown: scanDown 3s ease-in-out infinite;
+
+  /* Programmatic Animation Variables */
+  --animate-fadeInRight5-150ms: fadeInRight5 0.15s ease-in-out forwards;
+  --animate-fadeInRight5-500ms: fadeInRight5 0.5s ease-in-out forwards;
+  --animate-fadeInRight5-1000ms: fadeInRight5 1s ease-in-out forwards;
+  --animate-fadeInRight15-150ms: fadeInRight15 0.15s ease-in-out forwards;
+  --animate-fadeInRight15-500ms: fadeInRight15 0.5s ease-in-out forwards;
+  --animate-fadeInRight15-1000ms: fadeInRight15 1s ease-in-out forwards;
+  --animate-fadeInRight30-150ms: fadeInRight30 0.15s ease-in-out forwards;
+  --animate-fadeInRight30-500ms: fadeInRight30 0.5s ease-in-out forwards;
+  --animate-fadeInRight30-1000ms: fadeInRight30 1s ease-in-out forwards;
+  --animate-fadeInRight100-150ms: fadeInRight100 0.15s ease-in-out forwards;
+  --animate-fadeInRight100-500ms: fadeInRight100 0.5s ease-in-out forwards;
+  --animate-fadeInRight100-1000ms: fadeInRight100 1s ease-in-out forwards;
+
+  --animate-fadeInLeft5-150ms: fadeInLeft5 0.15s ease-in-out forwards;
+  --animate-fadeInLeft5-500ms: fadeInLeft5 0.5s ease-in-out forwards;
+  --animate-fadeInLeft5-1000ms: fadeInLeft5 1s ease-in-out forwards;
+  --animate-fadeInLeft15-150ms: fadeInLeft15 0.15s ease-in-out forwards;
+  --animate-fadeInLeft15-500ms: fadeInLeft15 0.5s ease-in-out forwards;
+  --animate-fadeInLeft15-1000ms: fadeInLeft15 1s ease-in-out forwards;
+  --animate-fadeInLeft30-150ms: fadeInLeft30 0.15s ease-in-out forwards;
+  --animate-fadeInLeft30-500ms: fadeInLeft30 0.5s ease-in-out forwards;
+  --animate-fadeInLeft30-1000ms: fadeInLeft30 1s ease-in-out forwards;
+  --animate-fadeInLeft100-150ms: fadeInLeft100 0.15s ease-in-out forwards;
+  --animate-fadeInLeft100-500ms: fadeInLeft100 0.5s ease-in-out forwards;
+  --animate-fadeInLeft100-1000ms: fadeInLeft100 1s ease-in-out forwards;
+
+  --animate-fadeInUp5-150ms: fadeInUp5 0.15s ease-in-out forwards;
+  --animate-fadeInUp5-500ms: fadeInUp5 0.5s ease-in-out forwards;
+  --animate-fadeInUp5-1000ms: fadeInUp5 1s ease-in-out forwards;
+  --animate-fadeInUp15-150ms: fadeInUp15 0.15s ease-in-out forwards;
+  --animate-fadeInUp15-500ms: fadeInUp15 0.5s ease-in-out forwards;
+  --animate-fadeInUp15-1000ms: fadeInUp15 1s ease-in-out forwards;
+  --animate-fadeInUp30-150ms: fadeInUp30 0.15s ease-in-out forwards;
+  --animate-fadeInUp30-500ms: fadeInUp30 0.5s ease-in-out forwards;
+  --animate-fadeInUp30-1000ms: fadeInUp30 1s ease-in-out forwards;
+  --animate-fadeInUp100-150ms: fadeInUp100 0.15s ease-in-out forwards;
+  --animate-fadeInUp100-500ms: fadeInUp100 0.5s ease-in-out forwards;
+  --animate-fadeInUp100-1000ms: fadeInUp100 1s ease-in-out forwards;
+
+  --animate-fadeInDown5-150ms: fadeInDown5 0.15s ease-in-out forwards;
+  --animate-fadeInDown5-500ms: fadeInDown5 0.5s ease-in-out forwards;
+  --animate-fadeInDown5-1000ms: fadeInDown5 1s ease-in-out forwards;
+  --animate-fadeInDown15-150ms: fadeInDown15 0.15s ease-in-out forwards;
+  --animate-fadeInDown15-500ms: fadeInDown15 0.5s ease-in-out forwards;
+  --animate-fadeInDown15-1000ms: fadeInDown15 1s ease-in-out forwards;
+  --animate-fadeInDown30-150ms: fadeInDown30 0.15s ease-in-out forwards;
+  --animate-fadeInDown30-500ms: fadeInDown30 0.5s ease-in-out forwards;
+  --animate-fadeInDown30-1000ms: fadeInDown30 1s ease-in-out forwards;
+  --animate-fadeInDown100-150ms: fadeInDown100 0.15s ease-in-out forwards;
+  --animate-fadeInDown100-500ms: fadeInDown100 0.5s ease-in-out forwards;
+  --animate-fadeInDown100-1000ms: fadeInDown100 1s ease-in-out forwards;
+
+  /* Transition Property */
+  --transition-property-all: all;
+}

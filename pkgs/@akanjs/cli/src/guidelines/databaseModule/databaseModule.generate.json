@@ -1,0 +1,51 @@
+{
+  "title": "Database Module",
+  "description": "Structure of database module",
+  "scans": [
+    {
+      "type": "source",
+      "description": "core database module source code",
+      "path": "pkgs/@akanjs/server/src/module.ts"
+    },
+    {
+      "type": "source",
+      "description": "how to boot modules in Nest.js server",
+      "path": "pkgs/@akanjs/server/src/boot.ts"
+    },
+    {
+      "type": "source",
+      "description": "constant model decorators, database schema decorators, signal decorators reference",
+      "path": "pkgs/@akanjs/constant/src/decorator.ts"
+    },
+    {
+      "type": "example",
+      "description": "example database module of admin",
+      "path": "libs/shared/lib/admin/*"
+    }
+  ],
+  "update": {
+    "filePath": "./databaseModule.instruction.md",
+    "contents": [
+      "Purpose of database modules in Akan.js",
+      "File structure and location conventions",
+      "How to create database modules",
+      "How to use database modules in Nest.js server",
+      "How to use components, stores, and signals in client side",
+      "Real-time features with websockets and subscriptions",
+      "Best practices for data modeling and schema design",
+      "Authentication and authorization patterns",
+      "Performance optimization techniques",
+      "Error handling strategies"
+    ],
+    "rules": [
+      "Database module is a domain specific module to manage business logic of database",
+      "Follow consistent naming conventions with PascalCase for classes and camelCase for files",
+      "Keep business logic in service files, not in signals or documents",
+      "Use field validation in constant models to ensure data integrity",
+      "Create proper indexes in middleware for performance optimization",
+      "Apply appropriate authorization guards to protect sensitive operations",
+      "Use dictionary files for all UI text to support internationalization"
+    ]
+  },
+  "page": "/[lang]/akanjs/(docs)/docs/module/overview/page.tsx"
+}

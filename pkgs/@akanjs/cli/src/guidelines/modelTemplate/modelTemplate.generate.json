@@ -1,0 +1,104 @@
+{
+  "title": "Model Template",
+  "description": "How to create and implement Model.Template.ts files in Akan.js",
+  "scans": [
+    {
+      "type": "example",
+      "description": "Model Template examples",
+      "path": "{apps,libs}/*/lib/*/*.Template.ts{,x}",
+      "sample": 5
+    },
+    {
+      "type": "usage",
+      "description": "Model Template usage in pages",
+      "path": "apps/*/app/**/page.tsx",
+      "filterText": ".Template.",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Model Template usage in Utils",
+      "path": "{apps,libs}/*/lib/*/*.Util.tsx",
+      "filterText": ".Template.",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Model Template usage in Zones",
+      "path": "{apps,libs}/*/lib/*/*.Zone.tsx",
+      "filterText": ".Template.",
+      "sample": 3
+    },
+    {
+      "type": "reference",
+      "description": "Form Field components",
+      "path": "libs/shared/ui/Field.tsx",
+      "sample": 5
+    },
+    {
+      "type": "reference",
+      "description": "Form validation examples",
+      "path": "{apps,libs}/*/lib/**/*.Template.tsx",
+      "filterText": "validate",
+      "sample": 3
+    },
+    {
+      "type": "reference",
+      "description": "Store integration examples",
+      "path": "{apps,libs}/*/lib/**/*.store.ts",
+      "filterText": "Form",
+      "sample": 3
+    },
+    {
+      "type": "reference",
+      "description": "Internationalization with usePage",
+      "path": "{apps,libs}/*/lib/**/usePage.{ts,tsx}",
+      "sample": 1
+    },
+    {
+      "type": "reference",
+      "description": "Integration with Model.constant.ts",
+      "path": "{apps,libs}/*/lib/**/*.constant.ts",
+      "filterText": "@Model.Input",
+      "sample": 3
+    }
+  ],
+  "update": {
+    "filePath": "./modelTemplate.instruction.md",
+    "contents": [
+      "Purpose and role of Model.Template.tsx files",
+      "File location and naming conventions",
+      "Basic structure and component patterns",
+      "Integration with store state management",
+      "Field types and form components",
+      "Form validation approaches",
+      "Internationalization with usePage",
+      "Form layout patterns and best practices",
+      "Using templates in pages, utilities, and zones",
+      "State management and lifecycle methods",
+      "Performance optimization techniques",
+      "Accessibility considerations",
+      "Common patterns and reusable components",
+      "Form state integration with database models",
+      "Troubleshooting common issues",
+      "Integration with API calls and form submission"
+    ],
+    "rules": [
+      "Model.Template.tsx is a client component, so it should include 'use client' directive",
+      "Model.Template.tsx components should accept an optional id parameter to support both creation and editing",
+      "Use Form components from the Field namespace for consistent UI and validation",
+      "Always connect form state to Zustand store via st.use.[model]Form()",
+      "Update form state using st.do.set[Field]On[Model]() actions",
+      "Use usePage() hook for internationalization of labels and messages",
+      "Implement form validation at field level when possible",
+      "Reset form state on component unmount to prevent stale data",
+      "Split complex forms into smaller, focused components",
+      "Follow accessibility best practices for all form fields",
+      "Use consistent layout patterns across the application",
+      "Provide clear validation feedback and error messages",
+      "Initialize form data from API when editing existing models",
+      "Implement proper error handling for form submissions"
+    ]
+  },
+  "page": "/[lang]/akanjs/(docs)/docs/module/template/page.tsx"
+}

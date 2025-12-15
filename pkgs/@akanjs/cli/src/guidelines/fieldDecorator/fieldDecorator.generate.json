@@ -1,0 +1,135 @@
+{
+  "title": "Field Decorator",
+  "description": "How to use @Field decorators in Akan.js",
+  "scans": [
+    {
+      "type": "source",
+      "description": "Field decorator implementation",
+      "path": "pkgs/@akanjs/constant/src/fieldMeta.ts"
+    },
+    {
+      "type": "source",
+      "description": "Field options and metadata interface",
+      "path": "pkgs/@akanjs/constant/src/scalar.ts"
+    },
+    {
+      "type": "source",
+      "description": "Base enum and type definitions",
+      "path": "pkgs/@akanjs/base/src/base.ts"
+    },
+    {
+      "type": "source",
+      "description": "Scalar type definitions",
+      "path": "pkgs/@akanjs/base/src/scalar.ts"
+    },
+    {
+      "type": "source",
+      "description": "Model class metadata implementation",
+      "path": "pkgs/@akanjs/constant/src/classMeta.ts"
+    },
+    {
+      "type": "source",
+      "description": "GraphQL type generation from field metadata",
+      "path": "pkgs/@akanjs/server/src/gql.ts"
+    },
+    {
+      "type": "source",
+      "description": "MongoDB schema generation from field metadata",
+      "path": "pkgs/@akanjs/server/src/schema.ts"
+    },
+    {
+      "type": "source",
+      "description": "Search indexing based on field metadata",
+      "path": "pkgs/@akanjs/server/src/searchDaemon.ts"
+    },
+    {
+      "type": "example",
+      "description": "Examples of Field.Prop with basic options",
+      "path": "{apps,libs}/**/lib/__scalar/*/*.constant.ts",
+      "query": "/Field\\.Prop.*default/",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Examples of Field.Hidden and Field.Secret",
+      "path": "{apps,libs}/**/lib/*/*.constant.ts",
+      "query": "/Field\\.(Hidden|Secret)/",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Examples of Field.Resolve for computed properties",
+      "path": "{apps,libs}/**/lib/*/*.constant.ts",
+      "query": "/Field\\.Resolve/",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "Examples of array field decorators",
+      "path": "{apps,libs}/**/lib/*/*.constant.ts",
+      "query": "/Field\\.Prop\\(\\(\\)\\s*=>\\s*\\[/",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Examples of enum usage with Field.Prop",
+      "path": "{apps,libs}/**/lib/*/*.constant.ts",
+      "query": "/Field\\.Prop.*enum:/",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Examples of text search and filter options",
+      "path": "{apps,libs}/**/lib/*/*.constant.ts",
+      "query": "/Field\\.Prop.*text:/",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "Examples of validation options (min, max, minlength, etc.)",
+      "path": "{apps,libs}/**/lib/*/*.constant.ts",
+      "query": "/Field\\.Prop.*(min:|max:|minlength:|maxlength:|validate:)/",
+      "sample": 3
+    }
+  ],
+  "update": {
+    "filePath": "./fieldDecorator.instruction.md",
+    "contents": [
+      "Purpose and types of Field decorators",
+      "Basic syntax and structure",
+      "Field.Prop for standard properties",
+      "Field.Hidden for database-only fields",
+      "Field.Secret for sensitive data",
+      "Field.Resolve for computed properties",
+      "Field options reference",
+      "Working with primitive types",
+      "Working with enums",
+      "Working with arrays and nested structures",
+      "Reference fields and relationships",
+      "Date and special type handling",
+      "Validation and constraints",
+      "Search optimization",
+      "Default values and immutability",
+      "Integration with Model types",
+      "Best practices",
+      "Troubleshooting common issues"
+    ],
+    "rules": [
+      "Always use arrow function syntax for type specification: () => Type",
+      "Field type in the arrow function must match the TypeScript type",
+      "Use bracket notation for arrays: () => [Type] (not Array<Type>)",
+      "Always provide a default value for required fields",
+      "Mark sensitive fields with Field.Secret instead of Field.Prop",
+      "For nullable fields, add both { nullable: true } option and Type | null in TypeScript",
+      "When using enums, always create them with enumOf() and export both const and type",
+      "For date fields, use Date in the arrow function but Dayjs as the TypeScript type",
+      "Always specify the 'of' option when using Map type",
+      "Use text: 'search' for full-text searchable fields and text: 'filter' for filterable fields",
+      "Use immutable: true for fields that shouldn't change after creation",
+      "Array fields should have [] as the default value",
+      "Prefer Field.Resolve for computed properties instead of getters",
+      "Use Field.Hidden for internal fields that shouldn't be exposed in GraphQL"
+    ]
+  },
+  "page": "/[lang]/akanjs/(docs)/docs/codebase/field/page.tsx"
+}

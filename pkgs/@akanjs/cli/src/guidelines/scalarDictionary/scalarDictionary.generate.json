@@ -1,0 +1,83 @@
+{
+  "title": "Scalar Dictionary",
+  "description": "How to create and maintain scalar.dictionary.ts files in Akan.js",
+  "scans": [
+    {
+      "type": "source",
+      "description": "scalarDictionary builder function implementation",
+      "path": "pkgs/@akanjs/dictionary/src/scalarDictionary.ts"
+    },
+    {
+      "type": "source",
+      "description": "Translation types and interfaces",
+      "path": "pkgs/@akanjs/dictionary/src/trans.ts"
+    },
+    {
+      "type": "source",
+      "description": "Dictionary exports and types",
+      "path": "pkgs/@akanjs/dictionary/src/index.ts"
+    },
+    {
+      "type": "example",
+      "description": "Simple scalar dictionary examples",
+      "path": "{apps,libs}/**/lib/__scalar/*/*.dictionary.ts",
+      "query": "lines < 30",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Scalar dictionaries with enum translations",
+      "path": "{apps,libs}/**/lib/__scalar/*/*.dictionary.ts",
+      "query": "/\\.enum</",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Complete scalar dictionary with field and enum translations",
+      "path": "{apps,libs}/**/lib/__scalar/*/*.dictionary.ts",
+      "query": "lines > 30",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "Scalar dictionaries with multiple enums",
+      "path": "{apps,libs}/**/lib/__scalar/*/*.dictionary.ts",
+      "query": "/\\.enum<.*\\.enum</",
+      "sample": 2
+    }
+  ],
+  "update": {
+    "filePath": "./scalarDictionary.instruction.md",
+    "contents": [
+      "Purpose of scalar dictionary files",
+      "File structure and naming conventions",
+      "Required imports from @akanjs/dictionary",
+      "scalarDictionary() builder pattern",
+      "Builder methods: .of(), .model<T>(), .enum<T>()",
+      "Translation format with t() function and .desc() method",
+      "Type imports from constant file using import type",
+      "Enum name matching with enumOf() name",
+      "Type safety through generic parameters",
+      "Common mistakes and fixes",
+      "Best practices for translations",
+      "Implementation checklist",
+      "Full examples with multiple enums"
+    ],
+    "rules": [
+      "Import scalarDictionary from '@akanjs/dictionary'",
+      "Import types from constant file using 'import type' syntax",
+      "Initialize with language order array: scalarDictionary(['en', 'ko'])",
+      "Use .of() method to define scalar name and description",
+      "Use .model<Type>() method with generic to define field translations",
+      "Use .enum<Type>('enumName', ...) method to define enum translations",
+      "The enum name string in .enum() must exactly match the first argument of enumOf() in constant file",
+      "Always chain .desc() after t() to provide descriptions: t([...]).desc([...])",
+      "Use exactly two string elements in translation arrays: [English, Korean]",
+      "Export as 'dictionary': export const dictionary = scalarDictionary(...)...",
+      "Use type generics (.model<Type>, .enum<Type>) for TypeScript validation",
+      "Provide meaningful descriptions that explain purpose, not just repeat labels",
+      "Match language order consistently across all dictionaries in the project"
+    ]
+  },
+  "page": "/[lang]/akanjs/(docs)/docs/scalar/dictionary/page.tsx"
+}

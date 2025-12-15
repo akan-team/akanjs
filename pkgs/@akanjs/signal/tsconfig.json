@@ -1,0 +1,15 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "declaration": true,
+    "declarationDir": "dist"
+  },
+  "files": [],
+  "include": ["**/*.ts", "**/*.tsx"],
+  "references": [
+    {
+      "path": "./tsconfig.spec.json"
+    }
+  ]
+}

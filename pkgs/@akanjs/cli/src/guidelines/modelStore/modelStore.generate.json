@@ -1,0 +1,130 @@
+{
+  "title": "Model Store",
+  "description": "How to create and implement model.store.ts files in Akan.js",
+  "scans": [
+    {
+      "type": "source",
+      "description": "Core store implementation",
+      "path": "pkgs/@akanjs/store/src/stateOf.ts"
+    },
+    {
+      "type": "source",
+      "description": "Store decorator implementation",
+      "path": "pkgs/@akanjs/store/src/Store.ts"
+    },
+    {
+      "type": "source",
+      "description": "Toast decorator implementation",
+      "path": "pkgs/@akanjs/store/src/Toast.ts"
+    },
+    {
+      "type": "source",
+      "description": "Store utility functions",
+      "path": "pkgs/@akanjs/store/src/makeStore.ts"
+    },
+    {
+      "type": "example",
+      "description": "Basic store implementation examples",
+      "path": "{apps,libs}/*/lib/*/*.store.ts",
+      "filterText": "@Store",
+      "sample": 5
+    },
+    {
+      "type": "example",
+      "description": "Store examples with custom actions",
+      "path": "{apps,libs}/*/lib/*/*.store.ts",
+      "filterText": "async",
+      "sample": 5
+    },
+    {
+      "type": "example",
+      "description": "Store examples with toast notifications",
+      "path": "{apps,libs}/*/lib/*/*.store.ts",
+      "filterText": "@Toast",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Complex state management examples",
+      "path": "{apps,libs}/*/lib/*/*.store.ts",
+      "filterText": "this.pick",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Store composition examples",
+      "path": "{apps,libs}/*/lib/store.ts",
+      "filterText": "MixStore",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Store usage in forms (Template files)",
+      "path": "{apps,libs}/*/lib/*/*.Template.ts{,x}",
+      "filterText": "st.use.modelForm",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Store form submission examples",
+      "path": "{apps,libs}/*/lib/*/*.Template.ts{,x}",
+      "filterText": "submitModel",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Store list rendering examples",
+      "path": "{apps,libs}/*/lib/*/*.Zone.ts{,x}",
+      "filterText": "st.use.modelList",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Store pagination examples",
+      "path": "{apps,libs}/*/lib/*/*.Zone.ts{,x}",
+      "filterText": "setPageOf",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Store filtering examples",
+      "path": "{apps,libs}/*/lib/*/*.Util.ts{,x}",
+      "filterText": "setQueryArgsOf",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Store slice initialization examples",
+      "path": "{apps,libs}/*/lib/*/*.{View,Zone}.ts{,x}",
+      "filterText": "initModelList",
+      "sample": 3
+    }
+  ],
+  "update": {
+    "filePath": "./modelStore.instruction.md",
+    "contents": [
+      "Purpose and role of model.store.ts files",
+      "Store architecture overview and integration with other framework components",
+      "Basic store implementation with Store decorator and stateOf",
+      "State management: base state, custom state, and accessing state",
+      "Store actions: core CRUD operations and custom business logic",
+      "Using slices for contextual list operations",
+      "Form management: state handling, field updates, and submission",
+      "Advanced patterns: store composition, cross-store operations, optimistic updates, real-time",
+      "Best practices for naming, state management, performance, error handling, and testing",
+      "Complete example with comprehensive implementation",
+      "File structure conventions"
+    ],
+    "rules": [
+      "Include diagrams showing store architecture",
+      "Provide real-world examples for all major concepts",
+      "Explain both simple and advanced usage patterns",
+      "Cover form handling in detail",
+      "Include error handling and loading state management",
+      "Explain the relationship with model.signal.ts and GraphQL operations",
+      "Include performance optimization techniques",
+      "Provide testing strategies for stores"
+    ]
+  },
+  "page": "/[lang]/akanjs/(docs)/docs/module/store/page.tsx"
+}

@@ -1,0 +1,26 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "rootDir": ".",
+    "sourceMap": true,
+    "declaration": false,
+    "moduleResolution": "node",
+    "emitDecoratorMetadata": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "noPropertyAccessFromIndexSignature": false,
+    "importHelpers": false,
+    "target": "es2022",
+    "module": "esnext",
+    "types": ["node", "vite/client", "jest"],
+    "lib": ["es2022", "dom", "webworker"],
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
+    "strictNullChecks": true,
+    "baseUrl": ".",
+    "jsx": "preserve",
+    "resolveJsonModule": true
+  },
+  "exclude": ["**/node_modules", "tmp", "**/ios", "**/android"]
+}

@@ -1,0 +1,135 @@
+{
+  "title": "Model Service",
+  "description": "How to create and implement model.service.ts files in Akan.js",
+  "scans": [
+    {
+      "type": "source",
+      "description": "Service decorator implementation",
+      "path": "pkgs/@akanjs/service/src/serviceDecorators.ts"
+    },
+    {
+      "type": "source",
+      "description": "Database module implementation",
+      "path": "pkgs/@akanjs/server/src/module.ts"
+    },
+    {
+      "type": "example",
+      "description": "Simple service implementation",
+      "path": "libs/shared/lib/admin/admin.service.ts",
+      "sample": 1
+    },
+    {
+      "type": "example",
+      "description": "Complex service implementation",
+      "path": "libs/shared/lib/user/user.service.ts",
+      "sample": 1
+    },
+    {
+      "type": "example",
+      "description": "@Use decorator examples",
+      "path": "{apps,libs}/*/lib/*/*.service.ts",
+      "filterText": "@Use",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "@Srv decorator examples",
+      "path": "{apps,libs}/*/lib/*/*.service.ts",
+      "filterText": "@Srv",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "@Sig decorator examples",
+      "path": "{apps,libs}/*/lib/*/*.service.ts",
+      "filterText": "@Sig",
+      "sample": 1
+    },
+    {
+      "type": "example",
+      "description": "DbService _preCreate examples",
+      "path": "{apps,libs}/*/lib/*/*.service.ts",
+      "filterText": "_preCreate",
+      "sample": 1
+    },
+    {
+      "type": "example",
+      "description": "DbService _postCreate examples",
+      "path": "{apps,libs}/*/lib/*/*.service.ts",
+      "filterText": "_postCreate",
+      "sample": 1
+    },
+    {
+      "type": "example",
+      "description": "DbService _preUpdate examples",
+      "path": "{apps,libs}/*/lib/*/*.service.ts",
+      "filterText": "_preUpdate",
+      "sample": 1
+    },
+    {
+      "type": "example",
+      "description": "DbService _postUpdate examples",
+      "path": "{apps,libs}/*/lib/*/*.service.ts",
+      "filterText": "_postUpdate",
+      "sample": 1
+    },
+    {
+      "type": "example",
+      "description": "Database integration examples",
+      "path": "{apps,libs}/*/lib/*/*.service.ts",
+      "filterText": "DbService",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "serve examples",
+      "path": "{apps,libs}/*/lib/*/*.service.ts",
+      "filterText": "serve",
+      "sample": 1
+    },
+    {
+      "type": "example",
+      "description": "Error handling examples",
+      "path": "{apps,libs}/*/lib/*/*.service.ts",
+      "filterText": "try {",
+      "sample": 1
+    },
+    {
+      "type": "example",
+      "description": "MixSrvs examples",
+      "path": "{apps,libs}/*/lib/_*/*.service.ts",
+      "filterText": "MixSrvs",
+      "sample": 1
+    }
+  ],
+  "update": {
+    "filePath": "./modelService.instruction.md",
+    "contents": [
+      "Purpose and role of model.service.ts files",
+      "Service structure and inheritance (DbService, serve, MixSrvs)",
+      "Core decorators (@Srv, @Use, @Db, @Sig)",
+      "Database operations (CRUD, queries, search)",
+      "Customizing database operations (_preCreate, _postCreate, _preUpdate, _postUpdate, _preRemove, _postRemove)",
+      "Working with other services (dependency injection patterns)",
+      "Websocket integration (real-time features)",
+      "Queue integration (background processing)",
+      "Error handling (try/catch, domain errors)",
+      "Best practices (stateless design, single responsibility, resource management)",
+      "Integration with NestJS (module system)",
+      "Troubleshooting common issues"
+    ],
+    "rules": [
+      "Services should be stateless - use database and Redis for persistent state",
+      "Each service should follow the single responsibility principle",
+      "Use lifecycle hooks for proper resource management",
+      "Prefer dependency injection (@Srv, @Use) over direct imports",
+      "Implement proper error handling with domain-specific error classes",
+      "Use the built-in logger for consistent logging across services",
+      "Follow naming conventions for service methods",
+      "Document complex business logic with clear comments",
+      "Use hooks (_preCreate, etc.) for operation validation and transformation",
+      "Services should expose a clean API that hides implementation details"
+    ]
+  },
+  "page": "/[lang]/akanjs/(docs)/docs/module/service/page.tsx"
+}

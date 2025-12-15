@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.json",
+  "files": [],
+  "include": [],
+  "compilerOptions": {
+    "declaration": true,
+    "declarationDir": "dist"
+  },
+  "references": [
+    {
+      "path": "./tsconfig.spec.json"
+    }
+  ]
+}

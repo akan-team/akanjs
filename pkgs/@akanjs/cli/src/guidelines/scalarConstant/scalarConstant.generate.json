@@ -1,0 +1,106 @@
+{
+  "title": "Scalar Constant",
+  "description": "how to generate a scalar.constant.ts file",
+  "scans": [
+    {
+      "type": "source",
+      "description": "core constant library source code for scalar definitions",
+      "path": "pkgs/@akanjs/constant/src/classMeta.ts"
+    },
+    {
+      "type": "source",
+      "description": "field metadata implementation",
+      "path": "pkgs/@akanjs/constant/src/fieldMeta.ts"
+    },
+    {
+      "type": "source",
+      "description": "via() function and scalar implementation",
+      "path": "pkgs/@akanjs/constant/src/baseGql.ts"
+    },
+    {
+      "type": "source",
+      "description": "base scalar types and enumOf implementation",
+      "path": "pkgs/@akanjs/base/src/base.ts"
+    },
+    {
+      "type": "source",
+      "description": "GqlScalar type definition",
+      "path": "pkgs/@akanjs/base/src/scalar.ts"
+    },
+    {
+      "type": "source",
+      "description": "constant metadata usage in graphql schema generation",
+      "path": "pkgs/@akanjs/server/src/gql.ts"
+    },
+    {
+      "type": "source",
+      "description": "constant metadata usage in mongoDB schema generation",
+      "path": "pkgs/@akanjs/server/src/schema.ts"
+    },
+    {
+      "type": "example",
+      "description": "simple scalar.constant.ts file examples",
+      "path": "{apps,libs}/*/lib/__scalar/*/*.constant.ts",
+      "query": "lines < 30",
+      "sample": 5
+    },
+    {
+      "type": "example",
+      "description": "complex scalar.constant.ts file examples with enum definitions",
+      "path": "{apps,libs}/*/lib/__scalar/*/*.constant.ts",
+      "query": "lines > 30 && /enumOf/",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "scalar.constant.ts file examples with static methods",
+      "path": "{apps,libs}/*/lib/__scalar/*/*.constant.ts",
+      "query": "/static\\s+\\w+/",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "scalar.constant.ts file examples with nested scalar references",
+      "path": "{apps,libs}/*/lib/__scalar/*/*.constant.ts",
+      "query": "/import.*\\.constant/",
+      "sample": 3
+    }
+  ],
+  "update": {
+    "filePath": "./scalarConstant.instruction.md",
+    "contents": [
+      "Purpose of scalar constants in Akan.js",
+      "File structure and location conventions",
+      "Naming standards for directories, files, classes and enums",
+      "Required imports from @akanjs/constant and @akanjs/base",
+      "Basic syntax with via() function",
+      "Field definitions with field() helper function",
+      "Field options reference table (default, min, max, minlength, maxlength, validate, example)",
+      "Available field types (String, Int, Float, Boolean, Date, ID)",
+      "Array fields using bracket notation [Type]",
+      "Optional fields using .optional() chain method",
+      "Enum definition with enumOf(name, values) class pattern",
+      "Instance methods in scalar classes",
+      "Static methods in scalar classes",
+      "Common mistakes and fixes",
+      "Implementation checklist",
+      "Full examples of scalar.constant.ts files"
+    ],
+    "rules": [
+      "One scalar.constant.ts should contain only one scalar class extending via(). If you need more than one scalar model, make another scalar.constant.ts file.",
+      "The directory and filename convention is camelCase, such as `encourageInfo/encourageInfo.constant.ts`",
+      "The class name should be PascalCase, matching the camelCase directory name (e.g., EncourageInfo for encourageInfo)",
+      "Use `extends via((field) => ({...}))` pattern to define scalar classes, not decorators",
+      "Import `via` from `@akanjs/constant` and `enumOf`, `ID`, `Int`, `Float`, `dayjs` from `@akanjs/base`",
+      "The values of enum strings must be camelCase (e.g., 'waitPay', not 'WAIT_PAY')",
+      "Define enums using class pattern: `export class EnumName extends enumOf('enumName', [...] as const) {}`",
+      "The first argument of enumOf() is the enum name string used in dictionary/GraphQL",
+      "Use .optional() chain method for nullable fields, not { nullable: true } option",
+      "Use bracket notation for arrays ([Type]) rather than generics (Array<Type>)",
+      "Use factory functions for dynamic defaults: { default: () => dayjs() }, not { default: dayjs() }",
+      "Always export both the scalar class and enum classes",
+      "Add 'as const' to enum value arrays for better TypeScript type inference"
+    ]
+  },
+  "page": "/[lang]/akanjs/(docs)/docs/scalar/constant/page.tsx"
+}

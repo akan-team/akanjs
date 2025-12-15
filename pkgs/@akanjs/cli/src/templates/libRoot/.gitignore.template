@@ -1,0 +1,16 @@
+**/script.ts
+**/script*.ts
+**/.env
+**/env.client.debug.ts
+**/env.client.develop.ts
+**/env.client.main.ts
+**/env.client.testing.ts
+**/env.server.debug.ts
+**/env.server.develop.ts
+**/env.server.main.ts
+**/env.server.testing.ts
+**/env.server.type.ts
+
+# System Files
+.DS_Store
+Thumbs.db

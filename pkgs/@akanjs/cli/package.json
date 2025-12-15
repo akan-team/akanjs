@@ -1,0 +1,73 @@
+{
+  "type": "module",
+  "sourceType": "module",
+  "name": "@akanjs/cli",
+  "version": "0.9.60-canary.9",
+  "bin": {
+    "akan": "esm/index.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akan-team/akanjs.git",
+    "directory": "pkgs/@akanjs/cli"
+  },
+  "main": "./index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.2.1",
+    "@langchain/core": "^0.3.56",
+    "@langchain/deepseek": "^0.0.1",
+    "@langchain/openai": "^0.5.10",
+    "@next/bundle-analyzer": "^16.0.7",
+    "@trapezedev/project": "^7.1.3",
+    "@vitejs/plugin-react": "^4.7.0",
+    "axios": "^1.7.9",
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "compare-versions": "^6.1.1",
+    "dayjs": "^1.11.13",
+    "dotenv": "^16.4.7",
+    "esbuild": "^0.19.2",
+    "esbuild-plugin-d.ts": "^1.3.1",
+    "eslint": "^9.19.0",
+    "form-data": "^4.0.1",
+    "ignore": "^7.0.5",
+    "ink": "^6.1.0",
+    "jiti": "^2.4.2",
+    "js-yaml": "^4.1.0",
+    "latest-version": "^9.0.0",
+    "lodash": "^4.17.21",
+    "next": "16.0.7",
+    "next-pwa": "5.6.0",
+    "open": "^10.1.1",
+    "ora": "^3.4.0",
+    "pluralize": "^8.0.0",
+    "qrcode": "^1.5.4",
+    "react": "19.2.1",
+    "react-icons": "^5.4.0",
+    "reflect-metadata": "^0.2.2",
+    "tsconfig-paths": "^4.2.0",
+    "tunnel-ssh": "^5.2.0",
+    "typescript": "5.8.3",
+    "uuid": "^11.0.3",
+    "vite": "^7.0.6",
+    "vite-plugin-commonjs": "^0.10.4",
+    "vite-plugin-node-polyfills": "^0.24.0",
+    "vite-tsconfig-paths": "^5.1.4"
+  },
+  "esbuild": {
+    "platform": "node"
+  },
+  "exports": {
+    ".": {
+      "require": "./cjs/index.js",
+      "import": "./esm/index.js",
+      "types": "./index.d.ts"
+    }
+  }
+}

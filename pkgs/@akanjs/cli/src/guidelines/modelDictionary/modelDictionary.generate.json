@@ -1,0 +1,108 @@
+{
+  "title": "Model Dictionary",
+  "description": "Guidelines for creating and managing model.dictionary.ts files for multilingual support",
+  "scans": [
+    {
+      "type": "source",
+      "description": "Core dictionary library implementation",
+      "path": "pkgs/@akanjs/dictionary/src/*.ts"
+    },
+    {
+      "type": "example",
+      "description": "Dictionary type definitions and interfaces",
+      "path": "pkgs/@akanjs/dictionary/src/trans.ts",
+      "sample": 1
+    },
+    {
+      "type": "example",
+      "description": "Well-structured model dictionaries from shared libraries",
+      "path": "libs/shared/lib/*/**.dictionary.ts",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Standard model dictionaries with comprehensive field coverage",
+      "path": "{apps,libs}/*/lib/[!_]*/*.dictionary.ts",
+      "sample": 5
+    },
+    {
+      "type": "example",
+      "description": "Extended model dictionaries (user, setting, etc.)",
+      "path": "{apps,libs}/*/lib/{user,setting}/*.dictionary.ts",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "Examples of enum translations",
+      "path": "{apps,libs}/*/lib/[!_]*/*.dictionary.ts",
+      "filterText": "enum-",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Frontend usage with usePage hook",
+      "path": "{apps,libs}/*/lib/[!_]*/*.tsx",
+      "filterText": "usePage();",
+      "sample": 2
+    },
+    {
+      "type": "usage",
+      "description": "Frontend usage accessing translations",
+      "path": "{apps,libs}/*/lib/[!_]*/*.tsx",
+      "filterText": "l(",
+      "sample": 2
+    },
+    {
+      "type": "usage",
+      "description": "Backend error handling with translation keys",
+      "path": "{apps,libs}/*/lib/[!_]*/*.{document,service}.ts",
+      "filterText": "throw new Revert",
+      "sample": 2
+    },
+    {
+      "type": "usage",
+      "description": "Dictionary validation in development",
+      "path": "pkgs/@akanjs/dictionary/src/trans.ts",
+      "filterText": "checkDictCoverage",
+      "sample": 1
+    }
+  ],
+  "update": {
+    "filePath": "./modelDictionary.instruction.md",
+    "contents": [
+      "Purpose and benefits of model.dictionary.ts files",
+      "Complete file structure with all sections",
+      "Translation key conventions and naming patterns",
+      "How to add Model field translations (standard fields)",
+      "How to add field descriptions (desc- entries)",
+      "How to add Summary translations (aggregated metrics)",
+      "How to add Signal/API endpoint translations",
+      "How to add Filter query translations",
+      "How to add Enum value translations and descriptions",
+      "How to add custom UI text translations",
+      "Working with Extended models (user, setting, summary)",
+      "Validation rules and automated dictionary checks",
+      "Manual validation checklist before commits",
+      "Common mistakes and best practices",
+      "Required imports and type safety",
+      "Full example of standard model.dictionary.ts file",
+      "Full example of extended model dictionary",
+      "Section comment format and organization best practices",
+      "Language order consistency requirements",
+      "Using the dictionary in frontend components",
+      "Using the dictionary for backend error messages"
+    ],
+    "rules": [
+      "Do not remove or change comment splitting lines. The standard format is '// * ==================== Section ==================== * //'",
+      "Field descriptions (desc-) must immediately follow their field declarations",
+      "Enum descriptions (enumdesc-) must immediately follow their enum declarations",
+      "Filter argument descriptions (qargdesc-) must immediately follow their qarg- declarations",
+      "API argument descriptions (argdesc-) must immediately follow their arg- declarations",
+      "Always maintain section organization (Model, Insight, Filter, Etc, Endpoint)",
+      "Translation arrays must follow consistent order: [English, Korean]",
+      "All examples should include proper type safety with the 'satisfies' keyword",
+      "Include recommendations for running 'akan dict:check' before commits"
+    ]
+  },
+  "page": "/[lang]/akanjs/(docs)/docs/module/dictionary/page.tsx"
+}

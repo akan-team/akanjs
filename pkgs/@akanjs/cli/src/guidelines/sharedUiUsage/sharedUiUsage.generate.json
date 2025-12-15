@@ -1,0 +1,108 @@
+{
+  "title": "Shared UI Components Usage Guide",
+  "description": "Comprehensive guide on using shared library UI components in Akan.js applications",
+  "scans": [
+    {
+      "type": "source",
+      "description": "Core shared UI component library structure",
+      "path": "libs/shared/ui/index.ts"
+    },
+    {
+      "type": "source",
+      "description": "Field component implementations (form inputs)",
+      "path": "libs/shared/ui/Field.tsx"
+    },
+    {
+      "type": "source",
+      "description": "Data component implementations (tables, lists, visualization)",
+      "path": "libs/shared/ui/Data/index_.tsx"
+    },
+    {
+      "type": "source",
+      "description": "Load component implementations (data fetching)",
+      "path": "libs/shared/ui/Load/index_.tsx"
+    },
+    {
+      "type": "source",
+      "description": "Model component implementations (CRUD operations)",
+      "path": "libs/shared/ui/Model/index_.tsx"
+    },
+    {
+      "type": "source",
+      "description": "System component implementations (providers, app utilities)",
+      "path": "libs/shared/ui/System/index.tsx"
+    },
+    {
+      "type": "source",
+      "description": "Only component implementations (conditional rendering)",
+      "path": "libs/shared/ui/Only/index.tsx"
+    },
+    {
+      "type": "example",
+      "description": "Field components usage examples",
+      "path": "{apps,libs}/*/lib/*/*.{Template,Unit,View,Zone}.tsx",
+      "filterText": "Field} from \"@shared/ui\"",
+      "sample": 5
+    },
+    {
+      "type": "example",
+      "description": "Data components usage examples",
+      "path": "{apps,libs}/*/lib/*/*.{Zone,View}.tsx",
+      "filterText": "Data} from \"@shared/ui\"",
+      "sample": 5
+    },
+    {
+      "type": "example",
+      "description": "Load components usage examples",
+      "path": "{apps,libs}/*/lib/*/*.{Zone,View}.tsx",
+      "filterText": "Load} from \"@shared/ui\"",
+      "sample": 5
+    },
+    {
+      "type": "example",
+      "description": "Model components usage examples",
+      "path": "{apps,libs}/*/lib/*/*.{Template,Unit,Util,Zone}.tsx",
+      "filterText": "Model} from \"@shared/ui\"",
+      "sample": 5
+    },
+    {
+      "type": "example",
+      "description": "Only component usage examples",
+      "path": "{apps,libs}/*/lib/*/*.{Unit,View,Util}.tsx",
+      "filterText": "Only} from \"@shared/ui\"",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Complex form examples with validation",
+      "path": "{apps,libs}/*/lib/*/*.Template.tsx",
+      "filterText": "validate",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Store integration examples",
+      "path": "{apps,libs}/*/lib/*/*.{Template,Unit,View,Zone}.tsx",
+      "filterText": "sliceName",
+      "sample": 5
+    }
+  ],
+  "update": {
+    "filePath": "./sharedUiUsage.instruction.md",
+    "contents": [
+      "Overview of Shared UI Components",
+      "Component Namespaces (Field, Data, Load, Model, System, Only, Editor, Property)",
+      "Basic Component Usage",
+      "Form Fields and Validation",
+      "Data Management Components",
+      "Loading and Data Fetching",
+      "CRUD Operations",
+      "Conditional Rendering",
+      "Store Integration",
+      "Common Patterns and Best Practices",
+      "Troubleshooting"
+    ],
+    "rules": []
+  },
+  "page": "/[lang]/model/[model]"
+}

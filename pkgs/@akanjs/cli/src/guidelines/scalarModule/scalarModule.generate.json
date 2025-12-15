@@ -1,0 +1,35 @@
+{
+  "title": "Scalar Module",
+  "description": "Overview and summary of scalar modules in Akan.js - reusable data structures for embedded documents, DTOs, and shared schemas",
+  "scans": [
+    {
+      "type": "source",
+      "description": "constant instruction file",
+      "path": "pkgs/@akanjs/cli/src/guidelines/scalarConstant/scalarConstant.instruction.md"
+    },
+    {
+      "type": "source",
+      "description": "dictionary instruction file",
+      "path": "pkgs/@akanjs/cli/src/guidelines/scalarDictionary/scalarDictionary.instruction.md"
+    },
+    {
+      "type": "source",
+      "description": "core scalar module factory functions",
+      "path": "pkgs/@akanjs/server/src/module.ts"
+    }
+  ],
+  "update": {
+    "filePath": "./scalarModule.instruction.md",
+    "contents": [
+      "Purpose and architecture of scalar modules in Akan.js",
+      "Complete file structure and directory organization",
+      "Naming conventions for directories, files, classes, enums and dictionary keys"
+    ],
+    "rules": [
+      "Follow camelCase naming for directories and files",
+      "Use PascalCase for class names and enum types",
+      "Design scalars for reusability across multiple modules"
+    ]
+  },
+  "page": "/[lang]/akanjs/(docs)/docs/scalar/overview/page.tsx"
+}

@@ -1,0 +1,12 @@
+{
+  "testing.saveBeforeTest": false,
+  "jest.autoRun": "false",
+  "jestTestExplorer.flattenExplorer": false,
+  "prettier.configPath": ".prettierrc.json",
+  "tailwindCSS.classAttributes": ["class", "className", ".*Class", ".*ClassName"],
+  "colorize.languages": ["typescript", "javascript", "css", "scss"],
+  "typescript.tsserver.maxTsServerMemory": 16384,
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "eslint.useFlatConfig": true
+}

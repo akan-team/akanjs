@@ -1,0 +1,5 @@
+{
+  "type": "module",
+  "name": "@<%= libName %>",
+  "version": "0.0.1"
+}

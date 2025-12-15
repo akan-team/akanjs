@@ -1,0 +1,28 @@
+{
+  "name": "@akanjs/dictionary",
+  "version": "0.9.60-canary.9",
+  "sourceType": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akan-team/akanjs.git",
+    "directory": "pkgs/@akanjs/dictionary"
+  },
+  "main": "./index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {},
+  "exports": {
+    ".": {
+      "require": "./cjs/index.js",
+      "import": "./esm/index.js",
+      "types": "./index.d.ts"
+    }
+  },
+  "esbuild": {
+    "platform": "neutral"
+  }
+}

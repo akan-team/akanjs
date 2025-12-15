@@ -1,0 +1,129 @@
+{
+  "title": "Model Document",
+  "description": "How to create and implement model.document.ts files in Akan.js",
+  "scans": [
+    {
+      "type": "source",
+      "description": "Database decorator implementation",
+      "path": "pkgs/@akanjs/document/src/dbDecorators.ts"
+    },
+    {
+      "type": "source",
+      "description": "Model loader implementation",
+      "path": "pkgs/@akanjs/document/src/dataLoader.ts"
+    },
+    {
+      "type": "source",
+      "description": "Database model implementation",
+      "path": "pkgs/@akanjs/document/src/database.ts"
+    },
+    {
+      "type": "example",
+      "description": "Simple document implementation",
+      "path": "libs/shared/lib/admin/admin.document.ts",
+      "sample": 1
+    },
+    {
+      "type": "example",
+      "description": "Complex document implementation",
+      "path": "libs/shared/lib/user/user.document.ts",
+      "sample": 1
+    },
+    {
+      "type": "example",
+      "description": "Document with DataLoader example",
+      "path": "libs/mint/lib/token/token.document.ts",
+      "sample": 1
+    },
+    {
+      "type": "example",
+      "description": "Document middleware examples",
+      "path": "{apps,libs}/*/lib/*/*.document.ts",
+      "filterText": "schema.pre",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "Document index examples",
+      "path": "{apps,libs}/*/lib/*/*.document.ts",
+      "filterText": "schema.index",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "Document dataloader examples",
+      "path": "{apps,libs}/*/lib/*/*.document.ts",
+      "filterText": "@Loader",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "Document model statics examples",
+      "path": "{apps,libs}/*/lib/*/*.document.ts",
+      "filterText": "async",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Document model methods examples",
+      "path": "{apps,libs}/*/lib/*/*.document.ts",
+      "filterText": "return this",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Cache implementation examples",
+      "path": "{apps,libs}/*/lib/*/*.document.ts",
+      "filterText": "Cache.set",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "Transaction examples",
+      "path": "{apps,libs}/*/lib/*/*.document.ts",
+      "filterText": "@Transaction",
+      "sample": 1
+    },
+    {
+      "type": "example",
+      "description": "Search implementation",
+      "path": "{apps,libs}/*/lib/*/*.document.ts",
+      "filterText": "search",
+      "sample": 1
+    }
+  ],
+  "update": {
+    "filePath": "./modelDocument.instruction.md",
+    "contents": [
+      "Purpose and role of model.document.ts files",
+      "File structure and class organization",
+      "Relationship with model.constant.ts files",
+      "How to use document methods (instance methods)",
+      "How to use model statics (static methods)",
+      "How to apply middleware (lifecycle hooks)",
+      "How to define and apply indexes",
+      "How to use MongoDB model (direct access)",
+      "How to use dataloader (batching and caching)",
+      "How to use cache with Redis",
+      "How to use search with Meilisearch",
+      "Built-in model functions",
+      "Transactions and atomic operations",
+      "Integration with NestJS",
+      "Client-side usage patterns",
+      "Soft delete functionality",
+      "Error handling patterns",
+      "Optimization techniques"
+    ],
+    "rules": [
+      "Document methods are typically synchronous and return 'this' for method chaining",
+      "Model statics are typically asynchronous and return Promises",
+      "Use DataLoader for efficient relationship loading",
+      "Apply proper indexes for query patterns used in your application",
+      "Use Redis cache for frequently accessed data",
+      "Use transactions for operations that need to be atomic",
+      "Follow naming conventions for consistency",
+      "Handle errors with appropriate domain-specific error classes"
+    ]
+  },
+  "page": "/[lang]/akanjs/(docs)/docs/module/document/page.tsx"
+}

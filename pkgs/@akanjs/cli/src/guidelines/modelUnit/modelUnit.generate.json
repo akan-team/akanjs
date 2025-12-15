@@ -1,0 +1,92 @@
+{
+  "title": "Model Unit",
+  "description": "How to create and implement Model.Unit.tsx files in Akan.js",
+  "scans": [
+    {
+      "type": "example",
+      "description": "Model Unit examples",
+      "path": "{apps,libs}/*/lib/*/*.Unit.tsx",
+      "sample": 5
+    },
+    {
+      "type": "implementation",
+      "description": "Model Unit typical implementations",
+      "path": "{apps,libs}/*/lib/**/*.Unit.tsx",
+      "filterText": "export const Abstract",
+      "sample": 3
+    },
+    {
+      "type": "implementation",
+      "description": "Model Unit Card implementations",
+      "path": "{apps,libs}/*/lib/**/*.Unit.tsx",
+      "filterText": "export const Card",
+      "sample": 2
+    },
+    {
+      "type": "usage",
+      "description": "Model Unit usage in pages",
+      "path": "apps/*/app/**/page.tsx",
+      "filterText": ".Unit.",
+      "sample": 1
+    },
+    {
+      "type": "usage",
+      "description": "Model Unit usage in Utils",
+      "path": "{apps,libs}/*/lib/*/*.Util.tsx",
+      "filterText": ".Unit.",
+      "sample": 1
+    },
+    {
+      "type": "usage",
+      "description": "Model Unit usage in Templates",
+      "path": "{apps,libs}/*/lib/*/*.Template.tsx",
+      "filterText": ".Unit.",
+      "sample": 1
+    },
+    {
+      "type": "usage",
+      "description": "Model Unit usage in Zones",
+      "path": "{apps,libs}/*/lib/*/*.Zone.tsx",
+      "filterText": ".Unit.",
+      "sample": 3
+    },
+    {
+      "type": "reference",
+      "description": "Integration with database models",
+      "path": "{apps,libs}/*/lib/*/*.document.ts",
+      "sample": 1
+    },
+    {
+      "type": "reference",
+      "description": "Integration with model constants",
+      "path": "{apps,libs}/*/lib/*/*.constant.ts",
+      "sample": 1
+    }
+  ],
+  "update": {
+    "filePath": "./modelUnit.instruction.md",
+    "contents": [
+      "Purpose and role of Model.Unit.tsx files",
+      "How to create Model.Unit.tsx files",
+      "Common export patterns (Abstract, Card, Full, etc.)",
+      "Integration with LightModel types from constants",
+      "How to use Model.Unit.tsx files in pages",
+      "How to use Model.Unit.tsx files in Utils",
+      "How to use Model.Unit.tsx files in Zones",
+      "How to use Model.Unit.tsx files in Templates",
+      "Best practices for performance optimization",
+      "Common component patterns and variations"
+    ],
+    "rules": [
+      "Model.Unit.tsx is a server component, so it should not use client-side hooks like useEffect, useState, etc.",
+      "Model.Unit.tsx is a presentation component of cnst.LightModel to reuse in pages, Utils, Zones, and Templates, etc.",
+      "Always accept className prop for styling customization",
+      "Create multiple export variations (Abstract, Card, Full) for different use cases",
+      "Use semantic HTML and ensure accessibility",
+      "Focus on presentation only - do not include business logic",
+      "Include href prop for navigation when appropriate",
+      "Ensure proper image handling with the Image component from @util/ui"
+    ]
+  },
+  "page": "/[lang]/akanjs/(docs)/docs/module/unit/page.tsx"
+}

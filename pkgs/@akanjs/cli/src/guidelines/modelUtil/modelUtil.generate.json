@@ -1,0 +1,93 @@
+{
+  "title": "Model Util",
+  "description": "How to create and implement Model.Util.ts files in Akan.js",
+  "scans": [
+    {
+      "type": "example",
+      "description": "Model Util examples",
+      "path": "{apps,libs}/*/lib/*/*.Util.ts{,x}",
+      "sample": 5
+    },
+    {
+      "type": "source",
+      "description": "Example of high-quality Model.Util implementation",
+      "path": "libs/shared/lib/admin/Admin.Util.tsx"
+    },
+    {
+      "type": "source",
+      "description": "Example of complex Model.Util implementation",
+      "path": "libs/shared/lib/user/User.Util.tsx"
+    },
+    {
+      "type": "usage",
+      "description": "Model Util usage in pages",
+      "path": "apps/*/app/**/page.tsx",
+      "filterText": ".Util.",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Model Util usage in Units",
+      "path": "{apps,libs}/*/lib/*/*.Unit.tsx",
+      "filterText": ".Util.",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Model Util usage in Templates",
+      "path": "{apps,libs}/*/lib/*/*.Template.tsx",
+      "filterText": ".Util.",
+      "sample": 2
+    },
+    {
+      "type": "usage",
+      "description": "Model Util usage in Views",
+      "path": "{apps,libs}/*/lib/*/*.View.tsx",
+      "filterText": ".Util.",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Model Util usage in Zones",
+      "path": "{apps,libs}/*/lib/*/*.Zone.tsx",
+      "filterText": ".Util.",
+      "sample": 3
+    },
+    {
+      "type": "related",
+      "description": "Relationship with model.store.ts",
+      "path": "{apps,libs}/*/lib/*/*.{store,signal}.ts",
+      "sample": 2
+    }
+  ],
+  "update": {
+    "filePath": "./modelUtil.instruction.md",
+    "contents": [
+      "Purpose and role of Model.Util.ts files",
+      "How to create Model.Util.ts files",
+      "Common patterns and implementations",
+      "Using with store actions and state",
+      "Using with signal API calls",
+      "Performance optimization techniques",
+      "How to use Model.Util.ts files in pages",
+      "How to use Model.Util.ts files in Units",
+      "How to use Model.Util.ts files in Templates",
+      "How to use Model.Util.ts files in Views",
+      "How to use Model.Util.ts files in Zones",
+      "Best practices and error handling"
+    ],
+    "rules": [
+      "Model.Util.tsx is a client component, so it can use client-side hooks like useEffect, useState, etc.",
+      "Model.Util.tsx is a utility component to reuse in pages, Units, Templates, Views, and Zones, etc.",
+      "Util components should be focused on a single responsibility",
+      "Util can be a wrapper component for using in server components",
+      "Util can be a wrapper component for store actions or signal api calls",
+      "Util components should handle their own loading and error states",
+      "Always use TypeScript for type safety in props and returned values",
+      "Consider memoization for performance-critical components",
+      "Follow consistent naming conventions (e.g., ActionButton, FilterPanel)",
+      "Document props with JSDoc comments for better IDE support"
+    ]
+  },
+  "page": "/[lang]/akanjs/(docs)/docs/module/util/page.tsx"
+}

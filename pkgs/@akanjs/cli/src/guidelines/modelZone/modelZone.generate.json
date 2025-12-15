@@ -1,0 +1,126 @@
+{
+  "title": "Model Zone",
+  "description": "How to create and implement Model.Zone.tsx files in Akan.js",
+  "scans": [
+    {
+      "type": "example",
+      "description": "Model Zone examples",
+      "path": "{apps,libs}/*/lib/*/*.Zone.{ts,tsx}",
+      "sample": 5
+    },
+    {
+      "type": "usage",
+      "description": "Model Zone usage in pages",
+      "path": "apps/*/app/**/page.tsx",
+      "filterText": ".Zone.",
+      "sample": 5
+    },
+    {
+      "type": "pattern",
+      "description": "Admin Zone patterns",
+      "path": "{apps,libs}/*/lib/*/*.Zone.{ts,tsx}",
+      "filterText": "export const Admin",
+      "sample": 3
+    },
+    {
+      "type": "pattern",
+      "description": "Card Zone patterns",
+      "path": "{apps,libs}/*/lib/*/*.Zone.{ts,tsx}",
+      "filterText": "export const Card",
+      "sample": 3
+    },
+    {
+      "type": "pattern",
+      "description": "View Zone patterns",
+      "path": "{apps,libs}/*/lib/*/*.Zone.{ts,tsx}",
+      "filterText": "export const View",
+      "sample": 3
+    },
+    {
+      "type": "pattern",
+      "description": "Specialized Zone patterns",
+      "path": "{apps,libs}/*/lib/*/*.Zone.{ts,tsx}",
+      "filterText": "Load.Units|Load.View|Data.ListContainer",
+      "sample": 3
+    },
+    {
+      "type": "integration",
+      "description": "Zone integration with Load components",
+      "path": "{apps,libs}/*/lib/*/*.Zone.{ts,tsx}",
+      "filterText": "Load.Page|Load.Units|Load.View",
+      "sample": 3
+    }
+  ],
+  "interfaces": [
+    {
+      "name": "Common Zone Props",
+      "description": "Typical props used by Zone components",
+      "properties": [
+        {
+          "name": "className",
+          "type": "string",
+          "optional": true,
+          "description": "CSS class name for styling flexibility"
+        },
+        {
+          "name": "init",
+          "type": "ClientInit<model, LightModel>",
+          "optional": false,
+          "description": "Initialization data for model list"
+        },
+        {
+          "name": "view",
+          "type": "ClientView<model, Model>",
+          "optional": false,
+          "description": "View data for a single model instance"
+        },
+        {
+          "name": "query",
+          "type": "QueryProps",
+          "optional": true,
+          "description": "Query parameters for filtering data"
+        },
+        {
+          "name": "sliceName",
+          "type": "string",
+          "optional": true,
+          "description": "Name of the state slice for data management"
+        }
+      ]
+    },
+    {
+      "name": "Architectural Position",
+      "description": "How Zone components fit in the component hierarchy",
+      "notes": [
+        "Page Components → Zone Components → View/Unit/Template Components",
+        "Client Components (use client) → Can use hooks and client-side state",
+        "Typically used within Load.Page in page.tsx files",
+        "Act as connectors between data fetching and UI presentation"
+      ]
+    }
+  ],
+  "update": {
+    "filePath": "./modelZone.instruction.md",
+    "contents": [
+      "Purpose and role of Model.Zone.tsx files",
+      "Component structure and naming patterns",
+      "Common Zone component types (Admin, View, Card, specialized)",
+      "Props patterns and data handling",
+      "Client component patterns and hooks usage",
+      "Integration with page components and data fetching",
+      "Composition with other Model components (Unit, View, Template, Util)",
+      "Best practices and implementation guidelines"
+    ],
+    "rules": [
+      "Model.Zone.tsx is a client component, so it can use client-side hooks like useEffect, useState, etc.",
+      "Model.Zone.tsx is a container component that connects data with UI presentation",
+      "Zone components typically import and use other model components (Unit, View, Template, Util)",
+      "Zone components should handle presentation logic, not business logic or data fetching",
+      "Common Zone types include Admin, View, Card, and specialized components",
+      "Zone components should accept flexible props like className for styling customization",
+      "Zone components often use Load.Units, Load.View, or Data.ListContainer for data handling",
+      "Zone components serve as the bridge between page components and UI presentation"
+    ]
+  },
+  "page": "/[lang]/akanjs/(docs)/docs/module/zone/page.tsx"
+}

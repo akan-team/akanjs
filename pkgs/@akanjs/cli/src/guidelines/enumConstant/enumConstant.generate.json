@@ -1,0 +1,24 @@
+{
+  "title": "Enum Constant",
+  "description": "how to generate a enumOf usage in constant.ts file",
+  "scans": [
+    {
+      "type": "source",
+      "description": "base enum library source code",
+      "path": "pkgs/@akanjs/base/src/base.ts"
+    },
+    {
+      "type": "example",
+      "description": "enumOf usage in constant.ts files",
+      "path": "{apps,libs}/*/lib/*/*.constant.ts",
+      "filterText": "enumOf",
+      "sample": 10
+    }
+  ],
+  "update": {
+    "filePath": "./enumConstant.instruction.md",
+    "contents": ["Structure of enumOf usage in constant.ts file", "How to add enumOf usage in constant.ts file"],
+    "rules": []
+  },
+  "page": "/[lang]/akanjs/(docs)/docs/codebase/enum/page.tsx"
+}

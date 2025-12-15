@@ -1,0 +1,42 @@
+version: "3.8"
+networks:
+  <%= repoName %>-network:
+    driver: bridge
+services:
+  redis:
+    container_name: redis
+    image: redis
+    restart: unless-stopped
+    ports:
+      - 6379:6379
+    networks:
+      - <%= repoName %>-network
+  mongo:
+    image: mongo
+    container_name: mongo
+    restart: unless-stopped
+    ports:
+      - 27017:27017
+    volumes:
+      - ./mongo/local/data:/data/db
+    entrypoint: >
+      bash -c "
+        mongod --dbpath /data/db --replSet rs0 --bind_ip_all --fork --logpath /var/log/mongodb.log &&
+        until mongosh --eval 'db.adminCommand(\"ping\")' > /dev/null 2>&1; do sleep 1; done &&
+        mongosh --eval 'try { rs.status() } catch(e) { rs.initiate({_id: \"rs0\", members: [{_id: 0, host: \"localhost:27017\"}]}) }' &&
+        tail -f /var/log/mongodb.log
+      "
+    networks:
+      - <%= repoName %>-network
+  meili:
+    image: getmeili/meilisearch:latest
+    container_name: meili
+    restart: unless-stopped
+    ports:
+      - "7700:7700"
+    environment:
+      - MEILI_ENV=development
+      - MEILI_MASTER_KEY=masterKey
+      - MEILI_NO_ANALYTICS=true
+    networks:
+      - <%= repoName %>-network

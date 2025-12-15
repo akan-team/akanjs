@@ -1,0 +1,33 @@
+import {
+  AdminPanel,
+  Edit,
+  EditModal,
+  EditWrapper,
+  LoadInit,
+  New,
+  NewWrapper,
+  Remove,
+  RemoveWrapper,
+  SureToRemove,
+  View,
+  ViewEditModal,
+  ViewModal,
+  ViewWrapper,
+} from "./index_";
+
+export const Model = {
+  ViewModal,
+  View,
+  EditModal,
+  EditWrapper,
+  NewWrapper,
+  SureToRemove,
+  Remove,
+  RemoveWrapper,
+  LoadInit,
+  ViewWrapper,
+  ViewEditModal,
+  Edit,
+  New,
+  AdminPanel,
+};

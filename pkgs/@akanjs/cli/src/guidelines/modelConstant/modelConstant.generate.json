@@ -1,0 +1,128 @@
+{
+  "title": "Model Constant",
+  "description": "How to create and implement model.constant.ts files in Akan.js",
+  "scans": [
+    {
+      "type": "source",
+      "description": "Model decorator implementation",
+      "path": "pkgs/@akanjs/constant/src/classMeta.ts"
+    },
+    {
+      "type": "source",
+      "description": "Field decorator implementation",
+      "path": "pkgs/@akanjs/constant/src/fieldMeta.ts"
+    },
+    {
+      "type": "source",
+      "description": "Filter implementation",
+      "path": "pkgs/@akanjs/constant/src/filterMeta.ts"
+    },
+    {
+      "type": "source",
+      "description": "via and sortOf implementations",
+      "path": "pkgs/@akanjs/constant/src/constantDecorator.ts"
+    },
+    {
+      "type": "source",
+      "description": "GraphQL schema generation",
+      "path": "pkgs/@akanjs/server/src/gql.ts"
+    },
+    {
+      "type": "source",
+      "description": "MongoDB schema generation",
+      "path": "pkgs/@akanjs/server/src/schema.ts"
+    },
+    {
+      "type": "source",
+      "description": "Query resolver implementation",
+      "path": "pkgs/@akanjs/server/src/resolver.ts"
+    },
+    {
+      "type": "source",
+      "description": "Search indexing implementation",
+      "path": "pkgs/@akanjs/server/src/searchDaemon.ts"
+    },
+    {
+      "type": "example",
+      "description": "Simple model examples",
+      "path": "{apps,libs}/*/lib/*/*.constant.ts",
+      "query": "lines < 100",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Complex models with all types",
+      "path": "{apps,libs}/*/lib/*/*.constant.ts",
+      "filterText": "@Model\\.(Input|Object|Light|Full|Filter|Summary|Insight)",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Models with enum definitions",
+      "path": "{apps,libs}/*/lib/*/*.constant.ts",
+      "filterText": "enumOf",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Models with reference fields",
+      "path": "{apps,libs}/*/lib/*/*.constant.ts",
+      "filterText": "ref: \"",
+      "sample": 2
+    },
+    {
+      "type": "usage",
+      "description": "Usage of models in UI components",
+      "path": "{apps,libs}/*/lib/*/[A-Z]*.{Template,Unit,View}.tsx",
+      "sample": 3
+    }
+  ],
+  "update": {
+    "filePath": "./modelConstant.instruction.md",
+    "contents": [
+      "Purpose and role of model.constant.ts files",
+      "Model class hierarchy and relationships",
+      "File structure and organization conventions",
+      "Required imports and dependencies",
+      "Enum definition patterns",
+      "ModelInput implementation",
+      "ModelObject implementation",
+      "LightModel implementation",
+      "Full Model implementation",
+      "Insight Model implementation",
+      "Summary Model implementation",
+      "Filter Model implementation",
+      "Field decorators and options",
+      "Filter decorators and arguments",
+      "Inheritance with via() and sortOf()",
+      "Working with references to other models",
+      "Validation rules and constraints",
+      "Type safety considerations",
+      "Common mistakes and solutions",
+      "Best practices for maintainable models",
+      "Complete example with all model types"
+    ],
+    "rules": [
+      "Follow the model hierarchy: Input → Object → Light/Full → Filter/Summary/Insight",
+      "Always create an Input model with user-editable fields",
+      "Always create an Object model extending Input with system fields",
+      "Always create a Light model with essential fields for listings",
+      "Always create a Full model combining Object and Light models",
+      "Create Filter models with sortOf() and custom filter methods",
+      "Create Insight models for aggregation/analytics",
+      "Create Summary models for dashboards",
+      "Use consistent naming: ModelInput, ModelObject, LightModel, Model (full)",
+      "Use via() for inheritance and field selection",
+      "Mark field arrays as const with 'as const' assertion",
+      "Avoid getters, setters, and instance methods - use static methods if needed",
+      "Always use Field.Prop/Hidden/Secret/Resolve decorators",
+      "Define enums with enumOf() and export both const and type",
+      "Set appropriate field defaults, especially for arrays (empty array)",
+      "Add validation constraints (min, max, minlength, maxlength) where appropriate",
+      "Use proper reference format with { ref: 'ModelName' }",
+      "Group related models in the same file",
+      "Export all models and enums"
+    ]
+  },
+  "page": "/[lang]/akanjs/(docs)/docs/module/constant/page.tsx"
+}

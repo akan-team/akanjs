@@ -1,0 +1,119 @@
+{
+  "title": "Akan.js Framework",
+  "description": "Comprehensive guide to the Akan.js framework architecture, concepts, and development patterns",
+  "scans": [
+    {
+      "type": "source",
+      "description": "Core framework packages",
+      "path": "pkgs/@akanjs/**/src/index.ts"
+    },
+    {
+      "type": "source",
+      "description": "Library implementations",
+      "path": "libs/*/index.ts"
+    },
+    {
+      "type": "example",
+      "description": "Application configurations",
+      "path": "apps/*/akan.config.ts",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Main application entry points",
+      "path": "apps/*/main.ts",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Client-side entry points",
+      "path": "apps/*/client.ts",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Server-side entry points",
+      "path": "apps/*/server.ts",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Model implementation patterns",
+      "path": "apps/*/lib/[!_]*/*.{constant,service,signal,store}.ts",
+      "sample": 4
+    },
+    {
+      "type": "example",
+      "description": "Component implementation patterns",
+      "path": "apps/*/lib/[!_]*/*.{View,Unit,Template,Zone}.tsx",
+      "sample": 4
+    },
+    {
+      "type": "usage",
+      "description": "Multi-environment configuration",
+      "path": "apps/*/env/*.ts",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Routing implementation",
+      "path": "apps/*/app/**/*.tsx",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "State management with signals",
+      "path": "{apps,libs}/*/lib/[!_]*/*.signal.ts",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Nestjs server integrations",
+      "path": "{apps,libs}/*/nest/*.ts",
+      "sample": 3
+    }
+  ],
+  "update": {
+    "filePath": "./framework.instruction.md",
+    "contents": [
+      "Introduction to Akan.js Framework",
+      "Key Features and Benefits",
+      "Architecture Overview",
+      "Environment and Configuration",
+      "Domain-Driven Development Pattern",
+      "Full-Stack Development Workflow",
+      "Model Architecture (constants, services, signals, stores)",
+      "Component Architecture (View, Unit, Template, Zone)",
+      "API Integration Pattern",
+      "State Management Pattern",
+      "Multi-Platform Support (Web, Mobile, SSR, CSR)",
+      "Type Safety and Code Generation",
+      "Internationalization (i18n) System",
+      "Security Best Practices",
+      "Deployment and CI/CD Integration",
+      "Performance Optimization Techniques",
+      "Development Tools and Commands",
+      "Database Integration Pattern",
+      "Authentication and Authorization System",
+      "File Management System",
+      "Real-time Communication Features",
+      "AI Integration and Code Generation",
+      "Testing and Quality Assurance",
+      "Best Practices and Common Patterns",
+      "Troubleshooting and Common Issues"
+    ],
+    "rules": [
+      "Emphasize the full-stack nature of the framework across all sections",
+      "Provide clear examples for each architectural pattern",
+      "Include code snippets demonstrating type safety across layers",
+      "Explain how components interact across client, server, and database",
+      "Highlight the automatic integration between layers",
+      "Provide both basic and advanced usage patterns",
+      "Include command-line examples for common development tasks",
+      "Organize content to flow from basic concepts to advanced usage",
+      "Use consistent terminology throughout the documentation",
+      "Include diagrams or visual aids to explain architectural concepts"
+    ]
+  },
+  "page": "/[lang]/akanjs/(docs)/docs/overview/page.tsx"
+}

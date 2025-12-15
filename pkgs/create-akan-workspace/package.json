@@ -1,0 +1,30 @@
+{
+  "sourceType": "module",
+  "name": "create-akan-workspace",
+  "version": "0.9.60-canary.9",
+  "bin": {
+    "create-akan-workspace": "cjs/index.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akan-team/akanjs.git",
+    "directory": "pkgs/@akanjs/cli"
+  },
+  "main": "./index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "commander": "^13.1.0"
+  },
+  "exports": {
+    ".": {
+      "require": "./cjs/index.js",
+      "import": "./esm/index.js",
+      "types": "./index.d.ts"
+    }
+  }
+}

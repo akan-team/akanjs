@@ -1,0 +1,72 @@
+{
+  "title": "How to create doc page",
+  "description": "How to create documentation page of Akan.js framework",
+  "scans": [
+    {
+      "type": "example",
+      "description": "Example of a system architecture documentation page",
+      "path": "apps/angelo/app/[lang]/akanjs/(docs)/docs/systemArch/frontend/page.tsx"
+    },
+    {
+      "type": "example",
+      "description": "Example of a module documentation page with API reference",
+      "path": "apps/angelo/app/[lang]/akanjs/(docs)/docs/module/signal/page.tsx"
+    },
+    {
+      "type": "source",
+      "description": "Documentation utility components",
+      "path": "apps/angelo/ui/Docs/index.ts"
+    },
+    {
+      "type": "source",
+      "description": "Code snippet component for syntax highlighting",
+      "path": "apps/angelo/ui/Docs/CodeSnippet.tsx"
+    },
+    {
+      "type": "source",
+      "description": "Title component for main headings",
+      "path": "apps/angelo/ui/Docs/Title.tsx"
+    },
+    {
+      "type": "source",
+      "description": "Description component for explanatory text",
+      "path": "apps/angelo/ui/Docs/Description.tsx"
+    },
+    {
+      "type": "source",
+      "description": "Option table component for displaying parameters",
+      "path": "apps/angelo/ui/Docs/OptionTable.tsx"
+    },
+    {
+      "type": "source",
+      "description": "Introduction table component for listing features",
+      "path": "apps/angelo/ui/Docs/IntroTable.tsx"
+    }
+  ],
+  "update": {
+    "filePath": "./docPageRule.instruction.md",
+    "contents": [
+      "Purpose of doc page in Akan.js",
+      "How to create doc page",
+      "Page organization and structure",
+      "Utility components",
+      "Best practices for documentation",
+      "Internationalization guidelines",
+      "Code example guidelines",
+      "Complete example implementation",
+      "Troubleshooting common issues"
+    ],
+    "rules": [
+      "Docs.Layout is already set on the top of layout.tsx file in the root of the project, so you don't need to use it in your page",
+      "Docs utility should be used with `Docs` prefix, like <Docs.Title>, do not use object destructuring",
+      "Always wrap user-facing text in l.trans() with at least English and Korean translations",
+      "Use a logical hierarchy of headings (Title → SubTitle → SubSubTitle)",
+      "Include a divider (<div className=\"divider\"></div>) between major sections",
+      "For long pages, use anchor links with hidden divs for navigation",
+      "Code examples should be realistic and include proper comments",
+      "Tables should use the appropriate type (OptionTable for parameters, IntroTable for features)",
+      "Always specify the correct language for CodeSnippet components"
+    ]
+  },
+  "page": "/[lang]/akanjs/(docs)/docs/[category]/[pageName]/page"
+}

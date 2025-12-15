@@ -1,0 +1,20 @@
+@import "tailwindcss";
+@import "@akanjs/ui/styles.css";
+
+@plugin "daisyui" {
+  logs: false;
+  exclude: properties;
+}
+
+@plugin "daisyui/theme" {
+  name: "light";
+}
+
+@plugin "daisyui/theme" {
+  name: "dark";
+}
+
+@theme {
+  --font-lemonmilk: var(--font-lemonmilk);
+  --font-pretendard: var(--font-pretendard);
+}

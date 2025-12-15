@@ -1,0 +1,47 @@
+{
+  "name": "@akanjs/next",
+  "version": "0.9.60-canary.9",
+  "sourceType": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akan-team/akanjs.git",
+    "directory": "pkgs/@akanjs/next"
+  },
+  "main": "./index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@capacitor-community/contacts": "^6.1.1",
+    "@capacitor-community/fcm": "^7.1.1",
+    "@capacitor/app": "^7.0.1",
+    "@capacitor/camera": "7.0.1",
+    "@capacitor/device": "7.0.1",
+    "@capacitor/geolocation": "^7.1.2",
+    "@capacitor/push-notifications": "7.0.1",
+    "@capgo/capacitor-updater": "^7.0.50",
+    "@formatjs/intl-localematcher": "^0.5.10",
+    "@react-spring/web": "^9.7.5",
+    "@use-gesture/react": "^10.3.1",
+    "axios": "^1.7.9",
+    "cordova-plugin-purchase": "^13.12.1",
+    "negotiator": "^1.0.0",
+    "next": "16.0.7",
+    "react": "19.2.1",
+    "react-device-detect": "^2.2.3",
+    "react-dom": "19.2.1"
+  },
+  "exports": {
+    ".": {
+      "require": "./cjs/index.js",
+      "import": "./esm/index.js",
+      "types": "./index.d.ts"
+    }
+  },
+  "esbuild": {
+    "platform": "browser"
+  }
+}

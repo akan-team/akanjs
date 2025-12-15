@@ -1,0 +1,32 @@
+{
+  "name": "@akanjs/service",
+  "version": "0.9.60-canary.9",
+  "sourceType": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akan-team/akanjs.git",
+    "directory": "pkgs/@akanjs/service"
+  },
+  "main": "./index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.4.15",
+    "@nestjs/mongoose": "^10.1.0",
+    "reflect-metadata": "^0.2.2"
+  },
+  "exports": {
+    ".": {
+      "require": "./cjs/index.js",
+      "import": "./esm/index.js",
+      "types": "./index.d.ts"
+    }
+  },
+  "esbuild": {
+    "platform": "node"
+  }
+}

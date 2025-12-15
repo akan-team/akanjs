@@ -1,0 +1,52 @@
+{
+  "name": "@akanjs/nest",
+  "version": "0.9.60-canary.9",
+  "sourceType": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akan-team/akanjs.git",
+    "directory": "pkgs/@akanjs/nest"
+  },
+  "main": "./index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@nestjs/apollo": "^12.2.2",
+    "@nestjs/common": "^10.4.15",
+    "@nestjs/graphql": "^12.2.2",
+    "@nestjs/mongoose": "^10.1.0",
+    "@nestjs/passport": "^10.0.3",
+    "@nestjs/platform-socket.io": "^10.4.15",
+    "@nestjs/schedule": "^4.1.2",
+    "@socket.io/redis-adapter": "^8.3.0",
+    "apple-signin": "^1.0.9",
+    "iap": "^1.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.9.3",
+    "passport-apple": "^2.0.2",
+    "passport-facebook": "^3.0.0",
+    "passport-github": "^1.1.0",
+    "passport-google-oauth20": "^2.0.0",
+    "passport-kakao": "^1.0.1",
+    "passport-naver": "^1.0.6",
+    "redis": "^4.7.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "tunnel-ssh": "^5.2.0",
+    "ua-parser-js": "^1.0.40"
+  },
+  "exports": {
+    ".": {
+      "require": "./cjs/index.js",
+      "import": "./esm/index.js",
+      "types": "./index.d.ts"
+    }
+  },
+  "esbuild": {
+    "platform": "node"
+  }
+}

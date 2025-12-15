@@ -1,0 +1,131 @@
+{
+  "title": "Component Rule",
+  "description": "Comprehensive guidelines for creating React components in the Akan.js framework",
+  "scans": [
+    {
+      "type": "source",
+      "description": "Cookie management utilities for web and mobile",
+      "path": "pkgs/@akanjs/client/src/cookie.ts"
+    },
+    {
+      "type": "source",
+      "description": "Storage utilities for persistent data",
+      "path": "pkgs/@akanjs/client/src/storage.ts"
+    },
+    {
+      "type": "source",
+      "description": "Device capabilities and platform detection",
+      "path": "pkgs/@akanjs/client/src/device.ts"
+    },
+    {
+      "type": "source",
+      "description": "Navigation and routing utilities",
+      "path": "pkgs/@akanjs/client/src/router.ts"
+    },
+    {
+      "type": "source",
+      "description": "Type utilities including clsx for class management",
+      "path": "pkgs/@akanjs/client/src/types.ts"
+    },
+    {
+      "type": "example",
+      "description": "Unit components (list items/cards)",
+      "path": "{apps,libs}/*/lib/*/*.Unit.tsx",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "View components (detailed displays)",
+      "path": "{apps,libs}/*/lib/*/*.View.tsx",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Template components (forms/edit screens)",
+      "path": "{apps,libs}/*/lib/*/*.Template.tsx",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Utility components (toolbars/helpers)",
+      "path": "{apps,libs}/*/lib/*/*.Util.tsx",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Zone components (data containers)",
+      "path": "{apps,libs}/*/lib/*/*.Zone.tsx",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Reusable UI components",
+      "path": "{libs,apps}/*/ui/**/*.tsx",
+      "sample": 5
+    },
+    {
+      "type": "usage",
+      "description": "Component composition patterns",
+      "path": "{apps,libs}/*/lib/*/*.Zone.tsx",
+      "filterText": "renderItem",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Form state management with stores",
+      "path": "{apps,libs}/*/lib/*/*.Template.tsx",
+      "filterText": "st.use",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Conditional rendering with TailwindCSS",
+      "path": "{apps,libs}/*/lib/*/*.tsx",
+      "filterText": "clsx",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Data fetching with Load components",
+      "path": "{apps,libs}/*/lib/*/*.Zone.tsx",
+      "filterText": "<Load.",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Responsive design patterns",
+      "path": "{apps,libs}/*/lib/*/*.tsx",
+      "filterText": "md:",
+      "sample": 3
+    }
+  ],
+  "update": {
+    "filePath": "./componentRule.instruction.md",
+    "contents": [
+      "Component Architecture - Core structure and organization",
+      "Component Types - Purpose and responsibility of each component type",
+      "File Naming Conventions - Standardized naming patterns",
+      "Utility Functions - Core framework utilities",
+      "Best Practices - Guidelines for components",
+      "State Management - Integration with Zustand store and signals",
+      "Responsive Design - Mobile-first approach",
+      "Accessibility - Core principles",
+      "Performance Optimization - Memoization and lazy loading",
+      "Data Fetching - Using Load components",
+      "Composition Patterns - Component rendering methods",
+      "Complete Examples - Full implementation examples"
+    ],
+    "rules": [
+      "Component types (.Unit, .View, .Template, .Util, .Zone) should follow standard patterns and responsibilities",
+      "Every component file should maintain a consistent organization pattern with logical sections",
+      "Responsive design should use Tailwind's mobile-first approach with sm:, md:, lg: prefixes",
+      "Form components should use the framework state management pattern with st.use and st.do",
+      "Data containers should follow the Load.Units/Load.View pattern for consistent data fetching",
+      "Component files should export named components rather than default exports",
+      "Props should use explicit TypeScript interfaces with proper JSDoc comments where helpful",
+      "Separate business logic from presentation components",
+      "Follow Akan.js project structure and module organization"
+    ]
+  },
+  "page": "/[lang]/akanjs/(docs)/docs/codebase/component/page.tsx"
+}

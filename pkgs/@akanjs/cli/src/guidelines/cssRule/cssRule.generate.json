@@ -1,0 +1,93 @@
+{
+  "title": "CSS Rule with TailwindCSS and DaisyUI",
+  "description": "Comprehensive guidelines for creating CSS with TailwindCSS and DaisyUI in the Akan.js framework",
+  "scans": [
+    {
+      "type": "source",
+      "description": "clsx utility for class name management",
+      "path": "pkgs/@akanjs/client/src/types.ts"
+    },
+    {
+      "type": "example",
+      "description": "Unit components (list items/cards)",
+      "path": "{apps,libs}/*/lib/*/*.Unit.tsx",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "View components (detailed displays)",
+      "path": "{apps,libs}/*/lib/*/*.View.tsx",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "Edit components (forms for data creation/editing)",
+      "path": "{apps,libs}/*/lib/*/*.Edit.tsx",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "Util components (special function components)",
+      "path": "{apps,libs}/*/lib/*/*.Util.tsx",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "Zone components (container components)",
+      "path": "{apps,libs}/*/lib/*/*.Zone.tsx",
+      "sample": 2
+    },
+    {
+      "type": "example",
+      "description": "Reusable UI components",
+      "path": "{libs,apps}/*/ui/**/*.tsx",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Conditional rendering with clsx",
+      "path": "{apps,libs}/*/lib/*/*.tsx",
+      "filterText": "clsx",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "DaisyUI color usage",
+      "path": "{apps,libs}/*/lib/*/*.tsx",
+      "filterText": "bg-primary|bg-secondary|bg-accent|bg-info|bg-success|bg-warning|bg-error",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Responsive design patterns",
+      "path": "{apps,libs}/*/lib/*/*.tsx",
+      "filterText": "sm:|md:|lg:|xl:|2xl:",
+      "sample": 3
+    }
+  ],
+  "update": {
+    "filePath": "./cssRule.instruction.md",
+    "contents": [
+      "Core Principles - Fundamental styling concepts",
+      "Class Management with clsx - How to handle conditional class names",
+      "Component Structure Best Practices - Consistent component styling",
+      "Component Types in Akan.js - Styling patterns for different component types",
+      "Common UI Patterns - Reusable design patterns",
+      "Best Practices - Guidelines for maintainable CSS",
+      "Common Mistakes to Avoid - What not to do",
+      "Troubleshooting - Fixing common issues"
+    ],
+    "rules": [
+      "clsx should be used for conditional class names and className composition",
+      "Every component should accept and properly handle className prop for composition",
+      "Color system of DaisyUI should be used for colors (primary, secondary, accent, etc.) - hardcoded colors should be avoided",
+      "Components should follow responsive design principles with mobile-first approach",
+      "Use Tailwind's spacing scale consistently for margins and padding",
+      "Group related classes together for better readability",
+      "DaisyUI components should be used for common UI elements when available",
+      "Apply proper focus, hover, and active states for interactive elements",
+      "Respect the naming conventions for component types (Unit, View, Edit, Util, Zone)"
+    ]
+  },
+  "page": "/[lang]/akanjs/(docs)/docs/codebase/css/page.tsx"
+}

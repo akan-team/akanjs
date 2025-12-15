@@ -1,0 +1,62 @@
+{
+  "name": "@akanjs/test",
+  "version": "0.9.60-canary.9",
+  "sourceType": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akan-team/akanjs.git",
+    "directory": "pkgs/@akanjs/base"
+  },
+  "main": "./index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@playwright/test": "^1.51.1",
+    "@web-std/file": "^3.0.3",
+    "chance": "^1.1.12",
+    "dotenv": "^16.4.7",
+    "mongodb-memory-server": "^10.1.3",
+    "mongoose": "^8.9.3",
+    "redis-memory-server": "^0.11.0",
+    "ts-jest": "^29.2.5",
+    "tsconfig-paths": "^4.2.0"
+  },
+  "exports": {
+    ".": {
+      "require": "./cjs/index.js",
+      "import": "./esm/index.js",
+      "types": "./index.d.ts"
+    },
+    "./jest.config.base": {
+      "require": "./jest.config.base.js",
+      "import": "./jest.config.base.mjs"
+    },
+    "./jest.testServer": {
+      "require": "./jest.testServer.js",
+      "import": "./jest.testServer.mjs"
+    },
+    "./jest.globalSetup": {
+      "require": "./jest.globalSetup.js",
+      "import": "./jest.globalSetup.mjs"
+    },
+    "./jest.globalTeardown": {
+      "require": "./jest.globalTeardown.js",
+      "import": "./jest.globalTeardown.mjs"
+    },
+    "./jest.setupFilesAfterEnv": {
+      "require": "./jest.setupFilesAfterEnv.js",
+      "import": "./jest.setupFilesAfterEnv.mjs"
+    },
+    "./playwright.config.base": {
+      "require": "./playwright.config.base.js",
+      "import": "./playwright.config.base.mjs"
+    }
+  },
+  "esbuild": {
+    "platform": "neutral"
+  }
+}

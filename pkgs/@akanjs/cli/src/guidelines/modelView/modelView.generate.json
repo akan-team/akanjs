@@ -1,0 +1,80 @@
+{
+  "title": "Model View",
+  "description": "How to create and implement Model.View.tsx files in Akan.js",
+  "scans": [
+    {
+      "type": "example",
+      "description": "Model View examples",
+      "path": "{apps,libs}/*/lib/*/*.View.tsx",
+      "sample": 5
+    },
+    {
+      "type": "example",
+      "description": "Model View interfaces",
+      "path": "{apps,libs}/*/lib/*/*.View.tsx",
+      "filterText": "ViewProps",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Model View usage in pages",
+      "path": "apps/*/app/**/page.tsx",
+      "filterText": ".View.",
+      "sample": 2
+    },
+    {
+      "type": "usage",
+      "description": "Model View usage in Utils",
+      "path": "{apps,libs}/*/lib/*/*.Util.tsx",
+      "filterText": ".View.",
+      "sample": 3
+    },
+    {
+      "type": "usage",
+      "description": "Model View usage in Zones",
+      "path": "{apps,libs}/*/lib/*/*.Zone.tsx",
+      "filterText": ".View.",
+      "sample": 3
+    },
+    {
+      "type": "compare",
+      "description": "Compare with Unit components",
+      "path": "{apps,libs}/*/lib/*/*.Unit.tsx",
+      "sample": 2
+    },
+    {
+      "type": "compare",
+      "description": "Compare with Template components",
+      "path": "{apps,libs}/*/lib/*/*.Template.tsx",
+      "sample": 2
+    }
+  ],
+  "update": {
+    "filePath": "./modelView.instruction.md",
+    "contents": [
+      "Purpose and role of Model.View.tsx files in the Akan.js architecture",
+      "Core principles of Model.View.tsx components",
+      "File structure and component organization",
+      "Props design and interfaces",
+      "Component variations and specialized views",
+      "Integration with other Akan.js components",
+      "Server component considerations",
+      "Best practices for effective View components",
+      "How to use Model.View.tsx in pages, Utils and Zones",
+      "Common patterns and advanced techniques",
+      "Performance optimization strategies",
+      "Troubleshooting and common issues"
+    ],
+    "rules": [
+      "Model.View.tsx is a server component, so it should not use client-side hooks like useEffect, useState, etc.",
+      "Model.View.tsx focuses on presentation of model data, not interaction or state management",
+      "Model.View.tsx files export named functional components, not default exports",
+      "Components should be designed for reuse across pages, Utils, and Zones",
+      "Props interfaces should follow consistent naming patterns",
+      "View components should be responsive and accessible",
+      "Complex views should be broken into logical, reusable sections",
+      "Components should handle edge cases like missing data gracefully"
+    ]
+  },
+  "page": "/[lang]/akanjs/(docs)/docs/module/view/page.tsx"
+}

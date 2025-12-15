@@ -1,0 +1,140 @@
+{
+  "title": "Util UI Usage",
+  "description": "Comprehensive guide on how to use utility library UI components",
+  "scans": [
+    {
+      "type": "source",
+      "description": "Core util library source code for UI components",
+      "path": "libs/util/ui/**/*.{ts,tsx}"
+    },
+    {
+      "type": "source",
+      "description": "Main UI component directories for namespace patterns",
+      "path": "libs/util/ui/{Button,Input,Select,Image,Link,Layout,Dialog,Loading,Tab,Chart}/**/*.{ts,tsx}"
+    },
+    {
+      "type": "example",
+      "description": "Form components usage examples",
+      "path": "{apps,libs}/*/lib/*/*.{Template,Unit,View}.tsx",
+      "filterText": "import.*\\{ (Button|Input|Select|DatePicker|ToggleSelect).*\\} from \"@util/ui\";",
+      "sample": 5
+    },
+    {
+      "type": "example",
+      "description": "Navigation component usage examples",
+      "path": "{apps,libs}/*/lib/*/*.{Template,Unit,View}.tsx",
+      "filterText": "import.*\\{ (Link|Tab|Menu|ScreenNavigator).*\\} from \"@util/ui\";",
+      "sample": 5
+    },
+    {
+      "type": "example",
+      "description": "Layout component usage examples",
+      "path": "{apps,libs}/*/lib/*/*.{Template,Unit,View}.tsx",
+      "filterText": "import.*\\{ (Layout|Dialog|Modal|BottomSheet).*\\} from \"@util/ui\";",
+      "sample": 5
+    },
+    {
+      "type": "example",
+      "description": "Media component usage examples",
+      "path": "{apps,libs}/*/lib/*/*.{Template,Unit,View}.tsx",
+      "filterText": "import.*\\{ (Image|Upload|Avatar|Chart).*\\} from \"@util/ui\";",
+      "sample": 5
+    },
+    {
+      "type": "example",
+      "description": "Loading and feedback component usage examples",
+      "path": "{apps,libs}/*/lib/*/*.{Template,Unit,View}.tsx",
+      "filterText": "import.*\\{ (Loading|Empty).*\\} from \"@util/ui\";",
+      "sample": 5
+    },
+    {
+      "type": "example",
+      "description": "Complex component composition examples",
+      "path": "{apps,libs}/*/lib/*/*.{Template,Unit,View}.tsx",
+      "filterText": "<(Dialog|Tab|Layout)\\.(\\w+)",
+      "sample": 5
+    },
+    {
+      "type": "example",
+      "description": "UI component integration in Model.Unit.tsx files",
+      "path": "{apps,libs}/*/lib/*/*.Unit.tsx",
+      "filterText": "from \"@util/ui\";",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "UI component integration in Model.Template.tsx files",
+      "path": "{apps,libs}/*/lib/*/*.Template.tsx",
+      "filterText": "from \"@util/ui\";",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "UI component integration in Model.View.tsx files",
+      "path": "{apps,libs}/*/lib/*/*.View.tsx",
+      "filterText": "from \"@util/ui\";",
+      "sample": 3
+    },
+    {
+      "type": "example",
+      "description": "UI component usage in Page components",
+      "path": "apps/*/app/**/page.tsx",
+      "filterText": "from \"@util/ui\";",
+      "sample": 3
+    },
+    {
+      "type": "interface",
+      "description": "Button component props interface",
+      "path": "libs/util/ui/Button.tsx",
+      "interfaceName": "ButtonProps"
+    },
+    {
+      "type": "interface",
+      "description": "Input component props interface",
+      "path": "libs/util/ui/Input.tsx",
+      "interfaceName": "InputProps"
+    },
+    {
+      "type": "interface",
+      "description": "Link component props interface",
+      "path": "libs/util/ui/Link/index.tsx",
+      "interfaceName": "LinkProps"
+    },
+    {
+      "type": "interface",
+      "description": "Image component props interface",
+      "path": "libs/util/ui/Image.tsx",
+      "interfaceName": "ImageProps"
+    }
+  ],
+  "update": {
+    "filePath": "./utilUiUsage.instruction.md",
+    "contents": [
+      "@util/ui Component Library Guide",
+      "Importing Components",
+      "Component Organization and Usage",
+      "Common Component Patterns",
+      "Form Fields and Data Input",
+      "Data Display Components",
+      "Navigation Components",
+      "Layout Components",
+      "Media and File Components",
+      "Loading and Feedback Components",
+      "Integration with Akan.js Architecture",
+      "In Model.Template.tsx",
+      "In Model.Unit.tsx",
+      "In Model.View.tsx",
+      "Best Practices",
+      "[Strict Caution]",
+      "Framework Integration Features"
+    ],
+    "rules": [
+      "Document all major component categories and namespacing patterns",
+      "Provide concrete examples for each component type",
+      "Explain integration with the Akan.js module architecture",
+      "Include best practices for component selection and usage",
+      "Detail strict usage requirements for the component library"
+    ]
+  },
+  "page": "/[lang]/model/[model]"
+}

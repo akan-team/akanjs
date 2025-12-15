@@ -1,0 +1,118 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "rootDir": ".",
+    "sourceMap": true,
+    "moduleResolution": "bundler",
+    "emitDecoratorMetadata": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "noPropertyAccessFromIndexSignature": false,
+    "importHelpers": false,
+    "target": "es2022",
+    "module": "esnext",
+    "types": ["node", "webpack-env", "vite/client", "kakao.maps.d.ts", "jest"],
+    "lib": ["es2017", "dom", "webworker"],
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
+    "strictNullChecks": true,
+    "baseUrl": ".",
+    "jsx": "preserve",
+    "resolveJsonModule": true,
+    "declaration": false,
+    "paths": {
+      "@akanjs/base": ["pkgs/@akanjs/base/index.ts"],
+      "@akanjs/cli": ["pkgs/@akanjs/cli/index.ts"],
+      "@akanjs/client": ["pkgs/@akanjs/client/index.ts"],
+      "@akanjs/common": ["pkgs/@akanjs/common/index.ts"],
+      "@akanjs/common/*": ["pkgs/@akanjs/common/*"],
+      "@akanjs/constant": ["pkgs/@akanjs/constant/index.ts"],
+      "@akanjs/config": ["pkgs/@akanjs/config/index.ts"],
+      "@akanjs/config/*": ["pkgs/@akanjs/config/*"],
+      "@akanjs/devkit": ["pkgs/@akanjs/devkit/index.ts"],
+      "@akanjs/lint": ["pkgs/@akanjs/lint/index.ts"],
+      "@akanjs/dictionary": ["pkgs/@akanjs/dictionary/index.ts"],
+      "@akanjs/document": ["pkgs/@akanjs/document/index.ts"],
+      "@akanjs/nest": ["pkgs/@akanjs/nest/index.ts"],
+      "@akanjs/next": ["pkgs/@akanjs/next/index.ts"],
+      "@akanjs/next/*": ["pkgs/@akanjs/next/*"],
+      "@akanjs/server": ["pkgs/@akanjs/server/index.ts"],
+      "@akanjs/service": ["pkgs/@akanjs/service/index.ts"],
+      "@akanjs/signal": ["pkgs/@akanjs/signal/index.ts"],
+      "@akanjs/store": ["pkgs/@akanjs/store/index.ts"],
+      "@akanjs/test": ["pkgs/@akanjs/test/index.ts"],
+      "@akanjs/test/*": ["pkgs/@akanjs/test/*"],
+      "@akanjs/ui": ["pkgs/@akanjs/ui/index.ts"],
+      "@akanjs/ui/*": ["pkgs/@akanjs/ui/*"],
+      "@akasys/*": ["apps/akasys/*"],
+      "@shared": ["libs/shared/index.ts"],
+      "@shared/*": ["libs/shared/*"],
+      "@util": ["libs/util/index.ts"],
+      "@util/*": ["libs/util/*"]
+    }
+  },
+  "exclude": ["**/node_modules", "tmp", "**/ios", "**/android"],
+  "references": [
+    {
+      "path": "./apps/akasys/tsconfig.json"
+    },
+    {
+      "path": "./libs/shared/tsconfig.json"
+    },
+    {
+      "path": "./libs/util/tsconfig.json"
+    },
+    {
+      "path": "./pkgs/@akanjs/base/tsconfig.json"
+    },
+    {
+      "path": "./pkgs/@akanjs/cli/tsconfig.json"
+    },
+    {
+      "path": "./pkgs/@akanjs/client/tsconfig.json"
+    },
+    {
+      "path": "./pkgs/@akanjs/config/tsconfig.json"
+    },
+    {
+      "path": "./pkgs/@akanjs/common/tsconfig.json"
+    },
+    {
+      "path": "./pkgs/@akanjs/constant/tsconfig.json"
+    },
+    {
+      "path": "./pkgs/@akanjs/devkit/tsconfig.json"
+    },
+    {
+      "path": "./pkgs/@akanjs/dictionary/tsconfig.json"
+    },
+    {
+      "path": "./pkgs/@akanjs/document/tsconfig.json"
+    },
+    {
+      "path": "./pkgs/@akanjs/nest/tsconfig.json"
+    },
+    {
+      "path": "./pkgs/@akanjs/next/tsconfig.json"
+    },
+    {
+      "path": "./pkgs/@akanjs/server/tsconfig.json"
+    },
+    {
+      "path": "./pkgs/@akanjs/service/tsconfig.json"
+    },
+    {
+      "path": "./pkgs/@akanjs/signal/tsconfig.json"
+    },
+    {
+      "path": "./pkgs/@akanjs/store/tsconfig.json"
+    },
+    {
+      "path": "./pkgs/@akanjs/test/tsconfig.json"
+    },
+    {
+      "path": "./pkgs/@akanjs/ui/tsconfig.json"
+    }
+  ]
+}
