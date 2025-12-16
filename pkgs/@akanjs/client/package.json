@@ -1,10 +1,11 @@
 {
   "name": "@akanjs/client",
-  "version": "0.9.60-canary.9",
+  "version": "1.0.0",
   "sourceType": "module",
   "publishConfig": {
     "access": "public"
   },
+  "homepage": "https://akanjs.com",
   "repository": {
     "type": "git",
     "url": "https://github.com/akan-team/akanjs.git",
@@ -24,8 +25,8 @@
     "clsx": "^2.1.1",
     "js-cookie": "^3.0.5",
     "jwt-decode": "^4.0.0",
-    "next": "16.0.7",
-    "react": "19.2.1",
+    "next": "16.0.10",
+    "react": "19.2.3",
     "react-device-detect": "^2.2.3"
   },
   "exports": {

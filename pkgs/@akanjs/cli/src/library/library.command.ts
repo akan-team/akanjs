@@ -1,4 +1,4 @@
-import { Argument, Commands, Lib, Option, Target, Workspace } from "@akanjs/devkit";
+import { Argument, Commands, Lib, Target, Workspace } from "@akanjs/devkit";
 
 import { LibraryScript } from "./library.script";
 
@@ -34,15 +34,5 @@ export class LibraryCommand {
     @Workspace() workspace: Workspace
   ) {
     await this.libraryScript.installLibrary(workspace, libName);
-  }
-
-  @Target.Public({ devOnly: true })
-  async pushLibrary(@Lib() lib: Lib, @Option("branch", { desc: "branch to push", default: "main" }) branch: string) {
-    await this.libraryScript.pushLibrary(lib, branch);
-  }
-
-  @Target.Public()
-  async pullLibrary(@Lib() lib: Lib, @Option("branch", { desc: "branch to pull", default: "main" }) branch: string) {
-    await this.libraryScript.pullLibrary(lib, branch);
   }
 }

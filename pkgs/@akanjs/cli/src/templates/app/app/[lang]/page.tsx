@@ -7,16 +7,8 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dic
   return {
     filename: "page.tsx",
     content: `
-import {
-  FaBolt,
-  FaBook,
-  FaCloudUploadAlt,
-  FaCode,
-  FaExternalLinkAlt,
-  FaGraduationCap,
-  FaHeart,
-  FaShieldAlt,
-} from "react-icons/fa";
+import { Link } from "@akanjs/ui";
+import { FaBolt, FaBook, FaExternalLinkAlt, FaGraduationCap, FaHeart, FaShieldAlt } from "react-icons/fa";
 
 export const metadata = {
   title: "Akan.js",
@@ -46,14 +38,8 @@ export default function Page() {
             </div>
           </div>
         </div>
-        <div className="mb-12 text-center">
-          <button className="btn btn-primary btn-lg bg-primary border-none px-12 py-4 text-lg font-semibold">
-            <FaCloudUploadAlt className="mr-3 text-xl" />
-            Deploy Now
-          </button>
-        </div>
         <div className="mb-16 rounded-lg bg-slate-800 p-8">
-          <h2 className="text-gray-200 mb-6 text-center text-2xl font-bold">Quick Start</h2>
+          <h2 className="mb-6 text-center text-2xl font-bold text-gray-200">Quick Start</h2>
           <div className="mockup-code">
             <pre data-prefix="$">
               <code className="text-success">npx create-akan-workspace</code>
@@ -66,44 +52,41 @@ export default function Page() {
             </pre>
           </div>
         </div>
-        <div className="mb-16 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
-          <div className="card bg-slate-800">
-            <div className="card-body p-6 text-center">
-              <FaBook className="mx-auto mb-4 text-4xl text-purple-400" />
-              <h3 className="text-gray-200 mb-2 text-lg font-semibold">Documentation</h3>
-              <p className="mb-4 text-sm text-gray-400">Complete API guides and tutorials</p>
-              <button className="btn btn-sm w-full">Read Documentation</button>
-            </div>
-          </div>
+        <div className="mb-16 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           <div className="card bg-slate-800">
             <div className="card-body p-6 text-center">
               <FaGraduationCap className="mx-auto mb-4 text-4xl text-blue-400" />
-              <h3 className="text-gray-200 mb-2 text-lg font-semibold">Learn</h3>
+              <h3 className="mb-2 text-lg font-semibold text-gray-200">Learn</h3>
               <p className="mb-4 text-sm text-gray-400">Step-by-step learning guides</p>
-              <button className="btn btn-sm w-full">Learn</button>
+              <Link href="https://akanjs.com/docs/intro/practice" target="_blank">
+                <button className="btn btn-sm w-full">Learn</button>
+              </Link>
             </div>
           </div>
           <div className="card bg-slate-800">
             <div className="card-body p-6 text-center">
-              <FaCode className="mx-auto mb-4 text-4xl text-green-400" />
-              <h3 className="text-gray-200 mb-2 text-lg font-semibold">Examples</h3>
-              <p className="mb-4 text-sm text-gray-400">Real project examples</p>
-              <button className="btn btn-sm w-full">Examples</button>
+              <FaBook className="mx-auto mb-4 text-4xl text-purple-400" />
+              <h3 className="mb-2 text-lg font-semibold text-gray-200">Documentation</h3>
+              <p className="mb-4 text-sm text-gray-400">Complete API guides and tutorials</p>
+              <Link href="https://akanjs.com/docs/systemArch/overview" target="_blank">
+                <button className="btn btn-sm w-full">Read Documentation</button>
+              </Link>
             </div>
           </div>
           <div className="card bg-slate-800">
             <div className="card-body p-6 text-center">
               <FaExternalLinkAlt className="mx-auto mb-4 text-4xl text-yellow-400" />
-              <h3 className="text-gray-200 mb-2 text-lg font-semibold">Official Site</h3>
+              <h3 className="mb-2 text-lg font-semibold text-gray-200">Official Site</h3>
               <p className="mb-4 text-sm text-gray-400">Visit our official website</p>
-              <button className="btn btn-sm w-full">Go to akanjs.com</button>
+              <Link href="https://akanjs.com" target="_blank">
+                <button className="btn btn-sm w-full">Go to akanjs.com</button>
+              </Link>
             </div>
           </div>
         </div>
       </div>
     </div>
   );
-}
-  `,
+}`,
   };
 }

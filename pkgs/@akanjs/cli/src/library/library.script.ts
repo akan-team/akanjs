@@ -33,21 +33,6 @@ export class LibraryScript {
     mergeSpinner.succeed(`${libName} library (libs/${libName}) dependencies merged to root package.json`);
   }
 
-  async pushLibrary(lib: Lib, branch: string) {
-    const pushSpinner = lib.spinning("Pushing library...");
-    await this.#runner.pushLibrary(lib, branch);
-    pushSpinner.succeed(`Library ${lib.name} (libs/${lib.name}) pushed to ${branch} branch`);
-  }
-
-  async pullLibrary(lib: Lib, branch: string) {
-    const pullSpinner = lib.spinning("Pulling library...");
-    await this.#runner.pullLibrary(lib, branch);
-    pullSpinner.succeed(`Library ${lib.name} (libs/${lib.name}) pulled from ${branch} branch`);
-    const mergeSpinner = lib.spinning("Merging library dependencies...");
-    await this.#runner.mergeLibraryDependencies(lib);
-    mergeSpinner.succeed(`Library ${lib.name} (libs/${lib.name}) dependencies merged to root package.json`);
-  }
-
   async testLibrary(lib: Lib) {
     const spinner = lib.spinning("Testing library...");
     await this.#runner.testLibrary(lib);

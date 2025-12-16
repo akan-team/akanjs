@@ -16,7 +16,10 @@ export class LibraryRunner {
   }
 
   async installLibrary(workspace: Workspace, libName: string) {
-    await workspace.exec(`git subtree add --prefix=libs/${libName} git@github.com:akan-team/${libName}.git main`);
+    workspace.mkdir("node_modules/.akan");
+    if (workspace.exists("node_modules/.akan/akanjs")) await workspace.removeDir("node_modules/.akan/akanjs");
+    await workspace.exec(`cd node_modules/.akan && git clone git@github.com:akan-team/akanjs.git`);
+    await workspace.cp(`node_modules/.akan/akanjs/libs/${libName}`, `libs/${libName}`);
     await workspace.cp(`libs/${libName}/env/env.server.example.ts`, `libs/${libName}/env/env.server.testing.ts`);
     workspace.setTsPaths("lib", libName);
     await workspace.commit(`Add ${libName} library`);
@@ -50,17 +53,6 @@ export class LibraryRunner {
     await lib.workspace.commit(`Merge ${lib.name} library dependencies`);
   }
 
-  async pushLibrary(lib: Lib, branch: string) {
-    await lib.workspace.exec(
-      `git subtree push --prefix=libs/${lib.name} git@github.com:akan-team/${lib.name}.git ${branch}`
-    );
-  }
-
-  async pullLibrary(lib: Lib, branch: string) {
-    await lib.workspace.exec(
-      `git subtree pull --prefix=libs/${lib.name} git@github.com:akan-team/${lib.name}.git ${branch}`
-    );
-  }
   #getEnv(lib: Lib, env: Record<string, string> = {}) {
     const rootEnv = dotenv.parse(lib.workspace.readFile(".env"));
     return {

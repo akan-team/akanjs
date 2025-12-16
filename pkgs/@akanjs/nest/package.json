@@ -1,10 +1,11 @@
 {
   "name": "@akanjs/nest",
-  "version": "0.9.60-canary.9",
+  "version": "1.0.0",
   "sourceType": "module",
   "publishConfig": {
     "access": "public"
   },
+  "homepage": "https://akanjs.com",
   "repository": {
     "type": "git",
     "url": "https://github.com/akan-team/akanjs.git",

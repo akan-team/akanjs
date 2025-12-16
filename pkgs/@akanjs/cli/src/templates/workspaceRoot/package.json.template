@@ -3,17 +3,17 @@
   "description": "<%= repoName %> workspace",
   "version": "0.0.1",
   "dependencies": {
-    "next": "16.0.7",
-    "react": "19.2.1",
-    "react-dom": "19.2.1",
+    "next": "16.0.10",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
     "tailwindcss": "^4.1.11",
     "daisyui": "^5.5.5"
   },
   "devDependencies": {
     "@types/node": "^22.10.4",
     "@tailwindcss/postcss": "^4.1.11",
-    "@types/react": "19.2.1",
-    "@types/react-dom": "19.2.1",
+    "@types/react": "19.2.3",
+    "@types/react-dom": "19.2.3",
     "crypto-browserify": "^3.12.1",
     "eslint": "^9.19.0",
     "https-browserify": "^1.0.0",

@@ -1,10 +1,11 @@
 {
   "name": "@akanjs/devkit",
-  "version": "0.9.60-canary.9",
+  "version": "1.0.0",
   "sourceType": "module",
   "publishConfig": {
     "access": "public"
   },
+  "homepage": "https://akanjs.com",
   "repository": {
     "type": "git",
     "url": "https://github.com/akan-team/akanjs.git",
@@ -32,7 +33,7 @@
     "ink": "^6.1.0",
     "js-yaml": "^4.1.0",
     "ora": "^3.4.0",
-    "react": "19.2.1",
+    "react": "19.2.3",
     "reflect-metadata": "^0.2.2",
     "tunnel-ssh": "^5.2.0",
     "typescript": "5.8.3"

@@ -1,6 +1,6 @@
 # 🛠️ Akan.js Util Library
 
-An official subtree repository of akanjs library providing comprehensive utility functions for web development.
+An official akanjs library providing comprehensive utility functions for web development.
 
 ## ✨ Feature of library
 

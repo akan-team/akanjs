@@ -1,6 +1,6 @@
 # 🤝 Akan.js Shared Library
 
-An official subtree repository of akanjs library providing comprehensive shared utilities, components, and business logic for modern web applications.
+An official akanjs library providing comprehensive shared utilities, components, and business logic for modern web applications.
 
 ## ✨ Feature of library
 
