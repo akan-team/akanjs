@@ -6,7 +6,7 @@ The official command-line interface for the Akan.js ecosystem, providing powerfu
 
 ### Prerequisites
 
-- Node.js >=23.x
+- Node.js >=20.x
 - pnpm >=10.x
 - docker
 - (temporary) access permission to akan-team github organization
@@ -64,13 +64,11 @@ Complete workspace and project management:
 Full-stack application development and deployment:
 
 - **🔧 Application Management**
-
   - `create-application` - Scaffold new applications with templates
   - `remove-application` - Clean application removal
   - `sync-application` - Synchronize application dependencies
 
 - **🏗️ Build System**
-
   - `build` - Complete application build
   - `build-backend` - Server-side build optimization
   - `build-frontend` - Client-side build with Next.js
@@ -79,7 +77,6 @@ Full-stack application development and deployment:
   - `build-android` - Android native app compilation
 
 - **🚀 Development Server**
-
   - `start` - Full-stack development server
   - `start-backend` - GraphQL backend server
   - `start-frontend` - Next.js frontend server with Turbo support
@@ -88,7 +85,6 @@ Full-stack application development and deployment:
   - `start-android` - Android emulator with live reload
 
 - **📦 Release Management**
-
   - `release-ios` - iOS App Store deployment
   - `release-android` - Google Play deployment
   - `release-source` - Source code release with versioning
@@ -104,7 +100,6 @@ Full-stack application development and deployment:
 Modular library system for code reusability:
 
 - **📦 Library Operations**
-
   - `create-library` - Create new shared libraries
   - `remove-library` - Clean library removal
   - `sync-library` - Synchronize library dependencies
@@ -119,7 +114,6 @@ Modular library system for code reusability:
 AI-powered module generation and management:
 
 - **🤖 Smart Module Creation**
-
   - `create-module` - Generate modules with AI assistance
   - `create-scalar` - Create scalar data models
   - `remove-module` - Module cleanup with dependency checks
@@ -141,12 +135,10 @@ Dynamic page scaffolding:
 Seamless cloud services and AI integration:
 
 - **🔐 Authentication**
-
   - `login` / `logout` - Cloud service authentication
   - User session and credential management
 
 - **🤖 AI Development Assistant**
-
   - `set-llm` / `reset-llm` - Configure AI language models
   - `ask` - Interactive AI development assistance
 
@@ -244,9 +236,6 @@ akan set-llm
 
 # Get AI development help
 akan ask "How do I implement user authentication with JWT?"
-
-# Deploy to cloud
-akan deploy-akan
 ```
 
 ### Database Operations

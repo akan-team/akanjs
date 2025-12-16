@@ -73,9 +73,6 @@ akan set-llm
 
 # Build for production
 akan build <app-name>
-
-# Deploy to cloud
-akan deploy-akan
 ```
 
 ## 📚 Learn More

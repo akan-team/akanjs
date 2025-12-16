@@ -6,6 +6,7 @@
     "access": "public"
   },
   "homepage": "https://akanjs.com",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/akan-team/akanjs.git",
