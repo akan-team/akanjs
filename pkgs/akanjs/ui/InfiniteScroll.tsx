@@ -44,7 +44,6 @@ export const InfiniteScroll = ({
     if (nextPage > totalPages) return;
     setIsFetching(true);
     await onAddPage(nextPage);
-    void onAddPage(nextPage);
     onPageSelect(nextPage);
     setIsFetching(false);
     page.current = nextPage;
