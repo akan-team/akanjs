@@ -31,24 +31,6 @@ beforeAll(() => {
       environment: envState.environment,
     }),
   }));
-  mock.module("@capacitor/preferences", () => ({
-    Preferences: {
-      get: async ({ key }: { key: string }) => ({ value: preferenceStore.get(key) ?? null }),
-      set: async ({ key, value }: { key: string; value: string }) => {
-        preferenceStore.set(key, value);
-      },
-      remove: async ({ key }: { key: string }) => {
-        preferenceStore.delete(key);
-      },
-    },
-  }));
-  mock.module("@capacitor/core", () => ({
-    CapacitorCookies: {
-      setCookie: async ({ key, value }: { key: string; value: string }) => {
-        cookieStore[key] = value;
-      },
-    },
-  }));
   mock.module("akanjs/common", () => ({
     Logger: { log: () => undefined, verbose: () => undefined, error: () => undefined },
     decodeJwtPayload: (jwt: string) => JSON.parse(Buffer.from(jwt.split(".")[1] ?? "", "base64url").toString("utf8")),
@@ -79,6 +61,30 @@ beforeAll(() => {
   }));
 });
 
+const installCapacitorBridge = () => {
+  Object.defineProperty(globalThis, "Capacitor", {
+    value: {
+      Plugins: {
+        Preferences: {
+          get: async ({ key }: { key: string }) => ({ value: preferenceStore.get(key) ?? null }),
+          set: async ({ key, value }: { key: string; value: string }) => {
+            preferenceStore.set(key, value);
+          },
+          remove: async ({ key }: { key: string }) => {
+            preferenceStore.delete(key);
+          },
+        },
+        CapacitorCookies: {
+          setCookie: async ({ key, value }: { key: string; value: string }) => {
+            cookieStore[key] = value;
+          },
+        },
+      },
+    },
+    configurable: true,
+  });
+};
+
 const installBrowserGlobals = (cookie = "") => {
   Object.defineProperty(globalThis, "localStorage", {
     value: {
@@ -108,8 +114,10 @@ afterEach(() => {
   });
   fetchJwtCalls.length = 0;
   requestState.request = undefined;
+  globalThis.__AKAN_CAPACITOR_IMPORTS__ = undefined;
   Object.defineProperty(globalThis, "localStorage", { value: undefined, configurable: true });
   Object.defineProperty(globalThis, "document", { value: undefined, configurable: true });
+  Object.defineProperty(globalThis, "Capacitor", { value: undefined, configurable: true });
 });
 
 describe("storage", () => {
@@ -137,6 +145,7 @@ describe("storage", () => {
   test("client csr mode uses Capacitor Preferences", async () => {
     envState.side = "client";
     envState.renderMode = "csr";
+    installCapacitorBridge();
     const { storage } = await import("./storage");
 
     await storage.setItem("jwt", "token-2");
@@ -196,6 +205,6 @@ describe("cookies, headers, and auth", () => {
       value: { cookie: `jwt=${makeJwt({ appName: "other", environment: "debug" })}` },
       configurable: true,
     });
-    expect(getAccount()).toEqual({ appName: "test-app", environment: "debug" });
+    expect(getAccount<Record<string, unknown>>()).toEqual({ appName: "test-app", environment: "debug" });
   });
 });

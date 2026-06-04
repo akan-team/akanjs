@@ -4,6 +4,7 @@
 @plugin "daisyui" {
   logs: false;
   exclude: properties;
+  themes: false;
 }
 
 @layer components {

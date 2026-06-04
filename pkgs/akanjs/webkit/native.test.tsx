@@ -124,65 +124,61 @@ beforeAll(() => {
     },
     isMobileDevice: () => true,
   }));
-  mock.module("@capacitor/camera", () => ({
-    CameraResultType: { DataUrl: "dataUrl" },
-    CameraSource: { Prompt: "prompt", Camera: "camera", Photos: "photos" },
-    Camera: {
-      checkPermissions: async () => cameraState.permissions,
-      requestPermissions: async () => {
-        cameraState.requested += 1;
-        return cameraState.permissions;
-      },
-      getPhoto: async (options: { source: string }) => {
-        cameraState.photoSource = options.source;
-        if (cameraState.cancelled) throw "User cancelled photos app";
-        return { dataUrl: "data:image/png;base64,test" };
-      },
-      pickImages: async () => ({ photos: [{ webPath: "image.png" }] }),
-    },
-  }));
-  mock.module("@capacitor-community/contacts", () => ({
-    Contacts: {
-      checkPermissions: async () => {
-        contactsState.checked += 1;
-        return contactsState.permissions;
-      },
-      requestPermissions: async () => {
-        contactsState.requested += 1;
-        return contactsState.permissions;
-      },
-      getContacts: async () => ({ contacts: [{ name: { display: "Ada" }, phones: [{ number: "123" }] }] }),
-    },
-  }));
-  mock.module("@capacitor/geolocation", () => ({
-    Geolocation: {
-      requestPermissions: async () => geolocationState.permissions,
-      getCurrentPosition: async () => ({ coords: { latitude: 37, longitude: 127 } }),
-    },
-  }));
-  mock.module("@capacitor/device", () => ({
-    Device: {
-      getInfo: async () => ({ platform: pushState.platform }),
-    },
-  }));
-  mock.module("@capacitor/push-notifications", () => ({
-    PushNotifications: {
-      requestPermissions: async () => ({ receive: pushState.receive }),
-      checkPermissions: async () => ({ receive: pushState.receive }),
-      register: async () => {
-        pushState.registered += 1;
-      },
-    },
-  }));
-  mock.module("@capacitor-community/fcm", () => ({
-    FCM: {
-      setAutoInit: async () => {
-        pushState.autoInit += 1;
-      },
-      getToken: async () => ({ token: "token-1" }),
-    },
-  }));
 });
+
+const installCapacitorBridge = () => {
+  Object.defineProperty(globalThis, "Capacitor", {
+    value: {
+      Plugins: {
+        Camera: {
+          checkPermissions: async () => cameraState.permissions,
+          requestPermissions: async () => {
+            cameraState.requested += 1;
+            return cameraState.permissions;
+          },
+          getPhoto: async (options: { source: string }) => {
+            cameraState.photoSource = options.source;
+            if (cameraState.cancelled) throw "User cancelled photos app";
+            return { dataUrl: "data:image/png;base64,test" };
+          },
+          pickImages: async () => ({ photos: [{ webPath: "image.png" }] }),
+        },
+        Contacts: {
+          checkPermissions: async () => {
+            contactsState.checked += 1;
+            return contactsState.permissions;
+          },
+          requestPermissions: async () => {
+            contactsState.requested += 1;
+            return contactsState.permissions;
+          },
+          getContacts: async () => ({ contacts: [{ name: { display: "Ada" }, phones: [{ number: "123" }] }] }),
+        },
+        Geolocation: {
+          requestPermissions: async () => geolocationState.permissions,
+          getCurrentPosition: async () => ({ coords: { latitude: 37, longitude: 127 } }),
+        },
+        Device: {
+          getInfo: async () => ({ platform: pushState.platform }),
+        },
+        PushNotifications: {
+          requestPermissions: async () => ({ receive: pushState.receive }),
+          checkPermissions: async () => ({ receive: pushState.receive }),
+          register: async () => {
+            pushState.registered += 1;
+          },
+        },
+        FCM: {
+          setAutoInit: async () => {
+            pushState.autoInit += 1;
+          },
+          getToken: async () => ({ token: "token-1" }),
+        },
+      },
+    },
+    configurable: true,
+  });
+};
 
 const installWindow = () => {
   const createElement = (tagName = "div") =>
@@ -214,12 +210,17 @@ const installWindow = () => {
   const window = {
     location: { assign: (href: string) => assigned.push(href) },
     document,
+    Capacitor: (globalThis as typeof globalThis & { Capacitor?: unknown }).Capacitor,
     HTMLIFrameElement: class HTMLIFrameElement {},
     Node: class Node {},
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
   } as unknown as Window & typeof globalThis;
   (document as unknown as { defaultView: Window }).defaultView = window;
+  installCapacitorBridge();
+  (window as unknown as { Capacitor: unknown }).Capacitor = (
+    globalThis as typeof globalThis & { Capacitor?: unknown }
+  ).Capacitor;
   Object.defineProperty(globalThis, "window", { value: window, configurable: true });
   Object.defineProperty(globalThis, "document", { value: document, configurable: true });
   Object.defineProperty(globalThis, "location", { value: window.location, configurable: true });
@@ -243,6 +244,8 @@ afterEach(() => {
   Object.defineProperty(globalThis, "window", { value: originalWindow, configurable: true });
   Object.defineProperty(globalThis, "document", { value: originalDocument, configurable: true });
   Object.defineProperty(globalThis, "location", { value: originalWindow?.location, configurable: true });
+  Object.defineProperty(globalThis, "Capacitor", { value: undefined, configurable: true });
+  globalThis.__AKAN_CAPACITOR_IMPORTS__ = undefined;
   cameraState.permissions = { camera: "prompt", photos: "prompt" };
   cameraState.requested = 0;
   cameraState.photoSource = "";
@@ -270,7 +273,7 @@ describe("native hooks", () => {
     const hook = renderHook(() => useCamera());
 
     expect(await hook.current.getPhoto("prompt")).toEqual({ dataUrl: "data:image/png;base64,test" });
-    expect(cameraState.photoSource).toBe("photos");
+    expect(cameraState.photoSource).toBe("PHOTOS");
     expect(cameraState.requested).toBe(1);
 
     cameraState.permissions = { camera: "denied", photos: "denied" };

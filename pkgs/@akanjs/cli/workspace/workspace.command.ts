@@ -28,7 +28,7 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
     })
     .option("registry", String, {
       desc: "npm registry URL for installing Akan packages",
-      default: process.env.AKAN_NPM_REGISTRY,
+      default: process.env.AKAN_NPM_REGISTRY ?? "https://registry.npmjs.org",
     })
     .exec(async function (workspaceName, app, dir, libs, init, registry) {
       const appName = app || "app";
