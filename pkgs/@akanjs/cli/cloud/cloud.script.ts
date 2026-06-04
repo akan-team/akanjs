@@ -5,11 +5,11 @@ import { PackageScript } from "../package/package.script";
 import { CloudRunner } from "./cloud.runner";
 
 export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript, PackageScript]) {
-  async login(workspace: Workspace) {
-    await this.cloudRunner.login(workspace);
+  async login(host: string, workspace: Workspace) {
+    await this.cloudRunner.login(host, workspace);
   }
-  async logout(workspace: Workspace) {
-    await this.cloudRunner.logout();
+  async logout(host: string, workspace: Workspace) {
+    await this.cloudRunner.logout(host);
   }
   async setLlm(workspace: Workspace) {
     await this.cloudRunner.setLlm();

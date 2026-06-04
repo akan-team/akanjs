@@ -1,4 +1,4 @@
-import { command, Workspace } from "@akanjs/devkit";
+import { command, GlobalConfig, Workspace } from "@akanjs/devkit";
 
 import { CloudScript } from "./cloud.script";
 
@@ -7,14 +7,16 @@ const resolveRegistryUrl = (registry: "npm" | "local") => (registry === "local" 
 
 export class CloudCommand extends command("cloud", [CloudScript], ({ public: target }) => ({
   login: target({ desc: "Login to Akan Cloud services" })
+    .option("host", String, { desc: "host of the cloud", default: GlobalConfig.akanCloudHost })
     .with(Workspace)
-    .exec(async function (workspace) {
-      await this.cloudScript.login(workspace);
+    .exec(async function (host, workspace) {
+      await this.cloudScript.login(host, workspace);
     }),
   logout: target({ desc: "Logout from Akan Cloud services" })
+    .option("host", String, { desc: "host of the cloud", default: GlobalConfig.akanCloudHost })
     .with(Workspace)
-    .exec(async function (workspace) {
-      await this.cloudScript.logout(workspace);
+    .exec(async function (host, workspace) {
+      await this.cloudScript.logout(host, workspace);
     }),
   setLlm: target({ desc: "Configure LLM (Large Language Model) API key" })
     .with(Workspace)

@@ -1,24 +1,25 @@
 import type { Dayjs } from "dayjs";
+import { GlobalConfig } from "..";
 import type { SupportedLlmModel } from "../aiEditor";
 
 export const basePath = `${Bun.env.HOME ?? Bun.env.USERPROFILE}/.akan`;
 export const configPath = `${basePath}/config.json`;
-export const akanCloudHost = process.env.USE_AKANJS_PKGS === "true" ? "http://localhost" : "https://cloud.akanjs.com";
-export const akanCloudUrl = `${akanCloudHost}${process.env.USE_AKANJS_PKGS === "true" ? ":8282" : ""}/api`;
 
 export interface HostConfig {
+  host: string;
   auth?: {
     accessToken?: AccessToken;
     self?: { id: string; nickname: string };
   };
 }
 export interface HostConfigDto {
+  host: string;
   auth?: {
     accessToken?: AccessTokenDto;
     self?: { id: string; nickname: string };
   };
 }
-export const defaultHostConfig: HostConfig = {};
+export const getDefaultHostConfig = (host = GlobalConfig.akanCloudHost): HostConfig => ({ host });
 export interface RemoteEnvServerConfig {
   host: string;
   username?: string;

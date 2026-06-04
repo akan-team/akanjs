@@ -1,10 +1,9 @@
 import path from "node:path";
 import {
   AiSession,
-  akanCloudHost,
-  akanCloudUrl,
   CloudApi,
   GlobalConfig,
+  getDefaultHostConfig,
   type RemoteEnvServerConfig,
   runner,
   type Workspace,
@@ -176,8 +175,8 @@ export class CloudRunner extends runner("cloud") {
     return [...(config.port ? ["-p", config.port.toString()] : []), this.#getSshTarget(config), command];
   }
 
-  async login(workspace: Workspace) {
-    const config = await GlobalConfig.getHostConfig();
+  async login(host: string, workspace: Workspace) {
+    const config = await GlobalConfig.getHostConfig(host);
     const cloudApi = new CloudApi(workspace, config);
     const self = config.auth ? await cloudApi.getRemoteSelf() : null;
     if (self) {
@@ -185,7 +184,7 @@ export class CloudRunner extends runner("cloud") {
       return true;
     }
     const remoteId = crypto.randomUUID();
-    const signinUrl = `${akanCloudUrl}/signin?remoteId=${remoteId}`;
+    const signinUrl = `${cloudApi.host}/remoteAuth?remoteId=${encodeURIComponent(remoteId)}`;
 
     Logger.rawLog(chalk.bold(`\n${chalk.green("➤")} Authentication Required`));
     Logger.rawLog(chalk.dim("Please visit or click the following URL:"));
@@ -211,11 +210,9 @@ export class CloudRunner extends runner("cloud") {
       const accessToken = await cloudApi.getRemoteAuthToken(remoteId);
       const self = await cloudApi.getRemoteSelf();
       if (accessToken && self) {
-        await GlobalConfig.setHostConfig(akanCloudHost, {
-          auth: { accessToken, self },
-        });
+        await GlobalConfig.setHostConfig({ host: config.host, auth: { accessToken, self } });
         Logger.rawLog(chalk.green(`\r✓ Authentication successful!`));
-        Logger.rawLog(chalk.green.bold(`\n✨ Welcome aboard, ${self.nickname}!`));
+        Logger.rawLog(chalk.green.bold(`\n✨ Welcome aboard, ${self.nickname ?? "anonymous"}!`));
         Logger.rawLog(chalk.dim("You're now ready to use Akan CLI!\n"));
         return true;
       }
@@ -223,11 +220,11 @@ export class CloudRunner extends runner("cloud") {
     }
     throw new Error(chalk.red("✖ Authentication timed out after 10 minutes. Please try again."));
   }
-  async logout() {
-    const config = await GlobalConfig.getHostConfig();
+  async logout(host: string) {
+    const config = await GlobalConfig.getHostConfig(host);
     if (config.auth?.self) {
-      await GlobalConfig.setHostConfig(akanCloudHost, {});
-      Logger.rawLog(chalk.magenta.bold(`\n👋 Goodbye, ${config.auth.self.nickname}!`));
+      await GlobalConfig.setHostConfig(getDefaultHostConfig(config.host));
+      Logger.rawLog(chalk.magenta.bold(`\n👋 Goodbye, ${config.auth.self.nickname ?? "anonymous"}!`));
       Logger.rawLog(chalk.dim("───────────────────────────────────────────────\n"));
       Logger.rawLog(chalk.cyan("You have been successfully logged out."));
       Logger.rawLog(chalk.dim("Thank you for using Akan CLI. Come back soon! 🌟\n"));
@@ -237,7 +234,7 @@ export class CloudRunner extends runner("cloud") {
     }
   }
   async setLlm() {
-    await AiSession.init({ useExisting: true });
+    await AiSession.init({ useExisting: false });
   }
   resetLlm() {
     AiSession.setLlmConfig(null);

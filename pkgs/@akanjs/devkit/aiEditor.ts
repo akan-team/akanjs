@@ -19,11 +19,16 @@ import type { FileContent } from "./types";
 
 const MAX_ASK_TRY = 300;
 
-export const supportedLlmModels = [
-  "deepseek-chat",
-  "deepseek-reasoner",
-] as const;
+const deepSeekLlmModels = ["deepseek-chat", "deepseek-reasoner"] as const;
+
+const openAiLlmModels = ["gpt-5.5"] as const;
+
+export const supportedLlmModels = [...deepSeekLlmModels, ...openAiLlmModels] as const;
 export type SupportedLlmModel = (typeof supportedLlmModels)[number];
+type OpenAiLlmModel = (typeof openAiLlmModels)[number];
+
+const isOpenAiLlmModel = (model: SupportedLlmModel): model is OpenAiLlmModel =>
+  openAiLlmModels.includes(model as OpenAiLlmModel);
 
 interface EditOptions {
   onReasoning?: (reasoning: string) => void;
@@ -55,44 +60,25 @@ export const parseTypescriptFileBlocks = (text: string): FileContent[] => {
   return fileBlocks;
 };
 
-export const preserveTypescriptResponseContent = (
-  previousContent: string,
-  nextContent: string,
-) => {
+export const preserveTypescriptResponseContent = (previousContent: string, nextContent: string) => {
   const previousWrites = parseTypescriptFileBlocks(previousContent);
   const nextWrites = parseTypescriptFileBlocks(nextContent);
-  if (previousWrites.length > 0 && nextWrites.length === 0)
-    return previousContent;
+  if (previousWrites.length > 0 && nextWrites.length === 0) return previousContent;
   return nextContent;
 };
 
 export class AiSession {
   static #cacheDir = "node_modules/.cache/akan/aiSession";
   static #chat: ChatDeepSeek | ChatOpenAI | null = null;
-  static async init({
-    temperature = 0,
-    useExisting = true,
-  }: {
-    temperature?: number;
-    useExisting?: boolean;
-  } = {}) {
+  static async init({ temperature = 0, useExisting = true }: { temperature?: number; useExisting?: boolean } = {}) {
     if (useExisting) {
       const llmConfig = await AiSession.getLlmConfig();
       if (llmConfig) {
         AiSession.#setChatModel(llmConfig.model, llmConfig.apiKey);
-        Logger.rawLog(
-          chalk.dim(
-            `🤖akan editor uses existing LLM config (${llmConfig.model})`,
-          ),
-        );
+        Logger.rawLog(chalk.dim(`🤖akan editor uses existing LLM config (${llmConfig.model})`));
         return AiSession;
       }
-    } else
-      Logger.rawLog(
-        chalk.yellow(
-          "🤖akan-editor is not initialized. LLM configuration should be set first.",
-        ),
-      );
+    } else Logger.rawLog(chalk.yellow("🤖akan-editor is not initialized. LLM configuration should be set first."));
 
     const llmConfig = await AiSession.#requestLlmConfig();
     const { model, apiKey } = llmConfig;
@@ -102,26 +88,36 @@ export class AiSession {
     await session.setLlmConfig({ model, apiKey });
     return session;
   }
-  static #setChatModel(
-    model: SupportedLlmModel,
-    apiKey: string,
-    { temperature = 0 }: { temperature?: number } = {},
-  ) {
-    AiSession.#chat = new ChatDeepSeek({
-      modelName: model,
+  static #setChatModel(model: SupportedLlmModel, apiKey: string, { temperature = 0 }: { temperature?: number } = {}) {
+    AiSession.#chat = AiSession.#createChatModel(model, apiKey, {
       temperature,
       streaming: true,
-      apiKey,
-      // configuration: { baseURL: "https://api.deepseek.com/v1", apiKey },
     });
     return AiSession;
+  }
+  static #createChatModel(
+    model: SupportedLlmModel,
+    apiKey: string,
+    { temperature = 0, streaming = false }: { temperature?: number; streaming?: boolean } = {},
+  ) {
+    if (isOpenAiLlmModel(model))
+      return new ChatOpenAI({
+        modelName: model,
+        temperature,
+        streaming,
+        openAIApiKey: apiKey,
+      });
+    return new ChatDeepSeek({
+      modelName: model,
+      temperature,
+      streaming,
+      apiKey,
+    });
   }
   static async getLlmConfig() {
     return await GlobalConfig.getLlmConfig();
   }
-  static async setLlmConfig(
-    llmConfig: { model: SupportedLlmModel; apiKey: string } | null,
-  ) {
+  static async setLlmConfig(llmConfig: { model: SupportedLlmModel; apiKey: string } | null) {
     await GlobalConfig.setLlmConfig(llmConfig);
     return AiSession;
   }
@@ -137,11 +133,7 @@ export class AiSession {
     const spinner = new Spinner("Validating LLM API key...", {
       prefix: `🤖akan-editor`,
     }).start();
-    const chat = new ChatOpenAI({
-      modelName,
-      temperature: 0,
-      configuration: { baseURL: "https://api.deepseek.com/v1", apiKey },
-    });
+    const chat = AiSession.#createChatModel(modelName, apiKey);
     try {
       await chat.invoke("Hi, and just say 'ok'");
       spinner.succeed("LLM API key is valid");
@@ -193,10 +185,7 @@ export class AiSession {
   }
   async #saveCache() {
     const cacheFilePath = `${AiSession.#cacheDir}/${this.sessionKey}.json`;
-    await this.workspace.writeJson(
-      cacheFilePath,
-      mapChatMessagesToStoredMessages(this.messageHistory),
-    );
+    await this.workspace.writeJson(cacheFilePath, mapChatMessagesToStoredMessages(this.messageHistory));
   }
   async ask(
     question: string,
@@ -212,8 +201,7 @@ export class AiSession {
     if (!AiSession.#chat) await AiSession.init();
     if (this.#cacheLoadPromise) await this.#cacheLoadPromise;
 
-    if (!AiSession.#chat)
-      throw new Error("Failed to initialize the AI session");
+    if (!AiSession.#chat) throw new Error("Failed to initialize the AI session");
     const loader = new Spinner(`${AiSession.#chat.model} is thinking...`, {
       prefix: `🤖akan-editor`,
     }).start();
@@ -224,13 +212,10 @@ export class AiSession {
       let reasoningResponse = "",
         fullResponse = "";
       for await (const chunk of stream) {
-        if (loader.isSpinning())
-          loader.succeed(`${AiSession.#chat.model} responded`);
+        if (loader.isSpinning()) loader.succeed(`${AiSession.#chat.model} responded`);
 
         if (!fullResponse.length) {
-          const reasoningContent =
-            (chunk.additional_kwargs as { reasoning_content?: string })
-              .reasoning_content ?? "";
+          const reasoningContent = (chunk.additional_kwargs as { reasoning_content?: string }).reasoning_content ?? "";
           if (reasoningContent.length) {
             reasoningResponse += reasoningContent;
             onReasoning(reasoningContent);
@@ -258,14 +243,7 @@ export class AiSession {
   }
   async edit(
     question: string,
-    {
-      onChunk,
-      onReasoning,
-      maxTry = MAX_ASK_TRY,
-      validate,
-      approve,
-      fallbackToPreviousTypescript,
-    }: EditOptions = {},
+    { onChunk, onReasoning, maxTry = MAX_ASK_TRY, validate, approve, fallbackToPreviousTypescript }: EditOptions = {},
   ) {
     for (let tryCount = 0; tryCount < maxTry; tryCount++) {
       let response = await this.ask(question, { onChunk, onReasoning });
@@ -279,10 +257,7 @@ ${validate.map((v) => `- ${v}`).join("\n")}`;
         response = {
           ...validateResponse,
           content: fallbackToPreviousTypescript
-            ? preserveTypescriptResponseContent(
-                response.content,
-                validateResponse.content,
-              )
+            ? preserveTypescriptResponseContent(response.content, validateResponse.content)
             : validateResponse.content,
         };
       }
@@ -320,17 +295,11 @@ ${validate.map((v) => `- ${v}`).join("\n")}`;
     // const toolMessages = messages.map(
     //   (message) => new ToolMessage({ content: message.content, tool_call_id: message.type })
     // );
-    const toolMessages = messages.map(
-      (message) => new HumanMessage(message.content),
-    );
+    const toolMessages = messages.map((message) => new HumanMessage(message.content));
     this.messageHistory.push(...toolMessages);
     return this;
   }
-  async writeTypescripts(
-    question: string,
-    executor: Executor,
-    options: EditOptions = {},
-  ) {
+  async writeTypescripts(question: string, executor: Executor, options: EditOptions = {}) {
     const content = await this.edit(question, {
       ...options,
       fallbackToPreviousTypescript: true,
@@ -340,15 +309,10 @@ ${validate.map((v) => `- ${v}`).join("\n")}`;
       throw new Error(
         "No parseable TypeScript file blocks were found in the AI response. Include `// File: <path>` in each code block.",
       );
-    for (const write of writes)
-      await executor.writeFile(write.filePath, write.content);
+    for (const write of writes) await executor.writeFile(write.filePath, write.content);
     return await this.#tryFixTypescripts(writes, executor, options);
   }
-  async #editTypescripts(
-    question: string,
-    options: EditOptions = {},
-    fallbackWrites?: FileContent[],
-  ) {
+  async #editTypescripts(question: string, options: EditOptions = {}, fallbackWrites?: FileContent[]) {
     const content = await this.edit(question, {
       ...options,
       fallbackToPreviousTypescript: true,
@@ -361,11 +325,7 @@ ${validate.map((v) => `- ${v}`).join("\n")}`;
       );
     return writes;
   }
-  async #tryFixTypescripts(
-    writes: FileContent[],
-    executor: Executor,
-    options: EditOptions = {},
-  ) {
+  async #tryFixTypescripts(writes: FileContent[], executor: Executor, options: EditOptions = {}) {
     const MAX_EDIT_TRY = 5;
     for (let tryCount = 0; tryCount < MAX_EDIT_TRY; tryCount++) {
       const loader = new Spinner(`Type checking and linting...`, {
@@ -383,9 +343,7 @@ ${validate.map((v) => `- ${v}`).join("\n")}`;
       );
       const hasAnyFix = fileChecks.some((fileCheck) => fileCheck.needFix);
       if (hasAnyFix) {
-        loader.fail(
-          "Type checking and linting has some errors, try to fix them",
-        );
+        loader.fail("Type checking and linting has some errors, try to fix them");
         fileChecks.forEach((fileCheck) => {
           Logger.rawLog(
             `TypeCheck Result \n${fileCheck.typeCheckResult.message}\nLint Result \n${fileCheck.lintResult.message}`,
@@ -404,8 +362,7 @@ ${validate.map((v) => `- ${v}`).join("\n")}`;
           },
           writes,
         );
-        for (const write of writes)
-          await executor.writeFile(write.filePath, write.content);
+        for (const write of writes) await executor.writeFile(write.filePath, write.content);
       } else {
         loader.succeed("Type checking and linting has no errors");
         return writes;

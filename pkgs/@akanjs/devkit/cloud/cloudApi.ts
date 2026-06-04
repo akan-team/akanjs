@@ -1,5 +1,5 @@
 import type { Workspace } from "../commandDecorators";
-import { type AccessToken, type AccessTokenDto, akanCloudHost, type HostConfig } from "./constants";
+import type { AccessToken, AccessTokenDto, HostConfig } from "./constants";
 import { GlobalConfig } from "./globalConfig";
 
 class HttpClient {
@@ -17,7 +17,7 @@ class HttpClient {
         ...headers,
       },
     });
-    return response.json();
+    return await response.json();
   }
   async getFile(url: string, localPath: string, headers?: Record<string, string>): Promise<void> {
     const response = await fetch(`${this.baseUrl}${url}`, {
@@ -35,7 +35,7 @@ class HttpClient {
         ? { ...this.headers, ...headers }
         : { "Content-Type": "application/json", ...this.headers, ...headers },
     });
-    return response.json();
+    return await response.json();
   }
   setHeaders(headers: Record<string, string>) {
     Object.assign(this.headers, headers);
@@ -47,6 +47,8 @@ export class CloudApi {
   readonly #api: HttpClient;
   #accessToken: AccessToken | null = null;
   #workspace: Workspace;
+  host: string;
+  url: string;
 
   static async fromHost(workspace: Workspace, host?: string) {
     const hostConfig = await GlobalConfig.getHostConfig(host);
@@ -54,9 +56,10 @@ export class CloudApi {
   }
   constructor(workspace: Workspace, hostConfig: HostConfig) {
     this.#workspace = workspace;
-    const host = akanCloudHost;
-    this.#api = new HttpClient(`${host}/api`);
     this.#accessToken = hostConfig.auth?.accessToken ?? null;
+    this.host = hostConfig.host;
+    this.url = `${this.host}/api`;
+    this.#api = new HttpClient(this.url);
     if (this.#accessToken && !GlobalConfig.needRefreshToken(this.#accessToken))
       this.#api.setHeaders({
         Authorization: `Bearer ${this.#accessToken.jwt}`,
@@ -64,6 +67,7 @@ export class CloudApi {
   }
 
   async uploadEnv(devProjectId: string, file: File): Promise<boolean> {
+    await this.#ensureAccessTokenLive();
     const formData = new FormData();
     formData.append("devProjectId", devProjectId);
     formData.append("file", file);
@@ -71,16 +75,13 @@ export class CloudApi {
     return data;
   }
   async downloadEnv(devProjectId: string): Promise<unknown> {
+    await this.#ensureAccessTokenLive();
     const localPath = `${this.#workspace.workspaceRoot}/local/env.tar`;
     await this.#api.getFile(`/downloadEnv/${devProjectId}`, localPath);
     return localPath;
   }
   async getRemoteAuthToken(remoteId: string): Promise<AccessToken | null> {
     try {
-      if (this.#accessToken) {
-        if (GlobalConfig.needRefreshToken(this.#accessToken)) return await this.#refreshAuthToken();
-        else return await this.#refreshAuthToken();
-      }
       const accessToken = await this.#api.get<AccessTokenDto>(`/getRemoteAuthToken/${remoteId}`);
       this.#accessToken = GlobalConfig.toAccessToken(accessToken);
       this.#api.setHeaders({
@@ -91,13 +92,20 @@ export class CloudApi {
       return null;
     }
   }
-  async #refreshAuthToken(): Promise<AccessToken> {
+  async #ensureAccessTokenLive({
+    allowUnauthorized = false,
+  }: {
+    allowUnauthorized?: boolean;
+  } = {}): Promise<AccessToken> {
+    if (!this.#accessToken) throw new Error("No access token");
+    const needRefresh = GlobalConfig.needRefreshToken(this.#accessToken);
+    if (!needRefresh) return this.#accessToken;
     const refreshToken = this.#accessToken?.refreshToken;
     if (!refreshToken) throw new Error("No refresh token");
     return await this.refreshAuthToken(refreshToken);
   }
   async refreshAuthToken(refreshToken: string): Promise<AccessToken> {
-    const response = await this.#api.post<AccessTokenDto>(`/refreshRemoteAuthToken`, { refreshToken });
+    const response = await this.#api.post<AccessTokenDto>(`/refreshAuthToken`, { refreshToken });
     this.#accessToken = GlobalConfig.toAccessToken(response);
     this.#api.setHeaders({ Authorization: `Bearer ${this.#accessToken.jwt}` });
     return this.#accessToken;

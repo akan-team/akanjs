@@ -5,17 +5,20 @@ import {
   type AccessToken,
   type AccessTokenDto,
   type AkanGlobalConfig,
-  akanCloudHost,
   basePath,
   configPath,
   defaultAkanGlobalConfig,
-  defaultHostConfig,
+  getDefaultHostConfig,
   type HostConfig,
   type HostConfigDto,
   type RemoteEnvServerConfig,
 } from "./constants";
 
 export class GlobalConfig {
+  static akanCloudHost =
+    process.env.USE_AKANJS_PKGS === "true"
+      ? `http://localhost:${process.env.CLOUD_HOST_PORT ?? 8283}`
+      : "https://cloud.akanjs.com";
   static async #getAkanGlobalConfig(): Promise<AkanGlobalConfig> {
     const exists = await FileSys.fileExists(configPath);
     const akanConfig = exists ? await FileSys.readJson<Partial<AkanGlobalConfig>>(configPath) : {};
@@ -30,13 +33,13 @@ export class GlobalConfig {
     await mkdir(basePath, { recursive: true });
     await Bun.write(configPath, JSON.stringify(akanConfig, null, 2));
   }
-  static async getHostConfig(host = akanCloudHost): Promise<HostConfig> {
+  static async getHostConfig(host = GlobalConfig.akanCloudHost): Promise<HostConfig> {
     const akanConfig = await GlobalConfig.#getAkanGlobalConfig();
-    return GlobalConfig.toHostConfig(akanConfig.cloudHost[host] ?? defaultHostConfig);
+    return GlobalConfig.toHostConfig(akanConfig.cloudHost[host] ?? getDefaultHostConfig(host));
   }
-  static async setHostConfig(host = akanCloudHost, config: HostConfig = {}) {
+  static async setHostConfig(config: HostConfig = getDefaultHostConfig()) {
     const akanConfig = await GlobalConfig.#getAkanGlobalConfig();
-    akanConfig.cloudHost[host] = GlobalConfig.toHostConfigDto(config);
+    akanConfig.cloudHost[config.host] = GlobalConfig.toHostConfigDto(config);
     await GlobalConfig.#setAkanGlobalConfig(akanConfig);
   }
   static async getLlmConfig(): Promise<AkanGlobalConfig["llm"]> {
@@ -88,6 +91,7 @@ export class GlobalConfig {
   }
   static toHostConfigDto(hostConfig: HostConfig): HostConfigDto {
     return {
+      host: hostConfig.host,
       auth: {
         accessToken: hostConfig.auth?.accessToken
           ? GlobalConfig.toAccessTokenDto(hostConfig.auth.accessToken)
@@ -98,6 +102,7 @@ export class GlobalConfig {
   }
   static toHostConfig(hostConfigDto: HostConfigDto): HostConfig {
     return {
+      host: hostConfigDto.host,
       auth: {
         accessToken: hostConfigDto.auth?.accessToken
           ? GlobalConfig.toAccessToken(hostConfigDto.auth.accessToken)
