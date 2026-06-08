@@ -105,6 +105,24 @@ akan sync util`,
 akan script myapp seed.ts`,
     },
     {
+      name: "console",
+      signature: "akan console <app>",
+      desc: "Open an interactive server console for the selected application.\nUse it for runtime inspection and small operator commands. Production builds also embed `console.js` next to `main.js` for Docker and Kubernetes exec workflows.",
+      notes: [
+        {
+          name: "container",
+          desc: "Run `AKAN_CONSOLE=1 bun console.js` inside built containers or pods.",
+        },
+        {
+          name: "process",
+          desc: "Container console mode starts a separate no-listen server process and does not attach to running main.js memory.",
+        },
+      ],
+      examples: `akan console myapp
+docker exec -it myapp sh -lc 'AKAN_CONSOLE=1 bun console.js'
+kubectl exec -it -n prod pod/myapp-xxxxx -c myapp -- sh -lc 'AKAN_CONSOLE=1 bun console.js'`,
+    },
+    {
       name: "build",
       signature: "akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>]",
       desc: "Build the application for production, including frontend SSR output and backend/runtime artifacts.\n`--write` refreshes generated code first, while `--fast` and `--quiet` tune build speed and terminal output.",

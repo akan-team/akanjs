@@ -62,6 +62,30 @@ export default function Page() {
       </Scroll.Slide>
       <div className="divider" />
 
+      <Scroll.Slide id="console" title={l.trans({ en: "Open Console", ko: "Console 열기" })}>
+        <Docs.Title>{l.trans({ en: "Open Console", ko: "Console 열기" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "Use `kubectl exec` to run the generated `console.js` already embedded in the built app image.",
+              ko: "`kubectl exec`로 build된 app image 안에 이미 포함된 generated `console.js`를 실행합니다.",
+            })}
+          </div>
+          <div>
+            {l.trans({
+              en: "The console starts a separate no-listen server process in the same pod; it does not attach to the running `main.js` memory.",
+              ko: "Console은 같은 pod 안에서 별도의 no-listen server process를 시작합니다. 실행 중인 `main.js` memory에 attach하지는 않습니다.",
+            })}
+          </div>
+        </Docs.Description>
+        <Code.Snippet
+          title={l.trans({ en: "Pod exec", ko: "Pod exec" })}
+          language="bash"
+          code="kubectl exec -it -n prod pod/myapp-xxxxx -c myapp -- sh -lc 'AKAN_CONSOLE=1 bun console.js'"
+        />
+      </Scroll.Slide>
+      <div className="divider" />
+
       <Scroll.Slide id="values" title={l.trans({ en: "Values", ko: "Values" })}>
         <Docs.Title>{l.trans({ en: "Values", ko: "Values" })}</Docs.Title>
         <Docs.Description>

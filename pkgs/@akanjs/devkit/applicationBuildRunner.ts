@@ -175,7 +175,11 @@ export class ApplicationBuildRunner {
     const backendExternals = [
       ...new Set([...akanConfig.externalLibs, ...SSR_RENDER_EXTERNALS, ...AKAN_OPTIONAL_BACKEND_EXTERNALS]),
     ];
-    const backendEntryPoints = [`${this.#app.cwdPath}/main.ts`, `${this.#app.cwdPath}/server.ts`];
+    const backendEntryPoints = [
+      `${this.#app.cwdPath}/main.ts`,
+      `${this.#app.cwdPath}/server.ts`,
+      await this.#writeConsoleEntry(),
+    ];
     for (const entrypoint of backendEntryPoints) {
       if (!(await Bun.file(entrypoint).exists())) throw new Error(`Backend entrypoint not found: ${entrypoint}`);
     }
@@ -184,6 +188,7 @@ export class ApplicationBuildRunner {
       outdir: this.#app.dist.cwdPath,
       target: "bun",
       minify: true,
+      naming: { entry: "[name].[ext]", chunk: "chunk-[hash].[ext]" },
       define: { "process.env.NODE_ENV": JSON.stringify("production") },
       plugins: backendExternals.length > 0 ? [this.#createExternalSpecifiersPlugin(backendExternals)] : [],
     });
@@ -202,6 +207,34 @@ export class ApplicationBuildRunner {
       entrypoints: backendEntryPoints.length + 1,
       outputs: backendResult.outputs.length + rscWorkerResult.outputs.length,
     };
+  }
+
+  async #writeConsoleEntry() {
+    const generatedDir = path.join(this.#app.cwdPath, ".akan", "generated");
+    const entrypoint = path.join(generatedDir, "console.ts");
+    await mkdir(generatedDir, { recursive: true });
+    await Bun.write(
+      entrypoint,
+      `import { assertAkanConsoleAllowed, startAkanConsole } from "akanjs/server";
+import { cnst, db, dict, option, server, sig, srv } from "../../server";
+
+const run = async () => {
+  assertAkanConsoleAllowed(server.env);
+  await server.start({ listen: false, web: false });
+  try {
+    await startAkanConsole(server, { globals: { cnst, db, dict, option, sig, srv } });
+  } finally {
+    await server.stop();
+  }
+};
+
+void run().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+`,
+    );
+    return entrypoint;
   }
 
   #resolveRscWorkerBuildEntry(): string {

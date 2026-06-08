@@ -114,6 +114,11 @@ export class ApplicationScript extends script("application", [
     await this.applicationRunner.runScript(app, scriptFilename);
   }
 
+  async console(app: App) {
+    await app.scanSync();
+    await this.applicationRunner.runConsole(app);
+  }
+
   async build(
     app: App,
     {

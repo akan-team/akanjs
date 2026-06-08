@@ -69,6 +69,36 @@ export class ApplicationRunner extends runner("application") {
       stdio: "inherit",
     });
   }
+  async runConsole(app: App) {
+    const serverPath = `${app.cwdPath}/server.ts`;
+    if (!(await app.exists("server.ts"))) throw new Error(`Server file not found: apps/${app.name}/server.ts`);
+    const code = `
+const serverModule = await import(${JSON.stringify(serverPath)});
+const { assertAkanConsoleAllowed, startAkanConsole } = await import("akanjs/server");
+const server = serverModule.server;
+if (!server?.start) throw new Error("server.ts must export server with start()");
+assertAkanConsoleAllowed(server.env);
+await server.start({ listen: false, web: false });
+try {
+  await startAkanConsole(server, {
+    globals: {
+      srv: serverModule.srv,
+      sig: serverModule.sig,
+      db: serverModule.db,
+      cnst: serverModule.cnst,
+      dict: serverModule.dict,
+      option: serverModule.option,
+    },
+  });
+} finally {
+  await server.stop();
+}
+`;
+    await app.spawn("bun", ["-e", code], {
+      env: app.getCommandEnv({ AKAN_COMMAND_TYPE: "console" }),
+      stdio: "inherit",
+    });
+  }
   async typecheck(app: App, options: TypecheckOptions = {}) {
     await new ApplicationBuildRunner(app).typecheck(options);
   }

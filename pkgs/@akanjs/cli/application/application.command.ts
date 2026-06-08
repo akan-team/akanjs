@@ -29,6 +29,11 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .exec(async function (app, filename) {
       await this.applicationScript.script(app, filename);
     }),
+  console: target({ desc: "Open an interactive server console for the application" })
+    .with(App)
+    .exec(async function (app) {
+      await this.applicationScript.console(app);
+    }),
   build: target({ short: true, desc: "Build the application for production (frontend + backend)" })
     .with(App)
     .option("write", Boolean, { desc: "write code generation", default: true })

@@ -24,6 +24,7 @@ export default function Page() {
         "remove-application <app>",
         "sync <system>",
         "script <app> [filename]",
+        "console <app>",
         "build <app>",
         "typecheck <app>",
         "test <target>",

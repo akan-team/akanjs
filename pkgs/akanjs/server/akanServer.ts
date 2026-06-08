@@ -39,6 +39,19 @@ interface AkanAppPrepared {
   webProxyRunner: WebProxyRunner | null;
 }
 
+export interface AkanServerConsoleInfo {
+  name: string;
+  status: AkanServer["status"];
+  serverMode: AkanServer["serverMode"];
+  env: Pick<BaseEnv, "appName" | "environment" | "operationMode" | "repoName" | "serveDomain" | "databaseMode">;
+  services: string[];
+  signals: string[];
+  adaptors: string[];
+  uses: string[];
+  serviceStages: string[][];
+  adaptorStages: string[][];
+}
+
 export class AkanServer {
   status: "stopped" | "initializing" | "initialized" | "starting" | "running" | "stopping" = "stopped";
   // Union the app-signal data shape with the HMR channel's data shape so
@@ -119,6 +132,29 @@ export class AkanServer {
   getAdaptor<T = Adaptor>(refName: string): T {
     this.#assertCanGet("Adaptor", refName);
     return this.#di.getAdaptor<T>(refName);
+  }
+
+  inspectConsole(): AkanServerConsoleInfo {
+    this.#assertCanGet();
+    return {
+      name: this.name,
+      status: this.status,
+      serverMode: this.serverMode,
+      env: {
+        appName: this.env.appName,
+        environment: this.env.environment,
+        operationMode: this.env.operationMode,
+        repoName: this.env.repoName,
+        serveDomain: this.env.serveDomain,
+        databaseMode: this.env.databaseMode,
+      },
+      services: [...this.#di.registry.serviceCls.keys()].sort((a, b) => a.localeCompare(b)),
+      signals: [...this.#di.registry.serverSignalCls.keys()].sort((a, b) => a.localeCompare(b)),
+      adaptors: [...this.#di.registry.adaptorCls.keys()].sort((a, b) => a.localeCompare(b)),
+      uses: [...this.#di.registry.uses.keys()].sort((a, b) => a.localeCompare(b)),
+      serviceStages: this.#di.hierarchy.serviceStages.map((stage) => [...stage]),
+      adaptorStages: this.#di.hierarchy.adaptorStages.map((stage) => [...stage]),
+    };
   }
 
   async init({ routes: initRoutes = true, web = true }: { routes?: boolean; web?: boolean } = {}) {
@@ -249,14 +285,14 @@ export class AkanServer {
   }
 
   async start({ listen, web = true }: { listen?: boolean; web?: boolean } = {}) {
-    const isScriptCommand = process.env.AKAN_COMMAND_TYPE === "script";
-    const shouldListen = (listen ?? !isScriptCommand) && this.serverMode !== "batch";
+    const isNoListenCommand = process.env.AKAN_COMMAND_TYPE === "script" || process.env.AKAN_COMMAND_TYPE === "console";
+    const shouldListen = (listen ?? !isNoListenCommand) && this.serverMode !== "batch";
     await this.init({ routes: shouldListen, web });
     if (!shouldListen) {
       const websocket = this.#di.getWebsocketAdaptor();
       if (websocket) SignalResolver.setLocalPublish((roomId, data) => this.#localPublish?.(roomId, data), websocket);
       this.status = "running";
-      if (!isScriptCommand) {
+      if (!isNoListenCommand) {
         this.#startMetricsReporting();
         this.#di.registerSchedule(this.serverMode);
         process.on("message", (message) => this.#handleIpcMessage(message as AkanIpcMessage));
