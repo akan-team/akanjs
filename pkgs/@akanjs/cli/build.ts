@@ -34,7 +34,7 @@ const build = async () => {
       ...packageJson,
       bin: { akan: "./index.js", akan2: "./index.js" },
       exports: {
-        ".": { import: "./index.js", types: "./index.ts", default: "./index.js" },
+        ".": { import: "./index.js", default: "./index.js" },
         "./package.json": "./package.json",
       },
     };
