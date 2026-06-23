@@ -15,6 +15,7 @@ export type CapacitorAppModule = {
   App: {
     addListener: (eventName: string, listenerFunc: (...args: unknown[]) => void) => Promise<unknown> | unknown;
     removeAllListeners: () => Promise<void> | void;
+    exitApp?: () => Promise<void> | void;
     getInfo: () => Promise<{ id: string; version: string; build: string; [key: string]: unknown }>;
   };
 };

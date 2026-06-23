@@ -1,4 +1,3 @@
-import type { PageConfig } from "akanjs/client";
 import { Link } from "akanjs/ui";
 import { AiOutlineCamera, AiOutlineHeart } from "react-icons/ai";
 
@@ -40,4 +39,4 @@ export default function Page({ searchParams }: { searchParams: { deepLink?: stri
     </div>
   );
 }
-export const pageConfig = { bottomInset: true, topInset: false, transition: "none", cache: true } satisfies PageConfig;
+// export const pageConfig = { bottomInset: true, topInset: false, transition: "none", cache: true } satisfies PageConfig;

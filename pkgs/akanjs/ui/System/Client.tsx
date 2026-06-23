@@ -16,6 +16,7 @@ import {
   setCookie,
   type TransitionStyle,
   Translator,
+  useCsr,
 } from "akanjs/client";
 import { Logger } from "akanjs/common";
 import type { AkanTheme } from "akanjs/fetch";
@@ -137,6 +138,11 @@ export const ClientPathWrapper = ({
     renderRootLayouts: [],
     renderLayouts: [],
   };
+  const csr = useCsr();
+  const registerFrameSlot =
+    typeof csr.registerFrameSlot === "function"
+      ? (slot: Parameters<typeof csr.registerFrameSlot>[1]) => csr.registerFrameSlot(pathRoute.path, slot)
+      : () => () => undefined;
 
   // const { initialize, codepush, statManager } = useCodepush({ serverUrl: process.env.AKAN_PUBLIC_SERVER_URL ?? "" });
 
@@ -162,6 +168,7 @@ export const ClientPathWrapper = ({
         prefix,
         gestureEnabled,
         setGestureEnabled,
+        registerFrameSlot,
       }}
     >
       <animated.div

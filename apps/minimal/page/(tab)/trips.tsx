@@ -1,4 +1,3 @@
-import type { PageConfig } from "akanjs/client";
 import { Layout, Link } from "akanjs/ui";
 import { AiOutlineCalendar, AiOutlineRight } from "react-icons/ai";
 
@@ -40,4 +39,4 @@ export default function Page() {
     </div>
   );
 }
-export const pageConfig = { bottomInset: true, topInset: true, transition: "none", cache: true } satisfies PageConfig;
+// export const pageConfig = { bottomInset: true, topInset: true, transition: "none", cache: true } satisfies PageConfig;

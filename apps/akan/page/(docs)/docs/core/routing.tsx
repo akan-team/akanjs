@@ -238,8 +238,8 @@ export const metadata = {
             {
               name: "pageConfig",
               desc: l.trans({
-                en: "Client page options such as transition or mobile safe-area behavior.",
-                ko: "화면 전환이나 모바일 safe-area 같은 클라이언트 페이지 옵션입니다.",
+                en: "Optional override for client frame behavior. If omitted, Akan applies platform defaults and frame components such as Navbar or BottomInset register their own insets.",
+                ko: "클라이언트 frame 동작을 위한 선택적 override입니다. 생략하면 Akan이 플랫폼 기본값을 적용하고 Navbar, BottomInset 같은 frame 컴포넌트가 필요한 inset을 자동 등록합니다.",
               }),
             },
             {
@@ -483,6 +483,13 @@ export default function Layout({ children }: LayoutProps) {
               }),
             },
             {
+              name: "pageConfig",
+              desc: l.trans({
+                en: "Optional layout-level frame override inherited by child pages. Page-level pageConfig still wins for explicitly declared fields.",
+                ko: "하위 페이지가 상속하는 layout 단위 frame override입니다. 명시된 필드는 page 단위 pageConfig가 우선합니다.",
+              }),
+            },
+            {
               name: "gaTrackingId",
               desc: l.trans({
                 en: "Adds Google Analytics tracking for the app.",
@@ -498,8 +505,8 @@ export default function Layout({ children }: LayoutProps) {
         </div>
         <Docs.Alert type="info">
           {l.trans({
-            en: "These extra exports are for root layouts only. Normal nested layouts should stay focused on default, metadata, generateMetadata, and Loading.",
-            ko: "이 추가 export들은 root layout에서만 사용합니다. 일반 중첩 layout은 default, metadata, generateMetadata, Loading 중심으로 작성하세요.",
+            en: "Most extra exports are for root layouts only. Nested layouts may also export pageConfig when they need a shared mobile frame override for their child pages.",
+            ko: "대부분의 추가 export는 root layout 전용입니다. 다만 중첩 layout도 하위 페이지에 공통 모바일 frame override가 필요하면 pageConfig를 export할 수 있습니다.",
           })}
         </Docs.Alert>
       </Scroll.Slide>

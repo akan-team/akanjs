@@ -162,6 +162,7 @@ const PAGE_ROUTE_EXPORTS = new Set([
 ]);
 const ROOT_LAYOUT_EXPORTS = new Set([
   "default",
+  "pageConfig",
   "head",
   "metadata",
   "generateHead",
@@ -178,6 +179,7 @@ const ROOT_LAYOUT_EXPORTS = new Set([
 ]);
 const LAYOUT_ROUTE_EXPORTS = new Set([
   "default",
+  "pageConfig",
   "head",
   "metadata",
   "generateHead",

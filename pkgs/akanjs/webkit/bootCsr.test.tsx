@@ -44,10 +44,36 @@ beforeAll(() => {
         info: { platform: deviceState.platform },
       }),
     },
+    getExplicitPageConfigKeys: () => ({}),
     initAuth: () => undefined,
+    readCssSafeAreaInsets: () => ({ top: 0, bottom: 0 }),
+    resolvePageState: ({
+      configChain = [],
+      platform,
+    }: {
+      configChain?: Array<{
+        transition?: string;
+        safeArea?: boolean;
+        topInset?: boolean | number;
+        bottomInset?: boolean | number;
+      }>;
+      platform: string;
+    }) => {
+      const config = Object.assign({}, ...configChain);
+      return {
+        transition: config.transition ?? "none",
+        topSafeArea: config.safeArea === false || platform === "android" ? 0 : 11,
+        bottomSafeArea: config.safeArea === false || platform === "android" ? 0 : 22,
+        topInset: config.topInset === true ? 44 : config.topInset === false ? 0 : (config.topInset ?? 0),
+        bottomInset: config.bottomInset === true ? 34 : config.bottomInset === false ? 0 : (config.bottomInset ?? 0),
+        gesture: true,
+        cache: false,
+      };
+    },
     storage: {
       getItem: async (key: string) => (key === "jwt" ? storageState.jwt : null),
     },
+    validatePageConfig: () => undefined,
   }));
   mock.module("react-dom/client", () => ({
     createRoot: () => ({ render: () => undefined }),

@@ -18,6 +18,7 @@ import {
   parseRouteModuleKey,
   routeSegmentToTreePath,
 } from "akanjs/common";
+import { validatePageConfig } from "../client/frameConfig";
 import { resolveHeadExport, resolveMetadataHead } from "./metadata";
 
 export type PagesContext = Record<string, () => Promise<RouteModule>>;
@@ -55,6 +56,7 @@ export class RouteTreeBuilder {
   ]);
   static readonly #rootLayoutExports = new Set([
     "default",
+    "pageConfig",
     "head",
     "metadata",
     "generateHead",
@@ -72,6 +74,7 @@ export class RouteTreeBuilder {
   ]);
   static readonly #layoutRouteExports = new Set([
     "default",
+    "pageConfig",
     "head",
     "metadata",
     "generateHead",
@@ -271,6 +274,7 @@ export class RouteTreeBuilder {
       RouteTreeBuilder.#moduleCacheStats.cacheMisses += 1;
       const mod = await loader();
       RouteTreeBuilder.#validateRouteModuleExports(key, kind, mod);
+      validatePageConfig(key, "pageConfig" in mod ? mod.pageConfig : undefined);
       if (!loaded) {
         RouteTreeBuilder.#moduleCacheStats.loadedModuleCount += 1;
         RouteTreeBuilder.#moduleCacheStats.loadedModuleKeys.push(key);
@@ -354,6 +358,10 @@ export class RouteTreeBuilder {
         return "pageConfig" in mod ? mod.pageConfig : undefined;
       };
     } else {
+      routeRender.getLayoutPageConfig = async () => {
+        const mod = await loadModule();
+        return "pageConfig" in mod ? mod.pageConfig : undefined;
+      };
       routeRender.resolveNotFound = async () => {
         const mod = (await loadModule()) as LayoutModule;
         routeRender.NotFound = mod.NotFound;

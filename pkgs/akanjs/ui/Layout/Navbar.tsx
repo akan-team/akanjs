@@ -1,6 +1,6 @@
 "use client";
 import { getEnv } from "akanjs/base";
-import { clsx, usePathCtx } from "akanjs/client";
+import { clsx, DEFAULT_TOP_INSET, usePathCtx } from "akanjs/client";
 import { type ReactNode, useEffect, useState } from "react";
 import { BiChevronLeft } from "react-icons/bi";
 
@@ -19,11 +19,24 @@ export interface NavbarProps {
 
 export const Navbar = ({ back = false, className, height, children, title, left, right }: NavbarProps) => {
   const [render, setRender] = useState(false);
-  const { location } = usePathCtx();
+  const pathCtx = usePathCtx();
+  const { location } = pathCtx;
+  const registerFrameSlot = pathCtx.registerFrameSlot ?? (() => () => undefined);
   const suffix = getEnv().renderMode === "csr" ? `-${location.pathRoute.path}` : "";
   useEffect(() => {
     setRender(true);
   }, []);
+  useEffect(
+    () =>
+      registerFrameSlot({
+        type: "topInset",
+        scope: "page",
+        source: "navbar",
+        estimatedHeight: height ?? DEFAULT_TOP_INSET,
+        height,
+      }),
+    [registerFrameSlot, height],
+  );
   if (!render) return null;
   return (
     <>

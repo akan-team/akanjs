@@ -1,4 +1,3 @@
-import type { PageConfig } from "akanjs/client";
 import { Link } from "akanjs/ui";
 import { AiOutlineArrowRight, AiOutlineEnvironment, AiOutlineStar } from "react-icons/ai";
 
@@ -67,10 +66,10 @@ export default function Page() {
   );
 }
 
-export const pageConfig = {
-  bottomInset: true,
-  safeArea: true,
-  topInset: false,
-  transition: "none",
-  cache: true,
-} satisfies PageConfig;
+// export const pageConfig = {
+//   bottomInset: true,
+//   topInset: true,
+//   safeArea: true,
+//   cache: true,
+//   transition: "none",
+// } satisfies PageConfig;

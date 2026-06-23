@@ -7,10 +7,19 @@ import type { RouterInstance } from "./router";
 import type { ReactFont } from "./types";
 
 export type TransitionType = "none" | "fade" | "bottomUp" | "stack" | "scaleOut";
+export type PageSafeAreaConfig =
+  | boolean
+  | "top"
+  | "bottom"
+  | {
+      top?: boolean;
+      bottom?: boolean;
+      android?: "auto" | "edge-to-edge" | "none";
+    };
 /** Per-page CSR configuration for transition, safe-area, and gesture behavior. */
 export interface PageConfig {
   transition?: TransitionType;
-  safeArea?: boolean | "top" | "bottom";
+  safeArea?: PageSafeAreaConfig;
   topInset?: boolean | number;
   /**
    * @default 48px
@@ -97,6 +106,7 @@ export interface RouteRender {
   resolveError?: () => PromiseOrObject<LayoutErrorRender | undefined>;
   resolveHead?: ResolveHead;
   getPageConfig?: () => PromiseOrObject<PageConfig | undefined>;
+  getLayoutPageConfig?: () => PromiseOrObject<PageConfig | undefined>;
 }
 export interface WebAppManifestIcon {
   src: string;
@@ -158,6 +168,7 @@ export interface PageModule {
 }
 export interface LayoutModule {
   default?: LayoutRender;
+  pageConfig?: PageConfig;
   head?: Head;
   metadata?: AkanMetadata;
   generateHead?: GenerateHead;
@@ -176,6 +187,8 @@ export interface LayoutModule {
 export type RouteModule = PageModule | LayoutModule;
 export interface Route {
   PageConfig?: PageConfig;
+  pageConfig?: PageConfig;
+  layoutPageConfig?: PageConfig;
   path: string;
   renderPage?: RouteRender;
   renderLayout?: RouteRender;
@@ -189,6 +202,8 @@ export interface Route {
   //   | (({ children, params, searchParams }: LayoutProps) => Promise<ReactNode>);
   loader?: () => unknown;
   pageState?: PageState;
+  pageConfigChain?: PageConfig[];
+  explicitPageConfigKeys?: Partial<Record<keyof PageConfig, boolean>>;
   // action?: any;
   // ErrorBoundary?: any;
   children: Map<string, Route>;
@@ -279,6 +294,7 @@ export interface RouteState {
   onBack: RefObject<{ [K in TransitionType]?: () => Promise<void> }>;
   router: RouterInstance;
   pathRoutes: PathRoute[];
+  registerFrameSlot: (path: string, slot: FrameSlotRegistration) => () => void;
 }
 
 export type UseCsrTransition = CsrTransitionStyles & {
@@ -304,6 +320,7 @@ export interface PathContextType {
   prefix?: string;
   gestureEnabled: boolean;
   setGestureEnabled: (enabled: boolean) => void;
+  registerFrameSlot: (slot: FrameSlotRegistration) => () => void;
 }
 export const pathContext = createContext<PathContextType>({} as unknown as PathContextType);
 export const usePathCtx = () => {
@@ -316,10 +333,23 @@ export interface PathRoute {
   pathSegments: string[];
   renderPage: RouteRender;
   pageState: PageState;
+  pageConfigChain?: PageConfig[];
+  explicitPageConfigKeys?: Partial<Record<keyof PageConfig, boolean>>;
   renderRootLayouts: RouteRender[];
   renderLayouts: RouteRender[];
   resolveHead?: ResolveHead;
   isSpecialRoute?: boolean;
+}
+
+export type FrameSlotScope = "page" | "layout";
+export type FrameSlotType = "topInset" | "bottomInset";
+export interface FrameSlotRegistration {
+  scope?: FrameSlotScope;
+  type: FrameSlotType;
+  height?: number;
+  estimatedHeight?: number;
+  source?: "navbar" | "bottomInset" | "bottomTab" | (string & {});
+  cache?: boolean;
 }
 
 export interface LayoutFallbackRoute {

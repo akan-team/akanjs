@@ -112,17 +112,19 @@ export default config;`}
           <Code.Snippet
             title="page/store/product/[productId].tsx"
             code={`import type { PageConfig } from "akanjs/client";
+import { Layout } from "akanjs/ui";
 
 export default function Page() {
-  return <div>Product detail</div>;
+  return (
+    <>
+      <Layout.Navbar back>Product detail</Layout.Navbar>
+      <div>Product detail</div>
+    </>
+  );
 }
 
 export const pageConfig = {
-  safeArea: true,
-  topInset: true,
-  bottomInset: true,
-  transition: "stack",
-  cache: true,
+  transition: "bottomUp",
 } satisfies PageConfig;`}
           />
           <div className="space-y-1">
@@ -130,22 +132,22 @@ export const pageConfig = {
               {
                 title: "transition",
                 desc: l.trans({
-                  en: "Controls how screens move. Detail pages often use stack; tab roots often use none.",
-                  ko: "화면이 어떻게 이동하는지 정합니다. 상세 페이지는 보통 stack, 탭 루트는 보통 none을 사용합니다.",
+                  en: "Overrides the platform default. iOS detail pages default to stack, Android detail pages default to scaleOut, and tab/root pages default to none.",
+                  ko: "플랫폼 기본값을 덮어씁니다. iOS 상세 페이지는 기본 stack, Android 상세 페이지는 기본 scaleOut, 탭/root 페이지는 기본 none을 사용합니다.",
                 }),
               },
               {
                 title: "safeArea",
                 desc: l.trans({
-                  en: "Prevents content from colliding with notches, home indicators, and system bars.",
-                  ko: "콘텐츠가 노치, 홈 인디케이터, 시스템 바와 겹치지 않게 합니다.",
+                  en: "Handles OS system areas such as notches, home indicators, and Android edge-to-edge system bars. Android avoids double padding unless reliable edge-to-edge inset values are available.",
+                  ko: "노치, 홈 인디케이터, Android edge-to-edge system bar 같은 OS 영역을 처리합니다. Android는 신뢰 가능한 edge-to-edge inset 값이 있을 때만 추가해 중복 padding을 피합니다.",
                 }),
               },
               {
                 title: "topInset / bottomInset",
                 desc: l.trans({
-                  en: "Reserves space for fixed headers, tab bars, keyboards, or bottom actions.",
-                  ko: "고정 헤더, 탭바, 키보드, 하단 액션을 위한 공간을 확보합니다.",
+                  en: "Handles app UI space. Layout.Navbar, Layout.BottomInset, and Layout.BottomTab register this automatically; pageConfig only overrides exceptions.",
+                  ko: "앱 UI 공간을 처리합니다. Layout.Navbar, Layout.BottomInset, Layout.BottomTab이 자동 등록하며, pageConfig는 예외만 override합니다.",
                 }),
               },
               {
@@ -165,7 +167,7 @@ export const pageConfig = {
           <div>
             {l.trans({
               en: "Akan CSR pages can apply mobile-style page transitions from pageConfig. Use the demos below to compare the four transition presets in a browser CSR environment before packaging the same pages into a native shell.",
-              ko: "Akan CSR 페이지는 pageConfig를 통해 모바일 앱처럼 보이는 페이지 전환 효과를 적용할 수 있습니다. 아래 데모에서 4가지 transition preset을 브라우저 CSR 환경에서 비교한 뒤, 같은 페이지를 네이티브 shell로 패키징할 수 있습니다.",
+              ko: "Akan CSR 페이지는 pageConfig를 통해 모바일 앱처럼 보이는 페이지 전환 효과를 override할 수 있습니다. 아래 데모에서 4가지 transition preset을 브라우저 CSR 환경에서 비교한 뒤, 같은 페이지를 네이티브 shell로 패키징할 수 있습니다.",
             })}
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

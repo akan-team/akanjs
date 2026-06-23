@@ -20,7 +20,7 @@ export interface BottomTabProps {
 }
 
 export const BottomTab = ({ className, tabs, height = 64 }: BottomTabProps) => {
-  const { lang, path } = usePage();
+  const { lang } = usePage();
   //ssr 에러나서 꼼짝없이 쓴거임. 페이지 이동에 대응안됨.
   const [isRendered, setIsRendered] = useState<boolean>(false);
   const isActiveTab = (tabHref: string) => {
@@ -38,7 +38,7 @@ export const BottomTab = ({ className, tabs, height = 64 }: BottomTabProps) => {
   }, []);
 
   return (
-    <BottomInset className="h-full">
+    <BottomInset className="h-full" estimatedHeight={height} frameCache frameScope="layout" frameSource="bottomTab">
       <div
         className={clsx(
           `flex size-full items-center justify-around rounded-t-xl border border-base-200 border-b-0 bg-base-100`,
@@ -49,6 +49,7 @@ export const BottomTab = ({ className, tabs, height = 64 }: BottomTabProps) => {
           <Link
             key={tab.name}
             href={tab.href}
+            replace
             className={`relative flex w-full flex-col items-center justify-end gap-1 ${
               isActiveTab(tab.href) ? "" : "opacity-60"
             }`}
