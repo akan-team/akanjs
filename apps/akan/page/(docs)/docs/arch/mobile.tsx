@@ -110,6 +110,17 @@ export default config;`}
             })}
           </div>
           <Code.Snippet
+            title="Enable sync navigation while developing"
+            language="bash"
+            code={`AKAN_PUBLIC_SYNC_NAVIGATION=true akan start myapp`}
+          />
+          <Docs.Alert type="info">
+            {l.trans({
+              en: "Sync navigation is a local development helper. When enabled, Akan's HMR channel broadcasts CSR navigation between open clients, so a browser, simulator, and physical device can follow the same route while you tune mobile layout and transitions.",
+              ko: "Sync navigation은 로컬 개발용 보조 기능입니다. 활성화하면 Akan HMR 채널이 열려 있는 클라이언트 사이에 CSR 내비게이션을 전달하므로, 브라우저, 시뮬레이터, 실기기가 같은 route를 따라가며 모바일 레이아웃과 전환을 조정할 수 있습니다.",
+            })}
+          </Docs.Alert>
+          <Code.Snippet
             title="page/store/product/[productId].tsx"
             code={`import type { PageConfig } from "akanjs/client";
 import { Layout } from "akanjs/ui";
@@ -132,8 +143,8 @@ export const pageConfig = {
               {
                 title: "transition",
                 desc: l.trans({
-                  en: "Overrides the platform default. iOS detail pages default to stack, Android detail pages default to scaleOut, and tab/root pages default to none.",
-                  ko: "플랫폼 기본값을 덮어씁니다. iOS 상세 페이지는 기본 stack, Android 상세 페이지는 기본 scaleOut, 탭/root 페이지는 기본 none을 사용합니다.",
+                  en: "Optional override for the platform default. If you do not set it, Akan chooses an iOS/Android-native feel automatically: iOS detail pages default to stack, Android detail pages default to scaleOut, and tab/root pages default to none.",
+                  ko: "플랫폼 기본값을 위한 선택적 override입니다. 값을 지정하지 않으면 Akan이 iOS/Android 룩앤필에 맞는 전환을 자동으로 선택합니다. iOS 상세 페이지는 기본 stack, Android 상세 페이지는 기본 scaleOut, 탭/root 페이지는 기본 none을 사용합니다.",
                 }),
               },
               {
@@ -162,6 +173,48 @@ export const pageConfig = {
                 desc: l.trans({
                   en: "Keeps CSR page state when users return to list or tab screens.",
                   ko: "목록이나 탭 화면으로 돌아올 때 CSR 페이지 상태를 유지합니다.",
+                }),
+              },
+            ].map(({ title, desc }) => (
+              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+                <span className="font-mono font-semibold text-primary">{title}: </span>
+                <span className="text-base-content/70 text-sm">{desc}</span>
+              </div>
+            ))}
+          </div>
+          <Code.Snippet
+            title="Android edge-to-edge safe area"
+            code={`import type { PageConfig } from "akanjs/client";
+
+export const pageConfig = {
+  safeArea: {
+    top: true,
+    bottom: true,
+    android: "edge-to-edge",
+  },
+} satisfies PageConfig;`}
+          />
+          <div className="space-y-1">
+            {[
+              {
+                title: 'android: "auto"',
+                desc: l.trans({
+                  en: "Default Android behavior. Akan uses CSS safe-area values only when they are present, which avoids adding duplicate padding in normal Android WebView layouts.",
+                  ko: "Android 기본 동작입니다. CSS safe-area 값이 실제로 있을 때만 사용하므로 일반 Android WebView 레이아웃에서 padding이 중복되는 것을 피합니다.",
+                }),
+              },
+              {
+                title: 'android: "edge-to-edge"',
+                desc: l.trans({
+                  en: "Use when the Android app draws behind the status bar or navigation bar. Akan applies the larger value from native device insets and CSS safe-area insets so content can avoid system bars.",
+                  ko: "Android 앱이 status bar나 navigation bar 뒤까지 화면을 그릴 때 사용합니다. Akan은 native device inset과 CSS safe-area inset 중 더 큰 값을 적용해 콘텐츠가 시스템 바에 가리지 않게 합니다.",
+                }),
+              },
+              {
+                title: 'android: "none"',
+                desc: l.trans({
+                  en: "Disables Android safe-area padding for pages that manage system-bar spacing manually or intentionally use an immersive/full-bleed surface.",
+                  ko: "시스템 바 여백을 직접 관리하거나 의도적으로 immersive/full-bleed 화면을 만들 때 Android safe-area padding을 끕니다.",
                 }),
               },
             ].map(({ title, desc }) => (
