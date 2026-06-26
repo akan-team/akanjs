@@ -341,24 +341,12 @@ interface ClientSsrBridgeProps {
 }
 export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientSsrBridgeProps) => {
   const applyingSyncNavigation = useRef(false);
-  const syncHistoryRef = useRef<string[]>([]);
-  const suppressNextPopSyncRef = useRef(false);
   useEffect(() => {
     const visiblePrefix = getEnv().operationMode === "local" ? prefix : "";
-    const getSyncRouteHref = (href: string) => {
+    globalThis.__AKAN_GET_SYNC_ROUTE_HREF__ = (href: string) => {
       const url = new URL(href, window.location.origin);
       const pathInfo = getPathInfo(`${url.pathname}${url.search}${url.hash}`, lang, visiblePrefix);
       return `${pathInfo.path}${pathInfo.search ? `?${pathInfo.search}` : ""}${pathInfo.hash ? `#${pathInfo.hash}` : ""}`;
-    };
-    const rememberSyncNavigation = (kind: "push" | "replace" | "pop", href: string) => {
-      const syncHref = getSyncRouteHref(href);
-      const history = syncHistoryRef.current;
-      if (history.length === 0) {
-        syncHistoryRef.current = [syncHref];
-        return;
-      }
-      if (kind === "replace") history[history.length - 1] = syncHref;
-      else if (history.at(-1) !== syncHref) history.push(syncHref);
     };
     const navigateRscWithFallback = (
       href: string,
@@ -394,20 +382,13 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
       router: {
         push: (href, routeOptions) => {
           syncHref(href);
-          rememberSyncNavigation("push", href);
           navigateRscWithFallback(href, routeOptions, () => window.location.assign(href));
         },
         replace: (href, routeOptions) => {
           syncHref(href);
-          rememberSyncNavigation("replace", href);
           navigateRscWithFallback(href, { ...routeOptions, replace: true }, () => window.location.replace(href));
         },
         back: () => {
-          const previousSyncHref = syncHistoryRef.current.at(-2);
-          if (previousSyncHref) {
-            suppressNextPopSyncRef.current = true;
-            globalThis.__AKAN_DEV_SYNC_NAVIGATION__?.(previousSyncHref, "back");
-          }
           window.history.back();
         },
         refresh: () => {
@@ -420,17 +401,14 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
         },
       },
     });
-    rememberSyncNavigation("replace", window.location.href);
     void Device.load({ lang });
+    return () => {
+      if (globalThis.__AKAN_GET_SYNC_ROUTE_HREF__) globalThis.__AKAN_GET_SYNC_ROUTE_HREF__ = undefined;
+    };
   }, [lang, prefix, initialPageState]);
 
   useEffect(() => {
     const visiblePrefix = getEnv().operationMode === "local" ? prefix : "";
-    const getSyncRouteHref = () => {
-      const { pathname, search, hash } = window.location;
-      const pathInfo = getPathInfo(`${pathname}${search}${hash}`, lang, visiblePrefix);
-      return `${pathInfo.path}${pathInfo.search ? `?${pathInfo.search}` : ""}${pathInfo.hash ? `#${pathInfo.hash}` : ""}`;
-    };
     const sync = () => {
       const { pathname, search, hash } = window.location;
       const { path } = getPathInfo(`${pathname}${search}${hash}`, lang, visiblePrefix);
@@ -444,17 +422,6 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
     };
     const handlePopState = () => {
       sync();
-      const syncHref = getSyncRouteHref();
-      const history = syncHistoryRef.current;
-      const previousIdx = history.lastIndexOf(syncHref);
-      if (previousIdx >= 0) syncHistoryRef.current = history.slice(0, previousIdx + 1);
-      else history.push(syncHref);
-      if (suppressNextPopSyncRef.current) {
-        suppressNextPopSyncRef.current = false;
-        return;
-      }
-      if (applyingSyncNavigation.current || globalThis.__AKAN_DEV_SYNC_NAVIGATION_APPLYING__) return;
-      globalThis.__AKAN_DEV_SYNC_NAVIGATION__?.(getSyncRouteHref(), "pop");
     };
     sync();
     window.addEventListener("popstate", handlePopState);

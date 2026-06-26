@@ -47,6 +47,9 @@ declare global {
     | undefined;
   var __AKAN_RSC_REFRESH__: ((options?: { buildId?: number }) => Promise<void>) | undefined;
   var __AKAN_RSC_CLEAR_CACHE__: (() => void) | undefined;
+  var __AKAN_DEV_SYNC_NAVIGATION__: ((href: string, kind: "push" | "replace" | "back" | "pop") => void) | undefined;
+  var __AKAN_DEV_SYNC_NAVIGATION_APPLYING__: boolean | undefined;
+  var __AKAN_GET_SYNC_ROUTE_HREF__: ((href: string) => string) | undefined;
 }
 
 function decodeBase64(b64: string): Uint8Array {
@@ -516,6 +519,11 @@ function Root(): ReactNode {
 
 window.addEventListener("popstate", () => {
   void globalThis.__AKAN_RSC_NAVIGATE__?.(window.location.href, { replace: true, scrollToTop: false });
+  window.setTimeout(() => {
+    if (globalThis.__AKAN_DEV_SYNC_NAVIGATION_APPLYING__) return;
+    const href = globalThis.__AKAN_GET_SYNC_ROUTE_HREF__?.(window.location.href) ?? window.location.href;
+    globalThis.__AKAN_DEV_SYNC_NAVIGATION__?.(href, "pop");
+  }, 0);
 });
 
 const hydrate = () => hydrateRoot(document, createElement(Root));
