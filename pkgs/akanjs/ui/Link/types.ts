@@ -44,6 +44,12 @@ export interface SsrLinkProps
   disabled?: boolean;
   /** Scroll to the top after navigation. */
   scrollToTop?: boolean;
+  /** Replace current history entry instead of pushing a new one. */
+  replace?: boolean;
   /** Class applied when the current route matches href. */
   activeClassName?: string;
+  /** Match activeClassName only on exact route matches. */
+  activeExact?: boolean;
+  /** Bypass route cache for client-side navigation when supported by the renderer. */
+  noCache?: boolean;
 }

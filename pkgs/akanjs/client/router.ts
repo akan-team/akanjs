@@ -91,6 +91,8 @@ const getServerBasePath = (reqPathname: string, lang: string, headerBasePath: st
 
 declare global {
   var __AKAN_ROUTER__: Router | undefined;
+  var __AKAN_DEV_SYNC_NAVIGATION__: ((href: string, kind: "push" | "replace" | "back" | "pop") => void) | undefined;
+  var __AKAN_DEV_SYNC_NAVIGATION_APPLYING__: boolean | undefined;
 }
 
 export const getPathInfo = (requestUrl: string, lang: string, prefix: string) => {
@@ -237,14 +239,21 @@ class Router {
     Logger.log(`pathChange-start:${path}${hash ? `#${hash}` : ""}`);
     window.parent.postMessage({ type: "pathChange", path, pathname, hash }, "*");
   }
+  #postDevSyncNavigation(kind: "push" | "replace", href: string) {
+    if (globalThis.__AKAN_DEV_SYNC_NAVIGATION_APPLYING__) return;
+    const { path, search, hash } = this.#getPathInfo(href);
+    globalThis.__AKAN_DEV_SYNC_NAVIGATION__?.(`${path}${search ? `?${search}` : ""}${hash ? `#${hash}` : ""}`, kind);
+  }
   push(href: string, routeOptions?: RouteOptions) {
     this.#checkInitialized();
     this.#instance.push(href, routeOptions);
+    this.#postDevSyncNavigation("push", href);
     return undefined as never;
   }
   replace(href: string, routeOptions?: RouteOptions) {
     this.#checkInitialized();
     this.#instance.replace(href, routeOptions);
+    this.#postDevSyncNavigation("replace", href);
     return undefined as never;
   }
   back(routeOptions?: RouteOptions) {

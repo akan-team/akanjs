@@ -24,8 +24,6 @@ const pageConfigKeys = new Set<keyof PageConfig>([
   "bottomSafeAreaColor",
 ]);
 const transitionTypes = new Set<TransitionType>(["none", "fade", "bottomUp", "stack", "scaleOut"]);
-const DEFAULT_TOP_INSET = 48;
-const DEFAULT_BOTTOM_INSET = 60;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -44,21 +42,17 @@ export function validatePageConfig(routeKey: string, config?: PageConfig) {
   if (pageConfig.transition !== undefined && !transitionTypes.has(pageConfig.transition)) {
     throw new Error(`[route-convention] unsupported pageConfig.transition "${pageConfig.transition}" in ${routeKey}`);
   }
-  if (
-    pageConfig.topInset !== undefined &&
-    typeof pageConfig.topInset !== "boolean" &&
-    typeof pageConfig.topInset !== "number"
-  ) {
-    throw new Error(`[route-convention] pageConfig.topInset in ${routeKey} must be a boolean or number.`);
+  if (pageConfig.topInset !== undefined && !isValidInsetValue(pageConfig.topInset)) {
+    throw new Error(`[route-convention] pageConfig.topInset in ${routeKey} must be a non-negative px number.`);
   }
-  if (
-    pageConfig.bottomInset !== undefined &&
-    typeof pageConfig.bottomInset !== "boolean" &&
-    typeof pageConfig.bottomInset !== "number"
-  ) {
-    throw new Error(`[route-convention] pageConfig.bottomInset in ${routeKey} must be a boolean or number.`);
+  if (pageConfig.bottomInset !== undefined && !isValidInsetValue(pageConfig.bottomInset)) {
+    throw new Error(`[route-convention] pageConfig.bottomInset in ${routeKey} must be a non-negative px number.`);
   }
   validateSafeAreaConfig(routeKey, pageConfig.safeArea);
+}
+
+function isValidInsetValue(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
 function validateSafeAreaConfig(routeKey: string, safeArea?: PageSafeAreaConfig) {
@@ -140,12 +134,12 @@ export function resolvePageState({
     transition,
     topSafeArea: safeArea.top,
     bottomSafeArea: safeArea.bottom,
-    topInset: resolveInset(config.topInset, DEFAULT_TOP_INSET),
-    bottomInset: resolveInset(config.bottomInset, DEFAULT_BOTTOM_INSET),
+    topInset: config.topInset ?? 0,
+    bottomInset: config.bottomInset ?? 0,
     gesture: explicitKeys.gesture ? (config.gesture ?? false) : transition === "none" ? false : (config.gesture ?? false),
     cache: config.cache ?? false,
-    topSafeAreaColor: config.topSafeAreaColor ?? "transparent",
-    bottomSafeAreaColor: config.bottomSafeAreaColor ?? "transparent",
+    topSafeAreaColor: config.topSafeAreaColor ?? "var(--color-base-100, Canvas)",
+    bottomSafeAreaColor: config.bottomSafeAreaColor ?? "var(--color-base-100, Canvas)",
   };
 }
 
@@ -167,12 +161,6 @@ function getRouteRoleFrameDefaults(path: string, platform: DevicePlatform, baseP
     transition: platform === "ios" ? "stack" : platform === "android" ? "scaleOut" : "none",
     gesture: platform === "ios",
   };
-}
-
-function resolveInset(inset: PageConfig["topInset"] | PageConfig["bottomInset"], defaultValue: number) {
-  if (inset === true) return defaultValue;
-  if (inset === false) return 0;
-  return inset ?? 0;
 }
 
 function resolveSafeArea({

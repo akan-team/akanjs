@@ -12,6 +12,7 @@ import {
   getRequestPolicy,
   getRequestTheme,
   requestStorage,
+  setRequestFrameState,
   untrackedCookies,
   untrackedRequest,
   updateRequestPolicy,
@@ -1168,6 +1169,12 @@ export class RscRenderer {
     error?: unknown;
     digest?: string;
   }): Promise<ReactNode | null> {
+    setRequestFrameState(
+      await RouteElementComposer.resolveSsrFallbackFrameState({
+        route,
+        basePath: this.#getBasePath(url),
+      }),
+    );
     const body = await RouteElementComposer.composeFallback({
       kind,
       route,
@@ -1222,17 +1229,22 @@ export class RscRenderer {
     this.#logger.verbose(
       `composing route element pathname=${url.pathname} search=${url.search || "(none)"} params=${JSON.stringify(match.params)}`,
     );
-    const routeHead = await RouteElementComposer.resolveHeadWithMetadata({
+    const pathRoute = await RouteElementComposer.resolveSsrFramePathRoute({
       pathRoute: match.pathRoute,
+      basePath: this.#getBasePath(url),
+    });
+    setRequestFrameState(pathRoute.pageState);
+    const routeHead = await RouteElementComposer.resolveHeadWithMetadata({
+      pathRoute,
       params: match.params,
       searchParams,
     });
     const routeHeadSnapshot = this.#createRouteHeadSnapshot(url, routeHead, {
-      isSpecialRoute: match.pathRoute.isSpecialRoute,
+      isSpecialRoute: pathRoute.isSpecialRoute,
       hasExplicitLanguageAlternates: routeHead.hasExplicitLanguageAlternates,
     });
     const body = RouteElementComposer.compose({
-      pathRoute: match.pathRoute,
+      pathRoute,
       params: match.params,
       searchParams,
     });
@@ -1249,7 +1261,7 @@ export class RscRenderer {
             : (routeHead.node ?? this.#renderDefaultHead())}
           {!routeHeadSnapshot &&
           shouldRenderLocaleAlternates({
-            isSpecialRoute: match.pathRoute.isSpecialRoute,
+            isSpecialRoute: pathRoute.isSpecialRoute,
             hasExplicitLanguageAlternates: routeHead.hasExplicitLanguageAlternates,
           })
             ? this.#renderLocaleAlternates(url)
@@ -1270,8 +1282,13 @@ export class RscRenderer {
     this.#logger.verbose(
       `composing route suffix pathname=${url.pathname} start=${patchStartIndex} params=${JSON.stringify(match.params)}`,
     );
-    return RouteElementComposer.composeSuffix({
+    const pathRoute = await RouteElementComposer.resolveSsrFramePathRoute({
       pathRoute: match.pathRoute,
+      basePath: this.#getBasePath(url),
+    });
+    setRequestFrameState(pathRoute.pageState);
+    return RouteElementComposer.composeSuffix({
+      pathRoute,
       params: match.params,
       searchParams,
       patchStartIndex,
@@ -1317,6 +1334,14 @@ export class RscRenderer {
 
   #renderDefaultHead(): ReactNode {
     return <title key="title">{process.env.AKAN_PUBLIC_APP_NAME ?? "Akan App"}</title>;
+  }
+
+  #getBasePath(url: URL): string | null {
+    return getBasePathFromPathname(url.pathname, {
+      basePaths: this.#basePaths,
+      i18n: this.#i18n,
+      headerBasePath: untrackedRequest()?.headers.get("x-base-path"),
+    });
   }
 
   async #resolveRouteHeadSnapshot(

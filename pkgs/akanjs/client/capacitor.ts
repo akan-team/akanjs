@@ -87,6 +87,7 @@ export type CapacitorKeyboardModule = {
   Keyboard: {
     show: () => Promise<void> | void;
     hide: () => Promise<void> | void;
+    setResizeMode?: (options: { mode: "body" | "ionic" | "native" | "none" }) => Promise<void> | void;
     addListener: (eventName: string, listenerFunc: (info: CapacitorKeyboardInfo) => void) => Promise<unknown> | unknown;
     removeAllListeners: () => Promise<void> | void;
   };

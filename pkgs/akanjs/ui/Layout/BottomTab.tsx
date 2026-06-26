@@ -38,7 +38,14 @@ export const BottomTab = ({ className, tabs, height = 64 }: BottomTabProps) => {
   }, []);
 
   return (
-    <BottomInset className="h-full" estimatedHeight={height} frameCache frameScope="layout" frameSource="bottomTab">
+    <BottomInset
+      className="h-full"
+      role="bottomChrome"
+      estimatedHeight={height}
+      frameCache
+      frameScope="layout"
+      frameSource="bottomTab"
+    >
       <div
         className={clsx(
           `flex size-full items-center justify-around rounded-t-xl border border-base-200 border-b-0 bg-base-100`,
@@ -57,10 +64,7 @@ export const BottomTab = ({ className, tabs, height = 64 }: BottomTabProps) => {
             <div className="indicator">
               {isActiveTab(tab.href) ? (tab.activeIcon ?? tab.icon) : tab.icon}
               {tab.notiCount && tab.notiCount > 0 ? (
-                // <div className="absolute top-1 right-2 bg-error  w-5 h-5 rounded-full flex items-center justify-center text-base-100">
-                <div className="indicator-item flex size-2 items-center justify-center rounded-full bg-secondary text-[10px] text-base-100">
-                  {/* {tab.notiCount > 99 ? "99+" : tab.notiCount} */}
-                </div>
+                <div className="indicator-item flex size-2 items-center justify-center rounded-full bg-secondary text-[10px] text-base-100"></div>
               ) : null}
             </div>
             <span>{tab.name}</span>

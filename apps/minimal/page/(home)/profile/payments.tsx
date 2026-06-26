@@ -44,7 +44,7 @@ export default function Page() {
           ))}
         </div>
       </section>
-      <Layout.BottomInset className="flex h-[72px] w-full bg-base-100/80 px-5 py-2 backdrop-blur">
+      <Layout.BottomInset className="flex h-[72px] w-full bg-base-100/80 px-5 backdrop-blur">
         <Link className="btn btn-primary w-full rounded-2xl border-0" href="/profile/payments/methods">
           Manage payment methods
         </Link>
@@ -52,4 +52,4 @@ export default function Page() {
     </div>
   );
 }
-export const pageConfig = { topInset: true, bottomInset: 72, transition: "stack" } satisfies PageConfig;
+export const pageConfig = { topInset: 48, bottomInset: 72, transition: "stack" } satisfies PageConfig;

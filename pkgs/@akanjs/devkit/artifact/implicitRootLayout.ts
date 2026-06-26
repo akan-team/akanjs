@@ -188,6 +188,7 @@ export async function generateMetadata(props: PageProps) {
 
 export const NotFound = userLayout.NotFound ?? inheritedLayout.NotFound;
 export const Error = userLayout.Error ?? inheritedLayout.Error;
+export const pageConfig = userLayout.pageConfig ?? inheritedLayout.pageConfig;
 
 export default function GeneratedLayout({ children, params, searchParams }: LayoutProps) {
   return (
@@ -229,6 +230,7 @@ export async function generateMetadata(props: PageProps) {
 
 export const NotFound = userLayout.NotFound ?? inheritedLayout.NotFound;
 export const Error = userLayout.Error ?? inheritedLayout.Error;
+export const pageConfig = userLayout.pageConfig ?? inheritedLayout.pageConfig;
 
 export default function GeneratedLayout({ children, params, searchParams }: LayoutProps) {
   return <UserLayout params={params} searchParams={searchParams}>{children}</UserLayout>;

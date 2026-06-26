@@ -41,8 +41,7 @@ export default function LayoutComponent({ children }: { children: ReactNode }) {
 }
 
 export const pageConfig = {
-  bottomInset: true,
-  topInset: true,
+  bottomInset: 64,
   safeArea: true,
   cache: true,
   transition: "none",

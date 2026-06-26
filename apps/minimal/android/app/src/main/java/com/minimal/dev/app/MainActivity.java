@@ -1,4 +1,4 @@
-package com.minimal.app;
+package com.minimal.dev.app;
 
 import com.getcapacitor.BridgeActivity;
 

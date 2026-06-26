@@ -4,11 +4,13 @@ import {
   clearRscNavigationCache,
   clsx,
   Device,
+  debugFrame,
   defaultPageState,
   fetch,
   getPathInfo,
   initAuth,
   type Location,
+  type PageState,
   navigateRsc,
   type PathRoute,
   pathContext,
@@ -28,14 +30,17 @@ import {
   type HTMLAttributes,
   type ReactNode,
   type RefObject,
+  useCallback,
   useEffect,
   useLayoutEffect,
+  useRef,
   useState,
 } from "react";
 
 import { Gtag } from "./Gtag";
 import { Messages } from "./Messages";
 import { Reconnect } from "./Reconnect";
+import { getFrameCssVars } from "./frameCssVars";
 
 export const Client = () => {
   return <></>;
@@ -90,7 +95,7 @@ Client.Wrapper = ClientWrapper;
 interface ClientPathWrapperProps extends Omit<HTMLAttributes<HTMLDivElement>, "style"> {
   bind?: () => HTMLAttributes<HTMLDivElement>;
   wrapperRef?: RefObject<HTMLDivElement | null> | null;
-  pageType?: "current" | "prev" | "cached";
+  pageType?: "current" | "prev" | "cached" | "pending";
   location?: Location;
   initialHref?: string;
   initialPath?: string;
@@ -99,6 +104,7 @@ interface ClientPathWrapperProps extends Omit<HTMLAttributes<HTMLDivElement>, "s
   initialSearch?: string;
   initialSearchParams?: Record<string, string | string[]>;
   initialHash?: string;
+  initialPageState?: PageState;
   style?: TransitionStyle;
   prefix?: string;
   children?: ReactNode;
@@ -117,6 +123,8 @@ export const ClientPathWrapper = ({
   initialSearch,
   initialSearchParams,
   initialHash,
+  initialPageState,
+  style,
   prefix = "",
   children,
   layoutStyle = "web",
@@ -134,19 +142,28 @@ export const ClientPathWrapper = ({
     path: initialPath ?? `/${pathname.split("/").slice(2).join("/")}`,
     pathSegments: (initialPath ?? `/${pathname.split("/").slice(2).join("/")}`).split("/").filter(Boolean),
     renderPage: { render: () => <></> },
-    pageState: defaultPageState,
+    pageState: initialPageState ?? defaultPageState,
     renderRootLayouts: [],
     renderLayouts: [],
   };
   const csr = useCsr();
-  const registerFrameSlot =
-    typeof csr.registerFrameSlot === "function"
-      ? (slot: Parameters<typeof csr.registerFrameSlot>[1]) => csr.registerFrameSlot(pathRoute.path, slot)
-      : () => () => undefined;
+  const registerFrameSlot = useCallback(
+    (slot: Parameters<NonNullable<typeof csr.registerFrameSlot>>[1]) =>
+      typeof csr.registerFrameSlot === "function"
+        ? csr.registerFrameSlot(pathRoute.path, slot, pageType === "pending" ? "pending" : "active")
+        : () => undefined,
+    [csr.registerFrameSlot, pathRoute.path, pageType],
+  );
 
   // const { initialize, codepush, statManager } = useCodepush({ serverUrl: process.env.AKAN_PUBLIC_SERVER_URL ?? "" });
 
   const [gestureEnabled, setGestureEnabled] = useState(true);
+  const frameCssVars = getFrameCssVars(pathRoute.pageState);
+  const bindProps = bind && pageType !== "pending" && pathRoute.pageState.gesture && gestureEnabled ? bind() : {};
+  useEffect(() => {
+    debugFrame("pathWrapper.mount", { path: pathRoute.path, pageType, href });
+    return () => debugFrame("pathWrapper.unmount", { path: pathRoute.path, pageType, href });
+  }, []);
   // useEffect(() => {
   //   void initialize();
   //   void codepush();
@@ -172,10 +189,11 @@ export const ClientPathWrapper = ({
       }}
     >
       <animated.div
-        {...(bind && pathRoute.pageState.gesture && gestureEnabled ? bind() : {})}
+        {...bindProps}
+        {...props}
         className={clsx("group/path", className)}
         ref={wrapperRef}
-        {...props}
+        style={{ ...frameCssVars, ...(bindProps.style ?? {}), ...(style ?? {}) } as TransitionStyle}
         data-lang={lang}
         data-basepath={prefix}
         data-firstpath={firstPath}
@@ -319,10 +337,29 @@ Client.Inner = ClientInner;
 interface ClientSsrBridgeProps {
   lang: string;
   prefix?: string;
+  initialPageState?: PageState;
 }
-export const ClientSsrBridge = ({ lang, prefix = "" }: ClientSsrBridgeProps) => {
+export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientSsrBridgeProps) => {
+  const applyingSyncNavigation = useRef(false);
+  const syncHistoryRef = useRef<string[]>([]);
+  const suppressNextPopSyncRef = useRef(false);
   useEffect(() => {
     const visiblePrefix = getEnv().operationMode === "local" ? prefix : "";
+    const getSyncRouteHref = (href: string) => {
+      const url = new URL(href, window.location.origin);
+      const pathInfo = getPathInfo(`${url.pathname}${url.search}${url.hash}`, lang, visiblePrefix);
+      return `${pathInfo.path}${pathInfo.search ? `?${pathInfo.search}` : ""}${pathInfo.hash ? `#${pathInfo.hash}` : ""}`;
+    };
+    const rememberSyncNavigation = (kind: "push" | "replace" | "pop", href: string) => {
+      const syncHref = getSyncRouteHref(href);
+      const history = syncHistoryRef.current;
+      if (history.length === 0) {
+        syncHistoryRef.current = [syncHref];
+        return;
+      }
+      if (kind === "replace") history[history.length - 1] = syncHref;
+      else if (history.at(-1) !== syncHref) history.push(syncHref);
+    };
     const navigateRscWithFallback = (
       href: string,
       routeOptions: Parameters<typeof navigateRsc>[1],
@@ -342,7 +379,12 @@ export const ClientSsrBridge = ({ lang, prefix = "" }: ClientSsrBridgeProps) => 
       const url = new URL(href, window.location.origin);
       const { path } = getPathInfo(`${url.pathname}${url.search}${url.hash}`, lang, visiblePrefix);
       const searchParams = buildSearchParams(url.searchParams.entries());
-      st.set({ pathname: url.pathname, path, searchParams });
+      st.set({
+        pathname: url.pathname,
+        path,
+        searchParams,
+        ...(initialPageState ? { pageState: initialPageState } : {}),
+      });
     };
     router.init({
       type: "ssr",
@@ -352,13 +394,20 @@ export const ClientSsrBridge = ({ lang, prefix = "" }: ClientSsrBridgeProps) => 
       router: {
         push: (href, routeOptions) => {
           syncHref(href);
+          rememberSyncNavigation("push", href);
           navigateRscWithFallback(href, routeOptions, () => window.location.assign(href));
         },
         replace: (href, routeOptions) => {
           syncHref(href);
+          rememberSyncNavigation("replace", href);
           navigateRscWithFallback(href, { ...routeOptions, replace: true }, () => window.location.replace(href));
         },
         back: () => {
+          const previousSyncHref = syncHistoryRef.current.at(-2);
+          if (previousSyncHref) {
+            suppressNextPopSyncRef.current = true;
+            globalThis.__AKAN_DEV_SYNC_NAVIGATION__?.(previousSyncHref, "back");
+          }
           window.history.back();
         },
         refresh: () => {
@@ -371,20 +420,77 @@ export const ClientSsrBridge = ({ lang, prefix = "" }: ClientSsrBridgeProps) => 
         },
       },
     });
+    rememberSyncNavigation("replace", window.location.href);
     void Device.load({ lang });
-  }, [lang, prefix]);
+  }, [lang, prefix, initialPageState]);
 
   useEffect(() => {
     const visiblePrefix = getEnv().operationMode === "local" ? prefix : "";
+    const getSyncRouteHref = () => {
+      const { pathname, search, hash } = window.location;
+      const pathInfo = getPathInfo(`${pathname}${search}${hash}`, lang, visiblePrefix);
+      return `${pathInfo.path}${pathInfo.search ? `?${pathInfo.search}` : ""}${pathInfo.hash ? `#${pathInfo.hash}` : ""}`;
+    };
     const sync = () => {
       const { pathname, search, hash } = window.location;
       const { path } = getPathInfo(`${pathname}${search}${hash}`, lang, visiblePrefix);
       const searchParams = buildSearchParams(new URLSearchParams(search).entries());
-      st.set({ pathname: window.location.pathname, path, searchParams });
+      st.set({
+        pathname: window.location.pathname,
+        path,
+        searchParams,
+        ...(initialPageState ? { pageState: initialPageState } : {}),
+      });
+    };
+    const handlePopState = () => {
+      sync();
+      const syncHref = getSyncRouteHref();
+      const history = syncHistoryRef.current;
+      const previousIdx = history.lastIndexOf(syncHref);
+      if (previousIdx >= 0) syncHistoryRef.current = history.slice(0, previousIdx + 1);
+      else history.push(syncHref);
+      if (suppressNextPopSyncRef.current) {
+        suppressNextPopSyncRef.current = false;
+        return;
+      }
+      if (applyingSyncNavigation.current || globalThis.__AKAN_DEV_SYNC_NAVIGATION_APPLYING__) return;
+      globalThis.__AKAN_DEV_SYNC_NAVIGATION__?.(getSyncRouteHref(), "pop");
     };
     sync();
-    window.addEventListener("popstate", sync);
-    return () => window.removeEventListener("popstate", sync);
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [lang, prefix, initialPageState]);
+  useEffect(() => {
+    const visiblePrefix = getEnv().operationMode === "local" ? prefix : "";
+    const getCurrentSyncRouteHref = () => {
+      const { path, search, hash } = getPathInfo(
+        `${window.location.pathname}${window.location.search}${window.location.hash}`,
+        lang,
+        visiblePrefix,
+      );
+      return `${path}${search ? `?${search}` : ""}${hash ? `#${hash}` : ""}`;
+    };
+    const resetSyncNavigation = () => {
+      window.setTimeout(() => {
+        applyingSyncNavigation.current = false;
+        globalThis.__AKAN_DEV_SYNC_NAVIGATION_APPLYING__ = false;
+      }, 1000);
+    };
+    const handleSyncNavigation = (event: Event) => {
+      const { href, kind = "push" } = (event as CustomEvent<{ href?: string; kind?: "push" | "replace" | "back" | "pop" }>)
+        .detail ?? {};
+      if (!href) return;
+      const target = new URL(href, window.location.origin);
+      const targetHref = `${target.pathname}${target.search}${target.hash}`;
+      if (targetHref === getCurrentSyncRouteHref()) return;
+      applyingSyncNavigation.current = true;
+      globalThis.__AKAN_DEV_SYNC_NAVIGATION_APPLYING__ = true;
+      if (kind === "replace" || kind === "back" || kind === "pop") router.replace(targetHref, { scrollToTop: false });
+      else router.push(targetHref, { scrollToTop: false });
+      resetSyncNavigation();
+    };
+    window.addEventListener("akan:sync-navigation", handleSyncNavigation);
+    return () => window.removeEventListener("akan:sync-navigation", handleSyncNavigation);
   }, [lang, prefix]);
   return null;
 };

@@ -2,11 +2,13 @@ import type {
   Head,
   LayoutErrorRender,
   LayoutFallbackRoute,
+  PageConfig,
   LayoutNotFoundRender,
   PathRoute,
   ResolvedHead,
   RouteRender,
 } from "akanjs/client";
+import { getExplicitPageConfigKeys, resolvePageState } from "../client/frameConfig";
 import { Children, cloneElement, isValidElement, type ReactElement, type ReactNode, Suspense } from "react";
 import { resolveHeadResult } from "./metadata";
 import { type AkanRouteSegmentState, createAkanRouteSegments, createAkanSegmentOutletKey } from "./routeState";
@@ -14,6 +16,47 @@ import { isAkanRscPartialCommitEnabled } from "./rscPartialCommit";
 import { AkanSegmentOutletReference } from "./rscSegmentOutletReference";
 
 export class RouteElementComposer {
+  static async resolveSsrFramePathRoute({
+    pathRoute,
+    basePath,
+  }: {
+    pathRoute: PathRoute;
+    basePath?: string | null;
+  }): Promise<PathRoute> {
+    const pageConfigChain = await RouteElementComposer.#resolvePageConfigChain(pathRoute);
+    return {
+      ...pathRoute,
+      pageState: resolvePageState({
+        configChain: pageConfigChain,
+        path: pathRoute.path,
+        basePath: basePath ?? undefined,
+        platform: "web",
+        deviceSafeArea: { top: 0, bottom: 0 },
+        cssSafeArea: { top: 0, bottom: 0 },
+      }),
+      pageConfigChain,
+      explicitPageConfigKeys: getExplicitPageConfigKeys(pageConfigChain),
+    };
+  }
+
+  static async resolveSsrFallbackFrameState({
+    route,
+    basePath,
+  }: {
+    route: PathRoute | LayoutFallbackRoute;
+    basePath?: string | null;
+  }) {
+    const pageConfigChain = await RouteElementComposer.#resolveLayoutPageConfigChain(route);
+    return resolvePageState({
+      configChain: pageConfigChain,
+      path: route.path,
+      basePath: basePath ?? undefined,
+      platform: "web",
+      deviceSafeArea: { top: 0, bottom: 0 },
+      cssSafeArea: { top: 0, bottom: 0 },
+    });
+  }
+
   static compose({
     pathRoute,
     params,
@@ -229,6 +272,19 @@ export class RouteElementComposer {
 
   static #getRenderStack(pathRoute: PathRoute): RouteRender[] {
     return [...pathRoute.renderRootLayouts, ...pathRoute.renderLayouts, pathRoute.renderPage];
+  }
+
+  static async #resolveLayoutPageConfigChain(route: PathRoute | LayoutFallbackRoute): Promise<PageConfig[]> {
+    const configs = await Promise.all(
+      [...route.renderRootLayouts, ...route.renderLayouts].map((render) => render.getLayoutPageConfig?.()),
+    );
+    return configs.filter((config): config is PageConfig => Boolean(config));
+  }
+
+  static async #resolvePageConfigChain(pathRoute: PathRoute): Promise<PageConfig[]> {
+    const layoutConfigs = await RouteElementComposer.#resolveLayoutPageConfigChain(pathRoute);
+    const pageConfig = await pathRoute.renderPage.getPageConfig?.();
+    return [...layoutConfigs, ...(pageConfig ? [pageConfig] : [])];
   }
 
   static #composeLoadingFallback(renders: RouteRender[], params: Record<string, string>): ReactNode {

@@ -51,8 +51,11 @@ export default function Page() {
   );
 }
 export const pageConfig = {
-  topInset: false,
-  safeArea: false,
-  bottomInset: true,
+  topInset: 0,
+  safeArea: {
+    top: false,
+    bottom: true,
+  },
+  bottomInset: 192,
   transition: "fade",
 } satisfies PageConfig;

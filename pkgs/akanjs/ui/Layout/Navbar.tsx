@@ -1,7 +1,7 @@
 "use client";
 import { getEnv } from "akanjs/base";
-import { clsx, DEFAULT_TOP_INSET, usePathCtx } from "akanjs/client";
-import { type ReactNode, useEffect, useState } from "react";
+import { clsx, debugFrame, DEFAULT_TOP_INSET, usePathCtx } from "akanjs/client";
+import { type ReactNode, useLayoutEffect } from "react";
 import { BiChevronLeft } from "react-icons/bi";
 
 import { Link } from "../Link";
@@ -18,30 +18,42 @@ export interface NavbarProps {
 }
 
 export const Navbar = ({ back = false, className, height, children, title, left, right }: NavbarProps) => {
-  const [render, setRender] = useState(false);
   const pathCtx = usePathCtx();
-  const { location } = pathCtx;
+  const path = pathCtx.location?.pathRoute?.path;
   const registerFrameSlot = pathCtx.registerFrameSlot ?? (() => () => undefined);
-  const suffix = getEnv().renderMode === "csr" ? `-${location.pathRoute.path}` : "";
-  useEffect(() => {
-    setRender(true);
-  }, []);
-  useEffect(
-    () =>
-      registerFrameSlot({
+  const suffix = getEnv().renderMode === "csr" && path ? `-${path}` : "";
+  useLayoutEffect(() => {
+    if (!path) return;
+    debugFrame("navbar.mount", { path, height });
+    return () => debugFrame("navbar.unmount", { path, height });
+  }, [path, height]);
+  useLayoutEffect(
+    () => {
+      if (!path) return;
+      return registerFrameSlot({
         type: "topInset",
         scope: "page",
         source: "navbar",
         estimatedHeight: height ?? DEFAULT_TOP_INSET,
         height,
-      }),
-    [registerFrameSlot, height],
+      });
+    },
+    [registerFrameSlot, height, path],
   );
-  if (!render) return null;
   return (
     <>
       <Portal id={`topInsetContent${suffix}`}>
-        <div className={clsx("size-full", className)}>{children}</div>
+        <div
+          className={clsx(
+            "flex size-full items-center px-5",
+            {
+              "pl-14": back,
+            },
+            className,
+          )}
+        >
+          {children}
+        </div>
       </Portal>
       {back ? (
         <Portal id={`topLeftActionContent${suffix}`}>

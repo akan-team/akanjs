@@ -159,12 +159,14 @@ try {
       env = "local",
       target,
       regenerate = false,
+      noAllowProvisioningUpdates = false,
     }: {
       open?: boolean;
       operation?: "local" | "release";
       env?: MobileEnv;
       target?: string;
       regenerate?: boolean;
+      noAllowProvisioningUpdates?: boolean;
     } = {},
   ) {
     const targets = await resolveMobileTargets(app, target);
@@ -172,7 +174,7 @@ try {
     // else await this.start(app);
     await this.#runMobileTargets(targets, async (mobileTarget) => {
       const capacitorApp = new CapacitorApp(app, mobileTarget.config);
-      await capacitorApp.runIos({ operation, env, regenerate });
+      await capacitorApp.runIos({ operation, env, regenerate, noAllowProvisioningUpdates });
       if (open) await capacitorApp.openIos();
     });
   }

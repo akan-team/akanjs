@@ -112,7 +112,11 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .option("release", Boolean, { desc: "release mode", default: false })
     .option("write", Boolean, { desc: "write code generation", default: true })
     .option("regenerate", Boolean, { flag: "g", desc: "delete and regenerate native project", default: false })
-    .exec(async function (app, target, env, open, release, write, regenerate) {
+    .option("noAllowProvisioningUpdates", Boolean, {
+      desc: "disable automatic iOS provisioning updates for physical devices",
+      default: false,
+    })
+    .exec(async function (app, target, env, open, release, write, regenerate, noAllowProvisioningUpdates) {
       await this.applicationScript.startIos(app, {
         target,
         env: asMobileEnv(env),
@@ -120,6 +124,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
         operation: release ? "release" : "local",
         write,
         regenerate,
+        noAllowProvisioningUpdates,
       });
     }),
   startAndroid: target({ short: true, desc: "Start Android app in emulator or device" })

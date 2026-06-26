@@ -104,6 +104,37 @@ describe("RouteTreeBuilder implicit locale", () => {
     ).toBe("root");
   });
 
+  test("resolves SSR frame state from layout and page config chain", async () => {
+    const routes = new RouteTreeBuilder({
+      "./__root_layout.tsx": async () => ({
+        default: ({ children }: { children: ReactNode }) => children,
+        pageConfig: { safeArea: true, topInset: 48 },
+      }),
+      "./foo/_layout.tsx": async () => ({
+        default: ({ children }: { children: ReactNode }) => children,
+        pageConfig: { bottomInset: 64 },
+      }),
+      "./foo/detail.tsx": async () => ({
+        default: () => null,
+        pageConfig: { topInset: 96, transition: "stack" },
+      }),
+    }).build();
+    const matched = RouteTreeBuilder.match("/ko/foo/detail", routes);
+    if (!matched) throw new Error("route did not match");
+
+    const resolved = await RouteElementComposer.resolveSsrFramePathRoute({ pathRoute: matched.pathRoute });
+
+    expect(resolved.pageConfigChain).toHaveLength(3);
+    expect(resolved.explicitPageConfigKeys).toMatchObject({ safeArea: true, topInset: true, bottomInset: true });
+    expect(resolved.pageState).toMatchObject({
+      topInset: 96,
+      bottomInset: 64,
+      topSafeArea: 0,
+      bottomSafeArea: 0,
+      transition: "stack",
+    });
+  });
+
   test("allows generated internal root layouts to expose head and metadata channels", async () => {
     const routes = new RouteTreeBuilder({
       "./__root_layout.tsx": async () => ({

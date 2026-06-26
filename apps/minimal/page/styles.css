@@ -5,24 +5,3 @@
   logs: false;
   exclude: properties;
 }
-
-@layer components {
-  .apptest-screen {
-    @apply min-h-screen bg-base-100 text-base-content;
-  }
-  .apptest-nav {
-    @apply border-base-content/10 border-b bg-base-100/80 px-5 backdrop-blur;
-  }
-  .apptest-card {
-    @apply border border-base-content/10 bg-base-200/70;
-  }
-  .apptest-card-soft {
-    @apply bg-base-content/5;
-  }
-  .apptest-muted {
-    @apply text-base-content/50;
-  }
-  .apptest-subtle {
-    @apply text-base-content/40;
-  }
-}

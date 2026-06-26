@@ -746,6 +746,6 @@ export default function Page() {
 
 export const pageConfig: PageConfig = {
   safeArea: true,
-  topInset: true,
-  bottomInset: true,
+  topInset: 48,
+  bottomInset: 60,
 };

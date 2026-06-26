@@ -21,6 +21,7 @@ export default function SsrLink({
   const prefix = pathCtx.prefix;
   const { lang, path: pagePath } = usePage();
   const currentPath = pathCtx.location?.pathRoute?.path ?? getPathInfo(pagePath, lang, prefix ?? "").path;
+  void noCache;
   const isExternal = href.startsWith("http") || href.startsWith("mailto:") || href.startsWith("tel:");
   const internalPathInfo = getPathInfo(href, lang, prefix ?? "");
   const publicPathInfo = getPathInfo(href, lang, "");

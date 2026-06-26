@@ -128,7 +128,10 @@ export class ApiRouter {
       },
       message: async (ws, message) => {
         const data = ws.data as WsTaggedData | undefined;
-        if (data?.kind === "akan-hmr") return; // dev HMR is one-way (server→client)
+        if (data?.kind === "akan-hmr") {
+          if (typeof message === "string" && typeof hmrHub?.handleMessage === "function") hmrHub.handleMessage(message);
+          return;
+        }
         try {
           if (typeof message === "string") {
             const msg = JSON.parse(message) as WebsocketReqData;

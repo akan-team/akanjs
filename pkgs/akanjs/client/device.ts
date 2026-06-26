@@ -1,5 +1,6 @@
 "use client";
 import type { RefObject } from "react";
+import { debugFrame } from "./frameDebug";
 import type {
   CapacitorDeviceInfo,
   CapacitorHapticsModule,
@@ -114,6 +115,7 @@ export class Device {
         insets: { top: topSafeArea, bottom: bottomSafeArea },
       },
     ] = await Promise.all([CapacitorDevice.getInfo(), CapacitorDevice.getLanguageCode(), SafeArea.getSafeAreaInsets()]);
+    if (info.platform === "ios") await Keyboard.setResizeMode?.({ mode: "none" });
     const predefinedLangPath = window.location.pathname.split("/")[1]?.split("?")[0];
     const predefinedLang = supportLanguages.find((language) => language === predefinedLangPath);
     const device = new Device({
@@ -165,17 +167,24 @@ export class Device {
   }
   listenKeyboardChanged(onKeyboardChanged: (height: number) => void) {
     if (this.info.platform === "web") return;
+    let currentHeight = 0;
+    const emitKeyboardHeight = (event: string, height: number) => {
+      debugFrame("keyboard.event", { event, height, previousHeight: currentHeight });
+      if (currentHeight === height) return;
+      currentHeight = height;
+      onKeyboardChanged(height);
+    };
     void this.#keyboard.addListener("keyboardWillShow", (keyboard: CapacitorKeyboardInfo) => {
-      onKeyboardChanged(keyboard.keyboardHeight);
+      emitKeyboardHeight("keyboardWillShow", keyboard.keyboardHeight);
     });
     void this.#keyboard.addListener("keyboardDidShow", (keyboard: CapacitorKeyboardInfo) => {
-      onKeyboardChanged(keyboard.keyboardHeight);
+      emitKeyboardHeight("keyboardDidShow", keyboard.keyboardHeight);
     });
     void this.#keyboard.addListener("keyboardWillHide", () => {
-      onKeyboardChanged(0);
+      emitKeyboardHeight("keyboardWillHide", 0);
     });
     void this.#keyboard.addListener("keyboardDidHide", () => {
-      onKeyboardChanged(0);
+      emitKeyboardHeight("keyboardDidHide", 0);
     });
   }
   unlistenKeyboardChanged() {

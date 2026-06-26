@@ -259,6 +259,7 @@ export class ApplicationScript extends script("application", [
       write = true,
       target,
       regenerate = false,
+      noAllowProvisioningUpdates = false,
     }: {
       operation?: MobileOperation;
       env?: MobileEnv;
@@ -266,6 +267,7 @@ export class ApplicationScript extends script("application", [
       write?: boolean;
       target?: string;
       regenerate?: boolean;
+      noAllowProvisioningUpdates?: boolean;
     } = {},
   ) {
     await app.scanSync({ write });
@@ -275,6 +277,7 @@ export class ApplicationScript extends script("application", [
       env,
       target,
       regenerate,
+      noAllowProvisioningUpdates,
     });
   }
   async releaseIos(

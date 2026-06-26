@@ -63,6 +63,7 @@ describe("resolveSsrPageEntries", () => {
     expect(generatedSource).not.toContain("Object.keys(inheritedLayout.metadata)");
     expect(generatedSource).toContain("export const NotFound = userLayout.NotFound ?? inheritedLayout.NotFound;");
     expect(generatedSource).toContain("export const Error = userLayout.Error ?? inheritedLayout.Error;");
+    expect(generatedSource).toContain("export const pageConfig = userLayout.pageConfig ?? inheritedLayout.pageConfig;");
     expect(generatedSource).toContain(
       "<UserLayout params={params} searchParams={searchParams}>{children}</UserLayout>",
     );

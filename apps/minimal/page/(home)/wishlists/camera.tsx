@@ -5,19 +5,9 @@ import { AiOutlineClose } from "react-icons/ai";
 export default function Page() {
   return (
     <>
-      <Layout.Navbar
-        right={
-          // <div className="absolute top-6 left-6 z-10 flex h-12 w-12 items-center justify-center rounded-2xl bg-base-content/10 backdrop-blur">
-          <></>
-
-          // </div>
-        }
-        // className="apptest-nav"
-      >
-        <Link.Back>
-          <div className="m-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-base-content/10 backdrop-blur">
-            <AiOutlineClose className="text-3xl" />
-          </div>
+      <Layout.Navbar back>
+        <Link.Back className="m-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-base-content/10 backdrop-blur">
+          <AiOutlineClose className="text-3xl" />
         </Link.Back>
       </Layout.Navbar>
       <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-base-100 text-base-content">
@@ -32,7 +22,11 @@ export default function Page() {
           <p className="mt-6 font-semibold text-2xl">Camera preview</p>
           <p className="apptest-muted mt-2 text-sm">Capture your favorite places and save them to your wishlist.</p>
         </div>
-        <Layout.BottomInset className="flex h-[72px] w-full bg-base-100/70 px-5 py-2 backdrop-blur" keyboardSticky>
+        <Layout.BottomInset
+          className="flex h-[72px] w-full bg-base-100/70 px-5 py-2 backdrop-blur"
+          estimatedHeight={pageConfig.bottomInset}
+          keyboardSticky
+        >
           <button className="btn btn-primary h-full w-full rounded-2xl border-0">Take photo</button>
         </Layout.BottomInset>
       </div>

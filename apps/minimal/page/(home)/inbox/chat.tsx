@@ -4,10 +4,10 @@ import { AiOutlineSend } from "react-icons/ai";
 
 export default function Page() {
   return (
-    <div className="apptest-screen pb-20">
+    <div className="apptest-screen">
       <Layout.Navbar className="apptest-nav" back>
         <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-2xl bg-gradient-to-br from-primary to-secondary" />
+          <div className="h-9 w-9 rounded-2xl bg-linear-to-br from-primary to-secondary" />
           <div>
             <div className="font-semibold">Seolleung host</div>
             <div className="text-success text-xs">online now</div>
@@ -24,9 +24,39 @@ export default function Page() {
         <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-base-200 p-4 text-base-content/75 text-sm">
           I recommend the public parking lot behind the building. It is a 2-minute walk away.
         </div>
+        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-base-200 p-4 text-base-content/75 text-sm">
+          Hello. Check-in starts at 3 PM, and I will send the door lock instructions that morning.
+        </div>
+        <div className="ml-auto max-w-[78%] rounded-3xl rounded-tr-md bg-primary p-4 text-primary-content text-sm">
+          Thank you. Is there parking available nearby?
+        </div>
+        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-base-200 p-4 text-base-content/75 text-sm">
+          I recommend the public parking lot behind the building. It is a 2-minute walk away.
+        </div>
+        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-base-200 p-4 text-base-content/75 text-sm">
+          Hello. Check-in starts at 3 PM, and I will send the door lock instructions that morning.
+        </div>
+        <div className="ml-auto max-w-[78%] rounded-3xl rounded-tr-md bg-primary p-4 text-primary-content text-sm">
+          Thank you. Is there parking available nearby?
+        </div>
+        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-base-200 p-4 text-base-content/75 text-sm">
+          I recommend the public parking lot behind the building. It is a 2-minute walk away.
+        </div>
+        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-base-200 p-4 text-base-content/75 text-sm">
+          Hello. Check-in starts at 3 PM, and I will send the door lock instructions that morning.
+        </div>
+        <div className="ml-auto max-w-[78%] rounded-3xl rounded-tr-md bg-primary p-4 text-primary-content text-sm">
+          Thank you. Is there parking available nearby?
+        </div>
+        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-base-200 p-4 text-base-content/75 text-sm">
+          I recommend the public parking lot behind the building. It is a 2-minute walk away.
+        </div>
       </div>
-      <Layout.BottomInset className="flex h-[72px] w-full bg-base-100/80 px-3 py-2 backdrop-blur" keyboardSticky>
-        <div className="apptest-card flex h-16 w-full items-center justify-center gap-2 rounded-3xl px-3">
+      <Layout.BottomInset
+        className="flex h-(--akan-bottom-inset) w-full bg-base-100/80 px-3 py-2 backdrop-blur"
+        keyboardSticky
+      >
+        <div className="apptest-card flex h-full w-full items-center justify-center gap-2 rounded-3xl px-3">
           <input
             className="input w-full border-0 bg-transparent text-base-content placeholder:text-base-content/35 focus:outline-none"
             placeholder="Type message..."
@@ -40,7 +70,7 @@ export default function Page() {
   );
 }
 export const pageConfig = {
-  topInset: true,
+  topInset: 48,
   bottomInset: 72,
   safeArea: true,
   transition: "stack",

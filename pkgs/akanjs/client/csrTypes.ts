@@ -20,11 +20,10 @@ export type PageSafeAreaConfig =
 export interface PageConfig {
   transition?: TransitionType;
   safeArea?: PageSafeAreaConfig;
-  topInset?: boolean | number;
-  /**
-   * @default 48px
-   */
-  bottomInset?: boolean | number;
+  /** Top chrome reservation in px. Use 0 or omit for no reservation. */
+  topInset?: number;
+  /** Bottom chrome reservation in px. Use 0 or omit for no reservation. */
+  bottomInset?: number;
   gesture?: boolean;
   cache?: boolean;
   /**
@@ -247,8 +246,8 @@ export const defaultPageState: PageState = {
   bottomInset: 0,
   gesture: true,
   cache: false,
-  topSafeAreaColor: "transparent",
-  bottomSafeAreaColor: "transparent",
+  topSafeAreaColor: "var(--color-base-100, Canvas)",
+  bottomSafeAreaColor: "var(--color-base-100, Canvas)",
 };
 
 export interface Location {
@@ -260,9 +259,23 @@ export interface Location {
   pathRoute: PathRoute;
   hash: string;
 }
+export type CsrNavigationPhase = "idle" | "preparing" | "transitioning";
+export type CsrNavigationKind = "push" | "replace" | "back" | "popForward" | "popBack";
+export interface NavigationIntent {
+  id: number;
+  kind: CsrNavigationKind;
+  from: Location;
+  to: Location;
+  scrollTop: number;
+  scrollToTop?: boolean;
+  createdAt: number;
+}
 export interface LocationState {
   location: Location;
   prevLocation: Location | null;
+  pendingLocation?: Location | null;
+  navigationIntent?: NavigationIntent | null;
+  phase: CsrNavigationPhase;
 }
 export interface History {
   type: "initial" | "forward" | "back";
@@ -285,6 +298,9 @@ export interface RouteState {
   clientHeight: number;
   location: Location;
   prevLocation: Location | null;
+  pendingLocation: Location | null;
+  navigationIntent: NavigationIntent | null;
+  phase: CsrNavigationPhase;
   history: RefObject<History>;
   topSafeAreaRef: RefObject<HTMLDivElement | null>;
   bottomSafeAreaRef: RefObject<HTMLDivElement | null>;
@@ -294,7 +310,8 @@ export interface RouteState {
   onBack: RefObject<{ [K in TransitionType]?: () => Promise<void> }>;
   router: RouterInstance;
   pathRoutes: PathRoute[];
-  registerFrameSlot: (path: string, slot: FrameSlotRegistration) => () => void;
+  registerFrameSlot: (path: string, slot: FrameSlotRegistration, bucket?: FrameSlotBucket) => () => void;
+  frameLayout: FrameLayoutState;
 }
 
 export type UseCsrTransition = CsrTransitionStyles & {
@@ -315,7 +332,7 @@ export const useCsr = () => {
 };
 
 export interface PathContextType {
-  pageType: "current" | "prev" | "cached";
+  pageType: "current" | "prev" | "cached" | "pending";
   location: Location;
   prefix?: string;
   gestureEnabled: boolean;
@@ -343,12 +360,88 @@ export interface PathRoute {
 
 export type FrameSlotScope = "page" | "layout";
 export type FrameSlotType = "topInset" | "bottomInset";
+export type FrameSlotBucket = "active" | "pending";
+export type FrameLayer = "page" | "topChrome" | "bottomChrome" | "keyboard" | "overlay";
+export type FrameSlotRole = "topChrome" | "bottomChrome" | "keyboardAccessory";
+export type FramePlatformProfile = "ios" | "android" | "web" | "mobileWeb";
+export interface FrameViewportState {
+  width: number;
+  height: number;
+  visualWidth: number;
+  visualHeight: number;
+  visualOffsetTop: number;
+}
+export interface KeyboardFrameState {
+  height: number;
+  offset: number;
+  visible: boolean;
+  sticky: boolean;
+  frozen?: boolean;
+  source?: "native" | "visualViewport" | "fallback";
+  animationDuration?: number;
+  animationEasing?: string;
+}
+export interface FrameContentViewportState {
+  top: number;
+  bottom: number;
+  height: number;
+}
+export interface KeyboardAccessoryFrameState {
+  top: number;
+  bottom: number;
+  height: number;
+  visible: boolean;
+  slotHeight: number;
+}
+export interface FrameSnapshot {
+  location: Location;
+  pageState: PageState;
+  viewport: FrameViewportState;
+  frameSlots: FrameSlotRegistration[];
+  measuredAt: number;
+}
+export interface TransitionActionContext {
+  plan: TransitionPlan;
+}
+export interface TransitionAction {
+  type: "page" | "topChrome" | "bottomChrome" | "keyboard" | "safeArea" | (string & {});
+  run: (ctx: TransitionActionContext) => Promise<void> | void;
+}
+export interface TransitionPlan {
+  id: number;
+  intent: NavigationIntent;
+  type: TransitionType;
+  direction: "forward" | "back";
+  fromFrame: FrameSnapshot;
+  toFrame: FrameSnapshot;
+  actions: TransitionAction[];
+  duration: number;
+}
+export interface FrameLayerZIndex {
+  page: number;
+  previousPage: number;
+  cachedPage: number;
+  topChrome: number;
+  bottomChrome: number;
+  keyboard: number;
+  overlay: number;
+}
+export interface FrameLayoutState {
+  viewport: FrameViewportState;
+  keyboard: KeyboardFrameState;
+  contentViewport: FrameContentViewportState;
+  keyboardAccessory: KeyboardAccessoryFrameState;
+  platformProfile: FramePlatformProfile;
+  zIndex: FrameLayerZIndex;
+  pageStateByPath: Map<string, PageState>;
+}
 export interface FrameSlotRegistration {
   scope?: FrameSlotScope;
   type: FrameSlotType;
+  role?: FrameSlotRole;
   height?: number;
   estimatedHeight?: number;
-  source?: "navbar" | "bottomInset" | "bottomTab" | (string & {});
+  source?: "navbar" | "topInset" | "bottomInset" | "bottomTab" | (string & {});
   cache?: boolean;
 }
 

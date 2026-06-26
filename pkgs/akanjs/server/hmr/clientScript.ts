@@ -9,15 +9,24 @@
 //   { type: "rsc-refresh", buildId }     → RSC tree refresh without document reload
 //   { type: "client-refresh", buildId }  → React Fast Refresh, with RSC fallback
 //   { type: "css-update", cssAssets }    → atomic current-subroute <link> swap, no reload
+//   { type: "sync-navigation", href }    → dev-only cross-client navigation sync
 //   { type: "error", message }           → forwarded build error, console only
 //
 // The server-rendered HTML tags the "active" stylesheet with
 // data-akan-css="active" (see rscWorker.tsx) so swapCss can remove the stale
 // one after the new stylesheet has finished loading without a flash of
 // unstyled content.
+const SYNC_NAVIGATION_ENABLED =
+  process.env.AKAN_PUBLIC_SYNC_DOMAIN === "true" ||
+  process.env.AKAN_PUBLIC_SYNC_DOMAIN === "1" ||
+  process.env.SYNC_DOMAIN === "true" ||
+  process.env.SYNC_DOMAIN === "1";
+
 export const HMR_CLIENT_SCRIPT = `(function(){
   if (self.__AKAN_HMR_INSTALLED__) return;
   self.__AKAN_HMR_INSTALLED__ = true;
+  var syncNavigationEnabled = ${JSON.stringify(SYNC_NAVIGATION_ENABLED)};
+  var syncNavigationClientId = Math.random().toString(36).slice(2) + Date.now().toString(36);
   var proto = location.protocol === "https:" ? "wss:" : "ws:";
   var url = proto + "//" + location.host + "/_akan/hmr";
   var attempts = 0;
@@ -35,6 +44,19 @@ export const HMR_CLIENT_SCRIPT = `(function(){
   var overlayNextToken = 1;
   var overlayJobs = {};
   self.__AKAN_HMR_PHASE__ = null;
+  self.__AKAN_DEV_SYNC_NAVIGATION__ = function(href, kind){
+    if (self.__AKAN_DEV_SYNC_NAVIGATION_APPLYING__ || !syncNavigationEnabled || !socket || socket.readyState !== WebSocket.OPEN) return;
+    try {
+      socket.send(JSON.stringify({
+        type: "sync-navigation",
+        clientId: syncNavigationClientId,
+        href: new URL(href, location.origin).pathname + new URL(href, location.origin).search + new URL(href, location.origin).hash,
+        kind: kind || "push"
+      }));
+    } catch(e) {
+      console.warn("[akan-hmr] sync navigation send failed", e);
+    }
+  };
 
   // Bun's React Fast Refresh transform can emit top-level calls to these globals
   // even when we fall back to full reload instead of applying React Refresh.
@@ -86,6 +108,13 @@ export const HMR_CLIENT_SCRIPT = `(function(){
           beginHmrOverlay("Reloading...", true);
           location.reload();
         }
+        return;
+      }
+      if (msg.type === "sync-navigation") {
+        if (!syncNavigationEnabled || msg.clientId === syncNavigationClientId || !msg.href) return;
+        window.dispatchEvent(new CustomEvent("akan:sync-navigation", {
+          detail: { href: msg.href, kind: msg.kind || "push" }
+        }));
         return;
       }
       if (msg.type === "error") { console.error("[akan-hmr]", msg.message); return; }

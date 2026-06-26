@@ -28,4 +28,4 @@ export default function Page() {
     </div>
   );
 }
-export const pageConfig = { topInset: true, transition: "stack" } satisfies PageConfig;
+export const pageConfig = { topInset: 48, transition: "stack" } satisfies PageConfig;

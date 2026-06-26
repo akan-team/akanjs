@@ -1,11 +1,14 @@
 import { cp, mkdir, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
+import type { CapacitorConfig } from "@capacitor/cli";
+import { select } from "@inquirer/prompts";
 import { MobileProject } from "@trapezedev/project";
 import type { AndroidProject } from "@trapezedev/project/dist/android/project";
 import type { IosProject } from "@trapezedev/project/dist/ios/project";
 import { capitalize } from "akanjs/common";
 import type { AkanMobileTargetConfig } from "./akanConfig";
-import type { AppExecutor } from "./executors";
+import { type AppExecutor, CommandExecutionError } from "./executors";
 import { FileEditor } from "./fileEditor";
 import { resolveMobilePath, targetHtmlFilename } from "./mobile";
 
@@ -15,7 +18,516 @@ interface RunConfig {
   regenerate?: boolean;
 }
 
+interface RunIosConfig extends RunConfig {
+  noAllowProvisioningUpdates?: boolean;
+  iosDeviceId?: string;
+}
+
 interface PrepareConfig extends RunConfig {}
+
+type MobileCommandEnv = Record<string, string | undefined>;
+
+export type IosRunTargetKind = "device" | "simulator";
+export interface IosRunTarget {
+  id: string;
+  name: string;
+  kind: IosRunTargetKind;
+  state?: string;
+  devicectlId?: string;
+  xcodebuildId?: string;
+}
+
+export interface IosNativeRunCommand {
+  xcodebuildArgs: string[];
+  appPath: string;
+  configuration: "Debug" | "Release";
+  derivedDataPath: string;
+}
+
+export type IosRunFailureKind =
+  | "apple-account"
+  | "bundle-identifier"
+  | "compiler-toolchain"
+  | "team-permission"
+  | "license-agreement"
+  | "certificate"
+  | "provisioning-profile"
+  | "device-registration"
+  | "device-state"
+  | "devicectl-unavailable"
+  | "unknown";
+
+export interface IosRunFailureClassification {
+  kind: IosRunFailureKind;
+  title: string;
+  detail: string;
+}
+
+const iosNativeBlockedEnvKeys = new Set([
+  "AR",
+  "AS",
+  "CC",
+  "CFLAGS",
+  "CONDA_BUILD_SYSROOT",
+  "CONDA_PREFIX",
+  "CPP",
+  "CPPFLAGS",
+  "CPATH",
+  "CXX",
+  "CXXFLAGS",
+  "LD",
+  "LDFLAGS",
+  "LIBRARY_PATH",
+  "MACOSX_DEPLOYMENT_TARGET",
+  "NM",
+  "OBJC",
+  "OBJCXX",
+  "PREFIX",
+  "RANLIB",
+  "SDKROOT",
+  "STRIP",
+]);
+
+export const rootCapacitorConfigFilenames = [
+  "capacitor.config.ts",
+  "capacitor.config.js",
+  "capacitor.config.json",
+] as const;
+
+export const rootCapacitorConfigPaths = (appRoot: string) =>
+  rootCapacitorConfigFilenames.map((file) => path.join(appRoot, file));
+
+export async function clearRootCapacitorConfigs(appRoot: string) {
+  await Promise.all(rootCapacitorConfigPaths(appRoot).map((file) => rm(file, { force: true })));
+}
+
+export async function writeRootCapacitorConfig(appRoot: string, content: string) {
+  await clearRootCapacitorConfigs(appRoot);
+  await Bun.write(path.join(appRoot, "capacitor.config.json"), content);
+}
+
+interface MaterializeCapacitorConfigOptions {
+  operation: RunConfig["operation"];
+  localServerUrl?: string;
+  localIp?: string;
+}
+
+const getLocalIP = () => {
+  const interfaces = os.networkInterfaces();
+  for (const iface of Object.values(interfaces)) {
+    if (!iface) continue;
+    for (const alias of iface) {
+      if (alias.family === "IPv4" && !alias.internal) return alias.address;
+    }
+  }
+  return "127.0.0.1";
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const asString = (value: unknown) => (typeof value === "string" ? value : undefined);
+
+const firstString = (...values: unknown[]) => values.find((value): value is string => typeof value === "string");
+
+const scoreIosDeviceTarget = (target: IosRunTarget) => {
+  const state = target.state?.toLowerCase() ?? "";
+  return (state.includes("available") ? 4 : 0) + (state.includes("wired") ? 2 : 0) + (state.includes("paired") ? 1 : 0);
+};
+
+const dedupeIosRunTargets = (targets: IosRunTarget[]) => {
+  const byKey = new Map<string, IosRunTarget>();
+  const runnableTargets = targets.filter((target) => !target.state?.toLowerCase().includes("unavailable"));
+  for (const target of runnableTargets) {
+    const key = target.xcodebuildId ?? target.id;
+    const current = byKey.get(key);
+    if (!current || scoreIosDeviceTarget(target) > scoreIosDeviceTarget(current)) byKey.set(key, target);
+  }
+  return [...byKey.values()];
+};
+
+function walkRecords(value: unknown, visit: (record: Record<string, unknown>) => void) {
+  if (Array.isArray(value)) {
+    for (const item of value) walkRecords(item, visit);
+    return;
+  }
+  if (!isRecord(value)) return;
+  visit(value);
+  for (const item of Object.values(value)) walkRecords(item, visit);
+}
+
+export function parseDevicectlDevices(output: string): IosRunTarget[] {
+  try {
+    const json = JSON.parse(output) as unknown;
+    const targets = new Map<string, IosRunTarget>();
+    walkRecords(json, (record) => {
+      const deviceProperties = isRecord(record.deviceProperties) ? record.deviceProperties : {};
+      const hardwareProperties = isRecord(record.hardwareProperties) ? record.hardwareProperties : {};
+      const connectionProperties = isRecord(record.connectionProperties) ? record.connectionProperties : {};
+      const devicectlId = firstString(record.identifier, record.deviceIdentifier);
+      const potentialHostnames = Array.isArray(connectionProperties.potentialHostnames)
+        ? connectionProperties.potentialHostnames.filter((value): value is string => typeof value === "string")
+        : [];
+      const hostnameUdid = potentialHostnames
+        .map((hostname) => hostname.match(/([0-9A-Fa-f]{8}-[0-9A-Fa-f]{16})\.coredevice\.local/)?.[1])
+        .find((value): value is string => Boolean(value));
+      const udid = firstString(hardwareProperties.udid, hostnameUdid, record.udid, record.UDID);
+      const id = udid ?? devicectlId;
+      const name = firstString(deviceProperties.name, record.name, record.deviceName, record.displayName);
+      if (!id || !name) return;
+      const state = [
+        firstString(record.state, record.connectionState, record.availability, connectionProperties.tunnelState),
+        firstString(connectionProperties.transportType),
+        firstString(connectionProperties.pairingState),
+      ]
+        .filter(Boolean)
+        .join(" ");
+      targets.set(id, { id, name, kind: "device", state, devicectlId, xcodebuildId: udid ?? id });
+    });
+    return dedupeIosRunTargets([...targets.values()]);
+  } catch {
+    const targets: IosRunTarget[] = [];
+    for (const line of output.split(/\r?\n/)) {
+      const id = line.match(/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{16}|[0-9A-Fa-f-]{25,}/)?.[0];
+      if (!id) continue;
+      const name = line.replace(id, "").replace(/[()]/g, " ").trim().replace(/\s+/g, " ") || id;
+      targets.push({ id, name, kind: "device" });
+    }
+    return dedupeIosRunTargets(targets);
+  }
+}
+
+export function parseSimctlDevices(output: string): IosRunTarget[] {
+  try {
+    const json = JSON.parse(output) as { devices?: Record<string, unknown[]> };
+    const devices = json.devices ?? {};
+    return Object.values(devices)
+      .flatMap((runtimeDevices) => runtimeDevices)
+      .filter(isRecord)
+      .flatMap((device) => {
+        const id = firstString(device.udid, device.UDID, device.identifier);
+        const name = firstString(device.name, device.displayName);
+        const isAvailable = device.isAvailable !== false && device.availabilityError === undefined;
+        if (!id || !name || !isAvailable) return [];
+        return [{ id, name, kind: "simulator" as const, state: asString(device.state) }];
+      });
+  } catch {
+    const targets: IosRunTarget[] = [];
+    for (const line of output.split(/\r?\n/)) {
+      const match = line.match(/^\s*(.+?)\s+\(([0-9A-Fa-f-]{20,})\)\s+\(([^)]+)\)/);
+      if (!match) continue;
+      targets.push({ id: match[2], name: match[1].trim(), kind: "simulator", state: match[3] });
+    }
+    return targets;
+  }
+}
+
+export function buildIosNativeRunCommand({
+  appRoot,
+  device,
+  scheme = "App",
+  configuration = "Debug",
+}: {
+  appRoot: string;
+  device: IosRunTarget;
+  scheme?: string;
+  configuration?: "Debug" | "Release";
+}): IosNativeRunCommand {
+  const derivedDataPath = path.join(appRoot, "ios/DerivedData", device.id);
+  const productPlatform = device.kind === "device" ? "iphoneos" : "iphonesimulator";
+  const destination =
+    device.kind === "device" ? `id=${device.xcodebuildId ?? device.id}` : `platform=iOS Simulator,id=${device.id}`;
+  return {
+    configuration,
+    derivedDataPath,
+    appPath: path.join(derivedDataPath, "Build/Products", `${configuration}-${productPlatform}`, "App.app"),
+    xcodebuildArgs: [
+      "-project",
+      "App.xcodeproj",
+      "-scheme",
+      scheme,
+      "-configuration",
+      configuration,
+      "-destination",
+      destination,
+      "-derivedDataPath",
+      derivedDataPath,
+      "build",
+    ],
+  };
+}
+
+export function classifyIosRunFailure(log: string): IosRunFailureClassification {
+  const lower = log.toLowerCase();
+  if (lower.includes("unknown argument: '-index-store-path'") || lower.includes("compiler was not recognized")) {
+    return {
+      kind: "compiler-toolchain",
+      title: "iOS build is using a non-Xcode compiler from the shell environment.",
+      detail:
+        "Akan removes common Conda/compiler environment variables for native iOS runs. If this persists, run outside the activated toolchain environment.",
+    };
+  }
+  if (lower.includes("developer mode") && lower.includes("disabled")) {
+    return {
+      kind: "device-state",
+      title: "iOS device Developer Mode is disabled.",
+      detail: "Enable Developer Mode on the iPhone, then reconnect and run the command again.",
+    };
+  }
+  if (lower.includes("untrusted") || lower.includes("not paired") || lower.includes("locked")) {
+    return {
+      kind: "device-state",
+      title: "iOS device is not ready for installation.",
+      detail: "Unlock the iPhone, trust this computer, and make sure the device is paired before retrying.",
+    };
+  }
+  if (
+    lower.includes('unable to find utility "devicectl"') ||
+    (lower.includes("devicectl") && lower.includes("not found"))
+  ) {
+    return {
+      kind: "devicectl-unavailable",
+      title: "Xcode devicectl is not available.",
+      detail: "Install a recent Xcode version and verify xcode-select points to that Xcode installation.",
+    };
+  }
+  if (
+    lower.includes("there are no accounts registered with xcode") ||
+    lower.includes("unable to log in with account")
+  ) {
+    return {
+      kind: "apple-account",
+      title: "Xcode Apple ID is not available.",
+      detail: "Sign in to an Apple ID in Xcode Settings > Accounts, then retry the Akan iOS command.",
+    };
+  }
+  if (
+    lower.includes("failed registering bundle identifier") ||
+    lower.includes("cannot be registered to your development team")
+  ) {
+    return {
+      kind: "bundle-identifier",
+      title: "iOS bundle identifier is not available for this Apple Developer Team.",
+      detail:
+        "Change mobile appId to a globally unique bundle identifier that your team can register, then rerun the iOS command.",
+    };
+  }
+  if (lower.includes("does not have permission") || (lower.includes("your account") && lower.includes("permission"))) {
+    return {
+      kind: "team-permission",
+      title: "Apple Developer Team permission is missing.",
+      detail: "Check that the signed-in Apple ID has permission for the selected DEVELOPMENT_TEAM.",
+    };
+  }
+  if (lower.includes("license agreement") || lower.includes("program license agreement")) {
+    return {
+      kind: "license-agreement",
+      title: "Apple Developer Program license agreement is not accepted.",
+      detail: "Accept the latest Apple Developer Program license agreement, then retry.",
+    };
+  }
+  if (lower.includes("no signing certificate") || lower.includes("doesn't include signing certificate")) {
+    return {
+      kind: "certificate",
+      title: "iOS development signing certificate is missing.",
+      detail: "Create or download an Apple Development certificate for the selected team.",
+    };
+  }
+  if (lower.includes("device") && lower.includes("not") && lower.includes("registered")) {
+    return {
+      kind: "device-registration",
+      title: "iPhone is not registered in the provisioning profile.",
+      detail: "Allow provisioning updates with a team that can register this device, or register the device manually.",
+    };
+  }
+  if (lower.includes("no profiles for") || lower.includes("requires a provisioning profile")) {
+    return {
+      kind: "provisioning-profile",
+      title: "Matching iOS provisioning profile was not found.",
+      detail:
+        "Akan can request Xcode provisioning updates for physical devices, but the Apple account and team must be valid.",
+    };
+  }
+  return {
+    kind: "unknown",
+    title: "iOS native run failed.",
+    detail:
+      "Review the xcodebuild/devicectl output above. You can retry with --noAllowProvisioningUpdates to use the conservative path.",
+  };
+}
+
+export function formatIosRunFailureMessage(input: {
+  classification: IosRunFailureClassification;
+  appId: string;
+  targetName: string;
+  teamId?: string;
+}) {
+  return [
+    input.classification.title,
+    input.classification.detail,
+    `Mobile target: ${input.targetName}`,
+    `Bundle ID: ${input.appId}`,
+    input.teamId ? `Development Team: ${input.teamId}` : null,
+    "Capacitor is still used for native project generation and sync; Akan only runs the native build/install step directly.",
+  ]
+    .filter((line): line is string => Boolean(line))
+    .join("\n");
+}
+
+export function sanitizeIosNativeRunEnv(env: MobileCommandEnv): MobileCommandEnv {
+  return Object.fromEntries(Object.entries(env).filter(([key]) => !iosNativeBlockedEnvKeys.has(key)));
+}
+
+const androidReleaseSigningKeys = [
+  "MYAPP_RELEASE_STORE_FILE",
+  "MYAPP_RELEASE_STORE_PASSWORD",
+  "MYAPP_RELEASE_KEY_ALIAS",
+  "MYAPP_RELEASE_KEY_PASSWORD",
+] as const;
+
+export function getMissingAndroidReleaseSigningKeys({
+  env = process.env,
+  gradleProperties = "",
+}: {
+  env?: NodeJS.ProcessEnv;
+  gradleProperties?: string;
+} = {}) {
+  return androidReleaseSigningKeys.filter((key) => {
+    const gradleEnvKey = `ORG_GRADLE_PROJECT_${key}`;
+    return (
+      env[key] === undefined &&
+      env[gradleEnvKey] === undefined &&
+      !new RegExp(`^\\s*${key}\\s*=`, "m").test(gradleProperties)
+    );
+  });
+}
+
+export function formatAndroidReleaseSigningError(missingKeys: readonly string[]) {
+  return [
+    "Android release signing configuration is incomplete.",
+    `Missing: ${missingKeys.join(", ")}`,
+    "Set these values in android/gradle.properties or ORG_GRADLE_PROJECT_* environment variables before building a release artifact.",
+  ].join("\n");
+}
+
+export function getAdbDeviceStateIssues(output: string) {
+  return output
+    .split(/\r?\n/)
+    .map((line) => line.trim().split(/\s+/))
+    .filter(([id, state]) => id && state && id !== "List")
+    .flatMap(([id, state]) => {
+      if (state === "unauthorized")
+        return [`Android device ${id} is unauthorized. Confirm USB debugging authorization on the device.`];
+      if (state === "offline") return [`Android device ${id} is offline. Reconnect the device or restart adb.`];
+      return [];
+    });
+}
+
+const mergeAllowNavigation = (configured: unknown, localIp: string | undefined) => {
+  const values = Array.isArray(configured)
+    ? configured.filter((value): value is string => typeof value === "string")
+    : [];
+  if (localIp) values.push(localIp);
+  values.push("localhost");
+  return [...new Set(values)];
+};
+
+export function assertJsonSerializable(value: unknown, label = "capacitor.config", seen = new WeakSet<object>()) {
+  if (value === null) return;
+  const valueType = typeof value;
+  if (valueType === "function" || valueType === "symbol" || valueType === "bigint" || valueType === "undefined") {
+    throw new Error(`${label} must be JSON serializable. Found ${valueType}.`);
+  }
+  if (valueType === "number" && !Number.isFinite(value)) {
+    throw new Error(`${label} must be JSON serializable. Found non-finite number.`);
+  }
+  if (valueType !== "object") return;
+  const objectValue = value as object;
+  if (seen.has(objectValue)) throw new Error(`${label} must be JSON serializable. Found circular reference.`);
+  seen.add(objectValue);
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      assertJsonSerializable(item, `${label}[${index}]`, seen);
+    });
+    return;
+  }
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    assertJsonSerializable(item, `${label}.${key}`, seen);
+  }
+}
+
+export function materializeCapacitorConfig(
+  target: AkanMobileTargetConfig,
+  { operation, localServerUrl, localIp }: MaterializeCapacitorConfigOptions,
+): CapacitorConfig {
+  const {
+    name,
+    basePath: _basePath,
+    version: _version,
+    buildNum: _buildNum,
+    assets: _assets,
+    permissions: _permissions,
+    links: _links,
+    files: _files,
+    appId,
+    appName,
+    webDir: _webDir,
+    plugins,
+    server,
+    android,
+    ios,
+    cordova,
+    experimental,
+    ...capacitorConfig
+  } = target;
+  const serverConfig = isRecord(server) ? server : undefined;
+  const cordovaConfig = isRecord(cordova) ? cordova : undefined;
+  const experimentalConfig = isRecord(experimental) ? experimental : undefined;
+  const pluginsConfig = isRecord(plugins) ? plugins : {};
+  const keyboardPluginConfig = isRecord(pluginsConfig.Keyboard) ? pluginsConfig.Keyboard : {};
+  const config: CapacitorConfig = {
+    ...capacitorConfig,
+    appId,
+    appName,
+    webDir: path.posix.join(".akan", "mobile", name, "www"),
+    plugins: {
+      CapacitorCookies: { enabled: true },
+      ...pluginsConfig,
+      Keyboard: {
+        resize: "none",
+        ...keyboardPluginConfig,
+      },
+    },
+    android: {
+      ...(isRecord(android) ? android : {}),
+      path: "android",
+    },
+    ios: {
+      ...(isRecord(ios) ? ios : {}),
+      path: "ios",
+    },
+  };
+  if (operation === "local") {
+    if (!localServerUrl) throw new Error(`Local server URL is required for mobile target '${name}'.`);
+    config.server = {
+      ...serverConfig,
+      androidScheme: "http",
+      url: localServerUrl,
+      cleartext: true,
+      allowNavigation: mergeAllowNavigation(serverConfig?.allowNavigation, localIp),
+    };
+  } else if (serverConfig && Object.keys(serverConfig).length > 0) {
+    config.server = serverConfig as never;
+  }
+  if (cordovaConfig && Object.keys(cordovaConfig).length > 0) {
+    config.cordova = cordovaConfig as never;
+  }
+  if (experimentalConfig && Object.keys(experimentalConfig).length > 0) {
+    config.experimental = experimentalConfig as never;
+  }
+  assertJsonSerializable(config);
+  return config;
+}
 
 export class CapacitorApp {
   project: MobileProject & { ios: IosProject; android: AndroidProject };
@@ -48,7 +560,6 @@ export class CapacitorApp {
     regenerate = false,
   }: { platform?: "ios" | "android" } & Partial<PrepareConfig> = {}) {
     await mkdir(this.targetRoot, { recursive: true });
-    await this.#writeCapacitorConfig();
     if (regenerate) {
       if (!platform || platform === "ios")
         await rm(path.join(this.app.cwdPath, this.iosRootPath), { recursive: true, force: true });
@@ -96,11 +607,140 @@ export class CapacitorApp {
   async openIos() {
     await this.#spawnMobile("npx", ["cap", "open", "ios"], { operation: "local", env: "local" });
   }
-  async runIos({ operation, env, regenerate = false }: RunConfig) {
+  async runIos({ operation, env, regenerate = false, noAllowProvisioningUpdates = false, iosDeviceId }: RunIosConfig) {
     if (operation === "release") await this.prepareWww();
     await this.#prepareIos({ operation, env, regenerate });
-    const args = ["cap", "run", "ios"];
-    await this.#spawnMobile("npx", args, { operation, env }, { stdio: "inherit" });
+    const runTarget = await this.#selectIosRunTarget(iosDeviceId);
+    if (runTarget.kind === "simulator") {
+      await this.#spawnMobile(
+        "npx",
+        ["cap", "run", "ios", "--target", runTarget.id],
+        { operation, env },
+        { stdio: "inherit" },
+      );
+      return;
+    }
+    await this.#runIosPhysicalDevice({ operation, env, runTarget, noAllowProvisioningUpdates });
+  }
+
+  async #selectIosRunTarget(deviceId?: string) {
+    const targets = await this.#loadIosRunTargets();
+    if (deviceId) {
+      const found = targets.find((target) => target.id === deviceId);
+      if (!found) throw new Error(`iOS run target '${deviceId}' was not found.`);
+      return found;
+    }
+    if (targets.length === 0) {
+      throw new Error("No iOS run targets found. Open Simulator or connect an iPhone, then retry.");
+    }
+    return await select<IosRunTarget>({
+      message: "Select iOS run target",
+      choices: targets.map((target) => ({
+        name: `[${target.kind}] ${target.name}${target.state ? ` (${target.state})` : ""}`,
+        value: target,
+      })),
+    });
+  }
+
+  async #loadIosRunTargets() {
+    const devices = await this.#loadPhysicalIosDevices();
+    const simulators = await this.#loadIosSimulators();
+    return [...devices, ...simulators];
+  }
+
+  async #loadPhysicalIosDevices() {
+    try {
+      return parseDevicectlDevices(await this.#spawn("xcrun", ["devicectl", "list", "devices", "--json-output", "-"]));
+    } catch (jsonError) {
+      try {
+        return parseDevicectlDevices(await this.#spawn("xcrun", ["devicectl", "list", "devices"]));
+      } catch (textError) {
+        const classification = classifyIosRunFailure(
+          `${jsonError instanceof Error ? jsonError.message : ""}\n${textError instanceof Error ? textError.message : ""}`,
+        );
+        if (classification.kind === "devicectl-unavailable") this.app.logger.warn(classification.detail);
+        return [];
+      }
+    }
+  }
+
+  async #loadIosSimulators() {
+    try {
+      return parseSimctlDevices(await this.#spawn("xcrun", ["simctl", "list", "devices", "available", "--json"]));
+    } catch {
+      try {
+        return parseSimctlDevices(await this.#spawn("xcrun", ["simctl", "list", "devices", "available"]));
+      } catch {
+        return [];
+      }
+    }
+  }
+
+  async #runIosPhysicalDevice({
+    operation,
+    env,
+    runTarget,
+    noAllowProvisioningUpdates,
+  }: Pick<RunConfig, "operation" | "env"> & {
+    runTarget: IosRunTarget;
+    noAllowProvisioningUpdates: boolean;
+  }) {
+    const mobileEnv = sanitizeIosNativeRunEnv(await this.#commandEnv(operation, env));
+    const configContent = await this.#writeCapacitorConfig({ operation }, mobileEnv);
+    await this.#writeRootCapacitorConfig(configContent);
+    const scheme = this.#iosScheme();
+    const command = buildIosNativeRunCommand({
+      appRoot: this.app.cwdPath,
+      device: runTarget,
+      scheme,
+      configuration: operation === "release" ? "Release" : "Debug",
+    });
+    const xcodebuildArgs = noAllowProvisioningUpdates
+      ? command.xcodebuildArgs
+      : [...command.xcodebuildArgs.slice(0, -1), "-allowProvisioningUpdates", ...command.xcodebuildArgs.slice(-1)];
+    try {
+      await this.#spawn("xcodebuild", xcodebuildArgs, {
+        cwd: path.join(this.app.cwdPath, this.iosProjectPath),
+        env: mobileEnv,
+      });
+      const devicectlId = runTarget.devicectlId ?? runTarget.id;
+      await this.#spawn("xcrun", ["devicectl", "device", "install", "app", "--device", devicectlId, command.appPath], {
+        env: mobileEnv,
+      });
+      await this.#spawn(
+        "xcrun",
+        ["devicectl", "device", "process", "launch", "--device", devicectlId, this.target.appId],
+        {
+          env: mobileEnv,
+        },
+      );
+    } catch (error) {
+      throw new Error(
+        formatIosRunFailureMessage({
+          classification: classifyIosRunFailure(this.#errorOutput(error)),
+          appId: this.target.appId,
+          targetName: this.target.name,
+          teamId: await this.#getIosDevelopmentTeam(),
+        }),
+      );
+    } finally {
+      await this.#clearRootCapacitorConfigs();
+    }
+  }
+
+  #iosScheme() {
+    return isRecord(this.target.ios) && typeof this.target.ios.scheme === "string" ? this.target.ios.scheme : "App";
+  }
+
+  async #getIosDevelopmentTeam() {
+    const pbxprojPath = path.join(this.app.cwdPath, this.iosProjectPath, "App.xcodeproj/project.pbxproj");
+    if (!(await Bun.file(pbxprojPath).exists())) return undefined;
+    return (await Bun.file(pbxprojPath).text()).match(/DEVELOPMENT_TEAM = ([^;]+);/)?.[1]?.trim();
+  }
+
+  #errorOutput(error: unknown) {
+    if (error instanceof CommandExecutionError) return `${error.stdout}\n${error.stderr}\n${error.message}`;
+    return error instanceof Error ? error.message : String(error);
   }
 
   async #prepareAndroid({ operation, env, regenerate = false }: PrepareConfig) {
@@ -161,6 +801,7 @@ export class CapacitorApp {
   ) {
     await this.prepareWww();
     await this.#prepareAndroid({ operation: "release", env, regenerate });
+    await this.#assertAndroidReleaseSigningConfig();
     await this.#updateAndroidBuildTypes();
     //윈도우는 gradlew.bat 사용
     const isWindows = process.platform === "win32";
@@ -211,9 +852,29 @@ export class CapacitorApp {
   async runAndroid({ operation, env, regenerate = false }: RunConfig) {
     if (operation === "release") await this.prepareWww();
     await this.#prepareAndroid({ operation, env, regenerate });
+    await this.#assertAndroidAdbReady();
     this.app.logger.info(`Running Android in ${operation} mode on ${env} env`);
     const args = ["cap", "run", "android"];
     await this.#spawnMobile("npx", args, { operation, env }, { stdio: "inherit" });
+  }
+
+  async #assertAndroidReleaseSigningConfig() {
+    const gradlePropertiesPath = path.join(this.app.cwdPath, this.androidRootPath, "gradle.properties");
+    const gradleProperties = (await Bun.file(gradlePropertiesPath).exists())
+      ? await Bun.file(gradlePropertiesPath).text()
+      : "";
+    const missingKeys = getMissingAndroidReleaseSigningKeys({ gradleProperties });
+    if (missingKeys.length > 0) throw new Error(formatAndroidReleaseSigningError(missingKeys));
+  }
+
+  async #assertAndroidAdbReady() {
+    try {
+      const issues = getAdbDeviceStateIssues(await this.#spawn("adb", ["devices"]));
+      if (issues.length > 0) throw new Error(issues.join("\n"));
+    } catch (error) {
+      if (error instanceof CommandExecutionError) return;
+      throw error;
+    }
   }
 
   async releaseIos() {
@@ -241,33 +902,17 @@ export class CapacitorApp {
     if (html.includes("window.__AKAN_MOBILE_TARGET__")) return html;
     return html.replace(/<\/head\s*>/i, `${script}\n</head>`);
   }
-  async #writeCapacitorConfig() {
+  async #writeCapacitorConfig({ operation }: Pick<RunConfig, "operation">, commandEnv: MobileCommandEnv) {
     await mkdir(this.targetRoot, { recursive: true });
-    const appInfoPath = path
-      .relative(this.app.cwdPath, path.join(this.app.cwdPath, "akan.app.json"))
-      .split(path.sep)
-      .join("/");
-    const content = `import type { AppScanResult } from "akanjs";
-import { withBase } from "${process.env.USE_AKANJS_PKGS === "true" ? "../../pkgs/" : ""}akanjs/capacitor.base.config";
-import appInfo from "${appInfoPath.startsWith(".") ? appInfoPath : `./${appInfoPath}`}";
-
-export default withBase(
-  (config, target) => ({
-    ...config,
-    webDir: \`.akan/mobile/\${target.name}/www\`,
-    android: {
-      ...config.android,
-      path: "android",
-    },
-    ios: {
-      ...config.ios,
-      path: "ios",
-    },
-  }),
-  appInfo as AppScanResult,
-);
-`;
-    await Bun.write(path.join(this.app.cwdPath, "capacitor.config.ts"), content);
+    const localIp = operation === "local" ? getLocalIP() : undefined;
+    const config = materializeCapacitorConfig(this.target, {
+      operation,
+      localIp,
+      localServerUrl: localIp ? this.#localCsrUrl(localIp, commandEnv) : undefined,
+    });
+    const content = `${JSON.stringify(config, null, 2)}\n`;
+    await Bun.write(path.join(this.targetRoot, "capacitor.config.json"), content);
+    return content;
   }
   async #prepareTargetAssets() {
     if (!this.target.assets) return;
@@ -372,6 +1017,21 @@ export default withBase(
       ...(devPort ? { PORT: devPort, AKAN_PUBLIC_CLIENT_PORT: devPort, AKAN_PUBLIC_SERVER_PORT: devPort } : {}),
     });
   }
+  #localCsrUrl(ip: string, commandEnv: MobileCommandEnv) {
+    const basePath = this.target.basePath?.replace(/^\/+|\/+$/g, "");
+    const locale = commandEnv.AKAN_PUBLIC_DEFAULT_LOCALE ?? "en";
+    const pathname = basePath ? `${locale}/${basePath}` : `${locale}/`;
+    const port = commandEnv.AKAN_PUBLIC_CLIENT_PORT ?? commandEnv.PORT ?? "8282";
+    const params = new URLSearchParams({ csr: "true", akanMobileTarget: this.target.name });
+    if (basePath) params.set("akanMobileBasePath", basePath);
+    return `http://${ip}:${port}/${pathname}?${params}`;
+  }
+  async #clearRootCapacitorConfigs() {
+    await clearRootCapacitorConfigs(this.app.cwdPath);
+  }
+  async #writeRootCapacitorConfig(content: string) {
+    await writeRootCapacitorConfig(this.app.cwdPath, content);
+  }
   async #spawn(command: string, args: string[] = [], options: Parameters<AppExecutor["spawn"]>[2] = {}) {
     return await this.app.spawn(command, args, { cwd: this.app.cwdPath, ...options });
   }
@@ -381,10 +1041,17 @@ export default withBase(
     { operation, env }: Pick<RunConfig, "operation" | "env">,
     options: Parameters<AppExecutor["spawn"]>[2] = {},
   ) {
-    return await this.#spawn(command, args, {
-      ...options,
-      env: { ...(await this.#commandEnv(operation, env)), ...options.env },
-    });
+    const mobileEnv = { ...(await this.#commandEnv(operation, env)), ...options.env };
+    const configContent = await this.#writeCapacitorConfig({ operation }, mobileEnv);
+    await this.#writeRootCapacitorConfig(configContent);
+    try {
+      return await this.#spawn(command, args, {
+        ...options,
+        env: mobileEnv,
+      });
+    } finally {
+      await this.#clearRootCapacitorConfigs();
+    }
   }
   async addCamera() {
     await this.#setPermissionInIos({

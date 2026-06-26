@@ -57,4 +57,4 @@ export default function Page() {
   );
 }
 
-export const pageConfig = { topInset: true, transition: "scaleOut" } satisfies PageConfig;
+export const pageConfig = { topInset: 48, transition: "scaleOut" } satisfies PageConfig;

@@ -317,6 +317,44 @@ describe("ApplicationScript", () => {
     );
     expect(recorder.names()).toEqual(["scanSync"]);
   });
+
+  test("passes iOS provisioning opt-out from script to runner", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const recorder = createCallRecorder();
+    const app = createFakeExecutor(
+      "demo",
+      {
+        scanSync: async (...args: unknown[]) => recorder.record("scanSync", ...args),
+      },
+      recorder,
+    );
+    script.applicationRunner.startIos = async (...args: unknown[]) => {
+      recorder.record("runner.startIos", ...args);
+    };
+
+    await script.startIos(app as never, {
+      target: "default",
+      env: "local",
+      write: false,
+      noAllowProvisioningUpdates: true,
+    });
+
+    expect(recorder.calls).toContainEqual({ name: "scanSync", args: [{ write: false }] });
+    expect(recorder.calls).toContainEqual({
+      name: "runner.startIos",
+      args: [
+        app,
+        {
+          open: false,
+          operation: "local",
+          env: "local",
+          target: "default",
+          regenerate: false,
+          noAllowProvisioningUpdates: true,
+        },
+      ],
+    });
+  });
 });
 
 describe("ApplicationRunner", () => {

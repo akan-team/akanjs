@@ -8,6 +8,19 @@ body {
   -webkit-user-select: none; */
 }
 
+html.akan-mobile-document,
+body.akan-mobile-document {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body.akan-mobile-document {
+  position: fixed;
+  inset: 0;
+}
+
 /* invisible scrollbar */
 ::-webkit-scrollbar {
   display: none;
@@ -58,6 +71,49 @@ body {
 }
 .page-content {
   @apply h-screen overflow-y-auto;
+}
+
+.akan-mobile-frame .akan-page-content {
+  box-sizing: border-box;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--color-base-100, Canvas);
+  color: var(--color-base-content, CanvasText);
+  transition: height 285ms ease-out;
+}
+
+.akan-mobile-frame .akan-frame-chrome {
+  transform: translateZ(0);
+  contain: layout paint;
+}
+
+.akan-mobile-frame #pageContainers {
+  position: relative;
+  z-index: 10;
+}
+
+.akan-mobile-frame #topSafeArea,
+.akan-mobile-frame #topInsetContainer,
+.akan-mobile-frame #topLeftActionContainer,
+.akan-mobile-frame #bottomInsetContainer,
+.akan-mobile-frame #bottomSafeArea {
+  z-index: 1000;
+}
+
+.akan-mobile-frame #keyboardInsetContainer {
+  z-index: 1100;
+}
+
+.akan-mobile-frame #modal-root {
+  z-index: 2000;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .akan-mobile-frame #pageContainers,
+  .akan-mobile-frame .akan-frame-chrome,
+  .akan-mobile-frame .akan-page-content {
+    transition-duration: 1ms !important;
+  }
 }
 
 @property --percentage {

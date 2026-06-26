@@ -15,6 +15,7 @@ export interface AkanDynamicUsage {
 export interface AkanRequestStore {
   request: Request;
   theme?: AkanTheme;
+  frameState?: unknown;
   queryCache: Map<string, Promise<unknown>>;
   policy: AkanRequestPolicy;
   dynamicUsage: AkanDynamicUsage;
@@ -93,6 +94,16 @@ export function setRequestTheme(theme: AkanTheme | undefined): void {
 
 export function getRequestTheme(): AkanTheme | undefined {
   return getRequestStore()?.theme;
+}
+
+export function setRequestFrameState(frameState: unknown): void {
+  const store = getRequestStore();
+  if (!store) return;
+  store.frameState = frameState;
+}
+
+export function getRequestFrameState<FrameState = unknown>(): FrameState | undefined {
+  return getRequestStore()?.frameState as FrameState | undefined;
 }
 
 export function pushRequestFallback(storeOrRequest: Request | AkanRequestStore): () => void {

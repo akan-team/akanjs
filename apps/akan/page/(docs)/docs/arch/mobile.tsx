@@ -146,8 +146,15 @@ export const pageConfig = {
               {
                 title: "topInset / bottomInset",
                 desc: l.trans({
-                  en: "Handles app UI space. Layout.Navbar, Layout.BottomInset, and Layout.BottomTab register this automatically; pageConfig only overrides exceptions.",
-                  ko: "앱 UI 공간을 처리합니다. Layout.Navbar, Layout.BottomInset, Layout.BottomTab이 자동 등록하며, pageConfig는 예외만 override합니다.",
+                  en: "Handles app UI space through CSR frame layers. Layout.Navbar, Layout.BottomTab, and Layout.BottomInset register this automatically; keyboardSticky BottomInset is isolated into the keyboard layer while normal bottom UI stays in the bottom chrome layer.",
+                  ko: "CSR frame layer를 통해 앱 UI 공간을 처리합니다. Layout.Navbar, Layout.BottomTab, Layout.BottomInset이 자동 등록하며, keyboardSticky BottomInset은 keyboard layer로 분리되고 일반 하단 UI는 bottom chrome layer에 유지됩니다.",
+                }),
+              },
+              {
+                title: "keyboardSticky",
+                desc: l.trans({
+                  en: "On mobile CSR, keyboardSticky BottomInset becomes a keyboard accessory. The framework resizes the primary page scroll container, so mobile pages should let .akan-page-content own the main scroll instead of creating a separate primary overflow container.",
+                  ko: "모바일 CSR에서 keyboardSticky BottomInset은 keyboard accessory로 동작합니다. 프레임워크가 기본 page scroll container를 줄이므로, 모바일 페이지는 별도 primary overflow container를 만들기보다 .akan-page-content가 주 스크롤을 맡도록 구성하는 것이 좋습니다.",
                 }),
               },
               {

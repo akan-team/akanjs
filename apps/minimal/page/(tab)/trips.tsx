@@ -1,10 +1,11 @@
+import type { PageConfig } from "akanjs/client";
 import { Layout, Link } from "akanjs/ui";
 import { AiOutlineCalendar, AiOutlineRight } from "react-icons/ai";
 
 export default function Page() {
   return (
     <div className="apptest-screen px-5 pb-28">
-      <Layout.Navbar className="apptest-nav" back={false}>
+      <Layout.TopInset className="apptest-nav flex items-center px-5" estimatedHeight={pageConfig.topInset}>
         <div className="flex w-full items-center justify-between">
           <div>
             <p className="apptest-subtle text-xs uppercase tracking-[0.24em]">Upcoming</p>
@@ -12,7 +13,7 @@ export default function Page() {
           </div>
           <AiOutlineCalendar className="text-2xl text-primary" />
         </div>
-      </Layout.Navbar>
+      </Layout.TopInset>
       <section className="pt-5">
         <Link className="block overflow-hidden rounded-[2rem] bg-base-200 text-base-content" href="/trips/detail">
           <div className="h-36 bg-gradient-to-br from-primary via-secondary to-accent" />
@@ -39,4 +40,4 @@ export default function Page() {
     </div>
   );
 }
-// export const pageConfig = { bottomInset: true, topInset: true, transition: "none", cache: true } satisfies PageConfig;
+export const pageConfig = { topInset: 72 } satisfies PageConfig;

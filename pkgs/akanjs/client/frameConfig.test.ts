@@ -50,10 +50,10 @@ describe("frameConfig", () => {
   });
 
   test("treats pageConfig as an explicit override over auto values", () => {
-    const configChain = [{ topInset: false, transition: "none" as const }, { bottomInset: 72 }];
+    const configChain = [{ topInset: 0, transition: "none" as const }, { bottomInset: 72 }];
 
     expect(mergePageConfigs(configChain)).toMatchObject({
-      topInset: false,
+      topInset: 0,
       bottomInset: 72,
       transition: "none",
     });
@@ -114,6 +114,9 @@ describe("frameConfig", () => {
     );
     expect(() => validatePageConfig("bad.tsx", { transition: "slide" as never })).toThrow(
       'unsupported pageConfig.transition "slide"',
+    );
+    expect(() => validatePageConfig("bad.tsx", { topInset: true } as never)).toThrow(
+      "pageConfig.topInset in bad.tsx must be a non-negative px number.",
     );
   });
 });
