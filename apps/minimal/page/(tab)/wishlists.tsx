@@ -39,4 +39,3 @@ export default function Page({ searchParams }: { searchParams: { deepLink?: stri
     </div>
   );
 }
-// export const pageConfig = { bottomInset: true, topInset: false, transition: "none", cache: true } satisfies PageConfig;

@@ -57,19 +57,6 @@ export default function Page() {
           ))}
         </div>
       </section>
-
-      {/* <div className="mt-6 grid grid-cols-2 gap-3">
-        <LinkTest href="/wishlists?deepLink=true" />
-        <LinkTest href="/wishlists?deepLink=ㅁㄴㅇ" />
-      </div> */}
     </div>
   );
 }
-
-// export const pageConfig = {
-//   bottomInset: true,
-//   topInset: true,
-//   safeArea: true,
-//   cache: true,
-//   transition: "none",
-// } satisfies PageConfig;
