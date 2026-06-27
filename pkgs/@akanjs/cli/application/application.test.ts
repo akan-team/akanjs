@@ -87,6 +87,38 @@ describe("ApplicationCommand", () => {
     await handler?.call(command, "My App", true, { name: "workspace" });
     expect(calls).toEqual([["my-app", { name: "workspace" }, { start: true }]]);
   });
+
+  test("uses the same mobile target selector metadata across mobile commands", async () => {
+    const mobileCommandKeys = [
+      "buildIos",
+      "buildAndroid",
+      "startIos",
+      "startAndroid",
+      "releaseIos",
+      "releaseAndroid",
+    ];
+    const app = {
+      getConfig: async () => ({
+        basePaths: new Set(["store", "admin"]),
+        mobile: {
+          targets: {
+            store: { name: "store", basePath: "store" },
+          },
+        },
+      }),
+    };
+
+    for (const key of mobileCommandKeys) {
+      const [, optionMetas] = getArgMetas(ApplicationCommand, key);
+      const targetOption = optionMetas.find((meta) => meta.name === "target")?.argsOption;
+
+      expect(targetOption?.ask).toBe("Select mobile target");
+      expect(typeof targetOption?.enum).toBe("function");
+      if (typeof targetOption?.enum === "function") {
+        await expect(targetOption.enum({ values: {}, app: app as never })).resolves.toEqual(["store"]);
+      }
+    }
+  });
 });
 
 describe("ApplicationScript", () => {

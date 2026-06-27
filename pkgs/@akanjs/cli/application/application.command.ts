@@ -4,6 +4,11 @@ import { select } from "@inquirer/prompts";
 import { ApplicationScript } from "./application.script";
 
 const asMobileEnv = (env: string) => env as "local" | "debug" | "develop" | "main";
+const mobileTargetOption = {
+  desc: "mobile target name or all",
+  ask: "Select mobile target",
+  enum: async ({ app }: { app: App }) => await getMobileTargetChoices(app),
+};
 
 export class ApplicationCommand extends command("application", [ApplicationScript], ({ public: target }) => ({
   createApplication: target({ desc: "Create a new application in the workspace" })
@@ -58,11 +63,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     }),
   buildIos: target({ short: true, desc: "Build iOS app with Capacitor" })
     .with(App)
-    .option("target", String, {
-      desc: "mobile target name or all",
-      ask: "Select mobile target",
-      enum: async ({ app }) => await getMobileTargetChoices(app),
-    })
+    .option("target", String, mobileTargetOption)
     .option("env", String, {
       enum: ["local", "debug", "develop", "main"],
       desc: "backend environment",
@@ -75,11 +76,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     }),
   buildAndroid: target({ short: true, desc: "Build Android app with Capacitor" })
     .with(App)
-    .option("target", String, {
-      desc: "mobile target name or all",
-      ask: "Select mobile target",
-      enum: async ({ app }) => await getMobileTargetChoices(app),
-    })
+    .option("target", String, mobileTargetOption)
     .option("env", String, {
       enum: ["local", "debug", "develop", "main"],
       desc: "backend environment",
@@ -99,10 +96,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     }),
   startIos: target({ short: true, desc: "Start iOS app in simulator or device" })
     .with(App)
-    .option("target", String, {
-      ask: "Select mobile target",
-      enum: async ({ app }) => await getMobileTargetChoices(app),
-    })
+    .option("target", String, mobileTargetOption)
     .option("env", String, {
       enum: ["local", "debug", "develop", "main"],
       desc: "backend environment",
@@ -129,7 +123,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     }),
   startAndroid: target({ short: true, desc: "Start Android app in emulator or device" })
     .with(App)
-    .option("target", String, { desc: "mobile target name or all" })
+    .option("target", String, mobileTargetOption)
     .option("env", String, {
       enum: ["local", "debug", "develop", "main"],
       desc: "backend environment",
@@ -151,7 +145,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     }),
   releaseIos: target({ desc: "Build and package iOS app for release (App Store)" })
     .with(App)
-    .option("target", String, { desc: "mobile target name or all" })
+    .option("target", String, mobileTargetOption)
     .option("env", String, {
       enum: ["debug", "develop", "main", "local"],
       desc: "backend environment",
@@ -172,7 +166,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
   releaseAndroid: target({ desc: "Build and package Android app for release (Play Store)" })
     .with(App)
     .option("assembleType", String, { enum: ["apk", "aab"], default: "apk" })
-    .option("target", String, { desc: "mobile target name or all" })
+    .option("target", String, mobileTargetOption)
     .option("env", String, {
       enum: ["debug", "develop", "main", "local"],
       desc: "backend environment",

@@ -102,6 +102,7 @@ const getOptionValue = async (argMeta: ArgMeta, opt: Record<string, unknown>, co
 
   if (enumChoices) {
     const choices = normalizeEnumChoices((await resolveEnumChoices(argMeta, context)) ?? []);
+    if (choices.length === 1) return choices[0]?.value;
     const choice = await select({ message: ask ?? desc ?? `Select the ${name} value`, choices });
     return choice;
   } else if (nullable) return null;

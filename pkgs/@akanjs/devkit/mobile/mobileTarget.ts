@@ -19,10 +19,8 @@ export const getMobileTargets = async (app: App): Promise<ResolvedMobileTarget[]
 export const getMobileTargetChoices = async (app: App): Promise<string[]> => {
   const config = await app.getConfig();
   const targetNames = Object.keys(config.mobile.targets);
-  if (targetNames.length > 1) return targetNames;
-  const basePaths = [...config.basePaths];
-  if (basePaths.length > 1) return basePaths;
   if (targetNames.length > 0) return targetNames;
+  const basePaths = [...config.basePaths];
   return basePaths;
 };
 
@@ -52,6 +50,7 @@ export const resolveMobileTargets = async (
   const config = await app.getConfig();
   const targets = await getMobileTargets(app);
   if (targets.length === 0) throw new Error(`No mobile targets configured for ${app.name}`);
+  if (!selection && targets.length === 1) return targets;
   if (!selection) {
     const choices = await getMobileTargetChoices(app);
     if (choices.length === 1) return resolveMobileTargets(app, choices[0]);
