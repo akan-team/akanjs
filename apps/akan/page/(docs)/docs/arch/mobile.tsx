@@ -313,6 +313,93 @@ export const pageConfig = {
       </Scroll.Slide>
       <div className="divider" />
 
+      <Scroll.Slide id="deep-links" title={l.trans({ en: "Deep Links", ko: "딥링크" })}>
+        <Docs.Title>{l.trans({ en: "Deep Links", ko: "딥링크" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "Mobile targets can open Akan CSR routes from native URL schemes and verified web links. Akan writes the native iOS and Android project settings, packages the mobile target metadata, and routes the incoming URL through the CSR router.",
+              ko: "모바일 target은 네이티브 URL scheme과 검증된 웹 링크로 Akan CSR route를 열 수 있습니다. Akan은 iOS/Android 네이티브 프로젝트 설정을 작성하고, 모바일 target 메타데이터를 패키징한 뒤, 들어온 URL을 CSR router로 전달합니다.",
+            })}
+          </div>
+          <Code.Snippet
+            title="apps/myapp/akan.config.ts"
+            code={`import type { AppConfig } from "akanjs";
+
+const config: AppConfig = {
+  mobile: {
+    appName: "Example App",
+    appId: "com.example.app",
+    version: "1.0.0",
+    buildNum: 1,
+    targets: {
+      default: {
+        indexPath: "/explore",
+        deepLinks: {
+          schemes: ["example"],
+          domains: ["example.com"],
+          ios: {
+            teamId: "TEAMID",
+          },
+          android: {
+            sha256CertFingerprints: [
+              "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00",
+            ],
+          },
+        },
+      },
+    },
+  },
+};
+
+export default config;`}
+          />
+          <div className="space-y-1">
+            {[
+              {
+                title: "schemes",
+                desc: l.trans({
+                  en: "Custom native URL schemes such as example://orders/detail. Akan adds iOS CFBundleURLTypes and Android VIEW intent filters.",
+                  ko: "example://orders/detail 같은 커스텀 네이티브 URL scheme입니다. Akan은 iOS CFBundleURLTypes와 Android VIEW intent-filter를 추가합니다.",
+                }),
+              },
+              {
+                title: "domains",
+                desc: l.trans({
+                  en: "Verified HTTPS app links such as https://example.com/orders/detail. Akan serves the association files from /.well-known/apple-app-site-association and /.well-known/assetlinks.json.",
+                  ko: "https://example.com/orders/detail 같은 검증된 HTTPS 앱 링크입니다. Akan은 /.well-known/apple-app-site-association 과 /.well-known/assetlinks.json 에서 association 파일을 제공합니다.",
+                }),
+              },
+              {
+                title: "indexPath",
+                desc: l.trans({
+                  en: "Fallback CSR route used when a deep link needs to rebuild a mobile navigation stack or when the hardware back button has no previous route.",
+                  ko: "딥링크가 모바일 navigation stack을 다시 구성해야 하거나 하드웨어 back 버튼에 이전 route가 없을 때 사용하는 fallback CSR route입니다.",
+                }),
+              },
+            ].map(({ title, desc }) => (
+              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+                <span className="font-mono font-semibold text-primary">{title}: </span>
+                <span className="text-base-content/70 text-sm">{desc}</span>
+              </div>
+            ))}
+          </div>
+          <Docs.Alert type="warning">
+            {l.trans({
+              en: "When domains are configured, iOS requires deepLinks.ios.teamId. Android release builds require deepLinks.android.sha256CertFingerprints so the generated assetlinks.json can verify the package signature.",
+              ko: "domains를 설정하면 iOS에는 deepLinks.ios.teamId가 필요합니다. Android 릴리즈 빌드는 생성된 assetlinks.json이 패키지 서명을 검증할 수 있도록 deepLinks.android.sha256CertFingerprints가 필요합니다.",
+            })}
+          </Docs.Alert>
+          <Docs.Alert type="info">
+            {l.trans({
+              en: "Deep link URLs are normalized into CSR paths. If the target route exists in the route manifest, Akan can restore the closest existing parent stack before pushing the final route.",
+              ko: "딥링크 URL은 CSR path로 정규화됩니다. 대상 route가 route manifest에 있으면 Akan은 최종 route를 push하기 전에 존재하는 가장 가까운 parent stack을 복원할 수 있습니다.",
+            })}
+          </Docs.Alert>
+        </Docs.Description>
+      </Scroll.Slide>
+      <div className="divider" />
+
       <Scroll.Slide
         id="android-packaging"
         title={l.trans({ en: "Android Packaging Workflow", ko: "Android 패키징 작업" })}

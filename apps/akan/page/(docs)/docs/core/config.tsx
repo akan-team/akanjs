@@ -287,6 +287,23 @@ export default config;`}
     appId: "com.example.app",
     version: "1.0.0",
     buildNum: 1,
+    targets: {
+      default: {
+        indexPath: "/explore",
+        deepLinks: {
+          schemes: ["example"],
+          domains: ["example.com"],
+          ios: {
+            teamId: "TEAMID",
+          },
+          android: {
+            sha256CertFingerprints: [
+              "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00",
+            ],
+          },
+        },
+      },
+    },
     android: {
       buildOptions: {
         releaseType: "APK",
@@ -323,6 +340,27 @@ export default config;`}
               desc: l.trans({
                 en: "Store build number. Defaults to 1 and is commonly increased for each release.",
                 ko: "스토어 제출용 빌드 번호입니다. 기본값은 1이고, 보통 릴리스마다 증가시킵니다.",
+              }),
+            },
+            {
+              title: "targets",
+              desc: l.trans({
+                en: "Per-package mobile settings. A target can select a basePath, indexPath, app identity overrides, permissions, files, and deepLinks.",
+                ko: "패키지별 모바일 설정입니다. target은 basePath, indexPath, 앱 식별 정보 override, permission, file, deepLinks를 선택할 수 있습니다.",
+              }),
+            },
+            {
+              title: "deepLinks",
+              desc: l.trans({
+                en: "Native URL schemes and verified HTTPS app links for a mobile target. iOS app links require teamId; Android app links require SHA-256 certificate fingerprints for release verification.",
+                ko: "모바일 target에 사용할 네이티브 URL scheme과 검증된 HTTPS 앱 링크입니다. iOS app link에는 teamId가 필요하고, Android app link에는 릴리즈 검증용 SHA-256 인증서 fingerprint가 필요합니다.",
+              }),
+            },
+            {
+              title: "indexPath",
+              desc: l.trans({
+                en: "Fallback CSR path for the mobile target. Akan uses it for deep link stack recovery and back-button fallback.",
+                ko: "모바일 target의 fallback CSR path입니다. Akan은 딥링크 stack 복원과 back 버튼 fallback에 이 값을 사용합니다.",
               }),
             },
           ].map(({ title, desc }) => (

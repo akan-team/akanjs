@@ -10,6 +10,7 @@
 
 - Mobile App Architecture (#mobile-overview)
 - CSR Web Workflow (#csr-web-workflow)
+- Deep Links (#deep-links)
 - Android Packaging Workflow (#android-packaging)
 - iOS Packaging Workflow (#ios-packaging)
 - Native Build Troubleshooting (#native-build-troubleshooting)
@@ -69,6 +70,20 @@ Works well for detail pages that push over a list or parent screen.
 FAQ: Are hybrid apps worse than native apps?
 
 Akan improves the user experience with page transitions, safe-area handling, inset support, CSR page cache, and mobile pageConfig. Device capabilities are not blocked by the hybrid model: Capacitor plugins can bridge camera, Bluetooth, device, haptics, keyboard, safe area, and other native APIs when needed.
+
+Deep Links
+
+Mobile targets can open Akan CSR routes from native URL schemes and verified web links. Akan writes the native iOS and Android project settings, packages the mobile target metadata, and routes the incoming URL through the CSR router.
+
+Custom native URL schemes such as example://orders/detail. Akan adds iOS CFBundleURLTypes and Android VIEW intent filters.
+
+Verified HTTPS app links such as https://example.com/orders/detail. Akan serves the association files from /.well-known/apple-app-site-association and /.well-known/assetlinks.json.
+
+Fallback CSR route used when a deep link needs to rebuild a mobile navigation stack or when the hardware back button has no previous route.
+
+When domains are configured, iOS requires deepLinks.ios.teamId. Android release builds require deepLinks.android.sha256CertFingerprints so the generated assetlinks.json can verify the package signature.
+
+Deep link URLs are normalized into CSR paths. If the target route exists in the route manifest, Akan can restore the closest existing parent stack before pushing the final route.
 
 Android Packaging Workflow
 
@@ -167,6 +182,40 @@ export const pageConfig = {
   transition: "stack",
   cache: true,
 } satisfies PageConfig;
+```
+
+### Deep link config
+
+```ts
+import type { AppConfig } from "akanjs";
+
+const config: AppConfig = {
+  mobile: {
+    appName: "Example App",
+    appId: "com.example.app",
+    version: "1.0.0",
+    buildNum: 1,
+    targets: {
+      default: {
+        indexPath: "/explore",
+        deepLinks: {
+          schemes: ["example"],
+          domains: ["example.com"],
+          ios: {
+            teamId: "TEAMID",
+          },
+          android: {
+            sha256CertFingerprints: [
+              "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00",
+            ],
+          },
+        },
+      },
+    },
+  },
+};
+
+export default config;
 ```
 
 ### Android commands

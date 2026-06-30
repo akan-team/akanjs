@@ -95,6 +95,12 @@ User-facing app version. Defaults to 0.0.1.
 
 Store build number. Defaults to 1 and is commonly increased for each release.
 
+Per-package mobile settings. A target can select a basePath, indexPath, app identity overrides, permissions, files, and deepLinks.
+
+Native URL schemes and verified HTTPS app links for a mobile target. iOS app links require teamId; Android app links require SHA-256 certificate fingerprints for release verification.
+
+Fallback CSR path for the mobile target. Akan uses it for deep link stack recovery and back-button fallback.
+
 When a multi-client app needs separate mobile apps per client, define mobile targets with basePath. The Multi Client page shows that pattern.
 
 Images And Public Env
@@ -238,6 +244,23 @@ const config: AppConfig = {
     appId: "com.example.app",
     version: "1.0.0",
     buildNum: 1,
+    targets: {
+      default: {
+        indexPath: "/explore",
+        deepLinks: {
+          schemes: ["example"],
+          domains: ["example.com"],
+          ios: {
+            teamId: "TEAMID",
+          },
+          android: {
+            sha256CertFingerprints: [
+              "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00",
+            ],
+          },
+        },
+      },
+    },
     android: {
       buildOptions: {
         releaseType: "APK",
