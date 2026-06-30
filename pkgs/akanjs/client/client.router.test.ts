@@ -25,7 +25,16 @@ beforeAll(() => {
     }),
   }));
   mock.module("akanjs/common", () => ({
-    Logger: { log: () => undefined, verbose: () => undefined },
+    Logger: Object.assign(
+      class Logger {
+        log() {}
+        verbose() {}
+        info() {}
+        warn() {}
+        error() {}
+      },
+      { log: () => undefined, verbose: () => undefined, info: () => undefined, warn: () => undefined, error: () => undefined },
+    ),
     parseAkanI18nEnv: () => ({ locales: ["en", "ko"], defaultLocale: "en" }),
     parseBasePaths: (value?: string) => (value ? value.split(",").filter(Boolean) : []),
     pathGet: (path: string, obj: Record<string, unknown>, separator = ".", fallback?: unknown) =>
@@ -58,9 +67,10 @@ beforeAll(() => {
 });
 
 const installClientWindow = (pathname = "/en/admin/current", search = "", hash = "") => {
+  const origin = "https://example.test";
   Object.defineProperty(globalThis, "window", {
     value: {
-      location: { pathname, search, hash },
+      location: { origin, host: "example.test", href: `${origin}${pathname}${search}${hash}`, pathname, search, hash },
       parent: { postMessage: (message: unknown) => messages.push(message) },
     },
     configurable: true,
@@ -70,7 +80,7 @@ const installClientWindow = (pathname = "/en/admin/current", search = "", hash =
     configurable: true,
   });
   Object.defineProperty(globalThis, "location", {
-    value: { pathname, search, hash },
+    value: { pathname, search, hash, href: `${origin}${pathname}${search}${hash}` },
     configurable: true,
   });
 };
@@ -92,7 +102,7 @@ afterEach(() => {
 
 describe("router", () => {
   test("normalizes paths with language, prefix, query, hash, root, and absolute hrefs", async () => {
-    const { getPathInfo } = await import("./router");
+    const { getPathInfo, normalizeDeepLinkHref } = await import("./router");
 
     expect(getPathInfo("/en/admin/users?tab=a#bio", "en", "admin")).toEqual({
       path: "/users",
@@ -104,6 +114,90 @@ describe("router", () => {
     expect(getPathInfo("/en/admin", "en", "admin").path).toBe("/");
     expect(getPathInfo("/users", "ko", "").href).toBe("/ko/users");
     expect(getPathInfo("https://external.test/path", "en", "admin").pathname).toBe("https://external.test/path");
+    expect(normalizeDeepLinkHref("minimal://orders/detail")).toBe("/orders/detail");
+    expect(normalizeDeepLinkHref("minimal://wishlists/camera?deepLink=true#preview")).toBe(
+      "/wishlists/camera?deepLink=true#preview",
+    );
+    expect(normalizeDeepLinkHref("https://localhost:8283/orders/detail")).toBe("/orders/detail");
+  });
+
+  test("resolves deep link stacks with route manifest and indexPath fallback", async () => {
+    envState.side = "client";
+    installClientWindow("/en/admin/explore");
+    let historyState: unknown = null;
+    const windowWithHistory = window as typeof window & {
+      history: { state: unknown; replaceState: (state: unknown) => void };
+      addEventListener: () => void;
+    };
+    windowWithHistory.history = {
+      state: null,
+      replaceState: (state) => {
+        historyState = state;
+        windowWithHistory.history.state = state;
+      },
+    };
+    windowWithHistory.addEventListener = () => undefined;
+    const calls: unknown[] = [];
+    const originalSetTimeout = globalThis.setTimeout;
+    const mockSetTimeout = ((handler: TimerHandler) => {
+      timeoutCallbacks.push(() => {
+        if (typeof handler === "function") handler();
+      });
+      return timeoutCallbacks.length as unknown as ReturnType<typeof setTimeout>;
+    }) as unknown as typeof setTimeout;
+    globalThis.setTimeout = mockSetTimeout;
+    const { router } = await import("./router");
+
+    router.init({
+      type: "csr",
+      lang: "en",
+      prefix: "admin",
+      routeManifest: [
+        "/",
+        "/:lang/explore",
+        "/:lang/wishlists",
+        "/:lang/wishlists/camera",
+        "/:lang/orders/detail",
+        "/:lang/profile",
+        "/:lang/profile/self",
+        "/:lang/profile/self/edit",
+      ],
+      indexPath: "/explore",
+      router: {
+        push: (href, options) => calls.push(["push", href, options]),
+        replace: (href, options) => calls.push(["replace", href, options]),
+        back: (options) => calls.push(["back", options]),
+        refresh: () => calls.push(["refresh"]),
+      },
+    });
+
+    expect(historyState).toEqual({ __akanRouter: { idx: 0 } });
+    expect(router.resolveDeepLinkStack("/wishlists/camera?deepLink=true#preview")).toEqual([
+      "/wishlists",
+      "/wishlists/camera?deepLink=true#preview",
+    ]);
+    expect(router.resolveDeepLinkStack("minimal://orders/detail")).toEqual(["/explore", "/orders/detail"]);
+    expect(router.resolveDeepLinkStack("minimal://profile/self/edit")).toEqual([
+      "/profile",
+      "/profile/self",
+      "/profile/self/edit",
+    ]);
+    expect(router.resolveDeepLinkStack("/missing")).toEqual([]);
+
+    expect(router.enterDeepLink("minimal://profile/self/edit", { resetStack: true })).toBe(true);
+    expect(calls).toEqual([]);
+    timeoutCallbacks.shift()?.();
+    expect(calls).toEqual([["replace", "/en/admin/profile", {}]]);
+    timeoutCallbacks.shift()?.();
+    expect(calls.at(-1)).toEqual(["push", "/en/admin/profile/self", {}]);
+    timeoutCallbacks.shift()?.();
+    expect(calls).toEqual([
+      ["replace", "/en/admin/profile", {}],
+      ["push", "/en/admin/profile/self", {}],
+      ["push", "/en/admin/profile/self/edit", {}],
+    ]);
+    expect(router.canGoBack()).toBe(true);
+    globalThis.setTimeout = originalSetTimeout;
   });
 
   test("client router init wraps push, replace, back, refresh, and path helpers", async () => {

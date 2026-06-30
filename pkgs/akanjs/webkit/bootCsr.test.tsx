@@ -63,6 +63,7 @@ beforeAll(() => {
       setActivePath: () => undefined,
     },
     getExplicitPageConfigKeys: () => ({}),
+    normalizeDeepLinkHref: (href: string) => href,
     getPathInfo: (requestUrl: string, lang: string, prefix: string) => {
       const [urlWithoutHash, hash = ""] = requestUrl.split("#");
       const [url, search = ""] = urlWithoutHash.split("?");
@@ -207,7 +208,7 @@ describe("bootCsr", () => {
   test("initializes mobile target from local Capacitor CSR URL", async () => {
     const replacements: string[] = [];
     installWindow({
-      href: "https://example.test/en/?csr=true&akanMobileTarget=default&akanMobileBasePath=minimal",
+      href: "https://example.test/en/?csr=true&akanMobileTarget=default&akanMobileBasePath=minimal&akanMobileIndexPath=/explore",
       replace: (href) => replacements.push(href),
     });
     const { bootCsr } = await import("./bootCsr");
@@ -216,7 +217,7 @@ describe("bootCsr", () => {
       "./_index.tsx": async () => ({ default: () => null }),
     });
 
-    expect(window.__AKAN_MOBILE_TARGET__).toEqual({ name: "default", basePath: "minimal" });
+    expect(window.__AKAN_MOBILE_TARGET__).toEqual({ name: "default", basePath: "minimal", indexPath: "/explore" });
     expect(replacements).toEqual([]);
   });
 });

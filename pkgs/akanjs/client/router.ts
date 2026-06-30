@@ -4,6 +4,14 @@ import { getBasePathFromPathname, Logger, parseAkanI18nEnv, parseBasePaths } fro
 export interface RouteOptions {
   scrollToTop?: boolean;
 }
+export interface RouteManifest {
+  routes: string[];
+}
+export interface DeepLinkOptions extends RouteOptions {
+  resetStack?: boolean;
+}
+
+const DEEP_LINK_STACK_STEP_DELAY = 450;
 
 export interface RouterInstance {
   push: (href: string, routeOptions?: RouteOptions) => void;
@@ -20,6 +28,8 @@ interface InternalRouterInstance {
 interface RouterOptions {
   prefix?: string;
   lang?: string;
+  routeManifest?: RouteManifest | string[];
+  indexPath?: string;
 }
 interface SsrServerRouterOption extends RouterOptions {
   type: "ssr";
@@ -72,11 +82,42 @@ function getServerRequestContext() {
 const getConfiguredBasePaths = () => new Set(parseBasePaths(process.env.AKAN_PUBLIC_BASE_PATHS));
 
 const shouldExposeBasePath = () => getEnv().operationMode === "local";
-const CSR_RUNTIME_SEARCH_PARAMS = ["csr", "akanMobileTarget", "akanMobileBasePath"] as const;
+const CSR_RUNTIME_SEARCH_PARAMS = ["csr", "akanMobileTarget", "akanMobileBasePath", "akanMobileIndexPath"] as const;
 
 const getLocaleFromPathname = (pathname: string) => {
   const [firstSegment] = pathname.split("/").filter(Boolean);
   return parseAkanI18nEnv().locales.find((locale) => locale === firstSegment);
+};
+
+const normalizeRoutePath = (path: string | undefined) => {
+  const normalized = path?.trim();
+  if (!normalized) return undefined;
+  const [pathWithoutHash, hash = ""] = normalized.split("#");
+  const [pathname, search = ""] = pathWithoutHash.split("?");
+  const routePath = `/${pathname.replace(/^\/+|\/+$/g, "")}`;
+  return `${routePath === "/" ? "/" : routePath}${search ? `?${search}` : ""}${hash ? `#${hash}` : ""}`;
+};
+
+const splitHref = (href: string) => {
+  const [hrefWithoutHash, hash = ""] = href.split("#");
+  const [path, search = ""] = hrefWithoutHash.split("?");
+  return { path: normalizeRoutePath(path) ?? "/", search, hash };
+};
+
+const normalizeRouteManifestPath = (href: string, prefix = "") => {
+  const { path } = splitHref(href);
+  const segments = path.split("/").filter(Boolean);
+  if (segments[0] === ":lang") segments.shift();
+  if (prefix && segments[0] === prefix) segments.shift();
+  return segments.length === 0 ? "/" : `/${segments.join("/")}`;
+};
+
+export const normalizeDeepLinkHref = (href: string, origin = globalThis.window?.location?.origin ?? "http://localhost") => {
+  const url = new URL(href, origin);
+  if (url.protocol === "http:" || url.protocol === "https:") return `${url.pathname}${url.search}${url.hash}`;
+  const hostPath = url.hostname ? `/${url.hostname}` : "";
+  const pathname = `${hostPath}${url.pathname === "/" ? "" : url.pathname}`;
+  return `${normalizeRoutePath(pathname) ?? "/"}${url.search}${url.hash}`;
 };
 
 const getServerBasePath = (reqPathname: string, lang: string, headerBasePath: string | undefined, fallback: string) => {
@@ -117,6 +158,9 @@ class Router {
   isInitialized = false;
   #prefix = "";
   #lang = parseAkanI18nEnv().defaultLocale;
+  #routePaths = new Set<string>();
+  #indexPath = "/";
+  #historyIdx = 0;
   #instance: InternalRouterInstance = {
     push: (href: string) => {
       const { href: fullHref } = this.#getPathInfo(href);
@@ -141,6 +185,17 @@ class Router {
     // if (this.isInitialized) throw new Error("Router is already initialized");
     this.#prefix = options.prefix ?? "";
     this.#lang = options.lang ?? parseAkanI18nEnv().defaultLocale;
+    this.#routePaths = new Set(
+      (Array.isArray(options.routeManifest) ? options.routeManifest : (options.routeManifest?.routes ?? []))
+        .map((path) => normalizeRouteManifestPath(path, this.#prefix))
+        .filter(Boolean),
+    );
+    this.#indexPath = splitHref(options.indexPath ?? "/").path;
+    if (this.#routePaths.size > 0 && !this.#routePaths.has(this.#indexPath)) {
+      Logger.log(`[router] indexPath '${this.#indexPath}' was not found in route manifest. Falling back to '/'.`);
+      this.#indexPath = "/";
+    }
+    this.#ensureHistoryState();
     if (options.type === "csr") this.#initCsrClientRouter(options);
     else if (options.side === "server") this.#initSsrServerRouter(options);
     else this.#initSsrClientRouter(options);
@@ -211,6 +266,31 @@ class Router {
     if (!this.isInitialized) throw new Error("Router is not initialized");
   }
 
+  #ensureHistoryState() {
+    if (getEnv().side === "server") return;
+    const history = globalThis.window?.history;
+    if (!history?.replaceState) return;
+    const state = (history.state ?? {}) as Record<string, unknown>;
+    const akanState = (state.__akanRouter ?? {}) as { idx?: number };
+    this.#historyIdx = Number.isInteger(akanState.idx) ? (akanState.idx as number) : this.#historyIdx;
+    history.replaceState({ ...state, __akanRouter: { ...akanState, idx: this.#historyIdx } }, "", globalThis.window.location.href);
+    if (!globalThis.window.addEventListener) return;
+    globalThis.window.addEventListener("popstate", (event) => {
+      const nextState = ((event.state as Record<string, unknown> | null)?.__akanRouter ?? {}) as { idx?: number };
+      if (Number.isInteger(nextState.idx)) this.#historyIdx = nextState.idx as number;
+    });
+  }
+
+  #rememberHistoryState(kind: "push" | "replace") {
+    if (getEnv().side === "server") return;
+    const history = globalThis.window?.history;
+    if (!history) return;
+    if (kind === "push") this.#historyIdx += 1;
+    const state = (history.state ?? {}) as Record<string, unknown>;
+    const nextState = { ...state, __akanRouter: { ...((state.__akanRouter ?? {}) as object), idx: this.#historyIdx } };
+    if (history.replaceState) history.replaceState(nextState, "", globalThis.window.location.href);
+  }
+
   #getPathInfo(href: string, prefix = this.#prefix) {
     return getPathInfo(href, this.#lang, prefix);
   }
@@ -244,16 +324,67 @@ class Router {
     const { path, search, hash } = this.#getPathInfo(href);
     globalThis.__AKAN_DEV_SYNC_NAVIGATION__?.(`${path}${search ? `?${search}` : ""}${hash ? `#${hash}` : ""}`, kind);
   }
+  #getExistingSegmentStack(path: string) {
+    const segments = path.split("/").filter(Boolean);
+    if (segments.length === 0) return this.#routePaths.has("/") ? ["/"] : [];
+    return segments
+      .map((_, index) => `/${segments.slice(0, index + 1).join("/")}`)
+      .filter((candidate) => this.#routePaths.has(candidate));
+  }
+  resolveDeepLinkStack(href: string) {
+    this.#checkInitialized();
+    const normalizedHref = normalizeDeepLinkHref(href);
+    const { path, search, hash } = splitHref(normalizedHref);
+    if (this.#routePaths.size > 0 && !this.#routePaths.has(path)) {
+      Logger.log(`[router] deep link target '${path}' was not found in route manifest.`);
+      return [];
+    }
+    const stack = this.#routePaths.size > 0 ? this.#getExistingSegmentStack(path) : [path];
+    const baseStack =
+      stack.length > 1 || this.#indexPath === path || stack.includes(this.#indexPath) ? stack : [this.#indexPath, ...stack];
+    const dedupedStack = baseStack.filter((candidate, index) => baseStack.indexOf(candidate) === index);
+    const target = `${path}${search ? `?${search}` : ""}${hash ? `#${hash}` : ""}`;
+    return dedupedStack.map((candidate, index) => (index === dedupedStack.length - 1 ? target : candidate));
+  }
+  enterDeepLink(href: string, options: DeepLinkOptions = {}) {
+    this.#checkInitialized();
+    if (!options.resetStack) {
+      this.push(normalizeDeepLinkHref(href), options);
+      return true;
+    }
+    const stack = this.resolveDeepLinkStack(href);
+    if (stack.length === 0) return false;
+    const { resetStack: _resetStack, ...routeOptions } = options;
+    this.replace(stack[0], routeOptions);
+    stack.slice(1).forEach((target, index) => {
+      setTimeout(() => this.push(target, routeOptions), DEEP_LINK_STACK_STEP_DELAY * (index + 1));
+    });
+    return true;
+  }
   push(href: string, routeOptions?: RouteOptions) {
     this.#checkInitialized();
     this.#instance.push(href, routeOptions);
+    this.#rememberHistoryState("push");
     this.#postDevSyncNavigation("push", href);
     return undefined as never;
   }
   replace(href: string, routeOptions?: RouteOptions) {
     this.#checkInitialized();
     this.#instance.replace(href, routeOptions);
+    this.#rememberHistoryState("replace");
     this.#postDevSyncNavigation("replace", href);
+    return undefined as never;
+  }
+  canGoBack() {
+    if (getEnv().side === "server") return false;
+    return this.#historyIdx > 0;
+  }
+  backOrFallback(fallbackHref = this.#indexPath, routeOptions?: RouteOptions) {
+    if (this.canGoBack()) {
+      this.back(routeOptions);
+      return undefined as never;
+    }
+    this.replace(fallbackHref, routeOptions);
     return undefined as never;
   }
   back(routeOptions?: RouteOptions) {

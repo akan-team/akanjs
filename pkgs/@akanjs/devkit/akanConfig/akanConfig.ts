@@ -76,6 +76,46 @@ const DEFAULT_AKAN_IMAGE_CONFIG: AkanImageConfig = {
   maxRemoteBytes: 25 * 1024 * 1024,
 };
 
+const normalizeIndexPath = (indexPath: string | undefined): string | undefined => {
+  const normalized = indexPath?.trim();
+  if (!normalized) return undefined;
+  const path = `/${normalized.replace(/^\/+|\/+$/g, "")}`;
+  return path === "/" ? "/" : path;
+};
+
+const normalizeStringList = (values: string[] | undefined) => {
+  const normalized = values?.map((value) => value.trim()).filter(Boolean) ?? [];
+  return normalized.length > 0 ? [...new Set(normalized)] : undefined;
+};
+
+const normalizeDeepLinkDomain = (domain: string) => {
+  const normalized = domain.trim();
+  if (!normalized) return "";
+  try {
+    const url = new URL(normalized.includes("://") ? normalized : `https://${normalized}`);
+    return url.host.toLowerCase();
+  } catch {
+    return normalized.replace(/^https?:\/\//, "").replace(/\/+$/g, "").toLowerCase();
+  }
+};
+
+const normalizeDeepLinks = (deepLinks: DeepPartial<AkanMobileTargetConfig["deepLinks"]> | undefined) => {
+  if (!deepLinks) return undefined;
+  const schemes = normalizeStringList(deepLinks.schemes as string[] | undefined);
+  const domains = normalizeStringList((deepLinks.domains as string[] | undefined)?.map(normalizeDeepLinkDomain));
+  const teamId = (deepLinks.ios?.teamId as string | undefined)?.trim();
+  const sha256CertFingerprints = normalizeStringList(
+    deepLinks.android?.sha256CertFingerprints as string[] | undefined,
+  );
+  if (!schemes && !domains && !teamId && !sha256CertFingerprints) return undefined;
+  return {
+    ...(schemes ? { schemes } : {}),
+    ...(domains ? { domains } : {}),
+    ...(teamId ? { ios: { teamId } } : {}),
+    ...(sha256CertFingerprints ? { android: { sha256CertFingerprints } } : {}),
+  } satisfies AkanMobileTargetConfig["deepLinks"];
+};
+
 export class AkanAppConfig implements AppConfigResult {
   app: App;
   rootPackageJson: PackageJson;
@@ -124,7 +164,9 @@ export class AkanAppConfig implements AppConfigResult {
     this.docker = this.#makeDockerContent(config?.docker ?? {});
   }
   #resolveMobileConfig(mobile: DeepPartial<AkanMobileConfig> | undefined): AkanMobileConfig {
-    const { targets: rawTargets, ...rawMobile } = mobile ?? {};
+    const { targets: rawTargets, indexPath: _indexPath, ...rawMobile } = (mobile ?? {}) as DeepPartial<AkanMobileConfig> & {
+      indexPath?: unknown;
+    };
     const appName = rawMobile.appName ?? this.app.name;
     const appId = rawMobile.appId ?? `com.${this.app.name}.app`;
     const version = rawMobile.version ?? "0.0.1";
@@ -140,6 +182,8 @@ export class AkanAppConfig implements AppConfigResult {
         const target = rawTarget as DeepPartial<AkanMobileTargetConfig>;
         const fallbackBasePath = !rawTargets && this.basePaths.has(name) ? name : undefined;
         const basePath = (target.basePath ?? fallbackBasePath)?.replace(/^\/+|\/+$/g, "") || undefined;
+        const indexPath = normalizeIndexPath(target.indexPath as string | undefined);
+        const deepLinks = normalizeDeepLinks(target.deepLinks);
         if (basePath && !this.basePaths.has(basePath)) {
           throw new Error(
             `Mobile target '${name}' uses unknown basePath '${basePath}' in apps/${this.app.name}/akan.config.ts`,
@@ -150,6 +194,8 @@ export class AkanAppConfig implements AppConfigResult {
           ...target,
           name,
           basePath,
+          indexPath,
+          deepLinks,
           appName: target.appName ?? appName,
           appId: target.appId ?? appId,
           version: target.version ?? version,

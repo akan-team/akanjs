@@ -77,6 +77,15 @@ export class SsrBaseArtifactBuilder {
       branches: [...akanConfig.branches],
       i18n: akanConfig.i18n,
       imageConfig: akanConfig.images,
+      deepLinkAssociations: Object.values(akanConfig.mobile.targets)
+        .filter((target) => (target.deepLinks?.domains?.length ?? 0) > 0)
+        .map((target) => ({
+          targetName: target.name,
+          appId: target.appId,
+          domains: target.deepLinks?.domains ?? [],
+          iosTeamId: target.deepLinks?.ios?.teamId,
+          androidSha256CertFingerprints: target.deepLinks?.android?.sha256CertFingerprints,
+        })),
     };
     await Bun.write(path.join(this.#absArtifactDir, "base-artifact.json"), `${JSON.stringify(artifact, null, 2)}\n`);
     this.#app.verbose(`[base-artifact] complete in ${Date.now() - this.#started}ms`);

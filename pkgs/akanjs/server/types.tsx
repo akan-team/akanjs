@@ -99,7 +99,16 @@ export type BaseBuildArtifact = {
   branches: string[];
   i18n: AkanI18nConfig;
   imageConfig: AkanImageConfig;
+  deepLinkAssociations?: MobileDeepLinkAssociation[];
 };
+
+export interface MobileDeepLinkAssociation {
+  targetName: string;
+  appId: string;
+  domains: string[];
+  iosTeamId?: string;
+  androidSha256CertFingerprints?: string[];
+}
 
 export interface CssAsset {
   cssUrl: string;

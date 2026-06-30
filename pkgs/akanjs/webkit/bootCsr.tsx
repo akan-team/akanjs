@@ -35,7 +35,7 @@ type CsrRouteModuleEntry = CsrRouteModuleLoader | { loader: CsrRouteModuleLoader
 
 declare global {
   interface Window {
-    __AKAN_MOBILE_TARGET__?: { name: string; basePath?: string };
+    __AKAN_MOBILE_TARGET__?: { name: string; basePath?: string; indexPath?: string };
   }
 }
 
@@ -277,7 +277,8 @@ function initializeMobileTargetFromSearch() {
   if (!name) return;
 
   const basePath = params.get("akanMobileBasePath")?.replace(/^\/+|\/+$/g, "") ?? "";
-  window.__AKAN_MOBILE_TARGET__ = { name, basePath };
+  const indexPath = params.get("akanMobileIndexPath") ?? undefined;
+  window.__AKAN_MOBILE_TARGET__ = { name, basePath, ...(indexPath ? { indexPath } : {}) };
 }
 
 function validateRouteModuleExports(key: string, mod: RouteModule) {

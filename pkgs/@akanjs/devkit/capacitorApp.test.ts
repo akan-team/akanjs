@@ -34,9 +34,10 @@ const baseTarget: AkanMobileTargetConfig = {
   version: "1.2.3",
   buildNum: 7,
   basePath: "admin",
+  indexPath: "/dashboard",
   assets: { icon: "mobile/icon.png" },
   permissions: ["camera"],
-  links: { schemes: ["minimal"] },
+  deepLinks: { schemes: ["minimal"], domains: ["minimal.app"] },
   files: { android: { "app/google-services.json": "private/google-services.json" } },
 };
 
@@ -74,11 +75,12 @@ describe("materializeCapacitorConfig", () => {
     });
     expect(config).not.toHaveProperty("name");
     expect(config).not.toHaveProperty("basePath");
+    expect(config).not.toHaveProperty("indexPath");
     expect(config).not.toHaveProperty("version");
     expect(config).not.toHaveProperty("buildNum");
     expect(config).not.toHaveProperty("assets");
     expect(config).not.toHaveProperty("permissions");
-    expect(config).not.toHaveProperty("links");
+    expect(config).not.toHaveProperty("deepLinks");
     expect(config).not.toHaveProperty("files");
     expect(config).not.toHaveProperty("server");
   });

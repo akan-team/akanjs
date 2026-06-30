@@ -33,10 +33,15 @@ export interface AkanMobileTargetAssets {
   splash?: string;
 }
 
-export interface AkanMobileTargetLinks {
+export interface AkanMobileTargetDeepLinks {
   schemes?: string[];
-  associatedDomains?: string[];
-  androidHosts?: string[];
+  domains?: string[];
+  ios?: {
+    teamId?: string;
+  };
+  android?: {
+    sha256CertFingerprints?: string[];
+  };
 }
 
 export interface AkanMobileTargetFiles {
@@ -54,13 +59,14 @@ export interface AkanCapacitorLikeConfig {
 export interface AkanMobileTargetConfig extends AkanCapacitorLikeConfig {
   name: string;
   basePath?: string;
+  indexPath?: string;
   appName: string;
   appId: string;
   version: string;
   buildNum: number;
   assets?: AkanMobileTargetAssets;
   permissions?: MobilePermission[];
-  links?: AkanMobileTargetLinks;
+  deepLinks?: AkanMobileTargetDeepLinks;
   files?: AkanMobileTargetFiles;
 }
 

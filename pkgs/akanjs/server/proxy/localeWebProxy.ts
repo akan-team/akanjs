@@ -49,7 +49,7 @@ export class LocaleWebProxy implements WebProxy {
       (locale) => !pathname.startsWith(`/${locale}/`) && pathname !== `/${locale}`,
     );
 
-    if (!isInternalProxyRequest(requestUrl) && pathnameIsMissingLocale) {
+    if (!isInternalProxyRequest(requestUrl) && !isWellKnownRequest(pathname) && pathnameIsMissingLocale) {
       return Response.redirect(
         new URL(`/${getLocale(request)}/${pathname.slice(1)}${targetUrl.search}`, getPublicRequestUrl(request)),
         307,
@@ -85,4 +85,8 @@ function getPublicRequestUrl(request: Bun.BunRequest): URL {
 
 function isInternalProxyRequest(requestUrl: URL): boolean {
   return requestUrl.pathname === "/__rsc";
+}
+
+function isWellKnownRequest(pathname: string): boolean {
+  return pathname === "/.well-known" || pathname.startsWith("/.well-known/");
 }

@@ -56,6 +56,8 @@ import type { BaseBuildArtifact, HttpRoutes, RenderState } from "./types";
 const RESERVED_BASE_PATHS = new Set(["admin"]);
 const CLIENT_CLOSED_REQUEST_STATUS = 499;
 export const DEFAULT_HTML_RESULT_CACHE_MAX_BODY_BYTES = 2 * 1024 * 1024;
+const APPLE_APP_SITE_ASSOCIATION_PATH = "/.well-known/apple-app-site-association";
+const ANDROID_ASSET_LINKS_PATH = "/.well-known/assetlinks.json";
 
 export function createRscRedirectResponse(
   location: string,
@@ -465,6 +467,14 @@ export class WebRouter {
         new Response(JSON.stringify(this.#routeCache.merged.clientManifest, null, 2), {
           headers: { "Content-Type": "application/json; charset=utf-8" },
         }),
+      [APPLE_APP_SITE_ASSOCIATION_PATH]: () =>
+        WebRouter.#deepLinkAssociationResponse(APPLE_APP_SITE_ASSOCIATION_PATH, this.#artifact, {
+          cacheControl: this.#prodMode ? "public, max-age=3600" : "no-store",
+        }) ?? new Response("Not Found", { status: 404 }),
+      [ANDROID_ASSET_LINKS_PATH]: () =>
+        WebRouter.#deepLinkAssociationResponse(ANDROID_ASSET_LINKS_PATH, this.#artifact, {
+          cacheControl: this.#prodMode ? "public, max-age=3600" : "no-store",
+        }) ?? new Response("Not Found", { status: 404 }),
       "/*": async (req) => {
         const url = new URL(req.url);
         if (WebRouter.#isImageOptimizerPath(url.pathname)) {
@@ -1050,6 +1060,49 @@ export class WebRouter {
     }
 
     return new Response(file.stream(), { headers });
+  }
+
+  static #deepLinkAssociationResponse(
+    pathname: string,
+    artifact: BaseBuildArtifact,
+    { cacheControl }: { cacheControl: string },
+  ) {
+    if (pathname !== APPLE_APP_SITE_ASSOCIATION_PATH && pathname !== ANDROID_ASSET_LINKS_PATH) return null;
+    const associations = artifact.deepLinkAssociations ?? [];
+    if (pathname === APPLE_APP_SITE_ASSOCIATION_PATH) {
+      const details = associations
+        .filter((association) => association.domains.length > 0 && association.iosTeamId)
+        .map((association) => ({
+          appIDs: [`${association.iosTeamId}.${association.appId}`],
+          components: [{ "/": "/*" }],
+        }));
+      if (details.length === 0) return null;
+      return WebRouter.#jsonResponse({ applinks: { apps: [], details } }, cacheControl);
+    }
+    const assetLinks = associations
+      .filter(
+        (association) =>
+          association.domains.length > 0 && (association.androidSha256CertFingerprints?.length ?? 0) > 0,
+      )
+      .map((association) => ({
+        relation: ["delegate_permission/common.handle_all_urls"],
+        target: {
+          namespace: "android_app",
+          package_name: association.appId,
+          sha256_cert_fingerprints: association.androidSha256CertFingerprints,
+        },
+      }));
+    if (assetLinks.length === 0) return null;
+    return WebRouter.#jsonResponse(assetLinks, cacheControl);
+  }
+
+  static #jsonResponse(body: unknown, cacheControl: string) {
+    return new Response(JSON.stringify(body, null, 2), {
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": cacheControl,
+      },
+    });
   }
 
   static #bytesResponse(

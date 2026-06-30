@@ -281,11 +281,17 @@ describe("AkanAppConfig", () => {
           targets: {
             admin: {
               basePath: "admin",
+              indexPath: "/admin/home/",
               appName: "Portal Admin",
               appId: "com.portal.admin",
               buildNum: 8,
               permissions: ["camera"],
-              links: { schemes: ["portal-admin"] },
+              deepLinks: {
+                schemes: ["portal-admin", "portal-admin"],
+                domains: ["https://Portal.Admin/"],
+                ios: { teamId: " TEAMID " },
+                android: { sha256CertFingerprints: ["AA:BB", "AA:BB"] },
+              },
             },
           },
         },
@@ -296,12 +302,18 @@ describe("AkanAppConfig", () => {
     expect(config.mobile.targets.admin).toMatchObject({
       name: "admin",
       basePath: "admin",
+      indexPath: "/admin/home",
       appName: "Portal Admin",
       appId: "com.portal.admin",
       version: "1.0.0",
       buildNum: 8,
       permissions: ["camera"],
-      links: { schemes: ["portal-admin"] },
+      deepLinks: {
+        schemes: ["portal-admin"],
+        domains: ["portal.admin"],
+        ios: { teamId: "TEAMID" },
+        android: { sha256CertFingerprints: ["AA:BB"] },
+      },
     });
 
     expect(

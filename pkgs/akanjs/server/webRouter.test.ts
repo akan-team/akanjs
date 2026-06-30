@@ -36,6 +36,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 type FullSsrHandler = (req: Request) => Response | Promise<Response>;
+type RouteHandler = (req: Request) => Response | Promise<Response>;
 
 interface FakeRscWorker {
   renderCalls: Request[];
@@ -107,8 +108,14 @@ function createTestArtifact(): BaseBuildArtifact {
 }
 
 async function withFullSsrCacheHarness<T>(
-  run: (input: { fullSsr: FullSsrHandler; fakeWorker: FakeRscWorker; router: WebRouter }) => Promise<T>,
+  run: (input: {
+    fullSsr: FullSsrHandler;
+    renderEnvRoutes: Record<string, RouteHandler>;
+    fakeWorker: FakeRscWorker;
+    router: WebRouter;
+  }) => Promise<T>,
   options: {
+    artifact?: BaseBuildArtifact;
     worker?: FakeRscWorker;
     nodeEnv?: string;
     htmlCacheEnabled?: string;
@@ -161,7 +168,7 @@ async function withFullSsrCacheHarness<T>(
 
   const fakeWorker = options.worker ?? createFakeRscWorker();
   const router = new WebRouter({
-    artifact: createTestArtifact(),
+    artifact: options.artifact ?? createTestArtifact(),
     cssBytesByUrl: {},
     rsc: fakeWorker as never,
     seedIndex: { entries: [], globalLayoutFiles: [] },
@@ -171,7 +178,7 @@ async function withFullSsrCacheHarness<T>(
   try {
     const { renderEnvRoutes } = await router.initializeRoute();
     const fullSsr = renderEnvRoutes["/*"] as unknown as FullSsrHandler;
-    return await run({ fullSsr, fakeWorker, router });
+    return await run({ fullSsr, renderEnvRoutes: renderEnvRoutes as Record<string, RouteHandler>, fakeWorker, router });
   } finally {
     router.dispose();
     SsrFromRscRenderer.prototype.render = originalRender;
@@ -225,6 +232,79 @@ describe("WebRouter RSC target normalization", () => {
 
     expect(normalized.url.href).toBe("https://akanjs.com/en/akanjs/docs/intro/quickstart");
     expect(normalized.basePath).toBe("akanjs");
+  });
+});
+
+describe("WebRouter deep link associations", () => {
+  const artifactWithDeepLinks = (): BaseBuildArtifact => ({
+    ...createTestArtifact(),
+    deepLinkAssociations: [
+      {
+        targetName: "default",
+        appId: "com.minimal.app",
+        domains: ["minimal.app"],
+        iosTeamId: "TEAMID",
+        androidSha256CertFingerprints: ["AA:BB"],
+      },
+      {
+        targetName: "admin",
+        appId: "com.minimal.admin",
+        domains: ["minimal.app"],
+        iosTeamId: "ADMINTEAM",
+        androidSha256CertFingerprints: ["CC:DD"],
+      },
+    ],
+  });
+
+  test("serves apple app site association from deep link metadata", async () => {
+    await withFullSsrCacheHarness(
+      async ({ renderEnvRoutes }) => {
+        const response = await renderEnvRoutes["/.well-known/apple-app-site-association"](
+          new Request("https://minimal.app/.well-known/apple-app-site-association"),
+        );
+        expect(response.headers.get("Content-Type")).toContain("application/json");
+        await expect(response.json()).resolves.toEqual({
+          applinks: {
+            apps: [],
+            details: [
+              { appIDs: ["TEAMID.com.minimal.app"], components: [{ "/": "/*" }] },
+              { appIDs: ["ADMINTEAM.com.minimal.admin"], components: [{ "/": "/*" }] },
+            ],
+          },
+        });
+      },
+      { artifact: artifactWithDeepLinks() },
+    );
+  });
+
+  test("serves android asset links from deep link metadata", async () => {
+    await withFullSsrCacheHarness(
+      async ({ renderEnvRoutes }) => {
+        const response = await renderEnvRoutes["/.well-known/assetlinks.json"](
+          new Request("https://minimal.app/.well-known/assetlinks.json"),
+        );
+        expect(response.headers.get("Content-Type")).toContain("application/json");
+        await expect(response.json()).resolves.toEqual([
+          {
+            relation: ["delegate_permission/common.handle_all_urls"],
+            target: {
+              namespace: "android_app",
+              package_name: "com.minimal.app",
+              sha256_cert_fingerprints: ["AA:BB"],
+            },
+          },
+          {
+            relation: ["delegate_permission/common.handle_all_urls"],
+            target: {
+              namespace: "android_app",
+              package_name: "com.minimal.admin",
+              sha256_cert_fingerprints: ["CC:DD"],
+            },
+          },
+        ]);
+      },
+      { artifact: artifactWithDeepLinks() },
+    );
   });
 });
 

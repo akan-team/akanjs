@@ -133,7 +133,15 @@ const CSRWrapper = ({
       document.documentElement.classList.add("akan-mobile-document");
       document.body.classList.add("akan-mobile-document");
     }
-    if (!router.isInitialized) router.init({ type: "csr", lang, prefix, router: reactRouter });
+    if (!router.isInitialized)
+      router.init({
+        type: "csr",
+        lang,
+        prefix,
+        router: reactRouter,
+        routeManifest: pathRoutes.map((pathRoute) => pathRoute.path),
+        indexPath: window.__AKAN_MOBILE_TARGET__?.indexPath,
+      });
     st.do.setCsrLoaded(true);
     const onVisibilityChange = () => debugFrame("document.visibility", { visibilityState: document.visibilityState });
     const onPageHide = (event: PageTransitionEvent) => debugFrame("window.pagehide", { persisted: event.persisted });

@@ -1,4 +1,4 @@
-import { cp, mkdir, rm } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { CapacitorConfig } from "@capacitor/cli";
@@ -463,11 +463,12 @@ export function materializeCapacitorConfig(
   const {
     name,
     basePath: _basePath,
+    indexPath: _indexPath,
     version: _version,
     buildNum: _buildNum,
     assets: _assets,
     permissions: _permissions,
-    links: _links,
+    deepLinks: _deepLinks,
     files: _files,
     appId,
     appName,
@@ -587,7 +588,7 @@ export class CapacitorApp {
     await this.#prepareExternalFiles("ios");
     await this.#applyIosMetadata();
     await this.#applyPermissions();
-    await this.#applyLinks();
+    await this.#applyDeepLinks("ios", { operation, env });
     await this.project.commit();
     await this.#generateAssets({ operation, env });
     this.app.verbose(`syncing iOS`);
@@ -749,12 +750,13 @@ export class CapacitorApp {
     await this.#prepareExternalFiles("android");
     await this.#applyAndroidMetadata();
     await this.#applyPermissions();
-    await this.#applyLinks();
+    await this.#applyDeepLinks("android", { operation, env });
     await this.project.commit();
     await this.#generateAssets({ operation, env });
     await this.#ensureAndroidAssetsDir();
     await this.#ensureAndroidDebugKeystore();
     await this.#spawnMobile("npx", ["cap", "sync", "android"], { operation, env });
+    await this.#setDeepLinksInAndroid(this.target.deepLinks?.schemes ?? [], this.target.deepLinks?.domains ?? []);
   }
 
   async #updateAndroidBuildTypes() {
@@ -898,7 +900,11 @@ export class CapacitorApp {
   }
   #injectMobileTargetMeta(html: string) {
     const basePath = this.target.basePath?.replace(/^\/+|\/+$/g, "") ?? "";
-    const script = `<script>window.__AKAN_MOBILE_TARGET__=${JSON.stringify({ name: this.target.name, basePath })};</script>`;
+    const script = `<script>window.__AKAN_MOBILE_TARGET__=${JSON.stringify({
+      name: this.target.name,
+      basePath,
+      indexPath: this.target.indexPath,
+    })};</script>`;
     if (html.includes("window.__AKAN_MOBILE_TARGET__")) return html;
     return html.replace(/<\/head\s*>/i, `${script}\n</head>`);
   }
@@ -977,14 +983,23 @@ export class CapacitorApp {
       else if (permission === "push") await this.addPush();
     }
   }
-  async #applyLinks() {
-    const links = this.target.links;
-    if (!links) return;
-    const schemes = links.schemes ?? [];
-    if (schemes.length > 0) {
-      await this.#setPermissionInIos({
-        appTransportSecurity: "",
-      });
+  async #applyDeepLinks(platform: "ios" | "android", { operation, env }: Pick<RunConfig, "operation" | "env">) {
+    const deepLinks = this.target.deepLinks;
+    if (!deepLinks) return;
+    const schemes = deepLinks.schemes ?? [];
+    const domains = deepLinks.domains ?? [];
+    if (domains.length > 0) this.#assertDeepLinkVerificationConfig(platform, { operation, env });
+    if (platform === "ios") {
+      if (schemes.length > 0) {
+        await this.#setPermissionInIos({
+          appTransportSecurity: "",
+        });
+        await this.#setUrlSchemesInIos(schemes);
+      }
+      if (domains.length > 0) await this.#setAssociatedDomainsInIos(domains);
+      return;
+    }
+    if (platform === "android") {
       for (const scheme of schemes) {
         this.project.android
           .getAndroidManifest()
@@ -993,18 +1008,30 @@ export class CapacitorApp {
             `<intent-filter><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" /><category android:name="android.intent.category.BROWSABLE" /><data android:scheme="${scheme}" /></intent-filter>`,
           );
       }
+      for (const domain of domains) {
+        const pathPrefix = resolveMobilePath(this.target, "/");
+        this.project.android
+          .getAndroidManifest()
+          .injectFragment(
+            "activity",
+            `<intent-filter android:autoVerify="true"><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" /><category android:name="android.intent.category.BROWSABLE" /><data android:scheme="https" android:host="${domain}" android:pathPrefix="${pathPrefix}" /></intent-filter>`,
+          );
+      }
+      await this.#setDeepLinksInAndroid(schemes, domains);
     }
-    for (const domain of links.associatedDomains ?? []) {
-      this.app.logger.info(`Configure iOS associated domain manually if needed: ${domain}`);
+  }
+  #assertDeepLinkVerificationConfig(platform: "ios" | "android", { operation, env }: Pick<RunConfig, "operation" | "env">) {
+    const deepLinks = this.target.deepLinks;
+    if (!deepLinks?.domains?.length) return;
+    if (platform === "ios" && !deepLinks.ios?.teamId) {
+      throw new Error(
+        `Mobile target '${this.target.name}' uses deepLinks.domains but is missing deepLinks.ios.teamId in apps/${this.app.name}/akan.config.ts`,
+      );
     }
-    for (const host of links.androidHosts ?? []) {
-      const pathPrefix = resolveMobilePath(this.target, "/");
-      this.project.android
-        .getAndroidManifest()
-        .injectFragment(
-          "activity",
-          `<intent-filter android:autoVerify="true"><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" /><category android:name="android.intent.category.BROWSABLE" /><data android:scheme="https" android:host="${host}" android:pathPrefix="${pathPrefix}" /></intent-filter>`,
-        );
+    if (platform === "android" && !deepLinks.android?.sha256CertFingerprints?.length) {
+      const message = `Mobile target '${this.target.name}' uses deepLinks.domains but is missing deepLinks.android.sha256CertFingerprints in apps/${this.app.name}/akan.config.ts`;
+      if (operation === "release" || env === "main") throw new Error(message);
+      this.app.logger.warn(message);
     }
   }
   async #commandEnv(operation: "local" | "release", env: "local" | "debug" | "develop" | "main") {
@@ -1024,6 +1051,7 @@ export class CapacitorApp {
     const port = commandEnv.AKAN_PUBLIC_CLIENT_PORT ?? commandEnv.PORT ?? "8282";
     const params = new URLSearchParams({ csr: "true", akanMobileTarget: this.target.name });
     if (basePath) params.set("akanMobileBasePath", basePath);
+    if (this.target.indexPath) params.set("akanMobileIndexPath", this.target.indexPath);
     return `http://${ip}:${port}/${pathname}?${params}`;
   }
   async #clearRootCapacitorConfigs() {
@@ -1089,6 +1117,96 @@ export class CapacitorApp {
       this.project.ios.updateInfoPlist(this.iosTargetName, "Debug", updateNs),
       this.project.ios.updateInfoPlist(this.iosTargetName, "Release", updateNs),
     ]);
+  }
+  async #setUrlSchemesInIos(schemes: string[]) {
+    const urlTypes = schemes.map((scheme) => ({
+      CFBundleURLName: this.target.appId,
+      CFBundleURLSchemes: [scheme],
+    }));
+    await Promise.all([
+      this.project.ios.updateInfoPlist(this.iosTargetName, "Debug", { CFBundleURLTypes: urlTypes }),
+      this.project.ios.updateInfoPlist(this.iosTargetName, "Release", { CFBundleURLTypes: urlTypes }),
+    ]);
+  }
+  async #setAssociatedDomainsInIos(domains: string[]) {
+    const entitlementsRelPath = "App/App.entitlements";
+    const entitlementsPath = path.join(this.app.cwdPath, this.iosProjectPath, entitlementsRelPath);
+    const values = domains.map((domain) => `applinks:${domain}`);
+    const body = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+      '<plist version="1.0">',
+      "<dict>",
+      "  <key>com.apple.developer.associated-domains</key>",
+      "  <array>",
+      ...values.map((value) => `    <string>${value}</string>`),
+      "  </array>",
+      "</dict>",
+      "</plist>",
+      "",
+    ].join("\n");
+    await writeFile(entitlementsPath, body);
+    await this.#setCodeSignEntitlementsInIos(entitlementsRelPath);
+  }
+  async #setCodeSignEntitlementsInIos(entitlementsRelPath: string) {
+    const pbxprojPath = path.join(this.app.cwdPath, this.iosProjectPath, "App.xcodeproj/project.pbxproj");
+    const lines = (await readFile(pbxprojPath, "utf8")).split("\n");
+    let changed = false;
+    for (let index = 0; index < lines.length; index++) {
+      const line = lines[index] ?? "";
+      if (!line.includes(`PRODUCT_BUNDLE_IDENTIFIER = ${this.target.appId};`)) continue;
+      let start = index;
+      while (start >= 0 && !lines[start]?.includes("buildSettings = {")) start--;
+      let end = index;
+      while (end < lines.length && !/^\s*\};\s*$/.test(lines[end] ?? "")) end++;
+      const settings = lines.slice(start, end + 1);
+      if (settings.some((setting) => setting.includes("CODE_SIGN_ENTITLEMENTS"))) continue;
+      const indent = line.match(/^\s*/)?.[0] ?? "";
+      lines.splice(index, 0, `${indent}CODE_SIGN_ENTITLEMENTS = ${entitlementsRelPath};`);
+      index++;
+      changed = true;
+    }
+    if (changed) await writeFile(pbxprojPath, lines.join("\n"));
+  }
+  async #setUrlSchemesInAndroid(schemes: string[]) {
+    const manifestPath = path.join(this.app.cwdPath, this.androidRootPath, "app/src/main/AndroidManifest.xml");
+    let manifest = await readFile(manifestPath, "utf8");
+    let changed = false;
+    for (const scheme of schemes) {
+      if (manifest.includes(`android:scheme="${scheme}"`)) continue;
+      const filter = [
+        "            <intent-filter>",
+        '                <action android:name="android.intent.action.VIEW" />',
+        '                <category android:name="android.intent.category.DEFAULT" />',
+        '                <category android:name="android.intent.category.BROWSABLE" />',
+        `                <data android:scheme="${scheme}" />`,
+        "            </intent-filter>",
+      ].join("\n");
+      manifest = manifest.replace(/(\s*<\/activity>)/, `\n${filter}$1`);
+      changed = true;
+    }
+    if (changed) await writeFile(manifestPath, manifest);
+  }
+  async #setDeepLinksInAndroid(schemes: string[], domains: string[]) {
+    await this.#setUrlSchemesInAndroid(schemes);
+    const manifestPath = path.join(this.app.cwdPath, this.androidRootPath, "app/src/main/AndroidManifest.xml");
+    let manifest = await readFile(manifestPath, "utf8");
+    let changed = false;
+    const pathPrefix = resolveMobilePath(this.target, "/");
+    for (const domain of domains) {
+      if (manifest.includes(`android:host="${domain}"`) && manifest.includes('android:scheme="https"')) continue;
+      const filter = [
+        '            <intent-filter android:autoVerify="true">',
+        '                <action android:name="android.intent.action.VIEW" />',
+        '                <category android:name="android.intent.category.DEFAULT" />',
+        '                <category android:name="android.intent.category.BROWSABLE" />',
+        `                <data android:scheme="https" android:host="${domain}" android:pathPrefix="${pathPrefix}" />`,
+        "            </intent-filter>",
+      ].join("\n");
+      manifest = manifest.replace(/(\s*<\/activity>)/, `\n${filter}$1`);
+      changed = true;
+    }
+    if (changed) await writeFile(manifestPath, manifest);
   }
   #setFeaturesInAndroid(features: string[]) {
     for (const feature of features) {

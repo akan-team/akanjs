@@ -85,6 +85,7 @@ const localCsrUrl = (ip: string, target: AkanMobileTargetConfig, appInfo: AppSca
   const port = resolveLocalCsrPort(appInfo);
   const params = new URLSearchParams({ csr: "true", akanMobileTarget: target.name });
   if (basePath) params.set("akanMobileBasePath", basePath);
+  if (target.indexPath) params.set("akanMobileIndexPath", target.indexPath);
   return `http://${ip}:${port}/${pathname}?${params}`;
 };
 
@@ -97,8 +98,20 @@ export const withBase = (
   const appInfo = appData;
   if (!appInfo) throw new Error("withBase requires apps/<app>/akan.app.json metadata.");
   const target = resolveTarget(appInfo, targetName);
+  const {
+    name: _name,
+    basePath: _basePath,
+    indexPath: _indexPath,
+    version: _version,
+    buildNum: _buildNum,
+    assets: _assets,
+    permissions: _permissions,
+    deepLinks: _deepLinks,
+    files: _files,
+    ...capacitorTarget
+  } = target;
   const baseConfig: CapacitorConfig = {
-    ...target,
+    ...capacitorTarget,
     appId: target.appId,
     appName: target.appName,
     webDir: "dist",
