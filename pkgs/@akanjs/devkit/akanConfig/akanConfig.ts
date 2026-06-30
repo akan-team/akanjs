@@ -171,9 +171,7 @@ export class AkanAppConfig implements AppConfigResult {
       targets: rawTargets,
       indexPath: _indexPath,
       ...rawMobile
-    } = (mobile ?? {}) as DeepPartial<AkanMobileConfig> & {
-      indexPath?: unknown;
-    };
+    } = (mobile ?? {}) as DeepPartial<AkanMobileConfig> & { indexPath?: unknown };
     const appName = rawMobile.appName ?? this.app.name;
     const appId = rawMobile.appId ?? `com.${this.app.name}.app`;
     const version = rawMobile.version ?? "0.0.1";
