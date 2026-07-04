@@ -40,7 +40,7 @@ type QueryOrMutationFetchFn<E, SlceCls extends SliceCls | never> = (
   ...args: [...EndpInfoArgs<E>, fetchPolicy?: FetchPolicy]
 ) => Promise<EndpInfoReturns<E, SlceCls>>;
 
-type MessageEmitFn<E, SlceCls extends SliceCls | never> = (...args: EndpInfoArgs<E>) => EndpInfoReturns<E, SlceCls>;
+type MessageEmitFn<E> = (...args: EndpInfoArgs<E>) => void;
 
 type MessageListenFn<E, SlceCls extends SliceCls | never> = (
   handleEvent: (data: EndpInfoReturns<E, SlceCls>) => PromiseOrObject<void>,
@@ -59,7 +59,7 @@ type PrimaryFetchFn<E, SlceCls extends SliceCls | never> =
   EndpInfoReqType<E> extends "query" | "mutation"
     ? QueryOrMutationFetchFn<E, SlceCls>
     : EndpInfoReqType<E> extends "message"
-      ? MessageEmitFn<E, SlceCls>
+      ? MessageEmitFn<E>
       : never;
 
 // Keys kept as-is: query / mutation / message (emit)
