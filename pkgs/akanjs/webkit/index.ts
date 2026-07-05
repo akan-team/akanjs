@@ -13,5 +13,12 @@ export { useGeoLocation } from "./useGeoLocation";
 export { useHistory } from "./useHistory";
 export { useInterval } from "./useInterval";
 export { useLocation } from "./useLocation";
-export { usePushNoti } from "./usePushNoti";
+export {
+  initPushNotificationClickBridge,
+  type PushNotificationPermission,
+  type PushNotificationPlatform,
+  type PushNotificationProvider,
+  type PushToken,
+  usePushNotification,
+} from "./usePushNotification";
 export { useThrottle } from "./useThrottle";

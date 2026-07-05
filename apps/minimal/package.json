@@ -3,6 +3,7 @@
   "name": "minimal",
   "version": "0.0.1",
   "dependencies": {
+    "@capacitor-community/fcm": "*",
     "@capacitor/app": "*",
     "@capacitor/browser": "*",
     "@capacitor/camera": "*",
@@ -13,6 +14,7 @@
     "@capacitor/inappbrowser": "*",
     "@capacitor/keyboard": "*",
     "@capacitor/preferences": "*",
+    "@capacitor/push-notifications": "*",
     "capacitor-plugin-safe-area": "*",
     "@kubernetes/client-node": "^1.4.0",
     "compare-versions": "^6.1.1",

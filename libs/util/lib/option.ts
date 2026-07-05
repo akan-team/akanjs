@@ -3,11 +3,11 @@ import {
   CloudflareApi,
   DiscordApi,
   EmailApi,
-  FirebaseApi,
   generateAeskey,
   generateHost,
   generateJwtSecret,
   ObjectStorageApi,
+  PushNotificationServer,
   PurpleApi,
 } from "@libs/util/srvkit";
 import type { SshOptions } from "akanjs/base";
@@ -17,9 +17,9 @@ import type {
   CloudflareOptions,
   DiscordOptions,
   EmailOptions,
-  FirebaseOptions,
   IpfsOptions,
   ObjectStorageOptions,
+  PushNotificationServerOptions,
   PurpleOptions,
 } from "../srvkit";
 import type { LibOptions } from "./srv";
@@ -83,7 +83,7 @@ export type ModulesOptions = LibOptions & {
   mailer?: EmailOptions;
   message?: PurpleOptions;
   cloudflare?: CloudflareOptions;
-  firebase?: FirebaseOptions;
+  firebase?: PushNotificationServerOptions;
   iapVerify?: {
     google: GoogleAccount;
     apple: string;
@@ -100,7 +100,7 @@ export const option = new AkanOption<ModulesOptions>().use((options) => {
   });
   return {
     cloudflareApi: options.cloudflare ? new CloudflareApi(options.cloudflare) : null,
-    firebaseApi: options.firebase ? new FirebaseApi(options.firebase) : null,
+    pushNotificationServer: options.firebase ? new PushNotificationServer(options.firebase) : null,
     emailApi: options.mailer ? new EmailApi(options.mailer) : null,
     purpleApi: options.message ? new PurpleApi(options.message) : null,
     storageApi: options.objectStorage ? new ObjectStorageApi(options.appName, options.objectStorage) : blobStorageApi,

@@ -56,6 +56,7 @@ export default function Layout({ children }: LayoutProps) {
         { name: l.trans({ en: "Documentation", ko: "문서화" }), href: "/cheatsheet/dev/docs" },
         { name: l.trans({ en: "Script", ko: "스크립트" }), href: "/cheatsheet/dev/script" },
         { name: l.trans({ en: "Console", ko: "콘솔" }), href: "/cheatsheet/dev/console" },
+        { name: l.trans({ en: "Mobile", ko: "모바일" }), href: "/cheatsheet/dev/mobile" },
         { name: l.trans({ en: "Docker", ko: "도커" }), href: "/cheatsheet/dev/docker" },
         { name: l.trans({ en: "Kubernetes", ko: "쿠버네티스" }), href: "/cheatsheet/dev/k8s" },
         { name: l.trans({ en: "PWA", ko: "PWA" }), href: "/cheatsheet/dev/pwa" },

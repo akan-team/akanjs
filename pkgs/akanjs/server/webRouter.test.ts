@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { DEFAULT_AKAN_I18N } from "akanjs/common";
 import { createRequestStore } from "akanjs/fetch";
 import {
@@ -121,6 +124,7 @@ async function withFullSsrCacheHarness<T>(
     htmlCacheEnabled?: string;
     htmlCachePaths?: string;
     htmlCacheMaxBodyBytes?: string;
+    appDir?: string;
     onRenderInput?: (input: Parameters<SsrFromRscRenderer["render"]>[0]) => void;
   } = {},
 ): Promise<T> {
@@ -130,6 +134,7 @@ async function withFullSsrCacheHarness<T>(
     AKAN_PUBLIC_REPO_NAME: process.env.AKAN_PUBLIC_REPO_NAME,
     AKAN_PUBLIC_SERVE_DOMAIN: process.env.AKAN_PUBLIC_SERVE_DOMAIN,
     AKAN_PUBLIC_OPERATION_MODE: process.env.AKAN_PUBLIC_OPERATION_MODE,
+    AKAN_APP_DIR: process.env.AKAN_APP_DIR,
     AKAN_HTML_RESULT_CACHE: process.env.AKAN_HTML_RESULT_CACHE,
     AKAN_HTML_RESULT_CACHE_PATHS: process.env.AKAN_HTML_RESULT_CACHE_PATHS,
     AKAN_HTML_RESULT_CACHE_EXCLUDE_PATHS: process.env.AKAN_HTML_RESULT_CACHE_EXCLUDE_PATHS,
@@ -141,6 +146,8 @@ async function withFullSsrCacheHarness<T>(
   process.env.AKAN_PUBLIC_REPO_NAME = "akan";
   process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.test";
   process.env.AKAN_PUBLIC_OPERATION_MODE = "local";
+  if (options.appDir === undefined) delete process.env.AKAN_APP_DIR;
+  else process.env.AKAN_APP_DIR = options.appDir;
   if (options.htmlCacheEnabled === undefined) delete process.env.AKAN_HTML_RESULT_CACHE;
   else process.env.AKAN_HTML_RESULT_CACHE = options.htmlCacheEnabled;
   if (options.htmlCachePaths === undefined) delete process.env.AKAN_HTML_RESULT_CACHE_PATHS;
@@ -187,6 +194,17 @@ async function withFullSsrCacheHarness<T>(
       else process.env[key] = value;
     }
   }
+}
+
+async function createTempAppWithClientEnv(firebaseConfig: Record<string, unknown>): Promise<string> {
+  const appDir = await mkdtemp(path.join(os.tmpdir(), "akan-web-router-app-"));
+  const envDir = path.join(appDir, "env");
+  await mkdir(envDir, { recursive: true });
+  await writeFile(
+    path.join(envDir, "env.client.ts"),
+    `export const env = ${JSON.stringify({ firebase: firebaseConfig }, null, 2)};\n`,
+  );
+  return appDir;
 }
 
 describe("WebRouter RSC target normalization", () => {
@@ -305,6 +323,64 @@ describe("WebRouter deep link associations", () => {
       },
       { artifact: artifactWithDeepLinks() },
     );
+  });
+});
+
+describe("WebRouter Firebase messaging service worker", () => {
+  test("serves generated Firebase messaging service worker from client env config only", async () => {
+    const appDir = await createTempAppWithClientEnv({
+      apiKey: "public-api-key",
+      authDomain: "example.firebaseapp.com",
+      projectId: "public-project",
+      storageBucket: "public-project.appspot.com",
+      messagingSenderId: "1234567890",
+      appId: "public-app-id",
+      vapidKey: "public-vapid-key",
+      private_key: "SERVER_PRIVATE_KEY_MUST_NOT_LEAK",
+    });
+
+    try {
+      await withFullSsrCacheHarness(
+        async ({ renderEnvRoutes }) => {
+          const serviceWorkerRoute = renderEnvRoutes["/firebase-messaging-sw.js"];
+          expect(serviceWorkerRoute).toBeDefined();
+          if (!serviceWorkerRoute) return;
+          const response = await serviceWorkerRoute(
+            new Request("https://example.test/firebase-messaging-sw.js"),
+          );
+          const body = await response.text();
+
+          expect(response.status).toBe(200);
+          expect(response.headers.get("Content-Type")).toContain("application/javascript");
+          expect(response.headers.get("Cache-Control")).toBe("no-store");
+          expect(body).toContain("public-api-key");
+          expect(body).toContain("public-project");
+          expect(body).toContain("firebase-messaging-compat.js");
+          expect(body).not.toContain("SERVER_PRIVATE_KEY_MUST_NOT_LEAK");
+          expect(body).not.toContain("private_key");
+        },
+        { appDir },
+      );
+    } finally {
+      await rm(appDir, { recursive: true, force: true });
+    }
+  });
+
+  test("serves no-op Firebase messaging service worker without client env config", async () => {
+    await withFullSsrCacheHarness(async ({ renderEnvRoutes }) => {
+      const serviceWorkerRoute = renderEnvRoutes["/firebase-messaging-sw.js"];
+      expect(serviceWorkerRoute).toBeDefined();
+      if (!serviceWorkerRoute) return;
+      const response = await serviceWorkerRoute(
+        new Request("https://example.test/firebase-messaging-sw.js"),
+      );
+      const body = await response.text();
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      expect(body).toContain("const firebaseConfig = null");
+      expect(body).toContain("notificationclick");
+    });
   });
 });
 

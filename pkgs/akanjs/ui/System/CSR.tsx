@@ -15,7 +15,7 @@ import {
 } from "akanjs/client";
 import { st } from "akanjs/store";
 import { animated } from "akanjs/ui";
-import { useFetch, usePushNoti } from "akanjs/webkit";
+import { useFetch } from "akanjs/webkit";
 import { createElement, memo, type ComponentProps, type ReactNode, type RefObject, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
@@ -392,7 +392,6 @@ interface CSRBridgeProps {
   prefix?: string;
 }
 const CSRBridge = ({ lang, prefix = "" }: CSRBridgeProps) => {
-  const pushNoti = usePushNoti();
   const { location, pageContentRef } = useCsr();
   useEffect(() => {
     const { path, pathname } = getPathInfo(location.pathname, lang, prefix);
@@ -408,13 +407,6 @@ const CSRBridge = ({ lang, prefix = "" }: CSRBridgeProps) => {
     const device = Device.getDevice();
     device.listenKeyboardChanged(st.do.setKeyboardHeight);
     device.setPageContentRef(pageContentRef);
-    if (device.info.platform === "web") return;
-    void (async () => {
-      await pushNoti.init();
-      const token = await pushNoti.getToken();
-      if (!token) return;
-      st.do.setDeviceToken(token);
-    })();
     return () => {
       device.unlistenKeyboardChanged();
     };

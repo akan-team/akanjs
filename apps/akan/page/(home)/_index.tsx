@@ -1,5 +1,4 @@
 import { usePage } from "@apps/akan/client";
-import type { PageConfig } from "akanjs/client";
 import { Link } from "akanjs/ui";
 import { BsArrowRight, BsCheckCircle, BsCloud, BsCodeSlash, BsTerminal } from "react-icons/bs";
 
@@ -743,5 +742,3 @@ export default function Page() {
     </main>
   );
 }
-
-export const pageConfig: PageConfig = {};

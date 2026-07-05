@@ -1,4 +1,5 @@
 import path from "node:path";
+import { rm } from "node:fs/promises";
 import type {
   AppConfigResult,
   AppScanResult,
@@ -53,6 +54,7 @@ const appRootAllowedFiles = new Set([
   "server.ts",
   "tsconfig.json",
 ]);
+const generatedRootCapacitorConfigFiles = ["capacitor.config.js", "capacitor.config.json"] as const;
 const appRootAllowedDirs = new Set([
   ".akan",
   "android",
@@ -99,12 +101,17 @@ const isAllowedLibRootFile = (filename: string) =>
   libRootAllowedFiles.has(filename) || rootSignalTestFilePattern.test(filename);
 const getScanPath = (exec: AppExecutor | LibExecutor, relativePath: string) =>
   path.posix.join(`${exec.type}s`, exec.name, relativePath.split(path.sep).join("/"));
+async function clearGeneratedRootCapacitorConfigs(exec: AppExecutor | LibExecutor) {
+  if (exec.type !== "app") return;
+  await Promise.all(generatedRootCapacitorConfigFiles.map((filename) => rm(exec.getPath(filename), { force: true })));
+}
 const getModuleNameFromPath = (kind: ModuleKind, modulePath: string) => {
   const dirname = path.basename(modulePath);
   return kind === "service" ? dirname.replace(/^_+/, "") : dirname;
 };
 
 async function assertScanConvention(exec: AppExecutor | LibExecutor, libRoot: { files: string[]; dirs: string[] }) {
+  await clearGeneratedRootCapacitorConfigs(exec);
   const violations: string[] = [];
   const addViolation = (relativePath: string, reason: string) => {
     violations.push(`${getScanPath(exec, relativePath)}: ${reason}`);

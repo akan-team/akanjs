@@ -107,6 +107,19 @@ export type CapacitorPushNotificationsModule = {
     requestPermissions: () => Promise<{ receive: "granted" | "denied" | string }>;
     checkPermissions: () => Promise<{ receive: "granted" | "denied" | string }>;
     register: () => Promise<void> | void;
+    addListener: (
+      eventName:
+        | "registration"
+        | "registrationError"
+        | "pushNotificationReceived"
+        | "pushNotificationActionPerformed"
+        | string,
+      listenerFunc: (event: {
+        value?: string;
+        error?: string;
+        notification?: { data?: Record<string, unknown> };
+      }) => void,
+    ) => Promise<{ remove?: () => Promise<void> | void } | void> | { remove?: () => Promise<void> | void } | void;
   };
 };
 

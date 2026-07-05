@@ -19,9 +19,14 @@ export default function Page() {
             <p className="apptest-muted text-xs uppercase tracking-[0.3em]">Featured stay</p>
             <p className="mt-2 font-semibold text-xl">Skyline loft in Seolleung</p>
             <p className="apptest-muted mt-1 text-sm">A premium space with city night views and a quiet lounge</p>
-            <Link className="btn btn-primary mt-4 w-full rounded-2xl border-0" href="/explore/detail">
-              View details <AiOutlineArrowRight />
-            </Link>
+            <div className="mt-4 grid gap-2">
+              <Link className="btn btn-primary w-full rounded-2xl border-0" href="/push-notification">
+                Push notification demo <AiOutlineArrowRight />
+              </Link>
+              <Link className="btn btn-ghost w-full rounded-2xl" href="/explore/detail">
+                View details
+              </Link>
+            </div>
           </div>
         </div>
       </section>
@@ -42,7 +47,7 @@ export default function Page() {
           ].map(([title, desc, price]) => (
             <Link
               className="apptest-card flex items-center justify-between rounded-3xl p-4 backdrop-blur"
-              href="/explore/detail"
+              href={title === "Quiet work lounge" ? "/push-notification" : "/explore/detail"}
               key={title}
             >
               <div>

@@ -17,6 +17,7 @@ export class NotificationInput extends via((field) => ({
   token: field(String).optional(),
   title: field(String),
   content: field(String),
+  url: field(String).optional(),
   field: field(String).optional(),
   image: field(File).optional(),
   type: field(NotificationType, { default: "token" }),

@@ -1,6 +1,7 @@
 import { usePage } from "@apps/akan/client";
 import { Code, Docs } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
+import { Link } from "akanjs/ui";
 
 export default function Page() {
   const { l } = usePage();
@@ -290,7 +291,21 @@ export default config;`}
     buildNum: 1,
     targets: {
       default: {
+        basePath: "store",
         indexPath: "/explore",
+        permissions: ["camera", "push"],
+        assets: {
+          icon: "public/icon.png",
+          splash: "public/splash.png",
+        },
+        files: {
+          android: {
+            "app/google-services.json": "public/google-services.json",
+          },
+          ios: {
+            "App/GoogleService-Info.plist": "public/GoogleService-Info.plist",
+          },
+        },
         deepLinks: {
           schemes: ["example"],
           domains: ["example.com"],
@@ -318,36 +333,71 @@ export default config;`}
             {
               title: "appName",
               desc: l.trans({
-                en: "Display name used for the native app. Defaults to the Akan app name.",
-                ko: "네이티브 앱에 사용할 표시 이름입니다. 기본값은 Akan 앱 이름입니다.",
+                en: "Display name used for the native app. At the mobile root it becomes the default for every target; inside a target it overrides the display name for that package.",
+                ko: "네이티브 앱 표시 이름입니다. mobile root에서는 모든 target의 기본값이 되고, target 내부에서는 해당 패키지 표시 이름을 override합니다.",
               }),
             },
             {
               title: "appId",
               desc: l.trans({
-                en: "Native package identifier, such as com.example.app. Defaults to com.<appName>.app.",
-                ko: "com.example.app 같은 네이티브 패키지 식별자입니다. 기본값은 com.<appName>.app입니다.",
+                en: "Native package identifier, such as com.example.app. Android uses it as applicationId/package name and iOS uses it as bundle id. Firebase Android/iOS app registration must use the same value.",
+                ko: "com.example.app 같은 네이티브 패키지 식별자입니다. Android는 applicationId/package name으로, iOS는 bundle id로 사용합니다. Firebase Android/iOS 앱 등록도 같은 값을 써야 합니다.",
               }),
             },
             {
               title: "version",
               desc: l.trans({
-                en: "User-facing app version. Defaults to 0.0.1.",
-                ko: "사용자에게 보이는 앱 버전입니다. 기본값은 0.0.1입니다.",
+                en: "User-facing native app version, mapped to Android versionName and iOS MARKETING_VERSION. Target value overrides the mobile root value.",
+                ko: "사용자에게 보이는 네이티브 앱 버전입니다. Android versionName과 iOS MARKETING_VERSION에 반영됩니다. target 값은 mobile root 값을 override합니다.",
               }),
             },
             {
               title: "buildNum",
               desc: l.trans({
-                en: "Store build number. Defaults to 1 and is commonly increased for each release.",
-                ko: "스토어 제출용 빌드 번호입니다. 기본값은 1이고, 보통 릴리스마다 증가시킵니다.",
+                en: "Store build number, mapped to Android versionCode and iOS CURRENT_PROJECT_VERSION. Increase it for each native store release.",
+                ko: "스토어 제출용 빌드 번호입니다. Android versionCode와 iOS CURRENT_PROJECT_VERSION에 반영됩니다. 네이티브 스토어 릴리즈마다 증가시키세요.",
               }),
             },
             {
               title: "targets",
               desc: l.trans({
-                en: "Per-package mobile settings. A target can select a basePath, indexPath, app identity overrides, permissions, files, and deepLinks.",
-                ko: "패키지별 모바일 설정입니다. target은 basePath, indexPath, 앱 식별 정보 override, permission, file, deepLinks를 선택할 수 있습니다.",
+                en: "Named mobile packages built from the same Akan app. Each target can select a basePath, fallback indexPath, identity overrides, permissions, files, assets, and deepLinks.",
+                ko: "하나의 Akan 앱에서 만드는 이름 있는 모바일 패키지들입니다. 각 target은 basePath, fallback indexPath, 앱 식별 정보 override, permissions, files, assets, deepLinks를 가질 수 있습니다.",
+              }),
+            },
+            {
+              title: "target.basePath",
+              desc: l.trans({
+                en: "Client/basePath opened by this native package. Use it when one Akan app ships separate customer/admin/partner mobile apps. It should match a configured route basePath.",
+                ko: "이 네이티브 패키지가 여는 client/basePath입니다. 하나의 Akan 앱에서 고객/관리자/파트너 모바일 앱을 나눌 때 사용합니다. 설정된 route basePath와 맞아야 합니다.",
+              }),
+            },
+            {
+              title: "target.indexPath",
+              desc: l.trans({
+                en: "Initial or fallback CSR path for the target. Akan uses it for mobile startup, deep link stack recovery, and back-button fallback.",
+                ko: "target의 초기 또는 fallback CSR path입니다. 모바일 시작 경로, 딥링크 stack 복원, back 버튼 fallback에 사용합니다.",
+              }),
+            },
+            {
+              title: "target.permissions",
+              desc: l.trans({
+                en: "Native permission hints used by devkit. Supported values are camera, contacts, location, and push. Declare push before using usePushNotification on native apps.",
+                ko: "devkit이 사용하는 네이티브 권한 힌트입니다. 지원 값은 camera, contacts, location, push입니다. 네이티브에서 usePushNotification을 쓰려면 push를 선언하세요.",
+              }),
+            },
+            {
+              title: "target.assets",
+              desc: l.trans({
+                en: "Optional app icon and splash image source paths, relative to the app root. Use icon and splash when the native package needs custom branding.",
+                ko: "앱 루트 기준의 선택적 앱 아이콘/splash 이미지 source path입니다. 네이티브 패키지 브랜딩이 필요할 때 icon과 splash를 사용합니다.",
+              }),
+            },
+            {
+              title: "target.files",
+              desc: l.trans({
+                en: "Native file copy map. Keys are generated native project paths and values are app-relative source paths. Use it for google-services.json, GoogleService-Info.plist, or other native config files.",
+                ko: "네이티브 파일 복사 매핑입니다. key는 생성된 네이티브 프로젝트의 대상 경로이고 value는 앱 기준 source path입니다. google-services.json, GoogleService-Info.plist 같은 네이티브 설정 파일에 사용합니다.",
               }),
             },
             {
@@ -358,10 +408,38 @@ export default config;`}
               }),
             },
             {
-              title: "indexPath",
+              title: "deepLinks.schemes",
               desc: l.trans({
-                en: "Fallback CSR path for the mobile target. Akan uses it for deep link stack recovery and back-button fallback.",
-                ko: "모바일 target의 fallback CSR path입니다. Akan은 딥링크 stack 복원과 back 버튼 fallback에 이 값을 사용합니다.",
+                en: "Custom URL schemes such as example://. Use simple lower-case app schemes and avoid schemes owned by other apps.",
+                ko: "example:// 같은 커스텀 URL scheme입니다. 단순한 소문자 앱 scheme을 사용하고 다른 앱이 소유한 scheme은 피하세요.",
+              }),
+            },
+            {
+              title: "deepLinks.domains",
+              desc: l.trans({
+                en: "HTTPS app-link/universal-link domains. Akan can serve association files, but iOS still needs teamId and Android release verification needs SHA-256 fingerprints.",
+                ko: "HTTPS app link/universal link 도메인입니다. Akan이 association file을 서빙할 수 있지만, iOS에는 teamId가 필요하고 Android 릴리즈 검증에는 SHA-256 fingerprint가 필요합니다.",
+              }),
+            },
+            {
+              title: "deepLinks.ios.teamId",
+              desc: l.trans({
+                en: "Apple Developer Team ID used for apple-app-site-association. Required for universal links on real iOS apps.",
+                ko: "apple-app-site-association에 사용하는 Apple Developer Team ID입니다. 실제 iOS 앱의 universal link에 필요합니다.",
+              }),
+            },
+            {
+              title: "deepLinks.android.sha256CertFingerprints",
+              desc: l.trans({
+                en: "Signing certificate SHA-256 fingerprints used by assetlinks.json. Use debug fingerprints for local testing and release fingerprints for Play Store builds.",
+                ko: "assetlinks.json에 사용하는 서명 인증서 SHA-256 fingerprint입니다. 로컬 테스트에는 debug fingerprint, Play Store 빌드에는 release fingerprint를 사용하세요.",
+              }),
+            },
+            {
+              title: "mobile.plugins / android / ios",
+              desc: l.trans({
+                en: "Passthrough Capacitor config fields. Use them only when a Capacitor plugin requires native configuration not covered by Akan's higher-level fields.",
+                ko: "Capacitor config로 그대로 전달되는 필드입니다. Akan의 상위 설정으로 표현되지 않는 네이티브 플러그인 설정이 필요할 때만 사용하세요.",
               }),
             },
           ].map(({ title, desc }) => (
@@ -372,6 +450,41 @@ export default config;`}
             </div>
           ))}
         </div>
+        <Code.Snippet
+          className="w-full"
+          title="mobile target files"
+          code={`const config: AppConfig = {
+  mobile: {
+    appName: "Shop",
+    appId: "com.example.shop",
+    targets: {
+      default: {
+        permissions: ["push"],
+        files: {
+          android: {
+            "app/google-services.json": "public/google-services.json",
+          },
+          ios: {
+            "App/GoogleService-Info.plist": "public/GoogleService-Info.plist",
+          },
+        },
+      },
+    },
+  },
+};`}
+        />
+        <Docs.Alert type="info">
+          <span>
+            {l.trans({
+              en: "files maps native target paths to app-relative source files. It is useful for Firebase push config files such as google-services.json and GoogleService-Info.plist. Keep server service account JSON out of client/native file mappings. For platform setup steps, see ",
+              ko: "files는 네이티브 target path를 앱 기준 source file에 매핑합니다. google-services.json, GoogleService-Info.plist 같은 Firebase push 설정 파일에 유용합니다. 서버 service account JSON은 client/native file mapping에 넣지 마세요. 플랫폼별 설정 절차는 ",
+            })}
+          </span>
+          <Link href="/cheatsheet/dev/mobile" className="link link-primary">
+            {l.trans({ en: "Mobile Development", ko: "모바일 개발" })}
+          </Link>
+          <span>{l.trans({ en: ".", ko: " 문서를 참고하세요." })}</span>
+        </Docs.Alert>
         <Docs.Alert type="info">
           {l.trans({
             en: "When a multi-client app needs separate mobile apps per client, define mobile targets with basePath. The Multi Client page shows that pattern.",
