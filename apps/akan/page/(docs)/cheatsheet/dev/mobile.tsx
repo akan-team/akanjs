@@ -1066,6 +1066,133 @@ if (pushToken) {
       </Scroll.Slide>
       <div className="divider" />
 
+      <Scroll.Slide
+        id="keyboard-accessory"
+        title={l.trans({ en: "Keyboard Accessory Layout", ko: "Keyboard Accessory Layout" })}
+      >
+        <Docs.Title>{l.trans({ en: "Keyboard Accessory Layout", ko: "Keyboard Accessory Layout" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "Use a keyboard-sticky BottomInset for bottom composers such as chat inputs, comment boxes, or live support inputs. The inset follows the native keyboard, while contentAnchor=\"bottom\" keeps the scrollable page content aligned to the inset as the keyboard opens and closes.",
+              ko: "채팅 입력창, 댓글 입력창, 라이브 상담 입력창처럼 하단 composer가 필요한 UI에는 keyboard-sticky BottomInset을 사용합니다. BottomInset은 네이티브 키보드를 따라 올라가고, contentAnchor=\"bottom\"은 키보드가 열리고 닫힐 때 scrollable page content가 inset에 맞춰 정렬되도록 합니다.",
+            })}
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            {[
+              {
+                title: l.trans({ en: "Keyboard off", ko: "키보드 닫힘" }),
+                lines: ["content viewport", "messages", "BottomInset"],
+              },
+              {
+                title: l.trans({ en: "Keyboard on", ko: "키보드 열림" }),
+                lines: ["smaller viewport", "same bottom edge", "BottomInset above keyboard"],
+              },
+              {
+                title: l.trans({ en: "Scroll behavior", ko: "스크롤 동작" }),
+                lines: ["bottom distance kept", "no pageConfig option", "opt in per BottomInset"],
+              },
+            ].map(({ title, lines }) => (
+              <div key={title} className="rounded-2xl border border-base-300 bg-base-100 p-4">
+                <div className="font-semibold text-primary">{title}</div>
+                <div className="mt-3 space-y-2">
+                  {lines.map((line, idx) => (
+                    <div
+                      key={line}
+                      className={[
+                        "rounded-lg px-3 py-2 text-center text-xs",
+                        idx === lines.length - 1 ? "bg-primary/15 text-primary" : "bg-base-200 text-base-content/70",
+                      ].join(" ")}
+                    >
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <Code.Snippet
+            title="Bottom composer"
+            code={`import type { PageConfig } from "akanjs/client";
+import { Layout } from "akanjs/ui";
+
+export default function Page() {
+  return (
+    <div>
+      <div>{/* scrollable content */}</div>
+      <Layout.BottomInset
+        keyboardSticky
+        contentAnchor="bottom"
+        className="flex h-(--akan-bottom-inset) w-full"
+      >
+        <input placeholder="Type message..." />
+      </Layout.BottomInset>
+    </div>
+  );
+}
+
+export const pageConfig = {
+  topInset: 48,
+  bottomInset: 72,
+  safeArea: true,
+  transition: "stack",
+} satisfies PageConfig;`}
+          />
+          <div className="space-y-1">
+            {[
+              {
+                title: "keyboardSticky",
+                desc: l.trans({
+                  en: "Moves the BottomInset into the keyboard accessory layer so it follows the software keyboard.",
+                  ko: "BottomInset을 keyboard accessory layer로 옮겨 소프트웨어 키보드를 따라 움직이게 합니다.",
+                }),
+              },
+              {
+                title: 'contentAnchor="bottom"',
+                desc: l.trans({
+                  en: "Preserves the scroll container's bottom distance while the content viewport resizes. This matches messenger-style composers where messages reflow with the keyboard.",
+                  ko: "content viewport가 리사이즈되는 동안 scroll container의 하단 기준 거리를 보존합니다. 메시지가 키보드와 함께 reflow되는 메신저형 composer에 맞는 동작입니다.",
+                }),
+              },
+              {
+                title: "Server component pages",
+                desc: l.trans({
+                  en: "Keep the page as a server component. If the app needs an initial scroll-to-bottom behavior, add a tiny client helper inside the page or Zone and target the Akan page content container.",
+                  ko: "페이지는 server component로 유지하세요. 앱에서 진입 시 최초 scroll-to-bottom이 필요하면 page 또는 Zone 안에 작은 client helper를 넣고 Akan page content container를 대상으로 조작합니다.",
+                }),
+              },
+            ].map(({ title, desc }) => (
+              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+                <span className="font-mono font-semibold text-primary">{title}: </span>
+                <span className="text-base-content/70 text-sm">{desc}</span>
+              </div>
+            ))}
+          </div>
+          <Code.Snippet
+            title="Optional client helper"
+            code={`"use client";
+
+import { useLayoutEffect } from "react";
+
+export function ScrollToBottomOnMount() {
+  useLayoutEffect(() => {
+    const pageContent = document.getElementById("pageContent");
+    pageContent?.scrollTo({ top: pageContent.scrollHeight });
+  }, []);
+
+  return null;
+}`}
+          />
+          <Docs.Alert type="info">
+            {l.trans({
+              en: "contentAnchor is intentionally a BottomInset option, not a pageConfig option. General forms can keep the default keyboard behavior, while messenger-style surfaces opt in locally.",
+              ko: "contentAnchor는 pageConfig가 아니라 BottomInset 옵션입니다. 일반 form은 기본 키보드 동작을 유지하고, 메신저형 화면만 지역적으로 opt-in할 수 있습니다.",
+            })}
+          </Docs.Alert>
+        </Docs.Description>
+      </Scroll.Slide>
+      <div className="divider" />
+
       <Scroll.Slide id="verify" title={l.trans({ en: "Verify Setup", ko: "Verify Setup" })}>
         <Docs.Title>{l.trans({ en: "Verify Setup", ko: "Verify Setup" })}</Docs.Title>
         <Docs.Description>

@@ -153,6 +153,13 @@ export const pageConfig = {
                   ko: "navbar, tab, fixed action, keyboard accessory 같은 앱 chrome을 page content와 분리합니다.",
                 }),
               },
+              {
+                title: "keyboard accessory anchoring",
+                desc: l.trans({
+                  en: 'A BottomInset with keyboardSticky can also opt into contentAnchor="bottom" so scrollable content resizes with the keyboard while preserving the content bottom edge.',
+                  ko: 'keyboardSticky를 쓰는 BottomInset은 contentAnchor="bottom"을 선택해, 키보드와 함께 scrollable content 크기를 줄이고 content의 하단 기준을 보존할 수 있습니다.',
+                }),
+              },
             ].map(({ title, desc }) => (
               <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
                 <span className="font-mono font-semibold text-primary">{title}: </span>
