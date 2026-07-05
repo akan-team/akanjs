@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "728511058815",
+    "project_id": "minimal-akanjs",
+    "storage_bucket": "minimal-akanjs.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:728511058815:android:417ad905fc170bc65ac04a",
+        "android_client_info": {
+          "package_name": "com.minimal.dev.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD9vRGFm8YvN7xd6h-Hxk7ek1PhoTg19RA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
