@@ -44,6 +44,9 @@ export const dictionary = modelDictionary(["en", "ko"])
       password: t(["Password", "패스워드"]).desc(["Password Description", "패스워드 설명"]),
     })),
     signoutAdmin: fn(["Sign out Admin", "관리자 로그아웃"]),
+    refreshAdminJwt: fn(["Refresh Admin JWT", "관리자 JWT 갱신"]).arg((t) => ({
+      refreshToken: t(["Refresh Token", "갱신 토큰"]).desc(["Refresh Token Description", "갱신 토큰 설명"]),
+    })),
     addAdminRole: fn(["Add Admin Role", "관리자 권한 추가"]).arg((t) => ({
       adminId: t(["Admin ID", "관리자 아이디"]).desc(["Admin ID Description", "관리자 아이디 설명"]),
       role: t(["Role", "권한"]).desc(["Role Description", "권한 설명"]),

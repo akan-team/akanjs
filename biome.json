@@ -50,8 +50,8 @@
       "!!**/.akan",
       "!!**/dump",
       "!!**/local",
-      "!benchmarks/sample-app-productivity/tmp/**",
-      "!benchmarks/sample-app-productivity/workspaces/**"
+      "!benchmarks/sample-app-productivity/tmp",
+      "!benchmarks/sample-app-productivity/workspaces"
     ]
   },
   "formatter": {
@@ -92,6 +92,9 @@
             "attributes": ["classList"],
             "functions": ["clsx", "cva"]
           }
+        },
+        "noUnnecessaryConditions": {
+          "level": "error"
         }
       },
       "a11y": "off",

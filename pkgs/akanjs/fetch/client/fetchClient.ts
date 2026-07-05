@@ -277,7 +277,7 @@ export class FetchClient {
           const serializerMap = this.#makeArgSerializer(endpoint.args);
           const parseReturn = this.#makeReturnParser(endpoint.returns);
           const wrappedListeners = new WeakMap<(data: unknown) => void, (data: unknown) => void>();
-          return async (...argData: unknown[]) => {
+          return (...argData: unknown[]) => {
             const args = argData.slice(0, roomArgLength);
             const handleEvent = argData[roomArgLength] as (data: unknown) => void;
             const fetchPolicy = argData[roomArgLength + 1] as FetchPolicy | undefined;
@@ -303,7 +303,7 @@ export class FetchClient {
           const msgArgs = endpoint.args.filter((arg) => arg.type === "msg");
           const msgArgLength = msgArgs.length;
           const serializerMap = this.#makeArgSerializer(endpoint.args);
-          return async (...argData: unknown[]) => {
+          return (...argData: unknown[]) => {
             const args = argData.slice(0, msgArgLength);
             const data = msgArgs.map((arg, idx) => serializerMap.get(arg.name)?.(args[idx]) ?? null);
             this.ws.emit(key, data);

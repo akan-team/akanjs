@@ -1,4 +1,4 @@
-import { type Cls, FIELD_META, type GetActionObject, SERVER_VALUE } from "akanjs/base";
+import { type Cls, FIELD_META, type GetActionObject } from "akanjs/base";
 import { applyMixins } from "akanjs/common";
 import { ConstantRegistry, type DocumentConstantModelRef, type DocumentModel, type FieldObject } from "akanjs/constant";
 
@@ -40,13 +40,6 @@ type ChainableHydratedDocument<TDocument> = TDocument & {
 } & ChainableHydratedMethods<TDocument>;
 export type Doc<M = unknown> = HydratedDocumentWithId<DocumentModel<M>>;
 type DatabaseSchemaOf<ModelCls> = ModelCls extends { _DatabaseSchema: infer Schema } ? Schema : never;
-type ConstantValueOf<ModelCls> = ModelCls extends { [SERVER_VALUE]: infer Schema }
-  ? Schema
-  : ModelCls extends new (
-        ...args: never[]
-      ) => infer Schema
-    ? Schema
-    : never;
 type ObjectDocumentModelType = "object" | "full" | "light";
 type ModelTypeOf<ModelCls> = ModelCls extends { _ModelType: infer ModelType } ? ModelType : never;
 type IsObjectModel<ModelCls> = ModelTypeOf<ModelCls> extends ObjectDocumentModelType ? true : false;
@@ -55,7 +48,7 @@ type DocModelOf<ModelCls, Schema = DatabaseSchemaOf<ModelCls>> =
 type DocActionOmitKey<ModelCls, Schema = DatabaseSchemaOf<ModelCls>> =
   | (keyof Schema & string)
   | (IsObjectModel<ModelCls> extends true ? keyof DefaultDocMtds<unknown> | "id" : never);
-type DatabaseSchemaFor<ModelCls extends ConstantModelCls> = DatabaseSchemaOf<ModelCls> & ConstantValueOf<ModelCls>;
+type DatabaseSchemaFor<ModelCls extends ConstantModelCls> = DatabaseSchemaOf<ModelCls>;
 type DocModelFor<ModelCls extends ConstantModelCls> = DocModelOf<ModelCls, DatabaseSchemaFor<ModelCls>>;
 type DocActionOmitKeyFor<ModelCls extends ConstantModelCls> = DocActionOmitKey<ModelCls, DatabaseSchemaFor<ModelCls>>;
 type StrictDocumentActions<T> = string extends keyof T

@@ -1,5 +1,5 @@
 import type { Cls, MergeAllDoubleKeyOfObjects, MergeAllKeyOfTypes } from "akanjs/base";
-import { FILTER_META } from "akanjs/base";
+import { FILTER_DICT_SHAPE, FILTER_META } from "akanjs/base";
 import type {
   BaseObject,
   ConstantFieldTypeInput,
@@ -109,6 +109,21 @@ export type FilterInstance<
   query: Query;
   sort: Sort;
 };
+export type FilterDictArgShape = {
+  query: { [key: string]: readonly string[] };
+  sort: { [key: string]: true };
+};
+export type FilterDictShape<Filter extends FilterInstance> = {
+  query: {
+    [K in keyof Filter["query"]]: Filter["query"][K] extends FilterInfo<infer ArgNames, infer _Args, infer _Model>
+      ? ArgNames
+      : never;
+  };
+  sort: { [K in keyof Filter["sort"]]: true };
+};
+export interface FilterDictShapeCarrier<DictShape extends FilterDictArgShape = FilterDictArgShape> {
+  readonly [FILTER_DICT_SHAPE]: DictShape;
+}
 interface BaseQuery<Model> {
   any: FilterInfo<[], [], Model>;
 }
@@ -140,8 +155,9 @@ export type ExtractQuery<Filter extends FilterInstance> = {
 };
 export type ExtractSort<Filter extends FilterInstance> = keyof Filter["sort"];
 export interface FilterCls<Filter extends FilterInstance = any, Query = unknown, Sort = unknown>
-  extends Cls<{ [key: string]: any }> {
+  extends Cls<FilterDictShapeCarrier<FilterDictShape<Filter>> & { [key: string]: unknown }> {
   [FILTER_META]: Filter;
+  prototype: FilterDictShapeCarrier<FilterDictShape<Filter>> & { [key: string]: unknown };
   sortField: Set<string>;
   _Query: Query;
   _Sort: Sort;

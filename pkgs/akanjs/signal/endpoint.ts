@@ -1,20 +1,28 @@
 import type { Assign } from "akanjs/base";
-import { ENDPOINT_META } from "akanjs/base";
+import { ENDPOINT_DICT_SHAPE, ENDPOINT_META } from "akanjs/base";
 import { applyMixins } from "akanjs/common";
 import { type Adaptor, type AdaptorCls, dangerouslyAdapt, type ServiceModel } from "akanjs/service";
-import { buildEndpoint, type EndpointBuilder, type EndpointInfo } from "./endpointInfo";
+import { buildEndpoint, type EndpInfoArgNames, type EndpointBuilder, type EndpointInfo } from "./endpointInfo";
 import type { SrvRefName } from "./types";
 
-export interface Endpoint extends Adaptor {}
+export type EndpointDictArgShape = { [key: string]: readonly string[] };
+export type EndpointDictShape<EndpointInfoObj extends { [key: string]: EndpointInfo }> = {
+  [K in keyof EndpointInfoObj]: EndpInfoArgNames<EndpointInfoObj[K]>;
+};
 
-export interface EndpointCls<
+export interface Endpoint<DictShape extends EndpointDictArgShape = Record<never, never>> extends Adaptor {
+  readonly [ENDPOINT_DICT_SHAPE]: DictShape;
+}
+
+export type EndpointCls<
   SrvModule extends ServiceModel = ServiceModel,
   EndpointInfoObj extends { [key: string]: EndpointInfo } = { [key: string]: EndpointInfo },
-> extends AdaptorCls {
+> = AdaptorCls<Endpoint<EndpointDictShape<EndpointInfoObj>>> & {
   baseName: SrvRefName<SrvModule>;
   srv: SrvModule;
+  prototype: Endpoint<EndpointDictShape<EndpointInfoObj>>;
   [ENDPOINT_META]: EndpointInfoObj;
-}
+};
 
 type EndpointMetaOf<EndpCls> = EndpCls extends EndpointCls<any, infer EndpointInfoObj> ? EndpointInfoObj : never;
 

@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { INJECT_META, Int } from "akanjs/base";
+import { dayjs, INJECT_META, Int } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import { by, type DatabaseCls, DatabaseRegistry, from, getFilterInfoByKey, into } from "akanjs/document";
 import type { ServerSignal, ServerSignalCls } from "akanjs/signal";
 import { type Adaptor, type AdaptorCls, adapt, dangerouslyAdapt } from "./adapt";
 import { getDefaultInjectRegistry, InjectInfo, injectionBuilder } from "./injectInfo";
-import type { CacheAdaptor } from "./predefinedAdaptor";
+import type { CacheAdaptor, CacheSetOptions } from "./predefinedAdaptor";
 import { type Service, serve } from "./serve";
 import { ServiceModel } from "./serviceModule";
 import type { DatabaseService } from "./types";
@@ -522,8 +522,8 @@ describe("dependency injection resolution", () => {
         calls.push({ method: "get", args: [topic, key] });
         return values.has(`${topic}:${key}`) ? values.get(`${topic}:${key}`) : null;
       },
-      async set(topic: string, key: string, value: unknown) {
-        calls.push({ method: "set", args: [topic, key, value] });
+      async set(topic: string, key: string, value: unknown, option?: CacheSetOptions) {
+        calls.push({ method: "set", args: [topic, key, value, option] });
         values.set(`${topic}:${key}`, value);
       },
       async delete(topic: string, key: string) {
@@ -534,8 +534,8 @@ describe("dependency injection resolution", () => {
         calls.push({ method: "hget", args: [topic, prop, key] });
         return hashValues.get(`${topic}:${prop}`)?.get(key);
       },
-      async hset(topic: string, prop: string, key: string, value: unknown) {
-        calls.push({ method: "hset", args: [topic, prop, key, value] });
+      async hset(topic: string, prop: string, key: string, value: unknown, option?: CacheSetOptions) {
+        calls.push({ method: "hset", args: [topic, prop, key, value, option] });
         const hashKey = `${topic}:${prop}`;
         const map = hashValues.get(hashKey) ?? new Map<string, unknown>();
         map.set(key, value);
@@ -587,6 +587,7 @@ describe("dependency injection resolution", () => {
     const cacheAdaptor = cache as unknown as Adaptor;
     const plugAdaptor = new PlugAdaptor() as unknown as PlugAdaptor & Adaptor;
     const depService = new DepService();
+    const defaultExpireAt = dayjs().add(1, "hour");
 
     registry.uses.set("plainUse", "use-value");
     registry.adaptorCls.set("solidCache", CacheAdaptorRef);
@@ -610,8 +611,8 @@ describe("dependency injection resolution", () => {
       depService: service<DepService>(),
       testSignal: signal<typeof signal>(),
       localCounter: memory(Int, { local: true, default: 3 }),
-      remoteValue: memory(String),
-      remoteMap: memory(Map, { of: String }),
+      remoteValue: memory(String, { expireAt: defaultExpireAt }),
+      remoteMap: memory(Map, { of: String, expireAt: defaultExpireAt }),
     })) {}
     Object.assign(TargetService[INJECT_META], {
       serviceTestItemModel: new InjectInfo("database", { parentRefName: "serviceTestItem" }),
@@ -625,15 +626,19 @@ describe("dependency injection resolution", () => {
       localCounter: number;
       remoteValue: {
         get: () => Promise<string | null>;
-        set: (value: string) => Promise<void>;
+        set: (value: string, option?: CacheSetOptions) => Promise<void>;
         delete: () => Promise<void>;
       };
       remoteMap: {
         get: (key: string) => Promise<string | undefined>;
-        set: (key: string, value: string) => Promise<void>;
+        set: (key: string, value: string, option?: CacheSetOptions) => Promise<void>;
         delete: (key: string) => Promise<void>;
-        getOrInsert: (key: string, value: string) => Promise<string>;
-        getOrInsertComputed: (key: string, compute: (key: string) => string | Promise<string>) => Promise<string>;
+        getOrInsert: (key: string, value: string, option?: CacheSetOptions) => Promise<string>;
+        getOrInsertComputed: (
+          key: string,
+          compute: (key: string) => string | Promise<string>,
+          option?: CacheSetOptions,
+        ) => Promise<string>;
         keys: () => Promise<string[]>;
         entries: () => Promise<[string, string][]>;
         forEach: (callback: (value: string, key: string) => void | Promise<void>) => Promise<void>;
@@ -645,6 +650,8 @@ describe("dependency injection resolution", () => {
     type _RemoteMapGetReturnsOptionalString = Expect<Equal<RemoteMapGetValue, string | undefined>>;
     type RemoteMapEntriesValue = Awaited<ReturnType<TargetService["remoteMap"]["entries"]>>;
     type _RemoteMapEntriesReturnsStringTuples = Expect<Equal<RemoteMapEntriesValue, [string, string][]>>;
+    type RemoteMapSetOption = Parameters<TargetService["remoteMap"]["set"]>[2];
+    type _RemoteMapSetAcceptsCacheOption = Expect<Equal<RemoteMapSetOption, CacheSetOptions | undefined>>;
 
     await InjectInfo.resolveInjection(instance, TargetService, registry, { envValue: "env-value" } as never);
 
@@ -659,17 +666,35 @@ describe("dependency injection resolution", () => {
     expect(instance.serviceTestItemModel).toBe(database);
 
     await instance.remoteValue.set("hello");
+    let lastCacheCall = cache.calls.at(-1);
+    expect(lastCacheCall?.method).toBe("set");
+    expect(lastCacheCall?.args.slice(0, 3)).toEqual(["akan:memory", "remoteValue", "hello"]);
+    expect(lastCacheCall?.args[3]).toEqual({ expireAt: defaultExpireAt });
     expect(await instance.remoteValue.get()).toBe("hello");
     await instance.remoteValue.delete();
     expect(await instance.remoteValue.get()).toBeNull();
-    await instance.remoteMap.set("ko", "안녕");
+    const setOption = { expireAt: dayjs().add(2, "hour") };
+    await instance.remoteMap.set("ko", "안녕", setOption);
+    lastCacheCall = cache.calls.at(-1);
+    expect(lastCacheCall?.method).toBe("hset");
+    expect(lastCacheCall?.args.slice(0, 4)).toEqual(["akan:memory:serviceTestTarget", "remoteMap", "ko", "안녕"]);
+    expect(lastCacheCall?.args[4]).toBe(setOption);
     expect(await instance.remoteMap.get("ko")).toBe("안녕");
     await instance.remoteMap.delete("ko");
     expect(await instance.remoteMap.get("ko")).toBeUndefined();
     expect(await instance.remoteMap.getOrInsert("ko", "다시 안녕")).toBe("다시 안녕");
+    expect(cache.calls.at(-1)?.args[4]).toEqual({ expireAt: defaultExpireAt });
+    const hsetCountAfterInsert = cache.calls.filter((call) => call.method === "hset").length;
     expect(await instance.remoteMap.getOrInsert("ko", "덮어쓰기")).toBe("다시 안녕");
-    expect(await instance.remoteMap.getOrInsertComputed("en", async (key) => `hello:${key}`)).toBe("hello:en");
+    expect(cache.calls.filter((call) => call.method === "hset")).toHaveLength(hsetCountAfterInsert);
+    const computedOption = { expireAt: dayjs().add(3, "hour") };
+    expect(await instance.remoteMap.getOrInsertComputed("en", async (key) => `hello:${key}`, computedOption)).toBe(
+      "hello:en",
+    );
+    expect(cache.calls.at(-1)?.args[4]).toBe(computedOption);
+    const hsetCountAfterComputed = cache.calls.filter((call) => call.method === "hset").length;
     expect(await instance.remoteMap.getOrInsertComputed("en", () => "overwrite")).toBe("hello:en");
+    expect(cache.calls.filter((call) => call.method === "hset")).toHaveLength(hsetCountAfterComputed);
     expect(await instance.remoteMap.keys()).toEqual(["ko", "en"]);
     expect(await instance.remoteMap.entries()).toEqual([
       ["ko", "다시 안녕"],

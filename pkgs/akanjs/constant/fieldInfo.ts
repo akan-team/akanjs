@@ -523,7 +523,7 @@ field.hidden = <
   value: Value,
   option: FieldOption<Value, MapValue> = {},
 ) =>
-  new FieldInfo<"hidden", Value | null, ExplicitType | null, MapValue>(value, {
+  new FieldInfo<"hidden", Value, ExplicitType, MapValue>(value, {
     ...option,
     fieldType: "hidden",
     nullable: true,

@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import type { FilterInfo } from "akanjs/document";
-import type { EndpointInfo, SliceInfo } from "akanjs/signal";
+import type { ENDPOINT_DICT_SHAPE, FILTER_DICT_SHAPE, SLICE_DICT_SHAPE } from "akanjs/base";
+import type { FilterCls, FilterInfo } from "akanjs/document";
+import type { ServiceModel } from "akanjs/service";
+import type { EndpointCls, EndpointInfo, SliceCls, SliceInfo } from "akanjs/signal";
 import { modelDictionary, scalarDictionary, serviceDictionary } from "./dictInfo";
 import { makeDictionary, makeTrans } from "./trans";
+
+type AssertTrue<T extends true> = T;
 
 type TestModel = {
   title: string;
@@ -38,6 +42,33 @@ type TestSlice = {
 type TestEndpoint = {
   publish: EndpointInfo<"query", Record<string, unknown>, ["payload"]>;
 };
+type TestFilterCls = FilterCls<TestFilter>;
+type TestEndpointCls = EndpointCls<ServiceModel, TestEndpoint>;
+type TestSliceCls = SliceCls<ServiceModel, TestSlice & { "": SliceInfo }>;
+type TestFilterInstance = TestFilterCls["prototype"];
+type TestEndpointInstance = TestEndpointCls["prototype"];
+type TestSliceInstance = TestSliceCls["prototype"];
+type _FilterInstanceCarriesDictShape = AssertTrue<
+  TestFilterInstance extends { readonly [FILTER_DICT_SHAPE]: infer Shape extends { query: object } }
+    ? "byTitle" extends keyof Shape["query"]
+      ? true
+      : false
+    : false
+>;
+type _EndpointInstanceCarriesDictShape = AssertTrue<
+  TestEndpointInstance extends { readonly [ENDPOINT_DICT_SHAPE]: infer Shape }
+    ? "publish" extends keyof Shape
+      ? true
+      : false
+    : false
+>;
+type _SliceInstanceCarriesDictShape = AssertTrue<
+  TestSliceInstance extends { readonly [SLICE_DICT_SHAPE]: infer Shape }
+    ? "active" extends keyof Shape
+      ? true
+      : false
+    : false
+>;
 type TestScalar = {
   value: number;
 };
@@ -50,6 +81,69 @@ type TestServiceEndpoint = {
 };
 
 const languages: [string, string, string, string] = ["en", "ko", "zhChs", "ja"];
+
+const assertDictionaryTypeCoverage = () => {
+  // @ts-expect-error missing model field translations must be rejected
+  modelDictionary(languages).model<TestModel>((t) => ({
+    title: t(["Title", "제목", "标题", "タイトル"]),
+  }));
+
+  // @ts-expect-error missing insight field translations must be rejected
+  modelDictionary(languages).insight<TestInsight>((t) => ({}));
+
+  // @ts-expect-error missing query translations must be rejected
+  modelDictionary(languages).query<TestFilter>((fn) => ({}));
+
+  // @ts-expect-error missing query translations from static filter metadata must be rejected
+  modelDictionary(languages).query<TestFilterCls>((fn) => ({}));
+
+  // @ts-expect-error missing query translations from filter instance metadata must be rejected
+  modelDictionary(languages).query<TestFilterInstance>((fn) => ({}));
+
+  modelDictionary(languages).query<TestFilterInstance>((fn) => ({
+    // @ts-expect-error query arg translations must match filter instance metadata
+    byTitle: fn(["By Title", "제목별 조회", "按标题查询", "タイトルで検索"]),
+  }));
+
+  // @ts-expect-error missing enum value translations must be rejected
+  modelDictionary(languages).enum<TestEnum>("dictionaryTestStatus", (t) => ({
+    active: t(["Active", "활성", "启用", "有効"]),
+  }));
+
+  // @ts-expect-error missing slice translations from static slice metadata must be rejected
+  modelDictionary(languages).slice<TestSliceCls>((fn) => ({}));
+
+  // @ts-expect-error missing slice translations from slice instance metadata must be rejected
+  modelDictionary(languages).slice<TestSliceInstance>((fn) => ({}));
+
+  modelDictionary(languages).slice<TestSliceInstance>((fn) => ({
+    // @ts-expect-error slice arg translations must match slice instance metadata
+    active: fn(["Active Items", "활성 항목", "启用项目", "有効な項目"]),
+  }));
+
+  // @ts-expect-error missing endpoint translations from static endpoint metadata must be rejected
+  modelDictionary(languages).endpoint<TestEndpointCls>((fn) => ({}));
+
+  // @ts-expect-error missing endpoint translations from endpoint instance metadata must be rejected
+  modelDictionary(languages).endpoint<TestEndpointInstance>((fn) => ({}));
+
+  modelDictionary(languages).endpoint<TestEndpointCls>((fn) => ({
+    // @ts-expect-error endpoint arg translations must match endpoint metadata
+    publish: fn(["Publish", "게시", "发布", "公開"]),
+  }));
+
+  modelDictionary(languages).endpoint<TestEndpointInstance>((fn) => ({
+    // @ts-expect-error endpoint arg translations must match endpoint instance metadata
+    publish: fn(["Publish", "게시", "发布", "公開"]),
+  }));
+
+  // @ts-expect-error service endpoint translations use the same static endpoint metadata
+  serviceDictionary(languages).endpoint<TestEndpointCls>((fn) => ({}));
+
+  // @ts-expect-error service endpoint translations use endpoint instance metadata too
+  serviceDictionary(languages).endpoint<TestEndpointInstance>((fn) => ({}));
+};
+void assertDictionaryTypeCoverage;
 
 const modelDict = modelDictionary(languages)
   .of((t) =>
@@ -302,7 +396,9 @@ describe("makeTrans", () => {
       hotReloadService: {
         dict: serviceDictionary(["en", "ko"])
           .endpoint<TestServiceEndpoint>((fn) => ({
-            ping: fn(["Old Ping", "이전 핑"]),
+            ping: fn(["Old Ping", "이전 핑"]).arg((t) => ({
+              body: t(["Body", "본문"]),
+            })),
           }))
           .translate({
             stale: ["Stale", "오래됨"],
@@ -313,7 +409,9 @@ describe("makeTrans", () => {
       hotReloadService: {
         dict: serviceDictionary(["en", "ko"])
           .endpoint<TestServiceEndpoint>((fn) => ({
-            ping: fn(["New Ping", "새 핑"]),
+            ping: fn(["New Ping", "새 핑"]).arg((t) => ({
+              body: t(["Body", "본문"]),
+            })),
           }))
           .translate({}),
       } as never,

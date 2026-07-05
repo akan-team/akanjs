@@ -1,15 +1,11 @@
-import type { Dayjs, MergedValues, PromiseOrObject } from "akanjs/base";
+import type { MergedValues, PromiseOrObject } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import type { DocumentModel, QueryOf } from "akanjs/constant";
-import type { CacheAdaptor } from "akanjs/service";
+import type { CacheAdaptor, CacheSetOptions } from "akanjs/service";
 import type { DataLoader } from "./dataLoader";
 import type { ExtractQuery, ExtractSort, FilterInstance } from "./filterMeta";
 import type { CRUDEventType, Mdl, SaveEventType } from "./into";
 import type { DataInputOf, FindQueryOption, ListQueryOption } from "./types";
-
-export interface RedisSetOptions {
-  expireAt?: Dayjs;
-}
 
 export class CacheDatabase<T = unknown> {
   private logger: Logger;
@@ -19,7 +15,7 @@ export class CacheDatabase<T = unknown> {
   ) {
     this.logger = new Logger(`${refName}Cache`);
   }
-  async set(topic: string, key: string, value: string | number | Buffer, option: RedisSetOptions = {}) {
+  async set(topic: string, key: string, value: string | number | Buffer, option: CacheSetOptions = {}) {
     await this.cache.set(this.refName, `${topic}:${key}`, value, option);
   }
   async get<T extends string | number | Buffer>(topic: string, key: string): Promise<T | undefined> {

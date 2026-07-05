@@ -239,13 +239,8 @@ const makeBaseScalar = <FieldMap extends FieldInfoObject>(
   >;
 };
 
-type ConstantSetReturn<Self, Schema> = Self extends Schema & ConstantMethods<Schema> & infer Model
-  ? unknown extends Model
-    ? Self
-    : Model
-  : Self;
 export interface ConstantMethods<Schema = any> {
-  set<Self extends Schema & ConstantMethods<Schema>>(this: Self, obj: Partial<Schema>): ConstantSetReturn<Self, Schema>;
+  set(obj: Partial<Schema>): this;
 }
 
 type DatabaseSchemaOf<Schema, HiddenKey> = {

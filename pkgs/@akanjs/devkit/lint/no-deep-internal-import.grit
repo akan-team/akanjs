@@ -6,7 +6,7 @@ or {
     $source <: within JsImport(),
     not $filename <: r".*\.(?:test|spec)\.tsx?",
     $source <: r"\"@(?:apps|libs)/[^/]+/[^/]+/.+\"",
-    not $source <: r"\"@apps/[^/]+/env/env\.client\"",
+    not $source <: r"\"@apps/[^/]+/env/env\.(?:client|server)\"",
     register_diagnostic(
       span = $source,
       message = "@apps and @libs imports should only reference the first two path segments after the alias."

@@ -1,7 +1,6 @@
 import type { Database } from "bun:sqlite";
-import type { Dayjs } from "akanjs/base";
 import { adapt } from "../adapt";
-import type { CacheAdaptor } from "./cache.adaptor";
+import type { CacheAdaptor, CacheSetOptions } from "./cache.adaptor";
 import {
   decodeSolidValue,
   encodeSolidValue,
@@ -62,7 +61,7 @@ export class SolidCache
     this.#db?.close();
   }
 
-  async set(topic: string, key: string, value: string | number | Buffer, option: { expireAt?: Dayjs } = {}) {
+  async set(topic: string, key: string, value: string | number | Buffer, option: CacheSetOptions = {}) {
     const encoded = encodeSolidValue(value);
     const now = Date.now();
     this.#db
@@ -99,7 +98,7 @@ export class SolidCache
     key: string,
     subKey: string,
     value: string | number | Buffer,
-    option: { expireAt?: Dayjs } = {},
+    option: CacheSetOptions = {},
   ) {
     const encoded = encodeSolidValue(value);
     const now = Date.now();

@@ -47,7 +47,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     status: t(["Status", "상태"]).desc(["Status of the user", "유저의 상태"]),
   }))
   .insight<UserInsight>((t) => ({}))
-  .query<UserFilter>((fn) => ({
+  .query<typeof UserFilter>((fn) => ({
     byStatuses: fn(["By Statuses", "상태별 조회"]).arg((t) => ({
       statuses: t(["Statuses", "상태들"]).desc(["Statuses to search", "상태들로 조회"]),
     })),
@@ -69,7 +69,7 @@ export const dictionary = modelDictionary(["en", "ko"])
       statuses: t(["Statuses", "상태들"]).desc(["Statuses to search", "상태들로 조회"]),
     })),
   }))
-  .sort<UserFilter>((t) => ({}))
+  .sort<typeof UserFilter>((t) => ({}))
   .enum<Verify>("verify", (t) => ({
     naver: t(["Naver", "네이버"]).desc(["Naver verify", "네이버 인증"]),
     kakao: t(["Kakao", "카카오"]).desc(["Kakao verify", "카카오 인증"]),
@@ -105,8 +105,8 @@ export const dictionary = modelDictionary(["en", "ko"])
     dormant: t(["Dormant", "휴면"]).desc(["Dormant status", "휴면 상태"]),
     restricted: t(["Restricted", "제한됨"]).desc(["Restricted status", "제한됨 상태"]),
   }))
-  .slice<UserSlice>((fn) => ({}))
-  .endpoint<UserEndpoint>((fn) => ({
+  .slice<typeof UserSlice>((fn) => ({}))
+  .endpoint<typeof UserEndpoint>((fn) => ({
     addBadgeCount: fn(["Add Badge Count", "뱃지 수 증가"])
       .desc(["API to add a badge count", "뱃지 수를 증가하는 API"])
       .arg((t) => ({
@@ -401,7 +401,11 @@ export const dictionary = modelDictionary(["en", "ko"])
         userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
         nickname: t(["Nickname", "닉네임"]).desc(["Nickname", "닉네임"]),
       })),
-    refreshJwt: fn(["Refresh JWT", "JWT 갱신"]).desc(["Refresh JWT", "JWT 갱신"]),
+    refreshJwt: fn(["Refresh JWT", "JWT 갱신"])
+      .desc(["Refresh JWT", "JWT 갱신"])
+      .arg((t) => ({
+        refreshToken: t(["Refresh Token", "갱신 토큰"]).desc(["Refresh Token", "갱신 토큰"]),
+      })),
   }))
   .error({
     noAccount: ["No account exists. Sign up is needed,", "가입되지 않은 이메일입니다. 회원가입을 먼저 해주세요."],

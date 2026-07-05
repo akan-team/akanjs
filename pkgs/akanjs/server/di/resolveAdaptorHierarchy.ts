@@ -1,5 +1,5 @@
 import { INJECT_META } from "akanjs/base";
-import type { AdaptorCls, InjectInfo } from "akanjs/service";
+import { type AdaptorCls, CacheAdaptorRole, type InjectInfo } from "akanjs/service";
 import { type DependencyNode, topologicalStages } from "./resolveHierarchy";
 
 interface AdaptorNode extends DependencyNode {
@@ -54,6 +54,9 @@ export function resolveAdaptorHierarchy(
   for (const [key, adaptor] of adaptorMap) {
     const injectMap: Record<string, InjectInfo> = adaptor[INJECT_META] ?? {};
     const dependencies: string[] = [];
+    const addDependency = (depKey: string) => {
+      if (depKey !== key && !dependencies.includes(depKey)) dependencies.push(depKey);
+    };
 
     for (const [propKey, injectInfo] of Object.entries(injectMap)) {
       if (injectInfo.type === "plug") {
@@ -65,11 +68,17 @@ export function resolveAdaptorHierarchy(
               `on adaptor "${injectInfo.adaptor.refName}" which is not registered.`,
           );
         }
-        dependencies.push(depKey);
+        addDependency(depKey);
       } else if (injectInfo.type === "use") {
         if (adaptorMap.has(propKey) && propKey !== key) {
-          dependencies.push(propKey);
+          addDependency(propKey);
         }
+      } else if (injectInfo.type === "memory") {
+        const depKey = classToKey.get(CacheAdaptorRole);
+        if (!depKey) {
+          throw new Error(`Adaptor "${key}" has a memory dependency but cache adaptor role is not registered.`);
+        }
+        addDependency(depKey);
       }
     }
 

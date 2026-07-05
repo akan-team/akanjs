@@ -233,6 +233,7 @@ class DocumentAppClassUserObject extends via(
     bloodType: f(String),
     education: f(String).optional(),
     location: f(String),
+    lastLoginAt: f.hidden(Date, { default: () => dayjs(), example: dayjs() }),
   }),
   DocumentSocialClassUserObject,
 ) {}
@@ -315,6 +316,8 @@ type _ExtendedViaClassDocumentSchemaAssertions = [
   Expect<Equal<"bloodType" extends keyof DocumentAppClassUserDoc ? true : false, true>>,
   Expect<Equal<"location" extends keyof DocumentAppClassUserDoc ? true : false, true>>,
   Expect<Equal<"languages" extends keyof DocumentAppClassUserDoc ? true : false, true>>,
+  Expect<Equal<undefined extends DocumentAppClassUserDoc["lastLoginAt"] ? true : false, false>>,
+  Expect<Equal<null extends DocumentAppClassUserDoc["lastLoginAt"] ? true : false, false>>,
   Expect<Equal<"setEducation" extends keyof DocumentAppClassUserDocWithNoActionParent ? true : false, true>>,
   Expect<Equal<"height" extends keyof DocumentAppClassUserRegisteredDoc ? true : false, true>>,
   Expect<Equal<"bloodType" extends keyof DocumentAppClassUserRegisteredDoc ? true : false, true>>,

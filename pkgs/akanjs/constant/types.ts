@@ -15,9 +15,9 @@ type ObjectToId<O> = O extends BaseObject
         : O;
 
 type Docify<T, _StateKeys extends keyof GetStateObject<T> = keyof GetStateObject<T>> = {
-  [K in _StateKeys as null extends T[K] ? never : K]: ObjectToId<T[K]>;
+  [K in _StateKeys as null extends T[K] ? never : K]-?: ObjectToId<NonNullable<T[K]>>;
 } & {
-  [K in _StateKeys as null extends T[K] ? K : never]?: ObjectToId<Exclude<T[K], null>> | undefined;
+  [K in _StateKeys as null extends T[K] ? K : never]?: ObjectToId<NonNullable<T[K]>> | undefined;
 };
 export type DocumentModel<T> = T extends (infer S)[]
   ? DocumentModel<S>[]

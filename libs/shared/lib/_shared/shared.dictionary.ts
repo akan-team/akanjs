@@ -3,7 +3,7 @@ import { serviceDictionary } from "akanjs/dictionary";
 import type { SharedEndpoint } from "./shared.signal";
 
 export const dictionary = serviceDictionary(["en", "ko"])
-  .endpoint<SharedEndpoint>((fn) => ({}))
+  .endpoint<typeof SharedEndpoint>((fn) => ({}))
   .translate({
     logout: ["Logout", "로그아웃"],
     newest: ["Newest", "최신순"],

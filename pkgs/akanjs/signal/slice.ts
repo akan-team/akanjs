@@ -1,4 +1,4 @@
-import { Any, type Assign, type Cls, type MergeAllKeyOfObjects, SLICE_META } from "akanjs/base";
+import { Any, type Assign, type Cls, type MergeAllKeyOfObjects, SLICE_DICT_SHAPE, SLICE_META } from "akanjs/base";
 import { applyMixins } from "akanjs/common";
 import type { DocumentModel, QueryOf } from "akanjs/constant";
 import type { FilterInstance } from "akanjs/document";
@@ -16,14 +16,22 @@ import {
 } from "./sliceInfo";
 import type { CnstFull, CnstInput, CnstInsight, CnstLight, DbFilter, SrvMap, SrvRefName } from "./types";
 
-export interface Slice extends Adaptor {}
+export type SliceDictArgShape = { [key: string]: readonly string[] };
+export type SliceDictShape<SliceInfoObj extends { [key: string]: SliceInfo }> = {
+  [K in keyof SliceInfoObj]: SliceInfoArgNames<SliceInfoObj[K]>;
+};
+
+export interface Slice<DictShape extends SliceDictArgShape = Record<never, never>> extends Adaptor {
+  readonly [SLICE_DICT_SHAPE]: DictShape;
+}
 
 export type SliceCls<
   SrvModule extends ServiceModel = ServiceModel,
   SliceInfoObj extends { [key: string]: SliceInfo } = { [key: string]: SliceInfo },
-> = AdaptorCls & {
+> = AdaptorCls<Slice<SliceDictShape<SliceInfoObj>>> & {
   baseName: SrvRefName<SrvModule>;
   srv: SrvModule;
+  prototype: Slice<SliceDictShape<SliceInfoObj>>;
   [SLICE_META]: SliceInfoObj;
   getGuards: GuardCls[];
   cruGuards: GuardCls[];

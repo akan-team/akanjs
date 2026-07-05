@@ -2,8 +2,12 @@ import type { BaseEnv, Dayjs, SshOptions } from "akanjs/base";
 import type { Redis } from "ioredis";
 import { adapt } from "../adapt";
 
+export interface CacheSetOptions {
+  expireAt?: Dayjs;
+}
+
 export interface CacheAdaptor {
-  set(topic: string, key: string, value: string | number | Buffer, option?: { expireAt?: Dayjs }): Promise<void>;
+  set(topic: string, key: string, value: string | number | Buffer, option?: CacheSetOptions): Promise<void>;
   get<T extends string | number | Buffer>(topic: string, key: string): Promise<T | undefined>;
   delete(topic: string, key: string): Promise<void>;
   getClient?(): Redis;
@@ -12,7 +16,7 @@ export interface CacheAdaptor {
     key: string,
     subKey: string,
     value: string | number | Buffer,
-    option?: { expireAt?: Dayjs },
+    option?: CacheSetOptions,
   ): Promise<void>;
   hget<T extends string | number | Buffer>(topic: string, key: string, subKey: string): Promise<T | undefined>;
   hdelete(topic: string, key: string, subKey: string): Promise<void>;
@@ -64,12 +68,7 @@ export class RedisCache
   }))
   implements CacheAdaptor
 {
-  async set(
-    topic: string,
-    key: string,
-    value: string | number | Buffer,
-    option: { expireAt?: Dayjs } = {},
-  ): Promise<void> {
+  async set(topic: string, key: string, value: string | number | Buffer, option: CacheSetOptions = {}): Promise<void> {
     const expireTime = option.expireAt?.toDate().getTime();
     if (expireTime) await this.redis.set(`${topic}:${key}`, value, "PXAT", expireTime);
     else await this.redis.set(`${topic}:${key}`, value);
@@ -86,7 +85,7 @@ export class RedisCache
     key: string,
     subKey: string,
     value: string | number | Buffer,
-    option?: { expireAt?: Dayjs },
+    option?: CacheSetOptions,
   ): Promise<void> {
     const expireTime = option?.expireAt?.toDate().getTime();
     const redisKey = `${topic}:${key}`;

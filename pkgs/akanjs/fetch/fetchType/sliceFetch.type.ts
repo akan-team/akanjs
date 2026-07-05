@@ -16,7 +16,7 @@ import type {
   SliceCls,
   SliceInfoArgs,
 } from "akanjs/signal";
-import type { ClientEdit, ClientInit, ClientView, EditReturn, InitReturn, ViewReturn } from "./appliedReturn.type";
+import type { EditReturn, InitReturn, ServerEdit, ServerInit, ServerView, ViewReturn } from "./appliedReturn.type";
 
 // Shortcut accessors — avoids re-typing the long lookup path and lets TS
 // memoize each access once per SlceCls instantiation.
@@ -81,16 +81,18 @@ type SliceInitFetch<S extends SliceCls> = {
 type SliceGetInitFetch<S extends SliceCls> = {
   [Suffix in keyof _SliceMap<S> as Suffix extends string ? `get${_Cap<S>}Init${Capitalize<Suffix>}` : never]: (
     ...args: [...SliceInfoArgs<_SliceMap<S>[Suffix]>, option?: _SliceFetchInitOption<S>]
-  ) => ClientInit<
-    _RefName<S>,
-    _Light<S>,
-    _Insight<S>,
-    SliceInfoArgs<_SliceMap<S>[Suffix]>,
-    _Filter<S>,
-    _Cap<S>,
-    GetStateObject<_LightWithId<S>>,
-    GetStateObject<_Insight<S>>,
-    _Sort<S>
+  ) => Promise<
+    ServerInit<
+      _RefName<S>,
+      _Light<S>,
+      _Insight<S>,
+      SliceInfoArgs<_SliceMap<S>[Suffix]>,
+      _Filter<S>,
+      _Cap<S>,
+      GetStateObject<_LightWithId<S>>,
+      GetStateObject<_Insight<S>>,
+      _Sort<S>
+    >
   >;
 };
 
@@ -138,7 +140,7 @@ type RawBaseSliceFetchType<
     fetchPolicy?: FetchPolicy,
   ) => Promise<Full>;
 } & {
-  [K in `remove${_CapitalizedRefName}`]: (id: string, fetchPolicy?: FetchPolicy) => Promise<void>;
+  [K in `remove${_CapitalizedRefName}`]: (id: string, fetchPolicy?: FetchPolicy) => Promise<Full>;
 };
 
 type AppliedBaseSliceFetchType<
@@ -150,11 +152,11 @@ type AppliedBaseSliceFetchType<
 > = {
   [K in `view${_CapitalizedRefName}`]: (id: string, option?: FetchPolicy) => Promise<ViewReturn<RefName, Full>>;
 } & {
-  [K in `get${_CapitalizedRefName}View`]: (id: string, option?: FetchPolicy) => ClientView<RefName, Full>;
+  [K in `get${_CapitalizedRefName}View`]: (id: string, option?: FetchPolicy) => Promise<ServerView<RefName, Full>>;
 } & {
   [K in `edit${_CapitalizedRefName}`]: (id: string, option?: FetchPolicy) => Promise<EditReturn<RefName, Full>>;
 } & {
-  [K in `get${_CapitalizedRefName}Edit`]: (id: string, option?: FetchPolicy) => ClientEdit<RefName, Full>;
+  [K in `get${_CapitalizedRefName}Edit`]: (id: string, option?: FetchPolicy) => Promise<ServerEdit<RefName, Full>>;
 } & {
   // TODO: migrate this to shared
   [K in `add${_CapitalizedRefName}Files`]: (
