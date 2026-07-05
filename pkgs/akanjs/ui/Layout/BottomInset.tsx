@@ -9,6 +9,7 @@ export interface BottomInsetProps {
   className?: string;
   children: ReactNode;
   keyboardSticky?: boolean;
+  contentAnchor?: "bottom";
   role?: "bottomChrome" | "keyboardAccessory";
   estimatedHeight?: number;
   frameScope?: FrameSlotRegistration["scope"];
@@ -20,6 +21,7 @@ export const BottomInset = ({
   className,
   children,
   keyboardSticky,
+  contentAnchor,
   role,
   estimatedHeight,
   frameScope = "page",
@@ -49,12 +51,13 @@ export const BottomInset = ({
     debugFrame("bottomInset.mount", {
       path,
       keyboardSticky,
+      contentAnchor,
       role: frameRole,
       frameScope,
       frameSource,
     });
     return () => debugFrame("bottomInset.unmount", { path, frameSource });
-  }, [path, keyboardSticky, frameRole, frameScope, frameSource]);
+  }, [path, keyboardSticky, contentAnchor, frameRole, frameScope, frameSource]);
   useLayoutEffect(() => {
     if (!path) return;
     const height = useDeclaredHeight ? resolvedEstimatedHeight : (measuredHeight ?? readContentHeight());
@@ -63,6 +66,7 @@ export const BottomInset = ({
       role: frameRole,
       scope: frameScope,
       source: frameSource,
+      contentAnchor,
       estimatedHeight: resolvedEstimatedHeight,
       height,
       cache: frameCache,
@@ -72,6 +76,7 @@ export const BottomInset = ({
     frameRole,
     frameScope,
     frameSource,
+    contentAnchor,
     resolvedEstimatedHeight,
     measuredHeight,
     frameCache,

@@ -767,6 +767,7 @@ export class CapacitorApp {
     await this.#applyAndroidMetadata();
     await this.#applyPermissions({ operation, env });
     await this.#applyDeepLinks("android", { operation, env });
+    await this.#disableNativeKeyboardResizeInAndroid();
     await this.project.commit();
     await this.#generateAssets({ operation, env });
     await this.#ensureAndroidAssetsDir();
@@ -833,6 +834,24 @@ export class CapacitorApp {
   }
   async openAndroid() {
     await this.#spawnMobile("npx", ["cap", "open", "android"], { operation: "local", env: "local" });
+  }
+  async #disableNativeKeyboardResizeInAndroid() {
+    const manifestPath = path.join(this.app.cwdPath, this.androidRootPath, "app/src/main/AndroidManifest.xml");
+    let manifest = await readFile(manifestPath, "utf8");
+    let changed = false;
+    manifest = manifest.replace(/<activity\b[^>]*android:name="\.MainActivity"[^>]*>/, (activityTag) => {
+      if (activityTag.includes("android:windowSoftInputMode=")) {
+        const nextTag = activityTag.replace(
+          /android:windowSoftInputMode="[^"]*"/,
+          'android:windowSoftInputMode="adjustNothing"',
+        );
+        changed ||= nextTag !== activityTag;
+        return nextTag;
+      }
+      changed = true;
+      return activityTag.replace(/>$/, '\n            android:windowSoftInputMode="adjustNothing">');
+    });
+    if (changed) await writeFile(manifestPath, manifest);
   }
   async #ensureAndroidAssetsDir() {
     await mkdir(path.join(this.app.cwdPath, this.androidAssetsPath), { recursive: true });

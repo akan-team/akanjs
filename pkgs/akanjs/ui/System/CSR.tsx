@@ -223,6 +223,7 @@ const CSRWrapper = ({
               : bottomInset?.containerStyle
           }
           animationDuration={frameLayout.keyboard.animationDuration}
+          animationEasing={frameLayout.keyboard.animationEasing}
         >
           <CSRFrameSlotTargets slot="keyboardInset" />
         </KeyboardLayer>
@@ -278,14 +279,17 @@ const KeyboardLayer = ({
   className,
   style,
   animationDuration,
+  animationEasing,
   children,
-}: FrameLayerProps & { animationDuration?: number }) => (
+}: FrameLayerProps & { animationDuration?: number; animationEasing?: string }) => (
   <animated.div
     id={id}
     className={className}
     style={{
       ...(style ?? {}),
-      transition: `top ${animationDuration ?? 285}ms ease-out, height ${animationDuration ?? 285}ms ease-out`,
+      transition: `top ${animationDuration ?? 420}ms ${animationEasing ?? "cubic-bezier(0.16, 1, 0.3, 1)"}, height ${
+        animationDuration ?? 420
+      }ms ${animationEasing ?? "cubic-bezier(0.16, 1, 0.3, 1)"}`,
       willChange: "top, height",
     }}
   >
@@ -433,6 +437,7 @@ const CSRPageContainer = ({ pathRoute, prefix, layoutStyle }: CSRPageContainerPr
     phase,
     prevPage,
     prevPageContentRef,
+    frameLayout,
   } = useCsr();
   const pageType: "current" | "prev" | "cached" | "pending" | null =
     pathRoute === currentLocation.pathRoute
@@ -491,6 +496,18 @@ const CSRPageContainer = ({ pathRoute, prefix, layoutStyle }: CSRPageContainerPr
             zIndex: 0,
           };
   if (!location) return null;
+  const shouldAnimateContentResize =
+    pageType === "current" && frameLayout.contentAnchor === "bottom" && frameLayout.keyboard.sticky;
+  const contentResizeTransition = shouldAnimateContentResize
+    ? {
+        transition: `height ${frameLayout.keyboard.animationDuration ?? 420}ms ${
+          frameLayout.keyboard.animationEasing ?? "cubic-bezier(0.16, 1, 0.3, 1)"
+        }, padding-bottom ${frameLayout.keyboard.animationDuration ?? 420}ms ${
+          frameLayout.keyboard.animationEasing ?? "cubic-bezier(0.16, 1, 0.3, 1)"
+        }`,
+        willChange: "height, padding-bottom",
+      }
+    : {};
   return (
     <>
       {createPortal(
@@ -517,7 +534,7 @@ const CSRPageContainer = ({ pathRoute, prefix, layoutStyle }: CSRPageContainerPr
               "pointer-events-none isolate h-screen w-screen overflow-hidden": pageType === "prev" || pageType === "pending",
               [pageClassName]: pathRoute.pageState.gesture,
             })}
-            style={page?.contentStyle}
+            style={{ ...(page?.contentStyle ?? {}), ...contentResizeTransition }}
             pageType={pageType}
             location={location}
             prefix={prefix}

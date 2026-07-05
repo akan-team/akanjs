@@ -23,13 +23,14 @@ import {
 } from "akanjs/client";
 import { parseAkanI18nEnv, parseBasePaths } from "akanjs/common";
 import { loadCapacitorApp } from "akanjs/client/capacitor";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   createFrameSnapshot,
   createTransitionPlan,
   FRAME_Z_INDEX,
   getFramePlatformProfile,
   getFrameSlotsForSnapshot,
+  hasBottomAnchoredKeyboardSlot,
   resolveKeyboardAccessoryHeight,
   resolveKeyboardLayout,
   hasKeyboardStickySlot,
@@ -485,7 +486,6 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
         gestureIntent.current = "pending";
         stackBackConfigRef.current = null;
         unlockPageScroll();
-        void Device.getDevice().hideKeyboard();
       }
       if (ix > initThreshold) {
         gestureIntent.current = "scroll";
@@ -504,6 +504,7 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
         if (absX < GESTURE_INTENT_THRESHOLD || absX <= absY * GESTURE_AXIS_LOCK_RATIO) return;
         gestureIntent.current = "gesture";
         lockPageScroll();
+        void Device.getDevice().hideKeyboard();
       }
       if (gestureIntent.current !== "gesture") {
         cancel();
@@ -661,11 +662,11 @@ const useBottomUpTrans = (routeState: RouteState): UseCsrTransition => {
 
   const pageBind = useDrag(
     ({ first, last, movement: [, my], initial: [, iy], cancel }) => {
-      if (first) void Device.getDevice().hideKeyboard();
       if (iy > initThreshold) {
         cancel();
         return;
       }
+      if (first) void Device.getDevice().hideKeyboard();
       if (my < transUnitRange[1]) void transUnit.start(transUnitRange[1], { immediate: true });
       else if (my > transUnitRange[0]) void transUnit.start(transUnitRange[0], { immediate: true });
       else if (!last) void transUnit.start(my, { immediate: true });
@@ -853,6 +854,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
   const resolvedPendingLocation = resolveLocationWithFrameState(pendingLocation, resolvedPathRouteMap);
   const platformProfile = getFramePlatformProfile();
   const accessoryHeight = resolveKeyboardAccessoryHeight(resolvedLocation.pathRoute.path, frameSlots);
+  const shouldAnchorContentBottom = hasBottomAnchoredKeyboardSlot(resolvedLocation.pathRoute.path, frameSlots);
   const keyboardFrame = useKeyboardFrame({
     bottomSafeArea: resolvedLocation.pathRoute.pageState.bottomSafeArea,
     sticky: hasKeyboardStickySlot(resolvedLocation.pathRoute.path, frameSlots),
@@ -870,6 +872,103 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
       }),
     [viewport, keyboardFrame, accessoryHeight, resolvedLocation.pathRoute.pageState.bottomSafeArea],
   );
+  const contentBottomAnchorRef = useRef<{
+    path: string;
+    contentViewportHeight: number;
+    bottomDistance: number;
+  } | null>(null);
+  const contentBottomAnchorRafRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const element = pageContentRef.current;
+    const path = resolvedLocation.pathRoute.path;
+    if (!element || !shouldAnchorContentBottom || !keyboardFrame.sticky) {
+      contentBottomAnchorRef.current = null;
+      if (contentBottomAnchorRafRef.current !== null) {
+        cancelAnimationFrame(contentBottomAnchorRafRef.current);
+        contentBottomAnchorRafRef.current = null;
+      }
+      return;
+    }
+
+    const previous = contentBottomAnchorRef.current;
+    const currentBottomDistance = Math.max(0, element.scrollHeight - element.scrollTop - element.clientHeight);
+    if (!previous || previous.path !== path) {
+      contentBottomAnchorRef.current = {
+        path,
+        contentViewportHeight: keyboardLayout.contentViewport.height,
+        bottomDistance: currentBottomDistance,
+      };
+      return;
+    }
+
+    const shouldRestoreBottom = previous.contentViewportHeight !== keyboardLayout.contentViewport.height;
+    const bottomDistance = previous.bottomDistance;
+    if (shouldRestoreBottom) {
+      const nextScrollTop = Math.max(0, element.scrollHeight - element.clientHeight - bottomDistance);
+      if (Math.abs(element.scrollTop - nextScrollTop) > 1) {
+        debugFrame("keyboard.contentAnchor", {
+          path,
+          from: element.scrollTop,
+          to: nextScrollTop,
+          bottomDistance,
+          contentViewportHeight: keyboardLayout.contentViewport.height,
+        });
+        element.scrollTop = nextScrollTop;
+      }
+      const startedAt = performance.now();
+      const duration = (keyboardFrame.animationDuration ?? 0) + 50;
+      const keepBottomAnchored = () => {
+        const scrollTop = Math.max(0, element.scrollHeight - element.clientHeight - bottomDistance);
+        if (Math.abs(element.scrollTop - scrollTop) > 1) element.scrollTop = scrollTop;
+        if (performance.now() - startedAt < duration) {
+          contentBottomAnchorRafRef.current = requestAnimationFrame(keepBottomAnchored);
+        } else {
+          contentBottomAnchorRafRef.current = null;
+        }
+      };
+      if (contentBottomAnchorRafRef.current !== null) cancelAnimationFrame(contentBottomAnchorRafRef.current);
+      contentBottomAnchorRafRef.current = requestAnimationFrame(keepBottomAnchored);
+    }
+
+    contentBottomAnchorRef.current = {
+      path,
+      contentViewportHeight: keyboardLayout.contentViewport.height,
+      bottomDistance: Math.max(0, element.scrollHeight - element.scrollTop - element.clientHeight),
+    };
+    return () => {
+      if (contentBottomAnchorRafRef.current !== null) {
+        cancelAnimationFrame(contentBottomAnchorRafRef.current);
+        contentBottomAnchorRafRef.current = null;
+      }
+    };
+  }, [
+    pageContentRef,
+    resolvedLocation.pathRoute.path,
+    shouldAnchorContentBottom,
+    keyboardFrame.sticky,
+    keyboardFrame.animationDuration,
+    keyboardLayout.contentViewport.height,
+  ]);
+  useEffect(() => {
+    const element = pageContentRef.current;
+    const path = resolvedLocation.pathRoute.path;
+    if (!element || !shouldAnchorContentBottom || !keyboardFrame.sticky) return;
+    const updateBottomDistance = () => {
+      contentBottomAnchorRef.current = {
+        path,
+        contentViewportHeight: keyboardLayout.contentViewport.height,
+        bottomDistance: Math.max(0, element.scrollHeight - element.scrollTop - element.clientHeight),
+      };
+    };
+    element.addEventListener("scroll", updateBottomDistance, { passive: true });
+    return () => element.removeEventListener("scroll", updateBottomDistance);
+  }, [
+    pageContentRef,
+    resolvedLocation.pathRoute.path,
+    shouldAnchorContentBottom,
+    keyboardFrame.sticky,
+    keyboardLayout.contentViewport.height,
+  ]);
   useFrameRuntimeResync({ updateViewport });
   const shouldPrepareFrameTransition = useCallback(
     (nextHref?: string) => {
@@ -1221,6 +1320,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
       keyboard: keyboardFrame,
       contentViewport: keyboardLayout.contentViewport,
       keyboardAccessory: keyboardLayout.keyboardAccessory,
+      contentAnchor: shouldAnchorContentBottom ? "bottom" : undefined,
       platformProfile,
       zIndex: FRAME_Z_INDEX,
       pageStateByPath: effectivePageStateByPath,

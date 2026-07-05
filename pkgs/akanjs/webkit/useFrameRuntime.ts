@@ -25,7 +25,10 @@ export type FrameSlotBucket = "active" | "pending";
 export type FrameSlotMapByBucket = Record<FrameSlotBucket, FrameSlotMap>;
 export const PENDING_FRAME_READY_TIMEOUT_MS = 80;
 export const PENDING_FRAME_READY_MAX_TIMEOUT_MS = 120;
-export const KEYBOARD_FALLBACK_ANIMATION_DURATION_MS = 285;
+export const KEYBOARD_SHOW_ANIMATION_DURATION_MS = 420;
+export const KEYBOARD_HIDE_ANIMATION_DURATION_MS = 90;
+export const KEYBOARD_SHOW_ANIMATION_EASING = "cubic-bezier(0.16, 1, 0.3, 1)";
+export const KEYBOARD_HIDE_ANIMATION_EASING = "cubic-bezier(0.7, 0, 0.84, 0)";
 
 export const FRAME_Z_INDEX = {
   page: 10,
@@ -208,9 +211,14 @@ export function useFrameViewport() {
   const updateViewport = useCallback((reason = "viewport.change") => {
     const visualViewport = window.visualViewport;
     const platform = getCurrentPlatform();
+    const usesAkanKeyboardResize = platform === "ios" || platform === "android";
+    const width = Math.round(visualViewport?.width ?? window.innerWidth);
+    const currentHeight = Math.round(window.innerHeight);
+    const stableHeight =
+      usesAkanKeyboardResize && width === viewport.width ? Math.max(viewport.height, currentHeight) : currentHeight;
     const nextViewport = {
-      width: Math.round(visualViewport?.width ?? window.innerWidth),
-      height: Math.round(platform === "ios" ? window.innerHeight : (visualViewport?.height ?? window.innerHeight)),
+      width,
+      height: usesAkanKeyboardResize ? stableHeight : Math.round(visualViewport?.height ?? window.innerHeight),
       visualWidth: Math.round(visualViewport?.width ?? window.innerWidth),
       visualHeight: Math.round(visualViewport?.height ?? window.innerHeight),
       visualOffsetTop: Math.round(visualViewport?.offsetTop ?? 0),
@@ -227,7 +235,7 @@ export function useFrameViewport() {
       debugFrame(reason, { from: prev, to: nextViewport, platform });
       return nextViewport;
     });
-  }, []);
+  }, [viewport.height]);
 
   useEffect(() => {
     updateViewport("viewport.init");
@@ -260,6 +268,10 @@ export function hasKeyboardStickySlot(path: string, frameSlots: FrameSlotMap) {
   return getKeyboardAccessorySlots(path, frameSlots).length > 0;
 }
 
+export function hasBottomAnchoredKeyboardSlot(path: string, frameSlots: FrameSlotMap) {
+  return getKeyboardAccessorySlots(path, frameSlots).some((slot) => slot.contentAnchor === "bottom");
+}
+
 export function resolveKeyboardFrame({
   keyboardHeight,
   bottomSafeArea,
@@ -275,20 +287,35 @@ export function resolveKeyboardFrame({
   sticky: boolean;
   freeze?: boolean;
 }): KeyboardFrameState {
+  const useVisualViewportHeight = platformProfile === "android" && visualViewportKeyboardHeight > 0;
   const visualFallbackHeight = keyboardHeight <= 0 && visualViewportKeyboardHeight > 0 ? visualViewportKeyboardHeight : 0;
-  const effectiveKeyboardHeight = keyboardHeight > 0 ? keyboardHeight : visualFallbackHeight;
-  const source = keyboardHeight > 0 ? "native" : visualFallbackHeight > 0 ? "visualViewport" : "fallback";
-  const visualCompensation = platformProfile === "ios" ? 0 : Math.min(visualViewportKeyboardHeight, effectiveKeyboardHeight);
+  const effectiveKeyboardHeight = useVisualViewportHeight
+    ? visualViewportKeyboardHeight
+    : keyboardHeight > 0
+      ? keyboardHeight
+      : visualFallbackHeight;
+  const source = useVisualViewportHeight
+    ? "visualViewport"
+    : keyboardHeight > 0
+      ? "native"
+      : visualFallbackHeight > 0
+        ? "visualViewport"
+        : "fallback";
+  const visualCompensation =
+    platformProfile === "web" || platformProfile === "mobileWeb"
+      ? Math.min(visualViewportKeyboardHeight, effectiveKeyboardHeight)
+      : 0;
   const offset = sticky && !freeze ? Math.max(0, effectiveKeyboardHeight - visualCompensation) : 0;
+  const isShowing = effectiveKeyboardHeight > 0 && !freeze;
   return {
     height: effectiveKeyboardHeight,
     offset,
-    visible: effectiveKeyboardHeight > 0 && !freeze,
+    visible: isShowing,
     sticky,
     frozen: freeze,
     source,
-    animationDuration: KEYBOARD_FALLBACK_ANIMATION_DURATION_MS,
-    animationEasing: "ease-out",
+    animationDuration: isShowing ? KEYBOARD_SHOW_ANIMATION_DURATION_MS : KEYBOARD_HIDE_ANIMATION_DURATION_MS,
+    animationEasing: isShowing ? KEYBOARD_SHOW_ANIMATION_EASING : KEYBOARD_HIDE_ANIMATION_EASING,
   };
 }
 
@@ -343,14 +370,18 @@ export function useKeyboardFrame({
 }: {
   bottomSafeArea: number;
   sticky: boolean;
-  viewport: { visualHeight: number; visualOffsetTop: number };
+  viewport: { height: number; visualHeight: number; visualOffsetTop: number };
   platformProfile: FramePlatformProfile;
   freeze?: boolean;
 }) {
   const keyboardHeight = st.use.keyboardHeight();
+  const androidViewportKeyboardHeight =
+    platformProfile === "android" ? Math.max(0, Math.round(viewport.height - window.innerHeight)) : 0;
   const visualViewportKeyboardHeight = Math.max(
     0,
-    Math.round(window.innerHeight - viewport.visualHeight - viewport.visualOffsetTop),
+    androidViewportKeyboardHeight > 0
+      ? androidViewportKeyboardHeight
+      : Math.round(viewport.height - viewport.visualHeight - viewport.visualOffsetTop),
   );
   return useMemo(
     () =>

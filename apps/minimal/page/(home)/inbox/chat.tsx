@@ -55,6 +55,7 @@ export default function Page() {
       <Layout.BottomInset
         className="flex h-(--akan-bottom-inset) w-full bg-base-100/80 px-3 py-2 backdrop-blur"
         keyboardSticky
+        contentAnchor="bottom"
       >
         <div className="apptest-card flex h-full w-full items-center justify-center gap-2 rounded-3xl px-3">
           <input
