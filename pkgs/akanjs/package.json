@@ -142,6 +142,7 @@
     "cordova-plugin-purchase": "^13.16.0",
     "croner": "^10.0.1",
     "daisyui": "5.5.23",
+    "firebase": "^12.13.0",
     "ioredis": "^5.10.1",
     "mermaid": "^11.15.0",
     "postgres": "^3.4.9",
@@ -230,6 +231,9 @@
       "optional": true
     },
     "daisyui": {
+      "optional": true
+    },
+    "firebase": {
       "optional": true
     },
     "ioredis": {

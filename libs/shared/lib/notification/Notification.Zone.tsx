@@ -1,32 +1,22 @@
 "use client";
-// import { FirebaseMessagingOptions, useFirebaseMessaging } from "@libs/shared/client";
-import { st } from "@libs/shared/client";
-import { type FirebaseMessagingOptions, useFirebaseMessaging } from "@libs/shared/webkit";
-import { getCookie } from "akanjs/client";
+import { type PushToken, usePushNotification } from "akanjs/webkit";
 import { useEffect } from "react";
 
 interface InitializeProps {
-  options: FirebaseMessagingOptions;
-  serverHttpUri: string;
+  onPushToken?: (pushToken: PushToken) => Promise<void> | void;
 }
 
-export const Initialize = ({ options, serverHttpUri }: InitializeProps) => {
-  const jwt = getCookie("jwt");
-  const self = st.use.self();
+export const Initialize = ({ onPushToken }: InitializeProps) => {
+  const pushNotification = usePushNotification();
 
-  const { getToken, initialized } = useFirebaseMessaging({
-    options,
-    serverHttpUri,
-  });
   useEffect(() => {
-    // if (!initialized) return;
     const initialize = async () => {
-      const token = await getToken();
-      if (!token) return;
-      await st.do.subscribeDefaultNotification(token);
+      const pushToken = await pushNotification.getToken();
+      if (!pushToken) return;
+      await onPushToken?.(pushToken);
     };
     void initialize();
-  }, [initialized]);
+  }, [onPushToken]);
 
   return <></>;
 };

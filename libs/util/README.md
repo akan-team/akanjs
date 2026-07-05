@@ -46,7 +46,7 @@ Backend integration utilities for NestJS applications:
   - `EmailApi` - Email service with SMTP support and HTML templates
 
 - **☁️ Cloud Services Integration**
-  - `FirebaseApi` - Firebase push notifications (iOS, Android, Web)
+  - `PushNotificationServer` - FCM push notification transport (send/topic subscribe only)
   - `CloudflareApi` - Cloudflare service integration
   - `StorageApi` - Storage operations (S3, IPFS, Local)
   - `IpfsApi` - IPFS distributed storage
@@ -173,7 +173,7 @@ randomString(8); // "aB3xY9mK"
 ### Server-side APIs
 
 ```typescript
-import { EmailApi, FirebaseApi, aesEncrypt } from "@libs/util/server";
+import { EmailApi, PushNotificationServer, aesEncrypt } from "@libs/util/server";
 
 // Email service
 const emailApi = new EmailApi({

@@ -440,7 +440,7 @@ export default function Page() {
                 </div>
                 <div className="rounded-2xl border border-success/30 bg-success/10 p-4">
                   <div className="font-bold">{l.trans({ en: "UI and webkit", ko: "UI and webkit" })}</div>
-                  <div className="text-base-content/70 text-sm">ui/Field.tsx · webkit/useFirebaseMessaging.tsx</div>
+                  <div className="text-base-content/70 text-sm">ui/Field.tsx · webkit/usePushNotification.tsx</div>
                 </div>
               </div>
             </div>

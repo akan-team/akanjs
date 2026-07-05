@@ -1,4 +1,14 @@
 import type { ClientEnv } from "akanjs/base";
-// import { FirebaseAppOptions } from "@libs/util/srvkit";
 
-export type AppClientEnv = ClientEnv & {};
+export type AppClientEnv = ClientEnv & {
+  firebase?: {
+    apiKey: string;
+    authDomain?: string;
+    projectId: string;
+    storageBucket?: string;
+    messagingSenderId: string;
+    appId: string;
+    measurementId?: string;
+    vapidKey: string;
+  };
+};

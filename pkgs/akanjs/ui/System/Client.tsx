@@ -218,6 +218,7 @@ interface ClientBridgeProps {
 }
 
 export const ClientBridge = ({ env, lang, theme, prefix, gaTrackingId, wsConnect = true }: ClientBridgeProps) => {
+  (globalThis as typeof globalThis & { __AKAN_CLIENT_ENV__?: ClientEnv }).__AKAN_CLIENT_ENV__ = env;
   const uiOperation = st.use.uiOperation();
   const pathname = st.use.pathname();
   const params = st.use.params();

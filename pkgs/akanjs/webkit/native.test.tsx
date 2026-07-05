@@ -37,8 +37,10 @@ const pushState = {
   receive: "granted" as "granted" | "denied",
   registered: 0,
   autoInit: 0,
+  actionListeners: [] as Array<(event: { notification?: { data?: Record<string, unknown> } }) => void>,
 };
 const assigned: string[] = [];
+const deepLinks: string[] = [];
 
 beforeAll(() => {
   mock.module("react", () => ({
@@ -118,6 +120,10 @@ beforeAll(() => {
       emit: () => undefined,
       on: () => undefined,
       off: () => undefined,
+      enterDeepLink: (href: string) => {
+        deepLinks.push(href);
+        return true;
+      },
     },
     storage: {
       getItem: async () => null,
@@ -167,6 +173,10 @@ const installCapacitorBridge = () => {
           register: async () => {
             pushState.registered += 1;
           },
+          addListener: async (_eventName: string, listener: (event: { notification?: { data?: Record<string, unknown> } }) => void) => {
+            pushState.actionListeners.push(listener);
+            return { remove: () => undefined };
+          },
         },
         FCM: {
           setAutoInit: async () => {
@@ -208,7 +218,7 @@ const installWindow = () => {
   } as unknown as Document;
   (document.documentElement as unknown as { ownerDocument: Document }).ownerDocument = document;
   const window = {
-    location: { assign: (href: string) => assigned.push(href) },
+    location: { assign: (href: string) => assigned.push(href), origin: "https://example.test" },
     document,
     Capacitor: (globalThis as typeof globalThis & { Capacitor?: unknown }).Capacitor,
     HTMLIFrameElement: class HTMLIFrameElement {},
@@ -259,7 +269,11 @@ afterEach(() => {
   pushState.receive = "granted";
   pushState.registered = 0;
   pushState.autoInit = 0;
+  pushState.actionListeners = [];
   assigned.length = 0;
+  deepLinks.length = 0;
+  globalThis.__AKAN_PUSH_CLICK_BRIDGE__ = undefined;
+  globalThis.__AKAN_CLIENT_ENV__ = undefined;
   effectCleanups.splice(0);
   hookIndex = 0;
   hookStates.length = 0;
@@ -315,27 +329,26 @@ describe("native hooks", () => {
     hook.unmount();
   });
 
-  test("usePushNoti is web no-op, registers native device, opens settings, and reads token", async () => {
+  test("usePushNotification returns PushToken, no-ops on web, and bridges native push clicks", async () => {
     installWindow();
-    const { usePushNoti } = await import("./usePushNoti");
-    const hook = renderHook(() => usePushNoti());
+    const { usePushNotification } = await import("./usePushNotification");
+    const hook = renderHook(() => usePushNotification());
 
-    await hook.current.init();
-    await hook.current.register();
-    expect(await hook.current.getToken()).toBeUndefined();
+    expect(await hook.current.register()).toBeUndefined();
     expect(pushState.registered).toBe(0);
 
     pushState.platform = "ios";
-    await hook.current.init();
-    await Promise.resolve();
-    await hook.current.register();
+    await hook.current.initClickBridge();
+    const pushToken = await hook.current.register();
     expect(pushState.autoInit).toBe(1);
-    expect(pushState.registered).toBe(2);
-    expect(await hook.current.getToken()).toBe("token-1");
+    expect(pushState.registered).toBe(1);
+    expect(pushToken).toEqual({ token: "token-1", platform: "ios", provider: "fcm" });
+    expect(await hook.current.getToken()).toEqual({ token: "token-1", platform: "ios", provider: "fcm" });
+    pushState.actionListeners[0]?.({ notification: { data: { url: "/push-target" } } });
+    expect(deepLinks).toEqual(["/push-target"]);
 
     pushState.receive = "denied";
-    await hook.current.register();
-    expect(assigned).toEqual(["app-settings:"]);
+    expect(await hook.current.register()).toBeUndefined();
     hook.unmount();
   });
 });

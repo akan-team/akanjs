@@ -98,16 +98,19 @@ const { getPosition } = useGeoLocation();
 const position = await getPosition();`,
     },
     {
-      name: "usePushNoti",
+      name: "usePushNotification",
       desc: l.trans({
-        en: "Push notification hook for native clients. It initializes FCM/push plugins, checks permission state, registers the device, and reads the FCM token when supported.",
-        ko: "native client를 위한 push notification hook입니다. FCM/push plugin을 초기화하고 permission state를 확인하며 device를 등록하고 지원되는 경우 FCM token을 읽습니다.",
+        en: "Unified push notification client hook for web and native apps. It requests permission, registers the runtime, returns a PushToken, and bridges notification clicks through `data.url` when supported.",
+        ko: "web/native 앱을 위한 통합 push notification client hook입니다. permission 요청, runtime 등록, PushToken 반환을 처리하고 지원되는 경우 notification click을 `data.url` deep link로 연결합니다.",
       }),
-      code: `import { usePushNoti } from "akanjs/webkit";
+      code: `import { usePushNotification } from "akanjs/webkit";
 
-const push = usePushNoti();
-await push.init();
-const token = await push.getToken();`,
+const push = usePushNotification();
+const pushToken = await push.register();
+
+if (pushToken) {
+  await appApi.registerPushToken(pushToken);
+}`,
     },
     {
       name: "useLocation / useHistory",
