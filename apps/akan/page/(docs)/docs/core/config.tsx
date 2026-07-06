@@ -441,6 +441,27 @@ export default config;`}
                 ko: "Capacitor config로 그대로 전달되는 필드입니다. Akan의 상위 설정으로 표현되지 않는 네이티브 플러그인 설정이 필요할 때만 사용하세요.",
               }),
             },
+            {
+              title: "targets",
+              desc: l.trans({
+                en: "Per-package mobile settings. A target can select a basePath, indexPath, app identity overrides, permissions, files, and deepLinks.",
+                ko: "패키지별 모바일 설정입니다. target은 basePath, indexPath, 앱 식별 정보 override, permission, file, deepLinks를 선택할 수 있습니다.",
+              }),
+            },
+            {
+              title: "deepLinks",
+              desc: l.trans({
+                en: "Native URL schemes and verified HTTPS app links for a mobile target. iOS app links require teamId; Android app links require SHA-256 certificate fingerprints for release verification.",
+                ko: "모바일 target에 사용할 네이티브 URL scheme과 검증된 HTTPS 앱 링크입니다. iOS app link에는 teamId가 필요하고, Android app link에는 릴리즈 검증용 SHA-256 인증서 fingerprint가 필요합니다.",
+              }),
+            },
+            {
+              title: "indexPath",
+              desc: l.trans({
+                en: "Fallback CSR path for the mobile target. Akan uses it for deep link stack recovery and back-button fallback.",
+                ko: "모바일 target의 fallback CSR path입니다. Akan은 딥링크 stack 복원과 back 버튼 fallback에 이 값을 사용합니다.",
+              }),
+            },
           ].map(({ title, desc }) => (
             <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
               <span className="font-mono font-semibold text-primary">{title}: </span>
@@ -479,8 +500,8 @@ export default config;`}
               ko: "files는 네이티브 target path를 앱 기준 source file에 매핑합니다. google-services.json, GoogleService-Info.plist 같은 Firebase push 설정 파일에 유용합니다. 서버 service account JSON은 client/native file mapping에 넣지 마세요. 플랫폼별 설정 절차는 ",
             })}
           </span>
-          <Link href="/cheatsheet/dev/mobile" className="link link-primary">
-            {l.trans({ en: "Mobile Development", ko: "모바일 개발" })}
+          <Link href="/cheatsheet/mobile/setup" className="link link-primary">
+            {l.trans({ en: "Mobile Setup", ko: "모바일 설정" })}
           </Link>
           <span>{l.trans({ en: ".", ko: " 문서를 참고하세요." })}</span>
         </Docs.Alert>

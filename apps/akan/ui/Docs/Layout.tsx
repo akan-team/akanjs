@@ -2,7 +2,7 @@
 import { usePage } from "@apps/akan/client";
 import { clsx, getPathInfo, usePathCtx } from "akanjs/client";
 import { Link } from "akanjs/ui";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AiOutlineLeft, AiOutlineRight } from "react-icons/ai";
 import { Search } from "./Search";
 
@@ -20,7 +20,28 @@ interface LayoutProps {
 export const Layout = ({ children, menuMap }: LayoutProps) => {
   const { l, lang, path } = usePage();
   const pathCtx = usePathCtx();
-  const currentPath = pathCtx.location?.pathRoute?.path ?? getPathInfo(path, lang, pathCtx.prefix ?? "").path;
+  const prefix = pathCtx.prefix ?? "";
+  const fallbackPath = pathCtx.location?.pathRoute?.path ?? getPathInfo(path, lang, prefix).path;
+  const [currentPath, setCurrentPath] = useState(fallbackPath);
+
+  useEffect(() => {
+    setCurrentPath(fallbackPath);
+  }, [fallbackPath]);
+
+  useEffect(() => {
+    const syncCurrentPath = () => {
+      setCurrentPath(
+        getPathInfo(`${window.location.pathname}${window.location.search}${window.location.hash}`, lang, prefix).path,
+      );
+    };
+    syncCurrentPath();
+    window.addEventListener("popstate", syncCurrentPath);
+    window.addEventListener("hashchange", syncCurrentPath);
+    return () => {
+      window.removeEventListener("popstate", syncCurrentPath);
+      window.removeEventListener("hashchange", syncCurrentPath);
+    };
+  }, [lang, prefix]);
 
   const closeMenu = () => {
     const checkbox = document.getElementById("mobile-menu-toggle") as HTMLInputElement | undefined;
@@ -60,7 +81,10 @@ export const Layout = ({ children, menuMap }: LayoutProps) => {
                           "mb-1 block rounded-xl px-3 py-2 text-sm transition-colors hover:text-primary",
                           isActive && "font-bold text-primary",
                         )}
-                        onClick={closeMenu}
+                        onClick={() => {
+                          setCurrentPath(subMenu.href);
+                          closeMenu();
+                        }}
                       >
                         <div className="flex items-center gap-2">
                           <span>•</span> {subMenu.name}
@@ -96,7 +120,12 @@ export const Layout = ({ children, menuMap }: LayoutProps) => {
                       {menu.subMenus.map((subMenu, idx) => {
                         const isActive = subMenu.href === currentPath;
                         return (
-                          <Link key={idx} href={subMenu.href} className="mb-1 block rounded-xl">
+                          <Link
+                            key={idx}
+                            href={subMenu.href}
+                            className="mb-1 block rounded-xl"
+                            onClick={() => setCurrentPath(subMenu.href)}
+                          >
                             <div
                               className={clsx(
                                 "flex items-center gap-2 rounded-xl px-3 py-1 text-base-content/70 transition-colors hover:text-primary",

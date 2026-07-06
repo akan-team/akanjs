@@ -10,6 +10,7 @@ import {
   clearRootCapacitorConfigs,
   formatAndroidReleaseSigningError,
   getAdbDeviceStateIssues,
+  getAndroidLocalServerHost,
   getMissingAndroidReleaseSigningKeys,
   materializeCapacitorConfig,
   parseDevicectlDevices,
@@ -247,5 +248,12 @@ describe("Android signing diagnostics", () => {
       "Android device abc123 is unauthorized. Confirm USB debugging authorization on the device.",
       "Android device xyz is offline. Reconnect the device or restart adb.",
     ]);
+    expect(getAndroidLocalServerHost("List of devices attached\nemulator-5554 device\n", "192.168.0.5")).toBe(
+      "10.0.2.2",
+    );
+    expect(getAndroidLocalServerHost("List of devices attached\nabc123 device\n", "192.168.0.5")).toBe("192.168.0.5");
+    expect(
+      getAndroidLocalServerHost("List of devices attached\nemulator-5554 device\nabc123 device\n", "192.168.0.5"),
+    ).toBe("192.168.0.5");
   });
 });

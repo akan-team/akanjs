@@ -1177,8 +1177,7 @@ self.addEventListener("notificationclick", (event) => {
     }
     const assetLinks = associations
       .filter(
-        (association) =>
-          association.domains.length > 0 && (association.androidSha256CertFingerprints?.length ?? 0) > 0,
+        (association) => association.domains.length > 0 && (association.androidSha256CertFingerprints?.length ?? 0) > 0,
       )
       .map((association) => ({
         relation: ["delegate_permission/common.handle_all_urls"],

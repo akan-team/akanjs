@@ -23,10 +23,16 @@ interface RunIosConfig extends RunConfig {
   iosDeviceId?: string;
 }
 
-interface PrepareConfig extends RunConfig {}
+interface PrepareConfig extends RunConfig {
+  iosRunTargetKind?: IosRunTargetKind;
+}
 
 type MobileCommandEnv = Record<string, string | undefined>;
 type IosApnsEnvironment = "development" | "production";
+type SpawnMobileOptions = Parameters<AppExecutor["spawn"]>[2] & {
+  iosRunTargetKind?: IosRunTargetKind;
+  platform?: MobilePlatform;
+};
 
 export type IosRunTargetKind = "device" | "simulator";
 export interface IosRunTarget {
@@ -112,6 +118,7 @@ interface MaterializeCapacitorConfigOptions {
   localServerUrl?: string;
   localIp?: string;
 }
+type MobilePlatform = "ios" | "android";
 
 const getLocalIP = () => {
   const interfaces = os.networkInterfaces();
@@ -427,6 +434,16 @@ export function getAdbDeviceStateIssues(output: string) {
     });
 }
 
+export function getAndroidLocalServerHost(adbDevicesOutput: string | undefined, fallbackHost: string) {
+  const onlineDeviceIds =
+    adbDevicesOutput
+      ?.split(/\r?\n/)
+      .map((line) => line.trim().split(/\s+/))
+      .filter(([id, state]) => id && state === "device")
+      .map(([id]) => id) ?? [];
+  return onlineDeviceIds.length === 1 && onlineDeviceIds[0]?.startsWith("emulator-") ? "10.0.2.2" : fallbackHost;
+}
+
 const mergeAllowNavigation = (configured: unknown, localIp: string | undefined) => {
   const values = Array.isArray(configured)
     ? configured.filter((value): value is string => typeof value === "string")
@@ -598,7 +615,7 @@ export class CapacitorApp {
   async save() {
     await this.project.commit();
   }
-  async #prepareIos({ operation, env, regenerate = false }: PrepareConfig) {
+  async #prepareIos({ operation, env, regenerate = false, iosRunTargetKind }: PrepareConfig) {
     await this.init({ platform: "ios", operation, env, regenerate });
     await this.#prepareTargetAssets();
     await this.#prepareExternalFiles("ios");
@@ -606,9 +623,10 @@ export class CapacitorApp {
     await this.#applyPermissions({ operation, env });
     await this.#applyDeepLinks("ios", { operation, env });
     await this.project.commit();
+    await this.#setCodeSignEntitlementsInIosIfExists("App/App.entitlements");
     await this.#generateAssets({ operation, env });
     this.app.verbose(`syncing iOS`);
-    await this.#spawnMobile("npx", ["cap", "sync", "ios"], { operation, env });
+    await this.#spawnMobile("npx", ["cap", "sync", "ios"], { operation, env }, { iosRunTargetKind });
     this.app.verbose(`sync completed.`);
   }
   async buildIos({ env = "debug", regenerate = false }: { env?: RunConfig["env"]; regenerate?: boolean } = {}) {
@@ -626,14 +644,14 @@ export class CapacitorApp {
   }
   async runIos({ operation, env, regenerate = false, noAllowProvisioningUpdates = false, iosDeviceId }: RunIosConfig) {
     if (operation === "release") await this.prepareWww();
-    await this.#prepareIos({ operation, env, regenerate });
     const runTarget = await this.#selectIosRunTarget(iosDeviceId);
+    await this.#prepareIos({ operation, env, regenerate, iosRunTargetKind: runTarget.kind });
     if (runTarget.kind === "simulator") {
       await this.#spawnMobile(
         "npx",
-        ["cap", "run", "ios", "--target", runTarget.id],
+        ["cap", "run", "ios", "--target", runTarget.id, "--no-sync"],
         { operation, env },
-        { stdio: "inherit" },
+        { stdio: "inherit", platform: "ios", iosRunTargetKind: runTarget.kind },
       );
       return;
     }
@@ -703,7 +721,10 @@ export class CapacitorApp {
     noAllowProvisioningUpdates: boolean;
   }) {
     const mobileEnv = sanitizeIosNativeRunEnv(await this.#commandEnv(operation, env));
-    const configContent = await this.#writeCapacitorConfig({ operation }, mobileEnv);
+    const configContent = await this.#writeCapacitorConfig(
+      { operation, platform: "ios", iosRunTargetKind: runTarget.kind },
+      mobileEnv,
+    );
     await this.#writeRootCapacitorConfig(configContent);
     const scheme = this.#iosScheme();
     const command = buildIosNativeRunCommand({
@@ -943,9 +964,16 @@ export class CapacitorApp {
     if (html.includes("window.__AKAN_MOBILE_TARGET__")) return html;
     return html.replace(/<\/head\s*>/i, `${script}\n</head>`);
   }
-  async #writeCapacitorConfig({ operation }: Pick<RunConfig, "operation">, commandEnv: MobileCommandEnv) {
+  async #writeCapacitorConfig(
+    {
+      operation,
+      platform,
+      iosRunTargetKind,
+    }: Pick<RunConfig, "operation"> & { platform?: MobilePlatform; iosRunTargetKind?: IosRunTargetKind },
+    commandEnv: MobileCommandEnv,
+  ) {
     await mkdir(this.targetRoot, { recursive: true });
-    const localIp = operation === "local" ? getLocalIP() : undefined;
+    const localIp = operation === "local" ? await this.#resolveLocalServerHost(platform, iosRunTargetKind) : undefined;
     const config = materializeCapacitorConfig(this.target, {
       operation,
       localIp,
@@ -954,6 +982,18 @@ export class CapacitorApp {
     const content = `${JSON.stringify(config, null, 2)}\n`;
     await Bun.write(path.join(this.targetRoot, "capacitor.config.json"), content);
     return content;
+  }
+  async #resolveLocalServerHost(platform?: MobilePlatform, iosRunTargetKind?: IosRunTargetKind) {
+    const fallbackHost = getLocalIP();
+    if (platform === "android") {
+      try {
+        return getAndroidLocalServerHost(await this.#spawn("adb", ["devices"]), fallbackHost);
+      } catch {
+        return fallbackHost;
+      }
+    }
+    if (platform === "ios" && iosRunTargetKind === "simulator") return "localhost";
+    return fallbackHost;
   }
   async #prepareTargetAssets() {
     if (!this.target.assets) return;
@@ -1055,7 +1095,10 @@ export class CapacitorApp {
       await this.#setDeepLinksInAndroid(schemes, domains);
     }
   }
-  #assertDeepLinkVerificationConfig(platform: "ios" | "android", { operation, env }: Pick<RunConfig, "operation" | "env">) {
+  #assertDeepLinkVerificationConfig(
+    platform: "ios" | "android",
+    { operation, env }: Pick<RunConfig, "operation" | "env">,
+  ) {
     const deepLinks = this.target.deepLinks;
     if (!deepLinks?.domains?.length) return;
     if (platform === "ios" && !deepLinks.ios?.teamId) {
@@ -1102,19 +1145,28 @@ export class CapacitorApp {
     command: string,
     args: string[] = [],
     { operation, env }: Pick<RunConfig, "operation" | "env">,
-    options: Parameters<AppExecutor["spawn"]>[2] = {},
+    options: SpawnMobileOptions = {},
   ) {
+    const { iosRunTargetKind, platform, ...spawnOptions } = options;
     const mobileEnv = { ...(await this.#commandEnv(operation, env)), ...options.env };
-    const configContent = await this.#writeCapacitorConfig({ operation }, mobileEnv);
+    const configContent = await this.#writeCapacitorConfig(
+      { operation, platform: platform ?? this.#inferMobilePlatform(args), iosRunTargetKind },
+      mobileEnv,
+    );
     await this.#writeRootCapacitorConfig(configContent);
     try {
       return await this.#spawn(command, args, {
-        ...options,
+        ...spawnOptions,
         env: mobileEnv,
       });
     } finally {
       await this.#clearRootCapacitorConfigs();
     }
+  }
+  #inferMobilePlatform(args: string[]): MobilePlatform | undefined {
+    if (args.includes("android")) return "android";
+    if (args.includes("ios")) return "ios";
+    return undefined;
   }
   async addCamera() {
     await this.#setPermissionInIos({
@@ -1185,7 +1237,10 @@ export class CapacitorApp {
         )
     }
 `;
-      content = content.replace("\n    func applicationWillResignActive", `${delegateMethods}\n    func applicationWillResignActive`);
+      content = content.replace(
+        "\n    func applicationWillResignActive",
+        `${delegateMethods}\n    func applicationWillResignActive`,
+      );
     }
 
     if (content !== editor.getContent()) await editor.setContent(content).save();
@@ -1254,13 +1309,30 @@ export class CapacitorApp {
       let end = index;
       while (end < lines.length && !/^\s*\};\s*$/.test(lines[end] ?? "")) end++;
       const settings = lines.slice(start, end + 1);
-      if (settings.some((setting) => setting.includes("CODE_SIGN_ENTITLEMENTS"))) continue;
+      const configName = lines.slice(end + 1, end + 8).find((setting) => setting.includes("name = ")) ?? "";
       const indent = line.match(/^\s*/)?.[0] ?? "";
-      lines.splice(index, 0, `${indent}CODE_SIGN_ENTITLEMENTS = ${entitlementsRelPath};`);
-      index++;
-      changed = true;
+      const insertSettings = [];
+      if (!settings.some((setting) => setting.includes("CODE_SIGN_ENTITLEMENTS"))) {
+        insertSettings.push(`${indent}CODE_SIGN_ENTITLEMENTS = ${entitlementsRelPath};`);
+      }
+      if (
+        configName.includes("name = Debug;") &&
+        !settings.some((setting) => setting.includes("CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION"))
+      ) {
+        insertSettings.push(`${indent}CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;`);
+      }
+      if (insertSettings.length > 0) {
+        lines.splice(index, 0, ...insertSettings);
+        index += insertSettings.length;
+        changed = true;
+      }
     }
     if (changed) await writeFile(pbxprojPath, lines.join("\n"));
+  }
+  async #setCodeSignEntitlementsInIosIfExists(entitlementsRelPath: string) {
+    const entitlementsPath = path.join(this.app.cwdPath, this.iosProjectPath, entitlementsRelPath);
+    if (!(await Bun.file(entitlementsPath).exists())) return;
+    await this.#setCodeSignEntitlementsInIos(entitlementsRelPath);
   }
   async #setUrlSchemesInAndroid(schemes: string[]) {
     const manifestPath = path.join(this.app.cwdPath, this.androidRootPath, "app/src/main/AndroidManifest.xml");

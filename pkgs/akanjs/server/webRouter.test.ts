@@ -345,9 +345,7 @@ describe("WebRouter Firebase messaging service worker", () => {
           const serviceWorkerRoute = renderEnvRoutes["/firebase-messaging-sw.js"];
           expect(serviceWorkerRoute).toBeDefined();
           if (!serviceWorkerRoute) return;
-          const response = await serviceWorkerRoute(
-            new Request("https://example.test/firebase-messaging-sw.js"),
-          );
+          const response = await serviceWorkerRoute(new Request("https://example.test/firebase-messaging-sw.js"));
           const body = await response.text();
 
           expect(response.status).toBe(200);
@@ -371,9 +369,7 @@ describe("WebRouter Firebase messaging service worker", () => {
       const serviceWorkerRoute = renderEnvRoutes["/firebase-messaging-sw.js"];
       expect(serviceWorkerRoute).toBeDefined();
       if (!serviceWorkerRoute) return;
-      const response = await serviceWorkerRoute(
-        new Request("https://example.test/firebase-messaging-sw.js"),
-      );
+      const response = await serviceWorkerRoute(new Request("https://example.test/firebase-messaging-sw.js"));
       const body = await response.text();
 
       expect(response.status).toBe(200);
