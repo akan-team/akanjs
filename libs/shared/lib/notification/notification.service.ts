@@ -1,12 +1,12 @@
-import type { PushNotificationServer as PushNotificationServerType } from "@libs/util/srvkit";
+import { PushNotificationServer } from "@libs/util/srvkit";
 import { serve } from "akanjs/service";
 
 import * as db from "../db";
 import type * as srv from "../srv";
 
-export class NotificationService extends serve(db.notification, ({ use, service }) => ({
+export class NotificationService extends serve(db.notification, ({ use, service, plug }) => ({
   fileService: service<srv.FileService>(),
-  pushNotificationServer: use<PushNotificationServerType>(),
+  pushNotificationServer: plug(PushNotificationServer),
 })) {
   //all_users 토픽에 구독
   async subscribeToSelf(token: string, userId: string) {
@@ -24,7 +24,7 @@ export class NotificationService extends serve(db.notification, ({ use, service 
   }
 
   async sendPushNotification(notificationInput: db.NotificationInput) {
-    const notification = await this.notificationModel.createNotification(notificationInput);
+    const notification = await this.notificationModel.getNotification(notificationInput.id);
     const image = notification.image ? await this.fileService.getFile(notification.image) : null;
 
     await this.pushNotificationServer.send({

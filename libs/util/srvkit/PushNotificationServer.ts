@@ -1,20 +1,7 @@
 import { Logger } from "akanjs/common";
+import { adapt } from "akanjs/service";
 import admin from "firebase-admin";
 import type { TokenMessage, TopicMessage } from "firebase-admin/messaging";
-
-export interface PushNotificationServerOptions {
-  type: string;
-  project_id: string;
-  private_key_id: string;
-  private_key: string;
-  client_email: string;
-  client_id: string;
-  auth_uri: string;
-  token_uri: string;
-  auth_provider_x509_cert_url: string;
-  client_x509_cert_url: string;
-  universe_domain: string;
-}
 
 export interface PushNotificationMessage {
   title: string;
@@ -26,14 +13,45 @@ export interface PushNotificationMessage {
   data?: Record<string, string>;
 }
 
-const baseMessage = {
-  android: {
-    notification: { sound: "default", defaultVibrateTimings: true, defaultSound: true, defaultLightSettings: true },
-  },
-  apns: { payload: { aps: { sound: "default", badge: 1 } } },
-};
 
-export function createPushNotificationMessage({
+interface PushNotificationServerOptions {
+  firebase: {
+    type: string;
+    project_id: string;
+    private_key_id: string;
+    private_key: string;
+    client_email: string;
+  };
+}
+
+
+interface MessageOptions {
+  android: { notification: { sound: "default", defaultVibrateTimings: true, defaultSound: true, defaultLightSettings: true } };
+  apns: { payload: { aps: { sound: "default", badge: 1 } } };
+}
+export class PushNotificationServer extends adapt("pushNotificationServer", ({ env, }) => ({
+  firebase: env((env: PushNotificationServerOptions) => env.firebase),
+})) {
+
+
+  async subscribeToTopic(token: string, topic: string) {
+    return await admin.messaging().subscribeToTopic(token, topic);
+  }
+
+  async unsubscribeFromTopic(token: string, topic: string) {
+    return await admin.messaging().unsubscribeFromTopic(token, topic);
+  }
+
+
+
+  private getBaseMessage(): MessageOptions {
+    return {
+      android: { notification: { sound: "default", defaultVibrateTimings: true, defaultSound: true, defaultLightSettings: true } },
+      apns: { payload: { aps: { sound: "default", badge: 1 } } },
+    }
+  }
+
+ private createPushNotificationMessage({
   title,
   body,
   token,
@@ -45,11 +63,12 @@ export function createPushNotificationMessage({
   if (!token && !topic) throw new Error("Push notification target token or topic is required.");
   const messageData = data || url ? { ...(data ?? {}), ...(url ? { url } : {}) } : undefined;
   const target = token ? { token } : { topic };
+  const baseMessage = this.getBaseMessage();
   const message = {
     ...baseMessage,
     notification: { title, body, imageUrl },
     android: { ...baseMessage.android, notification: { ...baseMessage.android.notification, imageUrl } },
-    apns: { ...baseMessage.apns, payload: { ...baseMessage.apns.payload, aps: { mutableContent: true } } },
+    apns: { ...baseMessage.apns, payload: { ...baseMessage.apns.payload, aps: { ...baseMessage.apns.payload.aps, mutableContent: true } } },
     fcmOptions: {},
     webpush: {
       notification: {
@@ -68,44 +87,16 @@ export function createPushNotificationMessage({
   return token ? (message as TokenMessage) : (message as TopicMessage);
 }
 
-export class PushNotificationServer {
-  readonly #logger = new Logger("PushNotificationServer");
-  readonly #options: PushNotificationServerOptions;
-  #app: admin.app.App | null = null;
-
-  constructor(options: PushNotificationServerOptions) {
-    this.#options = options;
-
-    if (process.env.NODE_ENV === "test") return;
-    this.#app = admin.initializeApp({
-      credential: admin.credential.cert(this.#options as admin.ServiceAccount),
-    });
-    this.#logger.verbose("PushNotificationServer initialized");
-  }
-
-  async onDestroy() {
-    await this.#app?.delete();
-    this.#app = null;
-  }
-
-  async subscribeToTopic(token: string, topic: string) {
-    return await admin.messaging().subscribeToTopic(token, topic);
-  }
-
-  async unsubscribeFromTopic(token: string, topic: string) {
-    return await admin.messaging().unsubscribeFromTopic(token, topic);
-  }
-
   async send(message: PushNotificationMessage) {
-    const generatedMessage = createPushNotificationMessage(message);
+    const generatedMessage = this.createPushNotificationMessage(message);
     try {
       const sendId = await admin.messaging().send(generatedMessage);
-      if (message.topic) this.#logger.log(`Sent ${message.topic} to topic push notification.`);
-      else this.#logger.log(`Sent ${message.token} to token push notification.`);
+      if (message.topic) this.logger.log(`Sent ${message.topic} to topic push notification.`);
+      else this.logger.log(`Sent ${message.token} to token push notification.`);
 
       return sendId;
     } catch (error) {
-      this.#logger.error(`Error sending push notification: ${error}`);
+      this.logger.error(`Error sending push notification: ${error}`);
       throw error;
     }
   }

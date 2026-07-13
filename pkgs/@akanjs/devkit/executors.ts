@@ -10,6 +10,7 @@ import {
 import { readFileSync } from "node:fs";
 import { copyFile, mkdir, readdir as readDirEntries, stat } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   capitalize,
   isRouteSourceFile,
@@ -23,6 +24,11 @@ import chalk from "chalk";
 import ts from "typescript";
 import { AkanAppConfig, AkanLibConfig, decreaseBuildNum, increaseBuildNum } from "./akanConfig";
 import { FileSys } from "./fileSys";
+import {
+  createFirebaseMessagingServiceWorker,
+  type FirebaseClientEnvConfig,
+  normalizeFirebaseClientConfig,
+} from "./firebaseMessagingSw";
 import { getDirname } from "./getDirname";
 import { Linter } from "./linter";
 import { AppInfo, LibInfo, PkgInfo, WorkspaceInfo } from "./scanInfo";
@@ -1497,7 +1503,27 @@ export class AppExecutor extends SysExecutor {
       writeLib: write,
     })) as AppInfo;
     if (write) await this.syncAssets(scanInfo.getScanResult().libDeps);
+    if (write) await this.#syncFirebaseMessagingSw();
     return scanInfo;
+  }
+  //* firebase config 가 있으면 public/firebase-messaging-sw.js 를 1회 생성한다(있으면 스킵).
+  //* 서버 동적 라우트를 대체하는 정적 파일. env.client 파생이라 gitignore 되고 env 별로 재생성된다.
+  async #syncFirebaseMessagingSw() {
+    const swRelPath = "public/firebase-messaging-sw.js";
+    if (await FileSys.fileExists(this.getPath(swRelPath))) return;
+    const envClientPath = path.join(this.cwdPath, "env", "env.client.ts");
+    if (!(await FileSys.fileExists(envClientPath))) return;
+    let firebaseConfig: FirebaseClientEnvConfig | null = null;
+    try {
+      const envUrl = pathToFileURL(envClientPath);
+      envUrl.searchParams.set("t", String(Date.now()));
+      const envModule = (await import(envUrl.href)) as { env?: { firebase?: unknown } };
+      firebaseConfig = normalizeFirebaseClientConfig(envModule.env?.firebase);
+    } catch {
+      return;
+    }
+    if (!firebaseConfig) return;
+    await this.writeFile(swRelPath, createFirebaseMessagingServiceWorker(firebaseConfig), { overwrite: false });
   }
   async increaseBuildNum() {
     await increaseBuildNum(this);
