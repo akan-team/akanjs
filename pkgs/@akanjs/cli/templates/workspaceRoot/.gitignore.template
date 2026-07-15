@@ -67,7 +67,9 @@ local.properties
 **/public/fallback-*.js
 **/public/libs
 **/private/libs
+**/public/firebase-messaging-sw.js
 
+**/android/keystore.properties
 **/vendor/bundle/
 **/ios/App/App/public
 **/ios/App/App/Podfile.lock

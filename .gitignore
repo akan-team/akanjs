@@ -22,7 +22,6 @@ apps/*/scripts
 **/env.server.main.ts
 **/env.server.testing.ts
 **/env.server.type.ts
-# Generated per-env from env.client firebase config (see AppExecutor#syncFirebaseMessagingSw)
 apps/*/public/firebase-messaging-sw.js
 **/*secrets.yaml
 **/kubeconfig.yaml
@@ -149,19 +148,11 @@ libs/*/client.ts
 libs/*/server.ts
 libs/*/index.ts
 libs/*/lib/*/index.tsx
-# **/capacitor.config.ts
-# **/playwright.config.ts
-# **/tsconfig.json
-# **/tsconfig.spec.json
 
 **/bunkan-id
 **/bunkan-id.pub
 infra/master/jenkins/credentials.sh
 **/.jenkins.conf
 **/regcred.yaml
-**/redis-connections.json
-infra/master/createRecords.ts
-**/abi
-pkgs/contract/env.ts
 **/.akan
 **/bun.lock
