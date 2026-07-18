@@ -24,6 +24,7 @@ export interface ErrorConstructor {
 
 interface FetchOptions {
   headers?: Record<string, string>;
+  baseUrl?: string;
 }
 
 export class HttpClient {
@@ -38,8 +39,11 @@ export class HttpClient {
   setErrorConstructor(ErrorCls?: ErrorConstructor) {
     this.ErrorCls = ErrorCls;
   }
+  #resolveBaseUrl(baseUrl?: string) {
+    return (baseUrl ?? this.baseUrl).replace(/\/$/, "");
+  }
   async get<Returns = unknown>(url: string, options: FetchOptions = {}): Promise<Returns> {
-    const res = await fetch(`${this.baseUrl}${url}`, {
+    const res = await fetch(`${this.#resolveBaseUrl(options.baseUrl)}${url}`, {
       headers: { "Content-Type": "application/json", ...options.headers },
     });
     return await this.#readJsonResponse<Returns>(res);
@@ -56,7 +60,7 @@ export class HttpClient {
     options: FetchOptions = {},
   ): Promise<Returns> {
     const { body, headers } = this.#makeReqContent(data);
-    const res = await fetch(`${this.baseUrl}${url}`, {
+    const res = await fetch(`${this.#resolveBaseUrl(options.baseUrl)}${url}`, {
       method: "PUT",
       body,
       headers: { ...headers, ...options.headers },
@@ -69,7 +73,7 @@ export class HttpClient {
     options: FetchOptions = {},
   ): Promise<Returns> {
     const { body, headers } = this.#makeReqContent(data);
-    const res = await fetch(`${this.baseUrl}${url}`, {
+    const res = await fetch(`${this.#resolveBaseUrl(options.baseUrl)}${url}`, {
       method: "POST",
       body,
       headers: { ...headers, ...options.headers },
@@ -77,7 +81,7 @@ export class HttpClient {
     return await this.#readJsonResponse<Returns>(res);
   }
   async delete<Returns = unknown>(url: string, options: FetchOptions = {}): Promise<Returns> {
-    const res = await fetch(`${this.baseUrl}${url}`, {
+    const res = await fetch(`${this.#resolveBaseUrl(options.baseUrl)}${url}`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json", ...options.headers },
     });

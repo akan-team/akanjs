@@ -22,6 +22,7 @@ apps/*/scripts
 **/env.server.main.ts
 **/env.server.testing.ts
 **/env.server.type.ts
+apps/*/public/firebase-messaging-sw.js
 **/*secrets.yaml
 **/kubeconfig.yaml
 **/secrets.*
@@ -59,6 +60,7 @@ local.properties
 .cxx/
 *.keystore
 !debug.keystore
+apps/*/android/keystore.properties
 
 **/public/precache.*.*.js
 **/public/sw.js
@@ -74,9 +76,35 @@ local.properties
 **/private/libs
 
 **/vendor/bundle/
-**/ios/App/App/public
-**/ios/App/App/Podfile.lock
-**/ios/App/App.pbxproj
+
+# Capacitor generated native project outputs
+apps/*/ios/App/build/
+apps/*/ios/App/Pods/
+apps/*/ios/App/output/
+apps/*/ios/App/App/public/
+apps/*/ios/App/App/Podfile.lock
+apps/*/ios/App/App.pbxproj
+apps/*/ios/App/App/capacitor.config.json
+apps/*/ios/App/App/config.xml
+apps/*/ios/capacitor-cordova-ios-plugins/
+apps/*/ios/DerivedData/
+apps/*/ios/xcuserdata/
+apps/*/ios/**/*.xcuserstate
+apps/*/android/.gradle/
+apps/*/android/**/build/
+apps/*/android/local.properties
+apps/*/android/.cxx/
+apps/*/android/**/*.iml
+apps/*/android/**/*.hprof
+apps/*/android/.idea/
+apps/*/android/captures/
+apps/*/android/capacitor-cordova-android-plugins/
+apps/*/android/capacitor.settings.gradle
+apps/*/android/app/capacitor.build.gradle
+apps/*/android/app/debug.keystore
+apps/*/android/app/src/main/assets/
+apps/*/android/app/src/main/res/xml/config.xml
+apps/*/android/app/release/
 **/*-secret.yaml
 
 # Akanjs files
@@ -120,20 +148,12 @@ libs/*/client.ts
 libs/*/server.ts
 libs/*/index.ts
 libs/*/lib/*/index.tsx
-# **/capacitor.config.ts
-# **/playwright.config.ts
-# **/tsconfig.json
-# **/tsconfig.spec.json
 
 **/bunkan-id
 **/bunkan-id.pub
 infra/master/jenkins/credentials.sh
 **/.jenkins.conf
 **/regcred.yaml
-**/mongo-connections.json
-**/redis-connections.json
-infra/master/createRecords.ts
-**/abi
-pkgs/contract/env.ts
 **/.akan
 **/bun.lock
+**/tsconfig.tsbuildinfo

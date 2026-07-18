@@ -19,6 +19,9 @@ export default function Layout({ children }: LayoutProps) {
         { name: l.trans({ en: "Package", ko: "Package" }), href: "/references/cli/package" },
         { name: l.trans({ en: "Page", ko: "Page" }), href: "/references/cli/page" },
         { name: l.trans({ en: "Cloud", ko: "Cloud" }), href: "/references/cli/cloud" },
+        { name: l.trans({ en: "Context", ko: "Context" }), href: "/references/cli/context" },
+        { name: l.trans({ en: "Agent", ko: "Agent" }), href: "/references/cli/agent" },
+        { name: l.trans({ en: "Guideline", ko: "Guideline" }), href: "/references/cli/guideline" },
       ],
     },
     {

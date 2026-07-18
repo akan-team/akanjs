@@ -31,7 +31,7 @@ export const dictionary = makeDictionary(${libs.length ? libs.join(", ") : "base
   ${[
     ...databaseModules.map((module) => {
       const Module = capitalize(module);
-      return `${module}: registerModelTrans<"${module}", ${module}Cnst.${Module}, ${module}Cnst.${Module}Insight, ${module}Doc.${Module}Filter, ${module}Sig.${Module}Slice, ${module}Sig.${Module}Endpoint, any>(${module}.dictionary.applyBaseSignal("${module}" as const) as any)`;
+      return `${module}: registerModelTrans<"${module}", ${module}Cnst.${Module}, ${module}Cnst.${Module}Insight, ${module}Doc.${Module}Filter, ${module}Sig.${Module}Slice, ${module}Sig.${Module}Endpoint, typeof ${module}.dictionary>(${module}.dictionary.applyBaseSignal("${module}" as const))`;
     }),
     ...scalarModules.map(
       (module) =>
@@ -44,6 +44,6 @@ export const dictionary = makeDictionary(${libs.length ? libs.join(", ") : "base
   ].join(",\n  ")}
 });
  
-export const { Err, translate, msg, getAllDictionary, __Dict_Key__, __Error_Key__ } = makeTrans(dictionary);
+export const { Err, translate, msg, getDictionary, getAllDictionary, __Dict_Key__, __Error_Key__ } = makeTrans(dictionary);
 `;
 }

@@ -26,6 +26,7 @@ export default function Page() {
             title="lib/product/"
             language="bash"
             code={`lib/product/
+├── product.abstract.md
 ├── product.constant.ts
 ├── product.dictionary.ts
 ├── product.document.ts
@@ -94,8 +95,22 @@ export default function Page() {
               ko: "예를 들어 주문 기능을 만든다면 order.constant.ts에는 주문 상태값을, order.document.ts에는 저장되는 주문 필드를, order.service.ts에는 결제 완료 처리 로직을, order.signal.ts에는 페이지에서 호출할 수 있는 동작을 둘 수 있습니다.",
             })}
           </div>
+          <div>
+            {l.trans({
+              en: "The abstract file is not only for LLMs. It keeps domain knowledge beside the code, so people and agents can understand business invariants before changing implementation files.",
+              ko: "abstract 파일은 LLM만을 위한 파일이 아닙니다. 도메인 지식을 코드 옆에 두어 사람과 agent가 구현 파일을 수정하기 전에 비즈니스 불변 조건을 이해할 수 있게 합니다.",
+            })}
+          </div>
           <div className="space-y-1">
             {[
+              {
+                title: "model.abstract.md",
+                type: "shared",
+                desc: l.trans({
+                  en: "Business intent, domain rules, workflows, and agent notes kept next to the module code. Example: order cancellation rules or status transition policy.",
+                  ko: "모듈 코드 옆에 두는 비즈니스 의도, 도메인 규칙, 워크플로우, agent 주의사항입니다. 예: 주문 취소 규칙이나 상태 전이 정책.",
+                }),
+              },
               {
                 title: "model.constant.ts",
                 type: "shared",
@@ -261,7 +276,8 @@ BizCard.Zone.tsx      # large screen areas such as admin/list/detail`}
               className="w-full"
               title={l.trans({ en: "Business files", ko: "비즈니스 파일" })}
               language="bash"
-              code={`product.constant.ts
+              code={`product.abstract.md
+product.constant.ts
 product.dictionary.ts
 product.document.ts
 product.service.ts
@@ -411,22 +427,22 @@ import { ProductCard } from "@apps/myapp/ui";`}
               {
                 title: "lib/<model>/",
                 desc: l.trans({
-                  en: "Can use constant, dictionary, document, service, signal, store, Template, Unit, Util, View, and Zone.",
-                  ko: "constant, dictionary, document, service, signal, store, Template, Unit, Util, View, Zone을 사용할 수 있습니다.",
+                  en: "Can use abstract, constant, dictionary, document, service, signal, store, Template, Unit, Util, View, and Zone.",
+                  ko: "abstract, constant, dictionary, document, service, signal, store, Template, Unit, Util, View, Zone을 사용할 수 있습니다.",
                 }),
               },
               {
                 title: "lib/_<service>/",
                 desc: l.trans({
-                  en: "Can use dictionary, service, signal, store, Template, Unit, Util, View, and Zone.",
-                  ko: "dictionary, service, signal, store, Util, Zone을 사용할 수 있습니다.",
+                  en: "Can use abstract, dictionary, service, signal, store, Template, Unit, Util, View, and Zone. The abstract filename drops the folder underscore, such as payment.abstract.md in lib/_payment/.",
+                  ko: "abstract, dictionary, service, signal, store, Util, Zone을 사용할 수 있습니다. abstract 파일명은 폴더의 밑줄을 제외해 lib/_payment/ 안에서는 payment.abstract.md를 사용합니다.",
                 }),
               },
               {
                 title: "lib/__scalar/<type>/",
                 desc: l.trans({
-                  en: "Can use constant, dictionary, document, Template, Unit, Util, View, and Zone.",
-                  ko: "constant, dictionary, document을 사용할 수 있습니다.",
+                  en: "Can use abstract, constant, dictionary, document, Template, Unit, Util, View, and Zone.",
+                  ko: "abstract, constant, dictionary, document을 사용할 수 있습니다.",
                 }),
               },
             ].map(({ title, desc }) => (

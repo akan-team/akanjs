@@ -1,6 +1,9 @@
+import { existsSync, readdirSync, statSync } from "node:fs";
 import os from "node:os";
+import path from "node:path";
 import type { CapacitorConfig } from "@capacitor/cli";
 import type { AkanMobileTargetConfig, AppScanResult } from "akanjs";
+import { parseAkanI18nEnv } from "akanjs/common";
 
 const getLocalIP = () => {
   const interfaces = os.networkInterfaces();
@@ -15,6 +18,39 @@ const getLocalIP = () => {
 };
 
 const normalizeBasePath = (basePath: string | undefined) => basePath?.replace(/^\/+|\/+$/g, "");
+
+const findAppsDir = (appName: string) => {
+  let dir = process.cwd();
+  while (dir !== path.dirname(dir)) {
+    const appsDir = path.join(dir, "apps");
+    if (existsSync(path.join(appsDir, appName, "akan.config.ts"))) return appsDir;
+    if (path.basename(dir) === appName && existsSync(path.join(dir, "akan.config.ts"))) return path.dirname(dir);
+    dir = path.dirname(dir);
+  }
+};
+
+const getAppNames = (appsDir: string, maxDepth = 3, prefix = ""): string[] => {
+  const appNames: string[] = [];
+  for (const entry of readdirSync(path.join(appsDir, prefix))) {
+    if (["node_modules", "dist", "public", "webkit"].includes(entry)) continue;
+    const entryPath = path.join(appsDir, prefix, entry);
+    if (!statSync(entryPath).isDirectory()) continue;
+    const appName = path.join(prefix, entry).split(path.sep).join("/");
+    if (existsSync(path.join(entryPath, "akan.config.ts"))) appNames.push(appName);
+    if (maxDepth > 0) appNames.push(...getAppNames(appsDir, maxDepth - 1, appName));
+  }
+  return appNames;
+};
+
+const resolveLocalCsrPort = (appInfo: AppScanResult) => {
+  const explicitPort = process.env.AKAN_PUBLIC_CLIENT_PORT ?? process.env.PORT;
+  if (explicitPort) return explicitPort;
+  const appsDir = findAppsDir(appInfo.name);
+  const appNames = appsDir ? getAppNames(appsDir).sort((a, b) => a.localeCompare(b)) : [];
+  const appIndex = Math.max(appNames.indexOf(appInfo.name), 0);
+  const portOffset = Number.parseInt(process.env.PORT_OFFSET ?? "0");
+  return (8282 + appIndex + portOffset).toString();
+};
 
 const routeBasePaths = (appInfo: AppScanResult) =>
   new Set(
@@ -42,10 +78,15 @@ const resolveTarget = (appInfo: AppScanResult, targetName = process.env.AKAN_MOB
   return entries[0]?.[1] as AkanMobileTargetConfig;
 };
 
-const localCsrUrl = (ip: string, target: AkanMobileTargetConfig) => {
+const localCsrUrl = (ip: string, target: AkanMobileTargetConfig, appInfo: AppScanResult) => {
   const basePath = normalizeBasePath(target.basePath);
-  const port = process.env.AKAN_PUBLIC_CLIENT_PORT ?? process.env.PORT ?? "8282";
-  return `http://${ip}:${port}/${basePath ? `${basePath}` : ""}?csr=true`;
+  const locale = parseAkanI18nEnv().defaultLocale;
+  const pathname = basePath ? `${locale}/${basePath}` : `${locale}/`;
+  const port = resolveLocalCsrPort(appInfo);
+  const params = new URLSearchParams({ csr: "true", akanMobileTarget: target.name });
+  if (basePath) params.set("akanMobileBasePath", basePath);
+  if (target.indexPath) params.set("akanMobileIndexPath", target.indexPath);
+  return `http://${ip}:${port}/${pathname}?${params}`;
 };
 
 export const withBase = (
@@ -57,8 +98,20 @@ export const withBase = (
   const appInfo = appData;
   if (!appInfo) throw new Error("withBase requires apps/<app>/akan.app.json metadata.");
   const target = resolveTarget(appInfo, targetName);
+  const {
+    name: _name,
+    basePath: _basePath,
+    indexPath: _indexPath,
+    version: _version,
+    buildNum: _buildNum,
+    assets: _assets,
+    permissions: _permissions,
+    deepLinks: _deepLinks,
+    files: _files,
+    ...capacitorTarget
+  } = target;
   const baseConfig: CapacitorConfig = {
-    ...target,
+    ...capacitorTarget,
     appId: target.appId,
     appName: target.appName,
     webDir: "dist",
@@ -66,7 +119,7 @@ export const withBase = (
       process.env.APP_OPERATION_MODE !== "release"
         ? {
             androidScheme: "http",
-            url: localCsrUrl(ip, target),
+            url: localCsrUrl(ip, target, appInfo),
             cleartext: true,
             allowNavigation: [ip, "localhost"],
           }

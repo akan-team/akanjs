@@ -1,19 +1,110 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { DataList, Int } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
-import type { SerializedArg, SerializedSignal } from "akanjs/signal";
-import { FetchClient } from "./client/fetchClient";
+import type {
+  DatabaseSignal,
+  EndpointCls,
+  EndpointInfo,
+  SerializedArg,
+  SerializedSignal,
+  SliceCls,
+} from "akanjs/signal";
+import { FetchClient, type FetchProxy } from "./client/fetchClient";
 import { HttpClient } from "./client/httpClient";
 import { WsClient } from "./client/wsClient";
+import type { FetchClientType, FetchTypeOfSignal, MergeAllFetchTypes, SliceMeta } from "./fetchType";
 import {
+  cacheTag,
   cookies,
+  createRequestStore,
+  getRequest,
+  getRequestDynamicUsage,
+  getRequestPolicy,
+  getRequestStore,
   getRequestTheme,
   headers,
   memoizeRequestQuery,
   parseCookieHeader,
   requestStorage,
   setRequestTheme,
+  untrackedCookies,
+  untrackedHeaders,
+  untrackedRequest,
+  updateRequestPolicy,
 } from "./requestStorage";
+
+type Equal<Left, Right> =
+  (<Type>() => Type extends Left ? 1 : 2) extends <Type>() => Type extends Right ? 1 : 2 ? true : false;
+type Expect<Type extends true> = Type;
+type TypeRegressionBaseFetch = {
+  sharedEndpoint: () => "base";
+  baseOnlyEndpoint: () => "base-only";
+};
+type TypeRegressionAppFetch = {
+  sharedEndpoint: () => "app";
+  appOnlyEndpoint: () => "app-only";
+};
+type TypeRegressionBaseSlice = {
+  baseList: SliceMeta;
+};
+type TypeRegressionAppSlice = {
+  appList: SliceMeta;
+};
+type TypeRegressionMergedFetch = MergeAllFetchTypes<
+  readonly [
+    FetchProxy<TypeRegressionBaseFetch, TypeRegressionBaseSlice>,
+    FetchProxy<TypeRegressionAppFetch, TypeRegressionAppSlice>,
+  ]
+>;
+type TypeRegressionFetchClient = FetchClientType<
+  readonly [
+    FetchProxy<TypeRegressionBaseFetch, TypeRegressionBaseSlice>,
+    FetchProxy<TypeRegressionAppFetch, TypeRegressionAppSlice>,
+  ]
+>;
+type _FetchProxyTypeMarkerRegression = Expect<
+  Equal<FetchTypeOfSignal<FetchProxy<TypeRegressionBaseFetch>>, TypeRegressionBaseFetch>
+>;
+type _FetchProxyMergeOverrideRegression = Expect<Equal<ReturnType<TypeRegressionMergedFetch["sharedEndpoint"]>, "app">>;
+type _FetchProxyMergeRetainsBaseRegression = Expect<
+  Equal<ReturnType<TypeRegressionFetchClient["baseOnlyEndpoint"]>, "base-only">
+>;
+type _FetchProxySliceMetaRetainsBaseRegression = Expect<
+  Equal<TypeRegressionFetchClient["slice"]["baseList"], SliceMeta>
+>;
+type _FetchProxySliceMetaRetainsAppRegression = Expect<Equal<TypeRegressionFetchClient["slice"]["appList"], SliceMeta>>;
+type TypeRegressionSharedUser = { id: string };
+type TypeRegressionAppUser = TypeRegressionSharedUser & { githubInfo: { login: string } };
+type TypeRegressionUserEndpoint = EndpointCls<
+  never,
+  {
+    getSelf: EndpointInfo<
+      "query",
+      Record<string, unknown>,
+      [],
+      [],
+      [],
+      [],
+      StringConstructor,
+      TypeRegressionSharedUser
+    >;
+  }
+>;
+type TypeRegressionUserSlice = SliceCls<never> & {
+  srv: {
+    cnst: {
+      _Full: TypeRegressionAppUser;
+      _Light: Pick<TypeRegressionAppUser, "id">;
+      _Insight: { count: number };
+    };
+  };
+};
+type TypeRegressionUserFetch = FetchTypeOfSignal<
+  DatabaseSignal<never, TypeRegressionUserEndpoint, TypeRegressionUserSlice, never>
+>;
+type _DatabaseEndpointReturnExtendsToAppFullRegression = Expect<
+  Equal<Awaited<ReturnType<TypeRegressionUserFetch["getSelf"]>>, TypeRegressionAppUser>
+>;
 
 type FetchCall = { url: string; init?: RequestInit };
 const originalFetch = globalThis.fetch;
@@ -48,6 +139,7 @@ const setAkanPublicEnv = () => {
 };
 
 afterEach(() => {
+  FetchClient.resetSharedRegistry();
   globalThis.fetch = originalFetch;
   globalThis.WebSocket = originalWebSocket;
   globalThis.setTimeout = originalSetTimeout;
@@ -380,7 +472,14 @@ describe("requestStorage utilities", () => {
         calls += 1;
         return "b";
       });
-      return { a, b, auth: headers().get("authorization"), jwt: cookies().get("jwt")?.value, theme: getRequestTheme() };
+      return {
+        a,
+        b,
+        auth: headers().get("authorization"),
+        jwt: cookies().get("jwt")?.value,
+        theme: getRequestTheme(),
+        request: getRequestStore()?.request,
+      };
     });
     const second = await requestStorage.run(reqB, async () => {
       const value = await memoizeRequestQuery("same", async () => {
@@ -398,11 +497,166 @@ describe("requestStorage utilities", () => {
       return "outside-b";
     });
 
-    expect(first).toEqual({ a: "a", b: "a", auth: "Bearer request", jwt: "requestJwt", theme: "css" });
+    expect(first).toEqual({
+      a: "a",
+      b: "a",
+      auth: "Bearer request",
+      jwt: "requestJwt",
+      theme: "css",
+      request: reqA,
+    });
     expect(second).toEqual({ value: "b", jwt: "otherJwt", theme: undefined });
     expect(outsideA).toBe("outside-a");
     expect(outsideB).toBe("outside-b");
     expect(calls).toBe(4);
+  });
+
+  test("records dynamic usage and request policy without changing cache behavior", async () => {
+    if (!requestStorage) return;
+    const req = new Request("https://example.test/policy", {
+      headers: { cookie: "theme=css", "x-locale": "ko" },
+    });
+
+    const result = await requestStorage.run(req, async () => {
+      updateRequestPolicy({
+        routeId: "/:lang/example",
+        cacheable: true,
+        revalidate: 60,
+        tags: ["example"],
+      });
+      const before = { ...getRequestDynamicUsage() };
+      headers();
+      cookies();
+      const after = getRequestDynamicUsage();
+      const policy = getRequestPolicy();
+      return {
+        before,
+        after,
+        routeId: policy?.routeId,
+        cacheable: policy?.cacheable,
+        revalidate: policy?.revalidate,
+        tags: [...(policy?.tags ?? [])],
+      };
+    });
+
+    expect(result).toEqual({
+      before: { headers: false, cookies: false },
+      after: { headers: true, cookies: true },
+      routeId: "/:lang/example",
+      cacheable: true,
+      revalidate: 60,
+      tags: ["example"],
+    });
+  });
+
+  test("combines request policy revalidate values with min lifetime semantics", async () => {
+    if (!requestStorage) return;
+    const req = new Request("https://example.test/revalidate");
+
+    const result = await requestStorage.run(req, async () => {
+      updateRequestPolicy({ revalidate: 60 });
+      updateRequestPolicy({ revalidate: 120 });
+      const afterLonger = getRequestPolicy()?.revalidate;
+      updateRequestPolicy({ routeId: "/keep-existing" });
+      const afterUndefinedPatch = getRequestPolicy()?.revalidate;
+      updateRequestPolicy({ revalidate: false });
+      const afterNoStore = getRequestPolicy()?.revalidate;
+      updateRequestPolicy({ revalidate: 10 });
+      return {
+        afterLonger,
+        afterUndefinedPatch,
+        afterNoStore,
+        afterShorterAfterNoStore: getRequestPolicy()?.revalidate,
+      };
+    });
+
+    expect(result).toEqual({
+      afterLonger: 60,
+      afterUndefinedPatch: 60,
+      afterNoStore: false,
+      afterShorterAfterNoStore: false,
+    });
+  });
+
+  test("accumulates cache tags on the active request policy", async () => {
+    expect(cacheTag("outside")).toBeUndefined();
+    if (!requestStorage) return;
+    const req = new Request("https://example.test/tags");
+
+    const tags = await requestStorage.run(req, async () => {
+      cacheTag("docs", "", "intro");
+      cacheTag("docs", "api");
+      return [...(getRequestPolicy()?.tags ?? [])];
+    });
+
+    expect(tags).toEqual(["docs", "intro", "api"]);
+  });
+
+  test("runs with an explicit request store that remains observable after the callback", async () => {
+    if (!requestStorage) return;
+    const store = createRequestStore(new Request("https://example.test/explicit-store"));
+
+    await requestStorage.run(store, async () => {
+      headers();
+      updateRequestPolicy({ revalidate: 30 });
+    });
+
+    expect(store.dynamicUsage).toEqual({ headers: true, cookies: false });
+    expect(store.policy.revalidate).toBe(30);
+  });
+
+  test("marks public raw request access dynamic while keeping internal access untracked", async () => {
+    if (!requestStorage) return;
+    const req = new Request("https://example.test/raw", {
+      headers: { cookie: "jwt=secret", authorization: "Bearer token" },
+    });
+
+    const result = await requestStorage.run(req, async () => {
+      const internalReq = untrackedRequest();
+      const afterInternalRead = { ...getRequestDynamicUsage() };
+      const publicReq = getRequest();
+      return {
+        sameRequest: internalReq === req && publicReq === req,
+        afterInternalRead,
+        afterPublicRead: { ...getRequestDynamicUsage() },
+      };
+    });
+
+    expect(result).toEqual({
+      sameRequest: true,
+      afterInternalRead: { headers: false, cookies: false },
+      afterPublicRead: { headers: true, cookies: true },
+    });
+  });
+
+  test("reads framework internals without marking the request dynamic", async () => {
+    if (!requestStorage) return;
+    const req = new Request("https://example.test/internal", {
+      headers: { cookie: "theme=dark", "x-locale": "ko" },
+    });
+
+    const result = await requestStorage.run(req, async () => {
+      const internal = {
+        locale: untrackedHeaders().get("x-locale"),
+        theme: untrackedCookies().get("theme")?.value,
+        usage: { ...getRequestDynamicUsage() },
+      };
+      headers();
+      cookies();
+      return {
+        internal,
+        afterPublicRead: { ...getRequestDynamicUsage() },
+      };
+    });
+
+    expect(result).toEqual({
+      internal: {
+        locale: "ko",
+        theme: "dark",
+        usage: { headers: false, cookies: false },
+      },
+      afterPublicRead: { headers: true, cookies: true },
+    });
   });
 });
 
@@ -481,6 +735,198 @@ describe("FetchClient HTTP generation", () => {
       init: { headers: { "Content-Type": "application/json", Authorization: "Bearer clone-jwt" } },
     });
   });
+
+  test("sends requests to the FetchPolicy.origin host instead of the client origin", async () => {
+    setMockFetch();
+    jsonResponses.push("pong", { title: "Created", count: 2, nested: { label: "N" } });
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+
+    // trailing slash on the override host must be normalized away
+    const queried = await client.handler.getThing("1234567890abcdef12345678", [], null, {
+      origin: "https://akasys-debug.akamir.com/",
+    });
+    const created = await client.handler.createThing("Created", 2, { origin: "https://akasys-debug.akamir.com" });
+
+    expect(queried).toBe("pong");
+    expect(created).toBeInstanceOf(FetchTestFull);
+    expect(fetchCalls[0]?.url).toBe("https://akasys-debug.akamir.com/custom/1234567890abcdef12345678");
+    expect(fetchCalls[1]?.url).toBe("https://akasys-debug.akamir.com/createThing");
+  });
+
+  test("uses FetchPolicy.origin verbatim, including the global api prefix supplied by the caller", async () => {
+    setMockFetch();
+    jsonResponses.push("pong", { title: "Created", count: 2, nested: { label: "N" } });
+    const client = new FetchClient("https://api.example/api", {}, { service: serviceSignal });
+
+    // the caller is responsible for including the server global prefix (e.g. "/api")
+    const queried = await client.handler.getThing("1234567890abcdef12345678", [], null, {
+      origin: "https://edge.example.com/api",
+    });
+    const created = await client.handler.createThing("Created", 2, { origin: "https://edge.example.com/api" });
+
+    expect(queried).toBe("pong");
+    expect(created).toBeInstanceOf(FetchTestFull);
+    expect(fetchCalls[0]?.url).toBe("https://edge.example.com/api/custom/1234567890abcdef12345678");
+    expect(fetchCalls[1]?.url).toBe("https://edge.example.com/api/createThing");
+  });
+
+  test("bypasses the request-query cache when FetchPolicy.origin is set", async () => {
+    if (!requestStorage) return;
+    setMockFetch();
+    jsonResponses.push("origin", "override-1", "override-2");
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+
+    const result = await requestStorage.run(new Request("https://example.test"), async () => {
+      const cachedA = await client.handler.getThing("1234567890abcdef12345678", [], null);
+      const cachedB = await client.handler.getThing("1234567890abcdef12345678", [], null);
+      const overrideA = await client.handler.getThing("1234567890abcdef12345678", [], null, {
+        origin: "https://akasys-debug.akamir.com",
+      });
+      const overrideB = await client.handler.getThing("1234567890abcdef12345678", [], null, {
+        origin: "https://akasys-debug.akamir.com",
+      });
+      return { cachedA, cachedB, overrideA, overrideB };
+    });
+
+    // origin requests share the memoized cache: the second call reuses the first response
+    expect(result.cachedA).toBe("origin");
+    expect(result.cachedB).toBe("origin");
+    // url overrides skip the cache entirely: each call performs a fresh fetch
+    expect(result.overrideA).toBe("override-1");
+    expect(result.overrideB).toBe("override-2");
+    expect(fetchCalls.map((call) => call.url)).toEqual([
+      "https://api.example/custom/1234567890abcdef12345678",
+      "https://akasys-debug.akamir.com/custom/1234567890abcdef12345678",
+      "https://akasys-debug.akamir.com/custom/1234567890abcdef12345678",
+    ]);
+  });
+
+  test("clone targets the new origin for queries and mutations while leaving the original intact", async () => {
+    setMockFetch();
+    jsonResponses.push({ title: "Created", count: 2, nested: { label: "N" } }, "clone-query", "origin-query");
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    client.setJwt("origin-jwt");
+    const cloned = client.clone({ origin: "https://clone.example", connect: false, jwt: "clone-jwt" }) as unknown as {
+      getThing: (id: string, tags: string[], empty: null) => Promise<unknown>;
+      createThing: (title: string, count: number) => Promise<unknown>;
+    };
+
+    const created = await cloned.createThing("Created", 2);
+    const cloneQuery = await cloned.getThing("1234567890abcdef12345678", [], null);
+    const originQuery = await client.handler.getThing("1234567890abcdef12345678", [], null);
+
+    expect(created).toBeInstanceOf(FetchTestFull);
+    expect(cloneQuery).toBe("clone-query");
+    expect(originQuery).toBe("origin-query");
+    // clone routes mutations and queries to the new origin with its own jwt
+    expect(fetchCalls[0]).toMatchObject({
+      url: "https://clone.example/createThing",
+      init: { headers: { Authorization: "Bearer clone-jwt" } },
+    });
+    expect(fetchCalls[1]).toMatchObject({ url: "https://clone.example/custom/1234567890abcdef12345678" });
+    // original client keeps its own origin and jwt, unaffected by the clone
+    expect(fetchCalls[2]).toMatchObject({
+      url: "https://api.example/custom/1234567890abcdef12345678",
+      init: { headers: { Authorization: "Bearer origin-jwt" } },
+    });
+  });
+
+  test("clone with a different origin does not share the request-query cache with the original", async () => {
+    if (!requestStorage) return;
+    setMockFetch();
+    jsonResponses.push("origin-resp", "clone-resp");
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    const cloned = client.clone({ origin: "https://clone.example", connect: false }) as unknown as {
+      getThing: (id: string, tags: string[], empty: null) => Promise<unknown>;
+    };
+
+    const result = await requestStorage.run(new Request("https://example.test"), async () => {
+      const originA = await client.handler.getThing("1234567890abcdef12345678", [], null);
+      const cloneA = await cloned.getThing("1234567890abcdef12345678", [], null);
+      const originB = await client.handler.getThing("1234567890abcdef12345678", [], null);
+      const cloneB = await cloned.getThing("1234567890abcdef12345678", [], null);
+      return { originA, cloneA, originB, cloneB };
+    });
+
+    // the cache key is scoped by origin, so origin and clone resolve to different responses
+    expect(result.originA).toBe("origin-resp");
+    expect(result.cloneA).toBe("clone-resp");
+    // repeated calls reuse each client's own cached response, so no extra fetches happen
+    expect(result.originB).toBe("origin-resp");
+    expect(result.cloneB).toBe("clone-resp");
+    expect(fetchCalls.map((call) => call.url)).toEqual([
+      "https://api.example/custom/1234567890abcdef12345678",
+      "https://clone.example/custom/1234567890abcdef12345678",
+    ]);
+  });
+
+  test("materializes handlers lazily from local and shared serialized signals", async () => {
+    setMockFetch();
+    jsonResponses.push("local", "shared");
+
+    const local = new FetchClient("https://local.example", {}, { service: serviceSignal });
+    expect(Object.keys(local.handler)).toEqual([]);
+
+    const localResult = await local.handler.getThing("1234567890abcdef12345678", [], null);
+    expect(localResult).toBe("local");
+    expect(Object.keys(local.handler)).toContain("getThing");
+
+    const shared = new FetchClient("https://shared.example");
+    expect(Object.keys(shared.handler)).toEqual([]);
+
+    const sharedResult = await shared.handler.getThing("abcdefabcdefabcdefabcdef", [], null);
+    expect(sharedResult).toBe("shared");
+    expect(Object.keys(shared.handler)).toContain("getThing");
+    expect(fetchCalls.map((call) => call.url)).toEqual([
+      "https://local.example/custom/1234567890abcdef12345678",
+      "https://shared.example/custom/abcdefabcdefabcdefabcdef",
+    ]);
+  });
+
+  test("refreshes cached handlers when a serialized signal is applied again", async () => {
+    setMockFetch();
+    jsonResponses.push("before", "after");
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+
+    expect(await client.handler.getThing("1234567890abcdef12345678", [], null)).toBe("before");
+
+    client.applySignal({
+      service: {
+        endpoint: {
+          getThing: {
+            type: "query",
+            path: "/changed/:id",
+            args: [arg("param", "id", { refName: "ID" }), arg("search", "version")],
+            returns: { refName: "String" },
+          },
+        },
+      },
+    });
+
+    expect(await client.handler.getThing("1234567890abcdef12345678", "v2")).toBe("after");
+    expect(fetchCalls.map((call) => call.url)).toEqual([
+      "https://api.example/custom/1234567890abcdef12345678",
+      "https://api.example/changed/1234567890abcdef12345678?version=v2",
+    ]);
+  });
+
+  test("does not require database constants while only indexing shared database signals", () => {
+    const missingConstantSignal: SerializedSignal = {
+      prefix: "missingConstant",
+      getGuards: ["Public"],
+      cruGuards: ["Admin"],
+      slice: {
+        "": { args: [] },
+      },
+      endpoint: {},
+    };
+
+    expect(() => new FetchClient("https://api.example", {}, { missingConstant: missingConstantSignal })).not.toThrow();
+    expect(() => new FetchClient("https://shared.example")).not.toThrow();
+    expect(() =>
+      FetchClient.build<{ fetch: unknown }>({}, { missingConstant: missingConstantSignal }, { connect: false }),
+    ).not.toThrow();
+  });
 });
 
 describe("FetchClient database signal helpers", () => {
@@ -500,6 +946,7 @@ describe("FetchClient database signal helpers", () => {
       { count: 1 },
     );
     const client = new FetchClient("https://api.example", {}, { fetchTestItem: databaseSignal });
+    expect(Object.keys(client.handler)).toEqual([]);
 
     const full = await client.handler.fetchTestItem("1234567890abcdef12345678");
     const light = await client.handler.lightFetchTestItem("1234567890abcdef12345678");
@@ -534,6 +981,18 @@ describe("FetchClient database signal helpers", () => {
     expect(init.fetchTestItemListByOwner).toBeInstanceOf(DataList);
     expect(init.fetchTestItemInsightByOwner).toBeInstanceOf(FetchTestInsight);
     expect(defaultInit.fetchTestItemInit.queryArgsOfFetchTestItem).toEqual([]);
+    expect(Object.keys(client.handler)).toEqual(
+      expect.arrayContaining([
+        "fetchTestItem",
+        "lightFetchTestItem",
+        "createFetchTestItem",
+        "updateFetchTestItem",
+        "removeFetchTestItem",
+        "fetchTestItemListByOwner",
+        "fetchTestItemInsightByOwner",
+        "initFetchTestItemByOwner",
+      ]),
+    );
     expect(client.slice.fetchTestItemByOwner).toEqual({
       refName: "fetchTestItem",
       sliceName: "fetchTestItemByOwner",
@@ -563,6 +1022,7 @@ describe("FetchClient database signal helpers", () => {
       { title: "Updated", count: 2, nested: { label: "N" } },
     );
     const client = new FetchClient("https://api.example", {}, { fetchTestItem: databaseSignal });
+    expect(Object.keys(client.handler)).toEqual([]);
 
     const view = (await client.handler.viewFetchTestItem("1234567890abcdef12345678")) as {
       fetchTestItem: unknown;
@@ -580,11 +1040,35 @@ describe("FetchClient database signal helpers", () => {
     expect(view.fetchTestItemView.fetchTestItemObj).toMatchObject({ title: "View" });
     expect(edit.fetchTestItemObj).toMatchObject({ title: "ViewRaw" });
     expect(merged).toBeInstanceOf(FetchTestFull);
+    expect(Object.keys(client.handler)).toEqual(
+      expect.arrayContaining(["viewFetchTestItem", "fetchTestItem", "getFetchTestItemEdit", "mergeFetchTestItem"]),
+    );
     expect(fetchCalls.at(-1)?.url).toBe("https://api.example/fetchTest/updateFetchTestItem/bbbbbbbbbbbbbbbbbbbbbbbb");
   });
 });
 
 describe("WsClient", () => {
+  test("warns when realtime APIs are used before websocket connection", () => {
+    setFakeWebSocket();
+    const originalConsoleWarn = console.warn;
+    const warnings: string[] = [];
+    console.warn = ((message: string) => {
+      warnings.push(message);
+    }) as typeof console.warn;
+    try {
+      const client = new WsClient("ws://example/ws");
+      client.emit("send", ["hello"]);
+      client.subscribe({ key: "roomKey", data: ["r1"], handleEvent: () => undefined });
+
+      expect(warnings).toEqual([
+        expect.stringContaining('before emit "send"'),
+        expect.stringContaining('before subscribe "roomKey"'),
+      ]);
+    } finally {
+      console.warn = originalConsoleWarn;
+    }
+  });
+
   test("manages websocket lifecycle, messages, listeners, and subscriptions", () => {
     setFakeWebSocket();
     const client = new WsClient("ws://example/ws");

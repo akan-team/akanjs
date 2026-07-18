@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 
 const deviceState = {
   platform: "web",
@@ -10,11 +10,8 @@ const deviceState = {
 };
 const calls: unknown[] = [];
 
-beforeAll(() => {
-  mock.module("@capacitor/core", () => ({
-    registerPlugin: (name: string) => ({ name }),
-  }));
-  mock.module("@capacitor/device", () => ({
+const testCapacitor = () => ({
+  Plugins: {
     Device: {
       getInfo: async () => {
         deviceState.infoCalls += 1;
@@ -25,8 +22,6 @@ beforeAll(() => {
         return { value: deviceState.language };
       },
     },
-  }));
-  mock.module("@capacitor/keyboard", () => ({
     Keyboard: {
       show: async () => calls.push("keyboard.show"),
       hide: async () => calls.push("keyboard.hide"),
@@ -37,9 +32,6 @@ beforeAll(() => {
       },
       removeAllListeners: async () => calls.push("keyboard.removeAllListeners"),
     },
-  }));
-  mock.module("@capacitor/haptics", () => ({
-    ImpactStyle: { Light: "LIGHT", Medium: "MEDIUM", Heavy: "HEAVY" },
     Haptics: {
       vibrate: async (options: { duration: number }) => calls.push(["haptics.vibrate", options]),
       impact: async (options: { style: string }) => calls.push(["haptics.impact", options]),
@@ -47,28 +39,29 @@ beforeAll(() => {
       selectionChanged: async () => calls.push("haptics.selectionChanged"),
       selectionEnd: async () => calls.push("haptics.selectionEnd"),
     },
-  }));
-  mock.module("capacitor-plugin-safe-area", () => ({
     SafeArea: {
       getSafeAreaInsets: async () => {
         deviceState.safeAreaCalls += 1;
         return { insets: deviceState.safeArea };
       },
     },
-  }));
+  },
 });
 
 const installWindow = (pathname = "/ko/home", options: { nativeTarget?: boolean } = {}) => {
   const scrollCalls: unknown[] = [];
+  const capacitor = options.nativeTarget ? testCapacitor() : undefined;
   Object.defineProperty(globalThis, "window", {
     value: {
       ...(options.nativeTarget ? { __AKAN_MOBILE_TARGET__: { name: "test" } } : {}),
+      ...(capacitor ? { Capacitor: capacitor } : {}),
       location: { pathname },
       scrollY: 42,
       scrollTo: (options: unknown) => scrollCalls.push(options),
     },
     configurable: true,
   });
+  Object.defineProperty(globalThis, "Capacitor", { value: capacitor, configurable: true });
   return { scrollCalls };
 };
 
@@ -82,8 +75,10 @@ afterEach(async () => {
   deviceState.languageCalls = 0;
   deviceState.safeAreaCalls = 0;
   calls.length = 0;
+  globalThis.__AKAN_CAPACITOR_IMPORTS__ = undefined;
   delete process.env.AKAN_PUBLIC_RENDER_ENV;
   Object.defineProperty(globalThis, "window", { value: undefined, configurable: true });
+  Object.defineProperty(globalThis, "Capacitor", { value: undefined, configurable: true });
 });
 
 describe("Device", () => {

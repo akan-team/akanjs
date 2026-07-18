@@ -9,6 +9,7 @@ import {
   type DataInputOf,
   DataLoader,
   DocumentSchema,
+  type DocumentUpdateInput,
   documentQueryHelper,
   type FindQueryOption,
   fillMissingFilterArgs,
@@ -219,12 +220,12 @@ export class DatabaseResolver {
           findOne: (query: QueryOf<any>) => createFindOneChain(query),
           findById: (id: string | undefined) => (id ? store.findOne({ id }) : Promise.resolve(null)),
           countDocuments: (query: QueryOf<any>) => store.count(query),
-          updateOne: (query: QueryOf<any>, update: Record<string, unknown>, options?: { upsert?: boolean }) =>
+          updateOne: (query: QueryOf<any>, update: DocumentUpdateInput, options?: { upsert?: boolean }) =>
             store.updateOneByQuery(query, update, options),
-          updateMany: (query: QueryOf<any>, update: Record<string, unknown>) => store.updateManyByQuery(query, update),
+          updateMany: (query: QueryOf<any>, update: DocumentUpdateInput) => store.updateManyByQuery(query, update),
           deleteMany: (query: QueryOf<any>) => store.deleteManyByQuery(query),
           bulkWrite: (
-            operations: { updateOne: { filter: QueryOf<any>; update: Record<string, unknown>; upsert?: boolean } }[],
+            operations: { updateOne: { filter: QueryOf<any>; update: DocumentUpdateInput; upsert?: boolean } }[],
           ) => store.bulkWrite(operations),
           listenPre: (type: SaveEventType, listener: (doc: any, type: CRUDEventType) => PromiseOrObject<void>) =>
             schema.pre(type, function (this: any, _next, crudType) {
@@ -246,16 +247,16 @@ export class DatabaseResolver {
         return await timedQuery(() => this.__store.findIds(find, { sort, skip, limit, sample }));
       }
       async __find(query?: QueryOf<any>, queryOption?: FindQueryOption): Promise<any | null> {
-        const { find, sort, skip, sample } = getFindQuery(query, queryOption);
-        return await timedQuery(() => this.__store.findOne(find, { sort, skip, sample }));
+        const { find, sort, skip, sample, select } = getFindQuery(query, queryOption);
+        return await timedQuery(() => this.__store.findOne(find, { sort, skip, sample, select }));
       }
       async __findId(query?: QueryOf<any>, queryOption?: FindQueryOption): Promise<string | null> {
         const { find, sort, skip, sample } = getFindQuery(query, queryOption);
         return await timedQuery(() => this.__store.findId(find, { sort, skip, sample }));
       }
       async __pick(query?: QueryOf<any>, queryOption?: FindQueryOption): Promise<any> {
-        const { find, sort, skip, sample } = getFindQuery(query, queryOption);
-        return await this.__store.pickOne(find, { sort, skip, sample });
+        const { find, sort, skip, sample, select } = getFindQuery(query, queryOption);
+        return await this.__store.pickOne(find, { sort, skip, sample, select });
       }
       async __pickId(query?: QueryOf<any>, queryOption?: FindQueryOption): Promise<string> {
         const { find, sort, skip, sample } = getFindQuery(query, queryOption);

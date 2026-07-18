@@ -1,5 +1,14 @@
-import { DataList, type Dayjs, FIELD_META, type GetStateObject, type SLICE_META } from "akanjs/base";
-import { capitalize, deepObjectify, type FetchPolicy, isQueryEqual, Logger, lowerlize, pathSet } from "akanjs/common";
+import { DataList, type Dayjs, FIELD_META, type GetStateObject } from "akanjs/base";
+import {
+  capitalize,
+  deepObjectify,
+  type FetchPolicy,
+  isQueryEqual,
+  Logger,
+  lowerlize,
+  pathSet,
+  resolveFileUploadCapability,
+} from "akanjs/common";
 import {
   type BaseInsight,
   type BaseObject,
@@ -11,9 +20,21 @@ import {
 } from "akanjs/constant";
 import type { BaseFilterSortKey, ExtractSort, FilterInstance } from "akanjs/document";
 import type { FetchInitForm, FetchProxy } from "akanjs/fetch";
-import type { SerializedSlice, SliceCls, SliceInfoArgs } from "akanjs/signal";
+import type {
+  SerializedSlice,
+  SlceCnstCapitalizedRefName,
+  SlceCnstDefault,
+  SlceCnstDefaultInput,
+  SlceCnstFull,
+  SlceCnstInput,
+  SlceCnstLight,
+  SlceCnstRefName,
+  SlceDbFilter,
+  SlceDbSort,
+  SliceCls,
+} from "akanjs/signal";
 import type { SliceStateKey } from "./state";
-import type { SetGet } from "./types";
+import type { SetGet, StoreSliceArgs, StoreSliceMap, StoreSliceSuffixCap } from "./types";
 
 type SliceActionKey =
   | "initModel"
@@ -24,6 +45,16 @@ type SliceActionKey =
   | "setLimitOfModel"
   | "setQueryArgsOfModel"
   | "setSortOfModel";
+type _SliceMap<S extends SliceCls> = StoreSliceMap<S>;
+type _ActionRefName<S extends SliceCls> = SlceCnstRefName<S>;
+type _ActionCap<S extends SliceCls> = SlceCnstCapitalizedRefName<S>;
+type _ActionInput<S extends SliceCls> = SlceCnstInput<S>;
+type _ActionFull<S extends SliceCls> = SlceCnstFull<S>;
+type _ActionLight<S extends SliceCls> = SlceCnstLight<S>;
+type _ActionDefault<S extends SliceCls> = SlceCnstDefault<S>;
+type _ActionDefaultInput<S extends SliceCls> = SlceCnstDefaultInput<S>;
+type _ActionFilter<S extends SliceCls> = SlceDbFilter<S>;
+type _ActionSort<S extends SliceCls> = SlceDbSort<S>;
 
 const isNullableSliceArg = (arg: SerializedSlice["args"][number]) => arg.nullable ?? arg.type === "search";
 
@@ -198,59 +229,45 @@ type FormSetter<
     [K in `writeOn${_CapitalizedRefName}`]: (path: string | (string | number)[], value: any) => void;
   };
 
-type _SliceActionMap<SlceCls extends SliceCls> = SlceCls[typeof SLICE_META];
-type _ActSuffixCap<SlceCls extends SliceCls, Suffix extends keyof _SliceActionMap<SlceCls>> = Capitalize<
-  Suffix & string
->;
-type _ActArgs<SlceCls extends SliceCls, Suffix extends keyof _SliceActionMap<SlceCls>> = SliceInfoArgs<
-  _SliceActionMap<SlceCls>[Suffix]
->;
-
 type DefaultSliceActionFields<
   SlceCls extends SliceCls,
   _CapRef extends string,
   _FetchInitFormWithFetchPolicy,
   _Light,
   _Sort,
+  _Suffixes extends keyof _SliceMap<SlceCls> = keyof _SliceMap<SlceCls>,
 > = {
-  [Suffix in keyof _SliceActionMap<SlceCls> as `init${_CapRef}${_ActSuffixCap<SlceCls, Suffix>}`]: (
-    ...args: [...args: _ActArgs<SlceCls, Suffix>, initForm?: _FetchInitFormWithFetchPolicy]
+  [Suffix in _Suffixes as `init${_CapRef}${StoreSliceSuffixCap<SlceCls, Suffix>}`]: (
+    ...args: [...args: StoreSliceArgs<SlceCls, Suffix>, initForm?: _FetchInitFormWithFetchPolicy]
   ) => Promise<void>;
 } & {
-  [Suffix in keyof _SliceActionMap<SlceCls> as `refresh${_CapRef}${_ActSuffixCap<SlceCls, Suffix>}`]: (
-    initForm?: _FetchInitFormWithFetchPolicy & { queryArgs?: _ActArgs<SlceCls, Suffix> },
+  [Suffix in _Suffixes as `refresh${_CapRef}${StoreSliceSuffixCap<SlceCls, Suffix>}`]: (
+    initForm?: _FetchInitFormWithFetchPolicy & { queryArgs?: StoreSliceArgs<SlceCls, Suffix> },
   ) => Promise<void>;
 } & {
-  [Suffix in keyof _SliceActionMap<SlceCls> as `select${_CapRef}${_ActSuffixCap<SlceCls, Suffix>}`]: (
+  [Suffix in _Suffixes as `select${_CapRef}${StoreSliceSuffixCap<SlceCls, Suffix>}`]: (
     model: _Light | _Light[],
     options?: { refresh?: boolean; remove?: boolean },
   ) => void;
 } & {
-  [Suffix in keyof _SliceActionMap<SlceCls> as `setPageOf${_CapRef}${_ActSuffixCap<SlceCls, Suffix>}`]: (
-    page: number,
+  [Suffix in _Suffixes as
+    | `setPageOf${_CapRef}${StoreSliceSuffixCap<SlceCls, Suffix>}`
+    | `addPageOf${_CapRef}${StoreSliceSuffixCap<SlceCls, Suffix>}`
+    | `setLimitOf${_CapRef}${StoreSliceSuffixCap<SlceCls, Suffix>}`]: (
+    value: number,
     options?: FetchPolicy,
   ) => Promise<void>;
 } & {
-  [Suffix in keyof _SliceActionMap<SlceCls> as `addPageOf${_CapRef}${_ActSuffixCap<SlceCls, Suffix>}`]: (
-    page: number,
-    options?: FetchPolicy,
-  ) => Promise<void>;
-} & {
-  [Suffix in keyof _SliceActionMap<SlceCls> as `setLimitOf${_CapRef}${_ActSuffixCap<SlceCls, Suffix>}`]: (
-    limit: number,
-    options?: FetchPolicy,
-  ) => Promise<void>;
-} & {
-  [Suffix in keyof _SliceActionMap<SlceCls> as `setQueryArgsOf${_CapRef}${_ActSuffixCap<SlceCls, Suffix>}`]: (
+  [Suffix in _Suffixes as `setQueryArgsOf${_CapRef}${StoreSliceSuffixCap<SlceCls, Suffix>}`]: (
     ...args:
-      | [...args: _ActArgs<SlceCls, Suffix>, options?: FetchPolicy]
+      | [...args: StoreSliceArgs<SlceCls, Suffix>, options?: FetchPolicy]
       | [
-          setQueryArgs: (...prevQueryArgs: _ActArgs<SlceCls, Suffix>) => _ActArgs<SlceCls, Suffix>,
+          setQueryArgs: (...prevQueryArgs: StoreSliceArgs<SlceCls, Suffix>) => StoreSliceArgs<SlceCls, Suffix>,
           options?: FetchPolicy,
         ]
   ) => Promise<void>;
 } & {
-  [Suffix in keyof _SliceActionMap<SlceCls> as `setSortOf${_CapRef}${_ActSuffixCap<SlceCls, Suffix>}`]: (
+  [Suffix in _Suffixes as `setSortOf${_CapRef}${StoreSliceSuffixCap<SlceCls, Suffix>}`]: (
     sort: _Sort,
     options?: FetchPolicy,
   ) => Promise<void>;
@@ -258,15 +275,15 @@ type DefaultSliceActionFields<
 
 export type DefaultAction<
   SlceCls extends SliceCls,
-  _RefName extends string = SlceCls["srv"]["cnst"]["refName"],
-  _Input = SlceCls["srv"]["cnst"]["_Input"],
-  _Full extends { id: string } = SlceCls["srv"]["cnst"]["_Full"],
-  _Light = SlceCls["srv"]["cnst"]["_Light"],
-  _Filter extends FilterInstance = SlceCls["srv"]["db"]["_Filter"],
-  _CapitalizedRefName extends string = Capitalize<_RefName>,
-  _Default = SlceCls["srv"]["cnst"]["_Default"],
-  _DefaultInput = SlceCls["srv"]["cnst"]["_DefaultInput"],
-  _Sort = SlceCls["srv"]["db"]["_Sort"],
+  _RefName extends string = _ActionRefName<SlceCls>,
+  _Input = _ActionInput<SlceCls>,
+  _Full extends { id: string } = _ActionFull<SlceCls>,
+  _Light = _ActionLight<SlceCls>,
+  _Filter extends FilterInstance = _ActionFilter<SlceCls>,
+  _CapitalizedRefName extends string = _ActionCap<SlceCls>,
+  _Default = _ActionDefault<SlceCls>,
+  _DefaultInput = _ActionDefaultInput<SlceCls>,
+  _Sort = _ActionSort<SlceCls>,
   _CreateOption = CreateOption<_Full>,
   _FetchInitFormWithFetchPolicy = FetchInitForm<_Input, _Filter, _DefaultInput, _Sort> & FetchPolicy,
 > = BaseAction<_RefName, _Input, _Full, _Light, _CapitalizedRefName, _CreateOption> &
@@ -277,6 +294,7 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
   type Light = BaseObject;
   const [fieldName, className] = [refName, capitalize(refName)];
   const modelRef = ConstantRegistry.getDatabase(refName).full;
+  const fileUploadRefName = resolveFileUploadCapability(fetch.serializedSignal)?.refName;
 
   const names = {
     model: fieldName,
@@ -356,7 +374,7 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
             },
           }
         : {}),
-      ...(field.isClass && ConstantRegistry.getRefName(field.modelRef) === "file"
+      ...(field.isClass && !!fileUploadRefName && ConstantRegistry.getRefName(field.modelRef) === fileUploadRefName
         ? {
             [namesOfField.uploadFieldOnModel]: async function (this: SetGet, fileList: FileList, index?: number) {
               const form = (this.get() as { [key: string]: any })[names.modelForm] as { [key: string]: any };
@@ -383,7 +401,9 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
                 const intervalKey = setInterval(() => {
                   void (async () => {
                     const currentFile = await (
-                      (fetch as { [key: string]: any }).file as (id: string) => Promise<ProtoFile>
+                      (fetch as { [key: string]: any })[fileUploadRefName as string] as (
+                        id: string,
+                      ) => Promise<ProtoFile>
                     )(file.id);
                     if (field.isArray)
                       this.set((state: { [key: string]: { [key: string]: ProtoFile[] } }) => {
@@ -844,10 +864,15 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     const singleSliceAction = {
       [namesOfSlice.initModel]: async function (
         this: SetGet,
-        ...args: [...args: any[], initForm: FetchInitForm<Input, Filter> & FetchPolicy]
+        ...args: [...args: any[], initForm: FetchInitForm<Input, Filter, DefaultOf<Input>, Sort> & FetchPolicy]
       ) {
         const initArgLength = Math.min(args.length, slice.args.length);
-        const initForm = { invalidate: false, ...(args[slice.args.length] ?? {}) } as FetchInitForm<Input, Filter> &
+        const initForm = { invalidate: false, ...(args[slice.args.length] ?? {}) } as FetchInitForm<
+          Input,
+          Filter,
+          DefaultOf<Input>,
+          Sort
+        > &
           FetchPolicy;
         const queryArgs = new Array(initArgLength).fill(null).map((_, i) => args[i] as object);
         const defaultModel = new cnst.full().set(initForm.default ?? {}) as unknown as Full;
@@ -859,7 +884,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       },
       [namesOfSlice.refreshModel]: async function (
         this: SetGet,
-        initForm: FetchInitForm<Input, Filter> & FetchPolicy & { queryArgs?: any[] } = {},
+        initForm: FetchInitForm<Input, Filter, DefaultOf<Input>, Sort> & FetchPolicy & { queryArgs?: any[] } = {},
       ) {
         const args = initForm.queryArgs ?? [];
         const refreshArgLength = Math.min(args.length, slice.args.length);

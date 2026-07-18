@@ -68,8 +68,8 @@ export class ProductInput extends via((field) => ({
         <Docs.Description>
           <div>
             {l.trans({
-              en: "Scalar files live under `lib/__scalar/<scalarName>`. Start with constant, dictionary, and document files. Add Template or Unit files only when the scalar needs reusable UI.",
-              ko: "Scalar 파일은 `lib/__scalar/<scalarName>` 아래에 둡니다. constant, dictionary, document 파일로 시작하고, 재사용 UI가 필요할 때만 Template 또는 Unit 파일을 추가합니다.",
+              en: "Scalar files live under `lib/__scalar/<scalarName>`. Start with abstract, constant, dictionary, and document files. Add Template or Unit files only when the scalar needs reusable UI.",
+              ko: "Scalar 파일은 `lib/__scalar/<scalarName>` 아래에 둡니다. abstract, constant, dictionary, document 파일로 시작하고, 재사용 UI가 필요할 때만 Template 또는 Unit 파일을 추가합니다.",
             })}
           </div>
         </Docs.Description>
@@ -78,6 +78,7 @@ export class ProductInput extends via((field) => ({
           code={`lib/
 └── __scalar/
     └── price/
+        ├── price.abstract.md
         ├── price.constant.ts
         ├── price.dictionary.ts
         ├── price.document.ts
@@ -86,6 +87,13 @@ export class ProductInput extends via((field) => ({
         />
         <Docs.Description>
           <ul className="list-disc space-y-2 pl-5">
+            <li>
+              <code>*.abstract.md</code>:{" "}
+              {l.trans({
+                en: "explains value meaning, validation intent, reuse rules, and agent notes.",
+                ko: "값의 의미, validation 의도, 재사용 규칙, agent note를 설명합니다.",
+              })}
+            </li>
             <li>
               <code>*.constant.ts</code>:{" "}
               {l.trans({

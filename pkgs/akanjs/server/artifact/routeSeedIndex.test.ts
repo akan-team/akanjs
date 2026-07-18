@@ -39,4 +39,18 @@ describe("route seed index artifact paths", () => {
     });
     expect(RouteSeedIndexStore.match("/ko/profile", normalized.entries)?.entry.routeId).toBe("/:lang/profile");
   });
+
+  test("finds the nearest route seed prefix for unmatched layout fallbacks", () => {
+    const entries = [
+      { routeId: "/:lang/blog", pattern: "/:lang/blog", seeds: ["blog-layout"] },
+      { routeId: "/:lang/blog/benchmark", pattern: "/:lang/blog/benchmark", seeds: ["benchmark-page"] },
+      { routeId: "/:lang/docs", pattern: "/:lang/docs", seeds: ["docs-layout"] },
+    ];
+
+    const matched = RouteSeedIndexStore.matchPrefix("/ko/blog/missing", entries);
+
+    expect(matched?.entry.routeId).toBe("/:lang/blog");
+    expect(matched?.params).toEqual({ lang: "ko" });
+    expect(RouteSeedIndexStore.matchPrefix("/ko/unknown/missing", entries)).toBeNull();
+  });
 });

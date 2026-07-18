@@ -96,7 +96,7 @@ export default function Page() {
           className="w-full"
           title="Terminal"
           language="bash"
-          code={`bun install -g akanjs
+          code={`bun install -g @akanjs/cli
 akan create-workspace myorg --app myapp
 cd myorg`}
         />

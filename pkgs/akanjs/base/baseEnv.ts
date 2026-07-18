@@ -85,14 +85,17 @@ export const getEnv = (): ClientEnv => {
   if (repoName === "unknown") throw new Error("environment variable AKAN_PUBLIC_REPO_NAME is required");
   if (serveDomain === "unknown") throw new Error("environment variable AKAN_PUBLIC_SERVE_DOMAIN is required");
   const environment = (process.env.AKAN_PUBLIC_ENV ?? "debug") as BaseEnv["environment"];
-  const operationMode = (process.env.AKAN_PUBLIC_OPERATION_MODE ?? "cloud") as BaseEnv["operationMode"];
+  const operationMode = (process.env.AKAN_PUBLIC_OPERATION_MODE ??
+    (environment === "local" ? "local" : "cloud")) as BaseEnv["operationMode"];
+  const tunnelUsername = process.env.SSH_TUNNEL_USERNAME ?? "root";
+  const tunnelPassword = process.env.SSH_TUNNEL_PASSWORD ?? repoName;
   const baseEnv: BaseEnv = {
     repoName,
     serveDomain,
     appName,
     environment,
     operationMode,
-    databaseMode: process.env.AKAN_DATABASE_MODE as (DatabaseMode | undefined),
+    databaseMode: process.env.AKAN_DATABASE_MODE as DatabaseMode | undefined,
   } as const;
   const side = typeof window === "undefined" ? "server" : "client";
   const renderMode = (process.env.AKAN_PUBLIC_RENDER_ENV ?? "csr") as ClientEnv["renderMode"];

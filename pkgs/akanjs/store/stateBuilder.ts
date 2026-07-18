@@ -1,11 +1,11 @@
 import {
   type Cls,
   DataList,
+  DEFAULT_VALUE,
   type EnumInstance,
   getEnv,
   getNonArrayModel,
   isEnum,
-  PRIMITIVE_DEFAULT_VALUE,
   PrimitiveRegistry,
   type PrimitiveScalar,
 } from "akanjs/base";
@@ -80,7 +80,7 @@ type FieldTypeInput = PrimitiveInput | Cls | EnumInstance | FieldTypeInput[];
 
 type ValueOfType<T> = T extends readonly (infer V)[]
   ? ValueOfType<V>[]
-  : T extends { [PRIMITIVE_DEFAULT_VALUE]: infer V }
+  : T extends { [DEFAULT_VALUE]: infer V }
     ? V
     : T extends EnumInstance<any, infer V>
       ? V
@@ -301,7 +301,7 @@ const createTypedDefaultFactory = (type: any, options: { default?: any; nullable
   if (arrDepth > 0) return () => [];
   if (isEnum(modelRef)) return () => (modelRef as EnumInstance).values[0];
   if (PrimitiveRegistry.has(modelRef as Cls)) {
-    const defaultValue = (modelRef as typeof PrimitiveScalar)[PRIMITIVE_DEFAULT_VALUE];
+    const defaultValue = (modelRef as typeof PrimitiveScalar)[DEFAULT_VALUE];
     return makeDefaultFactory(defaultValue);
   }
   if (ConstantRegistry.has(modelRef as Cls)) return () => new (modelRef as Cls)();

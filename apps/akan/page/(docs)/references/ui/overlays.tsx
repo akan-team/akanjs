@@ -8,8 +8,8 @@ export default function Page() {
     {
       name: "Modal",
       desc: l.trans({
-        en: "Controlled modal wrapper built on top of `Dialog`. Use it for common app overlays where you want title/content/action slots without composing the full dialog namespace.",
-        ko: "`Dialog` 위에 구성된 controlled modal wrapper입니다. full dialog namespace를 직접 조합하지 않고 title/content/action slot만 필요한 일반 app overlay에 사용합니다.",
+        en: "Controlled modal wrapper built on Akan's headless `Dialog` state. Use it for common app overlays where you want title/content/action slots without composing the full dialog namespace.",
+        ko: "Akan의 headless `Dialog` state 위에 구성된 controlled modal wrapper입니다. full dialog namespace를 직접 조합하지 않고 title/content/action slot만 필요한 일반 app overlay에 사용합니다.",
       }),
       props: [
         {
@@ -52,8 +52,8 @@ export const ProductModal = ({ open, close, product }) => (
     {
       name: "Dialog",
       desc: l.trans({
-        en: "Compound dialog namespace for custom modal composition. Use it when `Modal` is too opinionated and you need a custom trigger, title, content, or action layout.",
-        ko: "custom modal composition을 위한 compound dialog namespace입니다. `Modal`보다 custom trigger, title, content, action layout이 필요할 때 사용합니다.",
+        en: "Headless compound dialog namespace for custom modal composition. Use it when `Modal` is too opinionated and you need a custom trigger, title, content, or action layout.",
+        ko: "custom modal composition을 위한 headless compound dialog namespace입니다. `Modal`보다 custom trigger, title, content, action layout이 필요할 때 사용합니다.",
       }),
       props: [
         {
@@ -208,8 +208,8 @@ export const ProductModal = ({ open, close, product }) => (
         <Docs.Description>
           <div>
             {l.trans({
-              en: "Overlay components cover modal flows, custom dialogs, destructive confirmations, dropdown menus, and copy actions. Use `Modal` for common controlled overlays and `Dialog` for custom composition.",
-              ko: "Overlay component는 modal flow, custom dialog, destructive confirmation, dropdown menu, copy action을 다룹니다. 일반 controlled overlay에는 `Modal`, custom composition에는 `Dialog`를 사용합니다.",
+              en: "Overlay components cover modal flows, custom dialogs, destructive confirmations, dropdown menus, and copy actions. Use `Modal` for common controlled overlays and the headless `Dialog` namespace for custom composition.",
+              ko: "Overlay component는 modal flow, custom dialog, destructive confirmation, dropdown menu, copy action을 다룹니다. 일반 controlled overlay에는 `Modal`, custom composition에는 headless `Dialog` namespace를 사용합니다.",
             })}
           </div>
         </Docs.Description>

@@ -3,7 +3,6 @@
 import { getEnv } from "akanjs/base";
 import { clsx, getPathInfo, router, usePage, usePathCtx } from "akanjs/client";
 import { Logger } from "akanjs/common";
-import { st } from "akanjs/store";
 import type { SsrLinkProps } from "./types";
 
 export default function SsrLink({
@@ -21,11 +20,7 @@ export default function SsrLink({
   const pathCtx = usePathCtx();
   const prefix = pathCtx.prefix;
   const { lang, path: pagePath } = usePage();
-  const storePathname = st.use.pathname();
-  const currentPath =
-    getEnv().side === "server"
-      ? getPathInfo(pagePath, lang, prefix ?? "").path
-      : getPathInfo(storePathname, lang, prefix ?? "").path;
+  const currentPath = pathCtx.location?.pathRoute?.path ?? getPathInfo(pagePath, lang, prefix ?? "").path;
   const isExternal = href.startsWith("http") || href.startsWith("mailto:") || href.startsWith("tel:");
   const internalPathInfo = getPathInfo(href, lang, prefix ?? "");
   const publicPathInfo = getPathInfo(href, lang, "");
@@ -62,8 +57,6 @@ export default function SsrLink({
         if (!router.isInitialized || !rscNavigationReady) return;
         event.preventDefault();
         try {
-          Logger.log(`pathChange-start:${requestHref}`);
-          window.parent.postMessage({ type: "pathChange", href: requestHref }, "*");
           if (replace) router.replace(href, { scrollToTop });
           else router.push(href, { scrollToTop });
         } catch (error) {

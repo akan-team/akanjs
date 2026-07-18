@@ -33,7 +33,7 @@ export class ApplicationRunner extends runner("application") {
     await workspace.applyTemplate({
       basePath: `apps/${appName}`,
       template: "app",
-      dict: { appName, companyName: workspace.repoName, startDomain: "localhost" },
+      dict: { appName },
       options: { libs },
     });
     return AppExecutor.from(workspace, appName);
@@ -66,6 +66,36 @@ export class ApplicationRunner extends runner("application") {
     if (!(await app.exists(scriptPath))) throw new Error(`Script file not found: apps/${app.name}/${scriptPath}`);
     await app.spawn("bun", [scriptPath], {
       env: app.getCommandEnv({ AKAN_COMMAND_TYPE: "script" }),
+      stdio: "inherit",
+    });
+  }
+  async runConsole(app: App) {
+    const serverPath = `${app.cwdPath}/server.ts`;
+    if (!(await app.exists("server.ts"))) throw new Error(`Server file not found: apps/${app.name}/server.ts`);
+    const code = `
+const serverModule = await import(${JSON.stringify(serverPath)});
+const { assertAkanConsoleAllowed, startAkanConsole } = await import("akanjs/server");
+const server = serverModule.server;
+if (!server?.start) throw new Error("server.ts must export server with start()");
+assertAkanConsoleAllowed(server.env);
+await server.start({ listen: false, web: false });
+try {
+  await startAkanConsole(server, {
+    globals: {
+      srv: serverModule.srv,
+      sig: serverModule.sig,
+      db: serverModule.db,
+      cnst: serverModule.cnst,
+      dict: serverModule.dict,
+      option: serverModule.option,
+    },
+  });
+} finally {
+  await server.stop();
+}
+`;
+    await app.spawn("bun", ["-e", code], {
+      env: app.getCommandEnv({ AKAN_COMMAND_TYPE: "console" }),
       stdio: "inherit",
     });
   }
@@ -106,7 +136,8 @@ export class ApplicationRunner extends runner("application") {
     const { env } = await app.prepareCommand("start");
     const appHost = await new AkanAppHost(app, { env, withInk }).start();
     onStart?.();
-    if (open) setTimeout(() => openBrowser("http://localhost:8282"), 3000);
+    if (open)
+      setTimeout(() => openBrowser(`http://localhost:${env.AKAN_PUBLIC_CLIENT_PORT ?? env.PORT ?? "8282"}`), 3000);
     return appHost;
   }
 
@@ -128,20 +159,22 @@ export class ApplicationRunner extends runner("application") {
       env = "local",
       target,
       regenerate = false,
+      noAllowProvisioningUpdates = false,
     }: {
       open?: boolean;
       operation?: "local" | "release";
       env?: MobileEnv;
       target?: string;
       regenerate?: boolean;
+      noAllowProvisioningUpdates?: boolean;
     } = {},
   ) {
     const targets = await resolveMobileTargets(app, target);
     if (operation === "release") await this.#buildMobileCsr(app, env);
-    else await this.start(app);
+    // else await this.start(app);
     await this.#runMobileTargets(targets, async (mobileTarget) => {
       const capacitorApp = new CapacitorApp(app, mobileTarget.config);
-      await capacitorApp.runIos({ operation, env, regenerate });
+      await capacitorApp.runIos({ operation, env, regenerate, noAllowProvisioningUpdates });
       if (open) await capacitorApp.openIos();
     });
   }
@@ -185,7 +218,7 @@ export class ApplicationRunner extends runner("application") {
   ) {
     const targets = await resolveMobileTargets(app, target);
     if (operation === "release") await this.#buildMobileCsr(app, env);
-    else await this.start(app);
+    // else await this.start(app);
     await this.#runMobileTargets(targets, async (mobileTarget) => {
       const capacitorApp = new CapacitorApp(app, mobileTarget.config);
       await capacitorApp.runAndroid({ operation, env, regenerate });

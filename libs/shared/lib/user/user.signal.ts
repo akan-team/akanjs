@@ -10,9 +10,14 @@ import {
   type FacebookResponse,
   type GithubResponse,
   type GoogleResponse,
-  getOAuthRedirectUrl,
+  getSsoCode,
+  getSsoOrigin,
   type KakaoResponse,
   Me,
+  makeAccessTokenResponse,
+  makeOAuthRedirectResponse,
+  makeSignoutResponse,
+  makeSsoRedirectResponse,
   type NaverResponse,
   Self,
   type SerAccount,
@@ -25,63 +30,6 @@ import { endpoint, internal, Public, Req, slice } from "akanjs/signal";
 
 import * as cnst from "../cnst";
 import * as srv from "../srv";
-
-const makeSsoRedirectResponse = (redirect: string, cookie?: Record<string, string>) => {
-  const headers = new Headers({
-    Location: redirect,
-    "X-Redirect-Method": "replace",
-  });
-
-  if (cookie) {
-    for (const [key, value] of Object.entries(cookie)) {
-      const httpOnly = key === "userRefreshToken" || key === "adminRefreshToken" ? "; HttpOnly" : "";
-      headers.append("Set-Cookie", `${key}=${encodeURIComponent(value)}; Path=/; SameSite=Lax${httpOnly}`);
-    }
-  }
-
-  return new Response(null, { status: 302, headers });
-};
-
-interface AccessTokenResponse {
-  jwt: string;
-  refreshToken?: string;
-  expiresAt?: unknown;
-}
-
-const makeAccessTokenResponse = (accessToken: AccessTokenResponse) => {
-  return new Response(JSON.stringify(accessToken), {
-    headers: {
-      "Content-Type": "application/json",
-      ...(accessToken.refreshToken
-        ? {
-            "Set-Cookie": `userRefreshToken=${encodeURIComponent(accessToken.refreshToken)}; Path=/; SameSite=Lax; HttpOnly`,
-          }
-        : {}),
-    },
-  });
-};
-
-const makeSignoutResponse = (accessToken: AccessTokenResponse) => {
-  return new Response(JSON.stringify(accessToken), {
-    headers: {
-      "Content-Type": "application/json",
-      "Set-Cookie": "userRefreshToken=; Path=/; SameSite=Lax; HttpOnly; Max-Age=0",
-    },
-  });
-};
-
-type OAuthType = "github" | "google" | "facebook" | "kakao" | "naver";
-
-const getSsoCode = (request: Bun.BunRequest) => {
-  const code = new URL(request.url).searchParams.get("code");
-  if (!code) throw new Error("Invalid SSO callback: missing code");
-  return code;
-};
-
-const makeOAuthRedirectResponse = (type: OAuthType, request: Bun.BunRequest) => {
-  const state = new URL(request.url).searchParams.get("state") ?? undefined;
-  return Response.redirect(getOAuthRedirectUrl(type, state), 302);
-};
 
 export class UserInternal extends internal(srv.user, () => ({})) {}
 
@@ -450,7 +398,7 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .with(Req)
     .exec(async function (request) {
       const req = request as Bun.BunRequest & { user?: GithubResponse; account?: SerAccount };
-      const githubUser = req.user ?? (await extractGithubProfile(getSsoCode(req)));
+      const githubUser = req.user ?? (await extractGithubProfile(getSsoCode(req), getSsoOrigin(req)));
       const { username: accountId } = githubUser;
       const { cookie, redirect } = await this.userService.handleSsoCallback(
         accountId,
@@ -467,8 +415,7 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .with(Req)
     .exec(async function (request) {
       const req = request as Bun.BunRequest & { user?: GoogleResponse; account?: SerAccount };
-
-      const googleUser = req.user ?? (await extractGoogleProfile(getSsoCode(req)));
+      const googleUser = req.user ?? (await extractGoogleProfile(getSsoCode(req), getSsoOrigin(req)));
       const accountId = googleUser.emails[0].value;
       const { cookie, redirect } = await this.userService.handleSsoCallback(
         accountId,
@@ -485,7 +432,7 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .with(Req)
     .exec(async function (request) {
       const req = request as Bun.BunRequest & { user?: FacebookResponse; account?: SerAccount };
-      const facebookUser = req.user ?? (await extractFacebookProfile(getSsoCode(req)));
+      const facebookUser = req.user ?? (await extractFacebookProfile(getSsoCode(req), getSsoOrigin(req)));
       const accountId = facebookUser.emails[0].value;
       const { cookie, redirect } = await this.userService.handleSsoCallback(
         accountId,
@@ -510,7 +457,7 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .with(Req)
     .exec(async function (request) {
       const req = request as Bun.BunRequest & { user?: KakaoResponse; account?: SerAccount };
-      const { email: accountId } = req.user ?? (await extractKakaoProfile(getSsoCode(req)));
+      const { email: accountId } = req.user ?? (await extractKakaoProfile(getSsoCode(req), getSsoOrigin(req)));
       const { cookie, redirect } = await this.userService.handleSsoCallback(
         accountId,
         "kakao",
@@ -526,7 +473,7 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .with(Req)
     .exec(async function (request) {
       const req = request as Bun.BunRequest & { user?: NaverResponse; account?: SerAccount };
-      const { email: accountId } = req.user ?? (await extractNaverProfile(getSsoCode(req)));
+      const { email: accountId } = req.user ?? (await extractNaverProfile(getSsoCode(req), getSsoOrigin(req)));
       const { cookie, redirect } = await this.userService.handleSsoCallback(
         accountId,
         "naver",
@@ -537,21 +484,6 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     }),
   //*====================== SSO Area ======================*//
   //*======================================================*//
-
-  setRemoteAuthToken: mutation(Boolean, { guards: [Every] })
-    .body("remoteId", String)
-    .with(Account)
-    .exec(async function (remoteId, account) {
-      await this.userService.setRemoteAuthToken(remoteId, account);
-      return true;
-    }),
-  getRemoteAuthToken: query(cnst.util.AccessToken, { nullable: true })
-    .param("remoteId", String)
-    .exec(async function (remoteId) {
-      const jwt = await this.userService.getRemoteAuthToken(remoteId);
-      return jwt ? { jwt } : null;
-    }),
-
   refreshJwt: mutation(cnst.util.AccessToken)
     .body("refreshToken", String, { nullable: true })
     .with(Account)

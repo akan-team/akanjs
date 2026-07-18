@@ -38,6 +38,7 @@ const SignalTestInput = via((f) => ({
   nested: f(SignalTestNested),
 }));
 const SignalTestObject = via(SignalTestInput, (f) => ({
+  hiddenMemo: f.hidden(String),
   secret: f.secret(String),
   relatedId: f(ID, { ref: "signalTestRelated" }).optional(),
   relatedIds: f([ID], { ref: "signalTestRelated" }),
@@ -746,6 +747,7 @@ describe("SignalContext return resolution", () => {
         title: "Item",
         count: 3,
         nested: { label: "Nested" },
+        hiddenMemo: "server-only",
         secret: "hidden",
         relatedId: "rel-1",
         relatedIds: ["rel-2", "rel-3"],
@@ -786,6 +788,7 @@ describe("SignalContext return resolution", () => {
       relatedId: "rel-1",
       relatedIds: ["rel-2", "rel-3"],
     });
+    expect(resolved).not.toHaveProperty("hiddenMemo");
     expect(resolved).not.toHaveProperty("secret");
     expect(resolvedArray).toEqual([
       [{ title: "A", nested: { label: "N" }, relatedIds: [], resolvedLabel: "resolved:A" }],

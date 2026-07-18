@@ -8,3 +8,5 @@ export const getDefaultAccount = (): SerAccount => {
   const env = getEnv();
   return { appName: env.appName, environment: env.environment };
 };
+
+export type AuthTokenMeta = { exp?: number; iat?: number; jti?: string; sid?: string; tokenType?: string };

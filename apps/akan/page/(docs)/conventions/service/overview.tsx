@@ -34,6 +34,13 @@ export default function Page() {
 
   const fileMap = [
     {
+      file: "search.abstract.md",
+      role: l.trans({
+        en: "Describes the service workflow intent, domain rules, integration boundaries, and agent notes.",
+        ko: "service workflow 의도, domain rule, integration boundary, agent note를 설명합니다.",
+      }),
+    },
+    {
       file: "search.service.ts",
       role: l.trans({
         en: "Implements the workflow itself and injects runtime values or other services.",
@@ -129,8 +136,8 @@ export default function Page() {
         <Docs.Description>
           <div>
             {l.trans({
-              en: "A service module only needs the files that the feature actually uses. Unlike model-backed modules, it does not own constant, document, template, unit, or view files by default.",
-              ko: "Service module은 feature가 실제로 사용하는 파일만 필요합니다. model-backed module과 달리 constant, document, template, unit, view 파일을 기본으로 소유하지 않습니다.",
+              en: "A service module only needs the files that the feature actually uses. Start with service.abstract.md for workflow intent, then add service, signal, dictionary, store, Util, or Zone files as the feature grows.",
+              ko: "Service module은 feature가 실제로 사용하는 파일만 필요합니다. workflow 의도는 service.abstract.md에서 시작하고, feature가 커지면 service, signal, dictionary, store, Util, Zone 파일을 추가합니다.",
             })}
           </div>
         </Docs.Description>
@@ -158,6 +165,7 @@ export default function Page() {
         <Code.Snippet
           title="_search service module"
           code={`libs/util/lib/_search/
+  search.abstract.md     // workflow intent
   search.service.ts      // workflow
   search.signal.ts       // API
   search.dictionary.ts   // text

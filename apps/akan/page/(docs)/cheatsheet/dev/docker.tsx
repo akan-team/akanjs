@@ -76,6 +76,30 @@ services:
       </Scroll.Slide>
       <div className="divider" />
 
+      <Scroll.Slide id="console" title={l.trans({ en: "Open Console", ko: "Console 열기" })}>
+        <Docs.Title>{l.trans({ en: "Open Console", ko: "Console 열기" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "`akan build` embeds `console.js` next to `main.js`, so you can open an operator console without creating files inside the container.",
+              ko: "`akan build`는 `main.js` 옆에 `console.js`를 포함하므로 container 안에 파일을 만들지 않고 operator console을 열 수 있습니다.",
+            })}
+          </div>
+          <div>
+            {l.trans({
+              en: "Set `AKAN_CONSOLE=1` only on the exec command for production-like environments.",
+              ko: "Production 계열 환경에서는 exec 명령에서만 `AKAN_CONSOLE=1`을 설정하세요.",
+            })}
+          </div>
+        </Docs.Description>
+        <Code.Snippet
+          title={l.trans({ en: "Docker exec", ko: "Docker exec" })}
+          language="bash"
+          code="docker exec -it myapp sh -lc 'AKAN_CONSOLE=1 bun console.js'"
+        />
+      </Scroll.Slide>
+      <div className="divider" />
+
       <Scroll.Slide id="env" title={l.trans({ en: "Important Env", ko: "중요 env" })}>
         <Docs.Title>{l.trans({ en: "Important Env", ko: "중요 env" })}</Docs.Title>
         <Docs.Description>

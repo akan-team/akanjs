@@ -1,4 +1,5 @@
 import { cp, mkdir, rm } from "node:fs/promises";
+import path from "node:path";
 import type { App } from "./commandDecorators";
 import { FileSys } from "./fileSys";
 import { uploadRelease } from "./uploadRelease";
@@ -61,13 +62,14 @@ export class ApplicationReleasePackager {
     await cp(this.#app.dist.cwdPath, buildRoot, { recursive: true });
     await rm(`${buildRoot}/frontend/.next`, { recursive: true, force: true });
 
-    await this.#app.workspace.spawn("tar", [
-      "-zcf",
-      `${this.#app.workspace.workspaceRoot}/releases/builds/${this.#app.name}-release.tar.gz`,
-      "-C",
-      buildRoot,
-      "./",
-    ]);
+    const releaseRoot = this.#app.workspace.workspaceRoot;
+    // Pass a path relative to cwd so tar never sees a Windows drive letter (e.g. "C:\...")
+    // which GNU tar would interpret as a remote "host:file" spec.
+    const releaseArchivePath = path
+      .relative(releaseRoot, `${releaseRoot}/releases/builds/${this.#app.name}-release.tar.gz`)
+      .split(path.sep)
+      .join("/");
+    await this.#app.workspace.spawn("tar", ["-zcf", releaseArchivePath, "-C", buildRoot, "./"], { cwd: releaseRoot });
     await this.#writeCsrZipIfPresent();
     return { platformVersion };
   }
@@ -109,13 +111,14 @@ export class ApplicationReleasePackager {
     );
     await this.#writeSourceTsconfig(sourceRoot, libDeps);
     await Bun.write(`${sourceRoot}/README.md`, readme);
-    await this.#app.workspace.spawn("tar", [
-      "-zcf",
-      `${this.#app.workspace.cwdPath}/releases/sources/${this.#app.name}-source.tar.gz`,
-      "-C",
-      sourceRoot,
-      "./",
-    ]);
+    const sourceCwd = this.#app.workspace.cwdPath;
+    // Pass a path relative to cwd so tar never sees a Windows drive letter (e.g. "C:\...")
+    // which GNU tar would interpret as a remote "host:file" spec.
+    const sourceArchivePath = path
+      .relative(sourceCwd, `${sourceCwd}/releases/sources/${this.#app.name}-source.tar.gz`)
+      .split(path.sep)
+      .join("/");
+    await this.#app.workspace.spawn("tar", ["-zcf", sourceArchivePath, "-C", sourceRoot, "./"], { cwd: sourceCwd });
   }
 
   async #resetSourceRoot(sourceRoot: string): Promise<void> {

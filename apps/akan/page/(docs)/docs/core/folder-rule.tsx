@@ -354,34 +354,37 @@ export default function Page() {
             language="bash"
             code={`lib/
 ├── user/             # database module
+│   └── user.abstract.md
 ├── project/          # database module
 ├── _payment/         # service module
+│   └── payment.abstract.md
 ├── _notification/    # service module
 └── __scalar/
     ├── address/
-    └── money/`}
+    └── money/
+        └── money.abstract.md`}
           />
           <div className="space-y-1">
             {[
               {
                 title: "lib/<model>/",
                 desc: l.trans({
-                  en: "Use this for nouns your business owns and saves. Examples: user, product, order, reservation, invoice.",
-                  ko: "비즈니스가 소유하고 저장하는 명사에 사용합니다. 예: user, product, order, reservation, invoice.",
+                  en: "Use this for nouns your business owns and saves. Keep model.abstract.md here for business intent, domain rules, workflows, and agent notes.",
+                  ko: "비즈니스가 소유하고 저장하는 명사에 사용합니다. business intent, domain rule, workflow, agent note를 위해 model.abstract.md를 함께 둡니다.",
                 }),
               },
               {
                 title: "lib/_<service>/",
                 desc: l.trans({
-                  en: "Use this for actions, workflows, or integrations. Examples: _payment, _mailer, _search, _analytics.",
-                  ko: "행동, 워크플로우, 연동 기능에 사용합니다. 예: _payment, _mailer, _search, _analytics.",
+                  en: "Use this for actions, workflows, or integrations. The folder keeps the underscore, but the abstract file drops it, such as lib/_payment/payment.abstract.md.",
+                  ko: "행동, 워크플로우, 연동 기능에 사용합니다. 폴더에는 밑줄을 유지하지만 abstract 파일명은 lib/_payment/payment.abstract.md처럼 밑줄을 제외합니다.",
                 }),
               },
               {
                 title: "lib/__scalar/<type>/",
                 desc: l.trans({
-                  en: "Use this for reusable value shapes shared by models. Examples: money, address, phoneNumber, dateRange.",
-                  ko: "여러 모델이 함께 쓰는 값 형태에 사용합니다. 예: money, address, phoneNumber, dateRange.",
+                  en: "Use this for reusable value shapes shared by models. Keep scalar.abstract.md here when validation meaning or reuse rules need explanation.",
+                  ko: "여러 모델이 함께 쓰는 값 형태에 사용합니다. validation 의미나 재사용 규칙 설명이 필요하면 scalar.abstract.md를 함께 둡니다.",
                 }),
               },
             ].map(({ title, desc }) => (

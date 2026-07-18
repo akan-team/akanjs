@@ -132,12 +132,12 @@ export const General = () => {
         <Code.Snippet
           title={l.trans({ en: "Edit article page", ko: "Article 수정 page" })}
           code={`export default async function Page({ params }: PageProps) {
-  const article = await fetch.viewArticle(params.articleId);
+  const articleEdit = await fetch.editArticle(params.articleId);
 
   return (
     <Load.Edit
       slice={fetch.slice.articleInBoard}
-      edit={article}
+      edit={articleEdit}
       type="form"
       onSubmit={\`/article/\${article.id}\`}
     >

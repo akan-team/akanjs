@@ -1,28 +1,28 @@
 # Akan.js
 
-[English](https://unpkg.com/akanjs@latest/README.md) | [Docs](https://akanjs.com/docs) | [npm](https://www.npmjs.com/package/akanjs)
+[English](./README.md) | [Docs](https://akanjs.com/docs) | [npm](https://www.npmjs.com/package/akanjs)
 
-**코드가 아니라, 비즈니스를 씁니다.**  
-**Write the business, not the plumbing.**
+**한 줄의 비즈니스 코드로 웹·iOS·Android·서버·DB를 한 번에.**  
+**One line of business code ships web, iOS, Android, server, and database together.**
 
-Akan.js는 비즈니스 정의가 곧 애플리케이션이 되도록 설계된 Bun-first 풀스택 TypeScript
-프레임워크입니다. 하나의 코드베이스에서 SEO 웹, iOS/Android 앱 화면, 서버, 데이터베이스 계약,
-인프라 산출물, 문서화까지 이어갑니다.
+프레임워크 조립, 중복 선언, 플랫폼별 재작성은 이제 그만. Akan.js는 비즈니스 의도를 한 곳에 쓰면
+SEO 웹, iOS/Android 앱 패키지, 서버, 데이터베이스 계약, 인프라 산출물, 문서화까지 함께 이어지는
+Bun-first 풀스택 TypeScript 프레임워크입니다.
 
-```bash
-bunx create-akan-workspace@latest
-```
+<img width="563" height="720" alt="multi-platform-dev" src="https://github.com/user-attachments/assets/de2ec810-7b7f-4e9d-8e9e-e565e648fb45" />
+
+하나의 Akan.js 코드베이스에서 서버 렌더링, 클라이언트 렌더링, 모바일 앱, 서버, 데이터베이스까지 한 개발 흐름 안에서 함께 움직입니다.
 
 ## 왜 Akan인가
 
-Akan은 기술 계층마다 같은 의도를 다시 쓰는 대신, 비즈니스가 무엇을 하는지 또렷하게 선언하도록
-돕습니다. 도메인을 한 번 정의하면 schema, API, fetch client, store, UI, server, deployment
-artifact, generated reference가 같은 의도에서 이어집니다.
+Akan은 기술 계층을 손으로 배선하는 대신 비즈니스를 먼저 출시하도록 돕습니다. 도메인을 한 번
+정의하면 schema, API, fetch client, store, UI, server, app packaging, deployment artifact,
+generated reference가 같은 의도에서 이어집니다.
 
-- **Agents write**: 비즈니스 정의가 코드의 원천입니다. 반복적인 프레임워크 코드는 생성과 규칙이 맡습니다.
-- **Keep it minimal**: 한 줄의 의도가 웹, 앱, 서버, 데이터베이스, 배포까지 이어집니다.
-- **Always readable**: 적은 파일, 엄격한 규칙, 예측 가능한 선언 방식으로 6개월 뒤에도 읽히는 코드를 만듭니다.
-- **Nice to review**: 군더더기 없는 도메인 변경은 확인하기 쉽고, 리뷰가 빠르며, 곧장 배포하기 좋습니다.
+- **웹 개발자**: 같은 비즈니스 코드가 SEO 웹과 네이티브 느낌의 iOS/Android 화면까지 이어집니다.
+- **앱 개발자**: Bun 서버, SQLite, API 계약, 검증이 손배선 없이 따라옵니다.
+- **1인 창업가 / 소규모 팀**: 풀스택 1명이 5개 표면을 책임집니다. 사람 한 명, 코드 1/4.
+- **AI 에이전트도 일관되게**: 엄격한 규칙이 파일 위치, 이름, 구조, 선언 방식을 읽기 좋게 유지합니다.
 
 ## 요구사항
 
@@ -41,7 +41,7 @@ bunx create-akan-workspace@latest
 CLI를 전역으로 설치해서 사용할 수도 있습니다.
 
 ```bash
-bun install -g akanjs --latest
+bun install -g @akanjs/cli --latest
 akan create-workspace
 cd <workspace-name>
 akan start <app-name> --open
@@ -104,12 +104,39 @@ flowchart LR
 하나의 모델과 하나의 계약이 DB, 서버, API, 상태관리, UI까지 이어지기 때문에 계층마다 의도를
 반복해서 작성할 필요가 줄어듭니다.
 
+## 8 in 1
+
+필드 하나. 8개 레이어가 따라옵니다.
+
+기존 풀스택 앱에서 비즈니스 필드 하나를 추가하려면 보통 이만큼을 직접 손으로 해야 합니다.
+
+1. DB 스키마 정의.
+2. 쿼리 필드 추가.
+3. 서비스 로직 추가.
+4. API 필드 추가.
+5. fetch 필드 추가.
+6. 클라이언트 타입 선언.
+7. 상태관리 선언.
+8. UI prop 선언.
+
+한 곳만 바뀌어도 8곳을 따라 고쳐야 하고, 한 곳을 빠뜨리면 타입이 깨지거나 런타임에서 터집니다.
+Akan에서는 비즈니스 필드가 코드의 원천입니다.
+
+```ts
+export class ProductInput extends via((field) => ({
+  name: field(String),
+})) {}
+```
+
+이 선언 하나로 스키마와 타입이 동시에 정의됩니다. 주변 레이어는 같은 의도에서 생성되므로 스택이
+흩어져 스파게티가 되는 일을 줄입니다.
+
 ## Akan이 만드는 것
 
 Akan은 보통 여러 프로젝트로 흩어지는 것들을 하나의 프레임워크로 묶습니다.
 
 - SEO에 최적화된 server-side rendered web surface.
-- 아름다운 페이지 전환을 가진 iOS/Android 친화 client-side rendered app surface.
+- 컴파일된 웹 surface를 앱으로 패키징한 iOS/Android surface와 네이티브 수준의 built-in 화면 전환.
 - Bun 기반 HTTP/WebSocket server.
 - SQLite-first 단순 서버 경로와 더 큰 시스템을 위한 Postgres/Redis 확장 경로.
 - Schema validation, error handling, security helper, middleware.
@@ -120,6 +147,10 @@ Akan은 보통 여러 프로젝트로 흩어지는 것들을 하나의 프레임
 
 배포와 문서 작성에 하루를 쓰고 있다면 뭔가 잘못된 것입니다. Akan은 schema와 endpoint 정의가
 table reference, runtime contract, API docs, testable endpoint reference가 되도록 설계됩니다.
+
+일반적인 앱 패키징은 감싼 웹사이트처럼 느껴지기 쉽습니다. Akan의 client runtime은 목록-상세 흐름,
+오버레이, 맥락 전환을 위한 transition preset을 제공하므로 별도 UI 재작성 없이도 앱 패키징된 웹에서
+네이티브 수준의 사용자 경험을 만들 수 있습니다.
 
 ## 하나의 패키지, 여러 경계
 
@@ -189,7 +220,7 @@ akan update
 
 주요 영역:
 
-- **Workspace**: workspace 생성, Mongo 설정 생성, lint, sync.
+- **Workspace**: workspace 생성, lint, sync.
 - **Application**: app start, build, typecheck, package, release.
 - **Library**: shared library 생성, 설치, sync, push, pull.
 - **Module and scalar**: domain module, model, view, unit, template, store 생성.

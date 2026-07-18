@@ -9,6 +9,7 @@ const builderMsgTypeSet = new Set<BuilderMessage["type"]>([
   "invalidate",
   "css-updated",
   "pages-updated",
+  "build-status",
 ]);
 interface IncrementalBuilderHostOptions {
   app: App;

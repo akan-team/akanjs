@@ -51,6 +51,18 @@ export type ObjectAssign<Objects extends object[], Acc = unknown> = Objects exte
   ? ObjectAssign<Rest, Assign<Acc, First>>
   : Acc;
 
+export type ObjectAssignKeyOfObjects<
+  T extends object[],
+  Key extends PropertyKey,
+  Acc = Record<never, never>,
+> = T extends [infer First extends object, ...infer Rest extends object[]]
+  ? Key extends keyof First
+    ? First[Key] extends object
+      ? ObjectAssignKeyOfObjects<Rest, Key, Assign<Acc, First[Key]>>
+      : ObjectAssignKeyOfObjects<Rest, Key, Acc>
+    : ObjectAssignKeyOfObjects<Rest, Key, Acc>
+  : Acc;
+
 export type MergeAll<T extends object[], Acc = unknown> = T extends [
   infer First extends object,
   ...infer Rest extends object[],

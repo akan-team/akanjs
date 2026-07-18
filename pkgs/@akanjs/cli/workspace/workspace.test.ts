@@ -14,6 +14,7 @@ import {
   createFakeExecutor,
   createTempApp,
   writeJson,
+  writeText,
 } from "../testHelpers";
 import { WorkspaceCommand } from "./workspace.command";
 import { WorkspaceRunner } from "./workspace.runner";
@@ -37,6 +38,7 @@ describe("WorkspaceCommand", () => {
       ["Option", 3],
       ["Option", 4],
       ["Option", 5],
+      ["Option", 6],
     ]);
 
     const command = CommandContainer.get(WorkspaceCommand);
@@ -63,6 +65,19 @@ describe("WorkspaceCommand", () => {
 
     expect(calls).toEqual([["my-repo", "app", { dirname: ".", installLibs: false, init: false }]]);
   });
+
+  test("delegates generateAgentRules with overwrite options", async () => {
+    const command = CommandContainer.get(WorkspaceCommand);
+    const workspace = createFakeExecutor("workspace");
+    const calls: unknown[] = [];
+    command.workspaceScript.generateAgentRules = async (...args: unknown[]) => {
+      calls.push(args);
+    };
+    const handler = getTargetMetas(WorkspaceCommand).find((meta) => meta.key === "generateAgentRules")?.handler;
+    await handler?.call(command, true, false, workspace);
+
+    expect(calls).toEqual([[workspace, { overwrite: true, cursorRules: false }]]);
+  });
 });
 
 describe("WorkspaceScript", () => {
@@ -75,6 +90,7 @@ describe("WorkspaceScript", () => {
       "workspace",
       {
         commit: async (...args: unknown[]) => recorder.record("commit", ...args),
+        applyTemplate: async (...args: unknown[]) => recorder.record("applyTemplate", ...args),
       },
       recorder,
     );
@@ -101,6 +117,7 @@ describe("WorkspaceScript", () => {
         "installLibrary",
         "installLibrary",
         "createApplication",
+        "applyTemplate",
         "workspace.spinning",
         "commit",
         "spinner.succeed",
@@ -146,6 +163,24 @@ describe("WorkspaceScript", () => {
       recorder.calls.filter((call) => call.name === "lint").map((call) => (call.args[0] as { name: string }).name),
     ).toEqual(["app", "lib", "pkg"]);
   });
+
+  test("delegates agent rule generation to the workspace runner", async () => {
+    const script = CommandContainer.get(WorkspaceScript);
+    const recorder = createCallRecorder();
+    const workspace = createFakeExecutor("workspace", {}, recorder);
+    script.workspaceRunner.generateAgentRules = async (...args: unknown[]) => {
+      recorder.record("generateAgentRules", ...args);
+      return [{ filePath: "/workspace/AGENTS.md", content: "" }];
+    };
+
+    await script.generateAgentRules(workspace as never, { overwrite: true, cursorRules: false });
+
+    expect(recorder.names()).toEqual(["workspace.spinning", "generateAgentRules", "spinner.succeed"]);
+    expect(recorder.calls.find((call) => call.name === "generateAgentRules")?.args).toEqual([
+      workspace,
+      { overwrite: true, cursorRules: false },
+    ]);
+  });
 });
 
 describe("WorkspaceRunner", () => {
@@ -163,14 +198,30 @@ describe("WorkspaceRunner", () => {
       });
 
       const workspacePackageJson = (await Bun.file(`${root}/generated/repo/package.json`).json()) as {
+        scripts: Record<string, string>;
         dependencies: Record<string, string>;
         devDependencies: Record<string, string>;
       };
+      expect(workspacePackageJson.scripts).toMatchObject({
+        "setup:agent": "akan agent install all --force",
+        "agent:doctor": "akan doctor --strict --format json",
+        "agent:mcp:plan": "akan mcp-install all --mode plan --force",
+        "agent:sample:service": "akan create-service billing demo --format json",
+        "agent:sample:module": "akan create-module project demo --page=true --format json",
+        "agent:sample:field":
+          "akan add-field --app demo --module project --field budget --type Int --default 0 --format json",
+        "agent:sample:status":
+          "akan add-enum-field --app demo --module project --field status --values draft,active,archived --default draft --format json",
+        "agent:sample:workflow:plan":
+          "akan workflow plan add-field --app demo --module task --field priority --type enum --values low,medium,high --default medium --format json --out .akan/workflows/plans/task-priority.json",
+        "agent:sample:workflow:dry-run":
+          "akan workflow apply .akan/workflows/plans/task-priority.json --dry-run --format json",
+      });
       expect(workspacePackageJson.dependencies.akanjs).toBe("2.0.0-beta.0");
       expect(workspacePackageJson.dependencies).toMatchObject({
-        "@radix-ui/react-dialog": expect.any(String),
         "@react-spring/web": expect.any(String),
         "@use-gesture/react": expect.any(String),
+        chance: expect.any(String),
         croner: expect.any(String),
         react: expect.any(String),
         "react-dom": expect.any(String),
@@ -200,6 +251,36 @@ describe("WorkspaceRunner", () => {
     } finally {
       process.chdir(cwd);
     }
+  });
+
+  test("generates agent rule files without overwriting by default", async () => {
+    const runner = new WorkspaceRunner();
+    const { root, workspace } = await createTempApp("demo");
+    tempRoots.push(root);
+
+    await runner.generateAgentRules(workspace);
+    const agentsGuide = await Bun.file(`${root}/AGENTS.md`).text();
+    const cursorRules = await Bun.file(`${root}/.cursor/rules/akan.mdc`).text();
+    const claudeGuide = await Bun.file(`${root}/CLAUDE.md`).text();
+    expect(claudeGuide).toContain("@AGENTS.md");
+    expect(agentsGuide).toContain("repo Agent Guide");
+    expect(agentsGuide).toContain("Prefer Akan MCP workflows before direct source edits");
+    expect(agentsGuide).toContain("apply_workflow({ planPath })");
+    expect(agentsGuide).toContain("validationTarget");
+    expect(agentsGuide).toContain("create-module` plan/apply first, then `add-field");
+    expect(agentsGuide).toContain("akan mcp --mode plan");
+    expect(agentsGuide).toContain("akan repair generated");
+    // The Cursor rule is a thin reference to AGENTS.md, not a duplicate of its content.
+    expect(cursorRules).toContain("alwaysApply: true");
+    expect(cursorRules).toContain("single source of truth");
+    expect(cursorRules).toContain("@AGENTS.md");
+
+    await Bun.write(`${root}/AGENTS.md`, "custom\n");
+    await runner.generateAgentRules(workspace);
+    expect(await Bun.file(`${root}/AGENTS.md`).text()).toBe("custom\n");
+
+    await runner.generateAgentRules(workspace, { overwrite: true, cursorRules: false });
+    expect(await Bun.file(`${root}/AGENTS.md`).text()).toContain("repo Agent Guide");
   });
 
   test("writes local registry config before installing generated workspace dependencies", async () => {
@@ -271,5 +352,55 @@ describe("WorkspaceRunner", () => {
     expect(AppExecutor.from(workspace, "demo")).toBeInstanceOf(AppExecutor);
     expect(LibExecutor.from(workspace, "shared")).toBeInstanceOf(LibExecutor);
     expect(PkgExecutor.from(workspace, "@sample/tool")).toBeInstanceOf(PkgExecutor);
+  });
+});
+
+describe("Scan convention validation", () => {
+  test("rejects files that do not follow the <module>.<type>.(ts|tsx) convention", async () => {
+    const { root, app } = await createTempApp("demo");
+    tempRoots.push(root);
+
+    await writeText(`${app.cwdPath}/lib/task/task.constant.ts`, "export const TaskStatus = {};\n");
+    await writeText(`${app.cwdPath}/lib/task/TaskHelpComponent.tsx`, "export const TaskHelp = () => null;\n");
+
+    await expect(app.scanSync({ write: false })).rejects.toThrow(
+      /apps\/demo\/lib\/task\/TaskHelpComponent.tsx: unsupported module file/,
+    );
+  });
+
+  test("rejects UI files with wrong module name prefix", async () => {
+    const { root, app } = await createTempApp("demo");
+    tempRoots.push(root);
+
+    await writeText(`${app.cwdPath}/lib/task/task.constant.ts`, "export const TaskStatus = {};\n");
+    await writeText(`${app.cwdPath}/lib/task/WrongName.Zone.tsx`, "export const WrongZone = () => null;\n");
+
+    await expect(app.scanSync({ write: false })).rejects.toThrow(
+      /apps\/demo\/lib\/task\/WrongName.Zone.tsx: module name mismatch: expected 'Task', got 'WrongName'/,
+    );
+  });
+
+  test("rejects non-UI files with wrong module name prefix", async () => {
+    const { root, app } = await createTempApp("demo");
+    tempRoots.push(root);
+
+    await writeText(`${app.cwdPath}/lib/task/task.constant.ts`, "export const TaskStatus = {};\n");
+    await writeText(`${app.cwdPath}/lib/task/wrongName.constant.ts`, "export const Wrong = {};\n");
+
+    await expect(app.scanSync({ write: false })).rejects.toThrow(
+      /apps\/demo\/lib\/task\/wrongName.constant.ts: module name mismatch: expected 'task', got 'wrongName'/,
+    );
+  });
+
+  test("allows properly named files in domain folders", async () => {
+    const { root, app } = await createTempApp("demo");
+    tempRoots.push(root);
+
+    await writeText(`${app.cwdPath}/lib/task/task.constant.ts`, "export const TaskStatus = {};\n");
+    await writeText(`${app.cwdPath}/lib/task/task.dictionary.ts`, "export const TaskDict = {};\n");
+    await writeText(`${app.cwdPath}/lib/task/Task.Zone.tsx`, "export const TaskZone = () => null;\n");
+
+    const scanInfo = await app.scanSync({ write: false });
+    expect(scanInfo.type).toBe("app");
   });
 });

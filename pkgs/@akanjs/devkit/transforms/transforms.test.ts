@@ -163,6 +163,30 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
     expect(await rewriteBarrelImports(source, ["akanjs/server"], analyzer)).toBeNull();
   });
 
+  test("rewrites akanjs/server value imports to leaf subpaths", async () => {
+    const analyzer = {
+      analyze: async () =>
+        new Map([
+          ["AkanOption", { subpath: "akanjs/server/akanOption", originalName: "AkanOption" }],
+          ["Try", { subpath: "akanjs/server/decorators", originalName: "Try" }],
+        ]),
+    } as BarrelAnalyzer;
+
+    const rewritten = await rewriteBarrelImports(
+      'import { AkanOption, Try } from "akanjs/server";\nexport const option = new AkanOption();\n',
+      ["akanjs/server"],
+      analyzer,
+    );
+
+    expect(rewritten).toBe(
+      [
+        'import { AkanOption } from "akanjs/server/akanOption";',
+        'import { Try } from "akanjs/server/decorators";',
+        "export const option = new AkanOption();\n",
+      ].join("\n"),
+    );
+  });
+
   test("rewrites single-package Akan facet barrels to leaf subpaths", async () => {
     const analyzer = {
       analyze: async () =>

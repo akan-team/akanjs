@@ -90,7 +90,7 @@ describe("constant schema docs", () => {
     const displayName = fullFields.find((field) => field.key === "displayName");
 
     expect(role?.enumValues).toEqual(["admin", "user"]);
-    expect(password?.fieldType).toBe("hidden");
+    expect(password?.fieldType).toBe("secret");
     expect(password?.select).toBe(false);
     expect(metadata?.typeLabel).toBe("Map<String, String>");
     expect(displayName?.constraints).toContain("text:search");

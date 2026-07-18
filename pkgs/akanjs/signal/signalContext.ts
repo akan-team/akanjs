@@ -249,7 +249,7 @@ export class SignalContext<
     const resolvedValue = {} as RuntimeRecord;
     await Promise.all(
       Object.entries((returnRef as ConstantCls)[FIELD_META]).map(async ([key, field]) => {
-        if (field.fieldType === "hidden") return;
+        if (field.fieldType === "hidden" || field.fieldType === "secret") return;
         else if (field.fieldType === "resolve") {
           const refName = ConstantRegistry.getRefName(returnRef as ConstantCls);
           const internal = live.internal.get(`${refName}Internal`);

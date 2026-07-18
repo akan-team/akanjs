@@ -1,15 +1,87 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import type { PushEvent } from "@octokit/webhooks-types";
-import { dayjs } from "akanjs/base";
+import { type Dayjs, dayjs } from "akanjs/base";
 
 export type GithubPushEvent = PushEvent;
 const execAsync = promisify(exec);
 
-type GithubPublishIdentity = {
+// id: field(String).optional(),
+// login: field(String), // 유저네임 (예: "octocat")
+// node_id: field(String),
+// type: field(String),
+// name: field(String),
+// site_admin: field(Boolean),
+// accessToken: field.secret(String).optional(),
+// expiresAt: field(Date).optional(),
+// refreshToken: field.secret(String).optional(),
+// installationId: field(String).optional(),
+// company: field(String).optional(),
+// blog: field(String).optional(),
+// location: field(String).optional(),
+// email: field(String).optional(),
+
+type GithubAccessTokenDto = {
+  access_token: string;
+  expires_in: number;
+  refresh_token: string;
+  refresh_token_expires_in: number;
+};
+export type GithubAccessToken = {
+  accessToken: string;
+  expiresAt: Dayjs;
+  refreshToken: string;
+};
+const toGithubAccessToken = (dto: GithubAccessTokenDto): GithubAccessToken => {
+  return {
+    accessToken: dto.access_token,
+    expiresAt: dayjs().add(dto.expires_in, "seconds"),
+    refreshToken: dto.refresh_token,
+  };
+};
+
+type GithubInfoDto = {
+  id: number;
+  login: string;
+  node_id: string;
+  type: string;
+  name: string;
+  site_admin: boolean;
+  installation_id: string;
+  company: string;
+  blog: string;
+  location: string;
+  email: string;
+};
+
+export type GithubInfo = {
   id: string;
   login: string;
-  accessToken: string;
+  nodeId: string;
+  type: string;
+  name: string;
+  siteAdmin: boolean;
+  installationId: string;
+  company: string;
+  blog: string;
+  location: string;
+  email: string;
+};
+
+const toGithubInfo = (dto: GithubInfoDto): GithubInfo => {
+  return {
+    id: dto.id.toString(),
+    login: dto.login,
+    nodeId: dto.node_id,
+    type: dto.type,
+    name: dto.name,
+    siteAdmin: dto.site_admin,
+    installationId: dto.installation_id,
+    company: dto.company,
+    blog: dto.blog,
+    location: dto.location,
+    email: dto.email,
+  };
 };
 
 type GithubApiError = {
@@ -22,9 +94,10 @@ const shellQuote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
 
 export class GithubApp {
   readonly #baseUrl = "https://api.github.com";
-  readonly #headers = {
-    Accept: "application/json",
-  };
+  readonly #headers = { Accept: "application/json" };
+
+  #tokenMap = new Map<string, GithubInfo>();
+  #tokenRefreshTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly clientId: string,
@@ -33,6 +106,25 @@ export class GithubApp {
     this.clientId = clientId;
     this.clientSecret = clientSecret;
   }
+
+  // init() {
+  //   this.#tokenMap.clear();
+  //   this.#tokenRefreshTimer = null;
+  //   this.#tokenRefreshTimer = setInterval(
+  //     () => {
+  //       this.#tokenMap.forEach(async (githubInfo) => {
+  //         const freshGithubInfo = await this.getFreshAccessToken(githubInfo);
+  //         this.#tokenMap.set(githubInfo.id, freshGithubInfo);
+  //       });
+  //     },
+  //     1000 * 60 * 60,
+  //   );
+  // }
+  // destroy() {
+  //   if (this.#tokenRefreshTimer) clearInterval(this.#tokenRefreshTimer);
+  //   this.#tokenMap.clear();
+  //   this.#tokenRefreshTimer = null;
+  // }
 
   async #api<T = unknown>(path: string, init?: RequestInit): Promise<T> {
     const url = path.startsWith("http") ? path : `${this.#baseUrl}${path}`;
@@ -44,61 +136,37 @@ export class GithubApp {
     return (await response.json()) as T;
   }
 
-  async getAccessToken(code: string) {
-    const { access_token, expires_in, refresh_token } = await this.#api<{
-      access_token: string;
-      expires_in: number;
-      refresh_token: string;
-    }>("https://github.com/login/oauth/access_token", {
+  async getAccessToken(code: string): Promise<GithubAccessToken> {
+    const data = await this.#api<GithubAccessTokenDto>("https://github.com/login/oauth/access_token", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ client_id: this.clientId, client_secret: this.clientSecret, code }),
     });
-
-    return {
-      accessToken: access_token,
-      expiresAt: dayjs().add(expires_in, "seconds"),
-      refreshToken: refresh_token,
-    };
+    return toGithubAccessToken(data);
   }
-
-  async refreshAccessToken(refreshToken: string) {
-    const { access_token, expires_in, refresh_token } = await this.#api<{
-      access_token: string;
-      expires_in: number;
-      refresh_token: string;
-    }>("https://github.com/login/oauth/access_token", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({
-        client_id: this.clientId,
-        client_secret: this.clientSecret,
-        grant_type: "refresh_token",
-        refresh_token: refreshToken,
-      }),
-    });
-    return {
-      accessToken: access_token,
-      expiresAt: dayjs().add(expires_in, "seconds"),
-      refreshToken: refresh_token,
-    };
-  }
-
-  async getGithubInfo(accessToken: string) {
-    return await this.#api<{
-      id: number;
-      login: string;
-      node_id: string;
-      type: string;
-      name: string | null;
-      email: string | null;
-      site_admin: boolean;
-      company?: string | null;
-      blog?: string | null;
-      location?: string | null;
-    }>(`/user`, {
+  // async getFreshAccessToken(githubInfo: GithubInfo): Promise<GithubInfo> {
+  //   if (githubInfo.expiresAt.isAfter(dayjs())) return githubInfo;
+  //   const { accessToken, expiresAt, refreshToken } = await this.refreshAccessToken(githubInfo.refreshToken);
+  //   return { ...githubInfo, accessToken, expiresAt, refreshToken };
+  // }
+  // async refreshAccessToken(refreshToken: string): Promise<GithubAccessToken> {
+  //   const data = await this.#api<GithubAccessTokenDto>("https://github.com/login/oauth/access_token", {
+  //     method: "POST",
+  //     headers: { "Content-Type": "application/json", Accept: "application/json" },
+  //     body: JSON.stringify({
+  //       client_id: this.clientId,
+  //       client_secret: this.clientSecret,
+  //       grant_type: "refresh_token",
+  //       refresh_token: refreshToken,
+  //     }),
+  //   });
+  //   return toGithubAccessToken(data);
+  // }
+  async getGithubInfo(accessToken: string): Promise<GithubInfo> {
+    const data = await this.#api<GithubInfoDto>(`/user`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
+    return toGithubInfo(data);
   }
 
   async listPullRequestFiles({
@@ -165,36 +233,40 @@ export class GithubApp {
   }
 
   async publishWorkspace({
-    githubInfo,
+    id,
+    login,
+    accessToken,
     repo,
     projectPath,
     branch = "main",
     message,
   }: {
-    githubInfo: GithubPublishIdentity;
+    id: string;
+    login: string;
+    accessToken: string;
     repo: string;
     projectPath: string;
     branch?: string;
     message?: string;
   }) {
-    const authorEmail = `${githubInfo.id}+${githubInfo.login}@users.noreply.github.com`;
-    const commitMessage = message ?? `Deploy by ${githubInfo.login}`;
+    const authorEmail = `${id}+${login}@users.noreply.github.com`;
+    const commitMessage = message ?? `Deploy by ${login}`;
     const projectPathArg = shellQuote(projectPath);
-    const remoteUrlArg = `"https://x-access-token:$GITHUB_TOKEN@github.com/${githubInfo.login}/${repo}.git"`;
+    const remoteUrlArg = `"https://x-access-token:${accessToken}@github.com/${login}/${repo}.git"`;
 
     await this.#execGit(`git -C ${projectPathArg} add .`);
 
     const hasChanges = await this.#hasStagedChanges(projectPathArg);
     if (hasChanges) {
       await this.#execGit(
-        `git -C ${projectPathArg} -c user.name=${shellQuote(githubInfo.login)} -c user.email=${shellQuote(
+        `git -C ${projectPathArg} -c user.name=${shellQuote(login)} -c user.email=${shellQuote(
           authorEmail,
         )} commit -m ${shellQuote(commitMessage)}`,
       );
     }
 
     await this.#execGit(`git -C ${projectPathArg} push ${remoteUrlArg} HEAD:${shellQuote(branch)}`, {
-      GITHUB_TOKEN: githubInfo.accessToken,
+      GITHUB_TOKEN: accessToken,
     });
   }
 

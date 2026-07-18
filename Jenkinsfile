@@ -26,7 +26,7 @@ pipeline {
                 stage("Prepare Master"){
                     steps{
                         sh "ssh -o StrictHostKeyChecking=no -i $SSH_KEY $MASTER_USER@$MASTER_HOST -p $MASTER_PORT \"mkdir -p $REPO_NAME/$BRANCH/node_modules && touch $REPO_NAME/$BRANCH/dummy.js\""
-                        sh "ssh -i $SSH_KEY -p $MASTER_PORT $MASTER_USER@$MASTER_HOST \"cd $REPO_NAME/$BRANCH && find . -maxdepth 1 ! -path . ! \\( -name node_modules -or -name bun-lock.yaml -or -name dist -or -name .git \\) -print0 | xargs -0 rm -r\""
+                        sh "ssh -i $SSH_KEY -p $MASTER_PORT $MASTER_USER@$MASTER_HOST \"cd $REPO_NAME/$BRANCH && find . -maxdepth 1 ! -path . ! \\( -name node_modules -or -name bun.lock -or -name dist -or -name .git \\) -print0 | xargs -0 rm -r\""
                         sh "scp -i $SSH_KEY -P $MASTER_PORT codebase.tar $MASTER_USER@$MASTER_HOST:~/$REPO_NAME/$BRANCH/codebase.tar"
                         sh "ssh -i $SSH_KEY -p $MASTER_PORT $MASTER_USER@$MASTER_HOST \"cd $REPO_NAME/$BRANCH && tar -xvf codebase.tar\""
                         sh "scp -i $SSH_KEY -P $MASTER_PORT $KUBE_SECRET $MASTER_USER@$MASTER_HOST:~/$REPO_NAME/$BRANCH/infra/master/regcred.yaml"
@@ -48,7 +48,7 @@ pipeline {
                 stage("Prepare Build"){
                     steps{
                         sh "ssh -i $SSH_KEY -o StrictHostKeyChecking=no $BUILD_USER@$BUILD_HOST -p $BUILD_PORT \"mkdir -p $REPO_NAME/$BRANCH/node_modules && mkdir -p $REPO_NAME/$BRANCH/dist && touch $REPO_NAME/$BRANCH/dummy.js && chmod -R 777 $REPO_NAME/$BRANCH/dist \""
-                        sh "ssh -i $SSH_KEY -p $BUILD_PORT $BUILD_USER@$BUILD_HOST \"cd $REPO_NAME/$BRANCH && find . -maxdepth 1 ! -path . ! \\( -name node_modules -or -name package-lock.json -or -name dist -or -name .git \\) -print0 | xargs -0 rm -r\""
+                        sh "ssh -i $SSH_KEY -p $BUILD_PORT $BUILD_USER@$BUILD_HOST \"cd $REPO_NAME/$BRANCH && find . -maxdepth 1 ! -path . ! \\( -name node_modules -or -name bun.lock -or -name dist -or -name .git \\) -print0 | xargs -0 rm -r\""
                         sh "scp -i $SSH_KEY -P $BUILD_PORT codebase.tar $BUILD_USER@$BUILD_HOST:~/$REPO_NAME/$BRANCH/codebase.tar"
                         sh "ssh -i $SSH_KEY -p $BUILD_PORT $BUILD_USER@$BUILD_HOST \"cd $REPO_NAME/$BRANCH && tar -xvf codebase.tar\""
                         sh "ssh -i $SSH_KEY -p $BUILD_PORT $BUILD_USER@$BUILD_HOST \"cd $REPO_NAME/$BRANCH && echo 'USE_AKANJS_PKGS=true' >> .env\""
@@ -57,6 +57,7 @@ pipeline {
                         sh "ssh -i $SSH_KEY -p $BUILD_PORT $BUILD_USER@$BUILD_HOST \"cd $REPO_NAME/$BRANCH && echo 'AKAN_PUBLIC_ENV=$BRANCH' >> .env\""
                         sh "ssh -i $SSH_KEY $BUILD_USER@$BUILD_HOST -p $BUILD_PORT \"cd $REPO_NAME/$BRANCH && timeout 3m bun install\""
                         sh "ssh -i $SSH_KEY -p $BUILD_PORT $BUILD_USER@$BUILD_HOST \"cd $REPO_NAME/$BRANCH && bun run buildAkan\""
+                        sh "ssh -i $SSH_KEY -p $BUILD_PORT $BUILD_USER@$BUILD_HOST \"cd $REPO_NAME/$BRANCH && bun run runAkan script akan generateDocsSearch\""
                         script {
                             PROJECTS = ALL_PROJECTS.tokenize(",");
                             ALL_PROJECTS.tokenize(",").each { app -> 
@@ -206,11 +207,6 @@ pipeline {
         success {
             script {
                 discordSend description: "Build Succeed - $env.JOB_NAME $env.BUILD_NUMBER", link: env.BUILD_URL, result: currentBuild.currentResult, title: env.JOB_NAME, webhookURL: env.DISCORD_WEBHOOK
-                if(BRANCH != "debug" && env.GIT_PREVIOUS_SUCCESSFUL_COMMIT != null) {
-                    def commit_messages = sh(script: "git log $env.GIT_PREVIOUS_SUCCESSFUL_COMMIT..HEAD --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cD) %C(bold blue)<%an>%Creset'", returnStdout: true)
-                    commit_messages = commit_messages.trim().replaceAll("\\n", "\n")
-                    discordSend title: "$env.JOB_NAME:$env.BUILD_NUMBER 빌드 배포 완료", description: commit_messages, result: currentBuild.currentResult, customUsername: "Akan Update", customAvatarUrl: "https://media.discordapp.net/stickers/952935228865933363.png", webhookURL: env.DISCORD_PUBLIC_WEBHOOK
-                }
             }
         }
     }

@@ -12,8 +12,8 @@ export interface TopLeftActionProps {
 
 export const TopLeftAction = ({ className, children }: TopLeftActionProps) => {
   const [render, setRender] = useState(false);
-  const { location } = usePathCtx();
-  const suffix = getEnv().renderMode === "csr" ? `-${location.pathRoute.path}` : "";
+  const path = usePathCtx().location?.pathRoute?.path;
+  const suffix = getEnv().renderMode === "csr" && path ? `-${path}` : "";
   useEffect(() => {
     setRender(true);
   }, []);

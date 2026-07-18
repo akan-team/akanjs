@@ -1,6 +1,6 @@
 import type { AnchorHTMLAttributes, ReactNode } from "react";
 
-type LinkProps = any;
+type LinkProps = Record<never, never>;
 export type CommonLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof LinkProps | "href"> &
   Omit<LinkProps, "href"> & {
     /** Destination route. When omitted or disabled, Link renders a non-clickable div with the same children. */
@@ -10,6 +10,8 @@ export type CommonLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyo
     disabled?: boolean;
     /** Scroll to the top after client-side navigation. */
     scrollToTop?: boolean;
+    /** Replace current history entry instead of pushing a new one. */
+    replace?: boolean;
     /** Class applied when the current route matches href. */
     activeClassName?: string;
     /** Match activeClassName only on exact route matches. */
@@ -42,6 +44,12 @@ export interface SsrLinkProps
   disabled?: boolean;
   /** Scroll to the top after navigation. */
   scrollToTop?: boolean;
+  /** Replace current history entry instead of pushing a new one. */
+  replace?: boolean;
   /** Class applied when the current route matches href. */
   activeClassName?: string;
+  /** Match activeClassName only on exact route matches. */
+  activeExact?: boolean;
+  /** Bypass route cache for client-side navigation when supported by the renderer. */
+  noCache?: boolean;
 }

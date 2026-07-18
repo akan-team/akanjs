@@ -411,7 +411,7 @@ export default function Page() {
                   <div className="rounded-xl border border-warning/30 bg-warning/10 p-3">
                     <div className="font-semibold">{l.trans({ en: "Interface", ko: "Interface" })}</div>
                     <div className="text-base-content/70 text-sm">
-                      lib/product/product.constant.ts · dictionary.ts · signal.ts
+                      lib/product/product.abstract.md · constant.ts · dictionary.ts · signal.ts
                     </div>
                   </div>
                   <div className="rounded-xl border border-error/30 bg-error/10 p-3">
@@ -430,7 +430,9 @@ export default function Page() {
               <div className="grid gap-4">
                 <div className="rounded-2xl border border-warning/30 bg-warning/10 p-4">
                   <div className="font-bold">{l.trans({ en: "Scalar modules", ko: "Scalar modules" })}</div>
-                  <div className="text-base-content/70 text-sm">lib/__scalar/fileMeta/fileMeta.constant.ts</div>
+                  <div className="text-base-content/70 text-sm">
+                    lib/__scalar/fileMeta/fileMeta.abstract.md · constant.ts
+                  </div>
                 </div>
                 <div className="rounded-2xl border border-error/30 bg-error/10 p-4">
                   <div className="font-bold">{l.trans({ en: "Service utilities", ko: "Service utilities" })}</div>
@@ -438,7 +440,7 @@ export default function Page() {
                 </div>
                 <div className="rounded-2xl border border-success/30 bg-success/10 p-4">
                   <div className="font-bold">{l.trans({ en: "UI and webkit", ko: "UI and webkit" })}</div>
-                  <div className="text-base-content/70 text-sm">ui/Field.tsx · webkit/useFirebaseMessaging.tsx</div>
+                  <div className="text-base-content/70 text-sm">ui/Field.tsx · webkit/usePushNotification.tsx</div>
                 </div>
               </div>
             </div>
@@ -545,8 +547,8 @@ export default function Page() {
           </Docs.SubSubTitle>
           <div>
             {l.trans({
-              en: "A domain module represents one business concept: user management, orders, payments, projects, and so on. Akan keeps the data shape, service behavior, API contract, state, and UI for that concept aligned in one predictable folder.",
-              ko: "도메인 모듈은 회원 관리, 주문, 결제, 프로젝트처럼 비즈니스에서 하나의 도메인을 차지하는 개념의 표현입니다. Akan은 해당 개념의 데이터 구조, 서비스 동작, API contract, 상태, UI를 하나의 예측 가능한 폴더 안에서 정렬합니다.",
+              en: "A domain module represents one business concept: user management, orders, payments, projects, and so on. Akan keeps the business abstract, data shape, service behavior, API contract, state, and UI for that concept aligned in one predictable folder.",
+              ko: "도메인 모듈은 회원 관리, 주문, 결제, 프로젝트처럼 비즈니스에서 하나의 도메인을 차지하는 개념의 표현입니다. Akan은 해당 개념의 business abstract, 데이터 구조, 서비스 동작, API contract, 상태, UI를 하나의 예측 가능한 폴더 안에서 정렬합니다.",
             })}
           </div>
           <Code.Snippet
@@ -558,6 +560,7 @@ export default function Page() {
     └── {appA,libA}/      # ${l.trans({ en: "Individual application or library", ko: "개별 애플리케이션 또는 라이브러리" })}
         └── lib/          # ${l.trans({ en: "Domain modules", ko: "도메인 모듈" })}
             └── moduleA/  # ${l.trans({ en: "Feature module", ko: "기능 모듈" })}
+                ├── moduleA.abstract.md   # ${l.trans({ en: "Business intent", ko: "비즈니스 의도" })}
                 ├── moduleA.constant.ts   # ${l.trans({ en: "Types and schemas", ko: "타입과 스키마" })}
                 ├── moduleA.dictionary.ts # ${l.trans({ en: "Translations", ko: "번역" })}
                 ├── moduleA.document.ts   # ${l.trans({ en: "Document", ko: "문서" })}
@@ -572,8 +575,8 @@ export default function Page() {
           />
           <div>
             {l.trans({
-              en: "A domain acts like a living organism. From the schema definition in constant.ts to the integration component in Zone.tsx, related changes stay close together. This reduces frontend-backend drift, business logic regressions, and the number of places an agent must inspect before making a change.",
-              ko: "하나의 도메인은 복합적인 유기체처럼 활동합니다. constant.ts의 스키마 정의에서 Zone.tsx의 통합 컴포넌트까지 관련 변경이 가까운 곳에 머뭅니다. 이를 통해 백엔드-프론트엔드 간의 버전 격차, 비즈니스 로직 변경 시 발생하는 문제, 에이전트가 변경 전에 탐색해야 하는 위치를 줄일 수 있습니다.",
+              en: "A domain acts like a living organism. Start with abstract.md for business intent, then keep the schema definition in constant.ts, behavior in service.ts, public contract in signal.ts, and integration UI in Zone.tsx close together. This reduces frontend-backend drift, business logic regressions, and the number of places an agent must inspect before making a change.",
+              ko: "하나의 도메인은 복합적인 유기체처럼 활동합니다. abstract.md에는 비즈니스 의도를 두고, constant.ts에는 스키마 정의를, service.ts에는 동작을, signal.ts에는 공개 contract를, Zone.tsx에는 통합 UI를 가까이 둡니다. 이를 통해 백엔드-프론트엔드 간의 버전 격차, 비즈니스 로직 변경 시 발생하는 문제, 에이전트가 변경 전에 탐색해야 하는 위치를 줄일 수 있습니다.",
             })}
           </div>
         </Docs.Description>

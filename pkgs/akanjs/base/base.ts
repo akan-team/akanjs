@@ -1,4 +1,4 @@
-import type { Cls } from ".";
+import type { CLIENT_VALUE, Cls, DEFAULT_VALUE, PURIFIED_VALUE, SERVER_VALUE } from ".";
 import { Float, Int } from "./primitiveRegistry";
 
 class EnumPrototype {}
@@ -6,6 +6,10 @@ export type EnumInstance<RefName extends string = string, T = string | number> =
   { refName: RefName; value: T },
   {
     refName: RefName;
+    [SERVER_VALUE]: T;
+    [CLIENT_VALUE]: T;
+    [DEFAULT_VALUE]: T;
+    [PURIFIED_VALUE]: T;
     type: StringConstructor | typeof Int | typeof Float;
     values: readonly T[];
     valueMap: Map<T, number>;
@@ -71,7 +75,7 @@ export const enumOf = <RefName extends string, T = string | number>(
     readonly refName = refName;
     declare readonly value: T;
   }
-  return Enum;
+  return Enum as unknown as EnumInstance<RefName, T>;
 };
 
 /** Id-keyed list helper used for light model collections and immutable-style list updates. */
@@ -181,7 +185,6 @@ export class DataList<Light extends { id: string }> {
   }
 }
 
-// export const version = "0.9.0";
 export const logo = `
      _    _                  _     
     / \\  | | ____ _ _ __    (_)___ 

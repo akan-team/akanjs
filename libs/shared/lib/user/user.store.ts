@@ -1,5 +1,5 @@
 import { msg } from "@libs/shared/client";
-import { type Dayjs, dayjs, getEnv } from "akanjs/base";
+import { type Dayjs, dayjs } from "akanjs/base";
 import { getCookie, router, setAuth, setCookie } from "akanjs/client";
 import { isPhoneNumber } from "akanjs/common";
 import { store } from "akanjs/store";
@@ -315,10 +315,11 @@ export class UserStore extends store(sig.user, () => ({
     }: { signinRedirect: string; signupRedirect: string; errorRedirect: string; replace?: boolean },
   ) {
     setCookie("ssoFor", "user");
-    setCookie("signinRedirect", `${location.origin}${router.getPrefixedPath(signinRedirect)}`);
-    setCookie("signupRedirect", `${location.origin}${router.getPrefixedPath(signupRedirect)}`);
-    setCookie("errorRedirect", `${location.origin}${router.getPrefixedPath(errorRedirect)}`);
-    const url = `${getEnv().serverHttpUri}/user/${ssoType}`;
+    setCookie("signinRedirect", `${router.getPrefixedPath(signinRedirect)}`);
+    setCookie("signupRedirect", `${router.getPrefixedPath(signupRedirect)}`);
+    setCookie("errorRedirect", `${router.getPrefixedPath(errorRedirect)}`);
+    setCookie("ssoOrigin", location.origin);
+    const url = `/api/user/${ssoType}`;
     if (replace) location.replace(url);
     else location.assign(url);
   }

@@ -6,7 +6,7 @@ or {
     $source <: within JsImport(),
     not $filename <: r".*\.(?:test|spec)\.tsx?",
     $source <: r"\"@(?:apps|libs)/[^/]+/[^/]+/.+\"",
-    not $source <: r"\"@apps/[^/]+/env/env\.client\"",
+    not $source <: r"\"@apps/[^/]+/env/env\.(?:client|server)\"",
     register_diagnostic(
       span = $source,
       message = "@apps and @libs imports should only reference the first two path segments after the alias."
@@ -15,11 +15,21 @@ or {
   JsModuleSource() as $source where {
     $source <: within JsImport(),
     not $filename <: r".*\.(?:test|spec)\.tsx?",
-    $filename <: r".*apps/akasys/lib/projectBuild/[^/]+\.(?:constant|dictionary|document|service|signal|store)\.ts|.*apps/akasys/lib/projectBuild/[^/]+\.(?:Template|Unit|Util|View|Zone)\.tsx",
+    $filename <: r".*(?:apps|libs)/[^/]+/lib/[^/]+/[^/]+\.(?:ts|tsx)",
     $source <: r"\"\.\./\.\./.*\"",
     register_diagnostic(
       span = $source,
-      message = "projectBuild module files should not import from two or more parent directories."
+      message = "Module files should not import from two or more parent directories."
+    )
+  },
+  JsModuleSource() as $source where {
+    $source <: within JsImport(),
+    not $filename <: r".*\.(?:test|spec)\.tsx?",
+    $filename <: r".*/lib/.+\.tsx",
+    $source <: r"\"\.\./.*\"",
+    register_diagnostic(
+      span = $source,
+      message = "Module UI (.tsx) files under lib must not use internal relative imports like ../cnst. Import from the package client/server entrypoint instead."
     )
   }
 }

@@ -3,6 +3,10 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "workspaces": [
+    "pkgs/*",
+    "pkgs/@akanjs/*"
+  ],
   "scripts": {
     "uploadEnv": "chmod +x infra/master/jenkins/uploadEnv.sh && chmod +x infra/master/jenkins/getSecrets.sh && bash infra/master/jenkins/uploadEnv.sh",
     "downloadEnv": "chmod +x infra/master/jenkins/downloadEnv.sh && chmod +x infra/master/jenkins/getSecrets.sh && bash infra/master/jenkins/downloadEnv.sh",
@@ -14,14 +18,19 @@
     "changeset:version": "changeset version",
     "changeset:publish": "changeset publish",
     "changeset:status": "changeset status",
+    "release:build-packages": "bun pkgs/@akanjs/cli/build.ts && bun dist/pkgs/@akanjs/cli/index.js build-package akanjs && bun dist/pkgs/@akanjs/cli/index.js build-package @akanjs/devkit && bun dist/pkgs/@akanjs/cli/index.js build-package create-akan-workspace && bun dist/pkgs/@akanjs/cli/index.js build-package @akanjs/cli",
+    "release:verify-packages": "bun dist/pkgs/@akanjs/cli/index.js verify-akan-publish-packages",
+    "release:smoke-registry": "bun run akan reset-registry && bun run akan smoke-registry --test=true --tag=rc --registry=http://127.0.0.1:4873",
     "akan": "bun pkgs/@akanjs/cli/build.ts && bun dist/pkgs/@akanjs/cli/index.js",
     "killAkan": "lsof -ti tcp:8282,18282-18300 | xargs kill -9",
     "buildAkan": "bun pkgs/@akanjs/cli/build.ts",
     "runAkan": "bun dist/pkgs/@akanjs/cli/index.js",
-    "create-akan-workspace": "bun pkgs/create-akan-workspace/build.ts && bun dist/pkgs/create-akan-workspace/index.js"
+    "create-akan-workspace": "bun pkgs/create-akan-workspace/build.ts && bun dist/pkgs/create-akan-workspace/index.js",
+    "pr": "gh pr create --repo akan-team/akanjs --base main --fill"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.4",
+    "@changesets/cli": "^2.31.0",
     "@playwright/test": "^1.60.0",
     "@types/bun": "^1.3.14",
     "@types/chance": "^1.1.8",
@@ -81,13 +90,13 @@
     "@nestjs/passport": "^10.0.3",
     "@octokit/webhooks-types": "^7.6.1",
     "@radix-ui/react-accordion": "^1.2.12",
-    "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-popover": "^1.1.15",
     "@radix-ui/react-slot": "^1.2.4",
     "@react-google-maps/api": "^2.20.8",
     "@react-spring/web": "^10.1.0",
     "@shikijs/transformers": "^4.1.0",
+    "@tailwindcss/node": "^4.3.0",
     "@trapezedev/project": "^7.1.4",
     "@types/passport-apple": "^2.0.3",
     "@types/passport-facebook": "^3.0.4",
@@ -130,7 +139,7 @@
     "cordova-plugin-purchase": "^13.16.0",
     "croner": "^10.0.1",
     "crypto-js": "^4.2.0",
-    "daisyui": "^5.5.20",
+    "daisyui": "5.5.23",
     "dataloader": "^2.2.3",
     "dayjs": "^1.11.20",
     "discord.js": "^14.26.4",
@@ -175,14 +184,14 @@
     "puppeteer": "^24.43.1",
     "qrcode": "^1.5.4",
     "qrcode.react": "^4.2.0",
-    "react": "19.2.6",
+    "react": "19.2.7",
     "react-chartjs-2": "^5.3.1",
     "react-copy-to-clipboard": "^5.1.1",
     "react-countup": "^6.5.3",
     "react-datepicker": "^9.1.0",
     "react-daum-postcode": "^4.0.0",
     "react-device-detect": "^2.2.3",
-    "react-dom": "19.2.6",
+    "react-dom": "19.2.7",
     "react-easy-crop": "^5.5.7",
     "react-globe.gl": "^2.38.0",
     "react-icons": "^5.6.0",
@@ -191,7 +200,7 @@
     "react-pdf": "^10.4.1",
     "react-refresh": "^0.18.0",
     "react-server-dom-bun": "0.0.0-experimental-603e6108-20241029",
-    "react-server-dom-webpack": "^19.2.6",
+    "react-server-dom-webpack": "^19.2.7",
     "react-simple-image-viewer": "^1.2.2",
     "react-simple-pull-to-refresh": "^1.3.4",
     "react-spring": "^10.0.4",
@@ -212,5 +221,8 @@
     "tailwindcss": "^4.3.0",
     "ua-parser-js": "^2.0.9",
     "zustand": "^5.0.13"
+  },
+  "patchedDependencies": {
+    "react-dom@19.2.7": "patches/react-dom@19.2.7.patch"
   }
 }

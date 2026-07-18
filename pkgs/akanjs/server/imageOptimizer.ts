@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import sharp from "sharp";
 import { ImageOptimizerError } from "./imageOptimizerError";
 import {
   type AkanImageConfig,
@@ -10,6 +9,18 @@ import {
   getAkanImageWidths,
   mergeAkanImageConfig,
 } from "./types";
+
+type SharpFactory = typeof import("sharp");
+
+let sharpLoad: Promise<SharpFactory> | null = null;
+
+function loadSharp(): Promise<SharpFactory> {
+  sharpLoad ??= import("sharp").then((mod) => {
+    const loaded = mod as unknown as { default?: SharpFactory } & SharpFactory;
+    return loaded.default ?? loaded;
+  });
+  return sharpLoad;
+}
 
 export interface ImageOptimizerOptions {
   publicDir: string;
@@ -274,6 +285,7 @@ export class ImageOptimizer {
     buffer: Buffer,
     options: { width: number; quality: number; contentType: string },
   ): Promise<Buffer> {
+    const sharp = await loadSharp();
     if (sharp.concurrency() > 1) sharp.concurrency(Math.max(Math.floor(sharp.concurrency() / 2), 1));
     const transformer = sharp(buffer, {
       limitInputPixels: 268_402_689,
@@ -371,6 +383,7 @@ export class ImageOptimizer {
     )
       return false;
     try {
+      const sharp = await loadSharp();
       const metadata = await sharp(buffer, { animated: true }).metadata();
       return Boolean(metadata.pages && metadata.pages > 1);
     } catch {

@@ -18,7 +18,7 @@ import type {
 } from "akanjs/constant";
 import type { ServiceModel } from "akanjs/service";
 import type { InternalArgCls } from "./internalArg";
-import type { ArgType, SignalOption } from "./types";
+import type { ArgType, SignalOption, SrvMap } from "./types";
 
 export type EndpointType = "query" | "mutation" | "pubsub" | "message";
 
@@ -331,26 +331,38 @@ export type BuildEndpoint<SrvModule extends ServiceModel = ServiceModel> = {
   query: <Returns extends ConstantFieldTypeInput = ConstantFieldTypeInput, Nullable extends boolean = false>(
     returnRef: Returns,
     signalOption?: SignalOption<Returns, Nullable>,
-  ) => EndpointInfo<"query", SrvModule["srvMap"], [], [], [], [], Returns, never, never, Nullable>;
+  ) => EndpointInfo<"query", SrvMap<SrvModule>, [], [], [], [], Returns, never, never, Nullable>;
   mutation: <Returns extends ConstantFieldTypeInput = ConstantFieldTypeInput, Nullable extends boolean = false>(
     returnRef: Returns,
     signalOption?: SignalOption<Returns, Nullable>,
-  ) => EndpointInfo<"mutation", SrvModule["srvMap"], [], [], [], [], Returns, never, never, Nullable>;
+  ) => EndpointInfo<"mutation", SrvMap<SrvModule>, [], [], [], [], Returns, never, never, Nullable>;
   pubsub: <Returns extends ConstantFieldTypeInput = ConstantFieldTypeInput, Nullable extends boolean = false>(
     returnRef: Returns,
     signalOption?: SignalOption<Returns, Nullable>,
-  ) => EndpointInfo<"pubsub", SrvModule["srvMap"], [], [], [], [], Returns, never, never, Nullable>;
+  ) => EndpointInfo<"pubsub", SrvMap<SrvModule>, [], [], [], [], Returns, never, never, Nullable>;
   message: <Returns extends ConstantFieldTypeInput = ConstantFieldTypeInput, Nullable extends boolean = false>(
     returnRef: Returns,
     signalOption?: SignalOption<Returns, Nullable>,
-  ) => EndpointInfo<"message", SrvModule["srvMap"], [], [], [], [], Returns, never, never, Nullable>;
+  ) => EndpointInfo<"message", SrvMap<SrvModule>, [], [], [], [], Returns, never, never, Nullable>;
 };
 
 export const buildEndpoint = {
-  query: (returnRef: Cls, signalOption?: SignalOption<Cls>) => new EndpointInfo("query", returnRef, signalOption),
-  mutation: (returnRef: Cls, signalOption?: SignalOption<Cls>) => new EndpointInfo("mutation", returnRef, signalOption),
-  pubsub: (returnRef: Cls, signalOption?: SignalOption<Cls>) => new EndpointInfo("pubsub", returnRef, signalOption),
-  message: (returnRef: Cls, signalOption?: SignalOption<Cls>) => new EndpointInfo("message", returnRef, signalOption),
+  query: <Returns extends ConstantFieldTypeInput, Nullable extends boolean = false>(
+    returnRef: Returns,
+    signalOption?: SignalOption<Returns, Nullable>,
+  ) => new EndpointInfo("query", returnRef, signalOption),
+  mutation: <Returns extends ConstantFieldTypeInput, Nullable extends boolean = false>(
+    returnRef: Returns,
+    signalOption?: SignalOption<Returns, Nullable>,
+  ) => new EndpointInfo("mutation", returnRef, signalOption),
+  pubsub: <Returns extends ConstantFieldTypeInput, Nullable extends boolean = false>(
+    returnRef: Returns,
+    signalOption?: SignalOption<Returns, Nullable>,
+  ) => new EndpointInfo("pubsub", returnRef, signalOption),
+  message: <Returns extends ConstantFieldTypeInput, Nullable extends boolean = false>(
+    returnRef: Returns,
+    signalOption?: SignalOption<Returns, Nullable>,
+  ) => new EndpointInfo("message", returnRef, signalOption),
 } as unknown as BuildEndpoint<any>;
 
 export type EndpointBuilder<SrvModule extends ServiceModel = ServiceModel> = (builder: BuildEndpoint<SrvModule>) => {
@@ -361,21 +373,51 @@ export type EndpointBuilder<SrvModule extends ServiceModel = ServiceModel> = (bu
 // Named projections for EndpointInfo's 10 generics. Use these instead of
 // re-inferring the whole shape so that parameter-order refactors only need
 // to be reflected in one place.
-export type EndpInfoReqType<E> =
-  E extends EndpointInfo<infer T, any, any, any, any, any, any, any, any, any> ? T : never;
-export type EndpInfoSrvs<E> = E extends EndpointInfo<any, infer S, any, any, any, any, any, any, any, any> ? S : never;
-export type EndpInfoArgNames<E> =
-  E extends EndpointInfo<any, any, infer N, any, any, any, any, any, any, any> ? N : never;
-export type EndpInfoArgs<E> = E extends EndpointInfo<any, any, any, infer A, any, any, any, any, any, any> ? A : never;
-export type EndpInfoInternalArgs<E> =
-  E extends EndpointInfo<any, any, any, any, infer I, any, any, any, any, any> ? I : never;
-export type EndpInfoServerArgs<E> =
-  E extends EndpointInfo<any, any, any, any, any, infer S, any, any, any, any> ? S : never;
-export type EndpInfoReturnRef<E> =
-  E extends EndpointInfo<any, any, any, any, any, any, infer R, any, any, any> ? R : never;
-export type EndpInfoClientReturns<E> =
-  E extends EndpointInfo<any, any, any, any, any, any, any, infer R, any, any> ? R : never;
-export type EndpInfoServerReturns<E> =
-  E extends EndpointInfo<any, any, any, any, any, any, any, any, infer R, any> ? R : never;
-export type EndpInfoNullable<E> =
-  E extends EndpointInfo<any, any, any, any, any, any, any, any, any, infer N> ? N : never;
+type EndpointInfoEmptyParts = {
+  reqType: never;
+  srvs: never;
+  argNames: never;
+  args: never;
+  internalArgs: never;
+  serverArgs: never;
+  returnRef: never;
+  clientReturns: never;
+  serverReturns: never;
+  nullable: never;
+};
+export type EndpointInfoParts<E> =
+  E extends EndpointInfo<
+    infer ReqType,
+    infer Srvs,
+    infer ArgNames,
+    infer Args,
+    infer InternalArgs,
+    infer ServerArgs,
+    infer Returns,
+    infer ClientReturns,
+    infer ServerReturns,
+    infer Nullable
+  >
+    ? {
+        reqType: ReqType;
+        srvs: Srvs;
+        argNames: ArgNames;
+        args: Args;
+        internalArgs: InternalArgs;
+        serverArgs: ServerArgs;
+        returnRef: Returns;
+        clientReturns: ClientReturns;
+        serverReturns: ServerReturns;
+        nullable: Nullable;
+      }
+    : EndpointInfoEmptyParts;
+export type EndpInfoReqType<E> = EndpointInfoParts<E>["reqType"];
+export type EndpInfoSrvs<E> = EndpointInfoParts<E>["srvs"];
+export type EndpInfoArgNames<E> = EndpointInfoParts<E>["argNames"];
+export type EndpInfoArgs<E> = EndpointInfoParts<E>["args"];
+export type EndpInfoInternalArgs<E> = EndpointInfoParts<E>["internalArgs"];
+export type EndpInfoServerArgs<E> = EndpointInfoParts<E>["serverArgs"];
+export type EndpInfoReturnRef<E> = EndpointInfoParts<E>["returnRef"];
+export type EndpInfoClientReturns<E> = EndpointInfoParts<E>["clientReturns"];
+export type EndpInfoServerReturns<E> = EndpointInfoParts<E>["serverReturns"];
+export type EndpInfoNullable<E> = EndpointInfoParts<E>["nullable"];

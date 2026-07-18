@@ -5,6 +5,8 @@ export * from "./clientEntryDiscovery";
 export * from "./csrArtifactBuilder";
 export * from "./cssCompiler";
 export * from "./cssImportResolver";
+export * from "./devChangePlanner";
+export * from "./devGeneratedIndexSync";
 export * from "./fontOptimizer";
 export * from "./hmrChangeClassifier";
 export * from "./hmrWatcher";

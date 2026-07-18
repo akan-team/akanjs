@@ -35,6 +35,12 @@ export default function Page() {
                 ko: "각 script는 작게 유지하고 작업이 끝나면 지우기 쉽게 만드세요.",
               })}
             </li>
+            <li>
+              {l.trans({
+                en: "Use `akan console` instead when the job is interactive inspection or a small operator command.",
+                ko: "Interactive 점검이나 작은 운영 명령에는 `akan console`을 사용하세요.",
+              })}
+            </li>
           </ul>
         </Docs.Description>
       </Scroll.Slide>

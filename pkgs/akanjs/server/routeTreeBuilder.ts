@@ -1,5 +1,6 @@
 import type {
-  Head,
+  LayoutFallbackRoute,
+  LayoutModule,
   LayoutProps,
   PageProps,
   PageState,
@@ -17,6 +18,8 @@ import {
   parseRouteModuleKey,
   routeSegmentToTreePath,
 } from "akanjs/common";
+import { validatePageConfig } from "../client/frameConfig";
+import { resolveHeadExport, resolveMetadataHead } from "./metadata";
 
 export type PagesContext = Record<string, () => Promise<RouteModule>>;
 
@@ -42,20 +45,44 @@ export interface RouteModuleCacheStats {
 }
 
 export class RouteTreeBuilder {
-  static readonly #pageRouteExports = new Set(["default", "pageConfig", "head", "generateHead", "Loading"]);
+  static readonly #pageRouteExports = new Set([
+    "default",
+    "pageConfig",
+    "head",
+    "metadata",
+    "generateHead",
+    "generateMetadata",
+    "Loading",
+  ]);
   static readonly #rootLayoutExports = new Set([
     "default",
+    "pageConfig",
     "head",
+    "metadata",
     "generateHead",
+    "generateMetadata",
     "fonts",
     "manifest",
     "theme",
     "reconnect",
+    "wsConnect",
     "layoutStyle",
     "gaTrackingId",
     "Loading",
+    "NotFound",
+    "Error",
   ]);
-  static readonly #layoutRouteExports = new Set(["default", "head", "generateHead", "Loading"]);
+  static readonly #layoutRouteExports = new Set([
+    "default",
+    "pageConfig",
+    "head",
+    "metadata",
+    "generateHead",
+    "generateMetadata",
+    "Loading",
+    "NotFound",
+    "Error",
+  ]);
   static readonly #moduleCacheStats: RouteModuleCacheStats = {
     moduleCount: 0,
     loadedModuleCount: 0,
@@ -69,6 +96,7 @@ export class RouteTreeBuilder {
   readonly #baseLayoutPaths: string[];
   readonly #routeMap = new Map<string, Route>();
   readonly #pagePatterns: { key: string; pattern: string }[] = [];
+  readonly #fallbackRoutes: LayoutFallbackRoute[] = [];
 
   constructor(context: PagesContext) {
     this.#context = context;
@@ -79,12 +107,17 @@ export class RouteTreeBuilder {
 
   build(): PathRoute[] {
     RouteTreeBuilder.resetCacheStats();
+    this.#fallbackRoutes.length = 0;
     for (const [filePath, loader] of Object.entries(this.#context)) this.#addRouteModule(filePath, loader);
     assertUniqueRoutePatterns(this.#pagePatterns);
 
     const rootRoute = this.#routeMap.get("/");
     if (!rootRoute) throw new Error("No root route");
     return this.#getPathRoutes(rootRoute).sort((a, b) => compareRouteSpecificity(a.path, b.path));
+  }
+
+  getFallbackRoutes(): LayoutFallbackRoute[] {
+    return [...this.#fallbackRoutes].sort((a, b) => compareRouteSpecificity(a.path, b.path));
   }
 
   static getCacheStats(): RouteModuleCacheStats {
@@ -113,6 +146,28 @@ export class RouteTreeBuilder {
       if (params) return { pathRoute, params };
     }
     return null;
+  }
+
+  static matchFallback(
+    pathname: string,
+    fallbackRoutes: LayoutFallbackRoute[],
+  ): { fallbackRoute: LayoutFallbackRoute; params: Record<string, string> } | null {
+    const candidates = fallbackRoutes
+      .map((fallbackRoute) => ({
+        fallbackRoute,
+        params: RouteTreeBuilder.#matchRoutePrefix(fallbackRoute.path, pathname),
+      }))
+      .filter((entry): entry is { fallbackRoute: LayoutFallbackRoute; params: Record<string, string> } =>
+        Boolean(entry.params),
+      )
+      .sort((a, b) => {
+        const lengthDelta =
+          b.fallbackRoute.path.split("/").filter(Boolean).length -
+          a.fallbackRoute.path.split("/").filter(Boolean).length;
+        if (lengthDelta !== 0) return lengthDelta;
+        return compareRouteSpecificity(a.fallbackRoute.path, b.fallbackRoute.path);
+      });
+    return candidates[0] ?? null;
   }
 
   static parseSearchParams(search: string): Record<string, string | string[]> {
@@ -171,6 +226,14 @@ export class RouteTreeBuilder {
     const currentLayout = !isRoot && route.renderLayout ? route.renderLayout : null;
     const renderRootLayouts = [...parentRootLayouts, ...(currentRootLayout ? [currentRootLayout] : [])];
     const renderLayouts = [...parentLayouts, ...(currentLayout ? [currentLayout] : [])];
+    if (route.renderLayout) {
+      this.#fallbackRoutes.push({
+        path: routePath,
+        pathSegments,
+        renderRootLayouts,
+        renderLayouts,
+      });
+    }
     const routeHead = RouteTreeBuilder.#composeHeadResolvers(route.renderLayout?.resolveHead, parentHead);
     const pageRenderRootLayouts =
       route.pageIncludesOwnLayout === false && currentRootLayout ? parentRootLayouts : renderRootLayouts;
@@ -211,6 +274,7 @@ export class RouteTreeBuilder {
       RouteTreeBuilder.#moduleCacheStats.cacheMisses += 1;
       const mod = await loader();
       RouteTreeBuilder.#validateRouteModuleExports(key, kind, mod);
+      validatePageConfig(key, "pageConfig" in mod ? mod.pageConfig : undefined);
       if (!loaded) {
         RouteTreeBuilder.#moduleCacheStats.loadedModuleCount += 1;
         RouteTreeBuilder.#moduleCacheStats.loadedModuleKeys.push(key);
@@ -238,28 +302,77 @@ export class RouteTreeBuilder {
     if ("head" in mod && "generateHead" in mod) {
       throw new Error(`[route-convention] head and generateHead cannot both be exported in ${key}`);
     }
+    if (
+      !parsed.isInternalRootLayout &&
+      ("head" in mod || "generateHead" in mod) &&
+      ("metadata" in mod || "generateMetadata" in mod)
+    ) {
+      throw new Error(
+        `[route-convention] head/generateHead and metadata/generateMetadata cannot both be exported in ${key}`,
+      );
+    }
+    if ("metadata" in mod && "generateMetadata" in mod) {
+      throw new Error(`[route-convention] metadata and generateMetadata cannot both be exported in ${key}`);
+    }
   }
 
   static #makeRouteRender(key: string, kind: "page" | "layout", loader: () => Promise<RouteModule>): RouteRender {
     const loadModule = RouteTreeBuilder.#makeLazyModule(key, kind, loader);
     const routeRender: RouteRender = {
+      isAsync: true,
       render: async (props: LayoutProps | PageProps) => {
         const mod = await loadModule();
         routeRender.Loading = mod.Loading as never;
+        if (kind === "layout") {
+          const layoutMod = mod as LayoutModule;
+          routeRender.NotFound = layoutMod.NotFound;
+          routeRender.Error = layoutMod.Error;
+        }
         if (!mod.default) throw new Error(`[route-convention] ${key} has no default export`);
         return mod.default(props as never);
       },
       resolveHead: async (props: PageProps) => {
         const mod = await loadModule();
         routeRender.Loading = mod.Loading as never;
-        if (mod.generateHead) return mod.generateHead(props);
-        return mod.head as Head | null | undefined;
+        if (kind === "layout") {
+          const layoutMod = mod as LayoutModule;
+          routeRender.NotFound = layoutMod.NotFound;
+          routeRender.Error = layoutMod.Error;
+        }
+        if (mod.generateHead) {
+          const head = await mod.generateHead(props);
+          if (head !== null && head !== undefined) return resolveHeadExport(head, { includeHeadSnapshot: false });
+        }
+        if (mod.generateMetadata) {
+          const metadata = await mod.generateMetadata(props);
+          return metadata === null || metadata === undefined ? metadata : resolveMetadataHead(metadata);
+        }
+        if (mod.head !== undefined)
+          return mod.head === null ? null : resolveHeadExport(mod.head, { includeHeadSnapshot: false });
+        return mod.metadata === undefined ? undefined : resolveMetadataHead(mod.metadata);
       },
     };
     if (kind === "page") {
       routeRender.getPageConfig = async () => {
         const mod = await loadModule();
         return "pageConfig" in mod ? mod.pageConfig : undefined;
+      };
+    } else {
+      routeRender.getLayoutPageConfig = async () => {
+        const mod = await loadModule();
+        return "pageConfig" in mod ? mod.pageConfig : undefined;
+      };
+      routeRender.resolveNotFound = async () => {
+        const mod = (await loadModule()) as LayoutModule;
+        routeRender.NotFound = mod.NotFound;
+        routeRender.Error = mod.Error;
+        return mod.NotFound;
+      };
+      routeRender.resolveError = async () => {
+        const mod = (await loadModule()) as LayoutModule;
+        routeRender.NotFound = mod.NotFound;
+        routeRender.Error = mod.Error;
+        return mod.Error;
       };
     }
     return routeRender;
@@ -275,5 +388,23 @@ export class RouteTreeBuilder {
       }
       return undefined;
     };
+  }
+
+  static #matchRoutePrefix(pattern: string, pathname: string): Record<string, string> | null {
+    const patternParts = pattern.split("/").filter(Boolean);
+    const pathParts = pathname.split("/").filter(Boolean);
+    if (patternParts.length > pathParts.length) return null;
+    const params: Record<string, string> = {};
+    for (let index = 0; index < patternParts.length; index++) {
+      const patternPart = patternParts[index];
+      const pathPart = pathParts[index];
+      if (!patternPart || !pathPart) return null;
+      if (patternPart.startsWith(":")) {
+        params[patternPart.slice(1)] = decodeURIComponent(pathPart);
+        continue;
+      }
+      if (patternPart !== pathPart) return null;
+    }
+    return params;
   }
 }

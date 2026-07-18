@@ -1,5 +1,4 @@
 "use client";
-import * as Dialog from "@radix-ui/react-dialog";
 import { clsx } from "akanjs/client";
 import { type ReactNode, useEffect, useState } from "react";
 
@@ -23,11 +22,9 @@ export const Provider = ({ className, defaultOpen = false, open = defaultOpen, c
   }, [open]);
   return (
     <DialogContext.Provider value={{ open: openState, setOpen: setOpenState, title, setTitle, action, setAction }}>
-      <Dialog.Root open={openState}>
-        <div data-open={openState} className={clsx("group/dialog", className)}>
-          {children}
-        </div>
-      </Dialog.Root>
+      <div data-open={openState} className={clsx("group/dialog", className)}>
+        {children}
+      </div>
     </DialogContext.Provider>
   );
 };

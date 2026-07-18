@@ -1,4 +1,4 @@
-import { command, Exec, Workspace } from "@akanjs/devkit";
+import { command, Exec, GlobalConfig, Workspace } from "@akanjs/devkit";
 
 import { WorkspaceScript } from "./workspace.script";
 
@@ -21,6 +21,7 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
           value: true,
         },
       ],
+      default: false,
     })
     .option("init", Boolean, {
       desc: "Do you want to initialize the workspace? (Recommended)",
@@ -28,15 +29,35 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
     })
     .option("registry", String, {
       desc: "npm registry URL for installing Akan packages",
-      default: process.env.AKAN_NPM_REGISTRY,
+      default: process.env.AKAN_NPM_REGISTRY ?? "https://registry.npmjs.org",
     })
-    .exec(async function (workspaceName, app, dir, libs, init, registry) {
+    .option("owner", String, {
+      desc: "owner of the workspace",
+      default: process.env.GITHUB_OWNER,
+      nullable: true,
+    })
+    .exec(async function (workspaceName, app, dir, libs, init, registry, owner) {
       const appName = app || "app";
       await this.workspaceScript.createWorkspace(
         workspaceName.toLowerCase().replace(/ /g, "-"),
         appName.toLowerCase().replace(/ /g, "-"),
-        { dirname: dir, installLibs: libs, init, ...(registry ? { registryUrl: registry } : {}) },
+        {
+          dirname: dir,
+          installLibs: libs,
+          init,
+          owner,
+          ...(registry ? { registryUrl: registry } : {}),
+        },
       );
+    }),
+  generateAgentRules: target({
+    desc: "Generate AGENTS.md, CLAUDE.md, and optional Cursor rules for Akan coding agents",
+  })
+    .option("overwrite", Boolean, { desc: "Overwrite existing agent rule files", default: false })
+    .option("cursorRules", Boolean, { desc: "Generate .cursor/rules/akan.mdc", default: true })
+    .with(Workspace)
+    .exec(async function (overwrite, cursorRules, workspace) {
+      await this.workspaceScript.generateAgentRules(workspace, { overwrite, cursorRules });
     }),
   lint: target({ desc: "Lint and fix code in a specific app/lib/pkg" })
     .with(Exec)
@@ -55,5 +76,12 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
     .with(Workspace)
     .exec(async function (workspace) {
       await this.workspaceScript.syncAll(workspace);
+    }),
+  init: target({ desc: "Initialize the workspace", runsOnWorkspaceRoot: false })
+    .arg("devProjectId", String, { desc: "the ID of the workspace" })
+    .option("host", String, { desc: "host of the cloud to target", default: GlobalConfig.akanCloudHost })
+    .with(Workspace)
+    .exec(async function (devProjectId, host, workspace) {
+      await this.workspaceScript.init(devProjectId, workspace, { host });
     }),
 })) {}

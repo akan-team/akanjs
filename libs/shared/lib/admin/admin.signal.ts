@@ -1,36 +1,13 @@
-import { Account, Me } from "@libs/shared/srvkit";
+import {
+  Account,
+  Me,
+  makeAdminAccessTokenResponse as makeAccessTokenResponse,
+  makeAdminSignoutResponse as makeSignoutResponse,
+} from "@libs/shared/srvkit";
 import { ID } from "akanjs/base";
 import { endpoint, internal, Public, Req, slice } from "akanjs/signal";
 import * as cnst from "../cnst";
 import * as srv from "../srv";
-
-interface AccessTokenResponse {
-  jwt: string;
-  refreshToken?: string;
-  expiresAt?: unknown;
-}
-
-const makeAccessTokenResponse = (accessToken: AccessTokenResponse) => {
-  return new Response(JSON.stringify(accessToken), {
-    headers: {
-      "Content-Type": "application/json",
-      ...(accessToken.refreshToken
-        ? {
-            "Set-Cookie": `adminRefreshToken=${encodeURIComponent(accessToken.refreshToken)}; Path=/; SameSite=Lax; HttpOnly`,
-          }
-        : {}),
-    },
-  });
-};
-
-const makeSignoutResponse = (accessToken: AccessTokenResponse) => {
-  return new Response(JSON.stringify(accessToken), {
-    headers: {
-      "Content-Type": "application/json",
-      "Set-Cookie": "adminRefreshToken=; Path=/; SameSite=Lax; HttpOnly; Max-Age=0",
-    },
-  });
-};
 
 export class AdminInternal extends internal(srv.admin, ({ initialize, process, resolveField }) => ({
   initializeAdmin: initialize().exec(async function () {
@@ -81,7 +58,18 @@ export class AdminEndpoint extends endpoint(srv.admin, ({ query, mutation, pubsu
     .exec(async function (refreshToken, account, request) {
       const token = refreshToken ?? (request as Bun.BunRequest).cookies.get("adminRefreshToken");
       if (!token) throw new Error("No refresh token");
-      return makeAccessTokenResponse(await this.adminService.refreshAdminToken(token, account)) as never;
+      try {
+        return makeAccessTokenResponse(await this.adminService.refreshAdminToken(token, account)) as never;
+      } catch (error) {
+        if (
+          !refreshToken &&
+          error instanceof Error &&
+          /^(Expired|Revoked|Invalid) refresh token$/.test(error.message)
+        ) {
+          return makeSignoutResponse({ jwt: "" }) as never;
+        }
+        throw error;
+      }
     }),
   addAdminRole: mutation(cnst.Admin)
     .body("adminId", ID)

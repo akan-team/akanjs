@@ -58,6 +58,8 @@ beforeAll(() => {
     requestStorage: { getStore: () => undefined },
     getRequest: () => requestState.request,
     headers: () => requestState.headers,
+    untrackedRequest: () => requestState.request,
+    untrackedHeaders: () => requestState.headers,
   }));
   mock.module("akanjs/signal", () => ({
     Exception: class Exception extends Error {
@@ -119,6 +121,21 @@ describe("makePageProto", () => {
     expect(page.l.trans({ en: "English", ko: "Korean" })).toBe("Korean");
   });
 
+  test("uses server-seeded browser path until hydration completes", async () => {
+    envState.mode = "browser";
+    installWindow("/en/client-path");
+    const { Translator } = await import("./translator");
+    const { makePageProto } = await import("./makePageProto");
+    const { usePage } = makePageProto(dictionary);
+
+    Translator.setActiveLocale("en");
+    Translator.setActivePath("/server-path");
+    expect(usePage()).toMatchObject({ lang: "en", path: "/server-path" });
+
+    Translator.markHydrated();
+    expect(usePage()).toMatchObject({ lang: "en", path: "/client-path" });
+  });
+
   test("uses server headers first and falls back to request URL", async () => {
     envState.mode = "server";
     const { makePageProto } = await import("./makePageProto");
@@ -162,6 +179,7 @@ describe("generated client glue", () => {
     const { makePageProto } = await import("./makePageProto");
     const pageProto = makePageProto(dictionary);
     const runtimeFetch = Object.assign(() => "ok", generatedFetch);
+    const shownMessages: unknown[] = [];
 
     registerClientRuntime({ ...pageProto, fetch: runtimeFetch, sig: generatedSig });
     const client = await import("./useClient");
@@ -171,5 +189,11 @@ describe("generated client glue", () => {
     expect(client.Err).toBeDefined();
     expect((client.fetch.ping as () => string)()).toBe("pong");
     expect(client.sig.ping).toBe("signal");
+
+    Object.assign(client.msg, {
+      success: (key: string, option?: unknown) => shownMessages.push({ key, option }),
+    });
+    client.msg.success("user.hello", { key: "inviteOwnerFromOrg" });
+    expect(shownMessages).toEqual([{ key: "user.hello", option: { key: "inviteOwnerFromOrg" } }]);
   });
 });

@@ -1,0 +1,9 @@
+---
+description: Akan workspace agent guide
+alwaysApply: true
+---
+
+Follow the workspace agent guide, which is the single source of truth for Akan conventions,
+generated-file rules, and the MCP workflow policy.
+
+@AGENTS.md

@@ -25,8 +25,15 @@ export class Prompter {
 
   static async selectGuideline() {
     const guidelineRoot = await Prompter.#getGuidelineRoot();
-    const guideNames = (await fsPromise.readdir(guidelineRoot)).filter((name) => !name.startsWith("_"));
-    return await select({ message: "Select a guideline", choices: guideNames.map((name) => ({ name, value: name })) });
+    const guideNames = await Prompter.listGuidelines();
+    return await select({
+      message: "Select a guideline",
+      choices: guideNames.map((name) => ({ name, value: name })),
+    });
+  }
+  static async listGuidelines() {
+    const guidelineRoot = await Prompter.#getGuidelineRoot();
+    return (await fsPromise.readdir(guidelineRoot)).filter((name) => !name.startsWith("_")).sort();
   }
   static async getGuideJson(guideName: string): Promise<GuideGenerateJson> {
     const guidelineRoot = await Prompter.#getGuidelineRoot();
@@ -41,13 +48,18 @@ export class Prompter {
     return content;
   }
   static async getUpdateRequest(guideName: string) {
-    return await input({ message: `What do you want to update in ${guideName}?` });
+    return await input({
+      message: `What do you want to update in ${guideName}?`,
+    });
   }
 
   async makeTsFileUpdatePrompt({ context, request }: FileUpdateRequestProps) {
     return `You are a senior developer writing TypeScript-based programs using Akan.js, an in-house framework. Here's an overview of the Akan.js framework:
 ${await this.getDocumentation("framework")}
 Please understand the following background information, write code that meets the requirements, verify that it satisfies the validation conditions, and return the result.
+
+# Code Style
+- Use double quotes for all string literals in TypeScript/TSX code. Do not use single quotes.
 
 # Background Information
 \`\`\`markdown

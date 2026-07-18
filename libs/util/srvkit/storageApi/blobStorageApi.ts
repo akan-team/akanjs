@@ -24,7 +24,7 @@ export class BlobStorageApi implements StorageApi {
   readonly urlPrefix: string;
   constructor(
     appName: string,
-    { baseDir = "local", privateBaseDir = "local", urlPrefix = "/backend/localFile/getBlob" }: BlobStorageOptions,
+    { baseDir = "local", privateBaseDir = "local", urlPrefix = "/api/localFile/getBlob" }: BlobStorageOptions,
   ) {
     this.root = `${process.env.AKAN_WORKSPACE_ROOT ?? "."}/${baseDir}/${appName}/backend`;
     this.privateRoot = `${process.env.AKAN_WORKSPACE_ROOT ?? "."}/${privateBaseDir}/${appName}/server-private`;

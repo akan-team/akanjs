@@ -9,6 +9,7 @@ export * from "./internal";
 export * from "./internalArg";
 export * from "./internalInfo";
 export * from "./middleware";
+export * from "./openapi";
 export * from "./serializer";
 export * from "./serverSignal";
 export * from "./signalContext";

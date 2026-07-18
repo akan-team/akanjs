@@ -44,7 +44,16 @@ akan create-scalar <scalar-name>
 akan build-package akanjs
 akan build-package @akanjs/cli
 akan build-package @akanjs/devkit
+akan build-package create-akan-workspace
+akan verify-akan-publish-packages
+akan smoke-registry --test=true --tag=rc
 ```
+
+Akan framework 패키지는 반드시 `dist/pkgs/*` 산출물 기준으로 publish합니다. `verify-akan-publish-packages`는
+빌드된 패키지에 `npm pack --dry-run --json`을 실행하고, `deploy-akan` 또는 local registry smoke 전에 필요한
+metadata를 검증합니다.
+저장소 릴리즈에서는 root `akan` bootstrap script가 CLI dist를 덮어쓰지 않도록
+`bun run release:build-packages && bun run release:verify-packages`를 우선 사용합니다.
 
 ## 패키지 경계
 

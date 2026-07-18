@@ -30,6 +30,16 @@ export interface ProviderProps {
   layoutStyle?: "mobile" | "web";
   /** Enable reconnect helper. Defaults to local operation mode in CSR. */
   reconnect?: boolean;
+  /** Connect the client WebSocket runtime after the browser loads. */
+  wsConnect?: boolean;
+  /** Active-locale dictionary injected by the server (SSR only) to seed the client Translator. */
+  dictionary?: Record<string, Record<string, unknown>>;
+  /**
+   * Full lang-keyed dictionary snapshot (SSR server-only). The provider seeds every locale into
+   * the RSC-worker Translator (free on the server, never shipped to the browser) and serializes only
+   * the request's active locale to the client, so translations resolve regardless of locale routing.
+   */
+  allDictionary?: Record<string, Record<string, Record<string, unknown>>>;
   /** Root route component used by CSR page loading. */
   of: (props: unknown) => ReactNode | null;
 }
@@ -75,7 +85,11 @@ function encodeBase64Utf8(value: string): string {
 
   const buffer = (
     globalThis as typeof globalThis & {
-      Buffer?: { from: (bytes: Uint8Array) => { toString: (encoding: "base64") => string } };
+      Buffer?: {
+        from: (bytes: Uint8Array) => {
+          toString: (encoding: "base64") => string;
+        };
+      };
     }
   ).Buffer;
   if (buffer) return buffer.from(bytes).toString("base64");

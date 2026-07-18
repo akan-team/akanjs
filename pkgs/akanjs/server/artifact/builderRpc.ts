@@ -6,6 +6,7 @@ import type {
   BuilderRes,
   BuildRouteResultPayload,
   CssPayload,
+  DevBuildStatus,
   PagesBundlePayload,
 } from "./ipcTypes";
 import type { BuildRouteClientResult } from "./manifestTypes";
@@ -26,6 +27,8 @@ export interface BuilderRpcEventHandlers {
    * worker subprocess.
    */
   onPagesUpdated?: (bundle: PagesBundlePayload) => void;
+  /** Builder reported a dev build phase success/failure. */
+  onBuildStatus?: (status: DevBuildStatus) => void;
 }
 
 /**
@@ -75,6 +78,9 @@ export class BuilderRpc {
           return;
         case "pages-updated":
           handlers.onPagesUpdated?.(ev.data);
+          return;
+        case "build-status":
+          handlers.onBuildStatus?.(ev.data);
           return;
         default:
           return;

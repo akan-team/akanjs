@@ -1,5 +1,5 @@
 import dayjsLib, { type Dayjs } from "dayjs";
-
+import { CLIENT_VALUE, DEFAULT_VALUE, EXAMPLE_VALUE, PURIFIED_VALUE, SERVER_VALUE } from "./symbols";
 import type { Cls } from "./types";
 
 export type { Dayjs };
@@ -44,17 +44,14 @@ export class PrimitiveRegistry {
   }
 }
 
-export const PRIMITIVE_SERVER_VALUE = Symbol.for("PRIMITIVE_SERVER_VALUE");
-export const PRIMITIVE_CLIENT_VALUE = Symbol.for("PRIMITIVE_CLIENT_VALUE");
-export const PRIMITIVE_DEFAULT_VALUE = Symbol.for("PRIMITIVE_DEFAULT_VALUE");
-export const PRIMITIVE_EXAMPLE_VALUE = Symbol.for("PRIMITIVE_EXAMPLE_VALUE");
 export type PrimitiveValue = string | number | boolean | Dayjs | Date | null | undefined;
 export class PrimitiveScalar {
   static refName: string;
-  static [PRIMITIVE_SERVER_VALUE]: unknown;
-  static [PRIMITIVE_CLIENT_VALUE]: unknown;
-  static [PRIMITIVE_DEFAULT_VALUE]: unknown = null;
-  static [PRIMITIVE_EXAMPLE_VALUE]: unknown = null;
+  static [SERVER_VALUE]: unknown;
+  static [CLIENT_VALUE]: unknown;
+  static [DEFAULT_VALUE]: unknown = null;
+  static [PURIFIED_VALUE]: unknown = null;
+  static [EXAMPLE_VALUE]: unknown = null;
 
   static validate(value: PrimitiveValue): boolean {
     return true;
@@ -106,10 +103,11 @@ export class PrimitiveScalar {
 /** Integer primitive scalar. Accepts safe integer numbers after parsing. */
 export class Int extends PrimitiveScalar {
   static override refName: "Int" = "Int";
-  static override [PRIMITIVE_SERVER_VALUE]: number;
-  static override [PRIMITIVE_CLIENT_VALUE]: number;
-  static override [PRIMITIVE_DEFAULT_VALUE]: number = 0;
-  static override [PRIMITIVE_EXAMPLE_VALUE]: number = 0;
+  static override [SERVER_VALUE]: number;
+  static override [CLIENT_VALUE]: number;
+  static override [DEFAULT_VALUE]: number = 0;
+  static override [PURIFIED_VALUE]: number = 0;
+  static override [EXAMPLE_VALUE]: number = 0;
 
   static override validate(value: string | number): boolean {
     return typeof value === "number" && Number.isSafeInteger(value);
@@ -126,10 +124,11 @@ PrimitiveRegistry.register(Int);
 /** Floating point primitive scalar. Accepts finite numbers after parsing. */
 export class Float extends PrimitiveScalar {
   static override refName: "Float" = "Float";
-  static override [PRIMITIVE_SERVER_VALUE]: number;
-  static override [PRIMITIVE_CLIENT_VALUE]: number;
-  static override [PRIMITIVE_DEFAULT_VALUE]: number = 0;
-  static override [PRIMITIVE_EXAMPLE_VALUE]: number = 0;
+  static override [SERVER_VALUE]: number;
+  static override [CLIENT_VALUE]: number;
+  static override [DEFAULT_VALUE]: number = 0;
+  static override [PURIFIED_VALUE]: number = 0;
+  static override [EXAMPLE_VALUE]: number = 0;
 
   static override validate(value: string | number): boolean {
     return typeof value === "number" && Number.isFinite(value);
@@ -146,10 +145,11 @@ PrimitiveRegistry.register(Float);
 /** 24-character hexadecimal id primitive used by Akan document and signal models. */
 export class ID extends PrimitiveScalar {
   static override refName: "ID" = "ID";
-  static override [PRIMITIVE_SERVER_VALUE]: string;
-  static override [PRIMITIVE_CLIENT_VALUE]: string;
-  static override [PRIMITIVE_DEFAULT_VALUE]: string = "";
-  static override [PRIMITIVE_EXAMPLE_VALUE]: string = "1234567890abcdef12345678";
+  static override [SERVER_VALUE]: string;
+  static override [CLIENT_VALUE]: string;
+  static override [DEFAULT_VALUE]: string = "";
+  static override [PURIFIED_VALUE]: string = "";
+  static override [EXAMPLE_VALUE]: string = "1234567890abcdef12345678";
 
   static override validate(value: string): boolean {
     if (typeof value !== "string") return false;
@@ -162,7 +162,7 @@ export class ID extends PrimitiveScalar {
     return String(value);
   }
   static override _checkValue(value: PrimitiveValue, options: { optional?: boolean } = {}): void {
-    if (value === ID[PRIMITIVE_DEFAULT_VALUE]) return;
+    if (value === ID[DEFAULT_VALUE]) return;
     // biome-ignore lint/complexity/noThisInStatic: ID keeps shared primitive validation after allowing its default placeholder.
     super._checkValue(value, options);
   }
@@ -172,17 +172,18 @@ PrimitiveRegistry.register(ID);
 /** Open object primitive for intentionally flexible payloads or metadata blobs. */
 export class Any extends PrimitiveScalar {
   static override refName: "Any" = "Any";
-  static override [PRIMITIVE_DEFAULT_VALUE]: object | null = null;
-  static override [PRIMITIVE_EXAMPLE_VALUE]: object = {};
+  static override [DEFAULT_VALUE]: object | null = null;
+  static override [EXAMPLE_VALUE]: object = {};
 }
 PrimitiveRegistry.register(Any);
 
 export class Upload extends PrimitiveScalar {
   static override refName: "Upload" = "Upload";
-  static override [PRIMITIVE_SERVER_VALUE]: File;
-  static override [PRIMITIVE_CLIENT_VALUE]: File;
-  static override [PRIMITIVE_DEFAULT_VALUE]: File | null = null;
-  static override [PRIMITIVE_EXAMPLE_VALUE] = "FileUpload";
+  static override [SERVER_VALUE]: File;
+  static override [CLIENT_VALUE]: File;
+  static override [DEFAULT_VALUE]: File | null = null;
+  static override [PURIFIED_VALUE]: File;
+  static override [EXAMPLE_VALUE] = "FileUpload";
   __TEMP_TYPE__: "Upload" = "Upload";
 }
 PrimitiveRegistry.register(Upload);
@@ -190,10 +191,11 @@ PrimitiveRegistry.register(Upload);
 declare global {
   interface StringConstructor {
     refName: "String";
-    [PRIMITIVE_SERVER_VALUE]: string;
-    [PRIMITIVE_CLIENT_VALUE]: string;
-    [PRIMITIVE_DEFAULT_VALUE]: string;
-    [PRIMITIVE_EXAMPLE_VALUE]: string;
+    [SERVER_VALUE]: string;
+    [CLIENT_VALUE]: string;
+    [DEFAULT_VALUE]: string;
+    [PURIFIED_VALUE]: string;
+    [EXAMPLE_VALUE]: string;
     validate(value: string): boolean;
     parseValue(input: string): string;
     serializeValue(value: string): string;
@@ -203,23 +205,25 @@ declare global {
   }
   interface BooleanConstructor {
     refName: "Boolean";
-    [PRIMITIVE_SERVER_VALUE]: boolean;
-    [PRIMITIVE_CLIENT_VALUE]: boolean;
-    [PRIMITIVE_DEFAULT_VALUE]: boolean;
-    [PRIMITIVE_EXAMPLE_VALUE]: boolean;
-    validate(value: boolean): boolean;
-    parseValue(input: boolean): boolean;
-    serializeValue(value: boolean): boolean;
-    _parse(input: boolean): boolean;
-    _serialize(value: boolean): boolean;
-    _checkValue(value: boolean): void;
+    [SERVER_VALUE]: boolean;
+    [CLIENT_VALUE]: boolean;
+    [DEFAULT_VALUE]: boolean;
+    [PURIFIED_VALUE]: boolean;
+    [EXAMPLE_VALUE]: boolean;
+    validate(value: boolean | number): boolean;
+    parseValue(input: boolean | number): boolean | number;
+    serializeValue(value: boolean | number): boolean | number;
+    _parse(input: boolean | number): boolean;
+    _serialize(value: boolean | number): boolean;
+    _checkValue(value: boolean | number): void;
   }
   interface DateConstructor {
     refName: "Date";
-    [PRIMITIVE_SERVER_VALUE]: Dayjs;
-    [PRIMITIVE_CLIENT_VALUE]: Dayjs;
-    [PRIMITIVE_DEFAULT_VALUE]: Dayjs;
-    [PRIMITIVE_EXAMPLE_VALUE]: string;
+    [SERVER_VALUE]: Dayjs;
+    [CLIENT_VALUE]: Dayjs;
+    [DEFAULT_VALUE]: Dayjs;
+    [PURIFIED_VALUE]: Dayjs;
+    [EXAMPLE_VALUE]: string;
     validate(value: Date): boolean;
     parseValue(input: Date): Dayjs;
     serializeValue(value: Dayjs | Date): Date;
@@ -289,8 +293,8 @@ const scalarPrimitiveStatics = {
 // String
 Object.assign(String, scalarPrimitiveStatics, {
   refName: "String",
-  [PRIMITIVE_DEFAULT_VALUE]: "",
-  [PRIMITIVE_EXAMPLE_VALUE]: "String",
+  [DEFAULT_VALUE]: "",
+  [EXAMPLE_VALUE]: "String",
   validate(value: string) {
     return typeof value === "string";
   },
@@ -304,19 +308,26 @@ Object.assign(String, scalarPrimitiveStatics, {
 PrimitiveRegistry.register(String);
 
 // Boolean
+const normalizeBooleanPrimitiveValue = (value: boolean | number): boolean | null => {
+  if (typeof value === "boolean") return value;
+  if (value === 1) return true;
+  if (value === 0) return false;
+  return null;
+};
+
 Object.assign(Boolean, {
   ...scalarPrimitiveStatics,
   refName: "Boolean",
-  [PRIMITIVE_DEFAULT_VALUE]: false,
-  [PRIMITIVE_EXAMPLE_VALUE]: true,
-  validate(value: boolean) {
-    return typeof value === "boolean";
+  [DEFAULT_VALUE]: false,
+  [EXAMPLE_VALUE]: true,
+  validate(value: boolean | number) {
+    return normalizeBooleanPrimitiveValue(value) !== null;
   },
-  parseValue(input: boolean) {
-    return Boolean(input);
+  parseValue(input: boolean | number) {
+    return normalizeBooleanPrimitiveValue(input) ?? input;
   },
-  serializeValue(value: boolean) {
-    return Boolean(value);
+  serializeValue(value: boolean | number) {
+    return normalizeBooleanPrimitiveValue(value) ?? value;
   },
 });
 PrimitiveRegistry.register(Boolean);
@@ -325,8 +336,8 @@ PrimitiveRegistry.register(Boolean);
 Object.assign(Date, {
   ...scalarPrimitiveStatics,
   refName: "Date",
-  [PRIMITIVE_DEFAULT_VALUE]: dayjs(new Date(-1)),
-  [PRIMITIVE_EXAMPLE_VALUE]: dayjs(new Date().toISOString()),
+  [DEFAULT_VALUE]: dayjs(new Date(-1)),
+  [EXAMPLE_VALUE]: dayjs(new Date().toISOString()),
   validate(value: Date | string | number) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return false;

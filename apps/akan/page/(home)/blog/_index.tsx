@@ -3,6 +3,22 @@ import { Link } from "akanjs/ui";
 
 const posts = [
   {
+    href: "/blog/production-stability",
+    eyebrow: { en: "Production Stability", ko: "Production Stability" },
+    title: {
+      en: "Akan.js is production‑grade stable",
+      ko: "Akan.js는 프로덕션급 안정성을 가집니다",
+    },
+    desc: {
+      en: "A 30‑minute soak across six frameworks shows Akan.js matches Bun‑native throughput while staying restart‑free and memory‑safe.",
+      ko: "6개 프레임워크 대상 30분 soak 결과, Akan.js는 재시작 없이 메모리 안전하게 Bun 네이티브 처리량과 동등함을 보여줍니다.",
+    },
+    meta: { en: "Benchmark", ko: "벤치마크" },
+    date: { en: "Jun 13, 2026", ko: "2026년 6월 13일" },
+    image: "/akanjsImage/stability.webp",
+    imageClassName: "object-cover",
+  },
+  {
     href: "/blog/benchmark",
     eyebrow: { en: "Benchmark", ko: "Benchmark" },
     title: {

@@ -1,6 +1,7 @@
 import {
   type Any,
   arraiedModel,
+  CLIENT_VALUE,
   type Cls,
   type Dayjs,
   type EnumInstance,
@@ -9,23 +10,25 @@ import {
   ID,
   Int,
   isEnum,
-  PRIMITIVE_CLIENT_VALUE,
-  PRIMITIVE_SERVER_VALUE,
   PrimitiveRegistry,
   type PrimitiveScalar,
+  SERVER_VALUE,
   type SingleValue,
   type UnCls,
 } from "akanjs/base";
 import { ConstantRegistry } from "./constantRegistry";
-import type { ConstantCls } from "./via";
+import type { BaseObject } from "./types";
+import type { ConstantModelRef } from "./via";
 
 export type ParamFieldType =
   | (typeof PrimitiveScalar & {
-      [PRIMITIVE_CLIENT_VALUE]: string | number | boolean | Dayjs;
+      [CLIENT_VALUE]: string | number | boolean | Dayjs;
     })
   | EnumInstance<string, any>;
 
-export type ConstantFieldType = typeof PrimitiveScalar | Cls | MapConstructor | EnumInstance<string, number>;
+// biome-ignore lint/suspicious/noExplicitAny: enum values can be arbitrary string/number literal unions.
+type ConstantFieldEnumType = EnumInstance<string, any>;
+export type ConstantFieldType = typeof PrimitiveScalar | ConstantModelRef | MapConstructor | ConstantFieldEnumType;
 export type ConstantFieldTypeInput =
   | ConstantFieldType
   | ConstantFieldType[]
@@ -38,26 +41,46 @@ export type FieldToValue<Field, MapValue = any> = Field extends null
     ? Map<string, FieldToValue<MapValue>>
     : Field extends (infer F)[]
       ? FieldToValue<F>[]
-      : Field extends { [PRIMITIVE_SERVER_VALUE]: infer V }
-        ? V
-        : Field extends EnumInstance<string, infer V>
-          ? V
-          : Field extends Cls
-            ? UnCls<Field>
-            : never;
+      : Field extends typeof PrimitiveScalar | StringConstructor | BooleanConstructor | DateConstructor
+        ? Field[typeof SERVER_VALUE]
+        : Field extends ConstantModelRef
+          ? UnCls<Field>
+          : Field extends { [SERVER_VALUE]: infer V }
+            ? V
+            : Field extends Cls
+              ? UnCls<Field>
+              : never;
 export interface FieldInfoObject {
-  [key: string]: FieldInfo<any, ConstantFieldTypeInput | null, any>;
+  [key: string]: FieldInfo<
+    any,
+    ConstantFieldTypeInput | null,
+    any,
+    any,
+    any,
+    boolean,
+    boolean,
+    boolean,
+    boolean,
+    boolean,
+    boolean,
+    boolean
+  >;
 }
 export type ExtractFieldInfoObject<Obj extends FieldInfoObject> = {
-  [K in keyof Obj]: Obj[K] extends FieldInfo<any, infer FieldValue, infer ExplicitType, infer MapValue>
-    ? unknown extends ExplicitType
-      ? FieldToValue<FieldValue, MapValue>
-      : ExplicitType
-    : never;
+  [K in keyof Obj]: unknown extends Obj[K]["explicitType"]
+    ? FieldToValue<Obj[K]["value"], Obj[K]["mapValue"]>
+    : Obj[K]["explicitType"];
 };
+type FieldKindSource<Value> = NonNullable<SingleValue<Value>>;
+type IsNullableValue<Value> = null extends Value ? true : false;
+type FieldInfoValue<Value, ExplicitType, MapValue> = unknown extends ExplicitType
+  ? FieldToValue<Value, MapValue>
+  : ExplicitType;
+
+export type ConstantFieldKind = "property" | "hidden" | "secret" | "resolve";
 
 export interface ConstantFieldProps<
-  FieldType extends "property" | "hidden" | "resolve" = "property" | "hidden" | "resolve",
+  FieldType extends ConstantFieldKind = ConstantFieldKind,
   FieldValue = any,
   MapValue = any,
   Metadata = { [key: string]: any },
@@ -87,15 +110,40 @@ export const fieldPresets = ["email", "password", "url"] as const;
 export type FieldPreset = (typeof fieldPresets)[number];
 
 class FieldInfo<
-  FieldType extends "property" | "hidden" | "resolve" = any,
+  FieldType extends ConstantFieldKind = any,
   Value extends ConstantFieldTypeInput | null = null,
   ExplicitType = unknown,
   MapValue = Value extends MapConstructor ? typeof PrimitiveScalar : never,
+  KindSource = FieldKindSource<Value>,
+  IsRelation extends boolean = UnCls<KindSource> extends BaseObject ? true : false,
+  IsEnum extends boolean = KindSource extends EnumInstance<string, any> ? true : false,
+  IsPrimitive extends boolean = KindSource extends typeof PrimitiveScalar ? true : false,
+  IsMap extends boolean = KindSource extends MapConstructor ? true : false,
+  IsScalar extends boolean = IsRelation extends true
+    ? false
+    : IsEnum extends true
+      ? false
+      : IsPrimitive extends true
+        ? false
+        : IsMap extends true
+          ? false
+          : true,
+  IsHidden extends boolean = FieldType extends "hidden" ? true : false,
+  IsSecret extends boolean = FieldType extends "secret" ? true : false,
 > {
   readonly value: Value;
   readonly type: ConstantFieldTypeInput;
   readonly option: ConstantFieldProps;
   declare explicitType: ExplicitType;
+  declare mapValue: MapValue;
+  declare _isEnum: IsEnum;
+  declare _isPrimitive: IsPrimitive;
+  declare _isScalar: IsScalar;
+  declare _isRelation: IsRelation;
+  declare _isHidden: IsHidden;
+  declare _isSecret: IsSecret;
+  declare _isMap: IsMap;
+
   constructor(value: Value, option: ConstantFieldProps<FieldType, any, MapValue>) {
     this.value = value;
     const [singleValue, arrDepth] = getNonArrayModel(value as Cls);
@@ -121,7 +169,7 @@ class FieldInfo<
 }
 
 interface ConstantFieldBuildProps<
-  FieldType extends "property" | "hidden" | "resolve" = any,
+  FieldType extends ConstantFieldKind = any,
   FieldValue = any,
   MapValue = any,
   Metadata = any,
@@ -146,7 +194,7 @@ interface ConstantFieldBuildProps<
   of?: MapValue; // for Map type fields
   validate?: (value: FieldValue, model: any) => boolean;
   text?: "search" | "filter";
-  modelRef: ConstantCls;
+  modelRef: ConstantModelRef;
   arrDepth: number;
   optArrDepth: number;
   meta: Metadata;
@@ -159,24 +207,81 @@ export interface FieldProps extends ConstantFieldBuildProps {
   isMap: boolean;
 }
 
-export type FieldInfoObjectToFieldObject<Obj extends FieldInfoObject> = {
-  [K in keyof Obj]: Obj[K] extends FieldInfo<infer FieldType, infer Value, infer ExplicitType, infer MapValue>
-    ? ConstantField<
+type ConstantFieldFromInfoParts<
+  FieldType extends ConstantFieldKind,
+  Value extends ConstantFieldTypeInput | null,
+  ExplicitType,
+  MapValue,
+  IsRelation extends boolean,
+  IsEnum extends boolean,
+  IsPrimitive extends boolean,
+  IsMap extends boolean,
+  IsScalar extends boolean,
+  IsHidden extends boolean,
+  IsSecret extends boolean,
+  _FieldValue = FieldInfoValue<Value, ExplicitType, MapValue>,
+> = ConstantField<
+  FieldType,
+  Value,
+  _FieldValue,
+  MapValue,
+  IsNullableValue<_FieldValue>,
+  IsRelation,
+  IsEnum,
+  IsPrimitive,
+  IsScalar,
+  IsHidden,
+  IsSecret,
+  IsMap
+>;
+type ConstantFieldFromInfo<Info> =
+  Info extends FieldInfo<
+    infer FieldType,
+    infer Value,
+    infer ExplicitType,
+    infer MapValue,
+    infer _KindSource,
+    infer IsRelation,
+    infer IsEnum,
+    infer IsPrimitive,
+    infer IsMap,
+    infer IsScalar,
+    infer IsHidden,
+    infer IsSecret
+  >
+    ? ConstantFieldFromInfoParts<
         FieldType,
         Value,
-        unknown extends ExplicitType ? FieldToValue<Value, MapValue> : ExplicitType,
-        MapValue
+        ExplicitType,
+        MapValue,
+        IsRelation,
+        IsEnum,
+        IsPrimitive,
+        IsMap,
+        IsScalar,
+        IsHidden,
+        IsSecret
       >
     : never;
+
+export type FieldInfoObjectToFieldObject<Obj extends FieldInfoObject> = {
+  [K in keyof Obj]: ConstantFieldFromInfo<Obj[K]>;
 };
 
 /** Runtime metadata for a single Akan constant field. */
 export class ConstantField<
-  FieldType extends "property" | "hidden" | "resolve" = "property" | "hidden" | "resolve",
+  FieldType extends ConstantFieldKind = ConstantFieldKind,
   Value extends ConstantFieldTypeInput | null = any,
   FieldValue = any,
   MapValue = any,
-  Nullable extends boolean = false,
+  Nullable extends boolean = boolean,
+  IsRelation extends boolean = boolean,
+  IsEnum extends boolean = boolean,
+  IsPrimitive extends boolean = boolean,
+  IsScalar extends boolean = boolean,
+  IsHidden extends boolean = boolean,
+  IsSecret extends boolean = boolean,
+  IsMap extends boolean = boolean,
   Metadata = { [key: string]: any },
 > implements ConstantFieldBuildProps<FieldType, FieldValue, MapValue, Metadata>
 {
@@ -212,11 +317,17 @@ export class ConstantField<
   readonly of?: MapValue; // for Map type fields
   readonly validate?: (value: FieldValue, model: any) => boolean;
   readonly text?: "search" | "filter";
-  readonly modelRef: ConstantCls;
+  readonly modelRef: ConstantModelRef;
   readonly arrDepth: number;
   readonly optArrDepth: number;
   readonly meta: Metadata;
-
+  declare _isScalar: IsScalar;
+  declare _isRelation: IsRelation;
+  declare _isEnum: IsEnum;
+  declare _isPrimitive: IsPrimitive;
+  declare _isHidden: IsHidden;
+  declare _isSecret: IsSecret;
+  declare _isMap: IsMap;
   constructor(props: ConstantFieldBuildProps<FieldType, FieldValue, MapValue, Metadata>) {
     this.nullable = props.nullable as unknown as Nullable;
     this.ref = props.ref;
@@ -244,15 +355,50 @@ export class ConstantField<
   }
 
   static fromFieldInfo<
-    FieldType extends "property" | "hidden" | "resolve" = any,
+    FieldType extends ConstantFieldKind = any,
     Value extends ConstantFieldTypeInput | null = null,
     FieldValue = any,
     MapValue = any,
-    Nullable extends boolean = false,
+    Nullable extends boolean = IsNullableValue<FieldInfoValue<Value, FieldValue, MapValue>>,
+    KindSource = FieldKindSource<Value>,
+    IsRelation extends boolean = false,
+    IsEnum extends boolean = false,
+    IsPrimitive extends boolean = false,
+    IsMap extends boolean = false,
+    IsScalar extends boolean = false,
+    IsHidden extends boolean = false,
+    IsSecret extends boolean = false,
     Metadata = { [key: string]: any },
   >(
-    fieldInfo: FieldInfo<FieldType, Value, FieldValue, MapValue>,
-  ): ConstantField<FieldType, Value, FieldValue, MapValue, Nullable, Metadata> {
+    fieldInfo: FieldInfo<
+      FieldType,
+      Value,
+      FieldValue,
+      MapValue,
+      KindSource,
+      IsRelation,
+      IsEnum,
+      IsPrimitive,
+      IsMap,
+      IsScalar,
+      IsHidden,
+      IsSecret
+    >,
+  ): ConstantField<
+    FieldType,
+    Value,
+    FieldValue,
+    MapValue,
+    Nullable,
+    IsRelation,
+    IsEnum,
+    IsPrimitive,
+    IsScalar,
+    IsHidden,
+    IsSecret,
+    IsMap,
+    Metadata
+  > {
     const [modelRef, arrDepth] = getNonArrayModel(fieldInfo.type as Cls);
     const [option, optArrDepth] = getNonArrayModel(fieldInfo.option);
 
@@ -261,7 +407,7 @@ export class ConstantField<
     if (isMap && !option.of) throw new Error("Map type must have 'of' option");
 
     return new ConstantField({
-      nullable: option.nullable ?? ((option.default === "" ? true : false) as unknown as Nullable),
+      nullable: option.nullable ?? ((option.default === "") as unknown as Nullable),
       ref: option.ref,
       refPath: option.refPath,
       refType: option.refType,
@@ -296,7 +442,7 @@ export class ConstantField<
     return this.arrDepth > 0;
   }
   get isMap() {
-    return this.modelRef === Map;
+    return (this.modelRef as Cls) === Map;
   }
   getProps(): FieldProps {
     return {
@@ -341,11 +487,11 @@ type FieldOption<
   _FieldToValue = FieldToValue<Value, MapValue> | null | undefined,
 > =
   | Omit<
-      ConstantFieldProps<"property" | "hidden" | "resolve", _FieldToValue, MapValue, Metadata>,
+      ConstantFieldProps<ConstantFieldKind, _FieldToValue, MapValue, Metadata>,
       "enum" | "meta" | "nullable" | "fieldType" | "select"
     >
   | Omit<
-      ConstantFieldProps<"property" | "hidden" | "resolve", SingleValue<_FieldToValue>, MapValue, Metadata>,
+      ConstantFieldProps<ConstantFieldKind, SingleValue<_FieldToValue>, MapValue, Metadata>,
       "enum" | "meta" | "nullable" | "fieldType" | "select"
     >[];
 
@@ -379,7 +525,7 @@ field.hidden = <
   value: Value,
   option: FieldOption<Value, MapValue> = {},
 ) =>
-  new FieldInfo<"hidden", Value | null, ExplicitType | null, MapValue>(value, {
+  new FieldInfo<"hidden", Value, ExplicitType, MapValue>(value, {
     ...option,
     fieldType: "hidden",
     nullable: true,
@@ -392,9 +538,9 @@ field.secret = <
   value: Value,
   option: FieldOption<Value, MapValue> = {},
 ) =>
-  new FieldInfo<"hidden", Value | null, ExplicitType | null, MapValue>(value, {
+  new FieldInfo<"secret", Value | null, ExplicitType | null, MapValue>(value, {
     ...option,
-    fieldType: "hidden",
+    fieldType: "secret",
     select: false,
     nullable: true,
   });

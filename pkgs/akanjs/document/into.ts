@@ -1,10 +1,12 @@
-import { type Cls, LOADER_META, type MergeAllActionTypes, type PromiseOrObject } from "akanjs/base";
+import { type Cls, LOADER_META, type PromiseOrObject } from "akanjs/base";
 import { applyMixins } from "akanjs/common";
-import type { ConstantModel, DocumentModel, FieldObject, QueryOf } from "akanjs/constant";
-import type { ExtractQuery, ExtractSort, FilterCls, FilterInstance, SchemaOf } from ".";
-import type { DatabaseInstance } from "./database";
-import type { DocumentUpdate, DocumentUpdateOptions } from "./documentQuery";
+import type { DocumentModel, QueryOf } from "akanjs/constant";
+import type { FilterCls, FilterQueryOf, FilterSortOf, SchemaOf } from ".";
+import type { CacheDatabase, QueryMethodPart } from "./database";
+import type { DataLoader } from "./dataLoader";
+import type { DocumentQuery, DocumentUpdateInput, DocumentUpdateOptions } from "./documentQuery";
 import { type LoaderBuilder, type ModelCls, makeLoaderBuilder } from "./loaderInfo";
+import type { DocumentProjection } from "./types";
 
 export type CRUDEventType = "create" | "update" | "remove";
 export type SaveEventType = "save" | CRUDEventType;
@@ -13,8 +15,8 @@ interface DefaultMdlStats<
   TDocument,
   TSchema,
   _Partial extends Partial<TSchema> = Partial<TSchema>,
-  _FilterQuery extends QueryOf<TSchema> = QueryOf<TSchema>,
-  _Projection extends Partial<Record<keyof TSchema, boolean>> = Partial<Record<keyof TSchema, boolean>>,
+  _FilterQuery extends DocumentQuery<TSchema> = DocumentQuery<TSchema>,
+  _Projection = DocumentProjection<TSchema>,
 > {
   pickOneAndWrite: (query: _FilterQuery, rawData: _Partial) => Promise<TDocument>;
   pickAndWrite: (docId: string, rawData: _Partial) => Promise<TDocument>;
@@ -45,10 +47,10 @@ export interface UpdateResult {
   modifiedCount: number;
   upsertedId?: string | null;
 }
-export interface BulkWriteOperation<Raw> {
+export interface BulkWriteOperation<Raw, _RawDoc = DocumentModel<Raw>, _RawQuery = DocumentQuery<_RawDoc>> {
   updateOne: {
-    filter: QueryOf<DocumentModel<Raw>>;
-    update: DocumentUpdate;
+    filter: _RawQuery;
+    update: DocumentUpdateInput<_RawDoc>;
     upsert?: boolean;
   };
 }
@@ -63,89 +65,86 @@ type FindOneChain<Doc> = Promise<Doc | null> & {
   skip(skip: number): FindOneChain<Doc>;
   select(projection?: unknown): FindOneChain<Doc>;
 };
-export type Mdl<Doc, Raw> = DefaultMdlStats<Doc, DocumentModel<Raw>> & {
+export type Mdl<
+  Doc,
+  Raw,
+  _RawDoc = DocumentModel<Raw>,
+  _RawQuery extends DocumentQuery<_RawDoc> = DocumentQuery<_RawDoc>,
+  _Projection extends DocumentProjection<Raw> = DocumentProjection<Raw>,
+> = DefaultMdlStats<Doc, _RawDoc, Partial<_RawDoc>, _RawQuery, _Projection> & {
   refName: string;
-  new (data: Partial<DocumentModel<Raw>>): Doc;
-  find(query: QueryOf<DocumentModel<Raw>>, projection?: Partial<Record<keyof Raw, boolean>>): FindManyChain<Doc>;
-  findOne(query: QueryOf<DocumentModel<Raw>>, projection?: Partial<Record<keyof Raw, boolean>>): FindOneChain<Doc>;
-  findById(id: string | undefined, projection?: Partial<Record<keyof Raw, boolean>>): Promise<Doc | null>;
-  countDocuments(query: QueryOf<DocumentModel<Raw>>): Promise<number>;
-  exists(query: QueryOf<DocumentModel<Raw>>): Promise<string | null>;
+  new (data: Partial<_RawDoc> | Partial<Doc>): Doc;
+  find(query: _RawQuery, projection?: _Projection): FindManyChain<Doc>;
+  findOne(query: _RawQuery, projection?: _Projection): FindOneChain<Doc>;
+  findById(id: string | undefined, projection?: _Projection): Promise<Doc | null>;
+  countDocuments(query: _RawQuery): Promise<number>;
+  exists(query: _RawQuery): Promise<string | null>;
   updateOne(
-    query: QueryOf<DocumentModel<Raw>>,
-    update: DocumentUpdate,
+    query: _RawQuery,
+    update: DocumentUpdateInput<_RawDoc>,
     options?: DocumentUpdateOptions,
   ): Promise<UpdateResult>;
-  updateMany(query: QueryOf<DocumentModel<Raw>>, update: DocumentUpdate): Promise<UpdateResult>;
-  deleteMany(query: QueryOf<DocumentModel<Raw>>): Promise<UpdateResult>;
-  bulkWrite(operations: BulkWriteOperation<Raw>[]): Promise<UpdateResult>;
+  updateMany(query: _RawQuery, update: DocumentUpdateInput<_RawDoc>): Promise<UpdateResult>;
+  deleteMany(query: _RawQuery): Promise<UpdateResult>;
+  bulkWrite(operations: BulkWriteOperation<Raw, _RawDoc, _RawQuery>[]): Promise<UpdateResult>;
 };
+
+interface IntoConstantModel<T extends string, _CapitalizedRefName extends string, Raw> {
+  refName: T;
+  _CapitalizedRefName: _CapitalizedRefName;
+  _Full: Raw;
+}
+type NoInferType<T> = [T][T extends unknown ? 0 : never];
+type IntoModelActions<
+  T extends string,
+  _CapitalizedRefName extends string,
+  Doc,
+  Raw,
+  _Query,
+  _Sort,
+  _QueryOfDoc = QueryOf<Doc>,
+> = {
+  [key in _CapitalizedRefName]: Mdl<Doc, Raw>;
+} & {
+  [key in `${Uncapitalize<_CapitalizedRefName>}Loader`]: DataLoader<string, Doc, string>;
+} & {
+  [key in `${Uncapitalize<_CapitalizedRefName>}Cache`]: CacheDatabase<T>;
+} & {
+  [K in `get${_CapitalizedRefName}`]: (id: string) => Promise<Doc>;
+} & {
+  [K in `load${_CapitalizedRefName}`]: (id?: string) => Promise<Doc | null>;
+} & {
+  [K in `load${_CapitalizedRefName}Many`]: (ids: string[]) => Promise<Doc[]>;
+} & {
+  [K in `create${_CapitalizedRefName}`]: (data: Partial<Doc>) => Promise<Doc>;
+} & {
+  [K in `update${_CapitalizedRefName}`]: (id: string, data: Partial<Doc>) => Promise<Doc>;
+} & {
+  [K in `remove${_CapitalizedRefName}`]: (id: string) => Promise<Doc>;
+} & QueryMethodPart<_Query, _Sort, Raw, Doc, unknown, unknown, unknown, _QueryOfDoc>;
 
 export const into = <
   Doc,
-  Filter extends FilterInstance,
+  FilterRef extends FilterCls,
   T extends string,
-  Input,
-  Obj,
-  Full,
-  Light,
-  Insight,
-  FullFieldObj extends FieldObject,
+  Raw,
   AddDbModels extends ModelCls[],
   _CapitalizedRefName extends string,
-  _Default,
-  _DefaultInput,
-  _DefaultState,
-  _DefaultStateInput,
-  _DefaultInsight,
-  _PurifiedInput,
-  _Doc,
-  _DocInput,
-  _QueryOfDoc,
-  _Query = ExtractQuery<Filter>,
-  _Sort = ExtractSort<Filter>,
-  _DatabaseModel = DatabaseInstance<
-    T,
-    _DocInput,
-    Doc,
-    Full,
-    Insight,
-    Filter,
-    _CapitalizedRefName,
-    _QueryOfDoc,
-    _Query,
-    _Sort
-  >,
-  _LoaderBuilder extends LoaderBuilder<_Doc> = LoaderBuilder<_Doc>,
+  _QueryOfDoc = QueryOf<Doc>,
+  _Query = FilterQueryOf<FilterRef>,
+  _Sort = FilterSortOf<FilterRef>,
+  _LoaderBuilder extends LoaderBuilder<NoInferType<Doc>> = LoaderBuilder<Doc>,
 >(
   docRef: Cls<Doc>,
-  filterRef: FilterCls<Filter>,
-  cnst: ConstantModel<
-    T,
-    Input,
-    Obj,
-    Full,
-    Light,
-    Insight,
-    FullFieldObj,
-    _CapitalizedRefName,
-    _Default,
-    _DefaultInput,
-    _DefaultState,
-    _DefaultStateInput,
-    _DefaultInsight,
-    _PurifiedInput,
-    _Doc,
-    _DocInput,
-    _QueryOfDoc
-  >,
+  filterRef: FilterRef,
+  cnst: IntoConstantModel<T, _CapitalizedRefName, Raw>,
   loaderBuilder: _LoaderBuilder,
   ...addMdls: [...AddDbModels]
 ): ModelCls<
-  MergeAllActionTypes<AddDbModels, keyof _DatabaseModel & string> & _DatabaseModel,
+  IntoModelActions<T, _CapitalizedRefName, Doc, Raw, _Query, _Sort, _QueryOfDoc>,
   ReturnType<_LoaderBuilder>
 > => {
-  const loaderInfoMap = loaderBuilder(makeLoaderBuilder());
+  const loaderInfoMap = loaderBuilder(makeLoaderBuilder<Doc>());
   const libsOnSchemaFns = addMdls.map((mdl) => mdl._onSchema);
   const DefaultModel = Object.assign(class DefaultModel {}, {
     [LOADER_META]: Object.assign({}, ...addMdls.map((mdl) => mdl[LOADER_META]), loaderInfoMap),
@@ -164,7 +163,7 @@ export const into = <
     });
   });
   return DefaultModel as unknown as ModelCls<
-    MergeAllActionTypes<AddDbModels, keyof _DatabaseModel & string> & _DatabaseModel,
+    IntoModelActions<T, _CapitalizedRefName, Doc, Raw, _Query, _Sort, _QueryOfDoc>,
     ReturnType<_LoaderBuilder>
   >;
 };

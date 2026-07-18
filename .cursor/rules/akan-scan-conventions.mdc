@@ -4,7 +4,7 @@ globs: apps/**/*,libs/**/*
 alwaysApply: false
 ---
 
-# Akan Scan Conventions
+# Akan Sync Conventions
 
 - `apps/<appName>` root may only contain these files: `akan.app.json`, `akan.config.ts`, `capacitor.config.ts`, `client.ts`, `main.ts`, `package.json`, `server.ts`, `tsconfig.json`.
 - `apps/<appName>` root may only contain these folders: `.akan`, `android`, `common`, `env`, `ios`, `lib`, `page`, `private`, `public`, `script`, `srvkit`, `ui`, `webkit`.

@@ -15,6 +15,8 @@ export type CapacitorAppModule = {
   App: {
     addListener: (eventName: string, listenerFunc: (...args: unknown[]) => void) => Promise<unknown> | unknown;
     removeAllListeners: () => Promise<void> | void;
+    exitApp?: () => Promise<void> | void;
+    getLaunchUrl?: () => Promise<{ url?: string | null }>;
     getInfo: () => Promise<{ id: string; version: string; build: string; [key: string]: unknown }>;
   };
 };
@@ -86,6 +88,7 @@ export type CapacitorKeyboardModule = {
   Keyboard: {
     show: () => Promise<void> | void;
     hide: () => Promise<void> | void;
+    setResizeMode?: (options: { mode: "body" | "ionic" | "native" | "none" }) => Promise<void> | void;
     addListener: (eventName: string, listenerFunc: (info: CapacitorKeyboardInfo) => void) => Promise<unknown> | unknown;
     removeAllListeners: () => Promise<void> | void;
   };
@@ -104,6 +107,19 @@ export type CapacitorPushNotificationsModule = {
     requestPermissions: () => Promise<{ receive: "granted" | "denied" | string }>;
     checkPermissions: () => Promise<{ receive: "granted" | "denied" | string }>;
     register: () => Promise<void> | void;
+    addListener: (
+      eventName:
+        | "registration"
+        | "registrationError"
+        | "pushNotificationReceived"
+        | "pushNotificationActionPerformed"
+        | string,
+      listenerFunc: (event: {
+        value?: string;
+        error?: string;
+        notification?: { data?: Record<string, unknown> };
+      }) => void,
+    ) => Promise<{ remove?: () => Promise<void> | void } | void> | { remove?: () => Promise<void> | void } | void;
   };
 };
 
@@ -145,6 +161,7 @@ type CapacitorModuleMap = {
 type CapacitorImportCache = Partial<{
   [K in keyof CapacitorModuleMap]: Promise<CapacitorModuleMap[keyof CapacitorModuleMap]>;
 }>;
+type CapacitorPluginRegistry = Record<string, unknown>;
 
 declare global {
   // eslint-disable-next-line no-var
@@ -169,58 +186,78 @@ const loadCapacitorModule = <K extends keyof CapacitorModuleMap>(
   return loaded;
 };
 
-const importNativeModule = <T>(specifier: string) => import(specifier) as Promise<T>;
-
-const capacitorPackage = (name: string) => `@capacitor/${name}`;
-
-const capacitorCommunityPackage = (name: string) => `@capacitor-community/${name}`;
+const getCapacitorPlugin = <Plugin>(name: string): Plugin => {
+  const capacitor = (globalThis as typeof globalThis & { Capacitor?: { Plugins?: CapacitorPluginRegistry } }).Capacitor;
+  const plugin = capacitor?.Plugins?.[name];
+  if (!plugin) throw new Error(`Capacitor plugin "${name}" is not available.`);
+  return plugin as Plugin;
+};
 
 export const loadCapacitorApp = () =>
-  loadCapacitorModule("app", () => importNativeModule<CapacitorAppModule>(capacitorPackage("app")));
+  loadCapacitorModule("app", async () => ({ App: getCapacitorPlugin<CapacitorAppModule["App"]>("App") }));
 
 export const loadCapacitorBrowser = () =>
-  loadCapacitorModule("browser", () => importNativeModule<CapacitorBrowserModule>(capacitorPackage("browser")));
+  loadCapacitorModule("browser", async () => ({
+    Browser: getCapacitorPlugin<CapacitorBrowserModule["Browser"]>("Browser"),
+  }));
 
 export const loadCapacitorCamera = () =>
-  loadCapacitorModule("camera", () => importNativeModule<CapacitorCameraModule>(capacitorPackage("camera")));
+  loadCapacitorModule("camera", async () => ({
+    Camera: getCapacitorPlugin<CapacitorCameraModule["Camera"]>("Camera"),
+    CameraResultType: { DataUrl: "dataUrl" },
+    CameraSource: { Prompt: "PROMPT", Camera: "CAMERA", Photos: "PHOTOS" },
+  }));
 
 export const loadCapacitorContacts = () =>
-  loadCapacitorModule("contacts", () =>
-    importNativeModule<CapacitorContactsModule>(capacitorCommunityPackage("contacts")),
-  );
+  loadCapacitorModule("contacts", async () => ({
+    Contacts: getCapacitorPlugin<CapacitorContactsModule["Contacts"]>("Contacts"),
+  }));
 
 export const loadCapacitorCore = () =>
-  loadCapacitorModule("core", () => importNativeModule<CapacitorCoreModule>(capacitorPackage("core")));
+  loadCapacitorModule("core", async () => ({
+    CapacitorCookies: getCapacitorPlugin<CapacitorCoreModule["CapacitorCookies"]>("CapacitorCookies"),
+  }));
 
 export const loadCapacitorDevice = () =>
-  loadCapacitorModule("device", () => importNativeModule<CapacitorDeviceModule>(capacitorPackage("device")));
+  loadCapacitorModule("device", async () => ({
+    Device: getCapacitorPlugin<CapacitorDeviceModule["Device"]>("Device"),
+  }));
 
 export const loadCapacitorFcm = () =>
-  loadCapacitorModule("fcm", () => importNativeModule<CapacitorFcmModule>(capacitorCommunityPackage("fcm")));
+  loadCapacitorModule("fcm", async () => ({ FCM: getCapacitorPlugin<CapacitorFcmModule["FCM"]>("FCM") }));
 
 export const loadCapacitorGeolocation = () =>
-  loadCapacitorModule("geolocation", () =>
-    importNativeModule<CapacitorGeolocationModule>(capacitorPackage("geolocation")),
-  );
+  loadCapacitorModule("geolocation", async () => ({
+    Geolocation: getCapacitorPlugin<CapacitorGeolocationModule["Geolocation"]>("Geolocation"),
+  }));
 
 export const loadCapacitorHaptics = () =>
-  loadCapacitorModule("haptics", () => importNativeModule<CapacitorHapticsModule>(capacitorPackage("haptics")));
+  loadCapacitorModule("haptics", async () => ({
+    Haptics: getCapacitorPlugin<CapacitorHapticsModule["Haptics"]>("Haptics"),
+    ImpactStyle: { Light: "LIGHT", Medium: "MEDIUM", Heavy: "HEAVY" },
+  }));
 
 export const loadCapacitorKeyboard = () =>
-  loadCapacitorModule("keyboard", () => importNativeModule<CapacitorKeyboardModule>(capacitorPackage("keyboard")));
+  loadCapacitorModule("keyboard", async () => ({
+    Keyboard: getCapacitorPlugin<CapacitorKeyboardModule["Keyboard"]>("Keyboard"),
+  }));
 
 export const loadCapacitorPreferences = () =>
-  loadCapacitorModule("preferences", () =>
-    importNativeModule<CapacitorPreferencesModule>(capacitorPackage("preferences")),
-  );
+  loadCapacitorModule("preferences", async () => ({
+    Preferences: getCapacitorPlugin<CapacitorPreferencesModule["Preferences"]>("Preferences"),
+  }));
 
 export const loadCapacitorPushNotifications = () =>
-  loadCapacitorModule("pushNotifications", () =>
-    importNativeModule<CapacitorPushNotificationsModule>(capacitorPackage("push-notifications")),
-  );
+  loadCapacitorModule("pushNotifications", async () => ({
+    PushNotifications: getCapacitorPlugin<CapacitorPushNotificationsModule["PushNotifications"]>("PushNotifications"),
+  }));
 
 export const loadCapacitorSafeArea = () =>
-  loadCapacitorModule("safeArea", () => importNativeModule<CapacitorSafeAreaModule>("capacitor-plugin-safe-area"));
+  loadCapacitorModule("safeArea", async () => ({
+    SafeArea: getCapacitorPlugin<CapacitorSafeAreaModule["SafeArea"]>("SafeArea"),
+  }));
 
 export const loadCapacitorUpdater = () =>
-  loadCapacitorModule("updater", () => importNativeModule<CapacitorUpdaterModule>("@capgo/capacitor-updater"));
+  loadCapacitorModule("updater", async () => ({
+    CapacitorUpdater: getCapacitorPlugin<CapacitorUpdaterModule["CapacitorUpdater"]>("CapacitorUpdater"),
+  }));

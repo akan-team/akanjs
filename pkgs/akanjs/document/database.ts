@@ -1,15 +1,11 @@
-import type { Dayjs, MergedValues, PromiseOrObject } from "akanjs/base";
+import type { MergedValues, PromiseOrObject } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import type { DocumentModel, QueryOf } from "akanjs/constant";
-import type { CacheAdaptor } from "akanjs/service";
+import type { CacheAdaptor, CacheSetOptions } from "akanjs/service";
 import type { DataLoader } from "./dataLoader";
 import type { ExtractQuery, ExtractSort, FilterInstance } from "./filterMeta";
 import type { CRUDEventType, Mdl, SaveEventType } from "./into";
 import type { DataInputOf, FindQueryOption, ListQueryOption } from "./types";
-
-export interface RedisSetOptions {
-  expireAt?: Dayjs;
-}
 
 export class CacheDatabase<T = unknown> {
   private logger: Logger;
@@ -19,7 +15,7 @@ export class CacheDatabase<T = unknown> {
   ) {
     this.logger = new Logger(`${refName}Cache`);
   }
-  async set(topic: string, key: string, value: string | number | Buffer, option: RedisSetOptions = {}) {
+  async set(topic: string, key: string, value: string | number | Buffer, option: CacheSetOptions = {}) {
     await this.cache.set(this.refName, `${topic}:${key}`, value, option);
   }
   async get<T extends string | number | Buffer>(topic: string, key: string): Promise<T | undefined> {
@@ -58,6 +54,21 @@ type QueryMethodOfKey<
 } & {
   [K in `query${CapitalizedK}`]: (...args: _Args) => _QueryOfDoc;
 };
+type QueryMethodMap<Query, Doc, Insight, _FindQueryOption, _ListQueryOption, _QueryOfDoc> = {
+  [K in keyof Query]: K extends string
+    ? Query[K] extends (...args: infer Args) => any
+      ? QueryMethodOfKey<
+          Capitalize<K>,
+          Doc,
+          Insight,
+          Args,
+          [...Args, queryOption?: _ListQueryOption],
+          [...Args, queryOption?: _FindQueryOption],
+          _QueryOfDoc
+        >
+      : never
+    : never;
+};
 
 export type QueryMethodPart<
   Query,
@@ -68,20 +79,7 @@ export type QueryMethodPart<
   _FindQueryOption = FindQueryOption<Sort, Obj>,
   _ListQueryOption = ListQueryOption<Sort, Obj>,
   _QueryOfDoc = QueryOf<Doc>,
-> = MergedValues<{
-  [K in keyof Query]: K extends string
-    ? Query[K] extends (...args: infer Args) => any
-      ? QueryMethodOfKey<
-          Capitalize<K>,
-          Doc,
-          Insight,
-          Args,
-          [...Args, queryOption?: _ListQueryOption],
-          [...Args, queryOption?: _FindQueryOption]
-        >
-      : never
-    : never;
-}>;
+> = MergedValues<QueryMethodMap<Query, Doc, Insight, _FindQueryOption, _ListQueryOption, _QueryOfDoc>>;
 type DatabaseModelWithQuerySort<
   T extends string,
   Input,
@@ -92,12 +90,13 @@ type DatabaseModelWithQuerySort<
   Sort,
   _CapitalizedRefName extends string = Capitalize<T>,
   _QueryOfDoc = QueryOf<Doc>,
-  _DataInput = DataInputOf<Input, DocumentModel<Obj>>,
+  _DocumentObj = DocumentModel<Obj>,
+  _DataInput = DataInputOf<Input, _DocumentObj>,
   _FindQueryOption = FindQueryOption<Sort, Obj>,
   _ListQueryOption = ListQueryOption<Sort, Obj>,
 > = {
   logger: Logger;
-  __model: Mdl<Doc, Obj>;
+  __model: Mdl<Doc, Obj, _DocumentObj>;
   __cache: CacheDatabase<T>;
   __loader: DataLoader<string, Doc, string>;
   __get: (id: string) => Promise<Doc>;
@@ -119,7 +118,7 @@ type DatabaseModelWithQuerySort<
   listenPre: (type: SaveEventType, listener: (doc: Doc, type: CRUDEventType) => PromiseOrObject<void>) => () => void;
   listenPost: (type: SaveEventType, listener: (doc: Doc, type: CRUDEventType) => PromiseOrObject<void>) => () => void;
 } & {
-  [key in _CapitalizedRefName]: Mdl<Doc, Obj>;
+  [key in _CapitalizedRefName]: Mdl<Doc, Obj, _DocumentObj>;
 } & {
   [key in `${T}Loader`]: DataLoader<string, Doc, string>;
 } & {
@@ -138,6 +137,36 @@ type DatabaseModelWithQuerySort<
   [K in `remove${_CapitalizedRefName}`]: (id: string) => Promise<Doc>;
 } & QueryMethodPart<Query, Sort, Obj, Doc, Insight, _FindQueryOption, _ListQueryOption, _QueryOfDoc>;
 
+export type DatabaseInstanceWithQuerySort<
+  T extends string = string,
+  Input = any,
+  Doc = any,
+  Obj = any,
+  Insight = any,
+  Query = ExtractQuery<FilterInstance>,
+  Sort = ExtractSort<FilterInstance>,
+  _CapitalizedRefName extends string = Capitalize<T>,
+  _QueryOfDoc = QueryOf<Doc>,
+  _DocumentObj = DocumentModel<Obj>,
+  _DataInput = DataInputOf<Input, _DocumentObj>,
+  _FindQueryOption = FindQueryOption<Sort, Obj>,
+  _ListQueryOption = ListQueryOption<Sort, Obj>,
+> = DatabaseModelWithQuerySort<
+  T,
+  Input,
+  Doc,
+  Obj,
+  Insight,
+  Query,
+  Sort,
+  _CapitalizedRefName,
+  _QueryOfDoc,
+  _DocumentObj,
+  _DataInput,
+  _FindQueryOption,
+  _ListQueryOption
+>;
+
 export type DatabaseInstance<
   T extends string = string,
   Input = any,
@@ -149,10 +178,11 @@ export type DatabaseInstance<
   _QueryOfDoc = QueryOf<Doc>,
   _Query = ExtractQuery<Filter>,
   _Sort = ExtractSort<Filter>,
-  _DataInput = DataInputOf<Input, DocumentModel<Obj>>,
+  _DocumentObj = DocumentModel<Obj>,
+  _DataInput = DataInputOf<Input, _DocumentObj>,
   _FindQueryOption = FindQueryOption<_Sort, Obj>,
   _ListQueryOption = ListQueryOption<_Sort, Obj>,
-> = DatabaseModelWithQuerySort<
+> = DatabaseInstanceWithQuerySort<
   T,
   Input,
   Doc,
@@ -162,6 +192,7 @@ export type DatabaseInstance<
   _Sort,
   _CapitalizedRefName,
   _QueryOfDoc,
+  _DocumentObj,
   _DataInput,
   _FindQueryOption,
   _ListQueryOption

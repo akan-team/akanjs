@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
   Any,
+  DEFAULT_VALUE,
   dayjs,
+  EXAMPLE_VALUE,
   Float,
   ID,
   Int,
-  PRIMITIVE_DEFAULT_VALUE,
-  PRIMITIVE_EXAMPLE_VALUE,
   PrimitiveRegistry,
   PrimitiveScalar,
   Upload,
@@ -96,14 +96,14 @@ describe("primitive scalars", () => {
 
   test("adds scalar helpers to String, Boolean, and Date constructors", () => {
     expect(String.refName).toBe("String");
-    expect(String[PRIMITIVE_DEFAULT_VALUE]).toBe("");
-    expect(String[PRIMITIVE_EXAMPLE_VALUE]).toBe("String");
+    expect(String[DEFAULT_VALUE]).toBe("");
+    expect(String[EXAMPLE_VALUE]).toBe("String");
     expect(String._parse(123 as never)).toBe("123");
     expect(String._serialize("akan")).toBe("akan");
 
     expect(Boolean.refName).toBe("Boolean");
-    expect(Boolean[PRIMITIVE_DEFAULT_VALUE]).toBe(false);
-    expect(Boolean[PRIMITIVE_EXAMPLE_VALUE]).toBe(true);
+    expect(Boolean[DEFAULT_VALUE]).toBe(false);
+    expect(Boolean[EXAMPLE_VALUE]).toBe(true);
     expect(Boolean._parse(1 as never)).toBe(true);
     expect(Boolean._serialize(false)).toBe(false);
 
@@ -116,12 +116,12 @@ describe("primitive scalars", () => {
 
   test("exposes default metadata for object-like primitives", () => {
     expect(Any.refName).toBe("Any");
-    expect(Any[PRIMITIVE_DEFAULT_VALUE]).toBeNull();
-    expect(Any[PRIMITIVE_EXAMPLE_VALUE]).toEqual({});
+    expect(Any[DEFAULT_VALUE]).toBeNull();
+    expect(Any[EXAMPLE_VALUE]).toEqual({});
 
     expect(Upload.refName).toBe("Upload");
-    expect(Upload[PRIMITIVE_DEFAULT_VALUE]).toBeNull();
-    expect(Upload[PRIMITIVE_EXAMPLE_VALUE]).toBe("FileUpload");
+    expect(Upload[DEFAULT_VALUE]).toBeNull();
+    expect(Upload[EXAMPLE_VALUE]).toBe("FileUpload");
     expect(new Upload().__TEMP_TYPE__).toBe("Upload");
   });
 });

@@ -49,7 +49,12 @@ export class LocaleWebProxy implements WebProxy {
       (locale) => !pathname.startsWith(`/${locale}/`) && pathname !== `/${locale}`,
     );
 
-    if (!isInternalProxyRequest(requestUrl) && pathnameIsMissingLocale) {
+    if (
+      !isInternalProxyRequest(requestUrl) &&
+      !isWellKnownRequest(pathname) &&
+      !isApiRequest(pathname) &&
+      pathnameIsMissingLocale
+    ) {
       return Response.redirect(
         new URL(`/${getLocale(request)}/${pathname.slice(1)}${targetUrl.search}`, getPublicRequestUrl(request)),
         307,
@@ -85,4 +90,14 @@ function getPublicRequestUrl(request: Bun.BunRequest): URL {
 
 function isInternalProxyRequest(requestUrl: URL): boolean {
   return requestUrl.pathname === "/__rsc";
+}
+
+function isWellKnownRequest(pathname: string): boolean {
+  return pathname === "/.well-known" || pathname.startsWith("/.well-known/");
+}
+
+// API routes must not be locale-redirected: `POST /api/x` should hit the endpoint, not 307 to `/en/api/x`
+// (which 404s and makes raw HTTP endpoint checks impossible). Mirrors AkanServer.prefix = "/api".
+function isApiRequest(pathname: string): boolean {
+  return pathname === "/api" || pathname.startsWith("/api/");
 }

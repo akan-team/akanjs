@@ -4,6 +4,7 @@ import { clsx, getPathInfo, usePathCtx } from "akanjs/client";
 import { Link } from "akanjs/ui";
 import { useMemo } from "react";
 import { AiOutlineLeft, AiOutlineRight } from "react-icons/ai";
+import { Search } from "./Search";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -19,7 +20,7 @@ interface LayoutProps {
 export const Layout = ({ children, menuMap }: LayoutProps) => {
   const { l, lang, path } = usePage();
   const pathCtx = usePathCtx();
-  const currentPath = getPathInfo(path, lang, pathCtx.prefix ?? "").path;
+  const currentPath = pathCtx.location?.pathRoute?.path ?? getPathInfo(path, lang, pathCtx.prefix ?? "").path;
 
   const closeMenu = () => {
     const checkbox = document.getElementById("mobile-menu-toggle") as HTMLInputElement | undefined;
@@ -40,6 +41,7 @@ export const Layout = ({ children, menuMap }: LayoutProps) => {
       <div className="fixed inset-y-0 left-0 z-40 w-full -translate-x-full transform transition-transform duration-50 ease-in-out peer-checked:translate-x-0 lg:hidden">
         <div className="mt-16 h-full overflow-y-auto border-base-content/10 border-r bg-base-100/95 pb-24 shadow-2xl backdrop-blur-xl">
           <div className="px-3 pt-24 md:pt-6">
+            <Search className="mb-3" onNavigate={closeMenu} />
             {menuMap.map((menu, menuIdx) => (
               <details
                 key={menuIdx}
@@ -82,6 +84,7 @@ export const Layout = ({ children, menuMap }: LayoutProps) => {
         <div className="relative hidden w-70 lg:block">
           <div className="fixed top-29 left-0 flex h-[calc(100vh-7rem)] w-65 flex-col overflow-hidden border border-base-content/10 border-l-0 bg-base-content/4 pt-4 font-medium shadow-2xl shadow-base-content/5 backdrop-blur-xl">
             <div className="overflow-y-auto px-2 pb-6">
+              <Search className="mb-3" />
               {menuMap.map((menu, idx) => (
                 <div key={idx} className="collapse-arrow collapse rounded-2xl">
                   <input type="checkbox" defaultChecked={true} />

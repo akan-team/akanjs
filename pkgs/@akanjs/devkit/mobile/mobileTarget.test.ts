@@ -24,7 +24,7 @@ describe("mobile target helpers", () => {
     expect(targetHtmlFilename({ ...target, basePath: undefined })).toBe("index.html");
   });
 
-  test("lists route base paths when only one mobile target is configured", async () => {
+  test("uses the configured mobile target as the only choice when one target is configured", async () => {
     const app = {
       getConfig: async () => ({
         basePaths: new Set(["akanjs", "soft", "office"]),
@@ -32,7 +32,8 @@ describe("mobile target helpers", () => {
       }),
     } as unknown as App;
 
-    await expect(getMobileTargetChoices(app)).resolves.toEqual(["akanjs", "soft", "office"]);
+    await expect(getMobileTargetChoices(app)).resolves.toEqual(["akanjs"]);
+    await expect(resolveMobileTargets(app, undefined)).resolves.toEqual([{ name: "akanjs", config: target }]);
   });
 
   test("resolves a route base path onto the default mobile target config", async () => {

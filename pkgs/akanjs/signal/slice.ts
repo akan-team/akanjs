@@ -1,19 +1,37 @@
-import { Any, type Assign, type Cls, type MergeAllKeyOfObjects, SLICE_META } from "akanjs/base";
+import { Any, type Assign, type Cls, type MergeAllKeyOfObjects, SLICE_DICT_SHAPE, SLICE_META } from "akanjs/base";
 import { applyMixins } from "akanjs/common";
 import type { DocumentModel, QueryOf } from "akanjs/constant";
 import type { FilterInstance } from "akanjs/document";
 import { type Adaptor, type AdaptorCls, dangerouslyAdapt, type ServiceModel } from "akanjs/service";
 import type { Guard, GuardCls } from "./guard";
-import { buildSlice, type SliceBuilder, type SliceInfo } from "./sliceInfo";
+import {
+  buildSlice,
+  type SliceBuilder,
+  type SliceInfo,
+  type SliceInfoArgNames,
+  type SliceInfoArgs,
+  type SliceInfoInternalArgs,
+  type SliceInfoServerArgs,
+  type SliceInfoSrvs,
+} from "./sliceInfo";
+import type { CnstFull, CnstInput, CnstInsight, CnstLight, DbFilter, SrvMap, SrvRefName } from "./types";
 
-export interface Slice extends Adaptor {}
+export type SliceDictArgShape = { [key: string]: readonly string[] };
+export type SliceDictShape<SliceInfoObj extends { [key: string]: SliceInfo }> = {
+  [K in keyof SliceInfoObj]: SliceInfoArgNames<SliceInfoObj[K]>;
+};
+
+export interface Slice<DictShape extends SliceDictArgShape = Record<never, never>> extends Adaptor {
+  readonly [SLICE_DICT_SHAPE]: DictShape;
+}
 
 export type SliceCls<
   SrvModule extends ServiceModel = ServiceModel,
   SliceInfoObj extends { [key: string]: SliceInfo } = { [key: string]: SliceInfo },
-> = AdaptorCls & {
-  baseName: SrvModule["srv"]["refName"];
+> = AdaptorCls<Slice<SliceDictShape<SliceInfoObj>>> & {
+  baseName: SrvRefName<SrvModule>;
   srv: SrvModule;
+  prototype: Slice<SliceDictShape<SliceInfoObj>>;
   [SLICE_META]: SliceInfoObj;
   getGuards: GuardCls[];
   cruGuards: GuardCls[];
@@ -28,41 +46,31 @@ interface RootSliceOption {
   prefix?: string;
 }
 
+type RootSliceQuery<SrvModule extends ServiceModel, Full = CnstFull<SrvModule>> = QueryOf<DocumentModel<Full>>;
+
 type ExtendSliceInfoObj<
   SrvModule extends ServiceModel,
   LibSlices extends SliceCls[],
-  _Input = NonNullable<SrvModule["cnst"]>["_Input"],
-  _Full = NonNullable<SrvModule["cnst"]>["_Full"],
-  _Light = NonNullable<SrvModule["cnst"]>["_Light"],
-  _Insight = NonNullable<SrvModule["cnst"]>["_Insight"],
-  _Filter extends FilterInstance = any,
+  _Input = CnstInput<SrvModule>,
+  _Full = CnstFull<SrvModule>,
+  _Light = CnstLight<SrvModule>,
+  _Insight = CnstInsight<SrvModule>,
+  _Filter extends FilterInstance = DbFilter<SrvModule>,
   _Merged = MergeAllKeyOfObjects<LibSlices, typeof SLICE_META>,
 > = {
-  [K in keyof _Merged]: _Merged[K] extends SliceInfo<
-    any,
-    any,
-    any,
-    any,
-    any,
-    any,
-    infer Srvs,
-    infer ArgNames,
-    infer Args,
-    infer InternalArgs,
-    infer ServerArgs
-  >
+  [K in keyof _Merged]: _Merged[K] extends SliceInfo
     ? SliceInfo<
-        SrvModule["srv"]["refName"],
+        SrvRefName<SrvModule>,
         _Input,
         _Full,
         _Light,
         _Insight,
         _Filter,
-        Srvs,
-        ArgNames,
-        Args,
-        InternalArgs,
-        ServerArgs
+        SliceInfoSrvs<_Merged[K]>,
+        SliceInfoArgNames<_Merged[K]>,
+        SliceInfoArgs<_Merged[K]>,
+        SliceInfoInternalArgs<_Merged[K]>,
+        SliceInfoServerArgs<_Merged[K]>
       >
     : never;
 };
@@ -72,12 +80,12 @@ export function slice<
   SrvModule extends ServiceModel,
   BuildSlice extends SliceBuilder<SrvModule>,
   LibSlices extends SliceCls[],
-  _Input = NonNullable<SrvModule["cnst"]>["_Input"],
-  _Full = NonNullable<SrvModule["cnst"]>["_Full"],
-  _Light = NonNullable<SrvModule["cnst"]>["_Light"],
-  _Insight = NonNullable<SrvModule["cnst"]>["_Insight"],
-  _Filter extends FilterInstance = NonNullable<SrvModule["db"]>["_Filter"],
-  _Query = QueryOf<DocumentModel<_Full>>,
+  _Input = CnstInput<SrvModule>,
+  _Full = CnstFull<SrvModule>,
+  _Light = CnstLight<SrvModule>,
+  _Insight = CnstInsight<SrvModule>,
+  _Filter extends FilterInstance = DbFilter<SrvModule>,
+  _Query = RootSliceQuery<SrvModule, _Full>,
 >(
   srv: SrvModule,
   option: RootSliceOption,
@@ -90,13 +98,13 @@ export function slice<
     LibSlices extends []
       ? {
           [""]: SliceInfo<
-            SrvModule["srv"]["refName"],
+            SrvRefName<SrvModule>,
             _Input,
             _Full,
             _Light,
             _Insight,
             _Filter,
-            SrvModule["srvMap"],
+            SrvMap<SrvModule>,
             ["query"],
             [_Query],
             [],
@@ -146,7 +154,7 @@ export function slice<
           .search<"query", object>("query", Any)
           .exec((query) => query ?? {}),
       },
-      sliceBuilder(init),
+      sliceBuilder(init as Parameters<BuildSlice>[0]),
     );
   };
   libSlices.forEach((libSlice) => {

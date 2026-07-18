@@ -1,6 +1,7 @@
+import type { SLICE_META } from "akanjs/base";
 import type { DefaultOf } from "akanjs/constant";
 import type { ExtractSort, FilterInstance } from "akanjs/document";
-import type { SliceInfo } from "akanjs/signal";
+import type { SliceCls, SliceInfo, SliceInfoArgs } from "akanjs/signal";
 import type { SliceAction } from "./action";
 import type { SliceState } from "./state";
 
@@ -35,10 +36,20 @@ export type Get<State, Actions> = {
   get: () => State & Actions;
 };
 
+export type StoreSliceMap<SlceCls extends SliceCls> = SlceCls[typeof SLICE_META];
+export type StoreSliceSuffix<SlceCls extends SliceCls, Suffix extends keyof StoreSliceMap<SlceCls>> = Suffix & string;
+export type StoreSliceSuffixCap<SlceCls extends SliceCls, Suffix extends keyof StoreSliceMap<SlceCls>> = Capitalize<
+  StoreSliceSuffix<SlceCls, Suffix>
+>;
+export type StoreSliceArgs<SlceCls extends SliceCls, Suffix extends keyof StoreSliceMap<SlceCls>> = SliceInfoArgs<
+  StoreSliceMap<SlceCls>[Suffix]
+>;
+export type StoreSliceName<RefName extends string, Suffix extends string> = `${RefName}${Capitalize<Suffix>}`;
+
 export type SliceStateAction<
   RefName extends string = string,
   Suffix extends string = "",
-  SliceName extends string = `${RefName}${Capitalize<Suffix>}`,
+  SliceName extends string = StoreSliceName<RefName, Suffix>,
   State = any,
   Action = any,
 > = Action & {
@@ -61,9 +72,8 @@ export type InternalSlice<
   _CapitalizedRefName extends string = Capitalize<RefName>,
   _Default = DefaultOf<Full>,
   _Sort = ExtractSort<Filter>,
-  _Args extends any[] = SlceInfo extends SliceInfo<any, any, any, any, any, any, any, any, infer Args, any, any>
-    ? Args
-    : never,
+  _Args extends any[] = SliceInfoArgs<SlceInfo>,
   _SliceState = SliceState<RefName, "", Full, Light, _Args, Insight, Filter, _CapitalizedRefName, "", _Default, _Sort>,
   _SliceAction = SliceAction<RefName, "", Input, Light, _Args, Filter, _CapitalizedRefName, "", _Sort>,
-> = SliceStateAction<RefName, Suffix, `${RefName}${Capitalize<Suffix>}`, _SliceState, _SliceAction>;
+  _SliceName extends string = StoreSliceName<RefName, Suffix>,
+> = SliceStateAction<RefName, Suffix, _SliceName, _SliceState, _SliceAction>;

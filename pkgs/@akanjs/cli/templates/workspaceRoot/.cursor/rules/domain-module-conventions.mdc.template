@@ -1,0 +1,17 @@
+---
+description: Akan domain module file roles and naming conventions
+globs: apps/**/lib/**/*.{ts,tsx},libs/**/lib/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Domain Module Conventions
+
+- Organize business concepts as domain folders under `lib/`; keep related schema, service, signal, store, and UI files together.
+- Use lowercase logic files such as `<model>.constant.ts`, `<model>.document.ts`, `<model>.service.ts`, `<model>.signal.ts`, `<model>.dictionary.ts`, and `<model>.store.ts`.
+- Use PascalCase React component files such as `<Model>.Template.tsx`, `<Model>.Unit.tsx`, `<Model>.View.tsx`, `<Model>.Zone.tsx`, and `<Model>.Util.tsx`.
+- Treat `constant.ts`, `dictionary.ts`, and `signal.ts` as shared contract files that should avoid platform-specific dependencies.
+- Keep backend persistence/query logic in `.document.ts` and domain business orchestration in `.service.ts`.
+- Keep frontend state in `.store.ts`; use `Template` for forms, `Unit` for list/card items, `View` for details, `Zone` for composed page sections, and `Util` for domain-specific UI helpers.
+- Move reusable workflow state and actions from client UI into `<model>.store.ts` when they span loading state, selected lists, messages, or multi-step actions; consume them as `st.use.someState()` and `st.do.someAction()`.
+- Keep `Util` components thin when a store action exists: render controls, call `st.do.*`, read `st.use.*`, and leave orchestration in the store.
+- When adding or formalizing a public workflow such as importing an existing project, update the module `*.abstract.md` with the invariant or behavior change.

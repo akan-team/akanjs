@@ -1,6 +1,6 @@
 {
   "name": "akanjs",
-  "version": "2.1.1",
+  "version": "2.3.11-rc.7",
   "sourceType": "module",
   "type": "module",
   "publishConfig": {
@@ -83,6 +83,7 @@
       "types": "./server/index.ts",
       "default": "./server/index.ts"
     },
+    "./server/*": "./server/*",
     "./service": {
       "import": "./service/index.ts",
       "types": "./service/index.ts",
@@ -133,7 +134,6 @@
     "@capgo/capacitor-updater": "^8.46.1",
     "@libsql/client": "^0.17.3",
     "@playwright/test": "^1.60.0",
-    "@radix-ui/react-dialog": "^1.1.15",
     "@react-spring/web": "^10.1.0",
     "@use-gesture/react": "^10.3.1",
     "bullmq": "^5.76.10",
@@ -141,17 +141,18 @@
     "chance": "^1.1.13",
     "cordova-plugin-purchase": "^13.16.0",
     "croner": "^10.0.1",
-    "daisyui": "^5.5.20",
+    "daisyui": "5.5.23",
+    "firebase": "^12.13.0",
     "ioredis": "^5.10.1",
     "mermaid": "^11.15.0",
     "postgres": "^3.4.9",
     "protobufjs": "^8.4.0",
-    "react": "19.2.6",
+    "react": "19.2.7",
     "react-datepicker": "^9.1.0",
-    "react-dom": "19.2.6",
+    "react-dom": "19.2.7",
     "react-icons": "^5.6.0",
     "react-refresh": "^0.18.0",
-    "react-server-dom-webpack": "^19.2.6",
+    "react-server-dom-webpack": "^19.2.7",
     "react-simple-pull-to-refresh": "^1.3.4",
     "react-spring": "^10.0.4",
     "scheduler": "^0.27.0",
@@ -208,9 +209,6 @@
     "@playwright/test": {
       "optional": true
     },
-    "@radix-ui/react-dialog": {
-      "optional": true
-    },
     "@react-spring/web": {
       "optional": true
     },
@@ -233,6 +231,9 @@
       "optional": true
     },
     "daisyui": {
+      "optional": true
+    },
+    "firebase": {
       "optional": true
     },
     "ioredis": {

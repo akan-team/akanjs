@@ -1,6 +1,16 @@
-import type { ExtractQuery, FilterInfo, FilterInstance } from "akanjs/document";
+import type { ExtractQuery, FilterCls, FilterInfo, FilterInstance } from "akanjs/document";
 
-export class QueryMeta<Filter extends FilterInstance = any, Key = string, Args extends any[] = []> {
+type AnyFilterShape = FilterInstance<Record<string, FilterInfo>, Record<string, unknown>>;
+type QueryMetaFilterShape<Filter> = Filter extends FilterInstance
+  ? Filter
+  : Filter extends FilterCls<infer FilterShape>
+    ? FilterShape
+    : Filter extends { query: Record<string, FilterInfo>; sort: Record<string, unknown> }
+      ? Filter
+      : AnyFilterShape;
+type QueryMetaFilterQuery<Filter> = QueryMetaFilterShape<Filter>["query"];
+
+export class QueryMeta<Filter = AnyFilterShape, Key = string, Args extends unknown[] = []> {
   refName: string;
   queryKey: Key | null = null;
   queryArgs: Args | (() => Args);
@@ -9,12 +19,12 @@ export class QueryMeta<Filter extends FilterInstance = any, Key = string, Args e
     this.refName = refName;
     this.queryArgs = [] as unknown as Args;
   }
-  query<QueryKey extends keyof ExtractQuery<Filter>>(key: QueryKey) {
+  query<QueryKey extends keyof ExtractQuery<QueryMetaFilterShape<Filter>>>(key: QueryKey) {
     this.queryKey = key as unknown as Key;
     return this as unknown as QueryMeta<
       Filter,
       Key,
-      Filter["query"][QueryKey] extends FilterInfo<any, infer Args> ? Args : never
+      QueryMetaFilterQuery<Filter>[QueryKey] extends FilterInfo<infer _ArgNames, infer Args> ? Args : never
     >;
   }
   args(argFnOrArgs: Args | (() => Args)) {
@@ -23,4 +33,4 @@ export class QueryMeta<Filter extends FilterInstance = any, Key = string, Args e
   }
 }
 
-export const getQueryMeta = <Filter extends FilterInstance>(refName: string) => new QueryMeta<Filter>(refName);
+export const getQueryMeta = <Filter = AnyFilterShape>(refName: string) => new QueryMeta<Filter>(refName);

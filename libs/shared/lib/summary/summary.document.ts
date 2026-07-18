@@ -3,7 +3,6 @@ import type { QueryOf } from "akanjs/constant";
 import { by, documentQueryHelper, from, into, type Mdl } from "akanjs/document";
 import * as cnst from "../cnst";
 import type * as db from "../db";
-
 export class SummaryFilter extends from(cnst.Summary, (filter) => ({
   query: {
     byStatuses: filter()
@@ -52,22 +51,26 @@ export class SummaryModel extends into(Summary, SummaryFilter, cnst.summary, () 
     incField: NestedKeysWithAllowed<cnst.Summary, number>,
     value = 1,
   ) {
-    const { modifiedCount } = await this.Summary.updateOne(
-      { status: "active" },
-      { inc: { [decField]: -value, [incField]: value } },
-    );
+    const { modifiedCount } = await this.Summary.updateOne({ status: "active" }, ({ inc }) => ({
+      [decField]: inc(-value),
+      [incField]: inc(value),
+    }));
     return !!modifiedCount;
   }
   async incValue(field: NestedKeysWithAllowed<cnst.Summary, number>, value = 1) {
-    const { modifiedCount } = await this.Summary.updateOne({ status: "active" }, { inc: { [field]: value } });
+    const { modifiedCount } = await this.Summary.updateOne({ status: "active" }, ({ inc }) => ({
+      [field]: inc(value),
+    }));
     return !!modifiedCount;
   }
   async decValue(field: NestedKeysWithAllowed<cnst.Summary, number>, value = 1) {
-    const { modifiedCount } = await this.Summary.updateOne({ status: "active" }, { inc: { [field]: value } });
+    const { modifiedCount } = await this.Summary.updateOne({ status: "active" }, ({ inc }) => ({
+      [field]: inc(value),
+    }));
     return !!modifiedCount;
   }
   async setValue(field: NestedKeysWithAllowed<cnst.Summary, number>, value: number) {
-    const { modifiedCount } = await this.Summary.updateOne({ status: "active" }, { set: { [field]: value } });
+    const { modifiedCount } = await this.Summary.updateOne({ status: "active" }, { [field]: value });
     return !!modifiedCount;
   }
   async countWithQuery(modelName: string, query: QueryOf<any>) {

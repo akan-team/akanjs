@@ -3,9 +3,9 @@ import { type Exec, FileSys, type PackageJson, runner, type Workspace, Workspace
 import { getLatestPackageVersion, getNpmRegistryUrl } from "../npmRegistry";
 
 const defaultWorkspacePeerDependencies = new Set([
-  "@radix-ui/react-dialog",
   "@react-spring/web",
   "@use-gesture/react",
+  "chance",
   "croner",
   "daisyui",
   "react",
@@ -21,6 +21,45 @@ const defaultWorkspacePeerDependencies = new Set([
 ]);
 
 export class WorkspaceRunner extends runner("workspace") {
+  async generateAgentRules(
+    workspace: Workspace,
+    { overwrite = false, cursorRules = true }: { overwrite?: boolean; cursorRules?: boolean } = {},
+  ) {
+    const [appNames] = await workspace.getExecs();
+    const dict = {
+      repoName: workspace.repoName,
+      appName: appNames[0] ?? "app",
+    };
+    const created = await workspace.applyTemplate({
+      basePath: ".",
+      template: "workspaceRoot/AGENTS.md.template",
+      dict,
+      overwrite,
+    });
+
+    // CLAUDE.md only imports AGENTS.md so Claude Code shares the same source of truth.
+    created.push(
+      ...(await workspace.applyTemplate({
+        basePath: ".",
+        template: "workspaceRoot/CLAUDE.md.template",
+        dict,
+        overwrite,
+      })),
+    );
+
+    if (!cursorRules) return created;
+
+    return [
+      ...created,
+      ...(await workspace.applyTemplate({
+        basePath: ".cursor/rules",
+        template: "workspaceRoot/.cursor/rules/akan.mdc.template",
+        dict,
+        overwrite,
+      })),
+    ];
+  }
+
   async createWorkspace(
     repoName: string,
     appName: string,
@@ -29,7 +68,8 @@ export class WorkspaceRunner extends runner("workspace") {
       init = true,
       akanVersion,
       registryUrl,
-    }: { dirname?: string; init?: boolean; akanVersion: string; registryUrl?: string },
+      owner = "",
+    }: { dirname?: string; init?: boolean; akanVersion: string; registryUrl?: string; owner?: string },
   ) {
     const cwdPath = process.cwd();
     const workspaceRoot = path.join(cwdPath, dirname, repoName);
@@ -45,7 +85,7 @@ export class WorkspaceRunner extends runner("workspace") {
     await workspace.applyTemplate({
       basePath: ".",
       template: "workspaceRoot",
-      dict: { repoName, appName, serveDomain: "localhost" },
+      dict: { repoName, appName, serveDomain: "localhost", owner },
     });
     if (normalizedRegistryUrl) await workspace.writeFile(".npmrc", `registry=${normalizedRegistryUrl}/\n`);
     templateSpinner.succeed(`Workspace files created in ${dirname}/${repoName}`);
@@ -151,5 +191,27 @@ export class WorkspaceRunner extends runner("workspace") {
       "--no-errors-on-unmatched",
       exec.cwdPath,
     ]);
+  }
+  async writeTopLevelEnv(workspace: Workspace, devProjectId: string) {
+    await workspace.writeFile(
+      ".env",
+      `AKAN_WORKSPACE_ID=${devProjectId}
+
+# organization configuration, no need to change
+AKAN_PUBLIC_REPO_NAME=${workspace.repoName}
+
+# serve domain, it changes the domain of the server.
+AKAN_PUBLIC_SERVE_DOMAIN=try.akanjs.com
+
+# development branch, debug, develop, main, etc. mainly it changes databases.
+AKAN_PUBLIC_ENV=local
+
+# local, cloud, edge it changes the connection point of the clients.
+AKAN_PUBLIC_OPERATION_MODE=local
+
+# log level, debug, info, warn, error
+AKAN_PUBLIC_LOG_LEVEL=debug
+`,
+    );
   }
 }

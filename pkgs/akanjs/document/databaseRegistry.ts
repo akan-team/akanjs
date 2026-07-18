@@ -1,5 +1,5 @@
 import type { ConstantCls } from "akanjs/constant";
-import type { DatabaseCls, ExtractSort, FilterCls, FilterInstance } from ".";
+import type { DatabaseCls, ExtractQuery, ExtractSort, FilterCls, FilterInstance } from ".";
 import type { ModelCls } from "./loaderInfo";
 
 export interface DatabaseModel<
@@ -10,6 +10,7 @@ export interface DatabaseModel<
   Obj = any,
   Insight = any,
   Filter extends FilterInstance = any,
+  _Query extends ExtractQuery<Filter> = ExtractQuery<Filter>,
   _Sort extends ExtractSort<Filter> = ExtractSort<Filter>,
 > {
   refName: T;
@@ -25,6 +26,7 @@ export interface DatabaseModel<
   _Obj: Obj;
   _Insight: Insight;
   _Filter: Filter;
+  _Query: _Query;
   _Sort: _Sort;
 }
 export class DatabaseRegistry {
@@ -90,6 +92,7 @@ export class DatabaseRegistry {
     Obj,
     Insight,
     Filter extends FilterInstance,
+    _Query extends ExtractQuery<Filter> = ExtractQuery<Filter>,
     _Sort extends ExtractSort<Filter> = ExtractSort<Filter>,
   >(
     refName: T,
@@ -99,7 +102,7 @@ export class DatabaseRegistry {
     obj: ConstantCls<Obj>,
     insight: ConstantCls<Insight>,
     filter: FilterCls<Filter>,
-  ): DatabaseModel<T, Input, Doc, Model, Obj, Insight, Filter, _Sort> {
+  ): DatabaseModel<T, Input, Doc, Model, Obj, Insight, Filter, _Query, _Sort> {
     const dbInfo = {
       refName,
       input,
@@ -108,8 +111,9 @@ export class DatabaseRegistry {
       obj,
       insight,
       filter,
+      _Query: null as unknown as _Query,
       _Sort: null as unknown as _Sort,
-    } as DatabaseModel<T, Input, Doc, Model, Obj, Insight, Filter, _Sort>;
+    } as DatabaseModel<T, Input, Doc, Model, Obj, Insight, Filter, _Query, _Sort>;
     DatabaseRegistry.setDatabase(refName, dbInfo);
     return dbInfo;
   }

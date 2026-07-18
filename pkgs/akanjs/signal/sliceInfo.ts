@@ -10,7 +10,7 @@ import type {
   PurifiedModel,
   QueryOf,
 } from "akanjs/constant";
-import type { ExtractSort, FilterCls, FilterInstance } from "akanjs/document";
+import type { FilterCls, FilterInstance } from "akanjs/document";
 import type { ServiceModel } from "akanjs/service";
 import {
   type ArgInfo,
@@ -20,7 +20,7 @@ import {
   type InternalArgProps,
 } from "./endpointInfo";
 import type { InternalArgCls } from "./internalArg";
-import type { SignalOption } from "./types";
+import type { CnstFull, CnstInput, CnstInsight, CnstLight, DbFilter, SignalOption, SrvMap, SrvRefName } from "./types";
 
 export class SliceInfo<
   RefName extends string = string,
@@ -192,7 +192,7 @@ export const buildSlice =
     filter: FilterCls<Filter>,
   ) =>
   (signalOption?: SignalOption) =>
-    new SliceInfo<T, Input, Full, Light, Insight, Filter, SrvModule["srvMap"], [], [], [], []>(
+    new SliceInfo<T, Input, Full, Light, Insight, Filter, SrvMap<SrvModule>, [], [], [], []>(
       refName,
       input,
       full,
@@ -205,53 +205,69 @@ export const buildSlice =
 // --- Accessors ---
 // Named projections for SliceInfo's 11 generics. Use these to avoid repeating
 // 11-slot `extends SliceInfo<any, any, ..., infer X, any, any>` patterns.
-export type SliceInfoRefName<S> =
-  S extends SliceInfo<infer R, any, any, any, any, any, any, any, any, any, any> ? R : never;
-export type SliceInfoInput<S> =
-  S extends SliceInfo<any, infer I, any, any, any, any, any, any, any, any, any> ? I : never;
-export type SliceInfoFull<S> =
-  S extends SliceInfo<any, any, infer F, any, any, any, any, any, any, any, any> ? F : never;
-export type SliceInfoLight<S> =
-  S extends SliceInfo<any, any, any, infer L, any, any, any, any, any, any, any> ? L : never;
-export type SliceInfoInsight<S> =
-  S extends SliceInfo<any, any, any, any, infer I, any, any, any, any, any, any> ? I : never;
-export type SliceInfoFilter<S> =
-  S extends SliceInfo<any, any, any, any, any, infer F, any, any, any, any, any> ? F : never;
-export type SliceInfoSrvs<S> =
-  S extends SliceInfo<any, any, any, any, any, any, infer S2, any, any, any, any> ? S2 : never;
-export type SliceInfoArgNames<S> =
-  S extends SliceInfo<any, any, any, any, any, any, any, infer N, any, any, any> ? N : never;
-export type SliceInfoArgs<S> =
-  S extends SliceInfo<any, any, any, any, any, any, any, any, infer A, any, any> ? A : never;
-export type SliceInfoInternalArgs<S> =
-  S extends SliceInfo<any, any, any, any, any, any, any, any, any, infer I, any> ? I : never;
-export type SliceInfoServerArgs<S> =
-  S extends SliceInfo<any, any, any, any, any, any, any, any, any, any, infer S2> ? S2 : never;
+type SliceInfoEmptyParts = {
+  refName: never;
+  input: never;
+  full: never;
+  light: never;
+  insight: never;
+  filter: never;
+  srvs: never;
+  argNames: never;
+  args: never;
+  internalArgs: never;
+  serverArgs: never;
+};
+export type SliceInfoParts<S> =
+  S extends SliceInfo<
+    infer RefName,
+    infer Input,
+    infer Full,
+    infer Light,
+    infer Insight,
+    infer Filter,
+    infer Srvs,
+    infer ArgNames,
+    infer Args,
+    infer InternalArgs,
+    infer ServerArgs
+  >
+    ? {
+        refName: RefName;
+        input: Input;
+        full: Full;
+        light: Light;
+        insight: Insight;
+        filter: Filter;
+        srvs: Srvs;
+        argNames: ArgNames;
+        args: Args;
+        internalArgs: InternalArgs;
+        serverArgs: ServerArgs;
+      }
+    : SliceInfoEmptyParts;
+export type SliceInfoRefName<S> = SliceInfoParts<S>["refName"];
+export type SliceInfoInput<S> = SliceInfoParts<S>["input"];
+export type SliceInfoFull<S> = SliceInfoParts<S>["full"];
+export type SliceInfoLight<S> = SliceInfoParts<S>["light"];
+export type SliceInfoInsight<S> = SliceInfoParts<S>["insight"];
+export type SliceInfoFilter<S> = SliceInfoParts<S>["filter"];
+export type SliceInfoSrvs<S> = SliceInfoParts<S>["srvs"];
+export type SliceInfoArgNames<S> = SliceInfoParts<S>["argNames"];
+export type SliceInfoArgs<S> = SliceInfoParts<S>["args"];
+export type SliceInfoInternalArgs<S> = SliceInfoParts<S>["internalArgs"];
+export type SliceInfoServerArgs<S> = SliceInfoParts<S>["serverArgs"];
 
 export type SliceBuilder<
   SrvModule extends ServiceModel,
-  _Input = NonNullable<SrvModule["cnst"]>["_Input"],
-  _Full = NonNullable<SrvModule["cnst"]>["_Full"],
-  _Light = NonNullable<SrvModule["cnst"]>["_Light"],
-  _Insight = NonNullable<SrvModule["cnst"]>["_Insight"],
-  _Filter extends FilterInstance = NonNullable<SrvModule["db"]>["_Filter"],
-  _Sort = ExtractSort<_Filter>,
+  _Input = CnstInput<SrvModule>,
+  _Full = CnstFull<SrvModule>,
+  _Light = CnstLight<SrvModule>,
+  _Insight = CnstInsight<SrvModule>,
+  _Filter extends FilterInstance = DbFilter<SrvModule>,
+  _SliceInfo = SliceInfo<SrvRefName<SrvModule>, _Input, _Full, _Light, _Insight, _Filter, SrvMap<SrvModule>>,
 > = (
   init: (
     signalOption?: SignalOption,
-  ) => SliceInfo<
-    SrvModule["srv"]["refName"],
-    _Input,
-    _Full,
-    _Light,
-    _Insight,
-    _Filter,
-    SrvModule["srvMap"],
-    [],
-    [],
-    [],
-    []
-  >,
-) => {
-  [key: string]: SliceInfo<SrvModule["srv"]["refName"], _Input, _Full, _Light, _Insight, _Filter, SrvModule["srvMap"]>;
-};
+  ) => SliceInfo<SrvRefName<SrvModule>, _Input, _Full, _Light, _Insight, _Filter, SrvMap<SrvModule>, [], [], [], []>,
+) => Record<string, _SliceInfo>;

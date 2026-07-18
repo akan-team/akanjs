@@ -1,19 +1,20 @@
 "use client";
 import {
   csrContext,
-  DEFAULT_BOTTOM_INSET,
-  DEFAULT_TOP_INSET,
   Device,
-  defaultPageState,
+  getExplicitPageConfigKeys,
   initAuth,
+  type LayoutModule,
   type PageConfig,
-  type PageState,
   type PathRoute,
+  readCssSafeAreaInsets,
+  resolvePageState,
   type Route,
   type RouteGuide,
   type RouteModule,
   type RouteRender,
   storage,
+  validatePageConfig,
 } from "akanjs/client";
 import {
   assertUniqueRoutePatterns,
@@ -29,10 +30,12 @@ import { useCsrValues } from "./useCsrValues";
 import { useFetch } from "./useFetch";
 
 type RouteModuleWithConfig = RouteModule & { pageConfig?: PageConfig };
+type CsrRouteModuleLoader = () => Promise<RouteModule>;
+type CsrRouteModuleEntry = CsrRouteModuleLoader | { loader: CsrRouteModuleLoader; isAsyncDefault?: boolean };
 
 declare global {
   interface Window {
-    __AKAN_MOBILE_TARGET__?: { name: string; basePath?: string };
+    __AKAN_MOBILE_TARGET__?: { name: string; basePath?: string; indexPath?: string };
   }
 }
 
@@ -48,7 +51,7 @@ const RootRenderLayer = memo(({ renders, index, params, searchParams }: RootRend
     <RootRenderLayer renders={renders} index={index + 1} params={params} searchParams={searchParams} />
   );
   const routeRender = renders[index];
-  const isAsyncRender = routeRender?.render.constructor.name === "AsyncFunction";
+  const isAsyncRender = isAsyncRouteRender(routeRender);
   const resultRef = useRef<ReactNode | Promise<ReactNode> | null>(null);
   if (isAsyncRender && resultRef.current === null) {
     resultRef.current = routeRender?.render({ children, params, searchParams } as never) ?? null;
@@ -60,6 +63,10 @@ const RootRenderLayer = memo(({ renders, index, params, searchParams }: RootRend
   return Layout;
 });
 
+function isAsyncRouteRender(routeRender?: RouteRender): boolean {
+  return Boolean(routeRender?.isAsync || routeRender?.render.constructor.name === "AsyncFunction");
+}
+
 function composeLoadingFallback(renders: RouteRender[], params: Record<string, string>): ReactNode {
   let element: ReactNode = null;
   for (let i = renders.length - 1; i >= 0; i--) {
@@ -70,9 +77,10 @@ function composeLoadingFallback(renders: RouteRender[], params: Record<string, s
   return element;
 }
 
-export const bootCsr = async (context: Record<string, () => Promise<RouteModule>>) => {
+export const bootCsr = async (context: Record<string, CsrRouteModuleEntry>) => {
   const i18n = parseAkanI18nEnv();
   window.document.body.style.overflow = "hidden";
+  initializeMobileTargetFromSearch();
   const mobileBasePath = window.__AKAN_MOBILE_TARGET__?.basePath?.replace(/^\/+|\/+$/g, "");
   const pathname = mobileBasePath && window.location.pathname === "/" ? `/${mobileBasePath}` : window.location.pathname;
   if (pathname === "/404") return;
@@ -94,6 +102,7 @@ export const bootCsr = async (context: Record<string, () => Promise<RouteModule>
   const otherBasePaths = basePaths?.filter((path) => path !== currentBasePath) ?? [];
 
   const pages: { [key: string]: RouteModule } = {};
+  const asyncDefaultMap: { [key: string]: boolean | undefined } = {};
   await Promise.all(
     Object.entries(context).map(async ([key, value]) => {
       const parsed = parseRouteModuleKey(key);
@@ -101,37 +110,15 @@ export const bootCsr = async (context: Record<string, () => Promise<RouteModule>
         const pageBasePath = parsed.sourceRouteSegments.find((segment) => !/^\(.+\)$/.test(segment));
         if (pageBasePath && otherBasePaths.includes(pageBasePath)) return; // ignore other base paths
       }
-      const pageContent = await value();
+      const entry = typeof value === "function" ? { loader: value } : value;
+      const pageContent = await entry.loader();
       validateRouteModuleExports(key, pageContent);
+      validatePageConfig(key, (pageContent as RouteModuleWithConfig).pageConfig);
+      asyncDefaultMap[key] = entry.isAsyncDefault;
       if (pageContent.default) pages[key] = pageContent;
     }),
   );
-  const getPageState = (PageConfig?: PageConfig) => {
-    const {
-      transition,
-      safeArea,
-      topInset,
-      bottomInset,
-      gesture,
-      cache,
-      topSafeAreaColor,
-      bottomSafeAreaColor,
-    }: PageConfig = PageConfig ?? {};
-    const pageState: PageState = {
-      transition: transition ?? "none",
-      topSafeArea:
-        safeArea === false || safeArea === "bottom" || device.info.platform === "android" ? 0 : device.topSafeArea,
-      bottomSafeArea:
-        safeArea === false || safeArea === "top" || device.info.platform === "android" ? 0 : device.bottomSafeArea,
-      topInset: topInset === true ? DEFAULT_TOP_INSET : topInset === false ? 0 : (topInset ?? 0),
-      bottomInset: bottomInset === true ? DEFAULT_BOTTOM_INSET : bottomInset === false ? 0 : (bottomInset ?? 0),
-      gesture: gesture ?? true,
-      cache: cache ?? false,
-      topSafeAreaColor: topSafeAreaColor,
-      bottomSafeAreaColor: bottomSafeAreaColor,
-    };
-    return pageState;
-  };
+  const cssSafeArea = readCssSafeAreaInsets();
 
   const routeMap = new Map<string, Route>();
   routeMap.set("/", { path: "/", children: new Map() });
@@ -153,18 +140,27 @@ export const bootCsr = async (context: Record<string, () => Promise<RouteModule>
     if (!targetPath) continue;
     const page = pages[filePath];
     if (!page) continue;
-    const routeRender: RouteRender = { render: page.default as never, Loading: page.Loading as never };
+    const layoutPage = parsed.kind === "layout" ? (page as LayoutModule) : null;
+    const routeRender: RouteRender = {
+      render: page.default as never,
+      isAsync: asyncDefaultMap[filePath] || page.default?.constructor.name === "AsyncFunction",
+      Loading: page.Loading as never,
+      NotFound: layoutPage?.NotFound,
+      Error: layoutPage?.Error,
+      resolveNotFound: layoutPage ? () => layoutPage.NotFound : undefined,
+      resolveError: layoutPage ? () => layoutPage.Error : undefined,
+    };
     targetRouteMap.set(targetPath, {
       // action: pages[path]?.action,
       // ErrorBoundary: pages[path]?.ErrorBoundary,
       ...(targetRouteMap.get(targetPath) ?? { path: targetPath, children: new Map<string, Route>() }),
       ...(parsed.kind === "layout"
-        ? { renderLayout: routeRender }
+        ? { renderLayout: routeRender, layoutPageConfig: (page as RouteModuleWithConfig).pageConfig }
         : {
             renderPage: routeRender,
             pageIncludesOwnLayout: parsed.leaf === "_index",
             isSpecialRoute: parsed.isSpecialRoute,
-            pageState: getPageState((page as RouteModuleWithConfig).pageConfig),
+            pageConfig: (page as RouteModuleWithConfig).pageConfig,
             PageConfig: (page as RouteModuleWithConfig).pageConfig,
           }),
     } as Route);
@@ -175,6 +171,7 @@ export const bootCsr = async (context: Record<string, () => Promise<RouteModule>
     parentRootLayouts: RouteRender[] = [],
     parentLayouts: RouteRender[] = [],
     parentPaths: string[] = [],
+    parentPageConfigChain: PageConfig[] = [],
   ): PathRoute[] => {
     const parentPath = parentPaths.filter((path) => path !== "/").join("");
     const isRouteGroup = /^\/\(.*\)$/.test(route.path);
@@ -184,11 +181,30 @@ export const bootCsr = async (context: Record<string, () => Promise<RouteModule>
     const pathSegments = [...parentPaths, ...(currentPathSegment ? [currentPathSegment] : [])];
     const currentRootLayout = isRoot && route.renderLayout ? route.renderLayout : null;
     const currentLayout = !isRoot && route.renderLayout ? route.renderLayout : null;
+    const currentLayoutConfig = route.renderLayout && route.layoutPageConfig ? route.layoutPageConfig : null;
     const renderRootLayouts = [...parentRootLayouts, ...(currentRootLayout ? [currentRootLayout] : [])];
     const renderLayouts = [...parentLayouts, ...(currentLayout ? [currentLayout] : [])];
+    const pageConfigChain = [
+      ...parentPageConfigChain,
+      ...(currentRootLayout || currentLayout ? (currentLayoutConfig ? [currentLayoutConfig] : []) : []),
+    ];
     const pageRenderRootLayouts =
       route.pageIncludesOwnLayout === false && currentRootLayout ? parentRootLayouts : renderRootLayouts;
     const pageRenderLayouts = route.pageIncludesOwnLayout === false && currentLayout ? parentLayouts : renderLayouts;
+    const pageRenderConfigChain =
+      route.pageIncludesOwnLayout === false && (currentRootLayout || currentLayout)
+        ? parentPageConfigChain
+        : pageConfigChain;
+    const ownPageConfig = route.renderPage && route.pageConfig ? route.pageConfig : null;
+    const finalPageConfigChain = [...pageRenderConfigChain, ...(ownPageConfig ? [ownPageConfig] : [])];
+    const pageState = resolvePageState({
+      configChain: finalPageConfigChain,
+      path,
+      basePath: currentBasePath,
+      platform: device.info.platform,
+      deviceSafeArea: { top: device.topSafeArea, bottom: device.bottomSafeArea },
+      cssSafeArea,
+    });
     return [
       ...(route.renderPage
         ? [
@@ -199,13 +215,15 @@ export const bootCsr = async (context: Record<string, () => Promise<RouteModule>
               renderRootLayouts: pageRenderRootLayouts,
               renderLayouts: pageRenderLayouts,
               isSpecialRoute: route.isSpecialRoute,
-              pageState: route.pageState ?? defaultPageState,
+              pageState: route.pageState ?? pageState,
+              pageConfigChain: finalPageConfigChain,
+              explicitPageConfigKeys: getExplicitPageConfigKeys(finalPageConfigChain),
             },
           ]
         : []),
       ...(route.children.size
         ? [...route.children.values()].flatMap((child) =>
-            getPathRoutes(child, renderRootLayouts, renderLayouts, pathSegments),
+            getPathRoutes(child, renderRootLayouts, renderLayouts, pathSegments, pageConfigChain),
           )
         : []),
     ];
@@ -251,25 +269,53 @@ export const bootCsr = async (context: Record<string, () => Promise<RouteModule>
   root.render(<RouterProvider />);
 };
 
+function initializeMobileTargetFromSearch() {
+  if (window.__AKAN_MOBILE_TARGET__) return;
+
+  const params = new URLSearchParams(window.location.search);
+  const name = params.get("akanMobileTarget");
+  if (!name) return;
+
+  const basePath = params.get("akanMobileBasePath")?.replace(/^\/+|\/+$/g, "") ?? "";
+  const indexPath = params.get("akanMobileIndexPath") ?? undefined;
+  window.__AKAN_MOBILE_TARGET__ = { name, basePath, ...(indexPath ? { indexPath } : {}) };
+}
+
 function validateRouteModuleExports(key: string, mod: RouteModule) {
   const parsed = parseRouteModuleKey(key);
   const allowed =
     parsed.kind === "page"
-      ? new Set(["default", "pageConfig", "head", "generateHead", "Loading"])
+      ? new Set(["default", "pageConfig", "head", "metadata", "generateHead", "generateMetadata", "Loading"])
       : parsed.isInternalRootLayout
         ? new Set([
             "default",
+            "pageConfig",
             "head",
+            "metadata",
             "generateHead",
+            "generateMetadata",
             "fonts",
             "manifest",
             "theme",
             "reconnect",
+            "wsConnect",
             "layoutStyle",
             "gaTrackingId",
             "Loading",
+            "NotFound",
+            "Error",
           ])
-        : new Set(["default", "head", "generateHead", "Loading"]);
+        : new Set([
+            "default",
+            "pageConfig",
+            "head",
+            "metadata",
+            "generateHead",
+            "generateMetadata",
+            "Loading",
+            "NotFound",
+            "Error",
+          ]);
   for (const exportName of Object.keys(mod)) {
     if (!allowed.has(exportName)) {
       throw new Error(`[route-convention] unsupported export "${exportName}" in ${key}`);
@@ -277,5 +323,17 @@ function validateRouteModuleExports(key: string, mod: RouteModule) {
   }
   if ("head" in mod && "generateHead" in mod) {
     throw new Error(`[route-convention] head and generateHead cannot both be exported in ${key}`);
+  }
+  if (
+    !parsed.isInternalRootLayout &&
+    ("head" in mod || "generateHead" in mod) &&
+    ("metadata" in mod || "generateMetadata" in mod)
+  ) {
+    throw new Error(
+      `[route-convention] head/generateHead and metadata/generateMetadata cannot both be exported in ${key}`,
+    );
+  }
+  if ("metadata" in mod && "generateMetadata" in mod) {
+    throw new Error(`[route-convention] metadata and generateMetadata cannot both be exported in ${key}`);
   }
 }

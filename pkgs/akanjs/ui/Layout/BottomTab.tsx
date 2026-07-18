@@ -20,7 +20,7 @@ export interface BottomTabProps {
 }
 
 export const BottomTab = ({ className, tabs, height = 64 }: BottomTabProps) => {
-  const { lang, path } = usePage();
+  const { lang } = usePage();
   //ssr 에러나서 꼼짝없이 쓴거임. 페이지 이동에 대응안됨.
   const [isRendered, setIsRendered] = useState<boolean>(false);
   const isActiveTab = (tabHref: string) => {
@@ -38,7 +38,14 @@ export const BottomTab = ({ className, tabs, height = 64 }: BottomTabProps) => {
   }, []);
 
   return (
-    <BottomInset className="h-full">
+    <BottomInset
+      className="h-full"
+      role="bottomChrome"
+      estimatedHeight={height}
+      frameCache
+      frameScope="layout"
+      frameSource="bottomTab"
+    >
       <div
         className={clsx(
           `flex size-full items-center justify-around rounded-t-xl border border-base-200 border-b-0 bg-base-100`,
@@ -49,6 +56,7 @@ export const BottomTab = ({ className, tabs, height = 64 }: BottomTabProps) => {
           <Link
             key={tab.name}
             href={tab.href}
+            replace
             className={`relative flex w-full flex-col items-center justify-end gap-1 ${
               isActiveTab(tab.href) ? "" : "opacity-60"
             }`}
@@ -56,10 +64,7 @@ export const BottomTab = ({ className, tabs, height = 64 }: BottomTabProps) => {
             <div className="indicator">
               {isActiveTab(tab.href) ? (tab.activeIcon ?? tab.icon) : tab.icon}
               {tab.notiCount && tab.notiCount > 0 ? (
-                // <div className="absolute top-1 right-2 bg-error  w-5 h-5 rounded-full flex items-center justify-center text-base-100">
-                <div className="indicator-item flex size-2 items-center justify-center rounded-full bg-secondary text-[10px] text-base-100">
-                  {/* {tab.notiCount > 99 ? "99+" : tab.notiCount} */}
-                </div>
+                <div className="indicator-item flex size-2 items-center justify-center rounded-full bg-secondary text-[10px] text-base-100"></div>
               ) : null}
             </div>
             <span>{tab.name}</span>

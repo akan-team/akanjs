@@ -292,9 +292,9 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
           <span className="ml-2 font-mono text-primary">#{icecreamOrder.id.slice(-4)}</span>
           <span // [!code ++:9]
             className={clsx("ml-2 rounded px-2 py-1 text-xs font-semibold uppercase", {
-              "border border-base-300 bg-primary text-primary-content": icecreamOrder.serveType === "forHere",
-              "border border-base-300 bg-warning text-warning-content": icecreamOrder.serveType === "takeOut",
-              "border border-base-300 bg-secondary text-secondary-content": icecreamOrder.serveType === "delivery",
+              "border border-primary/40 bg-base-100 text-primary": icecreamOrder.serveType === "forHere",
+              "border border-warning/40 bg-base-100 text-warning": icecreamOrder.serveType === "takeOut",
+              "border border-info/40 bg-info text-info-content": icecreamOrder.serveType === "delivery",
             })}
           >
             {l(\`serveType.\${icecreamOrder.serveType}\`)}
@@ -306,11 +306,11 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
           </span>
           <span
             className={clsx("ml-2 rounded-full px-3 py-1 text-sm font-semibold", {
-              "border border-base-300 bg-primary text-primary-content": icecreamOrder.status === "active",
-              "border border-base-300 bg-warning text-warning-content": icecreamOrder.status === "processing",
-              "border border-base-300 bg-secondary text-secondary-content": icecreamOrder.status === "served",
-              "border border-base-300 bg-accent text-accent-content": icecreamOrder.status === "finished",
-              "border border-base-300 bg-neutral text-neutral-content": icecreamOrder.status === "canceled",
+              "border border-primary/40 bg-base-100 text-primary": icecreamOrder.status === "active",
+              "border border-warning/40 bg-base-100 text-warning": icecreamOrder.status === "processing",
+              "border border-info/40 bg-info text-info-content": icecreamOrder.status === "served",
+              "border border-accent/40 bg-base-100 text-accent": icecreamOrder.status === "finished",
+              "border border-base-300 bg-base-100 text-base-content/70": icecreamOrder.status === "canceled",
             })}
           >
             {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}

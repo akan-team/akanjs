@@ -194,9 +194,8 @@ import type * as srv from "../srv";
 export class DeliveryService extends serve(db.delivery, ({ use, service }) => ({
   icecreamOrderService: service<srv.IcecreamOrderService>(), // [!code highlight]
 })) {
-  override _preUpdate(id: string, data: db.DeliveryInput) { // [!code highlight:9]
+  override _preUpdate(id: string, data: db.DeliveryInput): never { // [!code highlight:8]
     throw new Err("delivery.error.cannotUpdateDelivery");
-    return data;
   }
   override async _postCreate(delivery: db.Delivery) {
     for (const icecreamOrderId of delivery.icecreamOrders)

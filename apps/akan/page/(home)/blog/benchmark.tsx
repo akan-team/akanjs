@@ -68,6 +68,20 @@ const akanResults = [
       ko: "Akan relation path와 batching 동작을 사용하는 document relation lookup입니다.",
     },
   },
+  {
+    name: "WebSocket Fan-out",
+    scenario: "websocket_fanout",
+    rps: 50_000,
+    p99: 11,
+    rss: 189.48,
+    minRps: 40_000,
+    maxP99: 50,
+    throughputLabel: "msg/s",
+    desc: {
+      en: "A realtime fan-out workload: one publisher sends timestamped messages to 1,000 subscribers through Akan's /api/ws pubsub path.",
+      ko: "실시간 fan-out workload입니다. publisher 1개가 Akan /api/ws pubsub 경로를 통해 subscriber 1,000개에 timestamp message를 전송합니다.",
+    },
+  },
 ];
 
 const peerBaselines = [
@@ -112,8 +126,8 @@ export default function Page() {
           </h1>
           <p className="mt-6 text-base-content/70 text-lg leading-8">
             {l.trans({
-              en: "Akan.js 2.0.7 was measured on a MacBook M4 Pro to check the practical performance of its HTTP, Signal API, and document DB paths. The goal is simple: show how fast it is, where it sits next to familiar frameworks, and whether the results clear practical service-level targets.",
-              ko: "Akan.js 2.0.7을 MacBook M4 Pro에서 측정해 HTTP, Signal API, document DB 경로의 실사용 성능을 확인했습니다. 목적은 단순합니다. 어느 정도 빠른지, 익숙한 프레임워크와 비교해 어디쯤 있는지, 그리고 실용적인 service-level target을 통과하는지 보여주는 것입니다.",
+              en: "Akan.js was measured on a MacBook M4 Pro to check the practical performance of its HTTP, Signal API, document DB, and realtime WebSocket paths. The goal is simple: show how fast it is, where it sits next to familiar baselines, and whether the results clear practical service-level targets.",
+              ko: "Akan.js를 MacBook M4 Pro에서 측정해 HTTP, Signal API, document DB, realtime WebSocket 경로의 실사용 성능을 확인했습니다. 목적은 단순합니다. 어느 정도 빠른지, 익숙한 기준과 비교해 어디쯤 있는지, 그리고 실용적인 service-level target을 통과하는지 보여주는 것입니다.",
             })}
           </p>
         </header>
@@ -143,6 +157,12 @@ export default function Page() {
               {l.trans({
                 en: "Document DB APIs stayed within the target range, including list and relation-style reads.",
                 ko: "Document DB API도 list와 relation read를 포함해 목표 범위 안에 들어왔습니다.",
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: "WebSocket fan-out delivered 50k messages/sec to 1,000 local subscribers with p99 delivery latency at 11ms and no dropped messages.",
+                ko: "WebSocket fan-out은 local subscriber 1,000개에 50k messages/sec를 전달했고, delivery latency p99는 11ms, dropped message는 0개였습니다.",
               })}
             </li>
           </ul>
@@ -197,8 +217,8 @@ export default function Page() {
           <h2 className="font-bold text-2xl">{l.trans({ en: "Test setup", ko: "테스트 환경" })}</h2>
           <p className="mt-4 text-base-content/75 leading-7">
             {l.trans({
-              en: "The benchmark was run locally on a MacBook M4 Pro with Akan.js 2.0.7. Local benchmark numbers naturally depend on machine state, but this setup is useful for checking whether the framework has enough practical headroom for typical application APIs.",
-              ko: "벤치마크는 MacBook M4 Pro에서 Akan.js 2.0.7으로 로컬 실행했습니다. 로컬 벤치마크 수치는 machine state의 영향을 받지만, 일반적인 application API에 충분한 실용 성능 여유가 있는지 확인하기에는 유용합니다.",
+              en: "The benchmark was run locally on a MacBook M4 Pro with Akan.js 2.0.7. Local benchmark numbers naturally depend on machine state, but this setup is useful for checking whether the framework has enough practical headroom.",
+              ko: "벤치마크는 MacBook M4 Pro에서 Akan.js 2.0.7로 로컬 실행했습니다. 로컬 벤치마크 수치는 machine state의 영향을 받지만, framework가 충분한 실용 성능 여유를 갖는지 확인하기에는 유용합니다.",
             })}
           </p>
           <ul className="mt-4 list-disc space-y-2 pl-5 text-base-content/75 leading-7">
@@ -211,6 +231,12 @@ export default function Page() {
               {l.trans({
                 en: "Load profile: 50 virtual users, 10s warmup, 30s measurement",
                 ko: "Load profile: 50 virtual users, 10초 warmup, 30초 측정",
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: "WebSocket profile: 1,000 subscribers, 1 publisher, 50 publishes/sec, 60s measurement",
+                ko: "WebSocket profile: subscriber 1,000개, publisher 1개, 초당 publish 50개, 60초 측정",
               })}
             </li>
             <li>
@@ -233,8 +259,8 @@ export default function Page() {
                 <ul className="mt-3 list-disc space-y-1 pl-5 text-base-content/75 leading-7">
                   <li>
                     {l.trans({
-                      en: `${formatRps(item.rps)} RPS measured; target is at least ${formatRps(item.minRps)} RPS.`,
-                      ko: `${formatRps(item.rps)} RPS 측정; 목표는 최소 ${formatRps(item.minRps)} RPS입니다.`,
+                      en: `${formatRps(item.rps)} ${item.throughputLabel ?? "RPS"} measured; target is at least ${formatRps(item.minRps)} ${item.throughputLabel ?? "RPS"}.`,
+                      ko: `${formatRps(item.rps)} ${item.throughputLabel ?? "RPS"} 측정; 목표는 최소 ${formatRps(item.minRps)} ${item.throughputLabel ?? "RPS"}입니다.`,
                     })}
                   </li>
                   <li>
@@ -299,6 +325,24 @@ export default function Page() {
               ko: "이 overhead가 문제가 되지 않는 이유는 측정 경로가 실제 list endpoint가 필요로 하는 동작에 더 가깝기 때문입니다. 5,268 RPS와 p99 14.957ms로 현재 list API SLO를 통과하므로 framework 비용은 보이지만 실용 범위 안에 있습니다.",
             })}
           </p>
+          <p className="mt-4 text-base-content/75 leading-7">
+            {l.trans({
+              en: "For WebSocket fan-out, the comparison is intentionally against raw Bun rather than a higher-level realtime framework. The goal is not to claim that Akan is faster than raw WebSocket code. The useful question is whether Akan's pubsub path stays within a practical overhead range while preserving the same application model used by Signal APIs.",
+              ko: "WebSocket fan-out은 의도적으로 higher-level realtime framework가 아니라 raw Bun과 비교했습니다. 목표는 Akan이 raw WebSocket 코드보다 빠르다고 주장하는 것이 아닙니다. 의미 있는 질문은 Signal API와 같은 application model을 유지하면서 Akan pubsub 경로의 overhead가 실용 범위 안에 있는지입니다.",
+            })}
+          </p>
+          <p className="mt-4 text-base-content/75 leading-7">
+            {l.trans({
+              en: "In the 1,000-subscriber fan-out run, raw Bun delivered about 49,983 messages/sec with p99 around 8ms. Akan delivered 50,000 messages/sec through /api/ws pubsub with p99 at 11ms, zero dropped messages, and zero connection errors. That is a small latency premium for running through the framework pubsub path.",
+              ko: "subscriber 1,000개 fan-out run에서 raw Bun은 약 49,983 messages/sec와 p99 약 8ms를 기록했습니다. Akan은 /api/ws pubsub 경로를 통해 50,000 messages/sec를 전달했고 p99는 11ms, dropped message와 connection error는 0개였습니다. Framework pubsub 경로를 통과한다는 점을 고려하면 작은 latency premium입니다.",
+            })}
+          </p>
+          <p className="mt-4 text-base-content/75 leading-7">
+            {l.trans({
+              en: "A 5,000-subscriber local stress run also delivered 49,917 messages/sec with 0% drop and p99 47ms, but it produced 3,362 connection errors and a child health-timeout during the run. I treat that as a local stress signal rather than a clean headline benchmark.",
+              ko: "subscriber 5,000개 local stress run도 49,917 messages/sec, drop 0%, p99 47ms를 기록했습니다. 다만 실행 중 connection error 3,362개와 child health-timeout이 발생했습니다. 이 수치는 headline benchmark가 아니라 local stress signal로 보는 것이 맞습니다.",
+            })}
+          </p>
         </section>
 
         <section className="mt-12">
@@ -307,14 +351,14 @@ export default function Page() {
           </h2>
           <p className="mt-4 text-base-content/75 leading-7">
             {l.trans({
-              en: "For a framework that includes full-stack conventions on top of routing, these results are practical. The pure HTTP path is competitive with minimal Bun routers, the Signal API path has clear headroom above its SLO, and the document DB paths remain within their latency and throughput targets.",
-              ko: "Routing 위에 full-stack convention을 포함하는 framework라는 점을 고려하면 이 결과는 실용적입니다. Pure HTTP 경로는 Bun minimal router와 경쟁 가능한 범위에 있고, Signal API는 SLO 대비 명확한 여유가 있으며, document DB 경로도 latency와 throughput 목표 안에 들어옵니다.",
+              en: "For a framework that includes full-stack conventions on top of routing, these results are practical. The pure HTTP path is competitive with minimal Bun routers, the Signal API path has clear headroom above its SLO, the document DB paths remain within their latency and throughput targets, and the WebSocket pubsub path handles the 1k local fan-out target without drops.",
+              ko: "Routing 위에 full-stack convention을 포함하는 framework라는 점을 고려하면 이 결과는 실용적입니다. Pure HTTP 경로는 Bun minimal router와 경쟁 가능한 범위에 있고, Signal API는 SLO 대비 명확한 여유가 있으며, document DB 경로도 latency와 throughput 목표 안에 들어옵니다. WebSocket pubsub 경로도 1k local fan-out 목표를 drop 없이 처리했습니다.",
             })}
           </p>
           <p className="mt-4 text-base-content/75 leading-7">
             {l.trans({
-              en: "In short, Akan.js 2.0.7 is fast enough for typical API-heavy applications on this local benchmark: router-level performance is close to the fast Bun ecosystem, and higher-level Akan APIs still clear practical service targets.",
-              ko: "요약하면, 이 로컬 벤치마크 기준에서 Akan.js 2.0.7은 일반적인 API 중심 application에 충분히 빠릅니다. Router-level 성능은 빠른 Bun 생태계에 가깝고, higher-level Akan API도 실용적인 service target을 통과합니다.",
+              en: "In short, Akan is fast enough for typical API-heavy and realtime application paths on this local benchmark: router-level performance is close to the fast Bun ecosystem, higher-level Akan APIs clear practical service targets, and realtime fan-out stays in a usable overhead range.",
+              ko: "요약하면, 이 로컬 벤치마크 기준에서 Akan은 일반적인 API 중심 및 realtime application 경로에 충분히 빠릅니다. Router-level 성능은 빠른 Bun 생태계에 가깝고, higher-level Akan API는 실용적인 service target을 통과하며, realtime fan-out도 사용 가능한 overhead 범위 안에 있습니다.",
             })}
           </p>
         </section>
@@ -335,11 +379,15 @@ function SloMargin({ item }: { item: (typeof akanResults)[number] }) {
           <p className="font-mono text-base-content/45 text-sm">{item.scenario}</p>
         </div>
         <p className="text-base-content/60 text-sm">
-          {rpsRatio.toFixed(1)}x RPS target, {latencyRatio.toFixed(1)}x p99 headroom
+          {rpsRatio.toFixed(1)}x {item.throughputLabel ?? "RPS"} target, {latencyRatio.toFixed(1)}x p99 headroom
         </p>
       </div>
       <div className="mt-2 space-y-2">
-        <MiniBar label="RPS" value={`${formatRps(item.rps)} / ${formatRps(item.minRps)}`} ratio={rpsRatio} />
+        <MiniBar
+          label={item.throughputLabel ?? "RPS"}
+          value={`${formatRps(item.rps)} / ${formatRps(item.minRps)}`}
+          ratio={rpsRatio}
+        />
         <MiniBar label="p99" value={`${item.p99}ms / ${item.maxP99}ms`} ratio={latencyRatio} />
       </div>
     </div>

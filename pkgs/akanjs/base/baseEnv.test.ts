@@ -76,18 +76,20 @@ describe("getEnv", () => {
 
   test("uses local defaults for csr and ssr render modes", async () => {
     resetEnv();
-    process.env.AKAN_PUBLIC_OPERATION_MODE = "local";
+    process.env.AKAN_PUBLIC_ENV = "local";
 
     const csrModule = await loadBaseEnv();
+    expect(csrModule.getEnv().operationMode).toBe("local");
     expect(csrModule.getEnv().clientPort).toBe(8282);
     expect(csrModule.getEnv().serverHttpUri).toBe("http://localhost:8282/api");
     expect(csrModule.getEnv().serverWsUri).toBe("ws://localhost:8282");
 
     resetEnv();
-    process.env.AKAN_PUBLIC_OPERATION_MODE = "local";
+    process.env.AKAN_PUBLIC_ENV = "local";
     process.env.AKAN_PUBLIC_RENDER_ENV = "ssr";
 
     const ssrModule = await loadBaseEnv();
+    expect(ssrModule.getEnv().operationMode).toBe("local");
     expect(ssrModule.getEnv().clientPort).toBe(8282);
   });
 

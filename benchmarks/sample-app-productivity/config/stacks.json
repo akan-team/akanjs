@@ -1,0 +1,320 @@
+{
+  "scenario": "team-task-board",
+  "stacks": [
+    {
+      "id": "akanjs",
+      "label": "Akan.js 2.2.12",
+      "runtime": "bun",
+      "packagePolicy": "published-fixed",
+      "allowedPackages": [
+        "create-akan-workspace@2.2.12",
+        "akanjs@2.2.12"
+      ],
+      "promptAppendix": "scenarios/team-task-board/prompt.akanjs.md",
+      "setup": [
+        {
+          "cmd": "bunx",
+          "args": [
+            "create-akan-workspace@2.2.12",
+            "akanjs",
+            "--app",
+            "taskboard",
+            "--dir",
+            "{{workspaceParentPath}}",
+            "--init",
+            "true"
+          ]
+        }
+      ],
+      "installCommand": null,
+      "baseUrl": "http://127.0.0.1:8282",
+      "startCommand": [
+        "bun",
+        "run",
+        "akan",
+        "start",
+        "taskboard"
+      ],
+      "buildCommand": [
+        "bun",
+        "run",
+        "akan",
+        "build",
+        "taskboard"
+      ],
+      "lintCommand": [
+        "bun",
+        "run",
+        "akan",
+        "lint",
+        "taskboard"
+      ],
+      "conventionCheck": "akanjs",
+      "versionChecks": [
+        {
+          "file": "package.json",
+          "path": "dependencies.akanjs",
+          "expected": "2.2.12"
+        }
+      ]
+    },
+    {
+      "id": "next-prisma",
+      "label": "Next.js App Router + Prisma + SQLite",
+      "runtime": "node",
+      "packagePolicy": "latest-stable-locked",
+      "allowedPackages": [
+        "next",
+        "react",
+        "react-dom",
+        "prisma",
+        "@prisma/client",
+        "typescript"
+      ],
+      "promptAppendix": "scenarios/team-task-board/prompt.next-prisma.md",
+      "setup": [
+        {
+          "cmd": "bunx",
+          "args": [
+            "create-next-app@latest",
+            "{{workspacePath}}",
+            "--yes",
+            "--ts",
+            "--app",
+            "--eslint",
+            "--src-dir",
+            "--no-tailwind",
+            "--use-bun",
+            "--import-alias",
+            "@/*"
+          ]
+        },
+        {
+          "cmd": "bun",
+          "args": [
+            "add",
+            "prisma",
+            "@prisma/client"
+          ],
+          "cwd": "{{workspacePath}}"
+        }
+      ],
+      "installCommand": [
+        "bun",
+        "install"
+      ],
+      "baseUrl": "http://127.0.0.1:3000",
+      "startCommand": [
+        "bun",
+        "run",
+        "dev"
+      ],
+      "buildCommand": [
+        "bun",
+        "run",
+        "build"
+      ],
+      "lintCommand": null,
+      "conventionCheck": null,
+      "versionChecks": []
+    },
+    {
+      "id": "hono-drizzle",
+      "label": "Hono + Drizzle + React/Vite",
+      "runtime": "bun",
+      "packagePolicy": "latest-stable-locked",
+      "allowedPackages": [
+        "hono",
+        "drizzle-orm",
+        "drizzle-kit",
+        "@vitejs/plugin-react",
+        "vite",
+        "react",
+        "react-dom",
+        "typescript"
+      ],
+      "promptAppendix": "scenarios/team-task-board/prompt.hono-drizzle.md",
+      "setup": [
+        {
+          "cmd": "bunx",
+          "args": [
+            "create-vite@latest",
+            "{{workspacePath}}",
+            "--template",
+            "react-ts"
+          ]
+        },
+        {
+          "cmd": "bun",
+          "args": [
+            "add",
+            "hono",
+            "drizzle-orm"
+          ],
+          "cwd": "{{workspacePath}}"
+        },
+        {
+          "cmd": "bun",
+          "args": [
+            "add",
+            "-d",
+            "drizzle-kit"
+          ],
+          "cwd": "{{workspacePath}}"
+        }
+      ],
+      "installCommand": [
+        "bun",
+        "install"
+      ],
+      "baseUrl": "http://127.0.0.1:5173",
+      "startCommand": [
+        "bun",
+        "run",
+        "dev",
+        "--host",
+        "127.0.0.1"
+      ],
+      "buildCommand": [
+        "bun",
+        "run",
+        "build"
+      ],
+      "lintCommand": null,
+      "conventionCheck": null,
+      "versionChecks": []
+    },
+    {
+      "id": "elysia-drizzle",
+      "label": "Elysia + Drizzle + React/Vite",
+      "runtime": "bun",
+      "packagePolicy": "latest-stable-locked",
+      "allowedPackages": [
+        "elysia",
+        "drizzle-orm",
+        "drizzle-kit",
+        "@vitejs/plugin-react",
+        "vite",
+        "react",
+        "react-dom",
+        "typescript"
+      ],
+      "promptAppendix": "scenarios/team-task-board/prompt.elysia-drizzle.md",
+      "setup": [
+        {
+          "cmd": "bunx",
+          "args": [
+            "create-vite@latest",
+            "{{workspacePath}}",
+            "--template",
+            "react-ts"
+          ]
+        },
+        {
+          "cmd": "bun",
+          "args": [
+            "add",
+            "elysia",
+            "drizzle-orm"
+          ],
+          "cwd": "{{workspacePath}}"
+        },
+        {
+          "cmd": "bun",
+          "args": [
+            "add",
+            "-d",
+            "drizzle-kit"
+          ],
+          "cwd": "{{workspacePath}}"
+        }
+      ],
+      "installCommand": [
+        "bun",
+        "install"
+      ],
+      "baseUrl": "http://127.0.0.1:5173",
+      "startCommand": [
+        "bun",
+        "run",
+        "dev",
+        "--host",
+        "127.0.0.1"
+      ],
+      "buildCommand": [
+        "bun",
+        "run",
+        "build"
+      ],
+      "lintCommand": null,
+      "conventionCheck": null,
+      "versionChecks": []
+    },
+    {
+      "id": "fastify-prisma",
+      "label": "Fastify + Prisma + React/Vite",
+      "runtime": "node",
+      "packagePolicy": "latest-stable-locked",
+      "allowedPackages": [
+        "fastify",
+        "prisma",
+        "@prisma/client",
+        "@vitejs/plugin-react",
+        "vite",
+        "react",
+        "react-dom",
+        "typescript"
+      ],
+      "promptAppendix": "scenarios/team-task-board/prompt.fastify-prisma.md",
+      "setup": [
+        {
+          "cmd": "bunx",
+          "args": [
+            "create-vite@latest",
+            "{{workspacePath}}",
+            "--template",
+            "react-ts"
+          ]
+        },
+        {
+          "cmd": "bun",
+          "args": [
+            "add",
+            "fastify",
+            "@prisma/client"
+          ],
+          "cwd": "{{workspacePath}}"
+        },
+        {
+          "cmd": "bun",
+          "args": [
+            "add",
+            "-d",
+            "prisma"
+          ],
+          "cwd": "{{workspacePath}}"
+        }
+      ],
+      "installCommand": [
+        "bun",
+        "install"
+      ],
+      "baseUrl": "http://127.0.0.1:5173",
+      "startCommand": [
+        "bun",
+        "run",
+        "dev",
+        "--host",
+        "127.0.0.1"
+      ],
+      "buildCommand": [
+        "bun",
+        "run",
+        "build"
+      ],
+      "lintCommand": null,
+      "conventionCheck": null,
+      "versionChecks": []
+    }
+  ]
+}

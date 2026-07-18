@@ -6,6 +6,7 @@ import { type IntroItem, IntroTable } from "./IntroTable";
 import { Layout } from "./Layout";
 import { Mermaid } from "./Mermaid";
 import { type OptionItem, OptionTable } from "./OptionTable";
+import { Search } from "./Search";
 import { SubSubTitle } from "./SubSubTitle";
 import { SubTitle } from "./SubTitle";
 import { Title } from "./Title";
@@ -21,6 +22,7 @@ export const Docs = {
   IntroTable,
   Alert,
   CodeSnippet,
+  Search,
 };
 export type { OptionItem, IntroItem };
 export { ConstantDocsDemo, ConstantDocsPrintDemo };

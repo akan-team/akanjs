@@ -73,7 +73,8 @@ export const rotateRefreshSession = async (
 ) => {
   const session = await getSession(cache, refreshTokenHash);
   if (!session) throw new Error("Invalid refresh token");
-  if (session.revokedAt || dayjs(session.expiresAt).isBefore(dayjs())) throw new Error("Expired refresh token");
+  if (session.revokedAt) throw new Error("Revoked refresh token");
+  if (dayjs(session.expiresAt).isBefore(dayjs())) throw new Error("Expired refresh token");
   if (session.rotatedAt) {
     await revokeRefreshSessions(cache, session.subject, session.subjectId);
     throw new Error("Refresh token reuse detected");

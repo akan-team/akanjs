@@ -17,6 +17,8 @@ const TEST_FILE_PATTERNS = [
   "**/*.spec.tsx",
   "**/*.spec.js",
   "**/*.spec.jsx",
+  "**/*.fixture.ts",
+  "**/*.fixture.tsx",
 ];
 
 const removeTestFiles = async () => {
@@ -28,7 +30,7 @@ const removeTestFiles = async () => {
   }
 };
 const COMMENT_FILE_PATTERNS = ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"];
-const testFilePattern = /\.(?:test|spec)\.[cm]?[tj]sx?$/;
+const testFilePattern = /\.(?:test|spec|fixture)\.[cm]?[tj]sx?$/;
 
 const isJSDocComment = (comment: string) => comment.startsWith("/**") && !comment.startsWith("/***/");
 
@@ -206,8 +208,10 @@ const emitDeclarations = async () => {
   const emitResult = program.emit();
   const diagnostics = ts.getPreEmitDiagnostics(program).concat(emitResult.diagnostics);
   const errors = diagnostics.filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
-  if (errors.length > 0 && process.env.AKAN_BUILD_DECLARATION_DIAGNOSTICS === "1") {
-    console.warn(formatDiagnosticMessages(errors));
+  if (errors.length > 0) {
+    const formatted = formatDiagnosticMessages(errors);
+    if (process.env.AKAN_BUILD_DECLARATION_DIAGNOSTICS === "error") throw new Error(formatted);
+    if (process.env.AKAN_BUILD_DECLARATION_DIAGNOSTICS === "1") console.warn(formatted);
   }
 };
 

@@ -1,0 +1,12 @@
+---
+description: Formatting and linting conventions
+alwaysApply: true
+---
+
+# Formatting And Linting
+
+- Use Biome as the formatter and linter.
+- Format with `bun run akan lint <appName>` from the repo root.
+- Keep formatting consistent with `biome.json`: 2-space indentation, 120 line width, and double quotes for JS/TS.
+- Avoid adding new `console` usage except accepted methods such as `console.error`, `console.info`, and `console.warn`.
+- Do not make broad formatting-only changes in unrelated files.

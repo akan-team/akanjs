@@ -1,0 +1,16 @@
+---
+description: Application test commands after source changes
+alwaysApply: true
+---
+
+# Application Test Commands
+
+- After changing application source code, test the app with `bun run akan start <appName>`.
+- Test production build generation with `bun run akan build <appName>`.
+- To test a built artifact locally, run it from the generated app directory with the required Akan runtime environment variables.
+
+```bash
+cd dist/apps/<appName> && USE_AKANJS_PKGS=true AKAN_PUBLIC_REPO_NAME=akansoft AKAN_PUBLIC_SERVE_DOMAIN="akamir.com" AKAN_PUBLIC_APP_NAME=seon AKAN_PUBLIC_ENV=local AKAN_PUBLIC_OPERATION_MODE=local SERVER_MODE=federation AKAN_PUBLIC_BASE_PATHS=neul,apptest,seon bun main.js
+```
+
+- Adjust `<appName>`, `AKAN_PUBLIC_APP_NAME`, and `AKAN_PUBLIC_BASE_PATHS` to match the app being tested.

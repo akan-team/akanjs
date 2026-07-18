@@ -1,27 +1,27 @@
 # Akan.js
 
-[한국어](https://unpkg.com/akanjs@latest/README.ko.md) | [Docs](https://akanjs.com/docs) | [npm](https://www.npmjs.com/package/akanjs)
+[한국어](./README.ko.md) | [Docs](https://akanjs.com/docs) | [npm](https://www.npmjs.com/package/akanjs)
 
-**Write the business, not the plumbing.**
+**One line of business code ships web, iOS, Android, server, and database together.**
 
-Akan.js is a Bun-first full-stack TypeScript framework for teams that want business definitions to be the
-application. One cohesive codebase can produce SEO web surfaces, iOS and Android app surfaces, servers,
-database contracts, infrastructure artifacts, and documentation.
+No more framework assembly, duplicated declarations, or per-platform rewrites. Akan.js is a Bun-first
+full-stack TypeScript framework where business intent is written once, then compiled into SEO web surfaces,
+iOS and Android app packages, servers, database contracts, infrastructure artifacts, and documentation.
 
-```bash
-bunx create-akan-workspace@latest
-```
+<img width="563" height="720" alt="multi-platform-dev" src="https://github.com/user-attachments/assets/de2ec810-7b7f-4e9d-8e9e-e565e648fb45" />
+
+A single Akan.js codebase keeps server rendering, client rendering, mobile apps, server, and database moving in one development flow.
 
 ## Why Akan
 
-Akan is designed for teams and solo builders who would rather describe what the business does than keep
-rewriting the same intent for each technical layer. Define the domain once, then let the framework connect
-the schema, API, fetch client, store, UI, server, deployment artifacts, and generated references.
+Akan is designed for teams and solo builders who would rather ship the business than keep wiring technical
+layers by hand. Define the domain once, then let the framework connect schema, API, fetch client, store, UI,
+server, app packaging, deployment artifacts, and generated references.
 
-- **Agents write**: business definitions are the source of truth; generation handles repetitive framework code.
-- **Keep it minimal**: one line of intent can flow across web, app, server, database, and deployment.
-- **Always readable**: fewer files, strict conventions, and predictable declarations keep code clear months later.
-- **Nice to review**: focused domain changes are easier to inspect, approve, and ship.
+- **Web devs**: the same business code becomes SEO-ready web and native-feeling iOS/Android screens.
+- **App devs**: Bun server, SQLite, API contracts, and validation follow without hand-wiring.
+- **Solo and small teams**: one full-stack developer can own all five surfaces with a quarter of the code.
+- **Agents stay consistent**: strict conventions keep file paths, names, structures, and declarations readable.
 
 ## Requirements
 
@@ -40,7 +40,7 @@ bunx create-akan-workspace@latest
 Or install the CLI globally:
 
 ```bash
-bun install -g akanjs --latest
+bun install -g @akanjs/cli --latest
 akan create-workspace
 cd <workspace-name>
 akan start <app-name> --open
@@ -102,12 +102,39 @@ flowchart LR
 This structure lets one model and one contract flow through the database, server, API, state management,
 and UI without duplicating intent across layers.
 
+## 8 in 1
+
+One field. Eight layers follow.
+
+Adding a single business field in a traditional full-stack app usually means changing all of this by hand:
+
+1. Define the DB schema.
+2. Add the query field.
+3. Add the service logic.
+4. Add the API field.
+5. Add the fetch field.
+6. Declare the client type.
+7. Declare the state management.
+8. Declare the UI prop.
+
+Change one place, chase eight. Miss one, and types break, or it fails at runtime. In Akan, the business field is
+the source of truth:
+
+```ts
+export class ProductInput extends via((field) => ({
+  name: field(String),
+})) {}
+```
+
+That one declaration defines schema and type together. The surrounding layers are generated from the same
+intent, so the stack stays connected instead of turning into spaghetti.
+
 ## What Akan Builds
 
 Akan is one framework for the pieces that normally become separate projects:
 
 - SEO-optimized server-side rendered web surfaces.
-- iOS and Android friendly client-side rendered app surfaces with page transitions.
+- iOS and Android app packages from compiled web surfaces, with native-level built-in screen transitions.
 - Bun-powered HTTP and WebSocket servers.
 - SQLite-first simple server paths, with Postgres and Redis expansion paths for larger systems.
 - Schema validation, error handling, security helpers, and middleware.
@@ -118,6 +145,10 @@ Akan is one framework for the pieces that normally become separate projects:
 
 Deployment and documentation should not consume a day of work. Akan is built so schema and endpoint
 definitions can also become table references, runtime contracts, API docs, and testable endpoint references.
+
+Unlike ordinary app packaging that can feel like a wrapped website, Akan's client runtime includes transition
+presets for list-detail flows, overlays, and context changes. Packaged web surfaces can deliver a native-level
+user experience without a separate UI rewrite.
 
 ## One Package, Many Boundaries
 
@@ -187,7 +218,7 @@ akan update
 
 Common areas:
 
-- **Workspace**: create workspaces, generate Mongo configuration, lint and sync projects.
+- **Workspace**: create workspaces, lint and sync projects.
 - **Application**: start, build, typecheck, package, and release apps.
 - **Library**: create, install, sync, push, and pull shared libraries.
 - **Module and scalar**: generate domain modules, models, views, units, templates, and stores.

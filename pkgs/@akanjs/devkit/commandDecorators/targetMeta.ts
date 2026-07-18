@@ -28,4 +28,5 @@ export interface TargetOption {
   devOnly?: boolean;
   desc?: string;
   runsOnWorkspaceRoot?: boolean;
+  stdio?: boolean;
 }

@@ -1,4 +1,4 @@
-import type { AkanTheme } from "akanjs/fetch";
+import type { AkanRequestStore, AkanTheme } from "akanjs/fetch";
 
 export interface SsrManifestEntry {
   id: string;
@@ -16,10 +16,37 @@ export interface SsrChunkRegistryStats {
   ssrChunkRegistrySize: number;
   ssrChunkLoadCount: number;
   ssrChunkCacheHitCount: number;
+  ssrChunkEvictionCount: number;
+}
+
+export interface SsrLateRedirect {
+  type: "redirect";
+  location: string;
+  method: "replace" | "push";
+  status: 303 | 307 | 308;
+}
+
+export interface RscTraceMetadata {
+  navId?: string;
+  pathname: string;
+  routeId: string;
+  cache: "hit" | "miss" | "bypass";
+  cacheReason?: string;
+  cacheKeyHash?: string;
+  partial?: "full" | "candidate" | "patch" | "fallback";
+  partialReason?: string;
+  partialCommonPrefixLength?: number;
+  patchStartIndex?: number;
+  patchSegmentPath?: string;
+  patchStartSegment?: string;
+  patchHeadSafe?: boolean;
+  patchHeadSnapshot?: string;
+  routeState?: string;
 }
 
 export interface SsrFromRscInput {
   request?: Request;
+  requestStore?: AkanRequestStore;
   rscStream: ReadableStream<Uint8Array>;
   ssrManifest: SsrManifest;
   bootstrapModules?: string[];
@@ -35,14 +62,15 @@ export interface SsrFromRscInput {
    * guaranteeing one React instance across rscClient and every route
    * chunk.
    *
-   * Injection happens via a stream transform, not React children, because
-   * React Fizz hoists `<link rel="modulepreload">` (generated from
-   * `bootstrapModules`) to the top of `<head>`, which would otherwise sit
-   * before any importmap rendered via JSX. The spec is strict: import maps
-   * must be acquired before any module script fetch starts, including
-   * modulepreload.
+   * Injection happens via a stream transform, not React children, because the
+   * spec is strict: import maps must be acquired before any module script fetch
+   * starts, including modulepreload. Akan writes bootstrap module preloads
+   * directly after this importmap and delays the executable module script until
+   * the Fizz HTML stream has completed.
    */
   importmap?: Record<string, string>;
   theme?: AkanTheme;
   injectThemeInitScript?: boolean;
+  lateControl?: Promise<SsrLateRedirect | null>;
+  onCancel?: (reason?: unknown) => void;
 }

@@ -81,7 +81,7 @@ export interface FieldSchema {
   required: boolean;
   nullable: boolean;
   arrDepth: number;
-  fieldType: "property" | "hidden" | "resolve";
+  fieldType: "property" | "hidden" | "secret" | "resolve";
   select: boolean;
   immutable: boolean;
   ref?: string;

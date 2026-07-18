@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { dayjs, FIELD_META, ID, Int, LOADER_META, type PrimitiveScalar } from "akanjs/base";
-import { ConstantRegistry, via } from "akanjs/constant";
+import { ConstantRegistry, type DocumentModel, type FieldToValue, via } from "akanjs/constant";
 import {
   by,
   convertAggregateMatch,
@@ -12,6 +12,7 @@ import {
   createQueryLoader,
   type DatabaseCls,
   type DatabaseInstance,
+  type DatabaseInstanceOf,
   DatabaseRegistry,
   DataLoader,
   DocumentSchema,
@@ -29,6 +30,11 @@ import {
   type SchemaOf,
   sanitizeJson,
 } from ".";
+
+type Equal<Left, Right> =
+  (<Type>() => Type extends Left ? 1 : 2) extends <Type>() => Type extends Right ? 1 : 2 ? true : false;
+type Expect<Type extends true> = Type;
+type IsAny<Type> = 0 extends 1 & Type ? true : false;
 
 const DocumentTestCoordinateInput = via((f) => ({
   lat: f(Int, { default: 37 }),
@@ -140,6 +146,30 @@ class DocumentTestFilter extends from(
 ) {}
 
 class DocumentTestDoc extends by(DocumentTestItemFull, DocumentTestDocMixinRef) {}
+class DocumentTestParentDoc extends by(DocumentTestItemObject) {
+  addRole(role: string) {
+    void role;
+    return this;
+  }
+  subRole(role: string) {
+    void role;
+    return this;
+  }
+  addBadgeCount() {
+    return this;
+  }
+}
+type DocumentTestParentDocContract = {
+  id: string;
+  title: string;
+  addRole(role: string): unknown;
+  subRole(role: string): unknown;
+  addBadgeCount(): unknown;
+};
+const DocumentTestParentDocRef = DocumentTestParentDoc as unknown as DatabaseCls<DocumentTestParentDocContract>;
+const documentTestParentDocs = [DocumentTestParentDocRef] as const;
+const DocumentTestChildDocRef = by(DocumentTestItemFull, ...documentTestParentDocs);
+type DocumentTestChildDocFromRef = DatabaseInstanceOf<typeof DocumentTestChildDocRef>;
 
 class DocumentTestModel extends into(
   DocumentTestDoc,
@@ -154,6 +184,162 @@ class DocumentTestModel extends into(
 ) {}
 
 class DocumentTestScalar extends by(DocumentTestItemInput) {}
+
+class DocumentParentClassUserInput extends via((f) => ({
+  nickname: f(String),
+})) {}
+class DocumentParentClassUserObject extends via(DocumentParentClassUserInput, (f) => ({
+  roles: f([String]),
+})) {}
+class DocumentParentClassLightUser extends via(DocumentParentClassUserObject, ["nickname"] as const, (f) => ({})) {}
+class DocumentParentClassUser extends via(DocumentParentClassUserObject, DocumentParentClassLightUser, (f) => ({})) {}
+
+class DocumentSocialClassUserInput extends via(
+  (f) => ({
+    interests: f([String]),
+  }),
+  DocumentParentClassUserInput,
+) {}
+class DocumentSocialClassUserObject extends via(
+  DocumentSocialClassUserInput,
+  (f) => ({
+    gender: f(String),
+  }),
+  DocumentParentClassUserObject,
+) {}
+class DocumentSocialClassLightUser extends via(
+  DocumentSocialClassUserObject,
+  ["nickname"] as const,
+  (f) => ({}),
+  DocumentParentClassLightUser,
+) {}
+class DocumentSocialClassUser extends via(
+  DocumentSocialClassUserObject,
+  DocumentSocialClassLightUser,
+  (f) => ({}),
+  DocumentParentClassUser,
+) {}
+
+class DocumentAppClassUserInput extends via(
+  (f) => ({
+    height: f(Int),
+    languages: f([String]),
+  }),
+  DocumentSocialClassUserInput,
+) {}
+class DocumentAppClassUserObject extends via(
+  DocumentAppClassUserInput,
+  (f) => ({
+    bloodType: f(String),
+    education: f(String).optional(),
+    location: f(String),
+    lastLoginAt: f.hidden(Date, { default: () => dayjs(), example: dayjs() }),
+  }),
+  DocumentSocialClassUserObject,
+) {}
+class DocumentAppClassLightUser extends via(
+  DocumentAppClassUserObject,
+  ["nickname"] as const,
+  (f) => ({}),
+  DocumentSocialClassLightUser,
+) {}
+class DocumentAppClassUser extends via(
+  DocumentAppClassUserObject,
+  DocumentAppClassLightUser,
+  (f) => ({}),
+  DocumentSocialClassUser,
+) {}
+class DocumentAppClassUserInsight extends via(DocumentAppClassUser, (f) => ({})) {}
+const documentAppClassUserModelInfo = ConstantRegistry.buildModel(
+  "documentAppClassUser",
+  DocumentAppClassUserInput,
+  DocumentAppClassUserObject,
+  DocumentAppClassUser,
+  DocumentAppClassLightUser,
+  DocumentAppClassUserInsight,
+  {
+    DocumentAppClassUserInput,
+    DocumentAppClassUserObject,
+    DocumentAppClassUser,
+    DocumentAppClassLightUser,
+    DocumentAppClassUserInsight,
+  },
+);
+class DocumentAppClassUserDoc extends by(DocumentAppClassUser) {
+  setEducation(education: string | undefined) {
+    this.set({ education });
+    return this;
+  }
+}
+class DocumentAppClassUserFilter extends from(DocumentAppClassUser, () => ({ query: {}, sort: {} })) {}
+class DocumentAppClassUserModel extends into(
+  DocumentAppClassUserDoc,
+  DocumentAppClassUserFilter,
+  documentAppClassUserModelInfo,
+  () => ({}),
+) {}
+const documentAppClassUserDatabase = DatabaseRegistry.buildModel(
+  "documentAppClassUser",
+  DocumentAppClassUserInput as unknown as DatabaseCls<InstanceType<typeof DocumentAppClassUserInput>>,
+  DocumentAppClassUserDoc,
+  DocumentAppClassUserModel,
+  DocumentAppClassUserObject,
+  DocumentAppClassUserInsight,
+  DocumentAppClassUserFilter,
+);
+const DocumentNoActionDocRef = class DocumentNoActionDoc {} as unknown as DatabaseCls<Record<string, never>>;
+class DocumentAppClassUserDocWithNoActionParent extends by(DocumentAppClassUser, DocumentNoActionDocRef) {
+  setEducation(education: string | undefined) {
+    this.set({ education });
+    return this;
+  }
+}
+
+type DocumentTestModelGetReturn = Awaited<ReturnType<DocumentTestModel["getDocumentTestItem"]>>;
+type _DocumentModelActionTypeAssertions = [
+  Expect<Equal<IsAny<DocumentTestModelGetReturn>, false>>,
+  Expect<Equal<DocumentTestModelGetReturn, DocumentTestDoc>>,
+];
+type _DocumentMethodInheritanceAssertions = [
+  Expect<Equal<IsAny<DocumentTestChildDocFromRef["addRole"]>, false>>,
+  Expect<Equal<"addRole" extends keyof DocumentTestChildDocFromRef ? true : false, true>>,
+  Expect<Equal<"subRole" extends keyof DocumentTestChildDocFromRef ? true : false, true>>,
+  Expect<Equal<"addBadgeCount" extends keyof DocumentTestChildDocFromRef ? true : false, true>>,
+  Expect<DocumentTestChildDocFromRef extends DocumentTestParentDocContract ? true : false>,
+];
+type DocumentAppClassUserEndpointReturn = DocumentModel<FieldToValue<typeof DocumentAppClassUser>>;
+type DocumentAppClassUserRegisteredDoc = (typeof documentAppClassUserDatabase)["_Doc"];
+type _ExtendedViaClassDocumentSchemaAssertions = [
+  Expect<Equal<IsAny<DocumentAppClassUserDoc>, false>>,
+  Expect<Equal<IsAny<DocumentAppClassUserDocWithNoActionParent>, false>>,
+  Expect<Equal<"height" extends keyof DocumentAppClassUserDoc ? true : false, true>>,
+  Expect<Equal<"bloodType" extends keyof DocumentAppClassUserDoc ? true : false, true>>,
+  Expect<Equal<"location" extends keyof DocumentAppClassUserDoc ? true : false, true>>,
+  Expect<Equal<"languages" extends keyof DocumentAppClassUserDoc ? true : false, true>>,
+  Expect<Equal<undefined extends DocumentAppClassUserDoc["lastLoginAt"] ? true : false, false>>,
+  Expect<Equal<null extends DocumentAppClassUserDoc["lastLoginAt"] ? true : false, false>>,
+  Expect<Equal<"setEducation" extends keyof DocumentAppClassUserDocWithNoActionParent ? true : false, true>>,
+  Expect<Equal<"height" extends keyof DocumentAppClassUserRegisteredDoc ? true : false, true>>,
+  Expect<Equal<"bloodType" extends keyof DocumentAppClassUserRegisteredDoc ? true : false, true>>,
+  Expect<
+    { height: number; bloodType: string; location: string; languages: string[] } extends Parameters<
+      DocumentAppClassUserDoc["set"]
+    >[0]
+      ? true
+      : false
+  >,
+  Expect<
+    {
+      height: number;
+      bloodType: string;
+      location: string;
+      languages: string[];
+    } extends Partial<DocumentAppClassUserRegisteredDoc>
+      ? true
+      : false
+  >,
+  Expect<DocumentAppClassUserDoc extends DocumentAppClassUserEndpointReturn ? true : false>,
+];
 
 describe("by, from, into, and DatabaseRegistry", () => {
   test("builds document classes with constant metadata and mixed methods", () => {

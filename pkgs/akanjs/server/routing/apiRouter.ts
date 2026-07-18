@@ -26,6 +26,7 @@ export interface ApiRouteInputs {
   prefix: string;
   websocketPrefix: string;
   routes: HttpRoutes;
+  builtinRoutes?: HttpRoutes;
   routeOptions?: Record<string, SignalRouteOptions>;
   renderEnvRoutes: HttpRoutes;
   /** Upgrades the incoming request into an app-signal WebSocket. */
@@ -71,6 +72,7 @@ export class ApiRouter {
     prefix,
     websocketPrefix,
     routes,
+    builtinRoutes,
     routeOptions,
     renderEnvRoutes,
     upgradeAppWs,
@@ -79,7 +81,8 @@ export class ApiRouter {
     const endpointEntries = Object.entries(routes ?? {}).map(
       ([p, handler]) => [ApiRouter.#applyGlobalPrefix(prefix, p, routeOptions?.[p]), handler] as const,
     );
-    const endpointPaths = new Set(endpointEntries.map(([path]) => path));
+    const builtinEntries = Object.entries(builtinRoutes ?? {});
+    const endpointPaths = new Set([...endpointEntries.map(([path]) => path), ...builtinEntries.map(([path]) => path)]);
     const routeTable = {
       [`${prefix}${websocketPrefix}` as "/api/ws"]: (req) => {
         const upgraded = upgradeAppWs(req, { createdAt: Date.now() });
@@ -87,6 +90,7 @@ export class ApiRouter {
         return new Response("Failed to upgrade to WebSocket", { status: 500 });
       },
       ...Object.fromEntries(endpointEntries),
+      ...Object.fromEntries(builtinEntries),
       ...(renderEnvRoutes ?? {}),
     } as NonNullHttpRoutes;
     return webProxyRunner
@@ -128,7 +132,10 @@ export class ApiRouter {
       },
       message: async (ws, message) => {
         const data = ws.data as WsTaggedData | undefined;
-        if (data?.kind === "akan-hmr") return; // dev HMR is one-way (server→client)
+        if (data?.kind === "akan-hmr") {
+          if (typeof message === "string" && typeof hmrHub?.handleMessage === "function") hmrHub.handleMessage(message);
+          return;
+        }
         try {
           if (typeof message === "string") {
             const msg = JSON.parse(message) as WebsocketReqData;

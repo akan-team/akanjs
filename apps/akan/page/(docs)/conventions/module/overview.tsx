@@ -8,6 +8,14 @@ export default function Page() {
 
   const coreFiles = [
     {
+      name: "model.abstract.md",
+      route: "/conventions/module/abstract",
+      role: l.trans({
+        en: "Describes business intent, domain rules, workflows, data meaning, related modules, and agent notes that should be read before implementation changes.",
+        ko: "구현 변경 전에 읽어야 하는 business intent, domain rule, workflow, data meaning, related module, agent note를 설명합니다.",
+      }),
+    },
+    {
       name: "model.constant.ts",
       route: "/conventions/module/constant",
       role: l.trans({
@@ -102,6 +110,13 @@ export default function Page() {
 
   const flowSteps = [
     {
+      title: "abstract",
+      desc: l.trans({
+        en: "Start with the business intent and durable domain rules.",
+        ko: "business intent와 오래 유지되는 domain rule에서 시작합니다.",
+      }),
+    },
+    {
       title: "constant",
       desc: l.trans({
         en: "Start with the business shape and generated model layers.",
@@ -155,7 +170,7 @@ export default function Page() {
   const readingPaths = [
     {
       title: l.trans({ en: "New Model", ko: "새 Model" }),
-      steps: "constant -> dictionary -> document -> service -> signal -> store",
+      steps: "abstract -> constant -> dictionary -> document -> service -> signal -> store",
       desc: l.trans({
         en: "Use this path when defining a business object from scratch.",
         ko: "business object를 처음 정의할 때 이 순서로 읽습니다.",
@@ -163,7 +178,7 @@ export default function Page() {
     },
     {
       title: l.trans({ en: "New List Page", ko: "새 List Page" }),
-      steps: "signal slice -> store -> Zone -> Unit",
+      steps: "abstract -> signal slice -> store -> Zone -> Unit",
       desc: l.trans({
         en: "Use this path when a page needs list data, filtering, pagination, and cards.",
         ko: "page에 list data, filtering, pagination, card가 필요할 때 이 순서로 읽습니다.",
@@ -171,7 +186,7 @@ export default function Page() {
     },
     {
       title: l.trans({ en: "New Detail Or Edit Page", ko: "새 Detail/Edit Page" }),
-      steps: "signal view -> store -> Zone/View -> Template",
+      steps: "abstract -> signal view -> store -> Zone/View -> Template",
       desc: l.trans({
         en: "Use this path when showing full data or editing an existing model.",
         ko: "full data를 보여주거나 기존 model을 edit할 때 이 순서로 읽습니다.",
@@ -179,7 +194,7 @@ export default function Page() {
     },
     {
       title: l.trans({ en: "New Action", ko: "새 Action" }),
-      steps: "service -> signal endpoint -> store action -> Util/Template button",
+      steps: "abstract -> service -> signal endpoint -> store action -> Util/Template button",
       desc: l.trans({
         en: "Use this path when a user click should run a business workflow.",
         ko: "사용자 클릭이 business workflow를 실행해야 할 때 이 순서로 읽습니다.",

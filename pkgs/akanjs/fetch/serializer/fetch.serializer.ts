@@ -67,6 +67,7 @@ export class FetchSerializer {
       ...(endpointInfo.signalOption.globalPrefix !== undefined
         ? { globalPrefix: endpointInfo.signalOption.globalPrefix }
         : {}),
+      ...(endpointInfo.signalOption.fileUpload ? { fileUpload: true } : {}),
       ...(guards?.length ? { guards } : {}),
     };
   }

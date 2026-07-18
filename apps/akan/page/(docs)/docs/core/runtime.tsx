@@ -398,6 +398,80 @@ serverWsUri=wss://myapp-main.mydomain.com`}
         </Docs.Description>
       </Scroll.Slide>
       <div className="divider" />
+      <Scroll.Slide id="openapi-json" title={l.trans({ en: "OpenAPI JSON", ko: "OpenAPI JSON" })}>
+        <Docs.Title>{l.trans({ en: "OpenAPI JSON", ko: "OpenAPI JSON" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "Akan can expose the HTTP query and mutation surface declared in signal files as an OpenAPI 3.1 document. This is useful when you want to connect Swagger, Redoc, external clients, or SDK generation tools to the same API shape Akan already uses.",
+              ko: "Akan은 signal 파일에 선언된 HTTP query/mutation 표면을 OpenAPI 3.1 문서로 노출할 수 있습니다. Swagger, Redoc, 외부 클라이언트, SDK 생성 도구를 Akan이 이미 사용하는 API 형태에 연결할 때 유용합니다.",
+            })}
+          </div>
+          <Code.Snippet
+            title="apps/myapp/main.ts"
+            code={`import { AkanApp } from "akanjs/server";
+
+const run = async () => {
+  await new AkanApp("./server", { openapi: true }).start();
+};
+void run();`}
+          />
+          <div>
+            {l.trans({
+              en: "After enabling it, request /openapi.json from the app origin. In local mode, the document is usually available at localhost:8282/openapi.json. The normal API prefix stays at /api; OpenAPI JSON is served as a framework metadata route.",
+              ko: "활성화한 뒤 앱 origin에서 /openapi.json을 요청하면 됩니다. 로컬 모드에서는 보통 localhost:8282/openapi.json에서 확인할 수 있습니다. 일반 API prefix는 /api를 유지하고, OpenAPI JSON은 프레임워크 메타데이터 route로 제공됩니다.",
+            })}
+          </div>
+          <Code.Snippet
+            title="Read the OpenAPI document"
+            language="bash"
+            code={`curl http://localhost:8282/openapi.json`}
+          />
+          <div className="space-y-1">
+            {[
+              {
+                title: l.trans({ en: "App option", ko: "앱 옵션" }),
+                desc: l.trans({
+                  en: "Use this when the app should always expose OpenAPI JSON in that entry point.",
+                  ko: "해당 앱 엔트리 포인트에서 항상 OpenAPI JSON을 노출해야 할 때 사용합니다.",
+                }),
+                value: `new AkanApp("./server", { openapi: true })`,
+              },
+              {
+                title: l.trans({ en: "Environment variable", ko: "환경변수" }),
+                desc: l.trans({
+                  en: "Use this when deployment or local scripts should decide whether the endpoint is available.",
+                  ko: "배포 환경이나 로컬 스크립트에서 endpoint 노출 여부를 결정해야 할 때 사용합니다.",
+                }),
+                value: "AKAN_OPENAPI=true",
+              },
+              {
+                title: l.trans({ en: "Server option", ko: "서버 옵션" }),
+                desc: l.trans({
+                  en: "Use this when you start AkanServer directly instead of going through AkanApp.",
+                  ko: "AkanApp을 거치지 않고 AkanServer를 직접 시작할 때 사용합니다.",
+                }),
+                value: `new AkanServer("myapp", env, "all", lib, { openapi: true })`,
+              },
+            ].map(({ title, desc, value }) => (
+              <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
+                <div className="font-bold text-base-content">{title}</div>
+                <div className="mt-2 text-base-content/70 text-sm leading-relaxed">{desc}</div>
+                <div className="mt-3 break-all rounded bg-base-200 px-2 py-1 font-mono text-base-content/80 text-xs">
+                  {value}
+                </div>
+              </div>
+            ))}
+          </div>
+          <Docs.Alert type="warning">
+            {l.trans({
+              en: "OpenAPI JSON is opt-in. Enable it only for environments where exposing API structure is acceptable, because it describes routes, request fields, response schemas, and guard metadata.",
+              ko: "OpenAPI JSON은 명시적으로 켜야 노출됩니다. route, 요청 필드, 응답 schema, guard 메타데이터를 설명하므로 API 구조 노출이 허용되는 환경에서만 켜세요.",
+            })}
+          </Docs.Alert>
+        </Docs.Description>
+      </Scroll.Slide>
+      <div className="divider" />
       <Scroll.Slide
         id="health-metrics-logs"
         title={l.trans({ en: "Health, Metrics, Logs", ko: "상태 확인, 메트릭, 로그" })}

@@ -3,8 +3,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { InArgs, InValue, Client as LibsqlClient } from "@libsql/client";
-import { type BaseEnv, dayjs, FIELD_META, type PromiseOrObject } from "akanjs/base";
-import type { ConstantModel } from "akanjs/constant";
+import { type BaseEnv, DEFAULT_VALUE, dayjs, FIELD_META, type PromiseOrObject } from "akanjs/base";
+import { type ConstantModel, getDefault } from "akanjs/constant";
 import {
   createDocumentId,
   type DatabaseModel,
@@ -12,9 +12,14 @@ import {
   type DocumentQueryNode,
   type DocumentSchema,
   type DocumentUpdate,
+  type DocumentUpdateInput,
+  type DocumentUpdateNode,
+  type DocumentUpdateOperator,
   type DocumentUpdateOptions,
   documentQueryHelper,
   encodeDocumentValue,
+  isDocumentUpdateNode,
+  resolveDocumentUpdate,
   type SchemaOf,
   sanitizeJson,
 } from "akanjs/document";
@@ -61,18 +66,18 @@ export interface DocumentStore {
   remove(id: string): Promise<any>;
   updateOneByQuery(
     query: DocumentQuery,
-    update: DocumentUpdate,
+    update: DocumentUpdateInput,
     options?: DocumentUpdateOptions,
   ): Promise<{ acknowledged: boolean; matchedCount: number; modifiedCount: number; upsertedId: string | null }>;
   updateManyByQuery(
     query: DocumentQuery,
-    update: DocumentUpdate,
+    update: DocumentUpdateInput,
   ): Promise<{ acknowledged: boolean; matchedCount: number; modifiedCount: number }>;
   deleteManyByQuery(
     query: DocumentQuery,
   ): Promise<{ acknowledged: boolean; matchedCount: number; modifiedCount: number }>;
   bulkWrite(
-    operations: { updateOne: { filter: DocumentQuery; update: DocumentUpdate; upsert?: boolean } }[],
+    operations: { updateOne: { filter: DocumentQuery; update: DocumentUpdateInput; upsert?: boolean } }[],
   ): Promise<{ acknowledged: boolean; matchedCount: number; modifiedCount: number; upsertedId: string | null }>;
   find(query?: DocumentQuery, options?: FindManyOptions): Promise<any[]>;
   findIds(
@@ -140,6 +145,7 @@ type FindManyOptions = {
   select?: ProjectionOption;
 };
 type FindOneOptions = { sort?: SortOption; skip?: number | null; sample?: boolean; select?: ProjectionOption };
+type WriteHookOptions = { runSaveHooks?: boolean; crudType?: "update" | "remove" };
 type QueryOperatorName = Exclude<
   DocumentQueryNode,
   { kind: "all" } | { kind: "any" } | { kind: "not" } | { kind: "raw" }
@@ -300,6 +306,13 @@ const jsonPath = (path: string) =>
     .map((part) => part.replaceAll('"', '\\"'))
     .join(".")}`;
 const encodeSqlValue = (value: unknown) => encodeDocumentValue(value);
+// Dates are persisted as epoch ms, but legacy rows may hold ISO strings; accept both.
+const decodeDateValue = (value: unknown) => {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "number") return dayjs(value);
+  const epoch = Number(value);
+  return Number.isNaN(epoch) ? dayjs(value as never) : dayjs(epoch);
+};
 const QUERY_OPERATOR_KEYS = new Set([
   "eq",
   "ne",
@@ -334,8 +347,348 @@ const descriptorHash = async (value: unknown) => {
   return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 };
 
+interface SqlFrag {
+  sql: string;
+  params: unknown[];
+}
+
+// A `SqlDialect` owns every dialect-specific SQL fragment so the compilers stay dialect-agnostic. Leaf query
+// operators and update operators are compiled fully here (SQL + params) — the accumulator string returned by
+// `applyUpdate` lets updates fold into a single nested JSON expression that the database applies atomically.
+// SQLite/libsql share JSON1 syntax; Postgres uses the jsonb operator/function family.
+interface SqlDialect {
+  readonly name: "sqlite" | "postgres";
+  timestampType(): string;
+  docColumnType(): string;
+  docColumn(): string;
+  docValuePlaceholder(): string;
+  extract(path: string): string;
+  eq(path: string, value: unknown): SqlFrag;
+  ne(path: string, value: unknown): SqlFrag;
+  compare(path: string, op: "gt" | "gte" | "lt" | "lte", value: unknown): SqlFrag;
+  between(path: string, from: unknown, to: unknown): SqlFrag;
+  inList(path: string, values: unknown[]): SqlFrag;
+  notInList(path: string, values: unknown[]): SqlFrag;
+  exists(path: string): SqlFrag;
+  missing(path: string): SqlFrag;
+  empty(path: string): SqlFrag;
+  arrayHas(path: string, value: unknown): SqlFrag;
+  contains(path: string, value: unknown): SqlFrag;
+  applyUpdate(acc: string, op: DocumentUpdateOperator, path: string, value: unknown): SqlFrag;
+  affectedRows(result: unknown): number;
+}
+
+const jsonStr = (value: unknown) => JSON.stringify(sanitizeJson(value) ?? null);
+
+export class SqliteDialect implements SqlDialect {
+  readonly name = "sqlite" as const;
+  timestampType() {
+    return "INTEGER";
+  }
+  docColumnType() {
+    return "TEXT";
+  }
+  docColumn() {
+    return quoteIdent("_doc");
+  }
+  docValuePlaceholder() {
+    return "?";
+  }
+  #path(path: string) {
+    return `'${jsonPath(path).replaceAll("'", "''")}'`;
+  }
+  extract(path: string) {
+    return `json_extract(${this.docColumn()}, ${this.#path(path)})`;
+  }
+  eq(path: string, value: unknown): SqlFrag {
+    return value === null
+      ? { sql: `${this.extract(path)} IS NULL`, params: [] }
+      : { sql: `${this.extract(path)} = ?`, params: [encodeSqlValue(value)] };
+  }
+  ne(path: string, value: unknown): SqlFrag {
+    return value === null
+      ? { sql: `${this.extract(path)} IS NOT NULL`, params: [] }
+      : { sql: `${this.extract(path)} != ?`, params: [encodeSqlValue(value)] };
+  }
+  compare(path: string, op: "gt" | "gte" | "lt" | "lte", value: unknown): SqlFrag {
+    const operators = { gt: ">", gte: ">=", lt: "<", lte: "<=" } as const;
+    return { sql: `${this.extract(path)} ${operators[op]} ?`, params: [encodeSqlValue(value)] };
+  }
+  between(path: string, from: unknown, to: unknown): SqlFrag {
+    return {
+      sql: `(${this.extract(path)} >= ? AND ${this.extract(path)} <= ?)`,
+      params: [encodeSqlValue(from), encodeSqlValue(to)],
+    };
+  }
+  inList(path: string, values: unknown[]): SqlFrag {
+    return {
+      sql: `${this.extract(path)} IN (${values.map(() => "?").join(", ")})`,
+      params: values.map(encodeSqlValue),
+    };
+  }
+  notInList(path: string, values: unknown[]): SqlFrag {
+    return {
+      sql: `${this.extract(path)} NOT IN (${values.map(() => "?").join(", ")})`,
+      params: values.map(encodeSqlValue),
+    };
+  }
+  exists(path: string): SqlFrag {
+    return { sql: `json_type(${this.docColumn()}, ${this.#path(path)}) IS NOT NULL`, params: [] };
+  }
+  missing(path: string): SqlFrag {
+    return { sql: `json_type(${this.docColumn()}, ${this.#path(path)}) IS NULL`, params: [] };
+  }
+  empty(path: string): SqlFrag {
+    const type = `json_type(${this.docColumn()}, ${this.#path(path)})`;
+    return { sql: `(${type} IS NULL OR ${type} = 'null')`, params: [] };
+  }
+  arrayHas(path: string, value: unknown): SqlFrag {
+    return {
+      sql: `EXISTS (SELECT 1 FROM json_each(${this.extract(path)}) WHERE json_each.value = ?)`,
+      params: [encodeSqlValue(value)],
+    };
+  }
+  contains(path: string, value: unknown): SqlFrag {
+    return { sql: `${this.extract(path)} LIKE ?`, params: [`%${String(value)}%`] };
+  }
+  applyUpdate(acc: string, op: DocumentUpdateOperator, path: string, value: unknown): SqlFrag {
+    const p = this.#path(path);
+    // Current values are read from the original `_doc` column (param-free), never from the accumulator, so folding
+    // never duplicates prior placeholders. All operators in one update therefore observe the pre-update document.
+    const cur = `json_extract(${this.docColumn()}, ${p})`;
+    const arr = `COALESCE(${cur}, json('[]'))`;
+    // biome-ignore lint/nursery/noUnnecessaryConditions: exhaustive switch over a string-literal union, not a truthiness check
+    switch (op) {
+      case "set":
+        return { sql: `json_set(${acc}, ${p}, json(?))`, params: [jsonStr(value)] };
+      case "unset":
+        return { sql: `json_remove(${acc}, ${p})`, params: [] };
+      case "inc":
+        return { sql: `json_set(${acc}, ${p}, COALESCE(${cur}, 0) + ?)`, params: [Number(value)] };
+      case "mul":
+        return { sql: `json_set(${acc}, ${p}, COALESCE(${cur}, 0) * ?)`, params: [Number(value)] };
+      case "min":
+        return { sql: `json_set(${acc}, ${p}, MIN(COALESCE(${cur}, ?), ?))`, params: [Number(value), Number(value)] };
+      case "max":
+        return { sql: `json_set(${acc}, ${p}, MAX(COALESCE(${cur}, ?), ?))`, params: [Number(value), Number(value)] };
+      case "push":
+        return { sql: `json_set(${acc}, ${p}, json_insert(${arr}, '$[#]', json(?)))`, params: [jsonStr(value)] };
+      case "addToSet":
+        return {
+          sql: `json_set(${acc}, ${p}, CASE WHEN EXISTS (SELECT 1 FROM json_each(${arr}) WHERE json_each.value = ?) THEN ${arr} ELSE json_insert(${arr}, '$[#]', json(?)) END)`,
+          params: [encodeSqlValue(value), jsonStr(value)],
+        };
+      case "pull":
+        return {
+          sql: `json_set(${acc}, ${p}, (SELECT json_group_array(json_each.value) FROM json_each(${arr}) WHERE json_each.value <> ?))`,
+          params: [encodeSqlValue(value)],
+        };
+      case "setOnInsert":
+        return { sql: acc, params: [] };
+    }
+  }
+  affectedRows(result: unknown): number {
+    const row = result as { changes?: number | bigint; rowsAffected?: number } | null;
+    return Number(row?.changes ?? row?.rowsAffected ?? 0);
+  }
+}
+
+export class PostgresDialect implements SqlDialect {
+  readonly name = "postgres" as const;
+  timestampType() {
+    return "BIGINT";
+  }
+  docColumnType() {
+    return "jsonb";
+  }
+  docColumn() {
+    return quoteIdent("_doc");
+  }
+  docValuePlaceholder() {
+    return "?::jsonb";
+  }
+  #path(path: string) {
+    return `'{${path
+      .split(".")
+      .map((part) => part.replaceAll("'", "''"))
+      .join(",")}}'`;
+  }
+  #jsonb(path: string) {
+    return `(${this.docColumn()} #> ${this.#path(path)})`;
+  }
+  #text(path: string) {
+    return `(${this.docColumn()} #>> ${this.#path(path)})`;
+  }
+  extract(path: string) {
+    return this.#jsonb(path);
+  }
+  eq(path: string, value: unknown): SqlFrag {
+    return value === null
+      ? { sql: `${this.#jsonb(path)} IS NULL`, params: [] }
+      : { sql: `${this.#jsonb(path)} = ?::jsonb`, params: [jsonStr(value)] };
+  }
+  ne(path: string, value: unknown): SqlFrag {
+    return value === null
+      ? { sql: `${this.#jsonb(path)} IS NOT NULL`, params: [] }
+      : { sql: `${this.#jsonb(path)} <> ?::jsonb`, params: [jsonStr(value)] };
+  }
+  compare(path: string, op: "gt" | "gte" | "lt" | "lte", value: unknown): SqlFrag {
+    const operators = { gt: ">", gte: ">=", lt: "<", lte: "<=" } as const;
+    return { sql: `${this.#jsonb(path)} ${operators[op]} ?::jsonb`, params: [jsonStr(value)] };
+  }
+  between(path: string, from: unknown, to: unknown): SqlFrag {
+    return {
+      sql: `(${this.#jsonb(path)} >= ?::jsonb AND ${this.#jsonb(path)} <= ?::jsonb)`,
+      params: [jsonStr(from), jsonStr(to)],
+    };
+  }
+  inList(path: string, values: unknown[]): SqlFrag {
+    return {
+      sql: `${this.#jsonb(path)} IN (${values.map(() => "?::jsonb").join(", ")})`,
+      params: values.map(jsonStr),
+    };
+  }
+  notInList(path: string, values: unknown[]): SqlFrag {
+    return {
+      sql: `${this.#jsonb(path)} NOT IN (${values.map(() => "?::jsonb").join(", ")})`,
+      params: values.map(jsonStr),
+    };
+  }
+  exists(path: string): SqlFrag {
+    return { sql: `${this.#jsonb(path)} IS NOT NULL`, params: [] };
+  }
+  missing(path: string): SqlFrag {
+    return { sql: `${this.#jsonb(path)} IS NULL`, params: [] };
+  }
+  empty(path: string): SqlFrag {
+    return { sql: `(${this.#jsonb(path)} IS NULL OR jsonb_typeof(${this.#jsonb(path)}) = 'null')`, params: [] };
+  }
+  arrayHas(path: string, value: unknown): SqlFrag {
+    return { sql: `${this.#jsonb(path)} @> ?::jsonb`, params: [jsonStr(value)] };
+  }
+  contains(path: string, value: unknown): SqlFrag {
+    return { sql: `${this.#text(path)} LIKE ?`, params: [`%${String(value)}%`] };
+  }
+  applyUpdate(acc: string, op: DocumentUpdateOperator, path: string, value: unknown): SqlFrag {
+    const p = this.#path(path);
+    // Reads target the original `_doc` column (param-free) so folding never duplicates prior placeholders; `acc` is
+    // only ever the write target.
+    const jsonbAt = `(${this.docColumn()}) #> ${p}`;
+    const textAt = `(${this.docColumn()}) #>> ${p}`;
+    const arr = `COALESCE(${jsonbAt}, '[]'::jsonb)`;
+    // biome-ignore lint/nursery/noUnnecessaryConditions: exhaustive switch over a string-literal union, not a truthiness check
+    switch (op) {
+      case "set":
+        return { sql: `jsonb_set(${acc}, ${p}, ?::jsonb, true)`, params: [jsonStr(value)] };
+      case "unset":
+        return { sql: `(${acc}) #- ${p}`, params: [] };
+      case "inc":
+        return {
+          sql: `jsonb_set(${acc}, ${p}, to_jsonb(COALESCE((${textAt})::numeric, 0) + ?), true)`,
+          params: [Number(value)],
+        };
+      case "mul":
+        return {
+          sql: `jsonb_set(${acc}, ${p}, to_jsonb(COALESCE((${textAt})::numeric, 0) * ?), true)`,
+          params: [Number(value)],
+        };
+      case "min":
+        return {
+          sql: `jsonb_set(${acc}, ${p}, to_jsonb(LEAST(COALESCE((${textAt})::numeric, ?), ?)), true)`,
+          params: [Number(value), Number(value)],
+        };
+      case "max":
+        return {
+          sql: `jsonb_set(${acc}, ${p}, to_jsonb(GREATEST(COALESCE((${textAt})::numeric, ?), ?)), true)`,
+          params: [Number(value), Number(value)],
+        };
+      case "push":
+        return {
+          sql: `jsonb_set(${acc}, ${p}, ${arr} || jsonb_build_array(?::jsonb), true)`,
+          params: [jsonStr(value)],
+        };
+      case "addToSet":
+        return {
+          sql: `jsonb_set(${acc}, ${p}, CASE WHEN ${arr} @> jsonb_build_array(?::jsonb) THEN ${arr} ELSE ${arr} || jsonb_build_array(?::jsonb) END, true)`,
+          params: [jsonStr(value), jsonStr(value)],
+        };
+      case "pull":
+        return {
+          sql: `jsonb_set(${acc}, ${p}, COALESCE((SELECT jsonb_agg(elem) FROM jsonb_array_elements(${arr}) elem WHERE elem <> ?::jsonb), '[]'::jsonb), true)`,
+          params: [jsonStr(value)],
+        };
+      case "setOnInsert":
+        return { sql: acc, params: [] };
+    }
+  }
+  affectedRows(result: unknown): number {
+    const row = result as { count?: number } | Array<unknown> | null;
+    if (Array.isArray(row)) return (row as { count?: number }).count ?? row.length;
+    return Number(row?.count ?? 0);
+  }
+}
+
+type QueryLeafOps = Pick<
+  SqlDialect,
+  | "eq"
+  | "ne"
+  | "compare"
+  | "between"
+  | "inList"
+  | "notInList"
+  | "exists"
+  | "missing"
+  | "empty"
+  | "arrayHas"
+  | "contains"
+>;
+
+// Base columns (`id`/`createdAt`/`updatedAt`/`removedAt`) are real SQL columns, not JSON paths, so they compile the
+// same way on every dialect.
+const BASE_COLUMN_LEAF: QueryLeafOps = {
+  eq: (path, value) =>
+    value === null
+      ? { sql: `${quoteIdent(path)} IS NULL`, params: [] }
+      : { sql: `${quoteIdent(path)} = ?`, params: [encodeSqlValue(value)] },
+  ne: (path, value) =>
+    value === null
+      ? { sql: `${quoteIdent(path)} IS NOT NULL`, params: [] }
+      : { sql: `${quoteIdent(path)} != ?`, params: [encodeSqlValue(value)] },
+  compare: (path, op, value) => {
+    const operators = { gt: ">", gte: ">=", lt: "<", lte: "<=" } as const;
+    return { sql: `${quoteIdent(path)} ${operators[op]} ?`, params: [encodeSqlValue(value)] };
+  },
+  between: (path, from, to) => ({
+    sql: `(${quoteIdent(path)} >= ? AND ${quoteIdent(path)} <= ?)`,
+    params: [encodeSqlValue(from), encodeSqlValue(to)],
+  }),
+  inList: (path, values) => ({
+    sql: `${quoteIdent(path)} IN (${values.map(() => "?").join(", ")})`,
+    params: values.map(encodeSqlValue),
+  }),
+  notInList: (path, values) => ({
+    sql: `${quoteIdent(path)} NOT IN (${values.map(() => "?").join(", ")})`,
+    params: values.map(encodeSqlValue),
+  }),
+  exists: (path) => ({ sql: `${quoteIdent(path)} IS NOT NULL`, params: [] }),
+  missing: (path) => ({ sql: `${quoteIdent(path)} IS NULL`, params: [] }),
+  empty: (path) => ({ sql: `${quoteIdent(path)} IS NULL`, params: [] }),
+  arrayHas: (path, value) => ({
+    sql: `EXISTS (SELECT 1 FROM json_each(${quoteIdent(path)}) WHERE json_each.value = ?)`,
+    params: [encodeSqlValue(value)],
+  }),
+  contains: (path, value) => ({ sql: `${quoteIdent(path)} LIKE ?`, params: [`%${String(value)}%`] }),
+};
+
 class QueryCompiler {
-  constructor(private readonly fields: FieldMap) {}
+  constructor(
+    private readonly fields: FieldMap,
+    private readonly dialect: SqlDialect,
+  ) {}
+
+  #leaf(path: string): QueryLeafOps {
+    return BASE_COLUMNS.has(path) ? BASE_COLUMN_LEAF : this.dialect;
+  }
 
   compile(query?: DocumentQuery): { where: string; params: unknown[] } {
     if (!query || (typeof query === "object" && !Array.isArray(query) && Object.keys(query).length === 0)) {
@@ -353,7 +706,7 @@ class QueryCompiler {
 
   fieldExpr(path: string) {
     this.assertPath(path);
-    return BASE_COLUMNS.has(path) ? quoteIdent(path) : `json_extract("_doc", ${JSON.stringify(jsonPath(path))})`;
+    return BASE_COLUMNS.has(path) ? quoteIdent(path) : this.dialect.extract(path);
   }
 
   private compileNode(query: DocumentQuery): { sql: string; params: unknown[] } {
@@ -378,7 +731,6 @@ class QueryCompiler {
       throw new Error("Operator nodes must be attached to a document path");
     }
     const parts = Object.entries(query).flatMap(([path, value]) => {
-      if (path.startsWith("$")) throw new Error(`Mongo-style query operator is not supported: ${path}`);
       if (value === undefined) throw new Error(`Undefined query value is not allowed: ${path}`);
       return [this.compileField(path, value)];
     });
@@ -392,79 +744,62 @@ class QueryCompiler {
   private compileField(path: string, value: unknown): { sql: string; params: unknown[] } {
     this.assertPath(path);
     const field = this.fields[path]?.getProps?.() ?? this.fields[path];
-    const expr = this.fieldExpr(path);
+    const leaf = this.#leaf(path);
     if (this.isQueryNode(value)) {
       if (value.kind !== "op") return this.compileNode({ [path]: value } as DocumentQuery);
       switch (value.op) {
         case "eq":
-          return value.value === null
-            ? { sql: `${expr} IS NULL`, params: [] }
-            : { sql: `${expr} = ?`, params: [encodeSqlValue(value.value)] };
+          return leaf.eq(path, value.value);
         case "ne":
-          return value.value === null
-            ? { sql: `${expr} IS NOT NULL`, params: [] }
-            : { sql: `${expr} != ?`, params: [encodeSqlValue(value.value)] };
+          return leaf.ne(path, value.value);
         case "oneOf": {
           const values = (value.value as unknown[]) ?? [];
           if (!values.length) return { sql: "0 = 1", params: [] };
           if (field?.isArray) {
-            const parts = values.map((item) => this.compileArrayHas(path, item));
+            const parts = values.map((item) => leaf.arrayHas(path, item));
             return {
               sql: `(${parts.map((part) => part.sql).join(" OR ")})`,
               params: parts.flatMap((part) => part.params),
             };
           }
-          return { sql: `${expr} IN (${values.map(() => "?").join(", ")})`, params: values.map(encodeSqlValue) };
+          return leaf.inList(path, values);
         }
         case "notOneOf": {
           const values = (value.value as unknown[]) ?? [];
           if (!values.length) return { sql: "1 = 1", params: [] };
           if (field?.isArray) {
-            const parts = values.map((item) => this.compileArrayHas(path, item));
+            const parts = values.map((item) => leaf.arrayHas(path, item));
             return {
               sql: `NOT (${parts.map((part) => part.sql).join(" OR ")})`,
               params: parts.flatMap((part) => part.params),
             };
           }
-          return { sql: `${expr} NOT IN (${values.map(() => "?").join(", ")})`, params: values.map(encodeSqlValue) };
+          return leaf.notInList(path, values);
         }
         case "gt":
         case "gte":
         case "lt":
-        case "lte": {
-          const operators = { gt: ">", gte: ">=", lt: "<", lte: "<=" } as const;
-          return { sql: `${expr} ${operators[value.op]} ?`, params: [encodeSqlValue(value.value)] };
-        }
+        case "lte":
+          return leaf.compare(path, value.op, value.value);
         case "between": {
           const [from, to] = value.value as [unknown, unknown];
-          return { sql: `(${expr} >= ? AND ${expr} <= ?)`, params: [encodeSqlValue(from), encodeSqlValue(to)] };
+          return leaf.between(path, from, to);
         }
         case "exists":
-          return BASE_COLUMNS.has(path)
-            ? { sql: `${expr} IS NOT NULL`, params: [] }
-            : { sql: `json_type("_doc", ?) IS NOT NULL`, params: [jsonPath(path)] };
+          return leaf.exists(path);
         case "missing":
-          return BASE_COLUMNS.has(path)
-            ? { sql: `${expr} IS NULL`, params: [] }
-            : { sql: `json_type("_doc", ?) IS NULL`, params: [jsonPath(path)] };
+          return leaf.missing(path);
         case "empty":
-          return BASE_COLUMNS.has(path)
-            ? { sql: `${expr} IS NULL`, params: [] }
-            : {
-                sql: `(json_type("_doc", ?) IS NULL OR json_type("_doc", ?) = 'null')`,
-                params: [jsonPath(path), jsonPath(path)],
-              };
+          return leaf.empty(path);
         case "has":
-          return this.compileArrayHas(path, value.value);
+          return leaf.arrayHas(path, value.value);
         case "contains":
-          return { sql: `${expr} LIKE ?`, params: [`%${String(value.value)}%`] };
+          return leaf.contains(path, value.value);
       }
     }
     if (value && typeof value === "object" && !Array.isArray(value)) {
       const operators = value as Record<string, unknown>;
       const keys = Object.keys(operators);
-      const legacyKey = keys.find((key) => key.startsWith("$"));
-      if (legacyKey) throw new Error(`Mongo-style query operator is not supported on ${path}: ${legacyKey}`);
       if (keys.some((key) => QUERY_OPERATOR_KEYS.has(key))) {
         const parts = keys.flatMap((key) => {
           if (!QUERY_OPERATOR_KEYS.has(key)) return [];
@@ -482,26 +817,23 @@ class QueryCompiler {
         };
       }
     }
-    if (field?.isArray && !Array.isArray(value)) return this.compileArrayHas(path, value);
-    return value === null
-      ? { sql: `${expr} IS NULL`, params: [] }
-      : { sql: `${expr} = ?`, params: [encodeSqlValue(value)] };
-  }
-
-  private compileArrayHas(path: string, value: unknown): { sql: string; params: unknown[] } {
-    const arrayPath = BASE_COLUMNS.has(path)
-      ? quoteIdent(path)
-      : `json_extract("_doc", ${JSON.stringify(jsonPath(path))})`;
-    return {
-      sql: `EXISTS (SELECT 1 FROM json_each(${arrayPath}) WHERE json_each.value = ?)`,
-      params: [encodeSqlValue(value)],
-    };
+    if (field?.isArray && !Array.isArray(value)) return leaf.arrayHas(path, value);
+    return leaf.eq(path, value);
   }
 
   private assertPath(path: string) {
     const root = path.split(".")[0];
     if (BASE_COLUMNS.has(root)) return;
-    if (!this.fields[root]) throw new Error(`Unknown document field path: ${path}`);
+    if (!this.fields[root]) {
+      // A numeric root path means an array was passed where a query descriptor was expected —
+      // almost always a slice `exec` that returned an executed list (listBy...) instead of a query.
+      if (/^\d+$/.test(root))
+        throw new Error(
+          `Query received an array instead of a query object (field path "${path}"). ` +
+            `A query must be a descriptor object; a slice exec must return queryBy...(...), not an executed list.`,
+        );
+      throw new Error(`Unknown document field path: ${path}`);
+    }
   }
 
   private isQueryNode(value: unknown): value is DocumentQueryNode {
@@ -509,10 +841,67 @@ class QueryCompiler {
   }
 }
 
-export class SqliteDocumentStore {
+// Folds a path-keyed `DocumentUpdate` into SET assignments the database applies atomically: JSON-path operators
+// collapse into a single nested `_doc` expression via the dialect, while base-column paths become plain assignments.
+// `setOnInsert` values are returned separately for the upsert-insert path (they only apply when a new row is created).
+class UpdateCompiler {
+  constructor(
+    private readonly fields: FieldMap,
+    private readonly dialect: SqlDialect,
+  ) {}
+
+  compile(update: DocumentUpdate): { assignments: string[]; params: unknown[]; setOnInsert: Record<string, unknown> } {
+    const baseAssignments: string[] = [];
+    const baseParams: unknown[] = [];
+    const setOnInsert: Record<string, unknown> = {};
+    const jsonOps: { op: DocumentUpdateOperator; path: string; value: unknown }[] = [];
+    for (const [path, raw] of Object.entries(update)) {
+      if (raw === undefined) continue;
+      const node: DocumentUpdateNode = isDocumentUpdateNode(raw) ? raw : { kind: "update", op: "set", value: raw };
+      this.#assertPath(path);
+      if (node.op === "setOnInsert") {
+        setOnInsert[path] = node.value;
+        continue;
+      }
+      if (BASE_COLUMNS.has(path)) {
+        if (node.op === "set") {
+          baseAssignments.push(`${quoteIdent(path)} = ?`);
+          baseParams.push(encodeSqlValue(node.value));
+        } else if (node.op === "unset") {
+          baseAssignments.push(`${quoteIdent(path)} = NULL`);
+        } else {
+          throw new Error(`Unsupported update operator '${node.op}' on base column: ${path}`);
+        }
+        continue;
+      }
+      jsonOps.push({ op: node.op, path, value: node.value });
+    }
+    const assignments = [...baseAssignments];
+    const params = [...baseParams];
+    if (jsonOps.length) {
+      let acc = this.dialect.docColumn();
+      for (const { op, path, value } of jsonOps) {
+        const frag = this.dialect.applyUpdate(acc, op, path, value);
+        acc = frag.sql;
+        params.push(...frag.params);
+      }
+      assignments.push(`${this.dialect.docColumn()} = ${acc}`);
+    }
+    return { assignments, params, setOnInsert };
+  }
+
+  #assertPath(path: string) {
+    const root = path.split(".")[0];
+    if (BASE_COLUMNS.has(root)) return;
+    if (!this.fields[root]) throw new Error(`Unknown document field path: ${path}`);
+  }
+}
+
+export class SqlDocumentStore {
   readonly schema: DocumentSchema;
   readonly table: string;
   readonly compiler: QueryCompiler;
+  readonly updateCompiler: UpdateCompiler;
   #insertStmt: AkanSqlStatement | null = null;
   #readStmtCache = new Map<string, AkanSqlStatement>();
 
@@ -521,22 +910,26 @@ export class SqliteDocumentStore {
     readonly constant: ConstantModel,
     readonly database: DatabaseModel,
     schema: DocumentSchema,
+    private readonly dialect: SqlDialect = new SqliteDialect(),
   ) {
     this.schema = schema;
     this.table = database.refName;
-    this.compiler = new QueryCompiler(database.doc[FIELD_META] as unknown as FieldMap);
+    const fields = database.doc[FIELD_META] as unknown as FieldMap;
+    this.compiler = new QueryCompiler(fields, dialect);
+    this.updateCompiler = new UpdateCompiler(fields, dialect);
   }
 
   async ensure() {
     this.assertValidRefName(this.table);
     const db = this.owner.getConnection();
+    const ts = this.dialect.timestampType();
     await db.execute(
       `CREATE TABLE IF NOT EXISTS ${quoteIdent(this.table)} (
         "id" TEXT PRIMARY KEY NOT NULL,
-        "createdAt" INTEGER NOT NULL,
-        "updatedAt" INTEGER NOT NULL,
-        "removedAt" INTEGER,
-        "_doc" TEXT NOT NULL
+        "createdAt" ${ts} NOT NULL,
+        "updatedAt" ${ts} NOT NULL,
+        "removedAt" ${ts},
+        "_doc" ${this.dialect.docColumnType()} NOT NULL
       )`,
     );
     await this.owner.setMeta(
@@ -550,9 +943,7 @@ export class SqliteDocumentStore {
       const metaKey = `index:${this.table}:${name}`;
       const existing = await this.owner.getMeta(metaKey);
       if (existing && existing !== hash) throw new Error(`Index descriptor mismatch: ${name}`);
-      const expressions = Object.entries(index.fields).map(([field, mode]) =>
-        mode === "text" ? this.compiler.fieldExpr(field) : this.compiler.fieldExpr(field),
-      );
+      const expressions = Object.keys(index.fields).map((field) => this.compiler.fieldExpr(field));
       const unique = index.unique ? "UNIQUE " : "";
       await db.execute(
         `CREATE ${unique}INDEX IF NOT EXISTS ${quoteIdent(name)} ON ${quoteIdent(this.table)} (${expressions.join(", ")})`,
@@ -561,7 +952,7 @@ export class SqliteDocumentStore {
     }
   }
 
-  async create(data: DocumentRecord) {
+  async create(data: DocumentRecord, { runSaveHooks = true }: WriteHookOptions = {}) {
     const now = Date.now();
     const id = data.id ?? createDocumentId(now);
     const doc = this.hydrate(
@@ -572,12 +963,12 @@ export class SqliteDocumentStore {
         updatedAt: data.updatedAt ?? dayjs(now),
       }),
     );
-    await this.runHooks("save", "create", doc, "pre");
+    if (runSaveHooks) await this.runHooks("save", "create", doc, "pre");
     await this.runHooks("create", "create", doc, "pre");
     const row = this.toRow(doc);
     await this.insertStmt().run(row.id, row.createdAt, row.updatedAt, row.removedAt, row._doc);
     await this.runHooks("create", "create", doc, "post");
-    await this.runHooks("save", "create", doc, "post");
+    if (runSaveHooks) await this.runHooks("save", "create", doc, "post");
     return doc;
   }
 
@@ -585,49 +976,69 @@ export class SqliteDocumentStore {
     return this.create(data);
   }
 
-  async update(id: string, patch: DocumentRecord) {
-    const current = await this.pickById(id);
-    const doc = this.hydrate(this.prepareDocument({ ...current, ...patch, id, updatedAt: dayjs() }), current);
-    await this.runHooks("save", "update", doc, "pre");
-    await this.runHooks("update", "update", doc, "pre");
-    const row = this.toRow(doc);
-    await this.owner
-      .getConnection()
-      .prepare(
-        `UPDATE ${quoteIdent(this.table)} SET "createdAt" = ?, "updatedAt" = ?, "removedAt" = ?, "_doc" = ? WHERE "id" = ?`,
-      )
-      .run(row.createdAt, row.updatedAt, row.removedAt, row._doc, id);
-    await this.runHooks("update", "update", doc, "post");
-    await this.runHooks("save", "update", doc, "post");
-    return doc;
+  async update(id: string, patch: DocumentRecord, options: WriteHookOptions = {}) {
+    const current = await this.pickByIdForWrite(id);
+    return await this.writeUpdatedDocument(id, { ...current, ...patch, id, updatedAt: dayjs() }, current, options);
   }
 
   async remove(id: string) {
-    return this.update(id, { removedAt: dayjs() });
+    // Document-level soft delete: fire `remove` hooks, not `save`/`update`.
+    return this.update(id, { removedAt: dayjs() }, { runSaveHooks: false, crudType: "remove" });
   }
 
-  async updateOneByQuery(query: DocumentQuery, update: DocumentUpdate, options: DocumentUpdateOptions = {}) {
-    const doc = await this.findOne(query);
-    if (!doc) {
-      if (!options.upsert) return { acknowledged: true, matchedCount: 0, modifiedCount: 0, upsertedId: null };
-      const inserted = await this.create(this.applyDocumentUpdate(this.extractInsertBase(query), update, true));
-      return { acknowledged: true, matchedCount: 0, modifiedCount: 1, upsertedId: inserted.id };
-    }
-    await this.update(doc.id, this.applyDocumentUpdate(doc, update));
-    return { acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedId: null };
+  // Query-based writes push a single atomic UPDATE to the database (no read-modify-write, no lost-update race) and
+  // deliberately fire NO document hooks — mirroring how MongoDB query middleware bypasses `save`/document middleware.
+  // Callers needing per-document hooks must use the document paths (`create`/`update(id)`/`remove(id)`/`.save()`).
+  async updateOneByQuery(query: DocumentQuery, update: DocumentUpdateInput, options: DocumentUpdateOptions = {}) {
+    const resolved = resolveDocumentUpdate(update);
+    const { assignments, params } = this.compiledUpdate(resolved);
+    const { where, params: whereParams } = this.safeQuery(query);
+    const subquery = `SELECT ${quoteIdent("id")} FROM ${quoteIdent(this.table)} WHERE ${where} ORDER BY ${this.compiler.orderBy()} LIMIT 1`;
+    const sql = `UPDATE ${quoteIdent(this.table)} SET ${assignments.join(", ")} WHERE ${quoteIdent("id")} IN (${subquery})`;
+    const changes = this.dialect.affectedRows(
+      await this.owner
+        .getConnection()
+        .prepare(sql)
+        .run(...params, ...whereParams),
+    );
+    if (changes > 0) return { acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedId: null };
+    if (!options.upsert) return { acknowledged: true, matchedCount: 0, modifiedCount: 0, upsertedId: null };
+    const inserted = await this.create(this.applyInsertUpdate(this.extractInsertBase(query), resolved), {
+      runSaveHooks: false,
+    });
+    return { acknowledged: true, matchedCount: 0, modifiedCount: 1, upsertedId: inserted.id };
   }
 
-  async updateManyByQuery(query: DocumentQuery, update: DocumentUpdate) {
-    const docs = await this.find(query);
-    for (const doc of docs) await this.update(doc.id, this.applyDocumentUpdate(doc, update));
-    return { acknowledged: true, matchedCount: docs.length, modifiedCount: docs.length };
+  async updateManyByQuery(query: DocumentQuery, update: DocumentUpdateInput) {
+    const { assignments, params } = this.compiledUpdate(resolveDocumentUpdate(update));
+    const { where, params: whereParams } = this.safeQuery(query);
+    const sql = `UPDATE ${quoteIdent(this.table)} SET ${assignments.join(", ")} WHERE ${where}`;
+    const changes = this.dialect.affectedRows(
+      await this.owner
+        .getConnection()
+        .prepare(sql)
+        .run(...params, ...whereParams),
+    );
+    return { acknowledged: true, matchedCount: changes, modifiedCount: changes };
   }
 
   async deleteManyByQuery(query: DocumentQuery) {
-    return this.updateManyByQuery(query, { set: { removedAt: dayjs() } });
+    // Query-level soft delete is a single atomic UPDATE stamping `removedAt` (bare value = set); it fires no hooks.
+    return this.updateManyByQuery(query, { removedAt: dayjs() });
   }
 
-  async bulkWrite(operations: { updateOne: { filter: DocumentQuery; update: DocumentUpdate; upsert?: boolean } }[]) {
+  // Prepends the mandatory `updatedAt = now` stamp to the compiled assignments so every atomic write bumps it.
+  private compiledUpdate(update: DocumentUpdate) {
+    const compiled = this.updateCompiler.compile(update);
+    return {
+      assignments: [`${quoteIdent("updatedAt")} = ?`, ...compiled.assignments],
+      params: [Date.now(), ...compiled.params],
+    };
+  }
+
+  async bulkWrite(
+    operations: { updateOne: { filter: DocumentQuery; update: DocumentUpdateInput; upsert?: boolean } }[],
+  ) {
     let matchedCount = 0;
     let modifiedCount = 0;
     let upsertedId: string | null = null;
@@ -649,12 +1060,12 @@ export class SqliteDocumentStore {
     const limit = limitValue ? ` LIMIT ${limitValue}` : "";
     const offset = skipValue ? ` OFFSET ${skipValue}` : "";
     const order = options.sample ? "ORDER BY random()" : `ORDER BY ${this.compiler.orderBy(options.sort ?? undefined)}`;
-    const projection = this.normalizeProjection(options.select);
+    const projection = this.resolveProjection(options.select);
     if (projection) {
       const rows = await this.prepareReadStmt(
         `SELECT ${this.projectionSql(projection)} FROM ${quoteIdent(this.table)} WHERE ${where} ${order}${limit}${offset}`,
       ).all<ProjectedSqliteDocumentRow>(...params);
-      return rows.map((row) => this.fromProjectedRow(row, projection));
+      return rows.map((row) => this.hydrate(this.fromProjectedRow(row, projection)));
     }
     const rows = await this.prepareReadStmt(
       `SELECT * FROM ${quoteIdent(this.table)} WHERE ${where} ${order}${limit}${offset}`,
@@ -773,6 +1184,9 @@ export class SqliteDocumentStore {
       } else {
         doc[key] = value;
       }
+      if (doc[key] !== undefined && doc[key] !== null) {
+        doc[key] = this.normalizeWriteValue(doc[key], props);
+      }
       if (props.enum && doc[key] !== undefined && doc[key] !== null) {
         const values = Array.isArray(doc[key]) ? doc[key] : [doc[key]];
         const fieldEnum = props.enum as { has: (value: unknown) => boolean } | undefined;
@@ -798,10 +1212,10 @@ export class SqliteDocumentStore {
     );
   }
 
-  private applyDocumentUpdate(source: DocumentRecord, update: DocumentUpdate, isInsert = false) {
-    const legacyKey = Object.keys(update).find((key) => key.startsWith("$"));
-    if (legacyKey) throw new Error(`Mongo-style update operator is not supported: ${legacyKey}`);
-    const doc = { ...source };
+  // Builds the initial document for an upsert insert by applying the update nodes in JS (there is no existing row to
+  // mutate atomically). `setOnInsert` applies here — and only here — since it is defined only for the insert path.
+  private applyInsertUpdate(base: DocumentRecord, update: DocumentUpdate) {
+    const doc: MutableDocumentRecord = { ...base };
     const setPath = (path: string, value: unknown) => {
       const parts = path.split(".");
       let target: MutableDocumentRecord = doc;
@@ -811,73 +1225,56 @@ export class SqliteDocumentStore {
       }
       target[parts.at(-1) as string] = value;
     };
-    const unsetPath = (path: string) => {
-      const parts = path.split(".");
-      let target: MutableDocumentRecord = doc;
-      for (const part of parts.slice(0, -1)) {
-        if (!target[part] || typeof target[part] !== "object") return;
-        target = target[part] as MutableDocumentRecord;
+    const getPath = (path: string) =>
+      path.split(".").reduce<unknown>((obj, key) => (obj as DocumentRecord | undefined)?.[key], doc);
+    for (const [path, raw] of Object.entries(update)) {
+      if (raw === undefined) continue;
+      const node: DocumentUpdateNode = isDocumentUpdateNode(raw) ? raw : { kind: "update", op: "set", value: raw };
+      const current = getPath(path);
+      switch (node.op) {
+        case "set":
+        case "setOnInsert":
+          setPath(path, node.value);
+          break;
+        case "unset": {
+          const parts = path.split(".");
+          let target: MutableDocumentRecord | undefined = doc;
+          for (const part of parts.slice(0, -1)) {
+            target = target?.[part] as MutableDocumentRecord | undefined;
+            if (!target || typeof target !== "object") break;
+          }
+          if (target) delete target[parts.at(-1) as string];
+          break;
+        }
+        case "inc":
+          setPath(path, Number(current ?? 0) + Number(node.value));
+          break;
+        case "mul":
+          setPath(path, Number(current ?? 0) * Number(node.value));
+          break;
+        case "min":
+          setPath(path, current === undefined ? node.value : Math.min(Number(current), Number(node.value)));
+          break;
+        case "max":
+          setPath(path, current === undefined ? node.value : Math.max(Number(current), Number(node.value)));
+          break;
+        case "push":
+          setPath(path, [...(Array.isArray(current) ? current : []), node.value]);
+          break;
+        case "addToSet": {
+          const arr = Array.isArray(current) ? current : [];
+          if (!arr.some((item) => stableJson(item) === stableJson(node.value))) setPath(path, [...arr, node.value]);
+          break;
+        }
+        case "pull":
+          if (Array.isArray(current))
+            setPath(
+              path,
+              current.filter((item) => stableJson(item) !== stableJson(node.value)),
+            );
+          break;
       }
-      delete target[parts.at(-1) as string];
-    };
-    const addToSet = (path: string, value: unknown) => {
-      const current = path.split(".").reduce<unknown>((obj, key) => (obj as DocumentRecord | undefined)?.[key], doc) as
-        | unknown[]
-        | undefined;
-      const next = Array.isArray(current) ? current : [];
-      if (!next.some((item) => stableJson(item) === stableJson(value))) setPath(path, [...next, value]);
-    };
-    const pull = (path: string, value: unknown) => {
-      const current = path.split(".").reduce<unknown>((obj, key) => (obj as DocumentRecord | undefined)?.[key], doc) as
-        | unknown[]
-        | undefined;
-      if (Array.isArray(current))
-        setPath(
-          path,
-          current.filter((item) => stableJson(item) !== stableJson(value)),
-        );
-    };
-    const push = (path: string, value: unknown) => {
-      const current = path.split(".").reduce<unknown>((obj, key) => (obj as DocumentRecord | undefined)?.[key], doc) as
-        | unknown[]
-        | undefined;
-      setPath(path, [...(Array.isArray(current) ? current : []), value]);
-    };
-    if (update.set) {
-      Object.entries(update.set).forEach(([path, value]) => {
-        setPath(path, value);
-      });
     }
-    if (update.unset) (Array.isArray(update.unset) ? update.unset : Object.keys(update.unset)).forEach(unsetPath);
-    if (update.addToSet) {
-      Object.entries(update.addToSet).forEach(([path, value]) => {
-        addToSet(path, value);
-      });
-    }
-    if (update.pull) {
-      Object.entries(update.pull).forEach(([path, value]) => {
-        pull(path, value);
-      });
-    }
-    if (update.push) {
-      Object.entries(update.push).forEach(([path, value]) => {
-        push(path, value);
-      });
-    }
-    if (update.inc) {
-      Object.entries(update.inc).forEach(([path, value]) => {
-        const current = path.split(".").reduce<unknown>((obj, key) => (obj as DocumentRecord | undefined)?.[key], doc);
-        setPath(path, Number(current ?? 0) + value);
-      });
-    }
-    if (isInsert && update.setOnInsert) {
-      Object.entries(update.setOnInsert).forEach(([path, value]) => {
-        setPath(path, value);
-      });
-    }
-    const operatorKeys = new Set(["set", "unset", "addToSet", "pull", "push", "inc", "setOnInsert"]);
-    const direct = Object.fromEntries(Object.entries(update).filter(([key]) => !operatorKeys.has(key)));
-    Object.assign(doc, direct);
     return doc;
   }
 
@@ -897,7 +1294,10 @@ export class SqliteDocumentStore {
   }
 
   private fromRow(row: SqliteDocumentRow) {
-    const payload = this.decodeDocumentPayload(JSON.parse(row._doc));
+    // SQLite/libsql return `_doc` as a JSON string; the Postgres `jsonb` driver already returns a parsed object.
+    const rawDoc: unknown = row._doc;
+    const raw = typeof rawDoc === "string" ? JSON.parse(rawDoc) : (rawDoc as Record<string, unknown>);
+    const payload = this.decodeDocumentPayload(raw);
     return {
       id: row.id,
       createdAt: dayjs(Number(row.createdAt)),
@@ -912,8 +1312,20 @@ export class SqliteDocumentStore {
     const fields = Object.entries(select)
       .filter(([, included]) => included)
       .map(([field]) => field);
-    if (!fields.length) return null;
     return [...new Set(fields.filter((field) => field !== "_doc"))];
+  }
+
+  private resolveProjection(select: ProjectionOption): string[] | null {
+    const projection = this.normalizeProjection(select);
+    if (projection !== null) return projection;
+    return this.defaultProjection();
+  }
+
+  private defaultProjection(): string[] | null {
+    const fields = this.database.doc[FIELD_META] as unknown as FieldMap;
+    const entries = Object.entries(fields).filter(([key]) => !BASE_COLUMNS.has(key));
+    if (!entries.some(([, field]) => field.getProps().select === false)) return null;
+    return entries.flatMap(([key, field]) => (field.getProps().select === false ? [] : [key]));
   }
 
   private projectionSql(fields: string[]) {
@@ -932,16 +1344,72 @@ export class SqliteDocumentStore {
   private fromProjectedRow(row: ProjectedSqliteDocumentRow, fields: string[]) {
     const doc: DocumentRecord = {
       id: row.id,
-      createdAt: Number(row.createdAt),
-      updatedAt: Number(row.updatedAt),
-      removedAt: row.removedAt ? Number(row.removedAt) : undefined,
+      createdAt: dayjs(Number(row.createdAt)),
+      updatedAt: dayjs(Number(row.updatedAt)),
+      removedAt: row.removedAt ? dayjs(Number(row.removedAt)) : undefined,
     };
     const jsonFields = fields.filter((field) => !BASE_COLUMNS.has(field));
     for (const [idx, field] of jsonFields.entries()) {
       const value = this.parseProjectedValue(row[this.projectionAlias(idx)]);
       const props = (this.database.doc[FIELD_META] as unknown as FieldMap)[field]?.getProps?.();
-      doc[field] = props ? this.decodeFieldValue(value, props) : value;
+      if (value === null && !props?.nullable) {
+        if (props?.default != null) {
+          doc[field] =
+            typeof props.default === "function" ? (props.default as (data: unknown) => unknown)(doc) : props.default;
+        } else {
+          doc[field] =
+            ((props as Record<string, unknown>).modelRef as { [DEFAULT_VALUE]?: unknown })?.[DEFAULT_VALUE] ?? null;
+        }
+      } else {
+        doc[field] = props ? this.decodeFieldValue(value, props) : value;
+      }
     }
+    return doc;
+  }
+
+  private async findForWrite(query?: DocumentQuery, options: FindManyOptions = {}) {
+    const { where, params } = this.safeQuery(query);
+    const limitValue = Number(options.limit ?? 0);
+    const skipValue = Number(options.skip ?? 0);
+    const limit = limitValue ? ` LIMIT ${limitValue}` : "";
+    const offset = skipValue ? ` OFFSET ${skipValue}` : "";
+    const order = options.sample ? "ORDER BY random()" : `ORDER BY ${this.compiler.orderBy(options.sort ?? undefined)}`;
+    const rows = await this.prepareReadStmt(
+      `SELECT * FROM ${quoteIdent(this.table)} WHERE ${where} ${order}${limit}${offset}`,
+    ).all<SqliteDocumentRow>(...params);
+    return rows.map((row) => this.hydrate(this.fromRow(row)));
+  }
+
+  private async findOneForWrite(query?: DocumentQuery, options: FindOneOptions = {}) {
+    return (
+      (await this.findForWrite(query, { ...options, limit: 1, sample: options.sample ? 1 : undefined })).at(0) ?? null
+    );
+  }
+
+  private async pickByIdForWrite(id: string) {
+    const doc = await this.findOneForWrite({ id } as DocumentQuery);
+    if (!doc) throw new Error(`No Document (${this.table}): ${id}`);
+    return doc;
+  }
+
+  private async writeUpdatedDocument(
+    id: string,
+    data: DocumentRecord,
+    originalData: DocumentRecord,
+    { runSaveHooks = true, crudType = "update" }: WriteHookOptions = {},
+  ) {
+    const doc = this.hydrate(this.prepareDocument({ ...data, id, updatedAt: dayjs() }), originalData);
+    if (runSaveHooks) await this.runHooks("save", crudType, doc, "pre");
+    await this.runHooks(crudType, crudType, doc, "pre");
+    const row = this.toRow(doc);
+    await this.owner
+      .getConnection()
+      .prepare(
+        `UPDATE ${quoteIdent(this.table)} SET "createdAt" = ?, "updatedAt" = ?, "removedAt" = ?, "_doc" = ${this.dialect.docValuePlaceholder()} WHERE "id" = ?`,
+      )
+      .run(row.createdAt, row.updatedAt, row.removedAt, row._doc, id);
+    await this.runHooks(crudType, crudType, doc, "post");
+    if (runSaveHooks) await this.runHooks("save", crudType, doc, "post");
     return doc;
   }
 
@@ -958,12 +1426,31 @@ export class SqliteDocumentStore {
 
   private decodeDocumentPayload(payload: Record<string, unknown>) {
     const fields = this.database.doc[FIELD_META] as unknown as FieldMap;
-    return Object.fromEntries(
-      Object.entries(payload).map(([key, value]) => {
-        const props = fields[key]?.getProps?.();
-        return [key, props ? this.decodeFieldValue(value, props) : value];
-      }),
-    );
+    const result: Record<string, unknown> = {};
+    for (const [key, fieldMeta] of Object.entries(fields)) {
+      if (BASE_COLUMNS.has(key)) continue;
+      const props = fieldMeta.getProps();
+      const value = payload[key];
+      if (value === undefined) {
+        const def = props.default;
+        if (def != null) {
+          result[key] = typeof def === "function" ? (def as (data: unknown) => unknown)(payload) : def;
+        } else if (props.nullable) {
+          result[key] = null;
+        } else {
+          result[key] =
+            ((props as Record<string, unknown>).modelRef as { [DEFAULT_VALUE]?: unknown })?.[DEFAULT_VALUE] ?? null;
+        }
+      } else {
+        result[key] = this.decodeFieldValue(value, props);
+      }
+    }
+    for (const [key, value] of Object.entries(payload)) {
+      if (key in result || BASE_COLUMNS.has(key)) continue;
+      const props = fields[key]?.getProps?.();
+      result[key] = props ? this.decodeFieldValue(value, props) : value;
+    }
+    return result;
   }
 
   private decodeFieldValue(value: unknown, props: Record<string, unknown>): unknown {
@@ -973,8 +1460,8 @@ export class SqliteDocumentStore {
       return new Map(entries.map(([key, item]) => [key, this.decodeMapValue(item, props)]));
     }
     if (props.modelRef === Date) {
-      if (Array.isArray(value)) return value.map((item) => (item === null ? item : dayjs(Number(item))));
-      return dayjs(Number(value));
+      if (Array.isArray(value)) return value.map((item) => (item === null ? item : decodeDateValue(item)));
+      return decodeDateValue(value);
     }
     if (Array.isArray(value)) return value.map((item) => this.decodeNestedValue(item, props));
     return this.decodeNestedValue(value, props);
@@ -982,7 +1469,7 @@ export class SqliteDocumentStore {
 
   private decodeMapValue(value: unknown, props: Record<string, unknown>) {
     if (value === undefined || value === null) return value;
-    if (props.of === Date) return dayjs(Number(value));
+    if (props.of === Date) return decodeDateValue(value);
     return value;
   }
 
@@ -991,12 +1478,44 @@ export class SqliteDocumentStore {
     if (!props.isClass || !props.isScalar) return value;
     const scalarFields = (props.modelRef as { [FIELD_META]?: FieldMap } | undefined)?.[FIELD_META];
     if (!scalarFields) return value;
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, nested]) => {
-        const nestedProps = scalarFields[key]?.getProps?.();
-        return [key, nestedProps ? this.decodeFieldValue(nested, nestedProps) : nested];
-      }),
-    );
+    const source = value as Record<string, unknown>;
+    const defaults = getDefault(scalarFields as never) as Record<string, unknown>;
+    const result: Record<string, unknown> = {};
+    for (const [key, fieldMeta] of Object.entries(scalarFields)) {
+      const nestedProps = fieldMeta.getProps();
+      const nested = source[key];
+      result[key] = nested === undefined ? defaults[key] : this.decodeFieldValue(nested, nestedProps);
+    }
+    for (const [key, nested] of Object.entries(source)) {
+      if (!(key in result)) result[key] = nested;
+    }
+    return result;
+  }
+
+  private normalizeWriteValue(value: unknown, props: Record<string, unknown>): unknown {
+    if (value === undefined || value === null) return value;
+    if (props.modelRef === Date) {
+      if (Array.isArray(value))
+        return value.map((item) => (item === null || item === undefined ? item : dayjs(item as never)));
+      return dayjs(value as never);
+    }
+    if (!props.isClass || !props.isScalar) return value;
+    if (Array.isArray(value)) return value.map((item) => this.fillScalarDefaults(item, props));
+    return this.fillScalarDefaults(value, props);
+  }
+
+  private fillScalarDefaults(value: unknown, props: Record<string, unknown>): unknown {
+    if (!value || typeof value !== "object") return value;
+    const scalarFields = (props.modelRef as { [FIELD_META]?: FieldMap } | undefined)?.[FIELD_META];
+    if (!scalarFields) return value;
+    const defaults = getDefault(scalarFields as never) as Record<string, unknown>;
+    const result = { ...(value as Record<string, unknown>) };
+    for (const [key, fieldMeta] of Object.entries(scalarFields)) {
+      const nestedProps = fieldMeta.getProps();
+      if (result[key] === undefined) result[key] = defaults[key];
+      else result[key] = this.normalizeWriteValue(result[key], nestedProps);
+    }
+    return result;
   }
 
   hydrate(data: DocumentRecord, originalData: DocumentRecord = data) {
@@ -1062,7 +1581,7 @@ export class SqliteDocumentStore {
     this.#insertStmt ??= this.owner
       .getConnection()
       .prepare(
-        `INSERT INTO ${quoteIdent(this.table)} ("id", "createdAt", "updatedAt", "removedAt", "_doc") VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO ${quoteIdent(this.table)} ("id", "createdAt", "updatedAt", "removedAt", "_doc") VALUES (?, ?, ?, ?, ${this.dialect.docValuePlaceholder()})`,
       );
     return this.#insertStmt;
   }
@@ -1094,6 +1613,7 @@ export class SqliteDatabase
         appName,
         fileName: `${appName}-${environment}.db`,
         isProduction: process.env.NODE_ENV === "production",
+        operationMode: env.operationMode,
         workspaceRoot: env.workspaceRoot,
       });
       return {
@@ -1113,7 +1633,7 @@ export class SqliteDatabase
 {
   #db!: Database;
   #client!: BunSqliteClient;
-  #stores = new Map<string, SqliteDocumentStore>();
+  #stores = new Map<string, SqlDocumentStore>();
   #transaction = new AsyncLocalStorage<TransactionContext>();
 
   override async onInit() {
@@ -1143,7 +1663,7 @@ export class SqliteDatabase
   getStore(constant: ConstantModel, database: DatabaseModel, schema: SchemaOf) {
     const existing = this.#stores.get(database.refName);
     if (existing) return existing;
-    const store = new SqliteDocumentStore(this, constant, database, schema as DocumentSchema);
+    const store = new SqlDocumentStore(this, constant, database, schema as DocumentSchema);
     this.#stores.set(database.refName, store);
     void store.ensure();
     return store;
@@ -1204,6 +1724,7 @@ export class LibsqlDatabase
         appName,
         fileName: `${appName}-${environment}.db`,
         isProduction: process.env.NODE_ENV === "production",
+        operationMode: env.operationMode,
         workspaceRoot: env.workspaceRoot,
       });
       return {
@@ -1219,7 +1740,7 @@ export class LibsqlDatabase
   implements DatabaseAdaptor
 {
   #client!: LibsqlAkanClient;
-  #stores = new Map<string, SqliteDocumentStore>();
+  #stores = new Map<string, SqlDocumentStore>();
   #transaction = new AsyncLocalStorage<TransactionContext>();
 
   override async onInit() {
@@ -1243,7 +1764,7 @@ export class LibsqlDatabase
   getStore(constant: ConstantModel, database: DatabaseModel, schema: SchemaOf) {
     const existing = this.#stores.get(database.refName);
     if (existing) return existing;
-    const store = new SqliteDocumentStore(this, constant, database, schema as DocumentSchema);
+    const store = new SqlDocumentStore(this, constant, database, schema as DocumentSchema);
     this.#stores.set(database.refName, store);
     void store.ensure();
     return store;
@@ -1303,7 +1824,7 @@ export class PostgresDatabase
   implements DatabaseAdaptor
 {
   #client!: PostgresAkanClient;
-  #stores = new Map<string, SqliteDocumentStore>();
+  #stores = new Map<string, SqlDocumentStore>();
   #transaction = new AsyncLocalStorage<TransactionContext>();
 
   override async onInit() {
@@ -1334,7 +1855,7 @@ export class PostgresDatabase
   getStore(constant: ConstantModel, database: DatabaseModel, schema: SchemaOf) {
     const existing = this.#stores.get(database.refName);
     if (existing) return existing;
-    const store = new SqliteDocumentStore(this, constant, database, schema as DocumentSchema);
+    const store = new SqlDocumentStore(this, constant, database, schema as DocumentSchema, new PostgresDialect());
     this.#stores.set(database.refName, store);
     void store.ensure();
     return store;

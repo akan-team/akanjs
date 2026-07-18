@@ -4,6 +4,8 @@ export * from "./createFont";
 export * from "./csrTypes";
 export * from "./decorators";
 export * from "./device";
+export * from "./frameConfig";
+export * from "./frameDebug";
 export * from "./locale";
 export * from "./makePageProto";
 export * from "./router";

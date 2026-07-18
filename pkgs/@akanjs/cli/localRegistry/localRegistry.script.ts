@@ -42,5 +42,6 @@ export class LocalRegistryScript extends script("localRegistry", [
     const pkgs = akanPkgs.map((pkgName) => PkgExecutor.from(workspace, pkgName));
     if (test) for (const pkg of pkgs) await this.applicationScript.test(pkg);
     for (const pkg of pkgs) await this.packageScript.buildPackage(pkg, { showSpinner: false });
+    await this.packageScript.verifyAkanPublishPackages(workspace);
   }
 }

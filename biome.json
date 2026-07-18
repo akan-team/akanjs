@@ -49,7 +49,10 @@
       "!!**/dist",
       "!!**/.akan",
       "!!**/dump",
-      "!!**/local"
+      "!!**/local",
+      "!!**/ios/DerivedData",
+      "!benchmarks/sample-app-productivity/tmp",
+      "!benchmarks/sample-app-productivity/workspaces"
     ]
   },
   "formatter": {
@@ -79,7 +82,8 @@
           "fix": "safe"
         },
         "useParseIntRadix": "off",
-        "useExhaustiveDependencies": "off"
+        "useExhaustiveDependencies": "off",
+        "useHookAtTopLevel": "off"
       },
       "nursery": {
         "useSortedClasses": {
@@ -89,6 +93,9 @@
             "attributes": ["classList"],
             "functions": ["clsx", "cva"]
           }
+        },
+        "noUnnecessaryConditions": {
+          "level": "error"
         }
       },
       "a11y": "off",
@@ -140,6 +147,10 @@
     {
       "includes": ["**/*.constant.ts", "**/*.document.ts", "**/*.service.ts", "**/*.store.ts"],
       "plugins": ["./pkgs/@akanjs/devkit/lint/no-js-private-class-method.grit"]
+    },
+    {
+      "includes": ["**/*.signal.ts"],
+      "plugins": ["./pkgs/@akanjs/devkit/lint/no-redeclare-predefined-endpoint.grit"]
     },
     {
       "includes": [

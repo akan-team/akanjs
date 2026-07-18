@@ -1,4 +1,5 @@
 import {
+  Any,
   applyFnToArrayObjects,
   type Cls,
   type Dayjs,
@@ -13,7 +14,14 @@ import {
 } from "akanjs/base";
 import { Logger } from "akanjs/common";
 
-import { type BaseObject, type ConstantCls, ConstantRegistry, type DefaultOf, type FieldProps } from ".";
+import {
+  type BaseObject,
+  type ConstantModelRef,
+  ConstantRegistry,
+  type DefaultOf,
+  type DefaultOfSchema,
+  type FieldProps,
+} from ".";
 
 type Purified<O> = O extends BaseObject
   ? string
@@ -33,7 +41,7 @@ export type PurifiedModel<T> = T extends Upload[]
   ? FileList
   : T extends (infer S)[]
     ? PurifiedModel<S>[]
-    : T extends string | number | boolean | Dayjs
+    : T extends string | number | boolean | Dayjs | File
       ? T
       : T extends Map<infer K, infer V>
         ? Map<K, PurifiedModel<V>>
@@ -43,6 +51,13 @@ export type PurifyFunc<Input, _DefaultInput = DefaultOf<Input>, _PurifiedInput =
   self: _DefaultInput,
   isChild?: boolean,
 ) => _PurifiedInput | null;
+
+export type PurifyFuncV2<
+  Input,
+  RelationKey extends string = never,
+  _DefaultInput = DefaultOfSchema<Input, RelationKey>,
+  _PurifiedInput = PurifiedModel<Input>,
+> = (self: _DefaultInput, isChild?: boolean) => _PurifiedInput | null;
 
 const getPurifyFn = (modelRef: Cls): ((value: unknown) => unknown) => {
   const [valueRef] = getNonArrayModel(modelRef);
@@ -75,7 +90,7 @@ const purify = (field: FieldProps, key: string, value: unknown, self: Record<str
   if (field.isMap && field.of) {
     const purifyFn = PrimitiveRegistry.has(field.of as Cls)
       ? getPurifyFn(field.of as Cls)
-      : (value: unknown) => makePurify(field.of as ConstantCls)(value as object);
+      : (value: unknown) => makePurify(field.of as ConstantModelRef)(value as object);
     return Object.fromEntries(
       [...(value as Map<string, unknown>).entries()].map(([key, val]) => [key, applyFnToArrayObjects(val, purifyFn)]),
     );
@@ -87,7 +102,7 @@ const purify = (field: FieldProps, key: string, value: unknown, self: Record<str
     throw new Error(`Invalid String Value (Default) in ${key} for value ${value}`);
   if (field.validate && !field.validate(value, self))
     throw new Error(`Invalid Value (Failed to pass validation) / ${value} in ${key}`);
-  if (!field.nullable && !value && value !== 0 && value !== false)
+  if (!field.nullable && !value && value !== 0 && value !== false && (field.modelRef as Cls) !== Any)
     throw new Error(`Invalid Value (Nullable) in ${key} for value ${value}`);
 
   // 2. Convert Value
@@ -95,7 +110,7 @@ const purify = (field: FieldProps, key: string, value: unknown, self: Record<str
   return purifyFn(value);
 };
 
-export const makePurify = <I>(modelRef: ConstantCls<I>): PurifyFunc<I> => {
+export const makePurify = <I>(modelRef: ConstantModelRef<I>): PurifyFunc<I> => {
   const fn = ((self: Record<string, unknown>, isChild?: boolean): unknown => {
     try {
       if (isChild && !ConstantRegistry.isScalar(modelRef)) {

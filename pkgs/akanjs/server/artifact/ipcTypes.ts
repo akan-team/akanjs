@@ -16,6 +16,36 @@ export interface CssPayload {
   changedFiles?: string[];
 }
 
+export type DevChangeRole = "server" | "client" | "shared" | "barrel" | "config" | "css";
+
+export type DevChangeAction =
+  | "restart-backend"
+  | "restart-builder"
+  | "rebuild-client"
+  | "rebuild-css"
+  | "sync-generated"
+  | "restart-dev-host"
+  | "report-error";
+
+export interface DevChangePlan {
+  generation: number;
+  files: string[];
+  generatedFiles: string[];
+  roles: DevChangeRole[];
+  actions: DevChangeAction[];
+  reasonByFile: Record<string, string[]>;
+}
+
+export type BuildPhase = "scan" | "barrel" | "csr" | "pages" | "css" | "route" | "backend";
+
+export interface DevBuildStatus {
+  generation: number;
+  phase: BuildPhase;
+  ok: boolean;
+  files: string[];
+  message?: string;
+}
+
 // --- backend → builder (request/response) -------------------------------
 
 export type BuilderReq = {
@@ -43,8 +73,15 @@ export interface PagesBundlePayload {
 export type BuilderEvent =
   | { type: "builder-ready"; buildId: string }
   | { type: "backend-ready"; pid: number }
-  | { type: "invalidate"; kinds: ("code" | "css" | "config")[]; files: string[]; generation?: number }
+  | {
+      type: "invalidate";
+      kinds: ("code" | "css" | "config")[];
+      files: string[];
+      generation?: number;
+      devPlan?: DevChangePlan;
+    }
   | { type: "css-updated"; data: CssPayload }
-  | { type: "pages-updated"; data: PagesBundlePayload };
+  | { type: "pages-updated"; data: PagesBundlePayload }
+  | { type: "build-status"; data: DevBuildStatus };
 
 export type BuilderMessage = BuilderReq | BuilderRes | BuilderEvent;

@@ -1,6 +1,6 @@
 import { getEnv } from "akanjs/base";
 import { parseAkanI18nEnv } from "akanjs/common";
-import { getRequest, headers } from "akanjs/fetch";
+import { untrackedHeaders, untrackedRequest } from "akanjs/fetch";
 import type { ReactNode } from "react";
 import { Translator } from "./translator";
 
@@ -23,19 +23,26 @@ interface ErrPayload extends ErrRestoreOption {
 const getPageInfo = (): { locale: string; path: string } => {
   const { defaultLocale, locales } = parseAkanI18nEnv();
   const localeSet = new Set(locales);
+  const activeLocale = Translator.getActiveLocale();
+  const activePath = Translator.getActivePath();
+  if (activePath) return { locale: activeLocale ?? defaultLocale, path: activePath };
   if (getEnv().side !== "server") {
     const [, firstSegment = "", ...rest] = window.location.pathname.split("/");
-    if (localeSet.has(firstSegment)) return { locale: firstSegment, path: `/${rest.join("/")}` };
-    return { locale: defaultLocale, path: window.location.pathname };
+    const hasLocalePrefix = localeSet.has(firstSegment);
+    // Prefer the server-resolved active locale (seeded via ClientWrapper) so client lookups match the
+    // SSR render even when the URL's leading segment is not the locale (base-path / cloud routing).
+    // Fall back to the URL segment for CSR or any pre-seed render.
+    const locale = activeLocale ?? (hasLocalePrefix ? firstSegment : defaultLocale);
+    return { locale, path: activePath ?? (hasLocalePrefix ? `/${rest.join("/")}` : window.location.pathname) };
   }
-  const h = headers();
+  const h = untrackedHeaders();
   // Honor explicit proxy/middleware headers when present; otherwise derive
   // locale+path from the request URL itself so unadorned dev requests (e.g.
   // `curl /en/hello`) still work.
   const localeHeader = h.get("x-locale");
   const pathHeader = h.get("x-path");
   if (localeHeader && pathHeader) return { locale: localeHeader, path: pathHeader };
-  const req = getRequest();
+  const req = untrackedRequest();
   if (req) {
     const urlPath = new URL(req.url).pathname;
     const [, firstSegment = "", ...rest] = urlPath.split("/");
@@ -61,11 +68,11 @@ const msg = {
   warning: () => null,
   loading: () => null,
 } as {
-  info: (key: TransMessage<any>, option?: TransMessageOption) => void;
-  success: (key: TransMessage<any>, option?: TransMessageOption) => void;
-  error: (key: TransMessage<any>, option?: TransMessageOption) => void;
-  warning: (key: TransMessage<any>, option?: TransMessageOption) => void;
-  loading: (key: TransMessage<any>, option?: TransMessageOption) => void;
+  info: (key: TransMessage<Record<string, unknown>>, option?: TransMessageOption) => void;
+  success: (key: TransMessage<Record<string, unknown>>, option?: TransMessageOption) => void;
+  error: (key: TransMessage<Record<string, unknown>>, option?: TransMessageOption) => void;
+  warning: (key: TransMessage<Record<string, unknown>>, option?: TransMessageOption) => void;
+  loading: (key: TransMessage<Record<string, unknown>>, option?: TransMessageOption) => void;
 };
 
 export const makePageProto = <

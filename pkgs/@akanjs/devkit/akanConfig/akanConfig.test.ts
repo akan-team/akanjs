@@ -61,7 +61,7 @@ describe("AkanAppConfig", () => {
       },
     });
     expect(config.barrelImports).toEqual(
-      expect.arrayContaining(["@apps/portal/ui", "@libs/shared/server", "akanjs/common"]),
+      expect.arrayContaining(["@apps/portal/ui", "@libs/shared/server", "akanjs/common", "akanjs/server"]),
     );
     expect(config.docker.content).toContain("ENV AKAN_PUBLIC_APP_NAME=portal");
     expect(process.env.AKAN_PUBLIC_DEFAULT_LOCALE).toBe("en");
@@ -75,10 +75,21 @@ describe("AkanAppConfig", () => {
       {
         routes: [
           { domains: { debug: ["Root.Local:8282"], qa: ["QA.Root.Local"] } },
-          { basePath: "/admin/", domains: { debug: ["Admin.Local:8282"], main: ["Admin.Main.Local"] } },
+          {
+            basePath: "/admin/",
+            domains: {
+              debug: ["Admin.Local:8282"],
+              main: ["Admin.Main.Local"],
+            },
+          },
         ],
         i18n: { locales: ["ko", "en"], defaultLocale: "ko" },
-        mobile: { appName: "Portal App", appId: "com.portal.mobile", version: "1.2.3", buildNum: 7 },
+        mobile: {
+          appName: "Portal App",
+          appId: "com.portal.mobile",
+          version: "1.2.3",
+          buildNum: 7,
+        },
         images: { qualities: [80, 90], dangerouslyAllowSVG: true },
         docker: {
           image: { amd64: "oven/bun:amd64", arm64: "oven/bun:arm64" },
@@ -149,7 +160,10 @@ describe("AkanAppConfig", () => {
   });
 
   test("falls back to akanjs package versions for built-in runtime dependencies", () => {
-    const runtimeDependencies = { ...akanPackageJson.dependencies, ...akanPackageJson.peerDependencies };
+    const runtimeDependencies = {
+      ...akanPackageJson.dependencies,
+      ...akanPackageJson.peerDependencies,
+    };
     const config = new AkanAppConfig(
       app,
       [],
@@ -175,7 +189,10 @@ describe("AkanAppConfig", () => {
   });
 
   test("adds backend runtime packages by database mode", () => {
-    const runtimeDependencies = { ...akanPackageJson.dependencies, ...akanPackageJson.peerDependencies };
+    const runtimeDependencies = {
+      ...akanPackageJson.dependencies,
+      ...akanPackageJson.peerDependencies,
+    };
     const singleConfig = new AkanAppConfig(app, [], packageJson, { defaultDatabaseMode: "single" }, baseDevEnv);
     const multipleConfig = new AkanAppConfig(app, [], packageJson, { defaultDatabaseMode: "multiple" }, baseDevEnv);
     const clusterConfig = new AkanAppConfig(app, [], packageJson, { defaultDatabaseMode: "cluster" }, baseDevEnv);
@@ -208,6 +225,47 @@ describe("AkanAppConfig", () => {
     expect(clusterConfig.getProductionPackageJson().dependencies).not.toHaveProperty("@libsql/client");
   });
 
+  test("resolves database mode runtime packages and missing install specs", () => {
+    const runtimeDependencies = {
+      ...akanPackageJson.dependencies,
+      ...akanPackageJson.peerDependencies,
+    };
+    const config = new AkanAppConfig(
+      app,
+      [],
+      {
+        name: "repo",
+        version: "1.0.0",
+        description: "repo",
+        dependencies: {
+          bullmq: "5.0.0",
+        },
+        devDependencies: {
+          ioredis: "5.0.0",
+        },
+      },
+      {},
+      baseDevEnv,
+    );
+
+    expect(config.getDatabaseModeRuntimePackages("single")).toEqual([]);
+    expect(config.getDatabaseModeRuntimePackages("multiple")).toEqual([
+      "@libsql/client",
+      "bullmq",
+      "ioredis",
+      "protobufjs",
+    ]);
+    expect(config.getDatabaseModeRuntimePackages("cluster")).toEqual(["bullmq", "ioredis", "postgres", "protobufjs"]);
+    expect(config.getMissingDatabaseModeDependencySpecs("multiple")).toEqual([
+      `@libsql/client@${runtimeDependencies["@libsql/client"]}`,
+      `protobufjs@${runtimeDependencies.protobufjs}`,
+    ]);
+    expect(config.getMissingDatabaseModeDependencySpecs("cluster")).toEqual([
+      `postgres@${runtimeDependencies.postgres}`,
+      `protobufjs@${runtimeDependencies.protobufjs}`,
+    ]);
+  });
+
   test("normalizes multiple mobile targets and validates base paths", () => {
     const config = new AkanAppConfig(
       app,
@@ -223,11 +281,17 @@ describe("AkanAppConfig", () => {
           targets: {
             admin: {
               basePath: "admin",
+              indexPath: "/admin/home/",
               appName: "Portal Admin",
               appId: "com.portal.admin",
               buildNum: 8,
               permissions: ["camera"],
-              links: { schemes: ["portal-admin"] },
+              deepLinks: {
+                schemes: ["portal-admin", "portal-admin"],
+                domains: ["https://Portal.Admin/"],
+                ios: { teamId: " TEAMID " },
+                android: { sha256CertFingerprints: ["AA:BB", "AA:BB"] },
+              },
             },
           },
         },
@@ -238,12 +302,18 @@ describe("AkanAppConfig", () => {
     expect(config.mobile.targets.admin).toMatchObject({
       name: "admin",
       basePath: "admin",
+      indexPath: "/admin/home",
       appName: "Portal Admin",
       appId: "com.portal.admin",
       version: "1.0.0",
       buildNum: 8,
       permissions: ["camera"],
-      links: { schemes: ["portal-admin"] },
+      deepLinks: {
+        schemes: ["portal-admin"],
+        domains: ["portal.admin"],
+        ios: { teamId: "TEAMID" },
+        android: { sha256CertFingerprints: ["AA:BB"] },
+      },
     });
 
     expect(
@@ -266,7 +336,9 @@ describe("AkanLibConfig", () => {
     const lib = { name: "shared" } as never;
     expect(new AkanLibConfig(lib, {}).externalLibs).toEqual([]);
 
-    const config: DeepPartial<LibConfigResult> = { externalLibs: ["firebase-admin"] };
+    const config: DeepPartial<LibConfigResult> = {
+      externalLibs: ["firebase-admin"],
+    };
     expect(new AkanLibConfig(lib, config).externalLibs).toEqual(["firebase-admin"]);
   });
 });

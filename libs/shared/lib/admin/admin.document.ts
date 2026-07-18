@@ -18,8 +18,6 @@ export class AdminFilter extends from(cnst.Admin, (filter) => ({
   sort: {},
 })) {}
 export class Admin extends by(cnst.Admin) {
-  declare isModified: (field?: string) => boolean;
-
   addRole(role: cnst.AdminRole["value"]) {
     if (!this.roles.includes(role)) this.roles = [...this.roles, role];
     return this;

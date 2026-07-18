@@ -1,15 +1,16 @@
 import path from "node:path";
 import {
   AiSession,
-  akanCloudHost,
-  akanCloudUrl,
-  getHostConfig,
-  getSelf,
+  AppExecutor,
+  CloudApi,
+  GlobalConfig,
+  getDefaultHostConfig,
+  type RemoteEnvServerConfig,
   runner,
-  setHostConfig,
   type Workspace,
+  WorkspaceExecutor,
 } from "@akanjs/devkit";
-import { confirm } from "@inquirer/prompts";
+import { confirm, input, select } from "@inquirer/prompts";
 import { Logger, sleep } from "akanjs/common";
 import chalk from "chalk";
 import * as QRcode from "qrcode";
@@ -21,6 +22,14 @@ interface RegistryOptions {
   confirmPublish?: boolean;
   tag?: string;
 }
+
+interface SelectedRemoteEnvServer {
+  name: string;
+  config: RemoteEnvServerConfig;
+}
+
+const addRemoteEnvServerValue = "__addRemoteEnvServer";
+const removeRemoteEnvServerValue = "__removeRemoteEnvServer";
 
 export class CloudRunner extends runner("cloud") {
   #akanFrameworkPackages = new Set(["akanjs", "@akanjs/devkit", "@akanjs/cli", "create-akan-workspace"]);
@@ -46,15 +55,137 @@ export class CloudRunner extends runner("cloud") {
       : process.env;
   }
 
-  async login() {
-    const config = await getHostConfig();
-    const self = config.auth ? await getSelf(config.auth.token) : null;
+  async #addRemoteEnvServer(): Promise<SelectedRemoteEnvServer> {
+    const name = (
+      await input({
+        message: "Remote server name: ",
+        validate: (value) => (value.trim() ? true : "Remote server name is required"),
+      })
+    ).trim();
+    const host = (
+      await input({
+        message: "Remote server host: ",
+        validate: (value) => (value.trim() ? true : "Remote server host is required"),
+      })
+    ).trim();
+    const username = (await input({ message: "Remote server username (optional): " })).trim() || undefined;
+    const portInput = (
+      await input({
+        message: "Remote server SSH port (optional): ",
+        validate: (value) => {
+          const trimmed = value.trim();
+          if (!trimmed) return true;
+          const port = Number(trimmed);
+          return Number.isInteger(port) && port > 0 ? true : "SSH port must be a positive integer";
+        },
+      })
+    ).trim();
+    const config: RemoteEnvServerConfig = {
+      host,
+      ...(username ? { username } : {}),
+      ...(portInput ? { port: Number(portInput) } : {}),
+    };
+    await GlobalConfig.setRemoteEnvServer(name, config);
+    return { name, config };
+  }
+
+  async #selectRemoteEnvServer(): Promise<SelectedRemoteEnvServer> {
+    const servers = await GlobalConfig.getRemoteEnvServers();
+    const serverEntries = Object.entries(servers).sort(([nameA], [nameB]) => nameA.localeCompare(nameB));
+    if (serverEntries.length === 0) {
+      Logger.info("No remote env servers configured. Add the first remote server for SCP mode.");
+      return await this.#addRemoteEnvServer();
+    }
+    const selectedName = await select<string>({
+      message: "Select the remote env server",
+      choices: [
+        ...serverEntries.map(([name, config]) => ({
+          name: `${name} (${config.username ? `${config.username}@` : ""}${config.host}${config.port ? `:${config.port}` : ""})`,
+          value: name,
+        })),
+        { name: "Add new remote server", value: addRemoteEnvServerValue },
+        { name: "Remove remote server", value: removeRemoteEnvServerValue },
+      ],
+    });
+    if (selectedName === addRemoteEnvServerValue) return await this.#addRemoteEnvServer();
+    if (selectedName === removeRemoteEnvServerValue) {
+      await this.#removeRemoteEnvServer(serverEntries);
+      return await this.#selectRemoteEnvServer();
+    }
+    const config = servers[selectedName];
+    if (!config) throw new Error(`Remote env server is not found: ${selectedName}`);
+    return { name: selectedName, config };
+  }
+
+  async #removeRemoteEnvServer(serverEntries: [string, RemoteEnvServerConfig][]) {
+    const selectedName = await select<string>({
+      message: "Select the remote env server to remove",
+      choices: serverEntries.map(([name, config]) => ({
+        name: `${name} (${config.username ? `${config.username}@` : ""}${config.host}${config.port ? `:${config.port}` : ""})`,
+        value: name,
+      })),
+    });
+    const shouldRemove = await confirm({
+      message: `Remove remote env server "${selectedName}"?`,
+      default: false,
+    });
+    if (!shouldRemove) return;
+    await GlobalConfig.removeRemoteEnvServer(selectedName);
+    Logger.info(`Removed remote env server "${selectedName}"`);
+  }
+
+  async #getRemoteEnvServerWithUsername(): Promise<SelectedRemoteEnvServer> {
+    const remoteServer = await this.#selectRemoteEnvServer();
+    if (remoteServer.config.username) return remoteServer;
+    const username = (
+      await input({
+        message: `SSH username for ${remoteServer.config.host} (optional): `,
+      })
+    ).trim();
+    return {
+      ...remoteServer,
+      config: {
+        ...remoteServer.config,
+        ...(username ? { username } : {}),
+      },
+    };
+  }
+
+  #getRemoteEnvArchivePath() {
+    return `${this.#getRemoteEnvArchiveDir()}/env.tar`;
+  }
+
+  #getRemoteEnvArchiveDir() {
+    const { repoName } = WorkspaceExecutor.getBaseDevEnv();
+    return `~/secrets/${repoName}`;
+  }
+
+  #getScpTarget(config: RemoteEnvServerConfig, remotePath: string) {
+    return `${config.username ? `${config.username}@` : ""}${config.host}:${remotePath}`;
+  }
+
+  #getSshTarget(config: RemoteEnvServerConfig) {
+    return `${config.username ? `${config.username}@` : ""}${config.host}`;
+  }
+
+  #getScpArgs(config: RemoteEnvServerConfig, source: string, target: string) {
+    return [...(config.port ? ["-P", config.port.toString()] : []), source, target];
+  }
+
+  #getSshArgs(config: RemoteEnvServerConfig, command: string) {
+    return [...(config.port ? ["-p", config.port.toString()] : []), this.#getSshTarget(config), command];
+  }
+
+  async login(host: string, workspace: Workspace) {
+    const config = await GlobalConfig.getHostConfig(host);
+    const cloudApi = new CloudApi(workspace, config);
+    const self = config.auth ? await cloudApi.getRemoteSelf() : null;
     if (self) {
       Logger.rawLog(chalk.green(`\n✓ Already logged in akan cloud as ${self.nickname}\n`));
       return true;
     }
     const remoteId = crypto.randomUUID();
-    const signinUrl = `${akanCloudUrl}/signin?remoteId=${remoteId}`;
+    const signinUrl = `${cloudApi.host}/remoteAuth?remoteId=${encodeURIComponent(remoteId)}`;
 
     Logger.rawLog(chalk.bold(`\n${chalk.green("➤")} Authentication Required`));
     Logger.rawLog(chalk.dim("Please visit or click the following URL:"));
@@ -77,13 +208,12 @@ export class CloudRunner extends runner("cloud") {
     Logger.rawLog(chalk.dim("Waiting for authentication..."));
     const MAX_RETRY = 300;
     for (let i = 0; i < MAX_RETRY; i++) {
-      const res = await fetch(`${akanCloudUrl}/user/getRemoteAuthToken/${remoteId}`);
-      const { jwt } = (await res.json()) as { jwt: string | null };
-      const self = jwt ? await getSelf(jwt) : null;
-      if (jwt && self) {
-        setHostConfig(akanCloudHost, { auth: { token: jwt, self } });
+      const accessToken = await cloudApi.getRemoteAuthToken(remoteId);
+      const self = await cloudApi.getRemoteSelf();
+      if (accessToken && self) {
+        await GlobalConfig.setHostConfig({ host: config.host, auth: { accessToken, self } });
         Logger.rawLog(chalk.green(`\r✓ Authentication successful!`));
-        Logger.rawLog(chalk.green.bold(`\n✨ Welcome aboard, ${self.nickname}!`));
+        Logger.rawLog(chalk.green.bold(`\n✨ Welcome aboard, ${self.nickname ?? "anonymous"}!`));
         Logger.rawLog(chalk.dim("You're now ready to use Akan CLI!\n"));
         return true;
       }
@@ -91,11 +221,11 @@ export class CloudRunner extends runner("cloud") {
     }
     throw new Error(chalk.red("✖ Authentication timed out after 10 minutes. Please try again."));
   }
-  async logout() {
-    const config = await getHostConfig();
-    if (config.auth) {
-      setHostConfig(akanCloudHost, {});
-      Logger.rawLog(chalk.magenta.bold(`\n👋 Goodbye, ${config.auth.self.nickname}!`));
+  async logout(host: string) {
+    const config = await GlobalConfig.getHostConfig(host);
+    if (config.auth?.self) {
+      await GlobalConfig.setHostConfig(getDefaultHostConfig(config.host));
+      Logger.rawLog(chalk.magenta.bold(`\n👋 Goodbye, ${config.auth.self.nickname ?? "anonymous"}!`));
       Logger.rawLog(chalk.dim("───────────────────────────────────────────────\n"));
       Logger.rawLog(chalk.cyan("You have been successfully logged out."));
       Logger.rawLog(chalk.dim("Thank you for using Akan CLI. Come back soon! 🌟\n"));
@@ -105,7 +235,7 @@ export class CloudRunner extends runner("cloud") {
     }
   }
   async setLlm() {
-    await AiSession.init({ useExisting: true });
+    await AiSession.init({ useExisting: false });
   }
   resetLlm() {
     AiSession.setLlmConfig(null);
@@ -231,5 +361,144 @@ export class CloudRunner extends runner("cloud") {
       );
     }
     return normalized;
+  }
+
+  async downloadEnv(cloudApi: CloudApi, workspace: Workspace, workspaceId: string) {
+    await workspace.mkdir("local");
+    const localPath = (await cloudApi.downloadEnv(workspaceId)) as string;
+    // Pass a path relative to workspaceRoot so tar never sees a Windows drive letter
+    // (e.g. "C:\...") which GNU tar would interpret as a remote "host:file" spec.
+    const relativePath = path.relative(workspace.workspaceRoot, localPath).split(path.sep).join("/");
+    await workspace.spawn("tar", ["-xf", relativePath], { cwd: workspace.workspaceRoot });
+    await workspace.remove(localPath);
+  }
+  async uploadEnv(cloudApi: CloudApi, workspaceId: string, filePath: string) {
+    const file = new File([Bun.file(filePath)], path.basename(filePath));
+    await cloudApi.uploadEnv(workspaceId, file);
+  }
+  async downloadEnvByScp(workspace: Workspace) {
+    const envArchivePath = "local/env.tar";
+    const remoteServer = await this.#getRemoteEnvServerWithUsername();
+    const remoteArchivePath = this.#getRemoteEnvArchivePath();
+    const remoteTarget = this.#getScpTarget(remoteServer.config, remoteArchivePath);
+    await workspace.mkdir("local");
+    await workspace.remove(envArchivePath);
+    try {
+      Logger.info(`Downloading env archive from remote server "${remoteServer.name}"...`);
+      await workspace.spawn("scp", this.#getScpArgs(remoteServer.config, remoteTarget, envArchivePath), {
+        cwd: workspace.workspaceRoot,
+        stdio: "inherit",
+      });
+      await workspace.spawn("tar", ["-xf", envArchivePath], {
+        cwd: workspace.workspaceRoot,
+      });
+      await workspace.remove(envArchivePath);
+    } catch (error) {
+      throw new Error(`Failed to download env archive from remote server "${remoteServer.name}"`, { cause: error });
+    }
+  }
+  async uploadEnvByScp(workspace: Workspace, filePath: string) {
+    const remoteServer = await this.#getRemoteEnvServerWithUsername();
+    const remoteArchiveDir = this.#getRemoteEnvArchiveDir();
+    const remoteArchivePath = this.#getRemoteEnvArchivePath();
+    const remoteTarget = this.#getScpTarget(remoteServer.config, remoteArchivePath);
+    try {
+      await workspace.spawn("ssh", this.#getSshArgs(remoteServer.config, `mkdir -p ${remoteArchiveDir}`), {
+        cwd: workspace.workspaceRoot,
+        stdio: "inherit",
+      });
+      Logger.info(`Uploading env archive to remote server "${remoteServer.name}"...`);
+      await workspace.spawn("scp", this.#getScpArgs(remoteServer.config, filePath, remoteTarget), {
+        cwd: workspace.workspaceRoot,
+        stdio: "inherit",
+      });
+    } catch (error) {
+      throw new Error(`Failed to upload env archive to remote server "${remoteServer.name}"`, { cause: error });
+    }
+  }
+
+  async gatherEnvFiles(workspace: Workspace) {
+    const envFilePattern = /^env\.(client|server)\.(?!(type|example)\.ts$).+\.ts$/;
+    const [appNames, libNames] = await workspace.getExecs();
+    const envDirs = [
+      ...appNames.map((appName) => `apps/${appName}/env`),
+      ...libNames.map((libName) => `libs/${libName}/env`),
+    ];
+    const defaultEnvFilePaths = (
+      await Promise.all(
+        envDirs.map(async (envDir) =>
+          (
+            await workspace.readdir(envDir)
+          )
+            .filter((fileName) => envFilePattern.test(fileName))
+            .map((fileName) => `${envDir}/${fileName}`),
+        ),
+      )
+    ).flat();
+    await this.#syncSecretGitignore(workspace, appNames);
+    const customSecretPaths = await this.#gatherCustomSecretFiles(workspace, appNames);
+    const envFilePaths = [...new Set([...defaultEnvFilePaths, ...customSecretPaths])].sort();
+    await workspace.mkdir("local");
+    await workspace.remove("local/env.tar");
+    if (envFilePaths.length === 0) throw new Error("No environment files found to archive");
+    await workspace.spawn("tar", ["-cf", "local/env.tar", ...envFilePaths], {
+      cwd: workspace.workspaceRoot,
+    });
+    Logger.info(`Archived ${envFilePaths.length} environment files to local/env.tar`);
+    return { files: envFilePaths, path: "local/env.tar" };
+  }
+
+  async #gatherCustomSecretFiles(workspace: Workspace, appNames: string[]) {
+    const secretPaths = await Promise.all(
+      appNames.map(async (appName) => {
+        const config = await AppExecutor.from(workspace, appName).getConfig();
+        const secretGlobs = config.secrets ?? [];
+        if (secretGlobs.length === 0) return [];
+        const appDir = path.join(workspace.workspaceRoot, "apps", appName);
+        return secretGlobs.flatMap((pattern) =>
+          Array.from(new Bun.Glob(pattern).scanSync({ cwd: appDir, onlyFiles: true })).map(
+            (match) => `apps/${appName}/${match.split(path.sep).join("/")}`,
+          ),
+        );
+      }),
+    );
+    return secretPaths.flat();
+  }
+
+  async #syncSecretGitignore(workspace: Workspace, appNames: string[]) {
+    const patterns = (
+      await Promise.all(
+        appNames.map(async (appName) => {
+          const config = await AppExecutor.from(workspace, appName).getConfig();
+          return (config.secrets ?? []).map((pattern) => `apps/${appName}/${pattern.replace(/^\/+/, "")}`);
+        }),
+      )
+    ).flat();
+    const uniquePatterns = [...new Set(patterns)].sort();
+    const existing = (await workspace.exists(".gitignore")) ? await workspace.readFile(".gitignore") : "";
+    const nextContent = this.#applySecretGitignoreBlock(existing, uniquePatterns);
+    if (nextContent === existing) return;
+    await workspace.writeFile(".gitignore", nextContent);
+    Logger.info(
+      uniquePatterns.length
+        ? `Synced ${uniquePatterns.length} secret pattern(s) from akan.config.ts to .gitignore`
+        : "Removed managed secret patterns from .gitignore",
+    );
+  }
+
+  #applySecretGitignoreBlock(content: string, patterns: string[]) {
+    const beginMarker = "# akan:secrets (managed by akan.config.ts — do not edit)";
+    const endMarker = "# akan:secrets:end";
+    const lines = content.split("\n");
+    const beginIdx = lines.indexOf(beginMarker);
+    const endIdx = lines.indexOf(endMarker);
+    const stripped =
+      beginIdx !== -1 && endIdx !== -1 && endIdx >= beginIdx
+        ? [...lines.slice(0, beginIdx), ...lines.slice(endIdx + 1)]
+        : [...lines];
+    while (stripped.length && stripped[stripped.length - 1]?.trim() === "") stripped.pop();
+    if (patterns.length === 0) return stripped.length ? `${stripped.join("\n")}\n` : "";
+    const body = stripped.length ? `${stripped.join("\n")}\n\n` : "";
+    return `${body}${[beginMarker, ...patterns, endMarker].join("\n")}\n`;
   }
 }

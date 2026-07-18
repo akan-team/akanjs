@@ -37,8 +37,10 @@ const pushState = {
   receive: "granted" as "granted" | "denied",
   registered: 0,
   autoInit: 0,
+  actionListeners: [] as Array<(event: { notification?: { data?: Record<string, unknown> } }) => void>,
 };
 const assigned: string[] = [];
+const deepLinks: string[] = [];
 
 beforeAll(() => {
   mock.module("react", () => ({
@@ -118,71 +120,75 @@ beforeAll(() => {
       emit: () => undefined,
       on: () => undefined,
       off: () => undefined,
+      enterDeepLink: (href: string) => {
+        deepLinks.push(href);
+        return true;
+      },
     },
     storage: {
       getItem: async () => null,
     },
     isMobileDevice: () => true,
   }));
-  mock.module("@capacitor/camera", () => ({
-    CameraResultType: { DataUrl: "dataUrl" },
-    CameraSource: { Prompt: "prompt", Camera: "camera", Photos: "photos" },
-    Camera: {
-      checkPermissions: async () => cameraState.permissions,
-      requestPermissions: async () => {
-        cameraState.requested += 1;
-        return cameraState.permissions;
-      },
-      getPhoto: async (options: { source: string }) => {
-        cameraState.photoSource = options.source;
-        if (cameraState.cancelled) throw "User cancelled photos app";
-        return { dataUrl: "data:image/png;base64,test" };
-      },
-      pickImages: async () => ({ photos: [{ webPath: "image.png" }] }),
-    },
-  }));
-  mock.module("@capacitor-community/contacts", () => ({
-    Contacts: {
-      checkPermissions: async () => {
-        contactsState.checked += 1;
-        return contactsState.permissions;
-      },
-      requestPermissions: async () => {
-        contactsState.requested += 1;
-        return contactsState.permissions;
-      },
-      getContacts: async () => ({ contacts: [{ name: { display: "Ada" }, phones: [{ number: "123" }] }] }),
-    },
-  }));
-  mock.module("@capacitor/geolocation", () => ({
-    Geolocation: {
-      requestPermissions: async () => geolocationState.permissions,
-      getCurrentPosition: async () => ({ coords: { latitude: 37, longitude: 127 } }),
-    },
-  }));
-  mock.module("@capacitor/device", () => ({
-    Device: {
-      getInfo: async () => ({ platform: pushState.platform }),
-    },
-  }));
-  mock.module("@capacitor/push-notifications", () => ({
-    PushNotifications: {
-      requestPermissions: async () => ({ receive: pushState.receive }),
-      checkPermissions: async () => ({ receive: pushState.receive }),
-      register: async () => {
-        pushState.registered += 1;
-      },
-    },
-  }));
-  mock.module("@capacitor-community/fcm", () => ({
-    FCM: {
-      setAutoInit: async () => {
-        pushState.autoInit += 1;
-      },
-      getToken: async () => ({ token: "token-1" }),
-    },
-  }));
 });
+
+const installCapacitorBridge = () => {
+  Object.defineProperty(globalThis, "Capacitor", {
+    value: {
+      Plugins: {
+        Camera: {
+          checkPermissions: async () => cameraState.permissions,
+          requestPermissions: async () => {
+            cameraState.requested += 1;
+            return cameraState.permissions;
+          },
+          getPhoto: async (options: { source: string }) => {
+            cameraState.photoSource = options.source;
+            if (cameraState.cancelled) throw "User cancelled photos app";
+            return { dataUrl: "data:image/png;base64,test" };
+          },
+          pickImages: async () => ({ photos: [{ webPath: "image.png" }] }),
+        },
+        Contacts: {
+          checkPermissions: async () => {
+            contactsState.checked += 1;
+            return contactsState.permissions;
+          },
+          requestPermissions: async () => {
+            contactsState.requested += 1;
+            return contactsState.permissions;
+          },
+          getContacts: async () => ({ contacts: [{ name: { display: "Ada" }, phones: [{ number: "123" }] }] }),
+        },
+        Geolocation: {
+          requestPermissions: async () => geolocationState.permissions,
+          getCurrentPosition: async () => ({ coords: { latitude: 37, longitude: 127 } }),
+        },
+        Device: {
+          getInfo: async () => ({ platform: pushState.platform }),
+        },
+        PushNotifications: {
+          requestPermissions: async () => ({ receive: pushState.receive }),
+          checkPermissions: async () => ({ receive: pushState.receive }),
+          register: async () => {
+            pushState.registered += 1;
+          },
+          addListener: async (_eventName: string, listener: (event: { notification?: { data?: Record<string, unknown> } }) => void) => {
+            pushState.actionListeners.push(listener);
+            return { remove: () => undefined };
+          },
+        },
+        FCM: {
+          setAutoInit: async () => {
+            pushState.autoInit += 1;
+          },
+          getToken: async () => ({ token: "token-1" }),
+        },
+      },
+    },
+    configurable: true,
+  });
+};
 
 const installWindow = () => {
   const createElement = (tagName = "div") =>
@@ -212,14 +218,19 @@ const installWindow = () => {
   } as unknown as Document;
   (document.documentElement as unknown as { ownerDocument: Document }).ownerDocument = document;
   const window = {
-    location: { assign: (href: string) => assigned.push(href) },
+    location: { assign: (href: string) => assigned.push(href), origin: "https://example.test" },
     document,
+    Capacitor: (globalThis as typeof globalThis & { Capacitor?: unknown }).Capacitor,
     HTMLIFrameElement: class HTMLIFrameElement {},
     Node: class Node {},
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
   } as unknown as Window & typeof globalThis;
   (document as unknown as { defaultView: Window }).defaultView = window;
+  installCapacitorBridge();
+  (window as unknown as { Capacitor: unknown }).Capacitor = (
+    globalThis as typeof globalThis & { Capacitor?: unknown }
+  ).Capacitor;
   Object.defineProperty(globalThis, "window", { value: window, configurable: true });
   Object.defineProperty(globalThis, "document", { value: document, configurable: true });
   Object.defineProperty(globalThis, "location", { value: window.location, configurable: true });
@@ -243,6 +254,8 @@ afterEach(() => {
   Object.defineProperty(globalThis, "window", { value: originalWindow, configurable: true });
   Object.defineProperty(globalThis, "document", { value: originalDocument, configurable: true });
   Object.defineProperty(globalThis, "location", { value: originalWindow?.location, configurable: true });
+  Object.defineProperty(globalThis, "Capacitor", { value: undefined, configurable: true });
+  globalThis.__AKAN_CAPACITOR_IMPORTS__ = undefined;
   cameraState.permissions = { camera: "prompt", photos: "prompt" };
   cameraState.requested = 0;
   cameraState.photoSource = "";
@@ -256,7 +269,11 @@ afterEach(() => {
   pushState.receive = "granted";
   pushState.registered = 0;
   pushState.autoInit = 0;
+  pushState.actionListeners = [];
   assigned.length = 0;
+  deepLinks.length = 0;
+  globalThis.__AKAN_PUSH_CLICK_BRIDGE__ = undefined;
+  globalThis.__AKAN_CLIENT_ENV__ = undefined;
   effectCleanups.splice(0);
   hookIndex = 0;
   hookStates.length = 0;
@@ -270,7 +287,7 @@ describe("native hooks", () => {
     const hook = renderHook(() => useCamera());
 
     expect(await hook.current.getPhoto("prompt")).toEqual({ dataUrl: "data:image/png;base64,test" });
-    expect(cameraState.photoSource).toBe("photos");
+    expect(cameraState.photoSource).toBe("PHOTOS");
     expect(cameraState.requested).toBe(1);
 
     cameraState.permissions = { camera: "denied", photos: "denied" };
@@ -312,27 +329,26 @@ describe("native hooks", () => {
     hook.unmount();
   });
 
-  test("usePushNoti is web no-op, registers native device, opens settings, and reads token", async () => {
+  test("usePushNotification returns PushToken, no-ops on web, and bridges native push clicks", async () => {
     installWindow();
-    const { usePushNoti } = await import("./usePushNoti");
-    const hook = renderHook(() => usePushNoti());
+    const { usePushNotification } = await import("./usePushNotification");
+    const hook = renderHook(() => usePushNotification());
 
-    await hook.current.init();
-    await hook.current.register();
-    expect(await hook.current.getToken()).toBeUndefined();
+    expect(await hook.current.register()).toBeUndefined();
     expect(pushState.registered).toBe(0);
 
     pushState.platform = "ios";
-    await hook.current.init();
-    await Promise.resolve();
-    await hook.current.register();
+    await hook.current.initClickBridge();
+    const pushToken = await hook.current.register();
     expect(pushState.autoInit).toBe(1);
-    expect(pushState.registered).toBe(2);
-    expect(await hook.current.getToken()).toBe("token-1");
+    expect(pushState.registered).toBe(1);
+    expect(pushToken).toEqual({ token: "token-1", platform: "ios", provider: "fcm" });
+    expect(await hook.current.getToken()).toEqual({ token: "token-1", platform: "ios", provider: "fcm" });
+    pushState.actionListeners[0]?.({ notification: { data: { url: "/push-target" } } });
+    expect(deepLinks).toEqual(["/push-target"]);
 
     pushState.receive = "denied";
-    await hook.current.register();
-    expect(assigned).toEqual(["app-settings:"]);
+    expect(await hook.current.register()).toBeUndefined();
     hook.unmount();
   });
 });

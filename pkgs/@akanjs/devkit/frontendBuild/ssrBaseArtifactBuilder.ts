@@ -1,4 +1,5 @@
 import path from "node:path";
+import { optimize } from "@tailwindcss/node";
 import type { BaseBuildArtifact } from "akanjs/server";
 import { resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import { computeRouteSeedIndex, type RouteSeedIndex, saveRouteSeedIndex } from "../artifact/routeSeedIndex";
@@ -7,6 +8,7 @@ import { ClientEntriesBundler } from "./clientEntriesBundler";
 import { CssCompiler } from "./cssCompiler";
 import { FontOptimizer } from "./fontOptimizer";
 import { PagesBundleBuilder } from "./pagesBundleBuilder";
+import { RouteClientBuilder } from "./routeClientBuilder";
 import { VENDOR_SPECIFIERS, type VendorSpecifier } from "./vendorSpecifiers";
 
 export interface BuildSsrBaseArtifactResult {
@@ -14,6 +16,10 @@ export interface BuildSsrBaseArtifactResult {
   seedIndex: RouteSeedIndex;
   cssCompiler: CssCompiler;
   optimizedFonts: Awaited<ReturnType<FontOptimizer["optimize"]>>;
+}
+
+export function prepareCssAsset(command: "build" | "start", basePath: string, cssText: string): string {
+  return optimize(cssText, { file: `${basePath || "root"}.css`, minify: command === "build" }).code;
 }
 
 export class SsrBaseArtifactBuilder {
@@ -32,7 +38,8 @@ export class SsrBaseArtifactBuilder {
 
   async build(): Promise<BuildSsrBaseArtifactResult> {
     const akanConfig = await this.#app.getConfig();
-    const { rscClientUrl, vendorMap } = await this.#buildRuntimeClientEntries();
+    const { rscClientUrl, rscRuntimeClientManifest, rscRuntimeSsrManifest, vendorMap } =
+      await this.#buildRuntimeClientEntries();
     const pageKeys = await this.#app.getPageKeys();
     this.#app.verbose(`[base-artifact] discovered ${pageKeys.length} route files under ${this.#app.cwdPath}/page`);
 
@@ -53,6 +60,8 @@ export class SsrBaseArtifactBuilder {
 
     const artifact: BaseBuildArtifact = {
       rscClientUrl,
+      rscRuntimeClientManifest,
+      rscRuntimeSsrManifest,
       vendorMap,
       cssAssets,
       pagesBundlePath:
@@ -68,6 +77,15 @@ export class SsrBaseArtifactBuilder {
       branches: [...akanConfig.branches],
       i18n: akanConfig.i18n,
       imageConfig: akanConfig.images,
+      deepLinkAssociations: Object.values(akanConfig.mobile.targets)
+        .filter((target) => (target.deepLinks?.domains?.length ?? 0) > 0)
+        .map((target) => ({
+          targetName: target.name,
+          appId: target.appId,
+          domains: target.deepLinks?.domains ?? [],
+          iosTeamId: target.deepLinks?.ios?.teamId,
+          androidSha256CertFingerprints: target.deepLinks?.android?.sha256CertFingerprints,
+        })),
     };
     await Bun.write(path.join(this.#absArtifactDir, "base-artifact.json"), `${JSON.stringify(artifact, null, 2)}\n`);
     this.#app.verbose(`[base-artifact] complete in ${Date.now() - this.#started}ms`);
@@ -75,21 +93,61 @@ export class SsrBaseArtifactBuilder {
     return { artifact, seedIndex, cssCompiler, optimizedFonts };
   }
 
-  async #buildRuntimeClientEntries(): Promise<{ rscClientUrl: string; vendorMap: Record<VendorSpecifier, string> }> {
+  async #buildRuntimeClientEntries(): Promise<
+    Pick<BaseBuildArtifact, "rscClientUrl" | "rscRuntimeClientManifest" | "rscRuntimeSsrManifest"> & {
+      vendorMap: Record<VendorSpecifier, string>;
+    }
+  > {
     const akanServerPath = await this.#resolveAkanServerPath();
-    const rscClientEntry = `${akanServerPath}/rscClient.tsx`;
+    const rscClientEntry = path.resolve(akanServerPath, "rscClient.tsx");
+    const rscSegmentOutletEntry = path.resolve(akanServerPath, "rscSegmentOutlet.tsx");
     const vendorEntries = VENDOR_SPECIFIERS.map((specifier) => ({
       specifier,
-      absPath: `${akanServerPath}/vendor/${specifier.replaceAll("/", "-").replaceAll(".", "-")}.ts`,
+      absPath: path.resolve(akanServerPath, "vendor", `${specifier.replaceAll("/", "-").replaceAll(".", "-")}.ts`),
     }));
-    const entries = [rscClientEntry, ...vendorEntries.map((v) => v.absPath)];
+    const entries = [rscClientEntry, rscSegmentOutletEntry, ...vendorEntries.map((v) => v.absPath)];
     const clientBundle = await new ClientEntriesBundler({ app: this.#app, entries, command: this.#command }).bundle();
+    const ssrBundle = await new ClientEntriesBundler({
+      app: this.#app,
+      entries: [rscSegmentOutletEntry],
+      ...RouteClientBuilder.resolveSsrClientExternalOptions(this.#command),
+      outputSubdir: "client-ssr",
+      command: this.#command,
+    }).bundle();
     const rscClientUrl = clientBundle.entryUrlsByAbsPath.get(rscClientEntry) ?? "";
+    const rscRuntimeSsrManifest = {
+      moduleLoading: null,
+      moduleMap: Object.fromEntries(
+        Object.entries(clientBundle.manifest)
+          .map(([key, row]) => {
+            const ssrOutput = ssrBundle.entryOutputAbsByAbsPath.get(rscSegmentOutletEntry);
+            if (
+              !ssrOutput ||
+              key !== `${clientBundle.clientReferenceIdByAbsPath.get(rscSegmentOutletEntry)}#${row.name}`
+            ) {
+              return null;
+            }
+            return [
+              row.id,
+              { [row.name]: { id: ssrOutput, chunks: [ssrOutput, ssrOutput], name: row.name, async: true } },
+            ];
+          })
+          .filter(
+            (entry): entry is [string, Record<string, { id: string; chunks: string[]; name: string; async: true }>] =>
+              Boolean(entry),
+          ),
+      ),
+    };
     const vendorMap = Object.fromEntries(
       vendorEntries.map(({ specifier, absPath }) => [specifier, clientBundle.entryUrlsByAbsPath.get(absPath) ?? ""]),
     ) as Record<VendorSpecifier, string>;
     this.#app.verbose(`[base-artifact] rscClientUrl=${rscClientUrl} vendors=${Object.keys(vendorMap).length}`);
-    return { rscClientUrl, vendorMap };
+    return {
+      rscClientUrl,
+      rscRuntimeClientManifest: clientBundle.manifest,
+      rscRuntimeSsrManifest,
+      vendorMap,
+    };
   }
   async #resolveAkanServerPath() {
     const candidates: string[] = [];
@@ -143,13 +201,14 @@ export class SsrBaseArtifactBuilder {
 
   async #writeCssAsset(basePath: string, cssText: string) {
     const cssAssetName = basePath || "root";
-    const cssHash = Bun.hash(`${basePath}\n${cssText}`).toString(36);
+    const preparedCssText = await prepareCssAsset(this.#command, basePath, cssText);
+    const cssHash = Bun.hash(`${basePath}\n${preparedCssText}`).toString(36);
     const [cssRelPath, cssUrl] = [
       `styles/${cssAssetName}-${cssHash}.css`,
       `/_akan/styles/${cssAssetName}-${cssHash}.css`,
     ];
-    await Bun.write(path.join(this.#absArtifactDir, cssRelPath), cssText);
-    this.#app.verbose(`[base-artifact] wrote ${cssText.length} bytes of CSS for ${basePath} -> ${cssRelPath}`);
+    await Bun.write(path.join(this.#absArtifactDir, cssRelPath), preparedCssText);
+    this.#app.verbose(`[base-artifact] wrote ${preparedCssText.length} bytes of CSS for ${basePath} -> ${cssRelPath}`);
     return [basePath, { cssUrl, cssRelPath }] as const;
   }
 }

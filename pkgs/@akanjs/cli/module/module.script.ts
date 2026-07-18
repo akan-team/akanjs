@@ -1,12 +1,17 @@
 import {
   AiSession,
   type App,
+  createPassedPrimitiveReport,
   FileSys,
+  generatedFilesForSync,
   getRelatedCnsts,
   type Module,
   ModuleExecutor,
+  moduleSourcePaths,
+  type PrimitiveWriteReport,
   type Sys,
   script,
+  sourceFile,
   type Workspace,
 } from "@akanjs/devkit";
 import { input } from "@inquirer/prompts";
@@ -18,13 +23,30 @@ import * as request from "./module.request";
 import { ModuleRequest } from "./module.request";
 import { ModuleRunner } from "./module.runner";
 
+type CreatedFileMap = Record<string, { filename: string; content: string }>;
+
+const moduleChangedFiles = (sys: Sys, moduleName: string, files: CreatedFileMap) =>
+  Object.values(files).map((file) =>
+    sourceFile(sys, `lib/${moduleName}/${file.filename}`, "create", "Module source file was created."),
+  );
+
 export class ModuleScript extends script("module", [ModuleRunner, PageScript]) {
-  async createModuleTemplate(sys: Sys, name: string, { page = false }: { page?: boolean } = {}) {
+  async createModuleTemplate(
+    sys: Sys,
+    name: string,
+    { page = false }: { page?: boolean } = {},
+  ): Promise<PrimitiveWriteReport> {
     const mod = ModuleExecutor.from(sys, name);
-    await this.moduleRunner.createModuleTemplate(mod);
+    const files = await this.moduleRunner.createModuleTemplate(mod);
     if (page && sys.type === "app")
       await this.pageScript.createCrudPage(mod, { app: sys as App, basePath: null, single: false });
     await sys.scan();
+    return createPassedPrimitiveReport({
+      command: "create-module",
+      changedFiles: moduleChangedFiles(sys, name, files),
+      generatedFiles: generatedFilesForSync(sys, "Generated files were refreshed after module creation."),
+      target: sys.name,
+    });
   }
   async createModule(
     sys: Sys,
@@ -34,12 +56,13 @@ export class ModuleScript extends script("module", [ModuleRunner, PageScript]) {
       description,
       schemaDescription,
     }: { page?: boolean; description?: string; schemaDescription?: string } = {},
-  ) {
+  ): Promise<PrimitiveWriteReport> {
     const isContinued = await sys.exists(`lib/${name}/${name}.constant.ts`);
     const session = new AiSession("createModule", { workspace: sys.workspace, cacheKey: name, isContinued });
     const moduleConstantExampleFiles = await sys.workspace.getConstantFiles();
     const executor = ModuleExecutor.from(sys, name);
-    const { constant, dictionary } = await this.moduleRunner.createModuleTemplate(executor);
+    const files = await this.moduleRunner.createModuleTemplate(executor);
+    const { constant, dictionary } = files;
     if (page && sys.type === "app")
       await this.pageScript.createCrudPage(executor, { app: sys as App, basePath: null, single: false });
 
@@ -85,6 +108,17 @@ export class ModuleScript extends script("module", [ModuleRunner, PageScript]) {
 
     await sys.scan();
     sys.log(`Module ${name} created in ${sys.type}s/${sys.name}/lib/${name}`);
+    return createPassedPrimitiveReport({
+      command: "create-module",
+      changedFiles: [
+        ...moduleChangedFiles(sys, name, files),
+        ...constantWrites.map((write) =>
+          sourceFile(sys, write.filePath, "modify", "AI-assisted module constant source was updated."),
+        ),
+      ],
+      generatedFiles: generatedFilesForSync(sys, "Generated files were refreshed after module creation."),
+      target: sys.name,
+    });
   }
   #getCreatedScalarNames(filePaths: string[]) {
     return [
@@ -98,18 +132,25 @@ export class ModuleScript extends script("module", [ModuleRunner, PageScript]) {
   async removeModule(mod: Module) {
     await this.moduleRunner.removeModule(mod);
   }
-  async createService(sys: Sys, name: string) {
+  async createService(sys: Sys, name: string): Promise<PrimitiveWriteReport> {
     const service = ModuleExecutor.from(sys, `_${name}`);
-    await this.moduleRunner.createService(service);
+    const files = await this.moduleRunner.createService(service);
     await sys.scan();
+    return createPassedPrimitiveReport({
+      command: "create-service",
+      changedFiles: moduleChangedFiles(sys, `_${name}`, files),
+      generatedFiles: generatedFilesForSync(sys, "Generated files were refreshed after service creation."),
+      target: sys.name,
+    });
   }
   async createTest(workspace: Workspace, name: string) {
     //
   }
-  async createTemplate(mod: Module) {
+  async createTemplate(mod: Module): Promise<PrimitiveWriteReport> {
     const { component: template } = await this.moduleRunner.createComponentTemplate(mod, "template");
+    const paths = moduleSourcePaths(mod.name);
     const templateExampleFiles = (await mod.sys.getTemplatesSourceCode()).filter(
-      (f) => !f.filePath.includes(`${mod.name}.Template.tsx`),
+      (f) => !f.filePath.includes(paths.template),
     );
     const Name = capitalize(mod.name);
     const relatedCnsts = getRelatedCnsts(`${mod.sys.cwdPath}/lib/${mod.name}/${mod.name}.constant.ts`);
@@ -128,15 +169,21 @@ export class ModuleScript extends script("module", [ModuleRunner, PageScript]) {
 
     //! 파일을 {name}.View.tsx에 저장.
 
-    mod.writeFile(`${Name}.Template.tsx`, content);
+    await mod.writeFile(`${Name}.Template.tsx`, content);
+    return createPassedPrimitiveReport({
+      command: "create-template",
+      changedFiles: [
+        sourceFile(mod.sys, `lib/${mod.name}/${Name}.Template.tsx`, "modify", "Template UI source was created."),
+      ],
+      target: mod.sys.name,
+    });
   }
 
-  async createUnit(mod: Module) {
+  async createUnit(mod: Module): Promise<PrimitiveWriteReport> {
     const { component: unit } = await this.moduleRunner.createComponentTemplate(mod, "unit");
+    const paths = moduleSourcePaths(mod.name);
     const Name = capitalize(mod.name);
-    const unitExampleFiles = (await mod.sys.getUnitsSourceCode()).filter(
-      (f) => !f.filePath.includes(`${mod.name}.Unit.tsx`),
-    );
+    const unitExampleFiles = (await mod.sys.getUnitsSourceCode()).filter((f) => !f.filePath.includes(paths.unit));
     const relatedCnsts = getRelatedCnsts(`${mod.sys.cwdPath}/lib/${mod.name}/${mod.name}.constant.ts`);
     const constant = await FileSys.readText(`${mod.sys.cwdPath}/lib/${mod.name}/${mod.name}.constant.ts`);
     const session = new AiSession("createUnit", { workspace: mod.sys.workspace, cacheKey: mod.name });
@@ -155,14 +202,18 @@ export class ModuleScript extends script("module", [ModuleRunner, PageScript]) {
 
     //! 파일을 {name}.Unit.tsx에 저장.
 
-    mod.writeFile(`${Name}.Unit.tsx`, content);
+    await mod.writeFile(`${Name}.Unit.tsx`, content);
+    return createPassedPrimitiveReport({
+      command: "create-unit",
+      changedFiles: [sourceFile(mod.sys, `lib/${mod.name}/${Name}.Unit.tsx`, "modify", "Unit UI source was created.")],
+      target: mod.sys.name,
+    });
   }
 
-  async createView(mod: Module) {
+  async createView(mod: Module): Promise<PrimitiveWriteReport> {
     const { component: view } = await this.moduleRunner.createComponentTemplate(mod, "view");
-    const viewExampleFiles = (await mod.sys.getViewsSourceCode()).filter(
-      (f) => !f.filePath.includes(`${mod.name}.View.tsx`),
-    );
+    const paths = moduleSourcePaths(mod.name);
+    const viewExampleFiles = (await mod.sys.getViewsSourceCode()).filter((f) => !f.filePath.includes(paths.view));
     const Name = capitalize(mod.name);
     const relatedCnsts = getRelatedCnsts(`${mod.sys.cwdPath}/lib/${mod.name}/${mod.name}.constant.ts`);
     const constant = await FileSys.readText(`${mod.sys.cwdPath}/lib/${mod.name}/${mod.name}.constant.ts`);
@@ -181,7 +232,12 @@ export class ModuleScript extends script("module", [ModuleRunner, PageScript]) {
 
     //! 파일을 {name}.View.tsx에 저장.
 
-    mod.writeFile(`${Name}.View.tsx`, content);
+    await mod.writeFile(`${Name}.View.tsx`, content);
+    return createPassedPrimitiveReport({
+      command: "create-view",
+      changedFiles: [sourceFile(mod.sys, `lib/${mod.name}/${Name}.View.tsx`, "modify", "View UI source was created.")],
+      target: mod.sys.name,
+    });
   }
 }
 // the metric of how well the person lives now.

@@ -96,6 +96,9 @@ export const msg = new Proxy({} as ClientRuntime["msg"], {
   get(_target, prop, receiver) {
     return Reflect.get(getClientRuntime().msg, prop, receiver);
   },
+  set(_target, prop, value) {
+    return Reflect.set(getClientRuntime().msg, prop, value);
+  },
 });
 
 const ErrTarget = function AkanClientRuntimeErr(...args: ConstructorParameters<RuntimeErr>) {

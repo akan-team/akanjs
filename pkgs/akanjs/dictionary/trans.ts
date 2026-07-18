@@ -80,7 +80,6 @@ export const msg = {
   loading: (key: TransMessage<Record<string, unknown>>, option?: TransMessageOption) => void;
 };
 
-const rootDictionary = {} as RootDictionary;
 export const makeTrans = <
   GlobalTransMap extends Record<string, DictModule<string, string>>,
   _DictKey extends string = GlobalTransMap[keyof GlobalTransMap]["__Dict_Key__"],
@@ -103,6 +102,7 @@ export const makeTrans = <
   __Dict_Key__: _DictKey;
   __Error_Key__: _ErrorKey;
 } => {
+  const rootDictionary = {} as RootDictionary;
   Object.entries(transMap).forEach(([refName, trans]) => {
     trans.dict._registerToRoot(refName, rootDictionary);
   });

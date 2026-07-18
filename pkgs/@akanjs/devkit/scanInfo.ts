@@ -1,4 +1,5 @@
 import path from "node:path";
+import { rm } from "node:fs/promises";
 import type {
   AppConfigResult,
   AppScanResult,
@@ -52,7 +53,9 @@ const appRootAllowedFiles = new Set([
   "package.json",
   "server.ts",
   "tsconfig.json",
+  "tsconfig.tsbuildinfo",
 ]);
+const generatedRootCapacitorConfigFiles = ["capacitor.config.js", "capacitor.config.json"] as const;
 const appRootAllowedDirs = new Set([
   ".akan",
   "android",
@@ -99,8 +102,17 @@ const isAllowedLibRootFile = (filename: string) =>
   libRootAllowedFiles.has(filename) || rootSignalTestFilePattern.test(filename);
 const getScanPath = (exec: AppExecutor | LibExecutor, relativePath: string) =>
   path.posix.join(`${exec.type}s`, exec.name, relativePath.split(path.sep).join("/"));
+async function clearGeneratedRootCapacitorConfigs(exec: AppExecutor | LibExecutor) {
+  if (exec.type !== "app") return;
+  await Promise.all(generatedRootCapacitorConfigFiles.map((filename) => rm(exec.getPath(filename), { force: true })));
+}
+const getModuleNameFromPath = (kind: ModuleKind, modulePath: string) => {
+  const dirname = path.basename(modulePath);
+  return kind === "service" ? dirname.replace(/^_+/, "") : dirname;
+};
 
 async function assertScanConvention(exec: AppExecutor | LibExecutor, libRoot: { files: string[]; dirs: string[] }) {
+  await clearGeneratedRootCapacitorConfigs(exec);
   const violations: string[] = [];
   const addViolation = (relativePath: string, reason: string) => {
     violations.push(`${getScanPath(exec, relativePath)}: ${reason}`);
@@ -158,26 +170,42 @@ async function validateModuleFiles(
   modulePath: string,
 ) {
   const { files, dirs } = await exec.getFilesAndDirs(modulePath);
+  const moduleName = getModuleNameFromPath(kind, modulePath);
   dirs.forEach((dirname) => {
     violations.push(`${getScanPath(exec, path.join(modulePath, dirname))}: unsupported module folder`);
   });
 
+  const uiModuleName = moduleName[0].toUpperCase() + moduleName.slice(1);
+
   files.forEach((filename) => {
     const filePath = path.join(modulePath, filename);
     if (filename === "index.ts" || filename === "index.tsx" || isAllowedTestFile(filename)) return;
+    if (filename === `${moduleName}.abstract.md`) return;
 
-    const uiMatch = filename.match(/\.([A-Z][A-Za-z0-9]*)\.tsx$/);
+    const uiMatch = filename.match(/^([A-Z][A-Za-z0-9]+)\.([A-Z][A-Za-z0-9]*)\.tsx$/);
     if (uiMatch) {
-      const fileType = uiMatch[1];
+      const fileModuleName = uiMatch[1];
+      const fileType = uiMatch[2];
+      if (fileModuleName !== uiModuleName) {
+        violations.push(
+          `${getScanPath(exec, filePath)}: module name mismatch: expected '${uiModuleName}', got '${fileModuleName}'`,
+        );
+      }
       if (!moduleUiFileTypes[kind].has(fileType)) {
         violations.push(`${getScanPath(exec, filePath)}: unsupported ${kind} UI file`);
       }
       return;
     }
 
-    const nonUiMatch = filename.match(/\.([a-z][A-Za-z0-9]*)\.ts$/);
+    const nonUiMatch = filename.match(/^([a-z][a-zA-Z0-9]*)\.([a-z][a-z0-9]*)\.ts$/);
     if (nonUiMatch) {
-      const fileType = nonUiMatch[1];
+      const fileModuleName = nonUiMatch[1];
+      const fileType = nonUiMatch[2];
+      if (fileModuleName !== moduleName) {
+        violations.push(
+          `${getScanPath(exec, filePath)}: module name mismatch: expected '${moduleName}', got '${fileModuleName}'`,
+        );
+      }
       if (!moduleNonUiFileTypes[kind].has(fileType)) {
         violations.push(`${getScanPath(exec, filePath)}: unsupported ${kind} file`);
       }
@@ -515,7 +543,7 @@ export class PkgInfo {
   readonly name: string;
   private scanResult: PkgScanResult;
 
-  static async getScanResult(exec: PkgExecutor) {
+  static async scanExecutor(exec: PkgExecutor) {
     const [tsconfig, rootPackageJson] = await Promise.all([exec.getTsConfig(), exec.workspace.getPackageJson()]);
     const scanner = await TypeScriptDependencyScanner.from(exec);
     const npmSet = new Set(Object.keys({ ...rootPackageJson.dependencies, ...rootPackageJson.devDependencies }));
@@ -547,7 +575,7 @@ export class PkgInfo {
     const existingPkgInfo = PkgInfo.#pkgInfos.get(exec.name);
     if (existingPkgInfo && !options.refresh) return existingPkgInfo;
 
-    const scanResult = await PkgInfo.getScanResult(exec);
+    const scanResult = await PkgInfo.scanExecutor(exec);
     const pkgInfo = new PkgInfo(exec, scanResult);
     PkgInfo.#pkgInfos.set(exec.name, pkgInfo);
     return pkgInfo;

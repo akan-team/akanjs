@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { AppExecutor, WorkspaceExecutor } from "../executors";
 import { App, getArgMetas, Lib, Module, Pkg, Sys, Workspace } from "./argMeta";
+import { getInternalArgumentValue } from "./command";
 import { command } from "./commandBuilder";
 import {
   assertUniqueDependencies,
@@ -126,6 +128,17 @@ describe("command helper metadata", () => {
     expect(commandHelp).toContain("--write");
     expect(commandHelp).toContain("[default: true]");
     expect(commandHelp).toContain("Fast, Full");
+  });
+
+  test("resolves the only app without prompting for selection", async () => {
+    const workspace = new WorkspaceExecutor({ workspaceRoot: "/workspace", repoName: "repo" });
+    workspace.getExecs = async () => [["single-command-test-app"], [], []];
+
+    const app = await getInternalArgumentValue({ key: "", idx: 0, type: "App" }, undefined, workspace);
+
+    expect(app).toBeInstanceOf(AppExecutor);
+    expect(app.name).toBe("single-command-test-app");
+    expect(app.workspace).toBe(workspace);
   });
 });
 

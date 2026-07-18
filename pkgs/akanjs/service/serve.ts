@@ -1,6 +1,6 @@
 import { type Cls, INJECT_META } from "akanjs/base";
 import { applyMixins, capitalize, Logger, lowerlize } from "akanjs/common";
-import type { DatabaseModel, FilterInstance } from "akanjs/document";
+import type { DatabaseModel } from "akanjs/document";
 
 import {
   type ExtractInjectInfoObject,
@@ -9,13 +9,17 @@ import {
   type InjectType,
   injectionBuilder,
 } from "./injectInfo";
-import type { DatabaseService } from "./types";
+import type { DatabaseService, DatabaseServiceForModel } from "./types";
 
 interface ServiceOptions {
   enabled?: boolean;
   serverMode?: "batch" | "federation";
 }
 export type ServiceType = "database" | "plain";
+
+type DatabaseServiceData = Record<string, unknown>;
+type DatabaseServiceDoc = Record<string, unknown>;
+type DatabaseServicePatch = Partial<DatabaseServiceDoc>;
 
 const avoidKeys = new Set([
   "onInit",
@@ -74,52 +78,17 @@ export function serve<RefName extends string, Injection extends InjectBuilder>(
   ...extendSrvs: Cls[]
   // biome-ignore lint/complexity/noBannedTypes: `{}` preserves plain service method inference.
 ): ServiceCls<RefName, {}, ReturnType<Injection>>;
-export function serve<
-  T extends string,
-  Input,
-  Doc,
-  Model,
-  Obj,
-  Insight,
-  Filter extends FilterInstance,
-  Injection extends InjectBuilder,
-  LibSrvs extends Cls[] = [],
->(
-  db: DatabaseModel<T, Input, Doc, Model, Obj, Insight, Filter>,
+export function serve<Db extends DatabaseModel, Injection extends InjectBuilder, LibSrvs extends Cls[] = []>(
+  db: Db,
   injectBuilder: Injection,
   ...extendSrvs: LibSrvs
-): ServiceCls<T, DatabaseService<T, Input, Doc, Obj, Model, Insight, Filter, LibSrvs>, ReturnType<Injection>>;
-export function serve<
-  T extends string,
-  Input,
-  Doc,
-  Model,
-  Obj,
-  Insight,
-  Filter extends FilterInstance,
-  Injection extends InjectBuilder,
-  LibSrvs extends Cls[] = [],
->(
-  db: DatabaseModel<T, Input, Doc, Model, Obj, Insight, Filter>,
-  injectBuilder: Injection,
-  ...extendSrvs: LibSrvs
-): ServiceCls<T, DatabaseService<T, Input, Doc, Obj, Model, Insight, Filter, LibSrvs>, ReturnType<Injection>>;
-export function serve<
-  T extends string,
-  Input,
-  Doc,
-  Model,
-  Obj,
-  Insight,
-  Filter extends FilterInstance,
-  Injection extends InjectBuilder,
-  LibSrvs extends ServiceCls[] = [],
->(
-  db: DatabaseModel<T, Input, Doc, Model, Obj, Insight, Filter>,
+): ServiceCls<Db["refName"], DatabaseServiceForModel<Db, LibSrvs>, ReturnType<Injection>>;
+export function serve<Db extends DatabaseModel, Injection extends InjectBuilder, LibSrvs extends Cls[] = []>(
+  db: Db,
   option: ServiceOptions,
   injectBuilder: Injection,
   ...extendSrvs: LibSrvs
-): ServiceCls<T, DatabaseService<T, Input, Doc, Obj, Model, Insight, Filter, LibSrvs>, ReturnType<Injection>>;
+): ServiceCls<Db["refName"], DatabaseServiceForModel<Db, LibSrvs>, ReturnType<Injection>>;
 
 export function serve(
   refNameOrDb: string | DatabaseModel,
@@ -182,29 +151,25 @@ export function serve(
     const preRemoveFns = extSrvs.map((srv) => srv.prototype._preRemove);
     const postRemoveFns = extSrvs.map((srv) => srv.prototype._postRemove);
     Object.assign(srvRef.prototype, {
-      async __libsPreCreate(this: DatabaseService, data: Parameters<DatabaseService["__libsPreCreate"]>[0]) {
+      async __libsPreCreate(this: DatabaseService, data: DatabaseServiceData) {
         let result = data;
         for (const preCreate of preCreateFns) if (preCreate) result = await preCreate.call(this, result);
         if (this._preCreate) result = await this._preCreate(result);
         return result;
       },
-      async __libsPostCreate(this: DatabaseService, doc: Parameters<DatabaseService["__libsPostCreate"]>[0]) {
+      async __libsPostCreate(this: DatabaseService, doc: DatabaseServiceDoc) {
         let result = doc;
         for (const postCreate of postCreateFns) if (postCreate) result = await postCreate.call(this, result);
         if (this._postCreate) result = await this._postCreate(result);
         return result;
       },
-      async __libsPreUpdate(
-        this: DatabaseService,
-        id: string,
-        data: Parameters<DatabaseService["__libsPreUpdate"]>[1],
-      ) {
+      async __libsPreUpdate(this: DatabaseService, id: string, data: DatabaseServicePatch) {
         let result = data;
         for (const preUpdate of preUpdateFns) if (preUpdate) result = await preUpdate.call(this, id, result);
         if (this._preUpdate) result = await this._preUpdate(id, result);
         return result;
       },
-      async __libsPostUpdate(this: DatabaseService, doc: Parameters<DatabaseService["__libsPostUpdate"]>[0]) {
+      async __libsPostUpdate(this: DatabaseService, doc: DatabaseServiceDoc) {
         let result = doc;
         for (const postUpdate of postUpdateFns) if (postUpdate) result = await postUpdate.call(this, result);
         if (this._postUpdate) result = await this._postUpdate(result);
@@ -214,7 +179,7 @@ export function serve(
         for (const preRemove of preRemoveFns) await preRemove?.call(this, id);
         if (this._preRemove) await this._preRemove(id);
       },
-      async __libsPostRemove(this: DatabaseService, doc: Parameters<DatabaseService["__libsPostRemove"]>[0]) {
+      async __libsPostRemove(this: DatabaseService, doc: DatabaseServiceDoc) {
         let result = doc;
         for (const postRemove of postRemoveFns) if (postRemove) result = await postRemove.call(this, result);
         if (this._postRemove) result = await this._postRemove(result);

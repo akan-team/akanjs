@@ -6,7 +6,7 @@ import { dayjs } from "akanjs/base";
 import { clsx, getCookie, router, setCookie } from "akanjs/client";
 import { isEmail, isPhoneNumber } from "akanjs/common";
 import { Input, Link, Loading, Modal } from "akanjs/ui";
-import { useInterval, usePushNoti } from "akanjs/webkit";
+import { useInterval, usePushNotification } from "akanjs/webkit";
 import { type ReactNode, useEffect, useState } from "react";
 import { AiFillCheckCircle, AiFillGithub } from "react-icons/ai";
 
@@ -575,16 +575,16 @@ interface PushNotificationSwitchProps {
 export const PushNotificationSwitch = ({ className }: PushNotificationSwitchProps) => {
   const user = st.use.user();
   const self = st.use.self();
-  const pushNoti = usePushNoti();
+  const pushNotification = usePushNotification();
   const deviceToken = st.use.deviceToken();
   //! TODO: 추후 수정필요
   // const checked = self.notiDeviceTokens?.includes(deviceToken) ?? false;
   const checked = false as boolean;
   useEffect(() => {
     const getToken = async () => {
-      const deviceToken = await pushNoti.getToken();
-      if (!deviceToken) return;
-      st.do.setDeviceToken(deviceToken);
+      const pushToken = await pushNotification.getToken();
+      if (!pushToken) return;
+      st.do.setDeviceToken(pushToken.token);
     };
     void getToken();
   }, []);

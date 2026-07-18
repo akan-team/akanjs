@@ -1,0 +1,13 @@
+{
+  "defaults": {
+    "model": "same-model-name",
+    "iterations": 3,
+    "mode": "repair-loop"
+  },
+  "paths": {
+    "cursorReports": "workspaces/<runId>/<stack>/cursor-report.json"
+  },
+  "registry": {
+    "npm": null
+  }
+}

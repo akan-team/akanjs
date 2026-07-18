@@ -3,7 +3,7 @@ import { serviceDictionary } from "akanjs/dictionary";
 import type { SharedEndpoint } from "./shared.signal";
 
 export const dictionary = serviceDictionary(["en", "ko"])
-  .endpoint<SharedEndpoint>((fn) => ({}))
+  .endpoint<typeof SharedEndpoint>((fn) => ({}))
   .translate({
     logout: ["Logout", "로그아웃"],
     newest: ["Newest", "최신순"],
@@ -52,4 +52,5 @@ export const dictionary = serviceDictionary(["en", "ko"])
     "editor-rowAfter": ["Insert row After", "행 뒤에 추가"],
     "editor-deleteRow": ["Delete row", "행 삭제"],
     "editor-excalidraw": ["Excalidraw", "엑스칼리드로우"],
+    more: ["More", "더보기"],
   });

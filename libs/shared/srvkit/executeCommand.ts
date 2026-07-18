@@ -12,16 +12,19 @@ export const executeCommand = (command: string, logger?: Logger): Promise<{ stdo
       logger?.debug(data.toString());
       stdout += data.toString();
     });
-    proc.stderr.on("error", (error: Buffer) => {
-      logger?.error(error.toString());
-      stderr += error.toString();
+    proc.stderr.on("data", (data: Buffer) => {
+      logger?.debug(data.toString());
+      stderr += data.toString();
     });
 
     proc.on("close", (code) => {
       if (code === 0) {
         resolve({ stdout, stderr });
       } else {
-        reject(new Error(`Command failed with code ${code}: ${command}`));
+        if (stderr) logger?.error(stderr);
+        const error = new Error(`Command failed with code ${code}: ${command}`);
+        Object.assign(error, { stdout, stderr });
+        reject(error);
       }
     });
 

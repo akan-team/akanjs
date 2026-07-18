@@ -1,14 +1,18 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { INJECT_META, Int } from "akanjs/base";
+import { dayjs, INJECT_META, Int } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import { by, type DatabaseCls, DatabaseRegistry, from, getFilterInfoByKey, into } from "akanjs/document";
 import type { ServerSignal, ServerSignalCls } from "akanjs/signal";
 import { type Adaptor, type AdaptorCls, adapt, dangerouslyAdapt } from "./adapt";
 import { getDefaultInjectRegistry, InjectInfo, injectionBuilder } from "./injectInfo";
-import type { CacheAdaptor } from "./predefinedAdaptor";
+import type { CacheAdaptor, CacheSetOptions } from "./predefinedAdaptor";
 import { type Service, serve } from "./serve";
 import { ServiceModel } from "./serviceModule";
 import type { DatabaseService } from "./types";
+
+type Equal<Left, Right> =
+  (<Type>() => Type extends Left ? 1 : 2) extends <Type>() => Type extends Right ? 1 : 2 ? true : false;
+type Expect<Type extends true> = Type;
 
 const TestItemInput = via((f) => ({
   title: f(String),
@@ -64,6 +68,79 @@ const testItemDatabase = DatabaseRegistry.buildModel(
   TestItemInsight,
   TestItemFilter,
 );
+
+const PromoteParentInput = via((f) => ({
+  name: f(String),
+}));
+const PromoteParentObject = via(PromoteParentInput, (f) => ({}));
+const PromoteParentLight = via(PromoteParentObject, ["name"] as const, (f) => ({}));
+const PromoteParentFull = via(PromoteParentObject, PromoteParentLight, (f) => ({}));
+const PromoteParentInsight = via(PromoteParentFull, (f) => ({}));
+const promoteParentConstant = ConstantRegistry.buildModel(
+  "serviceTestPromoteParent",
+  PromoteParentInput,
+  PromoteParentObject,
+  PromoteParentFull,
+  PromoteParentLight,
+  PromoteParentInsight,
+  { PromoteParentInput, PromoteParentObject, PromoteParentFull, PromoteParentLight, PromoteParentInsight },
+);
+class PromoteParentFilter extends from(PromoteParentFull, () => ({ query: {}, sort: {} })) {}
+class PromoteParentDoc extends by(PromoteParentFull) {}
+class PromoteParentModel extends into(PromoteParentDoc, PromoteParentFilter, promoteParentConstant, () => ({})) {}
+const promoteParentDatabase = DatabaseRegistry.buildModel(
+  "serviceTestPromoteParent",
+  PromoteParentInput as unknown as DatabaseCls<InstanceType<typeof PromoteParentInput>>,
+  PromoteParentDoc,
+  PromoteParentModel,
+  PromoteParentObject,
+  PromoteParentInsight,
+  PromoteParentFilter,
+);
+
+const PromoteChildInput = via((f) => ({
+  name: f(String),
+  extra: f(String).optional(),
+}));
+const PromoteChildObject = via(PromoteChildInput, (f) => ({}));
+const PromoteChildLight = via(PromoteChildObject, ["name", "extra"] as const, (f) => ({}));
+const PromoteChildFull = via(PromoteChildObject, PromoteChildLight, (f) => ({}));
+const PromoteChildInsight = via(PromoteChildFull, (f) => ({}));
+const promoteChildConstant = ConstantRegistry.buildModel(
+  "serviceTestPromoteChild",
+  PromoteChildInput,
+  PromoteChildObject,
+  PromoteChildFull,
+  PromoteChildLight,
+  PromoteChildInsight,
+  { PromoteChildInput, PromoteChildObject, PromoteChildFull, PromoteChildLight, PromoteChildInsight },
+);
+class PromoteChildFilter extends from(PromoteChildFull, () => ({ query: {}, sort: {} })) {}
+class PromoteChildDoc extends by(PromoteChildFull) {}
+class PromoteChildModel extends into(PromoteChildDoc, PromoteChildFilter, promoteChildConstant, () => ({})) {}
+const promoteChildDatabase = DatabaseRegistry.buildModel(
+  "serviceTestPromoteChild",
+  PromoteChildInput as unknown as DatabaseCls<InstanceType<typeof PromoteChildInput>>,
+  PromoteChildDoc,
+  PromoteChildModel,
+  PromoteChildObject,
+  PromoteChildInsight,
+  PromoteChildFilter,
+);
+
+class PromoteParentService extends serve(promoteParentDatabase, () => ({})) {
+  async getPromotedParentDoc() {
+    return await this.getServiceTestPromoteParent("parent");
+  }
+  async listPromotedParentDocs() {
+    return [await this.getServiceTestPromoteParent("parent")];
+  }
+}
+class PromoteChildService extends serve(promoteChildDatabase, () => ({}), PromoteParentService) {}
+type _PromotedLibServiceReturnAssertions = [
+  Expect<Equal<Awaited<ReturnType<PromoteChildService["getPromotedParentDoc"]>>, PromoteChildDoc>>,
+  Expect<Equal<Awaited<ReturnType<PromoteChildService["listPromotedParentDocs"]>>, PromoteChildDoc[]>>,
+];
 
 type TestDoc = { id: string; title: string; category?: string | null; score?: number; note?: string | null };
 type CallRecord = { method: string; args: unknown[] };
@@ -445,8 +522,8 @@ describe("dependency injection resolution", () => {
         calls.push({ method: "get", args: [topic, key] });
         return values.has(`${topic}:${key}`) ? values.get(`${topic}:${key}`) : null;
       },
-      async set(topic: string, key: string, value: unknown) {
-        calls.push({ method: "set", args: [topic, key, value] });
+      async set(topic: string, key: string, value: unknown, option?: CacheSetOptions) {
+        calls.push({ method: "set", args: [topic, key, value, option] });
         values.set(`${topic}:${key}`, value);
       },
       async delete(topic: string, key: string) {
@@ -455,10 +532,10 @@ describe("dependency injection resolution", () => {
       },
       async hget(topic: string, prop: string, key: string) {
         calls.push({ method: "hget", args: [topic, prop, key] });
-        return hashValues.get(`${topic}:${prop}`)?.get(key) ?? null;
+        return hashValues.get(`${topic}:${prop}`)?.get(key);
       },
-      async hset(topic: string, prop: string, key: string, value: unknown) {
-        calls.push({ method: "hset", args: [topic, prop, key, value] });
+      async hset(topic: string, prop: string, key: string, value: unknown, option?: CacheSetOptions) {
+        calls.push({ method: "hset", args: [topic, prop, key, value, option] });
         const hashKey = `${topic}:${prop}`;
         const map = hashValues.get(hashKey) ?? new Map<string, unknown>();
         map.set(key, value);
@@ -467,6 +544,18 @@ describe("dependency injection resolution", () => {
       async hdelete(topic: string, prop: string, key: string) {
         calls.push({ method: "hdelete", args: [topic, prop, key] });
         hashValues.get(`${topic}:${prop}`)?.delete(key);
+      },
+      async hkeys(topic: string, prop: string) {
+        calls.push({ method: "hkeys", args: [topic, prop] });
+        return [...(hashValues.get(`${topic}:${prop}`)?.keys() ?? [])];
+      },
+      async hentries(topic: string, prop: string) {
+        calls.push({ method: "hentries", args: [topic, prop] });
+        return [...(hashValues.get(`${topic}:${prop}`)?.entries() ?? [])];
+      },
+      async hclear(topic: string, prop: string) {
+        calls.push({ method: "hclear", args: [topic, prop] });
+        hashValues.delete(`${topic}:${prop}`);
       },
     };
     return cache as CacheAdaptor & { calls: CallRecord[] };
@@ -498,6 +587,7 @@ describe("dependency injection resolution", () => {
     const cacheAdaptor = cache as unknown as Adaptor;
     const plugAdaptor = new PlugAdaptor() as unknown as PlugAdaptor & Adaptor;
     const depService = new DepService();
+    const defaultExpireAt = dayjs().add(1, "hour");
 
     registry.uses.set("plainUse", "use-value");
     registry.adaptorCls.set("solidCache", CacheAdaptorRef);
@@ -521,8 +611,8 @@ describe("dependency injection resolution", () => {
       depService: service<DepService>(),
       testSignal: signal<typeof signal>(),
       localCounter: memory(Int, { local: true, default: 3 }),
-      remoteValue: memory(String),
-      remoteMap: memory(Map, { of: String }),
+      remoteValue: memory(String, { expireAt: defaultExpireAt }),
+      remoteMap: memory(Map, { of: String, expireAt: defaultExpireAt }),
     })) {}
     Object.assign(TargetService[INJECT_META], {
       serviceTestItemModel: new InjectInfo("database", { parentRefName: "serviceTestItem" }),
@@ -536,16 +626,32 @@ describe("dependency injection resolution", () => {
       localCounter: number;
       remoteValue: {
         get: () => Promise<string | null>;
-        set: (value: string) => Promise<void>;
+        set: (value: string, option?: CacheSetOptions) => Promise<void>;
         delete: () => Promise<void>;
       };
       remoteMap: {
-        get: (key: string) => Promise<string | null>;
-        set: (key: string, value: string) => Promise<void>;
+        get: (key: string) => Promise<string | undefined>;
+        set: (key: string, value: string, option?: CacheSetOptions) => Promise<void>;
         delete: (key: string) => Promise<void>;
+        getOrInsert: (key: string, value: string, option?: CacheSetOptions) => Promise<string>;
+        getOrInsertComputed: (
+          key: string,
+          compute: (key: string) => string | Promise<string>,
+          option?: CacheSetOptions,
+        ) => Promise<string>;
+        keys: () => Promise<string[]>;
+        entries: () => Promise<[string, string][]>;
+        forEach: (callback: (value: string, key: string) => void | Promise<void>) => Promise<void>;
+        clear: () => Promise<void>;
       };
       serviceTestItemModel: typeof database;
     };
+    type RemoteMapGetValue = Awaited<ReturnType<TargetService["remoteMap"]["get"]>>;
+    type _RemoteMapGetReturnsOptionalString = Expect<Equal<RemoteMapGetValue, string | undefined>>;
+    type RemoteMapEntriesValue = Awaited<ReturnType<TargetService["remoteMap"]["entries"]>>;
+    type _RemoteMapEntriesReturnsStringTuples = Expect<Equal<RemoteMapEntriesValue, [string, string][]>>;
+    type RemoteMapSetOption = Parameters<TargetService["remoteMap"]["set"]>[2];
+    type _RemoteMapSetAcceptsCacheOption = Expect<Equal<RemoteMapSetOption, CacheSetOptions | undefined>>;
 
     await InjectInfo.resolveInjection(instance, TargetService, registry, { envValue: "env-value" } as never);
 
@@ -560,13 +666,49 @@ describe("dependency injection resolution", () => {
     expect(instance.serviceTestItemModel).toBe(database);
 
     await instance.remoteValue.set("hello");
+    let lastCacheCall = cache.calls.at(-1);
+    expect(lastCacheCall?.method).toBe("set");
+    expect(lastCacheCall?.args.slice(0, 3)).toEqual(["akan:memory", "remoteValue", "hello"]);
+    expect(lastCacheCall?.args[3]).toEqual({ expireAt: defaultExpireAt });
     expect(await instance.remoteValue.get()).toBe("hello");
     await instance.remoteValue.delete();
     expect(await instance.remoteValue.get()).toBeNull();
-    await instance.remoteMap.set("ko", "안녕");
+    const setOption = { expireAt: dayjs().add(2, "hour") };
+    await instance.remoteMap.set("ko", "안녕", setOption);
+    lastCacheCall = cache.calls.at(-1);
+    expect(lastCacheCall?.method).toBe("hset");
+    expect(lastCacheCall?.args.slice(0, 4)).toEqual(["akan:memory:serviceTestTarget", "remoteMap", "ko", "안녕"]);
+    expect(lastCacheCall?.args[4]).toBe(setOption);
     expect(await instance.remoteMap.get("ko")).toBe("안녕");
     await instance.remoteMap.delete("ko");
+    expect(await instance.remoteMap.get("ko")).toBeUndefined();
+    expect(await instance.remoteMap.getOrInsert("ko", "다시 안녕")).toBe("다시 안녕");
+    expect(cache.calls.at(-1)?.args[4]).toEqual({ expireAt: defaultExpireAt });
+    const hsetCountAfterInsert = cache.calls.filter((call) => call.method === "hset").length;
+    expect(await instance.remoteMap.getOrInsert("ko", "덮어쓰기")).toBe("다시 안녕");
+    expect(cache.calls.filter((call) => call.method === "hset")).toHaveLength(hsetCountAfterInsert);
+    const computedOption = { expireAt: dayjs().add(3, "hour") };
+    expect(await instance.remoteMap.getOrInsertComputed("en", async (key) => `hello:${key}`, computedOption)).toBe(
+      "hello:en",
+    );
+    expect(cache.calls.at(-1)?.args[4]).toBe(computedOption);
+    const hsetCountAfterComputed = cache.calls.filter((call) => call.method === "hset").length;
+    expect(await instance.remoteMap.getOrInsertComputed("en", () => "overwrite")).toBe("hello:en");
+    expect(cache.calls.filter((call) => call.method === "hset")).toHaveLength(hsetCountAfterComputed);
+    expect(await instance.remoteMap.keys()).toEqual(["ko", "en"]);
+    expect(await instance.remoteMap.entries()).toEqual([
+      ["ko", "다시 안녕"],
+      ["en", "hello:en"],
+    ]);
+    const seen: string[] = [];
+    await instance.remoteMap.forEach((value, key) => {
+      seen.push(`${key}:${value}`);
+    });
+    expect(seen).toEqual(["ko:다시 안녕", "en:hello:en"]);
+    await instance.remoteMap.clear();
+    expect(await instance.remoteMap.keys()).toEqual([]);
     expect(cache.calls.map((call) => call.method)).toContain("hdelete");
+    expect(cache.calls.map((call) => call.method)).toContain("hclear");
 
     expect(Object.getOwnPropertyDescriptor(instance, "plainUse")).toMatchObject({ enumerable: true, writable: false });
   });

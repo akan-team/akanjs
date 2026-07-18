@@ -2,24 +2,35 @@ import type { GetStateObject, SLICE_META } from "akanjs/base";
 import type { FetchPolicy } from "akanjs/common";
 import type { ConstantModel, DefaultOf, ProtoFile, PurifiedModel } from "akanjs/constant";
 import type { DatabaseModel, ExtractSort, FilterInstance } from "akanjs/document";
-import type { SliceCls, SliceInfoArgs } from "akanjs/signal";
-import type { ClientEdit, ClientInit, ClientView, EditReturn, InitReturn, ViewReturn } from "./appliedReturn.type";
+import type {
+  SlceCnstCapitalizedRefName,
+  SlceCnstDefaultInput,
+  SlceCnstFull,
+  SlceCnstInput,
+  SlceCnstInsight,
+  SlceCnstLight,
+  SlceCnstPurifiedInput,
+  SlceCnstRefName,
+  SlceDbFilter,
+  SlceDbSort,
+  SliceCls,
+  SliceInfoArgs,
+} from "akanjs/signal";
+import type { EditReturn, InitReturn, ServerEdit, ServerInit, ServerView, ViewReturn } from "./appliedReturn.type";
 
 // Shortcut accessors — avoids re-typing the long lookup path and lets TS
 // memoize each access once per SlceCls instantiation.
 type _SliceMap<S extends SliceCls> = S[typeof SLICE_META];
-type _RefName<S extends SliceCls> = S["srv"]["cnst"]["refName"];
-type _Cap<S extends SliceCls> = S["srv"]["cnst"]["_CapitalizedRefName"];
-type _Input<S extends SliceCls> = S["srv"]["cnst"]["_Input"];
-type _Full<S extends SliceCls> = S["srv"]["cnst"]["_Full"];
-type _Light<S extends SliceCls> = S["srv"]["cnst"]["_Light"];
-type _Insight<S extends SliceCls> = S["srv"]["cnst"]["_Insight"];
-type _PurifiedInput<S extends SliceCls> = S["srv"]["cnst"]["_PurifiedInput"];
-type _DefaultInput<S extends SliceCls> = S["srv"]["cnst"]["_DefaultInput"];
-type _StateLight<S extends SliceCls> = S["srv"]["cnst"]["_StateLight"];
-type _StateInsight<S extends SliceCls> = S["srv"]["cnst"]["_StateInsight"];
-type _Filter<S extends SliceCls> = S["srv"]["db"]["_Filter"];
-type _Sort<S extends SliceCls> = S["srv"]["db"]["_Sort"];
+type _RefName<S extends SliceCls> = SlceCnstRefName<S>;
+type _Cap<S extends SliceCls> = SlceCnstCapitalizedRefName<S>;
+type _Input<S extends SliceCls> = SlceCnstInput<S>;
+type _Full<S extends SliceCls> = SlceCnstFull<S>;
+type _Light<S extends SliceCls> = SlceCnstLight<S>;
+type _Insight<S extends SliceCls> = SlceCnstInsight<S>;
+type _PurifiedInput<S extends SliceCls> = SlceCnstPurifiedInput<S>;
+type _DefaultInput<S extends SliceCls> = SlceCnstDefaultInput<S>;
+type _Filter<S extends SliceCls> = SlceDbFilter<S>;
+type _Sort<S extends SliceCls> = SlceDbSort<S>;
 type _LightWithId<S extends SliceCls> = _Light<S> extends { id: string } ? _Light<S> : { id: string };
 type _SliceFetchInitOption<S extends SliceCls> = FetchInitOption<_Input<S>, _Filter<S>, _DefaultInput<S>, _Sort<S>>;
 
@@ -70,16 +81,18 @@ type SliceInitFetch<S extends SliceCls> = {
 type SliceGetInitFetch<S extends SliceCls> = {
   [Suffix in keyof _SliceMap<S> as Suffix extends string ? `get${_Cap<S>}Init${Capitalize<Suffix>}` : never]: (
     ...args: [...SliceInfoArgs<_SliceMap<S>[Suffix]>, option?: _SliceFetchInitOption<S>]
-  ) => ClientInit<
-    _RefName<S>,
-    _Light<S>,
-    _Insight<S>,
-    SliceInfoArgs<_SliceMap<S>[Suffix]>,
-    _Filter<S>,
-    _Cap<S>,
-    GetStateObject<_LightWithId<S>>,
-    GetStateObject<_Insight<S>>,
-    _Sort<S>
+  ) => Promise<
+    ServerInit<
+      _RefName<S>,
+      _Light<S>,
+      _Insight<S>,
+      SliceInfoArgs<_SliceMap<S>[Suffix]>,
+      _Filter<S>,
+      _Cap<S>,
+      GetStateObject<_LightWithId<S>>,
+      GetStateObject<_Insight<S>>,
+      _Sort<S>
+    >
   >;
 };
 
@@ -127,7 +140,7 @@ type RawBaseSliceFetchType<
     fetchPolicy?: FetchPolicy,
   ) => Promise<Full>;
 } & {
-  [K in `remove${_CapitalizedRefName}`]: (id: string, fetchPolicy?: FetchPolicy) => Promise<void>;
+  [K in `remove${_CapitalizedRefName}`]: (id: string, fetchPolicy?: FetchPolicy) => Promise<Full>;
 };
 
 type AppliedBaseSliceFetchType<
@@ -139,11 +152,11 @@ type AppliedBaseSliceFetchType<
 > = {
   [K in `view${_CapitalizedRefName}`]: (id: string, option?: FetchPolicy) => Promise<ViewReturn<RefName, Full>>;
 } & {
-  [K in `get${_CapitalizedRefName}View`]: (id: string, option?: FetchPolicy) => ClientView<RefName, Full>;
+  [K in `get${_CapitalizedRefName}View`]: (id: string, option?: FetchPolicy) => Promise<ServerView<RefName, Full>>;
 } & {
   [K in `edit${_CapitalizedRefName}`]: (id: string, option?: FetchPolicy) => Promise<EditReturn<RefName, Full>>;
 } & {
-  [K in `get${_CapitalizedRefName}Edit`]: (id: string, option?: FetchPolicy) => ClientEdit<RefName, Full>;
+  [K in `get${_CapitalizedRefName}Edit`]: (id: string, option?: FetchPolicy) => Promise<ServerEdit<RefName, Full>>;
 } & {
   // TODO: migrate this to shared
   [K in `add${_CapitalizedRefName}Files`]: (

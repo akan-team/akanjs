@@ -25,17 +25,19 @@ export interface FilterArgProps {
   enum?: EnumInstance;
 }
 
+export type DocumentProjection<T> = Partial<Record<keyof T, boolean>>;
+
 export interface ListQueryOption<Sort = never, Obj = any> {
   skip?: number | null;
   limit?: number | null;
   sort?: Sort | null;
   sample?: number;
-  select?: Partial<Record<keyof Obj, boolean>>;
+  select?: DocumentProjection<Obj>;
 }
 export interface FindQueryOption<Sort = never, Obj = any> {
   skip?: number | null;
   sort?: Sort | null;
   sample?: boolean;
-  select?: Partial<Record<keyof Obj, boolean>>;
+  select?: DocumentProjection<Obj>;
 }
 export type { SchemaOf } from "./documentSchema";

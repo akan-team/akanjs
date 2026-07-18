@@ -11,12 +11,15 @@ import type { SliceCls } from "./slice";
 // TypeScript has to re-evaluate at each callsite.
 export type CnstOf<S extends ServiceModel> = NonNullable<S["cnst"]>;
 export type DbOf<S extends ServiceModel> = NonNullable<S["db"]>;
+export type SrvOf<S extends ServiceModel> = S["srv"];
+export type SrvRefName<S extends ServiceModel> = SrvOf<S>["refName"];
+export type SrvMap<S extends ServiceModel> = S["srvMap"];
 
 export type CnstRefName<S extends ServiceModel> = CnstOf<S>["refName"];
 export type CnstInput<S extends ServiceModel> = CnstOf<S>["_Input"];
-export type CnstFull<S extends ServiceModel> = CnstOf<S>["_Full"];
-export type CnstLight<S extends ServiceModel> = CnstOf<S>["_Light"];
-export type CnstInsight<S extends ServiceModel> = CnstOf<S>["_Insight"];
+export type CnstFull<S extends ServiceModel> = UnCls<CnstOf<S>["full"]> & CnstOf<S>["_Full"];
+export type CnstLight<S extends ServiceModel> = UnCls<CnstOf<S>["light"]> & CnstOf<S>["_Light"];
+export type CnstInsight<S extends ServiceModel> = UnCls<CnstOf<S>["insight"]> & CnstOf<S>["_Insight"];
 export type CnstDefault<S extends ServiceModel> = CnstOf<S>["_Default"];
 export type CnstDefaultInput<S extends ServiceModel> = CnstOf<S>["_DefaultInput"];
 export type CnstDefaultState<S extends ServiceModel> = CnstOf<S>["_DefaultState"];
@@ -26,25 +29,28 @@ export type CnstPurifiedInput<S extends ServiceModel> = CnstOf<S>["_PurifiedInpu
 export type CnstCapitalizedRefName<S extends ServiceModel> = CnstOf<S>["_CapitalizedRefName"];
 
 export type DbFilter<S extends ServiceModel> = DbOf<S>["_Filter"];
+export type DbDoc<S extends ServiceModel> = DbOf<S>["_Doc"];
+export type DbQuery<S extends ServiceModel> = DbOf<S>["_Query"];
 export type DbSort<S extends ServiceModel> = DbOf<S>["_Sort"];
 
 // Slice-cls shortcuts (common in store/state/action). The branches that
 // include `SlceCls extends SliceCls` preserve `ServiceModel` inference.
 export type SlceSrv<S extends SliceCls> = S["srv"];
-export type SlceCnstRefName<S extends SliceCls> = S["srv"]["cnst"]["refName"];
-export type SlceCnstInput<S extends SliceCls> = S["srv"]["cnst"]["_Input"];
-export type SlceCnstFull<S extends SliceCls> = S["srv"]["cnst"]["_Full"];
-export type SlceCnstLight<S extends SliceCls> = S["srv"]["cnst"]["_Light"];
-export type SlceCnstInsight<S extends SliceCls> = S["srv"]["cnst"]["_Insight"];
-export type SlceCnstDefault<S extends SliceCls> = S["srv"]["cnst"]["_Default"];
-export type SlceCnstDefaultInput<S extends SliceCls> = S["srv"]["cnst"]["_DefaultInput"];
-export type SlceCnstDefaultState<S extends SliceCls> = S["srv"]["cnst"]["_DefaultState"];
-export type SlceCnstPurifiedInput<S extends SliceCls> = S["srv"]["cnst"]["_PurifiedInput"];
-export type SlceCnstCapitalizedRefName<S extends SliceCls> = S["srv"]["cnst"]["_CapitalizedRefName"];
-export type SlceCnstStateLight<S extends SliceCls> = S["srv"]["cnst"]["_StateLight"];
-export type SlceCnstStateInsight<S extends SliceCls> = S["srv"]["cnst"]["_StateInsight"];
-export type SlceDbFilter<S extends SliceCls> = S["srv"]["db"]["_Filter"];
-export type SlceDbSort<S extends SliceCls> = S["srv"]["db"]["_Sort"];
+export type SlceCnstRefName<S extends SliceCls> = CnstRefName<SlceSrv<S>>;
+export type SlceCnstInput<S extends SliceCls> = CnstInput<SlceSrv<S>>;
+export type SlceCnstFull<S extends SliceCls> = CnstFull<SlceSrv<S>>;
+export type SlceCnstLight<S extends SliceCls> = CnstLight<SlceSrv<S>>;
+export type SlceCnstInsight<S extends SliceCls> = CnstInsight<SlceSrv<S>>;
+export type SlceCnstDefault<S extends SliceCls> = CnstDefault<SlceSrv<S>>;
+export type SlceCnstDefaultInput<S extends SliceCls> = CnstDefaultInput<SlceSrv<S>>;
+export type SlceCnstDefaultState<S extends SliceCls> = CnstDefaultState<SlceSrv<S>>;
+export type SlceCnstPurifiedInput<S extends SliceCls> = CnstPurifiedInput<SlceSrv<S>>;
+export type SlceCnstCapitalizedRefName<S extends SliceCls> = CnstCapitalizedRefName<SlceSrv<S>>;
+export type SlceCnstStateLight<S extends SliceCls> = CnstStateLight<SlceSrv<S>>;
+export type SlceCnstStateInsight<S extends SliceCls> = CnstStateInsight<SlceSrv<S>>;
+export type SlceDbFilter<S extends SliceCls> = DbFilter<SlceSrv<S>>;
+export type SlceDbQuery<S extends SliceCls> = DbQuery<SlceSrv<S>>;
+export type SlceDbSort<S extends SliceCls> = DbSort<SlceSrv<S>>;
 
 export const argTypes = ["body", "param", "search", "upload", "msg", "room"] as const;
 export type ArgType = (typeof argTypes)[number];
@@ -77,6 +83,8 @@ export interface SignalOption<Response = any, Nullable extends boolean = false, 
   middlewares?: MiddlewareCls[];
   prefix?: false | string;
   globalPrefix?: false;
+  /** Marks this mutation as the framework file-upload endpoint (see resolveFileUploadCapability). */
+  fileUpload?: boolean;
 
   // * ==================== Schedule ==================== * //
   scheduleType?: "init" | "destroy" | "cron" | "interval" | "timeout";
@@ -93,6 +101,7 @@ interface SerializedSignalOption {
   prefix?: false | string;
   globalPrefix?: false;
   guards?: string[];
+  fileUpload?: boolean;
 }
 export interface SerializedSlice extends SerializedSignalOption {}
 

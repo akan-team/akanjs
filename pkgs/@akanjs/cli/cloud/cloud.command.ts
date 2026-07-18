@@ -1,4 +1,4 @@
-import { command, Workspace } from "@akanjs/devkit";
+import { command, GlobalConfig, Workspace } from "@akanjs/devkit";
 
 import { CloudScript } from "./cloud.script";
 
@@ -7,14 +7,16 @@ const resolveRegistryUrl = (registry: "npm" | "local") => (registry === "local" 
 
 export class CloudCommand extends command("cloud", [CloudScript], ({ public: target }) => ({
   login: target({ desc: "Login to Akan Cloud services" })
+    .option("host", String, { desc: "host of the cloud", default: GlobalConfig.akanCloudHost })
     .with(Workspace)
-    .exec(async function (workspace) {
-      await this.cloudScript.login(workspace);
+    .exec(async function (host, workspace) {
+      await this.cloudScript.login(workspace, host);
     }),
   logout: target({ desc: "Logout from Akan Cloud services" })
+    .option("host", String, { desc: "host of the cloud", default: GlobalConfig.akanCloudHost })
     .with(Workspace)
-    .exec(async function (workspace) {
-      await this.cloudScript.logout(workspace);
+    .exec(async function (host, workspace) {
+      await this.cloudScript.logout(workspace, host);
     }),
   setLlm: target({ desc: "Configure LLM (Large Language Model) API key" })
     .with(Workspace)
@@ -26,13 +28,19 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
     .exec(function (workspace) {
       this.cloudScript.resetLlm(workspace);
     }),
-  ask: target({ desc: "Ask AI assistant a question about your project" })
+  ask: target({
+    devOnly: true,
+    desc: "Ask AI assistant a question about your project",
+  })
     .option("question", String, { ask: "question to ask" })
     .with(Workspace)
     .exec(async function (question, workspace) {
       await this.cloudScript.ask(question, workspace);
     }),
-  deployAkan: target({ devOnly: true, desc: "Deploy Akan.js framework to cloud (internal use)" })
+  deployAkan: target({
+    devOnly: true,
+    desc: "Deploy Akan.js framework to cloud (internal use)",
+  })
     .option("test", Boolean, { desc: "test the deployment", default: true })
     .option("registry", String, {
       desc: "registry target for publishing Akan packages",
@@ -63,8 +71,27 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
         { label: "npm", value: "npm" },
         { label: "local", value: "local" },
       ],
+      default: process.env.USE_AKANJS_PKGS === "true" ? undefined : "npm",
     })
     .exec(async function (workspace, tag, registry) {
-      await this.cloudScript.update(workspace, tag, { registryUrl: resolveRegistryUrl(registry as "npm" | "local") });
+      await this.cloudScript.update(workspace, tag, {
+        registryUrl: resolveRegistryUrl(registry as "npm" | "local"),
+      });
+    }),
+  downloadEnv: target({
+    desc: "Download environment variables from cloud or SCP server",
+  })
+    .option("host", String, { desc: "host of the cloud to target", default: GlobalConfig.akanCloudHost })
+    .with(Workspace)
+    .exec(async function (host, workspace) {
+      await this.cloudScript.downloadEnv(workspace, undefined, { host });
+    }),
+  uploadEnv: target({
+    desc: "Upload environment variables to cloud or SCP server",
+  })
+    .option("host", String, { desc: "host of the cloud to target", default: GlobalConfig.akanCloudHost })
+    .with(Workspace)
+    .exec(async function (host, workspace) {
+      await this.cloudScript.uploadEnv(workspace, { host });
     }),
 })) {}

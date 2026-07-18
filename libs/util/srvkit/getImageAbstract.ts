@@ -1,4 +1,14 @@
-import sharp from "sharp";
+type SharpFactory = typeof import("sharp");
+
+let sharpLoad: Promise<SharpFactory> | null = null;
+
+function loadSharp(): Promise<SharpFactory> {
+  sharpLoad ??= import("sharp").then((mod) => {
+    const loaded = mod as unknown as { default?: SharpFactory } & SharpFactory;
+    return loaded.default ?? loaded;
+  });
+  return sharpLoad;
+}
 
 export const getImageAbstract = async (
   url: string,
@@ -7,6 +17,7 @@ export const getImageAbstract = async (
   try {
     const response = await fetch(encodeURI(url));
     const buffer = Buffer.from(await response.arrayBuffer());
+    const sharp = await loadSharp();
     const image = sharp(buffer);
 
     try {

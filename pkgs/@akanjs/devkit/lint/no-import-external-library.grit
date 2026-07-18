@@ -8,7 +8,6 @@ JsModuleSource() as $source where {
     r"\"akanjs.*",
     r"\"@akanjs.*",
     r"\"@playwright.*",
-    r"\"@radix-ui.*",
     r"\"@apps/.*",
     r"\"@libs/.*",
     r"\"@pkgs/.*",

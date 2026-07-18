@@ -45,16 +45,22 @@ export default function Page() {
         <Docs.Description>
           <div>
             {l.trans({
-              en: "The important part is the last option: `{ url }`. It tells fetch which server should receive the signal call.",
-              ko: "중요한 부분은 마지막 option인 `{ url }`입니다. 이 값이 fetch에게 어떤 서버로 signal 호출을 보낼지 알려줍니다.",
+              en: "The important part is the last option: `{ origin }`. It tells fetch which server should receive the signal call.",
+              ko: "중요한 부분은 마지막 option인 `{ origin }`입니다. 이 값이 fetch에게 어떤 서버로 signal 호출을 보낼지 알려줍니다.",
+            })}
+          </div>
+          <div>
+            {l.trans({
+              en: "Include the server global API prefix (for example `/api`) in the origin, because fetch sends the call to it as-is.",
+              ko: "origin에는 서버 global API prefix(예: `/api`)까지 포함해야 합니다. fetch가 이 값을 그대로 사용해 호출을 보내기 때문입니다.",
             })}
           </div>
         </Docs.Description>
         <Code.Snippet
           title={l.trans({ en: "Ping an edge server", ko: "엣지 서버 ping" })}
-          code={`const url = "https://edge.example.com/backend/graphql";
+          code={`const origin = "https://edge.example.com/api";
 
-const result = await fetch.ping({ url });
+const result = await fetch.ping({ origin });
 
 if (result === "ping") {
   console.info("edge server is alive");
@@ -75,10 +81,10 @@ if (result === "ping") {
         </Docs.Description>
         <Code.Snippet
           title={l.trans({ en: "Remote command", ko: "원격 명령" })}
-          code={`const edgeUrl = "https://edge.example.com/backend/graphql";
+          code={`const edgeOrigin = "https://edge.example.com/api";
 
-await fetch.startJob(jobId, { url: edgeUrl });
-await fetch.stopJob(jobId, { url: edgeUrl });`}
+await fetch.startJob(jobId, { origin: edgeOrigin });
+await fetch.stopJob(jobId, { origin: edgeOrigin });`}
         />
       </Scroll.Slide>
       <div className="divider" />
@@ -99,7 +105,7 @@ await fetch.stopJob(jobId, { url: edgeUrl });`}
   (status) => {
     console.info(status);
   },
-  { url: "https://edge.example.com" },
+  { origin: "https://edge.example.com/api" },
 );
 
 // When the page or worker closes:
@@ -113,22 +119,22 @@ unsubscribe();`}
         <Docs.Description>
           <div>
             {l.trans({
-              en: "When you talk to the same edge server many times, make a small class that remembers the URL and unsubscribe functions.",
-              ko: "같은 edge server와 여러 번 통신한다면 URL과 unsubscribe 함수를 기억하는 작은 class로 감싸면 편합니다.",
+              en: "When you talk to the same edge server many times, make a small class that remembers the origin and unsubscribe functions.",
+              ko: "같은 edge server와 여러 번 통신한다면 origin과 unsubscribe 함수를 기억하는 작은 class로 감싸면 편합니다.",
             })}
           </div>
         </Docs.Description>
         <Code.Snippet
           title={l.trans({ en: "Small wrapper", ko: "작은 wrapper" })}
           code={`class RemoteEdge {
-  constructor(private url: string) {}
+  constructor(private origin: string) {}
 
   ping() {
-    return fetch.ping({ url: \`\${this.url}/backend/graphql\` });
+    return fetch.ping({ origin: this.origin });
   }
 
   start(jobId: string) {
-    return fetch.startJob(jobId, { url: \`\${this.url}/backend/graphql\` });
+    return fetch.startJob(jobId, { origin: this.origin });
   }
 }`}
         />
@@ -166,14 +172,14 @@ unsubscribe();`}
           <ul className="list-disc space-y-2 pl-5">
             <li>
               {l.trans({
-                en: "Start with a normal signal. If it works locally, it can usually be called remotely by changing `{ url }`.",
-                ko: "먼저 일반 signal로 시작하세요. local에서 잘 동작한다면 보통 `{ url }`만 바꿔 원격 호출할 수 있습니다.",
+                en: "Start with a normal signal. If it works locally, it can usually be called remotely by changing `{ origin }`.",
+                ko: "먼저 일반 signal로 시작하세요. local에서 잘 동작한다면 보통 `{ origin }`만 바꿔 원격 호출할 수 있습니다.",
               })}
             </li>
             <li>
               {l.trans({
-                en: "Keep edge server URLs in the database so cloud logic can loop over them.",
-                ko: "cloud 로직이 순회할 수 있도록 edge server URL은 DB에 저장하세요.",
+                en: "Keep edge server origins in the database so cloud logic can loop over them.",
+                ko: "cloud 로직이 순회할 수 있도록 edge server origin은 DB에 저장하세요.",
               })}
             </li>
             <li>

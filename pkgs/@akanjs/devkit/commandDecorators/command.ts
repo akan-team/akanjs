@@ -102,6 +102,7 @@ const getOptionValue = async (argMeta: ArgMeta, opt: Record<string, unknown>, co
 
   if (enumChoices) {
     const choices = normalizeEnumChoices((await resolveEnumChoices(argMeta, context)) ?? []);
+    if (choices.length === 1) return choices[0]?.value;
     const choice = await select({ message: ask ?? desc ?? `Select the ${name} value`, choices });
     return choice;
   } else if (nullable) return null;
@@ -164,7 +165,7 @@ const assertCurrentDirectoryIsWorkspaceRoot = async () => {
   );
 };
 
-const getInternalArgumentValue = async (
+export const getInternalArgumentValue = async (
   argMeta: InternalArgMeta,
   value: string | undefined,
   workspace: WorkspaceExecutor,
@@ -200,6 +201,7 @@ const getInternalArgumentValue = async (
     }
   } else if (sysType === "app") {
     if (value && appNames.includes(value)) return AppExecutor.from(workspace, value);
+    if (!value && appNames.length === 1 && appNames[0]) return AppExecutor.from(workspace, appNames[0]);
     const appName = await select<string>({ message: `Select the ${sysType} name`, choices: appNames });
     return AppExecutor.from(workspace, appName);
   } else if (sysType === "lib") {
@@ -336,7 +338,7 @@ It may cause unexpected behavior. Run \`akan update\` to update latest akanjs.`,
         };
 
         programCommand.action(async (...args: unknown[]) => {
-          Logger.rawLog();
+          if (!targetMeta.targetOption.stdio) Logger.rawLog();
           const cmdArgs = args.slice(0, args.length - 2);
           const opt = args[args.length - 2] as Record<string, unknown>;
           const commandArgs = [] as unknown[];
@@ -364,7 +366,7 @@ It may cause unexpected behavior. Run \`akan update\` to update latest akanjs.`,
 
           try {
             await targetMeta.handler.call(cmd, ...commandArgs);
-            Logger.rawLog();
+            if (!targetMeta.targetOption.stdio) Logger.rawLog();
           } catch (e) {
             printCliError(e);
             throw e;

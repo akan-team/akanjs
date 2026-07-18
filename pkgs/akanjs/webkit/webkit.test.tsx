@@ -16,6 +16,7 @@ const originalClearTimeout = globalThis.clearTimeout;
 const originalSetInterval = globalThis.setInterval;
 const originalClearInterval = globalThis.clearInterval;
 const effectCleanups: Array<() => void> = [];
+const reactLazyLoaders: Array<() => Promise<unknown>> = [];
 let hookIndex = 0;
 const hookStates: unknown[] = [];
 let hookMemoStates: Array<{ deps: unknown[]; value: unknown }> = [];
@@ -71,7 +72,10 @@ mock.module("react", () => ({
     if (cleanup) effectCleanups.push(cleanup);
   },
   forwardRef: (fn: unknown) => fn,
-  lazy: (loader: unknown) => ({ loader }),
+  lazy: (loader: () => Promise<unknown>) => {
+    reactLazyLoaders.push(loader);
+    return { loader };
+  },
   memo: <T,>(component: T) => component,
   act: async (fn: () => void | Promise<void>) => await fn(),
 }));
@@ -283,6 +287,7 @@ afterEach(() => {
   globalThis.setInterval = originalSetInterval;
   globalThis.clearInterval = originalClearInterval;
   effectCleanups.splice(0);
+  reactLazyLoaders.length = 0;
   hookIndex = 0;
   hookStates.length = 0;
   hookMemoStates = [];
@@ -527,5 +532,17 @@ describe("lazy loading", () => {
 
     expect(DefaultLazy.displayName).toBe("LazyWrapper");
     expect(ClientGate.displayName).toBe("LazySsrFalseStub");
+  });
+
+  test("normalizes direct component loader results for React lazy", async () => {
+    const { lazy } = await import("./lazy");
+    installWindow();
+    const Loaded = () => "Loaded";
+
+    lazy(async () => Loaded);
+
+    const loader = reactLazyLoaders.at(-1);
+    expect(loader).toBeDefined();
+    await expect(loader?.()).resolves.toEqual({ default: Loaded });
   });
 });

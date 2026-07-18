@@ -892,18 +892,18 @@ export const General = ({ className, inventory }: GeneralProps) => {
           return (
             <div
               key={\`\${stock.type}-\${index}\`}
-              className={clsx("space-y-3 rounded-xl px-6 py-4 shadow-md", {
-                "bg-base-100": status === "empty",
-                "bg-warning": status === "low",
-                "bg-success": status === "normal",
+              className={clsx("space-y-3 rounded-xl border bg-base-100 px-6 py-4 shadow-md", {
+                "border-base-300": status === "empty",
+                "border-warning/40": status === "low",
+                "border-success/40": status === "normal",
               })}
             >
               <div className="flex items-center justify-between">
                 <div
                   className={clsx("rounded px-2 py-1 text-xs font-bold", {
                     "border border-base-300 bg-base-100 text-base-content/70": status === "empty",
-                    "border border-base-300 bg-warning text-warning-content/70": status === "low",
-                    "border border-base-300 bg-success text-success-content/70": status === "normal",
+                    "border border-warning/40 bg-base-100 text-warning": status === "low",
+                    "border border-success/40 bg-base-100 text-success": status === "normal",
                   })}
                 >
                   {l(\`stockType.\${stock.type}\`)}
@@ -919,10 +919,10 @@ export const General = ({ className, inventory }: GeneralProps) => {
                 </div>
               </div>
               <div className="flex items-center justify-between gap-4">
-                <div className="h-2 w-full overflow-hidden rounded-full bg-base-100">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-base-200">
                   <div
                     className={clsx("h-full", {
-                      "bg-base-100": status === "empty",
+                      "bg-base-300": status === "empty",
                       "bg-warning": status === "low",
                       "bg-success": status === "normal",
                     })}
@@ -1078,7 +1078,7 @@ export default async function Page() {
   );
 }`}
           />
-          <div className="my-6 rounded-lg bg-gradient-to-r from-base-100 to-base-300 p-6">
+          <div className="my-6 rounded-lg bg-linear-to-r from-base-100 to-base-300 p-6">
             <div className="mb-3 font-bold text-lg text-primary">
               {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
             </div>

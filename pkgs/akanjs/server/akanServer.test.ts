@@ -40,6 +40,8 @@ const setAkanEnv = () => {
   process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
   process.env.AKAN_PUBLIC_ENV = "local";
   process.env.AKAN_PUBLIC_OPERATION_MODE = "local";
+  delete process.env.AKAN_OPENAPI;
+  delete process.env.AKAN_PUBLIC_OPENAPI;
   process.env.SERVER_MODE = "all";
   process.env.NODE_ENV = "test";
 };
@@ -151,6 +153,26 @@ describe("AkanServer DI lookup", () => {
       expect(() => server.getAdaptor("missing")).toThrow('Adaptor "missing" is not registered.');
     } finally {
       await server.stop();
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("AkanServer OpenAPI config", () => {
+  test("serves OpenAPI only when explicitly enabled", async () => {
+    setAkanEnv();
+    const { AkanServer, createLib } = await loadRuntime();
+    const tmp = await mkdtemp(join(tmpdir(), "akan-server-openapi-"));
+
+    try {
+      expect(new AkanServer("serverGet", createEnv(tmp), "all", createLib()).openapi).toBe(false);
+      expect(new AkanServer("serverGet", createEnv(tmp), "all", createLib(), { openapi: true }).openapi).toBe(true);
+      expect(new AkanServer("serverGet", createEnv(tmp), "all", createLib()).setOpenApi().openapi).toBe(true);
+
+      process.env.AKAN_OPENAPI = "true";
+      expect(new AkanServer("serverGet", createEnv(tmp), "all", createLib()).openapi).toBe(true);
+    } finally {
+      delete process.env.AKAN_OPENAPI;
       await rm(tmp, { recursive: true, force: true });
     }
   });

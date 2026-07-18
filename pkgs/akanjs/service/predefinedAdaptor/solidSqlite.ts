@@ -30,6 +30,7 @@ export const getSolidConfig = (env: SolidEnv): Required<SolidConfig> => {
     appName,
     fileName: `${appName}-${environment}_solid.db`,
     isProduction: process.env.NODE_ENV === "production",
+    operationMode: env.operationMode,
     workspaceRoot: env.workspaceRoot,
   });
   return {

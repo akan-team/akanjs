@@ -44,6 +44,7 @@ export default function Layout({ children }: LayoutProps) {
       name: l.trans({ en: "Domain", ko: "도메인" }),
       subMenus: [
         { name: l.trans({ en: "Overview", ko: "개요" }), href: "/conventions/module/overview" },
+        { name: "model.abstract.md", href: "/conventions/module/abstract" },
         { name: "model.constant.ts", href: "/conventions/module/constant" },
         { name: "model.dictionary.ts", href: "/conventions/module/dictionary" },
         { name: "model.document.ts", href: "/conventions/module/document" },
@@ -61,6 +62,7 @@ export default function Layout({ children }: LayoutProps) {
       name: l.trans({ en: "Scalar", ko: "스칼라" }),
       subMenus: [
         { name: l.trans({ en: "Overview", ko: "개요" }), href: "/conventions/scalar/overview" },
+        { name: "scalar.abstract.md", href: "/conventions/scalar/abstract" },
         { name: "scalar.constant.ts", href: "/conventions/scalar/constant" },
         { name: "scalar.dictionary.ts", href: "/conventions/scalar/dictionary" },
         { name: "scalar.document.ts", href: "/conventions/scalar/document" },
@@ -72,6 +74,7 @@ export default function Layout({ children }: LayoutProps) {
       name: l.trans({ en: "Service", ko: "서비스" }),
       subMenus: [
         { name: l.trans({ en: "Overview", ko: "개요" }), href: "/conventions/service/overview" },
+        { name: "service.abstract.md", href: "/conventions/service/abstract" },
         { name: "service.dictionary.ts", href: "/conventions/service/dictionary" },
         { name: "service.service.ts", href: "/conventions/service/service" },
         { name: "service.signal.ts", href: "/conventions/service/signal" },

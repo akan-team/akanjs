@@ -11,6 +11,7 @@ import {
   type ServiceModel,
 } from "akanjs/service";
 import { type BuildInternal, buildInternal, type InternalBuilder, type InternalInfo } from "./internalInfo";
+import type { SrvRefName } from "./types";
 
 export interface Internal extends Adaptor {
   schedule: ScheduleAdaptor;
@@ -20,7 +21,7 @@ export interface Internal extends Adaptor {
 export type InternalCls<
   SrvModule extends ServiceModel = ServiceModel,
   InternalInfoMap extends { [key: string]: InternalInfo } = { [key: string]: InternalInfo },
-> = AdaptorCls & { refName: SrvModule["srv"]["refName"]; srv: SrvModule; [INTERNAL_META]: InternalInfoMap };
+> = AdaptorCls & { refName: SrvRefName<SrvModule>; srv: SrvModule; [INTERNAL_META]: InternalInfoMap };
 
 /** Builds an internal adaptor for schedules, queues, processes, and server-only jobs. */
 export function internal<

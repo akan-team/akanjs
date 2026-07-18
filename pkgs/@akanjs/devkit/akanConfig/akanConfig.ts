@@ -19,7 +19,7 @@ import {
   type LibConfigResult,
 } from "./types";
 
-const DEFAULT_BARREL_IMPORTS = ["akanjs/webkit", "akanjs/common", "akanjs/ui"];
+const DEFAULT_BARREL_IMPORTS = ["akanjs/webkit", "akanjs/common", "akanjs/ui", "akanjs/server"];
 const DEFAULT_OPTIMIZE_IMPORTS = [
   "lucide-react",
   "date-fns",
@@ -76,6 +76,47 @@ const DEFAULT_AKAN_IMAGE_CONFIG: AkanImageConfig = {
   maxRemoteBytes: 25 * 1024 * 1024,
 };
 
+const normalizeIndexPath = (indexPath: string | undefined): string | undefined => {
+  const normalized = indexPath?.trim();
+  if (!normalized) return undefined;
+  const path = `/${normalized.replace(/^\/+|\/+$/g, "")}`;
+  return path === "/" ? "/" : path;
+};
+
+const normalizeStringList = (values: string[] | undefined) => {
+  const normalized = values?.map((value) => value.trim()).filter(Boolean) ?? [];
+  return normalized.length > 0 ? [...new Set(normalized)] : undefined;
+};
+
+const normalizeDeepLinkDomain = (domain: string) => {
+  const normalized = domain.trim();
+  if (!normalized) return "";
+  try {
+    const url = new URL(normalized.includes("://") ? normalized : `https://${normalized}`);
+    return url.host.toLowerCase();
+  } catch {
+    return normalized
+      .replace(/^https?:\/\//, "")
+      .replace(/\/+$/g, "")
+      .toLowerCase();
+  }
+};
+
+const normalizeDeepLinks = (deepLinks: DeepPartial<AkanMobileTargetConfig["deepLinks"]> | undefined) => {
+  if (!deepLinks) return undefined;
+  const schemes = normalizeStringList(deepLinks.schemes as string[] | undefined);
+  const domains = normalizeStringList((deepLinks.domains as string[] | undefined)?.map(normalizeDeepLinkDomain));
+  const teamId = (deepLinks.ios?.teamId as string | undefined)?.trim();
+  const sha256CertFingerprints = normalizeStringList(deepLinks.android?.sha256CertFingerprints as string[] | undefined);
+  if (!schemes && !domains && !teamId && !sha256CertFingerprints) return undefined;
+  return {
+    ...(schemes ? { schemes } : {}),
+    ...(domains ? { domains } : {}),
+    ...(teamId ? { ios: { teamId } } : {}),
+    ...(sha256CertFingerprints ? { android: { sha256CertFingerprints } } : {}),
+  } satisfies AkanMobileTargetConfig["deepLinks"];
+};
+
 export class AkanAppConfig implements AppConfigResult {
   app: App;
   rootPackageJson: PackageJson;
@@ -88,6 +129,7 @@ export class AkanAppConfig implements AppConfigResult {
   i18n: AkanI18nConfig;
   publicEnv: string[];
   mobile: AkanMobileConfig;
+  secrets: string[];
   baseDevEnv: BaseDevEnv;
   libs: string[];
   domains = new Set<string>();
@@ -120,11 +162,16 @@ export class AkanAppConfig implements AppConfigResult {
     process.env.AKAN_PUBLIC_DEFAULT_LOCALE = this.i18n.defaultLocale;
     process.env.AKAN_PUBLIC_LOCALES = this.i18n.locales.join(",");
     this.publicEnv = (config?.publicEnv as string[] | undefined) ?? ([] as string[]);
+    this.secrets = (config?.secrets as string[] | undefined) ?? ([] as string[]);
     this.mobile = this.#resolveMobileConfig(config.mobile);
     this.docker = this.#makeDockerContent(config?.docker ?? {});
   }
   #resolveMobileConfig(mobile: DeepPartial<AkanMobileConfig> | undefined): AkanMobileConfig {
-    const { targets: rawTargets, ...rawMobile } = mobile ?? {};
+    const {
+      targets: rawTargets,
+      indexPath: _indexPath,
+      ...rawMobile
+    } = (mobile ?? {}) as DeepPartial<AkanMobileConfig> & { indexPath?: unknown };
     const appName = rawMobile.appName ?? this.app.name;
     const appId = rawMobile.appId ?? `com.${this.app.name}.app`;
     const version = rawMobile.version ?? "0.0.1";
@@ -140,6 +187,8 @@ export class AkanAppConfig implements AppConfigResult {
         const target = rawTarget as DeepPartial<AkanMobileTargetConfig>;
         const fallbackBasePath = !rawTargets && this.basePaths.has(name) ? name : undefined;
         const basePath = (target.basePath ?? fallbackBasePath)?.replace(/^\/+|\/+$/g, "") || undefined;
+        const indexPath = normalizeIndexPath(target.indexPath as string | undefined);
+        const deepLinks = normalizeDeepLinks(target.deepLinks);
         if (basePath && !this.basePaths.has(basePath)) {
           throw new Error(
             `Mobile target '${name}' uses unknown basePath '${basePath}' in apps/${this.app.name}/akan.config.ts`,
@@ -150,6 +199,8 @@ export class AkanAppConfig implements AppConfigResult {
           ...target,
           name,
           basePath,
+          indexPath,
+          deepLinks,
           appName: target.appName ?? appName,
           appId: target.appId ?? appId,
           version: target.version ?? version,
@@ -232,7 +283,14 @@ export class AkanAppConfig implements AppConfigResult {
     else return archs.map((arch) => `FROM ${image[arch] ?? defaultImage} AS ${arch}`).join("\n");
   }
   #makeDockerContent(docker: DeepPartial<DockerConfig>): DockerConfig {
-    if (docker.content) return { content: docker.content, image: {}, preRuns: [], postRuns: [], command: [] };
+    if (docker.content)
+      return {
+        content: docker.content,
+        image: {},
+        preRuns: [],
+        postRuns: [],
+        command: [],
+      };
     const preRunScripts = this.#getDockerRunScripts(docker.preRuns ?? []);
     const postRunScripts = this.#getDockerRunScripts(docker.postRuns ?? []);
 
@@ -264,7 +322,13 @@ ENV AKAN_PUBLIC_LOCALES=${this.i18n.locales.join(",")}
 ENV AKAN_PUBLIC_OPERATION_MODE=cloud
 
 CMD [${command.map((c) => `"${c}"`).join(",")}]`;
-    return { content, image: imageScript, preRuns: docker.preRuns ?? [], postRuns: docker.postRuns ?? [], command };
+    return {
+      content,
+      image: imageScript,
+      preRuns: docker.preRuns ?? [],
+      postRuns: docker.postRuns ?? [],
+      command,
+    };
   }
   static async from(app: App) {
     const [configImp, baseDevEnv, libs, rootPackageJson] = await Promise.all([
@@ -289,8 +353,24 @@ CMD [${command.map((c) => `"${c}"`).join(",")}]`;
       ...SSR_RUNTIME_PACKAGES,
       ...NATIVE_RUNTIME_PACKAGES,
       ...DEFAULT_BACKEND_RUNTIME_PACKAGES,
-      ...DATABASE_MODE_RUNTIME_PACKAGES[this.defaultDatabaseMode],
+      ...this.getDatabaseModeRuntimePackages(),
     ];
+  }
+  getDatabaseModeRuntimePackages(databaseMode: DatabaseMode = this.defaultDatabaseMode) {
+    return [...DATABASE_MODE_RUNTIME_PACKAGES[databaseMode]];
+  }
+  getMissingDatabaseModeDependencySpecs(databaseMode: DatabaseMode = this.defaultDatabaseMode) {
+    const rootDependencies = {
+      ...this.rootPackageJson.dependencies,
+      ...this.rootPackageJson.devDependencies,
+    };
+    return this.getDatabaseModeRuntimePackages(databaseMode)
+      .filter((lib) => !rootDependencies[lib])
+      .map((lib) => {
+        const version = this.#resolveProductionDependencyVersion(lib);
+        if (!version) throw new Error(`Dependency ${lib} not found in package.json`);
+        return `${lib}@${version}`;
+      });
   }
   getProductionPackageJson(data: Partial<PackageJson> = {}): PackageJson {
     return {
@@ -333,7 +413,12 @@ function getAkanPackageJson() {
       // Try the next known layout: source package first, bundled CLI package second.
     }
   }
-  akanPackageJson = { name: "akanjs", version: "0.0.0", description: "akanjs", dependencies: {} };
+  akanPackageJson = {
+    name: "akanjs",
+    version: "0.0.0",
+    description: "akanjs",
+    dependencies: {},
+  };
   return akanPackageJson;
 }
 

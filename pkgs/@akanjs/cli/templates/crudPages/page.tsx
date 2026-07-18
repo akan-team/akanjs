@@ -10,10 +10,10 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dic
     filename: "_index.tsx",
     content: `
 import { ${dict.Model}, fetch, usePage } from "@apps/${dict.appName}/client";
-import { Link, Load } from "akanjs/ui";
+import { Link } from "akanjs/ui";
 import type { PageConfig } from "akanjs/client";
 
-export default function Page() {
+export default async function Page() {
   const { l } = usePage();
   const { ${dict.model}InitInPublic } = await fetch.init${dict.Model}InPublic();
   return (

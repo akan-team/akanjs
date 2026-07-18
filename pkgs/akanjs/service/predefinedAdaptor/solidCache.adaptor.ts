@@ -1,7 +1,6 @@
 import type { Database } from "bun:sqlite";
-import type { Dayjs } from "akanjs/base";
 import { adapt } from "../adapt";
-import type { CacheAdaptor } from "./cache.adaptor";
+import type { CacheAdaptor, CacheSetOptions } from "./cache.adaptor";
 import {
   decodeSolidValue,
   encodeSolidValue,
@@ -14,6 +13,7 @@ import {
 } from "./solidSqlite";
 
 type CacheRow = { value: string | Buffer | null; valueType: SolidValueType; expiresAt: number | null };
+type CacheEntryRow = CacheRow & { subKey: string };
 
 export class SolidCache
   extends adapt("solidCache", ({ env }) => ({
@@ -61,7 +61,7 @@ export class SolidCache
     this.#db?.close();
   }
 
-  async set(topic: string, key: string, value: string | number | Buffer, option: { expireAt?: Dayjs } = {}) {
+  async set(topic: string, key: string, value: string | number | Buffer, option: CacheSetOptions = {}) {
     const encoded = encodeSolidValue(value);
     const now = Date.now();
     this.#db
@@ -98,7 +98,7 @@ export class SolidCache
     key: string,
     subKey: string,
     value: string | number | Buffer,
-    option: { expireAt?: Dayjs } = {},
+    option: CacheSetOptions = {},
   ) {
     const encoded = encodeSolidValue(value);
     const now = Date.now();
@@ -133,6 +133,28 @@ export class SolidCache
     this.#db
       .query(`DELETE FROM "_akan_solid_cache_hash" WHERE "topic" = ? AND "key" = ? AND "subKey" = ?`)
       .run(topic, key, subKey);
+  }
+
+  async hkeys(topic: string, key: string): Promise<string[]> {
+    this.#cleanup();
+    const rows = this.#db
+      .query(`SELECT "subKey" FROM "_akan_solid_cache_hash" WHERE "topic" = ? AND "key" = ? ORDER BY "subKey" ASC`)
+      .all(topic, key) as { subKey: string }[];
+    return rows.map((row) => row.subKey);
+  }
+
+  async hentries<T extends string | number | Buffer>(topic: string, key: string): Promise<[string, T][]> {
+    this.#cleanup();
+    const rows = this.#db
+      .query(
+        `SELECT "subKey", "value", "valueType", "expiresAt" FROM "_akan_solid_cache_hash" WHERE "topic" = ? AND "key" = ? ORDER BY "subKey" ASC`,
+      )
+      .all(topic, key) as CacheEntryRow[];
+    return rows.map((row) => [row.subKey, decodeSolidValue<T>(row.valueType, row.value) as T]);
+  }
+
+  async hclear(topic: string, key: string): Promise<void> {
+    this.#db.query(`DELETE FROM "_akan_solid_cache_hash" WHERE "topic" = ? AND "key" = ?`).run(topic, key);
   }
 
   #cleanup() {

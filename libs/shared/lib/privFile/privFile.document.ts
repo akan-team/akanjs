@@ -20,14 +20,11 @@ export class PrivFileModel extends into(PrivFile, PrivFileFilter, cnst.privFile,
   }
 
   async progressUpload(id: string, loadSize: number | undefined, totalSize: number) {
-    await this.PrivFile.updateOne(
-      { id },
-      { set: { progress: Math.floor(((loadSize ?? 0) / (totalSize || 1)) * 100) } },
-    );
+    await this.PrivFile.updateOne({ id }, { progress: Math.floor(((loadSize ?? 0) / (totalSize || 1)) * 100) });
   }
 
   async finishUpload(id: string, privatePath: string, data: Partial<db.PrivFileInput> = {}) {
-    return this.PrivFile.updateOne({ id }, { set: { ...data, privatePath, progress: 100, status: "active" } });
+    return this.PrivFile.updateOne({ id }, { ...data, privatePath, progress: 100, status: "active" });
   }
 
   async generatePrivFile(data: Partial<db.PrivFile>): Promise<db.PrivFile> {

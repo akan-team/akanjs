@@ -174,6 +174,8 @@ describe("DatabaseResolver declaration contracts", () => {
         find: (query: unknown) => { sort: (sort: unknown) => Promise<unknown[]> };
       };
       listInCategory: (...args: unknown[]) => Promise<unknown[]>;
+      findInCategory: (...args: unknown[]) => Promise<unknown>;
+      pickInCategory: (...args: unknown[]) => Promise<unknown>;
       queryInCategory: (...args: unknown[]) => unknown;
       __pickId: (query?: unknown) => Promise<string>;
     };
@@ -203,6 +205,22 @@ describe("DatabaseResolver declaration contracts", () => {
     expect(instance.queryInCategory("news")).toEqual({
       kind: "all",
       queries: [{ category: "news" }, { removedAt: { kind: "op", op: "empty" } }],
+    });
+    await instance.findInCategory("news", false, { select: { secret: true } });
+    expect(instance.__store.calls.at(-1)).toEqual({
+      method: "findOne",
+      args: [
+        { kind: "all", queries: [{ category: "news" }, { removedAt: { kind: "op", op: "empty" } }] },
+        { sort: { createdAt: -1 }, skip: 0, sample: false, select: { secret: true } },
+      ],
+    });
+    await instance.pickInCategory("news", false, { select: { secret: true } });
+    expect(instance.__store.calls.at(-1)).toEqual({
+      method: "pickOne",
+      args: [
+        { kind: "all", queries: [{ category: "news" }, { removedAt: { kind: "op", op: "empty" } }] },
+        { sort: { createdAt: -1 }, skip: 0, sample: false, select: { secret: true } },
+      ],
     });
     const bulkLoaded = await instance.serverResolverTestItemLoader.loadMany(["doc-2", "missing", "doc-1"]);
     expect(bulkLoaded).toEqual([

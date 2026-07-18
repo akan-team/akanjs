@@ -10,15 +10,7 @@ export class FileInternal extends internal(srv.file, () => ({})) {}
 export class FileSlice extends slice(srv.file, { guards: { root: None, get: Public, cru: None } }, () => ({})) {}
 
 export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
-  addFiles: mutation([cnst.File]) //, { onlyFor: "graphql" })
-    .body("files", [Upload])
-    .body("metas", [cnst.FileMeta])
-    .body("type", String, { example: "user" })
-    .body("parentId", ID, { nullable: true })
-    .exec(async function (files, metas, type, parentId) {
-      return await this.fileService.addFiles(files, metas, type, parentId ?? undefined);
-    }),
-  addFilesRestApi: mutation([cnst.File]) //, { onlyFor: "restapi" })
+  addFiles: mutation([cnst.File], { fileUpload: true })
     .body("files", [Upload])
     .body("metas", String, { example: `[{"lastModifiedAt":"2024-01-14T15:32:47.766Z","size":0}]` })
     .body("type", String, { example: "user" })

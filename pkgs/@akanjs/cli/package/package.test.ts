@@ -34,18 +34,26 @@ describe("PackageScript", () => {
     const recorder = createCallRecorder();
     const pkg = createFakeExecutor("tool", {}, recorder);
     script.packageRunner.buildPackage = async (...args) => recorder.record("buildPackage", ...args);
+    script.packageRunner.verifyDistPackage = (async (...args: unknown[]) => {
+      recorder.record("verifyDistPackage", ...args);
+      return { name: "tool", version: "1.0.0", files: 2, size: 100 };
+    }) as never;
     script.packageRunner.scanSync = (async (...args: unknown[]) => {
       recorder.record("scanSync", ...args);
       return { name: "tool" };
     }) as never;
 
     await script.buildPackage(pkg as never);
+    await script.verifyDistPackage(pkg as never);
     const scanResult = (await script.syncPackage(pkg as never)) as unknown as { name: string };
 
     expect(scanResult).toEqual({ name: "tool" });
     expect(recorder.names()).toEqual([
       "tool.spinning",
       "buildPackage",
+      "spinner.succeed",
+      "tool.spinning",
+      "verifyDistPackage",
       "spinner.succeed",
       "tool.spinning",
       "scanSync",
@@ -130,11 +138,15 @@ describe("PackageRunner", () => {
       ].join("\n"),
     );
     await writeText(`${root}/pkgs/@sample/tool/index.ts`, 'import "lodash";\nexport const value = 1;\n');
+    await writeText(`${root}/pkgs/@sample/tool/README.md`, "# Tool\n");
+    await writeText(`${root}/pkgs/@sample/tool/README.ko.md`, "# Tool KO\n");
     const runner = new PackageRunner();
 
     await runner.buildPackage(pkg);
 
     expect(await Bun.file(`${root}/dist/pkgs/@sample/tool/custom-build.txt`).text()).toBe("ok");
+    expect(await Bun.file(`${root}/dist/pkgs/@sample/tool/README.md`).text()).toBe("# Tool\n");
+    expect(await Bun.file(`${root}/dist/pkgs/@sample/tool/README.ko.md`).text()).toBe("# Tool KO\n");
     const sourcePackageJson = (await Bun.file(`${root}/pkgs/@sample/tool/package.json`).json()) as {
       dependencies: Record<string, string>;
       devDependencies: Record<string, string>;
@@ -211,6 +223,44 @@ describe("PackageRunner", () => {
 
     await expect(runner.buildPackage(pkg)).rejects.toThrow(
       "Missing dependency versions in root package.json: missing-package",
+    );
+  });
+
+  test("verifies dist package metadata with npm pack dry-run", async () => {
+    const { root, pkg } = await createTempPackage("@sample/tool");
+    tempRoots.push(root);
+    await writeJson(`${root}/dist/pkgs/@sample/tool/package.json`, {
+      name: "@sample/tool",
+      version: "1.2.3",
+      publishConfig: { access: "public" },
+      bin: { tool: "./index.js" },
+    });
+    await writeText(`${root}/dist/pkgs/@sample/tool/README.md`, "# Tool\n");
+    await writeText(`${root}/dist/pkgs/@sample/tool/README.ko.md`, "# Tool KO\n");
+    pkg.workspace.spawn = (async (...args: unknown[]) => {
+      expect(args).toEqual(["npm", ["pack", "--dry-run", "--json", `${root}/dist/pkgs/@sample/tool`], { cwd: root }]);
+      return JSON.stringify([{ files: [{ path: "package.json" }, { path: "index.js" }], size: 1234 }]);
+    }) as never;
+
+    const result = await new PackageRunner().verifyDistPackage(pkg);
+
+    expect(result).toEqual({ name: "@sample/tool", version: "1.2.3", files: 2, size: 1234 });
+  });
+
+  test("rejects dist package bins that still point at TypeScript sources", async () => {
+    const { root, pkg } = await createTempPackage("@sample/tool");
+    tempRoots.push(root);
+    await writeJson(`${root}/dist/pkgs/@sample/tool/package.json`, {
+      name: "@sample/tool",
+      version: "1.2.3",
+      publishConfig: { access: "public" },
+      bin: { tool: "./index.ts" },
+    });
+    await writeText(`${root}/dist/pkgs/@sample/tool/README.md`, "# Tool\n");
+    await writeText(`${root}/dist/pkgs/@sample/tool/README.ko.md`, "# Tool KO\n");
+
+    await expect(new PackageRunner().verifyDistPackage(pkg)).rejects.toThrow(
+      "dist bin entries must not point at TypeScript sources",
     );
   });
 });

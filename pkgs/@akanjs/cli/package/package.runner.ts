@@ -3,6 +3,7 @@ import {
   FileSys,
   type PackageJson,
   type Pkg,
+  PkgExecutor,
   runner,
   TypeScriptDependencyScanner,
   type Workspace,
@@ -11,6 +12,13 @@ import { Logger } from "akanjs/common";
 import { $ } from "bun";
 
 export class PackageRunner extends runner("package") {
+  static readonly publishableAkanPackages = [
+    "akanjs",
+    "@akanjs/cli",
+    "@akanjs/devkit",
+    "create-akan-workspace",
+  ] as const;
+
   async version(workspace: Workspace | null, { log = true }: { log?: boolean } = {}) {
     const pkgJson =
       process.env.USE_AKANJS_PKGS === "true"
@@ -94,7 +102,13 @@ export class PackageRunner extends runner("package") {
 
     const hasBuildFile = await Bun.file(`${pkg.cwdPath}/build.ts`).exists();
     if (hasBuildFile) {
-      await pkg.workspace.spawn(process.execPath, [`${pkg.cwdPath}/build.ts`], { env: process.env, stdio: "inherit" });
+      await pkg.workspace.spawn(process.execPath, [`${pkg.cwdPath}/build.ts`], {
+        env: {
+          ...process.env,
+          ...(pkg.name === "akanjs" ? { AKAN_BUILD_DECLARATION_DIAGNOSTICS: "error" } : {}),
+        },
+        stdio: "inherit",
+      });
     } else {
       await $`cp -r ${pkg.cwdPath}/. ${pkg.dist.cwdPath}`;
       await Promise.all([
@@ -102,6 +116,64 @@ export class PackageRunner extends runner("package") {
         pkg.generateTsconfigJson(),
       ]);
     }
+    await this.#copyPackageReadmes(pkg);
+  }
+
+  async verifyDistPackage(pkg: Pkg): Promise<{ name: string; version: string; files: number; size: number }> {
+    const distPackageJsonPath = `${pkg.dist.cwdPath}/package.json`;
+    if (!(await Bun.file(distPackageJsonPath).exists())) {
+      throw new Error(`[package] dist package not found for ${pkg.name}. Run build-package first.`);
+    }
+    const pkgJson = await FileSys.readJson<PackageJson>(distPackageJsonPath);
+    if (pkgJson.name !== pkg.name) {
+      throw new Error(`[package] dist package name mismatch: expected ${pkg.name}, got ${pkgJson.name ?? "(missing)"}`);
+    }
+    if (!pkgJson.version) throw new Error(`[package] dist package version is missing for ${pkg.name}`);
+    if (!pkgJson.publishConfig || pkgJson.publishConfig.access !== "public") {
+      throw new Error(`[package] ${pkg.name} must publish with publishConfig.access=public`);
+    }
+    if (!(await Bun.file(`${pkg.dist.cwdPath}/README.md`).exists())) {
+      throw new Error(`[package] README.md is missing from dist package ${pkg.name}`);
+    }
+    if (!(await Bun.file(`${pkg.dist.cwdPath}/README.ko.md`).exists())) {
+      throw new Error(`[package] README.ko.md is missing from dist package ${pkg.name}`);
+    }
+    const binEntries =
+      typeof pkgJson.bin === "string" ? [pkgJson.bin] : Object.values((pkgJson.bin ?? {}) as Record<string, string>);
+    if (binEntries.some((binPath) => binPath.endsWith(".ts"))) {
+      throw new Error(`[package] ${pkg.name} dist bin entries must not point at TypeScript sources`);
+    }
+    if (pkg.name === "akanjs") {
+      const exports = pkgJson.exports as Record<string, unknown> | undefined;
+      const rootExport = exports?.["."] as { types?: string } | undefined;
+      if (!rootExport?.types?.startsWith("./types/")) {
+        throw new Error("[package] akanjs dist exports must point type declarations at ./types");
+      }
+    }
+    const packOutput = await pkg.workspace.spawn("npm", ["pack", "--dry-run", "--json", pkg.dist.cwdPath], {
+      cwd: pkg.workspace.workspaceRoot,
+    });
+    const [packResult] = JSON.parse(packOutput) as Array<{ files?: unknown[]; size?: number }>;
+    return {
+      name: pkg.name,
+      version: pkgJson.version,
+      files: packResult?.files?.length ?? 0,
+      size: packResult?.size ?? 0,
+    };
+  }
+
+  async verifyAkanPublishPackages(workspace: Workspace) {
+    const results = [];
+    for (const pkgName of PackageRunner.publishableAkanPackages) {
+      results.push(await this.verifyDistPackage(PkgExecutor.from(workspace, pkgName)));
+    }
+    return results;
+  }
+
+  async #copyPackageReadmes(pkg: Pkg) {
+    await Promise.all(
+      ["README.md", "README.ko.md"].map((fileName) => pkg.cp(fileName, `${pkg.dist.cwdPath}/${fileName}`)),
+    );
   }
 
   async updateWorskpaceRootPackageJson(workspace: Workspace, rootPackageJson: PackageJson) {

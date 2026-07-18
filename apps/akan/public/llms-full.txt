@@ -1,0 +1,4475 @@
+# Akan.js LLM Context
+
+Akan.js is a convention-driven, Bun-first full-stack TypeScript framework. The important authoring unit is business intent: pages, domain modules, signals, services, stores, and UI live in predictable places so humans and coding agents can extend projects without re-deriving architecture.
+
+## How To Use This File
+
+- Use this file for broad context.
+- Use `/llms/pages/**/*.md` mirrors for page-specific context.
+- Use source docs under `/docs`, `/references`, `/conventions`, and `/cheatsheet` for the rendered website.
+- Generated files and generated indexes should not be hand-edited unless the docs say so.
+
+## Core Workflow For Agents
+
+1. Read the relevant convention page before adding files.
+2. Keep business logic near the domain module that owns it.
+3. Prefer Akan CLI generation and scan workflows over hand-writing generated surfaces.
+4. Respect server/client import boundaries.
+5. Run the smallest relevant lint, test, or build command after changes.
+
+## Business Service
+
+Source: /docs/arch/backend
+Mirror: /llms/pages/docs/arch/backend.md
+Priority: P0
+
+Headings:
+- Business Service Architecture
+- Request To Business Action
+- Service Layer
+- Signal Surface
+- Business Service Scenarios
+
+Business Service
+
+Business Service Architecture
+
+Akan business service is the server-side execution layer for business behavior. When a customer places an order, a manager adds stock, a reservation status changes, or a nightly report is generated, the business service decides what runs now, what changes stored data, what should run in the background, and which clients need to be notified.
+
+Request actions
+
+The user clicks a button and expects a clear result, such as submit order, add stock, or approve request.
+
+Business services
+
+Rules and orchestration live here: stock rules, payment status, reservation conflicts, and external APIs.
+
+Background work
+
+Slow, repeated, scheduled, or non-blocking tasks can run after the screen receives a quick response.
+
+Realtime updates
+
+When dashboards, devices, or other users should see a change, the business service publishes the updated result.
+
+Request To Business Action
+
+The most common business service path starts from a UI action. A generated client helper calls a signal endpoint, the endpoint delegates the business decision to a service, and the result updates stored data or returns a useful response to the screen.
+
+Example: Article Server Module
+
+A business service module can be read from right to left: traffic reaches the API port, signal exposes callable endpoints and auth boundaries, service makes the business decision, and document handles storage details.
+
+Defines the archive rulebook: schema, query filters, sort options, and document-level helpers.
+
+Owns business logic: who can change an article, how authors are added, and which document methods to call.
+
+Exposes callable endpoints through 8282/api and applies auth boundaries before delegating to service logic.
+
+Signal endpoints are exposed through the API port, so generated clients can call business actions through the same surface.
+
+signal: phone operator
+
+Receives calls for specific requests, filters spam or unsafe calls, manages operational pressure, and sends valid work to the right service.
+
+service: business owner
+
+Performs the actual work, decides how it should be done, and exchanges work with other domain owners when needed.
+
+document: archive rulebook
+
+Defines the document form, processing order, and organization rules used while the work is stored and handled.
+
+Service Layer
+
+A service is the business owner who performs the actual work. It decides how the work should be done, combines rules, saved data, other services, external APIs, and side effects into one meaningful business action.
+
+Product stock
+
+Check whether stock can be added, reserved, or reduced before updating inventory.
+
+Payment flow
+
+## CSS And Styling
+
+Source: /docs/arch/css
+Mirror: /llms/pages/docs/arch/css.md
+Priority: P0
+
+Headings:
+- Styling Foundation
+- Design System First
+- Theme System Declaration
+- Font Declaration
+
+CSS And Styling
+
+Styling Foundation
+
+Akan uses Tailwind CSS and DaisyUI as the default styling foundation. Tailwind gives screens a fast utility language for layout, spacing, responsive behavior, and one-off composition. DaisyUI adds semantic component names and theme tokens, so app screens can say primary, base, warning, or error instead of hard-coding every color.
+
+Use Tailwind for structure and layout. Use DaisyUI for theme-aware component vocabulary and semantic colors.
+
+How the layers work together
+
+Imports Tailwind, Akan UI styles, DaisyUI, and app theme tokens.
+
+Turns brand decisions into reusable names such as primary, base, warning, and error.
+
+Use those names through btn, input, card, alert, and Tailwind utility classes.
+
+Assemble consistent business screens without repeating raw color and spacing rules.
+
+Design System First
+
+Do not design every page from scratch. Define the app's basic component style first, then let pages assemble those components. Buttons, inputs, cards, forms, alerts, tabs, modals, and navigation should share the same spacing, radius, text color, border, and state behavior.
+
+Buttons, inputs, cards, forms, alerts, tabs, modals, and navigation should use shared classes.
+
+Business pages should assemble the design system instead of redefining colors and spacing.
+
+Imported modules feel consistent when they use the same Tailwind and DaisyUI tokens.
+
+Theme System Declaration
+
+Theme and color are declared from the app style entry. The app imports Tailwind, Akan UI styles, enables DaisyUI, then declares one or more DaisyUI themes. Each theme maps semantic names to real colors.
+
+DaisyUI supports multiple theme blocks, so one app can define light, dark, brand, admin, or demo themes with the same component classes.
+
+DaisyUI Theme Docs
+
+Font Declaration
+
+Fonts are declared from the root layout. Export a fonts array with a font name, file paths, weights, and an optional default flag. Akan then exposes those fonts as Tailwind-like classes, so components can use className values such as font-pretendard or font-lemonmilk.
+
+## UI Architecture
+
+Source: /docs/arch/frontend
+Mirror: /llms/pages/docs/arch/frontend.md
+Priority: P0
+
+Headings:
+- UI Architecture
+- What Is Server-Side Rendering?
+- Rendering Boundary
+- Page Composition Pattern
+- Client State With st
+- Server Calls With fetch
+- Generated Helpers Summary
+- i18n
+- Client Targets
+
+UI Architecture
+
+Akan UI is the user-facing interface layer of the app. When a customer opens a product page, a manager edits stock, or a partner checks orders from another client, the interface decides what appears immediately, what becomes interactive, and how user actions reach the backend.
+
+Fast first screen
+
+Server-rendered pages can show catalog, article, or dashboard content before the browser becomes interactive.
+
+Interactive work
+
+Client components handle forms, filters, stock changes, realtime dashboards, and browser/device APIs.
+
+Generated helpers
+
+Generated fetch, store, and model namespaces reduce hand-written API and state glue.
+
+Many client surfaces
+
+Customer web, admin console, partner site, and mobile apps can share backend logic while showing different screens.
+
+What Is Server-Side Rendering?
+
+Server-side rendering means the server prepares the first visible HTML before the browser finishes loading the full app. Users can see useful content earlier, even before every button, input, and realtime feature becomes interactive.
+
+The server prepares
+
+The server reads route, params, language, and initial data, then prepares the page users will see first.
+
+The browser shows
+
+The browser can paint meaningful content quickly, so users are not staring at an empty app shell.
+
+The client activates
+
+After the first view appears, client components attach event handlers for typing, clicking, filtering, and live updates.
+
+SSR Timeline
+
+The important point is that viewing and interacting do not have to happen at the exact same moment.
+
+Server
+
+Prepare first HTML from route, params, language, and initial data.
+
+Browser View
+
+Paint useful content quickly so the user can understand the page.
+
+Client Areas
+
+Activate forms, filters, modals, realtime updates, st, and fetch actions.
+
+Business Example
+
+On a shopping page, customers should see product names, prices, and the first list quickly. The add-to-cart button, stock filter, and recommendation carousel can become interactive after the first view is already visible.
+
+SSR is not the opposite of client-side UI. It is the first step of the experience: show useful content early, then let client components handle the parts that need interaction.
+
+Rendering Boundary
+
+## Runtime And Infra
+
+Source: /docs/arch/infra
+Mirror: /llms/pages/docs/arch/infra.md
+Priority: P0
+
+Headings:
+- Infra Architecture
+- Which Option Should I Use?
+- How Traffic Moves
+- Database Mode
+- Growth Stages
+
+Runtime And Infra
+
+Infra Architecture
+
+Akan apps can run locally, in a cloud cluster, or near users and devices through edge servers. The same application code can be packaged for different environments, while infrastructure decides where traffic enters, where services run, and how data or deployment operations are managed.
+
+Developer machine for fast iteration. Good for MVP screens, feature prototypes, and local debugging.
+
+Kubernetes-based runtime for shared team environments and production-like workloads.
+
+Near-site server for stores, kiosks, robots, factories, buildings, or local device networks.
+
+Deployment control area for CI/CD, environment files, secrets, and release automation.
+
+Which Option Should I Use?
+
+Start from the product situation, not from the infrastructure name. A small internal tool, a team QA environment, a store kiosk, and a production service need different levels of infrastructure.
+
+MVP or feature prototype
+
+Use local development first. Keep the setup small until the product needs shared data, shared testing, or deployment automation.
+
+Team QA or staging
+
+Use cloud deployment with debug or develop environments so the team can test the same service together.
+
+Physical site or device network
+
+Use edge when the service is close to stores, kiosks, factories, buildings, robots, or private device networks.
+
+Headquarters plus branches
+
+Use a hybrid shape: cloud cluster as the main service and edge servers for nearby execution, proxying, or cache-like responsibilities.
+
+How Traffic Moves
+
+Infrastructure does not change the business code inside your app. It decides how a request reaches the Akan runtime. The path is simple on your laptop, more structured in a cloud cluster, and sometimes site-specific when edge servers are involved.
+
+Local path
+
+A developer opens localhost and talks almost directly to the Akan dev runtime. This is the fastest path for building screens and checking business flows.
+
+Cloud path
+
+A user enters through a public domain. Kubernetes Ingress receives the request, Service finds the right app pod, and the Akan runtime handles the actual page or API response.
+
+Edge path
+
+A store, kiosk, robot, or local device network can reach an edge proxy first. The edge side may serve nearby runtime work or forward traffic to the cloud service.
+
+After the request reaches Akan App Runtime, the runtime classifies what kind of work it is. A page request renders a web page, an API request runs signal/service logic, a WebSocket request keeps a realtime channel open, and static assets are served as files.
+
+SSR or CSR page response for browser users.
+
+Business operations through signal and service logic.
+
+Realtime updates and long-lived client connections.
+
+Static files, client bundles, images, and generated output.
+
+## Mobile App Architecture
+
+Source: /docs/arch/mobile
+Mirror: /llms/pages/docs/arch/mobile.md
+Priority: P0
+
+Headings:
+- Mobile App Architecture
+- CSR Web Workflow
+- Android Packaging Workflow
+- iOS Packaging Workflow
+- Native Build Troubleshooting
+
+Mobile App Architecture
+
+Akan mobile apps are built by opening a CSR web client inside a Capacitor native shell, then packaging that shell as Android and iOS apps. The screen is developed with the same Akan UI system, while Capacitor provides the native project, app identity, and device bridge.
+
+If the app declares multiple basePaths, one Akan app can release multiple mobile packages. For example, a customer app, an admin stock app, and a field worker app can each open a different basePath while sharing the same services, permissions, database rules, and generated fetch calls.
+
+CSR web surface
+
+The app opens a Single Page Application client, not a separate native UI rewrite.
+
+Capacitor package
+
+Capacitor wraps the CSR client with Android and iOS project files, app metadata, and device APIs.
+
+Shared business logic
+
+Web and mobile use the same Akan service, signal, document, auth, and generated client helpers.
+
+CSR Web Workflow
+
+Akan mobile work starts as normal UI work. Build the page, component, st state, fetch calls, and dictionary text the same way you would for the web. Then test it as a CSR Single Page Application before packaging it into Android or iOS.
+
+The csr=true search parameter is useful when you want to check SPA navigation, client state, page transition, and mobile-like behavior from the browser. This is faster than opening the simulator for every small UI change.
+
+Controls how screens move. Detail pages often use stack; tab roots often use none.
+
+Prevents content from colliding with notches, home indicators, and system bars.
+
+Reserves space for fixed headers, tab bars, keyboards, or bottom actions.
+
+Keeps CSR page state when users return to list or tab screens.
+
+Akan CSR pages can apply mobile-style page transitions from pageConfig. Use the demos below to compare the four transition presets in a browser CSR environment before packaging the same pages into a native shell.
+
+/csr/bottomup_en.mp4
+
+Good for modal-like flows or pages that should rise from the bottom.
+
+/csr/fade_en.mp4
+
+Keeps the movement calm when the screen context changes without hierarchy.
+
+/csr/scale_en.mp4
+
+Adds a light zoom motion for focused entry into the next page.
+
+/csr/stack_en.mp4
+
+Works well for detail pages that push over a list or parent screen.
+
+FAQ: Are hybrid apps worse than native apps?
+
+Akan improves the user experience with page transitions, safe-area handling, inset support, CSR page cache, and mobile pageConfig. Device capabilities are not blocked by the hybrid model: Capacitor plugins can bridge camera, Bluetooth, device, haptics, keyboard, safe area, and other native APIs when needed.
+
+Android Packaging Workflow
+
+Use the Android flow when you want to run the CSR client in an emulator/device, verify the native Android project, or prepare Play Store artifacts. Akan prepares the Capacitor project, syncs Android, applies metadata, and builds APK or AAB outputs.
+
+Use startAndroid while developing screens and checking live reload.
+
+## Architecture Overview
+
+Source: /docs/arch/overview
+Mirror: /llms/pages/docs/arch/overview.md
+Priority: P0
+
+Headings:
+- Architecture Overview
+- One App, Many Surfaces
+- The Main Runtime Conversation
+- Architecture Areas
+- How To Read The Architecture Docs
+
+Architecture Overview
+
+Akan architecture starts from the product behavior, not from a separate frontend, backend, mobile, and infrastructure checklist. A customer sees a screen, takes an action, business rules decide what should happen, data changes, other clients may be notified, and the same app can be packaged for web, mobile, cloud, or edge environments.
+
+Core Philosophy
+
+Write business behavior first, then let generated helpers reduce API and state glue.
+
+Use one business service layer for many client surfaces: SSR web, CSR web, admin, partner, and mobile.
+
+Choose the deployment shape after the product needs it: local first, then cloud, edge, or hybrid.
+
+One App, Many Surfaces
+
+Akan is designed for products that rarely have only one screen. A store customer page, an admin console, a partner client, a mobile app, and an edge device workflow can present different interfaces while sharing the same rules and data.
+
+Surface Map
+
+SSR pages, CSR pages, admin clients, partner clients, and mobile CSR clients.
+
+Generated fetch, st, Model, and usePage helpers connect screens to business behavior.
+
+Signal receives calls, service decides rules, and document handles stored data.
+
+The same product can run locally, in cloud clusters, near devices at the edge, or inside mobile packages.
+
+The point is not to force every client to look the same. The point is to let different clients reuse the same business truth while presenting the right workflow for each audience.
+
+The Main Runtime Conversation
+
+Most Akan features can be understood as a conversation between the interface and the business service. The interface shows useful content and captures intent. The business service receives a safe request, decides the rule, changes data, and may trigger background or realtime follow-up work.
+
+User sees or acts
+
+SSR helps the first view appear early. Client components handle typing, clicking, filtering, chat, maps, camera, and local state.
+
+Generated helpers call the service surface
+
+fetch calls signal endpoints, st manages client state, Model namespaces keep model usage typed, and usePage handles i18n.
+
+Signal routes intent
+
+Signal is the callable surface for endpoint, slice, and internal work. It applies boundaries before sending valid work to services.
+
+Service decides business behavior
+
+Services coordinate rules, stored data, external APIs, dependency injection, background work, and realtime publication.
+
+Document and runtime complete the loop
+
+Documents define schema, query, sort, methods, and statics. Runtime and infra decide where the work is reached and executed.
+
+Architecture Areas
+
+The detailed architecture pages explain each area more deeply. This overview keeps the map small: each area owns a different kind of decision, and the product becomes clear when those decisions stay in the right place.
+
+UI Architecture
+
+Explains first view, SSR, rendering boundary, client components, st, fetch, generated helpers, i18n, and client targets.
+
+## App Config
+
+Source: /docs/core/config
+Mirror: /llms/pages/docs/core/config.md
+Priority: P0
+
+Headings:
+- App Config
+- Config Shape
+- Application Env
+- Routes and Domains
+- Mobile Metadata
+- Images And Public Env
+- Build And Runtime
+- Defaults And Rules
+
+App Config
+
+akan.config.ts is the app-level settings file. You do not need to understand every option on day one. Start with an empty file, then add only the fields your app actually needs.
+
+Domains
+
+App identity
+
+Env values
+
+Image rules
+
+Browser env
+
+Build options
+
+Start small
+
+Most defaults are already prepared, so an empty config is valid.
+
+Add only what changes
+
+Define only the parts your app actually needs to customize.
+
+One source of truth
+
+CLI commands, production builds, and mobile commands all read this file.
+
+Config Shape
+
+The default export can be a plain object or a function. Use an object for most apps. Use a function only when the config needs app metadata while it is being loaded.
+
+Object config
+
+Function config
+
+Akan treats config as partial settings. Missing fields are filled with framework defaults.
+
+Application Env
+
+akan.config.ts describes how the app is built and routed. The env/ folder describes the actual values the app uses at runtime, such as public client keys, server-only options, and environment-specific service settings.
+
+Values used by browser or client-side code. Keep only public-safe values here, such as map keys, site keys, or feature switches.
+
+Values used only by server-side modules. Put server options, connection settings, and private service configuration here.
+
+Each suffix is selected by AKAN_PUBLIC_ENV. Use local for your machine, testing for tests, debug/develop for shared stages, and main for production.
+
+Type files define the shape of env values, so missing or misspelled settings can be caught while coding.
+
+Client env and publicEnv are different. env.client.* stores app values for each environment, while publicEnv only allows selected process.env names to be exposed to browser builds.
+
+Server env can also include options from shared libraries through env.server.type.ts. This lets an app keep one final server env object while reusing library-level defaults.
+
+Routes and Domains
+
+routes is where you list the public domains for the app. If your app has several clients, each route can also name the client with basePath. The multi-client page explains that structure in detail; here we focus on the config fields.
+
+Optional client name for this route. Akan normalizes /store/ to store.
+
+## Data Layer
+
+Source: /docs/core/data-layer
+Mirror: /llms/pages/docs/core/data-layer.md
+Priority: P0
+
+Headings:
+- Data Layer
+- Model Shape
+- Document And Service
+- Signal To UI
+- Fetch And Store Instances
+- Common Decisions
+
+Data Layer
+
+The data layer is the path from business data definition to server logic and screen usage. If you are building products, orders, users, reservations, or invoices, this is where the business shape becomes real application behavior.
+
+Akan keeps this flow close to the model folder. For example, a product feature can define what a product is, how it is stored, how stock and price rules work, and how pages load product data from one module.
+
+What data exists
+
+How data is stored
+
+What the business does
+
+What pages can call
+
+How client state is kept
+
+How users see the data
+
+You do not need every layer on day one. A simple read-only feature may start with constant and document, then add service or signal when the business behavior grows.
+
+Model Shape
+
+The constant file is the design sheet of a business object. It answers questions such as: What fields does a product have? Which values are allowed? Which fields should be shown in a lightweight list?
+
+In the product example, the model keeps catalog information such as name, description, image URL, price, stock, and sale status. This is the shared source that the server and client can both understand.
+
+Fields that can be submitted when creating or updating data.
+
+The base object shape used to build other model views.
+
+A smaller view for lists, cards, and embedded references.
+
+Document And Service
+
+The document file turns the model shape into stored data. It defines the database-facing model and the filter shape used when the application searches or sorts records.
+
+The service file is where business behavior lives. In this simple example, the document knows how to increase its own stock, and the service decides which product should be loaded and saved.
+
+Signal To UI
+
+Signal is the layer that makes server behavior available to pages. A slice is useful when the page needs a list or dashboard view. An endpoint is useful when the page needs to run a specific action, such as adding product stock.
+
+Use it for data views such as public list, admin list, dashboard, or search result.
+
+Use it for actions such as cancel order, approve request, send message, or complete payment.
+
+Use it for server-side jobs such as schedules, intervals, queues, or maintenance work.
+
+Fetch And Store Instances
+
+After signal is declared, Akan exposes app-specific client helpers from @apps/<app>/client. The two names you will see most often are fetch and st.
+
+Use fetch when you need to call server data or pass slice metadata into Akan UI components. Use st when a client component needs to read current state or run a store action.
+
+Generated request instance. It calls endpoints, initializes slices, loads views, and exposes fetch.slice.* metadata.
+
+Generated client store instance. It provides st.use.* hooks for reading state and st.do.* actions for changing state.
+
+This pattern is useful when a page, action, or server-side helper needs to run a business operation. The generated fetch instance calls the server endpoint and returns the typed result.
+
+## File Rule
+
+Source: /docs/core/file-rule
+Mirror: /llms/pages/docs/core/file-rule.md
+Priority: P0
+
+Headings:
+- File Rule
+- Module Files
+- Naming Rule
+- Facet Files And Barrels
+- Module Differences
+- Codegen And Choices
+
+File Rule
+
+Folder names tell Akan what business area a file belongs to. File names tell Akan what role the file plays inside that business area. For example, product.document.ts describes stored product data, while Product.View.tsx describes how product data is shown on screen.
+
+Think of a module as a small business department. A product module may know what fields a product has, how to save it, how users request it, and how it is shown in the admin screen. Each file handles one of those jobs.
+
+Business meaning
+
+A file suffix explains what kind of work the file does for the model.
+
+Scanner friendly
+
+Akan scans these suffixes and connects models, services, signals, and UI pieces.
+
+Start small
+
+You do not need every file. Add files only when the business feature needs them.
+
+You can start with only one or two files. For example, a simple read-only catalog may only need product.document.ts and Product.View.tsx at first.
+
+Module Files
+
+These files describe the data, server logic, API surface, and state around a business model. If you are building products, orders, users, invoices, or reservations, these are the files you will touch most often.
+
+For example, an order feature may keep order status values in order.constant.ts, saved order fields in order.document.ts, payment completion logic in order.service.ts, and page-callable actions in order.signal.ts.
+
+The abstract file is not only for LLMs. It keeps domain knowledge beside the code, so people and agents can understand business invariants before changing implementation files.
+
+Business intent, domain rules, workflows, and agent notes kept next to the module code. Example: order cancellation rules or status transition policy.
+
+Constants, status values, default options, and shared model types. Example: order status such as pending, paid, shipped.
+
+Labels, field names, and text keys used by the model. Example: product name, price, stock labels.
+
+Stored data shape, filters, and document model definition. Example: what fields an invoice saves and how it can be queried.
+
+Server-side business logic. Example: create an order, apply a coupon, calculate shipping, or complete payment.
+
+Public actions, slices, endpoints, and internal jobs that pages can call. Example: load order list or request OCR.
+
+Client or model state used across screens. Example: selected filters, cart state, or temporary form state.
+
+UI Files
+
+UI files describe how a model appears on screen. They use PascalCase because they export React components or UI groups.
+
+A business model usually appears in several screen sizes: a small badge, a list row, a detail card, an admin panel, and sometimes a full dashboard section. UI files help you keep those screen pieces close to the model they represent.
+
+Use it for display components, such as ProductCard, OrderSummary, UserProfile, or InvoicePreview.
+
+Use it for small reusable units inside the model UI, such as status badges, price rows, or avatar blocks.
+
+Use it for repeated screen templates or layout patterns, such as a standard admin detail layout.
+
+Use it for UI-level actions or helper components, such as remove buttons, edit modal triggers, or upload controls.
+
+Use it for larger areas, such as admin screens, list/detail zones, tab content, or dashboard sections.
+
+Naming Rule
+
+## Folder Rule
+
+Source: /docs/core/folder-rule
+Mirror: /llms/pages/docs/core/folder-rule.md
+Priority: P0
+
+Headings:
+- Folder Rule
+- Workspace Rule
+- App/Library Folder Rule
+- Module Folder Rule
+- Growth Path
+
+Folder Rule
+
+Akan folders are designed around business ownership. When you add a new feature, first ask a simple question: is this a page customers visit, business data the app owns, shared UI, or server-only integration code?
+
+Find ownership
+
+If only one product uses it, put it in that app. If several products share it, move it to a library.
+
+Keep pages separate
+
+Screens such as /orders or /admin/users go under page/. Reusable components and logic go elsewhere.
+
+Model the business
+
+Business nouns such as user, order, product, and invoice usually become folders under lib/.
+
+Workspace Rule
+
+At the workspace root, choose the folder by how widely the code is used. A single product goes to apps/. Shared product code goes to libs/. Framework code goes to pkgs/.
+
+A business product that can run by itself. Examples: customer web, admin portal, brand site, or mobile-backed service.
+
+Reusable product code shared by several apps. Examples: user account, billing, file upload, social features, security, admin features, etc.
+
+Code with special purpose, used or published as npm packages. Examples: payment gateway, robot control code, blockchain integration code, etc.
+
+Generated folders such as .akan/ and dist/ are build outputs. They help Akan run fast, but you normally do not edit them by hand.
+
+Use pkgs/ only when the code should feel like a separate installable package. Ordinary one-app business logic belongs in apps/, and shared product logic usually belongs in libs/ first.
+
+App/Library Folder Rule
+
+An app is where a product becomes visible to users. A library is where reusable business capabilities live. They look similar because both can have domain modules, UI, assets, and server helpers.
+
+Client
+
+Runs in the browser or client app. Keep secrets out of this type.
+
+Server
+
+Runs on the server. Good for private API calls, scripts, and protected logic.
+
+Shared
+
+Can be used from both server and client. Keep it pure and environment-safe.
+
+Put pages here when a user can visit them by URL. Examples: home, sign in, product detail, admin dashboard.
+
+Put business concepts here. Examples: user, product, order, invoice, payment, notification.
+
+Put reusable visual components here. Examples: Header, ProductCard, DatePicker, EmptyState.
+
+Put shared code that both server and client can access. Examples: formatters, validators, constants, and pure utilities.
+
+Put browser/client helpers here. Examples: hooks for notifications, device APIs, local storage, or web-only behavior.
+
+Environment adapters and environment-specific files generated or used by Akan.
+
+Put static files here. Examples: logos, icons, fonts, downloadable PDFs, sample images.
+
+## Multi Client
+
+Source: /docs/core/multi-client
+Mirror: /llms/pages/docs/core/multi-client.md
+Priority: P0
+
+Headings:
+- Multi Client
+- Route Config
+- When To Use
+- Page Structure
+- Local And Production
+- CSR And Mobile Builds
+
+Multi Client
+
+Akan can serve multiple web clients from one app by splitting pages with basePath. Each client gets its own first path segment during local development, but in production the matching domain can hide that segment and serve it as a separate site.
+
+Multi web
+
+Each basePath can behave like its own website.
+
+Single backend
+
+All clients still share the same app server, domain modules, and services.
+
+Separate builds
+
+CSR web and mobile apps can be prepared per basePath.
+
+Route Config
+
+Define clients in akan.config.ts with routes. The basePath names the client, and domains decide which production host should open that client.
+
+The first page folder and the client boundary. For basePath: store, pages live under page/store.
+
+Production domains that should open this basePath. When the domain matches, users see the site without the basePath segment.
+
+When To Use
+
+Use basePath when the business wants to operate separate client surfaces from one app. The codebase and backend stay together, but each client can have its own domain, entry page, build output, and app package.
+
+Use basePath
+
+Use it for surfaces that are sold, deployed, or accessed as separate products, even if they share the same domain logic and backend services.
+
+Use normal routing
+
+Use it for pages that are just sections inside the same client, such as account settings, dashboards, tabs, or grouped screens.
+
+Customer-facing site and admin
+
+A store site and an admin console often share products, orders, users, and permissions. Split them with basePath when they need different domains, layouts, or release targets.
+
+Different customer groups
+
+For example, a consumer client, partner portal, and internal staff tool can all use the same backend while presenting different home screens and navigation.
+
+Separate mobile apps
+
+If Android and iOS packages must be released separately per brand, region, or user type, each mobile target can point to a different basePath.
+
+White-label or regional sites
+
+When several sites share business rules but need different domains, names, or first screens, basePath keeps them separate without creating multiple apps.
+
+Page Structure
+
+When routes define base paths, every page file must be placed under one of those first folders. Pages directly under page/ are invalid because Akan cannot assign them to a client.
+
+In local development, you open each client with its basePath, such as /store or /admin. After deployment, a configured domain can open that same client without showing the basePath in the URL.
+
+Rule: once basePath is declared, pages outside page/basePath/ are not allowed. Akan raises an error instead of routing them.
+
+## File Based Routing
+
+Source: /docs/core/routing
+Mirror: /llms/pages/docs/core/routing.md
+Priority: P0
+
+Headings:
+- File Based Routing
+- File Convention
+- Page File Shape
+- Layout File Shape
+- Base Paths
+- Root Layout Exports
+
+File Based Routing
+
+Akan uses file-based routing. You create files under page/, and the folder structure becomes the page URL. Most pages also get a language parameter automatically, so the same file can serve localized URLs.
+
+How files become routes
+
+Page file
+
+The index file becomes the route endpoint.
+
+Layout file
+
+The layout wraps pages below the same folder.
+
+Route group
+
+Parentheses organize files without adding a URL segment.
+
+File-based
+
+Folders and files decide the URL shape.
+
+Locale-aware
+
+Akan injects [lang] automatically.
+
+Explicit files
+
+Use page and layout files instead of hidden magic.
+
+File Convention
+
+A route file can be a page or a layout. _index.tsx renders the current segment, _layout.tsx wraps child segments, and route groups organize files without changing the URL.
+
+Page for the folder it lives in.
+
+Layout that wraps child pages below it.
+
+Organizes files without adding a URL segment.
+
+Single-file page for a path segment. project.tsx becomes /:lang/project.
+
+Single-file dynamic page. [projectId].tsx becomes /:lang/:projectId.
+
+Page File Shape
+
+A page file must export a default component. It can also export optional helpers for page options, metadata, and loading UI.
+
+The page component. This is required.
+
+Client page options such as transition or mobile safe-area behavior.
+
+Static metadata for the page.
+
+Dynamic metadata that can use route params.
+
+Fallback UI shown while the page is loading.
+
+Use either head or generateHead, not both. Use head for fixed metadata and generateHead when the title or tags depend on params.
+
+## Akan Runtime
+
+Source: /docs/core/runtime
+Mirror: /llms/pages/docs/core/runtime.md
+Priority: P0
+
+Headings:
+- Akan Runtime
+- Root-level Env Variables
+- getEnv()
+- Health, Metrics, Logs
+
+Akan Runtime
+
+Akan applications run on a Bun-based runtime that connects app code, generated artifacts, server routes, and pages. The app entry point (main.ts) starts the runtime, and Akan handles the server shape behind it.
+
+When Akan App starts, Akan Server prepares everything the app can serve. In practice, the runtime exposes four kinds of work.
+
+Internal API (Queue, Timer, etc.): internal work that runs without a browser request.
+
+API (HTTP, WebSocket): public communication for data requests and realtime updates.
+
+SSR Pages (Web): web pages rendered by the server and sent to the browser.
+
+CSR Page (Android, iOS): client-rendered pages used by mobile targets.
+
+One Akan App can run one or more Akan Server processes. AKAN_REPLICA controls how many server processes are started for each role, so the same app can scale web traffic and background work separately. For browser traffic, Akan App also load-balances requests across ready federation and all servers.
+
+federation: serves browser traffic such as pages, API calls, and WebSocket connections.
+
+batch: runs background work such as queues, timers, and scheduled jobs.
+
+all: runs both federation and batch behavior in one server process. This is the simple local default.
+
+A single Akan App has built-in clustering. You can run multiple server replicas and let Akan App distribute traffic, without setting up separate local load-balancing tools such as nginx, docker compose, or pm2.
+
+Root-level Env Variables
+
+The root .env file decides which organization, domain, environment, operation mode, and log level the app uses while it runs. Most projects keep these values stable, but changing them lets the same app behave like a local, debug, develop, or production-like service.
+
+Environment variables prefixed with AKAN_PUBLIC_ are public. They can be read by browser code, so never store secrets, private tokens, or credentials in them.
+
+Project owner
+
+Organization or repository namespace. Usually fixed for the project.
+
+Public domain
+
+Used when the app creates links, callbacks, and domain-based routes.
+
+Data environment
+
+Choose local, debug, develop, or main depending on which data set you want to use.
+
+Connection target
+
+Choose whether clients connect to local runtime, edge paths, or cloud services.
+
+Log detail
+
+Choose how much runtime output you want to see in the terminal.
+
+File log detail
+
+Choose how much structured Logger output is written to files. Defaults to trace, independent from terminal log level.
+
+File logging
+
+AkanApp writes gateway and child process logs to runtime/logs by default. Set this to 0 to disable file logging.
+
+Log directory
+
+## Fundamentals
+
+Source: /docs/intro/fundamentals
+Mirror: /llms/pages/docs/intro/fundamentals.md
+Priority: P0
+
+Headings:
+- Write once, deploy everywhere
+- Make Developer a Businessman
+- Collab cohesively
+- Who should use?
+
+Fundamentals
+
+Write once, deploy everywhere
+
+Why do we need to create multiple separate projects to implement a single business?
+
+Isn't it confusing and inefficient to describe the same business intent separately for backend, frontend, app, database, and deployment? Can't one definition flow through every surface?
+
+Akan.js is a full-stack TypeScript framework where business definitions become the source of truth for web, app-oriented client surfaces, server runtime, data contracts, and deployment artifacts.
+
+Write business definitions once: pages, domain modules, signals, services, stores, and UI.
+
+Akan Runtime
+
+Pages
+
+File-routed web and app-oriented client surfaces.
+
+Server
+
+Services, signals, API traffic, realtime traffic, and background work.
+
+Data
+
+One convention-driven workspace produces runtime surfaces, data contracts, generated artifacts, and deployable packages.
+
+With one type-safe business definition, Akan conventions carry your intent across pages, API contracts, services, stores, schemas, and runtime surfaces.
+
+With this, you spend less time wrestling with platform glue and more time designing the product your customers experience. The same clarity also gives agents a predictable structure to extend.
+
+Akan.js smooths over the following background technologies so your application can grow as one extensible system.
+
+Web/Mobile
+
+Testing
+
+Deployment
+
+Make Developer a Businessman
+
+Akan.js helps you minimize technical plumbing and focus on expressing business logic.
+
+Akan.js also provides built-in application features and installable libraries so proven business patterns can be reused instead of rewritten.
+
+This is especially important in the age of agentic coding. Agents write better code when business intent has one obvious place and conventions decide where the rest should go.
+
+Workspace (monorepo)
+
+Akan.js is monorepo-native. A single organization can develop multiple apps and shared libraries in one repository, and app execution, production builds, library development, and package management all happen from the workspace root.
+
+Akan Workspace
+
+appA imports libA
+
+appB imports libA and libB
+
+appC imports libB
+
+code amount
+
+## Practice
+
+Source: /docs/intro/practice
+Mirror: /llms/pages/docs/intro/practice.md
+Priority: P0
+
+Headings:
+- Icecream business
+- Create icecream order module
+- Define Constant
+- Fill dictionary
+- Make template file
+- Update unit file
+- Expose to page
+
+Practice
+
+Icecream business
+
+You are now the owner of a Korean-style yogurt ice cream shop, "Ko-yo". The shop is located in San Francisco and you need to open the shop and start your business. The shop is 20 square meters in size.
+
+The concept of Korean-style yogurt ice cream is that customers can freely add their desired toppings to the yogurt base ice cream. You need to implement a order form to allow customers to select and add toppings freely.
+
+First, let's create an akan app with the project code "koyo". The koyo project is a service that operates all services under your company as the brand "Ko-yo". Now, let's type the following command in the terminal.
+
+Now, you can run the koyo service locally with the following command. Then, you can access the service at http://localhost:8282.
+
+Create icecream order module
+
+Now, customers want to order the ice cream. The order is simple. You need to select the size of the yogurt base ice cream and check the desired toppings.
+
+In Akan.js, we organize features into "modules" - think of them as complete packages that handle everything related to one thing. An ice cream order module will contain all the code needed to create, display, and manage ice cream orders.
+
+When you create a module, Akan.js automatically generates all the files you need following a consistent pattern. This makes your code organized and easy to understand.
+
+Fruit Ring
+
+Oreo
+
+Strawberry
+
+Mango
+
+Cheese Cube
+
+Corn
+
+Granola
+
+Banana
+
+Fig
+
+Now, let's create a domain for the ice cream order. The domain name is icecreamOrder, and it stores information about each ice cream order.
+
+This command will ask you which application to add the module to - select "koyo" since that's our ice cream shop app. The module name "icecreamOrder" describes what this module handles.
+
+After running this command, Akan.js creates a complete folder structure with all the files you need. Let's look at what gets created:
+
+Application code
+
+Individual application
+
+Domain modules
+
+Icecream order domain module
+
+Business intent
+
+Types and schemas
+
+Translations
+
+Document
+
+## Quick Start
+
+Source: /docs/intro/quickstart
+Mirror: /llms/pages/docs/intro/quickstart.md
+Priority: P0
+
+Headings:
+- Quick Start
+- Requirements
+- Create a Workspace
+- Run the App
+- Build
+
+Quick Start
+
+This guide gets you from an empty directory to a running Akan application.
+
+Along the way, you will see the Akan way: describe business intent once, then let conventions connect pages, APIs, services, stores, data, and deployment surfaces.
+
+Akan.js is monorepo-native. App execution, production builds, library development, and package management all happen from the workspace root.
+
+After reading this guide, you will know how to create a workspace, start the local runtime, find the first files to edit, and build the app for production.
+
+Requirements
+
+For the first run, Bun is the only required dependency. Docker and native IDEs become useful when you add local services or mobile builds.
+
+Bun 1.3.13 or higher
+
+Docker for local database services
+
+Android Studio or Xcode for native app builds
+
+Create a Workspace
+
+Start with the workspace creator. It asks a few questions, then lays out the monorepo conventions Akan uses for apps, libraries, pages, and domain modules.
+
+Run terminal commands without copying the leading prompt symbol.
+
+If you prefer a globally installed CLI, the same lifecycle is available through the akan command.
+
+Run the App
+
+Start the local Akan runtime with one command. It scans the workspace, reads the conventions, prepares generated artifacts, and opens the app.
+
+By default, the local gateway listens on http://localhost:8282. Pages, API calls, WebSocket traffic, and generated assets all flow through this runtime.
+
+Now the app is running through the Akan gateway. Edit a page and the same workspace can serve web, app-oriented client surfaces, API traffic, realtime traffic, and generated assets.
+
+Edit a page
+
+Akan pages live under apps/<app>/page. Index pages use the _index.tsx convention, so the first screen of myapp is apps/myapp/page/_index.tsx.
+
+Change the component and refresh the local gateway to confirm your first UI change.
+
+Open http://localhost:8282 to see the page through the Akan gateway.
+
+The runtime uses the same page convention for the surfaces Akan builds, so you work in one page tree instead of maintaining separate client projects.
+
+Know the app entry
+
+The generated main.ts starts the Akan runtime. Most application work happens in pages and domain modules, so you rarely need to edit this file.
+
+When akan start is running, the terminal shows the local runtime status. Use the gateway URL for pages and generated runtime surfaces.
+
+Build
+
+When the app is ready to ship, build it with the same conventions. Akan generates the server artifact, route manifests, client entries, static assets, and package metadata needed for production.
+
+The production build result is generated in the dist/apps/myapp directory.
+
+## akanjs/base
+
+Source: /references/akanjs/base
+Mirror: /llms/pages/references/akanjs/base.md
+Priority: P0
+
+Headings:
+- akanjs/base
+
+akanjs/base
+
+24 hex string uuid used for document ids and signal payload ids. It validates as a string and keeps an empty string as the default placeholder value.
+
+Integer primitive scalar for numeric fields that must be safe integers. It is common in counters, pagination values, metric samples, and scalar constant definitions.
+
+Finite number primitive scalar for decimal values such as coordinates, rates, balances, and resource metrics. Use it when fractional values are valid business data.
+
+Loose object scalar for payloads whose shape is intentionally open. Prefer explicit scalar/model fields when the shape is stable; use Any for integration blobs or flexible metadata.
+
+Akan re-exports the configured dayjs function and Dayjs type from base. Apps and libs use it for document dates, store state dates, service calculations, and UI formatting.
+
+Creates a typed enum scalar class from a literal value list. The generated enum exposes values, has, indexOf, find, filter, map, and forEach helpers used by constants and UI labels.
+
+Reads and caches Akan runtime environment values from public/server environment variables. It returns client/server URI data, operation mode, app identity, and render mode.
+
+Small id-keyed collection helper for light model arrays. It keeps a map from id to index and provides immutable-style set, delete, filter, slice, pick, and iteration helpers.
+
+`akanjs/base` contains Akan's primitive scalar classes, runtime environment helpers, and foundational utility types. Import it when defining constants, document ids, date values, runtime-specific behavior, or type-level model helpers.
+
+Usage
+
+## akanjs/client
+
+Source: /references/akanjs/client
+Mirror: /llms/pages/references/akanjs/client.md
+Priority: P0
+
+Headings:
+- akanjs/client
+
+akanjs/client
+
+Client navigation singleton that normalizes Akan language/base-path prefixes before delegating to the active router. Use it from pages, stores, templates, and utilities for push/replace/back/refresh.
+
+Re-export of `clsx` for composing class names across Akan UI code. Most view/unit/template components import it from `akanjs/client` to keep UI dependencies consistent.
+
+Common props for generated Unit, Zone, and list UI components. They carry model data, slice metadata, query/init settings, actions, columns, and click handlers.
+
+Route module types for page/layout files. `PageConfig` controls transition, safe area, gesture, and cache behavior, while `LayoutProps` describes layout children and route params.
+
+Font declaration types and client-side font factory shims. Layout modules use `Font` data so the server build can optimize local font assets while CSR code receives safe no-op shims.
+
+Page dictionary and translation helpers generated from Akan dictionaries. Components use `usePage()` for locale-aware text and `msg`/`Err` for message rendering helpers.
+
+Typed client fetch proxy built from registered signal metadata. It exposes generated endpoint and slice methods and keeps JWT state synchronized through auth helpers.
+
+Cookie and account helpers that work across server and client contexts. `getAccount` decodes the JWT only when it belongs to the current app and environment.
+
+Authentication helpers that update FetchClient JWT state, cookies, and client storage together. Stores call these after login/logout so future generated fetch calls include the right token.
+
+Device singleton for Capacitor/native features such as safe-area values, keyboard listeners, haptics, scroll position, platform info, and language detection.
+
+`akanjs/client` contains browser/UI-facing helpers: routing, typed fetch access, dictionary hooks, page/layout types, auth/cookie helpers, device utilities, font declarations, and common UI prop types.
+
+Usage
+
+## akanjs/common
+
+Source: /references/akanjs/common
+Mirror: /llms/pages/references/akanjs/common.md
+Priority: P0
+
+Headings:
+- akanjs/common
+
+akanjs/common
+
+Structured logger used by CLI, server, service adaptors, and long-running build/runtime code. It supports static calls, named instances, log-level filtering from `AKAN_PUBLIC_LOG_LEVEL`, and sink hooks for runtime file logging.
+
+Promise-based delay helper used in polling, retry, local server tests, and cloud auth loops. It resolves after the given milliseconds and keeps async flows readable.
+
+Tiny string casing helpers that change only the first character. Generators use them to convert module names into class names, file names, action names, and dictionary keys.
+
+Phone formatting and validation helpers used by form templates and business UI. `formatPhone` normalizes known Korean-style lengths while `isPhoneNumber` checks dashed phone input.
+
+Email format validator for templates, profile forms, and service desk inputs. It returns false for empty values and true only when the string matches the supported email pattern.
+
+HTTP wrapper used by srvkit integrations and platform APIs. Use it to centralize request options, logging, auth, and response handling for external services.
+
+Object path helpers for nested state and form values. They are useful when field paths are dynamic and direct property access is not possible.
+
+Random selection helpers used by generators and test utilities. Use `randomPick` for a single value and `randomPicks` when selecting multiple values from a candidate list.
+
+`akanjs/common` contains framework-agnostic utilities shared by CLI, server, UI, and app code. Import it for logging, formatting, validation, object path helpers, random helpers, and route/version utilities.
+
+Usage
+
+## akanjs/constant
+
+Source: /references/akanjs/constant
+Mirror: /llms/pages/references/akanjs/constant.md
+Priority: P0
+
+Headings:
+- akanjs/constant
+
+akanjs/constant
+
+Runtime registry for scalar/database constant metadata. Framework internals use it to resolve ref names, model classes, scalar metadata, enum metadata, and generated document model contracts.
+
+Builds a default object from a field object, respecting primitive defaults, nullable fields, arrays, maps, and field-level default callbacks. Model classes expose the same result through `Model.getDefault()`.
+
+`crystalize` converts raw values into model-friendly values such as dayjs and nested constants. `purify` converts class instances back into plain serializable objects for API and persistence boundaries.
+
+Serialization helpers for document and transport boundaries. They convert constant model values, dates, enums, maps, arrays, and nested models between runtime values and persisted payloads.
+
+Public type helpers used by documents, stores, and tests. `DocumentModel` maps relations to ids, `DefaultOf` describes default state, and `QueryOf` is used for query-shaped inputs.
+
+`akanjs/constant` defines Akan's schema layer. Import it when declaring scalar/module constants, deriving document/default/query types, inspecting model metadata, or converting constant instances across persistence boundaries.
+
+Usage
+
+## akanjs/fetch
+
+Source: /references/akanjs/fetch
+Mirror: /llms/pages/references/akanjs/fetch.md
+Priority: P0
+
+Headings:
+- akanjs/fetch
+
+akanjs/fetch
+
+Zone return type for initialized list pages. It contains list objects, insight object, pagination fields, query args, sort state, and init timestamp, and may be returned directly or as a Promise.
+
+Zone return type for a single model view. It wraps the server view payload and supports both synchronous server component data and asynchronous client/server fetching.
+
+Metadata carried with initialized slice data. UI helpers use it to know the ref name, slice name, and number of query arguments behind a list or insight block.
+
+Option shape for list initialization. It controls page, limit, sort, default form values, invalidation, and whether insight data should be fetched together with the list.
+
+Request account shape shared by server middleware and services. It always includes `appName` and `environment`, then allows app-specific account data to be added by generic parameter.
+
+Runtime client that turns serialized signal metadata into typed HTTP and WebSocket fetch functions. App clients use the proxy around this class, while advanced tests can instantiate or clone it directly.
+
+Server-side request helpers backed by AsyncLocalStorage or a request fallback stack. Use them in server components and fetch internals to read the current request without pulling client dependencies.
+
+`akanjs/fetch` defines the typed client/server fetch boundary. Import it for Zone props, generated fetch client types, request-scoped headers/cookies/theme helpers, and advanced FetchClient usage.
+
+Usage
+
+## akanjs/server
+
+Source: /references/akanjs/server
+Mirror: /llms/pages/references/akanjs/server.md
+Priority: P0
+
+Headings:
+- akanjs/server
+
+akanjs/server
+
+Gateway/orchestrator used by app `main.ts` files. It starts child server replicas, proxies HTTP and WebSocket traffic, reports metrics, and handles shutdown for local and production runs.
+
+Constructor option type for `AkanApp`. It configures replica layout, server path, runtime directory, HTTP port, and WebSocket base port for the gateway process.
+
+App/library option builder used by `lib/option.ts`. It registers env-derived use objects, signal middleware, and web proxies consumed by the server runtime.
+
+Response helper for web proxy code. `next` continues the request, `rewrite` proxies to a different URL while preserving proxy metadata, and `redirect` returns a normal redirect response.
+
+Type for server-side web proxy registrations. Libraries use it for locale routing, host/base-path routing, and custom request handling before the normal Akan router responds.
+
+Legacy method decorator that catches errors and logs a warning instead of throwing. It appears in integration srvkit classes where a best-effort external API call should not crash the caller.
+
+Legacy method decorators for server-side service/document helpers. `Transaction` wraps execution in the detected database transaction and `Cache` memoizes method results for a timeout window.
+
+`akanjs/server` contains app startup, server options, web proxy helpers, decorators, runtime artifacts, and operational utilities. Import it from app entrypoints, `lib/option.ts`, and server-only srvkit integrations.
+
+Usage
+
+## akanjs/signal
+
+Source: /references/akanjs/signal
+Mirror: /llms/pages/references/akanjs/signal.md
+Priority: P0
+
+Headings:
+- akanjs/signal
+
+akanjs/signal
+
+Guard classes decide whether a request can pass before endpoint or slice execution. `Public` always passes, `None` blocks, and `guard(name)` creates a named guard base class for app-specific rules.
+
+Internal argument providers for advanced endpoints. `Req` gives the Bun request, `Res` gives the mutable response context, and `Ws` gives websocket subscription state and event hooks.
+
+Middleware wraps endpoint execution. Built-ins include Logging, Cache, Timeout, and Retry, while custom middleware can read `SignalContext` and decide when to call `next()`.
+
+Global registry for database and service signals. App `sig.ts` files register every module signal so serialized fetch metadata, server routes, and runtime signal lookup can be built consistently.
+
+`akanjs/signal` declares the API boundary around services. Import it in `*.signal.ts` files to define endpoints, internal jobs, database slices, guards, middleware, request arguments, and registered server signals.
+
+Usage
+
+## akanjs/webkit
+
+Source: /references/akanjs/webkit
+Mirror: /llms/pages/references/akanjs/webkit.md
+Priority: P0
+
+Headings:
+- akanjs/webkit
+
+akanjs/webkit
+
+React lazy wrapper that supports `ssr: false`. It returns a fallback stub on the server and gates client rendering until mounted, which is useful for browser-only libraries such as maps, charts, and 3D scenes.
+
+Returns a debounced callback that delays execution until input quiets down. Search boxes, image editors, and expensive field updates use it to avoid repeated work while users type or drag.
+
+Runs the latest callback on a fixed interval and clears the timer on unmount. Zone components use it for polling metrics, game state, build logs, and realtime-like dashboards.
+
+Returns a throttled callback that runs immediately, then ignores calls until the delay passes. Use it for scroll, pointer, resize, or drag handlers that can fire too frequently.
+
+Client hook for promise-backed values. `useFetch` accepts a promise or immediate value, while `useFetchFn` memoizes a factory so re-renders do not duplicate network requests.
+
+Capacitor camera/photos hook. It checks permissions, opens app settings on denial, and exposes `getPhoto`, `pickImage`, and permission state for upload UIs.
+
+Capacitor contacts hook for mobile signup/social flows. It requests contact permission and returns phone/name contact data when native contacts are available.
+
+Capacitor geolocation hook. It requests location permissions, redirects to app settings when denied, and returns current coordinates for map or location flows.
+
+Push notification hook for native clients. It initializes FCM/push plugins, checks permission state, registers the device, and reads the FCM token when supported.
+
+CSR router hooks for translating hrefs into route state and tracking navigation history. They power cached page transitions, scroll restoration, and back/forward detection.
+
+Shared login form type used by auth stores and bridge UI. It describes target auth mode, redirect behavior, unauthorized path, and optional JWT handoff.
+
+`akanjs/webkit` contains browser-only React helpers and native-capability hooks. Import it for lazy browser components, debounce/throttle/interval hooks, promise state, CSR navigation state, and Capacitor camera/contact/location/push flows.
+
+Usage
+
+## Agent
+
+Source: /references/cli/agent
+Mirror: /llms/pages/references/cli/agent.md
+Priority: P0
+
+Headings:
+- Agent CLI
+
+Agent
+
+Agent CLI
+
+Agent commands install project guidance files for coding assistants. They are intentionally separate from the MCP server: rules are persistent project instructions, while MCP provides live read-only context.
+
+Use this after creating a workspace or when you want Cursor, Claude Code, Codex-style agents, and similar tools to follow Akan conventions consistently.
+
+## Application
+
+Source: /references/cli/application
+Mirror: /llms/pages/references/cli/application.md
+Priority: P0
+
+Headings:
+- Application CLI
+
+Application
+
+Application CLI
+
+Application commands manage app lifecycle work: create or remove apps, sync generated surfaces, start local servers, build production artifacts, run typechecks and tests, package mobile apps, and manage local database helpers.
+
+Most commands select an app from the workspace context. Options such as `--write`, `--target`, `--env`, and `--regenerate` control code generation and mobile build behavior.
+
+## Cloud
+
+Source: /references/cli/cloud
+Mirror: /llms/pages/references/cli/cloud.md
+Priority: P0
+
+Headings:
+- Cloud CLI
+
+Cloud
+
+Cloud CLI
+
+Cloud commands configure optional Akan Cloud helpers: authentication, LLM settings, project questions, and framework updates.
+
+Internal deployment commands marked `devOnly: true` are intentionally not documented here.
+
+## Context
+
+Source: /references/cli/context
+Mirror: /llms/pages/references/cli/context.md
+Priority: P0
+
+Headings:
+- Context CLI
+
+Context
+
+Context CLI
+
+Context commands expose Akan workspace structure in forms that people, agents, CI jobs, and MCP clients can consume.
+
+Use `context` to understand the workspace, `doctor` to validate conventions, and `mcp` when an MCP-aware client should query the same information over stdio.
+
+## Guideline
+
+Source: /references/cli/guideline
+Mirror: /llms/pages/references/cli/guideline.md
+Priority: P0
+
+Headings:
+- Guideline CLI
+
+Guideline
+
+Guideline CLI
+
+Guideline commands expose Akan's bundled agent instructions without invoking an LLM or changing files.
+
+Use them when you want an external agent to load the most specific instruction for a module file, scalar file, UI pattern, or global framework rule.
+
+## Library
+
+Source: /references/cli/library
+Mirror: /llms/pages/references/cli/library.md
+Priority: P0
+
+Headings:
+- Library CLI
+
+Library
+
+Library CLI
+
+Library commands manage shared libraries under the workspace. Use them when creating reusable domain, utility, UI, or platform code that multiple apps can import.
+
+The public library commands are `create-library`, `remove-library`, `sync-library`, and `install-library`.
+
+## Module
+
+Source: /references/cli/module
+Mirror: /llms/pages/references/cli/module.md
+Priority: P0
+
+Headings:
+- Module CLI
+
+Module
+
+Module CLI
+
+Module commands create and maintain domain modules inside an app or library. Use them when adding a new model-backed feature or adding common UI companion files to an existing module.
+
+Module names are normalized with lower-case first-letter style after spaces are removed, matching Akan module file conventions.
+
+## Commands
+
+Source: /references/cli/overview
+Mirror: /llms/pages/references/cli/overview.md
+Priority: P0
+
+Headings:
+- CLI Commands
+- Command Index
+
+Commands
+
+Create a workspace and keep repository-wide generated surfaces synchronized.
+
+Manage app lifecycle work from local development to mobile release and database helpers.
+
+Create, install, remove, and sync shared libraries used by apps.
+
+Manage framework/tooling packages under pkgs/akanjs.
+
+Generate domain modules and optional module UI companion files.
+
+Create reusable value types that are not database-backed document models.
+
+Generate CRUD page routes for an existing module inside an app.
+
+Configure optional cloud authentication, LLM settings, project questions, and updates.
+
+Expose workspace context, module abstracts, diagnostics, guideline instructions, agent rules, and read-only MCP tools.
+
+CLI Commands
+
+The Akan CLI manages the whole workspace lifecycle: workspace creation, app development, generated code, libraries, packages, modules, scalars, pages, mobile builds, local databases, and optional cloud helpers.
+
+This overview is a command index. Open the matching detail page for command-specific argument tables, option tables, notes, and terminal examples.
+
+Command Index
+
+Each CLI group mirrors a command declaration under `pkgs/@akanjs/cli`. Internal or development-only commands are intentionally skipped from public docs.
+
+## Package
+
+Source: /references/cli/package
+Mirror: /llms/pages/references/cli/package.md
+Priority: P0
+
+Headings:
+- Package CLI
+
+Package
+
+Package CLI
+
+Package commands manage packages under `pkgs/akanjs`. Use them for framework or tooling package lifecycle work: checking versions, creating packages, syncing package configuration, and building distributable output.
+
+These commands are lower-level than app or library commands. Prefer app/library commands for normal product code.
+
+## Page
+
+Source: /references/cli/page
+Mirror: /llms/pages/references/cli/page.md
+Priority: P0
+
+Headings:
+- Page CLI
+
+Page
+
+Page CLI
+
+Page commands generate app pages for existing modules. The current public page command creates CRUD pages: list, detail, create, and edit surfaces for a selected module.
+
+This command connects an app and a module, so use it after the domain module already exists.
+
+## Scalar
+
+Source: /references/cli/scalar
+Mirror: /llms/pages/references/cli/scalar.md
+Priority: P0
+
+Headings:
+- Scalar CLI
+
+Scalar
+
+Scalar CLI
+
+Scalar commands create and remove scalar types inside an app or library. A scalar is a reusable data type or value object, not a database-backed document model.
+
+The scalar name is normalized after spaces are removed, matching Akan scalar file conventions.
+
+## Workspace
+
+Source: /references/cli/workspace
+Mirror: /llms/pages/references/cli/workspace.md
+Priority: P0
+
+Headings:
+- Workspace CLI
+
+Workspace
+
+Create a new Akan.js workspace and optionally bootstrap the first application in the same step. The command normalizes names to lowercase kebab-case and uses the selected update tag, install-lib choice, and initialization flag to prepare the repository.
+
+Run lint and formatting for a selected app, library, or package target. `--fix` defaults to true, so the command applies formatter/linter fixes unless the option is explicitly disabled.
+
+Run lint and formatting across the workspace instead of a single selected target. Use it before broader verification when generated surfaces, app code, and shared libraries should be checked together.
+
+Refresh dependency and configuration surfaces for every app and library in the workspace. Use it when generated configuration looks stale or after changes that affect shared workspace setup.
+
+Workspace CLI
+
+Workspace commands create a new Akan.js workspace and keep the whole repository synchronized. Use them when you are starting a project, fixing generated surfaces, or applying lint across apps and libraries.
+
+The commands below come from `workspace.command.ts`: `create-workspace`, `lint`, `lint-all`, and `sync-all`.
+
+## Assets (public/ private/)
+
+Source: /conventions/applib/asset
+Mirror: /llms/pages/conventions/applib/asset.md
+Priority: P1
+
+Headings:
+- Asset Overview
+- Public Assets
+- Optimized Images
+- Private Assets
+- Library Asset Sync
+- Practical Rules
+
+Assets (public/ private/)
+
+Asset Overview
+
+Apps and libraries can both have an asset folder. Use public for files that the browser can request, and private for files that only server code should read.
+
+Served as static assets. Use it for images, PDF files, downloadable JSON, icons, and other files that can be public.
+
+Available only to server-side code. Use it for seed data, private JSON, model files, and resources used by server jobs.
+
+Public Assets
+
+Files under asset/public are copied to the app's public surface and served by the server. The browser can request them directly by URL.
+
+Optimized Images
+
+When an image is public, you can render it with the Image component from akanjs/ui. Akan serves an optimized image response in a similar way to Next.js image optimization, so use this for UI images instead of a plain img tag when possible.
+
+Private Assets
+
+Files under asset/private are for server-only resources. Put files here when the browser should not download them directly, but the server needs them to load data, run inference, or initialize a service.
+
+Library Asset Sync
+
+## Common Utils (common/)
+
+Source: /conventions/applib/common
+Mirror: /llms/pages/conventions/applib/common.md
+Priority: P1
+
+Headings:
+- Common Overview
+- What Belongs In Common
+- Barrel, Optimized Import, And Shape
+- Server And Client Usage
+- Practical Rules
+
+Common Utils (common/)
+
+Common Overview
+
+The common folder contains logic that can run in both server and client environments. Use it for pure helpers, shared formatting, validation, metadata builders, and transforms that should not depend on browser-only or server-only APIs.
+
+Use srvkit for server-only logic, webkit for browser or web-rendering logic, and common for cross-runtime logic shared by services, signals, pages, and components.
+
+What Belongs In Common
+
+Formatters
+
+Formatting logic used in both service output and UI display, such as bytes, packets, money, or short labels.
+
+Validators
+
+Validation or predicate helpers that should behave the same on the server and in the browser.
+
+Random/string utilities
+
+Small deterministic or generic helpers such as random codes, padding, shuffling, or short string transforms.
+
+Metadata builders
+
+## akan.config.ts
+
+Source: /conventions/applib/config
+Mirror: /llms/pages/conventions/applib/config.md
+Priority: P1
+
+Headings:
+- Akan Config Overview
+- Config File Shape
+- routes
+- mobile
+- defaultDatabaseMode
+- images
+- i18n
+- publicEnv
+- externalLibs
+- barrelImports
+- optimizeImports
+- docker
+- Library Config Fields
+
+akan.config.ts
+
+Akan Config Overview
+
+akan.config.ts is the app or library configuration entry point. Akan uses it to prepare server, web, mobile app, database, build, image, and environment behavior.
+
+You can start with an empty config. Akan treats the file as partial settings and fills missing fields with framework defaults.
+
+Config File Shape
+
+AppConfig and LibConfig can be plain objects or functions. Use a plain object for most cases. Use a function when the config needs the app or library metadata while it is being loaded.
+
+routes
+
+routes connects domains and basePath values to one app. Use it when one Akan app needs to serve several brands, services, or entry paths.
+
+Akan normalizes basePath values, collects domains, adds branch names, and creates default development domains when no explicit domain is provided.
+
+If mobile targets use basePath, define that basePath in routes first. Akan validates mobile target basePath values against the route list.
+
+mobile
+
+mobile defines the native app identity and target-specific packaging settings used when a web surface is shipped through Capacitor.
+
+## Server Utils (srvkit/)
+
+Source: /conventions/applib/srvkit
+Mirror: /llms/pages/conventions/applib/srvkit.md
+Priority: P1
+
+Headings:
+- Server Utility Overview
+- What Belongs In Srvkit
+- Server Level Appliance
+- Signal Level Appliance
+- Service Logic And External Libraries
+- Adaptor And plug
+- Practical Rules
+
+Server Utils (srvkit/)
+
+Server Utility Overview
+
+The srvkit folder contains server-only logic used by services, signals, and server jobs. Put reusable server abstractions here so convention files can stay focused on business behavior.
+
+This is also the safe place to wrap external libraries. Major convention files such as *.service.ts are intentionally strict about arbitrary external imports, so vendor SDKs and low-level server APIs should usually pass through srvkit first.
+
+What Belongs In Srvkit
+
+What Belongs In srvkit/
+
+Request protection logic used by signals, such as checking account roles before a mutation runs.
+
+Context-derived values injected into signal execution, such as account, self, or admin identity.
+
+Middleware And WebProxy
+
+Request pipeline extensions for attaching server context, redirecting, rewriting, or adding headers before app logic runs.
+
+Server helper
+
+Reusable server logic such as hashing, encryption, file handling, image inspection, or token utilities.
+
+## Components (ui/)
+
+Source: /conventions/applib/ui
+Mirror: /llms/pages/conventions/applib/ui.md
+Priority: P1
+
+Headings:
+- UI Folder Overview
+- Recommended Shape
+- Barrel And Optimized Import
+- Composite Components
+- Practical Rules
+
+Components (ui/)
+
+UI Folder Overview
+
+The ui folder contains reusable interface components for an app or library. App UI folders usually stay shallow, like @apps/myapp/ui, while libraries can expose shared components such as @libs/shared/ui.
+
+App UI
+
+Use for components that belong to one app, such as an admin header, landing hero, dashboard widget, or app-only interaction.
+
+Library UI
+
+Use for components shared by multiple apps, such as auth gates, responsive wrappers, editor pieces, or common form fields.
+
+Recommended Shape
+
+The recommended rule is simple: one file, one export, and file name equals export name. This keeps the barrel predictable and makes import optimization work well.
+
+Barrel And Optimized Import
+
+The ui folder is kept as a barrel folder. Pages import from the barrel, and Akan can optimize the import so a page only fetches the JavaScript bundle for the UI components it actually uses.
+
+This matters in SSR. The server can render the page first, and the browser only hydrates the client components that are needed for that page instead of downloading a large shared UI bundle.
+
+## Web Utils (webkit/)
+
+Source: /conventions/applib/webkit
+Mirror: /llms/pages/conventions/applib/webkit.md
+Priority: P1
+
+Headings:
+- Webkit Overview
+- What Belongs In Webkit
+- Barrel, Optimized Import, And Shape
+- Practical Rules
+
+Web Utils (webkit/)
+
+Webkit Overview
+
+The webkit folder contains reusable code needed during web rendering. It is similar to srvkit, but it is for browser-side or web-rendering logic instead of server-only logic.
+
+Use it for render maps, browser helpers, web hooks, and wrappers around browser libraries. Pages can then import from the webkit barrel instead of carrying complex logic directly.
+
+What Belongs In Webkit
+
+Render maps
+
+Static maps used during rendering, such as status colors, badges, icons, labels, or page display options.
+
+Browser helpers
+
+Small browser actions such as downloading a file, reading cookies, opening a share link, or copying text.
+
+Web hooks
+
+Reusable browser hooks for notifications, messaging, viewport state, permission checks, or browser APIs.
+
+External web wrappers
+
+## model.abstract.md
+
+Source: /conventions/module/abstract
+Mirror: /llms/pages/conventions/module/abstract.md
+Priority: P1
+
+Headings:
+- model.abstract.md
+- Update Rule
+
+model.abstract.md
+
+A module abstract is the business-intent file for a domain module. It explains why the module exists, what rules must stay true, which workflows matter, and what agents should know before editing implementation files.
+
+Do not duplicate the constant or dictionary file in prose. Use this file for information that code alone does not make obvious.
+
+Update Rule
+
+Update it when business invariants, workflows, public behavior, permissions, or state transitions change.
+
+Do not update it for formatting-only, import-only, or style-only changes.
+
+Read it before changing constant, document, service, signal, store, or UI files in the same module.
+
+## model.constant.ts
+
+Source: /conventions/module/constant
+Mirror: /llms/pages/conventions/module/constant.md
+Priority: P1
+
+Headings:
+- model.constant.ts
+- Model Layering Pattern
+- Fields And enumOf
+- field.hidden And field.secret
+- Extending Generated Models
+- Light And Full Model Helpers
+- Resolved Fields
+- Scalar Constants And Static Utilities
+- Insight Constants
+- Practical Rules
+
+model.constant.ts
+
+A constant file defines the business shape of a model. It declares fields, enums, embedded scalar values, generated views, and small helper behavior that should travel with the data type.
+
+The current Akan pattern is based on via(). Each class builds a different view of the same business model, and later document, service, signal, store, and UI code reuse those generated types.
+
+Model Layering Pattern
+
+Most document models use the same five layers: Input, Object, Light, full Model, and Insight. Start with this shape unless the model is a small embedded scalar.
+
+Fields accepted when creating or editing the model.
+
+Input plus stored fields controlled by the system or service.
+
+Small view for list, relation, and card-style queries.
+
+Full model that combines Object and Light, often with static helpers.
+
+Aggregation or reporting fields for analytics.
+
+Fields And enumOf
+
+Use field() to describe values and enumOf() to define categorical values. Keep field options close to business needs: defaults, optional values, references, hidden or secret fields, examples, and aggregation.
+
+## model.dictionary.ts
+
+Source: /conventions/module/dictionary
+Mirror: /llms/pages/conventions/module/dictionary.md
+Priority: P1
+
+Headings:
+- model.dictionary.ts
+- Model Dictionary Pattern
+- Using Dictionaries
+- Extending Generated Dictionaries
+- Scalar And Service Dictionaries
+- Errors, UI Text, And Languages
+- Practical Rules
+
+model.dictionary.ts
+
+A dictionary file is the language layer of a module. It gives user-facing names to model fields, insight values, queries, sort options, enums, slices, endpoints, errors, and module-specific UI text.
+
+The current pattern is typed. Dictionary keys should follow the shape of the constant, document filter, slice, and endpoint instead of becoming arbitrary translation strings.
+
+Model Dictionary Pattern
+
+Use modelDictionary for normal document models. The chain usually starts with the model name, then adds field labels, insight labels, document query/sort labels, enum values, signal labels, errors, and custom UI text.
+
+Labels fields from the constant model. Base fields such as id, createdAt, updatedAt, and removedAt are added automatically.
+
+Labels reporting fields. The base count insight is added automatically.
+
+Labels document filter options. Base query and sort labels such as any, latest, and oldest are included.
+
+Using Dictionaries
+
+After a dictionary is declared, most code uses it through generated helpers. Client components read translated labels with usePage(), server code throws Err with an error key, and client stores show translated toast messages with msg.
+
+Extending Generated Dictionaries
+
+When an app extends a generated or library model, extend the generated dictionaries too. Passing ...user.dictionaries keeps the base dictionary entries and lets the app add only its custom fields, endpoints, or phrases.
+
+## model.document.ts
+
+Source: /conventions/module/document
+Mirror: /llms/pages/conventions/module/document.md
+Priority: P1
+
+Headings:
+- model.document.ts
+- Standard Document Shape
+- Query, Sort, And Generated Methods
+- Document Instance Behavior
+- Model-Level Helpers
+- Extending Generated Documents
+- Loaders And Custom Lookups
+- Schema Hooks And Indexes
+- Practical Rules
+
+model.document.ts
+
+A document file defines the database behavior of a module. The constant file describes the data shape, while the document file explains how to query, mutate, load, index, and operate on stored documents.
+
+A normal document file usually contains search conditions, document-level behavior, and database model helpers used by services.
+
+Standard Document Shape
+
+Use this shape for normal collection-backed models. Business documents usually define query rules, one-document behavior, and model-level helpers together.
+
+Reusable list, lookup, and sort conditions.
+
+Behavior of one loaded document.
+
+Model-level helpers used by services.
+
+Query, Sort, And Generated Methods
+
+Define frequently used list and lookup conditions once, then use the generated methods in services or signals. For example, a query named inProject becomes methods like listInProject, countInProject, and existsInProject.
+
+The framework already provides all-document and latest/oldest ordering behavior, so only add business-specific search and sort rules.
+
+Required input for the query. Required args must come before optional args.
+
+## Overview
+
+Source: /conventions/module/overview
+Mirror: /llms/pages/conventions/module/overview.md
+Priority: P1
+
+Headings:
+- Module Overview
+- Module File Map
+- Server To Client Flow
+- Role Boundaries
+- Recommended Reading Paths
+- Practical Rules
+
+Overview
+
+Describes business intent, domain rules, workflows, data meaning, related modules, and agent notes that should be read before implementation changes.
+
+Defines the business data shape: fields, enums, model layers, helpers, hidden/secret fields, and resolved fields.
+
+Defines user-facing language for fields, insights, queries, slices, endpoints, errors, and UI text.
+
+Defines persistence behavior: filters, document methods, model-level helpers, indexes, and schema hooks.
+
+Owns business workflows and coordinates generated document methods, injected services, and database operations.
+
+Exposes APIs, slices, realtime messages, pubsub channels, internal tasks, guards, and resolved field handlers.
+
+Coordinates client state, form state, list state, generated fetch calls, toast messages, and UI-facing actions.
+
+Renders form pieces and interaction fragments bound to store form state and generated setters.
+
+Renders reusable light-model display pieces such as cards, rows, avatars, columns, and compact summaries.
+
+Renders full-model detail UI for detail pages, view modals, and sections that need complete model data.
+
+Packages small client helper UI such as action buttons, toolboxes, dialogs, query panels, and navigation helpers.
+
+## model.service.ts
+
+Source: /conventions/module/service
+Mirror: /llms/pages/conventions/module/service.md
+Priority: P1
+
+Headings:
+- model.service.ts
+- Service Shapes
+- What serve() Gives You
+- Generated Methods
+- Service Extension
+- Injection Builder
+- Injection Types
+- Business Logic Flow
+- Lifecycle Hooks
+- Practical Rules
+
+model.service.ts
+
+Database model adaptor automatically injected for database services.
+
+Internal database model adaptor injected together with the named model property.
+
+Built-in logger for service logs.
+
+Load one document by id. Throws when it cannot be found.
+
+Load one document by id. Returns null when it cannot be found.
+
+Batch load documents by ids.
+
+Create a document from input data.
+
+Update a document and return the updated document.
+
+Remove or soft-remove a document through the generated database service flow.
+
+Search documents and return docs with count.
+
+Search documents and return docs only.
+
+## model.signal.ts
+
+Source: /conventions/module/signal
+Mirror: /llms/pages/conventions/module/signal.md
+Priority: P1
+
+Headings:
+- model.signal.ts
+- Extending Generated Signals
+- Defining Internal Tasks
+- Defining Public APIs
+- Standard Model APIs
+- Defining Slices And Stores
+- Builder Function Types
+- Practical Rules
+
+model.signal.ts
+
+Calculates a resolved field declared in the constant model. The parent document is passed to exec by default.
+
+Runs a recurring server task every given number of milliseconds.
+
+Runs scheduled work with a cron expression. Commonly used with serverMode options for batch jobs.
+
+Runs setup or teardown logic when the server process starts or stops.
+
+Defines a background queue job. Use msg(...) to describe the job payload.
+
+Read API. Use it for loading one model, computed data, or public files.
+
+Write API. Use it for create, update, delete, or business actions.
+
+WebSocket message handler. Use msg(...) for incoming payload fields.
+
+Realtime subscription channel. Use room(...) to describe the subscription room.
+
+Required path-style argument. Common in query, mutation, and slice list methods.
+
+Optional search/query argument. It is nullable by default.
+
+## model.store.ts
+
+Source: /conventions/module/store
+Mirror: /llms/pages/conventions/module/store.md
+Priority: P1
+
+Headings:
+- model.store.ts
+- Store Class Structure
+- Extending Generated Stores
+- Writable And Derived State
+- State Interaction
+- Standard Model API
+- Slice Auto-Generated Features
+- Usage Patterns
+- Other Stores With RootStore
+- Practical Rules
+
+model.store.ts
+
+Get the current snapshot of the store state.
+
+Update store state. It merges shallowly.
+
+Select required state values. It throws immediately if any requested key is null or undefined.
+
+A store file is the client-side state and action layer for a module. Pages and UI components read state from the store and call store actions instead of coordinating fetch calls directly.
+
+Stores sit between UI and generated fetch/sig clients. Service and document files keep business rules; store files handle UI state, form state, list state, toast messages, and client navigation around those calls.
+
+Store Class Structure
+
+Define a store with store(sig.model, stateFactory). The second argument is a factory, so default state is recreated safely for each runtime instance.
+
+Extending Generated Stores
+
+When an app extends a generated or library domain, pass the generated stores after local state. The inherited state, actions, and metadata are merged first, then the app adds its own state and actions.
+
+Writable And Derived State
+
+Most stores only need plain writable state. The state builder also supports persist and session values. A third store() argument can define derived state such as URL search params or computed values.
+
+## Model.Template.tsx
+
+Source: /conventions/module/template
+Mirror: /llms/pages/conventions/module/template.md
+Priority: P1
+
+Headings:
+- model.Template.tsx
+- File Convention
+- Standard Form Template
+- Field Patterns
+- Split Components
+- Template Usage Patterns
+- Practical Rules
+
+Model.Template.tsx
+
+Stores the hydrated full model when editing an existing record.
+
+Marks the model data as ready after the edit object is applied.
+
+Stores the editable form copy made from the full model. Template fields read and update this state.
+
+Marks the form as ready so the edit form can render and submit.
+
+Stores the current form mode. Load.Edit normally sets it to edit unless a custom modal key is provided.
+
+Stores the timestamp from the edit object for consistency with view/edit state.
+
+model.Template.tsx
+
+A Template file contains client UI pieces for a module. Most Templates render model forms, but they can also export smaller interaction fragments such as submit buttons, onboarding steps, or preview blocks.
+
+Templates should bind UI to store state and actions. Business rules should stay in constants, documents, services, signals, or store actions.
+
+File Convention
+
+Template files live beside the module they render. They usually need client hooks and event handlers, so they start with the use client directive.
+
+## Model.Unit.tsx
+
+Source: /conventions/module/unit
+Mirror: /llms/pages/conventions/module/unit.md
+Priority: P1
+
+Headings:
+- Model.Unit.tsx
+- ModelProps And Light Models
+- Unit Variants
+- Actions Inside Units
+- Load.Units And Direct Rendering
+- Practical Rules
+
+Model.Unit.tsx
+
+The hydrated list rendered by Load.Units. This is the current visible list state.
+
+The first list snapshot from the server init object. It is useful for reset or comparison flows.
+
+Timestamp for when the server initialized the list.
+
+Marks the list as ready after hydration.
+
+Insight data returned with the slice, such as count or summary values.
+
+Pagination state hydrated from the init object.
+
+The current query arguments used to load the slice.
+
+The current sort value used to load the slice.
+
+A Unit file contains reusable renderers for one model item or one list/table representation. Common exports are cards, compact rows, avatars, gallery tiles, and column helpers.
+
+Units are usually presentational. They may include thin UI actions such as edit buttons, but forms belong in Template files and larger interactions belong in Util or Store.
+
+ModelProps And Light Models
+
+## Model.Util.tsx
+
+Source: /conventions/module/util
+Mirror: /llms/pages/conventions/module/util.md
+Priority: P1
+
+Headings:
+- model.Util.tsx
+- File Convention
+- Model Wrapper Actions
+- Dialog And Modal Actions
+- Query And Context Utilities
+- Practical Rules
+
+Model.Util.tsx
+
+model.Util.tsx
+
+A Util file contains small client-side helper components for a module. It is a good home for action buttons, toolboxes, dialog triggers, query controls, and context-aware navigation pieces.
+
+Use Util to keep Page, Zone, Unit, Template, and View files focused. Util components should package interaction UI, not own core business rules.
+
+File Convention
+
+Util files usually use client hooks and event handlers, so they start with the use client directive. Export named components that describe the action or helper clearly.
+
+Model Wrapper Actions
+
+Many Util components are small controls around generated model wrappers. A toolbox can collect edit, remove, and other model actions without making the Unit or Zone file noisy.
+
+Dialog And Modal Actions
+
+Use Util when an action needs its own dialog, confirmation UI, or small local state. Local component state is fine when it only belongs to that interaction.
+
+Query And Context Utilities
+
+Util files are also useful for query panels and route-aware helper UI. They can read store state and route context, then call generated store actions or router helpers.
+
+## Model.View.tsx
+
+Source: /conventions/module/view
+Mirror: /llms/pages/conventions/module/view.md
+Priority: P1
+
+Headings:
+- Model.View.tsx
+- View vs Unit
+- Standard View Shape
+- Full Model Detail Patterns
+- Using View In Pages
+- Load.View And Store Hydration
+- Practical Rules
+
+Model.View.tsx
+
+Renders the full model. Use it for detail pages and sections that need body content, histories, logs, or full nested data.
+
+Renders the light model. Use it for list rows, cards, table items, and compact summaries.
+
+Stores the hydrated full model instance from the server view object.
+
+Marks the full model as ready so the View can render without showing loading UI.
+
+Marks the current model state as view mode. Other model wrappers can distinguish view/edit/new flows.
+
+Stores the server view timestamp so Load.View can avoid replacing newer client state with older view data.
+
+A View file renders full-model detail UI. It is usually used by detail pages or Zone wrappers that already have full view data from the server.
+
+View components are presentation components. They may compose Unit, Util, Zone, and local subcomponents, but mutation and business decisions should stay outside the View.
+
+View vs Unit
+
+The main distinction is data size and page role. View is for full detail, while Unit is for repeated summary UI.
+
+Standard View Shape
+
+## Model.Zone.tsx
+
+Source: /conventions/module/zone
+Mirror: /llms/pages/conventions/module/zone.md
+Priority: P1
+
+Headings:
+- model.Zone.tsx
+- File Convention And Props
+- List Zone With Load.Units
+- View Zone With Load.View
+- Section Orchestration Zones
+- Live And Dashboard Zones
+- When To Use Zone
+- Practical Rules
+
+Model.Zone.tsx
+
+model.Zone.tsx
+
+A Zone file contains client section components for pages. Zones compose server-fetched init/view data with Load wrappers, Unit/View display components, Util actions, and small section-level UI state.
+
+Pages should usually pass route params and server data into Zones. Zones handle section composition, while Unit/View render display, Template renders forms, Util handles small actions, and Store owns state/actions.
+
+File Convention And Props
+
+Zone files usually use client hooks and Load wrappers, so they start with the use client directive. Their props commonly receive server-prepared ClientInit or ClientView values.
+
+List Zone With Load.Units
+
+Use Load.Units when a Zone receives ClientInit list data from a server page. It hydrates initial list state, handles loading and empty states, and delegates each item to Unit components.
+
+Render one item, usually by delegating to Unit.Card or Unit.Abstract.
+
+Render the whole list when the layout needs grouping, tabs, boards, or custom ordering.
+
+Render empty states, often with Model.NewWrapper or a link-style call to action.
+
+View Zone With Load.View
+
+## scalar.abstract.md
+
+Source: /conventions/scalar/abstract
+Mirror: /llms/pages/conventions/scalar/abstract.md
+Priority: P1
+
+Headings:
+- scalar.abstract.md
+
+scalar.abstract.md
+
+A scalar abstract explains the meaning and reuse rules of a small embedded value object. Use it when validation intent, normalization behavior, or usage boundaries are not obvious from the scalar constant file.
+
+## scalar.constant.ts
+
+Source: /conventions/scalar/constant
+Mirror: /llms/pages/conventions/scalar/constant.md
+Priority: P1
+
+Headings:
+- scalar.constant.ts
+- Basic Shape
+- Defaults And Optional Fields
+- Array Fields
+- Enum Fields
+- Small Helpers
+
+scalar.constant.ts
+
+A scalar constant defines the shape of a small reusable value. It should be simple enough to understand without reading a service, signal, or store file.
+
+Most scalar constants need only `via()`, `field()`, optional defaults, and sometimes a small enum.
+
+Basic Shape
+
+Use `via((field) => ({ ... }))` and describe each value with `field(Type)`. The class name should describe the business value, not the parent model that happens to use it.
+
+Defaults And Optional Fields
+
+Add defaults when a value should have a stable initial state. Use `.optional()` when the parent model can exist without that field.
+
+`currency` can default to a normal business value such as `KRW`.
+
+`memo` can be optional because not every price needs a note.
+
+Array Fields
+
+Use an array field when the scalar naturally contains a repeated value. Keep the example small: a contact info value may have several emails.
+
+Enum Fields
+
+## scalar.dictionary.ts
+
+Source: /conventions/scalar/dictionary
+Mirror: /llms/pages/conventions/scalar/dictionary.md
+Priority: P1
+
+Headings:
+- scalar.dictionary.ts
+- Basic Pattern
+- Builder Order
+- Language Order
+- Enum Name Matching
+- Small Custom Text
+
+scalar.dictionary.ts
+
+A scalar dictionary gives translated labels to a scalar value. It normally describes the scalar name, field labels, and enum values.
+
+Keep it smaller than a module dictionary. A scalar usually does not have query, sort, slice, endpoint, or signal labels.
+
+Basic Pattern
+
+Start with `scalarDictionary(["en", "ko"])`. Then add the scalar name with `.of()`, field labels with `.model()`, and enum labels with `.enum()` when the scalar has an enum.
+
+Builder Order
+
+names the scalar itself.
+
+labels each field from the scalar constant.
+
+labels enum values only when the scalar has an enum.
+
+adds small scalar-specific text only when needed.
+
+Language Order
+
+The language array controls every translation tuple. If the dictionary starts with `["en", "ko"]`, write English first and Korean second everywhere.
+
+## scalar.document.ts
+
+Source: /conventions/scalar/document
+Mirror: /llms/pages/conventions/scalar/document.md
+Priority: P1
+
+Headings:
+- scalar.document.ts
+- Basic Wrapper
+- Small Helper Example
+- When To Use It
+
+scalar.document.ts
+
+A scalar document file is optional. Add it when a scalar value needs a small method that reads its own fields and returns a useful result.
+
+If the scalar only needs fields and labels, the constant and dictionary files may be enough.
+
+Basic Wrapper
+
+Import the constant file as `cnst`, then wrap the constant class with `by(cnst.Price)`. This gives the document class the same fields as the constant class.
+
+Small Helper Example
+
+A useful scalar document method is usually short. It reads the scalar fields and returns a display value, boolean, or small calculated result.
+
+When To Use It
+
+Use a scalar document method when the same display or calculation appears in multiple places. For example, `Price.getLabel()` can be reused in product cards, order summaries, and invoices.
+
+Good: formatting a price label from `amount` and `currency`.
+
+Good: summarizing an address from `city` and `street`.
+
+Avoid: loading other records or calling a backend service from the scalar method.
+
+## Overview
+
+Source: /conventions/scalar/overview
+Mirror: /llms/pages/conventions/scalar/overview.md
+Priority: P1
+
+Headings:
+- Scalar Overview
+- When To Use Scalar
+- Scalar Files
+- Small Example
+
+Overview
+
+Scalar Overview
+
+A scalar is a small reusable value object. Use it when the same group of fields appears inside multiple domain models.
+
+For example, a product, order, and invoice may all need a price value. Instead of rewriting `amount` and `currency` every time, define a `Price` scalar once and embed it wherever it is needed.
+
+When To Use Scalar
+
+Use a scalar when the value is stored as part of another model. Use a normal module model when the data needs its own list page, permissions, service methods, or independent lifecycle.
+
+Good scalar examples: Price, Address, ContactInfo, Coordinate, FileMeta.
+
+Good module model examples: Product, Order, User, Post, Ticket.
+
+Scalar Files
+
+Scalar files live under `lib/__scalar/<scalarName>`. Start with abstract, constant, dictionary, and document files. Add Template or Unit files only when the scalar needs reusable UI.
+
+explains value meaning, validation intent, reuse rules, and agent notes.
+
+defines the scalar fields and enum values.
+
+## Scalar.Template.tsx
+
+Source: /conventions/scalar/template
+Mirror: /llms/pages/conventions/scalar/template.md
+Priority: P1
+
+Headings:
+- scalar.Template.tsx
+- File Shape
+- Scalar Template Example
+- Use From Parent Form
+- Field Or Custom UI
+
+Scalar.Template.tsx
+
+scalar.Template.tsx
+
+A scalar Template is a small reusable form component for editing a scalar value inside a parent domain form.
+
+Use it when several parent modules edit the same value shape. For example, Product, Order, and Invoice can all reuse `Price.Template`.
+
+File Shape
+
+Place the Template beside the scalar. The component is usually a client component because it receives a value and calls `onChange` when an input changes.
+
+Scalar Template Example
+
+The scalar Template receives `value` and `onChange`. It does not load data or submit the parent form. It only edits the scalar value.
+
+Use From Parent Form
+
+The parent module keeps its normal form state. It passes the embedded scalar value to the scalar Template and uses the generated setter to store the changed value.
+
+Field Or Custom UI
+
+Use Field components when they match the scalar input. If the scalar needs a special interaction, it is fine to use plain inputs, buttons, or an app-specific component.
+
+## Scalar.Unit.tsx
+
+Source: /conventions/scalar/unit
+Mirror: /llms/pages/conventions/scalar/unit.md
+Priority: P1
+
+Headings:
+- scalar.Unit.tsx
+- File Shape
+- Scalar Unit Example
+- Use From Parent Unit
+- Small Variants
+
+Scalar.Unit.tsx
+
+scalar.Unit.tsx
+
+A scalar Unit is a small reusable display component for a scalar value. It is used inside a parent domain card, row, detail page, or table cell.
+
+Use it when the same scalar should look the same across several parent modules. For example, Product, Order, and Invoice can all reuse `Price.Unit.Label`.
+
+File Shape
+
+Place the Unit beside the scalar. Export small variants by display purpose, such as `Label`, `Summary`, or `Badge`.
+
+Scalar Unit Example
+
+The scalar Unit receives a scalar value and renders it. It should not load data, manage a list, or trigger model actions.
+
+Use From Parent Unit
+
+A parent module Unit can import the scalar Unit and pass the embedded scalar value from its model. This keeps display formatting reusable while the parent card still decides the surrounding layout.
+
+Small Variants
+
+Add variants only when the same scalar needs different display sizes. Keep each variant focused on rendering the scalar value.
+
+## service.abstract.md
+
+Source: /conventions/service/abstract
+Mirror: /llms/pages/conventions/service/abstract.md
+Priority: P1
+
+Headings:
+- service.abstract.md
+
+service.abstract.md
+
+A service abstract explains the intent and boundaries of a workflow or integration module. Service folders keep the underscore, but the abstract filename drops it: `lib/_payment/payment.abstract.md`.
+
+Use it for rules that should guide service, signal, store, and UI changes, especially when a workflow touches external systems or background work.
+
+## service.dictionary.ts
+
+Source: /conventions/service/dictionary
+Mirror: /llms/pages/conventions/service/dictionary.md
+Priority: P1
+
+Headings:
+- Service Dictionary
+- Endpoint Labels
+- Endpoint Arguments
+- Translate Keys
+- Using Keys
+
+service.dictionary.ts
+
+Service Dictionary
+
+A service dictionary names the service-facing language: endpoint labels, endpoint arguments, button text, toast messages, and small UI phrases. It is not tied to model fields.
+
+Use `serviceDictionary(["en", "ko"])` for service modules. Add endpoint translations when the service exposes APIs and translate keys when UI or store messages need reusable text.
+
+Endpoint Labels
+
+Use `.endpoint<Endpoint>()` to keep endpoint names and descriptions typed. The callback keys should match the signal endpoint methods.
+
+Endpoint Arguments
+
+Use `.arg(...)` when endpoint params, search values, or body values need labels in docs, generated UI, admin screens, or validation messages.
+
+Translate Keys
+
+Use `.translate({ ... })` for service UI phrases that are not endpoint names. This is common for toast messages, status labels, common controls, and admin UI text.
+
+Using Keys
+
+Client UI can read service endpoint labels through `l("search.signal.resyncSearchDocuments")`. Store actions can use translated loading, success, and error keys for messages when the service action runs.
+
+## Overview
+
+Source: /conventions/service/overview
+Mirror: /llms/pages/conventions/service/overview.md
+Priority: P1
+
+Headings:
+- Service Module Overview
+- When To Use It
+- Service File Map
+- Folder Shape
+
+Overview
+
+Server-only security workflow for encryption, JWT signing, and token verification.
+
+Search feature module with service methods, endpoints, client store, and admin Zone UI.
+
+Shared file-access service that reads blob data through a typed endpoint.
+
+Describes the service workflow intent, domain rules, integration boundaries, and agent notes.
+
+Implements the workflow itself and injects runtime values or other services.
+
+Exposes the workflow through endpoint, internal task, cron, or custom route signals.
+
+Names endpoint labels, endpoint arguments, and service UI phrases.
+
+Owns service feature state, fetch calls, loading flags, and UI-facing actions.
+
+Packages small client controls for the service feature when they are reusable.
+
+Composes a full service feature section for admin pages or app pages.
+
+Service Module Overview
+
+## service.service.ts
+
+Source: /conventions/service/service
+Mirror: /llms/pages/conventions/service/service.md
+Priority: P1
+
+Headings:
+- Service File
+- Basic Service Shape
+- Runtime Values
+- Service Injection
+- Server Mode
+
+service.service.ts
+
+Service File
+
+A service module service file owns the server workflow. It is where encryption, search indexing, file access, external API calls, and service-to-service coordination should live.
+
+Unlike model services, service modules usually start from a string name: `serve("search" as const, ...)`. There may be no database model behind it.
+
+Basic Service Shape
+
+`serve()` gives the module a stable service name and creates typed instance properties for injected values. Put public methods on the class; signals call those methods later.
+
+Runtime Values
+
+Use `use<T>()` when the service needs a runtime value supplied by the app or runtime container. Secrets, clients, and environment-specific handles belong here rather than as hardcoded constants.
+
+Service Injection
+
+Use `service<OtherService>()` when this workflow coordinates other services. This keeps orchestration in the service layer instead of spreading it across cron jobs or UI code.
+
+Server Mode
+
+Some service modules are not meant for normal request servers. `{ serverMode: "batch" }` marks a service for batch or internal workers, which matches scheduled jobs in the signal file.
+
+## service.signal.ts
+
+Source: /conventions/service/signal
+Mirror: /llms/pages/conventions/service/signal.md
+Priority: P1
+
+Headings:
+- Signal File
+- Endpoint Queries
+- Endpoint Mutations
+- Internal And Cron
+- Custom Routes
+
+service.signal.ts
+
+Signal File
+
+A service module signal file exposes the service workflow. It can define endpoint APIs for clients, internal tasks for the server, cron jobs for workers, and special routes that are not tied to a model.
+
+The signal still points at the service module: `endpoint(srv.search, ...)` or `internal(srv.localFile, ...)`. The service method stays in service; the access shape stays in signal.
+
+Endpoint Queries
+
+Service module endpoints can be ordinary typed queries or mutations even when there is no model CRUD. The `_search` endpoint receives params and search values, then calls `searchService`.
+
+Endpoint Mutations
+
+Use mutations for service actions that change data, create tokens, send messages, or run side effects. The endpoint should stay thin and delegate the actual work to the service.
+
+Internal And Cron
+
+Internal signals are for server-side work that is not called directly from browser UI. Cron jobs can be scoped to a server mode, which is common for batch service modules.
+
+Custom Routes
+
+A service endpoint can also expose a custom path, such as `localFile/getBlob/*`. Add `Req` or `Res` when the handler needs raw request context.
+
+## service.store.ts
+
+Source: /conventions/service/store
+Mirror: /llms/pages/conventions/service/store.md
+Priority: P1
+
+Headings:
+- Service Store
+- String Store Ref
+- Fetch Actions
+- Feature State
+
+service.store.ts
+
+Service Store
+
+A service store coordinates client state for a service feature. It owns local state, fetch calls, loading flags, selected values, pagination, and UI-facing actions.
+
+Service stores usually start with a string reference: `store("search" as const, ...)`. They do not automatically receive model form, slice, or CRUD helpers unless the store is bound to a model signal.
+
+String Store Ref
+
+Use the service name as the store ref. The state factory returns the initial local state for the feature, not a generated model form.
+
+Fetch Actions
+
+Service store methods usually call generated `fetch.*` functions from service endpoints, then update local state with `set()`. This keeps React components thin.
+
+Feature State
+
+Keep service-specific UI state in the store when several controls need to share it. Search text, selected index, current page, and loading status are good examples.
+
+## Service.Util.tsx
+
+Source: /conventions/service/util
+Mirror: /llms/pages/conventions/service/util.md
+Priority: P1
+
+Headings:
+- Service Util
+- Client Helper Component
+- What Belongs Here
+
+Service.Util.tsx
+
+Service Util
+
+A service Util file contains small client helper components for a service feature. It is useful for reusable controls such as action buttons, filters, toolboxes, and dialog triggers.
+
+A service module may not need Util at first. A minimal placeholder is acceptable while the feature UI is still moving into Zone or app pages.
+
+Client Helper Component
+
+Service Util components are usually client components because they handle clicks, local UI state, or store actions. Keep them small enough to be reused inside Zone, Template, or app pages.
+
+What Belongs Here
+
+Put small pieces here when they are about service interaction but are not large enough to be a full Zone. Examples include resync buttons, search filter controls, upload controls, and reusable status badges.
+
+## Service.Zone.tsx
+
+Source: /conventions/service/zone
+Mirror: /llms/pages/conventions/service/zone.md
+Priority: P1
+
+Headings:
+- Service Zone
+- Store-Driven Section
+
+Service.Zone.tsx
+
+Service Zone
+
+A service Zone is a client page section for a service feature. It composes store state, store actions, service UI controls, loading indicators, results, and pagination.
+
+It is not a model list section by default. The `_search` Zone renders search administration UI, even though search itself is a service workflow rather than a document model.
+
+Because service modules are workflow-oriented, service Zones are fairly flexible. Treat them as client components where you can freely compose the controls, result views, and domain-specific UI that the service needs.
+
+Store-Driven Section
+
+A service Zone usually reads state through `st.use.*` and runs feature actions through `st.do.*`. Keep data loading in store actions and let Zone focus on composition.
+
+When a small interaction is reused, pull it from the service Util file. Zone can then arrange those Util pieces with local domain components into the final page section.
+
+## Format & Lint
+
+Source: /conventions/workspace/lint
+Mirror: /llms/pages/conventions/workspace/lint.md
+Priority: P1
+
+Headings:
+- Format And Lint
+- Akan Lint Errors And Fixes
+- Commands
+
+Format & Lint
+
+Format And Lint
+
+Akan lint is mostly here to keep the workspace easy to read and hard to break. In day-to-day work, you only need to remember a few habits: let the formatter handle style, keep client-only code out of server files, avoid random external imports in convention files, and run lint before sharing work.
+
+Let format decide
+
+Use 2-space indentation, double quotes, organized imports, and the formatter's class ordering.
+
+Keep server files server-safe
+
+Do not add useState, useEffect, st, or top-level use client to files that should render on the server.
+
+Keep imports intentional
+
+Convention files should import from relative paths, Akan packages, or workspace aliases before reaching for external packages.
+
+Run it before sharing
+
+Use lint on the app or library you touched, and use lintAll before broad checks.
+
+Akan Lint Errors And Fixes
+
+## Structure
+
+Source: /conventions/workspace/structure
+Mirror: /llms/pages/conventions/workspace/structure.md
+Priority: P1
+
+Headings:
+- Workspace Anatomy
+- Workspace Commands
+
+Structure
+
+Workspace Anatomy
+
+An Akan workspace is a Bun-first monorepo. At the workspace root, the first-level entries tell you whether something is a runnable app, shared product library, framework package, or root tooling config.
+
+Runnable and deployable products. Put customer sites, admin portals, brand apps, and app-specific business code here.
+
+Shared product libraries used by multiple apps. Put common domains, utilities, UI, auth, upload, billing, or notification features here.
+
+Framework, CLI, devkit, runtime, and package-level tooling. Use this when code belongs to Akan itself or should behave like an installable package.
+
+Repo-wide formatting and linting rules. This keeps TypeScript, JSX, imports, and style decisions consistent across apps, libs, and pkgs.
+
+Bun runtime and package manager configuration used by workspace commands and package workflows.
+
+Workspace Commands
+
+Workspace commands operate at the monorepo level. They help you create a workspace, lint one target, lint the whole workspace, or sync dependencies and configuration across apps and libraries.
+
+## Using Insight
+
+Source: /docs/tutorials/insight
+Mirror: /llms/pages/docs/tutorials/insight.md
+Priority: P1
+
+Headings:
+- Stats of Query
+- Create Query Maker
+- Accelerate with Insight
+
+Using Insight
+
+Stats of Query
+
+When multiple orders come in at once, you can make ice cream at once. You need to extract the insight of the current orders' ice cream amount, topping information, etc.
+
+Create Query Maker
+
+Before extracting insights, we need to define what data we want to query. A Query Maker allows users to filter data dynamically - like a barista checking orders by status to see which drinks to make next. Let's enhance our Slice to support flexible queries with search parameters.
+
+First, let's update the Slice to accept status filters. The .search() method defines query parameters that users can set from the frontend:
+
+Let's understand the key components of this Slice definition:
+
+Defines a searchable parameter that can be set from the frontend. Here, "statuses" accepts an array of IcecreamOrderStatus values to filter orders.
+
+Pre-defined slices with fixed status filters. inWaiting shows active and processing orders, while inPickup shows orders ready for customer pickup.
+
+Add dictionary entries for the slice and its search parameter to enable localization:
+
+Now let's create a UI component that allows users to select which statuses to filter by. This Query Maker component uses the auto-generated store hooks:
+
+Key features of the Query Maker component:
+
+## UX with Pages
+
+Source: /docs/tutorials/page
+Mirror: /llms/pages/docs/tutorials/page.md
+Priority: P1
+
+Headings:
+- Kiosk for Customers
+- Add Schema
+- Kiosk Landing Page
+- Order Form Page
+- Page UX Best Practices
+
+UX with Pages
+
+Kiosk for Customers
+
+The number of customers at the store has increased, and the staff is having trouble processing orders. Let's create a kiosk for customers to order ice cream. A kiosk is a simple interface that allows customers to order ice cream.
+
+Add Schema
+
+There is some missing information in the current schema to allow customers to order directly from the kiosk. We need to add serve type and contact information. Let's expand the schema to add these features.
+
+Let's understand the new schema additions:
+
+An enum defining how the customer wants their order - for here, take out, or delivery
+
+Customer's phone number with validation using isPhoneNumber for pickup notifications
+
+Updated to include serveType for display in order lists and dashboards
+
+Next, we need to add dictionary entries for the new fields and enum values:
+
+Next, let's add serveType and phone selection to the order form template.
+
+Finally, let's display serveType on the order card to clearly show whether the customer's order is for here or take out, etc.
+
+## Relate Data
+
+Source: /docs/tutorials/relation
+Mirror: /llms/pages/docs/tutorials/relation.md
+Priority: P1
+
+Headings:
+- Delivery Feature
+- Create Delivery Module
+- Define Relationship
+- Summary
+
+Relate Data
+
+Delivery Feature
+
+The ice cream shop is so successful that delivery orders are flooding in! Now we need to manage delivery orders. A delivery driver can deliver multiple orders at once, which means we need to create a relationship between deliveries and orders. This is a classic one-to-many relationship - one Delivery contains many IcecreamOrders.
+
+In this tutorial, you'll learn how to:
+
+Define relationships between models using embedded references
+
+Trigger side effects when related data is created
+
+Build UI components for selecting and displaying related data
+
+Create Delivery Module
+
+First, let's create the Delivery module using the CLI. This module will connect multiple ice cream orders into a single delivery batch.
+
+Define Relationship
+
+Now let's define the Delivery model with a relationship to IcecreamOrder. The key is using LightIcecreamOrder as the field type - this creates an embedded reference that stores the essential order data directly in the delivery document.
+
+Let's understand the key relationship pattern:
+
+## Using Scalar
+
+Source: /docs/tutorials/scalar
+Mirror: /llms/pages/docs/tutorials/scalar.md
+Priority: P1
+
+Headings:
+- Use Setting Module
+- Create Scalar
+- Create Inventory
+- Business Logic
+- Connect Service
+- Connect Signal
+- Interact on UI
+
+Using Scalar
+
+Use Setting Module
+
+Now the ice cream shop can receive and process orders, and with many customers coming in, it's easy to run out of stock. Let's find out how to handle this situation.
+
+You need to add a service that checks the remaining ice cream and toppings every morning, sets the inventory status in the system, and automatically disables orders when the inventory is depleted.
+
+Create Scalar
+
+First, let's create a Scalar to represent individual stock items. Think of a Scalar as a reusable data building block - like Lego pieces that can be combined into larger structures. Unlike a full Model that has its own database collection, a Scalar is embedded within other models. In our case, the Stock scalar will be used inside the Inventory model.
+
+Use the CLI to generate the scalar structure:
+
+Now define the Stock scalar with the item type and quantity tracking:
+
+Let's understand the Stock scalar structure:
+
+An enum combining yogurt ice cream with all available toppings. This allows tracking inventory for all product types in one system.
+
+Track both the starting amount and current remaining quantity. This helps calculate usage and identify when restocking is needed.
+
+Add dictionary entries for the scalar. Notice how we reuse the topping translations from the icecreamOrder dictionary:
+
+## Interact in Service
+
+Source: /docs/tutorials/service
+Mirror: /llms/pages/docs/tutorials/service.md
+Priority: P1
+
+Headings:
+- Interact in Service
+- Declare Adapter
+- Use External API
+- Query in Document
+- Use Interval
+
+Interact in Service
+
+When an order comes in, you need to inform the staff so that they can make ice cream, and when the ice cream is made, you need to notify the customer. Also, if the ice cream melts, you need to notify the customer again if they don't pick it up for a long time.
+
+To achieve this, you need to add a service that sends periodic warnings if a served order is not finished, and a service that sends an alert message to the customer to remind them to pick up the order.
+
+Declare Adapter
+
+First, let's start by connecting an external API or module like an alert. You can connect an api that sends messages or emails, but in this tutorial, we'll create an api that simply prints to the console and connect it.
+
+Modules like service, signal, document should not be directly connected to external systems, but rather created as adapters that are injected. First, let's create an adapter in the /srvkit folder as follows.
+
+Then, export the module in the /srvkit/index.ts file.
+
+Why use the adapter pattern? By injecting external dependencies as adapters rather than directly importing them in services, you gain several benefits:
+
+(1) Testability - you can easily mock or replace the adapter in tests without modifying the service code
+
+(2) Flexibility - you can swap implementations (e.g., switch from console logging to email notifications) without changing the service logic
+
+(3) Separation of Concerns - the service focuses on business logic while adapters handle external interactions
+
+(4) Reusability - the same adapter can be injected and shared across multiple services
+
+## Displaying with Slice
+
+Source: /docs/tutorials/slice
+Mirror: /llms/pages/docs/tutorials/slice.md
+Priority: P1
+
+Headings:
+- Displaying with Slice
+- Dashboard Slice
+- Connect to Zone
+- Zone with Slice
+- Slice Component Rules
+
+Displaying with Slice
+
+We want to show customers a real-time dashboard of ice cream order processing. Completed orders should be displayed prominently, and the list of ongoing orders should also be visible. By using Slice, you can present the same ice cream order data in real time from different perspectives for customers, staff, and administrators.
+
+Dashboard Slice
+
+First, let's declare a slice for the real-time dashboard to show to customers. You can display the waiting orders and the orders being picked up by querying them separately.
+
+inWaiting slice is a slice that queries the waiting orders and inPickup slice is a slice that queries the orders being picked up. When the slice is declared, the state and actions of the store are automatically created.
+
+Just like labeling different shelves in an ice cream shop - "Ready for pickup", "Being made" - we need to give proper names to our slices in the dictionary. This ensures the UI displays meaningful labels and the slice functions are properly documented.
+
+Connect to Zone
+
+Now let's build the actual dashboard page that customers will see. Think of this like the large display screens in a cafe that show "Now Serving: Order #42" - it needs to show different views of the same order data simultaneously. We'll use Zone components to connect our slices to the UI and display them in real-time.
+
+Don't forget to add the translation labels for the dashboard sections:
+
+Let's break down how this dashboard page works:
+
+The Load.Page component handles data loading before rendering. It fetches both waiting and pickup orders simultaneously using Promise.all for optimal performance.
+
+Zone components connect slice data to UI rendering. By passing the init data and slice, the Zone automatically subscribes to real-time updates for that specific slice.
+
+## Modifying Status
+
+Source: /docs/tutorials/util
+Mirror: /llms/pages/docs/tutorials/util.md
+Priority: P1
+
+Headings:
+- Modifying Status
+- Implement Document Business Logic
+- Implement Service Layer
+- Create Signal Endpoints
+- Create Frontend Store Actions
+- Create Utility Components
+- Apply To Unit & View Components
+- Test Status Management
+- Status Management Best Practices
+- What's Next?
+
+Modifying Status
+
+Now that customers can create and view ice cream orders, let's add functionality for shop staff to manage the order lifecycle. In a real ice cream shop, orders need to progress through different stages: from "active" (newly placed) to "processing" (being prepared) to "served" (completed) or "canceled" if needed.
+
+Think of status modification like the workflow in a real ice cream shop. When a customer places an order, it starts as "active" - like a ticket on the order board. Then staff begins preparation ("processing"), and finally serves it to the customer ("served"). This tutorial shows you how to implement this natural workflow with proper validation and user-friendly controls.
+
+Before implementing the functionality, let's understand the business logic behind ice cream order status transitions:
+
+When a customer places an order, it starts as "active". Staff can begin processing it by clicking "Process".
+
+While an order is being prepared, it's in "processing" status. Once ready, staff can mark it as "served".
+
+Only active orders can be canceled. Once processing begins, cancellation is no longer allowed.
+
+Business Rules
+
+Only active orders can be processed or canceled
+
+Only processing orders can be served
+
+Served and canceled orders are final states
+
+Implement Document Business Logic
+
+## Show Details
+
+Source: /docs/tutorials/view
+Mirror: /llms/pages/docs/tutorials/view.md
+Priority: P1
+
+Headings:
+- Show Details
+- Add View/Edit Modal
+- Add View Button to Cards
+- Design Detail View
+- Test Your Implementation
+- Best Practices for Detail Views
+- What's Next?
+
+Show Details
+
+Imagine walking into an ice cream shop and placing an order. You'd want to see exactly what you ordered, right? Maybe check if you remembered to add those strawberries, or confirm the size you picked. That's exactly what detailed views do in our application - they give customers a complete, beautiful summary of their order that they can access anytime with just a click.
+
+Think of it like the difference between an order ticket and a detailed receipt. The summary card is like a stub - it shows the basics so you can identify the order. But the detailed view is like the full receipt that shows everything: every topping you chose, when you placed the order, and whether it's ready to pick up. It's the complete story of your ice cream order!
+
+In Akan.js, showing detailed views follows a clean architecture pattern. We use three main components that work together:
+
+A clickable wrapper that triggers the view modal when clicked. Think of it as the "View Details" button functionality.
+
+A modal popup that displays when customers want to see details. It handles opening, closing, and data loading automatically.
+
+The actual content inside the modal that displays all the order information in a beautiful, organized layout.
+
+This separation allows each component to have a single responsibility: the wrapper handles clicking, the modal handles the popup behavior, and the view handles the display formatting.
+
+Add View/Edit Modal
+
+Now let's add a View/Edit modal to our ice cream order page. This creates a popup window where customers can see all their order details in an organized format. The modal functions like a detailed receipt that appears when customers want to review their order information.
+
+This code creates a modal system that handles the display and editing of orders. Let's examine what each part does:
+
+Load.Units Component
+
+## Core
+
+Source: /references/ui/core
+Mirror: /llms/pages/references/ui/core.md
+Priority: P1
+
+Headings:
+- Core UI
+
+Core
+
+Route-aware navigation component. It renders CSR or SSR navigation depending on the Akan render mode, and falls back to a non-clickable div when disabled or href is empty.
+
+Destination route. Empty values render children without navigation.
+
+Prevents navigation while keeping the same visual layout.
+
+Class applied when the current route matches the link.
+
+Scrolls to the top after client-side navigation.
+
+Namespace helpers: `Link.Back`, `Link.Close`, and `Link.Lang` cover common navigation actions.
+
+Akan image component for `ProtoFile` objects and direct URLs. It can derive width, height, and blur data from file metadata and uses the Akan image optimizer in SSR mode.
+
+Direct image URL. Takes precedence over file metadata.
+
+File object with `url`, `imageSize`, and optional `abstractData`.
+
+Blur/placeholder preview data.
+
+Marks the image as high-priority and eager-loaded.
+
+## Display
+
+Source: /references/ui/display
+Mirror: /llms/pages/references/ui/display.md
+Priority: P1
+
+Headings:
+- Display UI
+
+Display
+
+Namespace for generated model list and dashboard displays. `Data.ListContainer` is the main high-level component; lower-level helpers include `TableList`, `CardList`, `Pagination`, `Dashboard`, and `Insight`.
+
+Feature-rich generated model list container.
+
+Table-style list wired to generated store state.
+
+Pagination control bound to generated slice page state.
+
+Localized relative-time label with a tooltip containing the absolute date. It switches from relative labels to formatted dates after the configured break unit.
+
+Date value to render. Null renders nothing.
+
+Unit where relative display stops and date formatting begins.
+
+Automatic compact format or full date-time format.
+
+Namespace of loading indicators for async UI: full-area overlays, buttons, inputs, progress bars, skeletons, and spinners.
+
+Absolute overlay for blocking a local area.
+
+Skeleton placeholder for pending content.
+
+## Forms
+
+Source: /references/ui/forms
+Mirror: /llms/pages/references/ui/forms.md
+Priority: P1
+
+Headings:
+- Forms UI
+
+Forms
+
+High-level form field namespace. It combines labels, descriptions, optional markers, validation-friendly inputs, and many typed controls used inside module templates.
+
+Shown above the control, with desc rendered as help text.
+
+Marks the label as optional and relaxes validation in many field variants.
+
+Common scalar field controls.
+
+Relation-oriented controls used by generated model templates.
+
+`libs/shared/ui/Field` wraps and extends `akanjs/ui` Field for project-specific controls such as rich text, maps, and postcode.
+
+Controlled primitive input namespace. Use it when you need lower-level input control than `Field`, such as custom search boxes or lightweight inline forms.
+
+Controlled input value.
+
+Receives the next string value.
+
+Returns true for valid input or an error message.
+
+Persists text to sessionStorage.
+
+## Overlays
+
+Source: /references/ui/overlays
+Mirror: /llms/pages/references/ui/overlays.md
+Priority: P1
+
+Headings:
+- Overlays UI
+
+Overlays
+
+Controlled modal wrapper built on Akan's headless `Dialog` state. Use it for common app overlays where you want title/content/action slots without composing the full dialog namespace.
+
+Controlled open state.
+
+Called when the modal requests closing.
+
+Optional title slot.
+
+Optional footer/action slot.
+
+Ask for confirmation before closing.
+
+Headless compound dialog namespace for custom modal composition. Use it when `Modal` is too opinionated and you need a custom trigger, title, content, or action layout.
+
+Provider/root for dialog state.
+
+Opens the dialog from custom trigger content.
+
+Modal surface and close behavior.
+
+Named modal slots.
+
+## Overview
+
+Source: /references/ui/overview
+Mirror: /llms/pages/references/ui/overview.md
+Priority: P1
+
+Headings:
+- akanjs/ui
+- Page Map
+
+Overview
+
+Core
+
+The most common page-building primitives for routing, media, page shells, data loading, and model workflows.
+
+Display
+
+Display and feedback helpers for model lists, relative time labels, loading states, empty states, and tabular UI.
+
+Forms
+
+Form controls and action primitives used by templates, filters, and admin surfaces.
+
+Overlays
+
+Overlay, confirmation, menu, and copy helpers for focused user actions.
+
+System
+
+Application shell helpers, CSR guards, admin signal tools, tab state, and animation wrappers.
+
+akanjs/ui
+
+## System
+
+Source: /references/ui/system
+Mirror: /llms/pages/references/ui/system.md
+Priority: P1
+
+Headings:
+- System UI
+
+System
+
+System namespace for app-level chrome and runtime helpers. It chooses CSR or SSR provider by render mode and exposes theme/language/reconnect/dev-mode helpers.
+
+Theme switching control.
+
+Language selector.
+
+Reconnect helper for local or unstable sessions.
+
+Small Suspense boundary for content that should be rendered client-side with an optional fallback.
+
+Client-side content.
+
+Suspense fallback.
+
+Admin and developer-facing signal inspection namespace. It renders API/signal documents, arguments, listeners, WebSocket/PubSub views, and message payloads.
+
+Documentation viewer for signal definitions.
+
+REST API signal view/test surface.
+
+Realtime signal surfaces.
+
+## Console
+
+Source: /cheatsheet/dev/console
+Mirror: /llms/pages/cheatsheet/dev/console.md
+Priority: P2
+
+Headings:
+- Server Console
+- Local Console
+- Container Console
+- Lifecycle
+- Globals
+- Safety
+
+Console
+
+Server Console
+
+Use the Akan server console for interactive inspection and small operator commands against an initialized app runtime.
+
+`akan console` is the local development entry.
+
+`console.js` is generated by `akan build` and is embedded next to `main.js` in the production dist files.
+
+Do not create console files manually inside a running container or pod.
+
+Local Console
+
+Open a local console when you want to inspect services, call small methods, or try a quick query without writing a repeatable script file.
+
+Run locally
+
+Container Console
+
+In Docker or Kubernetes, execute the generated `console.js` that already exists in the built image.
+
+Set `AKAN_CONSOLE=1` on the exec command itself for production-like environments. Avoid keeping it permanently in deployment env.
+
+## Constant Schema Docs
+
+Source: /cheatsheet/dev/constants
+Mirror: /llms/pages/cheatsheet/dev/constants.md
+Priority: P2
+
+Headings:
+- Constant Schema Docs
+- Generated Schema
+- Printable Definition
+
+Constant Schema Docs
+
+Akan can render schema definition tables and model relationship diagrams directly from ConstantRegistry.
+
+Developer schema page
+
+Printable schema definition
+
+Generated Schema
+
+Printable Definition
+
+`Constant.Doc.Print` renders every selected variant and field inline, without tabs, collapse panels, modals, or diagram interactions.
+
+## Docker
+
+Source: /cheatsheet/dev/docker
+Mirror: /llms/pages/cheatsheet/dev/docker.md
+Priority: P2
+
+Headings:
+- Docker
+- Minimal Compose
+- Open Console
+- Important Env
+- Scale With AKAN_REPLICA
+- Tips
+
+Docker
+
+For a small edge server, start with one Akan app container.
+
+Expose the app on port 8282. Route to service port 80.
+
+Mount sqlite data so local data survives container restarts.
+
+Mount logs so troubleshooting does not depend on container lifetime.
+
+Minimal Compose
+
+This is a simplified example for one app. Replace `myapp` and the image name with your app.
+
+Open Console
+
+`akan build` embeds `console.js` next to `main.js`, so you can open an operator console without creating files inside the container.
+
+Set `AKAN_CONSOLE=1` only on the exec command for production-like environments.
+
+Docker exec
+
+Important Env
+
+## Documentation
+
+Source: /cheatsheet/dev/docs
+Mirror: /llms/pages/cheatsheet/dev/docs.md
+Priority: P2
+
+Headings:
+- API Documentation
+- Render A Zone
+- Try An Endpoint
+- Auth And Roles
+- Tips
+
+Documentation
+
+API Documentation
+
+Akan can render signal documentation from the generated fetch object. It is not just a static list: developers can inspect arguments, guards, REST calls, and realtime endpoints.
+
+Use `Signal.Doc.Zone` for one signal namespace.
+
+Use `Doc.Setting` to choose BaseURL, role, and JWT.
+
+REST and WebSocket test surfaces are shown together.
+
+Render A Zone
+
+Place the documentation UI inside an admin or developer-only page. The `base` signal is a good first target because it has simple ping endpoints.
+
+Developer API page
+
+Try An Endpoint
+
+Open the `base` document, find `ping`, and run it from the REST panel. It should return a simple string response.
+
+Auth And Roles
+
+## Kubernetes
+
+Source: /cheatsheet/dev/k8s
+Mirror: /llms/pages/cheatsheet/dev/k8s.md
+Priority: P2
+
+Headings:
+- Kubernetes
+- Architecture
+- Open Console
+- Values
+- Scale
+- Tips
+
+Kubernetes
+
+Akan Kubernetes deployment is built around one app container, a Service, an Ingress, and persistent storage for sqlite data.
+
+Deployment runs the app image.
+
+Service exposes the app inside the cluster.
+
+Ingress connects domains to the Service.
+
+PVC keeps sqlite data across pod restarts.
+
+Architecture
+
+Think of the chart as four connected pieces. Users enter through Ingress, the Service routes traffic to the Pod, and the Pod stores local data through a PVC.
+
+Mental model
+
+Open Console
+
+Use `kubectl exec` to run the generated `console.js` already embedded in the built app image.
+
+The console starts a separate no-listen server process in the same pod; it does not attach to the running `main.js` memory.
+
+## PWA
+
+Source: /cheatsheet/dev/pwa
+Mirror: /llms/pages/cheatsheet/dev/pwa.md
+Priority: P2
+
+Headings:
+- PWA
+- When To Use PWA
+- Static Manifest File
+- Layout Manifest Object
+- Required Assets
+- Tips
+
+PWA
+
+A PWA, or Progressive Web App, is a web app that can feel closer to an installed app. It still runs through the browser, but it can use install metadata, app icons, standalone display, and other browser features to create a more app-like experience.
+
+Use it when users repeatedly open the same web app and benefit from a home-screen or desktop launcher.
+
+It is useful for admin tools, field-work apps, internal dashboards, lightweight commerce apps, and content apps.
+
+Start PWA support by telling the browser what your app is: its name, icon, start URL, display mode, and colors.
+
+When To Use PWA
+
+Think of PWA as a way to make a web app easier to return to. It is not a replacement for every native app, but it is a strong first choice when web deployment speed matters and the app does not need deep device-specific APIs.
+
+Good fit: users need quick access to the same workflow every day, such as office tasks, approvals, reports, or checklists.
+
+Good fit: you want one deployed web app to cover desktop and mobile without app-store distribution first.
+
+Be careful: if the product depends on deep native features, heavy background work, or strict app-store presence, plan a native wrapper or native app too.
+
+Static Manifest File
+
+Use this when you already have a `manifest.json` file or want to edit the exact JSON that the browser reads.
+
+## Script
+
+Source: /cheatsheet/dev/script
+Mirror: /llms/pages/cheatsheet/dev/script.md
+Priority: P2
+
+Headings:
+- Scripts
+- Command
+- Server Lifecycle
+- Use Services
+- Lookup Helpers
+- Tips
+
+Script
+
+Scripts
+
+Use `akan script` for one-time developer or operator jobs: seed data, migrations, checks, and small maintenance fixes.
+
+The script starts the app server container without opening a normal web page.
+
+You can reuse services, signals, and adaptors that the app already wires together.
+
+Keep each script small and easy to delete after the job is done.
+
+Use `akan console` instead when the job is interactive inspection or a small operator command.
+
+Command
+
+Put scripts under `apps/myapp/script`. The filename becomes the command target.
+
+Run a script
+
+Server Lifecycle
+
+Start the server, do the job, and always stop it in `finally`. This makes database connections, timers, and adaptors clean up correctly.
+
+## Testing
+
+Source: /cheatsheet/dev/test
+Mirror: /llms/pages/cheatsheet/dev/test.md
+Priority: P2
+
+Headings:
+- Testing
+- Spec Helper
+- Test File
+- What To Test
+- Command
+- Tips
+
+Testing
+
+In Akan apps, start testing from signals. A signal test checks the real business flow through the generated fetch API before you spend time on UI details.
+
+Test signup, permission, validation, and state transitions at the API layer.
+
+Move repeated setup into small helper functions.
+
+Keep long scenarios as several clear steps.
+
+Spec Helper
+
+A spec helper creates test users, agents, and sample data. The test file can then read like a user story instead of a setup script.
+
+Test File
+
+The test file imports helpers, prepares an agent, calls signals through fetch, and checks the result.
+
+What To Test
+
+Happy path: create, update, publish, archive.
+
+Permission: guest cannot publish, owner can edit, admin can remove.
+
+## Authorization
+
+Source: /cheatsheet/general/auth
+Mirror: /llms/pages/cheatsheet/general/auth.md
+Priority: P2
+
+Headings:
+- Authorization
+- Use Guards
+- Use .with()
+- Guard Or .with()
+- Tips
+
+Authorization
+
+Authorization in Akan answers two simple questions: who is calling this API, and is that person allowed to use it? Think of it as a small gate in front of each signal.
+
+Middleware reads login information from the request.
+
+Guard blocks users who do not have permission.
+
+`.with()` gives the handler trusted server-side values such as the current user.
+
+Use Guards
+
+Use a guard when the whole API should be unavailable to some users. For example, a profile update API should only run for signed-in users.
+
+User-only mutation
+
+Use .with()
+
+Use `.with()` when the API needs a value that the client should not type by hand. Current user, current admin, request, and account are good examples.
+
+Current user from the server
+
+Guard Or .with()
+
+## DataList & Enum
+
+Source: /cheatsheet/general/datalist
+Mirror: /llms/pages/cheatsheet/general/datalist.md
+Priority: P2
+
+Headings:
+- DataList & Enum
+- Enum
+- DataList
+- When To Use
+- Tips
+
+DataList & Enum
+
+Enum and DataList are small helpers you will see often in Akan. Enum is for a fixed set of values. DataList is for a list of items that each have an id.
+
+Enum: status, role, type, category.
+
+DataList: users, files, posts, selected rows.
+
+Enum
+
+Use Enum when the value must be one of a few known choices. This keeps forms, APIs, and labels consistent.
+
+Fixed values
+
+Use values in UI
+
+DataList
+
+Use DataList when you already loaded a list and want to update it by id. It is useful for UI state because you can add, replace, pick, and filter items easily.
+
+`set(item)`: add or replace an item.
+
+`pick(id)`: get one item by id.
+
+## Edge Computing
+
+Source: /cheatsheet/general/edge
+Mirror: /llms/pages/cheatsheet/general/edge.md
+Priority: P2
+
+Headings:
+- Edge Computing
+- Call Another Server
+- Send Commands
+- Listen To Status
+- Wrap A Remote Node
+- Very Fast Data
+- Tips
+
+Edge Computing
+
+Edge computing in Akan means this: one Akan server can call another Akan server with the same generated `fetch` object you already use in the app.
+
+Cloud server: decides what should happen.
+
+Edge server: does work close to the device or user.
+
+Akan fetch: connects both sides with typed signal calls.
+
+Call Another Server
+
+The important part is the last option: `{ origin }`. It tells fetch which server should receive the signal call.
+
+Include the server global API prefix (for example `/api`) in the origin, because fetch sends the call to it as-is.
+
+Ping an edge server
+
+Send Commands
+
+Use normal query or mutation calls when the cloud wants the edge server to do something. The call still has typed arguments and typed return values.
+
+Remote command
+
+## File Management
+
+Source: /cheatsheet/general/file
+Mirror: /llms/pages/cheatsheet/general/file.md
+Priority: P2
+
+Headings:
+- What You Build
+- Minimal File Model
+- Upload Endpoint
+- File Service
+- Local File Serving
+- Use In UI
+- Auto-attach To A Model Field
+- Grow Later
+- Tips
+
+File Management
+
+What You Build
+
+A minimal file feature has one simple idea: store the real file in storage, and store only the file record in the database.
+
+A File model saves filename, url, size, status, and progress.
+
+An upload endpoint receives `Upload` from the client.
+
+A service writes the file stream to storage and updates the File record.
+
+For local development, a small endpoint can serve files back as a stream.
+
+Minimal File Model
+
+Start with only the fields your UI needs. You can add image size, blur preview, origin URL, or other metadata later.
+
+Upload Endpoint
+
+The endpoint should stay boring. Receive files, choose a purpose folder, and delegate the real work to the service.
+
+File Service
+
+## Schema Design
+
+Source: /cheatsheet/general/schema
+Mirror: /llms/pages/cheatsheet/general/schema.md
+Priority: P2
+
+Headings:
+- Schema Design
+- Start From The Screen
+- Relationship Size
+- Copy Small Snapshots
+- Akan Model Layers
+- Tips
+
+Schema Design
+
+In Akan, `constant.ts` is where you describe the shape of your data. The easiest way to design it is to start from the page or API that will read the data.
+
+A simple rule is: keep small data that is read together in one document, and split data that keeps growing into another model.
+
+Start From The Screen
+
+Before adding fields, imagine the list page, detail page, and form. The schema should make those common reads easy.
+
+List page: what small fields should every row show?
+
+Detail page: what full data should load together?
+
+Child list: what data can grow forever, like comments or logs?
+
+Small list shape
+
+Relationship Size
+
+When one thing has many children, first ask how many children there will be. The answer changes the schema.
+
+One to few: embed it. Example: a user's two or three links, a post's small settings.
+
+## Single Sign-On
+
+Source: /cheatsheet/general/sso
+Mirror: /llms/pages/cheatsheet/general/sso.md
+Priority: P2
+
+Headings:
+- Single Sign-On
+- Register Providers
+- Write A Callback
+- Account Id
+- Redirects
+- Tips
+
+Single Sign-On
+
+SSO lets users sign in with services like GitHub, Google, Kakao, or Naver. In Akan, you usually only write the callback once and let the service decide whether to sign in or continue signup.
+
+User clicks a social login button.
+
+The provider confirms who the user is.
+
+Akan callback receives the profile.
+
+The service signs in or redirects to signup.
+
+Register Providers
+
+First, register the providers your app supports. Each provider needs credentials from that service's developer console.
+
+Example options
+
+Write A Callback
+
+The callback should stay small. Take the provider profile, find the account id, and pass it to your user service.
+
+`SSO.Google` is a guard. It checks that Google SSO is configured before the login start route or callback runs. The start route redirects to Google, and the callback exchanges Google's `code` for a profile.
+
+## CRUD
+
+Source: /cheatsheet/interface/crud
+Mirror: /llms/pages/cheatsheet/interface/crud.md
+Priority: P2
+
+Headings:
+- CRUD With Less Code
+- Start With A Slice
+- List And Open
+- Create And Edit
+- Remove In Util
+- Tips
+
+CRUD
+
+CRUD With Less Code
+
+CRUD is usually the first screen you build: list items, open one item, create a new one, edit it, and remove it. In Akan, most of that work is already prepared around a model slice.
+
+Slice decides which records this screen can read and edit.
+
+Template draws the form fields.
+
+Load and Model components connect the slice to UI behavior.
+
+Start With A Slice
+
+A slice is a named window into your model. Give it a name that matches the screen, such as `inPublic`, `inAdmin`, or `inProject`.
+
+Post slice
+
+List And Open
+
+`Load.Units` renders the list. `Model.ViewEditModal` can live next to the list and handle detail view plus edit modal behavior.
+
+Post list zone
+
+## Endpoint
+
+Source: /cheatsheet/interface/endpoint
+Mirror: /llms/pages/cheatsheet/interface/endpoint.md
+Priority: P2
+
+Headings:
+- Endpoint Actions
+- The Flow
+- Declare Endpoint
+- Put Rules In Service
+- Call It From Store
+- Make One Util
+- Tips
+
+Endpoint
+
+Endpoint Actions
+
+CRUD handles the common actions. Endpoint is for one clear business action, such as publish, approve, reject, archive, or send notification.
+
+A good rule is: one button action, one store action, one endpoint, one service method.
+
+The Flow
+
+User clicks a button in a Util component.
+
+The button calls a store action.
+
+The store action calls the generated fetch endpoint.
+
+The endpoint delegates real work to the service.
+
+Button to service
+
+Declare Endpoint
+
+Keep the endpoint thin. It receives parameters, checks guards if needed, and calls the service method.
+
+## Form
+
+Source: /cheatsheet/interface/form
+Mirror: /llms/pages/cheatsheet/interface/form.md
+Priority: P2
+
+Headings:
+- Form From Schema
+- Keep Template Simple
+- Create With SSR
+- Update Page
+- Client Modal Edit
+- Tips
+
+Form
+
+Form From Schema
+
+After the model schema is designed, the form should be a thin UI over that shape. The easiest pattern is: prepare data in the wrapper, draw fields in the Template.
+
+Server page prepares create defaults or parent ids.
+
+Template reads `st.use.articleForm()` and renders fields.
+
+Modal wrappers handle quick client-side edits.
+
+Keep Template Simple
+
+A Template should not decide where the form came from. It only reads the current form state and connects each field to a store setter.
+
+Article template
+
+Create With SSR
+
+Use `Load.Edit` on a server-rendered page when the page already knows default values. This is useful for parent ids, current org, default status, or values from the URL.
+
+New article page
+
+## Dependency Injection
+
+Source: /cheatsheet/observability/di
+Mirror: /llms/pages/cheatsheet/observability/di.md
+Priority: P2
+
+Headings:
+- Dependency Injection
+- Register With use
+- Adapt And Plug
+- Inject Services
+- Read Environment
+- Tips
+
+Dependency Injection
+
+Dependency injection means a service receives what it needs instead of creating everything by itself. This keeps business code small and makes external systems easier to replace.
+
+`use` receives values registered in app or library options.
+
+`adapt` and `plug` are good for replaceable tools such as storage, cache, or message APIs.
+
+`service` connects one service to another service.
+
+`env` reads runtime configuration without passing it through every function.
+
+Register With use
+
+`AkanOption.use()` is a simple place to prepare global values. Put API clients, generated secrets, host values, and shared settings there.
+
+Option registers values
+
+Service receives values
+
+Adapt And Plug
+
+Use an adaptor when a tool has behavior and can be replaced later. The service only asks for the role it needs.
+
+## Error Handling
+
+Source: /cheatsheet/observability/error
+Mirror: /llms/pages/cheatsheet/observability/error.md
+Priority: P2
+
+Headings:
+- Error Handling
+- Declare Errors
+- Throw Err
+- Choose Status
+- Use Data
+- Client Handling
+- Response Shape
+- Tips
+
+Error Handling
+
+Akan errors are built around one simple rule: server code throws a typed dictionary key, and the client shows the translated message for that key.
+
+Declare user-facing errors in the module dictionary.
+
+Throw `Err` from document or service code when a business rule fails.
+
+Let fetch restore the response as an `Err`, then show it with `msg.error()`.
+
+Declare Errors
+
+Start in the dictionary. The keys you declare here become the only valid keys for `Err`, so typo mistakes are caught by TypeScript.
+
+Throw Err
+
+Use `Err` for business rules that users can understand and fix. A document method is a good place for state rules because every service shares the same rule.
+
+Choose Status
+
+`new Err()` uses 400 by default. When the HTTP meaning matters, pick a named helper. This keeps API responses clear without making every rule verbose.
+
+`Err.NotFound`: a requested record does not exist.
+
+## Logging
+
+Source: /cheatsheet/observability/logging
+Mirror: /llms/pages/cheatsheet/observability/logging.md
+Priority: P2
+
+Headings:
+- Runtime Logging
+- Using Logger
+- Log Levels
+- File Logging & Rotation
+- Reading Logs
+- Operational Checklist
+
+Logging
+
+Runtime Logging
+
+Akan uses Logger for structured runtime output and AkanApp stores gateway and child process logs as files. Terminal logging stays concise for development, while file logging keeps richer records for later inspection.
+
+Logger API
+
+Use named loggers in services, adaptors, scripts, and runtime code.
+
+Terminal level
+
+Controls what is printed to stdout and stderr.
+
+File level
+
+Controls what Logger output is written to log files. Defaults to trace.
+
+Using Logger
+
+Create a Logger with a component or service name, then write logs at the level that matches the intent. Add context when the same logger handles several jobs.
+
+Use trace or debug for detailed diagnosis, info/log for normal lifecycle events, warn for recoverable issues, and error when an operation failed or needs attention.
+
+## Metrics
+
+Source: /cheatsheet/observability/metrics
+Mirror: /llms/pages/cheatsheet/observability/metrics.md
+Priority: P2
+
+Headings:
+- Health And Metrics
+- Check Health
+- Check Metrics
+- How To Read
+- Memory Logs
+- Troubleshooting Order
+
+Metrics
+
+Health And Metrics
+
+When an Akan app feels slow or does not respond, start with two runtime endpoints. Health tells you whether the app is alive, and metrics tells you how busy it is.
+
+`/_akan/app/health` checks gateway and child process status.
+
+`/_akan/app/metrics` checks requests, sockets, rooms, and memory.
+
+Use logs after metrics when you need the reason behind the numbers.
+
+Check Health
+
+Use health first when the app does not open. It shows whether the gateway is running and whether child servers are ready.
+
+Health endpoint
+
+Simplified response
+
+Check Metrics
+
+Use metrics when the app is alive but feels busy. It gives a quick picture of traffic, WebSocket load, rooms, and process memory.
+
+## Caching
+
+Source: /cheatsheet/performance/caching
+Mirror: /llms/pages/cheatsheet/performance/caching.md
+Priority: P2
+
+Headings:
+- Server Caching
+- Document Cache
+- Service Memory
+- Which One?
+- Tips
+
+Caching
+
+Server Caching
+
+Caching is a small key-value shortcut in front of expensive work. Use it for data that is safe to reuse for a short time, such as verification codes, counters, summaries, or computed options.
+
+Document cache is close to one model.
+
+Service memory is useful for service-level state or shared helper values.
+
+The provider can be sqlite/libsql or redis depending on runtime mode.
+
+Document Cache
+
+Use model cache inside the document layer when the cached value naturally belongs to that model. Keep the namespace small and delete it when the source changes.
+
+Cache a short-lived code
+
+Service Memory
+
+Use `memory()` when a service needs a small value that survives across calls. It can be a single value, a map, or local process memory.
+
+Service-level cache
+
+## Image Optimization
+
+Source: /cheatsheet/performance/image
+Mirror: /llms/pages/cheatsheet/performance/image.md
+Priority: P2
+
+Headings:
+- Image Optimization
+- Use Image
+- Config
+- remotePatterns
+- Cache Hits
+
+Image Optimization
+
+Akan Image works like a small image optimizer. It creates optimized URLs with width and quality, serves WebP when possible, and caches the generated result.
+
+Use `Image` for images shown in UI.
+
+Configure allowed sizes and remote domains in `akan.config.ts`.
+
+Keep size options small enough to improve cache hits.
+
+Use Image
+
+Pass a file-like object or a direct src. Width and height help Akan choose the nearest cached size.
+
+Article cover
+
+Config
+
+The default config covers common responsive sizes. Change it only when your UI has clear image sizes that repeat often.
+
+remotePatterns
+
+Remote images are blocked unless their host and path match `remotePatterns`. If optimization returns a bad request, check this setting first.
+
+## Lazy Loading
+
+Source: /cheatsheet/performance/lazy
+Mirror: /llms/pages/cheatsheet/performance/lazy.md
+Priority: P2
+
+Headings:
+- Lazy Loading
+- External Libraries
+- Large Components
+- SSR Or Client Only
+- Tips
+
+Lazy Loading
+
+Lazy loading means the first page does not download every heavy component right away. Load expensive UI only when the user reaches it.
+
+Good for maps, charts, editors, 3D viewers, and wallet widgets.
+
+Good for large admin panels that are not always opened.
+
+Not useful for tiny buttons or above-the-fold content.
+
+External Libraries
+
+Some libraries are large or depend on browser-only APIs such as `window`. Wrap them with `lazy` and disable SSR when needed.
+
+Map widget
+
+Large Components
+
+You can also split your own components. This is useful when a page has a heavy editor or dashboard that opens only after a click.
+
+Lazy editor
+
+SSR Or Client Only
+
+## Querying
+
+Source: /cheatsheet/performance/query
+Mirror: /llms/pages/cheatsheet/performance/query.md
+Priority: P2
+
+Headings:
+- Querying
+- Basic Filter
+- Optional Conditions
+- Range And OR
+- Raw Query
+- How It Becomes SQL
+- Tips
+
+Querying
+
+In Akan, database queries usually live in `document.ts` filters. Pages and services ask for a named filter instead of rebuilding the same condition everywhere.
+
+Use `filter().arg()` for required inputs.
+
+Use `filter().opt()` for optional inputs.
+
+Use the `q` helper for readable conditions.
+
+Basic Filter
+
+Start with the query your screen needs. For example, a project page often needs active tasks in that project.
+
+Tasks in project
+
+Optional Conditions
+
+Optional filters should add conditions only when the user actually selected something. `q.when` keeps that logic compact.
+
+Filter by assignees
+
+Range And OR
+
+## Queueing
+
+Source: /cheatsheet/performance/queue
+Mirror: /llms/pages/cheatsheet/performance/queue.md
+Priority: P2
+
+Headings:
+- Queueing
+- Queue From Endpoint
+- Run In Process
+- Replica Roles
+- Tips
+
+Queueing
+
+Queueing is for work that should not block the user's request. The button returns quickly, and a background process does the heavy job.
+
+Good for backups, exports, report generation, imports, and long AI jobs.
+
+The endpoint records intent and queues the process.
+
+The process performs the slow work outside the request path.
+
+Queue From Endpoint
+
+The endpoint should stay short. It changes the job status to waiting and asks the internal process to run later.
+
+Queue report generation
+
+Service queues process
+
+Run In Process
+
+The internal process owns the slow work. It can update progress, upload files, and mark the job as done or failed.
+
+Internal process
+
+## Realtime
+
+Source: /cheatsheet/performance/realtime
+Mirror: /llms/pages/cheatsheet/performance/realtime.md
+Priority: P2
+
+Headings:
+- Realtime
+- Use message
+- Use pubsub
+- Chat Flow
+- Design Rooms
+- Tips
+
+Realtime
+
+Realtime features keep a WebSocket connection open so the app can send small events quickly. Use it for chat, games, live editors, dashboards, and presence.
+
+`message` is a client-to-server event.
+
+`pubsub` is a server-to-room broadcast.
+
+`room` decides who should receive the event.
+
+Use message
+
+Use `message` for small actions from the browser to the server: read receipt, cursor move, typing status, or game input.
+
+Read receipt
+
+Use pubsub
+
+Use `pubsub` when the server needs to send one event to everyone in a room. A new chat message is the simplest example.
+
+Chat broadcast
+
+Chat Flow
+
+## Additional P2 Mirrors
+
+- Console: /llms/pages/cheatsheet/dev/console.md
+- Constant Schema Docs: /llms/pages/cheatsheet/dev/constants.md
+- Docker: /llms/pages/cheatsheet/dev/docker.md
+- Documentation: /llms/pages/cheatsheet/dev/docs.md
+- Kubernetes: /llms/pages/cheatsheet/dev/k8s.md
+- PWA: /llms/pages/cheatsheet/dev/pwa.md
+- Script: /llms/pages/cheatsheet/dev/script.md
+- Testing: /llms/pages/cheatsheet/dev/test.md
+- Authorization: /llms/pages/cheatsheet/general/auth.md
+- DataList & Enum: /llms/pages/cheatsheet/general/datalist.md
+- Edge Computing: /llms/pages/cheatsheet/general/edge.md
+- File Management: /llms/pages/cheatsheet/general/file.md
+- Schema Design: /llms/pages/cheatsheet/general/schema.md
+- Single Sign-On: /llms/pages/cheatsheet/general/sso.md
+- CRUD: /llms/pages/cheatsheet/interface/crud.md
+- Endpoint: /llms/pages/cheatsheet/interface/endpoint.md
+- Form: /llms/pages/cheatsheet/interface/form.md
+- Dependency Injection: /llms/pages/cheatsheet/observability/di.md
+- Error Handling: /llms/pages/cheatsheet/observability/error.md
+- Logging: /llms/pages/cheatsheet/observability/logging.md
+- Metrics: /llms/pages/cheatsheet/observability/metrics.md
+- Caching: /llms/pages/cheatsheet/performance/caching.md
+- Image Optimization: /llms/pages/cheatsheet/performance/image.md
+- Lazy Loading: /llms/pages/cheatsheet/performance/lazy.md
+- Querying: /llms/pages/cheatsheet/performance/query.md
+- Queueing: /llms/pages/cheatsheet/performance/queue.md
+- Realtime: /llms/pages/cheatsheet/performance/realtime.md

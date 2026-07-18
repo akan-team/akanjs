@@ -1,7 +1,6 @@
 import {
   type Cls,
   type EnumInstance,
-  FIELD_META,
   type GetStateObject,
   isEnum,
   PrimitiveRegistry,
@@ -9,13 +8,15 @@ import {
   type PrimitiveValue,
 } from "akanjs/base";
 import { capitalize, lowerlize } from "akanjs/common";
-import { type ConstantCls, deserialize, type FieldObject, type PurifiedModel, serialize } from ".";
+import {
+  type ConstantCls,
+  type ConstantModelRef,
+  deserialize,
+  type FieldObject,
+  type PurifiedModel,
+  serialize,
+} from ".";
 import type { ConstantType, DefaultOf, DocumentModel, QueryOf } from "./types";
-
-type ConstantModelRef<FieldObj extends FieldObject = FieldObject> = Cls<
-  unknown,
-  { [FIELD_META]: FieldObj; modelType: ConstantType }
->;
 
 /** Runtime registry for Akan constant model metadata, refs, enums, and generated model contracts. */
 export class ConstantRegistry {
@@ -107,7 +108,7 @@ export class ConstantRegistry {
     InputRef extends ConstantModelRef,
     ObjectRef extends ConstantModelRef,
     FullFieldObj extends FieldObject,
-    FullRef extends ConstantModelRef<FullFieldObj>,
+    FullRef extends ConstantModelRef<any, FullFieldObj>,
     LightRef extends ConstantModelRef,
     InsightRef extends ConstantModelRef,
     Input = InstanceType<InputRef>,
@@ -200,7 +201,7 @@ export class ConstantRegistry {
       _StateLight: null as unknown as GetStateObject<Light>,
       _StateInsight: null as unknown as GetStateObject<Insight>,
     };
-    ConstantRegistry.setDatabase(refName, cnst);
+    ConstantRegistry.setDatabase(refName, cnst as unknown as ConstantModel);
     Object.entries(constExports).forEach(([key, value]) => {
       if ((modelRefSet as Set<unknown>).has(value)) return;
       else if (typeof value === "function" && isEnum(value as Cls))

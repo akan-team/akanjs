@@ -2,9 +2,9 @@ import {
   Any,
   arraiedModel,
   type Cls,
+  EXAMPLE_VALUE,
   FIELD_META,
   getNonArrayModel,
-  PRIMITIVE_EXAMPLE_VALUE,
   PrimitiveRegistry,
   type PrimitiveScalar,
 } from "akanjs/base";
@@ -15,7 +15,7 @@ import type { SerializedArg, SerializedEndpoint, SignalType } from "akanjs/signa
 const getResponseExample = (ref: Cls | Cls[]) => {
   const [modelRef, arrDepth] = getNonArrayModel(ref);
   const isPrimitive = PrimitiveRegistry.has(modelRef);
-  if (isPrimitive) return arraiedModel((modelRef as typeof PrimitiveScalar)[PRIMITIVE_EXAMPLE_VALUE], arrDepth);
+  if (isPrimitive) return arraiedModel((modelRef as typeof PrimitiveScalar)[EXAMPLE_VALUE], arrDepth);
 
   const example: Record<string, unknown> = {};
   Object.entries((modelRef as ConstantCls)[FIELD_META]).forEach(([key, field]) => {
@@ -30,7 +30,7 @@ const getResponseExample = (ref: Cls | Cls[]) => {
 const getRequestExample = (modelRef: Cls) => {
   const example: Record<string, unknown> = {};
   const isPrimitive = PrimitiveRegistry.has(modelRef);
-  if (isPrimitive) return (modelRef as typeof PrimitiveScalar)[PRIMITIVE_EXAMPLE_VALUE];
+  if (isPrimitive) return (modelRef as typeof PrimitiveScalar)[EXAMPLE_VALUE];
   else {
     Object.entries((modelRef as ConstantCls)[FIELD_META]).forEach(([key, field]) => {
       if (!field.isScalar && field.isClass) example[key] = "ObjectID";

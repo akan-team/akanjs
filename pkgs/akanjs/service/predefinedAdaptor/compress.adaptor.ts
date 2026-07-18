@@ -13,7 +13,7 @@ import {
   type PrimitiveScalar,
 } from "akanjs/base";
 import { Logger } from "akanjs/common";
-import { type ConstantCls, type ConstantField, ConstantRegistry } from "akanjs/constant";
+import { type ConstantCls, type ConstantField, type ConstantModelRef, ConstantRegistry } from "akanjs/constant";
 import { adapt } from "../adapt";
 
 type ProtoType = {
@@ -94,7 +94,7 @@ export class ProtobufCompressor extends adapt("protobufCompressor", () => ({})) 
     return this.#proto;
   }
 
-  #getProtoModel(modelRef: ConstantCls<unknown>) {
+  #getProtoModel(modelRef: ConstantModelRef<unknown>) {
     const refName = ConstantRegistry.getRefName(modelRef);
     const predefinedProtoModel = this.#protoModelMap.get(modelRef);
     if (predefinedProtoModel) return predefinedProtoModel;
@@ -140,13 +140,13 @@ export class ProtobufCompressor extends adapt("protobufCompressor", () => ({})) 
     const [valueRef] = getNonArrayModel(modelRef);
     return this.#primitiveProtoEncodeMap.get(valueRef) ?? ((value) => value as object);
   }
-  #getRelatedProtoModelRefs(modelRef: ConstantCls, baseModelRefs: ConstantCls[] = []) {
+  #getRelatedProtoModelRefs(modelRef: ConstantModelRef, baseModelRefs: ConstantModelRef[] = []) {
     const allModelRefs = [modelRef, ...baseModelRefs];
     allModelRefs.forEach((mRef) => {
       Object.values(mRef[FIELD_META]).forEach((field) => {
         const relatedRef = field.isMap && field.of ? (field.of as Cls) : field.modelRef;
-        if (!PrimitiveRegistry.has(relatedRef) && !allModelRefs.includes(relatedRef as ConstantCls)) {
-          allModelRefs.push(relatedRef as ConstantCls);
+        if (!PrimitiveRegistry.has(relatedRef) && !allModelRefs.includes(relatedRef as ConstantModelRef)) {
+          allModelRefs.push(relatedRef as ConstantModelRef);
         }
       });
     });
@@ -188,7 +188,7 @@ export class ProtobufCompressor extends adapt("protobufCompressor", () => ({})) 
       | boolean
       | null;
   }
-  #makeProtoEncode = <T>(modelRef: ConstantCls<T>): ((value: never) => object) => {
+  #makeProtoEncode = <T>(modelRef: ConstantModelRef<T>): ((value: never) => object) => {
     const predefinedProtoEncode = this.#protoEncodeMap.get(modelRef);
     if (predefinedProtoEncode) return predefinedProtoEncode;
     const protoEncodeFn = (value: T) => {
@@ -286,7 +286,7 @@ export class ProtobufCompressor extends adapt("protobufCompressor", () => ({})) 
       | null
       | undefined;
   }
-  #makeProtoDecode<T>(modelRef: ConstantCls<T>): (value: never) => object {
+  #makeProtoDecode<T>(modelRef: ConstantModelRef<T>): (value: never) => object {
     const predefinedProtoDecode = this.#protoDecodeMap.get(modelRef);
     if (predefinedProtoDecode) return predefinedProtoDecode;
     const protoDecodeFn = (value: T) => {
@@ -300,7 +300,7 @@ export class ProtobufCompressor extends adapt("protobufCompressor", () => ({})) 
     return protoDecodeFn as (value: never) => object;
   }
   #decode<T>(modelRef: ConstantCls<T>, buffer: Buffer, { raw = false }: { raw?: boolean } = {}): T {
-    const protoModel = this.#getProtoModel(modelRef as unknown as ConstantCls<unknown>);
+    const protoModel = this.#getProtoModel(modelRef as unknown as ConstantModelRef<unknown>);
     const message = protoModel.decode(Buffer.from(buffer));
     const data = protoModel.toObject(message);
     const protoDecode = this.#makeProtoDecode(modelRef);
@@ -326,7 +326,7 @@ export class ProtobufCompressor extends adapt("protobufCompressor", () => ({})) 
     const fieldType = isPrimitive ? (this.#protobufTypeMap.get(ref) ?? "string") : refName;
 
     if (!isPrimitive) {
-      const modelRef = ref as ConstantCls;
+      const modelRef = ref as ConstantModelRef;
       const allModelRefs = this.#getRelatedProtoModelRefs(modelRef, [...modelRef.children]);
 
       for (const mRef of allModelRefs) {

@@ -46,6 +46,7 @@ export interface AkanAppOptions {
   runtimeDir?: string;
   port?: number;
   wsBasePort?: number;
+  openapi?: boolean;
 }
 
 interface AkanReplicaConfig {
@@ -67,8 +68,10 @@ export class AkanApp {
   readonly #artifactDir: string;
   readonly #replica: AkanReplicaConfig;
   readonly #runtimeDir: string;
+  readonly #socketRunId = `${process.pid}-${Date.now().toString(36)}`;
   readonly #port: number;
   readonly #wsBasePort: number;
+  readonly #openapi?: boolean;
   readonly #children = new Map<number, ChildState>();
   readonly #roomChildren = new Map<string, Set<number>>();
   readonly #childRooms = new Map<number, Set<string>>();
@@ -84,6 +87,8 @@ export class AkanApp {
   #logWriter: RotatingLogWriter | null = null;
   #removeLogSink: (() => void) | null = null;
   readonly #childOutputBuffers = new Map<string, string>();
+  readonly #childStderrBlockBuffers = new Map<string, string[]>();
+  readonly #childStderrBlockTimers = new Map<string, ReturnType<typeof setTimeout>>();
   static readonly #ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
   #gatewayMetrics: AkanMetricsReport = {};
   #proxyHopCount = 0;
@@ -94,15 +99,17 @@ export class AkanApp {
   #stopping = false;
 
   constructor(serverPath = "./server", options: AkanAppOptions = {}) {
-    this.#serverPath = AkanApp.#resolveServerPath(options.serverPath ?? serverPath);
+    const resolvedOptions = options;
+    this.#serverPath = AkanApp.#resolveServerPath(resolvedOptions.serverPath ?? serverPath);
     this.#artifactDir = path.resolve(path.dirname(this.#serverPath), ".akan", "artifact");
-    this.#replica = AkanApp.#parseReplicaConfig(options.replica);
+    this.#replica = AkanApp.#parseReplicaConfig(resolvedOptions.replica);
     this.#runtimeDir =
-      (options.runtimeDir ?? process.env.AKAN_RUNTIME_DIR ?? process.env.NODE_ENV === "production")
+      (resolvedOptions.runtimeDir ?? process.env.AKAN_RUNTIME_DIR ?? process.env.NODE_ENV === "production")
         ? path.resolve(process.cwd(), "runtime")
         : path.resolve(process.cwd(), "local", "apps", process.env.AKAN_PUBLIC_APP_NAME ?? "unknown", "runtime");
-    this.#port = Number(options.port ?? process.env.PORT ?? 8282);
-    this.#wsBasePort = Number(options.wsBasePort ?? process.env.AKAN_WS_BASE_PORT ?? this.#port + 10_000);
+    this.#port = Number(resolvedOptions.port ?? process.env.PORT ?? 8282);
+    this.#wsBasePort = Number(resolvedOptions.wsBasePort ?? process.env.AKAN_WS_BASE_PORT ?? this.#port + 10_000);
+    this.#openapi = resolvedOptions.openapi;
   }
 
   static #resolveServerPath(serverPath: string) {
@@ -222,6 +229,7 @@ export class AkanApp {
         SERVER_MODE: role,
         AKAN_CHILD_SOCKET: upstream.http.socketPath,
         AKAN_CHILD_WS_PORT: upstream.ws ? String(upstream.ws.port) : "",
+        ...(this.#openapi === undefined ? {} : { AKAN_OPENAPI: this.#openapi ? "true" : "false" }),
       },
       ipc: (message) => this.#handleMessage(idx, message as AkanIpcMessage, proc),
       stdout: "pipe",
@@ -271,7 +279,7 @@ export class AkanApp {
 
     child.restartPending = true;
     child.ready = false;
-    child.status = reason === "health-timeout" ? "unhealthy" : "exited";
+    child.status = reason === "health-timeout" || reason === "upstream-open-failed" ? "unhealthy" : "exited";
     child.upstream = undefined;
     child.healthPath = undefined;
     this.#invalidateFederationChildCache();
@@ -334,6 +342,7 @@ export class AkanApp {
   }
 
   async #stopChildForRestart(child: ChildState, proc: Bun.Subprocess<"ignore", "pipe", "pipe">, reason: string) {
+    if (reason.startsWith("exit:") || proc.killed) return;
     if (!proc.killed) {
       this.#sendToChild(child, { type: "shutdown", signal: reason } satisfies AkanIpcMessage);
     }
@@ -396,7 +405,7 @@ export class AkanApp {
         data: {} as GatewayWsData,
       },
     });
-    this.logger.info(`AkanApp gateway is running on port ${this.#port}`);
+    this.logger.info(`AkanApp gateway is running on port http://localhost:${this.#port}`);
   }
 
   async #handleFetch(req: Request, server: Bun.Server<GatewayWsData>): Promise<Response | undefined> {
@@ -571,10 +580,25 @@ export class AkanApp {
         redirect: "manual",
       });
       return this.#proxyResponse(upstreamRes);
+    } catch (error) {
+      if (AkanApp.#isUpstreamOpenFailure(error)) {
+        this.logger.error(
+          `Child ${child.idx}/${child.role} upstream is unreachable (${child.upstream.socketPath}); restarting`,
+        );
+        this.#scheduleChildRestart(child, child.proc, "upstream-open-failed");
+        return new Response("Federation child upstream is unreachable; restarting", { status: 503 });
+      }
+      throw error;
     } finally {
       child.metrics.activeRequests = Math.max(0, (child.metrics.activeRequests ?? 1) - 1);
       if (traced) this.#recordProxyHop(performance.now() - hopStart);
     }
+  }
+
+  static #isUpstreamOpenFailure(error: unknown): boolean {
+    if (!error || typeof error !== "object") return false;
+    const candidate = error as { code?: unknown; message?: unknown };
+    return candidate.code === "FailedToOpenSocket" || String(candidate.message ?? "").includes("FailedToOpenSocket");
   }
 
   /**
@@ -706,7 +730,7 @@ export class AkanApp {
 
   #getChildUpstream(idx: number, role: AkanChildRole): GatewayUpstream {
     return {
-      http: { type: "unix", socketPath: path.join(this.#runtimeDir, `akan-child-${idx}.sock`) },
+      http: { type: "unix", socketPath: path.join(this.#runtimeDir, `akan-child-${this.#socketRunId}-${idx}.sock`) },
       ws: role === "batch" ? undefined : { type: "tcp", host: "127.0.0.1", port: this.#wsBasePort + idx },
     };
   }
@@ -761,6 +785,7 @@ export class AkanApp {
       case "invalidate":
       case "css-updated":
       case "pages-updated":
+      case "build-status":
         this.#fanoutToFederation(message);
         return;
       case "build-route-res":
@@ -928,11 +953,17 @@ export class AkanApp {
         void this.#scheduleChildRestart(child, child.proc, "health-timeout");
         return;
       }
-      this.#sendToChild(child, {
+      const sent = this.#sendToChild(child, {
         type: "health.ping",
         nonce: crypto.randomUUID(),
         sentAt: now,
       } satisfies AkanIpcMessage);
+      if (!sent) {
+        child.status = "unhealthy";
+        this.#invalidateFederationChildCache();
+        void this.#scheduleChildRestart(child, child.proc, "health-send-failed");
+        return;
+      }
     }
   }
 
@@ -1007,6 +1038,7 @@ export class AkanApp {
       if (remaining) this.#writeChildOutput(idx, role, type, bufferKey, remaining);
     } finally {
       this.#flushChildOutput(idx, role, type, bufferKey);
+      if (type === "stderr") this.#flushChildStderrBlock(idx, role, AkanApp.#childStderrBlockKey(idx, role));
     }
   }
 
@@ -1031,9 +1063,61 @@ export class AkanApp {
   }
 
   #writeChildOutputLine(idx: number, role: AkanChildRole, type: "stdout" | "stderr", line: string) {
+    if (type === "stderr" && this.#bufferChildStderrLine(idx, role, line)) return;
+    this.#writeChildOutputLineRaw(idx, role, type, line);
+  }
+
+  #writeChildOutputLineRaw(idx: number, role: AkanChildRole, type: "stdout" | "stderr", line: string) {
     const prefixedLine = `[child:${idx} ${role}] [${type}] ${line}`;
     process[type].write(prefixedLine);
     this.#logWriter?.write(`${idx}-${role}`, AkanApp.#stripAnsi(prefixedLine));
+  }
+
+  #bufferChildStderrLine(idx: number, role: AkanChildRole, line: string): boolean {
+    const key = AkanApp.#childStderrBlockKey(idx, role);
+    const block = this.#childStderrBlockBuffers.get(key) ?? [];
+    block.push(line);
+    this.#childStderrBlockBuffers.set(key, block);
+
+    const existingTimer = this.#childStderrBlockTimers.get(key);
+    if (existingTimer) clearTimeout(existingTimer);
+
+    if (line.trim() === "" || block.length >= 64) {
+      this.#flushChildStderrBlock(idx, role, key);
+      return true;
+    }
+
+    this.#childStderrBlockTimers.set(
+      key,
+      setTimeout(() => this.#flushChildStderrBlock(idx, role, key), 50),
+    );
+    return true;
+  }
+
+  #flushChildStderrBlock(idx: number, role: AkanChildRole, key: string) {
+    const timer = this.#childStderrBlockTimers.get(key);
+    if (timer) clearTimeout(timer);
+    this.#childStderrBlockTimers.delete(key);
+
+    const block = this.#childStderrBlockBuffers.get(key);
+    if (!block?.length) return;
+    this.#childStderrBlockBuffers.delete(key);
+
+    const text = block.join("");
+    if (AkanApp.#isBenignRsdwConnectionClosedBlock(text)) return;
+    for (const blockLine of block) this.#writeChildOutputLineRaw(idx, role, "stderr", blockLine);
+  }
+
+  static #childStderrBlockKey(idx: number, role: AkanChildRole): string {
+    return `${idx}:${role}:stderr`;
+  }
+
+  static #isBenignRsdwConnectionClosedBlock(text: string): boolean {
+    return (
+      text.includes('reportGlobalError(weakResponse, Error("Connection closed."))') &&
+      text.includes("error: Connection closed.") &&
+      text.includes("react-server-dom-webpack")
+    );
   }
 
   static #stripAnsi(msg: string) {

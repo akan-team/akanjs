@@ -1,8 +1,23 @@
 import { type AiSession, Prompter, script, type Workspace } from "@akanjs/devkit";
+import { Logger } from "akanjs/common";
 
 import { GuidelineRunner } from "./guideline.runner";
 
 export class GuidelineScript extends script("guideline", [GuidelineRunner]) {
+  async guideline(action: string, name: string | null = null, format: "markdown" | "json" = "markdown") {
+    if (action === "list") {
+      const guidelines = await Prompter.listGuidelines();
+      Logger.rawLog(format === "json" ? JSON.stringify({ guidelines }, null, 2) : guidelines.join("\n"));
+      return;
+    }
+    if (action === "show") {
+      if (!name) throw new Error("Guideline name is required. Example: akan guideline show framework");
+      const [instruction, guideJson] = await Promise.all([Prompter.getInstruction(name), Prompter.getGuideJson(name)]);
+      Logger.rawLog(format === "json" ? JSON.stringify({ name, instruction, guideJson }, null, 2) : instruction);
+      return;
+    }
+    throw new Error(`Unknown guideline action: ${action}. Use "list" or "show".`);
+  }
   async generateInstruction(workspace: Workspace, name: string | null = null) {
     const guideName = name ?? (await Prompter.selectGuideline());
     await this.guidelineRunner.generateInstruction(workspace, guideName);

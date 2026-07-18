@@ -7,7 +7,7 @@ interface Dict {
 }
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict) {
   return `
-import { by, from, into, type SchemaOf } from "akanjs/document";
+import { by, from, into } from "akanjs/document";
 
 import * as cnst from "../cnst";
 

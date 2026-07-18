@@ -59,7 +59,7 @@ export interface BlobStorageOptions extends BaseEnv {
 export class BlobStorage
   extends adapt("blobStorage", ({ env }) => ({
     root: env(
-      ({ appName, blobStorage = { baseDir: "local", urlPrefix: "/backend/localFile/getBlob" } }: BlobStorageOptions) =>
+      ({ appName, blobStorage = { baseDir: "local", urlPrefix: "/api/localFile/getBlob" } }: BlobStorageOptions) =>
         `${process.env.AKAN_WORKSPACE_ROOT ?? "."}/${blobStorage.baseDir ?? "local"}/${appName}/backend`,
     ),
     privateRoot: env(
@@ -67,7 +67,7 @@ export class BlobStorage
         `${process.env.AKAN_WORKSPACE_ROOT ?? "."}/${blobStorage.privateBaseDir ?? "local"}/${appName}/server-private`,
     ),
     urlPrefix: env(
-      ({ blobStorage = { urlPrefix: "/backend/localFile/getBlob" } }: BlobStorageOptions) => blobStorage.urlPrefix,
+      ({ blobStorage = { urlPrefix: "/api/localFile/getBlob" } }: BlobStorageOptions) => blobStorage.urlPrefix,
     ),
   }))
   implements StorageAdaptor

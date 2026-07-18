@@ -1,4 +1,5 @@
 import {
+  Any,
   applyFnToArrayObjects,
   type Cls,
   type Dayjs,
@@ -9,7 +10,7 @@ import {
   type PrimitiveScalar,
 } from "akanjs/base";
 
-import type { ConstantCls } from ".";
+import type { ConstantCls, ConstantModelRef } from ".";
 
 export type Serialized<O> = O extends (infer V)[]
   ? Serialized<V>[]
@@ -29,13 +30,13 @@ const getSerializeFn = (inputRef: Cls, { optional = false }: { optional?: boolea
 };
 const serializeInput = <Input = unknown>(
   value: Input | Input[],
-  inputRef: ConstantCls<Input> | PrimitiveScalar,
+  inputRef: ConstantModelRef<Input> | PrimitiveScalar,
   arrDepth: number,
   serializeType: "input" | "object" = "object",
   { optional = false }: { optional?: boolean } = {},
 ): Input | Input[] => {
   if (arrDepth && Array.isArray(value))
-    return value.map((v) => serializeInput(v, inputRef, arrDepth - 1) as Input) as unknown as Input[];
+    return value.map((v) => serializeInput(v, inputRef, arrDepth - 1, serializeType) as Input) as unknown as Input[];
   else if ((inputRef as MapConstructor).prototype === Map.prototype) {
     const [valueRef] = getNonArrayModel(inputRef as Cls);
     const serializeFn = getSerializeFn(valueRef, { optional });
@@ -74,14 +75,14 @@ const getRelationId = (value: unknown): unknown => {
 };
 
 export const serialize = (
-  argRef: ConstantCls | PrimitiveScalar,
+  argRef: ConstantModelRef | PrimitiveScalar,
   arrDepth: number,
   value: unknown,
   serializeType: "input" | "object" = "object",
   { nullable = false, key }: { nullable?: boolean; key?: string },
 ) => {
   if (nullable && (value === null || value === undefined)) return null;
-  else if (!nullable && (value === null || value === undefined))
+  else if (!nullable && (value === null || value === undefined) && argRef !== Any)
     throw new Error(`Invalid Value (Nullable) in ${argRef} for value ${value}${key ? ` in ${key}` : ""}`);
   return serializeInput(value, argRef, arrDepth, serializeType, { optional: nullable }) as object[];
 };

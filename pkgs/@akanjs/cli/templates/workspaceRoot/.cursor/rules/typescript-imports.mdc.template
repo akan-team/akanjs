@@ -1,0 +1,13 @@
+---
+description: TypeScript and import conventions
+globs: **/*.{ts,tsx}
+alwaysApply: false
+---
+
+# TypeScript And Imports
+
+- Use Bun and ESM assumptions from the root `tsconfig.json`.
+- Prefer path aliases over deep relative imports when crossing package boundaries.
+- Use `akanjs/*` for framework facets, `@apps/*` for apps, `@libs/*` for shared libs, and `@contract/*` for contract code.
+- Respect existing client/server entrypoints such as `@libs/shared/client`, `@libs/shared/server`, `@apps/puffinplace/client`, and `@apps/puffinplace/server`.
+- Let Biome organize imports instead of manually reshuffling unrelated imports.

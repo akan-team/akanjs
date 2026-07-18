@@ -156,11 +156,13 @@ function Render<RefName extends string, Light extends { id: string }>({
     onAddPage: async (page: number) => {
       await storeDo[namesOfSlice.addPageOfModel](page);
     },
-    onPageSelect: (page: number) => {
+    onPageSelect: (page: number, option?: { scrollToTop?: boolean }) => {
       void storeDo[namesOfSlice.setPageOfModel](page);
       // if (scrollToTop) {
-      window.parent.postMessage({ type: "pathChange", page }, "*");
-      window.scrollTo({ top: 0, behavior: "instant" });
+      if (option?.scrollToTop !== false) {
+        window.parent.postMessage({ type: "pathChange", page }, "*");
+        window.scrollTo({ top: 0, behavior: "instant" });
+      }
       // }
     },
     reverse,
@@ -280,7 +282,7 @@ interface MoreProps {
   itemsPerPage: number;
   currentPage: number;
   onAddPage: (page: number) => Promise<void>;
-  onPageSelect: (page: number) => void;
+  onPageSelect: (page: number, option?: { scrollToTop?: boolean }) => void;
   children?: React.ReactNode;
   className?: string;
   reverse?: boolean;

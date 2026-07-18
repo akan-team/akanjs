@@ -1,0 +1,53 @@
+{
+  "name": "Akan.js",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers-extra/features/bun:1": {}
+  },
+  "containerEnv": {
+    "BUN_INSTALL": "/home/vscode/.bun"
+  },
+  "remoteEnv": {
+    "PATH": "/home/vscode/.bun/bin:${containerEnv:PATH}"
+  },
+  "onCreateCommand": "export PATH=\"/home/vscode/.bun/bin:$PATH\" && bun add -g @akanjs/cli@latest",
+  "postCreateCommand": "bun install",
+  "forwardPorts": [8282, 8283, 8284, 8285, 8286, 8287, 8288, 8289, 8290],
+  "portsAttributes": {
+    "8282": { "label": "Akan dev server#1", "onAutoForward": "openPreview" },
+    "8283": { "label": "Akan dev server#2", "onAutoForward": "openPreview" },
+    "8284": { "label": "Akan dev server#3", "onAutoForward": "openPreview" },
+    "8285": { "label": "Akan dev server#4", "onAutoForward": "openPreview" },
+    "8286": { "label": "Akan dev server#5", "onAutoForward": "openPreview" },
+    "8287": { "label": "Akan dev server#6", "onAutoForward": "openPreview" },
+    "8288": { "label": "Akan dev server#7", "onAutoForward": "openPreview" },
+    "8289": { "label": "Akan dev server#8", "onAutoForward": "openPreview" },
+    "8290": { "label": "Akan dev server#9", "onAutoForward": "openPreview" }
+  },
+  "customizations": {
+    "extensions": ["oven.bun-vscode", "biomejs.biome"],
+    "settings": {
+      "typescript.tsdk": "node_modules/typescript/lib",
+      "editor.defaultFormatter": "biomejs.biome",
+      "editor.formatOnSave": true,
+      "editor.codeActionsOnSave": {
+        "source.fixAll.biome": "explicit"
+      },
+      "[typescript]": {
+        "editor.defaultFormatter": "biomejs.biome"
+      },
+      "[typescriptreact]": {
+        "editor.defaultFormatter": "biomejs.biome"
+      },
+      "[javascript]": {
+        "editor.defaultFormatter": "biomejs.biome"
+      },
+      "[javascriptreact]": {
+        "editor.defaultFormatter": "biomejs.biome"
+      },
+      "[json]": {
+        "editor.defaultFormatter": "biomejs.biome"
+      }
+    }
+  }
+}

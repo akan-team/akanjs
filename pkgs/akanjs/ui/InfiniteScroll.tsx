@@ -7,7 +7,7 @@ export interface InfiniteScrollProps {
   currentPage: number;
   itemsPerPage: number;
   onAddPage: (page: number) => Promise<void>;
-  onPageSelect: (page: number) => void;
+  onPageSelect: (page: number, option?: { scrollToTop?: boolean }) => void;
   children: React.ReactNode;
   reverse?: boolean;
 }
@@ -22,6 +22,7 @@ export const InfiniteScroll = ({
   reverse,
 }: InfiniteScrollProps) => {
   const [isFetching, setIsFetching] = useState(false);
+  const isFetchingRef = useRef(false);
   const target = useRef<HTMLDivElement>(null);
   const page = useRef<number>(currentPage);
   const totalPages = Math.ceil(total / (itemsPerPage || 1));
@@ -37,17 +38,40 @@ export const InfiniteScroll = ({
     };
   }, []);
 
-  // TODO: 여기 작동구조 이상함. 수정 필요
   const fetchMoreItems = async () => {
-    if (isFetching) return;
+    if (isFetchingRef.current) return;
     const nextPage = page.current + 1;
     if (nextPage > totalPages) return;
+
+    const scroller = reverse ? document.scrollingElement : null;
+    const prevScrollHeight = scroller?.scrollHeight ?? 0;
+    const prevScrollTop = scroller?.scrollTop ?? 0;
+
+    isFetchingRef.current = true;
     setIsFetching(true);
-    await onAddPage(nextPage);
-    void onAddPage(nextPage);
-    onPageSelect(nextPage);
-    setIsFetching(false);
-    page.current = nextPage;
+    try {
+      await onAddPage(nextPage);
+      onPageSelect(nextPage, { scrollToTop: false });
+      page.current = nextPage;
+
+      const restoreScroll = () => {
+        if (scroller) {
+          scroller.scrollTop = prevScrollTop + (scroller.scrollHeight - prevScrollHeight);
+        }
+        isFetchingRef.current = false;
+        setIsFetching(false);
+      };
+
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(restoreScroll);
+      } else {
+        restoreScroll();
+      }
+    } catch (error) {
+      isFetchingRef.current = false;
+      setIsFetching(false);
+      throw error;
+    }
   };
 
   return (

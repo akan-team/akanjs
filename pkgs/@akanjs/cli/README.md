@@ -37,13 +37,36 @@ akan create-module <module-name>
 akan create-scalar <scalar-name>
 ```
 
+## Agent And MCP Commands
+
+```bash
+akan context --format markdown
+akan context --format json --module <module-name>
+akan doctor --format json
+akan guideline list
+akan guideline show framework
+akan agent install cursor
+akan mcp
+```
+
+These commands expose Akan workspace structure, module abstracts, diagnostics, and guideline instructions for
+coding agents. The MCP server is read-only and is intended to provide context rather than edit files directly.
+
 Package maintenance commands are also exposed through the same executable:
 
 ```bash
 akan build-package akanjs
 akan build-package @akanjs/cli
 akan build-package @akanjs/devkit
+akan build-package create-akan-workspace
+akan verify-akan-publish-packages
+akan smoke-registry --test=true --tag=rc
 ```
+
+Publish Akan framework packages from `dist/pkgs/*` only. `verify-akan-publish-packages` runs `npm pack --dry-run --json`
+against the built packages and checks metadata that must be correct before `deploy-akan` or local registry smoke.
+For repository releases, prefer `bun run release:build-packages && bun run release:verify-packages` so the CLI package
+artifact is built last and is not overwritten by the root `akan` bootstrap script.
 
 ## Package Boundary
 

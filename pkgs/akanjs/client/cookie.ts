@@ -1,7 +1,7 @@
 import { getEnv } from "akanjs/base";
 import { decodeJwtPayload, Logger } from "akanjs/common";
 import type { Account } from "akanjs/fetch";
-import { requestStorage } from "akanjs/fetch";
+import { cookies as serverCookies, headers as serverHeaders } from "akanjs/fetch";
 import { loadCapacitorCore } from "./capacitor";
 import { storage } from "./storage";
 import { fetch } from "./useClient";
@@ -30,11 +30,7 @@ function parseCookieHeader(cookieHeader: string): Map<string, { name: string; va
 }
 
 export const cookies = (): Map<string, { name: string; value: string }> => {
-  if (getEnv().side === "server") {
-    const req = requestStorage?.getStore();
-    if (!req) return new Map();
-    return parseCookieHeader(req.headers.get("cookie") ?? "");
-  }
+  if (getEnv().side === "server") return serverCookies();
   return parseCookieHeader(document.cookie);
 };
 
@@ -77,13 +73,7 @@ export const removeCookie = (key: string, options: { path: string } = { path: "/
 };
 export const headers = (): Map<string, string> => {
   if (getEnv().side !== "server") return new Map();
-  const req = requestStorage?.getStore();
-  if (!req) return new Map();
-  const map = new Map<string, string>();
-  req.headers.forEach((value, key) => {
-    map.set(key, value);
-  });
-  return map;
+  return serverHeaders();
 };
 
 export const getHeader = (key: string): string | undefined => {

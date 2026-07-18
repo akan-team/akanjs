@@ -139,22 +139,41 @@ describe("Executor filesystem helpers", () => {
     expect(await readFile(path.join(root, "workspace/.gitignore"), "utf8")).toContain("node_modules");
     expect(await readFile(path.join(root, "workspace/.env"), "utf8")).toContain("AKAN_PUBLIC_REPO_NAME");
     expect(await readFile(path.join(root, "workspace/.vscode/settings.json"), "utf8")).toContain("typescript.tsdk");
+    expect(await readFile(path.join(root, "workspace/.cursor/rules/akan.mdc"), "utf8")).toContain(
+      "Akan workspace agent guide",
+    );
+    expect(await readFile(path.join(root, "workspace/AGENTS.md"), "utf8")).toContain("sample Agent Guide");
+    expect(await readFile(path.join(root, "workspace/docs/AI-DEVELOPMENT.md"), "utf8")).toContain(
+      "AI Development Guide",
+    );
+    expect(await readFile(path.join(root, "workspace/docs/GENERATED.md"), "utf8")).toContain("Generated Akan Files");
     expect(await readFile(path.join(root, "workspace/biome.json"), "utf8")).toContain(
       "./node_modules/@akanjs/devkit/lint/no-import-client-functions.grit",
     );
+  });
+
+  test("applies app sample signal test helpers", async () => {
+    const root = await makeTempRoot();
+    const exec = new Executor("fixture", root);
+
+    await exec.applyTemplate({
+      basePath: "app",
+      template: "appSample",
+      dict: { appName: "demo" },
+      options: { libs: [] },
+    });
+
+    await expect(readFile(path.join(root, "app/lib/task/task.service.test.ts"), "utf8")).rejects.toThrow();
+    expect(await readFile(path.join(root, "app/lib/task/task.signal.spec.ts"), "utf8")).toContain("getCompletedTask");
+    expect(await readFile(path.join(root, "app/lib/task/task.signal.test.ts"), "utf8")).toContain("Task signal smoke");
+    expect(await readFile(path.join(root, "app/lib/task/task.document.ts"), "utf8")).toContain('action: "started"');
   });
 
   test("copies static files from CLI templates", async () => {
     const root = await makeTempRoot();
     const exec = new Executor("fixture", root);
 
-    await exec.applyTemplate({
-      basePath: "app",
-      template: "app",
-      dict: { appName: "demo", companyName: "fixture", startDomain: "localhost" },
-      options: { libs: [] },
-    });
-
+    await exec.applyTemplate({ basePath: "app", template: "app", dict: { appName: "demo" }, options: { libs: [] } });
     const templateRoot = path.resolve(import.meta.dir, "../cli/templates/app/public");
     await expect(readFile(path.join(root, "app/public/logo.png"))).resolves.toEqual(
       await readFile(path.join(templateRoot, "logo.png")),
@@ -250,6 +269,145 @@ describe("Workspace and app executor environment contracts", () => {
     expect(prepared.env.AKAN_PUBLIC_BASE_PATHS).toBe("admin");
     expect((await stat(path.join(root, "dist/apps/demo/private"))).isDirectory()).toBe(true);
     expect((await stat(path.join(root, "dist/apps/demo/public"))).isDirectory()).toBe(true);
+  });
+
+  test("accepts metadata route exports during page key discovery", async () => {
+    const root = await makeTempRoot();
+    process.env.AKAN_PUBLIC_REPO_NAME = "repo";
+    process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
+    process.env.AKAN_PUBLIC_ENV = "local";
+    await writeJson(path.join(root, "package.json"), rootPackageJson());
+    await mkdir(path.join(root, "apps/demo/page/docs"), { recursive: true });
+    await writeFile(path.join(root, "apps/demo/akan.config.ts"), "export default {};\n");
+    await writeFile(
+      path.join(root, "apps/demo/page/_layout.tsx"),
+      [
+        "export const head = null;",
+        "export const metadata = { title: 'Root' };",
+        "export default function Layout({ children }) { return children; }",
+        "",
+      ].join("\n"),
+    );
+    await writeFile(
+      path.join(root, "apps/demo/page/docs/_layout.tsx"),
+      [
+        "export async function generateMetadata() { return { title: 'Docs' }; }",
+        "export default function Layout({ children }) { return children; }",
+        "",
+      ].join("\n"),
+    );
+    await writeFile(
+      path.join(root, "apps/demo/page/docs/intro.tsx"),
+      ["export const metadata = { title: 'Intro' };", "export default function Page() { return null; }", ""].join("\n"),
+    );
+
+    const workspace = new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" });
+    const app = AppExecutor.from(workspace, "demo");
+
+    await expect(app.getPageKeys({ refresh: true })).resolves.toEqual([
+      "./_layout.tsx",
+      "./docs/_layout.tsx",
+      "./docs/intro.tsx",
+    ]);
+  });
+
+  test("rejects conflicting metadata route exports during page key discovery", async () => {
+    const root = await makeTempRoot();
+    process.env.AKAN_PUBLIC_REPO_NAME = "repo";
+    process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
+    process.env.AKAN_PUBLIC_ENV = "local";
+    await writeJson(path.join(root, "package.json"), rootPackageJson());
+    await mkdir(path.join(root, "apps/demo/page"), { recursive: true });
+    await writeFile(path.join(root, "apps/demo/akan.config.ts"), "export default {};\n");
+    await writeFile(
+      path.join(root, "apps/demo/page/conflict.tsx"),
+      [
+        "export const metadata = { title: 'Conflict' };",
+        "export function generateMetadata() { return { title: 'Conflict' }; }",
+        "export default function Page() { return null; }",
+        "",
+      ].join("\n"),
+    );
+
+    const workspace = new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" });
+    const app = AppExecutor.from(workspace, "demo");
+
+    await expect(app.getPageKeys({ refresh: true })).rejects.toThrow(
+      "metadata and generateMetadata cannot both be exported",
+    );
+  });
+
+  test("rejects mixed head and metadata route export channels during page key discovery", async () => {
+    const root = await makeTempRoot();
+    process.env.AKAN_PUBLIC_REPO_NAME = "repo";
+    process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
+    process.env.AKAN_PUBLIC_ENV = "local";
+    await writeJson(path.join(root, "package.json"), rootPackageJson());
+    await mkdir(path.join(root, "apps/demo/page"), { recursive: true });
+    await writeFile(path.join(root, "apps/demo/akan.config.ts"), "export default {};\n");
+    await writeFile(
+      path.join(root, "apps/demo/page/mixed.tsx"),
+      [
+        "export const head = null;",
+        "export const metadata = { title: 'Mixed' };",
+        "export default function Page() { return null; }",
+        "",
+      ].join("\n"),
+    );
+
+    const workspace = new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" });
+    const app = AppExecutor.from(workspace, "demo");
+
+    await expect(app.getPageKeys({ refresh: true })).rejects.toThrow(
+      "head/generateHead and metadata/generateMetadata cannot both be exported",
+    );
+  });
+
+  test("assigns start command ports from sorted app order", async () => {
+    const root = await makeTempRoot();
+    process.env.AKAN_PUBLIC_REPO_NAME = "repo";
+    process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
+    process.env.AKAN_PUBLIC_ENV = "local";
+
+    await writeJson(path.join(root, "package.json"), rootPackageJson());
+    for (const appName of ["minimal", "akan"]) {
+      await mkdir(path.join(root, `apps/${appName}`), { recursive: true });
+      await writeFile(
+        path.join(root, `apps/${appName}/akan.config.ts`),
+        [
+          "export default {",
+          `  routes: [{ basePath: "${appName}", domains: { debug: ["${appName}.local:8282"] } }],`,
+          "};",
+          "",
+        ].join("\n"),
+      );
+    }
+
+    const workspace = new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" });
+    const akan = AppExecutor.from(workspace, "akan");
+    const minimal = AppExecutor.from(workspace, "minimal");
+
+    const akanStart = await akan.prepareCommand("start");
+    expect(akanStart.env.PORT).toBe("8282");
+    expect(akanStart.env.AKAN_PUBLIC_CLIENT_PORT).toBe("8282");
+    expect(akanStart.env.AKAN_PUBLIC_SERVER_PORT).toBe("8282");
+
+    const minimalStart = await minimal.prepareCommand("start");
+    expect(minimalStart.env.PORT).toBe("8283");
+    expect(minimalStart.env.AKAN_PUBLIC_CLIENT_PORT).toBe("8283");
+    expect(minimalStart.env.AKAN_PUBLIC_SERVER_PORT).toBe("8283");
+
+    process.env.PORT_OFFSET = "3";
+
+    const offsetAkanStart = await akan.prepareCommand("start");
+    expect(offsetAkanStart.env.PORT).toBe("8285");
+    expect(offsetAkanStart.env.AKAN_PUBLIC_CLIENT_PORT).toBe("8285");
+    expect(offsetAkanStart.env.AKAN_PUBLIC_SERVER_PORT).toBe("8285");
+
+    const offsetMinimalStart = await minimal.prepareCommand("start");
+    expect(offsetMinimalStart.env.PORT).toBe("8286");
+    expect(offsetMinimalStart.env.AKAN_PUBLIC_CLIENT_PORT).toBe("8286");
+    expect(offsetMinimalStart.env.AKAN_PUBLIC_SERVER_PORT).toBe("8286");
   });
 });
 

@@ -3,6 +3,7 @@ import { cnst, fetch, st } from "@libs/shared/client";
 import { MapView, Upload } from "@libs/util/ui";
 import { clsx } from "akanjs/client";
 import { capitalize, pathGet } from "akanjs/common";
+import type { ProtoFile } from "akanjs/constant";
 import type { SliceMeta } from "akanjs/fetch";
 import { Field as AkanField, Modal } from "akanjs/ui";
 import { lazy, useInterval } from "akanjs/webkit";
@@ -10,6 +11,7 @@ import { memo, type ReactNode, useCallback, useState } from "react";
 import { AiTwotoneEnvironment } from "react-icons/ai";
 
 import { Editor } from "./Editor";
+import type { YooptaUploadPolicy } from "./Editor/Yoopta/Upload";
 
 const DaumPostcode = lazy(() => import("react-daum-postcode"), { ssr: false });
 
@@ -23,6 +25,14 @@ interface RichTextProps {
   value?: unknown;
   onChange: (value: unknown) => void;
   addFile: (file: cnst.File | cnst.File[], options?: { idx?: number; limit?: number }) => void;
+  addFilesGql?: (fileList: FileList, id?: string) => Promise<(cnst.File | ProtoFile)[]>;
+  attachments?: cnst.File[];
+  onAttachmentsChange?: (files: cnst.File[]) => void;
+  onUploadError?: (error: Error) => void;
+  uploadPolicy?: YooptaUploadPolicy;
+  toolbar?: boolean;
+  blockActions?: boolean;
+  slashMenu?: boolean;
   placeholder?: string;
   nullable?: boolean;
   disabled?: boolean;
@@ -41,6 +51,14 @@ const Yoopta = memo((props: RichTextProps) => {
     value,
     onChange,
     addFile,
+    addFilesGql,
+    attachments,
+    onAttachmentsChange,
+    onUploadError,
+    uploadPolicy,
+    toolbar,
+    blockActions,
+    slashMenu,
     placeholder,
     nullable,
     disabled,
@@ -51,10 +69,10 @@ const Yoopta = memo((props: RichTextProps) => {
     modelForm: `${sliceName}Form`,
     addModelFiles: `add${capitalize(sliceName)}Files`,
   };
-  const addModelFiles = (fetch as any)[names.addModelFiles] as (
+  const addModelFiles = (addFilesGql ?? (fetch as any)[names.addModelFiles]) as (
     fileList: FileList,
     id?: string,
-  ) => Promise<cnst.File[]>;
+  ) => Promise<(cnst.File | ProtoFile)[]>;
   return (
     <div className={clsx("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
@@ -63,6 +81,13 @@ const Yoopta = memo((props: RichTextProps) => {
         placeholder={placeholder}
         addFilesGql={addModelFiles}
         addFile={addFile}
+        attachments={attachments}
+        onAttachmentsChange={onAttachmentsChange}
+        onUploadError={onUploadError}
+        uploadPolicy={uploadPolicy}
+        toolbar={toolbar}
+        blockActions={blockActions}
+        slashMenu={slashMenu}
         onChange={(val) => {
           onChange(val);
         }}

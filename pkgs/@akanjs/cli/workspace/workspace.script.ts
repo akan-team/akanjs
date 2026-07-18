@@ -3,6 +3,7 @@ import { AppExecutor, type Exec, LibExecutor, PkgExecutor, script, type Workspac
 import { Logger } from "akanjs/common";
 
 import { ApplicationScript } from "../application/application.script";
+import { CloudScript } from "../cloud/cloud.script";
 import { LibraryScript } from "../library/library.script";
 import { PackageScript } from "../package/package.script";
 import { WorkspaceRunner } from "./workspace.runner";
@@ -12,6 +13,7 @@ export class WorkspaceScript extends script("workspace", [
   ApplicationScript,
   LibraryScript,
   PackageScript,
+  CloudScript,
 ]) {
   async createWorkspace(
     repoName: string,
@@ -21,7 +23,8 @@ export class WorkspaceScript extends script("workspace", [
       installLibs = false,
       init = true,
       registryUrl,
-    }: { dirname?: string; installLibs?: boolean; init?: boolean; registryUrl?: string },
+      owner,
+    }: { dirname?: string; installLibs?: boolean; init?: boolean; registryUrl?: string; owner?: string | null },
   ) {
     const akanVersion = await this.packageScript.version(null, { log: false });
     const workspace = await this.workspaceRunner.createWorkspace(repoName, appName, {
@@ -29,12 +32,19 @@ export class WorkspaceScript extends script("workspace", [
       init,
       akanVersion,
       ...(registryUrl ? { registryUrl } : {}),
+      ...(owner ? { owner } : {}),
     });
     if (installLibs) {
       await this.libraryScript.installLibrary(workspace, "util");
       await this.libraryScript.installLibrary(workspace, "shared");
     }
     await this.applicationScript.createApplication(appName, workspace, { libs: installLibs ? ["util", "shared"] : [] });
+    await workspace.applyTemplate({
+      basePath: `apps/${appName}`,
+      template: "appSample",
+      dict: { appName },
+      options: { libs: installLibs ? ["util", "shared"] : [] },
+    });
     const gitSpinner = workspace.spinning("Initializing git repository and commit...");
     try {
       await workspace.commit("Initial commit", { init: true });
@@ -47,6 +57,14 @@ export class WorkspaceScript extends script("workspace", [
     Logger.rawLog(`🚀 Run \`cd ${workspacePath} && akan start ${appName}\` to start the development server.`);
     // Logger.rawLog(`\n💡 Run \`akan deploy\` to deploy the workspace to the cloud.`);
     Logger.rawLog(`\n👋 Happy coding!`);
+  }
+  async generateAgentRules(
+    workspace: Workspace,
+    { overwrite = false, cursorRules = true }: { overwrite?: boolean; cursorRules?: boolean } = {},
+  ) {
+    const spinner = workspace.spinning("Generating agent rules...");
+    const files = await this.workspaceRunner.generateAgentRules(workspace, { overwrite, cursorRules });
+    spinner.succeed(`Agent rules ready (${files.length} file${files.length === 1 ? "" : "s"})`);
   }
   async lint(exec: Exec, workspace: Workspace, { fix = true }: { fix?: boolean } = {}) {
     if (exec instanceof AppExecutor) await this.applicationScript.sync(exec);
@@ -76,5 +94,23 @@ export class WorkspaceScript extends script("workspace", [
     const [appNames, libNames] = await workspace.getExecs();
     for (const libName of libNames) await this.libraryScript.syncLibrary(LibExecutor.from(workspace, libName));
     for (const appName of appNames) await this.applicationScript.sync(AppExecutor.from(workspace, appName));
+  }
+  async init(devProjectId: string, workspace: Workspace, { host }: { host?: string } = {}) {
+    const [bunfigExists, packageJsonExists, tsconfigExists] = await Promise.all([
+      workspace.exists("bunfig.toml"),
+      workspace.exists("package.json"),
+      workspace.exists("tsconfig.json"),
+    ]);
+    const isRoot = bunfigExists && packageJsonExists && tsconfigExists;
+    if (!isRoot) throw new Error("Current directory is not a root workspace");
+    const spinner = workspace.spinning("Initializing workspace...");
+    try {
+      await this.workspaceRunner.writeTopLevelEnv(workspace, devProjectId);
+      await this.cloudScript.downloadEnv(workspace, devProjectId, { host });
+      spinner.succeed("Workspace initialized");
+    } catch (error) {
+      spinner.fail("Workspace initialization failed");
+      throw error;
+    }
   }
 }

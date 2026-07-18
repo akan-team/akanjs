@@ -6,6 +6,8 @@ import {
   type ClientEntryDiscovery,
   CsrArtifactBuilder,
   type CssCompiler,
+  DevChangePlanner,
+  DevGeneratedIndexSync,
   FontOptimizer,
   GraphClientEntryDiscovery,
   HmrWatcher,
@@ -18,12 +20,13 @@ import {
 import { Logger } from "akanjs/common";
 import type {
   BaseBuildArtifact,
-  BuilderEvent,
   BuilderMessage,
   BuilderReq,
   BuilderRes,
+  BuildPhase,
   BuildRouteResultPayload,
 } from "akanjs/server";
+import { prepareDevWatchBatch } from "./devWatchBatch";
 
 interface IncrementalBuilderOptions {
   app: App;
@@ -42,6 +45,8 @@ class IncrementalBuilder {
   #cssCompiler: CssCompiler;
   #optimizedFonts: Awaited<ReturnType<FontOptimizer["optimize"]>>;
   #discovery: ClientEntryDiscovery;
+  #changePlanner: DevChangePlanner;
+  #generatedIndexSync: DevGeneratedIndexSync;
   #generation = 0;
   #workQueue: Promise<void> = Promise.resolve();
   #cssRebuildQueue: Promise<void> = Promise.resolve();
@@ -55,6 +60,8 @@ class IncrementalBuilder {
     this.#cssCompiler = options.cssCompiler;
     this.#optimizedFonts = options.optimizedFonts;
     this.#discovery = options.discovery;
+    this.#changePlanner = new DevChangePlanner({ workspaceRoot: options.app.workspace.workspaceRoot });
+    this.#generatedIndexSync = new DevGeneratedIndexSync({ workspaceRoot: options.app.workspace.workspaceRoot });
   }
 
   async handleBuildRoute(msg: BuilderReq): Promise<BuilderRes> {
@@ -72,6 +79,7 @@ class IncrementalBuilder {
         discovery: this.#discovery,
       }).build();
       this.#logger.verbose(`build-route ok routeId=${msg.routeId} newEntries=${delta.newEntries.length}`);
+      this.#sendBuildStatus("route", { generation: msg.generation, ok: true, files: msg.seeds });
       return {
         type: "build-route-res",
         id: msg.id,
@@ -90,8 +98,25 @@ class IncrementalBuilder {
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       this.#logger.error(`build-route failed routeId=${msg.routeId}: ${errMsg}`);
+      this.#sendBuildStatus("route", { generation: msg.generation, ok: false, files: msg.seeds, message: errMsg });
       return { type: "build-route-res", id: msg.id, ok: false, error: errMsg };
     }
+  }
+  #sendBuildStatus(
+    phase: BuildPhase,
+    { generation, ok, files, message }: { generation?: number; ok: boolean; files?: string[]; message?: string },
+  ): void {
+    if (typeof generation !== "number") return;
+    process.send?.({
+      type: "build-status",
+      data: {
+        generation,
+        phase,
+        ok,
+        files: files ?? [],
+        message,
+      },
+    });
   }
   async #enqueueWork<T>(label: string, fn: () => Promise<T>): Promise<T> {
     const started = Date.now();
@@ -191,10 +216,18 @@ class IncrementalBuilder {
             generation: next.generation,
             changedFiles: next.changedFiles,
           });
+          this.#sendBuildStatus("css", { generation: next.generation, ok: true, files: next.changedFiles });
           this.#logger.verbose(`css-rebuild checked (${Date.now() - started}ms)`);
         })
         .catch((err) => {
-          this.#logger.error(`css-rebuild failed: ${err instanceof Error ? err.message : err}`);
+          const message = err instanceof Error ? err.message : String(err);
+          this.#logger.error(`css-rebuild failed: ${message}`);
+          this.#sendBuildStatus("css", {
+            generation: next.generation,
+            ok: false,
+            files: next.changedFiles,
+            message,
+          });
         });
     }, 150);
   }
@@ -233,25 +266,43 @@ class IncrementalBuilder {
   }
 
   async #handleWatchBatch(appDir: string, artifactDir: string, batch: ChangeBatch) {
-    const kinds = [...batch.kinds] as ("code" | "css" | "config")[];
-    if (kinds.length === 0) return;
+    const rawKinds = new Set(batch.kinds);
+    if (rawKinds.size === 0) return;
     const generation = ++this.#generation;
-    this.#logger.verbose(`[hmr] batch generation=${generation} kinds=${kinds.join(",")} files=${batch.files.length}`);
+    const indexSync = await this.#generatedIndexSync.syncForBatch(batch.files);
+    const { files, kinds, expandedBatch, event, hasSyncErrors } = prepareDevWatchBatch({
+      generation,
+      batch,
+      indexSync,
+      changePlanner: this.#changePlanner,
+    });
+    const devPlan = event.devPlan;
+    this.#logger.verbose(
+      `[hmr] batch generation=${generation} kinds=${kinds.join(",")} files=${files.length} generated=${indexSync.changedFiles.length} roles=${devPlan.roles.join(",") || "(none)"} actions=${devPlan.actions.join(",") || "(none)"}`,
+    );
+    for (const error of indexSync.errors) this.#logger.error(error);
 
     if (kinds.includes("code")) {
       const started = Date.now();
       if (kinds.includes("config")) this.#discovery = await GraphClientEntryDiscovery.create(this.#app);
-      else this.#discovery.invalidate?.(batch.files);
+      else this.#discovery.invalidate?.(files);
       this.#logger.verbose(
         `client-entry-discovery ${kinds.includes("config") ? "refreshed" : "invalidated"} (${Date.now() - started}ms)`,
       );
     }
 
-    if (kinds.includes("code") && (await this.batchMayChangePageKeys(appDir, batch))) {
+    if (hasSyncErrors) {
+      this.#sendBuildStatus("barrel", { generation, ok: false, files, message: indexSync.errors.join("\n") });
+      process.send?.(event);
+      return;
+    }
+    if (indexSync.changedFiles.length > 0) this.#sendBuildStatus("barrel", { generation, ok: true, files });
+
+    if (kinds.includes("code") && (await this.batchMayChangePageKeys(appDir, expandedBatch))) {
       const started = Date.now();
       await this.#app.getPageKeys({ refresh: true });
       this.#logger.verbose(`pageKeys updated, app pageKeys are refreshed (${Date.now() - started}ms)`);
-    } else if (kinds.includes("code") && this.batchTouchesPagesTree(appDir, batch)) {
+    } else if (kinds.includes("code") && this.batchTouchesPagesTree(appDir, expandedBatch)) {
       this.#logger.verbose("pageKeys refresh skipped; changed page source cannot add/remove a route key");
     }
 
@@ -259,15 +310,17 @@ class IncrementalBuilder {
       try {
         const started = Date.now();
         await new CsrArtifactBuilder(this.#app).build();
+        this.#sendBuildStatus("csr", { generation, ok: true, files });
         this.#logger.verbose(`csr-rebundle ok (${Date.now() - started}ms)`);
       } catch (err) {
-        this.#logger.error(`csr-rebundle failed: ${err instanceof Error ? err.message : err}`);
+        const message = err instanceof Error ? err.message : String(err);
+        this.#logger.error(`csr-rebundle failed: ${message}`);
+        this.#sendBuildStatus("csr", { generation, ok: false, files, message });
       }
     } else if (kinds.includes("code")) {
       this.#logger.verbose(`csr-rebundle skipped; set AKAN_DEV_CSR_REBUILD=1 to enable per-save CSR rebuilds`);
     }
 
-    const event: BuilderEvent = { type: "invalidate", kinds, files: batch.files, generation };
     process.send?.(event);
 
     if (kinds.includes("code")) {
@@ -276,15 +329,18 @@ class IncrementalBuilder {
         const next = await new PagesBundleBuilder(this.#app).build();
         process.send?.({
           type: "pages-updated",
-          data: { bundlePath: next.bundlePath, buildId: next.buildId, generation, changedFiles: batch.files },
+          data: { bundlePath: next.bundlePath, buildId: next.buildId, generation, changedFiles: files },
         });
+        this.#sendBuildStatus("pages", { generation, ok: true, files });
         this.#logger.verbose(`pages-rebundle ok buildId=${next.buildId} (${Date.now() - started}ms)`);
       } catch (err) {
-        this.#logger.error(`pages-rebundle failed: ${err instanceof Error ? err.message : err}`);
+        const message = err instanceof Error ? err.message : String(err);
+        this.#logger.error(`pages-rebundle failed: ${message}`);
+        this.#sendBuildStatus("pages", { generation, ok: false, files, message });
       }
     }
     if (kinds.includes("code") || kinds.includes("css")) {
-      this.scheduleCssRebuild(artifactDir, { refresh: true, generation, changedFiles: batch.files });
+      this.scheduleCssRebuild(artifactDir, { refresh: true, generation, changedFiles: files });
       this.#logger.verbose(`css-rebuild scheduled generation=${generation}`);
     }
   }

@@ -9,10 +9,6 @@ export class BaseService extends serve("base" as const, ({ env, signal, memory }
   publishPing() {
     this.baseSignal.pubsubPing("ping");
   }
-  async cleanup() {
-    if (!this.onCleanup) throw new Error("onCleanup is not defined");
-    await this.onCleanup();
-  }
 }
 
 export const srv = { base: new ServiceModel(BaseService) };

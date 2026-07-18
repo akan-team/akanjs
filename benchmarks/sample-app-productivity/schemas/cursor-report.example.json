@@ -1,0 +1,16 @@
+{
+  "model": "same-model-name",
+  "startedAt": "2026-06-12T00:00:00.000Z",
+  "finishedAt": "2026-06-12T00:12:34.000Z",
+  "wallClockMs": 754000,
+  "agentRuns": 3,
+  "toolCalls": 48,
+  "tokens": {
+    "input": 120000,
+    "output": 32000,
+    "cacheRead": null,
+    "cacheWrite": null,
+    "total": 152000
+  },
+  "notes": []
+}

@@ -1,5 +1,5 @@
 import type { Self } from "@libs/shared/base";
-import type { SsoCookie } from "@libs/shared/srvkit";
+import type { AuthTokenMeta, SsoCookie } from "@libs/shared/srvkit";
 import { randomCode, randomString } from "@libs/util/common";
 import type { EmailApi, PurpleApi } from "@libs/util/srvkit";
 import type { Dayjs } from "akanjs/base";
@@ -42,13 +42,7 @@ export class UserService extends serve(db.user, ({ use, service }) => ({
     };
   }
   protected _stripTokenMeta(account: Partial<Account> = {}) {
-    const { exp, iat, jti, sid, tokenType, ...rest } = account as Account & {
-      exp?: number;
-      iat?: number;
-      jti?: string;
-      sid?: string;
-      tokenType?: string;
-    };
+    const { exp, iat, jti, sid, tokenType, ...rest } = account as Account & AuthTokenMeta;
     return rest;
   }
   async _issueUserToken(user: db.User, account?: Account, userAgent?: string): Promise<db.util.AccessToken> {
@@ -423,15 +417,4 @@ export class UserService extends serve(db.user, ({ use, service }) => ({
   }
   //*====================== Secret Setup Area ======================*//
   //*================================================================*//
-
-  async setRemoteAuthToken(remoteId: string, account: Account) {
-    const { jwt } = await this.securityService.signAccessToken(this._stripTokenMeta(account), {
-      sid: `remote:${remoteId}`,
-      jti: crypto.randomUUID(),
-    });
-    await this.userModel.setRemoteAuthToken(remoteId, jwt);
-  }
-  async getRemoteAuthToken(remoteId: string) {
-    return await this.userModel.getRemoteAuthToken(remoteId);
-  }
 }

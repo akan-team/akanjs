@@ -1,0 +1,17 @@
+---
+description: Client/server boundary conventions for Akan apps
+globs: apps/**/*.{ts,tsx},libs/**/*.{ts,tsx},pkgs/akanjs/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Client Server Boundaries
+
+- Use `"use client";` at the top of client component files.
+- Be careful when importing client-only code from page or layout modules.
+- Keep page props serializable unless the existing route pattern clearly allows otherwise.
+- Let server page/layout files own route-level concerns: `usePage`, headers, static layout, and `akanjs/ui` `Tab` composition.
+- Keep interactive loading, submit/import actions, local form inputs, and `router.push` inside client `Util`, `Template`, or `Zone` components.
+- Prefer server-rendered `Tab` shells for static mode selection; put one client component inside each `Tab.Panel` instead of managing the selected mode with extra `useState`.
+- In domain UI, `Template`, `Zone`, and `Util` components are usually client components; `Unit` and `View` components are usually server components.
+- Preserve established domain file roles such as `.document.ts`, `.service.ts`, `.store.ts`, `.constant.ts`, and `.client.ts`.
+- When unsure, inspect nearby files in the same app or package before introducing a new boundary pattern.

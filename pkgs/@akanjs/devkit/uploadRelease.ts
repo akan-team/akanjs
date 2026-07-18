@@ -61,7 +61,7 @@ export const uploadRelease = async (
       const uploadingFilesSpinner = spinning("Uploading files to server...");
       const [buildFile, sourceFile, appBuildFile] = await httpClient.post<
         [{ id: string }, { id: string }, { id: string }]
-      >("/file/addFilesRestApi", formData);
+      >("/file/addFiles", formData);
       uploadingFilesSpinner.succeed("Uploading files to server... done");
 
       const fetchingAppSpinner = spinning(`Fetching dev app information for ${appName}...`);

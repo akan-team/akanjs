@@ -11,96 +11,48 @@ import {
 } from "akanjs/service";
 import type { ServerWebSocket } from "bun";
 import type { EndpointCls } from "./endpoint";
-import type { EndpointInfo } from "./endpointInfo";
+import type { EndpInfoClientReturns, EndpInfoReqType, EndpInfoServerArgs, EndpointInfo } from "./endpointInfo";
 import type { InternalCls } from "./internal";
-import type { InternalInfo } from "./internalInfo";
+import type { InternalInfo, InternalInfoReqType, InternalInfoServerArgs } from "./internalInfo";
+
+type EndpointPubsubPayload<E> = EndpInfoClientReturns<E> | DocumentModel<EndpInfoClientReturns<E>>;
 
 export interface ServerSignal extends Adaptor {
   readonly websocket: ServerWebSocket;
   readonly queue: QueueAdaptor;
 }
 
-type EndpointServerSignalMethods<EnpCls> = EnpCls extends { [ENDPOINT_META]: infer EndpointInfoObj }
+type EndpointServerSignalMethods<EnpCls> = [EnpCls] extends [{ [ENDPOINT_META]: infer EndpointInfoObj }]
   ? {
-      [K in keyof EndpointInfoObj as EndpointInfoObj[K] extends EndpointInfo<
-        "pubsub",
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any
-      >
-        ? K
-        : never]: EndpointInfoObj[K] extends EndpointInfo<
-        any,
-        any,
-        any,
-        any,
-        any,
-        infer ServerArgs,
-        any,
-        infer ClientReturns,
-        any,
-        any
-      >
-        ? (...args: [...ServerArgs, data: DocumentModel<ClientReturns>]) => void
-        : never;
+      [K in keyof EndpointInfoObj as EndpInfoReqType<EndpointInfoObj[K]> extends "pubsub" ? K : never]: (
+        ...args: [...EndpInfoServerArgs<EndpointInfoObj[K]>, data: EndpointPubsubPayload<EndpointInfoObj[K]>]
+      ) => void;
     }
-  : never;
+  : Record<never, never>;
 
-type InternalServerSignalMethods<IntCls> = IntCls extends { [INTERNAL_META]: infer InternalInfoObj }
+type InternalServerSignalMethods<IntCls> = [IntCls] extends [{ [INTERNAL_META]: infer InternalInfoObj }]
   ? {
-      [K in keyof InternalInfoObj as InternalInfoObj[K] extends InternalInfo<
-        "process",
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any
-      >
-        ? K
-        : never]: InternalInfoObj[K] extends InternalInfo<
-        any,
-        any,
-        infer ServerArgs,
-        any,
-        any,
-        any,
-        infer ServerReturns
-      >
-        ? (...args: [...args: ServerArgs, jobOptions?: AkanJobOptions]) => Promise<AkanJob<any, ServerReturns>>
-        : never;
+      [K in keyof InternalInfoObj as InternalInfoReqType<InternalInfoObj[K]> extends "process" ? K : never]: (
+        ...args: [...args: InternalInfoServerArgs<InternalInfoObj[K]>, jobOptions?: AkanJobOptions]
+      ) => Promise<AkanJob<unknown, unknown>>;
     }
-  : never;
+  : Record<never, never>;
 
-type ServerSignalClsStatics = {
+export type ServerSignalClsStatics = {
   readonly refName: string;
   readonly [INJECT_META]: { queue: QueueAdaptor };
   readonly [ENDPOINT_META]: { [key: string]: EndpointInfo };
   readonly [INTERNAL_META]: { [key: string]: InternalInfo };
 };
 
-// type ServerSignalClsStatics<EnpCls, IntCls> = EnpCls extends {
-//   refName: infer RefName;
-//   [ENDPOINT_META]: infer EndpointInfoObj;
-// }
-//   ? IntCls extends { [ENDPOINT_META]: infer InternalInfoObj }
-//     ? {
-//         readonly refName: RefName;
-//         readonly [ENDPOINT_META]: EndpointInfoObj;
-//         readonly [ENDPOINT_META]: InternalInfoObj;
-//         readonly [INJECT_META]: { queue: QueueAdaptor };
-//       }
-//     : never
-//   : never;
+export type ServerSignalMethods<EnpCls, IntCls> = EndpointServerSignalMethods<EnpCls> &
+  InternalServerSignalMethods<IntCls>;
 
-export type ServerSignalCls<EnpCls = any, IntCls = any> = AdaptorCls<
-  EndpointServerSignalMethods<EnpCls> & InternalServerSignalMethods<IntCls> & ServerSignal
+export type TypedServerSignalCls<EnpCls, IntCls> = AdaptorCls<ServerSignalMethods<EnpCls, IntCls> & ServerSignal> &
+  ServerSignalClsStatics;
+
+export type ServerSignalCls<EnpCls = unknown, IntCls = unknown> = AdaptorCls<
+  ServerSignalMethods<EnpCls, IntCls> & ServerSignal
 > &
   ServerSignalClsStatics;
 

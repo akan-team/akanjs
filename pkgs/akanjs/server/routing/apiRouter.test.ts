@@ -33,6 +33,23 @@ describe("ApiRouter.buildRoutes", () => {
     expect(Object.keys(routes)).not.toContain("/api/sitemap.xml");
   });
 
+  test("keeps builtin routes before render catch-all without API prefix", async () => {
+    process.env.AKAN_PUBLIC_APP_NAME = "test";
+    const { ApiRouter } = await import("./apiRouter");
+    const routes = ApiRouter.buildRoutes({
+      prefix: "/api",
+      websocketPrefix: "/ws",
+      routes: { "/ping": () => new Response("api") } as HttpRoutes,
+      builtinRoutes: { "/openapi.json": () => Response.json({ openapi: "3.1.0" }) } as HttpRoutes,
+      renderEnvRoutes: { "/*": () => new Response("fallback") } as HttpRoutes,
+      upgradeAppWs: () => false,
+    });
+
+    expect(Object.keys(routes)).toContain("/openapi.json");
+    expect(Object.keys(routes)).not.toContain("/api/openapi.json");
+    expect(await (await (routes["/openapi.json"] as () => Response)()).json()).toEqual({ openapi: "3.1.0" });
+  });
+
   test("wraps only render routes with the web proxy runner", async () => {
     process.env.AKAN_PUBLIC_APP_NAME = "test";
     const { ApiRouter } = await import("./apiRouter");
@@ -46,6 +63,7 @@ describe("ApiRouter.buildRoutes", () => {
       prefix: "/api",
       websocketPrefix: "/ws",
       routes: { "/ping": () => Response.json("api") } as HttpRoutes,
+      builtinRoutes: { "/openapi.json": () => Response.json({ openapi: "3.1.0" }) } as HttpRoutes,
       renderEnvRoutes: {
         "/*": (req) => Response.json({ url: req.url, proxy: req.headers.get("x-proxy") }),
       } as HttpRoutes,
@@ -54,6 +72,7 @@ describe("ApiRouter.buildRoutes", () => {
     });
 
     expect(await (await (routes["/api/ping"] as () => Response)()).json()).toBe("api");
+    expect(await (await (routes["/openapi.json"] as () => Response)()).json()).toEqual({ openapi: "3.1.0" });
     const renderResponse = await (routes["/*"] as (req: Request) => Response | Promise<Response>)(
       new Request("http://localhost/dashboard"),
     );

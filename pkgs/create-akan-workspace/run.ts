@@ -29,6 +29,7 @@ interface Options {
   libs: string | boolean;
   init: string | boolean;
   registry?: string;
+  owner?: string;
 }
 const normalizeRegistryUrl = (registryUrl: string) => registryUrl.replace(/\/+$/, "");
 
@@ -48,6 +49,7 @@ export const run = async ({
     .option("-l, --libs <boolean>", "install shared and util libraries", false)
     .option("-i, --init <boolean>", "install dependencies and initialize git", true)
     .option("-r, --registry <string>", "npm registry URL for installing Akan packages")
+    .option("-o, --owner <string>", "owner of the workspace")
     .action(async (org: string | undefined, options: Partial<Options>) => {
       const packageVersion = await getPackageVersion();
       const registry = options.registry ?? process.env.AKAN_NPM_REGISTRY;
@@ -75,6 +77,7 @@ export const run = async ({
           `--libs=${libs}`,
           `--init=${init}`,
           ...(registryUrl ? [`--registry=${registryUrl}`] : []),
+          ...(options.owner ? [`--owner=${options.owner}`] : []),
         ],
         spawnOptions,
       );

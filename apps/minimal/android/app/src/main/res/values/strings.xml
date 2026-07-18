@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<resources>
+    <string name="app_name">minimal</string>
+    <string name="title_activity_main">minimal</string>
+    <string name="package_name">com.minimal.app</string>
+    <string name="custom_url_scheme">com.minimal.app</string>
+</resources>

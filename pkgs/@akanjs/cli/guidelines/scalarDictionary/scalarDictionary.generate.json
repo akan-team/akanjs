@@ -23,6 +23,7 @@
     "contents": ["purpose", "file ownership", "current API patterns", "codegen rules", "validation checklist"],
     "rules": [
       "Use current Akan APIs only",
+      "Use double quotes for all string literals in TypeScript code",
       "Keep output parseable for codegen",
       "Include ownership boundaries and review checklist"
     ]

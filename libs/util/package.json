@@ -19,7 +19,6 @@
     "chartjs-adapter-dayjs-4": "^1.0.4",
     "clsx": "^2.1.1",
     "crypto-js": "^4.2.0",
-    "dayjs": "^1.11.13",
     "discord.js": "^14.26.4",
     "firebase-admin": "^13.10.0",
     "jsonwebtoken": "^9.0.2",
@@ -30,7 +29,7 @@
     "pigeon-maps": "^0.22.1",
     "puppeteer": "^24.43.1",
     "qrcode.react": "^4.2.0",
-    "react": "19.2.6",
+    "react": "19.2.7",
     "react-chartjs-2": "^5.3.1",
     "react-copy-to-clipboard": "5.1.0",
     "react-countup": "^6.5.3",
@@ -55,6 +54,7 @@
   "devDependencies": {
     "tsconfig-paths": "^4.2.0",
     "@marsidev/react-turnstile": "^1.5.2",
-    "@octokit/webhooks-types": "^7.6.1"
+    "@octokit/webhooks-types": "^7.6.1",
+    "dayjs": "^1.11.20"
   }
 }

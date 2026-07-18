@@ -1,0 +1,14 @@
+---
+description: Akan service, signal, and adapter conventions
+globs: apps/**/lib/**/*.{service,signal}.ts,libs/**/lib/**/*.{service,signal}.ts,apps/**/server/**/*.ts,libs/**/server/**/*.ts
+alwaysApply: false
+---
+
+# Service And Signal Conventions
+
+- Keep domain business operations in `.service.ts` classes built with `serve(...)`.
+- Keep execution contracts and triggers in `.signal.ts` classes built with `internal(...)`, `slice(...)`, and `endpoint(...)`.
+- Use `Internal` for internal triggers such as init, interval, cron, or queue jobs.
+- Use `Slice` for typed data views that feed client stores and zones; keep each slice focused on one purpose.
+- Use `Endpoint` for query and mutation contracts exposed to callers.
+- Connect external APIs or infrastructure through adapters, usually under `srvkit/`, and inject them into services instead of importing vendor clients directly into domain logic.

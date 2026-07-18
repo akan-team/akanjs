@@ -1,4 +1,4 @@
-import { Any, type Cls, type FIELD_META, type PromiseOrObject } from "akanjs/base";
+import { Any, type FIELD_META, type PromiseOrObject } from "akanjs/base";
 import type {
   ConstantCls,
   ConstantField,
@@ -11,7 +11,7 @@ import type {
 import type { AkanJob, ServiceModel } from "akanjs/service";
 import { type ArgInfo, EndpointInfo, type InternalArgInfo, type ReturnInfo } from "./endpointInfo";
 import type { InternalArgCls } from "./internalArg";
-import type { SignalOption } from "./types";
+import type { CnstOf, DbDoc, SignalOption, SrvMap } from "./types";
 
 type InternalType = "resolveField" | "interval" | "cron" | "timeout" | "init" | "destroy" | "process";
 
@@ -108,61 +108,111 @@ export class InternalInfo<
   }
 }
 
-export type BuildInternal<SrvModule extends ServiceModel, ParentDoc = SrvModule["db"]["_Doc"]> = {
+type InternalInfoEmptyParts = {
+  reqType: never;
+  srvs: never;
+  args: never;
+  internalArgs: never;
+  defaultArgs: never;
+  returns: never;
+  serverReturns: never;
+  nullable: never;
+};
+export type InternalInfoParts<I> =
+  I extends InternalInfo<
+    infer ReqType,
+    infer Srvs,
+    infer Args,
+    infer InternalArgs,
+    infer DefaultArgs,
+    infer Returns,
+    infer ServerReturns,
+    infer Nullable
+  >
+    ? {
+        reqType: ReqType;
+        srvs: Srvs;
+        args: Args;
+        internalArgs: InternalArgs;
+        defaultArgs: DefaultArgs;
+        returns: Returns;
+        serverReturns: ServerReturns;
+        nullable: Nullable;
+      }
+    : InternalInfoEmptyParts;
+export type InternalInfoReqType<I> = InternalInfoParts<I>["reqType"];
+export type InternalInfoSrvs<I> = InternalInfoParts<I>["srvs"];
+export type InternalInfoServerArgs<I> = InternalInfoParts<I>["args"];
+export type InternalInfoInternalArgs<I> = InternalInfoParts<I>["internalArgs"];
+export type InternalInfoDefaultArgs<I> = InternalInfoParts<I>["defaultArgs"];
+export type InternalInfoReturns<I> = InternalInfoParts<I>["returns"];
+export type InternalInfoServerReturns<I> = InternalInfoParts<I>["serverReturns"];
+export type InternalInfoNullable<I> = InternalInfoParts<I>["nullable"];
+
+export type BuildInternal<SrvModule extends ServiceModel, ParentDoc = DbDoc<SrvModule>> = {
   resolveField: <Returns extends ConstantFieldTypeInput, Nullable extends boolean = false>(
     returnRef: Returns,
     signalOption?: Pick<SignalOption<Returns, Nullable>, "nullable">,
-  ) => InternalInfo<"resolveField", SrvModule["srvMap"], [], [], [ParentDoc], Returns, never, Nullable>;
+  ) => InternalInfo<"resolveField", SrvMap<SrvModule>, [], [], [ParentDoc], Returns, never, Nullable>;
   interval: <Nullable extends boolean = false>(
     scheduleTime: number,
     signalOption?: SignalOption<typeof Any, Nullable>,
-  ) => InternalInfo<"interval", SrvModule["srvMap"], [], [], [], typeof Any, never, Nullable>;
+  ) => InternalInfo<"interval", SrvMap<SrvModule>, [], [], [], typeof Any, never, Nullable>;
   cron: <Nullable extends boolean = false>(
     scheduleCron: string,
     signalOption?: SignalOption<typeof Any, Nullable>,
-  ) => InternalInfo<"cron", SrvModule["srvMap"], [], [], [], typeof Any, never, Nullable>;
+  ) => InternalInfo<"cron", SrvMap<SrvModule>, [], [], [], typeof Any, never, Nullable>;
   timeout: <Nullable extends boolean = false>(
     timeout: number,
     signalOption?: SignalOption<typeof Any, Nullable>,
-  ) => InternalInfo<"timeout", SrvModule["srvMap"], [], [], [], typeof Any, never, Nullable>;
+  ) => InternalInfo<"timeout", SrvMap<SrvModule>, [], [], [], typeof Any, never, Nullable>;
   initialize: <Nullable extends boolean = false>(
     signalOption?: SignalOption<typeof Any, Nullable>,
-  ) => InternalInfo<"init", SrvModule["srvMap"], [], [], [], typeof Any, never, Nullable>;
+  ) => InternalInfo<"init", SrvMap<SrvModule>, [], [], [], typeof Any, never, Nullable>;
   destroy: <Nullable extends boolean = false>(
     signalOption?: SignalOption<typeof Any, Nullable>,
-  ) => InternalInfo<"destroy", SrvModule["srvMap"], [], [], [], typeof Any, never, Nullable>;
+  ) => InternalInfo<"destroy", SrvMap<SrvModule>, [], [], [], typeof Any, never, Nullable>;
   process: <Returns extends ConstantFieldTypeInput, Nullable extends boolean = false>(
     returnRef: Returns,
     signalOption?: SignalOption<Returns, Nullable>,
-  ) => InternalInfo<"process", SrvModule["srvMap"], [], [], [AkanJob], Returns, never, Nullable>;
+  ) => InternalInfo<"process", SrvMap<SrvModule>, [], [], [AkanJob], Returns, never, Nullable>;
 };
 
 export type InternalBuilder<
   SrvModule extends ServiceModel,
-  _FullCls extends ConstantCls = SrvModule["cnst"]["full"],
+  _Cnst = CnstOf<SrvModule>,
+  _FullCls extends ConstantCls = [_Cnst] extends [never]
+    ? never
+    : _Cnst extends { full: infer Full extends ConstantCls }
+      ? Full
+      : never,
   _FieldObj extends FieldObject = _FullCls[typeof FIELD_META],
   _ResolveFieldObj extends FieldObject = {
     [K in keyof _FieldObj as _FieldObj[K] extends ConstantField<"resolve", any, any, any, any, any>
       ? K
       : never]: _FieldObj[K];
   },
-> = (builder: BuildInternal<SrvModule>) => SrvModule["cnst"] extends never
-  ? { [key: string]: InternalInfo<Exclude<InternalType, "resolveField">> }
-  : {
-      [K in keyof _ResolveFieldObj]: _ResolveFieldObj[K] extends ConstantField<
-        "resolve",
-        infer Value,
-        any,
-        any,
-        infer Nullable
-      >
-        ? InternalInfo<"resolveField", any, any, any, any, NonNullable<Value>, Nullable>
-        : InternalInfo<Exclude<InternalType, "resolveField">>;
-    };
+> = (builder: BuildInternal<SrvModule>) => [_Cnst] extends [never]
+  ? { [key: string]: InternalInfo<InternalType> }
+  : [_FullCls] extends [never]
+    ? { [key: string]: InternalInfo<InternalType> }
+    : {
+        [K in keyof _ResolveFieldObj]: _ResolveFieldObj[K] extends ConstantField<
+          "resolve",
+          infer Value,
+          any,
+          any,
+          infer Nullable
+        >
+          ? InternalInfo<"resolveField", any, any, any, any, NonNullable<Value>, Nullable>
+          : InternalInfo<Exclude<InternalType, "resolveField">>;
+      } & { [key: string]: InternalInfo<InternalType> };
 
 export const buildInternal = {
-  resolveField: (returnRef: Cls, signalOption?: SignalOption) =>
-    new InternalInfo("resolveField", returnRef, signalOption),
+  resolveField: <Returns extends ConstantFieldTypeInput, Nullable extends boolean = false>(
+    returnRef: Returns,
+    signalOption?: Pick<SignalOption<Returns, Nullable>, "nullable">,
+  ) => new InternalInfo("resolveField", returnRef, signalOption),
   interval: (scheduleTime: number, signalOption?: SignalOption) =>
     new InternalInfo("interval", Any, {
       enabled: true,
@@ -200,7 +250,10 @@ export const buildInternal = {
       scheduleType: "destroy",
       ...signalOption,
     }),
-  process: (returnRef: Cls, signalOption?: SignalOption) =>
+  process: <Returns extends ConstantFieldTypeInput, Nullable extends boolean = false>(
+    returnRef: Returns,
+    signalOption?: SignalOption<Returns, Nullable>,
+  ) =>
     new InternalInfo("process", returnRef, {
       serverMode: "all",
       ...signalOption,

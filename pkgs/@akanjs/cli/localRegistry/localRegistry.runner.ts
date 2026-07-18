@@ -82,6 +82,11 @@ export class LocalRegistryRunner extends runner("localRegistry") {
         stdio: "inherit",
       },
     );
+    await workspace.spawn("akan", ["typecheck", smokeAppName], {
+      cwd: path.join(smokeRoot, smokeRepoName),
+      env: { ...process.env, AKAN_NPM_REGISTRY: registry, NPM_CONFIG_REGISTRY: registry },
+      stdio: "inherit",
+    });
     await workspace.spawn("akan", ["build", smokeAppName], {
       cwd: path.join(smokeRoot, smokeRepoName),
       env: { ...process.env, AKAN_NPM_REGISTRY: registry, NPM_CONFIG_REGISTRY: registry },

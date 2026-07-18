@@ -5,6 +5,7 @@ import path from "node:path";
 import { ApplicationBuildReporter } from "./applicationBuildReporter";
 import { resolveSignalTestPreloadPath } from "./applicationTestPreload";
 import { TypeScriptDependencyScanner } from "./dependencyScanner";
+import { AppExecutor, WorkspaceExecutor } from "./executors";
 import { extractDependencies } from "./extractDeps";
 import { getModelFileData } from "./getModelFileData";
 import type { PackageJson, TsConfigJson } from "./types";
@@ -212,6 +213,45 @@ describe("TypeScriptDependencyScanner", () => {
   });
 });
 
+describe("scan convention", () => {
+  test("allows module abstract markdown files", async () => {
+    const root = await makeTempRoot();
+    const appName = "scanAbstractDemo";
+    const appDir = path.join(root, `apps/${appName}`);
+    await write(path.join(root, ".gitignore"), "");
+    await write(
+      path.join(root, ".env"),
+      ["AKAN_PUBLIC_REPO_NAME=repo", 'AKAN_PUBLIC_SERVE_DOMAIN="localhost"', "AKAN_PUBLIC_ENV=local", ""].join("\n"),
+    );
+    await write(
+      path.join(root, "package.json"),
+      JSON.stringify({
+        name: "repo",
+        version: "1.0.0",
+        description: "repo",
+        dependencies: {},
+        devDependencies: {},
+      }),
+    );
+    await write(path.join(root, "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ESNext", paths: {} } }));
+    await write(path.join(appDir, "package.json"), JSON.stringify({ name: appName, version: "1.0.0" }));
+    await write(path.join(appDir, "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ESNext" } }));
+    await write(path.join(appDir, "akan.config.ts"), "export default {};\n");
+    await write(path.join(appDir, "main.ts"), "export {};\n");
+    await write(path.join(appDir, "lib/post/post.abstract.md"), "# Post Abstract\n");
+    await write(path.join(appDir, "lib/post/post.constant.ts"), "export class Post {}\n");
+    await write(path.join(appDir, "lib/_payment/payment.abstract.md"), "# Payment Service Abstract\n");
+    await write(path.join(appDir, "lib/_payment/payment.service.ts"), "export const payment = {};\n");
+    await write(path.join(appDir, "lib/__scalar/money/money.abstract.md"), "# Money Scalar Abstract\n");
+    await write(path.join(appDir, "lib/__scalar/money/money.constant.ts"), "export class Money {}\n");
+
+    const workspace = WorkspaceExecutor.fromRoot({ workspaceRoot: root, repoName: "repo" });
+    const app = AppExecutor.from(workspace, appName);
+
+    await expect(app.scan({ write: false })).resolves.toBeDefined();
+  });
+});
+
 describe("getModelFileData", () => {
   test("reads model files and derives imported local, scalar, and lib models", async () => {
     const root = await makeTempRoot();
@@ -229,11 +269,11 @@ describe("getModelFileData", () => {
         ].join("\n"),
       );
       await write(
-        path.join(root, "apps/demo/lib/post/post.Unit.tsx"),
+        path.join(root, "apps/demo/lib/post/Post.Unit.tsx"),
         "export default function Unit() { return null; }\n",
       );
       await write(
-        path.join(root, "apps/demo/lib/post/post.View.tsx"),
+        path.join(root, "apps/demo/lib/post/Post.View.tsx"),
         "export default function View() { return null; }\n",
       );
 

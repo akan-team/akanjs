@@ -2,10 +2,26 @@ import { Database, type SQLQueryBindings, type Statement } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { dayjs, Int } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
-import { by, type DatabaseCls, DatabaseRegistry, DocumentSchema, from, into } from "akanjs/document";
-import { type AkanSqlClient, type AkanSqlStatement, SqliteDocumentStore } from "./database.adaptor";
+import {
+  by,
+  type DatabaseCls,
+  DatabaseRegistry,
+  DocumentSchema,
+  documentUpdateHelper,
+  from,
+  into,
+} from "akanjs/document";
+import {
+  type AkanSqlClient,
+  type AkanSqlStatement,
+  PostgresDialect,
+  SqlDocumentStore,
+  SqliteDialect,
+} from "./database.adaptor";
 import { decodeSolidValue, encodeSolidValue, getSolidConfig, toEpochMs } from "./solidSqlite";
 import { resolveDefaultSqliteFile } from "./sqlitePath";
+
+const { set, inc, push, pull, addToSet, unset, mul, min, max } = documentUpdateHelper;
 
 const InsightTestStatus = ["active", "failed", "deploying"] as const;
 class InsightTestInput extends via((f) => ({
@@ -43,6 +59,50 @@ const insightTestDatabase = DatabaseRegistry.buildModel(
   InsightTestObject,
   InsightTestInsight,
   InsightTestFilter,
+);
+
+class TicketHistory extends via((f) => ({
+  action: f(String),
+  content: f([String], { default: [] }),
+  count: f(Int, { default: 0 }),
+  flag: f(Boolean, { default: false }),
+})) {}
+class TicketTestInput extends via((f) => ({
+  title: f(String),
+  status: f(String, { default: "active" }),
+  issuedAt: f(Date).optional(),
+  transactionAt: f(Date, { default: dayjs(0) }),
+  histories: f([TicketHistory]),
+})) {}
+class TicketTestObject extends via(TicketTestInput, (f) => ({
+  hiddenNote: f.hidden(String),
+  secretToken: f.secret(String),
+})) {}
+class TicketTestLight extends via(TicketTestObject, ["title"] as const, () => ({})) {}
+class TicketTestFull extends via(TicketTestObject, TicketTestLight, () => ({})) {}
+class TicketTestInsight extends via(TicketTestFull, (f) => ({
+  count: f(Int, { default: 0, accumulate: {} }),
+})) {}
+const ticketTestConstant = ConstantRegistry.buildModel(
+  "sqliteTicketTest",
+  TicketTestInput,
+  TicketTestObject,
+  TicketTestFull,
+  TicketTestLight,
+  TicketTestInsight,
+  { TicketTestInput, TicketTestObject, TicketTestFull, TicketTestLight, TicketTestInsight, TicketHistory },
+);
+class TicketTestFilter extends from(TicketTestFull, () => ({})) {}
+class TicketTestDoc extends by(TicketTestFull) {}
+class TicketTestModel extends into(TicketTestDoc, TicketTestFilter, ticketTestConstant, () => ({})) {}
+const ticketTestDatabase = DatabaseRegistry.buildModel(
+  "sqliteTicketTest",
+  TicketTestInput as unknown as DatabaseCls<InstanceType<typeof TicketTestInput>>,
+  TicketTestDoc,
+  TicketTestModel,
+  TicketTestObject,
+  TicketTestInsight,
+  TicketTestFilter,
 );
 
 class TestSqliteStatement implements AkanSqlStatement {
@@ -151,6 +211,7 @@ describe("solid sqlite utilities", () => {
   test("resolves default sqlite paths and solid config", () => {
     const previousSqliteDir = process.env.AKAN_SQLITE_DIR;
     const previousSolidDbPath = process.env.AKAN_SOLID_DB_PATH;
+    const previousOperationMode = process.env.AKAN_PUBLIC_OPERATION_MODE;
     try {
       process.env.AKAN_SQLITE_DIR = "/tmp/akan-sqlite";
       expect(
@@ -171,6 +232,36 @@ describe("solid sqlite utilities", () => {
           workspaceRoot: "/workspace",
         }),
       ).toBe("/workspace/local/apps/demo/demo.db");
+
+      expect(
+        resolveDefaultSqliteFile({
+          appName: "demo",
+          fileName: "demo.db",
+          isProduction: true,
+          operationMode: "local",
+          workspaceRoot: "/workspace",
+        }),
+      ).toBe("/workspace/local/apps/demo/demo.db");
+
+      process.env.AKAN_PUBLIC_OPERATION_MODE = "local";
+      expect(
+        resolveDefaultSqliteFile({
+          appName: "demo",
+          fileName: "demo.db",
+          isProduction: true,
+          workspaceRoot: "/workspace",
+        }),
+      ).toBe("/workspace/local/apps/demo/demo.db");
+
+      expect(
+        resolveDefaultSqliteFile({
+          appName: "demo",
+          fileName: "demo.db",
+          isProduction: true,
+          operationMode: "cloud",
+          workspaceRoot: "/workspace",
+        }),
+      ).toBe(`${process.cwd()}/sqlite/demo.db`);
 
       process.env.AKAN_SOLID_DB_PATH = "/tmp/solid.db";
       expect(
@@ -197,6 +288,8 @@ describe("solid sqlite utilities", () => {
       else process.env.AKAN_SQLITE_DIR = previousSqliteDir;
       if (previousSolidDbPath === undefined) delete process.env.AKAN_SOLID_DB_PATH;
       else process.env.AKAN_SOLID_DB_PATH = previousSolidDbPath;
+      if (previousOperationMode === undefined) delete process.env.AKAN_PUBLIC_OPERATION_MODE;
+      else process.env.AKAN_PUBLIC_OPERATION_MODE = previousOperationMode;
     }
   });
 
@@ -204,7 +297,7 @@ describe("solid sqlite utilities", () => {
     const db = new Database(":memory:", { strict: true, create: true });
     const client = new TestSqliteClient(db);
     const owner = new TestDatabaseOwner(client);
-    const store = new SqliteDocumentStore(owner, insightTestConstant, insightTestDatabase, new DocumentSchema());
+    const store = new SqlDocumentStore(owner, insightTestConstant, insightTestDatabase, new DocumentSchema());
 
     try {
       await client.execute(
@@ -228,11 +321,323 @@ describe("solid sqlite utilities", () => {
     }
   });
 
+  test("fills nested constant defaults inside arrays on save", async () => {
+    const db = new Database(":memory:", { strict: true, create: true });
+    const client = new TestSqliteClient(db);
+    const owner = new TestDatabaseOwner(client);
+    const store = new SqlDocumentStore(owner, ticketTestConstant, ticketTestDatabase, new DocumentSchema());
+
+    try {
+      await client.execute(
+        `CREATE TABLE IF NOT EXISTS "_akan_meta" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL, "updatedAt" INTEGER NOT NULL)`,
+      );
+      await store.ensure();
+
+      const created = await store.create({ title: "Ticket", histories: [{ action: "open" }] });
+      expect(created.histories[0]).toMatchObject({ action: "open", content: [], count: 0, flag: false });
+
+      created.histories.push({ action: "close" });
+      const saved = await created.save();
+      expect(saved.histories[1]).toMatchObject({ action: "close", content: [], count: 0, flag: false });
+
+      const fetched = await store.pickById(created.id);
+      expect(fetched.histories[0]).toMatchObject({ action: "open", content: [], count: 0, flag: false });
+      expect(fetched.histories[1]).toMatchObject({ action: "close", content: [], count: 0, flag: false });
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("runs save hooks on document persistence but bypasses them on query-based writes", async () => {
+    const db = new Database(":memory:", { strict: true, create: true });
+    const client = new TestSqliteClient(db);
+    const owner = new TestDatabaseOwner(client);
+    const schema = new DocumentSchema();
+    const calls: string[] = [];
+    schema.pre("save", () => {
+      calls.push("pre:save");
+    });
+    schema.post("save", () => {
+      calls.push("post:save");
+    });
+    schema.pre("create", () => {
+      calls.push("pre:create");
+    });
+    schema.post("create", () => {
+      calls.push("post:create");
+    });
+    schema.pre("update", () => {
+      calls.push("pre:update");
+    });
+    schema.post("update", () => {
+      calls.push("post:update");
+    });
+    schema.pre("remove", () => {
+      calls.push("pre:remove");
+    });
+    schema.post("remove", () => {
+      calls.push("post:remove");
+    });
+    const store = new SqlDocumentStore(owner, ticketTestConstant, ticketTestDatabase, schema);
+
+    try {
+      await client.execute(
+        `CREATE TABLE IF NOT EXISTS "_akan_meta" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL, "updatedAt" INTEGER NOT NULL)`,
+      );
+      await store.ensure();
+
+      // create(): document persist -> save + create hooks
+      const created = await store.create({ title: "Ticket", histories: [] });
+      expect(calls).toEqual(["pre:save", "pre:create", "post:create", "post:save"]);
+
+      // document.save(): document persist -> save + update hooks
+      calls.length = 0;
+      created.title = "Renamed";
+      await created.save();
+      expect(calls).toEqual(["pre:save", "pre:update", "post:update", "post:save"]);
+
+      // updateOne query: atomic write fires NO document hooks
+      calls.length = 0;
+      await store.updateOneByQuery({ id: created.id }, { status: set("closed") });
+      expect(calls).toEqual([]);
+
+      // updateMany query: atomic write fires NO document hooks
+      calls.length = 0;
+      await store.updateManyByQuery({ id: created.id }, { status: set("archived") });
+      expect(calls).toEqual([]);
+
+      // upsert insert via updateOne query: still a document create -> create hooks only, save hooks bypassed
+      calls.length = 0;
+      await store.updateOneByQuery({ id: "upsert-1", title: "Upserted" }, { histories: set([]) }, { upsert: true });
+      expect(calls).toEqual(["pre:create", "post:create"]);
+
+      // remove(id): document soft delete -> remove hooks only, no save/update
+      calls.length = 0;
+      await store.remove(created.id);
+      expect(calls).toEqual(["pre:remove", "post:remove"]);
+
+      // deleteMany query: atomic soft delete fires NO document hooks
+      calls.length = 0;
+      await store.deleteManyByQuery({ id: "upsert-1" });
+      expect(calls).toEqual([]);
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("applies query updates atomically via json operators", async () => {
+    const db = new Database(":memory:", { strict: true, create: true });
+    const client = new TestSqliteClient(db);
+    const owner = new TestDatabaseOwner(client);
+    const store = new SqlDocumentStore(owner, insightTestConstant, insightTestDatabase, new DocumentSchema());
+
+    try {
+      await client.execute(
+        `CREATE TABLE IF NOT EXISTS "_akan_meta" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL, "updatedAt" INTEGER NOT NULL)`,
+      );
+      await store.ensure();
+
+      const a = await store.create({ title: "A", score: 10, status: "active", tags: ["x"] });
+      const b = await store.create({ title: "B", score: 5, status: "failed", tags: [] });
+
+      // set + inc + push fold into one atomic UPDATE
+      const r1 = await store.updateOneByQuery({ id: a.id }, { status: set("done"), score: inc(5), tags: push("y") });
+      expect(r1).toEqual({ acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedId: null });
+      const a1 = await store.pickById(a.id);
+      expect(a1.status).toBe("done");
+      expect(a1.score).toBe(15);
+      expect(a1.tags).toEqual(["x", "y"]);
+
+      // numeric operators: mul, then min/max clamp
+      await store.updateOneByQuery({ id: a.id }, { score: mul(2) });
+      expect((await store.pickById(a.id)).score).toBe(30);
+      await store.updateOneByQuery({ id: a.id }, { score: min(20) });
+      expect((await store.pickById(a.id)).score).toBe(20);
+      await store.updateOneByQuery({ id: a.id }, { score: max(25) });
+      expect((await store.pickById(a.id)).score).toBe(25);
+
+      // addToSet dedupes; pull removes by value
+      await store.updateOneByQuery({ id: a.id }, { tags: addToSet("y") });
+      expect((await store.pickById(a.id)).tags).toEqual(["x", "y"]);
+      await store.updateOneByQuery({ id: a.id }, { tags: addToSet("z") });
+      expect((await store.pickById(a.id)).tags).toEqual(["x", "y", "z"]);
+      await store.updateOneByQuery({ id: a.id }, { tags: pull("y") });
+      expect((await store.pickById(a.id)).tags).toEqual(["x", "z"]);
+
+      // unset removes the stored key; the read path refills the schema default
+      await store.updateOneByQuery({ id: a.id }, { status: unset() });
+      expect((await store.pickById(a.id)).status).toBe("active");
+
+      // updateMany touches every matching row and reports the affected count (functional builder form)
+      const rMany = await store.updateManyByQuery({}, ({ inc }) => ({ score: inc(1) }));
+      expect(rMany).toEqual({ acknowledged: true, matchedCount: 2, modifiedCount: 2 });
+      expect((await store.pickById(a.id)).score).toBe(26);
+      expect((await store.pickById(b.id)).score).toBe(6);
+
+      // no match without upsert -> zero counts, nothing inserted
+      const rNone = await store.updateOneByQuery({ id: "missing" }, { score: set(1) });
+      expect(rNone).toEqual({ acknowledged: true, matchedCount: 0, modifiedCount: 0, upsertedId: null });
+      expect(await store.count()).toBe(2);
+
+      // upsert insert applies inc from 0 and setOnInsert (functional builder form)
+      const rUp = await store.updateOneByQuery(
+        { id: "new-1", title: "New" },
+        ({ inc, setOnInsert }) => ({ score: inc(3), status: setOnInsert("fresh") }),
+        { upsert: true },
+      );
+      expect(rUp).toEqual({ acknowledged: true, matchedCount: 0, modifiedCount: 1, upsertedId: "new-1" });
+      const up = await store.pickById("new-1");
+      expect(up.score).toBe(3);
+      expect(up.status).toBe("fresh");
+
+      // deleteMany soft-deletes atomically and hides the row from later reads
+      const rDel = await store.deleteManyByQuery({ status: "failed" });
+      expect(rDel).toEqual({ acknowledged: true, matchedCount: 1, modifiedCount: 1 });
+      expect(await store.findId({ id: b.id })).toBeNull();
+      expect(await store.count()).toBe(2);
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("excludes secret fields from default reads while preserving them on update", async () => {
+    const db = new Database(":memory:", { strict: true, create: true });
+    const client = new TestSqliteClient(db);
+    const owner = new TestDatabaseOwner(client);
+    const store = new SqlDocumentStore(owner, ticketTestConstant, ticketTestDatabase, new DocumentSchema());
+
+    try {
+      await client.execute(
+        `CREATE TABLE IF NOT EXISTS "_akan_meta" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL, "updatedAt" INTEGER NOT NULL)`,
+      );
+      await store.ensure();
+
+      const created = await store.create({
+        title: "Secret",
+        histories: [],
+        hiddenNote: "server-visible",
+        secretToken: "token-1",
+      });
+      const fetched = await store.pickById(created.id);
+      const selected = await store.pickOne({ id: created.id }, { select: { secretToken: true } });
+
+      expect(fetched.hiddenNote).toBe("server-visible");
+      expect(fetched).not.toHaveProperty("secretToken");
+      expect(selected.secretToken).toBe("token-1");
+
+      await store.update(created.id, { title: "Updated" });
+      const row = await client
+        .prepare(`SELECT "_doc" FROM "sqliteTicketTest" WHERE "id" = ?`)
+        .get<{ _doc: string }>(created.id);
+      const stored = JSON.parse(row?._doc ?? "{}");
+      const updated = await store.pickOne({ id: created.id }, { select: { title: true, secretToken: true } });
+
+      expect(stored.secretToken).toBe("token-1");
+      expect(updated).toMatchObject({ title: "Updated", secretToken: "token-1" });
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("fills missing nested and top-level defaults when loading legacy rows", async () => {
+    const db = new Database(":memory:", { strict: true, create: true });
+    const client = new TestSqliteClient(db);
+    const owner = new TestDatabaseOwner(client);
+    const store = new SqlDocumentStore(owner, ticketTestConstant, ticketTestDatabase, new DocumentSchema());
+
+    try {
+      await client.execute(
+        `CREATE TABLE IF NOT EXISTS "_akan_meta" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL, "updatedAt" INTEGER NOT NULL)`,
+      );
+      await store.ensure();
+
+      const now = Date.now();
+      // Legacy row: nested `content`/`count`/`flag` and top-level `status` were never persisted.
+      const legacyDoc = JSON.stringify({ title: "Legacy", histories: [{ action: "open" }] });
+      await client.execute(
+        `INSERT INTO "sqliteTicketTest" ("id", "createdAt", "updatedAt", "removedAt", "_doc") VALUES (?, ?, ?, ?, ?)`,
+        ["legacy-1", now, now, null, legacyDoc],
+      );
+
+      const fetched = await store.pickById("legacy-1");
+      expect(fetched.status).toBe("active");
+      expect(fetched.histories[0]).toMatchObject({ action: "open", content: [], count: 0, flag: false });
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("normalizes date fields to epoch storage regardless of input shape", async () => {
+    const db = new Database(":memory:", { strict: true, create: true });
+    const client = new TestSqliteClient(db);
+    const owner = new TestDatabaseOwner(client);
+    const store = new SqlDocumentStore(owner, ticketTestConstant, ticketTestDatabase, new DocumentSchema());
+
+    try {
+      await client.execute(
+        `CREATE TABLE IF NOT EXISTS "_akan_meta" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL, "updatedAt" INTEGER NOT NULL)`,
+      );
+      await store.ensure();
+
+      const iso = "2026-06-06T13:52:39.747Z";
+      // `issuedAt` arrives as an ISO string while `transactionAt` falls back to its dayjs(0) default.
+      const created = await store.create({ title: "Dated", issuedAt: iso, histories: [] });
+      expect(dayjs.isDayjs(created.issuedAt)).toBe(true);
+      expect(created.issuedAt.valueOf()).toBe(dayjs(iso).valueOf());
+      expect(created.transactionAt.valueOf()).toBe(0);
+
+      // Both dates must persist as epoch numbers, not a string/number mix.
+      const row = await client
+        .prepare(`SELECT "_doc" FROM "sqliteTicketTest" WHERE "id" = ?`)
+        .get<{ _doc: string }>(created.id);
+      const stored = JSON.parse(row?._doc ?? "{}");
+      expect(typeof stored.issuedAt).toBe("number");
+      expect(stored.issuedAt).toBe(dayjs(iso).valueOf());
+      expect(typeof stored.transactionAt).toBe("number");
+      expect(stored.transactionAt).toBe(0);
+
+      const fetched = await store.pickById(created.id);
+      expect(fetched.issuedAt.valueOf()).toBe(dayjs(iso).valueOf());
+      expect(fetched.transactionAt.valueOf()).toBe(0);
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("reads legacy ISO-string dates as valid dayjs", async () => {
+    const db = new Database(":memory:", { strict: true, create: true });
+    const client = new TestSqliteClient(db);
+    const owner = new TestDatabaseOwner(client);
+    const store = new SqlDocumentStore(owner, ticketTestConstant, ticketTestDatabase, new DocumentSchema());
+
+    try {
+      await client.execute(
+        `CREATE TABLE IF NOT EXISTS "_akan_meta" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL, "updatedAt" INTEGER NOT NULL)`,
+      );
+      await store.ensure();
+
+      const iso = "2026-06-06T13:52:39.747Z";
+      const now = Date.now();
+      // Legacy row persisted `issuedAt` as an ISO string instead of epoch ms.
+      const legacyDoc = JSON.stringify({ title: "Legacy", issuedAt: iso, histories: [] });
+      await client.execute(
+        `INSERT INTO "sqliteTicketTest" ("id", "createdAt", "updatedAt", "removedAt", "_doc") VALUES (?, ?, ?, ?, ?)`,
+        ["legacy-date-1", now, now, null, legacyDoc],
+      );
+
+      const fetched = await store.pickById("legacy-date-1");
+      expect(fetched.issuedAt.isValid()).toBe(true);
+      expect(fetched.issuedAt.valueOf()).toBe(dayjs(iso).valueOf());
+    } finally {
+      await client.close();
+    }
+  });
+
   test("counts insight fields with document query accumulates", async () => {
     const db = new Database(":memory:", { strict: true, create: true });
     const client = new TestSqliteClient(db);
     const owner = new TestDatabaseOwner(client);
-    const store = new SqliteDocumentStore(owner, insightTestConstant, insightTestDatabase, new DocumentSchema());
+    const store = new SqlDocumentStore(owner, insightTestConstant, insightTestDatabase, new DocumentSchema());
 
     try {
       await client.execute(
@@ -258,5 +663,58 @@ describe("solid sqlite utilities", () => {
     } finally {
       await client.close();
     }
+  });
+});
+
+describe("sql dialects", () => {
+  test("sqlite folds update operators into one param-safe json expression", () => {
+    const d = new SqliteDialect();
+    // Folding must not duplicate the accumulator's placeholders: set + inc => exactly 2 params.
+    let acc = d.docColumn();
+    const setFrag = d.applyUpdate(acc, "set", "status", "done");
+    acc = setFrag.sql;
+    const incFrag = d.applyUpdate(acc, "inc", "score", 5);
+    acc = incFrag.sql;
+    const params = [...setFrag.params, ...incFrag.params];
+    expect((acc.match(/\?/g) ?? []).length).toBe(params.length);
+    expect(params).toEqual(['"done"', 5]);
+    expect(acc).toContain("json_set");
+    expect(acc).toContain("json_extract(\"_doc\", '$.score')");
+  });
+
+  test("postgres dialect emits jsonb operators and casts", () => {
+    const d = new PostgresDialect();
+    expect(d.docColumnType()).toBe("jsonb");
+    expect(d.timestampType()).toBe("BIGINT");
+    expect(d.docValuePlaceholder()).toBe("?::jsonb");
+
+    expect(d.eq("status", "active")).toEqual({ sql: `("_doc" #> '{status}') = ?::jsonb`, params: ['"active"'] });
+    expect(d.arrayHas("tags", "x")).toEqual({ sql: `("_doc" #> '{tags}') @> ?::jsonb`, params: ['"x"'] });
+
+    const col = d.docColumn();
+    expect(d.applyUpdate(col, "set", "status", "done").sql).toBe(`jsonb_set("_doc", '{status}', ?::jsonb, true)`);
+    const incSql = d.applyUpdate(col, "inc", "score", 5).sql;
+    expect(incSql).toContain(`#>> '{score}')::numeric, 0) + ?`);
+    expect(incSql).toContain("to_jsonb(");
+    expect(d.applyUpdate(col, "push", "tags", "y").sql).toContain("jsonb_build_array(?::jsonb)");
+    expect(d.applyUpdate(col, "pull", "tags", "y").sql).toContain("jsonb_array_elements");
+    expect(d.applyUpdate(col, "addToSet", "tags", "y").sql).toContain("@> jsonb_build_array(?::jsonb)");
+    expect(d.applyUpdate(col, "unset", "status", undefined).sql).toBe(`("_doc") #- '{status}'`);
+  });
+
+  test("postgres folding keeps params aligned with placeholders", () => {
+    const d = new PostgresDialect();
+    let acc = d.docColumn();
+    const params: unknown[] = [];
+    for (const [op, path, value] of [
+      ["set", "status", "done"],
+      ["inc", "score", 5],
+      ["addToSet", "tags", "y"],
+    ] as const) {
+      const frag = d.applyUpdate(acc, op, path, value);
+      acc = frag.sql;
+      params.push(...frag.params);
+    }
+    expect((acc.match(/\?/g) ?? []).length).toBe(params.length);
   });
 });

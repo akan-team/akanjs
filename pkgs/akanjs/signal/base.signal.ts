@@ -18,11 +18,6 @@ export class BaseEndpoint extends endpoint(srv.base, ({ query, mutation, message
   pingQuery: query(String, { nullable: true })
     .search("id", String)
     .exec((id) => `pingQuery: ${id}`),
-  cleanup: mutation(Boolean).exec(async function () {
-    if (process.env.NODE_ENV !== "test") throw new Error("cleanup is only available in test environment");
-    await this.baseService.cleanup();
-    return true;
-  }),
   wsPing: message(String)
     .msg("data", String, { nullable: true })
     .exec((data) => `wsPing: ${data}`),

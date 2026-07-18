@@ -28,7 +28,7 @@ import type { App } from "../commandDecorators";
  *      inlined so transitive `"use client"` stubs work.
  *   2. Specifiers listed in `include` (workspace aliases like
  *      `@apps/*`, `@libs/*`) are NEVER externalized.
- *   3. React / RSC runtime packages and framework host packages are
+ *   3. React / RSC runtime packages and build-time tooling packages are
  *      externalized so the runtime supplies a single shared instance.
  *   4. Other bare npm packages are bundled so the Docker runtime does not
  *      need to install every transitive page dependency separately.
@@ -60,8 +60,16 @@ const DEFAULT_INCLUDE = ["akanjs/", "@apps/", "@libs/"];
 // otherwise bundle them. These are runtime hosts or shared singleton
 // framework packages; ordinary npm dependencies intentionally fall through
 // to Bun's resolver and get bundled.
-const DEFAULT_EXCLUDE_EXACT = new Set<string>(["akanjs/webkit", "akanjs/server", "@akanjs/cli", "@akanjs/devkit"]);
-const DEFAULT_EXCLUDE_PREFIX = ["akanjs/server/", "@akanjs/cli/", "@akanjs/devkit/"];
+const DEFAULT_EXCLUDE_EXACT = new Set<string>(["akanjs/webkit", "@akanjs/cli", "@akanjs/devkit"]);
+const DEFAULT_EXCLUDE_PREFIX = ["@akanjs/cli/", "@akanjs/devkit/"];
+const OPTIONAL_BACKEND_EXTERNAL_EXACT = new Set<string>([
+  "@libsql/client",
+  "bullmq",
+  "croner",
+  "ioredis",
+  "postgres",
+  "protobufjs",
+]);
 const RUNTIME_EXTERNAL_EXACT = new Set<string>([
   "react",
   "react-dom",
@@ -141,6 +149,7 @@ export async function createExternalizeFrameworkPlugin(options: ExternalizeFrame
         for (const prefix of DEFAULT_EXCLUDE_PREFIX) {
           if (spec.startsWith(prefix)) return { path: spec, external: true };
         }
+        if (OPTIONAL_BACKEND_EXTERNAL_EXACT.has(spec)) return { path: spec, external: true };
         if (RUNTIME_EXTERNAL_EXACT.has(spec)) return { path: spec, external: true };
         for (const prefix of RUNTIME_EXTERNAL_PREFIX) {
           if (spec.startsWith(prefix)) return { path: spec, external: true };

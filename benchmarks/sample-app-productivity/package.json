@@ -1,0 +1,19 @@
+{
+  "name": "akan-sample-app-productivity-benchmark",
+  "private": true,
+  "type": "module",
+  "description": "Sample app productivity benchmark for Akan.js and peer full-stack stacks.",
+  "scripts": {
+    "setup": "bun harness/setup.ts",
+    "run": "bun harness/run.ts",
+    "verify": "bun harness/verify.ts",
+    "collect": "bun harness/collect.ts",
+    "report": "bun report/generate.ts"
+  },
+  "dependencies": {
+    "@playwright/test": "^1.60.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14"
+  }
+}

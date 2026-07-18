@@ -82,6 +82,40 @@ export class RouteSeedIndexStore {
     return null;
   }
 
+  static matchPrefix(pathname: string, entries: RouteSeedEntry[]): MatchedRoute | null {
+    const candidates = entries
+      .map((entry) => ({
+        entry,
+        params: RouteSeedIndexStore.#matchRoutePrefix(entry.pattern ?? entry.routeId, pathname),
+      }))
+      .filter((entry): entry is { entry: RouteSeedEntry; params: Record<string, string> } => Boolean(entry.params))
+      .sort((a, b) => {
+        const lengthDelta =
+          b.entry.pattern.split("/").filter(Boolean).length - a.entry.pattern.split("/").filter(Boolean).length;
+        if (lengthDelta !== 0) return lengthDelta;
+        return a.entry.pattern < b.entry.pattern ? -1 : a.entry.pattern > b.entry.pattern ? 1 : 0;
+      });
+    return candidates[0] ?? null;
+  }
+
+  static #matchRoutePrefix(pattern: string, pathname: string): Record<string, string> | null {
+    const patternParts = pattern.split("/").filter(Boolean);
+    const pathParts = pathname.split("/").filter(Boolean);
+    if (patternParts.length > pathParts.length) return null;
+    const params: Record<string, string> = {};
+    for (let index = 0; index < patternParts.length; index++) {
+      const patternPart = patternParts[index];
+      const pathPart = pathParts[index];
+      if (!patternPart || !pathPart) return null;
+      if (patternPart.startsWith(":")) {
+        params[patternPart.slice(1)] = decodeURIComponent(pathPart);
+        continue;
+      }
+      if (patternPart !== pathPart) return null;
+    }
+    return params;
+  }
+
   static #normalizeArtifactPath(artifactPath: string, artifactDir: string): string {
     if (path.isAbsolute(artifactPath)) return artifactPath;
     return path.resolve(artifactDir, artifactPath);

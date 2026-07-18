@@ -1,4 +1,5 @@
 import { Logger } from "akanjs/common";
+import type { BuildPhase } from "../artifact";
 
 export interface HmrWsData {
   kind: "akan-hmr";
@@ -21,6 +22,16 @@ export type HmrMessage =
       routeIds?: string[];
     }
   | { type: "css-update"; cssAssets?: Record<string, { cssUrl: string; cssRelPath: string }> }
+  | { type: "sync-navigation"; clientId: string; href: string; kind?: "push" | "replace" | "back" | "pop" }
+  | { type: "ok"; generation?: number }
+  | {
+      type: "build-status";
+      status: "building" | "error" | "ok";
+      generation: number;
+      phase: BuildPhase;
+      message?: string;
+      files?: number;
+    }
   | { type: "error"; message: string };
 
 export const HMR_WS_TOPIC = "__akan_hmr";
@@ -53,4 +64,32 @@ export class HmrWsHub {
     const payload = JSON.stringify(msg);
     this.#publish?.(HMR_WS_TOPIC, payload);
   }
+
+  handleMessage(message: string): void {
+    if (!isSyncNavigationEnabled()) return;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(message);
+    } catch {
+      return;
+    }
+    if (!isSyncNavigationMessage(parsed)) return;
+    this.broadcast(parsed);
+  }
 }
+
+const isSyncNavigationEnabled = () =>
+  process.env.AKAN_PUBLIC_SYNC_NAVIGATION === "true" ||
+  process.env.AKAN_PUBLIC_SYNC_NAVIGATION === "1" ||
+  process.env.SYNC_DOMAIN === "true" ||
+  process.env.SYNC_DOMAIN === "1";
+
+const isSyncNavigationMessage = (value: unknown): value is Extract<HmrMessage, { type: "sync-navigation" }> => {
+  if (!value || typeof value !== "object") return false;
+  const msg = value as Partial<Extract<HmrMessage, { type: "sync-navigation" }>>;
+  if (msg.type !== "sync-navigation") return false;
+  if (typeof msg.clientId !== "string" || msg.clientId.length === 0) return false;
+  if (typeof msg.href !== "string" || msg.href.length === 0) return false;
+  if (msg.kind === undefined) return true;
+  return msg.kind === "push" || msg.kind === "replace" || msg.kind === "back" || msg.kind === "pop";
+};

@@ -29,4 +29,14 @@ export class PackageCommand extends command("package", [PackageScript], ({ publi
     .exec(async function (pkg) {
       await this.packageScript.buildPackage(pkg);
     }),
+  verifyDistPackage: target({ desc: "Verify a built dist package with npm pack dry-run" })
+    .with(Pkg)
+    .exec(async function (pkg) {
+      await this.packageScript.verifyDistPackage(pkg);
+    }),
+  verifyAkanPublishPackages: target({ devOnly: true, desc: "Verify all Akan publish dist packages" })
+    .with(Workspace)
+    .exec(async function (workspace) {
+      await this.packageScript.verifyAkanPublishPackages(workspace);
+    }),
 })) {}

@@ -1,0 +1,112 @@
+{
+  "runId": "2026-06-12-team-task-board-akan-01",
+  "scenario": "team-task-board",
+  "stack": "akanjs",
+  "stackLabel": "Akan.js 2.2.12",
+  "stackVersion": "2.2.12",
+  "mode": "repair-loop",
+  "iteration": 1,
+  "model": "same-model-name",
+  "startedAt": "2026-06-12T00:00:00.000Z",
+  "finishedAt": "2026-06-12T00:12:34.000Z",
+  "wallClockMs": 754000,
+  "installMs": 42000,
+  "firstImplementationMs": null,
+  "repairMs": null,
+  "tokens": {
+    "input": 120000,
+    "output": 32000,
+    "cacheRead": null,
+    "cacheWrite": null,
+    "total": 152000
+  },
+  "toolCalls": 48,
+  "agentRuns": 3,
+  "build": {
+    "success": true,
+    "durationMs": 18000,
+    "command": ["bun", "run", "akan", "build", "taskboard"],
+    "logFile": "results/2026-06-12-team-task-board-akan-01/logs/akanjs.build.log"
+  },
+  "tests": {
+    "success": true,
+    "durationMs": 9000,
+    "command": ["bun", "x", "playwright", "test", "smoke/team-task-board.spec.ts", "--reporter=line"],
+    "passed": 1,
+    "failed": 0,
+    "logFile": "results/2026-06-12-team-task-board-akan-01/logs/akanjs.smoke.log"
+  },
+  "lint": {
+    "success": true,
+    "durationMs": 7000,
+    "command": ["bun", "run", "akan", "lint", "taskboard"],
+    "logFile": "results/2026-06-12-team-task-board-akan-01/logs/akanjs.lint.log",
+    "skipped": false,
+    "note": "Lint command passed."
+  },
+  "convention": {
+    "success": true,
+    "checker": "akanjs",
+    "durationMs": 120,
+    "logFile": "results/2026-06-12-team-task-board-akan-01/logs/akanjs.convention.log",
+    "skipped": false,
+    "violations": [],
+    "metrics": {
+      "domainModulesExpected": 3,
+      "domainModulesFound": 3,
+      "missingLayerCount": 0,
+      "forbiddenDependencyCount": 0,
+      "parallelApiFileCount": 0,
+      "pagePersistenceFileCount": 0,
+      "violationCount": 0
+    }
+  },
+  "code": {
+    "files": 24,
+    "loc": 1800,
+    "appSourceLoc": 1200,
+    "glueLoc": 420,
+    "testLoc": 80,
+    "generatedOrLockLoc": 100
+  },
+  "quality": {
+    "duplicateLogicCount": null,
+    "explicitApiClientBoilerplateCount": 0,
+    "schemaDuplicationCount": 1,
+    "frameworkConfigCount": 1,
+    "conventionViolationCount": 0,
+    "forbiddenDependencyCount": 0
+  },
+  "acceptance": [
+    {
+      "id": "list-visible",
+      "label": "`/` or `/tasks` shows the task list",
+      "pass": true
+    },
+    {
+      "id": "smoke-success",
+      "label": "The smoke test command succeeds",
+      "pass": true,
+      "note": "Smoke test passed."
+    }
+  ],
+  "dependencies": {
+    "packagePolicy": "published-fixed",
+    "lockfile": "bun.lock",
+    "lockfileHash": "sha256-example",
+    "packages": {
+      "akanjs": "2.2.12"
+    },
+    "reusedLockfile": true
+  },
+  "repairLoop": {
+    "attempts": 3,
+    "maxAttempts": 4,
+    "failureInputs": []
+  },
+  "cursorWorkspace": {
+    "path": "workspaces/2026-06-12-team-task-board-akan-01/akanjs",
+    "mode": "repair-loop"
+  },
+  "notes": []
+}

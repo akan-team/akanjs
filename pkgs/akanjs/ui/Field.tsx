@@ -1346,10 +1346,7 @@ const ParentId = <T extends string, State, Input, Full extends { id: string }, L
         labelClassName={labelClassName}
         selectClassName={selectClassName}
         value={value}
-        options={modelList.map((model) => {
-          const label = renderOption?.(model) ?? model.id;
-          return { label: typeof label === "string" ? label : model.id, value: model.id };
-        })}
+        options={modelList.map((model) => model.id)}
         renderOption={(renderId) => {
           if (!renderId) return null;
           const model = modelList.get(renderId);

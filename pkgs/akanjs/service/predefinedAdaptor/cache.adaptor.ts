@@ -2,8 +2,12 @@ import type { BaseEnv, Dayjs, SshOptions } from "akanjs/base";
 import type { Redis } from "ioredis";
 import { adapt } from "../adapt";
 
+export interface CacheSetOptions {
+  expireAt?: Dayjs;
+}
+
 export interface CacheAdaptor {
-  set(topic: string, key: string, value: string | number | Buffer, option?: { expireAt?: Dayjs }): Promise<void>;
+  set(topic: string, key: string, value: string | number | Buffer, option?: CacheSetOptions): Promise<void>;
   get<T extends string | number | Buffer>(topic: string, key: string): Promise<T | undefined>;
   delete(topic: string, key: string): Promise<void>;
   getClient?(): Redis;
@@ -12,10 +16,13 @@ export interface CacheAdaptor {
     key: string,
     subKey: string,
     value: string | number | Buffer,
-    option?: { expireAt?: Dayjs },
+    option?: CacheSetOptions,
   ): Promise<void>;
   hget<T extends string | number | Buffer>(topic: string, key: string, subKey: string): Promise<T | undefined>;
   hdelete(topic: string, key: string, subKey: string): Promise<void>;
+  hkeys(topic: string, key: string): Promise<string[]>;
+  hentries<T extends string | number | Buffer>(topic: string, key: string): Promise<[string, T][]>;
+  hclear(topic: string, key: string): Promise<void>;
 }
 
 interface RedisEnv extends BaseEnv {
@@ -61,12 +68,7 @@ export class RedisCache
   }))
   implements CacheAdaptor
 {
-  async set(
-    topic: string,
-    key: string,
-    value: string | number | Buffer,
-    option: { expireAt?: Dayjs } = {},
-  ): Promise<void> {
+  async set(topic: string, key: string, value: string | number | Buffer, option: CacheSetOptions = {}): Promise<void> {
     const expireTime = option.expireAt?.toDate().getTime();
     if (expireTime) await this.redis.set(`${topic}:${key}`, value, "PXAT", expireTime);
     else await this.redis.set(`${topic}:${key}`, value);
@@ -83,7 +85,7 @@ export class RedisCache
     key: string,
     subKey: string,
     value: string | number | Buffer,
-    option?: { expireAt?: Dayjs },
+    option?: CacheSetOptions,
   ): Promise<void> {
     const expireTime = option?.expireAt?.toDate().getTime();
     const redisKey = `${topic}:${key}`;
@@ -96,6 +98,16 @@ export class RedisCache
   }
   async hdelete(topic: string, key: string, subKey: string): Promise<void> {
     await this.redis.hdel(`${topic}:${key}`, subKey);
+  }
+  async hkeys(topic: string, key: string): Promise<string[]> {
+    return await this.redis.hkeys(`${topic}:${key}`);
+  }
+  async hentries<T extends string | number | Buffer>(topic: string, key: string): Promise<[string, T][]> {
+    const values = await this.redis.hgetall(`${topic}:${key}`);
+    return Object.entries(values) as [string, T][];
+  }
+  async hclear(topic: string, key: string): Promise<void> {
+    await this.redis.del(`${topic}:${key}`);
   }
   getClient(): Redis {
     return this.redis;

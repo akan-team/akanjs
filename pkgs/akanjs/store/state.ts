@@ -1,9 +1,20 @@
-import { DataList, type SLICE_META } from "akanjs/base";
+import { DataList } from "akanjs/base";
 import { capitalize } from "akanjs/common";
 import { ConstantRegistry, type DefaultOf } from "akanjs/constant";
 import type { ExtractSort, FilterInstance } from "akanjs/document";
-import type { SerializedSlice, SliceCls, SliceInfoArgs } from "akanjs/signal";
-import type { Submit } from "./types";
+import type {
+  SerializedSlice,
+  SlceCnstCapitalizedRefName,
+  SlceCnstDefault,
+  SlceCnstFull,
+  SlceCnstInsight,
+  SlceCnstLight,
+  SlceCnstRefName,
+  SlceDbFilter,
+  SlceDbSort,
+  SliceCls,
+} from "akanjs/signal";
+import type { StoreSliceArgs, StoreSliceMap, StoreSliceSuffixCap, Submit } from "./types";
 
 export type SliceStateKey =
   | "defaultModel"
@@ -18,6 +29,16 @@ export type SliceStateKey =
   | "limitOfModel"
   | "queryArgsOfModel"
   | "sortOfModel";
+type _SliceMap<S extends SliceCls> = StoreSliceMap<S>;
+type _StateRefName<S extends SliceCls> = SlceCnstRefName<S>;
+type _StateCap<S extends SliceCls> = SlceCnstCapitalizedRefName<S>;
+type _StateFull<S extends SliceCls> = SlceCnstFull<S>;
+type _StateLight<S extends SliceCls> = SlceCnstLight<S>;
+type _StateInsight<S extends SliceCls> = SlceCnstInsight<S>;
+type _StateDefault<S extends SliceCls> = SlceCnstDefault<S>;
+type _StateFilter<S extends SliceCls> = SlceDbFilter<S>;
+type _StateSort<S extends SliceCls> = SlceDbSort<S>;
+
 type BaseState<RefName extends string, Full, _Default = DefaultOf<Full>> = {
   [K in RefName]: Full | null;
 } & {
@@ -73,15 +94,6 @@ export type SliceState<
   [K in `sortOf${_CapitalizedRefName}${_CapitalizedSuffix}`]: _Sort;
 };
 
-type _SliceMap<SlceCls extends SliceCls> = SlceCls[typeof SLICE_META];
-type _SuffixStr<SlceCls extends SliceCls, Suffix extends keyof _SliceMap<SlceCls>> = Suffix & string;
-type _SuffixCap<SlceCls extends SliceCls, Suffix extends keyof _SliceMap<SlceCls>> = Capitalize<
-  _SuffixStr<SlceCls, Suffix>
->;
-type _ArgsOf<SlceCls extends SliceCls, Suffix extends keyof _SliceMap<SlceCls>> = SliceInfoArgs<
-  _SliceMap<SlceCls>[Suffix]
->;
-
 type DefaultSliceStateFields<
   SlceCls extends SliceCls,
   _RefName extends string,
@@ -91,45 +103,44 @@ type DefaultSliceStateFields<
   _Insight,
   _Default,
   _Sort,
+  _Suffixes extends keyof _SliceMap<SlceCls> = keyof _SliceMap<SlceCls>,
 > = {
-  [Suffix in keyof _SliceMap<SlceCls> as `default${_CapRefName}${_SuffixCap<SlceCls, Suffix>}`]: _Default;
+  [Suffix in _Suffixes as `default${_CapRefName}${StoreSliceSuffixCap<SlceCls, Suffix>}`]: _Default;
 } & {
-  [Suffix in keyof _SliceMap<SlceCls> as `${_RefName}List${_SuffixCap<SlceCls, Suffix>}`]: DataList<_Light>;
+  [Suffix in _Suffixes as
+    | `${_RefName}List${StoreSliceSuffixCap<SlceCls, Suffix>}`
+    | `${_RefName}InitList${StoreSliceSuffixCap<SlceCls, Suffix>}`
+    | `${_RefName}Selection${StoreSliceSuffixCap<SlceCls, Suffix>}`]: DataList<_Light>;
 } & {
-  [Suffix in keyof _SliceMap<SlceCls> as `${_RefName}ListLoading${_SuffixCap<SlceCls, Suffix>}`]: boolean;
+  [Suffix in _Suffixes as `${_RefName}InitAt${StoreSliceSuffixCap<SlceCls, Suffix>}`]: Date;
 } & {
-  [Suffix in keyof _SliceMap<SlceCls> as `${_RefName}InitList${_SuffixCap<SlceCls, Suffix>}`]: DataList<_Light>;
+  [Suffix in _Suffixes as `${_RefName}ListLoading${StoreSliceSuffixCap<SlceCls, Suffix>}`]: boolean;
 } & {
-  [Suffix in keyof _SliceMap<SlceCls> as `${_RefName}InitAt${_SuffixCap<SlceCls, Suffix>}`]: Date;
+  [Suffix in _Suffixes as `${_RefName}Insight${StoreSliceSuffixCap<SlceCls, Suffix>}`]: _Insight;
 } & {
-  [Suffix in keyof _SliceMap<SlceCls> as `${_RefName}Selection${_SuffixCap<SlceCls, Suffix>}`]: DataList<_Light>;
+  [Suffix in _Suffixes as
+    | `lastPageOf${_CapRefName}${StoreSliceSuffixCap<SlceCls, Suffix>}`
+    | `pageOf${_CapRefName}${StoreSliceSuffixCap<SlceCls, Suffix>}`
+    | `limitOf${_CapRefName}${StoreSliceSuffixCap<SlceCls, Suffix>}`]: number;
 } & {
-  [Suffix in keyof _SliceMap<SlceCls> as `${_RefName}Insight${_SuffixCap<SlceCls, Suffix>}`]: _Insight;
-} & {
-  [Suffix in keyof _SliceMap<SlceCls> as `lastPageOf${_CapRefName}${_SuffixCap<SlceCls, Suffix>}`]: number;
-} & {
-  [Suffix in keyof _SliceMap<SlceCls> as `pageOf${_CapRefName}${_SuffixCap<SlceCls, Suffix>}`]: number;
-} & {
-  [Suffix in keyof _SliceMap<SlceCls> as `limitOf${_CapRefName}${_SuffixCap<SlceCls, Suffix>}`]: number;
-} & {
-  [Suffix in keyof _SliceMap<SlceCls> as `queryArgsOf${_CapRefName}${_SuffixCap<SlceCls, Suffix>}`]: _ArgsOf<
+  [Suffix in _Suffixes as `queryArgsOf${_CapRefName}${StoreSliceSuffixCap<SlceCls, Suffix>}`]: StoreSliceArgs<
     SlceCls,
     Suffix
   >;
 } & {
-  [Suffix in keyof _SliceMap<SlceCls> as `sortOf${_CapRefName}${_SuffixCap<SlceCls, Suffix>}`]: _Sort;
+  [Suffix in _Suffixes as `sortOf${_CapRefName}${StoreSliceSuffixCap<SlceCls, Suffix>}`]: _Sort;
 };
 
 export type DefaultState<
   SlceCls extends SliceCls,
-  _RefName extends SlceCls["srv"]["cnst"]["refName"] = SlceCls["srv"]["cnst"]["refName"],
-  _Full = NonNullable<SlceCls["srv"]["cnst"]>["_Full"],
-  _Light extends { id: string } = SlceCls["srv"]["cnst"]["_Light"],
-  _Insight = SlceCls["srv"]["cnst"]["_Insight"],
-  _Filter extends FilterInstance = SlceCls["srv"]["db"]["_Filter"],
-  _CapitalizedRefName extends string = Capitalize<_RefName>,
-  _Default = SlceCls["srv"]["cnst"]["_Default"],
-  _Sort = SlceCls["srv"]["db"]["_Sort"],
+  _RefName extends _StateRefName<SlceCls> = _StateRefName<SlceCls>,
+  _Full = _StateFull<SlceCls>,
+  _Light extends { id: string } = _StateLight<SlceCls>,
+  _Insight = _StateInsight<SlceCls>,
+  _Filter extends FilterInstance = _StateFilter<SlceCls>,
+  _CapitalizedRefName extends string = _StateCap<SlceCls>,
+  _Default = _StateDefault<SlceCls>,
+  _Sort = _StateSort<SlceCls>,
 > = BaseState<_RefName, _Full, _Default> &
   DefaultSliceStateFields<SlceCls, _RefName, _CapitalizedRefName, _Full, _Light, _Insight, _Default, _Sort>;
 

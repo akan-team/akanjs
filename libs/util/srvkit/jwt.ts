@@ -1,9 +1,10 @@
+import type { Dayjs } from "dayjs";
 import { jwtVerify as joseVerify, SignJWT } from "jose";
 
 const encodeSecret = (secret: string) => new TextEncoder().encode(secret);
 
 export interface JwtSignOption {
-  expiresIn?: string | number;
+  expiresAt?: Dayjs;
   jwtId?: string;
   issuedAt?: boolean;
 }
@@ -11,12 +12,12 @@ export interface JwtSignOption {
 export const jwtSign = async (
   message: object,
   secret: string,
-  { expiresIn, jwtId, issuedAt }: JwtSignOption = {},
+  { expiresAt, jwtId, issuedAt }: JwtSignOption = {},
 ): Promise<string> => {
   const payload = JSON.parse(JSON.stringify(message));
   let jwt = new SignJWT(payload).setProtectedHeader({ alg: "HS256" });
   if (issuedAt) jwt = jwt.setIssuedAt();
-  if (expiresIn) jwt = jwt.setExpirationTime(expiresIn);
+  if (expiresAt) jwt = jwt.setExpirationTime(expiresAt.toDate());
   if (jwtId) jwt = jwt.setJti(jwtId);
   return await jwt.sign(encodeSecret(secret));
 };

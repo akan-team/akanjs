@@ -1,5 +1,5 @@
 import { DataList, getEnv, PrimitiveRegistry, type PromiseOrObject } from "akanjs/base";
-import { capitalize, type FetchPolicy, Logger } from "akanjs/common";
+import { capitalize, type FetchPolicy, fileUploadContract, Logger, resolveFileUploadCapability } from "akanjs/common";
 import { type BaseInsight, type BaseObject, ConstantRegistry, deserialize, serialize } from "akanjs/constant";
 import type {
   DatabaseSignal,
@@ -10,13 +10,14 @@ import type {
   SerializedSlice,
   ServiceSignal,
 } from "akanjs/signal";
-import type { ClientSignal, MergeAllFetchTypes, SliceMeta } from "../fetchType";
+import type { ClientSignal, FetchClientType, FetchSignalInput, MergeAllFetchTypes, SliceMeta } from "../fetchType";
 import { memoizeRequestQuery, cookies as requestCookies, headers as requestHeaders } from "../requestStorage";
 import type { GetSliceMetaObjFromDatabaseSignals } from "../types";
 import { type ErrorConstructor, HttpClient } from "./httpClient";
 import { WsClient } from "./wsClient";
 
 type FetchHandler = (...args: unknown[]) => PromiseOrObject<unknown>;
+type FetchHandlerFactory = () => FetchHandler;
 type UnknownRecord = Record<string, unknown>;
 
 const isNullableArg = (arg: SerializedArg) => arg.nullable ?? arg.type === "search";
@@ -34,7 +35,7 @@ export type FetchProxy<
   SliceMetaObj extends Record<string, SliceMeta> = Record<never, never>,
 > = typeof global.fetch &
   FetchClient &
-  FetchType & { slice: SliceMetaObj; instance: FetchClient; _FetchType: FetchType };
+  FetchType & { slice: SliceMetaObj; instance: FetchClient; _FetchType: FetchType; _SliceMetaObj: SliceMetaObj };
 
 type ClientSignalMap<SigType extends { fetch: any }> = {
   [K in keyof SigType as SigType[K] extends DatabaseSignal<any, any, any, any>
@@ -46,13 +47,18 @@ type ClientSignalMap<SigType extends { fetch: any }> = {
 
 /** Runtime fetch client that registers serialized Akan signals as HTTP/WebSocket methods. */
 export class FetchClient {
+  static #sharedSerializedSignal: { [key: string]: SerializedSignal } = {};
+  static #sharedRegistryVersion = 0;
   readonly logger = new Logger("FetchClient");
   readonly origin: string;
   readonly http: HttpClient;
   readonly ws: WsClient;
-  readonly handler: Record<string, FetchHandler> = {};
+  readonly handler: Record<string, FetchHandler>;
   readonly slice: Record<string, SliceMeta> = {};
   readonly sortKeyMap = new Map<string, string[]>();
+  readonly #handlerStore: Record<string, FetchHandler> = {};
+  readonly #handlerFactory = new Map<string, FetchHandlerFactory>();
+  #sharedRegistryAppliedVersion = 0;
   serializedSignal: { [key: string]: SerializedSignal } = {};
   jwt: string | null = null;
 
@@ -66,16 +72,52 @@ export class FetchClient {
     this.http = new HttpClient(origin, ErrorCls);
     const wsUri = `${origin.replace("http://", "ws://").replace("https://", "wss://")}/ws`;
     this.ws = new WsClient(wsUri, ErrorCls);
-    this.handler = handler;
+    Object.assign(this.#handlerStore, handler);
+    this.handler = this.#makeHandlerProxy();
     this.applySignal(serializedSignal);
+  }
+  static resetSharedRegistry() {
+    FetchClient.#sharedSerializedSignal = {};
+    FetchClient.#sharedRegistryVersion++;
+  }
+  static #mergeSerializedSignalInto(
+    serializedSignal: { [key: string]: SerializedSignal },
+    refName: string,
+    signal: SerializedSignal,
+  ) {
+    const current = serializedSignal[refName];
+    serializedSignal[refName] = current
+      ? {
+          ...current,
+          ...signal,
+          endpoint: { ...current.endpoint, ...signal.endpoint },
+          slice: current.slice || signal.slice ? { ...current.slice, ...signal.slice } : undefined,
+          filter:
+            current.filter || signal.filter
+              ? {
+                  filter: { ...current.filter?.filter, ...signal.filter?.filter },
+                  sortKeys: [...new Set([...(current.filter?.sortKeys ?? []), ...(signal.filter?.sortKeys ?? [])])],
+                }
+              : undefined,
+          getGuards: signal.getGuards ?? current.getGuards,
+          cruGuards: signal.cruGuards ?? current.cruGuards,
+        }
+      : signal;
   }
   setErrorConstructor(ErrorCls?: ErrorConstructor) {
     this.ErrorCls = ErrorCls;
     this.http.setErrorConstructor(ErrorCls);
     this.ws.setErrorConstructor(ErrorCls);
   }
-  applySignal(serializedSignal: { [key: string]: SerializedSignal }) {
-    Object.assign(this.serializedSignal, serializedSignal);
+  applySignal(serializedSignal: { [key: string]: SerializedSignal }, { share = true }: { share?: boolean } = {}) {
+    if (share && Object.keys(serializedSignal).length > 0) {
+      for (const [refName, signal] of Object.entries(serializedSignal))
+        FetchClient.#mergeSerializedSignalInto(FetchClient.#sharedSerializedSignal, refName, signal);
+      FetchClient.#sharedRegistryVersion++;
+      this.#sharedRegistryAppliedVersion = FetchClient.#sharedRegistryVersion;
+    }
+    for (const [refName, signal] of Object.entries(serializedSignal))
+      FetchClient.#mergeSerializedSignalInto(this.serializedSignal, refName, signal);
     for (const [refName, signal] of Object.entries(serializedSignal)) {
       for (const [key, endpoint] of Object.entries(signal.endpoint))
         this.#registerEndpoint(key, endpoint, signal.prefix);
@@ -92,6 +134,48 @@ export class FetchClient {
       }
     }
     return this;
+  }
+  #makeHandlerProxy() {
+    return new Proxy(this.#handlerStore, {
+      get: (target, prop) => {
+        if (typeof prop !== "string") return undefined;
+        return target[prop] ?? this.#getOrCreateHandler(prop);
+      },
+      has: (target, prop) => {
+        if (typeof prop !== "string") return prop in target;
+        return prop in target || this.#handlerFactory.has(prop);
+      },
+    });
+  }
+  #syncSharedRegistry() {
+    if (this.#sharedRegistryAppliedVersion === FetchClient.#sharedRegistryVersion) return;
+    this.applySignal(FetchClient.#sharedSerializedSignal, { share: false });
+    this.#sharedRegistryAppliedVersion = FetchClient.#sharedRegistryVersion;
+  }
+  #getOrCreateHandler(key: string): FetchHandler | undefined {
+    const current = this.#handlerStore[key];
+    if (current) return current;
+    const factory = this.#handlerFactory.get(key);
+    if (factory) {
+      const handler = factory();
+      this.#handlerStore[key] = handler;
+      return handler;
+    }
+    this.#syncSharedRegistry();
+    const syncedFactory = this.#handlerFactory.get(key);
+    if (!syncedFactory) return undefined;
+    const handler = syncedFactory();
+    this.#handlerStore[key] = handler;
+    return handler;
+  }
+  #requireHandler<T extends FetchHandler = FetchHandler>(key: string, owner: string): T {
+    const handler = this.#getOrCreateHandler(key);
+    if (!handler) throw new Error(`${owner} requires fetch handler "${key}", but it is not registered`);
+    return handler as T;
+  }
+  #setHandlerFactory(key: string, factory: FetchHandlerFactory) {
+    this.#handlerFactory.set(key, factory);
+    delete this.#handlerStore[key];
   }
   connect() {
     this.ws.connect();
@@ -144,8 +228,13 @@ export class FetchClient {
           const argMap = new Map(serializerMap.entries().map(([key, serializer], idx) => [key, serializer(args[idx])]));
           const url = FetchClient.makeHttpUrl(key, endpoint, prefix, argMap);
           const headers = this.#makeAuthHeaders(option);
-          const cacheKey = FetchClient.#makeRequestQueryCacheKey(this.origin, url, headers);
-          const response = await memoizeRequestQuery(cacheKey, () => this.http.get(url, { headers }));
+          const baseUrl = option?.origin;
+          // A per-request origin override targets an arbitrary server, so the shared
+          // request-query cache (keyed by the client origin) must be bypassed.
+          const requestQuery = () => this.http.get(url, { headers, baseUrl });
+          const response = baseUrl
+            ? await requestQuery()
+            : await memoizeRequestQuery(FetchClient.#makeRequestQueryCacheKey(this.origin, url, headers), requestQuery);
           const parsedReturn = parseReturn(FetchClient.#deepCopy(response), { crystalize: option?.crystalize ?? true });
           return parsedReturn;
         };
@@ -160,6 +249,7 @@ export class FetchClient {
           const body = HttpClient.makeBody(bodyArgs, uploadArgs, argMap);
           const response = await this.http.post(url, body, {
             headers: this.#makeAuthHeaders(option),
+            baseUrl: option?.origin,
           });
           const parsedReturn = parseReturn(response, { crystalize: option?.crystalize ?? true });
           return parsedReturn;
@@ -173,58 +263,66 @@ export class FetchClient {
   #registerEndpoint(key: string, endpoint: SerializedEndpoint, prefix?: string) {
     switch (endpoint.type) {
       case "query": {
-        return Object.assign(this.handler, { [key]: this.#makeHttpFn(key, endpoint, prefix) });
+        this.#setHandlerFactory(key, () => this.#makeHttpFn(key, endpoint, prefix));
+        return;
       }
       case "mutation": {
-        return Object.assign(this.handler, { [key]: this.#makeHttpFn(key, endpoint, prefix) });
+        this.#setHandlerFactory(key, () => this.#makeHttpFn(key, endpoint, prefix));
+        return;
       }
       case "pubsub": {
-        const roomArgs = endpoint.args.filter((arg) => arg.type === "room");
-        const roomArgLength = roomArgs.length;
-        const serializerMap = this.#makeArgSerializer(endpoint.args);
-        const parseReturn = this.#makeReturnParser(endpoint.returns);
-        const wrappedListeners = new WeakMap<(data: unknown) => void, (data: unknown) => void>();
-        const pubsubFn = async (...argData: unknown[]) => {
-          const args = argData.slice(0, roomArgLength);
-          const handleEvent = argData[roomArgLength] as (data: unknown) => void;
-          const fetchPolicy = argData[roomArgLength + 1] as FetchPolicy | undefined;
-          const data = roomArgs.map((arg, idx) => serializerMap.get(arg.name)?.(args[idx]) ?? null);
-          const wrapped = (data: unknown) => {
-            const parsedReturn = parseReturn(data, { crystalize: fetchPolicy?.crystalize ?? true });
-            handleEvent(parsedReturn);
+        this.#setHandlerFactory(`subscribe${capitalize(key)}`, () => {
+          const roomArgs = endpoint.args.filter((arg) => arg.type === "room");
+          const roomArgLength = roomArgs.length;
+          const serializerMap = this.#makeArgSerializer(endpoint.args);
+          const parseReturn = this.#makeReturnParser(endpoint.returns);
+          const wrappedListeners = new WeakMap<(data: unknown) => void, (data: unknown) => void>();
+          return (...argData: unknown[]) => {
+            const args = argData.slice(0, roomArgLength);
+            const handleEvent = argData[roomArgLength] as (data: unknown) => void;
+            const fetchPolicy = argData[roomArgLength + 1] as FetchPolicy | undefined;
+            const data = roomArgs.map((arg, idx) => serializerMap.get(arg.name)?.(args[idx]) ?? null);
+            const wrapped = (data: unknown) => {
+              const parsedReturn = parseReturn(data, { crystalize: fetchPolicy?.crystalize ?? true });
+              handleEvent(parsedReturn);
+            };
+            wrappedListeners.set(handleEvent, wrapped);
+            this.ws.subscribe({
+              key,
+              data,
+              handleEvent: wrapped,
+            });
+            return () =>
+              this.ws.unsubscribe({ key, data, handleEvent: wrappedListeners.get(handleEvent) ?? handleEvent });
           };
-          wrappedListeners.set(handleEvent, wrapped);
-          this.ws.subscribe({
-            key,
-            data,
-            handleEvent: wrapped,
-          });
-          return () =>
-            this.ws.unsubscribe({ key, data, handleEvent: wrappedListeners.get(handleEvent) ?? handleEvent });
-        };
-        return Object.assign(this.handler, { [`subscribe${capitalize(key)}`]: pubsubFn });
+        });
+        return;
       }
       case "message": {
-        const msgArgs = endpoint.args.filter((arg) => arg.type === "msg");
-        const msgArgLength = msgArgs.length;
-        const serializerMap = this.#makeArgSerializer(endpoint.args);
-        const parseReturn = this.#makeReturnParser(endpoint.returns);
-        const wrappedListeners = new WeakMap<(data: unknown) => void, (data: unknown) => void>();
-        const messageFn = async (...argData: unknown[]) => {
-          const args = argData.slice(0, msgArgLength);
-          const data = msgArgs.map((arg, idx) => serializerMap.get(arg.name)?.(args[idx]) ?? null);
-          this.ws.emit(key, data);
-        };
-        const listenFn = (handleEvent: (data: unknown) => void, fetchPolicy: FetchPolicy = {}) => {
-          const wrapped = (data: unknown) => {
-            const parsedReturn = parseReturn(data, { crystalize: fetchPolicy?.crystalize ?? true });
-            handleEvent(parsedReturn);
+        this.#setHandlerFactory(key, () => {
+          const msgArgs = endpoint.args.filter((arg) => arg.type === "msg");
+          const msgArgLength = msgArgs.length;
+          const serializerMap = this.#makeArgSerializer(endpoint.args);
+          return (...argData: unknown[]) => {
+            const args = argData.slice(0, msgArgLength);
+            const data = msgArgs.map((arg, idx) => serializerMap.get(arg.name)?.(args[idx]) ?? null);
+            this.ws.emit(key, data);
           };
-          wrappedListeners.set(handleEvent, wrapped);
-          this.ws.on(key, wrapped);
-          return () => this.ws.off(key, wrappedListeners.get(handleEvent) ?? handleEvent);
-        };
-        return Object.assign(this.handler, { [key]: messageFn, [`listen${capitalize(key)}`]: listenFn });
+        });
+        this.#setHandlerFactory(`listen${capitalize(key)}`, () => {
+          const parseReturn = this.#makeReturnParser(endpoint.returns);
+          const wrappedListeners = new WeakMap<(data: unknown) => void, (data: unknown) => void>();
+          return ((handleEvent: (data: unknown) => void, fetchPolicy: FetchPolicy = {}) => {
+            const wrapped = (data: unknown) => {
+              const parsedReturn = parseReturn(data, { crystalize: fetchPolicy?.crystalize ?? true });
+              handleEvent(parsedReturn);
+            };
+            wrappedListeners.set(handleEvent, wrapped);
+            this.ws.on(key, wrapped);
+            return () => this.ws.off(key, wrappedListeners.get(handleEvent) ?? handleEvent);
+          }) as FetchHandler;
+        });
+        return;
       }
       default:
         this.logger.error(`Unsupported endpoint type: ${endpoint.type}`);
@@ -299,7 +397,6 @@ export class FetchClient {
     return endpoint;
   }
   #registerModelBaseEndpoint(refName: string, signal: SerializedSignal) {
-    const cnst = ConstantRegistry.getDatabase(refName);
     const capRefName = capitalize(refName);
     const names = {
       createModel: `create${capRefName}`,
@@ -316,64 +413,90 @@ export class FetchClient {
       mergeModel: `merge${capRefName}`,
     };
     const endpoint = FetchClient.getBaseEndpoint(refName, signal);
-    const handler = Object.fromEntries(
-      Object.entries(endpoint).map(([key, value]) => [key, this.#makeHttpFn(key, value, signal.prefix)]),
-    );
-    Object.assign(this.handler, handler);
-
-    if (signal.cruGuards)
-      Object.assign(this.handler, {
-        [names.viewModel]: async (id: string, option?: FetchPolicy) => {
-          const modelObj = await this.handler[names.model](id, { ...option, crystalize: false });
-          const model = new cnst.full(modelObj as object);
-          return {
-            [refName]: model,
-            [`${refName}View`]: { refName, [`${refName}Obj`]: modelObj, [`${refName}ViewAt`]: new Date() },
-          };
-        },
-        [names.getModelView]: async (id: string, option?: FetchPolicy) => {
-          const modelObj = await this.handler[names.model](id, { ...option, crystalize: false });
-          return { refName, [`${refName}Obj`]: modelObj, [`${refName}ViewAt`]: new Date() };
-        },
-        [names.editModel]: async (id: string, option?: FetchPolicy) => {
-          const modelObj = await this.handler[names.model](id, { ...option, crystalize: false });
-          const model = new cnst.full(modelObj as object);
-          return {
-            [refName]: model,
-            [`${refName}Edit`]: { refName, [`${refName}Obj`]: modelObj, [`${refName}ViewAt`]: new Date() },
-          };
-        },
-        [names.getModelEdit]: async (id: string, option?: FetchPolicy) => {
-          const modelObj = await this.handler[names.model](id, { ...option, crystalize: false });
-          return { refName, [`${refName}Obj`]: modelObj, [`${refName}ViewAt`]: new Date() };
-        },
-      });
-
-    if (signal.cruGuards)
-      Object.assign(this.handler, {
-        [names.mergeModel]: async (modelOrId: string | { id: string }, data: UnknownRecord, option?: FetchPolicy) => {
-          const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
-          return await this.handler[names.updateModel](id, data, option);
-        },
-      });
-
-    Object.assign(this.handler, {
-      [names.addModelFiles]: async (fileList: FileList, parentId?: string, option?: FetchPolicy) => {
-        const formData = new FormData();
-        for (let i = 0; i < fileList.length; i++) formData.append("files", fileList[i]);
-        const metas = Array.from(fileList).map((f) => ({
-          lastModifiedAt: new Date(f.lastModified).toISOString(),
-          size: f.size,
-        }));
-        formData.append("metas", JSON.stringify(metas));
-        formData.append("type", refName);
-        if (parentId) formData.append("parentId", parentId);
-        return await this.http.post(`/file/addFilesRestApi`, formData, {
-          headers: { ...(this.jwt ? { Authorization: `Bearer ${this.jwt}` } : {}) },
-        });
-      },
+    Object.entries(endpoint).forEach(([key, value]) => {
+      this.#setHandlerFactory(key, () => this.#makeHttpFn(key, value, signal.prefix));
     });
+
+    if (signal.cruGuards) {
+      this.#setHandlerFactory(
+        names.viewModel,
+        () =>
+          (async (id: string, option?: FetchPolicy) => {
+            const cnst = ConstantRegistry.getDatabase(refName);
+            const modelFn = this.#requireHandler(names.model, names.viewModel);
+            const modelObj = await modelFn(id, { ...option, crystalize: false });
+            const model = new cnst.full(modelObj as object);
+            return {
+              [refName]: model,
+              [`${refName}View`]: { refName, [`${refName}Obj`]: modelObj, [`${refName}ViewAt`]: new Date() },
+            };
+          }) as FetchHandler,
+      );
+      this.#setHandlerFactory(
+        names.getModelView,
+        () =>
+          (async (id: string, option?: FetchPolicy) => {
+            const modelFn = this.#requireHandler(names.model, names.getModelView);
+            const modelObj = await modelFn(id, { ...option, crystalize: false });
+            return { refName, [`${refName}Obj`]: modelObj, [`${refName}ViewAt`]: new Date() };
+          }) as FetchHandler,
+      );
+      this.#setHandlerFactory(
+        names.editModel,
+        () =>
+          (async (id: string, option?: FetchPolicy) => {
+            const cnst = ConstantRegistry.getDatabase(refName);
+            const modelFn = this.#requireHandler(names.model, names.editModel);
+            const modelObj = await modelFn(id, { ...option, crystalize: false });
+            const model = new cnst.full(modelObj as object);
+            return {
+              [refName]: model,
+              [`${refName}Edit`]: { refName, [`${refName}Obj`]: modelObj, [`${refName}ViewAt`]: new Date() },
+            };
+          }) as FetchHandler,
+      );
+      this.#setHandlerFactory(
+        names.getModelEdit,
+        () =>
+          (async (id: string, option?: FetchPolicy) => {
+            const modelFn = this.#requireHandler(names.model, names.getModelEdit);
+            const modelObj = await modelFn(id, { ...option, crystalize: false });
+            return { refName, [`${refName}Obj`]: modelObj, [`${refName}ViewAt`]: new Date() };
+          }) as FetchHandler,
+      );
+      this.#setHandlerFactory(
+        names.mergeModel,
+        () =>
+          (async (modelOrId: string | { id: string }, data: UnknownRecord, option?: FetchPolicy) => {
+            const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
+            const updateFn = this.#requireHandler(names.updateModel, names.mergeModel);
+            return await updateFn(id, data, option);
+          }) as FetchHandler,
+      );
+    }
+
+    this.#setHandlerFactory(
+      names.addModelFiles,
+      () =>
+        (async (fileList: FileList, parentId?: string, option?: FetchPolicy) => {
+          const cap = resolveFileUploadCapability(this.serializedSignal);
+          const endpoint = cap ? this.serializedSignal[cap.refName]?.endpoint[cap.endpointKey] : undefined;
+          if (!cap || !endpoint)
+            throw new Error(
+              "File upload is not configured. Mark an upload mutation with { fileUpload: true } (e.g. shared FileEndpoint.addFiles).",
+            );
+          const { fields, buildMetas } = fileUploadContract;
+          const formData = new FormData();
+          for (let i = 0; i < fileList.length; i++) formData.append(fields.files, fileList[i]);
+          formData.append(fields.metas, JSON.stringify(buildMetas(fileList)));
+          formData.append(fields.type, refName);
+          if (parentId) formData.append(fields.parentId, parentId);
+          const url = FetchClient.makeHttpUrl(cap.endpointKey, endpoint, cap.prefix, new Map());
+          return await this.http.post(url, formData, { headers: this.#makeAuthHeaders(option) });
+        }) as FetchHandler,
+    );
   }
+
   static getEndpointFromSlice(
     refName: string,
     suffix: string,
@@ -401,7 +524,6 @@ export class FetchClient {
     return endpoint;
   }
   #registerSlice(refName: string, suffix: string, slice: SerializedSlice, prefix?: string) {
-    const cnst = ConstantRegistry.getDatabase(refName);
     const capSuffix = capitalize(suffix);
     const sliceName = `${refName}${capSuffix}`;
     const capRefName = capitalize(refName);
@@ -412,19 +534,15 @@ export class FetchClient {
       getInit: `get${capRefName}Init${capSuffix}`,
     };
 
-    // 1. slice endpoints
     const endpoint = FetchClient.getEndpointFromSlice(refName, suffix, slice);
-    const handler = Object.fromEntries(
-      Object.entries(endpoint).map(([key, value]) => [key, this.#makeHttpFn(key, value, prefix)]),
-    );
-    Object.assign(this.handler, handler);
+    Object.entries(endpoint).forEach(([key, value]) => {
+      this.#setHandlerFactory(key, () => this.#makeHttpFn(key, value, prefix));
+    });
 
-    // 2. slice utils
     const argLength = slice.args.length;
     this.slice[sliceName] = { refName, sliceName, argLength };
-    const listFn = this.handler[names.list] as (...args: unknown[]) => Promise<unknown[]>;
-    const insightFn = this.handler[names.insight] as (...args: unknown[]) => Promise<unknown>;
-    const initFn = async (...argData: unknown[]) => {
+    this.#setHandlerFactory(names.init, () => async (...argData: unknown[]) => {
+      const cnst = ConstantRegistry.getDatabase(refName);
       const queryArgs = normalizeQueryArgs(
         Array.from({ length: Math.min(argData.length, argLength) }, (_, idx) => argData[idx]),
         slice.args,
@@ -433,6 +551,8 @@ export class FetchClient {
       const option = (argData[argLength] ?? {}) as { page?: number; limit?: number; sort?: string; insight?: boolean };
       const { page = 1, limit = 20, sort = "latest", insight: fetchInsight = true } = option;
       const skip = (page - 1) * limit;
+      const listFn = this.#requireHandler<(...args: unknown[]) => Promise<unknown[]>>(names.list, names.init);
+      const insightFn = this.#requireHandler<(...args: unknown[]) => Promise<unknown>>(names.insight, names.init);
 
       const [modelObjList, modelObjInsight] = (await Promise.all([
         listFn(...fetchQueryArgs, skip, limit, sort, { ...option, crystalize: false }),
@@ -462,13 +582,14 @@ export class FetchClient {
         [`${refName}List${capSuffix}`]: modelList,
         [`${refName}Insight${capSuffix}`]: modelInsight,
       };
-    };
-    Object.assign(this.handler, {
-      [names.init]: initFn,
-      [names.getInit]: async (...args: unknown[]) => {
-        const result = await initFn(...args);
-        return result[`${refName}Init${capSuffix}`];
-      },
+    });
+    this.#setHandlerFactory(names.getInit, () => async (...args: unknown[]) => {
+      const initFn = this.#requireHandler<(...args: unknown[]) => Promise<Record<string, unknown>>>(
+        names.init,
+        names.getInit,
+      );
+      const result = await initFn(...args);
+      return result[`${refName}Init${capSuffix}`];
     });
   }
   #makeArgSerializer(args: SerializedArg[]) {
@@ -532,39 +653,21 @@ export class FetchClient {
     if (typeof structuredClone === "function") return structuredClone(value);
     return JSON.parse(JSON.stringify(value)) as T;
   }
-  static from<
-    Signals extends (FetchProxy<any, any> | DatabaseSignal<any, any, any, any> | ServiceSignal<any, any, any>)[],
-  >(...signals: Signals): FetchProxy<MergeAllFetchTypes<Signals>, GetSliceMetaObjFromDatabaseSignals<Signals>> {
+  static from<Signals extends readonly FetchSignalInput[]>(...signals: Signals): FetchClientType<Signals> {
     const serializedSignal: { [key: string]: SerializedSignal } = {};
     const handler: Record<string, FetchHandler> = {};
-    const mergeSerializedSignal = (refName: string, signal: SerializedSignal) => {
-      const current = serializedSignal[refName];
-      serializedSignal[refName] = current
-        ? {
-            ...current,
-            ...signal,
-            endpoint: { ...current.endpoint, ...signal.endpoint },
-            slice: current.slice || signal.slice ? { ...current.slice, ...signal.slice } : undefined,
-            filter:
-              current.filter || signal.filter
-                ? {
-                    filter: { ...current.filter?.filter, ...signal.filter?.filter },
-                    sortKeys: [...new Set([...(current.filter?.sortKeys ?? []), ...(signal.filter?.sortKeys ?? [])])],
-                  }
-                : undefined,
-            getGuards: signal.getGuards ?? current.getGuards,
-            cruGuards: signal.cruGuards ?? current.cruGuards,
-          }
-        : signal;
-    };
     signals.forEach((signal) => {
       if ("endpoint" in signal) {
         const refName = (signal as DatabaseSignal | ServiceSignal).endpoint.baseName;
-        mergeSerializedSignal(refName, (signal as DatabaseSignal | ServiceSignal).serializedSignal);
+        FetchClient.#mergeSerializedSignalInto(
+          serializedSignal,
+          refName,
+          (signal as DatabaseSignal | ServiceSignal).serializedSignal,
+        );
       } else {
-        Object.assign(handler, (signal as FetchClient).handler);
-        Object.entries((signal as FetchClient).serializedSignal).forEach(([refName, signal]) => {
-          mergeSerializedSignal(refName, signal);
+        Object.assign(handler, signal.handler);
+        Object.entries(signal.serializedSignal).forEach(([refName, signal]) => {
+          FetchClient.#mergeSerializedSignalInto(serializedSignal, refName, signal);
         });
       }
     });
@@ -593,7 +696,8 @@ export class FetchClient {
     const sig = {} as any;
     Object.entries(serializedSignal).forEach(([refName, serializedSignal]) => {
       if (!serializedSignal.slice) return;
-      const cnst = ConstantRegistry.getDatabase(refName);
+      const cnst = ConstantRegistry.getDatabase(refName, { allowEmpty: true });
+      if (!cnst) return;
       const slices = Object.entries(serializedSignal.slice).map(([suffix, serializedSlice]) => {
         const sliceName = `${refName}${capitalize(suffix)}`;
         proxy.slice[sliceName] = { refName, sliceName, argLength: serializedSlice.args.length };
@@ -610,8 +714,11 @@ export class FetchClient {
       get(target, prop) {
         if (prop in target) return (target as any)[prop];
         else if (prop === "instance") return instance;
-        else if (prop in instance.handler) return instance.handler[prop as string];
-        else return (instance as any)[prop as string];
+        else if (typeof prop === "string") {
+          const handler = instance.#getOrCreateHandler(prop);
+          if (handler) return handler;
+        }
+        return (instance as unknown as Record<PropertyKey, unknown>)[prop];
       },
     }) as FetchProxy<FetchType, SliceMetaObj>;
   }

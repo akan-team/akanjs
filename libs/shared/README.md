@@ -37,7 +37,7 @@ Frontend utilities for Next.js and React applications:
   - `extractTextFromSlateJson()` - Extract plain text from Slate.js content
 
 - **📱 Push Notifications**
-  - `useFirebaseMessaging()` - Firebase Cloud Messaging React hook
+  - `notification/` - App-level push notification example domain built on `usePushNotification()`
 
 ### 🎨 **UI Component Library** (`/ui`)
 
@@ -134,7 +134,7 @@ Complete business modules and application logic:
 1. **Create your workspace**
 
 ```bash
-bun install -g akanjs --latest
+bun install -g @akanjs/cli --latest
 akan create-workspace
 ```
 

@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.4.4/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.2/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -50,7 +50,8 @@
       "!!**/dist",
       "!!**/.akan",
       "!!**/dump",
-      "!!**/local"
+      "!!**/local",
+      "!!**/ios/DerivedData"
     ]
   },
   "formatter": {
@@ -62,7 +63,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "suspicious": {
         "noConsole": {
           "level": "error",
@@ -71,7 +72,10 @@
           }
         },
         "noArrayIndexKey": "off",
-        "noShadowRestrictedNames": "off"
+        "noShadowRestrictedNames": "off",
+        "noUnnecessaryConditions": {
+          "level": "error"
+        }
       },
       "correctness": {
         "noUnusedFunctionParameters": "off",
@@ -80,7 +84,8 @@
           "fix": "safe"
         },
         "useParseIntRadix": "off",
-        "useExhaustiveDependencies": "off"
+        "useExhaustiveDependencies": "off",
+        "useHookAtTopLevel": "off"
       },
       "nursery": {
         "useSortedClasses": {
@@ -141,6 +146,10 @@
     {
       "includes": ["**/*.constant.ts", "**/*.document.ts", "**/*.service.ts", "**/*.store.ts"],
       "plugins": ["./node_modules/@akanjs/devkit/lint/no-js-private-class-method.grit"]
+    },
+    {
+      "includes": ["**/*.signal.ts"],
+      "plugins": ["./node_modules/@akanjs/devkit/lint/no-redeclare-predefined-endpoint.grit"]
     },
     {
       "includes": [

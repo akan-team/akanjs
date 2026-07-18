@@ -158,6 +158,19 @@ export class SignalResolver {
     const serviceName = `${refName}Service`;
     const capitalizedRefName = capitalize(refName);
 
+    // A slice `exec` must return a query descriptor, not an executed list. Returning an array
+    // (e.g. `this.xService.listBy...(...)`) otherwise fails deep in query compilation with the
+    // opaque "Unknown document field path: 0" — surface the real cause here instead.
+    const assertSliceQuery = (query: unknown, key: string) => {
+      if (Array.isArray(query))
+        throw new Error(
+          `Slice "${refName}.${key}" exec returned an array instead of a query descriptor. ` +
+            `Return a query from the slice's service (e.g. this.${refName}Service.queryBy...(...)), ` +
+            `not an executed list (listBy.../findMany...), which resolves to an array.`,
+        );
+      return query;
+    };
+
     class SliceEndpoint extends sliceEndpoint(sliceCls.srv, (builder) => {
       const endpointObj: { [key: string]: EndpointInfo } = {};
       Object.entries(sliceMeta).forEach(([key, sliceInfo]) => {
@@ -180,7 +193,10 @@ export class SignalResolver {
             const limit = Number(requestArgs[argLength + 1] ?? 20);
             const sort = requestArgs[argLength + 2] ?? "latest";
             const internalArgs = requestArgs.slice(argLength + 3);
-            const query = await sliceInfo.execFn?.apply(this, [...args, ...internalArgs, documentQueryHelper]);
+            const query = assertSliceQuery(
+              await sliceInfo.execFn?.apply(this, [...args, ...internalArgs, documentQueryHelper]),
+              key,
+            );
             return (await this[serviceName].__list(query, {
               skip,
               limit,
@@ -198,7 +214,10 @@ export class SignalResolver {
           .exec(async function (this: any, ...requestArgs: any) {
             const args = requestArgs.slice(0, argLength);
             const internalArgs = requestArgs.slice(argLength);
-            const query = await sliceInfo.execFn?.apply(this, [...args, ...internalArgs, documentQueryHelper]);
+            const query = assertSliceQuery(
+              await sliceInfo.execFn?.apply(this, [...args, ...internalArgs, documentQueryHelper]),
+              key,
+            );
             return await this[serviceName].__insight(query);
           });
       });

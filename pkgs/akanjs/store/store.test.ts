@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import { ACTION_META, DataList, Int, SLICE_META, STATE_DERIVED_META, STATE_INIT_META, STATE_META } from "akanjs/base";
+import { Translator } from "akanjs/client/translator";
 import { ConstantRegistry, via } from "akanjs/constant";
 import type { ClientSignal } from "akanjs/fetch";
 import type { SerializedSignal } from "akanjs/signal";
@@ -255,6 +256,34 @@ describe("StoreInstance runtime", () => {
     expect(rootEvents).toHaveLength(3);
     expect(selectorEvents).toHaveLength(3);
     expect(() => instance.set({ label: "manual" })).toThrow("Cannot set derived state directly: label");
+  });
+
+  test("shows translated error messages when actions reject", async () => {
+    setupEnv();
+    Translator.seed("en", {
+      actionTest: { error: { blocked: { t: "Blocked {name}" } } },
+    });
+    Translator.setActiveLocale("en");
+    class RuntimeMessageStore extends store("runtimeMessage" as const, () => ({
+      messages: [] as { content: string; type: string; key: string; duration: number }[],
+    })) {
+      showMessage(message: { content: string; type: string; key: string; duration: number }) {
+        const { messages } = this.get();
+        this.set({ messages: [...messages, message] });
+      }
+      async failWithTranslatedError() {
+        const error = new Error("actionTest.error.blocked") as Error & { data: { name: string } };
+        error.data = { name: "Ada" };
+        throw error;
+      }
+    }
+    StoreRegistry.register(RuntimeMessageStore);
+    const instance = new StoreInstance(makeRoot("runtimeMessageRoot", RuntimeMessageStore));
+
+    await expect(instance.do.failWithTranslatedError()).rejects.toThrow("actionTest.error.blocked");
+    expect(instance.get().messages).toEqual([
+      { content: "Blocked Ada", type: "error", key: "failWithTranslatedError", duration: 3 },
+    ]);
   });
 
   test("hydrates and syncs persist/session storage and materializes search params only in browser", () => {

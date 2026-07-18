@@ -1,0 +1,73 @@
+# Akan.js
+
+Akan.js is a Bun-first full-stack TypeScript framework where business definitions drive web, app, server, data, and deployment surfaces.
+
+## Start Here
+
+- Full LLM context: /llms-full.txt
+- Quick start: /llms/pages/docs/intro/quickstart.md
+- Fundamentals: /llms/pages/docs/intro/fundamentals.md
+- Agent workspace rules: /llms/pages/docs/core/folder-rule.md
+
+## Recommended Reading Order
+
+- Quick Start: /llms/pages/docs/intro/quickstart.md
+- Fundamentals: /llms/pages/docs/intro/fundamentals.md
+- Folder Rule: /llms/pages/docs/core/folder-rule.md
+- File Rule: /llms/pages/docs/core/file-rule.md
+- Akan Runtime: /llms/pages/docs/core/runtime.md
+- App Config: /llms/pages/docs/core/config.md
+- Data Layer: /llms/pages/docs/core/data-layer.md
+- Commands: /llms/pages/references/cli/overview.md
+- akanjs/base: /llms/pages/references/akanjs/base.md
+- akanjs/signal: /llms/pages/references/akanjs/signal.md
+- akanjs/server: /llms/pages/references/akanjs/server.md
+- Overview: /llms/pages/conventions/module/overview.md
+- CRUD: /llms/pages/cheatsheet/interface/crud.md
+- Testing: /llms/pages/cheatsheet/dev/test.md
+
+## P0 Documentation Mirrors
+
+- Business Service: /llms/pages/docs/arch/backend.md
+- CSS And Styling: /llms/pages/docs/arch/css.md
+- UI Architecture: /llms/pages/docs/arch/frontend.md
+- Runtime And Infra: /llms/pages/docs/arch/infra.md
+- Mobile App Architecture: /llms/pages/docs/arch/mobile.md
+- Architecture Overview: /llms/pages/docs/arch/overview.md
+- App Config: /llms/pages/docs/core/config.md
+- Data Layer: /llms/pages/docs/core/data-layer.md
+- File Rule: /llms/pages/docs/core/file-rule.md
+- Folder Rule: /llms/pages/docs/core/folder-rule.md
+- Multi Client: /llms/pages/docs/core/multi-client.md
+- File Based Routing: /llms/pages/docs/core/routing.md
+- Akan Runtime: /llms/pages/docs/core/runtime.md
+- Fundamentals: /llms/pages/docs/intro/fundamentals.md
+- Practice: /llms/pages/docs/intro/practice.md
+- Quick Start: /llms/pages/docs/intro/quickstart.md
+- akanjs/base: /llms/pages/references/akanjs/base.md
+- akanjs/client: /llms/pages/references/akanjs/client.md
+- akanjs/common: /llms/pages/references/akanjs/common.md
+- akanjs/constant: /llms/pages/references/akanjs/constant.md
+- akanjs/fetch: /llms/pages/references/akanjs/fetch.md
+- akanjs/server: /llms/pages/references/akanjs/server.md
+- akanjs/signal: /llms/pages/references/akanjs/signal.md
+- akanjs/webkit: /llms/pages/references/akanjs/webkit.md
+- Agent: /llms/pages/references/cli/agent.md
+- Application: /llms/pages/references/cli/application.md
+- Cloud: /llms/pages/references/cli/cloud.md
+- Context: /llms/pages/references/cli/context.md
+- Guideline: /llms/pages/references/cli/guideline.md
+- Library: /llms/pages/references/cli/library.md
+- Module: /llms/pages/references/cli/module.md
+- Commands: /llms/pages/references/cli/overview.md
+- Package: /llms/pages/references/cli/package.md
+- Page: /llms/pages/references/cli/page.md
+- Scalar: /llms/pages/references/cli/scalar.md
+- Workspace: /llms/pages/references/cli/workspace.md
+
+## Agent Notes
+
+- Prefer Markdown mirrors for context loading and source docs for visual examples.
+- Respect Akan generated-file boundaries before editing application code.
+- Start feature work from domain intent: constants, signals, services, stores, then UI.
+- Verify changes with the relevant `akan lint`, `akan test`, or `akan build` command.

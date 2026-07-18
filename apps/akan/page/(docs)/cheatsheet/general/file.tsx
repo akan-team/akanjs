@@ -175,31 +175,6 @@ export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
       </Scroll.Slide>
       <div className="divider" />
 
-      <Scroll.Slide id="local-serving" title={l.trans({ en: "Local File Serving", ko: "로컬 파일 서빙" })}>
-        <Docs.Title>{l.trans({ en: "Local File Serving", ko: "로컬 파일 서빙" })}</Docs.Title>
-        <Docs.Description>
-          <div>
-            {l.trans({
-              en: "If your local storage returns URLs like `/backend/localFile/getBlob/...`, add a tiny endpoint that reads the file stream and returns it as a response.",
-              ko: "로컬 저장소가 `/backend/localFile/getBlob/...` 같은 URL을 반환한다면, 파일 stream을 읽어 Response로 돌려주는 작은 endpoint를 추가합니다.",
-            })}
-          </div>
-        </Docs.Description>
-        <Code.Snippet
-          title="localFile.signal.ts"
-          code={`export class LocalFileEndpoint extends endpoint(srv.localFile, ({ query }) => ({
-  getBlob: query(Any, { path: "localFile/getBlob/*" })
-    .with(Req)
-    .exec(async function (req) {
-      const path = req.url.split("/localFile/getBlob/").at(1) ?? "";
-      const stream = await this.localFileService.readLocalFile(path);
-      return new Response(stream);
-    }),
-})) {}`}
-        />
-      </Scroll.Slide>
-      <div className="divider" />
-
       <Scroll.Slide id="use-in-ui" title={l.trans({ en: "Use In UI", ko: "UI에서 사용하기" })}>
         <Docs.Title>{l.trans({ en: "Use In UI", ko: "UI에서 사용하기" })}</Docs.Title>
         <Docs.Description>
@@ -231,6 +206,47 @@ return (
     </a>
   </div>
 );`}
+        />
+      </Scroll.Slide>
+      <div className="divider" />
+
+      <Scroll.Slide id="auto-field" title={l.trans({ en: "Auto-attach To A Model Field", ko: "모델 필드 자동 연결" })}>
+        <Docs.Title>{l.trans({ en: "Auto-attach To A Model Field", ko: "모델 필드 자동 연결" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "Mark one upload mutation with `{ fileUpload: true }`. The framework then auto-generates the `add{Model}Files` fetch helper and the form-field upload action (`add{Field}FilesOn{Model}`) that the `Field` and `Upload` components use, so a model's file field uploads and attaches automatically.",
+              ko: "업로드 mutation 하나에 `{ fileUpload: true }`를 달면, 프레임워크가 `add{Model}Files` fetch 헬퍼와 폼 필드 업로드 액션(`add{Field}FilesOn{Model}`)을 자동 생성합니다. `Field`/`Upload` 컴포넌트가 이를 사용해 모델의 파일 field가 자동으로 업로드·연결됩니다.",
+            })}
+          </div>
+          <ul className="list-disc space-y-2 pl-5">
+            <li>
+              {l.trans({
+                en: "Mark exactly one REST upload mutation; the marker rides the serialized signal to the client.",
+                ko: "REST 업로드 mutation 딱 하나만 마킹하세요. 마커는 직렬화 시그널에 실려 클라이언트로 전달됩니다.",
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: "The multipart form uses the fixed fields `files`, `metas`, `type`, `parentId`.",
+                ko: "멀티파트 폼은 고정 필드 `files`, `metas`, `type`, `parentId`를 사용합니다.",
+              })}
+            </li>
+          </ul>
+        </Docs.Description>
+        <Code.Snippet
+          title="file.signal.ts"
+          code={`export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
+  addFiles: mutation([cnst.File], { fileUpload: true })
+    .body("files", [Upload])
+    .body("metas", String, { example: \`[{"lastModifiedAt":"2024-01-14T15:32:47.766Z","size":0}]\` })
+    .body("type", String, { example: "user" })
+    .body("parentId", ID, { nullable: true })
+    .exec(async function (files, metas, type, parentId) {
+      const parsedMetas = JSON.parse(metas).map((meta) => ({ ...meta, lastModifiedAt: dayjs(meta.lastModifiedAt) }));
+      return await this.fileService.addFiles(files, parsedMetas, type, parentId);
+    }),
+})) {}`}
         />
       </Scroll.Slide>
       <div className="divider" />

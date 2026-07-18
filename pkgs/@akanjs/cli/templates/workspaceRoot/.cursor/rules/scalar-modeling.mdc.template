@@ -1,0 +1,14 @@
+---
+description: Akan scalar and constant model conventions
+globs: **/*.constant.ts
+alwaysApply: false
+---
+
+# Scalar Modeling
+
+- Define Akan models in `.constant.ts` files with `via` from `akanjs/constant`.
+- Import custom scalar helpers such as `ID`, `Int`, `Float`, `JSON`, `Upload`, `Any`, `enumOf`, or `dayjs` from `akanjs/base` when the model needs them.
+- Use `Int` for whole-number counts and quantities; use `Float` only for values that need decimals.
+- Use `ID` for document references and prefer explicit structured fields over `JSON` unless the content is genuinely flexible.
+- For date defaults, prefer a function such as `default: () => dayjs()` so the value is created at runtime.
+- Follow the established model layering pattern: `Input`, `Object`, `Light<Model>`, full `<Model>`, and `<Model>Insight` when the domain needs those views.

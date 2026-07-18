@@ -1,5 +1,6 @@
 import { ACTION_META, STATE_DERIVED_META, STATE_INIT_META } from "akanjs/base";
-import { capitalize, Logger } from "akanjs/common";
+import { Translator } from "akanjs/client";
+import { capitalize, Logger, parseAkanI18nEnv } from "akanjs/common";
 import { produce } from "immer";
 import type { RefObject } from "react";
 import { useEffect, useRef, useSyncExternalStore } from "./hooks";
@@ -9,6 +10,7 @@ import { evaluateInitializers, type SearchParamsState, type StateDerivedMeta } f
 
 type StoreStateRecord = Record<string, unknown>;
 type StoreAction = (...args: unknown[]) => unknown;
+type TranslationParam = Record<string, string | number>;
 
 type SliceActionKey =
   | "initModel"
@@ -19,6 +21,27 @@ type SliceActionKey =
   | "setLimitOfModel"
   | "setQueryArgsOfModel"
   | "setSortOfModel";
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value && typeof value === "object" && !Array.isArray(value));
+
+const getActionErrorKey = (error: unknown) => {
+  if (typeof error === "string") return error;
+  if (!isRecord(error)) return String(error);
+  if (typeof error.error === "string") return error.error;
+  if (typeof error.message === "string") return error.message;
+  return String(error);
+};
+
+const getActionErrorData = (error: unknown): TranslationParam | undefined => {
+  if (!isRecord(error) || !isRecord(error.data)) return undefined;
+  const data = Object.fromEntries(
+    Object.entries(error.data).filter((entry): entry is [string, string | number] =>
+      ["string", "number"].includes(typeof entry[1]),
+    ),
+  );
+  return Object.keys(data).length ? data : undefined;
+};
 
 export type ReactAPI = {
   useSyncExternalStore: <T>(
@@ -190,9 +213,33 @@ export class StoreInstance {
       this.do[k] = async (...args: unknown[]) => {
         Logger.verbose(`${k} action loading...`);
         const start = Date.now();
-        await (this.#ctx[k] as StoreAction)(...args);
-        Logger.verbose(`=> ${k} action dispatched (${Date.now() - start}ms)`);
+        try {
+          const result = await (this.#ctx[k] as StoreAction)(...args);
+          Logger.verbose(`=> ${k} action dispatched (${Date.now() - start}ms)`);
+          return result;
+        } catch (error) {
+          this.#showActionErrorMessage(k, error);
+          Logger.error(`${k} action error return: ${error instanceof Error ? error.message : String(error)}`);
+          throw error;
+        }
       };
+    }
+  }
+
+  #showActionErrorMessage(actionKey: string, error: unknown) {
+    const showMessage = this.#ctx.showMessage;
+    if (typeof showMessage !== "function") return;
+    try {
+      const lang = Translator.getActiveLocale() ?? parseAkanI18nEnv().defaultLocale;
+      const errorKey = getActionErrorKey(error);
+      const content = Translator.translateByLocale(lang, errorKey, getActionErrorData(error));
+      showMessage({ type: "error", key: actionKey, duration: 3, content });
+    } catch (messageError) {
+      Logger.warn(
+        `Failed to show ${actionKey} action error message: ${
+          messageError instanceof Error ? messageError.message : String(messageError)
+        }`,
+      );
     }
   }
 

@@ -311,6 +311,56 @@ export default config;`}
       </Scroll.Slide>
       <div className="divider" />
 
+      <Scroll.Slide id="secrets" title="secrets">
+        <Docs.Title>secrets</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "secrets lists glob patterns for private files that must ship to the cloud alongside the default env/ files. On `akan upload-env` Akan bundles every matched file into the env archive, and `akan download-env` restores them to the same paths.",
+              ko: "secrets는 기본 env/ 파일과 함께 cloud로 전송해야 하는 private file의 glob pattern 목록입니다. `akan upload-env` 실행 시 Akan은 매칭된 파일을 env archive에 함께 담고, `akan download-env`는 동일 경로로 복원합니다.",
+            })}
+          </div>
+          <div>
+            {l.trans({
+              en: "Patterns are resolved relative to the app directory. Akan also syncs them into a managed block in the workspace root .gitignore on upload-env, so declaring a pattern here is enough to both ship and git-ignore the files. You do not maintain .gitignore separately.",
+              ko: "pattern은 app 디렉터리 기준으로 resolve됩니다. Akan은 upload-env 시 이 pattern들을 workspace root .gitignore의 managed block에 동기화하므로, 여기에 pattern을 선언하는 것만으로 파일 전송과 git-ignore가 함께 처리됩니다. .gitignore를 따로 관리하지 않아도 됩니다.",
+            })}
+          </div>
+        </Docs.Description>
+        <div className="grid gap-3 xl:grid-cols-2">
+          <Code.Snippet
+            title="apps/api/akan.config.ts"
+            code={`import type { AppConfig } from "akanjs";
+
+const config: AppConfig = {
+  secrets: ["secrets/**/*", "certs/*.pem"],
+};
+
+export default config;`}
+          />
+          <Code.Snippet
+            title=".gitignore (auto-synced)"
+            code={`# akan:secrets (managed by akan.config.ts — do not edit)
+apps/api/certs/*.pem
+apps/api/secrets/**/*
+# akan:secrets:end`}
+          />
+        </div>
+        <Docs.Alert type="info">
+          {l.trans({
+            en: "Use secrets for private key files, service-account JSON, or certificates that env.server.* cannot inline. The default env/env.(client|server).*.ts files are always included, so you only list extra paths here.",
+            ko: "secrets는 env.server.*로 inline할 수 없는 private key 파일, service-account JSON, certificate에 사용합니다. 기본 env/env.(client|server).*.ts 파일은 항상 포함되므로 여기에는 추가 경로만 나열합니다.",
+          })}
+        </Docs.Alert>
+        <Docs.Alert type="warning">
+          {l.trans({
+            en: "Only the glob patterns live in akan.config.ts. The matched files stay local and git-ignored — never commit their contents. Removing a pattern also removes it from the managed .gitignore block on the next upload-env.",
+            ko: "akan.config.ts에는 glob pattern만 존재합니다. 매칭된 파일은 로컬에 남고 git-ignore되므로 내용을 절대 commit하지 마세요. pattern을 제거하면 다음 upload-env 때 managed .gitignore block에서도 함께 제거됩니다.",
+          })}
+        </Docs.Alert>
+      </Scroll.Slide>
+      <div className="divider" />
+
       <Scroll.Slide id="external-libs" title="externalLibs">
         <Docs.Title>externalLibs</Docs.Title>
         <Docs.Description>

@@ -53,6 +53,7 @@ export class WsClient {
   }
 
   connect() {
+    if (this.#ws && this.#ws.readyState !== WebSocket.CLOSED) return;
     this.logger.debug(`Connecting to ${this.url}`);
     this.#destroyed = false;
     this.#reconnectAttempts = 0;
@@ -201,9 +202,15 @@ export class WsClient {
     const hasRoom = roomSub ? roomSub.listener.size > 0 : false;
     return hasGeneric || hasRoom;
   }
+  #warnNotConnected(action: "emit" | "subscribe", key: string) {
+    console.warn(
+      `[akanjs] WebSocket is not connected. Call fetch.instance.connect() or enable root layout "wsConnect" before ${action} "${key}".`,
+    );
+  }
   emit(key: string, data: WsRequestPayload) {
     if (this.#ws?.readyState !== WebSocket.OPEN) {
       this.logger.warn("WebSocket not connected");
+      this.#warnNotConnected("emit", key);
       return this;
     }
     const payload: WebsocketReqData = { key, data: Array.isArray(data) ? data : [data] };
@@ -212,6 +219,7 @@ export class WsClient {
   }
   subscribe(option: { key: string; data: unknown[]; handleEvent: (data: unknown) => void }) {
     const roomId = WsClient.makeRoomId(option.key, option.data);
+    if (!this.#ws) this.#warnNotConnected("subscribe", option.key);
     if (!this.#roomSubscribeMap.has(roomId)) {
       this.#roomSubscribeMap.set(roomId, { key: option.key, data: option.data, listener: new Set() });
       if (this.#ws?.readyState === WebSocket.OPEN) {

@@ -153,6 +153,21 @@ void bootCsr(pages);
       jsFiles.push(jsPath);
       return await Bun.file(jsPath).text();
     });
+    const bundledCss = (
+      await Promise.all(
+        cssFiles.map((cssFile) =>
+          Bun.file(cssFile)
+            .text()
+            .catch(() => ""),
+        ),
+      )
+    )
+      .filter(Boolean)
+      .join("\n");
+    if (bundledCss) {
+      const style = CsrArtifactBuilder.createInlineStyle(bundledCss);
+      if (!next.includes(style)) next = CsrArtifactBuilder.injectBeforeHeadEnd(next, style);
+    }
     if (cssAsset) {
       const cssPath = path.join(
         this.#command === "build" ? this.#app.dist.cwdPath : this.#app.cwdPath,

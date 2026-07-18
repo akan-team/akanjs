@@ -9,8 +9,8 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dic
   return {
     filename: "_index.tsx",
     content: `
-import { ${dict.Model}, fetch, usePage } from "${dict.appName}/client";
-import { Link, Load } from "akanjs/ui";
+import { ${dict.Model}, fetch, usePage } from "@apps/${dict.appName}/client";
+import { Link } from "akanjs/ui";
 import type { PageConfig } from "akanjs/client";
 
 interface PageProps {
@@ -29,7 +29,7 @@ export async function generateHead({ params }: PageProps) {
     </>
   );
 }
-export default function Page({ params }: PageProps) {
+export default async function Page({ params }: PageProps) {
   const { l } = usePage();
   const { ${dict.model}Id } = params;
   const { ${dict.model}, ${dict.model}View } = await fetch.view${dict.Model}(${dict.model}Id);

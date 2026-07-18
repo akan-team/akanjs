@@ -24,6 +24,7 @@ export default function Page() {
         "remove-application <app>",
         "sync <system>",
         "script <app> [filename]",
+        "console <app>",
         "build <app>",
         "typecheck <app>",
         "test <target>",
@@ -109,6 +110,22 @@ export default function Page() {
       desc: l.trans({
         en: "Configure optional cloud authentication, LLM settings, project questions, and updates.",
         ko: "선택적인 cloud authentication, LLM setting, project question, update를 설정합니다.",
+      }),
+    },
+    {
+      title: "Agent Tooling",
+      href: "/references/cli/context",
+      commands: [
+        "context --format json",
+        "doctor --format json",
+        "guideline list",
+        "guideline show framework",
+        "agent install cursor",
+        "mcp",
+      ],
+      desc: l.trans({
+        en: "Expose workspace context, module abstracts, diagnostics, guideline instructions, agent rules, and read-only MCP tools.",
+        ko: "workspace context, module abstract, diagnostic, guideline instruction, agent rule, read-only MCP tool을 제공합니다.",
       }),
     },
   ];

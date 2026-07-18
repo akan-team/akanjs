@@ -5,7 +5,6 @@ import { Image } from "akanjs/ui";
 
 export default function Page() {
   const { l } = usePage();
-
   return (
     <Scroll>
       <Scroll.Slide id="icecream-business" title={l.trans({ en: "Icecream business", ko: "아이스크림 비즈니스" })}>
@@ -168,6 +167,7 @@ akan create-module icecreamOrder
     └── koyo/      # ${l.trans({ en: "Individual application", ko: "개별 애플리케이션" })}
         └── lib/          # ${l.trans({ en: "Domain modules", ko: "도메인 모듈" })}
             └── icecreamOrder/  # ${l.trans({ en: "Icecream order domain module", ko: "아이스크림 주문 도메인 모듈" })}
+                ├── icecreamOrder.abstract.md   # ${l.trans({ en: "Business intent", ko: "비즈니스 의도" })}
                 ├── icecreamOrder.constant.ts   # ${l.trans({ en: "Types and schemas", ko: "타입과 스키마" })}
                 ├── icecreamOrder.dictionary.ts # ${l.trans({ en: "Translations", ko: "번역" })}
                 ├── icecreamOrder.document.ts   # ${l.trans({ en: "Document", ko: "문서" })}
@@ -187,6 +187,16 @@ akan create-module icecreamOrder
             })}
           </div>
           <div className="my-4 space-y-2">
+            <div className="flex items-start gap-2">
+              <span className="text-primary">🧭</span>
+              <div>
+                <strong>{l.trans({ en: "abstract.md", ko: "abstract.md" })}</strong>:{" "}
+                {l.trans({
+                  en: "Describes the module's business intent, domain rules, workflows, and agent notes",
+                  ko: "모듈의 비즈니스 의도, 도메인 규칙, 워크플로우, agent 주의사항을 설명",
+                })}
+              </div>
+            </div>
             <div className="flex items-start gap-2">
               <span className="text-primary">📋</span>
               <div>

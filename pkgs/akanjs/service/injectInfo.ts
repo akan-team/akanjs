@@ -16,7 +16,7 @@ import type {
   SliceCls,
 } from "akanjs/signal";
 import type { Adaptor, AdaptorCls, Service, ServiceCls } from ".";
-import type { CacheAdaptor } from "./predefinedAdaptor";
+import type { CacheAdaptor, CacheSetOptions } from "./predefinedAdaptor";
 
 export type InjectType = "database" | "service" | "use" | "signal" | "plug" | "env" | "memory";
 
@@ -29,6 +29,7 @@ interface InjectBuilderOptions<ReturnType> {
   local?: boolean;
   default?: unknown;
   isMap?: boolean;
+  cacheOption?: CacheSetOptions;
   parentRefName: string;
 }
 
@@ -99,6 +100,7 @@ export class InjectInfo<
   readonly adaptor?: AdaptorCls;
   readonly default?: unknown;
   readonly isMap?: boolean;
+  readonly cacheOption?: CacheSetOptions;
   readonly parentRefName: string;
   constructor(type: Type, options: InjectBuilderOptions<ReturnType>) {
     this.type = type;
@@ -110,6 +112,7 @@ export class InjectInfo<
     this.set = options.set;
     this.default = options.default;
     this.isMap = options.isMap ?? false;
+    this.cacheOption = options.cacheOption;
     this.parentRefName = options.parentRefName;
   }
   static async resolveInjection(
@@ -254,20 +257,51 @@ export class InjectInfo<
         enumerable: true,
       });
     } else if (injectInfo.isMap) {
+      const topic = `akan:memory:${injectInfo.parentRefName}`;
+      const getter = injectInfo.get as unknown as (value: unknown) => unknown;
+      const setter = injectInfo.set as unknown as (value: unknown) => string | number | Buffer;
+      const get = async (key: string) => {
+        const value = await cacheAdaptor.hget(topic, propKey, key);
+        return value === undefined || value === null ? undefined : getter(value);
+      };
+      const set = async (key: string, value: unknown, option?: CacheSetOptions) => {
+        const setValue = setter(value);
+        await cacheAdaptor.hset(topic, propKey, key, setValue, option ?? injectInfo.cacheOption);
+      };
       Object.defineProperty(instance, propKey, {
         value: {
-          get: async (key: string) => {
-            const getter = injectInfo.get as unknown as (value: unknown) => unknown;
-            const value = await cacheAdaptor.hget(`akan:memory:${injectInfo.parentRefName}`, propKey, key);
-            return value === null ? value : getter(value);
-          },
-          set: async (key: string, value: unknown) => {
-            const setter = injectInfo.set as unknown as (value: unknown) => string | number | Buffer;
-            const setValue = setter(value);
-            await cacheAdaptor.hset(`akan:memory:${injectInfo.parentRefName}`, propKey, key, setValue);
-          },
+          get,
+          set,
           delete: async (key: string) => {
-            await cacheAdaptor.hdelete(`akan:memory:${injectInfo.parentRefName}`, propKey, key);
+            await cacheAdaptor.hdelete(topic, propKey, key);
+          },
+          getOrInsert: async (key: string, value: unknown, option?: CacheSetOptions) => {
+            const existingValue = await get(key);
+            if (existingValue !== undefined) return existingValue;
+            await set(key, value, option);
+            return value;
+          },
+          getOrInsertComputed: async (
+            key: string,
+            compute: (key: string) => unknown | Promise<unknown>,
+            option?: CacheSetOptions,
+          ) => {
+            const existingValue = await get(key);
+            if (existingValue !== undefined) return existingValue;
+            const value = await compute(key);
+            await set(key, value, option);
+            return value;
+          },
+          keys: async () => await cacheAdaptor.hkeys(topic, propKey),
+          entries: async () => {
+            const entries = await cacheAdaptor.hentries(topic, propKey);
+            return entries.map(([key, value]) => [key, getter(value)]);
+          },
+          forEach: async (callback: (value: unknown, key: string) => void | Promise<void>) => {
+            for (const [key, value] of await cacheAdaptor.hentries(topic, propKey)) await callback(getter(value), key);
+          },
+          clear: async () => {
+            await cacheAdaptor.hclear(topic, propKey);
           },
         },
       });
@@ -279,10 +313,10 @@ export class InjectInfo<
             const value = await cacheAdaptor.get("akan:memory", propKey);
             return value === null ? value : getter(value);
           },
-          set: async (value: unknown) => {
+          set: async (value: unknown, option?: CacheSetOptions) => {
             const setter = injectInfo.set as unknown as (value: unknown) => string | number | Buffer;
             const setValue = setter(value);
-            await cacheAdaptor.set("akan:memory", propKey, setValue);
+            await cacheAdaptor.set("akan:memory", propKey, setValue, option ?? injectInfo.cacheOption);
           },
           delete: async () => {
             await cacheAdaptor.delete("akan:memory", propKey);
@@ -335,6 +369,7 @@ export const injectionBuilder = (parentRefName: string) => ({
       local?: Local;
       default?: DefaultValue;
       of?: MapValue;
+      expireAt?: CacheSetOptions["expireAt"];
       get?: GetFn;
       set?: (value: ReturnType<GetFn>) => GetFieldValue<ValueRef, ExplicitType>;
     } = {},
@@ -346,6 +381,7 @@ export const injectionBuilder = (parentRefName: string) => ({
     const isMap = modelRef === Map;
     if (isMap && !opts.of) throw new Error("of should be provided when modelRef is Map");
     type FieldValue = never extends GetFn ? GetFieldValue<ValueRef, ExplicitType, MapValue> : ReturnType<GetFn>;
+    type MapFieldValue = never extends GetFn ? FieldToValue<MapValue> : ReturnType<GetFn>;
     type IsNullable = DefaultValue extends never ? true : false;
     type UseValue = IsNullable extends true ? FieldValue | null : FieldValue;
     return new InjectInfo<
@@ -356,11 +392,25 @@ export const injectionBuilder = (parentRefName: string) => ({
           : UseValue
         : MapConstructor extends ValueRef
           ? {
-              get: (key: string) => Promise<FieldToValue<MapValue>>;
-              set: (key: string, value: FieldToValue<MapValue>) => Promise<void>;
+              get: (key: string) => Promise<MapFieldValue | undefined>;
+              set: (key: string, value: MapFieldValue, option?: CacheSetOptions) => Promise<void>;
               delete: (key: string) => Promise<void>;
+              getOrInsert: (key: string, value: MapFieldValue, option?: CacheSetOptions) => Promise<MapFieldValue>;
+              getOrInsertComputed: (
+                key: string,
+                compute: (key: string) => MapFieldValue | Promise<MapFieldValue>,
+                option?: CacheSetOptions,
+              ) => Promise<MapFieldValue>;
+              keys: () => Promise<string[]>;
+              entries: () => Promise<[string, MapFieldValue][]>;
+              forEach: (callback: (value: MapFieldValue, key: string) => void | Promise<void>) => Promise<void>;
+              clear: () => Promise<void>;
             }
-          : { get: () => Promise<UseValue>; set: (value: UseValue) => Promise<void>; delete: () => Promise<void> },
+          : {
+              get: () => Promise<UseValue>;
+              set: (value: UseValue, option?: CacheSetOptions) => Promise<void>;
+              delete: () => Promise<void>;
+            },
       never,
       ValueRef
     >("memory", {
@@ -379,6 +429,7 @@ export const injectionBuilder = (parentRefName: string) => ({
       },
       default: opts.default as unknown,
       isMap,
+      cacheOption: opts.expireAt ? { expireAt: opts.expireAt } : undefined,
       parentRefName,
     });
   },

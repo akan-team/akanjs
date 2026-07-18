@@ -388,8 +388,8 @@ export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query,
           />
           <div>
             {l.trans({
-              en: `Each signal endpoint is decorated with @Mutation.Public() and takes the order ID as a parameter. The resolve() function ensures the returned data is properly formatted for both API formats.`,
-              ko: `각 시그널 엔드포인트는 @Mutation.Public()으로 장식되고 주문 ID를 매개변수로 받습니다. resolve() 함수는 반환된 데이터가 두 API 형식 모두에 대해 적절하게 형식화되도록 보장합니다.`,
+              en: `Each signal endpoint is defined using the mutation() builder, specifying the return type and accepting the order ID as a parameter via .param(). The .exec() callback delegates to the corresponding service method to perform the actual business logic.`,
+              ko: `각 시그널 엔드포인트는 mutation() 빌더를 사용하여 정의되며, .param()을 통해 주문 ID를 매개변수로 받습니다. .exec() 콜백은 해당 서비스 메서드에 위임하여 실제 비즈니스 로직을 수행합니다.`,
             })}
           </div>
           <div>
@@ -747,11 +747,11 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
           </span>
           <span
             className={clsx("ml-2 rounded-full px-3 py-1 text-sm font-semibold", {
-              "border border-base-300 bg-primary text-primary-content": icecreamOrder.status === "active",
-              "border border-base-300 bg-warning text-warning-content": icecreamOrder.status === "processing",
-              "border border-base-300 bg-secondary text-secondary-content": icecreamOrder.status === "served",
-              "border border-base-300 bg-accent text-accent-content": icecreamOrder.status === "finished",
-              "border border-base-300 bg-neutral text-neutral-content": icecreamOrder.status === "canceled",
+              "border border-primary/40 bg-base-100 text-primary": icecreamOrder.status === "active",
+              "border border-warning/40 bg-base-100 text-warning": icecreamOrder.status === "processing",
+              "border border-info/40 bg-info text-info-content": icecreamOrder.status === "served",
+              "border border-accent/40 bg-base-100 text-accent": icecreamOrder.status === "finished",
+              "border border-base-300 bg-base-100 text-base-content/70": icecreamOrder.status === "canceled",
             })}
           >
             {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
@@ -822,11 +822,11 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
         <div>
           <span
             className={clsx("inline-block rounded-full px-2 py-1 text-xs font-semibold", {
-              "border border-base-300 bg-primary text-primary-content": icecreamOrder.status === "active",
-              "border border-base-300 bg-warning text-warning-content": icecreamOrder.status === "processing",
-              "border border-base-300 bg-secondary text-secondary-content": icecreamOrder.status === "served",
-              "border border-base-300 bg-accent text-accent-content": icecreamOrder.status === "finished",
-              "border border-base-300 bg-neutral text-neutral-content": icecreamOrder.status === "canceled",
+              "border border-primary/40 bg-base-100 text-primary": icecreamOrder.status === "active",
+              "border border-warning/40 bg-base-100 text-warning": icecreamOrder.status === "processing",
+              "border border-info/40 bg-info text-info-content": icecreamOrder.status === "served",
+              "border border-accent/40 bg-base-100 text-accent": icecreamOrder.status === "finished",
+              "border border-base-300 bg-base-100 text-base-content/70": icecreamOrder.status === "canceled",
             })}
           >
             {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
@@ -907,8 +907,8 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             <ol className="list-decimal space-y-2 pl-5 text-base-content/70 text-sm">
               <li>
                 {l.trans({
-                  en: "Navigate to http://localhost:4201/icecreamOrder",
-                  ko: "http://localhost:4201/icecreamOrder로 이동",
+                  en: "Navigate to http://localhost:8282/icecreamOrder",
+                  ko: "http://localhost:8282/icecreamOrder로 이동",
                 })}
               </li>
               <li>

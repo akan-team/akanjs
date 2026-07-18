@@ -11,7 +11,18 @@ import {
 import { applyMixins } from "akanjs/common";
 import type { FilterInstance } from "akanjs/document";
 import type { ClientSignal } from "akanjs/fetch";
-import type { SerializedSlice, SliceCls } from "akanjs/signal";
+import type {
+  SerializedSlice,
+  SlceCnstCapitalizedRefName,
+  SlceCnstDefault,
+  SlceCnstFull,
+  SlceCnstInput,
+  SlceCnstInsight,
+  SlceCnstLight,
+  SlceDbFilter,
+  SlceDbSort,
+  SliceCls,
+} from "akanjs/signal";
 import { type DefaultAction, makeActions, makeFormSetter } from "./action";
 import { createDatabaseState, createSliceState, type DefaultState } from "./state";
 import {
@@ -29,7 +40,42 @@ import {
   type WritableStateBuilder,
   type WritableStateOf,
 } from "./stateBuilder";
-import type { InternalSlice, SetGet, SetGetWritable } from "./types";
+import type { InternalSlice, SetGet, SetGetWritable, StoreSliceMap, StoreSliceName, StoreSliceSuffix } from "./types";
+
+type _SliceMap<S extends SliceCls> = StoreSliceMap<S>;
+type _StoreInput<S extends SliceCls> = SlceCnstInput<S>;
+type _StoreFull<S extends SliceCls> = SlceCnstFull<S>;
+type _StoreLight<S extends SliceCls> = SlceCnstLight<S>;
+type _StoreInsight<S extends SliceCls> = SlceCnstInsight<S>;
+type _StoreFilter<S extends SliceCls> = SlceDbFilter<S>;
+type _StoreCap<S extends SliceCls> = SlceCnstCapitalizedRefName<S>;
+type _StoreDefault<S extends SliceCls> = SlceCnstDefault<S>;
+type _StoreSort<S extends SliceCls> = SlceDbSort<S>;
+type StoreSliceOf<
+  SlceCls extends SliceCls,
+  RefName extends string,
+  Suffix extends keyof _SliceMap<SlceCls>,
+  Input,
+  Full,
+  Light extends { id: string },
+  Insight,
+  Filter extends FilterInstance,
+  CapitalizedRefName extends string,
+  Default,
+  Sort,
+> = InternalSlice<
+  _SliceMap<SlceCls>[Suffix],
+  RefName,
+  StoreSliceSuffix<SlceCls, Suffix>,
+  Input,
+  Full,
+  Light,
+  Insight,
+  Filter,
+  CapitalizedRefName,
+  Default,
+  Sort
+>;
 
 export type StoreCls<
   RefName extends string = string,
@@ -38,24 +84,24 @@ export type StoreCls<
   SlceCls extends SliceCls = any,
   DerivedState = unknown,
   State = WritableState & DerivedState,
-  _Input = SlceCls["srv"]["cnst"]["_Input"],
-  _Full = SlceCls["srv"]["cnst"]["_Full"],
-  _Light extends { id: string } = SlceCls["srv"]["cnst"]["_Light"],
-  _Insight = SlceCls["srv"]["cnst"]["_Insight"],
-  _Filter extends FilterInstance = SlceCls["srv"]["db"]["_Filter"],
-  _CapitalizedRefName extends string = Capitalize<RefName>,
-  _Default = SlceCls["srv"]["cnst"]["_Default"],
-  _Sort = SlceCls["srv"]["db"]["_Sort"],
+  _Input = _StoreInput<SlceCls>,
+  _Full = _StoreFull<SlceCls>,
+  _Light extends { id: string } = _StoreLight<SlceCls>,
+  _Insight = _StoreInsight<SlceCls>,
+  _Filter extends FilterInstance = _StoreFilter<SlceCls>,
+  _CapitalizedRefName extends string = _StoreCap<SlceCls>,
+  _Default = _StoreDefault<SlceCls>,
+  _Sort = _StoreSort<SlceCls>,
 > = Cls<
   SetGetWritable<WritableState, State> &
     Action & {
       slice: {
-        [Suffix in keyof SlceCls[typeof SLICE_META] as Suffix extends string
-          ? `${RefName}${Capitalize<Suffix>}`
-          : never]: InternalSlice<
-          SlceCls[typeof SLICE_META][Suffix],
+        [Suffix in keyof _SliceMap<SlceCls> as Suffix extends string
+          ? StoreSliceName<RefName, Suffix>
+          : never]: StoreSliceOf<
+          SlceCls,
           RefName,
-          Suffix & string,
+          Suffix,
           _Input,
           _Full,
           _Light,

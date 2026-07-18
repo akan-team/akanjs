@@ -1,7 +1,7 @@
 export interface FetchPolicy<Returns = unknown> {
   cache?: boolean | number;
   crystalize?: boolean;
-  url?: string;
+  origin?: string;
   onError?: (error: string) => void;
   token?: string;
   partial?: string[];

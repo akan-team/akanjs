@@ -12,9 +12,9 @@ interface CodeViewProps {
 
 export const CodeView = ({ className, title, children, wrapperClassName, copyText }: CodeViewProps) => (
   <div className={clsx("flex justify-center", wrapperClassName)}>
-    <div className={clsx("relative overflow-x-scroll rounded-md bg-[#2a2a2a]", className)}>
+    <div className={clsx("relative overflow-x-scroll rounded-md border border-base-300 bg-base-200", className)}>
       {title ? (
-        <div className="sticky inset-x-0 top-0 flex h-10 w-full items-center justify-between bg-[#3a3a3a] pr-2 pl-4 font-bold text-gray-300 text-sm">
+        <div className="sticky inset-x-0 top-0 flex h-10 w-full items-center justify-between border-base-300 border-b bg-base-100 pr-2 pl-4 font-bold text-base-content text-sm">
           {title}
           {copyText ? <Clipboard text={copyText} /> : null}
         </div>

@@ -1,0 +1,24 @@
+---
+description: Coding style conventions for classes and functions
+globs: **/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Coding Style
+
+- For large units of work, prefer declaring a class and running the flow through an instance instead of scattering many standalone functions.
+- Prefer class methods or `static` methods over unrelated top-level helper functions when the logic belongs to a class-level workflow.
+- Prefer ECMAScript `#private` fields and methods over TypeScript `private`; `*.service.ts` files are the main exception where `private` methods are encouraged.
+- In files that declare a class, avoid top-level functions or variables when they can reasonably live inside the class.
+- Prefer `const` function expressions over `function` declarations unless hoisting, overloads, generators, or framework conventions make `function` the better fit.
+- Prefer declaring only one class per file; split the file when two or more class declarations are needed.
+- For class-centered modules, prefer noun-style filenames that match the primary class name, such as `RouteClientBuilder.ts`, instead of verb-style wrapper filenames like `buildRouteClient.ts`.
+- Avoid keeping exported functions that only instantiate a class and immediately call one method. Prefer migrating callers to instantiate the class directly.
+- Except for React component files or convention files, TypeScript filenames should use camelCase.
+- In React components, keep one-off `className` strings inline. Only extract class name constants when the class is reused, conditionally composed, or too large to read comfortably in JSX.
+
+# Test Code
+
+- Write TypeScript tests with Bun's test runner and import `describe`, `expect`, and `test` from `bun:test`.
+- Keep tests colocated with the source they cover using `*.test.ts` or `*.spec.ts`, following the existing nearby pattern.
+- Prefer focused behavior tests for public contracts and edge cases over implementation-detail assertions.

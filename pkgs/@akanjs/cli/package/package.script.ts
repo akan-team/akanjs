@@ -28,6 +28,18 @@ export class PackageScript extends script("package", [PackageRunner]) {
     await this.packageRunner.buildPackage(pkg);
     if (spinner) spinner.succeed("Package built");
   }
+  async verifyDistPackage(pkg: Pkg) {
+    const spinner = pkg.spinning("Verifying dist package...");
+    const result = await this.packageRunner.verifyDistPackage(pkg);
+    spinner.succeed(`Package verified (${result.files} files, ${result.size} bytes packed)`);
+    return result;
+  }
+  async verifyAkanPublishPackages(workspace: Workspace) {
+    const spinner = workspace.spinning("Verifying Akan publish packages...");
+    const results = await this.packageRunner.verifyAkanPublishPackages(workspace);
+    spinner.succeed(`Akan publish packages verified (${results.length} packages)`);
+    return results;
+  }
   async updateWorskpaceRootPackageJson(workspace: Workspace) {
     const rootPackageJson = await workspace.getPackageJson();
     await this.packageRunner.updateWorskpaceRootPackageJson(workspace, rootPackageJson);

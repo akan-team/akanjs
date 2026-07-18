@@ -1,5 +1,7 @@
 import type { PromiseOrObject } from "akanjs/base";
 import type { AkanI18nConfig } from "akanjs/common";
+import type { ClientManifest } from "./artifact";
+import type { SsrManifest } from "./ssrTypes";
 
 export type WebsocketRoute = (
   ws: Bun.ServerWebSocket<unknown>,
@@ -85,6 +87,8 @@ export function getAkanImageWidths(config: Pick<AkanImageConfig, "deviceSizes" |
 
 export type BaseBuildArtifact = {
   rscClientUrl: string;
+  rscRuntimeClientManifest?: ClientManifest;
+  rscRuntimeSsrManifest?: SsrManifest;
   vendorMap: Record<string, string>;
   pagesBundlePath: string;
   pagesBundleBuildId: number;
@@ -95,7 +99,16 @@ export type BaseBuildArtifact = {
   branches: string[];
   i18n: AkanI18nConfig;
   imageConfig: AkanImageConfig;
+  deepLinkAssociations?: MobileDeepLinkAssociation[];
 };
+
+export interface MobileDeepLinkAssociation {
+  targetName: string;
+  appId: string;
+  domains: string[];
+  iosTeamId?: string;
+  androidSha256CertFingerprints?: string[];
+}
 
 export interface CssAsset {
   cssUrl: string;

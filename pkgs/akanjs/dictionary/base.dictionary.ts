@@ -20,7 +20,6 @@ export const baseDictionary = serviceDictionary(["en", "ko"])
       .arg((t) => ({
         id: t(["ID", "아이디"]),
       })),
-    cleanup: fn(["Cleanup", "Cleanup"]).desc(["Cleanup operation", "정리 작업"]),
     wsPing: fn(["Socket.io Ping", "Socket.io Ping"])
       .desc(["Socket.io Ping test", "Socket.io Ping 테스트"])
       .arg((t) => ({

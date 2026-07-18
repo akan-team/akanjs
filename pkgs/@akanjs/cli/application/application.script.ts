@@ -1,4 +1,5 @@
 import {
+  type AkanAppConfig,
   type App,
   ApplicationBuildReporter,
   type DatabaseMode,
@@ -13,6 +14,7 @@ import {
   type TypecheckOptions,
   type Workspace,
 } from "@akanjs/devkit";
+import { confirm } from "@inquirer/prompts";
 import { Logger } from "akanjs/common";
 import { LibraryScript } from "../library/library.script";
 import { ApplicationRunner } from "./application.runner";
@@ -29,6 +31,35 @@ type MobileReleaseOptions = MobileCommandOptions & {
 };
 
 export class ApplicationScript extends script("application", [ApplicationRunner, LibraryScript]) {
+  async confirmDatabaseModeDependencyInstall(databaseMode: DatabaseMode, installSpecs: string[]) {
+    return await confirm({
+      message: [
+        `Database mode '${databaseMode}' requires missing dependencies: ${installSpecs.join(", ")}.`,
+        "Install them now?",
+      ].join(" "),
+      default: true,
+    });
+  }
+  async syncDatabaseModeDependencies(app: App, akanConfig: AkanAppConfig, databaseMode: DatabaseMode) {
+    const installSpecs = akanConfig.getMissingDatabaseModeDependencySpecs(databaseMode);
+    if (installSpecs.length === 0) return;
+
+    const shouldInstall = await this.confirmDatabaseModeDependencyInstall(databaseMode, installSpecs);
+    if (!shouldInstall)
+      throw new Error(`Database mode '${databaseMode}' requires missing dependencies: ${installSpecs.join(", ")}.`);
+
+    const spinner = app.workspace.spinning(`Installing database dependencies for ${databaseMode} mode...`);
+    try {
+      await app.workspace.spawn("bun", ["add", ...installSpecs], {
+        stdio: "inherit",
+      });
+      await app.workspace.getPackageJson({ refresh: true });
+      spinner.succeed(`Installed database dependencies for ${databaseMode} mode`);
+    } catch (error) {
+      spinner.fail(`Failed to install database dependencies for ${databaseMode} mode`);
+      throw error;
+    }
+  }
   async createApplication(
     appName: string,
     workspace: Workspace,
@@ -54,6 +85,11 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     const scriptFilename = filename ?? (await this.applicationRunner.getScriptFilename(app));
     await app.scanSync();
     await this.applicationRunner.runScript(app, scriptFilename);
+  }
+
+  async console(app: App) {
+    await app.scanSync();
+    await this.applicationRunner.runConsole(app);
   }
 
   async build(
@@ -120,11 +156,17 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       dbup = true,
       withInk = false,
       write = true,
-    }: { open?: boolean; dbup?: boolean; withInk?: boolean; write?: boolean } = {},
+    }: {
+      open?: boolean;
+      dbup?: boolean;
+      withInk?: boolean;
+      write?: boolean;
+    } = {},
   ) {
     await app.scanSync({ write });
     const akanConfig = await app.getConfig();
     const databaseMode = (process.env.AKAN_DATABASE_MODE ?? akanConfig.defaultDatabaseMode ?? "single") as DatabaseMode;
+    await this.syncDatabaseModeDependencies(app, akanConfig, databaseMode);
     if (app.getEnv() === "local" && dbup && databaseMode !== "single") {
       const wasDbAlreadyUp = await this.dbup(app.workspace, databaseMode);
       if (!wasDbAlreadyUp)
@@ -157,6 +199,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       write = true,
       target,
       regenerate = false,
+      noAllowProvisioningUpdates = false,
     }: {
       operation?: MobileOperation;
       env?: MobileEnv;
@@ -164,10 +207,18 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       write?: boolean;
       target?: string;
       regenerate?: boolean;
+      noAllowProvisioningUpdates?: boolean;
     } = {},
   ) {
     await app.scanSync({ write });
-    await this.applicationRunner.startIos(app, { open, operation, env, target, regenerate });
+    await this.applicationRunner.startIos(app, {
+      open,
+      operation,
+      env,
+      target,
+      regenerate,
+      noAllowProvisioningUpdates,
+    });
   }
   async releaseIos(
     app: App,
@@ -203,7 +254,13 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     } = {},
   ) {
     await app.scanSync({ write });
-    await this.applicationRunner.startAndroid(app, { open, operation, env, target, regenerate });
+    await this.applicationRunner.startAndroid(app, {
+      open,
+      operation,
+      env,
+      target,
+      regenerate,
+    });
   }
   //* 안드로이드 릴리즈(apk or aab 추출) 메서드
   async releaseAndroid(
@@ -216,7 +273,11 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       throw new Error(
         "releaseAndroid --env local is blocked. Pass allowLocalRelease only for explicit local release testing.",
       );
-    await this.applicationRunner.releaseAndroid(app, assembleType, { target, env, regenerate });
+    await this.applicationRunner.releaseAndroid(app, assembleType, {
+      target,
+      env,
+      regenerate,
+    });
   }
 
   async configureApp(app: App) {

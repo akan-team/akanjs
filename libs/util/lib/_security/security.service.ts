@@ -20,7 +20,6 @@ export class SecurityService extends serve("security" as const, ({ use }) => ({
   jwtSecret: use<string>(),
   aeskey: use<string>(),
 })) {
-  readonly accessTokenExpiresIn = "15m";
   readonly refreshTokenDays = 30;
 
   async decrypt(hash: string) {
@@ -39,7 +38,7 @@ export class SecurityService extends serve("security" as const, ({ use }) => ({
     jwt: string;
     expiresAt: Dayjs;
   }> {
-    const expiresAt = dayjs().add(15, "minute");
+    const expiresAt = dayjs().add(7, "day");
     const jwt = await jwtSign(
       {
         ...data,
@@ -49,7 +48,7 @@ export class SecurityService extends serve("security" as const, ({ use }) => ({
         sid,
       },
       this.jwtSecret,
-      { expiresIn: this.accessTokenExpiresIn, issuedAt: true, jwtId: jti },
+      { expiresAt, issuedAt: true, jwtId: jti },
     );
     return { jwt, expiresAt };
   }

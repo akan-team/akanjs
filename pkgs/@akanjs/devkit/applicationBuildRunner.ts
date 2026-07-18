@@ -184,6 +184,7 @@ export class ApplicationBuildRunner {
       outdir: this.#app.dist.cwdPath,
       target: "bun",
       minify: true,
+      naming: { entry: "[name].[ext]", chunk: "chunk-[hash].[ext]" },
       define: { "process.env.NODE_ENV": JSON.stringify("production") },
       plugins: backendExternals.length > 0 ? [this.#createExternalSpecifiersPlugin(backendExternals)] : [],
     });
@@ -198,10 +199,43 @@ export class ApplicationBuildRunner {
       define: { "process.env.NODE_ENV": JSON.stringify("production") },
       plugins: backendExternals.length > 0 ? [this.#createExternalSpecifiersPlugin(backendExternals)] : [],
     });
+    const consoleRuntimeResult = await this.#buildOrThrow("console-runtime", {
+      entrypoints: [this.#resolveConsoleRuntimeBuildEntry()],
+      outdir: this.#app.dist.cwdPath,
+      target: "bun",
+      minify: true,
+      naming: { entry: "console-runtime.[ext]", chunk: "chunk-[hash].[ext]" },
+      define: { "process.env.NODE_ENV": JSON.stringify("production") },
+    });
+    await this.#writeConsoleShim();
     return {
-      entrypoints: backendEntryPoints.length + 1,
-      outputs: backendResult.outputs.length + rscWorkerResult.outputs.length,
+      entrypoints: backendEntryPoints.length + 2,
+      outputs: backendResult.outputs.length + rscWorkerResult.outputs.length + consoleRuntimeResult.outputs.length + 1,
     };
+  }
+
+  async #writeConsoleShim() {
+    await Bun.write(
+      path.join(this.#app.dist.cwdPath, "console.js"),
+      `import { cnst, db, dict, option, server, sig, srv } from "./server.js";
+import { assertAkanConsoleAllowed, startAkanConsole } from "./console-runtime.js";
+
+const run = async () => {
+  assertAkanConsoleAllowed(server.env);
+  await server.start({ listen: false, web: false });
+  try {
+    await startAkanConsole(server, { globals: { cnst, db, dict, option, sig, srv } });
+  } finally {
+    await server.stop();
+  }
+};
+
+void run().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+`,
+    );
   }
 
   #resolveRscWorkerBuildEntry(): string {
@@ -209,6 +243,14 @@ export class ApplicationBuildRunner {
       return Bun.resolveSync("akanjs/server/rsc-worker", import.meta.dir);
     } catch {
       return path.join(this.#app.workspace.workspaceRoot, "pkgs/akanjs/server/rscWorker.tsx");
+    }
+  }
+
+  #resolveConsoleRuntimeBuildEntry(): string {
+    try {
+      return path.join(path.dirname(Bun.resolveSync("akanjs/server", import.meta.dir)), "console.ts");
+    } catch {
+      return path.join(this.#app.workspace.workspaceRoot, "pkgs/akanjs/server/console.ts");
     }
   }
 

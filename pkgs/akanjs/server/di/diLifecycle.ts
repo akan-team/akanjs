@@ -1,5 +1,5 @@
 import type { BaseEnv } from "akanjs/base";
-import { Logger, lowerlize } from "akanjs/common";
+import { Logger } from "akanjs/common";
 import {
   type Adaptor,
   type AdaptorCls,
@@ -26,29 +26,17 @@ import type { SignalRoutes, WebsocketRoutes } from "../types";
 import { getPredefinedAdaptor, predefinedAdaptorRole } from "./predefinedAdaptor";
 import { collectAdaptors, resolveAdaptorHierarchy } from "./resolveAdaptorHierarchy";
 import { resolveServiceHierarchy } from "./resolveServiceHierarchy";
-import { reasonMessage, runStage, toError } from "./utils";
-
-interface DestroyableUse {
-  onDestroy(): Promise<void> | void;
-}
-
-const isDestroyableUse = (value: unknown): value is DestroyableUse =>
-  typeof value === "object" &&
-  value !== null &&
-  "onDestroy" in value &&
-  typeof (value as { onDestroy?: unknown }).onDestroy === "function";
-
-const normalizeServiceRefName = (refName: string) => {
-  const normalized = lowerlize(refName);
-  return normalized.endsWith("Service") ? normalized.slice(0, -"Service".length) : normalized;
-};
-
-const normalizeSignalRefName = (refName: string) => {
-  const normalized = lowerlize(refName);
-  return normalized.endsWith("Signal") ? normalized : `${normalized}Signal`;
-};
-
-const normalizeAdaptorRefName = (refName: string) => lowerlize(refName);
+import {
+  type DiModuleCandidate,
+  getModuleDependencyRefNames,
+  isDestroyableUse,
+  normalizeAdaptorRefName,
+  normalizeServiceRefName,
+  normalizeSignalRefName,
+  reasonMessage,
+  runStage,
+  toError,
+} from "./utils";
 
 /**
  * Owns the app's DI container state (registry + live maps + init order) and
@@ -88,24 +76,31 @@ export class DiLifecycle {
       this.#middleware.set(middleware.refName, middleware);
     });
     this.webProxies.push(...defaultOption.getWebProxies());
+    const databaseCandidates = new Map<string, DiModuleCandidate>();
+    const serviceCandidates = new Map<string, DiModuleCandidate>();
     libs.forEach((lib) => {
       lib.option.getMiddlewares().forEach((middleware) => {
         this.#middleware.set(middleware.refName, middleware);
       });
       this.webProxies.push(...lib.option.getWebProxies());
       lib.database.forEach((mod) => {
-        //TODO: change enable as a function
-        if (!mod.service.srv.enabled) return;
-        this.#database.set(mod.constant.refName, mod);
+        databaseCandidates.set(mod.constant.refName, { refName: mod.constant.refName, module: mod });
       });
       lib.service.forEach((mod) => {
-        //TODO: change enable as a function
-        if (!mod.service.srv.enabled) return;
-        this.#service.set(mod.service.srv.refName, mod);
+        serviceCandidates.set(mod.service.srv.refName, { refName: mod.service.srv.refName, module: mod });
       });
       lib.scalar.forEach((mod) => {
         this.#scalar.set(mod.constant.refName, mod);
       });
+    });
+    const disabledModules = this.#resolveDisabledModules(databaseCandidates, serviceCandidates);
+    databaseCandidates.forEach(({ refName, module }) => {
+      if (disabledModules.has(refName)) return;
+      this.#database.set(refName, module as DatabaseModule);
+    });
+    serviceCandidates.forEach(({ refName, module }) => {
+      if (disabledModules.has(refName)) return;
+      this.#service.set(refName, module as ServiceModule);
     });
     this.#database.forEach((mod) => {
       const databaseAdaptor = DatabaseResolver.resolveDatabase(mod.constant, mod.database);
@@ -118,6 +113,39 @@ export class DiLifecycle {
     for (const adaptor of collectAdaptors(services)) {
       this.#adaptor.set(adaptor.refName, adaptor);
     }
+  }
+
+  #resolveDisabledModules(
+    databaseCandidates: Map<string, DiModuleCandidate>,
+    serviceCandidates: Map<string, DiModuleCandidate>,
+  ) {
+    const candidates = new Map<string, DiModuleCandidate>([...databaseCandidates, ...serviceCandidates]);
+    const disabledReasons = new Map<string, string>();
+
+    candidates.forEach(({ refName, module }) => {
+      if (!module.service.srv.enabled) disabledReasons.set(refName, "service disabled");
+    });
+
+    let changed = true;
+    while (changed) {
+      changed = false;
+      candidates.forEach(({ refName, module }) => {
+        if (disabledReasons.has(refName)) return;
+        for (const dependencyRefName of getModuleDependencyRefNames(module)) {
+          if (dependencyRefName === refName) continue;
+          const dependencyReason = disabledReasons.get(dependencyRefName);
+          if (!dependencyReason) continue;
+          disabledReasons.set(refName, `depends on disabled module "${dependencyRefName}"`);
+          changed = true;
+          break;
+        }
+      });
+    }
+
+    disabledReasons.forEach((reason, refName) => {
+      this.logger.verbose(`Skipping disabled module "${refName}": ${reason}`);
+    });
+    return new Set(disabledReasons.keys());
   }
 
   /** Run every init stage in dependency order and collect the generated routes. */

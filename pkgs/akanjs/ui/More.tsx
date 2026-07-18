@@ -1,16 +1,15 @@
 "use client";
 import { clsx, isMobileDevice } from "akanjs/client";
-import { lazy } from "akanjs/webkit";
+import { useEffect, useState } from "react";
+import { InfiniteScroll } from "./InfiniteScroll";
 import { Pagination } from "./Pagination";
-
-const InfiniteScroll = lazy(() => import("./InfiniteScroll").then((mod) => mod.InfiniteScroll), { ssr: false });
 
 interface MoreProps {
   total: number;
   itemsPerPage: number;
   currentPage: number;
   onAddPage: (page: number) => Promise<void>;
-  onPageSelect: (page: number) => void;
+  onPageSelect: (page: number, option?: { scrollToTop?: boolean }) => void;
   children?: React.ReactNode;
   className?: string;
   reverse?: boolean;
@@ -26,11 +25,17 @@ export const More = ({
   className,
   reverse,
 }: MoreProps) => {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    setIsMobile(isMobileDevice());
+  }, []);
+
   if (total <= itemsPerPage) {
     return <>{children}</>;
   }
 
-  if (isMobileDevice()) {
+  if (isMobile) {
     return (
       <InfiniteScroll
         total={total}

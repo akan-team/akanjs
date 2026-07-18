@@ -1,6 +1,4 @@
 import "./styles.css";
-
-import { Auth } from "@libs/shared/ui";
 import type { Font, LayoutProps } from "akanjs/client";
 
 export const fonts: Font[] = [
@@ -29,6 +27,29 @@ export const theme = "dark";
 export const head = (
   <>
     <title>Akan.js</title>
+    <meta
+      name="description"
+      content="Akan.js is a full-stack TypeScript framework for building all-stack applications at once."
+    />
+    <link rel="canonical" href="https://akanjs.com" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Akan.js" />
+    <meta property="og:title" content="Akan.js" />
+    <meta
+      property="og:description"
+      content="A full-stack TypeScript framework for building web, app, server, database, and infrastructure together."
+    />
+    <meta property="og:url" content="https://akanjs.com" />
+    <meta property="og:image" content="https://akanjs.com/akanjsImage/akan_benchmark.webp" />
+    <meta property="og:image:type" content="image/webp" />
+    <meta property="og:image:alt" content="Akan.js benchmark preview" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Akan.js" />
+    <meta
+      name="twitter:description"
+      content="A full-stack TypeScript framework for building web, app, server, database, and infrastructure together."
+    />
+    <meta name="twitter:image" content="https://akanjs.com/akanjsImage/akan_benchmark.webp" />
     <link rel="icon" type="image/png" sizes="512x512" href="/icon-512x512.png" />
     <link rel="icon" type="image/png" sizes="384x384" href="/icon-384x384.png" />
     <link rel="icon" type="image/png" sizes="256x256" href="/icon-256x256.png" />
@@ -54,10 +75,5 @@ export const head = (
 );
 
 export default function Layout({ children }: LayoutProps) {
-  return (
-    <>
-      {children}
-      <Auth.User />
-    </>
-  );
+  return children;
 }
