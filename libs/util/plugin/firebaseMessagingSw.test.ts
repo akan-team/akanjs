@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  createFirebaseMessagingServiceWorker,
-  normalizeFirebaseClientConfig,
-} from "./firebaseMessagingSw";
+import { createFirebaseMessagingServiceWorker, normalizeFirebaseClientConfig } from "./firebaseMessagingSw";
 
 describe("normalizeFirebaseClientConfig", () => {
   test("whitelists client fields and drops secrets / vapidKey", () => {

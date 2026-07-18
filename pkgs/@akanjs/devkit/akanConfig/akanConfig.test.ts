@@ -3,8 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PackageJson } from "../types";
-import { AkanAppConfig, AkanLibConfig } from "./akanConfig";
-import type { DeepPartial, LibConfigResult } from "./types";
+import { AkanAppConfig } from "./akanConfig";
 
 const akanPackageJson = JSON.parse(
   fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../akanjs/package.json"), "utf8"),

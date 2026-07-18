@@ -99,6 +99,7 @@ apps/*/ui/index.ts
 apps/*/webkit/index.ts
 apps/*/srvkit/index.ts
 apps/*/common/index.ts
+apps/*/plugin/index.ts
 apps/*/client.ts
 apps/*/server.ts
 libs/*/lib/cnst.ts
@@ -116,6 +117,7 @@ libs/*/ui/index.ts
 libs/*/webkit/index.ts
 libs/*/srvkit/index.ts
 libs/*/common/index.ts
+libs/*/plugin/index.ts
 libs/*/client.ts
 libs/*/server.ts
 libs/*/index.ts

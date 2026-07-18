@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { AkanPlugin } from "akanjs";
 import { type AkanI18nConfig, resolveAkanI18nConfig } from "akanjs/common";
 import type { AkanImageConfig } from "akanjs/server";
 import type { App, Lib } from "../commandDecorators";
@@ -136,6 +137,8 @@ export class AkanAppConfig implements AppConfigResult {
   secrets: string[];
   baseDevEnv: BaseDevEnv;
   libs: string[];
+  /** Live-only: plugins declared in this app's `akan.config.ts` (never serialized). */
+  plugins: AkanPlugin[];
   domains = new Set<string>();
   subRoutes = new Map<string, Set<string>>();
   basePaths = new Set<string>();
@@ -146,11 +149,13 @@ export class AkanAppConfig implements AppConfigResult {
     rootPackageJson: PackageJson,
     config: DeepPartial<AppConfigResult>,
     baseDevEnv: BaseDevEnv,
+    plugins: AkanPlugin[] = [],
   ) {
     this.app = app;
     this.rootPackageJson = rootPackageJson;
     this.libs = libs;
     this.baseDevEnv = baseDevEnv;
+    this.plugins = plugins;
     this.#applyRoutes(config?.routes);
     this.defaultDatabaseMode = config?.defaultDatabaseMode ?? "single";
     this.externalLibs = config?.externalLibs ?? [];
@@ -341,15 +346,18 @@ CMD [${command.map((c) => `"${c}"`).join(",")}]`;
       app.workspace.getLibs(),
       app.workspace.getPackageJson(),
     ]);
-    const config = typeof configImp === "function" ? configImp(app) : configImp;
-    return new AkanAppConfig(app, libs, rootPackageJson, config, baseDevEnv);
+    const resolved = typeof configImp === "function" ? configImp(app) : configImp;
+    const { plugins, ...config } = (resolved ?? {}) as DeepPartial<AppConfigResult> & { plugins?: AkanPlugin[] };
+    return new AkanAppConfig(app, libs, rootPackageJson, config, baseDevEnv, plugins ?? []);
   }
   #resolveProductionDependencyVersion(lib: string) {
     const rootVersion = this.rootPackageJson.dependencies?.[lib] ?? this.rootPackageJson.devDependencies?.[lib];
     if (rootVersion) return rootVersion;
+    // Fall back to the framework package's own (peer)dependencies so plugin-declared runtime
+    // packages (e.g. firebase for the push plugin) resolve a version without the framework
+    // hardcoding a per-feature package list.
     const akanPackageJson = getAkanPackageJson();
-    if (AKAN_RUNTIME_PACKAGES.has(lib))
-      return akanPackageJson.dependencies?.[lib] ?? akanPackageJson.peerDependencies?.[lib];
+    return akanPackageJson.dependencies?.[lib] ?? akanPackageJson.peerDependencies?.[lib];
   }
   #getProductionRuntimePackages() {
     return [
@@ -451,14 +459,18 @@ function mergeImageConfig(config: Partial<AkanImageConfig> = {}): AkanImageConfi
 export class AkanLibConfig implements LibConfigResult {
   lib: Lib;
   externalLibs: string[];
-  constructor(lib: Lib, config: DeepPartial<LibConfigResult>) {
+  /** Live-only: plugins declared in this lib's `akan.config.ts` (never serialized). */
+  plugins: AkanPlugin[];
+  constructor(lib: Lib, config: DeepPartial<LibConfigResult>, plugins: AkanPlugin[] = []) {
     this.lib = lib;
     this.externalLibs = config?.externalLibs ?? [];
+    this.plugins = plugins;
   }
   static async from(lib: Lib) {
     const [configImp] = await Promise.all([import(`${lib.cwdPath}/akan.config.ts`).then((mod) => mod.default)]);
-    const config = typeof configImp === "function" ? configImp(lib) : configImp;
-    return new AkanLibConfig(lib, config);
+    const resolved = typeof configImp === "function" ? configImp(lib) : configImp;
+    const { plugins, ...config } = (resolved ?? {}) as DeepPartial<LibConfigResult> & { plugins?: AkanPlugin[] };
+    return new AkanLibConfig(lib, config, plugins ?? []);
   }
 }
 

@@ -74,7 +74,7 @@ const SUGGESTED_RULES = [
   "Dictionary text should not contain scaffold wording, misspellings, or stale copied domain nouns.",
   "Warn earlier on very long Akan files: 500 lines for services, 800 lines for Template/Zone files, and 1000 lines for Util files.",
   "Global declarations, Window augmentation, and prototype mutation should stay in explicitly approved low-level integration files.",
-  "Keep app root folders small and conventional: application code belongs under common, env, lib, page, private, public, script, srvkit, ui, or webkit.",
+  "Keep app root folders small and conventional: application code belongs under common, env, lib, page, plugin, private, public, script, srvkit, ui, or webkit.",
   "Keep apps/*/lib and libs/*/lib root files limited to generated support facets such as cnst.ts, db.ts, dict.ts, sig.ts, srv.ts, st.ts, useClient.ts, and useServer.ts.",
   "Use domain module folders consistently: lib/<model> for database modules, lib/_<service> for service modules, and lib/__scalar/<scalar> for scalar modules.",
   "Keep module UI filenames predictable: database modules use <Model>.Template/Unit/Util/View/Zone.tsx, service modules use <Service>.Util/Zone.tsx, and scalar modules use <Scalar>.Template/Unit.tsx.",

@@ -1,4 +1,4 @@
- const FIREBASE_WEB_SDK_VERSION = "12.13.0";
+const FIREBASE_WEB_SDK_VERSION = "12.13.0";
 
 export interface FirebaseClientEnvConfig {
   apiKey: string;

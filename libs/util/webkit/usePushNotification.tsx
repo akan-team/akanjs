@@ -2,6 +2,7 @@
 
 import { router } from "akanjs/client";
 import { loadCapacitorDevice, loadCapacitorFcm, loadCapacitorPushNotifications } from "akanjs/client/capacitor";
+
 import { useEffect } from "react";
 
 export type PushNotificationPlatform = "web" | "ios" | "android";

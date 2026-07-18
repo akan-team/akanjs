@@ -1,7 +1,7 @@
 "use client";
 
+import { type PushToken, usePushNotification } from "@libs/util/webkit";
 import { Link } from "akanjs/ui";
-import { type PushToken, usePushNotification } from "akanjs/webkit";
 import { useState } from "react";
 
 export const PushNotificationDemo = () => {

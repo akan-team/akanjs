@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-const BARREL_FACETS = new Set(["common", "srvkit", "ui", "webkit"]);
+const BARREL_FACETS = new Set(["common", "srvkit", "ui", "webkit", "plugin"]);
 const FACET_SOURCE_FILE_RE = /\.(ts|tsx)$/;
 const FACET_EXCLUDED_FILE_RE = /(^index\.tsx?$|\.d\.ts$|\.(test|spec)\.(ts|tsx)$|\.css$|\.scss$|\.sass$)/;
 // `ui` exports PascalCase names only; `common`/`srvkit`/`webkit` export camelCase names only. Names with

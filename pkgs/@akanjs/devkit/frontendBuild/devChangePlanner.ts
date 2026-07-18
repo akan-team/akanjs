@@ -3,7 +3,7 @@ import type { ChangeKind, DevChangeAction, DevChangePlan, DevChangeRole } from "
 
 const SOURCE_EXTS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
 const CONFIG_BASENAMES = new Set(["akan.config.ts", "bunfig.toml", "tsconfig.json", "package.json"]);
-const BARREL_FACETS = new Set(["common", "srvkit", "ui", "webkit"]);
+const BARREL_FACETS = new Set(["common", "srvkit", "ui", "webkit", "plugin"]);
 const CLIENT_SUFFIXES = [".Template.tsx", ".Unit.tsx", ".Util.tsx", ".View.tsx", ".Zone.tsx", ".store.ts"];
 const SHARED_SUFFIXES = [".constant.ts", ".dictionary.ts", ".signal.ts"];
 const SERVER_SUFFIXES = [".service.ts", ".document.ts"];

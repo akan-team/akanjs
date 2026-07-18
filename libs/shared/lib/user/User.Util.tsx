@@ -2,11 +2,12 @@
 import { type cnst, fetch, st, usePage } from "@libs/shared/client";
 import { pad } from "@libs/util/common";
 import { AreYouRobot, Icon } from "@libs/util/ui";
+import { usePushNotification } from "@libs/util/webkit";
 import { dayjs } from "akanjs/base";
 import { clsx, getCookie, router, setCookie } from "akanjs/client";
 import { isEmail, isPhoneNumber } from "akanjs/common";
 import { Input, Link, Loading, Modal } from "akanjs/ui";
-import { useInterval, usePushNotification } from "akanjs/webkit";
+import { useInterval } from "akanjs/webkit";
 import { type ReactNode, useEffect, useState } from "react";
 import { AiFillCheckCircle, AiFillGithub } from "react-icons/ai";
 

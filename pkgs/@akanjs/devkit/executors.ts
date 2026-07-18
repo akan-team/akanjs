@@ -11,6 +11,7 @@ import { readFileSync } from "node:fs";
 import { copyFile, mkdir, readdir as readDirEntries, stat } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import type { AkanPlugin, AkanSyncContext, PluginRuntimeContext } from "akanjs";
 import {
   capitalize,
   isRouteSourceFile,
@@ -24,11 +25,6 @@ import chalk from "chalk";
 import ts from "typescript";
 import { AkanAppConfig, AkanLibConfig, decreaseBuildNum, increaseBuildNum } from "./akanConfig";
 import { FileSys } from "./fileSys";
-import {
-  createFirebaseMessagingServiceWorker,
-  type FirebaseClientEnvConfig,
-  normalizeFirebaseClientConfig,
-} from "./firebaseMessagingSw";
 import { getDirname } from "./getDirname";
 import { Linter } from "./linter";
 import { AppInfo, LibInfo, PkgInfo, WorkspaceInfo } from "./scanInfo";
@@ -1087,7 +1083,7 @@ interface SysExecutorOptions {
   type: "app" | "lib";
 }
 
-const scanFacetDirs = ["ui", "webkit", "srvkit", "common"] as const;
+const scanFacetDirs = ["ui", "webkit", "srvkit", "common", "plugin"] as const;
 
 export class SysExecutor extends Executor {
   workspace: WorkspaceExecutor;
@@ -1548,27 +1544,71 @@ export class AppExecutor extends SysExecutor {
       writeLib: write,
     })) as AppInfo;
     if (write) await this.syncAssets(scanInfo.getScanResult().libDeps);
-    if (write) await this.#syncFirebaseMessagingSw();
+    if (write) await this.#runPluginSyncAssets();
     return scanInfo;
   }
-  //* firebase config 가 있으면 public/firebase-messaging-sw.js 를 1회 생성한다(있으면 스킵).
-  //* 서버 동적 라우트를 대체하는 정적 파일. env.client 파생이라 gitignore 되고 env 별로 재생성된다.
-  async #syncFirebaseMessagingSw() {
-    const swRelPath = "public/firebase-messaging-sw.js";
-    if (await FileSys.fileExists(this.getPath(swRelPath))) return;
-    const envClientPath = path.join(this.cwdPath, "env", "env.client.ts");
-    if (!(await FileSys.fileExists(envClientPath))) return;
-    let firebaseConfig: FirebaseClientEnvConfig | null = null;
-    try {
-      const envUrl = pathToFileURL(envClientPath);
-      envUrl.searchParams.set("t", String(Date.now()));
-      const envModule = (await import(envUrl.href)) as { env?: { firebase?: unknown } };
-      firebaseConfig = normalizeFirebaseClientConfig(envModule.env?.firebase);
-    } catch {
-      return;
+  //* build-time asset generation is delegated to plugins (e.g. the push plugin writes
+  //* public/firebase-messaging-sw.js). The framework itself no longer knows about firebase.
+  async #runPluginSyncAssets() {
+    const plugins = await this.collectPlugins();
+    if (!plugins.some((plugin) => plugin.syncAssets)) return;
+    const ctx = this.#makeSyncContext();
+    for (const plugin of plugins) await plugin.syncAssets?.(ctx);
+  }
+  #makeSyncContext(): AkanSyncContext {
+    return {
+      appName: this.name,
+      appPath: this.cwdPath,
+      executor: this,
+      getPath: (rel) => this.getPath(rel),
+      fileExists: (rel) => FileSys.fileExists(this.getPath(rel)),
+      writeFile: async (rel, content, opts) => {
+        await this.writeFile(rel, content, opts);
+      },
+      readEnvClient: async () => {
+        const envClientPath = path.join(this.cwdPath, "env", "env.client.ts");
+        if (!(await FileSys.fileExists(envClientPath))) return null;
+        try {
+          const envUrl = pathToFileURL(envClientPath);
+          envUrl.searchParams.set("t", String(Date.now()));
+          const envModule = (await import(envUrl.href)) as { env?: Record<string, unknown> };
+          return envModule.env ?? null;
+        } catch {
+          return null;
+        }
+      },
+    };
+  }
+  //* Aggregate plugins declared by this app's akan.config plus each of its lib dependencies'
+  //* akan.config. This is how a lib (e.g. libs/util) opts an app into a feature turnkey.
+  async collectPlugins(): Promise<AkanPlugin[]> {
+    const scanInfo = (await this.scan({ write: false })) as AppInfo;
+    const libDeps = scanInfo.getLibs();
+    const appConfig = await this.getConfig();
+    const collected: AkanPlugin[] = [...appConfig.plugins];
+    for (const libName of libDeps) {
+      const libConfig = await LibExecutor.from(this, libName)
+        .getConfig()
+        .catch(() => null);
+      if (libConfig) collected.push(...libConfig.plugins);
     }
-    if (!firebaseConfig) return;
-    await this.writeFile(swRelPath, createFirebaseMessagingServiceWorker(firebaseConfig), { overwrite: false });
+    const seen = new Set<string>();
+    return collected.filter((plugin) => {
+      if (seen.has(plugin.name)) return false;
+      seen.add(plugin.name);
+      return true;
+    });
+  }
+  async getPluginRuntimePackages(): Promise<string[]> {
+    const plugins = await this.collectPlugins();
+    const appConfig = await this.getConfig();
+    const ctx: PluginRuntimeContext = {
+      appName: this.name,
+      mobile: appConfig.mobile,
+      hasMobilePermission: (permission) =>
+        Object.values(appConfig.mobile.targets).some((target) => target.permissions?.includes(permission) ?? false),
+    };
+    return [...new Set(plugins.flatMap((plugin) => plugin.runtimePackages?.(ctx) ?? []))];
   }
   async increaseBuildNum() {
     await increaseBuildNum(this);
