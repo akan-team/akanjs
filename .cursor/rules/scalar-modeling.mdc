@@ -7,8 +7,21 @@ alwaysApply: false
 # Scalar Modeling
 
 - Define Akan models in `.constant.ts` files with `via` from `akanjs/constant`.
-- Import custom scalar helpers such as `ID`, `Int`, `Float`, `JSON`, `Upload`, `Any`, `enumOf`, or `dayjs` from `akanjs/base` when the model needs them.
 - Use `Int` for whole-number counts and quantities; use `Float` only for values that need decimals.
-- Use `ID` for document references and prefer explicit structured fields over `JSON` unless the content is genuinely flexible.
+- Use `ID` for document references and prefer explicit structured fields over `Any` unless the content is genuinely flexible.
 - For date defaults, prefer a function such as `default: () => dayjs()` so the value is created at runtime.
 - Follow the established model layering pattern: `Input`, `Object`, `Light<Model>`, full `<Model>`, and `<Model>Insight` when the domain needs those views.
+
+## Scalar & Field Type Reference
+
+- **Import from `akanjs/base`** (real classes/helpers, not globals): `Int`, `Float`, `ID`, `Any`, `Upload`, `enumOf`, and the `dayjs` factory. There is **no `JSON` scalar** — use `Any` for open/flexible payloads.
+- **Use the JS globals directly (no import needed)**: `String`, `Boolean`, `Date`. They are monkey-patched to behave like scalars, so `field(String)` typechecks.
+- **`Number` is not a valid field/body type.** `NumberConstructor` is intentionally not augmented, so `field(Number)` / `.body("x", Number)` fails to typecheck. Use `Int` or `Float` instead.
+- Runtime resolution of every scalar (globals included) goes through `PrimitiveRegistry` by `refName` (`pkgs/akanjs/base/primitiveRegistry.ts`).
+
+## Image & File Fields
+
+- **Do not declare `Upload` as a model field.** `Upload` is a signal-body-only primitive. Models reference the `File` model instead.
+- Declare an image/file field as a relation to `File`: `image: field(File).optional()` for one, `images: field([File])` for many (see `libs/shared/lib/user/user.constant.ts`, `libs/shared/lib/banner/banner.constant.ts`).
+- The store then auto-generates an `upload<Field>On<Model>(fileList)` action that calls the framework upload mutation and polls file status until it leaves `"uploading"` (`pkgs/akanjs/store/action.ts`).
+- Storage is wired through the `StorageAdaptor` DI role (default `BlobStorage`, `pkgs/akanjs/service/predefinedAdaptor/storage.adaptor.ts`); the reference implementation is the `file` lib (`libs/shared/lib/file/*`). Do not hand-roll data-URL fallbacks.

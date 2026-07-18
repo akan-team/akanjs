@@ -33,17 +33,21 @@ afterEach(async () => {
 });
 
 describe("PagesEntrySourceGenerator", () => {
-  test("generates dynamic import source using absolute module paths", () => {
+  const toSpecifier = (absPath: string) => path.resolve(absPath).split(path.sep).join("/");
+
+  test("generates dynamic import source using forward-slash module paths", () => {
+    const indexAbs = path.resolve("/repo/apps/demo/page/_index.tsx");
+    const adminAbs = path.resolve("/repo/apps/demo/page/admin.tsx");
     const source = PagesEntrySourceGenerator.generate([
-      { key: "./_index.tsx", moduleAbsPath: "/repo/apps/demo/page/_index.tsx" },
-      { key: "./admin.tsx", moduleAbsPath: "/repo/apps/demo/page/admin.tsx" },
+      { key: "./_index.tsx", moduleAbsPath: indexAbs },
+      { key: "./admin.tsx", moduleAbsPath: adminAbs },
     ]);
 
     expect(source).toBe(
       [
         "export const pages = {",
-        '  "./_index.tsx": () => import("/repo/apps/demo/page/_index.tsx"),',
-        '  "./admin.tsx": () => import("/repo/apps/demo/page/admin.tsx"),',
+        `  "./_index.tsx": () => import(${JSON.stringify(toSpecifier(indexAbs))}),`,
+        `  "./admin.tsx": () => import(${JSON.stringify(toSpecifier(adminAbs))}),`,
         "};",
         "",
       ].join("\n"),
@@ -51,15 +55,17 @@ describe("PagesEntrySourceGenerator", () => {
   });
 
   test("generates static import source for single-file CSR bundles", () => {
+    const indexAbs = path.resolve("/repo/apps/demo/page/_index.tsx");
+    const adminAbs = path.resolve("/repo/apps/demo/page/admin.tsx");
     const source = PagesEntrySourceGenerator.generateStatic([
-      { key: "./_index.tsx", moduleAbsPath: "/repo/apps/demo/page/_index.tsx" },
-      { key: "./admin.tsx", moduleAbsPath: "/repo/apps/demo/page/admin.tsx" },
+      { key: "./_index.tsx", moduleAbsPath: indexAbs },
+      { key: "./admin.tsx", moduleAbsPath: adminAbs },
     ]);
 
     expect(source).toBe(
       [
-        'import * as page0 from "/repo/apps/demo/page/_index.tsx";',
-        'import * as page1 from "/repo/apps/demo/page/admin.tsx";',
+        `import * as page0 from ${JSON.stringify(toSpecifier(indexAbs))};`,
+        `import * as page1 from ${JSON.stringify(toSpecifier(adminAbs))};`,
         "export const pages = {",
         '  "./_index.tsx": { loader: async () => page0, isAsyncDefault: false },',
         '  "./admin.tsx": { loader: async () => page1, isAsyncDefault: false },',

@@ -95,7 +95,10 @@ const normalizeDeepLinkDomain = (domain: string) => {
     const url = new URL(normalized.includes("://") ? normalized : `https://${normalized}`);
     return url.host.toLowerCase();
   } catch {
-    return normalized.replace(/^https?:\/\//, "").replace(/\/+$/g, "").toLowerCase();
+    return normalized
+      .replace(/^https?:\/\//, "")
+      .replace(/\/+$/g, "")
+      .toLowerCase();
   }
 };
 
@@ -104,9 +107,7 @@ const normalizeDeepLinks = (deepLinks: DeepPartial<AkanMobileTargetConfig["deepL
   const schemes = normalizeStringList(deepLinks.schemes as string[] | undefined);
   const domains = normalizeStringList((deepLinks.domains as string[] | undefined)?.map(normalizeDeepLinkDomain));
   const teamId = (deepLinks.ios?.teamId as string | undefined)?.trim();
-  const sha256CertFingerprints = normalizeStringList(
-    deepLinks.android?.sha256CertFingerprints as string[] | undefined,
-  );
+  const sha256CertFingerprints = normalizeStringList(deepLinks.android?.sha256CertFingerprints as string[] | undefined);
   if (!schemes && !domains && !teamId && !sha256CertFingerprints) return undefined;
   return {
     ...(schemes ? { schemes } : {}),
@@ -128,6 +129,7 @@ export class AkanAppConfig implements AppConfigResult {
   i18n: AkanI18nConfig;
   publicEnv: string[];
   mobile: AkanMobileConfig;
+  secrets: string[];
   baseDevEnv: BaseDevEnv;
   libs: string[];
   domains = new Set<string>();
@@ -160,13 +162,16 @@ export class AkanAppConfig implements AppConfigResult {
     process.env.AKAN_PUBLIC_DEFAULT_LOCALE = this.i18n.defaultLocale;
     process.env.AKAN_PUBLIC_LOCALES = this.i18n.locales.join(",");
     this.publicEnv = (config?.publicEnv as string[] | undefined) ?? ([] as string[]);
+    this.secrets = (config?.secrets as string[] | undefined) ?? ([] as string[]);
     this.mobile = this.#resolveMobileConfig(config.mobile);
     this.docker = this.#makeDockerContent(config?.docker ?? {});
   }
   #resolveMobileConfig(mobile: DeepPartial<AkanMobileConfig> | undefined): AkanMobileConfig {
-    const { targets: rawTargets, indexPath: _indexPath, ...rawMobile } = (mobile ?? {}) as DeepPartial<AkanMobileConfig> & {
-      indexPath?: unknown;
-    };
+    const {
+      targets: rawTargets,
+      indexPath: _indexPath,
+      ...rawMobile
+    } = (mobile ?? {}) as DeepPartial<AkanMobileConfig> & { indexPath?: unknown };
     const appName = rawMobile.appName ?? this.app.name;
     const appId = rawMobile.appId ?? `com.${this.app.name}.app`;
     const version = rawMobile.version ?? "0.0.1";

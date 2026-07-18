@@ -81,15 +81,17 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
   downloadEnv: target({
     desc: "Download environment variables from cloud or SCP server",
   })
+    .option("host", String, { desc: "host of the cloud to target", default: GlobalConfig.akanCloudHost })
     .with(Workspace)
-    .exec(async function (workspace) {
-      await this.cloudScript.downloadEnv(workspace);
+    .exec(async function (host, workspace) {
+      await this.cloudScript.downloadEnv(workspace, undefined, { host });
     }),
   uploadEnv: target({
     desc: "Upload environment variables to cloud or SCP server",
   })
+    .option("host", String, { desc: "host of the cloud to target", default: GlobalConfig.akanCloudHost })
     .with(Workspace)
-    .exec(async function (workspace) {
-      await this.cloudScript.uploadEnv(workspace);
+    .exec(async function (host, workspace) {
+      await this.cloudScript.uploadEnv(workspace, { host });
     }),
 })) {}

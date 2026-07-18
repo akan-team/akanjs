@@ -24,6 +24,7 @@ export default function Page() {
             { name: "env/", desc: l.trans({ en: "Env values", ko: "환경별 값" }) },
             { name: "images", desc: l.trans({ en: "Image rules", ko: "이미지 규칙" }) },
             { name: "publicEnv", desc: l.trans({ en: "Browser env", ko: "브라우저 환경변수" }) },
+            { name: "secrets", desc: l.trans({ en: "Secret files", ko: "시크릿 파일" }) },
             { name: "advanced", desc: l.trans({ en: "Build options", ko: "빌드 옵션" }) },
           ].map(({ name, desc }) => (
             <div key={name} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
@@ -441,27 +442,6 @@ export default config;`}
                 ko: "Capacitor config로 그대로 전달되는 필드입니다. Akan의 상위 설정으로 표현되지 않는 네이티브 플러그인 설정이 필요할 때만 사용하세요.",
               }),
             },
-            {
-              title: "targets",
-              desc: l.trans({
-                en: "Per-package mobile settings. A target can select a basePath, indexPath, app identity overrides, permissions, files, and deepLinks.",
-                ko: "패키지별 모바일 설정입니다. target은 basePath, indexPath, 앱 식별 정보 override, permission, file, deepLinks를 선택할 수 있습니다.",
-              }),
-            },
-            {
-              title: "deepLinks",
-              desc: l.trans({
-                en: "Native URL schemes and verified HTTPS app links for a mobile target. iOS app links require teamId; Android app links require SHA-256 certificate fingerprints for release verification.",
-                ko: "모바일 target에 사용할 네이티브 URL scheme과 검증된 HTTPS 앱 링크입니다. iOS app link에는 teamId가 필요하고, Android app link에는 릴리즈 검증용 SHA-256 인증서 fingerprint가 필요합니다.",
-              }),
-            },
-            {
-              title: "indexPath",
-              desc: l.trans({
-                en: "Fallback CSR path for the mobile target. Akan uses it for deep link stack recovery and back-button fallback.",
-                ko: "모바일 target의 fallback CSR path입니다. Akan은 딥링크 stack 복원과 back 버튼 fallback에 이 값을 사용합니다.",
-              }),
-            },
           ].map(({ title, desc }) => (
             <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
               <span className="font-mono font-semibold text-primary">{title}: </span>
@@ -500,8 +480,8 @@ export default config;`}
               ko: "files는 네이티브 target path를 앱 기준 source file에 매핑합니다. google-services.json, GoogleService-Info.plist 같은 Firebase push 설정 파일에 유용합니다. 서버 service account JSON은 client/native file mapping에 넣지 마세요. 플랫폼별 설정 절차는 ",
             })}
           </span>
-          <Link href="/cheatsheet/mobile/setup" className="link link-primary">
-            {l.trans({ en: "Mobile Setup", ko: "모바일 설정" })}
+          <Link href="/cheatsheet/dev/mobile" className="link link-primary">
+            {l.trans({ en: "Mobile Development", ko: "모바일 개발" })}
           </Link>
           <span>{l.trans({ en: ".", ko: " 문서를 참고하세요." })}</span>
         </Docs.Alert>
@@ -548,6 +528,48 @@ export default config;`}
           {l.trans({
             en: "publicEnv does not store values. It only says which environment variable names are safe to expose to browser builds.",
             ko: "publicEnv는 값을 저장하는 곳이 아닙니다. 어떤 환경변수 이름을 브라우저 빌드에 노출해도 되는지 정하는 목록입니다.",
+          })}
+        </Docs.Alert>
+      </Scroll.Slide>
+      <div className="divider" />
+
+      <Scroll.Slide id="secret-files" title={l.trans({ en: "Secret Files", ko: "시크릿 파일" })}>
+        <Docs.Title>{l.trans({ en: "Secret Files", ko: "시크릿 파일" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "Some private values cannot live inside env.server.*.ts, such as service-account JSON, TLS certificates, or private key files. The secrets field lists glob patterns for these files so Akan ships them together with the env/ folder.",
+              ko: "service-account JSON, TLS 인증서, private key 파일처럼 env.server.*.ts 안에 담을 수 없는 비공개 값이 있습니다. secrets 필드는 이런 파일의 glob 패턴을 나열해 Akan이 env/ 폴더와 함께 전송하도록 합니다.",
+            })}
+          </div>
+          <div>
+            {l.trans({
+              en: "akan upload-env archives every matched file, and akan download-env restores them. Patterns are resolved relative to the app directory, and Akan syncs them into a managed block in the root .gitignore, so one declaration both deploys and git-ignores the files.",
+              ko: "akan upload-env는 매칭된 모든 파일을 아카이브하고, akan download-env는 이를 복원합니다. 패턴은 앱 디렉터리 기준으로 resolve되며, Akan이 root .gitignore의 managed block에 동기화하므로 한 번의 선언으로 배포와 git-ignore가 함께 처리됩니다.",
+            })}
+          </div>
+        </Docs.Description>
+        <div className="space-y-1">
+          <Code.Snippet
+            className="w-full"
+            title="secrets"
+            code={`const config: AppConfig = {
+  secrets: ["secrets/**/*", "certs/*.pem"],
+};`}
+          />
+          <Code.Snippet
+            className="w-full"
+            title=".gitignore (auto-synced on upload-env)"
+            code={`# akan:secrets (managed by akan.config.ts — do not edit)
+apps/api/certs/*.pem
+apps/api/secrets/**/*
+# akan:secrets:end`}
+          />
+        </div>
+        <Docs.Alert type="warning">
+          {l.trans({
+            en: "publicEnv exposes variable names to the browser; secrets does the opposite. Only glob patterns live in config — the matched files stay local and git-ignored, so never commit their contents.",
+            ko: "publicEnv는 변수 이름을 브라우저에 노출하지만, secrets는 그 반대입니다. config에는 glob 패턴만 존재하며, 매칭된 파일은 로컬에 남고 git-ignore되므로 내용을 절대 commit하지 마세요.",
           })}
         </Docs.Alert>
       </Scroll.Slide>

@@ -28,7 +28,7 @@ Every database module in Akan.js follows this layered architecture:
 
 ## Convention: scan-registered barrels
 
-akan scan auto-discovers each file and registers it in the corresponding barrel:
+akan sync auto-discovers each file and registers it in the corresponding barrel:
 cnst.ts, db.ts, dict.ts, srv.ts, sig.ts, st.ts
 
 ## Related Modules

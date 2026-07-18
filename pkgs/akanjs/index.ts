@@ -89,6 +89,7 @@ export interface AppConfigResult {
   i18n: AkanI18nConfig;
   publicEnv: string[];
   mobile: AkanMobileConfig;
+  secrets: string[];
 }
 
 export interface LibConfigResult {

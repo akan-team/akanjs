@@ -99,11 +99,11 @@ export class SsrBaseArtifactBuilder {
     }
   > {
     const akanServerPath = await this.#resolveAkanServerPath();
-    const rscClientEntry = `${akanServerPath}/rscClient.tsx`;
-    const rscSegmentOutletEntry = `${akanServerPath}/rscSegmentOutlet.tsx`;
+    const rscClientEntry = path.resolve(akanServerPath, "rscClient.tsx");
+    const rscSegmentOutletEntry = path.resolve(akanServerPath, "rscSegmentOutlet.tsx");
     const vendorEntries = VENDOR_SPECIFIERS.map((specifier) => ({
       specifier,
-      absPath: `${akanServerPath}/vendor/${specifier.replaceAll("/", "-").replaceAll(".", "-")}.ts`,
+      absPath: path.resolve(akanServerPath, "vendor", `${specifier.replaceAll("/", "-").replaceAll(".", "-")}.ts`),
     }));
     const entries = [rscClientEntry, rscSegmentOutletEntry, ...vendorEntries.map((v) => v.absPath)];
     const clientBundle = await new ClientEntriesBundler({ app: this.#app, entries, command: this.#command }).bundle();

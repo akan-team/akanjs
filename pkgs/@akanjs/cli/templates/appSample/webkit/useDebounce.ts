@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 // Convention: webkit/ folder — browser-only hooks; "use client" directive required.
 // useEffect/useState are React client-side primitives that only work in the browser.
 // Naming: camelCase .ts, file name = primary export name.
-// Scanned by akan scan into webkit/index.ts barrel automatically.
+// Scanned by akan sync into webkit/index.ts barrel automatically.
 
 export function useDebounce<T>(value: T, delay = 300): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);

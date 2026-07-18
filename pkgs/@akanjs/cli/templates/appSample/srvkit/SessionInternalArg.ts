@@ -11,7 +11,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { a
 // InternalArg is an auto-injected argument for resolveField/endpoint .with() chains.
 // Appended to a query/mutation via: .with(CurrentUserId, { nullable: true }).exec(...)
 // Naming: PascalCase .ts, class name = arg identifier.
-// Scanned by akan scan into srvkit/index.ts barrel automatically.
+// Scanned by akan sync into srvkit/index.ts barrel automatically.
 
 export class CurrentUserId implements InternalArg<string | null> {
   getArg(context: SignalContext): string | null {

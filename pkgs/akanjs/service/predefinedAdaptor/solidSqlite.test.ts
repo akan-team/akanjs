@@ -2,10 +2,26 @@ import { Database, type SQLQueryBindings, type Statement } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { dayjs, Int } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
-import { by, type DatabaseCls, DatabaseRegistry, DocumentSchema, from, into } from "akanjs/document";
-import { type AkanSqlClient, type AkanSqlStatement, SqliteDocumentStore } from "./database.adaptor";
+import {
+  by,
+  type DatabaseCls,
+  DatabaseRegistry,
+  DocumentSchema,
+  documentUpdateHelper,
+  from,
+  into,
+} from "akanjs/document";
+import {
+  type AkanSqlClient,
+  type AkanSqlStatement,
+  PostgresDialect,
+  SqlDocumentStore,
+  SqliteDialect,
+} from "./database.adaptor";
 import { decodeSolidValue, encodeSolidValue, getSolidConfig, toEpochMs } from "./solidSqlite";
 import { resolveDefaultSqliteFile } from "./sqlitePath";
+
+const { set, inc, push, pull, addToSet, unset, mul, min, max } = documentUpdateHelper;
 
 const InsightTestStatus = ["active", "failed", "deploying"] as const;
 class InsightTestInput extends via((f) => ({
@@ -281,7 +297,7 @@ describe("solid sqlite utilities", () => {
     const db = new Database(":memory:", { strict: true, create: true });
     const client = new TestSqliteClient(db);
     const owner = new TestDatabaseOwner(client);
-    const store = new SqliteDocumentStore(owner, insightTestConstant, insightTestDatabase, new DocumentSchema());
+    const store = new SqlDocumentStore(owner, insightTestConstant, insightTestDatabase, new DocumentSchema());
 
     try {
       await client.execute(
@@ -309,7 +325,7 @@ describe("solid sqlite utilities", () => {
     const db = new Database(":memory:", { strict: true, create: true });
     const client = new TestSqliteClient(db);
     const owner = new TestDatabaseOwner(client);
-    const store = new SqliteDocumentStore(owner, ticketTestConstant, ticketTestDatabase, new DocumentSchema());
+    const store = new SqlDocumentStore(owner, ticketTestConstant, ticketTestDatabase, new DocumentSchema());
 
     try {
       await client.execute(
@@ -332,11 +348,163 @@ describe("solid sqlite utilities", () => {
     }
   });
 
+  test("runs save hooks on document persistence but bypasses them on query-based writes", async () => {
+    const db = new Database(":memory:", { strict: true, create: true });
+    const client = new TestSqliteClient(db);
+    const owner = new TestDatabaseOwner(client);
+    const schema = new DocumentSchema();
+    const calls: string[] = [];
+    schema.pre("save", () => {
+      calls.push("pre:save");
+    });
+    schema.post("save", () => {
+      calls.push("post:save");
+    });
+    schema.pre("create", () => {
+      calls.push("pre:create");
+    });
+    schema.post("create", () => {
+      calls.push("post:create");
+    });
+    schema.pre("update", () => {
+      calls.push("pre:update");
+    });
+    schema.post("update", () => {
+      calls.push("post:update");
+    });
+    schema.pre("remove", () => {
+      calls.push("pre:remove");
+    });
+    schema.post("remove", () => {
+      calls.push("post:remove");
+    });
+    const store = new SqlDocumentStore(owner, ticketTestConstant, ticketTestDatabase, schema);
+
+    try {
+      await client.execute(
+        `CREATE TABLE IF NOT EXISTS "_akan_meta" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL, "updatedAt" INTEGER NOT NULL)`,
+      );
+      await store.ensure();
+
+      // create(): document persist -> save + create hooks
+      const created = await store.create({ title: "Ticket", histories: [] });
+      expect(calls).toEqual(["pre:save", "pre:create", "post:create", "post:save"]);
+
+      // document.save(): document persist -> save + update hooks
+      calls.length = 0;
+      created.title = "Renamed";
+      await created.save();
+      expect(calls).toEqual(["pre:save", "pre:update", "post:update", "post:save"]);
+
+      // updateOne query: atomic write fires NO document hooks
+      calls.length = 0;
+      await store.updateOneByQuery({ id: created.id }, { status: set("closed") });
+      expect(calls).toEqual([]);
+
+      // updateMany query: atomic write fires NO document hooks
+      calls.length = 0;
+      await store.updateManyByQuery({ id: created.id }, { status: set("archived") });
+      expect(calls).toEqual([]);
+
+      // upsert insert via updateOne query: still a document create -> create hooks only, save hooks bypassed
+      calls.length = 0;
+      await store.updateOneByQuery({ id: "upsert-1", title: "Upserted" }, { histories: set([]) }, { upsert: true });
+      expect(calls).toEqual(["pre:create", "post:create"]);
+
+      // remove(id): document soft delete -> remove hooks only, no save/update
+      calls.length = 0;
+      await store.remove(created.id);
+      expect(calls).toEqual(["pre:remove", "post:remove"]);
+
+      // deleteMany query: atomic soft delete fires NO document hooks
+      calls.length = 0;
+      await store.deleteManyByQuery({ id: "upsert-1" });
+      expect(calls).toEqual([]);
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("applies query updates atomically via json operators", async () => {
+    const db = new Database(":memory:", { strict: true, create: true });
+    const client = new TestSqliteClient(db);
+    const owner = new TestDatabaseOwner(client);
+    const store = new SqlDocumentStore(owner, insightTestConstant, insightTestDatabase, new DocumentSchema());
+
+    try {
+      await client.execute(
+        `CREATE TABLE IF NOT EXISTS "_akan_meta" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL, "updatedAt" INTEGER NOT NULL)`,
+      );
+      await store.ensure();
+
+      const a = await store.create({ title: "A", score: 10, status: "active", tags: ["x"] });
+      const b = await store.create({ title: "B", score: 5, status: "failed", tags: [] });
+
+      // set + inc + push fold into one atomic UPDATE
+      const r1 = await store.updateOneByQuery({ id: a.id }, { status: set("done"), score: inc(5), tags: push("y") });
+      expect(r1).toEqual({ acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedId: null });
+      const a1 = await store.pickById(a.id);
+      expect(a1.status).toBe("done");
+      expect(a1.score).toBe(15);
+      expect(a1.tags).toEqual(["x", "y"]);
+
+      // numeric operators: mul, then min/max clamp
+      await store.updateOneByQuery({ id: a.id }, { score: mul(2) });
+      expect((await store.pickById(a.id)).score).toBe(30);
+      await store.updateOneByQuery({ id: a.id }, { score: min(20) });
+      expect((await store.pickById(a.id)).score).toBe(20);
+      await store.updateOneByQuery({ id: a.id }, { score: max(25) });
+      expect((await store.pickById(a.id)).score).toBe(25);
+
+      // addToSet dedupes; pull removes by value
+      await store.updateOneByQuery({ id: a.id }, { tags: addToSet("y") });
+      expect((await store.pickById(a.id)).tags).toEqual(["x", "y"]);
+      await store.updateOneByQuery({ id: a.id }, { tags: addToSet("z") });
+      expect((await store.pickById(a.id)).tags).toEqual(["x", "y", "z"]);
+      await store.updateOneByQuery({ id: a.id }, { tags: pull("y") });
+      expect((await store.pickById(a.id)).tags).toEqual(["x", "z"]);
+
+      // unset removes the stored key; the read path refills the schema default
+      await store.updateOneByQuery({ id: a.id }, { status: unset() });
+      expect((await store.pickById(a.id)).status).toBe("active");
+
+      // updateMany touches every matching row and reports the affected count (functional builder form)
+      const rMany = await store.updateManyByQuery({}, ({ inc }) => ({ score: inc(1) }));
+      expect(rMany).toEqual({ acknowledged: true, matchedCount: 2, modifiedCount: 2 });
+      expect((await store.pickById(a.id)).score).toBe(26);
+      expect((await store.pickById(b.id)).score).toBe(6);
+
+      // no match without upsert -> zero counts, nothing inserted
+      const rNone = await store.updateOneByQuery({ id: "missing" }, { score: set(1) });
+      expect(rNone).toEqual({ acknowledged: true, matchedCount: 0, modifiedCount: 0, upsertedId: null });
+      expect(await store.count()).toBe(2);
+
+      // upsert insert applies inc from 0 and setOnInsert (functional builder form)
+      const rUp = await store.updateOneByQuery(
+        { id: "new-1", title: "New" },
+        ({ inc, setOnInsert }) => ({ score: inc(3), status: setOnInsert("fresh") }),
+        { upsert: true },
+      );
+      expect(rUp).toEqual({ acknowledged: true, matchedCount: 0, modifiedCount: 1, upsertedId: "new-1" });
+      const up = await store.pickById("new-1");
+      expect(up.score).toBe(3);
+      expect(up.status).toBe("fresh");
+
+      // deleteMany soft-deletes atomically and hides the row from later reads
+      const rDel = await store.deleteManyByQuery({ status: "failed" });
+      expect(rDel).toEqual({ acknowledged: true, matchedCount: 1, modifiedCount: 1 });
+      expect(await store.findId({ id: b.id })).toBeNull();
+      expect(await store.count()).toBe(2);
+    } finally {
+      await client.close();
+    }
+  });
+
   test("excludes secret fields from default reads while preserving them on update", async () => {
     const db = new Database(":memory:", { strict: true, create: true });
     const client = new TestSqliteClient(db);
     const owner = new TestDatabaseOwner(client);
-    const store = new SqliteDocumentStore(owner, ticketTestConstant, ticketTestDatabase, new DocumentSchema());
+    const store = new SqlDocumentStore(owner, ticketTestConstant, ticketTestDatabase, new DocumentSchema());
 
     try {
       await client.execute(
@@ -375,7 +543,7 @@ describe("solid sqlite utilities", () => {
     const db = new Database(":memory:", { strict: true, create: true });
     const client = new TestSqliteClient(db);
     const owner = new TestDatabaseOwner(client);
-    const store = new SqliteDocumentStore(owner, ticketTestConstant, ticketTestDatabase, new DocumentSchema());
+    const store = new SqlDocumentStore(owner, ticketTestConstant, ticketTestDatabase, new DocumentSchema());
 
     try {
       await client.execute(
@@ -403,7 +571,7 @@ describe("solid sqlite utilities", () => {
     const db = new Database(":memory:", { strict: true, create: true });
     const client = new TestSqliteClient(db);
     const owner = new TestDatabaseOwner(client);
-    const store = new SqliteDocumentStore(owner, ticketTestConstant, ticketTestDatabase, new DocumentSchema());
+    const store = new SqlDocumentStore(owner, ticketTestConstant, ticketTestDatabase, new DocumentSchema());
 
     try {
       await client.execute(
@@ -440,7 +608,7 @@ describe("solid sqlite utilities", () => {
     const db = new Database(":memory:", { strict: true, create: true });
     const client = new TestSqliteClient(db);
     const owner = new TestDatabaseOwner(client);
-    const store = new SqliteDocumentStore(owner, ticketTestConstant, ticketTestDatabase, new DocumentSchema());
+    const store = new SqlDocumentStore(owner, ticketTestConstant, ticketTestDatabase, new DocumentSchema());
 
     try {
       await client.execute(
@@ -469,7 +637,7 @@ describe("solid sqlite utilities", () => {
     const db = new Database(":memory:", { strict: true, create: true });
     const client = new TestSqliteClient(db);
     const owner = new TestDatabaseOwner(client);
-    const store = new SqliteDocumentStore(owner, insightTestConstant, insightTestDatabase, new DocumentSchema());
+    const store = new SqlDocumentStore(owner, insightTestConstant, insightTestDatabase, new DocumentSchema());
 
     try {
       await client.execute(
@@ -495,5 +663,58 @@ describe("solid sqlite utilities", () => {
     } finally {
       await client.close();
     }
+  });
+});
+
+describe("sql dialects", () => {
+  test("sqlite folds update operators into one param-safe json expression", () => {
+    const d = new SqliteDialect();
+    // Folding must not duplicate the accumulator's placeholders: set + inc => exactly 2 params.
+    let acc = d.docColumn();
+    const setFrag = d.applyUpdate(acc, "set", "status", "done");
+    acc = setFrag.sql;
+    const incFrag = d.applyUpdate(acc, "inc", "score", 5);
+    acc = incFrag.sql;
+    const params = [...setFrag.params, ...incFrag.params];
+    expect((acc.match(/\?/g) ?? []).length).toBe(params.length);
+    expect(params).toEqual(['"done"', 5]);
+    expect(acc).toContain("json_set");
+    expect(acc).toContain("json_extract(\"_doc\", '$.score')");
+  });
+
+  test("postgres dialect emits jsonb operators and casts", () => {
+    const d = new PostgresDialect();
+    expect(d.docColumnType()).toBe("jsonb");
+    expect(d.timestampType()).toBe("BIGINT");
+    expect(d.docValuePlaceholder()).toBe("?::jsonb");
+
+    expect(d.eq("status", "active")).toEqual({ sql: `("_doc" #> '{status}') = ?::jsonb`, params: ['"active"'] });
+    expect(d.arrayHas("tags", "x")).toEqual({ sql: `("_doc" #> '{tags}') @> ?::jsonb`, params: ['"x"'] });
+
+    const col = d.docColumn();
+    expect(d.applyUpdate(col, "set", "status", "done").sql).toBe(`jsonb_set("_doc", '{status}', ?::jsonb, true)`);
+    const incSql = d.applyUpdate(col, "inc", "score", 5).sql;
+    expect(incSql).toContain(`#>> '{score}')::numeric, 0) + ?`);
+    expect(incSql).toContain("to_jsonb(");
+    expect(d.applyUpdate(col, "push", "tags", "y").sql).toContain("jsonb_build_array(?::jsonb)");
+    expect(d.applyUpdate(col, "pull", "tags", "y").sql).toContain("jsonb_array_elements");
+    expect(d.applyUpdate(col, "addToSet", "tags", "y").sql).toContain("@> jsonb_build_array(?::jsonb)");
+    expect(d.applyUpdate(col, "unset", "status", undefined).sql).toBe(`("_doc") #- '{status}'`);
+  });
+
+  test("postgres folding keeps params aligned with placeholders", () => {
+    const d = new PostgresDialect();
+    let acc = d.docColumn();
+    const params: unknown[] = [];
+    for (const [op, path, value] of [
+      ["set", "status", "done"],
+      ["inc", "score", 5],
+      ["addToSet", "tags", "y"],
+    ] as const) {
+      const frag = d.applyUpdate(acc, op, path, value);
+      acc = frag.sql;
+      params.push(...frag.params);
+    }
+    expect((acc.match(/\?/g) ?? []).length).toBe(params.length);
   });
 });

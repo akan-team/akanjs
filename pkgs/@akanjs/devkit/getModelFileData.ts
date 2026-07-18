@@ -1,3 +1,5 @@
+import { capitalize } from "akanjs/common";
+
 interface ModelFileData {
   moduleType: "lib" | "app";
   moduleName: string;
@@ -16,9 +18,10 @@ interface ModelFileData {
 export const getModelFileData = async (modulePath: string, modelName: string): Promise<ModelFileData> => {
   const moduleType = modulePath.startsWith("apps") ? "app" : "lib";
   const moduleName = modulePath.split("/")[1] ?? "";
+  const modelComponentName = capitalize(modelName);
   const constantFilePath = `${modulePath}/lib/${modelName}/${modelName}.constant.ts`;
-  const unitFilePath = `${modulePath}/lib/${modelName}/${modelName}.Unit.tsx`;
-  const viewFilePath = `${modulePath}/lib/${modelName}/${modelName}.View.tsx`;
+  const unitFilePath = `${modulePath}/lib/${modelName}/${modelComponentName}.Unit.tsx`;
+  const viewFilePath = `${modulePath}/lib/${modelName}/${modelComponentName}.View.tsx`;
   const [constantFileStr, unitFileStr, viewFileStr] = await Promise.all([
     Bun.file(constantFilePath).text(),
     Bun.file(unitFilePath).text(),

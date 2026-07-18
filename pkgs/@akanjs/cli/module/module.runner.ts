@@ -1,6 +1,56 @@
-import { type Module, runner } from "@akanjs/devkit";
+import {
+  bilingualDescriptionForField,
+  bilingualLabelForField,
+  type Module,
+  moduleSourcePaths,
+  runner,
+} from "@akanjs/devkit";
 import { capitalize } from "akanjs/common";
 import { pluralizeName } from "../pluralizeName";
+
+const purposeByModule: Record<string, string> = {
+  budget: "Budget represents planned or actual money allocated inside the app.",
+  project: "Project represents a project workspace or business initiative managed by the app.",
+  task: "Task represents work items that move through the app workflow.",
+};
+
+const moduleAbstractContent = (moduleName: string) => {
+  const title = capitalize(moduleName);
+  const label = bilingualLabelForField(moduleName);
+  const purpose =
+    purposeByModule[moduleName] ?? `${title} represents ${label.en.toLowerCase()} records managed by the app.`;
+  return `# ${title} Module Abstract
+
+## Purpose
+
+${purpose}
+
+## Domain Rules
+
+- Keep ${label.en.toLowerCase()} data consistent with user-facing dictionary labels.
+
+## Data Meaning
+
+${label.en} (${label.ko}) is the primary business concept for this module.
+
+## Workflows
+
+No lifecycle workflow yet.
+
+## Agent Notes
+
+- Read this abstract before changing the module.
+- Update this file when business invariants, workflows, or public behavior change.
+- Do not update this file for formatting-only, import-only, or style-only changes.
+
+## Related Modules
+
+- None yet.
+`;
+};
+
+const localModuleFilename = (moduleName: string, pathKey: keyof ReturnType<typeof moduleSourcePaths>) =>
+  moduleSourcePaths(moduleName)[pathKey].replace(`lib/${moduleName}/`, "");
 
 export class ModuleRunner extends runner("module") {
   async createService(module: Module) {
@@ -38,7 +88,7 @@ export class ModuleRunner extends runner("module") {
     });
     return {
       component: {
-        filename: `${module.name}.${capitalize(type)}.tsx`,
+        filename: `${capitalize(module.name)}.${capitalize(type)}.tsx`,
         content: await module.sys.readFile(`lib/${module.name}/${capitalize(module.name)}.${capitalize(type)}.tsx`),
       },
       // constant: {
@@ -54,11 +104,35 @@ export class ModuleRunner extends runner("module") {
 
   async createModuleTemplate(module: Module) {
     const names = pluralizeName(module.name);
+    const modelLabel = bilingualLabelForField(module.name);
+    const modelDescription = bilingualDescriptionForField(module.name);
+    const filenames = {
+      abstract: localModuleFilename(module.name, "abstract"),
+      constant: localModuleFilename(module.name, "constant"),
+      dictionary: localModuleFilename(module.name, "dictionary"),
+      service: localModuleFilename(module.name, "service"),
+      store: localModuleFilename(module.name, "store"),
+      signal: localModuleFilename(module.name, "signal"),
+      unit: localModuleFilename(module.name, "unit"),
+      view: localModuleFilename(module.name, "view"),
+      template: localModuleFilename(module.name, "template"),
+      zone: localModuleFilename(module.name, "zone"),
+      util: localModuleFilename(module.name, "util"),
+    };
     await module.applyTemplate({
       basePath: `.`,
       template: "module",
-      dict: { model: module.name, models: names, sysName: module.sys.name },
+      dict: {
+        model: module.name,
+        models: names,
+        sysName: module.sys.name,
+        modelLabelEn: modelLabel.en,
+        modelLabelKo: modelLabel.ko,
+        modelDescEn: modelDescription.en,
+        modelDescKo: modelDescription.ko,
+      },
     });
+    await module.writeFile(filenames.abstract, moduleAbstractContent(module.name));
 
     const [
       abstractContent,
@@ -73,30 +147,30 @@ export class ModuleRunner extends runner("module") {
       zoneContent,
       utilContent,
     ] = await Promise.all([
-      module.readFile(`${module.name}.abstract.md`),
-      module.readFile(`${module.name}.constant.ts`),
-      module.readFile(`${module.name}.dictionary.ts`),
-      module.readFile(`${module.name}.service.ts`),
-      module.readFile(`${module.name}.store.ts`),
-      module.readFile(`${module.name}.signal.ts`),
-      module.readFile(`${module.name}.Unit.tsx`),
-      module.readFile(`${module.name}.View.tsx`),
-      module.readFile(`${module.name}.Template.tsx`),
-      module.readFile(`${module.name}.Zone.tsx`),
-      module.readFile(`${module.name}.Util.tsx`),
+      module.readFile(filenames.abstract),
+      module.readFile(filenames.constant),
+      module.readFile(filenames.dictionary),
+      module.readFile(filenames.service),
+      module.readFile(filenames.store),
+      module.readFile(filenames.signal),
+      module.readFile(filenames.unit),
+      module.readFile(filenames.view),
+      module.readFile(filenames.template),
+      module.readFile(filenames.zone),
+      module.readFile(filenames.util),
     ]);
     return {
-      abstract: { filename: `${module.name}.abstract.md`, content: abstractContent },
-      constant: { filename: `${module.name}.constant.ts`, content: constantContent },
-      dictionary: { filename: `${module.name}.dictionary.ts`, content: dictionaryContent },
-      service: { filename: `${module.name}.service.ts`, content: serviceContent },
-      store: { filename: `${module.name}.store.ts`, content: storeContent },
-      signal: { filename: `${module.name}.signal.ts`, content: signalContent },
-      unit: { filename: `${module.name}.Unit.tsx`, content: unitContent },
-      view: { filename: `${module.name}.View.tsx`, content: viewContent },
-      template: { filename: `${module.name}.Template.tsx`, content: templateContent },
-      zone: { filename: `${module.name}.Zone.tsx`, content: zoneContent },
-      util: { filename: `${module.name}.Util.tsx`, content: utilContent },
+      abstract: { filename: filenames.abstract, content: abstractContent },
+      constant: { filename: filenames.constant, content: constantContent },
+      dictionary: { filename: filenames.dictionary, content: dictionaryContent },
+      service: { filename: filenames.service, content: serviceContent },
+      store: { filename: filenames.store, content: storeContent },
+      signal: { filename: filenames.signal, content: signalContent },
+      unit: { filename: filenames.unit, content: unitContent },
+      view: { filename: filenames.view, content: viewContent },
+      template: { filename: filenames.template, content: templateContent },
+      zone: { filename: filenames.zone, content: zoneContent },
+      util: { filename: filenames.util, content: utilContent },
     };
   }
 }

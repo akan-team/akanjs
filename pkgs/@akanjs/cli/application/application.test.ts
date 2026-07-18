@@ -89,14 +89,7 @@ describe("ApplicationCommand", () => {
   });
 
   test("uses the same mobile target selector metadata across mobile commands", async () => {
-    const mobileCommandKeys = [
-      "buildIos",
-      "buildAndroid",
-      "startIos",
-      "startAndroid",
-      "releaseIos",
-      "releaseAndroid",
-    ];
+    const mobileCommandKeys = ["buildIos", "buildAndroid", "startIos", "startAndroid", "releaseIos", "releaseAndroid"];
     const app = {
       getConfig: async () => ({
         basePaths: new Set(["store", "admin"]),

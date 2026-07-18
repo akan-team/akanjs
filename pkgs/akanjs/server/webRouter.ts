@@ -54,7 +54,6 @@ import type { RscTraceMetadata, SsrManifest } from "./ssrTypes";
 import { createSystemPageResponse, getSystemPageHomeHref } from "./systemPages";
 import type { BaseBuildArtifact, HttpRoutes, RenderState } from "./types";
 
-const RESERVED_BASE_PATHS = new Set(["admin"]);
 const CLIENT_CLOSED_REQUEST_STATUS = 499;
 export const DEFAULT_HTML_RESULT_CACHE_MAX_BODY_BYTES = 2 * 1024 * 1024;
 const APPLE_APP_SITE_ASSOCIATION_PATH = "/.well-known/apple-app-site-association";
@@ -247,8 +246,6 @@ export function normalizeRscTargetUrlForHostBasePath(
 
   const targetBasePath = firstPath && basePaths.includes(firstPath) ? firstPath : null;
   if (seedEntries && routeMatches(targetUrl)) return { url: targetUrl, basePath: targetBasePath ?? basePath };
-  if (RESERVED_BASE_PATHS.has(firstPath ?? "")) return { url: targetUrl, basePath: basePath ?? targetBasePath };
-
   const candidates = [...new Set([basePath, ...basePaths].filter((bp): bp is string => Boolean(bp)))];
   for (const candidate of candidates) {
     if (firstPath === candidate) continue;

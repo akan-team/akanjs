@@ -10,14 +10,14 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dic
     filename: "_index.tsx",
     content: `
 import { Load } from "akanjs/ui";
-import { fetch, usePage, ${dict.Model} } from "${dict.appName}/client";
+import { fetch, usePage, ${dict.Model} } from "@apps/${dict.appName}/client";
 import type { PageConfig } from "akanjs/client";
 
 interface PageProps {
   params: { ${dict.model}Id: string };
 }
 
-export default function Page({ params }: PageProps) {
+export default async function Page({ params }: PageProps) {
   const { l } = usePage();
   const { ${dict.model}Id } = params;
   const { ${dict.model}, ${dict.model}Edit } = await fetch.edit${dict.Model}(${dict.model}Id);

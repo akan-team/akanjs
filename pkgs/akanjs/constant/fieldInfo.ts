@@ -26,7 +26,9 @@ export type ParamFieldType =
     })
   | EnumInstance<string, any>;
 
-export type ConstantFieldType = typeof PrimitiveScalar | Cls | MapConstructor | EnumInstance<string, number>;
+// biome-ignore lint/suspicious/noExplicitAny: enum values can be arbitrary string/number literal unions.
+type ConstantFieldEnumType = EnumInstance<string, any>;
+export type ConstantFieldType = typeof PrimitiveScalar | ConstantModelRef | MapConstructor | ConstantFieldEnumType;
 export type ConstantFieldTypeInput =
   | ConstantFieldType
   | ConstantFieldType[]

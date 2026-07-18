@@ -5,8 +5,6 @@ import type { BaseBuildArtifact } from "../types";
 import { AkanResponse } from "./akanResponse";
 import type { WebProxy } from "./types";
 
-const RESERVED_BASE_PATHS = new Set(["admin"]);
-
 export class HostBasePathWebProxy implements WebProxy {
   static readonly refName = "HostBasePathWebProxy";
   #domainMap: Map<string, string> | null = null;
@@ -36,8 +34,6 @@ export class HostBasePathWebProxy implements WebProxy {
         308,
       );
     }
-
-    if (RESERVED_BASE_PATHS.has(firstPath)) return AkanResponse.next({ request: { headers } });
 
     const internalPath = `/${[locale, basePath, ...segments.slice(2)].filter(Boolean).join("/")}`;
     targetUrl.pathname = internalPath;

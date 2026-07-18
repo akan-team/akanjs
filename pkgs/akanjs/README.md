@@ -218,7 +218,7 @@ akan update
 
 Common areas:
 
-- **Workspace**: create workspaces, generate Mongo configuration, lint and sync projects.
+- **Workspace**: create workspaces, lint and sync projects.
 - **Application**: start, build, typecheck, package, and release apps.
 - **Library**: create, install, sync, push, and pull shared libraries.
 - **Module and scalar**: generate domain modules, models, views, units, templates, and stores.

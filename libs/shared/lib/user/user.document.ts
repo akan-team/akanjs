@@ -9,7 +9,6 @@ import {
 import { randomString } from "@libs/util/common";
 import { dayjs } from "akanjs/base";
 import { by, documentQueryHelper, from, into, type SchemaOf } from "akanjs/document";
-
 import * as cnst from "../cnst";
 import type * as db from "../db";
 import { Err } from "../dict";
@@ -173,28 +172,29 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
     const inactiveUser = await this.User.findOne(q.all({ accountId }, q.exists("removedAt"))).sort({ createdAt: -1 });
     const isSignable = inactiveUser ? inactiveUser.createdAt.isBefore(dayjs().subtract(resignupDays, "day")) : true;
     if (!isSignable) throw new Error(`Retry after ${resignupDays} days`);
-    await this.User.updateMany({ accountId, status: "prepare" }, { unset: { accountId: "" } });
-    const modifiedCount = await this.User.updateOne(
-      { id: userId },
-      { set: { accountId }, pull: { verifies: "password" } },
-    );
+    await this.User.updateMany({ accountId, status: "prepare" }, ({ unset }) => ({ accountId: unset() }));
+    const modifiedCount = await this.User.updateOne({ id: userId }, ({ pull }) => ({
+      accountId,
+      verifies: pull("password"),
+    }));
     return !!modifiedCount;
   }
   async setAccountIdInActiveUser(userId: string, accountId: string) {
     const userExists = await this.existsByAccountId(accountId, ["active", "dormant", "restricted"]);
     if (userExists) throw new Error("AccountId already exists");
-    await this.User.updateMany({ accountId, status: "prepare" }, { unset: { accountId: "" } });
-    const modifiedCount = await this.User.updateOne({ id: userId }, { set: { accountId } });
+    await this.User.updateMany({ accountId, status: "prepare" }, ({ unset }) => ({ accountId: unset() }));
+    const modifiedCount = await this.User.updateOne({ id: userId }, { accountId });
     return !!modifiedCount;
   }
   async setPasswordInPrepareUser(userId: string, accountId: string, password: string) {
     const { accountId: existingAccountId } = await this.User.pickById(userId, { accountId: true });
     if (!existingAccountId) throw new Error("No accountId in this user");
     if (existingAccountId !== accountId) throw new Error("Invalid accountId");
-    const modifiedCount = await this.User.updateOne(
-      { id: userId },
-      { set: { password: await hashPassword(password) }, addToSet: { verifies: "password" } },
-    );
+    const hashedPassword = await hashPassword(password);
+    const modifiedCount = await this.User.updateOne({ id: userId }, ({ addToSet }) => ({
+      password: hashedPassword,
+      verifies: addToSet("password"),
+    }));
     return !!modifiedCount;
   }
   async getUserByPassword(accountId: string, password: string) {
@@ -210,10 +210,11 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
     return user;
   }
   async setPasswordInActiveUser(userId: string, password: string) {
-    const modifiedCount = await this.User.updateOne(
-      { id: userId },
-      { set: { password: await hashPassword(password) }, addToSet: { verifies: "password" } },
-    );
+    const hashedPassword = await hashPassword(password);
+    const modifiedCount = await this.User.updateOne({ id: userId }, ({ addToSet }) => ({
+      password: hashedPassword,
+      verifies: addToSet("password"),
+    }));
     return !!modifiedCount;
   }
   async logResetTime(userId: string, at = dayjs()) {
@@ -229,14 +230,16 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
     const auth = (await this.User.pickById(userId, { accountId: true })) as { accountId?: string };
     if (!auth.accountId) throw new Error("No accountId in this user");
     if (auth.accountId !== accountId) throw new Error("Invalid accountId");
-    const { modifiedCount } = await this.User.updateOne({ id: userId }, { addToSet: { verifies: ssoType } });
+    const { modifiedCount } = await this.User.updateOne({ id: userId }, ({ addToSet }) => ({
+      verifies: addToSet(ssoType),
+    }));
     return !!modifiedCount;
   }
   async subSso(userId: string, accountId: string, ssoType: cnst.SsoType["value"]) {
     const auth = (await this.User.pickById(userId, { accountId: true })) as { accountId?: string };
     if (!auth.accountId) throw new Error("No accountId in this user");
     if (auth.accountId !== accountId) throw new Error("Invalid accountId");
-    const { modifiedCount } = await this.User.updateOne({ id: userId }, { pull: { verifies: ssoType } });
+    const { modifiedCount } = await this.User.updateOne({ id: userId }, ({ pull }) => ({ verifies: pull(ssoType) }));
     return !!modifiedCount;
   }
   async getUserBySso(accountId: string, ssoType: cnst.SsoType["value"]) {
@@ -284,7 +287,7 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
     const inactiveUser = await this.User.findOne(q.all({ phone }, q.exists("removedAt"))).sort({ createdAt: -1 });
     const isSignable = inactiveUser ? inactiveUser.createdAt.isBefore(dayjs().subtract(resignupDays, "day")) : true;
     if (!isSignable) throw new Error(`Retry after ${resignupDays} days`);
-    const { modifiedCount } = await this.User.updateOne({ id: userId }, { set: { phone } });
+    const { modifiedCount } = await this.User.updateOne({ id: userId }, { phone });
     return !!modifiedCount;
   }
   async verifyPhoneInPrepareUser(userId: string, phone: string) {
@@ -294,11 +297,14 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
     const auth = (await this.User.pickById(userId, { phone: true })) as { phone?: string };
     if (auth.phone !== phone) throw new Error("Invalid phone number");
 
-    await this.User.updateMany({ phone, status: "prepare" }, { unset: { phone: "" }, pull: { verifies: "phone" } });
-    const { modifiedCount } = await this.User.updateOne(
-      { id: userId },
-      { set: { phone }, addToSet: { verifies: "phone" } },
-    );
+    await this.User.updateMany({ phone, status: "prepare" }, ({ unset, pull }) => ({
+      phone: unset(),
+      verifies: pull("phone"),
+    }));
+    const { modifiedCount } = await this.User.updateOne({ id: userId }, ({ addToSet }) => ({
+      phone,
+      verifies: addToSet("phone"),
+    }));
     return !!modifiedCount;
   }
   async setPhoneInActiveUser(userId: string, phone: string) {
@@ -306,11 +312,14 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
     if (auth.phone === phone) throw new Error("Already set the same phone number");
     const userExists = await this.existsByPhone(phone, ["active", "dormant", "restricted"]);
     if (userExists) throw new Error("Phone already exists");
-    await this.User.updateMany({ phone, status: "prepare" }, { unset: { phone: "" }, pull: { verifies: "phone" } });
-    const { modifiedCount } = await this.User.updateOne(
-      { id: userId },
-      { set: { phone }, addToSet: { verifies: "phone" } },
-    );
+    await this.User.updateMany({ phone, status: "prepare" }, ({ unset, pull }) => ({
+      phone: unset(),
+      verifies: pull("phone"),
+    }));
+    const { modifiedCount } = await this.User.updateOne({ id: userId }, ({ addToSet }) => ({
+      phone,
+      verifies: addToSet("phone"),
+    }));
     return !!modifiedCount;
   }
 
@@ -321,14 +330,14 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
     const inactiveUser = await this.User.findOne(q.all({ accountId }, q.exists("removedAt"))).sort({ createdAt: -1 });
     const isSignable = inactiveUser ? inactiveUser.createdAt.isBefore(dayjs().subtract(resignupDays, "day")) : true;
     if (!isSignable) throw new Error(`Retry after ${resignupDays} days`);
-    await this.User.updateMany(
-      { accountId, status: "prepare" },
-      { unset: { accountId: "" }, pull: { verifies: ssoType } },
-    );
-    const modifiedCount = await this.User.updateOne(
-      { id: userId },
-      { set: { accountId }, addToSet: { verifies: ssoType } },
-    );
+    await this.User.updateMany({ accountId, status: "prepare" }, ({ unset, pull }) => ({
+      accountId: unset(),
+      verifies: pull(ssoType),
+    }));
+    const modifiedCount = await this.User.updateOne({ id: userId }, ({ addToSet }) => ({
+      accountId,
+      verifies: addToSet(ssoType),
+    }));
     return !!modifiedCount;
   }
   async getActiveUserBySso(accountId: string, ssoType: cnst.SsoType["value"]) {
@@ -340,38 +349,39 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
     return user;
   }
   async setName(userId: string, name: string) {
-    const { modifiedCount } = await this.User.updateOne({ id: userId }, { set: { name } });
+    const { modifiedCount } = await this.User.updateOne({ id: userId }, { name });
     return !!modifiedCount;
   }
   async setNickname(userId: string, nickname: string) {
-    const { modifiedCount } = await this.User.updateOne({ id: userId }, { set: { nickname } });
+    const { modifiedCount } = await this.User.updateOne({ id: userId }, { nickname });
     return !!modifiedCount;
   }
   async setAppliedImages(userId: string, appliedImages: string[]) {
-    const { modifiedCount } = await this.User.updateOne({ id: userId }, { set: { appliedImages } });
+    const { modifiedCount } = await this.User.updateOne({ id: userId }, { appliedImages });
     return !!modifiedCount;
   }
   async setAgreePolicies(userId: string, agreePolicies: string[]) {
-    const { modifiedCount } = await this.User.updateOne({ id: userId }, { set: { agreePolicies } });
+    const { modifiedCount } = await this.User.updateOne({ id: userId }, { agreePolicies });
     return !!modifiedCount;
   }
   async setDiscord(userId: string, discord: { nickname?: string; user?: { username: string } }) {
-    const { modifiedCount } = await this.User.updateOne({ id: userId }, { set: { discord } });
+    const { modifiedCount } = await this.User.updateOne({ id: userId }, { discord });
     return !!modifiedCount;
   }
   async setNotiSetting(userId: string, notiSetting: cnst.NotiSetting["value"]) {
-    const { modifiedCount } = await this.User.updateOne({ id: userId }, { set: { "notiInfo.setting": notiSetting } });
+    const { modifiedCount } = await this.User.updateOne({ id: userId }, { "notiInfo.setting": notiSetting });
     return !!modifiedCount;
   }
   async addNotiDeviceToken(userId: string, token: string) {
-    const { modifiedCount } = await this.User.updateOne(
-      { id: userId },
-      { addToSet: { "notiInfo.deviceTokens": token } },
-    );
+    const { modifiedCount } = await this.User.updateOne({ id: userId }, ({ addToSet }) => ({
+      "notiInfo.deviceTokens": addToSet(token),
+    }));
     return !!modifiedCount;
   }
   async subNotiDeviceToken(userId: string, token: string) {
-    const { modifiedCount } = await this.User.updateOne({ id: userId }, { pull: { "notiInfo.deviceTokens": token } });
+    const { modifiedCount } = await this.User.updateOne({ id: userId }, ({ pull }) => ({
+      "notiInfo.deviceTokens": pull(token),
+    }));
     return !!modifiedCount;
   }
   async getRestrictInfo(userId: string) {
@@ -383,15 +393,15 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
   async restrict(userId: string, reason: string, until = dayjs().add(1, "year")) {
     const { modifiedCount } = await this.User.updateOne(
       { id: userId },
-      { set: { "restrictInfo.reason": reason, "restrictInfo.until": until.toDate() } },
+      { "restrictInfo.reason": reason, "restrictInfo.until": until.toDate() },
     );
     return !!modifiedCount;
   }
   async release(userId: string) {
-    const { modifiedCount } = await this.User.updateOne(
-      { id: userId },
-      { unset: { "restrictInfo.reason": "", "restrictInfo.until": "" } },
-    );
+    const { modifiedCount } = await this.User.updateOne({ id: userId }, ({ unset }) => ({
+      "restrictInfo.reason": unset(),
+      "restrictInfo.until": unset(),
+    }));
     return !!modifiedCount;
   }
   async getEncourageInfo(userId: string) {
@@ -403,14 +413,14 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
   async setJourney(userId: string, journey: cnst.Journey["value"], journeyAt = dayjs()) {
     const { modifiedCount } = await this.User.updateOne(
       { id: userId },
-      { set: { "encourageInfo.journey": journey, "encourageInfo.journeyAt": journeyAt.toDate() } },
+      { "encourageInfo.journey": journey, "encourageInfo.journeyAt": journeyAt.toDate() },
     );
     return !!modifiedCount;
   }
   async setInquiry(userId: string, inquiry: cnst.Inquiry["value"], inquiryAt = dayjs()) {
     const { modifiedCount } = await this.User.updateOne(
       { id: userId },
-      { set: { "encourageInfo.inquiry": inquiry, "encourageInfo.inquiryAt": inquiryAt.toDate() } },
+      { "encourageInfo.inquiry": inquiry, "encourageInfo.inquiryAt": inquiryAt.toDate() },
     );
     return !!modifiedCount;
   }

@@ -1,0 +1,28 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Every model already gets auto-generated CRUD endpoints in its slice fetch
+// contract (see pkgs/akanjs/fetch/fetchType/sliceFetch.type.ts and
+// pkgs/akanjs/fetch/client/fetchClient.ts):
+//   <refName>, light<Model>, create<Model>, update<Model>, remove<Model>,
+//   view<Model>, edit<Model>, merge<Model>.
+// Re-declaring one of them inside the `endpoint(...)` block of a
+// `<model>.signal.ts` file shadows the framework contract and can pass
+// sync/typecheck/build while failing at runtime, so flag it here.
+`$key: $value` as $prop where {
+  $prop <: within `class $className extends $base {}` where {
+    $base <: contains `endpoint`,
+    $className <: r"([A-Z][a-zA-Z0-9]*)Endpoint"($Cap)
+  },
+  $filename <: r".*/([a-z][a-zA-Z0-9]*)\.signal\.ts"($model),
+  or {
+    $key <: $model,
+    $key <: r"(?:light|create|update|remove|view|edit|merge)([A-Z][a-zA-Z0-9]*)"($keyCap) where {
+      $keyCap <: $Cap
+    }
+  },
+  register_diagnostic(
+    span = $key,
+    message = "This endpoint name collides with an auto-generated CRUD endpoint (<model>, light/create/update/remove/view/edit/merge<Model>). Rename it or move the logic into the service; do not re-declare predefined endpoints."
+  )
+}

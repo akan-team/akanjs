@@ -5,6 +5,7 @@ import { getLatestPackageVersion, getNpmRegistryUrl } from "../npmRegistry";
 const defaultWorkspacePeerDependencies = new Set([
   "@react-spring/web",
   "@use-gesture/react",
+  "chance",
   "croner",
   "daisyui",
   "react",
@@ -35,6 +36,16 @@ export class WorkspaceRunner extends runner("workspace") {
       dict,
       overwrite,
     });
+
+    // CLAUDE.md only imports AGENTS.md so Claude Code shares the same source of truth.
+    created.push(
+      ...(await workspace.applyTemplate({
+        basePath: ".",
+        template: "workspaceRoot/CLAUDE.md.template",
+        dict,
+        overwrite,
+      })),
+    );
 
     if (!cursorRules) return created;
 

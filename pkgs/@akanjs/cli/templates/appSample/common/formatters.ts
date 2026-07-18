@@ -7,7 +7,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { a
 // Convention: common/ folder — only pure functions that run on both server and client.
 // Cannot import window, Bun, process.env, or any runtime-specific API.
 // Naming: camelCase .ts, file name = primary export name.
-// Scanned by akan scan into common/index.ts barrel automatically.
+// Scanned by akan sync into common/index.ts barrel automatically.
 
 export function trimString(str: string, maxLength = 50, suffix = "...") {
   if (str.length <= maxLength) return str;

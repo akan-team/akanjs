@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { dayjs, enumOf, FIELD_META, ID, Int, type PrimitiveScalar } from "akanjs/base";
+import { dayjs, enumOf, FIELD_META, Float, ID, Int, type PrimitiveScalar } from "akanjs/base";
 import { immerable } from "immer";
 import {
   type ConstantCls,
@@ -116,11 +116,22 @@ const buildRelationMethodFields = (f: FieldBuilder) => ({
   owner: f(MethodUserLight),
   members: f([MethodUserLight]),
 });
+const buildNumericFieldTypeChecks = (f: FieldBuilder) => ({
+  int: f<number>(Int),
+  float: f<number>(Float),
+  // @ts-expect-error Number is not an Akan scalar; choose Int or Float explicitly.
+  number: f(Number),
+  // @ts-expect-error Number arrays must choose Int or Float explicitly.
+  numberList: f([Number]),
+  // @ts-expect-error Explicit number fields still need Int or Float.
+  explicitNumber: f<number>(Number),
+});
 type TypeOptimizedFieldObject = FieldInfoObjectToFieldObject<ReturnType<typeof buildTypeOptimizedFields>>;
 type TypeOptimizedInputRef = ConstantCls<
   ExtractFieldInfoObject<ReturnType<typeof buildTypeOptimizedFields>>,
   TypeOptimizedFieldObject
 >;
+type NumericFieldTypeCheckResult = ReturnType<typeof buildNumericFieldTypeChecks>;
 type RelationMethodSchema = ExtractFieldInfoObject<ReturnType<typeof buildRelationMethodFields>>;
 const TypeOptimizedExtendedInput = via(
   (f) => ({
@@ -141,6 +152,7 @@ type _TypeOptimizedAssertions = [
       "name" | "age" | "role" | "tags" | "metadata" | "password" | "extraCount"
     >
   >,
+  Assert<Equal<keyof NumericFieldTypeCheckResult, "int" | "float" | "number" | "numberList" | "explicitNumber">>,
 ];
 type _RelationMethodAssertions = [
   Assert<Equal<RelationMethodSchema["owner"], InstanceType<typeof MethodUserLight>>>,

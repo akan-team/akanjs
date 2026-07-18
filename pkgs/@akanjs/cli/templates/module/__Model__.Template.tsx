@@ -11,7 +11,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dic
     content: `
 "use client";
 import { Field, Layout } from "akanjs/ui";
-import { cnst, st, usePage } from "@${scanInfo?.type ?? "apps"}/${dict.sysName}/client";
+import { st, usePage } from "@${scanInfo?.type ?? "apps"}/${dict.sysName}/client";
 
 interface GeneralProps {
   className?: string;
@@ -23,10 +23,9 @@ export const General = ({ className }: GeneralProps) => {
   return (
     <Layout.Template className={className}>
       <Field.Text
-        label={l("${dict.model}.id")}
-        desc={l("${dict.model}.id.desc")}
-        value={${dict.model}Form.id}
-        onChange={st.do.setIdOn${dict.Model}}
+        label={l("${dict.model}.name")}
+        value={${dict.model}Form.name}
+        onChange={st.do.setNameOn${dict.Model}}
       />
     </Layout.Template>
   );

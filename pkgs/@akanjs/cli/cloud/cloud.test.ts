@@ -1,9 +1,17 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
-import { CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit";
-import { createCallRecorder, createFakeExecutor } from "../testHelpers";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { existsSync } from "node:fs";
+import { readFile, rm } from "node:fs/promises";
+import path from "node:path";
+import { AppExecutor, CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit";
+import { createCallRecorder, createFakeExecutor, makeCliTempWorkspace, writeText } from "../testHelpers";
 import { CloudCommand } from "./cloud.command";
 import { CloudRunner } from "./cloud.runner";
 import { CloudScript } from "./cloud.script";
+
+const stubAppConfigs = (secretsByApp: Record<string, string[]>) =>
+  spyOn(AppExecutor, "from").mockImplementation(
+    (_executor, appName) => ({ getConfig: async () => ({ secrets: secretsByApp[appName] ?? [] }) }) as never,
+  );
 
 afterEach(() => {
   CommandContainer.clear();
@@ -196,5 +204,181 @@ describe("CloudRunner", () => {
         },
       ],
     ]);
+  });
+
+  const createEnvWorkspace = (root: string, recorder = createCallRecorder()) =>
+    createFakeExecutor(
+      "workspace",
+      {
+        workspaceRoot: root,
+        getExecs: async () => [["demo"], [], []],
+        readdir: async (dirPath: string) =>
+          dirPath === "apps/demo/env"
+            ? ["env.client.local.ts", "env.server.local.ts", "env.client.type.ts", "env.client.example.ts"]
+            : [],
+        mkdir: async (...args: unknown[]) => recorder.record("workspace.mkdir", ...args),
+        remove: async (...args: unknown[]) => recorder.record("workspace.remove", ...args),
+        exists: async (filePath: string) => existsSync(path.join(root, filePath)),
+        readFile: async (filePath: string) => readFile(path.join(root, filePath), "utf8"),
+        writeFile: async (filePath: string, content: string) => {
+          recorder.record("workspace.writeFile", filePath);
+          await writeText(path.join(root, filePath), content);
+        },
+      },
+      recorder,
+    );
+
+  test("archives custom secret files resolved from app config globs alongside default env files", async () => {
+    const { root } = await makeCliTempWorkspace();
+    await writeText(`${root}/apps/demo/secrets/token.json`, "{}");
+    await writeText(`${root}/apps/demo/secrets/nested/key.pem`, "key");
+    // A duplicate glob and a glob overlapping the first ensure results are deduped.
+    stubAppConfigs({ demo: ["secrets/**/*", "secrets/token.json"] });
+    const recorder = createCallRecorder();
+    const workspace = createEnvWorkspace(root, recorder);
+
+    try {
+      const result = await new CloudRunner().gatherEnvFiles(workspace as never);
+
+      const expectedFiles = [
+        "apps/demo/env/env.client.local.ts",
+        "apps/demo/env/env.server.local.ts",
+        "apps/demo/secrets/nested/key.pem",
+        "apps/demo/secrets/token.json",
+      ];
+      expect(result).toEqual({ files: expectedFiles, path: "local/env.tar" });
+      const tarCall = recorder.calls.find((call) => call.name === "workspace.spawn");
+      expect(tarCall?.args).toEqual(["tar", ["-cf", "local/env.tar", ...expectedFiles], { cwd: root }]);
+      // Secret globs are synced (not the resolved files) so newly added secrets stay ignored.
+      const gitignore = await readFile(path.join(root, ".gitignore"), "utf8");
+      expect(gitignore).toContain("# akan:secrets (managed by akan.config.ts — do not edit)");
+      expect(gitignore).toContain("apps/demo/secrets/**/*");
+      expect(gitignore).toContain("apps/demo/secrets/token.json");
+      expect(gitignore).toContain("# akan:secrets:end");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("syncs secret globs into an existing .gitignore without clobbering user entries", async () => {
+    const { root } = await makeCliTempWorkspace();
+    await writeText(`${root}/.gitignore`, "node_modules\ndist\n");
+    await writeText(`${root}/apps/demo/secrets/token.json`, "{}");
+    stubAppConfigs({ demo: ["secrets/**/*"] });
+    const workspace = createEnvWorkspace(root);
+
+    try {
+      await new CloudRunner().gatherEnvFiles(workspace as never);
+
+      const gitignore = await readFile(path.join(root, ".gitignore"), "utf8");
+      expect(gitignore).toBe(
+        "node_modules\ndist\n\n# akan:secrets (managed by akan.config.ts — do not edit)\napps/demo/secrets/**/*\n# akan:secrets:end\n",
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("re-running upload-env leaves the managed .gitignore block unchanged (idempotent)", async () => {
+    const { root } = await makeCliTempWorkspace();
+    await writeText(`${root}/.gitignore`, "node_modules\n");
+    await writeText(`${root}/apps/demo/secrets/token.json`, "{}");
+    stubAppConfigs({ demo: ["secrets/**/*"] });
+
+    try {
+      const first = createCallRecorder();
+      await new CloudRunner().gatherEnvFiles(createEnvWorkspace(root, first) as never);
+      const afterFirst = await readFile(path.join(root, ".gitignore"), "utf8");
+
+      const second = createCallRecorder();
+      await new CloudRunner().gatherEnvFiles(createEnvWorkspace(root, second) as never);
+      const afterSecond = await readFile(path.join(root, ".gitignore"), "utf8");
+
+      expect(afterSecond).toBe(afterFirst);
+      // The first run writes .gitignore; the second is a no-op since nothing changed.
+      expect(first.names()).toContain("workspace.writeFile");
+      expect(second.names()).not.toContain("workspace.writeFile");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("removes the managed .gitignore block when no secrets are configured", async () => {
+    const { root } = await makeCliTempWorkspace();
+    await writeText(
+      `${root}/.gitignore`,
+      "node_modules\n\n# akan:secrets (managed by akan.config.ts — do not edit)\napps/demo/secrets/**/*\n# akan:secrets:end\n",
+    );
+    stubAppConfigs({ demo: [] });
+    const workspace = createEnvWorkspace(root);
+
+    try {
+      await new CloudRunner().gatherEnvFiles(workspace as never);
+
+      const gitignore = await readFile(path.join(root, ".gitignore"), "utf8");
+      expect(gitignore).toBe("node_modules\n");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("archives only default env files when no secrets are configured", async () => {
+    const { root } = await makeCliTempWorkspace();
+    stubAppConfigs({ demo: [] });
+    const recorder = createCallRecorder();
+    const workspace = createEnvWorkspace(root, recorder);
+
+    try {
+      const result = await new CloudRunner().gatherEnvFiles(workspace as never);
+
+      expect(result.files).toEqual(["apps/demo/env/env.client.local.ts", "apps/demo/env/env.server.local.ts"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("ignores secret globs that match no files", async () => {
+    const { root } = await makeCliTempWorkspace();
+    await writeText(`${root}/apps/demo/package.json`, "{}");
+    stubAppConfigs({ demo: ["secrets/**/*"] });
+    const recorder = createCallRecorder();
+    const workspace = createEnvWorkspace(root, recorder);
+
+    try {
+      const result = await new CloudRunner().gatherEnvFiles(workspace as never);
+
+      expect(result.files).toEqual(["apps/demo/env/env.client.local.ts", "apps/demo/env/env.server.local.ts"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("throws when no env files and no secret matches exist", async () => {
+    const { root } = await makeCliTempWorkspace();
+    await writeText(`${root}/apps/demo/package.json`, "{}");
+    stubAppConfigs({ demo: ["secrets/**/*"] });
+    const recorder = createCallRecorder();
+    const workspace = createFakeExecutor(
+      "workspace",
+      {
+        workspaceRoot: root,
+        getExecs: async () => [["demo"], [], []],
+        readdir: async () => [],
+        mkdir: async (...args: unknown[]) => recorder.record("workspace.mkdir", ...args),
+        remove: async (...args: unknown[]) => recorder.record("workspace.remove", ...args),
+        exists: async (filePath: string) => existsSync(path.join(root, filePath)),
+        readFile: async (filePath: string) => readFile(path.join(root, filePath), "utf8"),
+        writeFile: async (filePath: string, content: string) => writeText(path.join(root, filePath), content),
+      },
+      recorder,
+    );
+
+    try {
+      await expect(new CloudRunner().gatherEnvFiles(workspace as never)).rejects.toThrow(
+        "No environment files found to archive",
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

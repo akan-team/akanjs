@@ -95,7 +95,7 @@ export class WorkspaceScript extends script("workspace", [
     for (const libName of libNames) await this.libraryScript.syncLibrary(LibExecutor.from(workspace, libName));
     for (const appName of appNames) await this.applicationScript.sync(AppExecutor.from(workspace, appName));
   }
-  async init(devProjectId: string, workspace: Workspace) {
+  async init(devProjectId: string, workspace: Workspace, { host }: { host?: string } = {}) {
     const [bunfigExists, packageJsonExists, tsconfigExists] = await Promise.all([
       workspace.exists("bunfig.toml"),
       workspace.exists("package.json"),
@@ -106,7 +106,7 @@ export class WorkspaceScript extends script("workspace", [
     const spinner = workspace.spinning("Initializing workspace...");
     try {
       await this.workspaceRunner.writeTopLevelEnv(workspace, devProjectId);
-      await this.cloudScript.downloadEnv(workspace, devProjectId);
+      await this.cloudScript.downloadEnv(workspace, devProjectId, { host });
       spinner.succeed("Workspace initialized");
     } catch (error) {
       spinner.fail("Workspace initialization failed");

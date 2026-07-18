@@ -10,7 +10,7 @@ import { clsx } from "akanjs/client";
 // ===== QuantityControl.tsx =====
 // Convention: ui/ folder — reusable visual components. PascalCase .tsx, "use client" directive.
 // File name = exported component name.
-// Scanned by akan scan into ui/index.ts barrel automatically.
+// Scanned by akan sync into ui/index.ts barrel automatically.
 
 interface QuantityControlProps {
   className?: string;

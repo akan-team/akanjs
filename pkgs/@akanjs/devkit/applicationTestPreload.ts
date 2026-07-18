@@ -32,9 +32,14 @@ export async function resolveSignalTestPreloadPath(target: SignalTestPreloadTarg
     path.resolve(import.meta.dir, "../../akanjs", SIGNAL_TEST_PRELOAD_PATH),
   );
 
-  for (const candidate of [...new Set(candidates)]) {
+  const uniqueCandidates = [...new Set(candidates)];
+  for (const candidate of uniqueCandidates) {
     if (await Bun.file(candidate).exists()) return candidate;
   }
 
-  throw new Error(`Failed to locate ${SIGNAL_TEST_PRELOAD_PATH} from ${target.cwdPath}`);
+  throw new Error(
+    `Failed to locate ${SIGNAL_TEST_PRELOAD_PATH} from ${target.cwdPath}.\nProbed paths:\n${uniqueCandidates
+      .map((candidate) => `  - ${candidate}`)
+      .join("\n")}`,
+  );
 }

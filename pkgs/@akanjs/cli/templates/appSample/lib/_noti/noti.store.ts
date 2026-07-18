@@ -9,7 +9,7 @@ import { store } from "akanjs/store";
 // Extends store("noti" as const, ...) — named store (string literal), no signal binding.
 // DB modules use store(sig.<module>, ...); service modules use store("<name>" as const, ...).
 // State definitions use direct property assignment. Actions use this.set() / this.get().
-// Registered by akan scan into st.ts barrel.
+// Registered by akan sync into st.ts barrel.
 
 export class NotiStore extends store("noti" as const, () => ({
   notiList: [] as { id: string; type: string; message: string; sentAt: Dayjs }[],

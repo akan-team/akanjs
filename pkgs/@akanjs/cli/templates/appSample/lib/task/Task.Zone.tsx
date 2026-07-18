@@ -4,11 +4,9 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { a
   return {
     filename: "Task.Zone.tsx",
     content: `"use client";
-import { Task, usePage } from "@apps/${dict.appName}/client";
+import { type cnst, Task, usePage } from "@apps/${dict.appName}/client";
 import type { ClientInit, ClientView } from "akanjs/fetch";
 import { Link, Load } from "akanjs/ui";
-
-import * as cnst from "../cnst";
 
 // ===== Task.Zone.tsx =====
 // Convention: lib/<module>/ — PascalCase .tsx, Zone suffix = composition layer between pages and UI.

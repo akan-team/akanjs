@@ -17,8 +17,8 @@ export default function Page() {
           </div>
           <div>
             {l.trans({
-              en: `Think of it like the difference between an order ticket and a detailed receipt. The summary card is like a stub - it shows the basics so you can identify the order. But the detailed view is like the full receipt that shows everything: every topping you chose, when you placed the order, and whether it's ready to pick up. It's the complete story of your ice cream order!`,
-              ko: `주문번호표와 상세 영수증의 차이처럼 생각해보세요. 요약 카드는 스텁과 같습니다 - 주문을 식별할 수 있도록 기본적인 정보를 보여줍니다. 하지만 상세 뷰는 모든 것을 보여주는 전체 영수증과 같습니다: 선택한 모든 토핑, 주문한 시간, 그리고 받을 준비가 되었는지까지. 아이스크림 주문의 완전한 이야기인 것이죠!`,
+              en: `Here's a simpler way to think about it. The summary card is like seeing "Vanilla Cone" in your order list — just enough to know which order is yours. The detailed view is what you see when you tap on it: the exact size you picked, every topping you added, when you placed the order, and whether it's ready. It's the difference between a one-line note and the full story of your ice cream order!`,
+              ko: `좀 더 쉽게 설명해볼게요. 요약 카드는 주문 목록에서 "바닐라 콘"이라고 적힌 한 줄짜리 정보를 보는 것과 같아요. 내 주문이 어떤 건지 알아볼 수 있을 정도의 기본 정보만 보여주죠. 반면 상세 뷰는 그 항목을 눌렀을 때 나오는 전체 화면이에요. 내가 고른 정확한 크기, 추가한 모든 토핑, 언제 주문했는지, 준비가 다 됐는지까지 전부 다 보여줍니다. 한 줄 요약과 완전한 이야기의 차이인 거죠!`,
             })}
           </div>
           <div>
@@ -406,8 +406,8 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             <ol className="list-decimal space-y-2 pl-5 text-base-content/70 text-sm">
               <li>
                 {l.trans({
-                  en: "Navigate to http://localhost:4201/icecreamOrder",
-                  ko: "http://localhost:4201/icecreamOrder로 이동",
+                  en: "Navigate to http://localhost:8282/icecreamOrder",
+                  ko: "http://localhost:8282/icecreamOrder로 이동",
                 })}
               </li>
               <li>

@@ -220,7 +220,7 @@ akan update
 
 주요 영역:
 
-- **Workspace**: workspace 생성, Mongo 설정 생성, lint, sync.
+- **Workspace**: workspace 생성, lint, sync.
 - **Application**: app start, build, typecheck, package, release.
 - **Library**: shared library 생성, 설치, sync, push, pull.
 - **Module and scalar**: domain module, model, view, unit, template, store 생성.

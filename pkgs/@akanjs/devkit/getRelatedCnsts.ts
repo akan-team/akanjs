@@ -215,6 +215,7 @@ export const analyzeProperties = (filesToAnalyze: Set<string>, program: ts.Progr
           sourceLines &&
           sourceLines.length > line &&
           sourceLines[line] &&
+          // ! Need to update
           (sourceLines[line]?.includes(`@Field.Prop(() => ${left.text}.${right.text}`) ||
             sourceLines[line].includes(`base.Filter(${left.text}.${right.text},`))
         ) {

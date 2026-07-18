@@ -20,11 +20,22 @@ describe("ModuleRunner", () => {
     const files = await runner.createModuleTemplate(module);
 
     expect(files.abstract.filename).toBe("post.abstract.md");
-    expect(files.abstract.content).toContain("Module Abstract");
+    expect(files.abstract.content).toContain("Post Module Abstract");
+    expect(files.abstract.content).toContain("Post represents post records managed by the app.");
+    expect(files.abstract.content).toContain("Post (Post) is the primary business concept");
+    expect(files.abstract.content).toContain("No lifecycle workflow yet.");
+    expect(files.abstract.content).not.toContain("Describe the business concept");
     expect(files.constant.filename).toBe("post.constant.ts");
+    expect(files.constant.content).not.toContain("field: field(String).optional()");
     expect(files.dictionary.filename).toBe("post.dictionary.ts");
+    expect(files.dictionary.content).not.toContain('field: t(["Field", "필드"])');
+    expect(files.dictionary.content).toContain('t(["Post", "Post"]).desc(["Enter post.", "Post 값을 입력합니다."])');
+    expect(files.dictionary.content).not.toContain("Post description");
     expect(files.service.content).toContain("serve");
     expect(files.signal.content).toContain("signal");
+    expect(files.unit.filename).toBe("Post.Unit.tsx");
+    expect(files.view.filename).toBe("Post.View.tsx");
+    expect(files.template.filename).toBe("Post.Template.tsx");
     expect(await Bun.file(`${module.cwdPath}/post.constant.ts`).exists()).toBe(true);
     expect(await Bun.file(`${module.cwdPath}/post.abstract.md`).exists()).toBe(true);
     expect(await Bun.file(`${module.cwdPath}/Post.View.tsx`).exists()).toBe(true);
@@ -59,7 +70,7 @@ describe("ModuleRunner", () => {
 
     const { component } = await runner.createComponentTemplate(module, "view");
 
-    expect(component.filename).toBe("comment.View.tsx");
+    expect(component.filename).toBe("Comment.View.tsx");
     expect(component.content).toContain("export const General");
     expect(await Bun.file(`${module.sys.cwdPath}/lib/comment/Comment.View.tsx`).exists()).toBe(true);
   });
@@ -82,10 +93,16 @@ describe("ModuleScript", () => {
     script.pageScript.createCrudPage = async (module, options) =>
       recorder.record("createCrudPage", module.name, options);
 
-    await script.createModuleTemplate(sys as never, "post", { page: true });
+    const report = await script.createModuleTemplate(sys as never, "post", { page: true });
 
     expect(recorder.names()).toEqual(["createModuleTemplate", "createCrudPage", "scan"]);
     expect(recorder.calls[1]?.args[1]).toMatchObject({ basePath: null, single: false });
+    expect(report).toMatchObject({
+      schemaVersion: 1,
+      command: "create-module",
+      status: "passed",
+      validationCommands: [{ command: "akan sync demo" }, { command: "akan lint demo" }],
+    });
   });
 
   test("creates service module and scans system", async () => {
@@ -102,9 +119,11 @@ describe("ModuleScript", () => {
       return {} as never;
     };
 
-    await script.createService(sys as never, "localBuild");
+    const report = await script.createService(sys as never, "localBuild");
 
     expect(recorder.names()).toEqual(["createService", "scan"]);
     expect(recorder.calls[0]?.args[0]).toBe("_localBuild");
+    expect(report.command).toBe("create-service");
+    expect(report.generatedFiles.map((file) => file.action)).toContain("sync");
   });
 });

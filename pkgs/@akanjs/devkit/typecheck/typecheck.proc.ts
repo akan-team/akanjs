@@ -8,8 +8,7 @@ try {
     if (!cwdPath) throw new Error("AKAN_TYPECHECK_CWD is required");
 
     const typeChecker = new TypeChecker({ cwdPath } as never);
-    const { fileDiagnostics, fileErrors, fileWarnings } =
-      typeChecker.check(filePath);
+    const { fileDiagnostics, fileErrors, fileWarnings } = typeChecker.check(filePath);
     const message = typeChecker.formatDiagnostics(fileDiagnostics);
     Logger.rawLog(
       JSON.stringify({

@@ -21,5 +21,15 @@ or {
       span = $source,
       message = "Module files should not import from two or more parent directories."
     )
+  },
+  JsModuleSource() as $source where {
+    $source <: within JsImport(),
+    not $filename <: r".*\.(?:test|spec)\.tsx?",
+    $filename <: r".*/lib/.+\.tsx",
+    $source <: r"\"\.\./.*\"",
+    register_diagnostic(
+      span = $source,
+      message = "Module UI (.tsx) files under lib must not use internal relative imports like ../cnst. Import from the package client/server entrypoint instead."
+    )
   }
 }

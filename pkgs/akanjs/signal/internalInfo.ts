@@ -1,4 +1,4 @@
-import { Any, type Cls, type FIELD_META, type PromiseOrObject } from "akanjs/base";
+import { Any, type FIELD_META, type PromiseOrObject } from "akanjs/base";
 import type {
   ConstantCls,
   ConstantField,
@@ -209,8 +209,10 @@ export type InternalBuilder<
       } & { [key: string]: InternalInfo<InternalType> };
 
 export const buildInternal = {
-  resolveField: (returnRef: Cls, signalOption?: SignalOption) =>
-    new InternalInfo("resolveField", returnRef, signalOption),
+  resolveField: <Returns extends ConstantFieldTypeInput, Nullable extends boolean = false>(
+    returnRef: Returns,
+    signalOption?: Pick<SignalOption<Returns, Nullable>, "nullable">,
+  ) => new InternalInfo("resolveField", returnRef, signalOption),
   interval: (scheduleTime: number, signalOption?: SignalOption) =>
     new InternalInfo("interval", Any, {
       enabled: true,
@@ -248,7 +250,10 @@ export const buildInternal = {
       scheduleType: "destroy",
       ...signalOption,
     }),
-  process: (returnRef: Cls, signalOption?: SignalOption) =>
+  process: <Returns extends ConstantFieldTypeInput, Nullable extends boolean = false>(
+    returnRef: Returns,
+    signalOption?: SignalOption<Returns, Nullable>,
+  ) =>
     new InternalInfo("process", returnRef, {
       serverMode: "all",
       ...signalOption,

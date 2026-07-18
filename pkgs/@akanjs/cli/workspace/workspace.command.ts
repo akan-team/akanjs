@@ -1,4 +1,4 @@
-import { command, Exec, Workspace } from "@akanjs/devkit";
+import { command, Exec, GlobalConfig, Workspace } from "@akanjs/devkit";
 
 import { WorkspaceScript } from "./workspace.script";
 
@@ -50,7 +50,9 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
         },
       );
     }),
-  generateAgentRules: target({ desc: "Generate AGENTS.md and optional Cursor rules for Akan coding agents" })
+  generateAgentRules: target({
+    desc: "Generate AGENTS.md, CLAUDE.md, and optional Cursor rules for Akan coding agents",
+  })
     .option("overwrite", Boolean, { desc: "Overwrite existing agent rule files", default: false })
     .option("cursorRules", Boolean, { desc: "Generate .cursor/rules/akan.mdc", default: true })
     .with(Workspace)
@@ -77,8 +79,9 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
     }),
   init: target({ desc: "Initialize the workspace", runsOnWorkspaceRoot: false })
     .arg("devProjectId", String, { desc: "the ID of the workspace" })
+    .option("host", String, { desc: "host of the cloud to target", default: GlobalConfig.akanCloudHost })
     .with(Workspace)
-    .exec(async function (devProjectId, workspace) {
-      await this.workspaceScript.init(devProjectId, workspace);
+    .exec(async function (devProjectId, host, workspace) {
+      await this.workspaceScript.init(devProjectId, workspace, { host });
     }),
 })) {}

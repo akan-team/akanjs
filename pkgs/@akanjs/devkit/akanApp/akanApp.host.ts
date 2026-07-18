@@ -11,6 +11,7 @@ const BACKEND_RESTART_DEBOUNCE_MS = 120;
 const BACKEND_GRACEFUL_TIMEOUT_MS = 3000;
 const BACKEND_RECOVERY_BASE_DELAY_MS = 1_000;
 const BACKEND_RECOVERY_MAX_DELAY_MS = 30_000;
+const BACKEND_STDERR_TAIL_LIMIT = 40;
 const BUILDER_READY_TIMEOUT_MS = 150000;
 const BUILDER_START_MAX_ATTEMPTS = 3;
 const SOURCE_EXTS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
@@ -270,6 +271,7 @@ export class AkanAppHost {
   #pendingRestartReason: BackendRestartReason | null = null;
   #backendStartStatus: { generation?: number; files: string[] } | null = null;
   #backendBuildStatusGeneration = 0;
+  #backendStderrTail: string[] = [];
   #lastGoodFrontend: LastGoodFrontendState = {};
   #buildStatusByPhase = new Map<BuildPhase, DevBuildStatus>();
   #pendingBuildStatusReplay: DevBuildStatus[] = [];
@@ -321,6 +323,7 @@ export class AkanAppHost {
     this.#backendStartStatus = startStatus;
     this.#setBackendLifecycleState("starting");
     this.#backendReady = false;
+    this.#backendStderrTail = [];
     const backend = Bun.spawn(["bun", `apps/${this.app.name}/main.ts`], {
       cwd: this.app.workspace.workspaceRoot,
       stdio: this.withInk ? ["ignore", "pipe", "pipe"] : ["inherit", "inherit", "inherit"],
@@ -351,6 +354,38 @@ export class AkanAppHost {
     });
     this.#backend = backend;
     this.logger.verbose(`backend spawned pid=${backend.pid}`);
+    if (this.withInk) {
+      // Ink mode pipes backend stdio to keep the TUI clean; drain the pipes and surface
+      // them through the logger so runtime errors are not silently swallowed.
+      void this.#forwardBackendStream(backend.stderr as unknown as ReadableStream<Uint8Array> | undefined, "stderr");
+      void this.#forwardBackendStream(backend.stdout as unknown as ReadableStream<Uint8Array> | undefined, "stdout");
+    }
+  }
+  #recordBackendStderr(chunk: string) {
+    const lines = chunk.split(/\r?\n/).filter((line) => line.length > 0);
+    if (lines.length === 0) return;
+    this.#backendStderrTail.push(...lines);
+    if (this.#backendStderrTail.length > BACKEND_STDERR_TAIL_LIMIT) {
+      this.#backendStderrTail.splice(0, this.#backendStderrTail.length - BACKEND_STDERR_TAIL_LIMIT);
+    }
+  }
+  async #forwardBackendStream(stream: ReadableStream<Uint8Array> | undefined | null, kind: "stdout" | "stderr") {
+    if (!stream) return;
+    const decoder = new TextDecoder();
+    try {
+      for await (const chunk of stream) {
+        const text = decoder.decode(chunk, { stream: true });
+        if (!text.trim()) continue;
+        if (kind === "stderr") {
+          this.#recordBackendStderr(text);
+          this.logger.warn(`[backend] ${text.trimEnd()}`);
+        } else {
+          this.logger.verbose(`[backend] ${text.trimEnd()}`);
+        }
+      }
+    } catch {
+      // The stream closes when the backend exits; nothing further to surface here.
+    }
   }
   #nextBackendBuildStatusGeneration(generation?: number): number {
     if (typeof generation === "number") {
@@ -482,6 +517,9 @@ export class AkanAppHost {
     this.logger.warn(
       `[backend-recovery] backend exited unexpectedly (${reason}); restarting in ${delay}ms (attempt ${this.#backendRecoveryAttempts})`,
     );
+    if (this.#backendStderrTail.length > 0) {
+      this.logger.warn(`[backend-recovery] recent backend stderr:\n${this.#backendStderrTail.join("\n")}`);
+    }
     this.#backendRecoveryTimer = setTimeout(() => {
       this.#backendRecoveryTimer = null;
       if (this.#backend) return;

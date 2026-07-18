@@ -224,8 +224,8 @@ export const pageConfig = {
                 ko: "구체적인 설정 절차는 ",
               })}
             </span>
-            <Link href="/cheatsheet/mobile/setup" className="link link-primary">
-              {l.trans({ en: "Cheatsheet > Mobile > Setup", ko: "Cheatsheet > 모바일 > 설정" })}
+            <Link href="/cheatsheet/dev/mobile" className="link link-primary">
+              {l.trans({ en: "Cheatsheet > Development > Mobile", ko: "Cheatsheet > 개발 > 모바일" })}
             </Link>
             <span>
               {l.trans({

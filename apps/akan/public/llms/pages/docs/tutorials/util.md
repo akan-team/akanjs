@@ -147,7 +147,7 @@ Let's test our status management implementation to ensure everything works corre
 
 Testing Steps:
 
-Navigate to http://localhost:4201/icecreamOrder
+Navigate to http://localhost:8282/icecreamOrder
 
 Create a new ice cream order (it will start as 'active')
 

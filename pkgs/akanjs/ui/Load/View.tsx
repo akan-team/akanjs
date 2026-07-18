@@ -37,7 +37,7 @@ function Render<T extends string, Full extends { id: string }>({
   loading,
   renderView,
 }: RenderProps<T, Full>) {
-  const loaded = useRef(false);
+  const loadedId = useRef<string | null>(null);
   const storeUse = st.use as { [key: string]: () => unknown };
   const storeGet = st.get as unknown as <T>() => { [key: string]: T };
   const { refName } = view;
@@ -51,16 +51,16 @@ function Render<T extends string, Full extends { id: string }>({
     model?.id === modelObj.id &&
     storeGet<Date>()[`${refName}ViewAt`].getTime() >= modelViewAt.getTime()
   )
-    loaded.current = true;
+    loadedId.current = modelObj.id;
 
   const modelInit = useMemo(() => {
-    if (loaded.current) return model;
     const modelObj = view[`${refName}Obj`] as Full;
+    if (loadedId.current === modelObj.id) return model;
     return new cnst.full().set(modelObj) as unknown as Full;
-  }, []);
+  }, [view]);
 
   useEffect(() => {
-    if (loaded.current) return;
+    if (loadedId.current === modelObj.id) return;
     const modelViewAt = view[`${refName}ViewAt`] as Date;
     st.set({
       [refName]: modelInit,
@@ -68,17 +68,16 @@ function Render<T extends string, Full extends { id: string }>({
       [`${refName}Modal`]: "view",
       [`${refName}ViewAt`]: modelViewAt,
     });
-    loaded.current = true;
-  }, []);
+    loadedId.current = modelObj.id;
+  }, [modelViewAt, modelObj.id]);
 
-  const renderModel = loaded.current ? model : modelInit;
+  const renderModel = loadedId.current === modelObj.id ? model : modelInit;
 
   return noDiv && renderModel ? (
     <>{renderView(renderModel)}</>
   ) : renderModel ? (
     <div className={clsx("w-full", className)}>{renderView(renderModel)}</div>
   ) : null;
-  // <>{loading}</>
 }
 
 export default function View<T extends string, Full extends { id: string }>({

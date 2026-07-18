@@ -9,7 +9,7 @@ import type { NotiEndpoint } from "./noti.signal";
 // Uses serviceDictionary(["en", "ko"]) from akanjs/dictionary — the framework convention for service dictionaries.
 // Unlike modelDictionary, no model/lightModel/query/sort/enum sections (service modules have no DB model).
 // Sections: .endpoint() for signal endpoint names, .translate() for UI messages.
-// Registered by akan scan into dict.ts barrel.
+// Registered by akan sync into dict.ts barrel.
 
 export const dictionary = serviceDictionary(["en", "ko"])
   .endpoint<NotiEndpoint>((fn) => ({

@@ -11,7 +11,11 @@ import { LocalRegistryCommand } from "./localRegistry/localRegistry.command";
 import { ModuleCommand } from "./module/module.command";
 import { PackageCommand } from "./package/package.command";
 import { PageCommand } from "./page/page.command";
+import { PrimitiveCommand } from "./primitive/primitive.command";
+import { QualityCommand } from "./quality/quality.command";
+import { RepairCommand } from "./repair/repair.command";
 import { ScalarCommand } from "./scalar/scalar.command";
+import { WorkflowCommand } from "./workflow/workflow.command";
 import { WorkspaceCommand } from "./workspace/workspace.command";
 
 void runCommands(
@@ -27,4 +31,8 @@ void runCommands(
   CloudCommand,
   GuidelineCommand,
   ScalarCommand,
+  PrimitiveCommand,
+  QualityCommand,
+  RepairCommand,
+  WorkflowCommand,
 );

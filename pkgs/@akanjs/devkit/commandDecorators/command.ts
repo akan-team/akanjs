@@ -165,7 +165,7 @@ const assertCurrentDirectoryIsWorkspaceRoot = async () => {
   );
 };
 
-const getInternalArgumentValue = async (
+export const getInternalArgumentValue = async (
   argMeta: InternalArgMeta,
   value: string | undefined,
   workspace: WorkspaceExecutor,
@@ -201,6 +201,7 @@ const getInternalArgumentValue = async (
     }
   } else if (sysType === "app") {
     if (value && appNames.includes(value)) return AppExecutor.from(workspace, value);
+    if (!value && appNames.length === 1 && appNames[0]) return AppExecutor.from(workspace, appNames[0]);
     const appName = await select<string>({ message: `Select the ${sysType} name`, choices: appNames });
     return AppExecutor.from(workspace, appName);
   } else if (sysType === "lib") {

@@ -86,7 +86,7 @@ Let's test the detailed view implementation. Navigate to your ice cream order pa
 
 Testing Steps:
 
-Navigate to http://localhost:4201/icecreamOrder
+Navigate to http://localhost:8282/icecreamOrder
 
 Create a new ice cream order if you don't have any
 

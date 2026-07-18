@@ -1,26 +1,9 @@
 ---
-description: Akan.js workspace conventions for coding agents
+description: Akan workspace agent guide
 alwaysApply: true
 ---
 
-# Akan.js Workspace Rules
+Follow the workspace agent guide, which is the single source of truth for Akan conventions,
+generated-file rules, and the MCP workflow policy.
 
-- Keep edits inside the established Akan structure: `apps/<app>`, `libs/<lib>`, `pkgs/*`, and `infra`.
-- Pages live under `apps/<app>/page`; index routes use `_index.tsx`, and nested layouts use `_layout.tsx`.
-- Database domain modules live under `lib/<model>`.
-- Service modules live under `lib/_<service>`.
-- Scalar modules live under `lib/__scalar/<scalar>`.
-- Module abstracts live beside module code as `<model>.abstract.md`, `<service>.abstract.md`, or
-  `<scalar>.abstract.md`. Read them before changing module behavior.
-- Do not hand-edit generated Akan files such as `akan.app.json`, `client.ts`, `server.ts`, generated facet indexes,
-  `lib/cnst.ts`, `lib/dict.ts`, `lib/db.ts`, `lib/srv.ts`, `lib/st.ts`, `lib/sig.ts`, `lib/useClient.ts`, or
-  `lib/useServer.ts`.
-- For new domain behavior, inspect sibling `constant`, `dictionary`, `signal`, `document`, `service`, `store`, and UI
-  module files before changing shape.
-- Update `*.abstract.md` when business invariants, workflows, or public behavior change. Do not update it for
-  formatting-only, import-only, or style-only changes.
-- Respect server/client import boundaries. Use `akanjs/server` only in server-side code and `akanjs/client` only in
-  client/page runtime code.
-- Treat `AKAN_PUBLIC_*` env vars as public values. Do not store secrets in them.
-- Verify changes with the smallest relevant command: `akan lint <target>`, `akan test <target>`, or
-  `akan build <app-name>`.
+@AGENTS.md

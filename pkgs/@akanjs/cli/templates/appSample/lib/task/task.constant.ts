@@ -12,7 +12,7 @@ import { WorkHistory } from "../__scalar/workHistory/workHistory.constant";
 // Scalars are embedded via field([ScalarType], ...) — see WorkHistory embedding below.
 // Layer order: enum → Input → Object → Light → Full.
 //   Input = user-provided fields; Object = Input + system fields + embedded scalars; Light = subset for list views; Full = Object + Light.
-// Registered by akan scan into cnst.ts barrel.
+// Registered by akan sync into cnst.ts barrel.
 
 export class TaskStatus extends enumOf("taskStatus", [
   "todo",

@@ -175,31 +175,6 @@ export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
       </Scroll.Slide>
       <div className="divider" />
 
-      <Scroll.Slide id="local-serving" title={l.trans({ en: "Local File Serving", ko: "로컬 파일 서빙" })}>
-        <Docs.Title>{l.trans({ en: "Local File Serving", ko: "로컬 파일 서빙" })}</Docs.Title>
-        <Docs.Description>
-          <div>
-            {l.trans({
-              en: "If your local storage returns URLs like `/api/localFile/getBlob/...`, add a tiny endpoint that reads the file stream and returns it as a response.",
-              ko: "로컬 저장소가 `/api/localFile/getBlob/...` 같은 URL을 반환한다면, 파일 stream을 읽어 Response로 돌려주는 작은 endpoint를 추가합니다.",
-            })}
-          </div>
-        </Docs.Description>
-        <Code.Snippet
-          title="localFile.signal.ts"
-          code={`export class LocalFileEndpoint extends endpoint(srv.localFile, ({ query }) => ({
-  getBlob: query(Any, { path: "localFile/getBlob/*" })
-    .with(Req)
-    .exec(async function (req) {
-      const path = req.url.split("/localFile/getBlob/").at(1) ?? "";
-      const stream = await this.localFileService.readLocalFile(path);
-      return new Response(stream);
-    }),
-})) {}`}
-        />
-      </Scroll.Slide>
-      <div className="divider" />
-
       <Scroll.Slide id="use-in-ui" title={l.trans({ en: "Use In UI", ko: "UI에서 사용하기" })}>
         <Docs.Title>{l.trans({ en: "Use In UI", ko: "UI에서 사용하기" })}</Docs.Title>
         <Docs.Description>

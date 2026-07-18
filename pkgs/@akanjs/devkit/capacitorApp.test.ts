@@ -133,16 +133,14 @@ describe("materializeCapacitorConfig", () => {
 describe("root capacitor config helpers", () => {
   test("clears root configs before writing the temporary json config", async () => {
     const root = await makeTempRoot();
-    await Promise.all(
-      rootCapacitorConfigFilenames.map((file) => writeFile(path.join(root, file), `old ${file}\n`)),
-    );
+    await Promise.all(rootCapacitorConfigFilenames.map((file) => writeFile(path.join(root, file), `old ${file}\n`)));
 
-    await writeRootCapacitorConfig(root, "{\n  \"appId\": \"com.minimal.app\"\n}\n");
+    await writeRootCapacitorConfig(root, '{\n  "appId": "com.minimal.app"\n}\n');
 
     expect(await Bun.file(path.join(root, "capacitor.config.ts")).exists()).toBe(false);
     expect(await Bun.file(path.join(root, "capacitor.config.js")).exists()).toBe(false);
     expect(await Bun.file(path.join(root, "capacitor.config.json")).text()).toBe(
-      "{\n  \"appId\": \"com.minimal.app\"\n}\n",
+      '{\n  "appId": "com.minimal.app"\n}\n',
     );
 
     await clearRootCapacitorConfigs(root);
@@ -189,7 +187,9 @@ describe("iOS native run helpers", () => {
           },
         }),
       ),
-    ).toEqual([{ id: "11111111-2222-3333-4444-555555555555", name: "iPhone 16", kind: "simulator", state: "Shutdown" }]);
+    ).toEqual([
+      { id: "11111111-2222-3333-4444-555555555555", name: "iPhone 16", kind: "simulator", state: "Shutdown" },
+    ]);
   });
 
   test("builds xcodebuild destinations and output paths by target kind", () => {
@@ -201,7 +201,9 @@ describe("iOS native run helpers", () => {
     });
     expect(deviceCommand.xcodebuildArgs).toContain("id=device-1");
     expect(deviceCommand.xcodebuildArgs).toContain("App QA");
-    expect(deviceCommand.appPath).toBe("/repo/apps/minimal/ios/DerivedData/device-1/Build/Products/Debug-iphoneos/App.app");
+    expect(deviceCommand.appPath).toBe(
+      "/repo/apps/minimal/ios/DerivedData/device-1/Build/Products/Debug-iphoneos/App.app",
+    );
 
     const simulatorCommand = buildIosNativeRunCommand({
       appRoot: "/repo/apps/minimal",
@@ -215,7 +217,11 @@ describe("iOS native run helpers", () => {
 
   test("classifies iOS signing and device-state failures", () => {
     expect(classifyIosRunFailure("There are no accounts registered with Xcode").kind).toBe("apple-account");
-    expect(classifyIosRunFailure('Failed Registering Bundle Identifier: The app identifier "com.minimal.app" cannot be registered to your development team').kind).toBe("bundle-identifier");
+    expect(
+      classifyIosRunFailure(
+        'Failed Registering Bundle Identifier: The app identifier "com.minimal.app" cannot be registered to your development team',
+      ).kind,
+    ).toBe("bundle-identifier");
     expect(classifyIosRunFailure("No profiles for 'com.minimal.app' were found").kind).toBe("provisioning-profile");
     expect(classifyIosRunFailure("Developer Mode is disabled on this device").kind).toBe("device-state");
     expect(classifyIosRunFailure("arm64-apple-darwin20.0: error: unknown argument: '-index-store-path'").kind).toBe(

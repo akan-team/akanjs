@@ -50,6 +50,7 @@
       "!!**/.akan",
       "!!**/dump",
       "!!**/local",
+      "!!**/ios/DerivedData",
       "!benchmarks/sample-app-productivity/tmp",
       "!benchmarks/sample-app-productivity/workspaces"
     ]
@@ -146,6 +147,10 @@
     {
       "includes": ["**/*.constant.ts", "**/*.document.ts", "**/*.service.ts", "**/*.store.ts"],
       "plugins": ["./pkgs/@akanjs/devkit/lint/no-js-private-class-method.grit"]
+    },
+    {
+      "includes": ["**/*.signal.ts"],
+      "plugins": ["./pkgs/@akanjs/devkit/lint/no-redeclare-predefined-endpoint.grit"]
     },
     {
       "includes": [

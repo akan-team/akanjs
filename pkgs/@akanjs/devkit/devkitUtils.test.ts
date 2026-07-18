@@ -269,11 +269,11 @@ describe("getModelFileData", () => {
         ].join("\n"),
       );
       await write(
-        path.join(root, "apps/demo/lib/post/post.Unit.tsx"),
+        path.join(root, "apps/demo/lib/post/Post.Unit.tsx"),
         "export default function Unit() { return null; }\n",
       );
       await write(
-        path.join(root, "apps/demo/lib/post/post.View.tsx"),
+        path.join(root, "apps/demo/lib/post/Post.View.tsx"),
         "export default function View() { return null; }\n",
       );
 

@@ -1,0 +1,51 @@
+# AI Development Guide
+
+This workspace is an Akan.js project. Keep business intent in source files and let `akan sync` regenerate the
+repeated surfaces.
+
+## Domain Module Shape
+
+- `apps/<app>/lib/<model>` is for database-backed domain modules.
+- `apps/<app>/lib/_<service>` is for service modules without their own database document.
+- `apps/<app>/lib/__scalar/<scalar>` is for reusable embedded value shapes.
+- Put model behavior in the local module before creating a parallel architecture.
+
+## Data Flow
+
+Follow this order for domain changes:
+
+1. `constant` defines fields, enums, and model layers.
+2. `document` defines queries, filters, and document state transitions.
+3. `service` owns business workflows and orchestration.
+4. `signal` exposes typed endpoints, slices, and internal jobs.
+5. `store` owns reusable client workflow state and actions.
+6. UI files render forms, lists, details, and actions.
+
+## When To Run Sync
+
+Run this after adding, deleting, or renaming module, UI, webkit, srvkit, or common files:
+
+```bash
+akan sync <%= appName %>
+```
+
+Sync regenerates barrels such as `cnst.ts`, `db.ts`, `srv.ts`, `sig.ts`, `st.ts`, `useClient.ts`, `useServer.ts`,
+and module `index.ts` files. Without sync, imports can point at stale generated files.
+
+## Generated Files
+
+Do not hand-edit generated Akan files. Edit source files in the owning module and run sync or build instead.
+See `docs/GENERATED.md` for the generated file list.
+
+## Server And Client Boundary
+
+- Keep server-only APIs such as `fs`, `Bun`, secrets, database adaptors, and server env access out of client code.
+- Client surfaces include `ui/`, `webkit/`, `*.Template.tsx`, `*.Zone.tsx`, and `*.Util.tsx` files that use
+  `"use client"`.
+- Server-oriented surfaces include pages, `*.Unit.tsx`, `*.View.tsx`, `lib/`, `srvkit/`, and server entrypoints.
+- Treat `AKAN_PUBLIC_*` values as public.
+
+## Abstract Documents
+
+Update `*.abstract.md` when business invariants, workflows, user-visible behavior, cross-module relationships, or
+agent guidance changes. Do not update it for purely mechanical formatting or regenerated file changes.

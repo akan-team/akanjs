@@ -1,9 +1,6 @@
 import type { AppInfo, LibInfo } from "akanjs";
 
-export default function getContent(
-  scanInfo: AppInfo | LibInfo | null,
-  dict: { [key: string]: string } = {},
-) {
+export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [key: string]: string } = {}) {
   return `
 import { makePageProto, registerClientRuntime } from "akanjs/client";
 import { FetchClient } from "akanjs/fetch";

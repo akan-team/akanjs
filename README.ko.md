@@ -9,7 +9,7 @@
 SEO 웹, iOS/Android 앱 패키지, 서버, 데이터베이스 계약, 인프라 산출물, 문서화까지 함께 이어지는
 Bun-first 풀스택 TypeScript 프레임워크입니다.
 
-<img width="563" height="720" alt="multi-platform-dev" src="https://github.com/user-attachments/assets/de2ec810-7b7f-4e9d-8e9e-e565e648fb45" />
+<img width="563" height="720" alt="multi-platform-dev" src="./apps/akan/public/multi-platform-dev.webp" />
 
 A single Akan.js codebase keeps server rendering, client rendering, mobile apps, server, and database moving in one development flow.
 
@@ -220,7 +220,7 @@ akan update
 
 주요 영역:
 
-- **Workspace**: workspace 생성, Mongo 설정 생성, lint, sync.
+- **Workspace**: workspace 생성, lint, sync.
 - **Application**: app start, build, typecheck, package, release.
 - **Library**: shared library 생성, 설치, sync, push, pull.
 - **Module and scalar**: domain module, model, view, unit, template, store 생성.

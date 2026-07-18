@@ -78,15 +78,12 @@ export class Linter {
 
   #toBiomePath(filePath: string): string {
     const relativePath = path.relative(this.lintRoot, filePath);
-    if (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
-      return relativePath;
+    if (!relativePath.startsWith("..") && !path.isAbsolute(relativePath)) return relativePath;
     return filePath;
   }
 
   #resolveFilePath(filePath: string): string {
-    return path.isAbsolute(filePath)
-      ? filePath
-      : path.join(this.lintRoot, filePath);
+    return path.isAbsolute(filePath) ? filePath : path.join(this.lintRoot, filePath);
   }
 
   async #runBiome(args: string[], input?: string) {
@@ -125,9 +122,7 @@ export class Linter {
   #diagnosticFilePath(diagnostic: BiomeDiagnostic, fallbackFilePath: string) {
     const diagnosticPath = diagnostic.location?.path;
     if (!diagnosticPath) return fallbackFilePath;
-    return path.isAbsolute(diagnosticPath)
-      ? diagnosticPath
-      : path.join(this.lintRoot, diagnosticPath);
+    return path.isAbsolute(diagnosticPath) ? diagnosticPath : path.join(this.lintRoot, diagnosticPath);
   }
 
   #createLintMessage(diagnostic: BiomeDiagnostic): LintMessage {
@@ -148,8 +143,7 @@ export class Linter {
     const resultsByPath = new Map<string, LintResult>();
 
     for (const diagnostic of report.diagnostics ?? []) {
-      if (diagnostic.severity !== "error" && diagnostic.severity !== "warning")
-        continue;
+      if (diagnostic.severity !== "error" && diagnostic.severity !== "warning") continue;
       const diagnosticFilePath = this.#diagnosticFilePath(diagnostic, filePath);
       const result =
         resultsByPath.get(diagnosticFilePath) ??
@@ -178,9 +172,7 @@ export class Linter {
           fixableErrorCount: 0,
           fixableWarningCount: 0,
         } satisfies LintResult),
-      ...[...resultsByPath.entries()]
-        .filter(([resultPath]) => resultPath !== filePath)
-        .map(([, result]) => result),
+      ...[...resultsByPath.entries()].filter(([resultPath]) => resultPath !== filePath).map(([, result]) => result),
     ];
   }
 
@@ -192,13 +184,8 @@ export class Linter {
     };
   }
 
-  async #checkFile(
-    filePath: string,
-    { write = false }: { write?: boolean } = {},
-  ): Promise<LintResponse> {
-    const originalContent = existsSync(filePath)
-      ? readFileSync(filePath, "utf8")
-      : "";
+  async #checkFile(filePath: string, { write = false }: { write?: boolean } = {}): Promise<LintResponse> {
+    const originalContent = existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
     const { stdout, stderr } = await this.#runBiome([
       "check",
       ...(write ? ["--write"] : []),
@@ -212,10 +199,7 @@ export class Linter {
     const report = this.#parseBiomeReport(stdout || stderr);
     const results = this.#toLintResults(report, filePath);
     const { errors, warnings } = this.#splitMessages(results);
-    const output =
-      write && existsSync(filePath)
-        ? readFileSync(filePath, "utf8")
-        : undefined;
+    const output = write && existsSync(filePath) ? readFileSync(filePath, "utf8") : undefined;
 
     return {
       fixed: write && output !== originalContent,
@@ -226,10 +210,7 @@ export class Linter {
     };
   }
 
-  async lint(
-    filePath: string,
-    { fix = false, dryRun = false }: { fix?: boolean; dryRun?: boolean } = {},
-  ) {
+  async lint(filePath: string, { fix = false, dryRun = false }: { fix?: boolean; dryRun?: boolean } = {}) {
     if (fix) return await this.fixFile(filePath, dryRun);
     return await this.lintFile(filePath);
   }
@@ -241,8 +222,7 @@ export class Linter {
    */
   async lintFile(filePath: string): Promise<LintResponse> {
     const resolvedFilePath = this.#resolveFilePath(filePath);
-    if (!existsSync(resolvedFilePath))
-      throw new Error(`File not found: ${filePath}`);
+    if (!existsSync(resolvedFilePath)) throw new Error(`File not found: ${filePath}`);
     return await this.#checkFile(resolvedFilePath);
   }
 
@@ -279,16 +259,10 @@ export class Linter {
           const type = message.severity === 2 ? "error" : "warning";
           const typeColor = message.severity === 2 ? chalk.red : chalk.yellow;
           const icon = message.severity === 2 ? "x" : "!";
-          const ruleInfo = message.ruleId
-            ? chalk.dim(` (${message.ruleId})`)
-            : "";
+          const ruleInfo = message.ruleId ? chalk.dim(` (${message.ruleId})`) : "";
 
-          output.push(
-            `\n  ${icon} ${typeColor(type)}: ${message.message}${ruleInfo}`,
-          );
-          output.push(
-            `     ${chalk.gray("at")} ${result.filePath}:${chalk.bold(`${message.line}:${message.column}`)}`,
-          );
+          output.push(`\n  ${icon} ${typeColor(type)}: ${message.message}${ruleInfo}`);
+          output.push(`     ${chalk.gray("at")} ${result.filePath}:${chalk.bold(`${message.line}:${message.column}`)}`);
 
           // Show source line with underline
           if (sourceLines.length > 0 && message.line <= sourceLines.length) {
@@ -299,28 +273,19 @@ export class Linter {
 
             // Create underline
             const underlinePrefix = " ".repeat(message.column - 1);
-            const underlineLength = message.endColumn
-              ? message.endColumn - message.column
-              : 1;
+            const underlineLength = message.endColumn ? message.endColumn - message.column : 1;
             const underline = "^".repeat(Math.max(1, underlineLength));
 
-            output.push(
-              `${chalk.dim(`${" ".repeat(lineNumber.length)} |`)} ${underlinePrefix}${typeColor(underline)}`,
-            );
+            output.push(`${chalk.dim(`${" ".repeat(lineNumber.length)} |`)} ${underlinePrefix}${typeColor(underline)}`);
           }
         });
       }
     });
 
-    if (totalErrors === 0 && totalWarnings === 0)
-      return chalk.bold("No Biome errors or warnings found");
+    if (totalErrors === 0 && totalWarnings === 0) return chalk.bold("No Biome errors or warnings found");
 
-    const errorText =
-      totalErrors > 0 ? chalk.red(`${totalErrors} error(s)`) : "0 errors";
-    const warningText =
-      totalWarnings > 0
-        ? chalk.yellow(`${totalWarnings} warning(s)`)
-        : "0 warnings";
+    const errorText = totalErrors > 0 ? chalk.red(`${totalErrors} error(s)`) : "0 errors";
+    const warningText = totalWarnings > 0 ? chalk.yellow(`${totalWarnings} warning(s)`) : "0 warnings";
     const summary = [`\n${errorText}, ${warningText} found`];
 
     return summary.concat(output).join("\n");
@@ -355,8 +320,7 @@ export class Linter {
         column: message.column,
         message: message.message,
         ruleId: message.ruleId,
-        severity:
-          message.severity === 2 ? ("error" as const) : ("warning" as const),
+        severity: message.severity === 2 ? ("error" as const) : ("warning" as const),
       })),
     );
 
@@ -365,8 +329,7 @@ export class Linter {
         errorCount: acc.errorCount + result.errorCount,
         warningCount: acc.warningCount + result.warningCount,
         fixableErrorCount: acc.fixableErrorCount + result.fixableErrorCount,
-        fixableWarningCount:
-          acc.fixableWarningCount + result.fixableWarningCount,
+        fixableWarningCount: acc.fixableWarningCount + result.fixableWarningCount,
       }),
       {
         errorCount: 0,
@@ -400,9 +363,7 @@ export class Linter {
    */
   async getErrors(filePath: string): Promise<LintMessage[]> {
     const { results } = await this.lintFile(filePath);
-    return results.flatMap((result) =>
-      result.messages.filter((message) => message.severity === 2),
-    );
+    return results.flatMap((result) => result.messages.filter((message) => message.severity === 2));
   }
 
   /**
@@ -412,9 +373,7 @@ export class Linter {
    */
   async getWarnings(filePath: string): Promise<LintMessage[]> {
     const { results } = await this.lintFile(filePath);
-    return results.flatMap((result) =>
-      result.messages.filter((message) => message.severity === 1),
-    );
+    return results.flatMap((result) => result.messages.filter((message) => message.severity === 1));
   }
 
   /**
@@ -425,11 +384,9 @@ export class Linter {
    */
   async fixFile(filePath: string, dryRun = false): Promise<LintResponse> {
     const resolvedFilePath = this.#resolveFilePath(filePath);
-    if (!existsSync(resolvedFilePath))
-      throw new Error(`File not found: ${filePath}`);
+    if (!existsSync(resolvedFilePath)) throw new Error(`File not found: ${filePath}`);
 
-    if (!dryRun)
-      return await this.#checkFile(resolvedFilePath, { write: true });
+    if (!dryRun) return await this.#checkFile(resolvedFilePath, { write: true });
 
     const source = readFileSync(resolvedFilePath, "utf8");
     const { stdout } = await this.#runBiome(
@@ -454,11 +411,8 @@ export class Linter {
    */
   async getConfigForFile(filePath: string): Promise<unknown> {
     const resolvedFilePath = this.#resolveFilePath(filePath);
-    if (!existsSync(resolvedFilePath))
-      throw new Error(`File not found: ${filePath}`);
-    return JSON.parse(
-      readFileSync(path.join(this.lintRoot, "biome.json"), "utf8"),
-    ) as unknown;
+    if (!existsSync(resolvedFilePath)) throw new Error(`File not found: ${filePath}`);
+    return JSON.parse(readFileSync(path.join(this.lintRoot, "biome.json"), "utf8")) as unknown;
   }
 
   /**
@@ -472,8 +426,7 @@ export class Linter {
 
     results.forEach((result) => {
       result.messages.forEach((message) => {
-        if (message.ruleId)
-          ruleCounts[message.ruleId] = (ruleCounts[message.ruleId] || 0) + 1;
+        if (message.ruleId) ruleCounts[message.ruleId] = (ruleCounts[message.ruleId] || 0) + 1;
       });
     });
 

@@ -10,10 +10,10 @@ import * as cnst from "../cnst";
 // ===== task.document.ts =====
 // Convention: <module>.document.ts — the database query and persistence layer.
 // Import from/into/by from akanjs/document — the framework convention for Filter, Document, and Model classes.
-// Filter defines query/sort conditions (auto-generates List/Find/Pick/Exists/Count methods via akan scan).
+// Filter defines query/sort conditions (auto-generates List/Find/Pick/Exists/Count methods via akan sync).
 // Document defines chainable per-document methods (e.g., task.start().save()).
 // Model = into(Document, Filter, cnst.module, ...) — collection-level operations, schema hooks.
-// Registered by akan scan into db.ts barrel.
+// Registered by akan sync into db.ts barrel.
 
 export class TaskFilter extends from(cnst.Task, (filter) => ({
   query: {
@@ -34,7 +34,7 @@ export class Task extends by(cnst.Task) {
   start() {
     if (this.status !== "todo") throw new Err("task.error.cannotStartFromNonTodo");
     this.status = "inProgress";
-    this.workHistory.push({ action: "completed", at: dayjs(), note: "" });
+    this.workHistory.push({ action: "started", at: dayjs(), note: "" });
     return this;
   }
 

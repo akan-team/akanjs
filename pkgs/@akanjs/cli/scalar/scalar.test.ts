@@ -2,12 +2,29 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { CommandContainer } from "@akanjs/devkit";
 import { cleanupCliTempWorkspace, createTempApp } from "../testHelpers";
 import { ScalarRunner } from "./scalar.runner";
+import { ScalarScript } from "./scalar.script";
 
 const tempRoots: string[] = [];
 
 afterEach(async () => {
   CommandContainer.clear();
   await Promise.all(tempRoots.splice(0).map((root) => cleanupCliTempWorkspace(root)));
+});
+
+describe("ScalarScript", () => {
+  test("returns primitive write report for scalar template creation", async () => {
+    const { root, app } = await createTempApp("demo");
+    tempRoots.push(root);
+    const report = await CommandContainer.get(ScalarScript).createScalar(app, "money");
+
+    expect(report).toMatchObject({
+      schemaVersion: 1,
+      command: "create-scalar",
+      status: "passed",
+      validationCommands: [{ command: "akan sync demo" }, { command: "akan lint demo" }],
+    });
+    expect(report.changedFiles.map((file) => file.path)).toContain("apps/demo/lib/__scalar/money/money.constant.ts");
+  });
 });
 
 describe("ScalarRunner", () => {

@@ -1,5 +1,18 @@
 # akanjs
 
+## 2.3.10
+
+### Patch Changes
+
+- b92003a: fix: cross-platform path handling using path.resolve/path.join/path.sep
+
+## 2.3.9
+
+### Patch Changes
+
+- f518afd: Improve dictionary type inference and lint coverage for generated workspaces.
+- f518afd: Add expiration options to remote memory cache writes.
+
 ## 2.3.6
 
 ### Patch Changes

@@ -3,6 +3,9 @@
 This is an Akan.js workspace. Akan is convention-driven: keep business intent in the expected place and let
 the framework generate the repeated surfaces.
 
+For agent-neutral documentation that Claude Code, Codex, Devin, GitHub Copilot Coding Agent, and other tools can
+also read, see `docs/AI-DEVELOPMENT.md` and `docs/GENERATED.md`.
+
 ## Workspace Layout
 
 - `apps/<app>` contains application pages, app UI, app domain modules, env files, and `akan.config.ts`.
@@ -16,25 +19,25 @@ the framework generate the repeated surfaces.
 
 ## Generated Files
 
-Do not hand-edit generated Akan files. Regenerate them through Akan scan, lint, start, build, or the matching
+Do not hand-edit generated Akan files. Regenerate them through Akan sync, lint, start, build, or the matching
 CLI command instead.
 
 Common generated files include:
 - `apps/*/client.ts`
 - `apps/*/server.ts`
-- `apps/*/lib/cnst.ts`
-- `apps/*/lib/dict.ts`
-- `apps/*/lib/db.ts`
-- `apps/*/lib/srv.ts`
-- `apps/*/lib/st.ts`
-- `apps/*/lib/sig.ts`
-- `apps/*/lib/useClient.ts`
-- `apps/*/lib/useServer.ts`
-- `apps/*/lib/*/index.ts`
-- `apps/*/ui/index.ts`
-- `apps/*/webkit/index.ts`
-- `apps/*/srvkit/index.ts`
-- `apps/*/common/index.ts`
+- `*/lib/cnst.ts`
+- `*/lib/db.ts`
+- `*/lib/dict.ts`
+- `*/lib/sig.ts`
+- `*/lib/srv.ts`
+- `*/lib/st.ts`
+- `*/lib/useClient.ts`
+- `*/lib/useServer.ts`
+- `*/lib/**/index.ts`
+- `*/ui/index.ts`
+- `*/webkit/index.ts`
+- `*/srvkit/index.ts`
+- `*/common/index.ts`
 
 ## Domain Module Responsibilities
 
@@ -58,15 +61,20 @@ Use the local module shape before adding a new abstraction.
 
 1. Read the nearby module and convention before creating files. If `*.abstract.md` exists, read it first.
 2. Put new files in the established Akan location instead of adding parallel architecture.
-3. Prefer CLI generation commands for new apps, libraries, modules, scalars, pages, and generated references.
-4. Keep page and layout files server-oriented: route-level `usePage`, headers, static layout, and `akanjs/ui` `Tab` composition belong there.
-5. Put interactive loading, submit/import actions, local form state, and `router.push` in client `Util`, `Template`, or `Zone` components.
-6. Prefer `Tab` for static mode selection instead of extra `useState`; render one focused client component inside each `Tab.Panel`.
-7. Keep server-only logic out of client surfaces and client-only code out of server imports.
-8. Treat `AKAN_PUBLIC_*` env vars as public. Never put secrets in them.
-9. Add or update tests when behavior, contracts, or CLI output changes.
-10. Update `*.abstract.md` when business invariants, workflows, or public behavior change.
-11. Run the smallest relevant verification command after changes.
+3. Prefer Akan MCP workflows before direct source edits. Start with `akan mcp --mode plan` for `list_workflows`, `explain_workflow`, and `plan_workflow`.
+4. If `plan_workflow` returns `planPath` or `next.tool=apply_workflow`, call `apply_workflow({ planPath })` before direct source edits.
+5. Use `akan mcp --mode apply` only for allowlisted `apply_workflow`, `run_validation`, and repair tools.
+6. After `apply_workflow`, run `run_validation` with `validationTarget` when present; otherwise use `applyReportPath`.
+7. Direct source edits are denied when an allowlisted Akan workflow or repair tool can perform the change.
+8. If no workflow exists, or apply reports unsupported/no-op/failed diagnostics that require manual action, edit only the owning source files and never patch generated files directly.
+9. Keep page and layout files server-oriented: route-level `usePage`, headers, static layout, and `akanjs/ui` `Tab` composition belong there.
+10. Put interactive loading, submit/import actions, local form state, and `router.push` in client `Util`, `Template`, or `Zone` components.
+11. Prefer `Tab` for static mode selection instead of extra `useState`; render one focused client component inside each `Tab.Panel`.
+12. Keep server-only logic out of client surfaces and client-only code out of server imports.
+13. Treat `AKAN_PUBLIC_*` env vars as public. Never put secrets in them.
+14. Add or update tests when behavior, contracts, or CLI output changes.
+15. Update `*.abstract.md` when business invariants, workflows, or public behavior change.
+16. Run the smallest relevant verification command after changes.
 
 ## Common Commands
 
@@ -78,7 +86,8 @@ When adding a new database-backed domain module (e.g., product, user):
 
 ```bash
 # 1. Scaffold the module with Akan CLI (creates constant, service, signal, store, document files)
-akan create-module <module-name> --app <%= appName %>
+# The target app/lib is a POSITIONAL argument, not a --app flag.
+akan create-module <module-name> <%= appName %>
 
 # 2. Start dev server with HMR and type checking at http://localhost:8282
 akan start <%= appName %>
@@ -102,14 +111,40 @@ akan test <%= appName %>
 akan build <%= appName %>
 ```
 
+**Verify endpoints with signal tests, not raw HTTP.** The canonical way to check a query/mutation/slice
+contract is an in-memory signal test (`<model>.signal.test.ts`), using the test fetch harness
+(`getOrSetupSignalTestFetch`) — it is fast, needs no running server, and exercises `fetch.*`, `view/edit/merge<Model>`,
+and slice `init`/`list`/`insight` directly. Prefer it over `curl`: the dev gateway locale-prefixes routes (`/en/...`),
+so hand-rolled HTTP calls against a raw path can redirect unexpectedly. See `akan test <%= appName %>`.
+
 ### Other Frequently Used Commands
 
 ```bash
-akan create-scalar <scalar-name> --app <%= appName %>    # Add a scalar module (lib/__scalar/<scalar-name>/)
-akan create-service <service-name> --app <%= appName %>       # Add a service module (lib/_<service-name>/)
+akan create-scalar <scalar-name> <%= appName %>          # Add a scalar module (lib/__scalar/<scalar-name>/)
+akan create-service <service-name> <%= appName %>        # Add a service module (lib/_<service-name>/)
 akan test <%= appName %>                             # Run the test code (lib/*/*.signal.test.ts or others)
 akan lint <%= appName %>                             # Lint only (no typecheck)
 ```
+
+**CLI argument conventions.** Two argument styles, and mixing them up is a common mistake:
+
+- Scaffolding and whole-app commands take the target app/lib as a **positional** argument, not a flag:
+
+  ```bash
+  akan create-module photo <%= appName %>
+  akan create-scalar money <%= appName %>
+  akan create-service billing <%= appName %>
+  akan sync <%= appName %>
+  ```
+
+- Only the source-limited field commands use `--app`/`--module` flags:
+
+  ```bash
+  akan add-field --app <%= appName %> --module photo --field width --type Int
+  akan add-enum-field --app <%= appName %> --module photo --field status --values draft,active
+  ```
+
+Passing `--app` to `create-module` is not recognized, and the target app will not resolve.
 
 For the default generated app, start with:
 
@@ -117,77 +152,126 @@ For the default generated app, start with:
 akan start <%= appName %>
 ```
 
-### The Essential Loop: Edit → Scan → Check
+### The Essential Loop: Workflow -> Sync -> Check
 
-Almost every Akan.js change follows this pattern. **Missing step 2 is the #1 cause of agent confusion.**
+Almost every Akan.js change follows this pattern. **Missing sync or repair is the #1 cause of agent confusion.**
 
-1. **Edit** — Create or modify source files in the correct location.
+> **If the Akan MCP tools are not connected in your agent, skip straight to the CLI-only fallback below.**
+> `akan mcp --mode plan/apply` starts a stdio MCP server that only works when your agent is wired to it as an
+> MCP client. When those `list_workflows` / `plan_workflow` / `apply_workflow` tools are not available, the CLI
+> commands are a fully supported, first-class path — you are not losing any capability by using them.
+
+1. **Plan** — Ask the Akan MCP server for the workflow first.
    ```
-   vi apps/<%= appName %>/lib/task/task.constant.ts  # e.g., add a priority field
+   akan mcp --mode plan
+   # use list_workflows, explain_workflow, and plan_workflow
    ```
 
-2. **Scan** — Regenerate barrel files so Akan discovers your change. This regenerates:
+2. **Apply the plan** — If `plan_workflow` returns `planPath` or `next.tool=apply_workflow`, call
+   `apply_workflow({ planPath })`. Do not copy the workflow plan into direct source edits.
+   ```
+   akan mcp --mode apply
+   # use apply_workflow, run_validation, repair_generated, repair_imports, or repair_module_shape
+   ```
+
+   Direct edits are fallback only: use them after `list_workflows`/`explain_workflow` confirm no matching workflow, or
+   after apply reports unsupported/no-op/failed diagnostics that require manual action. Keep fallback edits to owning
+   source files such as `task.constant.ts`, `task.dictionary.ts`, `Task.Template.tsx`, or `Task.Unit.tsx`.
+
+3. **Validate the apply report** — Use the apply report artifact, not the original raw plan, when it is available.
+   ```
+   # run_validation with validationTarget first; otherwise use applyReportPath
+   ```
+
+4. **Sync or repair** — Regenerate barrel files so Akan discovers your change. This regenerates:
    `cnst.ts`, `db.ts`, `srv.ts`, `sig.ts`, `st.ts`, `dict.ts`, `useClient.ts`, `useServer.ts`,
    `ui/index.ts`, `webkit/index.ts`, `srvkit/index.ts`, `common/index.ts`, and all module `index.ts` files.
    ```
-   akan scan app <%= appName %>
+   akan sync <%= appName %>
+   # or: akan repair generated --app <%= appName %>
    ```
-   **CRITICAL**: Scan after EVERY file add, delete, or rename. Without scan, other modules cannot
+   **CRITICAL**: Sync after EVERY file add, delete, or rename. Without sync, other modules cannot
    `import * as cnst from "../cnst"` and find your new model.
 
-3. **Check** — Verify your change compiles and lints.
+5. **Check** — Verify your change compiles and lints.
    ```
    akan start <%= appName %>   # dev server with live feedback (preferred)
    akan lint <%= appName %>    # quick lint-only check
+   akan doctor --strict        # structured workspace diagnostics
    ```
 
-   If `akan scan` gives errors, try:
-   - `akan build <%= appName %>` — full rebuild catches type errors scan may miss
-   - Re-run `akan create-model <name> --app <%= appName %>` if the scaffold is corrupted
+   If `akan sync` gives errors, try:
+   - `akan build <%= appName %>` — full rebuild catches type errors sync may miss
+   - Re-run `akan create-module <name> <%= appName %>` if the scaffold is corrupted
+
+For compound natural-language requests, split the request into workflows and apply each artifact in order. For example,
+"create a project module and add a budget field" should run `create-module` plan/apply first, then `add-field`
+plan/apply, then validation/doctor on the returned `validationTarget`.
+
+### CLI-Only Fallback (MCP Not Connected)
+
+When the Akan MCP tools are not loaded, run the CLI commands directly. Each MCP tool maps 1:1 to a CLI command,
+and the CLI emits the same structured report via `--format json`:
+
+| MCP tool | CLI-only equivalent |
+|----------|---------------------|
+| `list_workflows` | `akan workflow list` |
+| `explain_workflow <name>` | `akan workflow explain <name>` |
+| `plan_workflow <name> ...` | `akan workflow plan <name> ... --format json --out <planPath>` |
+| `apply_workflow { planPath }` | `akan workflow apply <planPath> --format json` (add `--dry-run` to preview) |
+| `run_validation { validationTarget }` | `akan doctor --strict --format json` (or `akan typecheck <%= appName %>`) |
+| `repair_generated` / `repair_imports` / `repair_module_shape` | `akan repair generated\|imports\|module-shape --app <%= appName %> --format json` |
+
+The scaffolding primitives (`akan create-module`, `akan create-scalar`, `akan create-service`, `akan add-field`,
+`akan add-enum-field`) are the same primitives the workflows call, so `create-module <name> <%= appName %>` followed
+by `akan sync <%= appName %>` is equivalent to running the `create-module` workflow. Direct source edits remain the
+final fallback when no CLI command covers the change.
 
 ## Quick Decision Matrix — "Where do I put this code?"
 
 | You want to... | Create in... | Run after... |
 |----------------|-------------|--------------|
-| Define a new database-backed noun (e.g., User, Product) | `lib/<model>/` → constant, document, service, signal, store, dictionary, abstract | `akan scan app <name>` |
-| Add a pure workflow / integration (e.g., Payment, Email) | `lib/_<service>/` → service, signal, store, dictionary, abstract | `akan scan app <name>` |
-| Add a reusable value type (e.g., Address, WorkHistory) | `lib/__scalar/<type>/` → constant, dictionary, abstract | `akan scan app <name>` |
+| Define a new database-backed noun (e.g., User, Product) | `lib/<model>/` → constant, document, service, signal, store, dictionary, abstract | `akan sync <name>` |
+| Add a pure workflow / integration (e.g., Payment, Email) | `lib/_<service>/` → service, signal, store, dictionary, abstract | `akan sync <name>` |
+| Add a reusable value type (e.g., Address, WorkHistory) | `lib/__scalar/<type>/` → constant, dictionary, abstract | `akan sync <name>` |
 | Create a new URL-visitable page | `page/` → `_index.tsx`, `_layout.tsx`, `[param]/_index.tsx` | Rebuild (akan start auto-detects) |
-| Add a form or reusable UI component | `ui/` → PascalCase `.tsx` with `"use client"` if needed | `akan scan app <name>` |
-| Add a React hook or browser helper | `webkit/` → camelCase `.ts` with `"use client"` | `akan scan app <name>` |
-| Add a server-only guard, middleware, or adaptor | `srvkit/` → PascalCase `.ts` | `akan scan app <name>` |
-| Add a pure helper (no DOM, no server API) | `common/` → camelCase `.ts` | `akan scan app <name>` |
+| Change the app color theme / design tokens | `apps/<app>/page/styles.css` → edit the daisyUI `@plugin "daisyui/theme"` blocks (`light`/`dark`, the `--color-*` variables) | akan start hot-reloads |
+| Add a form or reusable UI component | `ui/` → PascalCase `.tsx` with `"use client"` if needed | `akan sync <name>` |
+| Add a React hook or browser helper | `webkit/` → camelCase `.ts` with `"use client"` | `akan sync <name>` |
+| Add a server-only guard, middleware, or adaptor | `srvkit/` → PascalCase `.ts` | `akan sync <name>` |
+| Add a pure helper (no DOM, no server API) | `common/` → camelCase `.ts` | `akan sync <name>` |
 
 ## Anti-patterns: Never Do These
 
 | Don't | Why | Do Instead |
 |-------|-----|------------|
-| Edit `cnst.ts`, `db.ts`, `srv.ts`, `sig.ts`, `st.ts`, `dict.ts`, `useClient.ts`, `useServer.ts`, or any `index.ts` | These are **generated by `akan scan`**. Your changes will be overwritten. | Edit the source files in `lib/<model>/` directories and run `akan scan` |
-| Create a file without running scan | New files won't appear in barrel exports. Imports like `import * as cnst from "../cnst"` will fail. | Always run `akan scan app <name>` after creating, renaming, or deleting any module file |
+| Edit `cnst.ts`, `db.ts`, `srv.ts`, `sig.ts`, `st.ts`, `dict.ts`, `useClient.ts`, `useServer.ts`, or any `index.ts` | These are **generated by `akan sync`**. Your changes will be overwritten. | Edit the source files in `lib/<model>/` directories and run `akan sync <name>` |
+| Create a file without running sync | New files won't appear in barrel exports. Imports like `import * as cnst from "../cnst"` will fail. | Always run `akan sync <name>` after creating, renaming, or deleting any module file |
 | Use JS `#private` methods in service classes | Akan's build system rejects `#private`. Use TypeScript `private` keyword instead. | `private _methodName()` — never `#_methodName()` |
 | Use `console.log()` | Biome lint forbids `console.log`. Only `console.error`, `console.info`, `console.warn` are allowed. | Use one of the three allowed console methods |
 | Import server APIs (`fs`, `Bun`, `process.env`) in `ui/`, `webkit/`, or `common/` | Server-only imports in client code cause build failures. | Keep server dependencies in `lib/`, `srvkit/`, or `private/` only |
-| Skip running `akan scan` after deleting a file | Deleted files remain referenced in barrel exports, causing import errors everywhere. | Run `akan scan app <name>` after every file add, remove, or rename |
+| Skip running `akan sync` after deleting a file | Deleted files remain referenced in barrel exports, causing import errors everywhere. | Run `akan sync <name>` after every file add, remove, or rename |
 | Use "use client" or `useState`/`useEffect` in pages/*.tsx, *.Unit.tsx, and *.View.tsx files | Server code cannot use React hooks. Wrap in a separate `"use client"` component. | Move hook logic to `webkit/` or a `"use client"` UI component |
 | Use `<a>` tag for internal navigation between pages | Akan.js uses `<Link>` from `akanjs/ui` for client-side navigation — avoids full page reloads. | `import { Link } from "akanjs/ui"` and use `<Link href="/task">...</Link>` |
+| Name a custom `Endpoint`/`Slice` like a generated CRUD op — `create<Model>`, `update<Model>`, `remove<Model>`, `view<Model>`, `edit<Model>`, `merge<Model>` | These names are already auto-generated. A collision can pass sync/typecheck/build and only fail at runtime. | Pick a distinct verb, e.g. `startTask`/`archiveTask`, never `createTask` for a custom endpoint |
 
 ## Generated File Tracker (Quick Reference)
 
-These files are regenerated by `akan scan` and overwritten on every scan. **Do not hand-edit them.**
+These files are regenerated by `akan sync` and overwritten on every sync. **Do not hand-edit them.**
 
 | File | Generated From | Purpose |
 |------|---------------|---------|
-| `apps/*/lib/cnst.ts` | All `*/lib/*/**.constant.ts` | Barrel for all constants |
-| `apps/*/lib/dict.ts` | All `*/lib/*/**.dictionary.ts` | Barrel for all dictionaries |
-| `apps/*/lib/db.ts` | All `*/lib/<model>/*.document.ts` | Barrel for all document models |
-| `apps/*/lib/srv.ts` | All `*/lib/**/**.service.ts` | Barrel for all services |
-| `apps/*/lib/sig.ts` | All `*/lib/**/**.signal.ts` | Barrel for all signals |
-| `apps/*/lib/st.ts` | All `*/lib/**/**.store.ts` | Barrel for all stores |
-| `apps/*/lib/useClient.ts` | Client-safe module re-exports | Client-side import entry |
-| `apps/*/lib/useServer.ts` | Server-only module re-exports | Server-side import entry |
+| `*/lib/cnst.ts` | All `*/lib/*/**.constant.ts` | Barrel for all constants |
+| `*/lib/db.ts` | All `*/lib/<model>/*.document.ts` | Barrel for all document models |
+| `*/lib/dict.ts` | All `*/lib/*/**.dictionary.ts` | Barrel for all dictionaries |
+| `*/lib/sig.ts` | All `*/lib/**/**.signal.ts` | Barrel for all signals |
+| `*/lib/srv.ts` | All `*/lib/**/**.service.ts` | Barrel for all services |
+| `*/lib/st.ts` | All `*/lib/**/**.store.ts` | Barrel for all stores |
+| `*/lib/useClient.ts` | Client-safe module re-exports | Client-side import entry |
+| `*/lib/useServer.ts` | Server-only module re-exports | Server-side import entry |
 | `apps/*/client.ts` | App-wide client barrel | The `fetch` and `st` instances |
 | `apps/*/server.ts` | App-wide server barrel | Server-side service resolution |
-| `*/lib/*/index.ts` | Per-module barrel | Module-level re-exports |
+| `*/lib/**/index.ts` | Per-module barrel | Module-level re-exports |
 | `*/ui/index.ts` | All UI component files | UI barrel |
 | `*/webkit/index.ts` | All webkit files | Webkit barrel |
 | `*/srvkit/index.ts` | All srvkit files | Srvkit barrel |
@@ -206,7 +290,7 @@ rewrite the entire file.
 
 ### Recipe 1: Adding a New Field to a Model
 
-**Files to edit (in order):** `constant.ts` → `dictionary.ts` → `Template.tsx` → `Unit.tsx` → `akan scan`
+**Files to edit (in order):** `constant.ts` → `dictionary.ts` → `Template.tsx` → `Unit.tsx` → `akan sync`
 
 ```typescript
 // 1. apps/<app>/lib/<model>/<model>.constant.ts
@@ -249,14 +333,20 @@ const form = st.use.taskForm();
 })}>{task.priority}</span>
 
 // 5. Regenerate barrels
-// akan scan app <name>
+// akan sync <name>
 ```
 
 ---
 
 ### Recipe 2: Injecting a Dependency into a Service
 
-Two patterns: injecting an **adapter** (external client) or injecting another **module's service**.
+Three patterns: injecting an **external adapter** (`use<>()`), another **module's service** (`service<>()`),
+or a **predefined framework adapter** (`plug()`). A field named `<refName>Service` resolves to the service
+registered under `<refName>` — the `Service`/`Signal` suffix is required and stripped to derive the lookup key.
+
+> `apps/<app>/lib/option.ts` is a **user-owned** file scaffolded once — edit it to register adapters/DI. Unlike the
+> barrels (`cnst.ts`, `db.ts`, `srv.ts`, …) it is **not** overwritten by `akan sync`, so your `.use(...)` registrations
+> are safe.
 
 **A. Adapter injection via `use<>()` (for external clients / global singletons)**
 
@@ -299,11 +389,43 @@ export class TaskService extends serve(db.task, ({ service }) => ({
 }
 ```
 
+**C. Predefined framework adapter injection via `plug()` (storage, cache, queue, schedule, …)**
+
+Akan ships predefined adapter roles from `akanjs/service`: `StorageAdaptorRole`, `CacheAdaptorRole`,
+`QueueAdaptorRole`, `ScheduleAdaptorRole`, `DatabaseAdaptorRole`, `WebsocketAdaptorRole`,
+`LoggingAdaptorRole`, `CompressAdaptorRole`. `plug()` injects the concrete adapter bound to that role (the
+default `StorageAdaptor` binding is `BlobStorage`). `plug()` also accepts a concrete adapter class directly.
+
+```typescript
+// In <model>.service.ts — inject the framework storage adapter by role
+import { plug, serve, StorageAdaptorRole } from "akanjs/service";
+
+export class TaskService extends serve(db.task, ({ plug }) => ({
+  storage: plug(StorageAdaptorRole),
+})) {
+  async attach(taskId: string, path: string, localPath: string) {
+    // BlobStorage returns a URL under blobStorage.urlPrefix (default "/api/localFile/getBlob").
+    return await this.storage.uploadDataFromLocal({ path, localPath });
+  }
+}
+```
+
+For a custom adapter class (not a predefined role), pass the class itself, e.g. `ipfsApi: plug(IpfsApi)`
+(see `libs/shared/lib/file/file.service.ts`). Injecting a file/image field is usually simpler than calling
+storage directly: declare `image: field(File).optional()` (or `images: field([File])`) on the model and let the
+store's generated `upload<Field>On<Model>(fileList)` action handle the upload.
+
 ---
 
 ### Recipe 3: Creating and Using a Slice
 
 A Slice is a named, filtered data view. Add file entries and connect from a page.
+
+> **Silent failure — a slice `exec` must return a query descriptor, never an executed list.**
+> Return `this.taskService.queryByStatuses(...)` (the `query<Filter>` builder), **not**
+> `this.taskService.listByStatuses(...)` / `listBy...(...)` (which returns a `Promise<Doc[]>`).
+> Returning an array type-checks but throws at runtime during insight aggregation with the opaque
+> `Error: Unknown document field path: 0`. If you see that error, your slice is returning a list, not a query.
 
 ```typescript
 // 1. apps/<app>/lib/<model>/<model>.signal.ts — Define the slice
@@ -311,6 +433,7 @@ export class TaskSlice extends slice(srv.task, (init) => ({
   inTodo: init()
     .search("statuses", [cnst.TaskStatus])
     .exec(function (statuses?) {
+      // ✅ query<Filter> — a query descriptor.  ❌ listByStatuses(...) returns an array and fails at runtime.
       return this.taskService.queryByStatuses(statuses ?? ["todo", "inProgress"]);
     }),
 })) {}
@@ -489,9 +612,44 @@ For each business question, follow this chain:
 | What client state is shared? | `store.ts` — `store()` with auto-generated form/insight state + custom actions |
 | What should users see? | `View.tsx` + `Zone.tsx` (detail/container), `Template.tsx` (forms), `Unit.tsx` (cards), `Util.tsx` (buttons) |
 
+## Modeling & Query Gotchas
+
+A short list of things the type system does not always catch:
+
+- **Slices return a query, not a list.** A slice `exec` must return `this.<model>Service.query<Filter>(...)`, never
+  a `list<Filter>(...)` / `listBy...(...)` array. Returning an array type-checks but fails at runtime with
+  `Unknown document field path: 0`. (See Recipe 3.)
+- **Custom endpoint names must not collide with generated CRUD.** `create/update/remove/view/edit/merge<Model>`
+  already exist. A collision can build green and fail only at runtime — pick a distinct verb.
+- **Numbers are `Int` or `Float`, never `Number`.** `field(Number)` / `.body("x", Number)` fail to typecheck. Use
+  `Int` for counts, `Float` for decimals.
+- **Array fields use `field([T])`.** e.g. `tags: field([String])`, `images: field([File])` — not `field(String)` with
+  a suffix.
+- **Reading a secret field needs an explicit select.** `field(...).secret()` values (e.g. `passwordHash`) are stripped
+  from query results by default. Fetch them with `{ select: { <field>: true } }`, e.g.
+  `this.userModel.pickById(id, { select: { passwordHash: true } })`.
+
+## Current User, Guards & Auth-Gated Pages
+
+Built-in user authentication (session / JWT / password hashing) ships as a separate Akan auth library, not in the
+core framework. The core framework gives you the composition points below; wire the auth library through them.
+
+- **Guards** attach at the signal declaration, not per-method:
+  `endpoint(srv.task, { guards: { root: SignedIn } }, ({ mutation }) => ({...}))` or
+  `slice(srv.task, { guards: { root: SignedIn, get: Public, cru: Public } }, ...)`. `Public` always allows; other
+  guards implement the `Guard` interface in `srvkit/` (server-only) and read the request context.
+- **Read the current user inside a custom endpoint** by injecting an `InternalArg` with `.with(...)`:
+  `mutation(cnst.Task).with(CurrentUserId).exec(async function (currentUserId) { ... })`. The `Guard` /
+  `InternalArg` helpers live in `srvkit/` and read `context.getHttpContext().req.user`.
+- **Auto-generated CRUD and `serve()` service methods / lifecycle hooks do not receive session context.** If an
+  operation needs the acting user, expose a custom endpoint that takes it via `.with(CurrentUserId)` — never trust a
+  client-supplied user id.
+- **SSR auth-gated pages: guard at the layout.** Check the session in the `_layout.tsx` loader and redirect when it is
+  absent, so nested pages never render for signed-out users.
+
 ## Auto-Generated API Reference
 
-akan scan automatically generates APIs across all layers. Only write custom logic — never hand-write what the framework generates.
+akan sync automatically generates APIs across all layers. Only write custom logic — never hand-write what the framework generates.
 
 ### Signal — Endpoint Auto-Generation
 
@@ -512,7 +670,7 @@ akan scan automatically generates APIs across all layers. Only write custom logi
 |---------------|-------------|
 | `this.<model>Model` | Auto-injected model adaptor |
 | `get<Model>(id)`, `load<Model>(id)` | Single document lookup |
-| `createModel(data)`, `updateModel(id, data)`, `removeModel(id)` | CRUD operations |
+| `create<Model>(data)`, `update<Model>(id, data)`, `remove<Model>(id)` | CRUD operations — named after the model, e.g. `createTask`/`updateTask`/`removeTask` (there is no literal `createModel`) |
 | `list<Query>(args)`, `find<Query>(args)`, `pick<Query>(args)` | Filter-based queries |
 | `exists<Query>(args)`, `count<Query>(args)`, `insight<Query>(args)` | Filter-based helpers |
 | `_preCreate`, `_postCreate`, `_preUpdate`, `_postUpdate`, `_preRemove`, `_postRemove` | Lifecycle hooks (override to add logic) |
@@ -542,4 +700,14 @@ akan scan automatically generates APIs across all layers. Only write custom logi
 | `exists[Query](args)`, `count[Query](args)` | Existence check and count |
 | `insight[Query](args)`, `query[Query](args)` | Insight and raw query |
 
-**Rule**: Define `Filter` with `.query()` conditions in `document.ts`. akan scan auto-generates all 10 query helper methods per filter. Write `Document` chain methods only for state transitions with validation.
+**Rule**: Define `Filter` with `.query()` conditions in `document.ts`. akan sync auto-generates all 10 query helper methods per filter. Write `Document` chain methods only for state transitions with validation.
+
+## Generated Context
+
+The section below is regenerated by `akan agent install` (run `bun run setup:agent`). It lists this
+workspace's apps, generated files, validation commands, and framework guide. Edit anything outside the
+markers freely; content between them is overwritten on the next install.
+
+<!-- akan:agent:start -->
+<!-- Populated by `akan agent install`. Run `bun run setup:agent` to refresh. -->
+<!-- akan:agent:end -->

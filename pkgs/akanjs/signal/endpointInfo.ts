@@ -347,10 +347,22 @@ export type BuildEndpoint<SrvModule extends ServiceModel = ServiceModel> = {
 };
 
 export const buildEndpoint = {
-  query: (returnRef: Cls, signalOption?: SignalOption<Cls>) => new EndpointInfo("query", returnRef, signalOption),
-  mutation: (returnRef: Cls, signalOption?: SignalOption<Cls>) => new EndpointInfo("mutation", returnRef, signalOption),
-  pubsub: (returnRef: Cls, signalOption?: SignalOption<Cls>) => new EndpointInfo("pubsub", returnRef, signalOption),
-  message: (returnRef: Cls, signalOption?: SignalOption<Cls>) => new EndpointInfo("message", returnRef, signalOption),
+  query: <Returns extends ConstantFieldTypeInput, Nullable extends boolean = false>(
+    returnRef: Returns,
+    signalOption?: SignalOption<Returns, Nullable>,
+  ) => new EndpointInfo("query", returnRef, signalOption),
+  mutation: <Returns extends ConstantFieldTypeInput, Nullable extends boolean = false>(
+    returnRef: Returns,
+    signalOption?: SignalOption<Returns, Nullable>,
+  ) => new EndpointInfo("mutation", returnRef, signalOption),
+  pubsub: <Returns extends ConstantFieldTypeInput, Nullable extends boolean = false>(
+    returnRef: Returns,
+    signalOption?: SignalOption<Returns, Nullable>,
+  ) => new EndpointInfo("pubsub", returnRef, signalOption),
+  message: <Returns extends ConstantFieldTypeInput, Nullable extends boolean = false>(
+    returnRef: Returns,
+    signalOption?: SignalOption<Returns, Nullable>,
+  ) => new EndpointInfo("message", returnRef, signalOption),
 } as unknown as BuildEndpoint<any>;
 
 export type EndpointBuilder<SrvModule extends ServiceModel = ServiceModel> = (builder: BuildEndpoint<SrvModule>) => {

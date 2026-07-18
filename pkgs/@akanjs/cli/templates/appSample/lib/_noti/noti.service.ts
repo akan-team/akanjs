@@ -8,7 +8,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { a
 // Extends serve("noti" as const, ...) — named service (string literal), no DB model binding.
 // DB modules use serve(db.<module>, ...); service modules use serve("<name>" as const, ...).
 // DI deps available: { service, use, signal, plug, env, memory }.
-// Registered by akan scan into srv.ts barrel.
+// Registered by akan sync into srv.ts barrel.
 
 export class NotiService extends serve("noti" as const, () => ({})) {}
 

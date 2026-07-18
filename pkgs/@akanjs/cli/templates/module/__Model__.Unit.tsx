@@ -5,10 +5,7 @@ interface Dict {
   model: string;
   sysName: string;
 }
-export default function getContent(
-  scanInfo: AppInfo | LibInfo | null,
-  dict: Dict,
-) {
+export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict) {
   return {
     filename: `${dict.Model}.Unit.tsx`,
     content: `
@@ -20,7 +17,7 @@ export const Card = ({ ${dict.model}, href }: ModelProps<"${dict.model}", cnst.L
   const { l } = usePage();
   return (
     <Link href={href} className="w-full">
-      <div>{l("${dict.model}.id")}:{${dict.model}.id}</div>
+      <div>{l("${dict.model}.name")}: {${dict.model}.name}</div>
     </Link>
   );
 };

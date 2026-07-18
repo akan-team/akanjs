@@ -10,7 +10,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { a
 // Implements the Guard interface from akanjs/signal.
 // Guards are applied at endpoint/slice declaration: { guards: { root: SignedIn } }.
 // Naming: PascalCase .ts, static name property matches the guard identifier.
-// Scanned by akan scan into srvkit/index.ts barrel automatically.
+// Scanned by akan sync into srvkit/index.ts barrel automatically.
 
 export class SignedIn implements Guard {
   static name = "SignedIn";

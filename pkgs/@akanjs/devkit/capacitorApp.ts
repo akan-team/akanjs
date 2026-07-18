@@ -29,10 +29,6 @@ interface PrepareConfig extends RunConfig {
 
 type MobileCommandEnv = Record<string, string | undefined>;
 type IosApnsEnvironment = "development" | "production";
-type SpawnMobileOptions = Parameters<AppExecutor["spawn"]>[2] & {
-  iosRunTargetKind?: IosRunTargetKind;
-  platform?: MobilePlatform;
-};
 
 export type IosRunTargetKind = "device" | "simulator";
 export interface IosRunTarget {

@@ -16,8 +16,8 @@ export class PagesEntrySourceGenerator {
 
   generate(): string {
     const lines = this.#pageEntries.map(({ key, moduleAbsPath }) => {
-      const absPath = path.resolve(moduleAbsPath);
-      return `  ${JSON.stringify(key)}: () => import(${JSON.stringify(absPath)}),`;
+      const specifier = PagesEntrySourceGenerator.#toImportSpecifier(moduleAbsPath);
+      return `  ${JSON.stringify(key)}: () => import(${JSON.stringify(specifier)}),`;
     });
     return `export const pages = {\n${lines.join("\n")}\n};\n`;
   }
@@ -28,14 +28,17 @@ export class PagesEntrySourceGenerator {
 
   generateStatic(): string {
     const imports = this.#pageEntries.map(({ moduleAbsPath }, index) => {
-      const absPath = path.resolve(moduleAbsPath);
-      return `import * as page${index} from ${JSON.stringify(absPath)};`;
+      const specifier = PagesEntrySourceGenerator.#toImportSpecifier(moduleAbsPath);
+      return `import * as page${index} from ${JSON.stringify(specifier)};`;
     });
     const entries = this.#pageEntries.map(({ key, moduleAbsPath }, index) => {
       const isAsyncDefault = PagesEntrySourceGenerator.#hasAsyncDefaultExport(moduleAbsPath);
       return `  ${JSON.stringify(key)}: { loader: async () => page${index}, isAsyncDefault: ${isAsyncDefault} },`;
     });
     return `${imports.join("\n")}\nexport const pages = {\n${entries.join("\n")}\n};\n`;
+  }
+  static #toImportSpecifier(moduleAbsPath: string): string {
+    return path.resolve(moduleAbsPath).split(path.sep).join("/");
   }
 
   static #hasAsyncDefaultExport(moduleAbsPath: string): boolean {

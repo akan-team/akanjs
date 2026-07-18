@@ -10,6 +10,7 @@ import {
 import { readFileSync } from "node:fs";
 import { copyFile, mkdir, readdir as readDirEntries, stat } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   capitalize,
   isRouteSourceFile,
@@ -23,6 +24,11 @@ import chalk from "chalk";
 import ts from "typescript";
 import { AkanAppConfig, AkanLibConfig, decreaseBuildNum, increaseBuildNum } from "./akanConfig";
 import { FileSys } from "./fileSys";
+import {
+  createFirebaseMessagingServiceWorker,
+  type FirebaseClientEnvConfig,
+  normalizeFirebaseClientConfig,
+} from "./firebaseMessagingSw";
 import { getDirname } from "./getDirname";
 import { Linter } from "./linter";
 import { AppInfo, LibInfo, PkgInfo, WorkspaceInfo } from "./scanInfo";
@@ -437,8 +443,8 @@ export class Executor {
   getPath(filePath: string) {
     if (path.isAbsolute(filePath)) return filePath;
     if (filePath.startsWith(".")) return path.join(this.cwdPath, filePath);
-    const baseParts = this.cwdPath.split("/").filter(Boolean);
-    const targetParts = filePath.split("/").filter(Boolean);
+    const baseParts = this.cwdPath.split(/[\\/]/).filter(Boolean);
+    const targetParts = filePath.split(/[\\/]/).filter(Boolean);
 
     let overlapLength = 0;
     for (let i = 1; i <= Math.min(baseParts.length, targetParts.length); i++) {
@@ -450,11 +456,7 @@ export class Executor {
         }
       if (isOverlap) overlapLength = i;
     }
-    const result =
-      overlapLength > 0
-        ? `/${[...baseParts, ...targetParts.slice(overlapLength)].join("/")}`
-        : `${this.cwdPath}/${filePath}`;
-    return result.replace(/\/+/g, "/");
+    return path.join(this.cwdPath, ...targetParts.slice(overlapLength));
   }
   async mkdir(dirPath: string) {
     const writePath = this.getPath(dirPath);
@@ -503,7 +505,7 @@ export class Executor {
   async writeFile(
     filePath: string,
     content: string | object,
-    { overwrite = true }: { overwrite?: boolean } = {},
+    { overwrite = true, silent = false }: { overwrite?: boolean; silent?: boolean } = {},
   ): Promise<FileContent> {
     const writePath = this.getPath(filePath);
     const dir = path.dirname(writePath);
@@ -521,7 +523,7 @@ export class Executor {
       }
     } else {
       await FileSys.writeText(writePath, contentStr);
-      this.logger.rawLog(chalk.green(`File Create: ${filePath}`));
+      if (!silent) this.logger.rawLog(chalk.green(`File Create: ${filePath}`));
     }
     return { filePath: writePath, content: contentStr };
   }
@@ -626,14 +628,14 @@ export class Executor {
       overwrite?: boolean;
     },
     dict: { [key: string]: string } = {},
-    options: { [key: string]: any } = {},
+    options: { [key: string]: unknown } = {},
   ): Promise<FileContent | null> {
     if (targetPath.endsWith(".ts") || targetPath.endsWith(".tsx")) {
       const getContent = (await import(templatePath)) as {
         default: (
           scanInfo: AppInfo | LibInfo | null,
           dict: { [key: string]: string },
-          options?: { [key: string]: any },
+          options?: { [key: string]: unknown },
         ) => Promise<string | null | { filename: string; content: string }>;
       };
       const result = await getContent.default(scanInfo ?? null, dict, options);
@@ -686,7 +688,7 @@ export class Executor {
     template: string;
     scanInfo?: AppInfo | LibInfo | null;
     dict?: { [key: string]: string };
-    options?: { [key: string]: any };
+    options?: { [key: string]: unknown };
     overwrite?: boolean;
   }): Promise<FileContent[]> {
     const templateRoot = await this.#resolveTemplateRoot();
@@ -752,7 +754,7 @@ export class Executor {
     basePath: string;
     template: string;
     dict?: { [key: string]: string };
-    options?: { [key: string]: any };
+    options?: { [key: string]: unknown };
     overwrite?: boolean;
   }): Promise<FileContent[]> {
     const dict = {
@@ -827,10 +829,10 @@ export class Executor {
     filePath: string,
     { fix = false, dryRun = false }: { fix?: boolean; dryRun?: boolean } = {},
   ): Promise<{
-    results: any[]; // ESLint.LintResult[];
+    results: unknown[]; // ESLint.LintResult[];
     message: string;
-    errors: any[]; // ESLintLinter.LintMessage[];
-    warnings: any[]; // ESLintLinter.LintMessage[];
+    errors: unknown[]; // ESLintLinter.LintMessage[];
+    warnings: unknown[]; // ESLintLinter.LintMessage[];
   }> {
     const path = this.getPath(filePath);
     const linter = this.getLinter();
@@ -1225,40 +1227,44 @@ export class SysExecutor extends Executor {
   async getViewComponents() {
     const viewComponents = (await this.readdir("lib"))
       .filter((name) => !name.startsWith("_") && !name.startsWith("__") && !name.endsWith(".ts"))
-      .filter((name) => Bun.file(`${this.cwdPath}/lib/${name}/${name}.View.tsx`).exists());
+      .filter((name) => Bun.file(`${this.cwdPath}/lib/${name}/${capitalize(name)}.View.tsx`).exists());
     return viewComponents;
   }
 
   async getUnitComponents() {
     const unitComponents = (await this.readdir("lib"))
       .filter((name) => !name.startsWith("_") && !name.startsWith("__") && !name.endsWith(".ts"))
-      .filter((name) => Bun.file(`${this.cwdPath}/lib/${name}/${name}.Unit.tsx`).exists());
+      .filter((name) => Bun.file(`${this.cwdPath}/lib/${name}/${capitalize(name)}.Unit.tsx`).exists());
     return unitComponents;
   }
   async getTemplateComponents() {
     const templateComponents = (await this.readdir("lib"))
       .filter((name) => !name.startsWith("_") && !name.startsWith("__") && !name.endsWith(".ts"))
-      .filter((name) => Bun.file(`${this.cwdPath}/lib/${name}/${name}.Template.tsx`).exists());
+      .filter((name) => Bun.file(`${this.cwdPath}/lib/${name}/${capitalize(name)}.Template.tsx`).exists());
     return templateComponents;
   }
 
   async getViewsSourceCode() {
     const viewComponents = await this.getViewComponents();
     return Promise.all(
-      viewComponents.map((viewComponent) => this.getLocalFile(`lib/${viewComponent}/${viewComponent}.View.tsx`)),
+      viewComponents.map((viewComponent) =>
+        this.getLocalFile(`lib/${viewComponent}/${capitalize(viewComponent)}.View.tsx`),
+      ),
     );
   }
   async getUnitsSourceCode() {
     const unitComponents = await this.getUnitComponents();
     return Promise.all(
-      unitComponents.map((unitComponent) => this.getLocalFile(`lib/${unitComponent}/${unitComponent}.Unit.tsx`)),
+      unitComponents.map((unitComponent) =>
+        this.getLocalFile(`lib/${unitComponent}/${capitalize(unitComponent)}.Unit.tsx`),
+      ),
     );
   }
   async getTemplatesSourceCode() {
     const templateComponents = await this.getTemplateComponents();
     return Promise.all(
       templateComponents.map((templateComponent) =>
-        this.getLocalFile(`lib/${templateComponent}/${templateComponent}.Template.tsx`),
+        this.getLocalFile(`lib/${templateComponent}/${capitalize(templateComponent)}.Template.tsx`),
       ),
     );
   }
@@ -1357,14 +1363,15 @@ export class AppExecutor extends SysExecutor {
   getCommandEnv(env: Record<string, string> = {}): Record<string, string> {
     const basePort = 8282;
     const portOffset = WorkspaceExecutor.getBaseDevEnv().portOffset;
-    const PORT = basePort ? (basePort + portOffset).toString() : undefined;
+    const PORT = (basePort + portOffset).toString();
     const AKAN_PUBLIC_SERVER_PORT = portOffset ? (8282 + portOffset).toString() : undefined;
     return {
       ...process.env,
       AKAN_PUBLIC_APP_NAME: this.name,
       AKAN_WORKSPACE_ROOT: this.workspace.workspaceRoot,
       NODE_NO_WARNINGS: "1",
-      ...(PORT ? { PORT, AKAN_PUBLIC_CLIENT_PORT: PORT } : {}),
+      PORT,
+      AKAN_PUBLIC_CLIENT_PORT: PORT,
       ...(AKAN_PUBLIC_SERVER_PORT ? { AKAN_PUBLIC_SERVER_PORT } : {}),
       ...env,
     };
@@ -1391,6 +1398,12 @@ export class AppExecutor extends SysExecutor {
       ...routeEnv,
       ...(devPort ? { PORT: devPort, AKAN_PUBLIC_CLIENT_PORT: devPort, AKAN_PUBLIC_SERVER_PORT: devPort } : {}),
     });
+    // `start` spawns subprocesses that carry `env`, but `build` runs its phases in this same process and
+    // reads `process.env` directly. Publish the resolved env here so SSR/CSR bundling (fed by getPublicEnv,
+    // which filters to AKAN_PUBLIC_*) sees AKAN_PUBLIC_APP_NAME — otherwise SSR throws
+    // "environment variable AKAN_PUBLIC_APP_NAME is required". Only AKAN_PUBLIC_* is baked into bundles, so
+    // this does not leak non-public env.
+    if (type === "build") Object.assign(process.env, env);
     return { env };
   }
   #publicEnv: Record<string, string> | null = null;
@@ -1496,7 +1509,27 @@ export class AppExecutor extends SysExecutor {
       writeLib: write,
     })) as AppInfo;
     if (write) await this.syncAssets(scanInfo.getScanResult().libDeps);
+    if (write) await this.#syncFirebaseMessagingSw();
     return scanInfo;
+  }
+  //* firebase config 가 있으면 public/firebase-messaging-sw.js 를 1회 생성한다(있으면 스킵).
+  //* 서버 동적 라우트를 대체하는 정적 파일. env.client 파생이라 gitignore 되고 env 별로 재생성된다.
+  async #syncFirebaseMessagingSw() {
+    const swRelPath = "public/firebase-messaging-sw.js";
+    if (await FileSys.fileExists(this.getPath(swRelPath))) return;
+    const envClientPath = path.join(this.cwdPath, "env", "env.client.ts");
+    if (!(await FileSys.fileExists(envClientPath))) return;
+    let firebaseConfig: FirebaseClientEnvConfig | null = null;
+    try {
+      const envUrl = pathToFileURL(envClientPath);
+      envUrl.searchParams.set("t", String(Date.now()));
+      const envModule = (await import(envUrl.href)) as { env?: { firebase?: unknown } };
+      firebaseConfig = normalizeFirebaseClientConfig(envModule.env?.firebase);
+    } catch {
+      return;
+    }
+    if (!firebaseConfig) return;
+    await this.writeFile(swRelPath, createFirebaseMessagingServiceWorker(firebaseConfig), { overwrite: false });
   }
   async increaseBuildNum() {
     await increaseBuildNum(this);

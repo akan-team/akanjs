@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  parseTypescriptFileBlocks,
-  preserveTypescriptResponseContent,
-} from "./aiEditor";
+import { parseTypescriptFileBlocks, preserveTypescriptResponseContent } from "./aiEditor";
 
 describe("parseTypescriptFileBlocks", () => {
   test("parses TypeScript file blocks with common fence variants", () => {
@@ -39,12 +36,9 @@ export const CarUnit = () => null;
 export const car = "car";
 \`\`\`
 `;
-    const nextContent =
-      "The generated file meets all specified requirements. No rewrite is necessary.";
+    const nextContent = "The generated file meets all specified requirements. No rewrite is necessary.";
 
-    expect(
-      preserveTypescriptResponseContent(previousContent, nextContent),
-    ).toBe(previousContent);
+    expect(preserveTypescriptResponseContent(previousContent, nextContent)).toBe(previousContent);
   });
 
   test("uses next code response when validation rewrites with parseable files", () => {
@@ -61,8 +55,6 @@ export const car = "updated";
 \`\`\`
 `;
 
-    expect(
-      preserveTypescriptResponseContent(previousContent, nextContent),
-    ).toBe(nextContent);
+    expect(preserveTypescriptResponseContent(previousContent, nextContent)).toBe(nextContent);
   });
 });

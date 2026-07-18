@@ -53,6 +53,7 @@ const appRootAllowedFiles = new Set([
   "package.json",
   "server.ts",
   "tsconfig.json",
+  "tsconfig.tsbuildinfo",
 ]);
 const generatedRootCapacitorConfigFiles = ["capacitor.config.js", "capacitor.config.json"] as const;
 const appRootAllowedDirs = new Set([

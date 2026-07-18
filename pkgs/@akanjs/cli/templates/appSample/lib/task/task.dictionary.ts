@@ -11,7 +11,7 @@ import type { TaskFilter } from "./task.document";
 // Uses modelDictionary(["en", "ko"]) from akanjs/dictionary — the framework convention for bilingual module dictionaries.
 // Sections: .of() module name, .model() field labels, .lightModel() list-view labels, .query() filter labels,
 // .sort() labels, .enum() value labels, .error() messages (thrown via Err()), .translate() UI messages (used in store via msg.xxx).
-// Registered by akan scan into dict.ts barrel.
+// Registered by akan sync into dict.ts barrel.
 
 export const dictionary = modelDictionary(["en", "ko"])
   .of((t) =>

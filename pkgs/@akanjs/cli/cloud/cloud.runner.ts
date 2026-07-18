@@ -1,6 +1,7 @@
 import path from "node:path";
 import {
   AiSession,
+  AppExecutor,
   CloudApi,
   GlobalConfig,
   getDefaultHostConfig,
@@ -365,7 +366,10 @@ export class CloudRunner extends runner("cloud") {
   async downloadEnv(cloudApi: CloudApi, workspace: Workspace, workspaceId: string) {
     await workspace.mkdir("local");
     const localPath = (await cloudApi.downloadEnv(workspaceId)) as string;
-    await workspace.spawn("tar", ["-xf", localPath], { cwd: workspace.workspaceRoot });
+    // Pass a path relative to workspaceRoot so tar never sees a Windows drive letter
+    // (e.g. "C:\...") which GNU tar would interpret as a remote "host:file" spec.
+    const relativePath = path.relative(workspace.workspaceRoot, localPath).split(path.sep).join("/");
+    await workspace.spawn("tar", ["-xf", relativePath], { cwd: workspace.workspaceRoot });
     await workspace.remove(localPath);
   }
   async uploadEnv(cloudApi: CloudApi, workspaceId: string, filePath: string) {
@@ -420,7 +424,7 @@ export class CloudRunner extends runner("cloud") {
       ...appNames.map((appName) => `apps/${appName}/env`),
       ...libNames.map((libName) => `libs/${libName}/env`),
     ];
-    const envFilePaths = (
+    const defaultEnvFilePaths = (
       await Promise.all(
         envDirs.map(async (envDir) =>
           (
@@ -430,9 +434,10 @@ export class CloudRunner extends runner("cloud") {
             .map((fileName) => `${envDir}/${fileName}`),
         ),
       )
-    )
-      .flat()
-      .sort();
+    ).flat();
+    await this.#syncSecretGitignore(workspace, appNames);
+    const customSecretPaths = await this.#gatherCustomSecretFiles(workspace, appNames);
+    const envFilePaths = [...new Set([...defaultEnvFilePaths, ...customSecretPaths])].sort();
     await workspace.mkdir("local");
     await workspace.remove("local/env.tar");
     if (envFilePaths.length === 0) throw new Error("No environment files found to archive");
@@ -441,5 +446,59 @@ export class CloudRunner extends runner("cloud") {
     });
     Logger.info(`Archived ${envFilePaths.length} environment files to local/env.tar`);
     return { files: envFilePaths, path: "local/env.tar" };
+  }
+
+  async #gatherCustomSecretFiles(workspace: Workspace, appNames: string[]) {
+    const secretPaths = await Promise.all(
+      appNames.map(async (appName) => {
+        const config = await AppExecutor.from(workspace, appName).getConfig();
+        const secretGlobs = config.secrets ?? [];
+        if (secretGlobs.length === 0) return [];
+        const appDir = path.join(workspace.workspaceRoot, "apps", appName);
+        return secretGlobs.flatMap((pattern) =>
+          Array.from(new Bun.Glob(pattern).scanSync({ cwd: appDir, onlyFiles: true })).map(
+            (match) => `apps/${appName}/${match.split(path.sep).join("/")}`,
+          ),
+        );
+      }),
+    );
+    return secretPaths.flat();
+  }
+
+  async #syncSecretGitignore(workspace: Workspace, appNames: string[]) {
+    const patterns = (
+      await Promise.all(
+        appNames.map(async (appName) => {
+          const config = await AppExecutor.from(workspace, appName).getConfig();
+          return (config.secrets ?? []).map((pattern) => `apps/${appName}/${pattern.replace(/^\/+/, "")}`);
+        }),
+      )
+    ).flat();
+    const uniquePatterns = [...new Set(patterns)].sort();
+    const existing = (await workspace.exists(".gitignore")) ? await workspace.readFile(".gitignore") : "";
+    const nextContent = this.#applySecretGitignoreBlock(existing, uniquePatterns);
+    if (nextContent === existing) return;
+    await workspace.writeFile(".gitignore", nextContent);
+    Logger.info(
+      uniquePatterns.length
+        ? `Synced ${uniquePatterns.length} secret pattern(s) from akan.config.ts to .gitignore`
+        : "Removed managed secret patterns from .gitignore",
+    );
+  }
+
+  #applySecretGitignoreBlock(content: string, patterns: string[]) {
+    const beginMarker = "# akan:secrets (managed by akan.config.ts — do not edit)";
+    const endMarker = "# akan:secrets:end";
+    const lines = content.split("\n");
+    const beginIdx = lines.indexOf(beginMarker);
+    const endIdx = lines.indexOf(endMarker);
+    const stripped =
+      beginIdx !== -1 && endIdx !== -1 && endIdx >= beginIdx
+        ? [...lines.slice(0, beginIdx), ...lines.slice(endIdx + 1)]
+        : [...lines];
+    while (stripped.length && stripped[stripped.length - 1]?.trim() === "") stripped.pop();
+    if (patterns.length === 0) return stripped.length ? `${stripped.join("\n")}\n` : "";
+    const body = stripped.length ? `${stripped.join("\n")}\n\n` : "";
+    return `${body}${[beginMarker, ...patterns, endMarker].join("\n")}\n`;
   }
 }

@@ -53,20 +53,69 @@ export type DocumentQueryValue =
   | undefined
   | Record<string, unknown>;
 
-export interface DocumentUpdate {
-  [key: string]: unknown;
-  set?: Record<string, unknown>;
-  unset?: Record<string, unknown> | string[];
-  addToSet?: Record<string, unknown>;
-  pull?: Record<string, unknown>;
-  push?: Record<string, unknown>;
-  inc?: Record<string, number>;
-  setOnInsert?: Record<string, unknown>;
+// Update operators mirror the query DSL: an update is `{ path: updateNode }`, symmetric with the `{ path: queryNode }`
+// query shape. A bare value at a path is shorthand for `set(value)`. Compilers translate these nodes into a single
+// atomic JSON expression pushed to the database (no read-modify-write).
+export type DocumentUpdateOperator =
+  | "set"
+  | "unset"
+  | "inc"
+  | "mul"
+  | "min"
+  | "max"
+  | "push"
+  | "pull"
+  | "addToSet"
+  | "setOnInsert";
+
+export interface DocumentUpdateNode {
+  kind: "update";
+  op: DocumentUpdateOperator;
+  value?: unknown;
 }
+
+export type DocumentUpdateValue =
+  | DocumentUpdateNode
+  | DocumentPrimitive
+  | DocumentPrimitive[]
+  | Record<string, unknown>
+  | undefined;
+
+export type DocumentUpdate<T = any> = {
+  [K in DocumentPath<T>]?: DocumentUpdateValue;
+};
 
 export interface DocumentUpdateOptions {
   upsert?: boolean;
 }
+
+const updateOp = (op: DocumentUpdateOperator, value?: unknown): DocumentUpdateNode => ({ kind: "update", op, value });
+
+export const createDocumentUpdateHelper = () => ({
+  set: (value: unknown) => updateOp("set", value),
+  unset: () => updateOp("unset"),
+  inc: (by = 1) => updateOp("inc", by),
+  mul: (by: number) => updateOp("mul", by),
+  min: (value: unknown) => updateOp("min", value),
+  max: (value: unknown) => updateOp("max", value),
+  push: (value: unknown) => updateOp("push", value),
+  pull: (value: unknown) => updateOp("pull", value),
+  addToSet: (value: unknown) => updateOp("addToSet", value),
+  setOnInsert: (value: unknown) => updateOp("setOnInsert", value),
+});
+
+export type DocumentUpdateHelper = ReturnType<typeof createDocumentUpdateHelper>;
+
+export const documentUpdateHelper = createDocumentUpdateHelper();
+
+export type DocumentUpdateBuilder<T = any> = (helper: DocumentUpdateHelper) => DocumentUpdate<T>;
+export type DocumentUpdateInput<T = any> = DocumentUpdate<T> | DocumentUpdateBuilder<T>;
+
+export const resolveDocumentUpdate = <T>(update: DocumentUpdateInput<T>): DocumentUpdate<T> =>
+  typeof update === "function" ? update(documentUpdateHelper) : update;
+
+export const isDocumentUpdateNode = (value: unknown): value is DocumentUpdateNode =>
+  !!value && typeof value === "object" && (value as { kind?: unknown }).kind === "update";
 
 export type DocumentQuery<T = any> =
   | DocumentQueryNode

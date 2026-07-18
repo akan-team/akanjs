@@ -20,7 +20,7 @@ export const General = ({ className, ${dict.model} }: GeneralProps) => {
   const { l } = usePage();
   return (
     <div className={clsx("w-full", className)}>
-      <div>{l("${dict.model}.id")}: {${dict.model}.id}</div>
+      <div>{l("${dict.model}.name")}: {${dict.model}.name}</div>
     </div>
   );
 };

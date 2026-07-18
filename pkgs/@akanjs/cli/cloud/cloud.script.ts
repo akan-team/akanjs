@@ -21,21 +21,25 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
     const session = new AiSession("general", { workspace, isContinued: true });
     await session.ask(question);
   }
-  async downloadEnv(workspace: Workspace, workspaceId = workspace.getWorkspaceId({ allowEmpty: true })) {
+  async downloadEnv(
+    workspace: Workspace,
+    workspaceId = workspace.getWorkspaceId({ allowEmpty: true }),
+    { host = GlobalConfig.akanCloudHost }: { host?: string } = {},
+  ) {
     if (workspaceId) {
-      await this.login(workspace);
-      const cloudApi = await CloudApi.fromHost(workspace);
+      await this.login(workspace, host);
+      const cloudApi = await CloudApi.fromHost(workspace, host);
       await this.cloudRunner.downloadEnv(cloudApi, workspace, workspaceId);
       return;
     }
     await this.cloudRunner.downloadEnvByScp(workspace);
   }
-  async uploadEnv(workspace: Workspace) {
+  async uploadEnv(workspace: Workspace, { host = GlobalConfig.akanCloudHost }: { host?: string } = {}) {
     const workspaceId = workspace.getWorkspaceId({ allowEmpty: true });
     const { path } = await this.cloudRunner.gatherEnvFiles(workspace);
     if (workspaceId) {
-      await this.login(workspace);
-      const cloudApi = await CloudApi.fromHost(workspace);
+      await this.login(workspace, host);
+      const cloudApi = await CloudApi.fromHost(workspace, host);
       await this.cloudRunner.uploadEnv(cloudApi, workspaceId, path);
       return;
     }

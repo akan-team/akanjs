@@ -10,7 +10,7 @@ import * as srv from "../srv";
 // Extends endpoint(srv.<module>, ...) — pubsub endpoint for real-time server→client communication.
 // pubsub() is the Akan.js convention for publish-subscribe: server publishes, all connected clients receive.
 // Client subscribes via fetch.subscribeSend((data) => { ... }).
-// Registered by akan scan into sig.ts barrel.
+// Registered by akan sync into sig.ts barrel.
 
 export class NotiInternal extends internal(srv.noti, () => ({})) {}
 

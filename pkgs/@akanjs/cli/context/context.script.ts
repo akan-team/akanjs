@@ -1,6 +1,25 @@
-import { script, type Workspace } from "@akanjs/devkit";
+import {
+  type AkanMcpInstallTarget,
+  type AkanMcpMode,
+  akanMcpInstallTargets,
+  jsonText,
+  script,
+  type Workspace,
+} from "@akanjs/devkit";
 import { Logger } from "akanjs/common";
 import { ContextRunner } from "./context.runner";
+
+const resolveMcpInstallTargets = (target: string | null): AkanMcpInstallTarget[] => {
+  if (!target || target === "all") return [...akanMcpInstallTargets];
+  if ((akanMcpInstallTargets as string[]).includes(target)) return [target as AkanMcpInstallTarget];
+  throw new Error(`Unknown MCP install target: ${target}. Use cursor, claude, codex, or all.`);
+};
+
+const mcpTargetLabels: Record<AkanMcpInstallTarget, string> = {
+  cursor: "Cursor",
+  claude: "Claude Code",
+  codex: "Codex",
+};
 
 export class ContextScript extends script("context", [ContextRunner]) {
   async context(
@@ -14,13 +33,42 @@ export class ContextScript extends script("context", [ContextRunner]) {
     Logger.rawLog(await this.contextRunner.doctor(workspace, options));
   }
 
-  async mcpInstall(workspace: Workspace, target: string | null, { force = false }: { force?: boolean } = {}) {
-    if (target && target !== "cursor") throw new Error(`Unknown MCP install target: ${target}. Use cursor.`);
-    const written = await this.contextRunner.installMcp(workspace, "cursor", { force });
-    Logger.rawLog(`Akan MCP server installed for Cursor:\n- ${written}`);
+  async mcpInstall(
+    workspace: Workspace,
+    target: string | null,
+    { force = false, mode = "readonly" }: { force?: boolean; mode?: AkanMcpMode } = {},
+  ) {
+    const targets = resolveMcpInstallTargets(target);
+    const written: string[] = [];
+    for (const t of targets) {
+      const configPath = await this.contextRunner.installMcp(workspace, t, { force, mode });
+      written.push(`${mcpTargetLabels[t]}: ${configPath}`);
+    }
+    Logger.rawLog(`Akan MCP server installed (${mode} mode):\n${written.map((line) => `- ${line}`).join("\n")}`);
   }
 
-  async mcp(workspace: Workspace) {
-    await this.contextRunner.runMcp(workspace);
+  async mcp(workspace: Workspace, { mode = "readonly" }: { mode?: AkanMcpMode } = {}) {
+    await this.contextRunner.runMcp(workspace, { mode });
+  }
+
+  async mcpCall(
+    workspace: Workspace,
+    tool: string,
+    {
+      mode = "readonly",
+      args = null,
+      format = "json",
+    }: { mode?: AkanMcpMode; args?: string | null; format?: "json" } = {},
+  ) {
+    let parsedArgs: Record<string, unknown> = {};
+    if (args) {
+      const parsed = JSON.parse(args) as unknown;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("MCP call args must be a JSON object.");
+      }
+      parsedArgs = parsed as Record<string, unknown>;
+    }
+    const result = await this.contextRunner.callMcpTool(workspace, tool, parsedArgs, { mode });
+    Logger.rawLog(format === "json" ? jsonText(result) : String(result));
   }
 }
