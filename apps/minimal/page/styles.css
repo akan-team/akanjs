@@ -1,7 +1,136 @@
 @import "tailwindcss";
 @import "akanjs/ui/styles.css";
 
+/* daisyui 컴포넌트 클래스(btn 등)는 Phase 3까지 유지. 색상은 아래 @theme inline이 공급.
+   minimal은 커스텀 테마가 없어 daisyui 기본 팔레트를 쓰던 앱 → akan 테마로 통일(결정). */
 @plugin "daisyui" {
   logs: false;
   exclude: properties;
+  themes: false;
+}
+
+/* data-theme=dark 를 Tailwind dark: 변형에 연결(기존 data-theme 인프라 재사용) */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ── 원시 테마 값 (akan과 통일) ──
+   기본 theme="css"는 data-theme 미부착 → :root 가 기본(dark). [data-theme="light"] override. */
+:root,
+[data-theme="dark"] {
+  --background: #1a1a1a;
+  --foreground: #ffffff;
+  --base-200: #2a2a2a;
+  --base-300: #3a3a3a;
+  --primary: #ff493b;
+  --primary-foreground: #ffffff;
+  --secondary: #2b2e33;
+  --secondary-foreground: #ffffff;
+  --accent: #d1a23b;
+  --accent-foreground: #ffffff;
+  --neutral: #3ed13b;
+  --neutral-foreground: #ffffff;
+  --info: #173b78;
+  --info-foreground: #ffffff;
+  --success: #255fc3;
+  --success-foreground: #ffffff;
+  --warning: #ffcc00;
+  --warning-foreground: #ffffff;
+  --destructive: #f02020;
+  --destructive-foreground: #ffffff;
+  --open: #10fc00;
+  --open-foreground: #ffffff;
+  --muted: #2a2a2a;
+  --muted-foreground: #a0a0a0;
+  --card: #1a1a1a;
+  --card-foreground: #ffffff;
+  --popover: #1a1a1a;
+  --popover-foreground: #ffffff;
+  --border: #3a3a3a;
+  --input: #3a3a3a;
+  --ring: #ff493b;
+}
+
+[data-theme="light"] {
+  --background: #fafafa;
+  --foreground: #2c3e50;
+  --base-200: #f5f5f5;
+  --base-300: #e5e5e5;
+  --primary: #c33c32;
+  --primary-foreground: #ffffff;
+  --secondary: #2b2e33;
+  --secondary-foreground: #ffffff;
+  --accent: #e67e22;
+  --accent-foreground: #ffffff;
+  --neutral: #292c32;
+  --neutral-foreground: #fafafa;
+  --info: #f1fdff;
+  --info-foreground: #2c3e50;
+  --success: #2ecc71;
+  --success-foreground: #fafafa;
+  --warning: #f39c12;
+  --warning-foreground: #fafafa;
+  --destructive: #e74c3c;
+  --destructive-foreground: #fafafa;
+  --open: #27ae60;
+  --open-foreground: #fafafa;
+  --muted: #f5f5f5;
+  --muted-foreground: #6b7280;
+  --card: #fafafa;
+  --card-foreground: #2c3e50;
+  --popover: #ffffff;
+  --popover-foreground: #2c3e50;
+  --border: #e5e5e5;
+  --input: #e5e5e5;
+  --ring: #c33c32;
+}
+
+/* ── Tailwind 색상 네임스페이스 매핑 (inline = var() 참조 → 런타임 data-theme 전환) ── */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-base-200: var(--base-200);
+  --color-base-300: var(--base-300);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-neutral: var(--neutral);
+  --color-neutral-foreground: var(--neutral-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-open: var(--open);
+  --color-open-foreground: var(--open-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-box: 1rem;
+  --radius-field: 0.75rem;
+
+  /* ── 과도기 별칭: daisyui 컴포넌트 + 아직 리네임 안 된 소스용 구 토큰명. Phase 3에서 제거. ── */
+  --color-base-100: var(--background);
+  --color-base-content: var(--foreground);
+  --color-error: var(--destructive);
+  --color-error-content: var(--destructive-foreground);
+  --color-primary-content: var(--primary-foreground);
+  --color-secondary-content: var(--secondary-foreground);
+  --color-accent-content: var(--accent-foreground);
+  --color-neutral-content: var(--neutral-foreground);
+  --color-info-content: var(--info-foreground);
+  --color-success-content: var(--success-foreground);
+  --color-warning-content: var(--warning-foreground);
+  --color-open-content: var(--open-foreground);
 }
