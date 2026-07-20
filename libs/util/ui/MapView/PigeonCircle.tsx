@@ -6,7 +6,7 @@ import { useContext } from "react";
 import { PigeonMapPropsContext } from "./context";
 import PigeonMarker from "./PigeonMarker";
 
-interface Props {
+interface PigeonCircleProps {
   className?: string;
   center: cnst.Coordinate;
   point?: cnst.Coordinate;
@@ -14,7 +14,7 @@ interface Props {
   onClick?: () => void;
   children?: React.ReactNode;
 }
-export default function PigeonCircle({ className, center, point, radius, onClick, children }: Props) {
+export default function PigeonCircle({ className, center, point, radius, onClick, children }: PigeonCircleProps) {
   const contextProps = useContext(PigeonMapPropsContext);
 
   const centerAnchor: [number, number] = [center.coordinates[1], center.coordinates[0]];

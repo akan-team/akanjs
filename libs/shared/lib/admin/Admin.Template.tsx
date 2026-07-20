@@ -4,11 +4,11 @@ import { st, usePage } from "@libs/shared/client";
 import { Field } from "@libs/shared/ui";
 import { Layout } from "akanjs/ui";
 
-interface AdminEditProps {
+interface GeneralProps {
   className?: string;
 }
 
-export const General = ({ className }: AdminEditProps) => {
+export const General = ({ className }: GeneralProps) => {
   const adminForm = st.use.adminForm();
   const { l } = usePage();
   return (

@@ -366,13 +366,6 @@ export const FileList = ({
 };
 
 Upload.FileList = FileList;
-interface UploadButtonProps {
-  onChange?: (e: any) => void | Promise<void>;
-  multiple?: boolean;
-  accept?: string;
-  className?: string;
-  uploadClassName?: string;
-}
 
 interface UploadImageProps {
   type: "image" | "crop";
@@ -643,7 +636,7 @@ interface ProgressProps {
   max: number;
 }
 
-const Progress = ({ value, max }: ProgressProps) => {
+export const Progress = ({ value, max }: ProgressProps) => {
   return (
     <div className="relative h-2 w-full overflow-hidden rounded-xl">
       <div className="absolute size-full bg-primary/20" />
@@ -662,7 +655,7 @@ interface EmptyUploadProps {
   dndDesc: string;
 }
 
-const EmptyUpload = ({ type, isDragging, desc, dndDesc }: EmptyUploadProps) => {
+export const EmptyUpload = ({ type, isDragging, desc, dndDesc }: EmptyUploadProps) => {
   return (
     <div
       className={clsx(

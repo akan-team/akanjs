@@ -13,7 +13,7 @@ export const RequestPermission = () => {
     //   console.log("Notification permission granted");
     // }
   }, []);
-  return <></>;
+  return null;
 };
 
 // interface PermissionProps {

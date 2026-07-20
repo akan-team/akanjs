@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createPushNotificationMessage } from "./PushNotificationServer";
+import { createPushNotificationMessage } from "./pushNotificationServer";
 
 describe("PushNotificationServer", () => {
   test("normalizes url into data.url and preserves custom data", () => {

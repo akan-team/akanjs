@@ -3,8 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PackageJson } from "../types";
-import { AkanAppConfig, AkanLibConfig } from "./akanConfig";
-import type { DeepPartial, LibConfigResult } from "./types";
+import { AkanAppConfig } from "./akanConfig";
 
 const akanPackageJson = JSON.parse(
   fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../akanjs/package.json"), "utf8"),
@@ -264,6 +263,8 @@ describe("AkanAppConfig", () => {
       `postgres@${runtimeDependencies.postgres}`,
       `protobufjs@${runtimeDependencies.protobufjs}`,
     ]);
+    expect(config.getMobileRuntimePackages()).toEqual(["firebase"]);
+    expect(config.getMissingMobileDependencySpecs()).toEqual([`firebase@${runtimeDependencies.firebase}`]);
   });
 
   test("normalizes multiple mobile targets and validates base paths", () => {

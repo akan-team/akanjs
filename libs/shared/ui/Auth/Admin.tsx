@@ -14,7 +14,7 @@ export const Admin = () => {
         const mePromise = (async () => {
           try {
             return account.me ? await fetch.me({ crystalize: false }) : null;
-          } catch (e) {
+          } catch (_e) {
             return null;
           }
         })();

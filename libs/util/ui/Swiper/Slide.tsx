@@ -1,6 +1,4 @@
 "use client";
-import { SwiperSlide, type SwiperSlideProps } from "swiper/react";
-
-type SlideProps = SwiperSlideProps;
+import { SwiperSlide } from "swiper/react";
 
 export const Slide = SwiperSlide;

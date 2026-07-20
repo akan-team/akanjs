@@ -45,7 +45,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     })),
     signoutAdmin: fn(["Sign out Admin", "관리자 로그아웃"]),
     refreshAdminJwt: fn(["Refresh Admin JWT", "관리자 JWT 갱신"]).arg((t) => ({
-      refreshToken: t(["Refresh Token", "갱신 토큰"]).desc(["Refresh Token Description", "갱신 토큰 설명"]),
+      refreshToken: t(["Refresh Token", "리프레시 토큰"]).desc(["Refresh Token", "리프레시 토큰"]),
     })),
     addAdminRole: fn(["Add Admin Role", "관리자 권한 추가"]).arg((t) => ({
       adminId: t(["Admin ID", "관리자 아이디"]).desc(["Admin ID Description", "관리자 아이디 설명"]),
@@ -55,4 +55,12 @@ export const dictionary = modelDictionary(["en", "ko"])
       adminId: t(["Admin ID", "관리자 아이디"]).desc(["Admin ID Description", "관리자 아이디 설명"]),
       role: t(["Role", "권한"]).desc(["Role Description", "권한 설명"]),
     })),
-  }));
+  }))
+  .error({
+    adminSystemAlreadyInitialized: ["Admin system already initialized", "관리자 시스템이 이미 초기화되었습니다"],
+    passwordNotMatched: ["Password does not match", "비밀번호가 일치하지 않습니다"],
+    noAdminAccount: ["No admin account", "관리자 계정이 없습니다"],
+    noAccessToSetPassword: ["No access to set password", "비밀번호를 설정할 권한이 없습니다"],
+    noRefreshToken: ["No refresh token", "리프레시 토큰이 없습니다"],
+    notAllowed: ["Not allowed", "허용되지 않습니다"],
+  });

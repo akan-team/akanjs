@@ -1,15 +1,14 @@
+import type { cnst } from "@libs/shared/client";
 import { usePage } from "@libs/shared/client";
 import { clsx } from "akanjs/client";
 import { RecentTime } from "akanjs/ui";
 
-import type * as cnst from "../cnst";
-
-interface NotificationViewProps {
+interface GeneralProps {
   className?: string;
   notification: cnst.Notification;
 }
 
-export const General = ({ className, notification }: NotificationViewProps) => {
+export const General = ({ className, notification }: GeneralProps) => {
   const { l } = usePage();
   return (
     <div className={clsx(className, ``)}>

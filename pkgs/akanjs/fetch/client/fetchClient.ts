@@ -101,6 +101,9 @@ export class FetchClient {
               : undefined,
           getGuards: signal.getGuards ?? current.getGuards,
           cruGuards: signal.cruGuards ?? current.cruGuards,
+          createGuards: signal.createGuards ?? current.createGuards,
+          updateGuards: signal.updateGuards ?? current.updateGuards,
+          removeGuards: signal.removeGuards ?? current.removeGuards,
         }
       : signal;
   }
@@ -356,6 +359,10 @@ export class FetchClient {
       modelId: `${refName}Id`,
       lightModel: `light${capRefName}`,
     };
+    // create/update/remove fall back to the shared cruGuards when they don't override it.
+    const createGuards = signal.createGuards ?? signal.cruGuards;
+    const updateGuards = signal.updateGuards ?? signal.cruGuards;
+    const removeGuards = signal.removeGuards ?? signal.cruGuards;
     const endpoint: { [key: string]: SerializedEndpoint } = {};
     if (signal.getGuards) {
       endpoint[names.model] = {
@@ -371,13 +378,15 @@ export class FetchClient {
         guards: signal.getGuards,
       };
     }
-    if (signal.cruGuards) {
+    if (createGuards) {
       endpoint[names.createModel] = {
         type: "mutation",
         args: [{ type: "body", name: "data", refName, modelType: "input" }],
         returns: { refName, modelType: "full" },
-        guards: signal.cruGuards,
+        guards: createGuards,
       };
+    }
+    if (updateGuards) {
       endpoint[names.updateModel] = {
         type: "mutation",
         args: [
@@ -385,13 +394,15 @@ export class FetchClient {
           { type: "body", name: "data", refName, modelType: "input" },
         ],
         returns: { refName, modelType: "full" },
-        guards: signal.cruGuards,
+        guards: updateGuards,
       };
+    }
+    if (removeGuards) {
       endpoint[names.removeModel] = {
         type: "mutation",
         args: [{ type: "param", name: names.modelId, refName: "ID" }],
         returns: { refName, modelType: "full" },
-        guards: signal.cruGuards,
+        guards: removeGuards,
       };
     }
     return endpoint;
@@ -417,7 +428,11 @@ export class FetchClient {
       this.#setHandlerFactory(key, () => this.#makeHttpFn(key, value, signal.prefix));
     });
 
-    if (signal.cruGuards) {
+    // view/edit helpers are available whenever any create/update/remove endpoint is exposed;
+    // merge wraps updateModel, so it additionally requires update to be exposed.
+    const anyCruGuards = signal.cruGuards ?? signal.createGuards ?? signal.updateGuards ?? signal.removeGuards;
+    const updateGuards = signal.updateGuards ?? signal.cruGuards;
+    if (anyCruGuards) {
       this.#setHandlerFactory(
         names.viewModel,
         () =>
@@ -464,15 +479,17 @@ export class FetchClient {
             return { refName, [`${refName}Obj`]: modelObj, [`${refName}ViewAt`]: new Date() };
           }) as FetchHandler,
       );
-      this.#setHandlerFactory(
-        names.mergeModel,
-        () =>
-          (async (modelOrId: string | { id: string }, data: UnknownRecord, option?: FetchPolicy) => {
-            const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
-            const updateFn = this.#requireHandler(names.updateModel, names.mergeModel);
-            return await updateFn(id, data, option);
-          }) as FetchHandler,
-      );
+      if (updateGuards) {
+        this.#setHandlerFactory(
+          names.mergeModel,
+          () =>
+            (async (modelOrId: string | { id: string }, data: UnknownRecord, option?: FetchPolicy) => {
+              const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
+              const updateFn = this.#requireHandler(names.updateModel, names.mergeModel);
+              return await updateFn(id, data, option);
+            }) as FetchHandler,
+        );
+      }
     }
 
     this.#setHandlerFactory(

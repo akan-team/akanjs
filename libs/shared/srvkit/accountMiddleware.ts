@@ -2,13 +2,7 @@ import { generateJwtSecret, resolveJwt } from "@libs/util/srvkit";
 import type { BaseEnv } from "akanjs/base";
 import type { Account } from "akanjs/fetch";
 import type { Middleware, SignalContext } from "akanjs/signal";
-
-type AccessAccount = Account & { tokenType?: string };
-type ReqType = Bun.BunRequest & {
-  "user-agent"?: string;
-  userAgent?: string;
-  account?: Account;
-};
+import type { AccessAccount, ReqType } from "./accountMiddleware.helper";
 
 export class AccountMiddleware implements Middleware {
   static readonly refName = "AccountMiddleware";

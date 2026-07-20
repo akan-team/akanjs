@@ -4,17 +4,10 @@ import type { DndContextProps } from "@dnd-kit/core";
 import { closestCorners, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { createContext, useRef } from "react";
+import type { DndContextType } from "./type";
 
-export type ProviderProps = DndContextProps & {
+export interface ProviderProps extends DndContextProps {
   className?: string;
-};
-export type DndContextItemType<T> = T extends (infer U)[] ? U : never;
-
-export interface DndContextType {
-  [key: string]: {
-    id: string;
-    items: any[];
-  };
 }
 
 export const ItemsContext = createContext<DndContextType>({});

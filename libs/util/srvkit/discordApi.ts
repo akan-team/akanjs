@@ -1,51 +1,22 @@
 import * as discord from "discord.js";
+import { Err } from "../lib/dict";
+import type {
+  DiscordBot,
+  DiscordToken,
+  SendMessageWithEmbedType,
+  SendWebhookMessageWithEmbedType,
+} from "./discordApi.helper";
 
-interface DiscordToken {
-  token: string;
-  serverId: string;
-}
-
-interface DiscordBot {
-  id: string;
-  client: discord.Client;
-  server: discord.Guild;
-  serverId: string;
-  token: string;
-}
-
-type DiscordEmbed = discord.APIEmbed;
-type DiscordMessage = discord.MessageCreateOptions;
-type DiscordButton = discord.APIActionRowComponent<any>;
-type DiscordMember = discord.GuildMember;
-
-interface DiscordBotInfo {
-  id: string;
-  serverId: string;
-  accessToken: string;
-}
-interface DiscordReactEventInfo {
-  id: string;
-  messageId: string;
-}
-
-interface SendMessageWithEmbedType {
-  botId: string;
-  channelId: string;
-  message: string;
-  embed: discord.APIEmbed;
-  button?: DiscordButton[];
-}
-
-export interface DiscordOptions {
+export interface DiscordApiOptions {
   tokens: DiscordToken[];
   webhook: string;
 }
 
 export class DiscordApi {
-  readonly #options: DiscordOptions;
+  readonly #options: DiscordApiOptions;
   readonly #webhook: discord.WebhookClient;
   #bots: Map<string, DiscordBot> = new Map<string, DiscordBot>();
-  constructor(options: DiscordOptions) {
+  constructor(options: DiscordApiOptions) {
     this.#options = options;
     this.#webhook = new discord.WebhookClient({ url: options.webhook });
   }
@@ -63,9 +34,9 @@ export class DiscordApi {
         discord.IntentsBitField.Flags.DirectMessageTyping,
       ],
     });
-    void client.login(token);
+    await client.login(token);
     const server = client.guilds.cache.get(serverId);
-    if (!server) throw new Error(`No Guild of Server in ${serverId}`);
+    if (!server) throw new Err("util.error.discordGuildNotFound", { serverId });
     return new Promise((resolve, reject) => {
       client.on("ready", (client) => {
         resolve({ client, token, id: client.user.id, server, serverId });
@@ -86,11 +57,18 @@ export class DiscordApi {
     return bots;
   }
   async initBots() {
-    this.#bots = await DiscordApi.makeDiscordBots(this.#options.tokens);
+    // ! disabled for quota, if you just need to send message to discord, use webhook instead.
+    // this.#bots = await DiscordApi.makeDiscordBots(this.#options.tokens);
     return this;
   }
   async log(message: string) {
     return await this.#webhook.send(message);
+  }
+  async sendWebhookMessageWithEmbed({ message, embed }: SendWebhookMessageWithEmbedType) {
+    return await this.#webhook.send({
+      content: message,
+      embeds: [embed],
+    });
   }
   async login(token: DiscordToken): Promise<DiscordBot> {
     const bot = await DiscordApi.makeDiscordBot(token);
@@ -102,7 +80,7 @@ export class DiscordApi {
   }
   bot(botId: string) {
     const bot = this.#bots.get(botId);
-    if (!bot) throw new Error(`No Bot Found for botId: ${botId}`);
+    if (!bot) throw new Err("util.error.discordBotNotFound", { botId });
     return bot;
   }
   clientEvent<K extends keyof discord.ClientEvents>(
@@ -138,13 +116,13 @@ export class DiscordApi {
   async addRole(botId: string, userId: string, roleName: string) {
     const role = this.bot(botId).server.roles.cache.find((r) => r.id === roleName);
     const user = this.bot(botId).server.members.cache.get(userId);
-    if (!role || !user) throw new Error("No Role or User");
+    if (!role || !user) throw new Err("util.error.discordRoleOrUserNotFound");
     return await user.roles.add(role);
   }
   async removeRole(botId: string, userId: string, roleName: string) {
     const role = this.bot(botId).server.roles.cache.find((r) => r.id === roleName);
     const user = this.bot(botId).server.members.cache.get(userId);
-    if (!role || !user) throw new Error("No Role or User");
+    if (!role || !user) throw new Err("util.error.discordRoleOrUserNotFound");
     return await user.roles.remove(role);
   }
   async sendEmbed(botId: string, channelId: string, embed: discord.APIEmbed, button?: any[]) {

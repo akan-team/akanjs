@@ -3,6 +3,8 @@ import { clsx } from "akanjs/client";
 import type { FC, ReactNode } from "react";
 import { BiChevronLeft, BiChevronRight, BiDotsHorizontalRounded } from "react-icons/bi";
 
+import { createOverridable } from "./UiOverride";
+
 export interface PaginationProps {
   /** Current 1-based page number. */
   currentPage: number;
@@ -22,7 +24,7 @@ export interface PaginationProps {
   };
 }
 
-export const Pagination: FC<PaginationProps> = ({
+export const DefaultPagination: FC<PaginationProps> = ({
   currentPage,
   total,
   onPageSelect,
@@ -118,3 +120,9 @@ export const Pagination: FC<PaginationProps> = ({
     </div>
   );
 };
+
+/**
+ * Pager. Resolves to a route-scoped override when a `page/**\/_overrides.tsx` in
+ * the route's ancestry declares one, otherwise renders {@link DefaultPagination}.
+ */
+export const Pagination = createOverridable("Pagination", DefaultPagination);

@@ -456,7 +456,9 @@ akan release-ios myapp --target default --env main`}
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-              <div className="font-bold text-base-content">{l.trans({ en: "Akan automates", ko: "Akan이 자동 처리" })}</div>
+              <div className="font-bold text-base-content">
+                {l.trans({ en: "Akan automates", ko: "Akan이 자동 처리" })}
+              </div>
               <ul className="mt-2 list-disc space-y-1 pl-5 text-base-content/70 text-sm">
                 <li>
                   {l.trans({

@@ -32,7 +32,7 @@ export class AdminStore extends store(sig.admin, () => ({
       const { accountId, password } = this.get().adminForm;
       const jwt = (await fetch.signinAdmin(accountId, password ?? "")).jwt;
       await (this as unknown as RootStore).login({ auth: "admin", jwt, redirect });
-    } catch (e) {
+    } catch (_e) {
       //
     }
   }

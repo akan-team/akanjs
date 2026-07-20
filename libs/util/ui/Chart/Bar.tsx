@@ -1,20 +1,13 @@
 "use client";
 import "chartjs-adapter-dayjs-4/dist/chartjs-adapter-dayjs-4.esm";
 
-import type { ChartData, ChartOptions } from "chart.js";
 import { BarElement, CategoryScale, Chart as ChartJS, Legend, LinearScale, Title, Tooltip } from "chart.js";
-import { Bar as BarChart, type ChartProps } from "react-chartjs-2";
+import { Bar as BarChart } from "react-chartjs-2";
+import type { BarProps } from "./type";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
-interface BarProps {
-  data?: ChartData<"bar", number[], string>;
-  options?: ChartOptions<"bar">;
-}
-
-type PropsType = Omit<ChartProps<"bar">, "type">;
-
-export default function Bar(props: PropsType) {
+export default function Bar(props: BarProps) {
   return (
     <BarChart
       options={{

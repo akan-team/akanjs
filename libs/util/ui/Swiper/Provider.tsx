@@ -8,7 +8,7 @@ import "swiper/swiper-bundle.css";
 import { Autoplay, EffectCoverflow, Pagination } from "swiper/modules";
 import { Swiper, type SwiperProps } from "swiper/react";
 
-export type ProviderProps = SwiperProps;
+export interface ProviderProps extends SwiperProps {}
 export const Provider = ({ children, ...props }: ProviderProps) => {
   return (
     <Swiper modules={[EffectCoverflow, Pagination, Autoplay]} centeredSlides {...props}>

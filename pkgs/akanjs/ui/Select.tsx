@@ -2,10 +2,12 @@
 import { type Cls, type EnumInstance, isEnum } from "akanjs/base";
 import { clsx, usePage } from "akanjs/client";
 import { useDebounce } from "akanjs/webkit";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentType, createElement, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { BiCheck, BiChevronDown, BiX } from "react-icons/bi";
 import { BsQuestionCircleFill } from "react-icons/bs";
 import { TiDelete } from "react-icons/ti";
+
+import { useUiOverride } from "./UiOverride";
 
 interface LabelOption<T> {
   label: string | boolean | number;
@@ -53,7 +55,7 @@ export interface SelectProps<
   renderSelected?: (value: T) => ReactNode;
 }
 
-export const Select = <
+const DefaultSelect = <
   T extends string | number | boolean | null | undefined,
   Multiple extends boolean = false,
   Searchable extends boolean = false,
@@ -319,4 +321,22 @@ export const Select = <
       </div>
     </div>
   );
+};
+
+/**
+ * Select. Resolves to a route-scoped override when a `page/**\/_overrides.tsx` in the route's
+ * ancestry declares one, otherwise renders {@link DefaultSelect}. The public generic signature is
+ * preserved, so `<Select<MyEnum, true> …/>` still infers the value/onChange shape.
+ */
+export const Select = <
+  T extends string | number | boolean | null | undefined,
+  Multiple extends boolean = false,
+  Searchable extends boolean = false,
+  Option extends Options<T> = Options<T>,
+>(
+  props: SelectProps<T, Multiple, Searchable, Option>,
+) => {
+  const Override = useUiOverride("Select");
+  const Impl = (Override ?? DefaultSelect) as unknown as ComponentType<SelectProps<T, Multiple, Searchable, Option>>;
+  return createElement(Impl, props);
 };

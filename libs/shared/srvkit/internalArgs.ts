@@ -1,4 +1,4 @@
-import type { Me as BaseMe, Self as BaseSelf } from "@libs/shared/base";
+import type { Me as BaseMe, Self as BaseSelf } from "@libs/shared/common";
 import type { InternalArg, SignalContext } from "akanjs/signal";
 import type { SerAccount } from "./account";
 

@@ -2,13 +2,12 @@
 import "chartjs-adapter-dayjs-4/dist/chartjs-adapter-dayjs-4.esm";
 
 import { ArcElement, CategoryScale, Chart as ChartJS, Legend, LinearScale, Title, Tooltip } from "chart.js";
-import { type ChartProps, Pie as PieChart } from "react-chartjs-2";
+import { Pie as PieChart } from "react-chartjs-2";
+import type { PieProps } from "./type";
 
 ChartJS.register(CategoryScale, LinearScale, ArcElement, Title, Tooltip, Legend);
 
-type PropsType = Omit<ChartProps<"pie">, "type">;
-
-export default function Pie(props: PropsType) {
+export default function Pie(props: PieProps) {
   return (
     <PieChart
       options={{

@@ -4,7 +4,9 @@ import { st } from "akanjs/store";
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AiFillCaretDown, AiOutlineEllipsis } from "react-icons/ai";
 
-interface MenuItem {
+import { createOverridable } from "./UiOverride";
+
+export interface MenuItem {
   label: ReactNode;
   key: string;
   children?: MenuItem[];
@@ -12,7 +14,7 @@ interface MenuItem {
   type?: string;
 }
 
-interface MenuProps {
+export interface MenuProps {
   className?: string;
   ulClassName?: string;
   liClassName?: string;
@@ -29,7 +31,7 @@ interface MenuProps {
   onMouseLeave?: () => void;
 }
 
-export const Menu = ({
+export const DefaultMenu = ({
   items,
   onClick,
   selectedKeys,
@@ -274,3 +276,10 @@ const OverflowMenu = ({ overflowItems, onClick }: OverflowMenuProps) => {
     </li>
   );
 };
+
+/**
+ * Navigation menu. Resolves to a route-scoped override when a
+ * `page/**\/_overrides.tsx` in the route's ancestry declares one, otherwise
+ * renders {@link DefaultMenu}.
+ */
+export const Menu = createOverridable("Menu", DefaultMenu);

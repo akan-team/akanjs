@@ -1,17 +1,10 @@
 "use client";
 
-import { fetch } from "@libs/shared/client";
-import { getCookie, setAuth } from "akanjs/client";
+import { getCookie } from "akanjs/client";
 import { decodeJwtPayload, Logger } from "akanjs/common";
 import { useEffect } from "react";
-
-type AuthScope = "user" | "admin";
-
-interface TokenPayload {
-  exp?: number;
-  self?: { id: string };
-  me?: { id: string };
-}
+import type { AuthScope, TokenPayload } from "./tokenRefresh.type";
+import { hasScope, refreshToken } from "./tokenRefresh.util";
 
 interface TokenRefreshProps {
   scope: AuthScope;
@@ -19,15 +12,6 @@ interface TokenRefreshProps {
 
 const refreshBeforeMs = 2 * 60 * 1000;
 const retryDelayMs = 30 * 1000;
-
-const hasScope = (payload: TokenPayload, scope: AuthScope) => {
-  return scope === "user" ? !!payload.self : !!payload.me;
-};
-
-const refreshToken = async (scope: AuthScope) => {
-  const accessToken = scope === "user" ? await fetch.refreshJwt(null) : await fetch.refreshAdminJwt(null);
-  setAuth({ jwt: accessToken.jwt });
-};
 
 export const TokenRefresh = ({ scope }: TokenRefreshProps) => {
   useEffect(() => {

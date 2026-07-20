@@ -46,6 +46,7 @@ export default function Layout({ children }: LayoutProps) {
         { name: l.trans({ en: "Forms", ko: "Forms" }), href: "/references/ui/forms" },
         { name: l.trans({ en: "Overlays", ko: "Overlays" }), href: "/references/ui/overlays" },
         { name: l.trans({ en: "System", ko: "System" }), href: "/references/ui/system" },
+        { name: l.trans({ en: "Customization", ko: "커스터마이즈" }), href: "/references/ui/customize" },
       ],
     },
   ];

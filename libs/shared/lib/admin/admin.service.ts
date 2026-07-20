@@ -1,9 +1,10 @@
-import type { Me } from "@libs/shared/base";
+import type { Me } from "@libs/shared/common";
 import { isPasswordMatch } from "@libs/shared/srvkit";
 import type { Account } from "akanjs/fetch";
 import { serve } from "akanjs/service";
 import type * as cnst from "../cnst";
 import * as db from "../db";
+import { Err } from "../dict";
 import type * as option from "../option";
 import type * as srv from "../srv";
 
@@ -75,7 +76,7 @@ export class AdminService extends serve(db.admin, ({ use, service, memory, signa
     return await this.adminModel.hasAnotherAdmin(this.rootAdminInfo.accountId);
   }
   async createAdminWithInitialize(data: db.AdminInput) {
-    if (await this.isAdminSystemInitialized()) throw new Error("Admin System Already Initialized");
+    if (await this.isAdminSystemInitialized()) throw new Err("admin.error.adminSystemAlreadyInitialized");
     const admin = await this.adminModel.createAdmin(data);
     return await admin.set({ roles: ["admin", "superAdmin"] }).save();
   }
@@ -88,13 +89,13 @@ export class AdminService extends serve(db.admin, ({ use, service, memory, signa
   async signinAdmin(accountId: string, password: string, account?: Account) {
     const adminSecret = await this.adminModel.getAdminSecret(accountId);
     const matched = await isPasswordMatch(password, adminSecret.password || "");
-    if (!matched) throw new Error(`not match`);
+    if (!matched) throw new Err("admin.error.passwordNotMatched");
     const admin = await this.adminModel.getAdmin(adminSecret.id);
     void admin.updateAccess().save();
     return await this._issueAdminToken(admin, account);
   }
   async signoutAdmin(account: Account<{ me?: Me; sid?: string }>) {
-    if (!account.me) throw new Error("No Admin Account");
+    if (!account.me) throw new Err("admin.error.noAdminAccount");
     const admin = await this.adminModel.getAdmin(account.me.id);
     void admin.updateAccess().save();
     await this.adminModel.revokeRefreshSession(admin.id, account.sid);

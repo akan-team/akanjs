@@ -1,20 +1,9 @@
 import { Logger } from "akanjs/common";
 import { webcrypto } from "crypto";
+import { Err } from "../lib/dict";
+import type { CloudflareResponse, Dns, DnsInput } from "./cloudflareApi.helper";
 
-interface DnsInput {
-  name: string;
-  type: string;
-  content: string;
-}
-type Dns = DnsInput & {
-  id: string;
-};
-interface CloudflareResponse<T> {
-  success: boolean;
-  result: T;
-  errors?: unknown[];
-}
-export interface CloudflareOptions {
+export interface CloudflareApiOptions {
   authEmail: string;
   authKey: string;
   token: string;
@@ -24,11 +13,11 @@ export interface CloudflareOptions {
 
 export class CloudflareApi {
   readonly #logger = new Logger("CloudflareApi");
-  readonly #options: CloudflareOptions;
+  readonly #options: CloudflareApiOptions;
   readonly #baseUrl = "https://api.cloudflare.com/client/v4";
   readonly #headers: Record<string, string>;
 
-  constructor(options: CloudflareOptions) {
+  constructor(options: CloudflareApiOptions) {
     this.#options = options;
     this.#headers = {
       "Content-Type": "application/json",
@@ -72,7 +61,7 @@ export class CloudflareApi {
     });
     const data = (await response.json()) as CloudflareResponse<Dns[] | null>;
     if (!data.success || !Array.isArray(data.result)) {
-      throw new Error(`Failed to load Cloudflare DNS records: ${JSON.stringify(data.errors ?? data)}`);
+      throw new Err("util.error.cloudflareDnsRecordsLoadFailed", { errors: JSON.stringify(data.errors ?? data) });
     }
     const existings = data.result;
     const toCreate = records.filter((r) => !existings.find((er) => er.name === r.name));
@@ -87,7 +76,8 @@ export class CloudflareApi {
         body: JSON.stringify({ ...record, ttl: 1 }),
       });
       const data = (await response.json()) as CloudflareResponse<Dns | null>;
-      if (!data.success) throw new Error(`Failed to create Cloudflare DNS record: ${JSON.stringify(data.errors)}`);
+      if (!data.success)
+        throw new Err("util.error.cloudflareDnsRecordCreateFailed", { errors: JSON.stringify(data.errors) });
     }
     for (const { existing, record } of toUpdate) {
       const response = await fetch(`${this.#baseUrl}/zones/${zoneId}/dns_records/${existing.id}`, {
@@ -96,7 +86,8 @@ export class CloudflareApi {
         body: JSON.stringify({ ...record, ttl: 1 }),
       });
       const data = (await response.json()) as CloudflareResponse<Dns | null>;
-      if (!data.success) throw new Error(`Failed to update Cloudflare DNS record: ${JSON.stringify(data.errors)}`);
+      if (!data.success)
+        throw new Err("util.error.cloudflareDnsRecordUpdateFailed", { errors: JSON.stringify(data.errors) });
     }
     this.#logger.log(`${toCreate.length} records created, ${toUpdate.length} records updated`);
     return true;

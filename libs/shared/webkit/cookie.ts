@@ -1,4 +1,4 @@
-import type { Me, Self } from "@libs/shared/base";
+import type { Me, Self } from "@libs/shared/common";
 import { getEnv } from "akanjs/base";
 import { getAccount, router } from "akanjs/client";
 import React from "react";

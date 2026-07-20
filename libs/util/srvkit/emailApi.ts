@@ -1,10 +1,8 @@
 import { Logger } from "akanjs/common";
 import { createTransport } from "nodemailer";
+import type { SendMailOptions, Transporter } from "./emailApi.helper";
 
-type SendMailOptions = any;
-type Transporter = any;
-
-export interface EmailOptions {
+export interface EmailApiOptions {
   address: string;
   service: string;
   auth: { user: string; pass: string };
@@ -12,9 +10,9 @@ export interface EmailOptions {
 
 export class EmailApi {
   readonly #logger = new Logger("EmailApi");
-  readonly #options: EmailOptions;
+  readonly #options: EmailApiOptions;
   readonly #mailer: Transporter;
-  constructor(options: EmailOptions) {
+  constructor(options: EmailApiOptions) {
     this.#options = options;
     this.#mailer = createTransport({ host: options.address, port: 587, secure: false, auth: options.auth });
   }

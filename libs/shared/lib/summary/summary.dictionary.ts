@@ -31,7 +31,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     status: t(["Status", "상태"]).desc(["Status of the summary", "요약의 상태"]),
   }))
   .insight<SummaryInsight>((t) => ({}))
-  .query<typeof SummaryFilter>((fn) => ({
+  .query<SummaryFilter>((fn) => ({
     byStatuses: fn(["By Statuses", "상태별 조회"]).arg((t) => ({
       statuses: t(["Statuses", "상태"]).desc(["Statuses to search", "상태로 조회"]),
     })),
@@ -41,7 +41,7 @@ export const dictionary = modelDictionary(["en", "ko"])
       periodTypes: t(["Period Types", "기간 타입"]).desc(["Period types to search", "기간 타입으로 조회"]),
     })),
   }))
-  .sort<typeof SummaryFilter>((t) => ({
+  .sort<SummaryFilter>((t) => ({
     oldestAt: t(["Oldest At", "가장 오래된 시각"]).desc(["Oldest At", "가장 오래된 시각"]),
   }))
   .enum<PeriodType>("periodType", (t) => ({
@@ -56,16 +56,19 @@ export const dictionary = modelDictionary(["en", "ko"])
     active: t(["Active", "활성"]).desc(["Active status", "활성 상태"]),
     archived: t(["Archived", "보관됨"]).desc(["Archived status", "보관됨 상태"]),
   }))
-  .slice<typeof SummarySlice>((fn) => ({
+  .slice<SummarySlice>((fn) => ({
     inPeriod: fn(["Get summary list in period", "기간별 요약 목록 조회"]).arg((t) => ({
       from: t(["From", "시작"]).desc(["From to search", "시작으로 조회"]),
       to: t(["To", "끝"]).desc(["To to search", "끝으로 조회"]),
       periodTypes: t(["Period Types", "기간 타입"]).desc(["Period types to search", "기간 타입으로 조회"]),
     })),
   }))
-  .endpoint<typeof SummaryEndpoint>((fn) => ({
+  .endpoint<SummaryEndpoint>((fn) => ({
     getActiveSummary: fn(["Get active summary", "활성 요약 조회"]).desc([
       "API to get the active summary",
       "활성 요약을 조회하는 API",
     ]),
-  }));
+  }))
+  .error({
+    queryKeyNotDefined: ["queryKey is not defined for key: {key}", "키에 대한 queryKey가 정의되지 않았습니다: {key}"],
+  });

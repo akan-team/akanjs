@@ -7,18 +7,8 @@ import { type ReactNode, useContext, useEffect, useState } from "react";
 
 import DragEmpty from "./DragEmpty";
 import { ItemsContext } from "./Provider";
+import type { ItemsContextType } from "./type";
 import { isMyColumn, mergeOverItems } from "./util";
-
-interface ItemsContextType<
-  T extends {
-    id: string;
-  }[],
-> {
-  [key: string]: {
-    id: string;
-    items: T;
-  };
-}
 
 interface DroppableColumnProps<
   T extends {

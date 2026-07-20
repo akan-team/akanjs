@@ -26,7 +26,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     status: t(["Status", "상태"]).desc(["Status of banner", "배너 상태"]),
   }))
   .insight<BannerInsight>((t) => ({}))
-  .query<typeof BannerFilter>((fn) => ({
+  .query<BannerFilter>((fn) => ({
     inCategory: fn(["In Category", "카테고리별 조회"]).arg((t) => ({
       category: t(["Category", "카테고리"]).desc(["Category to filter", "필터링할 카테고리"]),
     })),
@@ -45,9 +45,23 @@ export const dictionary = modelDictionary(["en", "ko"])
       "표시중 배너는 사용자에게 표시되고 볼 수 있음",
     ]),
   }))
-  .slice<typeof BannerSlice>((fn) => ({
+  .slice<BannerSlice>((fn) => ({
     inPublic: fn(["Banner List In Public", "공개된 Banner 리스트"]).arg((t) => ({
       category: t(["Category", "카테고리"]).desc(["Category to filter", "필터링할 카테고리"]),
     })),
   }))
-  .endpoint<typeof BannerEndpoint>((fn) => ({}));
+  .endpoint<BannerEndpoint>((fn) => ({
+    bannerListInPublic: fn(["Banner List In Public", "공개된 Banner 리스트"])
+      .desc(["Get a list of public banner", "공개된 Banner의 리스트를 가져옵니다"])
+      .arg((t) => ({
+        category: t(["Category", "카테고리"]).desc(["Category to filter", "필터링할 카테고리"]),
+        skip: t(["Skip", "건너뛰기"]).desc(["Number of items to skip", "건너뛸 아이템 수"]),
+        limit: t(["Limit", "제한"]).desc(["Maximum number of items to return", "반환할 최대 아이템 수"]),
+        sort: t(["Sort", "정렬"]).desc(["Sort order of the items", "아이템의 정렬 순서"]),
+      })),
+    bannerInsightInPublic: fn(["Banner Insight In Public", "공개된 Banner 인사이트"])
+      .desc(["Get insight data for public banner", "공개된 Banner에 대한 인사이트 데이터를 가져옵니다"])
+      .arg((t) => ({
+        category: t(["Category", "카테고리"]).desc(["Category to filter", "필터링할 카테고리"]),
+      })),
+  }));

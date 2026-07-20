@@ -9,6 +9,7 @@ import {
 import { randomString } from "@libs/util/common";
 import { dayjs } from "akanjs/base";
 import { by, documentQueryHelper, from, into, type SchemaOf } from "akanjs/document";
+
 import * as cnst from "../cnst";
 import type * as db from "../db";
 import { Err } from "../dict";
@@ -84,14 +85,14 @@ export class User extends by(cnst.User) {
     return this;
   }
   applyUserProfile() {
-    if (!["rejected", "active", "applied"].includes(this.status)) throw new Error("Profile exam is not available.");
+    if (!["rejected", "active", "applied"].includes(this.status)) throw new Err("user.error.profileExamNotAvailable");
     // else if (!this.image || !this.images.length || !this.imageNum) throw new Error("Images are not uploaded.");
-    else if (!this.appliedImages.length) throw new Error("Images are not uploaded.");
+    else if (!this.appliedImages.length) throw new Err("user.error.imagesNotUploaded");
     this.profileStatus = "applied";
     return this;
   }
   approveUserProfile() {
-    if (!["rejected", "active"].includes(this.status)) throw new Error("Profile exam is not available.");
+    if (!["rejected", "active"].includes(this.status)) throw new Err("user.error.profileExamNotAvailable");
     // if (this.profileStatus === "reapplied") {
     this.images = this.appliedImages;
     this.image = this.appliedImages[0];
@@ -113,19 +114,19 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
   }
   async getActiveUser(userId: string) {
     const user = await this.User.pickById(userId);
-    if (user.status !== "active") throw new Error("User is not in active status");
+    if (user.status !== "active") throw new Err("user.error.userNotActive");
     return user;
   }
   async getPrepareUser(userId: string) {
     const user = await this.User.pickById(userId);
-    if (user.status !== "prepare") throw new Error("User is not in prepare status");
+    if (user.status !== "prepare") throw new Err("user.error.userNotPrepare");
     return user;
   }
   async generatePrepareUser(userId?: string | null) {
     const user = userId
       ? await this.User.pickById(userId)
       : await this.createUser({ nickname: "", images: [], appliedImages: [] });
-    if (user.status !== "prepare") throw new Error("User is not in prepare status");
+    if (user.status !== "prepare") throw new Err("user.error.userNotPrepare");
     return user;
   }
   async setSignToken(userId: string, signToken = randomString(36), expireAt = dayjs().add(30, "minute")) {
@@ -162,16 +163,16 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
     throwError: Throw = true as Throw,
   ): Promise<Throw extends true ? string : string | null> {
     const accountId = (await this.User.pickById(userId, { accountId: true })).accountId;
-    if (!accountId && throwError) throw new Error("No Account Id");
+    if (!accountId && throwError) throw new Err("user.error.noAccountId");
     return accountId as Throw extends true ? string : string | null;
   }
   async setAccountIdInPrepareUser(userId: string, accountId: string, resignupDays = 0) {
     const q = documentQueryHelper;
     const userExists = await this.existsByAccountId(accountId, ["active", "dormant", "restricted"]);
-    if (userExists) throw new Error("AccountId already exists");
+    if (userExists) throw new Err("user.error.accountIdAlreadyExists");
     const inactiveUser = await this.User.findOne(q.all({ accountId }, q.exists("removedAt"))).sort({ createdAt: -1 });
     const isSignable = inactiveUser ? inactiveUser.createdAt.isBefore(dayjs().subtract(resignupDays, "day")) : true;
-    if (!isSignable) throw new Error(`Retry after ${resignupDays} days`);
+    if (!isSignable) throw new Err("user.error.resignupNotAvailable", { days: resignupDays });
     await this.User.updateMany({ accountId, status: "prepare" }, ({ unset }) => ({ accountId: unset() }));
     const modifiedCount = await this.User.updateOne({ id: userId }, ({ pull }) => ({
       accountId,
@@ -181,15 +182,15 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
   }
   async setAccountIdInActiveUser(userId: string, accountId: string) {
     const userExists = await this.existsByAccountId(accountId, ["active", "dormant", "restricted"]);
-    if (userExists) throw new Error("AccountId already exists");
+    if (userExists) throw new Err("user.error.accountIdAlreadyExists");
     await this.User.updateMany({ accountId, status: "prepare" }, ({ unset }) => ({ accountId: unset() }));
     const modifiedCount = await this.User.updateOne({ id: userId }, { accountId });
     return !!modifiedCount;
   }
   async setPasswordInPrepareUser(userId: string, accountId: string, password: string) {
     const { accountId: existingAccountId } = await this.User.pickById(userId, { accountId: true });
-    if (!existingAccountId) throw new Error("No accountId in this user");
-    if (existingAccountId !== accountId) throw new Error("Invalid accountId");
+    if (!existingAccountId) throw new Err("user.error.noAccountIdInUser");
+    if (existingAccountId !== accountId) throw new Err("user.error.invalidAccountId");
     const hashedPassword = await hashPassword(password);
     const modifiedCount = await this.User.updateOne({ id: userId }, ({ addToSet }) => ({
       password: hashedPassword,
@@ -202,8 +203,8 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
       select: { accountId: true, password: true },
     })) as { accountId: string; password: string } | null;
     if (!auth) throw new Err("user.error.noAccount");
-    if (!auth.accountId) throw new Error("No accountId in this user");
-    if (!auth.password) throw new Error("No password in this user");
+    if (!auth.accountId) throw new Err("user.error.noAccountIdInUser");
+    if (!auth.password) throw new Err("user.error.noPasswordInUser");
     const isMatched = await isPasswordMatch(password, auth.password);
     if (!isMatched) throw new Err("user.error.wrongPassword");
     const user = await this.pickByAccountId(accountId);
@@ -228,8 +229,8 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
   }
   async addSso(userId: string, accountId: string, ssoType: cnst.SsoType["value"]) {
     const auth = (await this.User.pickById(userId, { accountId: true })) as { accountId?: string };
-    if (!auth.accountId) throw new Error("No accountId in this user");
-    if (auth.accountId !== accountId) throw new Error("Invalid accountId");
+    if (!auth.accountId) throw new Err("user.error.noAccountIdInUser");
+    if (auth.accountId !== accountId) throw new Err("user.error.invalidAccountId");
     const { modifiedCount } = await this.User.updateOne({ id: userId }, ({ addToSet }) => ({
       verifies: addToSet(ssoType),
     }));
@@ -237,9 +238,11 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
   }
   async subSso(userId: string, accountId: string, ssoType: cnst.SsoType["value"]) {
     const auth = (await this.User.pickById(userId, { accountId: true })) as { accountId?: string };
-    if (!auth.accountId) throw new Error("No accountId in this user");
-    if (auth.accountId !== accountId) throw new Error("Invalid accountId");
-    const { modifiedCount } = await this.User.updateOne({ id: userId }, ({ pull }) => ({ verifies: pull(ssoType) }));
+    if (!auth.accountId) throw new Err("user.error.noAccountIdInUser");
+    if (auth.accountId !== accountId) throw new Err("user.error.invalidAccountId");
+    const { modifiedCount } = await this.User.updateOne({ id: userId }, ({ pull }) => ({
+      verifies: pull(ssoType),
+    }));
     return !!modifiedCount;
   }
   async getUserBySso(accountId: string, ssoType: cnst.SsoType["value"]) {
@@ -247,8 +250,8 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
       User,
       "accountId" | "verifies"
     >;
-    if (!auth.accountId) throw new Error("No accountId in this user");
-    if (!auth.verifies.includes(ssoType)) throw new Error("No ssoType in this user");
+    if (!auth.accountId) throw new Err("user.error.noAccountIdInUser");
+    if (!auth.verifies.includes(ssoType)) throw new Err("user.error.noSsoTypeInUser");
     return await this.pickByAccountId(accountId);
   }
   async isSignableWithPhone(phone: string, resignupDays = 0) {
@@ -260,7 +263,7 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
     const existingPhoneCodes = existingPhoneCodesStr
       ? existingPhoneCodesStr.split(",").map((str) => str.split(":") as [string, string, string])
       : [];
-    if (existingPhoneCodes.length >= 5) throw new Error("Too many phone codes, try later");
+    if (existingPhoneCodes.length >= 5) throw new Err("user.error.tooManyPhoneCodes");
     const newPhoneCodes = [...existingPhoneCodes, [phone, purpose, phoneCode]];
     const newPhoneCodesStr = newPhoneCodes
       .map(([phone, purpose, phoneCode]) => `${phone}:${purpose}:${phoneCode}`)
@@ -283,19 +286,19 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
   async setPhoneInPrepareUser(userId: string, phone: string, resignupDays = 0) {
     const q = documentQueryHelper;
     const userExists = await this.existsByPhone(phone, ["active", "dormant", "restricted"]);
-    if (userExists) throw new Error("Phone already exists");
+    if (userExists) throw new Err("user.error.phoneAlreadyExists");
     const inactiveUser = await this.User.findOne(q.all({ phone }, q.exists("removedAt"))).sort({ createdAt: -1 });
     const isSignable = inactiveUser ? inactiveUser.createdAt.isBefore(dayjs().subtract(resignupDays, "day")) : true;
-    if (!isSignable) throw new Error(`Retry after ${resignupDays} days`);
+    if (!isSignable) throw new Err("user.error.resignupNotAvailable", { days: resignupDays });
     const { modifiedCount } = await this.User.updateOne({ id: userId }, { phone });
     return !!modifiedCount;
   }
   async verifyPhoneInPrepareUser(userId: string, phone: string) {
     const userExists = await this.existsByPhone(phone, ["active", "dormant", "restricted"]);
-    if (userExists) throw new Error("Phone already exists");
+    if (userExists) throw new Err("user.error.phoneAlreadyExists");
 
     const auth = (await this.User.pickById(userId, { phone: true })) as { phone?: string };
-    if (auth.phone !== phone) throw new Error("Invalid phone number");
+    if (auth.phone !== phone) throw new Err("user.error.invalidPhoneNumber");
 
     await this.User.updateMany({ phone, status: "prepare" }, ({ unset, pull }) => ({
       phone: unset(),
@@ -309,9 +312,9 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
   }
   async setPhoneInActiveUser(userId: string, phone: string) {
     const auth = (await this.User.pickById(userId, { phone: true })) as { phone?: string };
-    if (auth.phone === phone) throw new Error("Already set the same phone number");
+    if (auth.phone === phone) throw new Err("user.error.phoneNumberUnchanged");
     const userExists = await this.existsByPhone(phone, ["active", "dormant", "restricted"]);
-    if (userExists) throw new Error("Phone already exists");
+    if (userExists) throw new Err("user.error.phoneAlreadyExists");
     await this.User.updateMany({ phone, status: "prepare" }, ({ unset, pull }) => ({
       phone: unset(),
       verifies: pull("phone"),
@@ -326,10 +329,10 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
   async setSsoInPrepareUser(userId: string, accountId: string, ssoType: cnst.SsoType["value"], resignupDays = 0) {
     const q = documentQueryHelper;
     const userExists = await this.existsByAccountId(accountId, ["active", "dormant", "restricted"]);
-    if (userExists) throw new Error("AccountId already exists");
+    if (userExists) throw new Err("user.error.accountIdAlreadyExists");
     const inactiveUser = await this.User.findOne(q.all({ accountId }, q.exists("removedAt"))).sort({ createdAt: -1 });
     const isSignable = inactiveUser ? inactiveUser.createdAt.isBefore(dayjs().subtract(resignupDays, "day")) : true;
-    if (!isSignable) throw new Error(`Retry after ${resignupDays} days`);
+    if (!isSignable) throw new Err("user.error.resignupNotAvailable", { days: resignupDays });
     await this.User.updateMany({ accountId, status: "prepare" }, ({ unset, pull }) => ({
       accountId: unset(),
       verifies: pull(ssoType),
@@ -344,7 +347,7 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
     const auth = (await this.pickByAccountId(accountId, ["active", "restricted", "dormant"], {
       select: { accountId: true, verifies: true },
     })) as Pick<User, "id" | "accountId" | "verifies">;
-    if (!auth.verifies.includes(ssoType)) throw new Error(`No verifies ${ssoType} in this user`);
+    if (!auth.verifies.includes(ssoType)) throw new Err("user.error.noVerifiesInUser", { ssoType });
     const user = await this.getUser(auth.id);
     return user;
   }

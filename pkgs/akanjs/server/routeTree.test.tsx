@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { ReactNode } from "react";
 import { isValidElement } from "react";
 import { renderToReadableStream } from "react-dom/server.browser";
+import { type AkanModalComponent, createOverridable, override, UiOverrideProvider } from "../ui/UiOverride";
 import { RouteElementComposer } from "./routeElementComposer";
 import { RouteTreeBuilder } from "./routeTreeBuilder";
 import { AkanSegmentOutletReference } from "./rscSegmentOutletReference";
@@ -693,5 +694,55 @@ describe("RouteTreeBuilder implicit locale", () => {
       if (previous === undefined) delete process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT;
       else process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT = previous;
     }
+  });
+});
+
+describe("RouteTreeBuilder _overrides", () => {
+  const DefaultModal: AkanModalComponent = ({ title }) => <div data-skin="default">{title}</div>;
+  const BrandModal: AkanModalComponent = ({ title }) => <div data-skin="brand">{title}</div>;
+  const InnerModal: AkanModalComponent = ({ title }) => <div data-skin="inner">{title}</div>;
+  // The page renders through the real "Modal" override slot, exactly like a shipped `<Modal>` call site.
+  const Widget = createOverridable("Modal", DefaultModal);
+
+  // Mirrors the build: a `_overrides.tsx` manifest's default is `override({ ... })` (a plain slot map), served
+  // through a generated `"use client"` wrapper whose default mounts the provider with that map.
+  const overridesWrapperModule = (slots: { Modal: AkanModalComponent }) => {
+    const value = override(slots);
+    return {
+      default: ({ children }: { children?: ReactNode }) => (
+        <UiOverrideProvider value={value}>{children}</UiOverrideProvider>
+      ),
+    };
+  };
+
+  const buildOverrideTree = () =>
+    new RouteTreeBuilder({
+      "./__root_layout.tsx": async () => ({ default: ({ children }: { children: ReactNode }) => children }),
+      "./_overrides.tsx": async () => overridesWrapperModule({ Modal: BrandModal }),
+      "./foo.tsx": async () => ({ default: () => <Widget open onCancel={() => {}} title="FOO" /> }),
+      "./(admin)/_overrides.tsx": async () => overridesWrapperModule({ Modal: InnerModal }),
+      "./(admin)/panel.tsx": async () => ({ default: () => <Widget open onCancel={() => {}} title="PANEL" /> }),
+    }).build();
+
+  async function renderMatched(routes: ReturnType<typeof buildOverrideTree>, pathname: string): Promise<string> {
+    const matched = RouteTreeBuilder.match(pathname, routes);
+    if (!matched) throw new Error(`route did not match: ${pathname}`);
+    return renderToText(
+      RouteElementComposer.compose({ pathRoute: matched.pathRoute, params: matched.params, searchParams: {} }),
+    );
+  }
+
+  test("a root _overrides.tsx activates the override for the whole subtree", async () => {
+    const html = await renderMatched(buildOverrideTree(), "/ko/foo");
+    expect(html).toContain('data-skin="brand"');
+    expect(html).not.toContain('data-skin="default"');
+    expect(html).toContain("FOO");
+  });
+
+  test("a nested _overrides.tsx wins over an ancestor (closest scope wins)", async () => {
+    const html = await renderMatched(buildOverrideTree(), "/ko/panel");
+    expect(html).toContain('data-skin="inner"');
+    expect(html).not.toContain('data-skin="brand"');
+    expect(html).toContain("PANEL");
   });
 });

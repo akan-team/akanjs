@@ -1,10 +1,6 @@
 import { clsx } from "akanjs/client";
+import type { IconProps } from "./type";
 
-export interface IconProps {
-  className?: string;
-  viewBox?: string;
-  width?: string | number;
-}
 // https://github.com/oAuth-Buttons/logo-providers/tree/master/svg
 export const Github = ({ className, viewBox = "0 0 24 24", width = "40" }: IconProps) => {
   return (

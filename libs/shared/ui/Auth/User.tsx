@@ -14,7 +14,7 @@ export const User = () => {
         const selfPromise = (async () => {
           try {
             return account.self ? await fetch.getSelf({ crystalize: false }) : null;
-          } catch (e) {
+          } catch (_e) {
             return null;
           }
         })();

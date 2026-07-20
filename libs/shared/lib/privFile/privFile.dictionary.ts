@@ -33,7 +33,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     status: t(["Status", "상태"]).desc(["Status of the private file", "비공개 파일 상태"]),
   }))
   .insight<PrivFileInsight>((t) => ({}))
-  .query<typeof PrivFileFilter>((fn) => ({
+  .query<PrivFileFilter>((fn) => ({
     byAlias: fn(["By Alias", "별칭별 조회"]).arg((t) => ({
       alias: t(["Alias", "별칭"]).desc(["Alias to search", "조회할 별칭"]),
     })),
@@ -48,5 +48,8 @@ export const dictionary = modelDictionary(["en", "ko"])
       "비공개 파일이 업로드중이며 아직 생성되지 않았습니다",
     ]),
   }))
-  .slice<typeof PrivFileSlice>((fn) => ({}))
-  .endpoint<typeof PrivFileEndpoint>((fn) => ({}));
+  .slice<PrivFileSlice>((fn) => ({}))
+  .endpoint<PrivFileEndpoint>((fn) => ({}))
+  .error({
+    privateFilePathEmpty: ["Private file path is empty", "비공개 파일 경로가 비어 있습니다"],
+  });

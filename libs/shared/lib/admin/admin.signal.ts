@@ -7,6 +7,7 @@ import {
 import { ID } from "akanjs/base";
 import { endpoint, internal, Public, Req, slice } from "akanjs/signal";
 import * as cnst from "../cnst";
+import { Err } from "../dict";
 import * as srv from "../srv";
 
 export class AdminInternal extends internal(srv.admin, ({ initialize, process, resolveField }) => ({
@@ -36,7 +37,7 @@ export class AdminEndpoint extends endpoint(srv.admin, ({ query, mutation, pubsu
     .body("password", String)
     .with(Me, { nullable: false })
     .exec(async function (adminId, password, me) {
-      if (!me.roles.includes("superAdmin") && me.id !== adminId) throw new Error("No Access to set password");
+      if (!me.roles.includes("superAdmin") && me.id !== adminId) throw new Err("admin.error.noAccessToSetPassword");
       await this.adminService.setPassword(adminId, password);
       return true;
     }),
@@ -57,14 +58,14 @@ export class AdminEndpoint extends endpoint(srv.admin, ({ query, mutation, pubsu
     .with(Req)
     .exec(async function (refreshToken, account, request) {
       const token = refreshToken ?? (request as Bun.BunRequest).cookies.get("adminRefreshToken");
-      if (!token) throw new Error("No refresh token");
+      if (!token) throw new Err("admin.error.noRefreshToken");
       try {
         return makeAccessTokenResponse(await this.adminService.refreshAdminToken(token, account)) as never;
       } catch (error) {
         if (
           !refreshToken &&
           error instanceof Error &&
-          /^(Expired|Revoked|Invalid) refresh token$/.test(error.message)
+          /^shared\.error\.(expired|revoked|invalid)RefreshToken$/.test(error.message)
         ) {
           return makeSignoutResponse({ jwt: "" }) as never;
         }
@@ -78,7 +79,7 @@ export class AdminEndpoint extends endpoint(srv.admin, ({ query, mutation, pubsu
     .exec(async function (adminId, role, me) {
       const level = cnst.AdminRole.indexOf(role);
       if ((me.roles as cnst.AdminRole["value"][]).every((adminRole) => cnst.AdminRole.indexOf(adminRole) < level))
-        throw new Error("Not Allowed");
+        throw new Err("admin.error.notAllowed");
       return await this.adminService.addRole(adminId, role);
     }),
   subAdminRole: mutation(cnst.Admin)
@@ -88,7 +89,7 @@ export class AdminEndpoint extends endpoint(srv.admin, ({ query, mutation, pubsu
     .exec(async function (adminId, role, me) {
       const level = cnst.AdminRole.indexOf(role);
       if ((me.roles as cnst.AdminRole["value"][]).every((adminRole) => cnst.AdminRole.indexOf(adminRole) < level))
-        throw new Error("Not Allowed");
+        throw new Err("admin.error.notAllowed");
       return await this.adminService.subRole(adminId, role);
     }),
 })) {}

@@ -3,12 +3,12 @@ import { Icon } from "@libs/util/ui";
 import { clsx } from "akanjs/client";
 import { Image } from "akanjs/ui";
 
-interface UserViewProps {
+interface GeneralProps {
   className?: string;
   user: cnst.User;
   siteKey?: string;
 }
-export const General = ({ className, user, siteKey }: UserViewProps) => {
+export const General = ({ className, user, siteKey }: GeneralProps) => {
   const { l } = usePage();
   return (
     <div className={clsx(`flex flex-col gap-2`, className)}>

@@ -1,4 +1,5 @@
 "use client";
+import { Err } from "@libs/util/client";
 import { clsx } from "akanjs/client";
 import React, { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -26,7 +27,7 @@ export const Provider = ({ className, children }: ProviderProps) => {
         .filter((slide) => !!slide.id && !!slide.title) as { id: string; title: ReactNode }[],
     [childArray],
   );
-  if (slideIds.length === 0) throw new Error("SlideProvider requires at least one Slide component");
+  if (slideIds.length === 0) throw new Err("util.error.slideProviderRequiresSlide");
   const [slide, setSlide] = useState<string>(slideIds[0]);
   const setActiveSlide = useCallback(
     (value: string) => {

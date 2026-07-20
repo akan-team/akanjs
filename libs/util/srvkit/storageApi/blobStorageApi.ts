@@ -1,21 +1,19 @@
 import { rename } from "node:fs/promises";
 import { Logger } from "akanjs/common";
 import { Try } from "akanjs/server";
-
+import { Err } from "../../lib/dict";
+import type { BlobStorageOptions } from "./blobStorageApi.helper";
+import { ensureReadableStreamReady } from "./ensureReadableStreamReady";
 import type {
   CopyRequest,
   DownloadRequest,
   LocalFilePath,
   StorageApi,
   UploadFromStreamRequest,
+  UploadReadableStreamRequest,
   UploadRequest,
+  UploadResult,
 } from "./type";
-
-export interface BlobStorageOptions {
-  baseDir?: string;
-  privateBaseDir?: string;
-  urlPrefix?: string;
-}
 
 export class BlobStorageApi implements StorageApi {
   readonly logger = new Logger("BlobStorageApi");
@@ -39,6 +37,10 @@ export class BlobStorageApi implements StorageApi {
   async readData(path: string): Promise<ReadableStream> {
     const filePath = this.#resolveFilePath(path);
     return Bun.file(filePath).stream();
+  }
+  async readReadyData(path: string) {
+    const stream = (await this.readData(path)) as ReadableStream<Uint8Array>;
+    return await ensureReadableStreamReady(stream);
   }
   async readDataAsJson<T>(path: string) {
     const filePath = this.#resolveFilePath(path);
@@ -71,6 +73,26 @@ export class BlobStorageApi implements StorageApi {
       this.logger.error(error instanceof Error ? error.message : String(error));
     }
   }
+  async uploadDataFromReadableStream({
+    path,
+    body,
+    access = "public",
+  }: UploadReadableStreamRequest): Promise<UploadResult> {
+    const filePath = access === "private" ? `${this.privateRoot}/${path}` : `${this.root}/${path}`;
+    let size = 0;
+    const reader = body.getReader();
+    const chunks: Uint8Array[] = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        size += value.length;
+        chunks.push(value);
+      }
+    }
+    await Bun.write(filePath, new Blob(chunks));
+    return { url: this.#localPathToUrl(path), size };
+  }
   async saveData({ path, localPath, renamePath }: DownloadRequest): Promise<LocalFilePath> {
     const data = await this.readData(path);
     await Bun.write(localPath, new Response(data));
@@ -89,7 +111,7 @@ export class BlobStorageApi implements StorageApi {
   @Try()
   async deleteData(url: string) {
     const basePath = this.#localPathToUrl("");
-    if (!url.startsWith(basePath)) throw new Error("Invalid Base URL, Unable to delete data");
+    if (!url.startsWith(basePath)) throw new Err("util.error.invalidBaseUrlForDelete");
     const path = url.replace(basePath, "");
     await this.deleteDataByPath(path);
     return true;

@@ -217,7 +217,7 @@ export const SetPassword = ({ className, id }: SetPasswordProps) => {
 interface SignoutProps {
   className?: string;
   href?: string;
-  children: any;
+  children: ReactNode;
 }
 export const Signout = ({ className, href, children }: SignoutProps) => {
   return (

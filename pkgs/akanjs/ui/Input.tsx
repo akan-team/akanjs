@@ -13,6 +13,8 @@ import React, {
 } from "react";
 import { AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 
+import { createOverridable } from "./UiOverride";
+
 export type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange"> & {
   /** Visual input style. */
   inputStyleType?: "bordered" | "borderless" | "underline";
@@ -38,7 +40,7 @@ export type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "
   /** Called when Escape is pressed after blurring the input. */
   onPressEscape?: (e: KeyboardEvent<HTMLInputElement>) => void;
 };
-export const Input = ({
+const DefaultInput = ({
   className,
   nullable,
   inputRef,
@@ -146,7 +148,7 @@ export type TextAreaProps = Omit<
   validate: (value: string) => boolean | string;
   onPressEscape?: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
 };
-const TextArea = ({
+const DefaultTextArea = ({
   className,
   nullable,
   value,
@@ -219,7 +221,6 @@ const TextArea = ({
     </div>
   );
 };
-Input.TextArea = TextArea;
 
 export type PasswordProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "type" | "onChange"> & {
   value: string;
@@ -234,7 +235,7 @@ export type PasswordProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value" 
   onChange?: (value: string, e?: ChangeEvent<HTMLInputElement>) => void;
   validate: (value: string) => boolean | string;
 };
-const Password = ({
+const DefaultPassword = ({
   className,
   nullable,
   value,
@@ -331,8 +332,6 @@ const Password = ({
   );
 };
 
-Input.Password = Password;
-
 export type EmailProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "type" | "onChange"> & {
   inputStyleType?: "bordered" | "borderless" | "underline";
   value: string;
@@ -347,7 +346,7 @@ export type EmailProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "
   onChange?: (value: string, e?: ChangeEvent<HTMLInputElement>) => void;
   validate: (value: string) => boolean | string;
 };
-const Email = ({
+const DefaultEmail = ({
   inputStyleType = "bordered",
   className,
   nullable,
@@ -446,8 +445,6 @@ const Email = ({
   );
 };
 
-Input.Email = Email;
-
 export type NumberProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "type" | "onChange"> & {
   value: number | null;
   nullable?: boolean;
@@ -465,7 +462,7 @@ export type NumberProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | 
   formatter?: (value: string) => string;
   parser?: (value: string) => string;
 };
-const Number = ({
+const DefaultNumber = ({
   className,
   nullable,
   value,
@@ -619,15 +616,13 @@ const Number = ({
   );
 };
 
-Input.Number = Number;
-
 export type CheckboxProps = Omit<InputHTMLAttributes<HTMLInputElement>, "onChange"> & {
   className?: string;
   checked: boolean;
   onChange: (checked: boolean, e: ChangeEvent<HTMLInputElement>) => void;
 };
 
-const Checkbox = ({ checked, onChange, className, ...rest }: CheckboxProps) => {
+const DefaultCheckbox = ({ checked, onChange, className, ...rest }: CheckboxProps) => {
   return (
     <input
       {...rest}
@@ -640,4 +635,17 @@ const Checkbox = ({ checked, onChange, className, ...rest }: CheckboxProps) => {
     />
   );
 };
-Input.Checkbox = Checkbox;
+const InputBase = createOverridable("Input", DefaultInput);
+
+/**
+ * Text input plus its field variants. Each leaf resolves to a route-scoped override when a
+ * `page/**\/_overrides.tsx` in the route's ancestry declares one (slots `Input`, `InputTextArea`,
+ * `InputPassword`, `InputEmail`, `InputNumber`, `InputCheckbox`), otherwise renders the default.
+ */
+export const Input = Object.assign(InputBase, {
+  TextArea: createOverridable("InputTextArea", DefaultTextArea),
+  Password: createOverridable("InputPassword", DefaultPassword),
+  Email: createOverridable("InputEmail", DefaultEmail),
+  Number: createOverridable("InputNumber", DefaultNumber),
+  Checkbox: createOverridable("InputCheckbox", DefaultCheckbox),
+});

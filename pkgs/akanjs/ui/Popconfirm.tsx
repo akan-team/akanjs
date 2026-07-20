@@ -6,6 +6,7 @@ import { type ButtonHTMLAttributes, type ReactNode, useEffect, useState } from "
 import { BiMessageRoundedError } from "react-icons/bi";
 
 import { animated } from "./animated";
+import { createOverridable } from "./UiOverride";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   loading?: boolean;
@@ -34,7 +35,7 @@ export interface PopconfirmProps {
   decoClassName?: string;
 }
 
-export const Popconfirm = ({
+export const DefaultPopconfirm = ({
   title,
   description,
   onConfirm,
@@ -135,3 +136,10 @@ export const Popconfirm = ({
     </>
   );
 };
+
+/**
+ * Confirmation popover. Resolves to a route-scoped override when a
+ * `page/**\/_overrides.tsx` in the route's ancestry declares one, otherwise
+ * renders {@link DefaultPopconfirm}.
+ */
+export const Popconfirm = createOverridable("Popconfirm", DefaultPopconfirm);

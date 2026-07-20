@@ -99,6 +99,17 @@ export class FetchSerializer {
       ...(sliceCls.cruGuards.filter((g) => g.name !== "None").length
         ? { cruGuards: sliceCls.cruGuards.map((g) => g.name) }
         : {}),
+      // create/update/remove are only emitted when they override cru (distinct array reference);
+      // otherwise the client falls back to cruGuards, keeping payloads unchanged for cru-only slices.
+      ...(sliceCls.createGuards !== sliceCls.cruGuards && sliceCls.createGuards.filter((g) => g.name !== "None").length
+        ? { createGuards: sliceCls.createGuards.map((g) => g.name) }
+        : {}),
+      ...(sliceCls.updateGuards !== sliceCls.cruGuards && sliceCls.updateGuards.filter((g) => g.name !== "None").length
+        ? { updateGuards: sliceCls.updateGuards.map((g) => g.name) }
+        : {}),
+      ...(sliceCls.removeGuards !== sliceCls.cruGuards && sliceCls.removeGuards.filter((g) => g.name !== "None").length
+        ? { removeGuards: sliceCls.removeGuards.map((g) => g.name) }
+        : {}),
       endpoint,
     };
   }

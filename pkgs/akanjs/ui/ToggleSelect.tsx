@@ -1,6 +1,10 @@
+"use client";
 import { clsx, usePage } from "akanjs/client";
+import { type ComponentType, createElement } from "react";
 
-interface ToggleSelectProps<I extends string | number | boolean | null> {
+import { createOverridable, useUiOverride } from "./UiOverride";
+
+export interface ToggleSelectProps<I extends string | number | boolean | null> {
   className?: string;
   btnClassName?: string;
   items: string[] | number[] | { label: string; value: I; disabled?: boolean }[];
@@ -10,7 +14,7 @@ interface ToggleSelectProps<I extends string | number | boolean | null> {
   onChange: (value: I, idx: number) => void;
   disabled?: boolean;
 }
-export const ToggleSelect = <I extends string | number | boolean | null>({
+const DefaultToggleSelect = <I extends string | number | boolean | null>({
   className,
   btnClassName,
   items,
@@ -76,7 +80,7 @@ export const ToggleSelect = <I extends string | number | boolean | null>({
   );
 };
 
-interface MultiProps {
+export interface MultiProps {
   className?: string;
   btnClassName?: string;
   items: string[] | number[] | { label: string; value: string | number; disabled?: boolean }[];
@@ -86,7 +90,16 @@ interface MultiProps {
   onChange: (value: string[] | number[]) => void;
   disabled?: boolean;
 }
-const Multi = ({ className, btnClassName, items, nullable, validate, value, onChange, disabled }: MultiProps) => {
+const DefaultMulti = ({
+  className,
+  btnClassName,
+  items,
+  nullable,
+  validate,
+  value,
+  onChange,
+  disabled,
+}: MultiProps) => {
   const { l } = usePage();
   const validateResult = validate(value);
   // const status: "error" | "warning" | "success" =
@@ -146,4 +159,17 @@ const Multi = ({ className, btnClassName, items, nullable, validate, value, onCh
     </div>
   );
 };
-ToggleSelect.Multi = Multi;
+const ToggleSelectBase = <I extends string | number | boolean | null>(props: ToggleSelectProps<I>) => {
+  const Override = useUiOverride("ToggleSelect");
+  const Impl = (Override ?? DefaultToggleSelect) as unknown as ComponentType<ToggleSelectProps<I>>;
+  return createElement(Impl, props);
+};
+
+/**
+ * Toggle-select. `ToggleSelect` keeps its generic signature (so `<ToggleSelect<Status> …/>` still
+ * infers), and both it and `ToggleSelect.Multi` resolve to a route-scoped override when a
+ * `page/**\/_overrides.tsx` in the route's ancestry declares one (slots `ToggleSelect`, `ToggleSelectMulti`).
+ */
+export const ToggleSelect = Object.assign(ToggleSelectBase, {
+  Multi: createOverridable("ToggleSelectMulti", DefaultMulti),
+});

@@ -2,13 +2,12 @@
 import "chartjs-adapter-dayjs-4/dist/chartjs-adapter-dayjs-4.esm";
 
 import { ArcElement, CategoryScale, Chart as ChartJS, Legend, LinearScale, Title, Tooltip } from "chart.js";
-import { type ChartProps, Doughnut as DoughnutChart } from "react-chartjs-2";
+import { Doughnut as DoughnutChart } from "react-chartjs-2";
+import type { DoughnutProps } from "./type";
 
 ChartJS.register(CategoryScale, LinearScale, ArcElement, Title, Tooltip, Legend);
 
-type PropsType = Omit<ChartProps<"doughnut">, "type">;
-
-export default function Pie(props: PropsType) {
+export default function Pie(props: DoughnutProps) {
   return (
     <DoughnutChart
       options={{

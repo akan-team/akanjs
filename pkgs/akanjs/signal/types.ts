@@ -138,6 +138,9 @@ export interface SerializedSignal {
   filter?: SerializedFilter;
   getGuards?: string[];
   cruGuards?: string[];
+  createGuards?: string[];
+  updateGuards?: string[];
+  removeGuards?: string[];
 }
 
 export type SignalType = "restapi" | "websocket";

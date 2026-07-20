@@ -6,8 +6,9 @@ import { select } from "@inquirer/prompts";
 import { MobileProject } from "@trapezedev/project";
 import type { AndroidProject } from "@trapezedev/project/dist/android/project";
 import type { IosProject } from "@trapezedev/project/dist/ios/project";
+import type { AkanNativeContext, AkanPlugin } from "akanjs";
 import { capitalize } from "akanjs/common";
-import type { AkanMobileTargetConfig } from "./akanConfig";
+import type { AkanMobileTargetConfig, MobilePermission } from "./akanConfig";
 import { type AppExecutor, CommandExecutionError } from "./executors";
 import { FileEditor } from "./fileEditor";
 import { resolveMobilePath, targetHtmlFilename } from "./mobile";
@@ -26,7 +27,6 @@ interface RunIosConfig extends RunConfig {
 interface PrepareConfig extends RunConfig {}
 
 type MobileCommandEnv = Record<string, string | undefined>;
-type IosApnsEnvironment = "development" | "production";
 
 export type IosRunTargetKind = "device" | "simulator";
 export interface IosRunTarget {
@@ -130,9 +130,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const asString = (value: unknown) => (typeof value === "string" ? value : undefined);
 
 const firstString = (...values: unknown[]) => values.find((value): value is string => typeof value === "string");
-
-const resolveIosApnsEnvironment = ({ operation }: Pick<RunConfig, "operation" | "env">): IosApnsEnvironment =>
-  operation === "release" ? "production" : "development";
 
 const scoreIosDeviceTarget = (target: IosRunTarget) => {
   const state = target.state?.toLowerCase() ?? "";
@@ -557,6 +554,9 @@ export class CapacitorApp {
   readonly iosProjectPath = "ios/App";
   readonly androidRootPath = "android";
   readonly androidAssetsPath = "android/app/src/main/assets";
+  //* Accumulates iOS entitlements contributed by deep links and plugins during a prepare,
+  //* then flushed to App/App.entitlements once (see #flushIosEntitlements).
+  #iosEntitlements: Record<string, string | string[]> = {};
   constructor(
     private readonly app: AppExecutor,
     readonly target: AkanMobileTargetConfig,
@@ -605,6 +605,7 @@ export class CapacitorApp {
     await this.#applyIosMetadata();
     await this.#applyPermissions({ operation, env });
     await this.#applyDeepLinks("ios", { operation, env });
+    await this.#flushIosEntitlements();
     await this.project.commit();
     await this.#generateAssets({ operation, env });
     this.app.verbose(`syncing iOS`);
@@ -992,12 +993,50 @@ export class CapacitorApp {
     await this.project.android.setAppName(this.target.appName);
   }
   async #applyPermissions({ operation, env }: Pick<RunConfig, "operation" | "env">) {
+    const plugins = await this.app.collectPlugins();
+    const nativePlugins = new Map<MobilePermission, AkanPlugin[]>();
+    for (const plugin of plugins) {
+      const permission = plugin.capacitor?.permission;
+      if (!permission || !plugin.capacitor?.configureNative) continue;
+      const claimants = nativePlugins.get(permission) ?? [];
+      claimants.push(plugin);
+      nativePlugins.set(permission, claimants);
+    }
     for (const permission of this.target.permissions ?? []) {
+      const claimants = nativePlugins.get(permission);
+      if (claimants?.length) {
+        const ctx = this.#makeNativeContext({ operation, env });
+        for (const plugin of claimants) await plugin.capacitor?.configureNative?.(ctx);
+        continue;
+      }
       if (permission === "camera") await this.addCamera();
       else if (permission === "contacts") await this.addContact();
       else if (permission === "location") await this.addLocation();
-      else if (permission === "push") await this.addPush({ operation, env });
     }
+  }
+  #makeNativeContext({ operation, env }: Pick<RunConfig, "operation" | "env">): AkanNativeContext {
+    return {
+      appPath: this.app.cwdPath,
+      executor: this.app,
+      target: this.target,
+      operation,
+      env,
+      setIosUsageDescriptions: (descriptions) => this.#setPermissionInIos(descriptions),
+      updateIosInfoPlist: async (values) => {
+        await Promise.all([
+          this.project.ios.updateInfoPlist(this.iosTargetName, "Debug", values),
+          this.project.ios.updateInfoPlist(this.iosTargetName, "Release", values),
+        ]);
+      },
+      addIosEntitlements: (entitlements) => this.#addIosEntitlements(entitlements),
+      editIosAppDelegate: (transform) => this.#editIosAppDelegate(transform),
+      addAndroidPermissions: (permissions) => {
+        this.#setPermissionsInAndroid(permissions);
+      },
+      addAndroidFeatures: (features) => {
+        this.#setFeaturesInAndroid(features);
+      },
+    };
   }
   async #applyDeepLinks(platform: "ios" | "android", { operation, env }: Pick<RunConfig, "operation" | "env">) {
     const deepLinks = this.target.deepLinks;
@@ -1012,7 +1051,10 @@ export class CapacitorApp {
         });
         await this.#setUrlSchemesInIos(schemes);
       }
-      if (domains.length > 0) await this.#setAssociatedDomainsInIos(domains, { operation, env });
+      if (domains.length > 0)
+        this.#addIosEntitlements({
+          "com.apple.developer.associated-domains": domains.map((domain) => `applinks:${domain}`),
+        });
       return;
     }
     if (platform === "android") {
@@ -1036,7 +1078,10 @@ export class CapacitorApp {
       await this.#setDeepLinksInAndroid(schemes, domains);
     }
   }
-  #assertDeepLinkVerificationConfig(platform: "ios" | "android", { operation, env }: Pick<RunConfig, "operation" | "env">) {
+  #assertDeepLinkVerificationConfig(
+    platform: "ios" | "android",
+    { operation, env }: Pick<RunConfig, "operation" | "env">,
+  ) {
     const deepLinks = this.target.deepLinks;
     if (!deepLinks?.domains?.length) return;
     if (platform === "ios" && !deepLinks.ios?.teamId) {
@@ -1119,57 +1164,18 @@ export class CapacitorApp {
     this.#setPermissionsInAndroid(["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]);
     this.#setFeaturesInAndroid(["android.hardware.location.gps"]);
   }
-  async addPush({ operation, env }: Pick<RunConfig, "operation" | "env">) {
-    await this.#setPermissionInIos({
-      userNotificationsUsageDescription: "$(PRODUCT_NAME) uses notifications to keep you updated.",
-    });
-    await Promise.all([
-      this.project.ios.updateInfoPlist(this.iosTargetName, "Debug", { UIBackgroundModes: ["remote-notification"] }),
-      this.project.ios.updateInfoPlist(this.iosTargetName, "Release", { UIBackgroundModes: ["remote-notification"] }),
-      this.#writeEntitlementsInIos(this.target.deepLinks?.domains ?? [], { operation, env }),
-      this.#ensurePushAppDelegateInIos(),
-    ]);
-    this.#setPermissionsInAndroid(["POST_NOTIFICATIONS"]);
+  #addIosEntitlements(entitlements: Record<string, string | string[]>) {
+    Object.assign(this.#iosEntitlements, entitlements);
   }
-  async #ensurePushAppDelegateInIos() {
+  //* Generic in-place transform of ios/App/App/AppDelegate.swift (no-op if the file is absent).
+  //* Feature-specific native wiring (e.g. Firebase) lives in plugins, not the framework.
+  async #editIosAppDelegate(transform: (content: string) => string) {
     const appDelegatePath = path.join(this.app.cwdPath, this.iosProjectPath, "App/AppDelegate.swift");
     if (!(await Bun.file(appDelegatePath).exists())) return;
-
     const editor = await FileEditor.create(appDelegatePath);
-    let content = editor.getContent();
-
-    if (!content.includes("import FirebaseCore")) {
-      content = content.replace("import Capacitor", "import Capacitor\nimport FirebaseCore");
-    }
-    if (!content.includes("import FirebaseMessaging")) {
-      content = content.replace("import FirebaseCore", "import FirebaseCore\nimport FirebaseMessaging");
-    }
-    if (!content.includes("FirebaseApp.configure()")) {
-      content = content.replace(/\n(\s*)return true/, "\n$1FirebaseApp.configure()\n\n$1return true");
-    }
-    if (!content.includes("didRegisterForRemoteNotificationsWithDeviceToken")) {
-      const delegateMethods = `
-    func application(_ application: UIApplication,
-                     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        Messaging.messaging().apnsToken = deviceToken
-        NotificationCenter.default.post(
-            name: .capacitorDidRegisterForRemoteNotifications,
-            object: deviceToken
-        )
-    }
-
-    func application(_ application: UIApplication,
-                     didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        NotificationCenter.default.post(
-            name: .capacitorDidFailToRegisterForRemoteNotifications,
-            object: error
-        )
-    }
-`;
-      content = content.replace("\n    func applicationWillResignActive", `${delegateMethods}\n    func applicationWillResignActive`);
-    }
-
-    if (content !== editor.getContent()) await editor.setContent(content).save();
+    const content = editor.getContent();
+    const next = transform(content);
+    if (next !== content) await editor.setContent(next).save();
   }
   async #setPermissionInIos(permissions: { [key: string]: string }) {
     const updateNs = Object.fromEntries(
@@ -1190,29 +1196,30 @@ export class CapacitorApp {
       this.project.ios.updateInfoPlist(this.iosTargetName, "Release", { CFBundleURLTypes: urlTypes }),
     ]);
   }
-  async #setAssociatedDomainsInIos(domains: string[], { operation, env }: Pick<RunConfig, "operation" | "env">) {
-    await this.#writeEntitlementsInIos(domains, { operation, env });
+  #serializeIosEntitlements(entitlements: Record<string, string | string[]>) {
+    const lines: string[] = [];
+    for (const [key, value] of Object.entries(entitlements)) {
+      lines.push(`  <key>${key}</key>`);
+      if (Array.isArray(value)) {
+        lines.push("  <array>", ...value.map((item) => `    <string>${item}</string>`), "  </array>");
+      } else {
+        lines.push(`  <string>${value}</string>`);
+      }
+    }
+    return lines;
   }
-  async #writeEntitlementsInIos(domains: string[], runConfig: Pick<RunConfig, "operation" | "env">) {
+  //* Write the accumulated iOS entitlements (from deep links + plugins) to App/App.entitlements
+  //* once per prepare. Skipped entirely when nothing contributed entitlements.
+  async #flushIosEntitlements() {
+    if (Object.keys(this.#iosEntitlements).length === 0) return;
     const entitlementsRelPath = "App/App.entitlements";
     const entitlementsPath = path.join(this.app.cwdPath, this.iosProjectPath, entitlementsRelPath);
-    const values = domains.map((domain) => `applinks:${domain}`);
-    const usesPush = this.target.permissions?.includes("push") ?? false;
-    const apsEnvironment = resolveIosApnsEnvironment(runConfig);
     const body = [
       '<?xml version="1.0" encoding="UTF-8"?>',
       '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
       '<plist version="1.0">',
       "<dict>",
-      ...(usesPush ? ["  <key>aps-environment</key>", `  <string>${apsEnvironment}</string>`] : []),
-      ...(values.length > 0
-        ? [
-            "  <key>com.apple.developer.associated-domains</key>",
-            "  <array>",
-            ...values.map((value) => `    <string>${value}</string>`),
-            "  </array>",
-          ]
-        : []),
+      ...this.#serializeIosEntitlements(this.#iosEntitlements),
       "</dict>",
       "</plist>",
       "",

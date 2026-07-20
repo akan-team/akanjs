@@ -240,7 +240,7 @@ export class SignalResolver {
 
       // createModel endpoint: create${Capitalize<refName>}
       endpointObj[`create${capitalizedRefName}`] = (builder as any)
-        .mutation(cnst.full, { guards: sliceCls.cruGuards })
+        .mutation(cnst.full, { guards: sliceCls.createGuards })
         .body("data", cnst.input)
         .exec(async function (this: any, data: any) {
           return await this[serviceName].__create(data);
@@ -248,7 +248,7 @@ export class SignalResolver {
 
       // updateModel endpoint: update${Capitalize<refName>}${Capitalize<key>}
       endpointObj[`update${capitalizedRefName}`] = (builder as any)
-        .mutation(cnst.full, { guards: sliceCls.cruGuards })
+        .mutation(cnst.full, { guards: sliceCls.updateGuards })
         .param(`${refName}Id`, ID)
         .body("data", cnst.input)
         .exec(async function (this: any, id: string, data: any) {
@@ -257,7 +257,7 @@ export class SignalResolver {
 
       // removeModel endpoint: remove${Capitalize<refName>}${Capitalize<key>}
       endpointObj[`remove${capitalizedRefName}`] = (builder as any)
-        .mutation(cnst.full, { guards: sliceCls.cruGuards })
+        .mutation(cnst.full, { guards: sliceCls.removeGuards })
         .param(`${refName}Id`, ID)
         .exec(async function (this: any, id: string) {
           return await this[serviceName].__remove(id);

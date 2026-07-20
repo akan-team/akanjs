@@ -18,7 +18,6 @@ export * from "./dependencyScanner";
 export * from "./executors";
 export * from "./extractDeps";
 export * from "./fileSys";
-export * from "./firebaseMessagingSw";
 export * from "./frontendBuild";
 export * from "./getCredentials";
 export * from "./getDirname";

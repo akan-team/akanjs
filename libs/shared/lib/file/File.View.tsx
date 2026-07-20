@@ -1,7 +1,6 @@
+import type { cnst } from "@libs/shared/client";
 import { usePage } from "@libs/shared/client";
 import { RecentTime } from "akanjs/ui";
-
-import type * as cnst from "../cnst";
 
 interface GeneralProps {
   file: cnst.File;

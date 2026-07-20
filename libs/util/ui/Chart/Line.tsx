@@ -11,13 +11,12 @@ import {
   Title,
   Tooltip,
 } from "chart.js";
-import type { ChartProps } from "react-chartjs-2";
 import { Line as LineChart } from "react-chartjs-2";
+import type { LineProps } from "./type";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
-type PropsType = Omit<ChartProps<"line">, "type">;
-export default function Line(props: PropsType) {
+export default function Line(props: LineProps) {
   return (
     <LineChart
       options={{

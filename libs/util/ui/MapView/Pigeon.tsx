@@ -93,7 +93,7 @@ interface PigeonPropsProviderProps extends PigeonLibProps {
   onClick?: (coordinate: cnst.Coordinate, event: React.MouseEvent<HTMLDivElement>) => void;
   onRightClick?: (coordinate: cnst.Coordinate, event: React.MouseEvent<HTMLDivElement>) => void;
 }
-function PigeonPropsProvider({
+export function PigeonPropsProvider({
   children,
   mouseEvents,
   onMouseMove,
@@ -116,7 +116,7 @@ interface MouseTrackerProps {
   onClick?: (coordinate: cnst.Coordinate, event: React.MouseEvent<HTMLDivElement>) => void;
   onRightClick?: (coordinate: cnst.Coordinate, event: React.MouseEvent<HTMLDivElement>) => void;
 }
-function MouseTracker({
+export function MouseTracker({
   mouseEvents,
   onMouseMove,
   onClick,

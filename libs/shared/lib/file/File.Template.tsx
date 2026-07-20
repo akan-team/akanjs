@@ -3,10 +3,10 @@ import { st, usePage } from "@libs/shared/client";
 import { Field } from "@libs/shared/ui";
 import { Layout } from "akanjs/ui";
 
-interface FileEditProps {
+interface GeneralProps {
   className?: string;
 }
-export const General = ({ className }: FileEditProps) => {
+export const General = ({ className }: GeneralProps) => {
   const fileForm = st.use.fileForm();
   const { l } = usePage();
   return (

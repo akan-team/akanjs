@@ -5,6 +5,8 @@ import { lazy } from "akanjs/webkit";
 import { type FocusEvent, useEffect, useRef } from "react";
 import { AiOutlineSwapRight } from "react-icons/ai";
 
+import { createOverridable } from "./UiOverride";
+
 const reactDatePickerPackage = "react-datepicker";
 const reactDatePickerStylePath = "react-datepicker/dist/react-datepicker.css";
 
@@ -15,7 +17,7 @@ const ReactDatePicker = lazy(
   },
   { ssr: false },
 );
-interface DatePickerProps {
+export interface DatePickerProps {
   value?: Dayjs | null;
   onChange: (value: Dayjs | null) => void;
   showTime?: boolean;
@@ -27,7 +29,7 @@ interface DatePickerProps {
   defaultValue?: Dayjs;
 }
 
-export const DatePicker = ({
+const DefaultDatePicker = ({
   value,
   onChange,
   showTime,
@@ -74,7 +76,7 @@ export const DatePicker = ({
   );
 };
 
-interface RangePickerProps {
+export interface RangePickerProps {
   value: [Dayjs | null, Dayjs | null];
   onChange: (value: [Dayjs | null, Dayjs | null]) => void;
   format?: string;
@@ -84,7 +86,7 @@ interface RangePickerProps {
   className?: string;
 }
 
-const RangePicker = ({
+const DefaultRangePicker = ({
   value,
   onChange,
   format = "yyyy-MM-dd",
@@ -143,9 +145,7 @@ const RangePicker = ({
   );
 };
 
-DatePicker.RangePicker = RangePicker;
-
-interface TimePickerProps {
+export interface TimePickerProps {
   value: Dayjs | null;
   onChange: (value: Dayjs) => void;
   format?: string;
@@ -155,7 +155,7 @@ interface TimePickerProps {
   disabled?: boolean;
 }
 
-const TimePicker = ({
+const DefaultTimePicker = ({
   disabled,
   className,
   value,
@@ -187,7 +187,17 @@ const TimePicker = ({
   );
 };
 
-DatePicker.TimePicker = TimePicker;
+const DatePickerBase = createOverridable("DatePicker", DefaultDatePicker);
+
+/**
+ * Date picker. `DatePicker`, `DatePicker.RangePicker`, and `DatePicker.TimePicker` each resolve to a
+ * route-scoped override when a `page/**\/_overrides.tsx` in the route's ancestry declares one (slots
+ * `DatePicker`, `DatePickerRangePicker`, `DatePickerTimePicker`).
+ */
+export const DatePicker = Object.assign(DatePickerBase, {
+  RangePicker: createOverridable("DatePickerRangePicker", DefaultRangePicker),
+  TimePicker: createOverridable("DatePickerTimePicker", DefaultTimePicker),
+});
 
 // interface MonthPickerProps {
 //   className?: string;

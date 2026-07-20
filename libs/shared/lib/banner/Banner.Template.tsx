@@ -3,11 +3,11 @@ import { cnst, fetch, st, usePage } from "@libs/shared/client";
 import { Field } from "@libs/shared/ui";
 import { Layout } from "akanjs/ui";
 
-interface BannerEditProps {
+interface GeneralProps {
   className?: string;
 }
 
-export const General = ({ className }: BannerEditProps) => {
+export const General = ({ className }: GeneralProps) => {
   const bannerForm = st.use.bannerForm();
   const { l } = usePage();
   return (

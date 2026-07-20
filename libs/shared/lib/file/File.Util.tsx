@@ -3,15 +3,15 @@ import { fetch, st } from "@libs/shared/client";
 import { clsx, getCookie } from "akanjs/client";
 import { Image, Loading } from "akanjs/ui";
 import { lazy } from "akanjs/webkit";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { AiOutlineCheckCircle } from "react-icons/ai";
 
 const ImageViewer = lazy(() => import("react-simple-image-viewer"), { ssr: false });
 
-interface FileZoneImageGalleryProps {
+interface ImageGalleryProps {
   srcs: string[];
 }
-export const ImageGallery = ({ srcs }: FileZoneImageGalleryProps) => {
+export const ImageGallery = ({ srcs }: ImageGalleryProps) => {
   const fileModal = st.use.fileModal();
   const [imgIdx, setImgIdx] = useState(0);
   return (
@@ -49,14 +49,14 @@ export const ImageGallery = ({ srcs }: FileZoneImageGalleryProps) => {
   );
 };
 
-interface Download {
+interface DownloadProps {
   className?: string;
   url: string;
   filename: string;
   onClick?: () => void;
-  children?: any;
+  children?: ReactNode;
 }
-export const Download = ({ className, onClick, url, filename, children }: Download) => {
+export const Download = ({ className, onClick, url, filename, children }: DownloadProps) => {
   const [loading, setLoading] = useState<boolean | null>(false);
 
   return (
@@ -126,13 +126,9 @@ export const ExportPDF = () => {
     >
       <div className="w-3">
         {loading === true ? (
-          <>
-            <span className="loading loading-spinner loading-xs" />
-          </>
+          <span className="loading loading-spinner loading-xs" />
         ) : loading === false ? (
-          <>
-            <AiOutlineCheckCircle className="animate-pop-300" />
-          </>
+          <AiOutlineCheckCircle className="animate-pop-300" />
         ) : null}
       </div>
       Export PDF

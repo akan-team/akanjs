@@ -341,6 +341,11 @@ export class SignalContext<
   getEnv() {
     return this.#env;
   }
+  getArg<T = unknown>(argName: string): T | undefined {
+    const index = this.endpointInfo.args.findIndex((arg) => arg.name === argName);
+    if (index === -1) return undefined;
+    return this.args[index] as T;
+  }
 }
 
 export class HttpExecutionContext<Appended = unknown> {

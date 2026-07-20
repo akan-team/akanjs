@@ -3,7 +3,7 @@ import { Admin, type cnst, st, usePage } from "@libs/shared/client";
 import { type DataMenuItem, router } from "akanjs/client";
 import { Menu } from "akanjs/ui";
 import { useInterval } from "akanjs/webkit";
-import { type ReactNode, useState } from "react";
+import { type ComponentType, type ReactNode, useState } from "react";
 
 interface AdministratorProps {
   defaultMenu?: string;
@@ -26,13 +26,13 @@ export const Administrator = ({
   const topMenu = Array.isArray(searchParams.topMenu) ? searchParams.topMenu[0] : searchParams.topMenu;
   const subMenu = Array.isArray(searchParams.subMenu) ? searchParams.subMenu[0] : searchParams.subMenu;
   const [menuOpen, setMenuOpen] = useState(false);
-  const storeDo = st.do as unknown as { [key: string]: ((...args: any[]) => Promise<void>) | undefined };
+  const storeDo = st.do as unknown as { [key: string]: ((...args: unknown[]) => Promise<void>) | undefined };
   const { l } = usePage();
   const pageMenu = pageMenus.find((pageMenu) => pageMenu.key === topMenu) ?? pageMenus[0];
   const menuItems = pageMenu.menus;
   const isArray = Array.isArray(menuItems);
   const me = st.use.me();
-  const Render: any = isArray
+  const Render: ComponentType = isArray
     ? (menuItems.find((menuItem) => menuItem.key === subMenu) ?? menuItems[0]).render
     : menuItems.render;
   useInterval(() => {

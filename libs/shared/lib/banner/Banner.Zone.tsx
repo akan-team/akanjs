@@ -26,11 +26,11 @@ export const View = ({ view }: ViewProps) => {
   return <Load.View view={view} renderView={(banner) => <Banner.View.General banner={banner} />} />;
 };
 
-interface SwiperProps {
+interface SwipeProps {
   className?: string;
   init: ClientInit<"banner", cnst.LightBanner>;
 }
-export const Swipe = ({ className, init }: SwiperProps) => {
+export const Swipe = ({ className, init }: SwipeProps) => {
   return (
     <Load.Units
       className={className}

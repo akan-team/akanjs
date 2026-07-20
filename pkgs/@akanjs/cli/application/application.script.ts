@@ -60,6 +60,33 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       throw error;
     }
   }
+  async confirmMobileDependencyInstall(installSpecs: string[]) {
+    return await confirm({
+      message: [`Mobile builds require missing dependencies: ${installSpecs.join(", ")}.`, "Install them now?"].join(
+        " ",
+      ),
+      default: true,
+    });
+  }
+  async syncMobileDependencies(app: App, akanConfig: AkanAppConfig) {
+    const installSpecs = akanConfig.getMissingMobileDependencySpecs();
+    if (installSpecs.length === 0) return;
+
+    const shouldInstall = await this.confirmMobileDependencyInstall(installSpecs);
+    if (!shouldInstall) throw new Error(`Mobile builds require missing dependencies: ${installSpecs.join(", ")}.`);
+
+    const spinner = app.workspace.spinning("Installing mobile dependencies...");
+    try {
+      await app.workspace.spawn("bun", ["add", ...installSpecs], {
+        stdio: "inherit",
+      });
+      await app.workspace.getPackageJson({ refresh: true });
+      spinner.succeed("Installed mobile dependencies");
+    } catch (error) {
+      spinner.fail("Failed to install mobile dependencies");
+      throw error;
+    }
+  }
   async createApplication(
     appName: string,
     workspace: Workspace,
@@ -211,6 +238,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     } = {},
   ) {
     await app.scanSync({ write });
+    await this.syncMobileDependencies(app, await app.getConfig());
     await this.applicationRunner.startIos(app, {
       open,
       operation,
@@ -254,6 +282,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     } = {},
   ) {
     await app.scanSync({ write });
+    await this.syncMobileDependencies(app, await app.getConfig());
     await this.applicationRunner.startAndroid(app, {
       open,
       operation,

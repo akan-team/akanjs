@@ -35,6 +35,9 @@ export type SliceCls<
   [SLICE_META]: SliceInfoObj;
   getGuards: GuardCls[];
   cruGuards: GuardCls[];
+  createGuards: GuardCls[];
+  updateGuards: GuardCls[];
+  removeGuards: GuardCls[];
 };
 
 interface RootSliceOption {
@@ -42,6 +45,9 @@ interface RootSliceOption {
     root?: Cls<Guard> | Cls<Guard>[];
     get?: Cls<Guard> | Cls<Guard>[];
     cru?: Cls<Guard> | Cls<Guard>[];
+    create?: Cls<Guard> | Cls<Guard>[];
+    update?: Cls<Guard> | Cls<Guard>[];
+    remove?: Cls<Guard> | Cls<Guard>[];
   };
   prefix?: string;
 }
@@ -123,21 +129,15 @@ export function slice<
     srv.cnst.insight,
     srv.db.filter,
   );
-  const rootGuards = option.guards?.root
-    ? Array.isArray(option.guards.root)
-      ? option.guards.root
-      : [option.guards.root]
-    : [];
-  const getGuards = option.guards?.get
-    ? Array.isArray(option.guards.get)
-      ? option.guards.get
-      : [option.guards.get]
-    : [];
-  const cruGuards = option.guards?.cru
-    ? Array.isArray(option.guards.cru)
-      ? option.guards.cru
-      : [option.guards.cru]
-    : [];
+  const toGuards = (guard?: Cls<Guard> | Cls<Guard>[]) => (guard ? (Array.isArray(guard) ? guard : [guard]) : []);
+  const rootGuards = toGuards(option.guards?.root);
+  const getGuards = toGuards(option.guards?.get);
+  const cruGuards = toGuards(option.guards?.cru);
+  // create/update/remove override the shared cru guard for their own endpoint; when omitted they
+  // fall back to the same cruGuards reference so serialization can detect "not overridden" by identity.
+  const createGuards = option.guards?.create ? toGuards(option.guards.create) : cruGuards;
+  const updateGuards = option.guards?.update ? toGuards(option.guards.update) : cruGuards;
+  const removeGuards = option.guards?.remove ? toGuards(option.guards.remove) : cruGuards;
   const srvKeys = [
     ...new Set([...Object.keys(srv.srvMap), ...libSlices.flatMap((libSlice) => Object.keys(libSlice.srv.srvMap))]),
   ];
@@ -148,6 +148,9 @@ export function slice<
     static srv = srv;
     static getGuards = getGuards;
     static cruGuards = cruGuards;
+    static createGuards = createGuards;
+    static updateGuards = updateGuards;
+    static removeGuards = removeGuards;
     static [SLICE_META] = Object.assign(
       {
         [""]: init({ guards: rootGuards })

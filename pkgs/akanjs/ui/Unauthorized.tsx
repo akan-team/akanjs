@@ -1,16 +1,18 @@
-// "use client";
+"use client";
 import { clsx, usePage } from "akanjs/client";
 import type { ReactNode } from "react";
 import { AiOutlineBlock } from "react-icons/ai";
 
-interface UnauthorizedProps {
+import { createOverridable } from "./UiOverride";
+
+export interface UnauthorizedProps {
   className?: string;
   description?: ReactNode;
   children?: ReactNode;
   minHeight?: number;
 }
 
-export const Unauthorized = ({ className = "", description, children, minHeight = 300 }: UnauthorizedProps) => {
+export const DefaultUnauthorized = ({ className = "", description, children, minHeight = 300 }: UnauthorizedProps) => {
   const { l } = usePage();
   return (
     <div>
@@ -27,3 +29,10 @@ export const Unauthorized = ({ className = "", description, children, minHeight 
     </div>
   );
 };
+
+/**
+ * Unauthorized-state placeholder. Resolves to a route-scoped override when a
+ * `page/**\/_overrides.tsx` in the route's ancestry declares one, otherwise
+ * renders {@link DefaultUnauthorized}.
+ */
+export const Unauthorized = createOverridable("Unauthorized", DefaultUnauthorized);

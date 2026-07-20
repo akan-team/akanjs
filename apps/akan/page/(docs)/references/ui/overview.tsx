@@ -51,6 +51,15 @@ export default function Page() {
         ko: "application shell helper, CSR guard, admin signal tool, tab state, animation wrapper입니다.",
       }),
     },
+    {
+      title: l.trans({ en: "Customization", ko: "커스터마이즈" }),
+      href: "/references/ui/customize",
+      components: "_overrides.tsx, override()",
+      desc: l.trans({
+        en: "Re-skin any framework component per route with a `page/**/_overrides.tsx` manifest — drop-in replacements, no call-site changes.",
+        ko: "`page/**/_overrides.tsx` manifest로 framework 컴포넌트를 route 단위로 re-skin합니다 — drop-in 교체, call-site 변경 없음.",
+      }),
+    },
   ];
 
   return (

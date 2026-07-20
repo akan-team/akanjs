@@ -8,10 +8,11 @@ alwaysApply: false
 
 - `apps/<app>/page` may contain route modules only. Do not add helper logic or component-only files there.
 - Route source files under `page/` must use `.tsx`. Do not add `logic.ts`, `.js`, or `.jsx` files under `page/`.
-- Route pages use `_index.tsx`; layouts use `_layout.tsx`.
-- Reserved `_*.tsx` route filenames are limited to `_index.tsx` and `_layout.tsx`; do not add files like `_Component.tsx` or `_helper.tsx`.
+- Route pages use `_index.tsx`; layouts use `_layout.tsx`; per-route UI overrides use `_overrides.tsx`.
+- Reserved `_*.tsx` route filenames are limited to `_index.tsx`, `_layout.tsx`, and `_overrides.tsx`; do not add files like `_Component.tsx` or `_helper.tsx`.
 - Page filenames must not start with an uppercase letter. Move helper components like `Component.tsx` to app `ui`, `common`, or `lib` instead.
 - Dynamic segments use `[id]`; route groups use directories like `(user)`, `(public)`, `(tab)`, or `(detail)`.
 - Page modules should usually export `default`, `pageConfig`, `head`, `generateHead`, or `Loading`.
+- `_overrides.tsx` is a logic-free UI-override manifest: imports plus a single `export default override({ Slot: AppComponent })` (from `akanjs/ui`), no `"use client"`. It re-skins framework `akanjs/ui` components for its route subtree; nested manifests merge over ancestors slot-by-slot (closest wins).
 - Prefer `export default function Page` or `export default async function Page` for page components.
 - Before changing route behavior, check `pkgs/akanjs/server/src/routeTree.tsx` and nearby routes for the expected pattern.

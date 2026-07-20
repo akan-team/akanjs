@@ -1,6 +1,7 @@
-import { type Dayjs, dayjs } from "akanjs/base";
+import { dayjs } from "akanjs/base";
 import type { InternalArg, SignalContext } from "akanjs/signal";
 import { UAParser } from "ua-parser-js";
+import type { AccessInfo } from "./internalArgs.helper";
 
 export class UserIp implements InternalArg {
   getArg(context: SignalContext) {
@@ -9,21 +10,6 @@ export class UserIp implements InternalArg {
   }
 }
 
-interface AccessInfo {
-  period: number;
-  countryCode?: string;
-  countryName?: string;
-  city?: string;
-  postal?: number;
-  location?: {
-    type: "Point";
-    coordinates: [number, number];
-  };
-  ipv4?: string;
-  state?: string;
-  userAgent?: string;
-  at: Dayjs;
-}
 export class Access implements InternalArg {
   getArg(context: SignalContext) {
     const userAgent =

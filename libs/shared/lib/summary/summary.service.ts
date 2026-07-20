@@ -4,6 +4,7 @@ import { DatabaseRegistry, getFilterInfoByKey } from "akanjs/document";
 import { serve } from "akanjs/service";
 import * as cnst from "../cnst";
 import * as db from "../db";
+import { Err } from "../dict";
 
 export class SummaryService extends serve(db.summary, () => ({})) {
   summary!: db.Summary;
@@ -21,9 +22,9 @@ export class SummaryService extends serve(db.summary, () => ({})) {
         const queryMeta = field.meta as QueryMeta;
         const queryKey = queryMeta.queryKey;
         const args = queryMeta.queryArgs;
-        if (!queryKey) throw new Error(`queryKey is not defined for key: ${key}`);
+        if (!queryKey) throw new Err("summary.error.queryKeyNotDefined", { key });
         const filterRef = DatabaseRegistry.getDatabase(queryMeta.refName).filter;
-        const query = (getFilterInfoByKey(filterRef, queryKey).queryFn as any)(
+        const query = (getFilterInfoByKey(filterRef, queryKey).queryFn as (...args: object[]) => object)(
           ...((typeof args === "function" ? args() : args) as object[]),
         );
         const value = await this.summaryModel.countWithQuery(queryMeta.refName, query);

@@ -1,25 +1,6 @@
-import type { Me, Self } from "@libs/shared/base";
 import type { Guard, SignalContext } from "akanjs/signal";
 import type { SerAccount } from "./account";
-
-export const allow = (
-  context: SignalContext,
-  account: SerAccount<{ self?: Self; me?: Me }> | null,
-  roles: ("user" | "admin" | "superAdmin")[],
-) => {
-  if (!account) throw new Error("No Authentication Account");
-  for (const role of roles) {
-    if (role === "user" && !account.self?.removedAt && account.self?.roles.includes("user")) return true;
-    else if (role === "admin" && !account.me?.removedAt && account.me?.roles.includes("admin")) return true;
-    else if (role === "superAdmin" && !account.me?.removedAt && account.me?.roles.includes("superAdmin")) return true;
-  }
-  throw new Error(
-    `[${context.key}] No Authentication With Roles: ${roles.join(", ")}, Your roles are ${[
-      ...(account.self?.roles ?? []),
-      ...(account.me?.roles ?? []),
-    ].join(", ")}${!account.self?.roles.length && !account.me?.roles.length ? " (No Roles)" : ""}`,
-  );
-};
+import { allow } from "./guards.helper";
 
 export class Every implements Guard {
   static name = "Every";
@@ -73,5 +54,23 @@ export class User implements Guard {
         ? (context.getHttpContext<{ account?: SerAccount }>().req.account ?? null)
         : (context.getWebSocketContext<{ account?: SerAccount }>().ws.data.account ?? null);
     return allow(context, account, ["user"]);
+  }
+}
+
+export class SelfOrAdmin implements Guard {
+  static name = "User";
+  private argName: string;
+  constructor(argName?: string) {
+    this.argName = argName ?? "userId";
+  }
+  canPass(context: SignalContext): boolean {
+    const account =
+      context.transport === "http"
+        ? (context.getHttpContext<{ account?: SerAccount<{ self?: { id: string }; me?: { id: string } }> }>().req
+            .account ?? null)
+        : (context.getWebSocketContext<{ account?: SerAccount<{ self?: { id: string }; me?: { id: string } }> }>().ws
+            .data.account ?? null);
+    const userId = context.getArg(this.argName);
+    return !!userId && !!account && (account.self?.id === userId || !!account.me);
   }
 }

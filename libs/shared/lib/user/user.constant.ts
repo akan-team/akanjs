@@ -7,9 +7,6 @@ import { NotiInfo } from "../__scalar/notiInfo/notiInfo.constant";
 import { RestrictInfo } from "../__scalar/restrictInfo/restrictInfo.constant";
 import { File } from "../file/file.constant";
 
-export const MASTER_PHONES = process.env.MASTER_PHONES?.split(",") ?? [];
-export const MASTER_PHONECODE = process.env.MASTER_PHONECODE;
-
 export class SsoType extends enumOf("ssoType", ["naver", "kakao", "github", "google", "apple", "facebook"] as const) {}
 
 export class Verify extends enumOf("verify", [...SsoType.values, "wallet", "password", "phone", "email"] as const) {}

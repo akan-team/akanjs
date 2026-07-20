@@ -47,7 +47,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     status: t(["Status", "상태"]).desc(["Status of the user", "유저의 상태"]),
   }))
   .insight<UserInsight>((t) => ({}))
-  .query<typeof UserFilter>((fn) => ({
+  .query<UserFilter>((fn) => ({
     byStatuses: fn(["By Statuses", "상태별 조회"]).arg((t) => ({
       statuses: t(["Statuses", "상태들"]).desc(["Statuses to search", "상태들로 조회"]),
     })),
@@ -69,7 +69,7 @@ export const dictionary = modelDictionary(["en", "ko"])
       statuses: t(["Statuses", "상태들"]).desc(["Statuses to search", "상태들로 조회"]),
     })),
   }))
-  .sort<typeof UserFilter>((t) => ({}))
+  .sort<UserFilter>((t) => ({}))
   .enum<Verify>("verify", (t) => ({
     naver: t(["Naver", "네이버"]).desc(["Naver verify", "네이버 인증"]),
     kakao: t(["Kakao", "카카오"]).desc(["Kakao verify", "카카오 인증"]),
@@ -105,8 +105,8 @@ export const dictionary = modelDictionary(["en", "ko"])
     dormant: t(["Dormant", "휴면"]).desc(["Dormant status", "휴면 상태"]),
     restricted: t(["Restricted", "제한됨"]).desc(["Restricted status", "제한됨 상태"]),
   }))
-  .slice<typeof UserSlice>((fn) => ({}))
-  .endpoint<typeof UserEndpoint>((fn) => ({
+  .slice<UserSlice>((fn) => ({}))
+  .endpoint<UserEndpoint>((fn) => ({
     addBadgeCount: fn(["Add Badge Count", "뱃지 수 증가"])
       .desc(["API to add a badge count", "뱃지 수를 증가하는 API"])
       .arg((t) => ({
@@ -404,12 +404,34 @@ export const dictionary = modelDictionary(["en", "ko"])
     refreshJwt: fn(["Refresh JWT", "JWT 갱신"])
       .desc(["Refresh JWT", "JWT 갱신"])
       .arg((t) => ({
-        refreshToken: t(["Refresh Token", "갱신 토큰"]).desc(["Refresh Token", "갱신 토큰"]),
+        refreshToken: t(["Refresh Token", "리프레시 토큰"]).desc(["Refresh Token", "리프레시 토큰"]),
       })),
   }))
   .error({
     noAccount: ["No account exists. Sign up is needed,", "가입되지 않은 이메일입니다. 회원가입을 먼저 해주세요."],
     wrongPassword: ["Wrong password. Please try again.", "비밀번호가 틀렸습니다. 다시 시도해주세요."],
+    userNotActive: ["User is not in active status", "유저가 활성 상태가 아닙니다"],
+    userNotPrepare: ["User is not in prepare status", "유저가 준비 상태가 아닙니다"],
+    noAccountId: ["No account ID", "계정 아이디가 없습니다"],
+    accountIdAlreadyExists: ["AccountId already exists", "이미 존재하는 아이디입니다"],
+    resignupNotAvailable: ["Retry after {days} days", "{days}일 후에 다시 시도해주세요"],
+    noAccountIdInUser: ["No accountId in this user", "이 유저에 아이디가 없습니다"],
+    invalidAccountId: ["Invalid accountId", "유효하지 않은 아이디입니다"],
+    noPasswordInUser: ["No password in this user", "이 유저에 비밀번호가 없습니다"],
+    noSsoTypeInUser: ["No ssoType in this user", "이 유저에 해당 SSO 유형이 없습니다"],
+    tooManyPhoneCodes: ["Too many phone codes, try later", "인증번호 요청이 너무 많습니다. 나중에 다시 시도해주세요"],
+    phoneAlreadyExists: ["Phone already exists", "이미 존재하는 휴대폰 번호입니다"],
+    invalidPhoneNumber: ["Invalid phone number", "유효하지 않은 휴대폰 번호입니다"],
+    phoneNumberUnchanged: ["Already set the same phone number", "이미 동일한 휴대폰 번호로 설정되어 있습니다"],
+    noVerifiesInUser: ["No verifies {ssoType} in this user", "이 유저에 {ssoType} 인증 정보가 없습니다"],
+    profileExamNotAvailable: ["Profile exam is not available.", "프로필 심사를 사용할 수 없습니다."],
+    imagesNotUploaded: ["Images are not uploaded.", "이미지가 업로드되지 않았습니다."],
+    userNotActivated: ["Not activated yet", "아직 활성화되지 않았습니다"],
+    invalidPhoneCode: ["Invalid phone code", "유효하지 않은 인증번호입니다"],
+    invalidSignToken: ["Invalid sign token", "유효하지 않은 서명 토큰입니다"],
+    resetRetryLater: ["Retry after 3 minutes", "3분 후에 다시 시도해주세요"],
+    noRefreshToken: ["No refresh token", "리프레시 토큰이 없습니다"],
+    unauthorized: ["Unauthorized", "권한이 없습니다"],
   })
   .translate({
     prevPassword: ["Password", "기존 비밀번호"],

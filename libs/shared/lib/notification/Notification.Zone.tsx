@@ -1,5 +1,5 @@
 "use client";
-import { type PushToken, usePushNotification } from "akanjs/webkit";
+import { type PushToken, usePushNotification } from "@libs/util/webkit";
 import { useEffect } from "react";
 
 interface InitializeProps {

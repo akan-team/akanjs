@@ -18,8 +18,11 @@ import {
   parseRouteModuleKey,
   routeSegmentToTreePath,
 } from "akanjs/common";
+import { createElement } from "react";
 import { validatePageConfig } from "../client/frameConfig";
 import { resolveHeadExport, resolveMetadataHead } from "./metadata";
+
+type RouteModuleKindWithOverrides = "page" | "layout" | "overrides";
 
 export type PagesContext = Record<string, () => Promise<RouteModule>>;
 
@@ -197,6 +200,14 @@ export class RouteTreeBuilder {
     const targetPath = pathSegments[pathSegments.length - 1];
     if (!targetPath) return;
 
+    if (parsed.kind === "overrides") {
+      targetRouteMap.set(targetPath, {
+        ...(targetRouteMap.get(targetPath) ?? { path: targetPath, children: new Map<string, Route>() }),
+        renderOverrides: this.#makeOverridesRender(filePath, loader),
+      } as Route);
+      return;
+    }
+
     const routeRender = RouteTreeBuilder.#makeRouteRender(filePath, parsed.kind, loader);
     targetRouteMap.set(targetPath, {
       ...(targetRouteMap.get(targetPath) ?? { path: targetPath, children: new Map<string, Route>() }),
@@ -224,8 +235,12 @@ export class RouteTreeBuilder {
     const pathSegments = [...parentPaths, ...(currentPathSegment ? [currentPathSegment] : [])];
     const currentRootLayout = isRoot && route.renderLayout ? route.renderLayout : null;
     const currentLayout = !isRoot && route.renderLayout ? route.renderLayout : null;
+    // Overrides always ride the (non-root) layout stream so both SSR and CSR mount the provider, and sit just
+    // outside this node's own layout so the layout's UI is overridden too. Nested `_overrides.tsx` then stack
+    // into nested providers, so the closest declaration wins (the provider merges over ancestor context).
+    const currentOverrideRenders = route.renderOverrides ? [route.renderOverrides] : [];
     const renderRootLayouts = [...parentRootLayouts, ...(currentRootLayout ? [currentRootLayout] : [])];
-    const renderLayouts = [...parentLayouts, ...(currentLayout ? [currentLayout] : [])];
+    const renderLayouts = [...parentLayouts, ...currentOverrideRenders, ...(currentLayout ? [currentLayout] : [])];
     if (route.renderLayout) {
       this.#fallbackRoutes.push({
         path: routePath,
@@ -237,7 +252,10 @@ export class RouteTreeBuilder {
     const routeHead = RouteTreeBuilder.#composeHeadResolvers(route.renderLayout?.resolveHead, parentHead);
     const pageRenderRootLayouts =
       route.pageIncludesOwnLayout === false && currentRootLayout ? parentRootLayouts : renderRootLayouts;
-    const pageRenderLayouts = route.pageIncludesOwnLayout === false && currentLayout ? parentLayouts : renderLayouts;
+    const pageRenderLayouts =
+      route.pageIncludesOwnLayout === false && currentLayout
+        ? [...parentLayouts, ...currentOverrideRenders]
+        : renderLayouts;
     const pageHead = route.pageIncludesOwnLayout === false ? parentHead : routeHead;
     return [
       ...(route.renderPage
@@ -262,7 +280,7 @@ export class RouteTreeBuilder {
     ];
   }
 
-  static #makeLazyModule(key: string, kind: "page" | "layout", loader: () => Promise<RouteModule>) {
+  static #makeLazyModule(key: string, kind: RouteModuleKindWithOverrides, loader: () => Promise<RouteModule>) {
     let cached: RouteModule | null = null;
     let loaded = false;
     RouteTreeBuilder.#moduleCacheStats.moduleCount += 1;
@@ -285,7 +303,12 @@ export class RouteTreeBuilder {
     };
   }
 
-  static #validateRouteModuleExports(key: string, kind: "page" | "layout", mod: RouteModule) {
+  static #validateRouteModuleExports(key: string, kind: RouteModuleKindWithOverrides, mod: RouteModule) {
+    if (kind === "overrides") {
+      // The loaded module is the generated `"use client"` override wrapper, whose default mounts the provider.
+      if (!mod.default) throw new Error(`[route-convention] ${key} generated override wrapper has no default export`);
+      return;
+    }
     const parsed = parseRouteModuleKey(key);
     const allowed =
       kind === "page"
@@ -376,6 +399,21 @@ export class RouteTreeBuilder {
       };
     }
     return routeRender;
+  }
+
+  // A `_overrides.tsx` renders through its generated `"use client"` wrapper layout: the wrapper's default mounts
+  // the `UiOverrideProvider` (with the manifest's slot bindings) around the subtree. On the server the wrapper is
+  // a client reference, on the client the real component — `createElement` handles both. No head/config/fallback.
+  #makeOverridesRender(key: string, loader: () => Promise<RouteModule>): RouteRender {
+    const loadModule = RouteTreeBuilder.#makeLazyModule(key, "overrides", loader);
+    return {
+      isAsync: true,
+      render: (async ({ children }: LayoutProps) => {
+        const mod = await loadModule();
+        if (!mod.default) throw new Error(`[route-convention] ${key} generated override wrapper has no default export`);
+        return createElement(mod.default as never, { children } as never);
+      }) as RouteRender["render"],
+    };
   }
 
   static #composeHeadResolvers(...resolvers: (ResolveHead | undefined)[]): ResolveHead | undefined {

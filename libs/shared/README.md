@@ -6,13 +6,6 @@ An official akanjs library providing comprehensive shared utilities, components,
 
 The `akanjs/shared` library is a comprehensive collection of shared utilities divided into five main categories:
 
-### 🏗️ **Base Types** (`/base`)
-
-Core type definitions and foundational structures:
-
-- **📝 Rich Text Types**
-  - `SlateContent` - Type definitions for Slate.js rich text content
-  - Core element types for structured document content
 
 ### 🖥️ **Server-side Utilities** (`/server`)
 
@@ -182,17 +175,6 @@ await addFileUntilActive(fileList, {
 });
 ```
 
-### Rich Text Processing
-
-```typescript
-import { extractTextFromSlateJson } from "@libs/shared/common";
-import { SlateContent } from "@libs/shared/base";
-
-const slateContent: SlateContent = [{ type: "paragraph", children: [{ text: "Hello world!" }] }];
-
-const plainText = extractTextFromSlateJson(slateContent);
-// Output: "Hello world!"
-```
 
 ### UI Components
 

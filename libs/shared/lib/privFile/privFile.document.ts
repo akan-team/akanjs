@@ -30,7 +30,7 @@ export class PrivFileModel extends into(PrivFile, PrivFileFilter, cnst.privFile,
   async generatePrivFile(data: Partial<db.PrivFile>): Promise<db.PrivFile> {
     if (data.id) {
       const existingFile = await this.PrivFile.findById(data.id);
-      const doc = existingFile?.set(data) ?? new this.PrivFile({ id: data.id, ...data } as any);
+      const doc = existingFile?.set(data) ?? new this.PrivFile({ id: data.id, ...data } as unknown as db.PrivFileInput);
       return await doc.save();
     }
     return await new this.PrivFile(data).save();

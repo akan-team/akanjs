@@ -134,6 +134,20 @@
   },
   "overrides": [
     {
+      "includes": [
+        "apps/**/*.ts",
+        "apps/**/*.tsx",
+        "libs/**/*.ts",
+        "libs/**/*.tsx",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.spec.ts",
+        "!**/*.spec.tsx",
+        "!**/common/**"
+      ],
+      "plugins": ["./pkgs/@akanjs/devkit/lint/no-throw-raw-error.grit"]
+    },
+    {
       "includes": ["**/page/**/*.ts", "**/page/**/*.tsx", "**/*.Unit.tsx", "**/*.View.tsx"],
       "plugins": [
         "./pkgs/@akanjs/devkit/lint/no-import-client-functions.grit",

@@ -1,8 +1,10 @@
 "use client";
 import { clsx, usePage } from "akanjs/client";
 import type React from "react";
-import { type ButtonHTMLAttributes, useState } from "react";
+import { type ButtonHTMLAttributes, type ComponentType, createElement, useState } from "react";
 import { AiOutlineCheckCircle } from "react-icons/ai";
+
+import { useUiOverride } from "./UiOverride";
 
 export type ButtonProps<Result> = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick"> & {
   /** Async-aware click handler. Call onError to show the localized error state without throwing. */
@@ -14,7 +16,7 @@ export type ButtonProps<Result> = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 
   onSuccess?: (result: Result) => void;
 };
 
-export const Button = <Result = unknown>({ className, children, onClick, onSuccess, ...rest }: ButtonProps<Result>) => {
+const DefaultButton = <Result = unknown>({ className, children, onClick, onSuccess, ...rest }: ButtonProps<Result>) => {
   const { l } = usePage();
   const [state, setState] = useState<{
     mode: "idle" | "loading" | "success" | "error";
@@ -67,4 +69,15 @@ export const Button = <Result = unknown>({ className, children, onClick, onSucce
       ) : null}
     </>
   );
+};
+
+/**
+ * Async-aware button. Resolves to a route-scoped override when a `page/**\/_overrides.tsx`
+ * in the route's ancestry declares one, otherwise renders {@link DefaultButton}. The public
+ * generic signature is preserved, so `<Button<Todo> onSuccess={(r: Todo) => …} />` still infers.
+ */
+export const Button = <Result = unknown>(props: ButtonProps<Result>) => {
+  const Override = useUiOverride("Button");
+  const Impl = (Override ?? DefaultButton) as unknown as ComponentType<ButtonProps<Result>>;
+  return createElement(Impl, props);
 };

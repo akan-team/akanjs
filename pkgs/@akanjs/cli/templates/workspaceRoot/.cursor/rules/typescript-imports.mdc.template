@@ -9,5 +9,5 @@ alwaysApply: false
 - Use Bun and ESM assumptions from the root `tsconfig.json`.
 - Prefer path aliases over deep relative imports when crossing package boundaries.
 - Use `akanjs/*` for framework facets, `@apps/*` for apps, `@libs/*` for shared libs, and `@contract/*` for contract code.
-- Respect existing client/server entrypoints such as `@libs/shared/client`, `@libs/shared/server`, `@apps/puffinplace/client`, and `@apps/puffinplace/server`.
+- Respect existing client/server entrypoints such as `@libs/shared/client`, `@libs/shared/server`, `@apps/myapp/client`, and `@apps/myapp/server`.
 - Let Biome organize imports instead of manually reshuffling unrelated imports.

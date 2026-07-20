@@ -2,27 +2,19 @@ import { CloudFrontClient, CreateInvalidationCommand } from "@aws-sdk/client-clo
 import { Logger } from "akanjs/common";
 import { Try } from "akanjs/server";
 import { S3Client } from "bun";
-
+import { Err } from "../../lib/dict";
+import { ensureReadableStreamReady } from "./ensureReadableStreamReady";
+import type { ObjectStorageOptions } from "./objectStorageApi.helper";
 import type {
   CopyRequest,
   DownloadRequest,
   LocalFilePath,
   StorageApi,
   UploadFromStreamRequest,
+  UploadReadableStreamRequest,
   UploadRequest,
+  UploadResult,
 } from "./type";
-
-export interface ObjectStorageOptions {
-  service: "s3" | "minio" | "r2" | "naver" | (string & {});
-  region: string;
-  accessKey: string;
-  secretAccessKey: string;
-  distributionId: string | null;
-  bucket: string;
-  host: string | null;
-  protocol?: "http" | "https";
-  endpoint?: string;
-}
 
 export class ObjectStorageApi implements StorageApi {
   readonly logger = new Logger("ObjectStorageApi");
@@ -53,7 +45,7 @@ export class ObjectStorageApi implements StorageApi {
             : this.service === "minio"
               ? (this.endpoint ?? "http://localhost:9000")
               : options.endpoint;
-    if (!endpoint && this.service !== "s3") throw new Error("Invalid service type");
+    if (!endpoint && this.service !== "s3") throw new Err("util.error.invalidServiceType");
     this.#s3 = new S3Client({
       accessKeyId: options.accessKey,
       secretAccessKey: options.secretAccessKey,
@@ -74,6 +66,10 @@ export class ObjectStorageApi implements StorageApi {
     const Key = `${this.root}/${path}`;
     return this.#s3.file(Key).stream();
   }
+  async readReadyData(path: string) {
+    const stream = (await this.readData(path)) as ReadableStream<Uint8Array>;
+    return await ensureReadableStreamReady(stream);
+  }
   async readDataAsJson<T>(path: string) {
     const Key = `${this.root}/${path}`;
     return (await this.#s3.file(Key).json()) as T;
@@ -82,17 +78,17 @@ export class ObjectStorageApi implements StorageApi {
     const fullPrefix = `${this.root}${prefix ? `/${prefix}` : ""}`;
     const allKeys: string[] = [];
     let startAfter: string | undefined;
-    do {
+    let hasNextPage = true;
+    while (hasNextPage) {
       const result = await this.#s3.list({ prefix: fullPrefix, startAfter });
       if (result.contents) {
         for (const obj of result.contents) {
           allKeys.push(obj.key ?? "");
         }
       }
-      if (!result.isTruncated || !result.contents?.length) break;
-      startAfter = result.contents.at(-1)?.key;
-      // biome-ignore lint/correctness/noConstantCondition: pagination continues until the storage API reports completion
-    } while (true);
+      hasNextPage = Boolean(result.isTruncated && result.contents?.length);
+      if (hasNextPage) startAfter = result.contents?.at(-1)?.key;
+    }
     return allKeys;
   }
   async uploadDataFromLocal({ path, localPath, meta, access = "public" }: UploadRequest) {
@@ -121,12 +117,14 @@ export class ObjectStorageApi implements StorageApi {
     const pipe = async () => {
       const reader = body.getReader();
       try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+        let isDone = false;
+        while (!isDone) {
+          const next = await reader.read();
+          isDone = next.done;
+          if (next.done) continue;
 
-          writer.write(value);
-          loaded += value.length;
+          writer.write(next.value);
+          loaded += next.value.length;
           updateProgress({ loaded });
         }
         await writer.end();
@@ -136,6 +134,37 @@ export class ObjectStorageApi implements StorageApi {
       }
     };
     pipe();
+  }
+
+  async uploadDataFromReadableStream({
+    path,
+    body,
+    mimetype,
+    access = "public",
+  }: UploadReadableStreamRequest): Promise<UploadResult> {
+    const Key = this.service === "minio" ? `${path.split("/").at(-1)}` : `${this.root}/${path}`;
+    const writer = this.#s3.file(Key).writer({
+      type: mimetype ?? this.#getContentType(path),
+      ...this.#getAclOption(access),
+      partSize: 5 * 1024 * 1024,
+    });
+    const reader = body.getReader();
+    let size = 0;
+    try {
+      let isDone = false;
+      while (!isDone) {
+        const next = await reader.read();
+        isDone = next.done;
+        if (next.done) continue;
+
+        writer.write(next.value);
+        size += next.value.length;
+      }
+      await writer.end();
+    } finally {
+      reader.releaseLock();
+    }
+    return { url: `${this.urlPrefix}/${Key}`, size };
   }
 
   async saveData({ path, localPath, renamePath }: DownloadRequest): Promise<LocalFilePath> {
@@ -155,7 +184,7 @@ export class ObjectStorageApi implements StorageApi {
   }
   @Try()
   async deleteData(url: string, host?: string) {
-    if (!url.startsWith(this.urlPrefix)) throw new Error("Invalid Base URL, Unable to delete data");
+    if (!url.startsWith(this.urlPrefix)) throw new Err("util.error.invalidBaseUrlForDelete");
     const Key = url.replace(`${this.urlPrefix}/`, "");
     await this.#s3.file(Key).delete();
     return true;
@@ -167,7 +196,7 @@ export class ObjectStorageApi implements StorageApi {
     return true;
   }
   async invalidateObjects(keys: string[]) {
-    if (!this.#cloudFront || !this.distributionId) throw new Error("CloudFront is not initialized");
+    if (!this.#cloudFront || !this.distributionId) throw new Err("util.error.cloudFrontNotInitialized");
     await this.#cloudFront.send(
       new CreateInvalidationCommand({
         DistributionId: this.distributionId,

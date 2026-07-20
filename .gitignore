@@ -125,6 +125,7 @@ apps/*/ui/index.ts
 apps/*/webkit/index.ts
 apps/*/srvkit/index.ts
 apps/*/common/index.ts
+apps/*/plugin/index.ts
 apps/*/lib/*/index.ts
 apps/*/lib/__scalar/*/index.ts
 apps/*/client.ts
@@ -142,6 +143,7 @@ libs/*/ui/index.ts
 libs/*/webkit/index.ts
 libs/*/srvkit/index.ts
 libs/*/common/index.ts
+libs/*/plugin/index.ts
 libs/*/lib/*/index.ts
 libs/*/lib/__scalar/*/index.ts
 libs/*/client.ts

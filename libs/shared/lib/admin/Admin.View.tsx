@@ -1,14 +1,12 @@
-import { Admin, usePage } from "@libs/shared/client";
+import type { cnst } from "@libs/shared/client";
+import { Admin } from "@libs/shared/client";
 
-import type * as cnst from "../cnst";
-
-interface AdminViewProps {
+interface GeneralProps {
   className?: string;
   admin: cnst.Admin;
 }
 
-export const General = ({ className, admin }: AdminViewProps) => {
-  const { l } = usePage();
+export const General = ({ className, admin }: GeneralProps) => {
   return (
     <div className="mr-4 flex items-center gap-2 text-white">
       {admin.accountId}

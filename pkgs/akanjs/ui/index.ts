@@ -41,4 +41,14 @@ export { System, type WebAppManifest } from "./System";
 export { Tab } from "./Tab";
 export { Table } from "./Table";
 export { ToggleSelect } from "./ToggleSelect";
+export {
+  type AkanModalComponent,
+  type AkanUiOverrideName,
+  type AkanUiOverrides,
+  createOverridable,
+  override,
+  UiOverrideProvider,
+  type UiOverrideProviderProps,
+  useUiOverride,
+} from "./UiOverride";
 export { Unauthorized } from "./Unauthorized";

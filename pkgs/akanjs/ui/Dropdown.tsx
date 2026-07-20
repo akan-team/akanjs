@@ -2,6 +2,8 @@
 import { clsx } from "akanjs/client";
 import { type ReactNode, useState } from "react";
 
+import { createOverridable } from "./UiOverride";
+
 export interface DropdownProps {
   /** Button/trigger content. */
   value: ReactNode;
@@ -15,7 +17,7 @@ export interface DropdownProps {
   dropdownClassName?: string;
 }
 
-export const Dropdown = ({ value, content, className, buttonClassName, dropdownClassName }: DropdownProps) => {
+export const DefaultDropdown = ({ value, content, className, buttonClassName, dropdownClassName }: DropdownProps) => {
   const [opened, setOpened] = useState(false);
   return (
     <div
@@ -49,3 +51,9 @@ export const Dropdown = ({ value, content, className, buttonClassName, dropdownC
     </div>
   );
 };
+
+/**
+ * Dropdown. Resolves to a route-scoped override when a `page/**\/_overrides.tsx`
+ * in the route's ancestry declares one, otherwise renders {@link DefaultDropdown}.
+ */
+export const Dropdown = createOverridable("Dropdown", DefaultDropdown);

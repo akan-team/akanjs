@@ -2,6 +2,8 @@
 import { clsx } from "akanjs/client";
 import type { ReactElement, ReactNode } from "react";
 
+import { createOverridable } from "./UiOverride";
+
 export interface RadioProps {
   value: string | number | null;
   className?: string;
@@ -9,7 +11,7 @@ export interface RadioProps {
   children: ReactNode | ReactElement | ReactElement[];
   onChange: (value: string | number | null, idx: number) => void;
 }
-export const Radio = ({ value, children, disabled, className, onChange }: RadioProps) => {
+const DefaultRadio = ({ value, children, disabled, className, onChange }: RadioProps) => {
   return (
     <div className={clsx(`flex gap-2`, className)}>
       {(children as ReactElement<{ value: string | number | null }>[]).map((child, idx) => {
@@ -47,7 +49,16 @@ export interface ItemProps {
   onChange?: (value: string) => void;
 }
 
-const Item = ({ value, className, children }: ItemProps) => {
+const DefaultItem = ({ value, className, children }: ItemProps) => {
   return <div className={clsx("", className)}>{children}</div>;
 };
-Radio.Item = Item;
+
+const RadioBase = createOverridable("Radio", DefaultRadio);
+
+/**
+ * Radio group. `Radio` and `Radio.Item` each resolve to a route-scoped override when a
+ * `page/**\/_overrides.tsx` in the route's ancestry declares one (slots `Radio`, `RadioItem`).
+ */
+export const Radio = Object.assign(RadioBase, {
+  Item: createOverridable("RadioItem", DefaultItem),
+});

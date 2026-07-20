@@ -24,7 +24,7 @@ export class NotificationService extends serve(db.notification, ({ use, service,
   }
 
   async sendPushNotification(notificationInput: db.NotificationInput) {
-    const notification = await this.notificationModel.getNotification(notificationInput.id);
+    const notification = await this.notificationModel.createNotification(notificationInput);
     const image = notification.image ? await this.fileService.getFile(notification.image) : null;
 
     await this.pushNotificationServer.send({

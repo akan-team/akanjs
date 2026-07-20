@@ -5,7 +5,7 @@ import { useContext } from "react";
 
 import { PigeonMapPropsContext } from "./context";
 
-interface Props {
+interface PigeonOverlayProps {
   className?: string;
   bounds: {
     west: number;
@@ -17,7 +17,7 @@ interface Props {
   onClick?: () => void;
 }
 
-export default function PigeonOverlay({ className, bounds, children, onClick }: Props) {
+export default function PigeonOverlay({ className, bounds, children, onClick }: PigeonOverlayProps) {
   const contextProps = useContext(PigeonMapPropsContext);
 
   const centerLng = (bounds.west + bounds.east) / 2;

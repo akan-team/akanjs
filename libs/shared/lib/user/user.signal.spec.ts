@@ -3,6 +3,7 @@ import type * as adminSpec from "@libs/shared/lib/admin/admin.signal.spec";
 import type { DocumentModel } from "akanjs/constant";
 import { getOrSetupSignalTestFetch, sample, sampleOf } from "akanjs/test";
 
+import { MASTER_PHONECODE, MASTER_PHONES } from "../../common/user";
 import * as cnst from "../cnst";
 import type { fetch as sharedFetch } from "../useServer";
 
@@ -22,8 +23,8 @@ export const getUserAgentWithPhone = async <Fetch = SharedFetch, User = cnst.Use
   phoneIdx = 0,
 ): Promise<UserAgent<Fetch, User, UserInput>> => {
   const fetch = await getFetch();
-  const phone = cnst.MASTER_PHONES[phoneIdx];
-  const phoneCode = cnst.MASTER_PHONECODE;
+  const phone = MASTER_PHONES[phoneIdx];
+  const phoneCode = MASTER_PHONECODE;
   const userInput = sampleOf(cnst.UserInput);
 
   // 1. 중복된 폰번호가 있는지 확인

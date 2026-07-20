@@ -1,5 +1,7 @@
 import { dayjs } from "akanjs/base";
 
+import { Err } from "../lib/dict";
+
 interface RefreshSessionCache {
   get(namespace: string, key: string): Promise<unknown>;
   set(
@@ -72,12 +74,12 @@ export const rotateRefreshSession = async (
   nextExpiresAt: Date,
 ) => {
   const session = await getSession(cache, refreshTokenHash);
-  if (!session) throw new Error("Invalid refresh token");
-  if (session.revokedAt) throw new Error("Revoked refresh token");
-  if (dayjs(session.expiresAt).isBefore(dayjs())) throw new Error("Expired refresh token");
+  if (!session) throw new Err("shared.error.invalidRefreshToken");
+  if (session.revokedAt) throw new Err("shared.error.revokedRefreshToken");
+  if (dayjs(session.expiresAt).isBefore(dayjs())) throw new Err("shared.error.expiredRefreshToken");
   if (session.rotatedAt) {
     await revokeRefreshSessions(cache, session.subject, session.subjectId);
-    throw new Error("Refresh token reuse detected");
+    throw new Err("shared.error.refreshTokenReuseDetected");
   }
 
   const rotatedSession = {

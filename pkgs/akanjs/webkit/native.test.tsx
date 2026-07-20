@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import { beforeAll, expect, mock, test } from "bun:test";
 
 type RenderHookResult<T> = {
   get current(): T;
@@ -12,7 +12,7 @@ const originalDocument = globalThis.document;
 const effectCleanups: Array<() => void> = [];
 let hookIndex = 0;
 const hookStates: unknown[] = [];
-let hookMemoStates: Array<{ deps: unknown[]; value: unknown }> = [];
+const hookMemoStates: Array<{ deps: unknown[]; value: unknown }> = [];
 
 const sameDeps = (a: unknown[] | undefined, b: unknown[] | undefined) =>
   !!a && !!b && a.length === b.length && a.every((value, index) => Object.is(value, b[index]));
@@ -38,6 +38,7 @@ const pushState = {
   registered: 0,
   autoInit: 0,
   actionListeners: [] as Array<(event: { notification?: { data?: Record<string, unknown> } }) => void>,
+  registrationListeners: [] as Array<(event: { value?: string }) => void>,
 };
 const assigned: string[] = [];
 const deepLinks: string[] = [];
@@ -172,9 +173,16 @@ const installCapacitorBridge = () => {
           checkPermissions: async () => ({ receive: pushState.receive }),
           register: async () => {
             pushState.registered += 1;
+            pushState.registrationListeners.forEach((listener) => {
+              listener({ value: "native-token" });
+            });
           },
-          addListener: async (_eventName: string, listener: (event: { notification?: { data?: Record<string, unknown> } }) => void) => {
-            pushState.actionListeners.push(listener);
+          addListener: async (
+            eventName: string,
+            listener: (event: { value?: string; notification?: { data?: Record<string, unknown> } }) => void,
+          ) => {
+            if (eventName === "registration") pushState.registrationListeners.push(listener);
+            else if (eventName === "pushNotificationActionPerformed") pushState.actionListeners.push(listener);
             return { remove: () => undefined };
           },
         },
@@ -270,10 +278,9 @@ afterEach(() => {
   pushState.registered = 0;
   pushState.autoInit = 0;
   pushState.actionListeners = [];
+  pushState.registrationListeners = [];
   assigned.length = 0;
   deepLinks.length = 0;
-  globalThis.__AKAN_PUSH_CLICK_BRIDGE__ = undefined;
-  globalThis.__AKAN_CLIENT_ENV__ = undefined;
   effectCleanups.splice(0);
   hookIndex = 0;
   hookStates.length = 0;
@@ -326,29 +333,6 @@ describe("native hooks", () => {
     geolocationState.permissions = { location: "denied", coarseLocation: "granted" };
     expect(await hook.current.getPosition()).toBeUndefined();
     expect(assigned).toEqual(["app-settings:"]);
-    hook.unmount();
-  });
-
-  test("usePushNotification returns PushToken, no-ops on web, and bridges native push clicks", async () => {
-    installWindow();
-    const { usePushNotification } = await import("./usePushNotification");
-    const hook = renderHook(() => usePushNotification());
-
-    expect(await hook.current.register()).toBeUndefined();
-    expect(pushState.registered).toBe(0);
-
-    pushState.platform = "ios";
-    await hook.current.initClickBridge();
-    const pushToken = await hook.current.register();
-    expect(pushState.autoInit).toBe(1);
-    expect(pushState.registered).toBe(1);
-    expect(pushToken).toEqual({ token: "token-1", platform: "ios", provider: "fcm" });
-    expect(await hook.current.getToken()).toEqual({ token: "token-1", platform: "ios", provider: "fcm" });
-    pushState.actionListeners[0]?.({ notification: { data: { url: "/push-target" } } });
-    expect(deepLinks).toEqual(["/push-target"]);
-
-    pushState.receive = "denied";
-    expect(await hook.current.register()).toBeUndefined();
     hook.unmount();
   });
 });

@@ -65,6 +65,34 @@ const createStartApp = ({
   };
 };
 
+const createMobileApp = ({ missingMobileSpecs = [] }: { missingMobileSpecs?: string[] } = {}) => {
+  const recorder = createCallRecorder();
+  const workspace = createFakeExecutor(
+    "workspace",
+    {
+      getPackageJson: async (...args: unknown[]) => {
+        recorder.record("workspace.getPackageJson", ...args);
+        return {};
+      },
+    },
+    recorder,
+  );
+  const getMissingMobileDependencySpecs = mock(() => missingMobileSpecs);
+  const akanConfig = {
+    getMissingMobileDependencySpecs,
+  } as unknown as AkanAppConfig;
+  const app = createFakeExecutor(
+    "app",
+    {
+      scanSync: async (...args: unknown[]) => recorder.record("scanSync", ...args),
+      getConfig: async () => akanConfig,
+      workspace,
+    },
+    recorder,
+  );
+  return { app, akanConfig, getMissingMobileDependencySpecs, recorder, workspace };
+};
+
 afterEach(async () => {
   CommandContainer.clear();
   mock.restore();
@@ -350,6 +378,7 @@ describe("ApplicationScript", () => {
       "demo",
       {
         scanSync: async (...args: unknown[]) => recorder.record("scanSync", ...args),
+        getConfig: async () => ({ getMissingMobileDependencySpecs: () => [] }) as unknown as AkanAppConfig,
       },
       recorder,
     );
@@ -379,6 +408,69 @@ describe("ApplicationScript", () => {
         },
       ],
     });
+  });
+
+  test("startIos skips mobile dependency install when nothing is missing", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const { app, getMissingMobileDependencySpecs, recorder } = createMobileApp();
+    script.confirmMobileDependencyInstall = async (...args: unknown[]) => {
+      recorder.record("confirmMobileInstall", ...args);
+      return true;
+    };
+    script.applicationRunner.startIos = async (...args: unknown[]) => {
+      recorder.record("runner.startIos", ...args);
+    };
+
+    await script.startIos(app as never, { write: false });
+
+    expect(getMissingMobileDependencySpecs).toHaveBeenCalled();
+    expect(recorder.names()).not.toContain("confirmMobileInstall");
+    expect(recorder.names()).not.toContain("workspace.spawn");
+    expect(recorder.names()).toContain("runner.startIos");
+  });
+
+  test("startAndroid confirms and installs missing mobile dependencies before launch", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const installSpecs = ["firebase@^12.13.0"];
+    const { app, recorder } = createMobileApp({ missingMobileSpecs: installSpecs });
+    script.confirmMobileDependencyInstall = async (...args: unknown[]) => {
+      recorder.record("confirmMobileInstall", ...args);
+      return true;
+    };
+    script.applicationRunner.startAndroid = async (...args: unknown[]) => {
+      recorder.record("runner.startAndroid", ...args);
+    };
+
+    await script.startAndroid(app as never, { write: false });
+
+    expect(recorder.calls).toContainEqual({ name: "confirmMobileInstall", args: [installSpecs] });
+    expect(recorder.calls).toContainEqual({
+      name: "workspace.spawn",
+      args: ["bun", ["add", ...installSpecs], { stdio: "inherit" }],
+    });
+    expect(recorder.calls).toContainEqual({ name: "workspace.getPackageJson", args: [{ refresh: true }] });
+    expect(recorder.names().indexOf("workspace.spawn")).toBeLessThan(recorder.names().indexOf("runner.startAndroid"));
+  });
+
+  test("startIos aborts before launch when mobile dependency install is declined", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const installSpecs = ["firebase@^12.13.0"];
+    const { app, recorder } = createMobileApp({ missingMobileSpecs: installSpecs });
+    script.confirmMobileDependencyInstall = async (...args: unknown[]) => {
+      recorder.record("confirmMobileInstall", ...args);
+      return false;
+    };
+    script.applicationRunner.startIos = async (...args: unknown[]) => {
+      recorder.record("runner.startIos", ...args);
+    };
+
+    await expect(script.startIos(app as never, { write: false })).rejects.toThrow(
+      "Mobile builds require missing dependencies",
+    );
+
+    expect(recorder.calls).toContainEqual({ name: "confirmMobileInstall", args: [installSpecs] });
+    expect(recorder.names()).not.toContain("workspace.spawn");
+    expect(recorder.names()).not.toContain("runner.startIos");
   });
 });
 

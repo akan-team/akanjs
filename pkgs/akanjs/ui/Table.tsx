@@ -8,6 +8,7 @@ import { AiOutlineLoading3Quarters } from "react-icons/ai";
 
 import { Empty } from "./Empty";
 import { Pagination, type PaginationProps } from "./Pagination";
+import { createOverridable } from "./UiOverride";
 
 export interface Column {
   /** Stable column key. Defaults to index when omitted. */
@@ -45,7 +46,7 @@ export interface TableProps {
   rowKey?: (model: any) => string;
 }
 
-export const Table = ({
+export const DefaultTable = ({
   columns,
   dataSource,
   loading,
@@ -129,3 +130,9 @@ export const Table = ({
     </div>
   );
 };
+
+/**
+ * Data table. Resolves to a route-scoped override when a `page/**\/_overrides.tsx`
+ * in the route's ancestry declares one, otherwise renders {@link DefaultTable}.
+ */
+export const Table = createOverridable("Table", DefaultTable);
