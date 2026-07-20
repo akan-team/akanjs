@@ -12,7 +12,7 @@ export interface PushNotificationMessage {
   data?: Record<string, string>;
 }
 
-interface PushNotificationServerOptions {
+export interface PushNotificationServerOptions {
   firebase: {
     type: string;
     project_id: string;
