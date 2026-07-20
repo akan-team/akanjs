@@ -65,7 +65,7 @@ export const UiComponentSlide = ({ component }: { component: UiComponentReferenc
         <Docs.Description>
           <div className="space-y-1">
             {component.notes.map((note) => (
-              <div key={note} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
+              <div key={note} className="rounded-xl border border-base-300 bg-background px-4 text-foreground/70">
                 {note}
               </div>
             ))}

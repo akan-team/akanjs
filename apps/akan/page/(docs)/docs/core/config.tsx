@@ -27,9 +27,9 @@ export default function Page() {
             { name: "secrets", desc: l.trans({ en: "Secret files", ko: "시크릿 파일" }) },
             { name: "advanced", desc: l.trans({ en: "Build options", ko: "빌드 옵션" }) },
           ].map(({ name, desc }) => (
-            <div key={name} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+            <div key={name} className="rounded-xl border border-base-300 bg-background px-4 py-0">
               <div className="font-mono font-semibold text-primary">{name}</div>
-              <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+              <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>
           ))}
         </div>
@@ -57,10 +57,10 @@ export default function Page() {
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
-              <span className="font-bold text-base-content">{title}: </span>
+            <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <span className="font-bold text-foreground">{title}: </span>
 
-              <span className="text-base-content/70 text-sm">{desc}</span>
+              <span className="text-foreground/70 text-sm">{desc}</span>
             </div>
           ))}
         </div>
@@ -195,10 +195,10 @@ export const env: ModulesOptions = {
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+            <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
               <span className="font-mono font-semibold text-primary">{title}: </span>
 
-              <span className="text-base-content/70 text-sm">{desc}</span>
+              <span className="text-foreground/70 text-sm">{desc}</span>
             </div>
           ))}
         </div>
@@ -243,18 +243,18 @@ const config: AppConfig = {
 export default config;`}
         />
         <div className="space-y-1">
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
             <div className="font-mono font-semibold text-primary">basePath</div>
-            <div className="mt-2 text-base-content/70 text-sm">
+            <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
                 en: "Optional client name for this route. Akan normalizes /store/ to store.",
                 ko: "이 route가 열 클라이언트 이름입니다. Akan은 /store/처럼 적은 값을 store로 정리합니다.",
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
             <div className="font-mono font-semibold text-primary">domains</div>
-            <div className="mt-2 text-base-content/70 text-sm">
+            <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
                 en: "A map of environment names to domains. debug, develop, and main exist by default, and custom branches such as qa can be added.",
                 ko: "환경 이름별 도메인 목록입니다. debug, develop, main은 기본으로 있고, qa 같은 커스텀 브랜치도 추가할 수 있습니다.",
@@ -443,10 +443,10 @@ export default config;`}
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+            <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
               <span className="font-mono font-semibold text-primary">{title}: </span>
 
-              <span className="text-base-content/70 text-sm">{desc}</span>
+              <span className="text-foreground/70 text-sm">{desc}</span>
             </div>
           ))}
         </div>
@@ -631,10 +631,10 @@ apps/api/secrets/**/*
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+            <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
               <span className="font-mono font-semibold text-primary">{title}: </span>
 
-              <span className="text-base-content/70 text-sm">{desc}</span>
+              <span className="text-foreground/70 text-sm">{desc}</span>
             </div>
           ))}
         </div>
@@ -689,10 +689,10 @@ apps/api/secrets/**/*
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
-              <span className="font-bold text-base-content">{title}: </span>
+            <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <span className="font-bold text-foreground">{title}: </span>
 
-              <span className="text-base-content/70 text-sm">{desc}</span>
+              <span className="text-foreground/70 text-sm">{desc}</span>
             </div>
           ))}
         </div>

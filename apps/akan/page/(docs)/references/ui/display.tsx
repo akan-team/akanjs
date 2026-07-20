@@ -83,7 +83,7 @@ export const ProductZone = ({ slice }) => (
       code: `import { RecentTime } from "akanjs/ui";
 
 export const StoryMeta = ({ story }) => (
-  <div className="text-sm text-base-content/60">
+  <div className="text-sm text-foreground/60">
     <RecentTime date={story.createdAt} breakUnit="second" format="full" />
   </div>
 );`,

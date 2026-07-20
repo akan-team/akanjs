@@ -72,9 +72,9 @@ export default function Page() {
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
-              <div className="font-bold text-base-content">{title}</div>
-              <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+            <div key={title} className="rounded-xl border border-base-300 bg-background p-4">
+              <div className="font-bold text-foreground">{title}</div>
+              <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>
           ))}
         </div>
@@ -84,7 +84,7 @@ export default function Page() {
       <Scroll.Slide id="server-level-appliance" title={l.trans({ en: "Server Level Appliance", ko: "서버 레벨 적용" })}>
         <Docs.Title>{l.trans({ en: "Server Level Appliance", ko: "서버 레벨 적용" })}</Docs.Title>
         <div className="space-y-6">
-          <div className="rounded-2xl border border-base-300 bg-base-100 p-4">
+          <div className="rounded-2xl border border-base-300 bg-background p-4">
             <Docs.Description>
               <div>
                 {l.trans({
@@ -109,9 +109,9 @@ Middleware --> SignalEndpoint["Signal endpoint"]`}
               />
             </div>
           </div>
-          <div className="rounded-2xl border border-base-300 bg-base-100 p-4">
+          <div className="rounded-2xl border border-base-300 bg-background p-4">
             <Docs.Description>
-              <div className="font-bold text-base-content">Middleware</div>
+              <div className="font-bold text-foreground">Middleware</div>
               <div>
                 {l.trans({
                   en: "Middleware runs around signal requests and can attach server-derived values to the request context before business logic runs.",
@@ -136,9 +136,9 @@ export class RequestUserMiddleware implements Middleware {
 }`}
             />
           </div>
-          <div className="rounded-2xl border border-base-300 bg-base-100 p-4">
+          <div className="rounded-2xl border border-base-300 bg-background p-4">
             <Docs.Description>
-              <div className="font-bold text-base-content">WebProxy</div>
+              <div className="font-bold text-foreground">WebProxy</div>
               <div>
                 {l.trans({
                   en: "WebProxy runs before the web request reaches the page. Use it when you need redirects, rewrites, or request header changes for routing and rendering.",
@@ -160,9 +160,9 @@ export class LegacyPageRedirect implements WebProxy {
 }`}
             />
           </div>
-          <div className="rounded-2xl border border-base-300 bg-base-100 p-4">
+          <div className="rounded-2xl border border-base-300 bg-background p-4">
             <Docs.Description>
-              <div className="font-bold text-base-content">Apply Them In Options</div>
+              <div className="font-bold text-foreground">Apply Them In Options</div>
               <div>
                 {l.trans({
                   en: "After declaring them in srvkit, register middleware and web proxies in the app or library option chain.",
@@ -187,7 +187,7 @@ export class LegacyPageRedirect implements WebProxy {
       >
         <Docs.Title>{l.trans({ en: "Signal Level Appliance", ko: "Signal 레벨 적용" })}</Docs.Title>
         <div className="space-y-6">
-          <div className="rounded-2xl border border-base-300 bg-base-100 p-4">
+          <div className="rounded-2xl border border-base-300 bg-background p-4">
             <Docs.Description>
               <div>
                 {l.trans({
@@ -212,9 +212,9 @@ Exec --> Service["Service logic"]`}
               />
             </div>
           </div>
-          <div className="rounded-2xl border border-base-300 bg-base-100 p-4">
+          <div className="rounded-2xl border border-base-300 bg-background p-4">
             <Docs.Description>
-              <div className="font-bold text-base-content">Guard</div>
+              <div className="font-bold text-foreground">Guard</div>
               <div>
                 {l.trans({
                   en: "A Guard checks whether a request can run a signal. Use it for authentication, role checks, ownership checks, or any server-side request protection.",
@@ -249,9 +249,9 @@ export class OrderEndpoint extends endpoint(srv.order, ({ pubsub, query, mutatio
               />
             </div>
           </div>
-          <div className="rounded-2xl border border-base-300 bg-base-100 p-4">
+          <div className="rounded-2xl border border-base-300 bg-background p-4">
             <Docs.Description>
-              <div className="font-bold text-base-content">InternalArg</div>
+              <div className="font-bold text-foreground">InternalArg</div>
               <div>
                 {l.trans({
                   en: "An InternalArg reads request or websocket context and adds a server-derived value to the signal exec arguments. Use it when business logic needs context data without asking the client to send it.",
@@ -427,7 +427,7 @@ export class OrderService extends serve(db.order, ({ plug }) => ({
                 ko: "앱 전용 연동은 app srvkit에, 재사용 가능한 연동은 library srvkit에 둡니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
+              <div key={rule} className="rounded-xl border border-base-300 bg-background px-4 text-foreground/70">
                 {rule}
               </div>
             ))}

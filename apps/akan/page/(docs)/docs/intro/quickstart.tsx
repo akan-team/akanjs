@@ -176,7 +176,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <div className="w-full justify-center gap-4 sm:flex">
-          <div className="mockup-browser w-full border-2 border-base-content/30 bg-base-100">
+          <div className="mockup-browser w-full border-2 border-foreground/30 bg-background">
             <div className="mockup-browser-toolbar">
               <div className="input">http://localhost:8282</div>
             </div>
@@ -186,7 +186,7 @@ export default function Page() {
           <div className="relative hidden h-96 w-80 sm:block">
             <div className="mockup-phone absolute -translate-x-1/4 -translate-y-1/4 scale-50">
               <div className="mockup-phone-camera"></div>
-              <div className="mockup-phone-display flex items-center justify-center bg-base-100 px-4 text-center text-4xl">
+              <div className="mockup-phone-display flex items-center justify-center bg-background px-4 text-center text-4xl">
                 Hello Akan.js! 🎉
               </div>
             </div>

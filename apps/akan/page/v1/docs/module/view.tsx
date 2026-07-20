@@ -285,14 +285,14 @@ export const View = ({ className, view }: ViewProps) => {
         </Docs.Description>
 
         <div className="mt-6 grid grid-cols-1 gap-4">
-          <div className="rounded-xl border bg-base-100 p-4">
+          <div className="rounded-xl border bg-background p-4">
             <div className="mb-2 font-bold text-lg">View (Parent)</div>
             <div className="text-sm opacity-70">
               {l.trans({ en: "Layouts, Structural grids, Headings", ko: "레이아웃, 구조적 그리드, 제목" })}
             </div>
           </div>
           <div className="flex flex-col items-center justify-center text-2xl opacity-30">⬇️</div>
-          <div className="rounded-xl border bg-base-100 p-4">
+          <div className="rounded-xl border bg-background p-4">
             <div className="mb-2 font-bold text-lg">Children</div>
             <div className="text-sm opacity-70">
               <ul className="list-disc space-y-1 pl-4">

@@ -124,7 +124,7 @@ export const Signature = ({
         >
           <AiOutlineUpload /> {uploadLabel}
         </button>
-        <button type="button" className="btn btn-ghost btn-sm ml-auto text-error" onClick={clear}>
+        <button type="button" className="btn btn-ghost btn-sm ml-auto text-destructive" onClick={clear}>
           <AiOutlineDelete /> {clearLabel}
         </button>
       </div>
@@ -133,7 +133,7 @@ export const Signature = ({
           ref={canvasRef}
           width={width}
           height={height}
-          className="aspect-[12/5] w-full touch-none rounded-box border border-base-300 bg-base-100"
+          className="aspect-[12/5] w-full touch-none rounded-box border border-base-300 bg-background"
           onPointerDown={startDraw}
           onPointerMove={moveDraw}
           onPointerUp={endDraw}

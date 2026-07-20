@@ -44,7 +44,7 @@ export const Administrator = ({
     <div className="mx-auto mt-0 block min-h-screen overflow-hidden">
       <div className="fixed z-50 flex h-12 w-full items-center justify-between bg-black">
         <div className="mt-1 ml-5">
-          <div className="flex items-center gap-3 whitespace-nowrap text-base-100">
+          <div className="flex items-center gap-3 whitespace-nowrap text-background">
             {logo} {l("admin.modelName")}
           </div>
         </div>

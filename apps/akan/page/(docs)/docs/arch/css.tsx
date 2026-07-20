@@ -29,8 +29,8 @@ export default function Page() {
               DaisyUI
             </Link>
           </Docs.Alert>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-            <div className="mb-2 font-bold text-base-content">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="mb-2 font-bold text-foreground">
               {l.trans({ en: "How the layers work together", ko: "레이어가 함께 동작하는 방식" })}
             </div>
             <div className="space-y-1">
@@ -67,7 +67,7 @@ export default function Page() {
                 <div key={idx} className="flex gap-3 rounded-lg bg-base-200 px-4 py-2">
                   <div>
                     <span className="font-mono font-semibold text-primary">{title}: </span>
-                    <span className="text-base-content/70 text-sm">{desc}</span>
+                    <span className="text-foreground/70 text-sm">{desc}</span>
                   </div>
                 </div>
               ))}
@@ -106,7 +106,7 @@ export default function Page() {
             ].map((desc) => (
               <div
                 key={desc}
-                className="rounded-xl border border-base-300 bg-base-100 px-4 py-2 text-base-content/70 text-sm"
+                className="rounded-xl border border-base-300 bg-background px-4 py-2 text-foreground/70 text-sm"
               >
                 {desc}
               </div>
@@ -114,10 +114,10 @@ export default function Page() {
           </div>
           <Code.Snippet
             language="typescript"
-            code={`<div className="space-y-3 rounded-xl bg-base-100 p-4 text-base-content">
+            code={`<div className="space-y-3 rounded-xl bg-background p-4 text-foreground">
   <button className="btn btn-primary">Save</button>
   <input className="input input-bordered w-full" placeholder="Product name" />
-  <div className="card border border-base-300 bg-base-100 p-4">
+  <div className="card border border-base-300 bg-background p-4">
     Product summary
   </div>
   <div className="alert alert-info">Stock updated successfully.</div>
@@ -210,7 +210,7 @@ export const fonts: Font[] = [
           <Code.Snippet
             title="Using font classes"
             language="typescript"
-            code={`<span className="font-pretendard text-base-content">
+            code={`<span className="font-pretendard text-foreground">
   Styled with Pretendard
 </span>
 

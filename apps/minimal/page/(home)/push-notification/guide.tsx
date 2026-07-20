@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 export default function Page() {
   return (
-    <main className="min-h-screen bg-base-100 px-5 py-8 text-base-content">
+    <main className="min-h-screen bg-background px-5 py-8 text-foreground">
       <section className="mx-auto max-w-2xl rounded-3xl bg-base-200 p-6 shadow-xl">
         <p className="text-primary text-sm uppercase tracking-[0.24em]">Setup Guide</p>
         <h1 className="mt-3 font-bold text-3xl">Minimal Push Notification Demo</h1>
@@ -40,7 +40,7 @@ export default function Page() {
   body: "Open the landing page",
   url: "/push-notification/landing",
 });`}</pre>
-          <p className="mt-3 text-base-content/70 text-sm">
+          <p className="mt-3 text-foreground/70 text-sm">
             `PushNotificationServer` only sends through FCM. Token storage, notification records, and invalid-token
             cleanup belong to the app.
           </p>
@@ -57,6 +57,6 @@ export default function Page() {
 const GuideSection = ({ title, children }: { title: string; children: ReactNode }) => (
   <section className="mt-6 rounded-2xl bg-base-300 p-4">
     <h2 className="font-semibold text-lg">{title}</h2>
-    <div className="mt-3 text-base-content/80 text-sm">{children}</div>
+    <div className="mt-3 text-foreground/80 text-sm">{children}</div>
   </section>
 );

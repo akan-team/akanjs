@@ -12,11 +12,11 @@ import type { CalloutPickerState } from "./calloutPlugin.type";
 
 /** The 5 callout variants as color swatches for the floating picker. */
 const VARIANT_SWATCHES: { key: CalloutVariant; className: string; title: string }[] = [
-  { key: "default", className: "bg-base-content/40", title: "Default" },
+  { key: "default", className: "bg-foreground/40", title: "Default" },
   { key: "info", className: "bg-info", title: "Info" },
   { key: "success", className: "bg-success", title: "Success" },
   { key: "warning", className: "bg-warning", title: "Warning" },
-  { key: "error", className: "bg-error", title: "Error" },
+  { key: "error", className: "bg-destructive", title: "Error" },
 ];
 
 /**
@@ -76,7 +76,7 @@ export const CalloutPlugin = () => {
         transform: "translateX(-100%)",
         zIndex: 50,
       }}
-      className="flex items-center gap-1 rounded-md border border-base-content/15 bg-base-100 p-1 shadow-lg"
+      className="flex items-center gap-1 rounded-md border border-foreground/15 bg-background p-1 shadow-lg"
       onMouseDown={(event) => event.preventDefault()}
     >
       {VARIANT_SWATCHES.map((swatch) => (
@@ -88,7 +88,7 @@ export const CalloutPlugin = () => {
           className={clsx(
             "h-4 w-4 rounded-full transition-transform hover:scale-110",
             swatch.className,
-            state.variant === swatch.key && "ring-2 ring-base-content/50 ring-offset-1 ring-offset-base-100",
+            state.variant === swatch.key && "ring-2 ring-foreground/50 ring-offset-1 ring-offset-background",
           )}
           onClick={() =>
             updateNodeByKey(editor, state.nodeKey, (node) => {

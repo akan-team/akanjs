@@ -7,7 +7,7 @@ export default function Page() {
   return (
     <Scroll>
       <Scroll.Slide id="quickstart" title={l.trans({ en: "Quick Start", ko: "시작하기" })}>
-        <div className="mb-8 border-base-content">
+        <div className="mb-8 border-foreground">
           <h1 className="font-extrabold text-2xl lg:text-4xl">{l.trans({ en: "Quick Start", ko: "시작하기" })}</h1>
         </div>
         <Docs.Description>
@@ -163,7 +163,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <div className="w-full justify-center gap-4 sm:flex">
-          <div className="mockup-browser w-full border-2 border-base-content/30 bg-base-100">
+          <div className="mockup-browser w-full border-2 border-foreground/30 bg-background">
             <div className="mockup-browser-toolbar">
               <div className="input">http://localhost:4200</div>
             </div>
@@ -173,7 +173,7 @@ export default function Page() {
           <div className="relative hidden h-96 w-80 sm:block">
             <div className="mockup-phone absolute -translate-x-1/4 -translate-y-1/4 scale-50">
               <div className="mockup-phone-camera"></div>
-              <div className="mockup-phone-display flex items-center justify-center bg-base-100 text-4xl">
+              <div className="mockup-phone-display flex items-center justify-center bg-background text-4xl">
                 Hello Akan.js! 🎉
               </div>
             </div>

@@ -19,19 +19,19 @@ export const ModalTests = () => {
   };
 
   return (
-    <main className="min-h-screen bg-base-100 px-6 py-10 text-base-content">
+    <main className="min-h-screen bg-background px-6 py-10 text-foreground">
       <section className="mx-auto flex max-w-5xl flex-col gap-8">
         <div>
           <p className="font-semibold text-primary text-sm tracking-[0.24em]">AKAN MODAL TESTS</p>
           <h1 className="mt-3 font-black text-4xl tracking-tight md:text-5xl">Headless Modal 샘플 페이지</h1>
-          <p className="mt-4 max-w-2xl text-base-content/70">
+          <p className="mt-4 max-w-2xl text-foreground/70">
             Radix Dialog 제거 후 `Modal`과 compound `Dialog`의 주요 케이스를 직접 열어보고 닫기 동작, overlay, Escape,
             action slot, scroll 영역, confirm close를 확인하는 페이지입니다.
           </p>
         </div>
 
         <div className="rounded-2xl border border-base-300 bg-base-200/60 p-4">
-          <div className="text-base-content/60 text-sm">최근 action 결과</div>
+          <div className="text-foreground/60 text-sm">최근 action 결과</div>
           <div className="mt-1 font-semibold">{result}</div>
         </div>
 
@@ -72,7 +72,7 @@ export const ModalTests = () => {
       <Modal open={openModal === "basic"} onCancel={close} title="Basic Modal">
         <div className="space-y-3">
           <p>기본 모달입니다. X 버튼, overlay click, Escape key로 닫히는지 확인하세요.</p>
-          <p className="text-base-content/60 text-sm">
+          <p className="text-foreground/60 text-sm">
             닫힘 애니메이션이 끝난 뒤 unmount되는지도 함께 확인할 수 있습니다.
           </p>
         </div>
@@ -108,7 +108,7 @@ export const ModalTests = () => {
 
       <Modal open={openModal === "long"} onCancel={close} title="Long Content">
         <div className="space-y-3">
-          <p className="text-base-content/70">
+          <p className="text-foreground/70">
             긴 콘텐츠를 넣어 body 영역이 스크롤되고, 배경 body scroll이 잠기는지 확인합니다.
           </p>
           <div className="grid gap-2">
@@ -124,7 +124,7 @@ export const ModalTests = () => {
       <Modal open={openModal === "confirm"} onCancel={close} title="Confirm Close" confirmClose>
         <div className="space-y-3">
           <p>닫기를 시도하면 브라우저 confirm이 먼저 표시됩니다.</p>
-          <p className="text-base-content/60 text-sm">
+          <p className="text-foreground/60 text-sm">
             cancel을 누르면 모달이 유지되고, confirm을 누르면 닫힘 애니메이션 후 unmount됩니다.
           </p>
           <textarea
@@ -152,10 +152,10 @@ interface TestCardProps {
 
 const TestCard = ({ title, description, onOpen }: TestCardProps) => {
   return (
-    <article className="flex min-h-44 flex-col justify-between rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm">
+    <article className="flex min-h-44 flex-col justify-between rounded-2xl border border-base-300 bg-background p-5 shadow-sm">
       <div>
         <h2 className="font-bold text-xl">{title}</h2>
-        <p className="mt-2 text-base-content/65 text-sm leading-6">{description}</p>
+        <p className="mt-2 text-foreground/65 text-sm leading-6">{description}</p>
       </div>
       <button type="button" className="btn btn-primary mt-5" onClick={onOpen}>
         열기
@@ -170,10 +170,10 @@ interface CompoundDialogCardProps {
 
 const CompoundDialogCard = ({ onSave }: CompoundDialogCardProps) => {
   return (
-    <article className="flex min-h-44 flex-col justify-between rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm">
+    <article className="flex min-h-44 flex-col justify-between rounded-2xl border border-base-300 bg-background p-5 shadow-sm">
       <div>
         <h2 className="font-bold text-xl">Compound Dialog</h2>
-        <p className="mt-2 text-base-content/65 text-sm leading-6">
+        <p className="mt-2 text-foreground/65 text-sm leading-6">
           `Dialog.Trigger`, `Dialog.Title`, `Dialog.Content`, `Dialog.Action` 조합을 확인합니다.
         </p>
       </div>

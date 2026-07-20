@@ -219,7 +219,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
           </span>
         </div>
       </div>
-      <div className="bg-base-100/50 flex items-center justify-center gap-2 rounded-xl p-4"> // [!code ++:7]
+      <div className="bg-background/50 flex items-center justify-center gap-2 rounded-xl p-4"> // [!code ++:7]
         <Model.ViewWrapper sliceName="icecreamOrder" modelId={icecreamOrder.id}>
           <button className="btn btn-primary">
             <span>{l.trans({ en: "View", ko: "보기" })}</span>
@@ -298,12 +298,12 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
       <div className="flex items-center gap-3 border-b pb-4">
         <span className="text-3xl font-extrabold text-pink-600">🍦</span>
         <span className="text-2xl font-bold">{l("icecreamOrder.modelName")}</span>
-        <span className="ml-auto text-xs text-base-content/50">#{icecreamOrder.id}</span>
+        <span className="ml-auto text-xs text-foreground/50">#{icecreamOrder.id}</span>
       </div>
       <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-        <div className="font-semibold text-base-content/50">{l("icecreamOrder.size")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.size")}</div>
         <div>{icecreamOrder.size} cc</div>
-        <div className="font-semibold text-base-content/50">{l("icecreamOrder.toppings")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.toppings")}</div>
         <div className="flex flex-wrap gap-2">
           {icecreamOrder.toppings.length === 0 ? (
             <span className="italic text-gray-400">
@@ -320,7 +320,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             ))
           )}
         </div>
-        <div className="font-semibold text-base-content/50">{l("icecreamOrder.status")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.status")}</div>
         <div>
           <span
             className={clsx("inline-block rounded-full px-2 py-1 text-xs font-semibold", {
@@ -334,9 +334,9 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
           </span>
         </div>
-        <div className="font-semibold text-base-content/50">{l("icecreamOrder.createdAt")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.createdAt")}</div>
         <div className="text-gray-500">{icecreamOrder.createdAt.format("YYYY-MM-DD HH:mm:ss")}</div>
-        <div className="font-semibold text-base-content/50">{l("icecreamOrder.updatedAt")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.updatedAt")}</div>
         <div className="text-gray-500">{icecreamOrder.updatedAt.format("YYYY-MM-DD HH:mm:ss")}</div>
       </div>
     </div>

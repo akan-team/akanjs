@@ -92,7 +92,7 @@ export const File = ({
         className={clsx("btn flex size-full flex-col items-center border-2 py-5", uploadClassName, {
           "border-2 border-success border-dashed": isDragging && !isUploading,
           "hover:bg-base-200": isUploading,
-          "bg-base-100": file?.id,
+          "bg-background": file?.id,
         })}
       >
         <button
@@ -462,7 +462,7 @@ const UploadImage = ({
               className="group relative flex size-56"
             >
               <Image
-                className={clsx("bg-base-100 object-cover px-0", {
+                className={clsx("bg-background object-cover px-0", {
                   "rounded-full": styleType === "circle",
                   "rounded-md": styleType === "square",
                 })}
@@ -478,14 +478,14 @@ const UploadImage = ({
                   },
                 )}
               >
-                <AiOutlineDelete className="text-3xl text-primary/0 transition duration-300 group-hover:text-error" />
+                <AiOutlineDelete className="text-3xl text-primary/0 transition duration-300 group-hover:text-destructive" />
               </button>
             </div>
           )
         ) : (
           <div className="relative flex w-full">
             <button
-              className={clsx("group aspect-1 size-56 bg-base-100 px-0 duration-300", {
+              className={clsx("group aspect-1 size-56 bg-background px-0 duration-300", {
                 "rounded-full": styleType === "circle",
                 "rounded-md": styleType === "square",
 
@@ -544,7 +544,7 @@ const UploadImage = ({
                 {protoFile && protoFile.status === "uploading" ? (
                   <div
                     className={clsx(
-                      "absolute top-0 left-0 z-[100] flex size-full flex-col items-center justify-center gap-2 bg-base-100/30 px-10 backdrop-blur-sm",
+                      "absolute top-0 left-0 z-[100] flex size-full flex-col items-center justify-center gap-2 bg-background/30 px-10 backdrop-blur-sm",
                       {
                         "rounded-full": styleType === "circle",
                         "rounded-md": styleType === "square",
@@ -659,7 +659,7 @@ export const EmptyUpload = ({ type, isDragging, desc, dndDesc }: EmptyUploadProp
   return (
     <div
       className={clsx(
-        "flex flex-col items-center justify-center gap-5 text-[45px] text-gray-400 duration-300 group-hover:text-base-100",
+        "flex flex-col items-center justify-center gap-5 text-[45px] text-gray-400 duration-300 group-hover:text-background",
         {
           "text-success": isDragging,
         },
@@ -669,7 +669,7 @@ export const EmptyUpload = ({ type, isDragging, desc, dndDesc }: EmptyUploadProp
         {type === "image" ? <AiFillFileImage /> : type === "file" ? <AiFillFileText /> : <GiFiles />}
       </div>
       <div
-        className={clsx("w-fit text-gray-400 text-sm duration-300 group-hover:text-base-100", {
+        className={clsx("w-fit text-gray-400 text-sm duration-300 group-hover:text-background", {
           "text-success": isDragging,
         })}
       >
@@ -677,7 +677,7 @@ export const EmptyUpload = ({ type, isDragging, desc, dndDesc }: EmptyUploadProp
       </div>
       <div
         className={clsx(
-          "flex flex-row items-center justify-center gap-2 rounded-md border border-dashed px-1 py-1 text-[8px] text-gray-400 duration-300 group-hover:text-base-100",
+          "flex flex-row items-center justify-center gap-2 rounded-md border border-dashed px-1 py-1 text-[8px] text-gray-400 duration-300 group-hover:text-background",
           {
             "border-success text-success": isDragging,
           },

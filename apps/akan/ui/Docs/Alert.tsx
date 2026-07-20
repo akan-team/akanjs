@@ -16,7 +16,7 @@ export const Alert = ({ children, type = "info", className, bodyClassName }: Ale
       {
         "bg-info/30": type === "info",
         "bg-warning/30": type === "warning",
-        "bg-error/30": type === "error",
+        "bg-destructive/30": type === "error",
         "bg-success/30": type === "success",
       },
       className,

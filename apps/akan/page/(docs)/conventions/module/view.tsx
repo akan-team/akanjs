@@ -250,7 +250,7 @@ export const View = ({ view }: ViewProps) => {
                 ko: "server-fetched view data를 client store state에 hydrate해야 하면 Load.View를 사용합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
+              <div key={rule} className="rounded-xl border border-base-300 bg-background px-4 text-foreground/70">
                 {rule}
               </div>
             ))}

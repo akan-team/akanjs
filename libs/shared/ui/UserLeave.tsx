@@ -209,7 +209,7 @@ export const Voc = ({ className, value, onChange, redirect }: VocProps) => {
       <Input.TextArea
         autoFocus
         className="w-full"
-        inputClassName="p-2 w-full rounded-md h-[300px] resize-none bg-base-100"
+        inputClassName="p-2 w-full rounded-md h-[300px] resize-none bg-background"
         value={value ?? ""}
         validate={(value) => true}
         placeholder="기타 의견을 남겨주세요."

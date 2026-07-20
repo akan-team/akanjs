@@ -22,7 +22,7 @@ export default function Page() {
             {
               name: "Utility-First",
               desc: "Use Tailwind's utility classes instead of custom CSS",
-              example: "className='p-4 bg-base-100'",
+              example: "className='p-4 bg-background'",
             },
             {
               name: "Component Composition",
@@ -32,7 +32,7 @@ export default function Page() {
             {
               name: "Theme Consistency",
               desc: "Use DaisyUI's semantic color system",
-              example: "bg-primary text-primary-content",
+              example: "bg-primary text-primary-foreground",
             },
             {
               name: "Responsive Design",
@@ -71,7 +71,7 @@ export default function Page() {
   {
     "bg-primary": isPrimary,
     "bg-secondary": isSecondary,
-    "bg-error": isError,
+    "bg-destructive": isError,
   },
   className
 )}>
@@ -91,7 +91,7 @@ export default function Page() {
 }
 
 export const Card = ({ className }: CardProps) => (
-  <div className={clsx("card bg-base-100 shadow-md", className)}>
+  <div className={clsx("card bg-background shadow-md", className)}>
     {/* Content */}
   </div>
 );`}
@@ -105,21 +105,21 @@ export const Card = ({ className }: CardProps) => (
               type: "color",
               default: "theme-defined",
               desc: "Primary brand color",
-              example: "bg-primary text-primary-content",
+              example: "bg-primary text-primary-foreground",
             },
             {
               key: "secondary",
               type: "color",
               default: "theme-defined",
               desc: "Secondary brand color",
-              example: "bg-secondary text-secondary-content",
+              example: "bg-secondary text-secondary-foreground",
             },
             {
               key: "base-100",
               type: "color",
               default: "theme-defined",
               desc: "Base background color",
-              example: "bg-base-100 text-base-content",
+              example: "bg-background text-foreground",
             },
           ]}
         />

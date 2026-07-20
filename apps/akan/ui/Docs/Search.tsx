@@ -206,13 +206,11 @@ export const Search = ({ className, onNavigate }: SearchProps) => {
       <button
         type="button"
         onClick={open}
-        className="flex w-full items-center gap-2 rounded-2xl border border-base-content/10 bg-base-100/80 px-4 py-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
+        className="flex w-full items-center gap-2 rounded-2xl border border-foreground/10 bg-background/80 px-4 py-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
       >
-        <AiOutlineSearch className="shrink-0 text-base-content/50 text-lg" />
+        <AiOutlineSearch className="shrink-0 text-foreground/50 text-lg" />
         <span className="min-w-0 flex-1 text-sm">{l.trans({ en: "Search docs", ko: "문서 검색" })}</span>
-        <span className="hidden rounded-lg bg-base-content/8 px-2 py-0.5 text-base-content/50 text-xs md:block">
-          ⌘ K
-        </span>
+        <span className="hidden rounded-lg bg-foreground/8 px-2 py-0.5 text-foreground/50 text-xs md:block">⌘ K</span>
       </button>
 
       {isMounted &&
@@ -225,12 +223,12 @@ export const Search = ({ className, onNavigate }: SearchProps) => {
               className="absolute inset-0 cursor-default"
               onClick={close}
             />
-            <div className="relative z-10 flex max-h-[min(720px,calc(100vh-8rem))] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-base-content/10 bg-base-100 shadow-2xl">
-              <div className="border-base-content/10 border-b p-4">
+            <div className="relative z-10 flex max-h-[min(720px,calc(100vh-8rem))] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-foreground/10 bg-background shadow-2xl">
+              <div className="border-foreground/10 border-b p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="font-bold text-lg">{l.trans({ en: "Search Docs", ko: "문서 검색" })}</div>
-                    <div className="text-base-content/50 text-sm">
+                    <div className="text-foreground/50 text-sm">
                       {l.trans({
                         en: "Find pages and sections across Akan docs.",
                         ko: "Akan 문서의 페이지와 섹션을 찾습니다.",
@@ -240,41 +238,41 @@ export const Search = ({ className, onNavigate }: SearchProps) => {
                   <button
                     type="button"
                     onClick={close}
-                    className="rounded-full border border-base-content/10 px-3 py-1.5 text-base-content/60 text-sm transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
+                    className="rounded-full border border-foreground/10 px-3 py-1.5 text-foreground/60 text-sm transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
                   >
                     {l.trans({ en: "Close", ko: "닫기" })}
                   </button>
                 </div>
-                <label className="mt-4 flex items-center gap-2 rounded-2xl border border-base-content/10 bg-base-content/5 px-4 py-3 focus-within:border-primary/40 focus-within:bg-base-100">
-                  <AiOutlineSearch className="shrink-0 text-base-content/50 text-xl" />
+                <label className="mt-4 flex items-center gap-2 rounded-2xl border border-foreground/10 bg-foreground/5 px-4 py-3 focus-within:border-primary/40 focus-within:bg-background">
+                  <AiOutlineSearch className="shrink-0 text-foreground/50 text-xl" />
                   <input
                     ref={inputRef}
                     value={query}
                     onChange={(event) => setQuery(event.currentTarget.value)}
                     placeholder={l.trans({ en: "Search docs", ko: "문서 검색" })}
-                    className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-base-content/40"
+                    className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-foreground/40"
                   />
                 </label>
               </div>
 
               <div className="min-h-40 overflow-y-auto p-4">
                 {!hasQuery && (
-                  <div className="rounded-2xl border border-base-content/15 border-dashed px-4 py-8 text-center text-base-content/50 text-sm">
+                  <div className="rounded-2xl border border-foreground/15 border-dashed px-4 py-8 text-center text-foreground/50 text-sm">
                     {l.trans({ en: "Type at least two characters to search.", ko: "두 글자 이상 입력해 검색하세요." })}
                   </div>
                 )}
                 {hasQuery && !isLoaded && (
-                  <div className="px-2 py-3 text-base-content/50 text-sm">
+                  <div className="px-2 py-3 text-foreground/50 text-sm">
                     {l.trans({ en: "Loading search index...", ko: "검색 인덱스를 불러오는 중..." })}
                   </div>
                 )}
                 {hasQuery && isLoaded && hasError && (
-                  <div className="px-2 py-3 text-error text-sm">
+                  <div className="px-2 py-3 text-destructive text-sm">
                     {l.trans({ en: "Could not load search index.", ko: "검색 인덱스를 불러오지 못했습니다." })}
                   </div>
                 )}
                 {hasQuery && isLoaded && !hasError && results.length === 0 && (
-                  <div className="px-2 py-3 text-base-content/50 text-sm">
+                  <div className="px-2 py-3 text-foreground/50 text-sm">
                     {l.trans({ en: "No results found.", ko: "검색 결과가 없습니다." })}
                   </div>
                 )}
@@ -283,18 +281,15 @@ export const Search = ({ className, onNavigate }: SearchProps) => {
                     {results.map(({ item, headings }) => {
                       const mainHref = headings[0] ? `${item.href}#${headings[0].id}` : item.href;
                       return (
-                        <div
-                          key={item.href}
-                          className="rounded-2xl border border-base-content/10 bg-base-content/4 p-3"
-                        >
+                        <div key={item.href} className="rounded-2xl border border-foreground/10 bg-foreground/4 p-3">
                           <Link
                             href={mainHref}
                             onClick={navigate}
                             className="block rounded-xl px-3 py-2 transition-colors hover:bg-primary/10 hover:text-primary"
                           >
-                            <div className="text-base-content/50 text-xs">{item.category}</div>
+                            <div className="text-foreground/50 text-xs">{item.category}</div>
                             <div className="font-bold text-base">{pickText(item.title, activeLang)}</div>
-                            <div className="mt-1 line-clamp-2 text-base-content/60 text-sm">
+                            <div className="mt-1 line-clamp-2 text-foreground/60 text-sm">
                               {pickText(item.body, activeLang)}
                             </div>
                           </Link>
@@ -305,7 +300,7 @@ export const Search = ({ className, onNavigate }: SearchProps) => {
                                   key={heading.id}
                                   href={`${item.href}#${heading.id}`}
                                   onClick={navigate}
-                                  className="rounded-full bg-base-content/8 px-2 py-0.5 text-base-content/60 text-xs transition-colors hover:bg-primary/10 hover:text-primary"
+                                  className="rounded-full bg-foreground/8 px-2 py-0.5 text-foreground/60 text-xs transition-colors hover:bg-primary/10 hover:text-primary"
                                 >
                                   # {pickText(heading.title, activeLang)}
                                 </Link>

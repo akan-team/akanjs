@@ -6,11 +6,11 @@ export type CalloutVariant = "default" | "info" | "success" | "warning" | "error
 
 const CALLOUT_BASE = "my-3 rounded-md border border-l-4 py-2 pr-3 pl-4 leading-7";
 export const CALLOUT_VARIANTS: Record<CalloutVariant, string> = {
-  default: `${CALLOUT_BASE} border-base-content/15 border-l-base-content/40 bg-base-200/60`,
+  default: `${CALLOUT_BASE} border-foreground/15 border-l-foreground/40 bg-base-200/60`,
   info: `${CALLOUT_BASE} border-info/30 border-l-info bg-info/10`,
   success: `${CALLOUT_BASE} border-success/30 border-l-success bg-success/10`,
   warning: `${CALLOUT_BASE} border-warning/30 border-l-warning bg-warning/10`,
-  error: `${CALLOUT_BASE} border-error/30 border-l-error bg-error/10`,
+  error: `${CALLOUT_BASE} border-destructive/30 border-l-destructive bg-destructive/10`,
 };
 
 /**
@@ -37,9 +37,9 @@ export const akanEditorTheme: EditorThemeClasses = {
     // Checklist (Todo) — checkbox drawn via Tailwind `before:`/`after:` pseudo utilities
     // (no global CSS). Checked = filled primary box with a check glyph + struck text.
     listitemUnchecked:
-      "relative ml-0 list-none pl-7 leading-7 before:absolute before:top-1.5 before:left-1 before:h-4 before:w-4 before:rounded before:border before:border-base-content/40 before:content-['']",
+      "relative ml-0 list-none pl-7 leading-7 before:absolute before:top-1.5 before:left-1 before:h-4 before:w-4 before:rounded before:border before:border-foreground/40 before:content-['']",
     listitemChecked:
-      "relative ml-0 list-none pl-7 leading-7 text-base-content/60 line-through before:absolute before:top-1.5 before:left-1 before:h-4 before:w-4 before:rounded before:border before:border-primary before:bg-primary before:content-[''] after:absolute after:top-1.5 after:left-[0.4rem] after:h-2.5 after:w-1.5 after:rotate-45 after:border-primary-content after:border-r-2 after:border-b-2 after:content-['']",
+      "relative ml-0 list-none pl-7 leading-7 text-foreground/60 line-through before:absolute before:top-1.5 before:left-1 before:h-4 before:w-4 before:rounded before:border before:border-primary before:bg-primary before:content-[''] after:absolute after:top-1.5 after:left-[0.4rem] after:h-2.5 after:w-1.5 after:rotate-45 after:border-primary-foreground after:border-r-2 after:border-b-2 after:content-['']",
     nested: {
       listitem: "list-none",
     },
@@ -57,13 +57,13 @@ export const akanEditorTheme: EditorThemeClasses = {
   code: "mt-4 block overflow-x-auto rounded-lg bg-base-200 p-4 font-mono text-sm leading-6",
   // Render as a filled line, not a border: Tailwind preflight zeroes `<hr>`
   // border widths, so `border-*` alone is invisible.
-  hr: "my-4 h-px border-none bg-base-content/25",
+  hr: "my-4 h-px border-none bg-foreground/25",
   // Table (Phase 3b) — `@lexical/table` renders <table>/<tr>/<td|th>; skin them
   // with daisyUI-flavored borders. Cells get relative positioning so the cell
   // selection overlay and (future) resizer sit correctly.
-  table: "my-3 w-full table-fixed border-collapse overflow-hidden rounded-md border border-base-content/20",
+  table: "my-3 w-full table-fixed border-collapse overflow-hidden rounded-md border border-foreground/20",
   tableRow: "",
-  tableCell: "relative min-w-24 border border-base-content/15 px-3 py-1.5 align-top leading-7",
+  tableCell: "relative min-w-24 border border-foreground/15 px-3 py-1.5 align-top leading-7",
   tableCellHeader: "bg-base-200/70 text-left font-semibold",
   tableCellSelected: "bg-primary/10",
   tableSelection: "bg-primary/10",
@@ -74,14 +74,14 @@ export const akanEditorTheme: EditorThemeClasses = {
     attr: "text-sky-500",
     boolean: "text-orange-500",
     builtin: "text-emerald-500",
-    cdata: "text-base-content/50",
+    cdata: "text-foreground/50",
     char: "text-emerald-500",
     class: "text-yellow-500",
     "class-name": "text-yellow-500",
-    comment: "text-base-content/40 italic",
+    comment: "text-foreground/40 italic",
     constant: "text-orange-500",
     deleted: "text-red-500",
-    doctype: "text-base-content/40",
+    doctype: "text-foreground/40",
     entity: "text-red-400",
     function: "text-blue-500",
     important: "text-orange-600",
@@ -89,10 +89,10 @@ export const akanEditorTheme: EditorThemeClasses = {
     keyword: "text-purple-500",
     namespace: "text-orange-400",
     number: "text-orange-500",
-    operator: "text-base-content/70",
-    prolog: "text-base-content/40",
+    operator: "text-foreground/70",
+    prolog: "text-foreground/40",
     property: "text-sky-500",
-    punctuation: "text-base-content/60",
+    punctuation: "text-foreground/60",
     regex: "text-emerald-600",
     selector: "text-emerald-500",
     string: "text-emerald-500",

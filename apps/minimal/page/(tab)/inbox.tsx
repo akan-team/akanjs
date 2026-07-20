@@ -23,7 +23,7 @@ export default function Page() {
           ["Stay concierge", "Check out nearby recommendations.", "Yesterday"],
         ].map(([name, message, time]) => (
           <Link className="apptest-card flex items-center gap-3 rounded-3xl p-4" href="/inbox/chat" key={name}>
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary font-bold text-primary-content">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary font-bold text-primary-foreground">
               {name[0]}
             </div>
             <div className="min-w-0 flex-1">

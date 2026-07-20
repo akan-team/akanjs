@@ -62,9 +62,9 @@ export default function Page() {
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
-              <div className="font-bold text-base-content">{title}</div>
-              <div className="mt-2 text-base-content/70">{desc}</div>
+            <div key={title} className="rounded-xl border border-base-300 bg-background p-4">
+              <div className="font-bold text-foreground">{title}</div>
+              <div className="mt-2 text-foreground/70">{desc}</div>
             </div>
           ))}
         </div>
@@ -154,22 +154,22 @@ export class TicketModel extends into(Ticket, TicketFilter, cnst.ticket, () => (
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
-              <div className="font-bold text-base-content">{title}</div>
-              <div className="mt-2 text-base-content/70">{desc}</div>
+            <div key={title} className="rounded-xl border border-base-300 bg-background p-4">
+              <div className="font-bold text-foreground">{title}</div>
+              <div className="mt-2 text-foreground/70">{desc}</div>
             </div>
           ))}
         </div>
         <div className="grid gap-3 xl:grid-cols-2">
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-            <div className="font-bold text-base-content">CRUD helpers</div>
-            <div className="mt-2 text-base-content/70">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="font-bold text-foreground">CRUD helpers</div>
+            <div className="mt-2 text-foreground/70">
               get, load, loadMany, create, update, remove, searchDocs, searchCount
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-            <div className="font-bold text-base-content">Query helpers</div>
-            <div className="mt-2 text-base-content/70">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="font-bold text-foreground">Query helpers</div>
+            <div className="mt-2 text-foreground/70">
               list, listIds, find, findId, pick, pickId, exists, count, insight, query
             </div>
           </div>
@@ -383,7 +383,7 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({}), ...
                 ko: "scalar document 파일은 작게 유지합니다. 보통 단순한 document class면 충분합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
+              <div key={rule} className="rounded-xl border border-base-300 bg-background px-4 text-foreground/70">
                 {rule}
               </div>
             ))}

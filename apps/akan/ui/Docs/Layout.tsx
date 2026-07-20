@@ -35,17 +35,17 @@ export const Layout = ({ children, menuMap }: LayoutProps) => {
   const nextPage = useMemo(() => (pageIdx < pageList.length - 1 ? pageList[pageIdx + 1] : null), [pageList, pageIdx]);
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-base-100 text-base-content">
+    <main className="min-h-screen overflow-x-hidden bg-background text-foreground">
       <input type="checkbox" id="mobile-menu-toggle" className="peer hidden" />
 
       <div className="fixed inset-y-0 left-0 z-40 w-full -translate-x-full transform transition-transform duration-50 ease-in-out peer-checked:translate-x-0 lg:hidden">
-        <div className="mt-16 h-full overflow-y-auto border-base-content/10 border-r bg-base-100/95 pb-24 shadow-2xl backdrop-blur-xl">
+        <div className="mt-16 h-full overflow-y-auto border-foreground/10 border-r bg-background/95 pb-24 shadow-2xl backdrop-blur-xl">
           <div className="px-3 pt-24 md:pt-6">
             <Search className="mb-3" onNavigate={closeMenu} />
             {menuMap.map((menu, menuIdx) => (
               <details
                 key={menuIdx}
-                className="collapse-arrow collapse mb-2 rounded-2xl border border-base-content/10 bg-base-content/4"
+                className="collapse-arrow collapse mb-2 rounded-2xl border border-foreground/10 bg-foreground/4"
                 open
               >
                 <summary className="collapse-title font-bold text-base">{menu.name}</summary>
@@ -82,13 +82,13 @@ export const Layout = ({ children, menuMap }: LayoutProps) => {
 
       <div className="flex w-full overflow-x-hidden">
         <div className="relative hidden w-70 lg:block">
-          <div className="fixed top-29 left-0 flex h-[calc(100vh-7rem)] w-65 flex-col overflow-hidden border border-base-content/10 border-l-0 bg-base-content/4 pt-4 font-medium shadow-2xl shadow-base-content/5 backdrop-blur-xl">
+          <div className="fixed top-29 left-0 flex h-[calc(100vh-7rem)] w-65 flex-col overflow-hidden border border-foreground/10 border-l-0 bg-foreground/4 pt-4 font-medium shadow-2xl shadow-foreground/5 backdrop-blur-xl">
             <div className="overflow-y-auto px-2 pb-6">
               <Search className="mb-3" />
               {menuMap.map((menu, idx) => (
                 <div key={idx} className="collapse-arrow collapse rounded-2xl">
                   <input type="checkbox" defaultChecked={true} />
-                  <div className="collapse-title whitespace-nowrap font-bold text-base-content/50 text-sm uppercase tracking-[0.18em]">
+                  <div className="collapse-title whitespace-nowrap font-bold text-foreground/50 text-sm uppercase tracking-[0.18em]">
                     {menu.name}
                   </div>
                   <div className="collapse-content pl-6 text-sm">
@@ -99,7 +99,7 @@ export const Layout = ({ children, menuMap }: LayoutProps) => {
                           <Link key={idx} href={subMenu.href} className="mb-1 block rounded-xl">
                             <div
                               className={clsx(
-                                "flex items-center gap-2 rounded-xl px-3 py-1 text-base-content/70 transition-colors hover:text-primary",
+                                "flex items-center gap-2 rounded-xl px-3 py-1 text-foreground/70 transition-colors hover:text-primary",
                                 isActive && "font-bold text-primary",
                               )}
                             >
@@ -125,13 +125,13 @@ export const Layout = ({ children, menuMap }: LayoutProps) => {
                 <div className="mt-2 flex w-full min-w-0 items-center justify-between">
                   {prevPage ? (
                     <Link href={prevPage.href} scrollToTop className="group cursor-pointer">
-                      <div className="flex cursor-pointer flex-col items-start gap-2 rounded-2xl border border-base-content/10 bg-base-content/4 p-4 transition-all hover:border-primary/20 hover:bg-primary/10">
-                        <div className="pl-6 text-base-content/70 text-xs duration-200 group-hover:text-primary md:text-sm">
+                      <div className="flex cursor-pointer flex-col items-start gap-2 rounded-2xl border border-foreground/10 bg-foreground/4 p-4 transition-all hover:border-primary/20 hover:bg-primary/10">
+                        <div className="pl-6 text-foreground/70 text-xs duration-200 group-hover:text-primary md:text-sm">
                           {l.trans({ en: "Previous", ko: "이전" })}
                         </div>
                         <div className="flex items-center justify-between gap-2 duration-200 group-hover:text-primary">
                           <AiOutlineLeft />
-                          <div className="font-bold text-base-content text-sm duration-200 group-hover:text-primary md:text-base">
+                          <div className="font-bold text-foreground text-sm duration-200 group-hover:text-primary md:text-base">
                             {prevPage.name}
                           </div>
                         </div>
@@ -142,12 +142,12 @@ export const Layout = ({ children, menuMap }: LayoutProps) => {
                   )}
                   {nextPage ? (
                     <Link href={nextPage.href} scrollToTop className="group cursor-pointer">
-                      <div className="flex cursor-pointer flex-col items-start gap-2 rounded-2xl border border-base-content/10 bg-base-content/4 p-4 transition-all hover:border-primary/20 hover:bg-primary/10">
-                        <div className="text-base-content/70 text-xs duration-200 group-hover:text-primary md:text-sm">
+                      <div className="flex cursor-pointer flex-col items-start gap-2 rounded-2xl border border-foreground/10 bg-foreground/4 p-4 transition-all hover:border-primary/20 hover:bg-primary/10">
+                        <div className="text-foreground/70 text-xs duration-200 group-hover:text-primary md:text-sm">
                           {l.trans({ en: "Next", ko: "다음" })}
                         </div>
                         <div className="flex items-center justify-between gap-2 duration-200 group-hover:text-primary">
-                          <div className="font-bold text-base-content text-sm duration-200 group-hover:text-primary md:text-base">
+                          <div className="font-bold text-foreground text-sm duration-200 group-hover:text-primary md:text-base">
                             {nextPage.name}
                           </div>
                           <AiOutlineRight />

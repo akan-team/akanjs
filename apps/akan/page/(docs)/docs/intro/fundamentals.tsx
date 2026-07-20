@@ -34,9 +34,9 @@ export default function Page() {
           </div>
           <div className="my-6 rounded-xl bg-base-200 p-4 md:p-6">
             <div className="grid items-center gap-4 xl:grid-cols-[1fr_auto_1fr]">
-              <div className="rounded-xl bg-base-100 p-5 shadow">
+              <div className="rounded-xl bg-background p-5 shadow">
                 <div className="mb-2 font-bold text-primary text-xl">TypeScript</div>
-                <div className="text-base-content/70 text-sm">
+                <div className="text-foreground/70 text-sm">
                   {l.trans({
                     en: "Write business definitions once: pages, domain modules, signals, services, stores, and UI.",
                     ko: "page, domain module, signal, service, store, UI를 비즈니스 정의로 한 번 작성합니다.",
@@ -47,7 +47,7 @@ export default function Page() {
               <div className="hidden font-bold text-3xl text-primary xl:block">→</div>
 
               <div className="grid gap-3">
-                <div className="rounded-xl border border-primary/20 bg-base-100 p-4 shadow">
+                <div className="rounded-xl border border-primary/20 bg-background p-4 shadow">
                   <div className="mb-1 font-bold">{l.trans({ en: "Akan Runtime", ko: "Akan Runtime" })}</div>
                   <div className="flex flex-wrap gap-2">
                     <span className="badge badge-primary">Bun</span>
@@ -57,25 +57,25 @@ export default function Page() {
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-3">
-                  <div className="rounded-xl bg-base-100 p-4 shadow">
+                  <div className="rounded-xl bg-background p-4 shadow">
                     <div className="mb-2 font-bold">{l.trans({ en: "Pages", ko: "Page" })}</div>
-                    <div className="text-base-content/70 text-sm">
+                    <div className="text-foreground/70 text-sm">
                       {l.trans({
                         en: "File-routed web and app-oriented client surfaces.",
                         ko: "파일 라우팅 기반 web 및 app-oriented client surface.",
                       })}
                     </div>
                   </div>
-                  <div className="rounded-xl bg-base-100 p-4 shadow">
+                  <div className="rounded-xl bg-background p-4 shadow">
                     <div className="mb-2 font-bold">{l.trans({ en: "Server", ko: "Server" })}</div>
-                    <div className="text-base-content/70 text-sm">
+                    <div className="text-foreground/70 text-sm">
                       {l.trans({
                         en: "Services, signals, API traffic, realtime traffic, and background work.",
                         ko: "service, signal, API traffic, realtime traffic, background work.",
                       })}
                     </div>
                   </div>
-                  <div className="rounded-xl bg-base-100 p-4 shadow">
+                  <div className="rounded-xl bg-background p-4 shadow">
                     <div className="mb-2 font-bold">{l.trans({ en: "Data", ko: "Data" })}</div>
                     <div className="flex flex-wrap gap-2">
                       <span className="badge badge-outline">SQLite</span>
@@ -86,7 +86,7 @@ export default function Page() {
                   </div>
                 </div>
 
-                <div className="rounded-xl bg-base-100 p-4 shadow">
+                <div className="rounded-xl bg-background p-4 shadow">
                   <div className="font-semibold text-sm">
                     {l.trans({
                       en: "One convention-driven workspace produces runtime surfaces, data contracts, generated artifacts, and deployable packages.",
@@ -245,11 +245,11 @@ export default function Page() {
             <div className="mb-4 text-center font-bold text-2xl">
               {l.trans({ en: "Akan Workspace", ko: "Akan Workspace" })}
             </div>
-            <div className="rounded-3xl border border-base-content/20 bg-base-100 p-4 md:p-6">
+            <div className="rounded-3xl border border-foreground/20 bg-background p-4 md:p-6">
               <div className="grid gap-4 md:grid-cols-[auto_1fr_auto]">
                 <div className="flex flex-row items-center gap-3 md:flex-col md:items-start">
                   <div className="font-bold text-info text-xl">apps</div>
-                  <div className="h-px flex-1 border-base-content/30 border-t border-dashed md:h-28 md:border-t-0 md:border-l" />
+                  <div className="h-px flex-1 border-foreground/30 border-t border-dashed md:h-28 md:border-t-0 md:border-l" />
                   <div className="font-bold text-success text-xl">libs</div>
                 </div>
 
@@ -271,7 +271,7 @@ export default function Page() {
                     </div>
                   </div>
 
-                  <div className="grid gap-2 text-base-content/70 text-sm md:grid-cols-3">
+                  <div className="grid gap-2 text-foreground/70 text-sm md:grid-cols-3">
                     <div>{l.trans({ en: "appA imports libA", ko: "appA는 libA를 사용" })}</div>
                     <div>{l.trans({ en: "appB imports libA and libB", ko: "appB는 libA와 libB를 사용" })}</div>
                     <div>{l.trans({ en: "appC imports libB", ko: "appC는 libB를 사용" })}</div>
@@ -279,11 +279,11 @@ export default function Page() {
                 </div>
 
                 <div className="rounded-xl bg-base-200 p-4 text-center md:w-32">
-                  <div className="text-base-content/70 text-sm">{l.trans({ en: "code amount", ko: "코드 비중" })}</div>
+                  <div className="text-foreground/70 text-sm">{l.trans({ en: "code amount", ko: "코드 비중" })}</div>
                   <div className="mt-2 font-bold text-3xl text-info">20%</div>
-                  <div className="text-base-content/60 text-xs">apps</div>
+                  <div className="text-foreground/60 text-xs">apps</div>
                   <div className="mt-4 font-bold text-3xl text-success">80%</div>
-                  <div className="text-base-content/60 text-xs">libs</div>
+                  <div className="text-foreground/60 text-xs">libs</div>
                 </div>
               </div>
             </div>
@@ -405,22 +405,22 @@ export default function Page() {
             </div>
 
             <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-              <div className="rounded-2xl border border-base-content/20 bg-base-100 p-4">
+              <div className="rounded-2xl border border-foreground/20 bg-background p-4">
                 <div className="mb-3 font-bold text-xl">{l.trans({ en: "Domain modules", ko: "Domain modules" })}</div>
                 <div className="grid gap-3">
                   <div className="rounded-xl border border-warning/30 bg-warning/10 p-3">
                     <div className="font-semibold">{l.trans({ en: "Interface", ko: "Interface" })}</div>
-                    <div className="text-base-content/70 text-sm">
+                    <div className="text-foreground/70 text-sm">
                       lib/product/product.abstract.md · constant.ts · dictionary.ts · signal.ts
                     </div>
                   </div>
-                  <div className="rounded-xl border border-error/30 bg-error/10 p-3">
+                  <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3">
                     <div className="font-semibold">{l.trans({ en: "Data and service", ko: "Data and service" })}</div>
-                    <div className="text-base-content/70 text-sm">lib/product/product.document.ts · service.ts</div>
+                    <div className="text-foreground/70 text-sm">lib/product/product.document.ts · service.ts</div>
                   </div>
                   <div className="rounded-xl border border-success/30 bg-success/10 p-3">
                     <div className="font-semibold">{l.trans({ en: "UI and state", ko: "UI and state" })}</div>
-                    <div className="text-base-content/70 text-sm">
+                    <div className="text-foreground/70 text-sm">
                       lib/product/product.store.ts · Product.Template.tsx · Unit.tsx · View.tsx · Zone.tsx
                     </div>
                   </div>
@@ -430,17 +430,17 @@ export default function Page() {
               <div className="grid gap-4">
                 <div className="rounded-2xl border border-warning/30 bg-warning/10 p-4">
                   <div className="font-bold">{l.trans({ en: "Scalar modules", ko: "Scalar modules" })}</div>
-                  <div className="text-base-content/70 text-sm">
+                  <div className="text-foreground/70 text-sm">
                     lib/__scalar/fileMeta/fileMeta.abstract.md · constant.ts
                   </div>
                 </div>
-                <div className="rounded-2xl border border-error/30 bg-error/10 p-4">
+                <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4">
                   <div className="font-bold">{l.trans({ en: "Service utilities", ko: "Service utilities" })}</div>
-                  <div className="text-base-content/70 text-sm">srvkit/account.ts · srvkit/guards.ts</div>
+                  <div className="text-foreground/70 text-sm">srvkit/account.ts · srvkit/guards.ts</div>
                 </div>
                 <div className="rounded-2xl border border-success/30 bg-success/10 p-4">
                   <div className="font-bold">{l.trans({ en: "UI and webkit", ko: "UI and webkit" })}</div>
-                  <div className="text-base-content/70 text-sm">ui/Field.tsx · webkit/usePushNotification.tsx</div>
+                  <div className="text-foreground/70 text-sm">ui/Field.tsx · webkit/usePushNotification.tsx</div>
                 </div>
               </div>
             </div>
@@ -448,23 +448,23 @@ export default function Page() {
             <div className="mt-4 grid gap-3 md:grid-cols-4">
               <div className="rounded-xl border border-success/30 bg-success/10 p-3">
                 <div className="font-bold">page/</div>
-                <div className="text-base-content/70 text-sm">{l.trans({ en: "App routes", ko: "앱 route" })}</div>
+                <div className="text-foreground/70 text-sm">{l.trans({ en: "App routes", ko: "앱 route" })}</div>
               </div>
-              <div className="rounded-xl border border-error/30 bg-error/10 p-3">
+              <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3">
                 <div className="font-bold">main.ts</div>
-                <div className="text-base-content/70 text-sm">
+                <div className="text-foreground/70 text-sm">
                   {l.trans({ en: "Runtime entry", ko: "runtime entry" })}
                 </div>
               </div>
               <div className="rounded-xl border border-warning/30 bg-warning/10 p-3">
                 <div className="font-bold">base/ · common/</div>
-                <div className="text-base-content/70 text-sm">
+                <div className="text-foreground/70 text-sm">
                   {l.trans({ en: "Pure shared logic", ko: "순수 공유 로직" })}
                 </div>
               </div>
-              <div className="rounded-xl bg-base-100 p-3">
+              <div className="rounded-xl bg-background p-3">
                 <div className="font-bold">public/ · private/</div>
-                <div className="text-base-content/70 text-sm">{l.trans({ en: "Static assets", ko: "정적 asset" })}</div>
+                <div className="text-foreground/70 text-sm">{l.trans({ en: "Static assets", ko: "정적 asset" })}</div>
               </div>
             </div>
           </div>

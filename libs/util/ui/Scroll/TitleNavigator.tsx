@@ -18,7 +18,7 @@ export const TitleNavigator = ({ className }: TitleNavigatorProps) => {
           <div
             className={clsx("size-1 rounded-full", {
               "bg-primary": slide === id,
-              "bg-base-content/50": slide !== id,
+              "bg-foreground/50": slide !== id,
             })}
           />
           <span className={clsx("break-words text-sm", { "font-bold text-primary": slide === id })}>{title}</span>

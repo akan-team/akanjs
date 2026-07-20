@@ -324,36 +324,36 @@ export default function Page() {
           </div>
         </Docs.Description>
         <div className="space-y-3">
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-            <div className="font-bold text-base-content">Database service</div>
-            <div className="mt-2 text-base-content/70">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="font-bold text-foreground">Database service</div>
+            <div className="mt-2 text-foreground/70">
               {l.trans({
                 en: "serve(db.story, builder) automatically injects storyModel and __databaseModel, then exposes generated helpers such as getStory, loadStory, createStory, and query-based document methods.",
                 ko: "serve(db.story, builder)는 storyModel과 __databaseModel을 자동 주입하고 getStory, loadStory, createStory, query 기반 document method 같은 generated helper를 노출합니다.",
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-            <div className="font-bold text-base-content">Plain service</div>
-            <div className="mt-2 text-base-content/70">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="font-bold text-foreground">Plain service</div>
+            <div className="mt-2 text-foreground/70">
               {l.trans({
                 en: 'serve("base" as const, builder) creates a service without a database model. Use it for runtime coordination, scheduled behavior, shared server features, or app-level orchestration.',
                 ko: 'serve("base" as const, builder)는 database model 없이 service를 만듭니다. runtime coordination, scheduled behavior, shared server feature, app-level orchestration에 사용합니다.',
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-            <div className="font-bold text-base-content">Service option</div>
-            <div className="mt-2 text-base-content/70">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="font-bold text-foreground">Service option</div>
+            <div className="mt-2 text-foreground/70">
               {l.trans({
                 en: "The optional service option can disable a service or limit it to a server mode such as batch or federation.",
                 ko: "선택적 service option으로 service를 비활성화하거나 batch, federation 같은 server mode에만 활성화할 수 있습니다.",
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-            <div className="font-bold text-base-content">Extension services</div>
-            <div className="mt-2 text-base-content/70">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="font-bold text-foreground">Extension services</div>
+            <div className="mt-2 text-foreground/70">
               {l.trans({
                 en: "Extra service classes passed after the injection builder are mixed into the final service. Their injection maps and lifecycle hooks are merged first.",
                 ko: "injection builder 뒤에 전달한 service class들은 최종 service에 mixin됩니다. 해당 service들의 injection map과 lifecycle hook이 먼저 병합됩니다.",
@@ -398,9 +398,9 @@ serve(db.user, ({ use }) => ({ githubApp: use<GithubApp>() }), ...user.services)
             </colgroup>
             <thead>
               <tr className="bg-base-200">
-                <th className="text-base-content">method</th>
-                <th className="text-base-content">{l.trans({ en: "Description", ko: "설명" })}</th>
-                <th className="text-base-content">{l.trans({ en: "Example", ko: "예제" })}</th>
+                <th className="text-foreground">method</th>
+                <th className="text-foreground">{l.trans({ en: "Description", ko: "설명" })}</th>
+                <th className="text-foreground">{l.trans({ en: "Example", ko: "예제" })}</th>
               </tr>
             </thead>
             <tbody>
@@ -418,7 +418,7 @@ serve(db.user, ({ use }) => ({ githubApp: use<GithubApp>() }), ...user.services)
         </div>
         <div className="space-y-4 lg:hidden">
           {crudMethods.map((item, index) => (
-            <div key={index} className="rounded-lg bg-base-100 p-3">
+            <div key={index} className="rounded-lg bg-background p-3">
               <div className="mb-2">
                 <span className="block font-bold font-mono text-primary">{item.name}</span>
               </div>
@@ -508,9 +508,9 @@ export class UserService extends serve(
           </div>
         </Docs.Description>
         <div className="space-y-3">
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-            <div className="font-bold text-base-content">database()</div>
-            <div className="mt-2 text-base-content/70">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="font-bold text-foreground">database()</div>
+            <div className="mt-2 text-foreground/70">
               {l.trans({
                 en: "Database model injection is usually automatic for database services. Use the generated property such as storyModel instead of declaring database() by hand.",
                 ko: "database model injection은 database service에서 보통 자동입니다. 직접 database()를 선언하기보다 storyModel 같은 generated property를 사용합니다.",
@@ -524,9 +524,9 @@ export class UserService extends serve(
 }`}
             />
           </div>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-            <div className="font-bold text-base-content">service&lt;T&gt;()</div>
-            <div className="mt-2 text-base-content/70">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="font-bold text-foreground">service&lt;T&gt;()</div>
+            <div className="mt-2 text-foreground/70">
               {l.trans({
                 en: "Inject another Akan service. The property key must end with Service so the runtime can resolve the registered service.",
                 ko: "다른 Akan service를 주입합니다. runtime이 등록된 service를 찾을 수 있도록 property key는 Service로 끝나야 합니다.",
@@ -544,9 +544,9 @@ export class UserService extends serve(
 }`}
             />
           </div>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-            <div className="font-bold text-base-content">use&lt;T&gt;()</div>
-            <div className="mt-2 text-base-content/70">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="font-bold text-foreground">use&lt;T&gt;()</div>
+            <div className="mt-2 text-foreground/70">
               {l.trans({
                 en: "Inject a globally registered runtime object such as an API client, host value, or server-only wrapper from srvkit.",
                 ko: "API client, host 값, srvkit의 server-only wrapper처럼 전역 등록된 runtime object를 주입합니다.",
@@ -564,9 +564,9 @@ export class UserService extends serve(
 }`}
             />
           </div>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-            <div className="font-bold text-base-content">signal&lt;T&gt;()</div>
-            <div className="mt-2 text-base-content/70">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="font-bold text-foreground">signal&lt;T&gt;()</div>
+            <div className="mt-2 text-foreground/70">
               {l.trans({
                 en: "Inject a server signal so the service can enqueue background jobs or publish server events.",
                 ko: "service가 background job을 queue하거나 server event를 publish할 수 있도록 server signal을 주입합니다.",
@@ -587,9 +587,9 @@ export class UserService extends serve(
 }`}
             />
           </div>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-            <div className="font-bold text-base-content">plug(Adaptor)</div>
-            <div className="mt-2 text-base-content/70">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="font-bold text-foreground">plug(Adaptor)</div>
+            <div className="mt-2 text-foreground/70">
               {l.trans({
                 en: "Inject an adaptor instance. If an adaptor role is registered, the runtime resolves the role implementation before injection.",
                 ko: "adaptor instance를 주입합니다. adaptor role이 등록되어 있으면 runtime이 해당 role implementation을 resolve한 뒤 주입합니다.",
@@ -607,9 +607,9 @@ export class UserService extends serve(
 }`}
             />
           </div>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-            <div className="font-bold text-base-content">env(factory)</div>
-            <div className="mt-2 text-base-content/70">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="font-bold text-foreground">env(factory)</div>
+            <div className="mt-2 text-foreground/70">
               {l.trans({
                 en: 'Inject a value derived from module options or process env. The current pattern is a factory function, not env("KEY").',
                 ko: 'module option 또는 process env에서 파생된 값을 주입합니다. 현재 패턴은 env("KEY")가 아니라 factory function입니다.',
@@ -627,9 +627,9 @@ export class UserService extends serve(
 }`}
             />
           </div>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-            <div className="font-bold text-base-content">memory(modelRef, opts)</div>
-            <div className="mt-2 text-base-content/70">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="font-bold text-foreground">memory(modelRef, opts)</div>
+            <div className="mt-2 text-foreground/70">
               {l.trans({
                 en: "Inject memory owned by the service. local memory is writable on the instance; non-local memory uses the registered cache adaptor. Map memory requires an of option.",
                 ko: "service가 소유하는 memory를 주입합니다. local memory는 instance에 writable 값으로 붙고, non-local memory는 등록된 cache adaptor를 사용합니다. Map memory는 of option이 필요합니다.",
@@ -760,7 +760,7 @@ async onDestroy() {
                 ko: "service 간 순환 의존성을 피합니다. 두 service가 서로 필요하다면 shared operation을 더 작은 service나 srvkit helper로 분리합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
+              <div key={rule} className="rounded-xl border border-base-300 bg-background px-4 text-foreground/70">
                 {rule}
               </div>
             ))}

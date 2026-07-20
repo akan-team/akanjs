@@ -98,11 +98,11 @@ export default function Page() {
             <Link
               key={title}
               href={href}
-              className="rounded-xl border border-base-300 bg-base-100 p-4 hover:border-primary"
+              className="rounded-xl border border-base-300 bg-background p-4 hover:border-primary"
             >
-              <div className="font-bold text-base-content">{title}</div>
-              <div className="mt-1 font-mono text-base-content/70">{components}</div>
-              <div className="mt-2 text-base-content/70">{desc}</div>
+              <div className="font-bold text-foreground">{title}</div>
+              <div className="mt-1 font-mono text-foreground/70">{components}</div>
+              <div className="mt-2 text-foreground/70">{desc}</div>
             </Link>
           ))}
         </div>

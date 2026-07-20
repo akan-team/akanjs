@@ -233,18 +233,18 @@ AKAN_PUBLIC_LOG_LEVEL=debug`}
                 "100",
               ],
             ].map(([name, label, desc, values]) => (
-              <div key={name} className="rounded-xl border border-primary/10 bg-base-100 p-3">
+              <div key={name} className="rounded-xl border border-primary/10 bg-background p-3">
                 <div className="break-all font-mono font-semibold text-primary text-sm">{name}</div>
-                <div className="mt-1 font-bold text-base-content">{label}</div>
-                <div className="mt-2 text-base-content/70 text-sm leading-relaxed">{desc}</div>
-                <div className="mt-3 break-all rounded bg-base-200 px-2 py-1 font-mono text-base-content/80 text-xs">
+                <div className="mt-1 font-bold text-foreground">{label}</div>
+                <div className="mt-2 text-foreground/70 text-sm leading-relaxed">{desc}</div>
+                <div className="mt-3 break-all rounded bg-base-200 px-2 py-1 font-mono text-foreground/80 text-xs">
                   ex) {values}
                 </div>
               </div>
             ))}
           </div>
           <div className="space-y-1">
-            <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+            <div className="rounded-xl border border-base-300 bg-background p-4">
               <div className="font-bold">{l.trans({ en: "AKAN_PUBLIC_ENV modes", ko: "AKAN_PUBLIC_ENV 모드" })}</div>
               <div className="mt-3 space-y-1">
                 {[
@@ -258,12 +258,12 @@ AKAN_PUBLIC_LOG_LEVEL=debug`}
                 ].map(([mode, desc]) => (
                   <div key={mode} className="rounded-lg bg-base-200 p-3">
                     <div className="font-mono font-semibold text-sm">{mode}</div>
-                    <div className="mt-1 text-base-content/70 text-sm">{desc}</div>
+                    <div className="mt-1 text-foreground/70 text-sm">{desc}</div>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+            <div className="rounded-xl border border-base-300 bg-background p-4">
               <div className="font-bold">
                 {l.trans({ en: "AKAN_PUBLIC_OPERATION_MODE modes", ko: "AKAN_PUBLIC_OPERATION_MODE 모드" })}
               </div>
@@ -278,7 +278,7 @@ AKAN_PUBLIC_LOG_LEVEL=debug`}
                 ].map(([mode, desc]) => (
                   <div key={mode} className="rounded-lg bg-base-200 p-3">
                     <div className="font-mono font-semibold text-sm">{mode}</div>
-                    <div className="mt-1 text-base-content/70 text-sm">{desc}</div>
+                    <div className="mt-1 text-foreground/70 text-sm">{desc}</div>
                   </div>
                 ))}
               </div>
@@ -350,9 +350,9 @@ env.serverHttpUri; // API URL
 env.serverWsUri;   // WebSocket URL`}
           />
           <div className="space-y-1">
-            <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+            <div className="rounded-xl border border-base-300 bg-background p-4">
               <div className="font-bold">{l.trans({ en: "Local mode", ko: "로컬 모드" })}</div>
-              <div className="mt-2 text-base-content/70 text-sm leading-relaxed">
+              <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
                   en: "When OPERATION_MODE is local, getEnv() points the browser and API client to your local Akan runtime, usually localhost:8282.",
                   ko: "OPERATION_MODE가 local이면 getEnv()는 브라우저와 API 클라이언트가 내 로컬 Akan 런타임을 바라보도록 합니다. 보통 localhost:8282를 사용합니다.",
@@ -368,9 +368,9 @@ serverHttpUri=http://localhost:8282/api
 serverWsUri=ws://localhost:8282`}
               />
             </div>
-            <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+            <div className="rounded-xl border border-base-300 bg-background p-4">
               <div className="font-bold">{l.trans({ en: "Cloud / edge mode", ko: "클라우드 / 엣지 모드" })}</div>
-              <div className="mt-2 text-base-content/70 text-sm leading-relaxed">
+              <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
                   en: "When OPERATION_MODE is cloud or edge, getEnv() builds service URLs from the app name, environment, and serve domain.",
                   ko: "OPERATION_MODE가 cloud 또는 edge이면 getEnv()는 앱 이름, 환경, 서비스 도메인을 조합해 서비스 URL을 만듭니다.",
@@ -454,10 +454,10 @@ void run();`}
                 value: `new AkanServer("myapp", env, "all", lib, { openapi: true })`,
               },
             ].map(({ title, desc, value }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
-                <div className="font-bold text-base-content">{title}</div>
-                <div className="mt-2 text-base-content/70 text-sm leading-relaxed">{desc}</div>
-                <div className="mt-3 break-all rounded bg-base-200 px-2 py-1 font-mono text-base-content/80 text-xs">
+              <div key={title} className="rounded-xl border border-base-300 bg-background p-4">
+                <div className="font-bold text-foreground">{title}</div>
+                <div className="mt-2 text-foreground/70 text-sm leading-relaxed">{desc}</div>
+                <div className="mt-3 break-all rounded bg-base-200 px-2 py-1 font-mono text-foreground/80 text-xs">
                   {value}
                 </div>
               </div>
@@ -485,9 +485,9 @@ void run();`}
             })}
           </div>
           <div className="space-y-1">
-            <div className="rounded-xl border border-base-300 bg-base-100 px-4">
+            <div className="rounded-xl border border-base-300 bg-background px-4">
               <div className="font-bold">{l.trans({ en: "Health", ko: "상태 확인" })}</div>
-              <div className="mt-2 text-base-content/70 text-sm leading-relaxed">
+              <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
                   en: "Use this to check whether the gateway and server processes are running and ready.",
                   ko: "게이트웨이와 서버 프로세스가 실행 중이고 준비되었는지 확인할 때 사용합니다.",
@@ -500,9 +500,9 @@ void run();`}
                 code={`curl http://localhost:8282/_akan/app/health`}
               />
             </div>
-            <div className="rounded-xl border border-base-300 bg-base-100 px-4">
+            <div className="rounded-xl border border-base-300 bg-background px-4">
               <div className="font-bold">{l.trans({ en: "Metrics", ko: "메트릭" })}</div>
-              <div className="mt-2 text-base-content/70 text-sm leading-relaxed">
+              <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
                   en: "Use this to see runtime counts such as active requests, WebSocket connections, rooms, and process metrics.",
                   ko: "활성 요청, 웹소켓 연결, room, 프로세스 지표 같은 런타임 수치를 확인할 때 사용합니다.",
@@ -515,9 +515,9 @@ void run();`}
                 code={`curl http://localhost:8282/_akan/app/metrics`}
               />
             </div>
-            <div className="rounded-xl border border-base-300 bg-base-100 px-4">
+            <div className="rounded-xl border border-base-300 bg-background px-4">
               <div className="font-bold">{l.trans({ en: "Logs", ko: "로그" })}</div>
-              <div className="mt-2 text-base-content/70 text-sm leading-relaxed">
+              <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
                   en: "Use AKAN_PUBLIC_LOG_LEVEL to choose how much detail appears in the terminal. AkanApp also stores gateway and child process output in runtime/logs by default, using AKAN_LOG_FILE_LEVEL for structured Logger output and rotating files by date and size.",
                   ko: "터미널에 어느 정도 자세한 로그를 볼지는 AKAN_PUBLIC_LOG_LEVEL로 조절합니다. AkanApp은 기본적으로 gateway와 child process 출력을 runtime/logs에 저장하며, structured Logger 출력은 AKAN_LOG_FILE_LEVEL 기준으로 저장하고 날짜와 크기 기준으로 파일을 회전합니다.",
@@ -533,7 +533,7 @@ AKAN_MEMORY_LOG=1
 AKAN_LOG_MAX_SIZE_MB=50
 AKAN_LOG_MAX_FILES=100`}
               />
-              <div className="mt-2 text-base-content/70 text-sm leading-relaxed">
+              <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
                   en: "File names include app name, environment, operation mode, local date, process key, and sequence. Direct console.log calls from child servers are captured through stdout/stderr pipes; direct gateway console.log calls are not part of Logger sink capture.",
                   ko: "파일명에는 app name, environment, operation mode, 로컬 날짜, process key, sequence가 포함됩니다. child server의 직접 console.log 호출은 stdout/stderr pipe를 통해 저장되지만, gateway process의 직접 console.log 호출은 Logger sink 캡처 대상이 아닙니다.",

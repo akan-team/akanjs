@@ -35,7 +35,7 @@ export default function Page() {
               ].map((desc) => (
                 <div
                   key={desc}
-                  className="rounded-lg border border-primary/20 bg-base-100 px-4 py-2 text-base-content/70 text-sm"
+                  className="rounded-lg border border-primary/20 bg-background px-4 py-2 text-foreground/70 text-sm"
                 >
                   {desc}
                 </div>
@@ -55,12 +55,12 @@ export default function Page() {
               ko: "Akan은 하나의 화면만 가지는 제품보다 여러 표면을 가진 제품을 위해 설계되었습니다. 스토어 고객 페이지, 관리자 콘솔, 파트너 클라이언트, 모바일 앱, 엣지 장비 워크플로우는 서로 다른 인터페이스를 보여주면서 같은 규칙과 데이터를 공유할 수 있습니다.",
             })}
           </div>
-          <div className="rounded-2xl border border-base-300 bg-base-100 p-5">
-            <div className="mb-4 font-bold text-base-content">{l.trans({ en: "Surface Map", ko: "표면 지도" })}</div>
+          <div className="rounded-2xl border border-base-300 bg-background p-5">
+            <div className="mb-4 font-bold text-foreground">{l.trans({ en: "Surface Map", ko: "표면 지도" })}</div>
             <div className="space-y-1">
               <div className="rounded-xl border border-base-300 bg-base-200 px-4 py-2">
                 <span className="font-mono font-semibold text-primary">UI surfaces: </span>
-                <span className="text-base-content/70 text-sm">
+                <span className="text-foreground/70 text-sm">
                   {l.trans({
                     en: "SSR pages, CSR pages, admin clients, partner clients, and mobile CSR clients.",
                     ko: "SSR page, CSR page, admin client, partner client, mobile CSR client입니다.",
@@ -69,7 +69,7 @@ export default function Page() {
               </div>
               <div className="rounded-xl border border-base-300 bg-base-200 px-4 py-2">
                 <span className="font-mono font-semibold text-primary">Client helpers: </span>
-                <span className="text-base-content/70 text-sm">
+                <span className="text-foreground/70 text-sm">
                   {l.trans({
                     en: "Generated fetch, st, Model, and usePage helpers connect screens to business behavior.",
                     ko: "생성된 fetch, st, Model, usePage helper가 화면을 비즈니스 동작에 연결합니다.",
@@ -78,7 +78,7 @@ export default function Page() {
               </div>
               <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-2">
                 <span className="font-mono font-semibold text-primary">Shared business service: </span>
-                <span className="text-base-content/70 text-sm">
+                <span className="text-foreground/70 text-sm">
                   {l.trans({
                     en: "Signal receives calls, service decides rules, and document handles stored data.",
                     ko: "signal이 호출을 받고, service가 규칙을 결정하며, document가 저장 데이터를 처리합니다.",
@@ -87,7 +87,7 @@ export default function Page() {
               </div>
               <div className="rounded-xl border border-base-300 bg-base-200 px-4 py-2">
                 <span className="font-mono font-semibold text-primary">Runtime shape: </span>
-                <span className="text-base-content/70 text-sm">
+                <span className="text-foreground/70 text-sm">
                   {l.trans({
                     en: "The same product can run locally, in cloud clusters, near devices at the edge, or inside mobile packages.",
                     ko: "같은 제품은 local, cloud cluster, edge, mobile package 안에서 실행될 수 있습니다.",
@@ -159,9 +159,9 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
-                <span className="font-bold text-base-content">{title}: </span>
-                <span className="text-base-content/70 text-sm">{desc}</span>
+              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+                <span className="font-bold text-foreground">{title}: </span>
+                <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
@@ -224,10 +224,10 @@ export default function Page() {
               <Link
                 key={href}
                 href={href}
-                className="block rounded-xl border border-base-300 bg-base-100 px-4 py-2 hover:border-primary/40"
+                className="block rounded-xl border border-base-300 bg-background px-4 py-2 hover:border-primary/40"
               >
-                <span className="font-bold text-base-content">{title}: </span>
-                <span className="text-base-content/70 text-sm">{desc}</span>
+                <span className="font-bold text-foreground">{title}: </span>
+                <span className="text-foreground/70 text-sm">{desc}</span>
               </Link>
             ))}
           </div>
@@ -290,9 +290,9 @@ export default function Page() {
                 href: "/docs/arch/css",
               },
             ].map(({ need, page, href }) => (
-              <div key={href} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
-                <span className="text-base-content/70 text-sm">{need} </span>
-                <span className="text-base-content/40 text-sm">→ </span>
+              <div key={href} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+                <span className="text-foreground/70 text-sm">{need} </span>
+                <span className="text-foreground/40 text-sm">→ </span>
                 <Link href={href} className="font-mono font-semibold text-primary text-sm">
                   {page}
                 </Link>

@@ -318,7 +318,7 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
         </div>
       </div>
       {showControls ? ( // [!code collapse:16]
-        <div className="bg-base-100/50 flex items-center justify-center gap-2 rounded-xl p-4">
+        <div className="bg-background/50 flex items-center justify-center gap-2 rounded-xl p-4">
           <Model.ViewWrapper sliceName="icecreamOrder" modelId={icecreamOrder.id}>
             <button className="btn btn-primary">
               <span>{l.trans({ en: "View", ko: "보기" })}</span>

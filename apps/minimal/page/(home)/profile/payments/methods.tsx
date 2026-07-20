@@ -9,8 +9,8 @@ export default function Page() {
         <div className="font-semibold">Payment method</div>
       </Layout.Navbar>
       <div className="space-y-4 pt-5">
-        <div className="rounded-[2rem] bg-gradient-to-br from-primary to-secondary p-5 text-primary-content">
-          <p className="text-primary-content/60 text-sm">Primary card</p>
+        <div className="rounded-[2rem] bg-gradient-to-br from-primary to-secondary p-5 text-primary-foreground">
+          <p className="text-primary-foreground/60 text-sm">Primary card</p>
           <p className="mt-8 font-bold text-2xl tracking-widest">4242 •••• •••• 1024</p>
           <div className="mt-5 flex items-center justify-between text-sm">
             <span>Seon Guest</span>

@@ -110,9 +110,9 @@ export const getQueryMeta = (refName: string) => new QueryMeta(refName);`,
 };`,
             },
           ].map(({ title, desc, snippetTitle, code }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
-              <div className="font-bold text-base-content">{title}</div>
-              <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+            <div key={title} className="rounded-xl border border-base-300 bg-background p-4">
+              <div className="font-bold text-foreground">{title}</div>
+              <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               <div className="mt-3">
                 <Code.Snippet title={snippetTitle} code={code} />
               </div>
@@ -215,7 +215,7 @@ export function PreviewCode() {
                 ko: "common helper는 작고 순수하게 유지하고 barrel에서 import합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
+              <div key={rule} className="rounded-xl border border-base-300 bg-background px-4 text-foreground/70">
                 {rule}
               </div>
             ))}

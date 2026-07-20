@@ -42,10 +42,10 @@ export default function Page() {
                 }),
               ],
             ].map(([title, code, desc]) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
-                <div className="font-bold text-base-content">{title}</div>
+              <div key={title} className="rounded-xl border border-base-300 bg-background p-4">
+                <div className="font-bold text-foreground">{title}</div>
                 <div className="my-2 font-mono text-primary text-sm">{code}</div>
-                <div className="text-base-content/70 text-sm">{desc}</div>
+                <div className="text-foreground/70 text-sm">{desc}</div>
               </div>
             ))}
           </div>
@@ -85,7 +85,7 @@ export class BillingService {
   }
 }`}
           />
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4 text-base-content/70 text-sm">
+          <div className="rounded-xl border border-base-300 bg-background p-4 text-foreground/70 text-sm">
             {l.trans({
               en: "Use trace or debug for detailed diagnosis, info/log for normal lifecycle events, warn for recoverable issues, and error when an operation failed or needs attention.",
               ko: "상세 진단에는 trace/debug를, 일반 라이프사이클 이벤트에는 info/log를, 복구 가능한 문제에는 warn을, 작업 실패나 확인이 필요한 상황에는 error를 사용합니다.",
@@ -133,9 +133,9 @@ AKAN_LOG_TO_FILE=0`}
                 }),
               ],
             ].map(([title, desc]) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
-                <div className="font-bold text-base-content">{title}</div>
-                <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+              <div key={title} className="rounded-xl border border-base-300 bg-background p-4">
+                <div className="font-bold text-foreground">{title}</div>
+                <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               </div>
             ))}
           </div>
@@ -214,7 +214,7 @@ ls -lh /var/log/akan
 tail -f /var/log/akan/*-gateway-*.log
 rg "invoice-sync|ERROR" /var/log/akan`}
           />
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4 text-base-content/70 text-sm">
+          <div className="rounded-xl border border-base-300 bg-background p-4 text-foreground/70 text-sm">
             {l.trans({
               en: "Direct console.log calls from child servers are captured through stdout/stderr pipes. Direct console.log calls from the gateway process are not part of Logger sink capture, so prefer Logger in runtime code.",
               ko: "child server의 직접 console.log 호출은 stdout/stderr pipe를 통해 저장됩니다. gateway process의 직접 console.log 호출은 Logger sink 캡처 대상이 아니므로 runtime code에서는 Logger 사용을 권장합니다.",
@@ -258,9 +258,9 @@ rg "invoice-sync|ERROR" /var/log/akan`}
                 }),
               ],
             ].map(([title, desc]) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
-                <div className="font-bold text-base-content">{title}</div>
-                <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+              <div key={title} className="rounded-xl border border-base-300 bg-background p-4">
+                <div className="font-bold text-foreground">{title}</div>
+                <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               </div>
             ))}
           </div>

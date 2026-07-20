@@ -112,26 +112,26 @@ export class DeliveryInsight extends via(Delivery, (field) => ({})) {}`}
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔗</span>
                 <strong className="text-primary">{"field([LightIcecreamOrder], { minlength: 1 })"}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `This defines a one-to-many relationship by embedding an array of LightIcecreamOrder. The "Light" version contains only essential fields (serveType, size, toppings, status) - perfect for embedding without duplicating entire documents.`,
                   ko: `LightIcecreamOrder 배열을 임베딩하여 일대다 관계를 정의합니다. "Light" 버전은 필수 필드만 포함합니다 (serveType, size, toppings, status) - 전체 문서를 복제하지 않고 임베딩하기에 완벽합니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📦</span>
                 <strong className="text-primary">
                   {l.trans({ en: "Embedded vs Referenced", ko: "임베디드 vs 참조" })}
                 </strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `By embedding LightIcecreamOrder, the delivery document contains all necessary order info without additional database queries. This is ideal for data that's read together frequently.`,
                   ko: `LightIcecreamOrder를 임베딩함으로써, 배달 문서는 추가 데이터베이스 쿼리 없이 모든 필요한 주문 정보를 포함합니다. 이것은 함께 자주 읽히는 데이터에 이상적입니다.`,
@@ -211,36 +211,36 @@ export class DeliveryService extends serve(db.delivery, ({ use, service }) => ({
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔌</span>
                 <strong className="text-primary">{"service<srv.IcecreamOrderService>()"}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Injects the IcecreamOrderService so DeliveryService can interact with orders. This enables cross-model operations.`,
                   ko: `IcecreamOrderService를 주입하여 DeliveryService가 주문과 상호작용할 수 있게 합니다. 이를 통해 모델 간 작업이 가능해집니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">⚡</span>
                 <strong className="text-primary">_postCreate</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `A lifecycle hook that runs after a delivery is created. It iterates through all linked orders and marks them as finished - perfect for cascading updates.`,
                   ko: `배달이 생성된 후 실행되는 라이프사이클 훅입니다. 모든 연결된 주문을 순회하며 완료 처리합니다 - 연쇄 업데이트에 완벽합니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🚫</span>
                 <strong className="text-primary">_preUpdate</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Prevents updates to deliveries by throwing an Err. Once a delivery is created, it becomes immutable - ensuring data integrity.`,
                   ko: `Err 오류를 발생시켜 배달 수정을 방지합니다. 배달이 생성되면 불변이 됩니다 - 데이터 무결성을 보장합니다.`,
@@ -774,11 +774,11 @@ export default async function Page() {
       <Scroll.Slide id="summary" title={l.trans({ en: "Summary", ko: "요약" })}>
         <Docs.Title>{l.trans({ en: "Summary", ko: "요약" })}</Docs.Title>
         <Docs.Description>
-          <div className="my-6 rounded-lg bg-linear-to-r from-base-100 to-base-300 p-6">
+          <div className="my-6 rounded-lg bg-linear-to-r from-background to-base-300 p-6">
             <div className="mb-3 font-bold text-lg text-primary">
               {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
             </div>
-            <ul className="space-y-2 text-base-content/70 text-sm">
+            <ul className="space-y-2 text-foreground/70 text-sm">
               <li>
                 ✓{" "}
                 {l.trans({
@@ -824,12 +824,12 @@ export default async function Page() {
             </ul>
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-4">
+            <div className="rounded-lg border border-base-300 bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">💡</span>
                 <strong className="text-primary">{l.trans({ en: "Best Practices", ko: "모범 사례" })}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 <ul className="list-inside list-disc space-y-1">
                   <li>
                     {l.trans({

@@ -12,14 +12,14 @@ export default function Page() {
         <label className="block">
           <span className="apptest-muted text-sm">Name</span>
           <input
-            className="input mt-2 w-full rounded-2xl border-base-content/10 bg-base-200/70 text-base-content"
+            className="input mt-2 w-full rounded-2xl border-foreground/10 bg-base-200/70 text-foreground"
             defaultValue="Seon Guest"
           />
         </label>
         <label className="block">
           <span className="apptest-muted text-sm">Bio</span>
           <textarea
-            className="textarea mt-2 min-h-32 w-full rounded-2xl border-base-content/10 bg-base-200/70 text-base-content"
+            className="textarea mt-2 min-h-32 w-full rounded-2xl border-foreground/10 bg-base-200/70 text-foreground"
             defaultValue="I like calm spaces in the city."
           />
         </label>

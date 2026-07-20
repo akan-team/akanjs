@@ -3,7 +3,7 @@ import { AiOutlineArrowRight, AiOutlineEnvironment, AiOutlineStar } from "react-
 
 export default function Page() {
   return (
-    <div className="h-screen bg-base-100 px-5 pt-6 pb-28 text-base-content">
+    <div className="h-screen bg-background px-5 pt-6 pb-28 text-foreground">
       <section className="rounded-[2rem] bg-gradient-to-br from-primary via-secondary to-accent p-[1px] shadow-2xl shadow-primary/20">
         <div className="rounded-[2rem] bg-base-200/95 p-5">
           <div className="flex items-center justify-between">
@@ -15,7 +15,7 @@ export default function Page() {
               <AiOutlineEnvironment />
             </div>
           </div>
-          <div className="mt-6 rounded-2xl bg-base-content/5 p-4">
+          <div className="mt-6 rounded-2xl bg-foreground/5 p-4">
             <p className="apptest-muted text-xs uppercase tracking-[0.3em]">Featured stay</p>
             <p className="mt-2 font-semibold text-xl">Skyline loft in Seolleung</p>
             <p className="apptest-muted mt-1 text-sm">A premium space with city night views and a quiet lounge</p>

@@ -56,7 +56,7 @@ export const TryButton = ({
         )}
       </Button>
       {footer}
-      {errorMessage ? <div className="text-error text-sm">{errorMessage}</div> : null}
+      {errorMessage ? <div className="text-destructive text-sm">{errorMessage}</div> : null}
     </div>
   );
 };

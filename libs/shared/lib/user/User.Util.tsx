@@ -166,7 +166,7 @@ export const SignInPassword = ({
       ) : null}
       <button
         id="signin-button"
-        className={`btn btn-primary w-full text-base-100 md:mt-5 ${isReady ? "" : "btn-disabled"} gap-2`}
+        className={`btn btn-primary w-full text-background md:mt-5 ${isReady ? "" : "btn-disabled"} gap-2`}
         disabled={!isSubmitable}
         onClick={() => void st.do.signinWithPassword({ redirect, replace })}
       >
@@ -393,7 +393,7 @@ export const ForgotPassword = () => {
         />
       </div>
       <button
-        className="btn btn-primary w-full text-base-100"
+        className="btn btn-primary w-full text-background"
         disabled={!isEmail(accountId) || finished}
         onClick={async () => {
           await st.do.resetPassword(accountId);

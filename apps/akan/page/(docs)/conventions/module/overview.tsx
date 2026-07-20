@@ -284,10 +284,10 @@ export default function Page() {
             <Link
               key={name}
               href={route}
-              className="rounded-xl border border-base-300 bg-base-100 p-4 hover:border-primary"
+              className="rounded-xl border border-base-300 bg-background p-4 hover:border-primary"
             >
-              <div className="font-bold text-base-content">{name}</div>
-              <div className="mt-2 text-base-content/70">{role}</div>
+              <div className="font-bold text-foreground">{name}</div>
+              <div className="mt-2 text-foreground/70">{role}</div>
             </Link>
           ))}
         </div>
@@ -298,10 +298,10 @@ export default function Page() {
             <Link
               key={name}
               href={route}
-              className="rounded-xl border border-base-300 bg-base-100 p-4 hover:border-primary"
+              className="rounded-xl border border-base-300 bg-background p-4 hover:border-primary"
             >
-              <div className="font-bold text-base-content">{name}</div>
-              <div className="mt-2 text-base-content/70">{role}</div>
+              <div className="font-bold text-foreground">{name}</div>
+              <div className="mt-2 text-foreground/70">{role}</div>
             </Link>
           ))}
         </div>
@@ -323,9 +323,9 @@ export default function Page() {
         </Docs.Description>
         <div className="grid xl:grid-cols-7">
           {flowSteps.map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-1">
-              <div className="font-bold text-base-content">{title}</div>
-              <div className="mt-2 text-base-content/70">{desc}</div>
+            <div key={title} className="rounded-xl border border-base-300 bg-background p-1">
+              <div className="font-bold text-foreground">{title}</div>
+              <div className="mt-2 text-foreground/70">{desc}</div>
             </div>
           ))}
         </div>
@@ -355,9 +355,9 @@ Zone -> page section composition`}
         </Docs.Description>
         <div className="grid gap-3 xl:grid-cols-3">
           {boundaries.map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
-              <div className="font-bold text-base-content">{title}</div>
-              <div className="mt-2 text-base-content/70">{desc}</div>
+            <div key={title} className="rounded-xl border border-base-300 bg-background p-4">
+              <div className="font-bold text-foreground">{title}</div>
+              <div className="mt-2 text-foreground/70">{desc}</div>
             </div>
           ))}
         </div>
@@ -376,10 +376,10 @@ Zone -> page section composition`}
         </Docs.Description>
         <div className="grid gap-3 xl:grid-cols-2">
           {readingPaths.map(({ title, steps, desc }) => (
-            <div key={steps} className="rounded-xl border border-base-300 bg-base-100 p-4">
-              <div className="font-bold text-base-content">{title}</div>
-              <div className="mt-2 font-mono text-base-content">{steps}</div>
-              <div className="mt-2 text-base-content/70">{desc}</div>
+            <div key={steps} className="rounded-xl border border-base-300 bg-background p-4">
+              <div className="font-bold text-foreground">{title}</div>
+              <div className="mt-2 font-mono text-foreground">{steps}</div>
+              <div className="mt-2 text-foreground/70">{desc}</div>
             </div>
           ))}
         </div>
@@ -412,7 +412,7 @@ Zone -> page section composition`}
                 ko: "section이 커지면 Zone을 키우기 전에 display는 Unit/View로, control은 Util로 옮깁니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
+              <div key={rule} className="rounded-xl border border-base-300 bg-background px-4 text-foreground/70">
                 {rule}
               </div>
             ))}

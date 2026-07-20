@@ -253,7 +253,7 @@ export default function Editor({
                 placeholder={
                   <div
                     className={clsx(
-                      "pointer-events-none absolute top-2 select-none text-base-content/40",
+                      "pointer-events-none absolute top-2 select-none text-foreground/40",
                       showHandle ? "left-7" : "left-0",
                     )}
                   >

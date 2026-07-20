@@ -153,7 +153,7 @@ export default function DroppableColumn<T extends { id: string }[]>({
       <div
         ref={setNodeRef}
         className={clsx(
-          "relative h-full rounded-md border-[0.5px] border-base-content p-2",
+          "relative h-full rounded-md border-[0.5px] border-foreground p-2",
           {
             "border border-primary bg-primary/10 duration-300": isOver,
           },

@@ -405,7 +405,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
                 <tr className="hover">
                   <td>{l.trans({ en: "Missing .desc()", ko: ".desc() 누락" })}</td>
                   <td>
-                    <code className="text-error">{'t(["Label", "레이블"])'}</code>
+                    <code className="text-destructive">{'t(["Label", "레이블"])'}</code>
                   </td>
                   <td>
                     <code className="text-success">{'t(["Label", "레이블"]).desc(["Desc", "설명"])'}</code>
@@ -414,7 +414,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
                 <tr className="hover">
                   <td>{l.trans({ en: "Wrong enum name", ko: "잘못된 enum 이름" })}</td>
                   <td>
-                    <code className="text-error">{'.enum<Journey>("Journey", ...)'}</code>
+                    <code className="text-destructive">{'.enum<Journey>("Journey", ...)'}</code>
                   </td>
                   <td>
                     <code className="text-success">{'.enum<Journey>("journey", ...)'}</code>
@@ -423,7 +423,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
                 <tr className="hover">
                   <td>{l.trans({ en: "Missing export", ko: "export 누락" })}</td>
                   <td>
-                    <code className="text-error">{"const dictionary = ..."}</code>
+                    <code className="text-destructive">{"const dictionary = ..."}</code>
                   </td>
                   <td>
                     <code className="text-success">{"export const dictionary = ..."}</code>
@@ -432,7 +432,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
                 <tr className="hover">
                   <td>{l.trans({ en: "Wrong array order", ko: "잘못된 배열 순서" })}</td>
                   <td>
-                    <code className="text-error">{'t(["한국어", "English"])'}</code>
+                    <code className="text-destructive">{'t(["한국어", "English"])'}</code>
                   </td>
                   <td>
                     <code className="text-success">{'t(["English", "한국어"])'}</code>
@@ -441,7 +441,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
                 <tr className="hover">
                   <td>{l.trans({ en: "Missing field", ko: "필드 누락" })}</td>
                   <td>
-                    <code className="text-error">{"// TypeScript error"}</code>
+                    <code className="text-destructive">{"// TypeScript error"}</code>
                   </td>
                   <td>
                     <code className="text-success">{l.trans({ en: "All fields defined", ko: "모든 필드 정의" })}</code>

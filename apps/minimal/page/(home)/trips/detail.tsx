@@ -42,7 +42,7 @@ export default function Page() {
           </div>
         ))}
       </section>
-      <Layout.BottomInset className="flex h-48 w-full bg-base-100/80 px-5 py-2 backdrop-blur" keyboardSticky>
+      <Layout.BottomInset className="flex h-48 w-full bg-background/80 px-5 py-2 backdrop-blur" keyboardSticky>
         <Link className="btn btn-primary h-full w-full rounded-2xl border-0" href="/explore/detail">
           <AiOutlineCompass /> View stay again
         </Link>

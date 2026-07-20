@@ -66,7 +66,7 @@ export const Auth = ({ logo, password, ssoTypes = [], redirect }: AuthProps) => 
   const ssos = ssoTypes.filter((ssoType) => !!ssoButtons[ssoType]);
   return (
     <div className="flex h-screen w-full items-center justify-center">
-      <div className="flex w-96 flex-col gap-4 rounded-2xl border border-base-100/30 bg-base-200 p-8 shadow-sm">
+      <div className="flex w-96 flex-col gap-4 rounded-2xl border border-background/30 bg-base-200 p-8 shadow-sm">
         <div className="text-center">Admin System</div>
         {logo ? <div className="mb-4 text-center">{logo} </div> : null}
         {password && (
@@ -74,7 +74,7 @@ export const Auth = ({ logo, password, ssoTypes = [], redirect }: AuthProps) => 
             <div className="flex w-full justify-center gap-1">
               <div className="w-24 text-center">Account: </div>
               <Input
-                className="text-base-content"
+                className="text-foreground"
                 value={adminForm.accountId}
                 onChange={st.do.setAccountIdOnAdmin}
                 validate={(value) => value.length > 0}
@@ -83,7 +83,7 @@ export const Auth = ({ logo, password, ssoTypes = [], redirect }: AuthProps) => 
             <div className="flex w-full justify-center gap-1">
               <div className="w-24 text-center">Password: </div>
               <Input.Password
-                className="text-base-content"
+                className="text-foreground"
                 value={adminForm.password ?? ""}
                 onChange={st.do.setPasswordOnAdmin}
                 validate={(value) => value.length > 0}
@@ -116,9 +116,9 @@ export const ToolMenu = () => {
       <label tabIndex={0} className="btn btn-ghost m-1">
         <AiOutlineMenu className="mt-0.5" />
       </label>
-      <ul tabIndex={0} className="dropdown-content menu z-[1] w-32 rounded-box bg-base-100 p-2 shadow-sm">
+      <ul tabIndex={0} className="dropdown-content menu z-[1] w-32 rounded-box bg-background p-2 shadow-sm">
         <li onClick={() => void st.do.signoutAdmin()}>
-          <div className="flex items-center gap-2 text-base-content">
+          <div className="flex items-center gap-2 text-foreground">
             <AiOutlinePoweroff className="mt-0.5" /> Logout
           </div>
         </li>

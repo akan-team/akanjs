@@ -27,11 +27,11 @@ export const PushNotificationDemo = () => {
   };
 
   return (
-    <main className="min-h-screen bg-base-100 px-5 py-8 text-base-content">
+    <main className="min-h-screen bg-background px-5 py-8 text-foreground">
       <section className="mx-auto max-w-2xl rounded-3xl bg-base-200 p-6 shadow-xl">
         <p className="text-primary text-sm uppercase tracking-[0.24em]">Push Notification Demo</p>
         <h1 className="mt-3 font-bold text-3xl">usePushNotification</h1>
-        <p className="mt-3 text-base-content/70">
+        <p className="mt-3 text-foreground/70">
           This page checks the unified web/native push client API. The token is shown only on screen. Persist it with
           your own app-level API.
         </p>
@@ -61,8 +61,8 @@ export const PushNotificationDemo = () => {
           </pre>
         </div>
 
-        <div className="mt-6 rounded-2xl bg-base-300 p-4 text-base-content/70 text-sm">
-          <p className="font-semibold text-base-content">App-level storage example</p>
+        <div className="mt-6 rounded-2xl bg-base-300 p-4 text-foreground/70 text-sm">
+          <p className="font-semibold text-foreground">App-level storage example</p>
           <pre className="mt-3 overflow-auto whitespace-pre-wrap text-xs">{`const pushToken = await push.register();
 if (pushToken) await appApi.registerPushToken(pushToken);`}</pre>
         </div>
@@ -86,6 +86,6 @@ if (pushToken) await appApi.registerPushToken(pushToken);`}</pre>
 const StatusRow = ({ label, value }: { label: string; value: string }) => (
   <div className="flex items-center justify-between rounded-2xl bg-base-300 px-4 py-3">
     <span className="font-medium">{label}</span>
-    <span className="text-base-content/70">{value}</span>
+    <span className="text-foreground/70">{value}</span>
   </div>
 );

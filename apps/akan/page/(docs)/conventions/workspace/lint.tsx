@@ -46,9 +46,9 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
-                <div className="font-bold text-base-content">{title}</div>
-                <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+              <div key={title} className="rounded-xl border border-base-300 bg-background p-4">
+                <div className="font-bold text-foreground">{title}</div>
+                <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               </div>
             ))}
           </div>
@@ -287,12 +287,12 @@ export class OrderService extends serve(db.order, () => ({
               ],
             },
           ].map(({ id, title, desc, before, after }) => (
-            <div key={id} className="rounded-2xl border border-base-300 bg-base-100 p-4">
-              <div className="font-bold text-base-content">{title}</div>
-              <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+            <div key={id} className="rounded-2xl border border-base-300 bg-background p-4">
+              <div className="font-bold text-foreground">{title}</div>
+              <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               <div className="mt-4 grid gap-3 xl:grid-cols-2">
-                <div className="rounded-xl border border-error/30 bg-error/5 p-3">
-                  <div className="mb-3 font-bold text-error">❌ Before</div>
+                <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+                  <div className="mb-3 font-bold text-destructive">❌ Before</div>
                   <div className="space-y-3">
                     {before.map(({ title: snippetTitle, code }) => (
                       <Code.Snippet key={snippetTitle} title={snippetTitle} code={code} />

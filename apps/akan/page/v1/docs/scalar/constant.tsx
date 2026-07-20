@@ -574,7 +574,7 @@ export class Stock extends via((field) => ({
                 <tr className="hover">
                   <td>{l.trans({ en: "Enum case", ko: "Enum 케이스" })}</td>
                   <td>
-                    <code className="text-error">{"enumOf('status', ['ACTIVE'])"}</code>
+                    <code className="text-destructive">{"enumOf('status', ['ACTIVE'])"}</code>
                   </td>
                   <td>
                     <code className="text-success">{"enumOf('status', ['active'])"}</code>
@@ -583,7 +583,7 @@ export class Stock extends via((field) => ({
                 <tr className="hover">
                   <td>{l.trans({ en: "Array syntax", ko: "배열 문법" })}</td>
                   <td>
-                    <code className="text-error">{"field(Array<Int>)"}</code>
+                    <code className="text-destructive">{"field(Array<Int>)"}</code>
                   </td>
                   <td>
                     <code className="text-success">{"field([Int])"}</code>
@@ -592,7 +592,7 @@ export class Stock extends via((field) => ({
                 <tr className="hover">
                   <td>{l.trans({ en: "Dynamic default", ko: "동적 기본값" })}</td>
                   <td>
-                    <code className="text-error">{"{ default: dayjs() }"}</code>
+                    <code className="text-destructive">{"{ default: dayjs() }"}</code>
                   </td>
                   <td>
                     <code className="text-success">{"{ default: () => dayjs() }"}</code>
@@ -601,7 +601,7 @@ export class Stock extends via((field) => ({
                 <tr className="hover">
                   <td>{l.trans({ en: "Missing export", ko: "누락된 export" })}</td>
                   <td>
-                    <code className="text-error">{"class Status extends enumOf(...)"}</code>
+                    <code className="text-destructive">{"class Status extends enumOf(...)"}</code>
                   </td>
                   <td>
                     <code className="text-success">{"export class Status extends enumOf(...)"}</code>
@@ -610,7 +610,7 @@ export class Stock extends via((field) => ({
                 <tr className="hover">
                   <td>{l.trans({ en: "Optional field", ko: "선택적 필드" })}</td>
                   <td>
-                    <code className="text-error">{"field(ID, { nullable: true })"}</code>
+                    <code className="text-destructive">{"field(ID, { nullable: true })"}</code>
                   </td>
                   <td>
                     <code className="text-success">{"field(ID).optional()"}</code>

@@ -15,7 +15,7 @@ export default function Page() {
         </div>
       </Layout.TopInset>
       <section className="pt-5">
-        <Link className="block overflow-hidden rounded-[2rem] bg-base-200 text-base-content" href="/trips/detail">
+        <Link className="block overflow-hidden rounded-[2rem] bg-base-200 text-foreground" href="/trips/detail">
           <div className="h-36 bg-gradient-to-br from-primary via-secondary to-accent" />
           <div className="p-5">
             <p className="apptest-muted text-xs uppercase tracking-[0.24em]">Next trip</p>

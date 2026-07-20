@@ -40,10 +40,10 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
-                <span className="font-bold text-base-content">{title}: </span>
+              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+                <span className="font-bold text-foreground">{title}: </span>
 
-                <span className="text-base-content/70 text-sm">{desc}</span>
+                <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
@@ -109,10 +109,10 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
-                <span className="text-base-content/70 text-sm">{desc}</span>
+                <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
@@ -306,7 +306,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, type, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
                 <div className="flex items-center gap-3">
                   <div
                     className={clsx("font-mono font-semibold", {
@@ -327,7 +327,7 @@ export default function Page() {
                     {type}
                   </div>
                 </div>
-                <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+                <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               </div>
             ))}
           </div>
@@ -388,10 +388,10 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
-                <span className="text-base-content/70 text-sm">{desc}</span>
+                <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
@@ -455,10 +455,10 @@ pkgs/order-sdk/
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
-                <span className="text-base-content/70 text-sm">{desc}</span>
+                <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>

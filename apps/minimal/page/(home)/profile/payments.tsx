@@ -9,10 +9,10 @@ export default function Page() {
         <div className="font-semibold">Payments</div>
       </Layout.Navbar>
       <section className="pt-5">
-        <div className="rounded-[2rem] bg-gradient-to-br from-primary to-secondary p-5 text-primary-content">
+        <div className="rounded-[2rem] bg-gradient-to-br from-primary to-secondary p-5 text-primary-foreground">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-primary-content/60 text-sm">Available balance</p>
+              <p className="text-primary-foreground/60 text-sm">Available balance</p>
               <h1 className="mt-1 font-bold text-3xl">₩240,000</h1>
             </div>
             <AiOutlineSafety className="text-4xl" />
@@ -44,7 +44,7 @@ export default function Page() {
           ))}
         </div>
       </section>
-      <Layout.BottomInset className="flex h-[72px] w-full bg-base-100/80 px-5 backdrop-blur">
+      <Layout.BottomInset className="flex h-[72px] w-full bg-background/80 px-5 backdrop-blur">
         <Link className="btn btn-primary w-full rounded-2xl border-0" href="/profile/payments/methods">
           Manage payment methods
         </Link>

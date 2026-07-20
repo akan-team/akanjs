@@ -17,13 +17,13 @@ export default function Page() {
         </div>
       </Layout.TopInset>
       <section className="pt-5">
-        <div className="rounded-[2rem] bg-gradient-to-br from-primary to-secondary p-5 text-primary-content">
+        <div className="rounded-[2rem] bg-gradient-to-br from-primary to-secondary p-5 text-primary-foreground">
           <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-primary-content/20 text-2xl">
+            <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-primary-foreground/20 text-2xl">
               <AiOutlineUser />
             </div>
             <div>
-              <p className="text-primary-content/60 text-sm">Welcome back</p>
+              <p className="text-primary-foreground/60 text-sm">Welcome back</p>
               <h3 className="font-bold text-2xl">Seon Guest</h3>
             </div>
           </div>
@@ -40,7 +40,7 @@ export default function Page() {
             ["/profile/legal", "Legal info", "Terms and privacy information", <AiOutlineFileText key="file-text" />],
           ].map(([href, title, desc, icon]) => (
             <Link
-              className="flex items-center gap-3 border-base-content/10 border-b p-4 last:border-b-0"
+              className="flex items-center gap-3 border-foreground/10 border-b p-4 last:border-b-0"
               href={href as string}
               key={href as string}
             >

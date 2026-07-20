@@ -169,7 +169,7 @@ export const FloatingToolbar = ({
   return (
     <div
       ref={ref}
-      className="fixed z-50 flex items-center gap-1 rounded-md border border-base-content/10 bg-base-100 p-1 shadow-lg"
+      className="fixed z-50 flex items-center gap-1 rounded-md border border-foreground/10 bg-background p-1 shadow-lg"
       style={{ top, left, transform: "translateX(-50%)" }}
       onMouseDown={(event) => event.preventDefault()}
     >
@@ -198,7 +198,7 @@ export const FloatingToolbar = ({
               {mark.label}
             </button>
           ))}
-          <span className="mx-1 h-5 w-px bg-base-content/20" />
+          <span className="mx-1 h-5 w-px bg-foreground/20" />
           <button
             type="button"
             title="Link (⌘K)"

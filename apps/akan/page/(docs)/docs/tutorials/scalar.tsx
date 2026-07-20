@@ -196,24 +196,24 @@ export class InventoryInsight extends via(Inventory, (field) => ({})) {}
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📋</span>
                 <strong className="text-primary">{"stocks: field([Stock])"}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `An array of Stock scalars. This is where our reusable Scalar shines - we embed multiple Stock objects directly in the Inventory document.`,
                   ko: `Stock 스칼라들의 배열입니다. 여기서 재사용 가능한 Scalar가 빛을 발합니다 - 여러 Stock 객체를 Inventory 문서에 직접 내장합니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📅</span>
                 <strong className="text-primary">at</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `A date field that defaults to midnight of the current day. This allows creating one inventory record per day and easily finding today's inventory.`,
                   ko: `현재 날짜의 자정으로 기본 설정되는 날짜 필드입니다. 이를 통해 하루에 하나의 재고 기록을 만들고 오늘의 재고를 쉽게 찾을 수 있습니다.`,
@@ -345,36 +345,36 @@ export class InventoryModel extends into(Inventory, InventoryFilter, cnst.invent
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📉</span>
                 <strong className="text-primary">useStock / useStocks</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Decrements stock quantity when orders are placed. Validates that stock exists and has sufficient quantity, throwing Err errors with dictionary messages if not.`,
                   ko: `주문 시 재고 수량을 감소시킵니다. 재고가 존재하고 충분한 수량이 있는지 검증하며, 그렇지 않으면 dictionary 메시지와 함께 Err 오류를 발생시킵니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔄</span>
                 <strong className="text-primary">refill</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Restocks all items to their default quantities. Smart enough to only add what's needed - if you have 3 of 10 toppings left, it adds 7 more.`,
                   ko: `모든 아이템을 기본 수량으로 재입고합니다. 필요한 만큼만 추가할 정도로 똑똑합니다 - 토핑 10개 중 3개가 남아있으면 7개를 더 추가합니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📅</span>
                 <strong className="text-primary">generateTodaysInventory</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Automatically creates a new inventory record for today if one doesn't exist. Returns existing inventory if already created - ensuring one record per day.`,
                   ko: `오늘의 재고 기록이 없으면 자동으로 새로 생성합니다. 이미 생성되어 있으면 기존 재고를 반환합니다 - 하루에 하나의 기록만 보장합니다.`,
@@ -687,7 +687,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
   return (
     <Layout.Template className={clsx("w-full space-y-6", className)}>
       {showServeType ? ( // [!code collapse:15]
-        <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm">
+        <div className="rounded-2xl border border-base-300 bg-background p-8 shadow-md backdrop-blur-sm">
           <div className="space-y-6">
             <div className="flex items-center gap-3">
               <span className="text-3xl">🍦</span>
@@ -701,7 +701,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           </div>
         </div>
       ) : null}
-      <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm">
+      <div className="rounded-2xl border border-base-300 bg-background p-8 shadow-md backdrop-blur-sm">
         <div className="space-y-6">
           <div className="flex items-center gap-3"> // [!code collapse:4]
             <span className="text-3xl">📏</span>
@@ -718,7 +718,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           />
         </div>
       </div>
-      <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm">
+      <div className="rounded-2xl border border-base-300 bg-background p-8 shadow-md backdrop-blur-sm">
         <div className="space-y-6">
           <div className="flex items-center gap-3"> // [!code collapse:4]
             <span className="text-3xl">🍓</span>
@@ -735,7 +735,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           />
         </div>
       </div>
-      <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm"> // [!code collapse:13]
+      <div className="rounded-2xl border border-base-300 bg-background p-8 shadow-md backdrop-blur-sm"> // [!code collapse:13]
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <span className="text-3xl">📱</span>
@@ -759,36 +759,36 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔄</span>
                 <strong className="text-primary">loadTodaysInventory</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Called in useEffect to load inventory data when the component mounts. Shows a loading spinner until data is ready.`,
                   ko: `컴포넌트가 마운트될 때 재고 데이터를 로드하기 위해 useEffect에서 호출됩니다. 데이터가 준비될 때까지 로딩 스피너를 보여줍니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🚫</span>
                 <strong className="text-primary">{l.trans({ en: "Out of Stock Check", ko: "품절 확인" })}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `If yogurt ice cream is completely out of stock, shows a friendly message instead of the form. No point ordering if we can't make it!`,
                   ko: `요거트 아이스크림이 완전히 품절이면 양식 대신 친절한 메시지를 보여줍니다. 만들 수 없다면 주문을 받을 필요가 없습니다!`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">⚠️</span>
                 <strong className="text-primary">{"disabled: !isInStock"}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Each size and topping option checks if sufficient stock exists. Disabled options are grayed out but still visible, so customers know what's normally available.`,
                   ko: `각 사이즈와 토핑 옵션이 충분한 재고가 있는지 확인합니다. 비활성화된 옵션은 회색으로 표시되지만 여전히 보이므로, 고객이 평소에 무엇이 가능한지 알 수 있습니다.`,
@@ -883,7 +883,7 @@ interface GeneralProps {
 export const General = ({ className, inventory }: GeneralProps) => {
   const { l } = usePage();
   return (
-    <div className={clsx("w-full space-y-2 rounded-xl border border-base-300 bg-base-100 p-4", className)}>
+    <div className={clsx("w-full space-y-2 rounded-xl border border-base-300 bg-background p-4", className)}>
       <div className="text-lg font-bold text-primary">{dayjs(inventory.at).format("YYYY-MM-DD")}</div>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {inventory.stocks.map((stock, index) => {
@@ -892,7 +892,7 @@ export const General = ({ className, inventory }: GeneralProps) => {
           return (
             <div
               key={\`\${stock.type}-\${index}\`}
-              className={clsx("space-y-3 rounded-xl border bg-base-100 px-6 py-4 shadow-md", {
+              className={clsx("space-y-3 rounded-xl border bg-background px-6 py-4 shadow-md", {
                 "border-base-300": status === "empty",
                 "border-warning/40": status === "low",
                 "border-success/40": status === "normal",
@@ -901,9 +901,9 @@ export const General = ({ className, inventory }: GeneralProps) => {
               <div className="flex items-center justify-between">
                 <div
                   className={clsx("rounded px-2 py-1 text-xs font-bold", {
-                    "border border-base-300 bg-base-100 text-base-content/70": status === "empty",
-                    "border border-warning/40 bg-base-100 text-warning": status === "low",
-                    "border border-success/40 bg-base-100 text-success": status === "normal",
+                    "border border-base-300 bg-background text-foreground/70": status === "empty",
+                    "border border-warning/40 bg-background text-warning": status === "low",
+                    "border border-success/40 bg-background text-success": status === "normal",
                   })}
                 >
                   {l(\`stockType.\${stock.type}\`)}
@@ -1078,11 +1078,11 @@ export default async function Page() {
   );
 }`}
           />
-          <div className="my-6 rounded-lg bg-linear-to-r from-base-100 to-base-300 p-6">
+          <div className="my-6 rounded-lg bg-linear-to-r from-background to-base-300 p-6">
             <div className="mb-3 font-bold text-lg text-primary">
               {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
             </div>
-            <ul className="space-y-2 text-base-content/70 text-sm">
+            <ul className="space-y-2 text-foreground/70 text-sm">
               <li>
                 ✓{" "}
                 {l.trans({

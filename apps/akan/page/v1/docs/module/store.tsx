@@ -237,7 +237,7 @@ export class ProductStore extends store(sig.product, {
         <div className="mb-8" />
 
         <Docs.SubTitle>3.2. Generated Slice State</Docs.SubTitle>
-        <div className="mb-4 text-base-content/70 text-sm">
+        <div className="mb-4 text-foreground/70 text-sm">
           {l.trans({
             en: "Replace <Slice> with the capitalized slice name. For the default slice, usually the <Slice> suffix is essentially the model name.",
             ko: "<Slice>를 대문자로 시작하는 Slice 이름으로 대체하세요. 기본 Slice의 경우, 대개 <Slice> 접미사는 본질적으로 모델 이름입니다.",

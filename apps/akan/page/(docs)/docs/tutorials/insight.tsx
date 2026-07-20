@@ -100,24 +100,24 @@ export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query,
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔍</span>
                 <strong className="text-primary">{".search()"}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Defines a searchable parameter that can be set from the frontend. Here, "statuses" accepts an array of IcecreamOrderStatus values to filter orders.`,
                   ko: `프론트엔드에서 설정할 수 있는 검색 가능한 파라미터를 정의합니다. 여기서 "statuses"는 주문을 필터링하기 위한 IcecreamOrderStatus 값 배열을 받습니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">⚡</span>
                 <strong className="text-primary">inWaiting / inPickup</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Pre-defined slices with fixed status filters. inWaiting shows active and processing orders, while inPickup shows orders ready for customer pickup.`,
                   ko: `고정된 상태 필터가 있는 미리 정의된 슬라이스입니다. inWaiting은 활성화 및 처리 중인 주문을, inPickup은 고객 픽업 준비가 된 주문을 보여줍니다.`,
@@ -515,24 +515,24 @@ export class IcecreamOrderInsight extends via(IcecreamOrder, (field) => ({
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🍦</span>
                 <strong className="text-primary">{"{}"}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Counts all orders that match the current query. Leave accumulate as an empty object for the base count.`,
                   ko: `현재 쿼리에 일치하는 모든 주문을 카운트합니다. 기본 카운트는 accumulate를 빈 객체로 둡니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🍓</span>
                 <strong className="text-primary">{'{ toppings: "strawberry" }'}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Adds a field filter before counting. Because toppings is an array field, this counts orders whose toppings include "strawberry".`,
                   ko: `카운트 전에 필드 필터를 추가합니다. toppings가 배열 필드이므로 "strawberry" 토핑을 포함한 주문 수를 계산합니다.`,
@@ -681,44 +681,44 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
       <div className="flex items-center gap-3 border-b pb-4">
         <span className="text-3xl font-extrabold text-primary">🍦</span>
         <span className="text-2xl font-bold">{l("icecreamOrder.modelName")}</span>
-        <span className="text-base-content/50 ml-auto text-xs">#{icecreamOrder.id}</span>
+        <span className="text-foreground/50 ml-auto text-xs">#{icecreamOrder.id}</span>
       </div>
       <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-        <div className="text-base-content/50 font-semibold">{l("icecreamOrder.size")}</div>
+        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.size")}</div>
         <div>{icecreamOrder.size} cc</div>
-        <div className="text-base-content/50 font-semibold">{l("icecreamOrder.toppings")}</div>
+        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.toppings")}</div>
         <div className="flex flex-wrap gap-2">
           {icecreamOrder.toppings.length === 0 ? (
-            <span className="text-base-content/70 italic">{l.trans({ en: "No toppings", ko: "토핑 없음" })}</span>
+            <span className="text-foreground/70 italic">{l.trans({ en: "No toppings", ko: "토핑 없음" })}</span>
           ) : (
             icecreamOrder.toppings.map((topping) => (
               <span
                 key={topping}
-                className="inline-block rounded-full bg-base-100 px-2 py-1 text-xs font-medium text-primary"
+                className="inline-block rounded-full bg-background px-2 py-1 text-xs font-medium text-primary"
               >
                 {l(\`topping.\${topping}\`)}
               </span>
             ))
           )}
         </div>
-        <div className="text-base-content/50 font-semibold">{l("icecreamOrder.status")}</div>
+        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.status")}</div>
         <div>
           <span
             className={clsx("inline-block rounded-full px-2 py-1 text-xs font-semibold", {
-              "border border-primary/40 bg-base-100 text-primary": icecreamOrder.status === "active",
-              "border border-warning/40 bg-base-100 text-warning": icecreamOrder.status === "processing",
-              "border border-info/40 bg-info text-info-content": icecreamOrder.status === "served",
-              "border border-accent/40 bg-base-100 text-accent": icecreamOrder.status === "finished",
-              "border border-base-300 bg-base-100 text-base-content/70": icecreamOrder.status === "canceled",
+              "border border-primary/40 bg-background text-primary": icecreamOrder.status === "active",
+              "border border-warning/40 bg-background text-warning": icecreamOrder.status === "processing",
+              "border border-info/40 bg-info text-info-foreground": icecreamOrder.status === "served",
+              "border border-accent/40 bg-background text-accent": icecreamOrder.status === "finished",
+              "border border-base-300 bg-background text-foreground/70": icecreamOrder.status === "canceled",
             })}
           >
             {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
           </span>
         </div>
-        <div className="text-base-content/50 font-semibold">{l("icecreamOrder.createdAt")}</div>
-        <div className="text-base-content/70">{icecreamOrder.createdAt.format("YYYY-MM-DD HH:mm:ss")}</div>
-        <div className="text-base-content/50 font-semibold">{l("icecreamOrder.updatedAt")}</div>
-        <div className="text-base-content/70">{icecreamOrder.updatedAt.format("YYYY-MM-DD HH:mm:ss")}</div>
+        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.createdAt")}</div>
+        <div className="text-foreground/70">{icecreamOrder.createdAt.format("YYYY-MM-DD HH:mm:ss")}</div>
+        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.updatedAt")}</div>
+        <div className="text-foreground/70">{icecreamOrder.updatedAt.format("YYYY-MM-DD HH:mm:ss")}</div>
       </div>
       <div className="flex items-center justify-end gap-2">
         <IcecreamOrder.Util.Process icecreamOrderId={icecreamOrder.id} disabled={icecreamOrder.status !== "active"} />
@@ -933,11 +933,11 @@ export default async function Page() {
               ko: `이제 사용자가 상태별로 주문을 필터링하면, 인사이트 대시보드가 자동으로 업데이트되어 필터링된 주문에 대한 집계 통계만 보여줍니다. 이는 실시간 운영 결정에 매우 강력합니다!`,
             })}
           </div>
-          <div className="my-6 rounded-lg bg-linear-to-r from-base-100 to-base-300 p-6">
+          <div className="my-6 rounded-lg bg-linear-to-r from-background to-base-300 p-6">
             <div className="mb-3 font-bold text-lg text-primary">
               {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
             </div>
-            <ul className="space-y-2 text-base-content/70 text-sm">
+            <ul className="space-y-2 text-foreground/70 text-sm">
               <li>
                 ✓{" "}
                 {l.trans({

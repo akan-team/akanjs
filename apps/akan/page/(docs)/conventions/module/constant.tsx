@@ -73,9 +73,9 @@ export default function Page() {
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
-              <div className="font-bold text-base-content">{title}</div>
-              <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+            <div key={title} className="rounded-xl border border-base-300 bg-background p-4">
+              <div className="font-bold text-foreground">{title}</div>
+              <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>
           ))}
         </div>
@@ -165,18 +165,18 @@ type TicketStatusValue = TicketStatus["value"];`}
           </div>
         </Docs.Description>
         <div className="grid gap-3 xl:grid-cols-2">
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-            <div className="font-bold text-base-content">field.hidden()</div>
-            <div className="mt-2 text-base-content/70">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="font-bold text-foreground">field.hidden()</div>
+            <div className="mt-2 text-foreground/70">
               {l.trans({
                 en: "Use it for internal state that may exist on the document but should not be treated as a normal visible field.",
                 ko: "document에는 존재할 수 있지만 일반적으로 보이는 field처럼 다루면 안 되는 내부 상태에 사용합니다.",
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-            <div className="font-bold text-base-content">field.secret()</div>
-            <div className="mt-2 text-base-content/70">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="font-bold text-foreground">field.secret()</div>
+            <div className="mt-2 text-foreground/70">
               {l.trans({
                 en: "Use it for sensitive values such as password, phone, token, account id, wallet, or notification settings that should not be selected by default.",
                 ko: "password, phone, token, account id, wallet, notification 설정처럼 기본 조회에서 빠져야 하는 민감 값에 사용합니다.",
@@ -432,7 +432,7 @@ export class TicketInsight extends via(Ticket, (field) => ({
                 ko: "순환 barrel reference를 피하기 위해 다른 constant는 직접 파일 경로에서 import합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
+              <div key={rule} className="rounded-xl border border-base-300 bg-background px-4 text-foreground/70">
                 {rule}
               </div>
             ))}

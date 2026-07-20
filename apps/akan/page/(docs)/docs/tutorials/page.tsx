@@ -283,7 +283,7 @@ interface CardProps extends ModelProps<"icecreamOrder", cnst.LightIcecreamOrder>
 export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
   const { l } = usePage();
   return (
-    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-base-100 via-base-200 to-base-300 px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
+    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-base-200 to-base-300 px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
       <div className="flex flex-col justify-center">
         <div className="flex items-center gap-2 text-lg font-semibold text-primary">
           <span className="inline-block rounded bg-base-200 px-2 py-1 text-xs font-bold tracking-wider uppercase">
@@ -292,25 +292,25 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
           <span className="ml-2 font-mono text-primary">#{icecreamOrder.id.slice(-4)}</span>
           <span // [!code ++:9]
             className={clsx("ml-2 rounded px-2 py-1 text-xs font-semibold uppercase", {
-              "border border-primary/40 bg-base-100 text-primary": icecreamOrder.serveType === "forHere",
-              "border border-warning/40 bg-base-100 text-warning": icecreamOrder.serveType === "takeOut",
-              "border border-info/40 bg-info text-info-content": icecreamOrder.serveType === "delivery",
+              "border border-primary/40 bg-background text-primary": icecreamOrder.serveType === "forHere",
+              "border border-warning/40 bg-background text-warning": icecreamOrder.serveType === "takeOut",
+              "border border-info/40 bg-info text-info-foreground": icecreamOrder.serveType === "delivery",
             })}
           >
             {l(\`serveType.\${icecreamOrder.serveType}\`)}
           </span>
         </div>
         <div className="mt-4 flex items-center gap-2"> // [!code collapse:16]
-          <span className="inline-block rounded border border-base-300 bg-base-100 px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded border border-base-300 bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
             {l("icecreamOrder.status")}
           </span>
           <span
             className={clsx("ml-2 rounded-full px-3 py-1 text-sm font-semibold", {
-              "border border-primary/40 bg-base-100 text-primary": icecreamOrder.status === "active",
-              "border border-warning/40 bg-base-100 text-warning": icecreamOrder.status === "processing",
-              "border border-info/40 bg-info text-info-content": icecreamOrder.status === "served",
-              "border border-accent/40 bg-base-100 text-accent": icecreamOrder.status === "finished",
-              "border border-base-300 bg-base-100 text-base-content/70": icecreamOrder.status === "canceled",
+              "border border-primary/40 bg-background text-primary": icecreamOrder.status === "active",
+              "border border-warning/40 bg-background text-warning": icecreamOrder.status === "processing",
+              "border border-info/40 bg-info text-info-foreground": icecreamOrder.status === "served",
+              "border border-accent/40 bg-background text-accent": icecreamOrder.status === "finished",
+              "border border-base-300 bg-background text-foreground/70": icecreamOrder.status === "canceled",
             })}
           >
             {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
@@ -318,7 +318,7 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
         </div>
       </div>
       {showControls ? ( // [!code collapse:16]
-        <div className="bg-base-100 flex items-center justify-center gap-2 rounded-xl p-4">
+        <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4">
           <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
             <button className="btn btn-primary">
               <span>{l.trans({ en: "View", ko: "보기" })}</span>
@@ -365,24 +365,24 @@ import { usePage } from "@apps/koyo/client";
 export default function Page() {
   const { l } = usePage();
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-linear-to-br from-base-100 via-base-200 to-base-300 p-6">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-linear-to-br from-background via-base-200 to-base-300 p-6">
       <div className="absolute top-6 right-6 flex gap-2">
         <Link.Lang
           lang="en"
-          className="rounded-lg bg-base-100/70 px-4 py-2 font-semibold text-primary backdrop-blur-sm transition-all duration-200 hover:bg-base-100 hover:shadow-md"
+          className="rounded-lg bg-background/70 px-4 py-2 font-semibold text-primary backdrop-blur-sm transition-all duration-200 hover:bg-background hover:shadow-md"
         >
           English
         </Link.Lang>
         <Link.Lang
           lang="ko"
-          className="rounded-lg bg-base-100/70 px-4 py-2 font-semibold text-primary backdrop-blur-sm transition-all duration-200 hover:bg-base-100 hover:shadow-md"
+          className="rounded-lg bg-background/70 px-4 py-2 font-semibold text-primary backdrop-blur-sm transition-all duration-200 hover:bg-background hover:shadow-md"
         >
           한국어
         </Link.Lang>
       </div>
       <div className="w-full max-w-4xl space-y-8 text-center">
         <div className="space-y-4">
-          <h1 className="bg-linear-to-r from-base-100 via-base-200 to-base-300 text-7xl font-bold text-primary duration-1000 md:text-8xl">
+          <h1 className="bg-linear-to-r from-background via-base-200 to-base-300 text-7xl font-bold text-primary duration-1000 md:text-8xl">
             Koyo
           </h1>
           <p className="text-2xl font-light text-primary delay-150 duration-1000 md:text-3xl">
@@ -423,36 +423,36 @@ export default function Page() {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🌍</span>
                 <strong className="text-primary">Link.Lang</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Language switcher buttons allow customers to choose their preferred language. This is essential for kiosks in tourist areas or multicultural neighborhoods.`,
                   ko: `언어 전환 버튼을 통해 고객이 원하는 언어를 선택할 수 있습니다. 이는 관광지나 다문화 지역의 키오스크에 필수적입니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔗</span>
                 <strong className="text-primary">{"Link with Query Params"}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `The "For Here" and "Take Out" buttons pass serveType as a query parameter to the next page. This pre-fills the order form with the customer's choice.`,
                   ko: `"매장 식사"와 "포장 주문" 버튼은 serveType을 쿼리 파라미터로 다음 페이지에 전달합니다. 이를 통해 주문 양식에 고객의 선택이 미리 채워집니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">✨</span>
                 <strong className="text-primary">{l.trans({ en: "Visual Design", ko: "비주얼 디자인" })}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Large buttons with emojis make the interface touch-friendly and intuitive. Gradient backgrounds and hover effects create a modern, engaging experience.`,
                   ko: `이모지가 있는 큰 버튼은 인터페이스를 터치하기 쉽고 직관적으로 만듭니다. 그라데이션 배경과 호버 효과가 현대적이고 매력적인 경험을 만들어냅니다.`,
@@ -475,19 +475,19 @@ import { usePage } from "@apps/koyo/client";
 export default function Page() {
   const { l } = usePage();
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-linear-to-br from-base-100 via-base-200 to-base-300 p-6">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-linear-to-br from-background via-base-200 to-base-300 p-6">
       <div className="w-full max-w-2xl space-y-8 text-center">
         <div className="flex justify-center">
-          <div className="flex h-32 w-32 items-center justify-center rounded-full bg-linear-to-r from-base-100 to-base-300 text-7xl shadow-2xl">
+          <div className="flex h-32 w-32 items-center justify-center rounded-full bg-linear-to-r from-background to-base-300 text-7xl shadow-2xl">
             ✓
           </div>
         </div>
         <div className="space-y-4">
-          <h1 className="bg-linear-to-r from-base-100 via-base-200 to-base-300 text-5xl font-bold text-primary md:text-6xl">
+          <h1 className="bg-linear-to-r from-background via-base-200 to-base-300 text-5xl font-bold text-primary md:text-6xl">
             {l.trans({ en: "Order Placed!", ko: "주문 완료!" })}
           </h1>
         </div>
-        <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm">
+        <div className="rounded-2xl border border-base-300 bg-background p-8 shadow-md backdrop-blur-sm">
           <div className="space-y-3">
             <div className="flex items-center justify-center gap-2 text-lg text-primary">
               <span className="text-3xl">🎉</span>
@@ -495,7 +495,7 @@ export default function Page() {
                 {l.trans({ en: "We're preparing your order", ko: "주문을 준비하고 있습니다" })}
               </span>
             </div>
-            <p className="text-base-content/70">
+            <p className="text-foreground/70">
               {l.trans({
                 en: "Please wait for your order number to be called",
                 ko: "주문 번호가 호출될 때까지 기다려 주세요",
@@ -588,13 +588,13 @@ export default function Page({ searchParams }: PageProps) {
   const icecreamOrderForm: Partial<cnst.IcecreamOrder> = { serveType };
         
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-linear-to-br from-base-100 via-base-200 to-base-300 p-6">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-linear-to-br from-background via-base-200 to-base-300 p-6">
       <div className="w-full max-w-2xl space-y-8">
         <div className="space-y-4 text-center">
           <div className="flex justify-center">
             <span className="text-8xl">🍦</span>
           </div>
-          <h1 className="bg-linear-to-r from-base-100 via-base-200 to-base-300 text-5xl font-bold text-primary md:text-6xl">
+          <h1 className="bg-linear-to-r from-background via-base-200 to-base-300 text-5xl font-bold text-primary md:text-6xl">
             {l("base.createModel", { model: l("icecreamOrder.modelName") })}
           </h1>
           <p className="text-xl font-light text-primary">
@@ -623,36 +623,36 @@ export default function Page({ searchParams }: PageProps) {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔍</span>
                 <strong className="text-primary">searchParams</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Next.js provides searchParams as a Promise that contains URL query parameters. We extract the serveType to pre-fill the order form with the customer's choice from the landing page.`,
                   ko: `Next.js는 URL 쿼리 파라미터를 포함하는 Promise로 searchParams를 제공합니다. serveType을 추출하여 랜딩 페이지에서 고객이 선택한 내용으로 주문 양식을 미리 채웁니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📝</span>
                 <strong className="text-primary">Load.Edit</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `The Load.Edit component handles form state management, validation, and submission. It connects to the slice for data persistence and automatically navigates to the success page on submit.`,
                   ko: `Load.Edit 컴포넌트는 폼 상태 관리, 유효성 검사, 제출을 처리합니다. 데이터 저장을 위해 슬라이스에 연결되고 제출 시 자동으로 성공 페이지로 이동합니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className="rounded-lg border border-base-300 bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">↩️</span>
                 <strong className="text-primary">{'onCancel="back"'}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Setting onCancel to "back" enables the cancel button to navigate back to the previous page. This provides an easy way for customers to change their mind.`,
                   ko: `onCancel을 "back"으로 설정하면 취소 버튼이 이전 페이지로 돌아갑니다. 이를 통해 고객이 쉽게 마음을 바꿀 수 있습니다.`,
@@ -685,7 +685,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
   return (
     <Layout.Template className={clsx("w-full space-y-6", className)}> // [!code highlight:56]
       {showServeType ? (
-        <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm">
+        <div className="rounded-2xl border border-base-300 bg-background p-8 shadow-md backdrop-blur-sm">
           <div className="space-y-6">
             <div className="flex items-center gap-3">
               <span className="text-3xl">🍦</span>
@@ -699,7 +699,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           </div>
         </div>
       ) : null}
-      <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm">
+      <div className="rounded-2xl border border-base-300 bg-background p-8 shadow-md backdrop-blur-sm">
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <span className="text-3xl">📏</span>
@@ -712,7 +712,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           />
         </div>
       </div>
-      <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm">
+      <div className="rounded-2xl border border-base-300 bg-background p-8 shadow-md backdrop-blur-sm">
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <span className="text-3xl">🍓</span>
@@ -725,7 +725,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           />
         </div>
       </div>
-      <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm">
+      <div className="rounded-2xl border border-base-300 bg-background p-8 shadow-md backdrop-blur-sm">
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <span className="text-3xl">📱</span>
@@ -797,54 +797,54 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
             })}
           </div>
           <div className="my-4 space-y-4">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-4">
+            <div className="rounded-lg border border-base-300 bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">1️⃣</span>
                 <strong className="text-primary">
                   {l.trans({ en: "Clear Navigation Flow", ko: "명확한 네비게이션 흐름" })}
                 </strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Guide customers through a linear flow: Landing → Order Form → Success. Each step has one clear purpose, reducing confusion.`,
                   ko: `고객을 선형 흐름으로 안내합니다: 랜딩 → 주문 양식 → 성공. 각 단계는 하나의 명확한 목적을 가져 혼란을 줄입니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-4">
+            <div className="rounded-lg border border-base-300 bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">2️⃣</span>
                 <strong className="text-primary">
                   {l.trans({ en: "Touch-Friendly Design", ko: "터치 친화적 디자인" })}
                 </strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Large buttons (py-6), adequate spacing, and visual feedback on interaction make the interface easy to use on touchscreens.`,
                   ko: `큰 버튼(py-6), 적절한 간격, 상호작용 시 시각적 피드백이 터치스크린에서 인터페이스를 사용하기 쉽게 만듭니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-4">
+            <div className="rounded-lg border border-base-300 bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">3️⃣</span>
                 <strong className="text-primary">
                   {l.trans({ en: "Visual Hierarchy with Icons", ko: "아이콘을 통한 시각적 계층" })}
                 </strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Emojis and icons provide instant visual cues that help customers understand each section without reading text carefully.`,
                   ko: `이모지와 아이콘은 고객이 텍스트를 자세히 읽지 않고도 각 섹션을 이해할 수 있도록 즉각적인 시각적 단서를 제공합니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-4">
+            <div className="rounded-lg border border-base-300 bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">4️⃣</span>
                 <strong className="text-primary">{l.trans({ en: "State Preservation", ko: "상태 보존" })}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Using query parameters and Load.Edit ensures customer choices are preserved between pages, creating a seamless experience.`,
                   ko: `쿼리 파라미터와 Load.Edit를 사용하면 고객의 선택이 페이지 간에 보존되어 끊김 없는 경험을 만들어냅니다.`,
@@ -852,11 +852,11 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
               </div>
             </div>
           </div>
-          <div className="my-6 rounded-lg bg-linear-to-r from-base-100 to-base-300 p-6">
+          <div className="my-6 rounded-lg bg-linear-to-r from-background to-base-300 p-6">
             <div className="mb-3 font-bold text-lg text-primary">
               {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
             </div>
-            <ul className="space-y-2 text-base-content/70 text-sm">
+            <ul className="space-y-2 text-foreground/70 text-sm">
               <li>
                 ✓{" "}
                 {l.trans({

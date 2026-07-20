@@ -114,7 +114,7 @@ export const Card = ({ article, className, href }: ModelProps<"article", cnst.Li
   return (
     <Layout.Unit className={clsx("rounded-lg border", className)} href={href}>
       <div className="font-bold">{article.title}</div>
-      <div className="text-base-content/70">{article.summary}</div>
+      <div className="text-foreground/70">{article.summary}</div>
     </Layout.Unit>
   );
 };`}
@@ -211,9 +211,9 @@ export const Mini = ({ article, className, href }: MiniProps) => (
             </colgroup>
             <thead>
               <tr className="bg-base-200">
-                <th className="text-base-content">field</th>
-                <th className="text-base-content">{l.trans({ en: "Description", ko: "설명" })}</th>
-                <th className="text-base-content">{l.trans({ en: "Example", ko: "예제" })}</th>
+                <th className="text-foreground">field</th>
+                <th className="text-foreground">{l.trans({ en: "Description", ko: "설명" })}</th>
+                <th className="text-foreground">{l.trans({ en: "Example", ko: "예제" })}</th>
               </tr>
             </thead>
             <tbody>
@@ -233,11 +233,11 @@ export const Mini = ({ article, className, href }: MiniProps) => (
         </div>
         <div className="space-y-4 lg:hidden">
           {loadUnitsStateItems.map((item, index) => (
-            <div key={index} className="rounded-lg bg-base-100 p-3">
+            <div key={index} className="rounded-lg bg-background p-3">
               <div className="mb-2">
                 <span className="block font-bold font-mono text-primary">{item.name}</span>
               </div>
-              <p className="mb-3 text-base-content text-sm leading-relaxed" style={{ whiteSpace: "pre-line" }}>
+              <p className="mb-3 text-foreground text-sm leading-relaxed" style={{ whiteSpace: "pre-line" }}>
                 {item.desc}
               </p>
               <Code.Raw language="typescript" code={item.example as string} />
@@ -293,7 +293,7 @@ export const Mini = ({ article, className, href }: MiniProps) => (
                 ko: "하나의 Card에 많은 flag를 추가하기보다 display 목적별 variant를 export합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
+              <div key={rule} className="rounded-xl border border-base-300 bg-background px-4 text-foreground/70">
                 {rule}
               </div>
             ))}

@@ -52,10 +52,10 @@ export default function Page() {
               }),
             ],
           ].map(([title, desc]) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
-              <span className="font-bold text-base-content">{title}: </span>
+            <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <span className="font-bold text-foreground">{title}: </span>
 
-              <span className="text-base-content/70 text-sm">{desc}</span>
+              <span className="text-foreground/70 text-sm">{desc}</span>
             </div>
           ))}
         </div>
@@ -84,18 +84,18 @@ export default function Page() {
 };`}
         />
         <div className="space-y-1">
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
             <div className="font-mono font-semibold text-primary">basePath</div>
-            <div className="mt-2 text-base-content/70 text-sm">
+            <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
                 en: "The first page folder and the client boundary. For basePath: store, pages live under page/store.",
                 ko: "첫 번째 page 폴더이자 클라이언트의 경계입니다. basePath가 store이면 page/store 아래에 페이지를 둡니다.",
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
             <div className="font-mono font-semibold text-primary">domains</div>
-            <div className="mt-2 text-base-content/70 text-sm">
+            <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
                 en: "Production domains that should open this basePath. When the domain matches, users see the site without the basePath segment.",
                 ko: "이 basePath를 열 배포 도메인입니다. 도메인이 매칭되면 사용자는 basePath 세그먼트 없이 사이트를 보게 됩니다.",
@@ -117,22 +117,22 @@ export default function Page() {
           </div>
         </Docs.Description>
         <div className="space-y-1">
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-            <div className="font-bold text-base-content">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="font-bold text-foreground">
               {l.trans({ en: "Use basePath", ko: "basePath를 쓰는 경우" })}
             </div>
-            <div className="mt-2 text-base-content/70 text-sm">
+            <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
                 en: "Use it for surfaces that are sold, deployed, or accessed as separate products, even if they share the same domain logic and backend services.",
                 ko: "같은 도메인 로직과 백엔드 서비스를 공유하더라도, 제품이나 배포 단위, 접근 대상이 분리되어야 하는 화면에 사용합니다.",
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-            <div className="font-bold text-base-content">
+          <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="font-bold text-foreground">
               {l.trans({ en: "Use normal routing", ko: "일반 라우팅을 쓰는 경우" })}
             </div>
-            <div className="mt-2 text-base-content/70 text-sm">
+            <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
                 en: "Use it for pages that are just sections inside the same client, such as account settings, dashboards, tabs, or grouped screens.",
                 ko: "계정 설정, 대시보드, 탭 화면, 그룹 화면처럼 같은 클라이언트 안에 속한 페이지에는 일반 라우팅을 사용합니다.",
@@ -171,10 +171,10 @@ export default function Page() {
               }),
             ],
           ].map(([title, desc]) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
-              <span className="font-bold text-base-content">{title}: </span>
+            <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <span className="font-bold text-foreground">{title}: </span>
 
-              <span className="text-base-content/70 text-sm">{desc}</span>
+              <span className="text-foreground/70 text-sm">{desc}</span>
             </div>
           ))}
         </div>

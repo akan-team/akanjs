@@ -10,7 +10,7 @@ export default function Page() {
       </Layout.Navbar>
       <section className="pt-5">
         <div className="apptest-card rounded-[2rem] p-5 text-center">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[2rem] bg-gradient-to-br from-primary to-secondary text-3xl text-primary-content">
+          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[2rem] bg-gradient-to-br from-primary to-secondary text-3xl text-primary-foreground">
             <AiOutlineUser />
           </div>
           <h1 className="mt-4 font-bold text-2xl">Seon Guest</h1>

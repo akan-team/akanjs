@@ -93,7 +93,7 @@ import { cnst, Price } from "@apps/myapp/client";
 export const Card = ({ product }: { product: cnst.Product }) => (
   <Layout.Unit className="rounded-xl border border-base-300 p-4">
     <div className="font-bold">{product.name}</div>
-    <Price.Label price={product.price} className="text-base-content/70" />
+    <Price.Label price={product.price} className="text-foreground/70" />
   </Layout.Unit>
 );`}
         />

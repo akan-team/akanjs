@@ -32,9 +32,9 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
+              <div key={title} className="rounded-xl border border-base-300 bg-background p-4">
                 <div className="font-mono font-semibold text-primary">{title}</div>
-                <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+                <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               </div>
             ))}
           </div>
@@ -219,7 +219,7 @@ export function SharedLogo() {
                 ko: "여러 앱이 같은 파일을 사용한다면 library asset 폴더에 reusable public 파일로 둡니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
+              <div key={rule} className="rounded-xl border border-base-300 bg-background px-4 text-foreground/70">
                 {rule}
               </div>
             ))}

@@ -118,7 +118,7 @@ export const Card = ({ className, user, href }: ModelProps<"user", cnst.LightUse
     <Link 
       href={href}
       className={clsx(
-        "bg-base-100 border-base-200 block rounded-xl border p-4 transition-all hover:shadow-md", 
+        "bg-background border-base-200 block rounded-xl border p-4 transition-all hover:shadow-md", 
         className
       )}
     >
@@ -415,7 +415,7 @@ export const Card = ({ className, init, prefix = "" }: CardProps) => {
           code={`
 // apps/my-app/app/.../story/page.tsx
 {storyList.map((story, index) => (
-  <div key={index} className="card bg-base-100 shadow-sm">
+  <div key={index} className="card bg-background shadow-sm">
     <div className="card-body">
       <h3 className="card-title">Stories</h3>
 
