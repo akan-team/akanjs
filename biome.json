@@ -91,7 +91,7 @@
           "fix": "safe",
           "options": {
             "attributes": ["classList"],
-            "functions": ["clsx", "cva"]
+            "functions": ["clsx", "cva", "cn"]
           }
         },
         "noUnnecessaryConditions": {
