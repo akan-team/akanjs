@@ -1,7 +1,7 @@
 "use client";
 import { PrimitiveRegistry } from "akanjs/base";
 // import { isGqlScalar } from "akanjs/base";
-import { fetch, usePage } from "akanjs/client";
+import { cn, fetch, usePage } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import { type ConstantCls, ConstantRegistry } from "akanjs/constant";
 import type { SerializedEndpoint } from "akanjs/signal";
@@ -10,6 +10,7 @@ import type { SerializedEndpoint } from "akanjs/signal";
 import { useEffect, useMemo, useState } from "react";
 import { AiOutlineDisconnect, AiOutlineFileWord, AiOutlineSend, AiOutlineSwap } from "react-icons/ai";
 import { BiSolidNetworkChart } from "react-icons/bi";
+import { buttonVariants } from "../Button";
 import Arg from "./Arg";
 import Listener from "./Listener";
 import { makeRequestExample } from "./makeExample";
@@ -37,15 +38,15 @@ const MessageEndpoint = ({ refName, endpointKey, endpoint, open }: MessageEndpoi
         <div className="flex flex-wrap items-center gap-2">
           <div className={getEndpointBadgeClassName(endpoint.type)}>{endpoint.type}</div>
           <div className="font-bold text-lg">{endpointKey}</div>
-          <div className="text-base-content/70 text-sm">{l._(`${refName}.signal.${endpointKey}`)}</div>
+          <div className="text-foreground/70 text-sm">{l._(`${refName}.signal.${endpointKey}`)}</div>
         </div>
       </div>
       <div className={signalUi.endpointContent}>
-        <div className="rounded-xl bg-base-100 p-3">
+        <div className="rounded-xl bg-background p-3">
           <div className={signalUi.sectionTitle}>Description</div>
           {endpoint.guards?.some((guard) => guard !== "None") ? (
             <div className="mt-2 flex flex-wrap items-center gap-2 font-normal text-sm">
-              <span className="text-base-content/70">Guards</span>
+              <span className="text-foreground/70">Guards</span>
               {endpoint.guards.map((guard) => (
                 <span className={getGuardBadgeClassName(guard)} key={guard}>
                   {guard}
@@ -53,16 +54,19 @@ const MessageEndpoint = ({ refName, endpointKey, endpoint, open }: MessageEndpoi
               ))}
             </div>
           ) : null}
-          <div className="mt-2 font-normal text-base-content/70 text-sm">
+          <div className="mt-2 font-normal text-foreground/70 text-sm">
             {l._(`${refName}.signal.${endpointKey}.desc`)}
           </div>
         </div>
-        <div className="join w-fit">
+        <div className="inline-flex w-fit overflow-hidden rounded-field">
           <button
             onClick={() => {
               setViewStatus("doc");
             }}
-            className={`btn join-item btn-sm ${viewStatus === "doc" ? "btn-primary" : "btn-outline"}`}
+            className={cn(
+              buttonVariants({ variant: viewStatus === "doc" ? "primary" : "outline", size: "sm" }),
+              "rounded-none",
+            )}
           >
             <AiOutlineFileWord className="text-xl" /> View Doc
           </button>
@@ -70,7 +74,10 @@ const MessageEndpoint = ({ refName, endpointKey, endpoint, open }: MessageEndpoi
             onClick={() => {
               setViewStatus("test");
             }}
-            className={`btn join-item btn-sm ${viewStatus === "test" ? "btn-primary" : "btn-outline"}`}
+            className={cn(
+              buttonVariants({ variant: viewStatus === "test" ? "primary" : "outline", size: "sm" }),
+              "rounded-none",
+            )}
           >
             <BiSolidNetworkChart className="text-xl" /> Message
           </button>
@@ -217,19 +224,23 @@ const MessageTry = ({ endpointKey, endpoint }: MessageTryProps) => {
           <div className="flex w-full flex-col gap-2">
             <button
               disabled={!!stopListen}
-              className="btn btn-primary w-full"
+              className={cn(buttonVariants({ variant: "primary" }), "w-full")}
               onClick={() => {
                 onListen();
               }}
             >
               <AiOutlineSwap className="" /> Listen Message
             </button>
-            <button disabled={!stopListen} className="btn btn-secondary w-full" onClick={() => void onSend()}>
+            <button
+              disabled={!stopListen}
+              className={cn(buttonVariants({ variant: "secondary" }), "w-full")}
+              onClick={() => void onSend()}
+            >
               <AiOutlineSend className="" /> Send Message
             </button>
             <button
               disabled={!stopListen}
-              className="btn btn-outline w-full"
+              className={cn(buttonVariants({ variant: "outline" }), "w-full")}
               onClick={() => {
                 onStopListen();
               }}
