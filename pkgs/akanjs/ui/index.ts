@@ -1,6 +1,7 @@
 export { animated } from "./animated";
+export { Badge, type BadgeVariants, badgeVariants } from "./Badge";
 export { BottomSheet, type BottomSheetRef } from "./BottomSheet";
-export { Button } from "./Button";
+export { Button, type ButtonVariants, buttonVariants } from "./Button";
 export { ClientSide } from "./ClientSide";
 export { Clipboard } from "./Clipboard";
 export { Constant } from "./Constant";
