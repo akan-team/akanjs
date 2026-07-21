@@ -1,9 +1,13 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import type { FC, ReactNode } from "react";
 import { BiChevronLeft, BiChevronRight, BiDotsHorizontalRounded } from "react-icons/bi";
 
+import { buttonVariants } from "./Button";
 import { createOverridable } from "./UiOverride";
+
+/** Square ghost button style shared by every pager control (canonical buttonVariants). */
+const pageBtn = buttonVariants({ variant: "ghost", size: "icon" });
 
 export interface PaginationProps {
   /** Current 1-based page number. */
@@ -66,8 +70,9 @@ export const DefaultPagination: FC<PaginationProps> = ({
       {total > 0 && (
         <>
           <button
-            className={clsx(
-              "btn btn-ghost btn-square duration-200",
+            className={cn(
+              pageBtn,
+              "duration-200",
               currentPage > 1 ? "opacity-100" : "opacity-0 hover:cursor-default hover:opacity-0",
             )}
             onClick={handleLeftClick}
@@ -78,17 +83,14 @@ export const DefaultPagination: FC<PaginationProps> = ({
           {displayNumbers.map((pageNum, index) => {
             if (pageNum === "...") {
               return (
-                <button key={index} className="btn btn-ghost btn-square text-primary/40">
+                <button key={index} className={cn(pageBtn, "text-primary/40")}>
                   <BiDotsHorizontalRounded />
                 </button>
               );
             }
             if (Number(pageNum) === currentPage) {
               return (
-                <button
-                  key={index}
-                  className={clsx("btn btn-ghost btn-square text-primary", classNames?.activePageNumClassName)}
-                >
+                <button key={index} className={cn(pageBtn, "text-primary", classNames?.activePageNumClassName)}>
                   {pageNum}
                 </button>
               );
@@ -96,7 +98,7 @@ export const DefaultPagination: FC<PaginationProps> = ({
             return (
               <button
                 key={index}
-                className={clsx("btn btn-ghost btn-square text-primary/40", classNames?.pageNumClassName)}
+                className={cn(pageBtn, "text-primary/40", classNames?.pageNumClassName)}
                 onClick={() => {
                   onPageSelect(Number(pageNum));
                 }}
@@ -107,8 +109,9 @@ export const DefaultPagination: FC<PaginationProps> = ({
           })}
 
           <button
-            className={clsx(
-              "btn btn-ghost btn-square duration-200",
+            className={cn(
+              pageBtn,
+              "duration-200",
               currentPage < totalPages ? "opacity-100" : "opacity-0 hover:cursor-default hover:opacity-0",
             )}
             onClick={handleRightClick}

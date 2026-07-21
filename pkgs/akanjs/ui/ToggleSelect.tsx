@@ -1,8 +1,13 @@
 "use client";
-import { clsx, usePage } from "akanjs/client";
+import { cn, usePage } from "akanjs/client";
 import { type ComponentType, createElement } from "react";
 
+import { buttonVariants } from "./Button";
 import { createOverridable, useUiOverride } from "./UiOverride";
+
+/** Toggle-select cell: outline button, filled success when selected. */
+const toggleBtn = buttonVariants({ variant: "outline", size: "sm" });
+const selectedCls = "border-transparent bg-success/70 text-success-foreground hover:bg-success/70";
 
 export interface ToggleSelectProps<I extends string | number | boolean | null> {
   className?: string;
@@ -44,8 +49,8 @@ const DefaultToggleSelect = <I extends string | number | boolean | null>({
   );
   return (
     <div
-      className={clsx(
-        "relative flex w-full flex-wrap items-center gap-1 rounded-md border border-base-content/20 p-2",
+      className={cn(
+        "relative flex w-full flex-wrap items-center gap-1 rounded-md border border-foreground/20 p-2",
         className,
       )}
     >
@@ -56,15 +61,7 @@ const DefaultToggleSelect = <I extends string | number | boolean | null>({
           <button
             key={idx}
             disabled={isDisabled}
-            className={clsx(
-              "btn btn-sm",
-              { "bg-success/70 text-success-content": isSelected, "btn-disabled cursor-not-allowed": isDisabled },
-              // {
-              //   "btn-error": status === "error",
-              //   "btn-warning": status === "warning",
-              // },
-              btnClassName,
-            )}
+            className={cn(toggleBtn, isSelected && selectedCls, isDisabled && "cursor-not-allowed", btnClassName)}
             onClick={() => {
               onChange(option.value, idx);
             }}
@@ -74,7 +71,7 @@ const DefaultToggleSelect = <I extends string | number | boolean | null>({
         );
       })}
       {invalidMessage ? (
-        <div className="absolute -bottom-4 animate-fadeIn text-error text-xs">{invalidMessage}</div>
+        <div className="absolute -bottom-4 animate-fadeIn text-destructive text-xs">{invalidMessage}</div>
       ) : null}
     </div>
   );
@@ -120,8 +117,8 @@ const DefaultMulti = ({
   );
   return (
     <div
-      className={clsx(
-        "relative flex w-full flex-wrap items-center gap-1 rounded-md border border-base-content/20 p-2",
+      className={cn(
+        "relative flex w-full flex-wrap items-center gap-1 rounded-md border border-foreground/20 p-2",
         className,
       )}
     >
@@ -132,11 +129,7 @@ const DefaultMulti = ({
           <button
             key={idx}
             disabled={isDisabled}
-            className={clsx(
-              "btn btn-sm",
-              { "bg-success/70 text-success-content": isSelected, "cursor-not-allowed": isDisabled },
-              btnClassName,
-            )}
+            className={cn(toggleBtn, isSelected && selectedCls, isDisabled && "cursor-not-allowed", btnClassName)}
             onClick={() => {
               onChange(
                 isSelected
@@ -154,7 +147,7 @@ const DefaultMulti = ({
         );
       })}
       {invalidMessage ? (
-        <div className="absolute -bottom-4 animate-fadeIn text-error text-xs">{invalidMessage}</div>
+        <div className="absolute -bottom-4 animate-fadeIn text-destructive text-xs">{invalidMessage}</div>
       ) : null}
     </div>
   );
