@@ -1,6 +1,6 @@
 "use client";
 import { type ReactNode, useMemo } from "react";
-import { AiOutlineMeh } from "react-icons/ai";
+import { AiOutlineLoading, AiOutlineMeh } from "react-icons/ai";
 
 interface ViewProps<Full extends { id: string }> {
   className?: string;
@@ -41,7 +41,7 @@ export default function View<Full extends { id: string }>({
           : (loading ??
             (() => (
               <div className="flex size-full flex-col items-center justify-center gap-3 pt-6 pb-3">
-                <span className="loading loading-dots loading-lg" />
+                <AiOutlineLoading className="animate-spin text-2xl text-primary/60" />
                 Loading
               </div>
             )))

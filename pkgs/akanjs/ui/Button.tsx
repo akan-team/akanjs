@@ -1,22 +1,63 @@
 "use client";
-import { clsx, usePage } from "akanjs/client";
+import { cn, usePage } from "akanjs/client";
+import { cva, type VariantProps } from "class-variance-authority";
 import type React from "react";
 import { type ButtonHTMLAttributes, type ComponentType, createElement, useState } from "react";
-import { AiOutlineCheckCircle } from "react-icons/ai";
+import { AiOutlineCheckCircle, AiOutlineLoading3Quarters } from "react-icons/ai";
 
 import { useUiOverride } from "./UiOverride";
 
-export type ButtonProps<Result> = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick"> & {
-  /** Async-aware click handler. Call onError to show the localized error state without throwing. */
-  onClick: (
-    e: React.MouseEvent<HTMLButtonElement>,
-    { onError }: { onError: (error: string) => void },
-  ) => Promise<Result> | Result;
-  /** Called after the button briefly enters success state. */
-  onSuccess?: (result: Result) => void;
-};
+/**
+ * Canonical cva pattern for Akan primitives: a `*Variants` factory drives the
+ * base + variant classes, `cn(...)` merges the caller's className last (so it
+ * can override), and semantic tokens (bg-primary/text-primary-foreground/…)
+ * keep theming automatic. Other primitives should follow this shape.
+ */
+export const buttonVariants = cva(
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-field font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+  {
+    variants: {
+      variant: {
+        primary: "bg-primary text-primary-foreground hover:bg-primary/90",
+        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        outline: "border border-input bg-background hover:bg-muted hover:text-foreground",
+        ghost: "hover:bg-muted hover:text-foreground",
+        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        sm: "h-8 px-3 text-sm",
+        md: "h-10 px-4",
+        lg: "h-12 px-6 text-lg",
+        icon: "h-10 w-10",
+      },
+    },
+    defaultVariants: { variant: "primary", size: "md" },
+  },
+);
 
-const DefaultButton = <Result = unknown>({ className, children, onClick, onSuccess, ...rest }: ButtonProps<Result>) => {
+export type ButtonVariants = VariantProps<typeof buttonVariants>;
+
+export type ButtonProps<Result> = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick"> &
+  ButtonVariants & {
+    /** Async-aware click handler. Call onError to show the localized error state without throwing. */
+    onClick: (
+      e: React.MouseEvent<HTMLButtonElement>,
+      { onError }: { onError: (error: string) => void },
+    ) => Promise<Result> | Result;
+    /** Called after the button briefly enters success state. */
+    onSuccess?: (result: Result) => void;
+  };
+
+const DefaultButton = <Result = unknown>({
+  className,
+  variant,
+  size,
+  children,
+  onClick,
+  onSuccess,
+  ...rest
+}: ButtonProps<Result>) => {
   const { l } = usePage();
   const [state, setState] = useState<{
     mode: "idle" | "loading" | "success" | "error";
@@ -30,7 +71,7 @@ const DefaultButton = <Result = unknown>({ className, children, onClick, onSucce
   return (
     <>
       <button
-        className={clsx("btn", className)}
+        className={cn(buttonVariants({ variant, size }), className)}
         {...rest}
         disabled={!!rest.disabled || ["loading", "success"].includes(state.mode)}
         onClick={(e) => {
@@ -51,7 +92,7 @@ const DefaultButton = <Result = unknown>({ className, children, onClick, onSucce
       >
         {state.mode === "loading" ? (
           <>
-            <span className="loading loading-bars loading-md" /> {l("base.processing")}
+            <AiOutlineLoading3Quarters className="animate-spin" /> {l("base.processing")}
           </>
         ) : state.mode === "success" ? (
           <>
@@ -61,9 +102,8 @@ const DefaultButton = <Result = unknown>({ className, children, onClick, onSucce
           children
         )}
       </button>
-      {/* ? 이거 뭔지 */}
       {state.error ? (
-        <div className="h-10 w-full p-2 text-center text-error text-sm">
+        <div className="h-10 w-full p-2 text-center text-destructive text-sm">
           {state.error ? l(state.error as "base.error") : "  "}
         </div>
       ) : null}
