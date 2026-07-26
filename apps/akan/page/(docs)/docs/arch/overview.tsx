@@ -215,8 +215,8 @@ export default function Page() {
               {
                 title: l.trans({ en: "Styling Foundation", ko: "스타일링 기반" }),
                 desc: l.trans({
-                  en: "Explains Tailwind CSS, DaisyUI, design system thinking, theme declaration, and font declaration.",
-                  ko: "Tailwind CSS, DaisyUI, 디자인 시스템 사고, 테마 선언, 폰트 선언을 설명합니다.",
+                  en: "Explains Tailwind CSS, semantic design tokens, design system thinking, theme declaration, and font declaration.",
+                  ko: "Tailwind CSS, 시맨틱 디자인 토큰, 디자인 시스템 사고, 테마 선언, 폰트 선언을 설명합니다.",
                 }),
                 href: "/docs/arch/css",
               },

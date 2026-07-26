@@ -170,8 +170,8 @@ export default function Page() {
               </div>
               <div className="ml-10 text-foreground/70 text-sm">
                 {l.trans({
-                  en: `Support layer. Dictionary handles i18n text. TailwindCSS & DaisyUI provide the styling foundation.`,
-                  ko: `지원 레이어. Dictionary는 i18n 텍스트를 처리합니다. TailwindCSS와 DaisyUI는 스타일링 기반을 제공합니다.`,
+                  en: `Support layer. Dictionary handles i18n text. TailwindCSS + akanjs/ui semantic tokens provide the styling foundation.`,
+                  ko: `지원 레이어. Dictionary는 i18n 텍스트를 처리합니다. TailwindCSS와 akanjs/ui 시맨틱 토큰이 스타일링 기반을 제공합니다.`,
                 })}
               </div>
             </div>

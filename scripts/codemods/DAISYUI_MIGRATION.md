@@ -2,6 +2,19 @@
 
 브랜치: `migration/uiSystem`. 상세 플랜은 별도(팀 공유). 이 문서는 **남은 작업을 앱 구동 환경에서 이어가기 위한 핸드오프**.
 
+## ✅ 완료 — daisyUI 라이브러리 완전 제거 (커밋됨)
+
+- `bun remove daisyui` + 전 package.json/config에서 dep 제거. `@plugin "daisyui"` 0(모든 styles.css + 신규앱 템플릿). **적용된 daisyUI 컴포넌트 클래스 0** (프레임워크·minimal·akan·libs·appSample·신규앱 템플릿).
+- 프레임워크 `pkgs/akanjs/ui`: cva 프리미티브(Button/Badge) + 신규 Tooltip/Switch/SignalCollapse(Radix/`<details>`) + Dropdown 커스텀.
+- 시맨틱 토큰 계층(`@theme inline` + `[data-theme]`)으로 통일, 접근성 색 수정 포함. 신규앱 styles.css 템플릿도 토큰 계층.
+- AI 프롬프트(`guideline.prompt.ts`·`module.request.ts`·`cssRule.json`) → daisyUI 금지·akanjs/ui 권장.
+- akan: mockup(phone/browser/code) 토큰 프레임 대체, 문서 프로즈/링크(daisyui.com→radix-ui.com) 갱신.
+- 잔여 "daisyui" 문자열 = 설명용 코드 주석 + "DaisyUI 금지" 프롬프트 + 생성물 `docs-search-index.json`(문서 재빌드 시 갱신)뿐.
+- 커밋: `80ef7d5`(프레임워크) · `f8b17a4`(minimal 컷오버+롱테일) · `f5b6161`(라이브러리 완전 제거) + 문서 프로즈.
+
+---
+### (이하 과거 진행 기록)
+
 ## 완료 (커밋됨)
 
 - **Phase 0 토대**: `pkgs/akanjs/client/cn.ts`(clsx+tailwind-merge, `extendTailwindMerge`로 커스텀 토큰 등록) · Radix 8종 · cva · biome `useSortedClasses`에 `cn` 등록.

@@ -137,9 +137,9 @@ export default function Page() {
                       <BiLinkExternal /> TailwindCSS
                     </button>
                   </Link>
-                  <Link href="https://daisyui.com/" target="_blank">
+                  <Link href="https://www.radix-ui.com/" target="_blank">
                     <button className={buttonVariants({ variant: "outline", size: "xs" })}>
-                      <BiLinkExternal /> DaisyUI
+                      <BiLinkExternal /> Radix UI
                     </button>
                   </Link>
                 </div>

@@ -7,8 +7,8 @@ export default function Page() {
       <Scroll.Slide id="css-overview" title={"CSS Styling Guidelines"}>
         <Docs.Title>{"CSS Styling Guidelines"}</Docs.Title>
         <Docs.Description>
-          Comprehensive styling guidelines for Akan.js components using TailwindCSS and DaisyUI ensuring consistency,
-          maintainability and proper theming across applications.
+          Comprehensive styling guidelines for Akan.js components using TailwindCSS and akanjs/ui semantic tokens
+          ensuring consistency, maintainability and proper theming across applications.
         </Docs.Description>
       </Scroll.Slide>
       <div className="my-4 h-px w-full bg-border" />
@@ -31,7 +31,7 @@ export default function Page() {
             },
             {
               name: "Theme Consistency",
-              desc: "Use DaisyUI's semantic color system",
+              desc: "Use the semantic design-token color system",
               example: "bg-primary text-primary-foreground",
             },
             {
@@ -172,8 +172,11 @@ export const Card = ({ className }: CardProps) => (
               </a>
             </li>
             <li>
-              <a href="https://daisyui.com/" className="text-primary underline underline-offset-4 hover:no-underline">
-                DaisyUI Documentation
+              <a
+                href="https://www.radix-ui.com/"
+                className="text-primary underline underline-offset-4 hover:no-underline"
+              >
+                Radix UI Documentation
               </a>
             </li>
             <li>
