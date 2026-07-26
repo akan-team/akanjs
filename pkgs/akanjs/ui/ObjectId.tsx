@@ -1,6 +1,10 @@
 "use client";
+import { cn } from "akanjs/client";
 import { useState } from "react";
 import { AiOutlineCheck, AiOutlineCopy } from "react-icons/ai";
+
+import { buttonVariants } from "./Button";
+import { Tooltip } from "./Tooltip";
 
 interface ObjectIdProps {
   id: string;
@@ -18,10 +22,13 @@ export const ObjectId = ({ id }: ObjectIdProps) => {
   };
   return (
     <div className="flex items-center gap-2">
-      <div className="tooltip tooltip-primary" data-tip={id}>
+      <Tooltip content={id} variant="primary">
         <div className="font-semibold text-xs">{shortenedId}</div>
-      </div>
-      <button className="btn btn-circle btn-xs" onClick={handleCopyClick}>
+      </Tooltip>
+      <button
+        className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "size-6 rounded-full")}
+        onClick={handleCopyClick}
+      >
         {isCopied ? <AiOutlineCheck /> : <AiOutlineCopy />}
       </button>
     </div>

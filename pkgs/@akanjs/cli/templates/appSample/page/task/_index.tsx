@@ -18,8 +18,8 @@ export default async function Page() {
     <main className="mx-auto max-w-4xl px-6 py-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="font-extrabold text-3xl text-base-content">{l("task.modelName")}</h1>
-          <p className="mt-1 text-base-content/60 text-sm">{l("task.modelDesc")}</p>
+          <h1 className="font-extrabold text-3xl text-foreground">{l("task.modelName")}</h1>
+          <p className="mt-1 text-foreground/60 text-sm">{l("task.modelDesc")}</p>
         </div>
         <Link href="/task/new" className="btn btn-primary btn-sm">
           {l("task.taskNew")}

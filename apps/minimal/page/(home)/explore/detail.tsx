@@ -1,5 +1,6 @@
 import type { PageConfig } from "akanjs/client";
-import { Layout, Link } from "akanjs/ui";
+import { cn } from "akanjs/client";
+import { buttonVariants, Layout, Link } from "akanjs/ui";
 import { AiOutlineCalendar, AiOutlineHeart, AiOutlineStar } from "react-icons/ai";
 
 export default function Page() {
@@ -42,10 +43,10 @@ export default function Page() {
           </p>
         </section>
         <div className="mt-5 grid grid-cols-2 gap-3">
-          <Link className="btn btn-outline rounded-2xl" href="/profile/payments">
+          <Link className={cn(buttonVariants({ variant: "outline" }), "rounded-2xl")} href="/profile/payments">
             <AiOutlineCalendar /> Book now
           </Link>
-          <Link className="btn btn-primary rounded-2xl border-0" href="/profile/self">
+          <Link className={cn(buttonVariants({ variant: "primary" }), "rounded-2xl border-0")} href="/profile/self">
             View profile
           </Link>
         </div>

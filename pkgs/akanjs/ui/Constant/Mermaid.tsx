@@ -82,13 +82,13 @@ export const Mermaid = ({ chart, title, className, highlightNodes = [], onSelect
   return (
     <div className={clsx("my-4 overflow-hidden rounded-xl border border-base-300 bg-base-200/40", className)}>
       {title ? (
-        <div className="border-base-300 border-b px-4 py-2 font-bold text-base-content/70 text-sm">{title}</div>
+        <div className="border-base-300 border-b px-4 py-2 font-bold text-foreground/70 text-sm">{title}</div>
       ) : null}
       <div className="overflow-x-auto p-4">
         {error ? (
-          <pre className="whitespace-pre-wrap text-error text-sm">{error}</pre>
+          <pre className="whitespace-pre-wrap text-destructive text-sm">{error}</pre>
         ) : (
-          <div ref={containerRef} className="min-w-fit text-base-content" />
+          <div ref={containerRef} className="min-w-fit text-foreground" />
         )}
       </div>
     </div>
@@ -101,10 +101,10 @@ function getThemeColors() {
   const fallback = isDarkTheme(root) ? darkThemeFallback : lightThemeFallback;
 
   return {
-    base100: getMermaidColor(style, "--color-base-100", fallback.base100),
+    base100: getMermaidColor(style, "--color-background", fallback.base100),
     base200: getMermaidColor(style, "--color-base-200", fallback.base200),
     base300: getMermaidColor(style, "--color-base-300", fallback.base300),
-    baseContent: getMermaidColor(style, "--color-base-content", fallback.baseContent),
+    baseContent: getMermaidColor(style, "--color-foreground", fallback.baseContent),
     primary: getMermaidColor(style, "--color-primary", fallback.primary),
   };
 }

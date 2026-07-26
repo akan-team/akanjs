@@ -1,5 +1,6 @@
 import type { PageConfig } from "akanjs/client";
-import { Layout, Link } from "akanjs/ui";
+import { cn } from "akanjs/client";
+import { buttonVariants, Layout, Link } from "akanjs/ui";
 import { AiOutlineClose } from "react-icons/ai";
 
 export default function Page() {
@@ -27,7 +28,9 @@ export default function Page() {
           estimatedHeight={pageConfig.bottomInset}
           keyboardSticky
         >
-          <button className="btn btn-primary h-full w-full rounded-2xl border-0">Take photo</button>
+          <button className={cn(buttonVariants({ variant: "primary" }), "h-full w-full rounded-2xl border-0")}>
+            Take photo
+          </button>
         </Layout.BottomInset>
       </div>
     </>

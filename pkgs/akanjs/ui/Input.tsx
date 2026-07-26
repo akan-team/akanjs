@@ -1,5 +1,5 @@
 "use client";
-import { clsx, usePage } from "akanjs/client";
+import { cn, usePage } from "akanjs/client";
 import { isEmail } from "akanjs/common";
 import React, {
   type ChangeEvent,
@@ -14,6 +14,12 @@ import React, {
 import { AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 
 import { createOverridable } from "./UiOverride";
+
+// daisyui `input`/`textarea` 클래스 대체(토큰 기반 박스 스타일).
+const inputBase =
+  "h-10 w-full rounded-field border border-input bg-background px-3 text-foreground text-sm focus:border-primary focus:outline-none";
+const textareaBase =
+  "w-full rounded-field border border-input bg-background p-3 text-foreground text-sm focus:border-primary focus:outline-none";
 
 export type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange"> & {
   /** Visual input style. */
@@ -72,19 +78,21 @@ const DefaultInput = ({
   const statusClass =
     inputStyleType === "bordered"
       ? status === "error"
-        ? "input-error"
+        ? "border-destructive"
         : !firstFocus && status === "warning"
-          ? "input-warning"
+          ? "border-warning"
           : status === "success"
-            ? "input-success"
+            ? "border-success"
             : ""
       : "";
-  const inputType =
-    inputStyleType === "bordered"
-      ? "input"
-      : inputStyleType === "borderless"
-        ? "input-ghost"
-        : "border-0  border-b rounded-none";
+  const inputType = cn(
+    inputBase,
+    inputStyleType === "borderless"
+      ? "border-transparent bg-transparent"
+      : inputStyleType === "underline"
+        ? "rounded-none border-0 border-b"
+        : "",
+  );
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (onPressEnter && e.key === "Enter") onPressEnter(e.currentTarget.value, e);
     if (e.key === "Escape") {
@@ -100,8 +108,8 @@ const DefaultInput = ({
   }, [value]);
 
   return (
-    <div className={clsx("relative isolate flex items-center", className)}>
-      {icon ? <div className={clsx("flex items-center justify-center", iconClassName)}>{icon}</div> : null}
+    <div className={cn("relative isolate flex items-center", className)}>
+      {icon ? <div className={cn("flex items-center justify-center", iconClassName)}>{icon}</div> : null}
       <input
         {...rest}
         ref={inputRef}
@@ -116,8 +124,8 @@ const DefaultInput = ({
           if (firstFocus && value) setFirstFocus(false);
         }}
         onKeyDown={handleKeyDown}
-        className={clsx(
-          `b-5 text-base-content outline-hidden duration-300 focus:border-primary focus:outline-hidden ${icon && ""}`,
+        className={cn(
+          `b-5 text-foreground outline-hidden duration-300 focus:border-primary focus:outline-hidden ${icon && ""}`,
           inputType,
           // statusClass,
           inputClassName,
@@ -125,7 +133,7 @@ const DefaultInput = ({
       />
       <div
         data-validate={!!validateResult}
-        className="absolute -bottom-4 whitespace-nowrap text-error text-xs duration-300"
+        className="absolute -bottom-4 whitespace-nowrap text-destructive text-xs duration-300"
       >
         {invalidMessage}
       </div>
@@ -175,11 +183,11 @@ const DefaultTextArea = ({
         : validateResult;
   const statusClass =
     status === "error"
-      ? "textarea-error"
+      ? "border-destructive"
       : !firstFocus && status === "warning"
-        ? "textarea-warning"
+        ? "border-warning"
         : status === "success"
-          ? "textarea-success"
+          ? "border-success"
           : "";
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (onPressEnter && e.key === "Enter") onPressEnter(e.currentTarget.value, e);
@@ -194,7 +202,7 @@ const DefaultTextArea = ({
   }, []);
 
   return (
-    <div className={clsx("relative mb-5", className)}>
+    <div className={cn("relative mb-5", className)}>
       <textarea
         {...rest}
         ref={inputRef}
@@ -209,14 +217,17 @@ const DefaultTextArea = ({
         onBlur={(e) => {
           if (firstFocus && value) setFirstFocus(false);
         }}
-        className={clsx(
-          `textarea textarea-bordered resize-none text-base-content outline-hidden duration-300 focus:border-primary focus:outline-hidden`,
+        className={cn(
+          cn(
+            textareaBase,
+            "resize-none text-foreground outline-hidden duration-300 focus:border-primary focus:outline-hidden",
+          ),
           statusClass,
           inputClassName,
         )}
       />
       {invalidMessage ? (
-        <div className="absolute -bottom-4 animate-fadeIn text-error text-xs">{invalidMessage}</div>
+        <div className="absolute -bottom-4 animate-fadeIn text-destructive text-xs">{invalidMessage}</div>
       ) : null}
     </div>
   );
@@ -265,11 +276,11 @@ const DefaultPassword = ({
         : validateResult;
   const statusClass =
     status === "error"
-      ? "input-error"
+      ? "border-destructive"
       : !firstFocus && status === "warning"
-        ? "input-warning"
+        ? "border-warning"
         : status === "success"
-          ? "input-success"
+          ? "border-success"
           : "";
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (onPressEnter && e.key === "Enter") onPressEnter(e.currentTarget.value, e);
@@ -284,10 +295,10 @@ const DefaultPassword = ({
     }
   }, []);
   return (
-    <div className={clsx("relative isolate pb-2", className)}>
-      <div className={clsx("relative flex items-center justify-between", inputWrapperClassName)}>
+    <div className={cn("relative isolate pb-2", className)}>
+      <div className={cn("relative flex items-center justify-between", inputWrapperClassName)}>
         {icon ? (
-          <div className={clsx("absolute inset-y-0 left-4 z-10 flex items-center justify-center", iconClassName)}>
+          <div className={cn("absolute inset-y-0 left-4 z-10 flex items-center justify-center", iconClassName)}>
             {icon}
           </div>
         ) : null}
@@ -306,8 +317,8 @@ const DefaultPassword = ({
             }
             onChange?.(e.target.value, e);
           }}
-          className={clsx(
-            `input text-base-content duration-300 focus:border-primary focus:outline-hidden ${icon && "pl-12"}`,
+          className={cn(
+            cn(inputBase, `text-foreground duration-300 focus:border-primary focus:outline-hidden ${icon && "pl-12"}`),
             statusClass,
             inputClassName,
           )}
@@ -324,7 +335,7 @@ const DefaultPassword = ({
       </div>
       <div
         data-validate={!!invalidMessage.length}
-        className="h-2 text-error text-xs duration-300 data-[validate=false]:opacity-0 data-[validate=true]:opacity-100"
+        className="h-2 text-destructive text-xs duration-300 data-[validate=false]:opacity-0 data-[validate=true]:opacity-100"
       >
         {invalidMessage}
       </div>
@@ -377,18 +388,13 @@ const DefaultEmail = ({
         : validateResult;
   const statusClass =
     status === "error"
-      ? "input-error"
+      ? "border-destructive"
       : !firstFocus && status === "warning"
-        ? "input-warning"
+        ? "border-warning"
         : status === "success"
-          ? "input-success"
+          ? "border-success"
           : "";
-  const inputType =
-    inputStyleType === "bordered"
-      ? "input-bordered"
-      : inputStyleType === "borderless"
-        ? "input"
-        : "input-bordered rounded-none";
+  const inputType = cn(inputBase, inputStyleType === "underline" ? "rounded-none" : "");
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (onPressEnter && e.key === "Enter") onPressEnter(e.currentTarget.value, e);
     if (e.key === "Escape") {
@@ -406,10 +412,10 @@ const DefaultEmail = ({
   }, []);
 
   return (
-    <div className={clsx("relative isolate mb-5", className)}>
-      <div className={clsx("flex items-center", inputWrapperClassName)}>
+    <div className={cn("relative isolate mb-5", className)}>
+      <div className={cn("flex items-center", inputWrapperClassName)}>
         {icon ? (
-          <div className={clsx("absolute inset-y-0 left-4 z-10 flex items-center justify-center", iconClassName)}>
+          <div className={cn("absolute inset-y-0 left-4 z-10 flex items-center justify-center", iconClassName)}>
             {icon}
           </div>
         ) : null}
@@ -428,10 +434,8 @@ const DefaultEmail = ({
             }
             onChange?.(e.target.value, e);
           }}
-          className={clsx(
-            `input text-base-content outline-hidden duration-300 focus:border-primary focus:outline-hidden ${
-              icon && "pl-12"
-            }`,
+          className={cn(
+            `text-foreground outline-hidden duration-300 focus:border-primary focus:outline-hidden ${icon && "pl-12"}`,
             inputType,
             statusClass,
             inputClassName,
@@ -439,7 +443,7 @@ const DefaultEmail = ({
         />
       </div>
       {invalidMessage ? (
-        <div className="absolute -bottom-4 animate-fadeIn text-error text-xs">{invalidMessage}</div>
+        <div className="absolute -bottom-4 animate-fadeIn text-destructive text-xs">{invalidMessage}</div>
       ) : null}
     </div>
   );
@@ -507,13 +511,13 @@ const DefaultNumber = ({
   const statusClass =
     validate !== undefined
       ? status === "error"
-        ? "input-error"
+        ? "border-destructive"
         : !firstFocus && status === "warning"
-          ? "input-warning"
+          ? "border-warning"
           : status === "success"
-            ? "input-success"
-            : "input"
-      : "input";
+            ? "border-success"
+            : ""
+      : "";
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     const numberValue = parseFloat(e.currentTarget.value.replace(/[^\d-]/g, ""));
@@ -574,10 +578,10 @@ const DefaultNumber = ({
   }, [value]);
 
   return (
-    <div className={clsx("relative isolate", className)}>
-      <div className={clsx("flex items-center", inputWrapperClassName)}>
+    <div className={cn("relative isolate", className)}>
+      <div className={cn("flex items-center", inputWrapperClassName)}>
         {icon ? (
-          <div className={clsx("absolute inset-y-0 left-4 z-10 flex items-center justify-center", iconClassName)}>
+          <div className={cn("absolute inset-y-0 left-4 z-10 flex items-center justify-center", iconClassName)}>
             {icon}
           </div>
         ) : null}
@@ -601,8 +605,8 @@ const DefaultNumber = ({
             onChange(parser ? parseFloat(parsedValue) : parseFloat(e.target.value), e);
             if (cacheKey) sessionStorage.setItem(cacheKey, parsedValue);
           }}
-          className={clsx(
-            `input text-base-content duration-300 focus:border-primary focus:outline-hidden ${icon && "pl-12"}`,
+          className={cn(
+            cn(inputBase, `text-foreground duration-300 focus:border-primary focus:outline-hidden ${icon && "pl-12"}`),
             statusClass,
             inputClassName,
           )}
@@ -610,7 +614,7 @@ const DefaultNumber = ({
       </div>
 
       {invalidMessage ? (
-        <div className="absolute -bottom-4 animate-fadeIn text-error text-xs">{invalidMessage}</div>
+        <div className="absolute -bottom-4 animate-fadeIn text-destructive text-xs">{invalidMessage}</div>
       ) : null}
     </div>
   );
@@ -628,7 +632,7 @@ const DefaultCheckbox = ({ checked, onChange, className, ...rest }: CheckboxProp
       {...rest}
       type="checkbox"
       checked={checked}
-      className={clsx("checkbox", className)}
+      className={cn("checkbox", className)}
       onChange={(e) => {
         onChange(e.target.checked, e);
       }}

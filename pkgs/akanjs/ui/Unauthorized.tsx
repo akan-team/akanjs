@@ -18,7 +18,7 @@ export const DefaultUnauthorized = ({ className = "", description, children, min
     <div>
       <div
         className={clsx(
-          `min-h-[ w-full${minHeight}px] flex flex-col items-center justify-center gap-3 pt-6 pb-3 text-base-content/30`,
+          `min-h-[ w-full${minHeight}px] flex flex-col items-center justify-center gap-3 pt-6 pb-3 text-foreground/30`,
           className,
         )}
       >

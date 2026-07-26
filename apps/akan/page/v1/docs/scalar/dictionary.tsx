@@ -171,7 +171,7 @@ t(["English Label", "한국어 레이블"]).desc(["English description", "한국
               </tbody>
             </table>
           </div>
-          <div className="alert alert-info">
+          <div className="flex items-center gap-2 rounded-box border border-info/30 bg-info/10 p-4">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
@@ -272,7 +272,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
               />
             </div>
           </div>
-          <div className="alert alert-warning">
+          <div className="flex items-center gap-2 rounded-box border border-warning/30 bg-warning/10 p-4">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="h-6 w-6 shrink-0 stroke-current"

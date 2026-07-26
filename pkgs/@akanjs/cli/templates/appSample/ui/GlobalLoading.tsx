@@ -21,7 +21,7 @@ export const GlobalLoading = ({ className, message = "Loading..." }: GlobalLoadi
   return (
     <div className={clsx("flex flex-col items-center justify-center gap-4 py-32", className)}>
       <span className="loading loading-spinner loading-lg text-primary" />
-      <span className="text-base-content/60 text-sm">{message}</span>
+      <span className="text-foreground/60 text-sm">{message}</span>
     </div>
   );
 };

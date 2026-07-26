@@ -1,4 +1,5 @@
-import { Link } from "akanjs/ui";
+import { cn } from "akanjs/client";
+import { buttonVariants, Link } from "akanjs/ui";
 import type { ReactNode } from "react";
 
 export default function Page() {
@@ -46,7 +47,7 @@ export default function Page() {
           </p>
         </GuideSection>
 
-        <Link className="btn btn-primary mt-6" href="/push-notification">
+        <Link className={cn(buttonVariants({ variant: "primary" }), "mt-6")} href="/push-notification">
           Back to push demo
         </Link>
       </section>

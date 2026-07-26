@@ -74,7 +74,7 @@ export const BottomSheet = forwardRef<BottomSheetRef, BottomSheetProps>(
         <animated.div
           ref={ref}
           style={{ y, paddingTop: type === "full" ? pageState.topSafeArea : 0 }}
-          className={clsx("fixed bottom-0 left-0 z-[101] w-full bg-base-100", {
+          className={clsx("fixed bottom-0 left-0 z-[101] w-full bg-background", {
             "h-[90%] rounded-t-3xl": type === "half",
             "h-[100vh]": type === "full",
           })}

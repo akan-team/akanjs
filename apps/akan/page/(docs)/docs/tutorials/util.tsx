@@ -726,7 +726,7 @@ export const Cancel = ({ className, icecreamOrderId, disabled }: CancelProps) =>
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx"
             code={`
 import { clsx, type ModelProps } from "akanjs/client"; // [!code collapse:3]
-import { Model } from "akanjs/ui";
+import { Model, buttonVariants } from "akanjs/ui";
 import { cnst, fetch, usePage } from "@apps/koyo/client";
 import { IcecreamOrder } from "@apps/koyo/client"; // [!code ++]
 
@@ -760,7 +760,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
       </div>
       <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4">
         <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
-          <button className="btn btn-primary">
+          <button className={buttonVariants({ variant: "primary" })}>
             <span>{l.trans({ en: "View", ko: "보기" })}</span>
           </button>
         </Model.ViewWrapper>

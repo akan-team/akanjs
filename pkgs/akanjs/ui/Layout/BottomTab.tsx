@@ -48,7 +48,7 @@ export const BottomTab = ({ className, tabs, height = 64 }: BottomTabProps) => {
     >
       <div
         className={clsx(
-          `flex size-full items-center justify-around rounded-t-xl border border-base-200 border-b-0 bg-base-100`,
+          `flex size-full items-center justify-around rounded-t-xl border border-base-200 border-b-0 bg-background`,
           className,
         )}
       >
@@ -64,7 +64,7 @@ export const BottomTab = ({ className, tabs, height = 64 }: BottomTabProps) => {
             <div className="indicator">
               {isActiveTab(tab.href) ? (tab.activeIcon ?? tab.icon) : tab.icon}
               {tab.notiCount && tab.notiCount > 0 ? (
-                <div className="indicator-item flex size-2 items-center justify-center rounded-full bg-secondary text-[10px] text-base-100"></div>
+                <div className="indicator-item flex size-2 items-center justify-center rounded-full bg-secondary text-[10px] text-background"></div>
               ) : null}
             </div>
             <span>{tab.name}</span>

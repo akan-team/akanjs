@@ -126,7 +126,7 @@ export default function Page() {
   return (
     <Dialog>
       <Dialog.Trigger>
-        <button className="btn">Set Org</button>
+        <button className={buttonVariants()}>Set Org</button>
       </Dialog.Trigger>
       <Dialog.Modal>
         <Field.ParentId value={orgId} onChange={setOrgId} slice={fetch.slice.orgInSelf} />

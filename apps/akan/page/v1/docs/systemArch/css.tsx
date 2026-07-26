@@ -138,7 +138,7 @@ export const Card = ({ className }: CardProps) => (
           language="typescript"
           code={`<button className="
   bg-primary 
-  hover:bg-primary-focus 
+  hover:bg-primary 
   focus:ring-2 focus:ring-primary
   active:scale-95
   disabled:opacity-50

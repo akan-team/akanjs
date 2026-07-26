@@ -92,17 +92,17 @@ const Message = ({ content, type = "info" as MessageType, duration, keyForMessag
     >
       <div
         className={clsx(
-          "typo-body1 flex w-full items-center gap-2 rounded-[4px] border px-4 py-2 text-base-content drop-shadow-lg",
+          "typo-body1 flex w-full items-center gap-2 rounded-[4px] border px-4 py-2 text-foreground drop-shadow-lg",
           {
-            "border-[#EEEEEE] bg-primary-content stroke-base-content": type === "loading" || type === "info",
+            "border-[#EEEEEE] bg-primary-foreground stroke-foreground": type === "loading" || type === "info",
             "border-success-border bg-success/80 stroke-success": type === "success",
-            "border-error-border bg-error/80 stroke-error": type === "error",
+            "border-destructive-border bg-destructive/80 stroke-destructive": type === "error",
             "border-warning-border bg-warning/80 stroke-warning": type === "warning",
           },
         )}
       >
-        <div className="flex size-6 items-center justify-center rounded-full bg-base-100">{getIcon(type)}</div>
-        <span className="truncate whitespace-nowrap text-base-100">{content}</span>
+        <div className="flex size-6 items-center justify-center rounded-full bg-background">{getIcon(type)}</div>
+        <span className="truncate whitespace-nowrap text-background">{content}</span>
       </div>
     </div>
   );

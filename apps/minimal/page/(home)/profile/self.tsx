@@ -1,5 +1,6 @@
 import type { PageConfig } from "akanjs/client";
-import { Layout, Link } from "akanjs/ui";
+import { cn } from "akanjs/client";
+import { buttonVariants, Layout, Link } from "akanjs/ui";
 import { AiOutlineEdit, AiOutlineMail, AiOutlinePhone, AiOutlineUser } from "react-icons/ai";
 
 export default function Page() {
@@ -32,7 +33,10 @@ export default function Page() {
             </div>
           ))}
         </div>
-        <Link className="btn btn-primary mt-5 w-full rounded-2xl border-0" href="/profile/self/edit">
+        <Link
+          className={cn(buttonVariants({ variant: "primary" }), "mt-5 w-full rounded-2xl border-0")}
+          href="/profile/self/edit"
+        >
           <AiOutlineEdit /> Edit profile
         </Link>
       </section>

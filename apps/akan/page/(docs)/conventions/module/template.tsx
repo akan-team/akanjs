@@ -128,7 +128,7 @@ export default function Page() {
           code={`"use client";
 import { st, usePage } from "@apps/akan/client";
 import { Field } from "@libs/shared/ui";
-import { Layout } from "akanjs/ui";
+import { Layout, buttonVariants } from "akanjs/ui";
 
 interface TicketEditProps {
   className?: string;
@@ -338,7 +338,7 @@ export const General = ({ className }: TicketEditProps) => {
         <Code.Snippet
           title="Release.Zone.tsx"
           code={`<Model.NewWrapper partial={{ devApp }} slice={fetch.slice.releaseInDevApp}>
-  <button className="btn btn-secondary">+ New</button>
+  <button className={buttonVariants({ variant: "secondary" })}>+ New</button>
 </Model.NewWrapper>`}
         />
       </Scroll.Slide>

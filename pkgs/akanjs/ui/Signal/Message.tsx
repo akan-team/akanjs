@@ -12,6 +12,7 @@ import { AiOutlineDisconnect, AiOutlineFileWord, AiOutlineSend, AiOutlineSwap } 
 import { BiSolidNetworkChart } from "react-icons/bi";
 import { buttonVariants } from "../Button";
 import Arg from "./Arg";
+import { SignalCollapse } from "./Collapse";
 import Listener from "./Listener";
 import { makeRequestExample } from "./makeExample";
 import UiObject from "./Object";
@@ -32,16 +33,18 @@ const MessageEndpoint = ({ refName, endpointKey, endpoint, open }: MessageEndpoi
   const { l } = usePage();
   const [viewStatus, setViewStatus] = useState<"doc" | "test">("doc");
   return (
-    <div className={signalUi.endpointCard}>
-      <input type="checkbox" defaultChecked={open} />
-      <div className="collapse-title">
+    <SignalCollapse
+      open={open}
+      contentClassName="bg-background/60"
+      summary={
         <div className="flex flex-wrap items-center gap-2">
           <div className={getEndpointBadgeClassName(endpoint.type)}>{endpoint.type}</div>
           <div className="font-bold text-lg">{endpointKey}</div>
           <div className="text-foreground/70 text-sm">{l._(`${refName}.signal.${endpointKey}`)}</div>
         </div>
-      </div>
-      <div className={signalUi.endpointContent}>
+      }
+    >
+      <div>
         <div className="rounded-xl bg-background p-3">
           <div className={signalUi.sectionTitle}>Description</div>
           {endpoint.guards?.some((guard) => guard !== "None") ? (
@@ -88,7 +91,7 @@ const MessageEndpoint = ({ refName, endpointKey, endpoint, open }: MessageEndpoi
           <MessageTry endpointKey={endpointKey} endpoint={endpoint} />
         )}
       </div>
-    </div>
+    </SignalCollapse>
   );
 };
 Message.Endpoint = MessageEndpoint;
@@ -125,7 +128,7 @@ const MessageInterface = ({ refName, endpointKey, endpoint }: MessageInterfacePr
         <div className="flex w-full flex-col gap-2 rounded-md font-normal md:flex-row">
           <div className="w-full md:w-1/2">
             <div className={signalUi.sectionTitle}>Response Type</div>
-            <div className="max-h-[500px] overflow-auto rounded-xl bg-base-100 p-4 md:h-[500px]">
+            <div className="max-h-[500px] overflow-auto rounded-xl bg-background p-4 md:h-[500px]">
               Returns: <UiObject.Type objRef={returnRef} arrDepth={endpoint.returns.arrDepth ?? 0} />
               {isReturnModelType ? <UiObject.Detail objRef={returnRef as ConstantCls} /> : null}
             </div>

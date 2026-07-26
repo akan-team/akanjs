@@ -1,5 +1,6 @@
 import type { PageConfig } from "akanjs/client";
-import { Layout } from "akanjs/ui";
+import { cn } from "akanjs/client";
+import { buttonVariants, Layout } from "akanjs/ui";
 import { AiOutlineSave } from "react-icons/ai";
 
 export default function Page() {
@@ -23,7 +24,7 @@ export default function Page() {
             defaultValue="I like calm spaces in the city."
           />
         </label>
-        <button className="btn btn-primary w-full rounded-2xl border-0">
+        <button className={cn(buttonVariants({ variant: "primary" }), "w-full rounded-2xl border-0")}>
           <AiOutlineSave /> Save changes
         </button>
       </div>

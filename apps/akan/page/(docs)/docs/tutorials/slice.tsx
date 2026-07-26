@@ -190,7 +190,7 @@ export const dictionary = modelDictionary(["en", "ko"])
           <Code.Snippet
             title="apps/koyo/page/dashboard.tsx"
             code={`
-import { Load } from "akanjs/ui";
+import { Load, buttonVariants } from "akanjs/ui";
 import { fetch, IcecreamOrder, usePage } from "@apps/koyo/client";
 
 export default async function Page() {
@@ -415,7 +415,7 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
       {showControls ? ( // [!code ++]
         <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4">
           <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
-            <button className="btn btn-primary">
+            <button className={buttonVariants({ variant: "primary" })}>
               <span>{l.trans({ en: "View", ko: "보기" })}</span>
             </button>
           </Model.ViewWrapper>

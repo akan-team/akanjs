@@ -5,7 +5,7 @@ import { CodeInput, Upload } from "@libs/util/ui";
 import { clsx } from "akanjs/client";
 import { formatPhone, isEmail, isPhoneNumber } from "akanjs/common";
 import type { ProtoFile } from "akanjs/constant";
-import { Button, Image, Input, Layout } from "akanjs/ui";
+import { Button, buttonVariants, Image, Input, Layout } from "akanjs/ui";
 import { useEffect, useRef, useState } from "react";
 import { AiOutlineClose, AiOutlineEdit, AiOutlinePlus, AiOutlineSave } from "react-icons/ai";
 
@@ -205,7 +205,7 @@ export const GeneratePrepareUserWithAccountId = ({ redirect }: GeneratePrepareUs
   const accountId = st.use.accountId();
   return (
     <button
-      className="btn btn-primary"
+      className={buttonVariants({ variant: "primary" })}
       disabled={!accountId || !isEmail(accountId)}
       onClick={() => {
         if (!accountId || !isEmail(accountId)) return;
@@ -451,7 +451,7 @@ export const AppliedImages = () => {
       {/* <BottomSheet onCancel={() => {}} open={false}>
         <CropImage src={""} download ref={cropRef} />
         <div className="relative  flex w-full items-center justify-center gap-2">
-          <button onClick={() => {}} className="btn flex-1 rounded-2xl btn-primary">
+          <button onClick={() => {}} className={cn(buttonVariants({ variant: "primary" }), "flex-1 rounded-2xl")}>
             저장
           </button>
         </div>
@@ -499,7 +499,7 @@ export const SetAccountIdByAdmin = ({ className, accountId }: SetAccountIdByAdmi
       {editState ? (
         <>
           <button
-            className="btn btn-primary"
+            className={buttonVariants({ variant: "primary" })}
             disabled={
               editState === "saving" ||
               changeId === accountId ||
@@ -515,7 +515,7 @@ export const SetAccountIdByAdmin = ({ className, accountId }: SetAccountIdByAdmi
             <AiOutlineSave />
           </button>
           <button
-            className="btn btn-outline"
+            className={buttonVariants({ variant: "outline" })}
             disabled={editState === "saving"}
             onClick={() => {
               setChangeId(accountId ?? "");
@@ -527,7 +527,7 @@ export const SetAccountIdByAdmin = ({ className, accountId }: SetAccountIdByAdmi
         </>
       ) : (
         <button
-          className="btn"
+          className={buttonVariants()}
           onClick={() => {
             setEditState("edit");
           }}
@@ -559,7 +559,7 @@ export const SetPasswordByAdmin = ({ className }: SetPasswordByAdminProps) => {
       {editState ? (
         <>
           <button
-            className="btn btn-primary"
+            className={buttonVariants({ variant: "primary" })}
             disabled={editState === "saving" || password.length < 8 || password.length > 20}
             onClick={async () => {
               setEditState("saving");
@@ -570,7 +570,7 @@ export const SetPasswordByAdmin = ({ className }: SetPasswordByAdminProps) => {
             <AiOutlineSave />
           </button>
           <button
-            className="btn btn-outline"
+            className={buttonVariants({ variant: "outline" })}
             disabled={editState === "saving"}
             onClick={() => {
               setPassword("********");
@@ -582,7 +582,7 @@ export const SetPasswordByAdmin = ({ className }: SetPasswordByAdminProps) => {
         </>
       ) : (
         <button
-          className="btn"
+          className={buttonVariants()}
           onClick={() => {
             setEditState("edit");
           }}
@@ -615,7 +615,7 @@ export const SetPhoneByAdmin = ({ className, phone }: SetPhoneByAdminProps) => {
       {editState ? (
         <>
           <button
-            className="btn btn-primary"
+            className={buttonVariants({ variant: "primary" })}
             disabled={editState === "saving" || !isPhoneNumber(changePhone) || changePhone === phone}
             onClick={async () => {
               setEditState("saving");
@@ -626,7 +626,7 @@ export const SetPhoneByAdmin = ({ className, phone }: SetPhoneByAdminProps) => {
             <AiOutlineSave />
           </button>
           <button
-            className="btn btn-outline"
+            className={buttonVariants({ variant: "outline" })}
             disabled={editState === "saving"}
             onClick={() => {
               setChangePhone(phone ?? "");
@@ -638,7 +638,7 @@ export const SetPhoneByAdmin = ({ className, phone }: SetPhoneByAdminProps) => {
         </>
       ) : (
         <button
-          className="btn"
+          className={buttonVariants()}
           onClick={() => {
             setEditState("edit");
           }}

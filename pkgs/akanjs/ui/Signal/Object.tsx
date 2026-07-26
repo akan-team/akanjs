@@ -1,10 +1,13 @@
 "use client";
 import { type Cls, FIELD_META, getNonArrayModel, PrimitiveRegistry, type PrimitiveScalar } from "akanjs/base";
-import { usePage } from "akanjs/client";
+import { cn, usePage } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import { type ConstantCls, ConstantRegistry } from "akanjs/constant";
 import { useState } from "react";
+import { badgeVariants } from "../Badge";
+import { buttonVariants } from "../Button";
 import { Modal } from "../Modal";
+import { Tooltip } from "../Tooltip";
 import { signalUi } from "./style";
 
 export default function Object() {
@@ -23,7 +26,11 @@ const ObjectType = ({ objRef, arrDepth, nullable }: ObjectTypeProps) => {
   return (
     <>
       <div
-        className={isModelType ? "badge badge-primary cursor-pointer" : "badge badge-outline"}
+        className={
+          isModelType
+            ? cn(badgeVariants({ variant: "primary" }), "cursor-pointer")
+            : badgeVariants({ variant: "outline" })
+        }
         onClick={() => {
           if (isModelType) setOpenDetail(true);
         }}
@@ -57,7 +64,7 @@ const ObjectDetail = ({ objRef }: ObjectDetailProps) => {
   const { l } = usePage();
   return (
     <div className={signalUi.tablePanel}>
-      <table className="table">
+      <table className={signalUi.tableClass}>
         <thead>
           <tr>
             <th>Key</th>
@@ -93,14 +100,14 @@ const ObjectDetail = ({ objRef }: ObjectDetailProps) => {
                     </>
                   ) : null}
                 </td>
-                <td className="text-center text-base-content/70">{l._(`${modelRefName}.${key}`)}</td>
-                <td className="text-center text-base-content/70">{l._(`${modelRefName}.${key}.desc`)}</td>
+                <td className="text-center text-foreground/70">{l._(`${modelRefName}.${key}`)}</td>
+                <td className="text-center text-foreground/70">{l._(`${modelRefName}.${key}.desc`)}</td>
                 <td className="flex flex-wrap items-center justify-center gap-2 text-center">
                   {enumOpt
                     ? enumOpt.map((opt, idx: number) => (
-                        <div key={idx} className="tooltip tooltip-primary" data-tip={l._(`${enumOpt.refName}.${opt}`)}>
-                          <button className="btn btn-outline btn-xs">{opt}</button>
-                        </div>
+                        <Tooltip key={idx} content={l._(`${enumOpt.refName}.${opt}`)} variant="primary">
+                          <button className={buttonVariants({ variant: "outline", size: "xs" })}>{opt}</button>
+                        </Tooltip>
                       ))
                     : "-"}
                 </td>
@@ -125,7 +132,7 @@ const ObjectSchema = ({ objRef }: ObjectSchemaProps) => {
     <div className="flex break-after-page flex-col gap-4">
       <div className="mt-24" />
       <div className="font-bold text-3xl">{gqlName}</div>
-      <div className="text-base-content/70">{l._(`${refName}.modelDesc`)}</div>
+      <div className="text-foreground/70">{l._(`${refName}.modelDesc`)}</div>
       <div className="font-bold text-2xl">Schema</div>
       <ObjectDetail objRef={objRef as ConstantCls} />
     </div>

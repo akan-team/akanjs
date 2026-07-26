@@ -1,5 +1,6 @@
 "use client";
-import { Dialog, Modal } from "akanjs/ui";
+import { cn } from "akanjs/client";
+import { buttonVariants, Dialog, Modal } from "akanjs/ui";
 import { useState } from "react";
 
 type ModalKey = "basic" | "action" | "long" | "confirm" | "plain";
@@ -84,12 +85,12 @@ export const ModalTests = () => {
         title="Action Modal"
         action={
           <div className="flex justify-end gap-2 border-base-300 border-t p-4">
-            <button type="button" className="btn btn-ghost" onClick={close}>
+            <button type="button" className={buttonVariants({ variant: "ghost" })} onClick={close}>
               취소
             </button>
             <button
               type="button"
-              className="btn btn-primary"
+              className={buttonVariants({ variant: "primary" })}
               onClick={() => {
                 setResult(`Modal action saved: ${new Date().toLocaleTimeString()}`);
                 close();
@@ -102,7 +103,10 @@ export const ModalTests = () => {
       >
         <div className="space-y-4">
           <p>아래 action slot이 모달 하단에 렌더링되는지 확인합니다.</p>
-          <input className="input input-bordered w-full" placeholder="focus와 입력 동작 확인" />
+          <input
+            className="h-10 w-full rounded-field border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none"
+            placeholder="focus와 입력 동작 확인"
+          />
         </div>
       </Modal>
 
@@ -128,7 +132,7 @@ export const ModalTests = () => {
             cancel을 누르면 모달이 유지되고, confirm을 누르면 닫힘 애니메이션 후 unmount됩니다.
           </p>
           <textarea
-            className="textarea textarea-bordered min-h-28 w-full"
+            className="min-h-28 w-full rounded-field border border-input bg-background p-3 text-sm focus:border-primary focus:outline-none"
             placeholder="작성 중인 값이 있다고 가정합니다."
           />
         </div>
@@ -157,7 +161,7 @@ const TestCard = ({ title, description, onOpen }: TestCardProps) => {
         <h2 className="font-bold text-xl">{title}</h2>
         <p className="mt-2 text-foreground/65 text-sm leading-6">{description}</p>
       </div>
-      <button type="button" className="btn btn-primary mt-5" onClick={onOpen}>
+      <button type="button" className={cn(buttonVariants({ variant: "primary" }), "mt-5")} onClick={onOpen}>
         열기
       </button>
     </article>
@@ -179,7 +183,7 @@ const CompoundDialogCard = ({ onSave }: CompoundDialogCardProps) => {
       </div>
       <Dialog>
         <Dialog.Trigger className="mt-5">
-          <button type="button" className="btn btn-secondary w-full">
+          <button type="button" className={cn(buttonVariants({ variant: "secondary" }), "w-full")}>
             열기
           </button>
         </Dialog.Trigger>
@@ -188,12 +192,15 @@ const CompoundDialogCard = ({ onSave }: CompoundDialogCardProps) => {
           <Dialog.Content>
             <div className="space-y-4">
               <p>compound API를 직접 조합한 모달입니다.</p>
-              <input className="input input-bordered w-full" placeholder="Dialog.Content 내부 input" />
+              <input
+                className="h-10 w-full rounded-field border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none"
+                placeholder="Dialog.Content 내부 input"
+              />
             </div>
           </Dialog.Content>
           <Dialog.Action>
             <div className="flex justify-end border-base-300 border-t p-4">
-              <button type="button" className="btn btn-secondary" onClick={onSave}>
+              <button type="button" className={buttonVariants({ variant: "secondary" })} onClick={onSave}>
                 action 실행
               </button>
             </div>

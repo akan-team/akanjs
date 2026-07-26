@@ -1,11 +1,11 @@
 "use client";
 import { useSpring } from "@react-spring/web";
 // TODO: 디자인 수정, 테마 적용 안됨
-import { clsx, usePage } from "akanjs/client";
+import { cn, usePage } from "akanjs/client";
 import { type ButtonHTMLAttributes, type ReactNode, useEffect, useState } from "react";
 import { BiMessageRoundedError } from "react-icons/bi";
-
 import { animated } from "./animated";
+import { buttonVariants } from "./Button";
 import { createOverridable } from "./UiOverride";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -87,7 +87,7 @@ export const DefaultPopconfirm = ({
     <>
       <div className="relative inline-block">
         <div
-          className={clsx("trigger", triggerClassName)}
+          className={cn("trigger", triggerClassName)}
           onClick={(e) => {
             e.stopPropagation();
             setIsConfirming(true);
@@ -97,12 +97,12 @@ export const DefaultPopconfirm = ({
         </div>
         {isConfirming && (
           <animated.div
-            className="popconfirm absolute -right-2 bottom-0 z-10 translate-y-[106%] rounded-lg border border-base-300 bg-base-100 p-4 shadow-xl"
+            className="popconfirm absolute -right-2 bottom-0 z-10 translate-y-[106%] rounded-lg border border-base-300 bg-background p-4 shadow-xl"
             style={popconfirmProps}
           >
             <div
-              className={clsx(
-                "popconfirm-deco absolute -top-2 size-4 rotate-45 rounded-sm border-base-300 border-t border-l bg-base-100",
+              className={cn(
+                "popconfirm-deco absolute -top-2 size-4 rotate-45 rounded-sm border-base-300 border-t border-l bg-background",
                 { "right-10": !decoClassName },
                 decoClassName,
               )}
@@ -115,10 +115,18 @@ export const DefaultPopconfirm = ({
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <button className="btn btn-xs btn-outline" onClick={handleCancel} {...cancelButtonProps}>
+              <button
+                className={buttonVariants({ variant: "outline", size: "xs" })}
+                onClick={handleCancel}
+                {...cancelButtonProps}
+              >
                 {cancelText ?? l("base.cancel")}
               </button>
-              <button className="btn btn-xs" onClick={handleConfirm} {...okButtonProps}>
+              <button
+                className={buttonVariants({ variant: "primary", size: "xs" })}
+                onClick={handleConfirm}
+                {...okButtonProps}
+              >
                 {okText ?? l("base.ok")}
               </button>
             </div>

@@ -28,7 +28,7 @@ export const Card = ({ className, init }: CardProps) => {
       init={init}
       renderEmpty={() => (
         <div className="flex flex-col items-center gap-4 py-16 text-center">
-          <div className="text-base-content/40 text-lg">{l("task.taskNoTasks")}</div>
+          <div className="text-foreground/40 text-lg">{l("task.taskNoTasks")}</div>
           <Link href="/task/new">
             <button className="btn btn-primary btn-sm">{l("task.taskCreateFirst")}</button>
           </Link>

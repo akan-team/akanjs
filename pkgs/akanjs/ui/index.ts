@@ -38,10 +38,12 @@ export { Refresh } from "./Refresh";
 export { ScreenNavigator } from "./ScreenNavigator";
 export { Select } from "./Select";
 export { Signal } from "./Signal";
+export { Switch, type SwitchProps } from "./Switch";
 export { System, type WebAppManifest } from "./System";
 export { Tab } from "./Tab";
 export { Table } from "./Table";
 export { ToggleSelect } from "./ToggleSelect";
+export { Tooltip, type TooltipProps } from "./Tooltip";
 export {
   type AkanModalComponent,
   type AkanUiOverrideName,

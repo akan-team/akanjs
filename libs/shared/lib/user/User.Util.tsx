@@ -4,9 +4,9 @@ import { pad } from "@libs/util/common";
 import { AreYouRobot, Icon } from "@libs/util/ui";
 import { usePushNotification } from "@libs/util/webkit";
 import { dayjs } from "akanjs/base";
-import { clsx, getCookie, router, setCookie } from "akanjs/client";
+import { clsx, cn, getCookie, router, setCookie } from "akanjs/client";
 import { isEmail, isPhoneNumber } from "akanjs/common";
-import { Input, Link, Loading, Modal } from "akanjs/ui";
+import { buttonVariants, Input, Link, Loading, Modal, Switch } from "akanjs/ui";
 import { useInterval } from "akanjs/webkit";
 import { type ReactNode, useEffect, useState } from "react";
 import { AiFillCheckCircle, AiFillGithub } from "react-icons/ai";
@@ -41,7 +41,10 @@ export const SetPasswordWithPhone = ({ disabled, hash = "verify" }: SetPasswordW
             validate={(value) => true}
           />
           <button
-            className={`btn w-20 whitespace-nowrap text-xs ${!phoneCodeAt && "btn-primary"}`}
+            className={cn(
+              buttonVariants({ variant: !phoneCodeAt ? "primary" : "secondary" }),
+              "w-20 whitespace-nowrap text-xs",
+            )}
             disabled={!!disabled || !isPhoneNumber(self.phone)} // || self.verifies.includes("phone")}
             onClick={() => {
               if (self.phone) void st.do.requestPhoneCodeForSetPassword(hash);
@@ -68,7 +71,7 @@ export const SetPasswordWithPhone = ({ disabled, hash = "verify" }: SetPasswordW
             </div>
           )}
           <button
-            className="btn btn-primary w-20 whitespace-nowrap text-xs"
+            className={cn(buttonVariants({ variant: "primary" }), "w-20 whitespace-nowrap text-xs")}
             disabled={!phoneCodeAt || isPhoneVerified}
             onClick={() => void st.do.getSignTokenForSetPassword()}
           >
@@ -166,7 +169,11 @@ export const SignInPassword = ({
       ) : null}
       <button
         id="signin-button"
-        className={`btn btn-primary w-full text-background md:mt-5 ${isReady ? "" : "btn-disabled"} gap-2`}
+        className={cn(
+          buttonVariants({ variant: "primary" }),
+          "w-full gap-2 text-background md:mt-5",
+          isReady ? "" : "pointer-events-none opacity-50",
+        )}
         disabled={!isSubmitable}
         onClick={() => void st.do.signinWithPassword({ redirect, replace })}
       >
@@ -195,7 +202,7 @@ export const ChangePassword = ({ siteKey }: { siteKey: string }) => {
   return (
     <>
       <button
-        className="btn btn-sm"
+        className={buttonVariants({ size: "sm" })}
         onClick={() => {
           st.do.setUserModal("changePassword");
         }}
@@ -210,7 +217,7 @@ export const ChangePassword = ({ siteKey }: { siteKey: string }) => {
         title="비밀번호 변경"
         action={
           <button
-            className="btn w-full"
+            className={cn(buttonVariants(), "w-full")}
             onClick={() => void st.do.changePassword()}
             disabled={password.length < 7 || password !== passwordConfirm || !turnstileToken}
           >
@@ -265,37 +272,61 @@ export const SSOButtons = ({
   const { l } = usePage();
   const mainSsoButtonMap: { [key in cnst.SsoType["value"]]: ReactNode } = {
     kakao: (
-      <button className="btn relative flex w-full items-center border-none bg-[#FEE500] text-[#3c1e1e] shadow-sm hover:bg-[#FEE500] hover:opacity-50">
+      <button
+        className={cn(
+          buttonVariants(),
+          "relative flex w-full items-center border-none bg-[#FEE500] text-[#3c1e1e] shadow-sm hover:bg-[#FEE500] hover:opacity-50",
+        )}
+      >
         <Icon.Kakao className="absolute left-4 rounded-full" />
         {l("user.signWithKakao")}
       </button>
     ),
     naver: (
-      <button className="btn relative flex w-full items-center border-none bg-[#1ec800] text-white shadow-sm hover:bg-[#1ec800] hover:opacity-50">
+      <button
+        className={cn(
+          buttonVariants(),
+          "relative flex w-full items-center border-none bg-[#1ec800] text-white shadow-sm hover:bg-[#1ec800] hover:opacity-50",
+        )}
+      >
         <Icon.Naver className="absolute left-4 rounded-full fill-white" />
         {l("user.signWithNaver")}
       </button>
     ),
     github: (
-      <button className="btn relative flex w-full items-center border-none bg-black text-white shadow-sm">
+      <button
+        className={cn(buttonVariants(), "relative flex w-full items-center border-none bg-black text-white shadow-sm")}
+      >
         <AiFillGithub className="absolute left-[18px] text-4xl text-white" />
         {l("user.signWithGithub")}
       </button>
     ),
     google: (
-      <button className="btn relative flex w-full items-center border border-gray-200 bg-white text-black shadow-sm">
+      <button
+        className={cn(
+          buttonVariants(),
+          "relative flex w-full items-center border border-gray-200 bg-white text-black shadow-sm",
+        )}
+      >
         <Icon.Google className="absolute left-4 rounded-full" />
         {l("user.signWithGoogle")}
       </button>
     ),
     facebook: (
-      <button className="btn relative flex w-full items-center border-none bg-[#039be5] text-white shadow-sm">
+      <button
+        className={cn(
+          buttonVariants(),
+          "relative flex w-full items-center border-none bg-[#039be5] text-white shadow-sm",
+        )}
+      >
         <Icon.Facebook className="absolute left-[22px] rounded-full" width={30} />
         {l("user.signWithFacebook")}
       </button>
     ),
     apple: (
-      <button className="btn relative flex w-full items-center border-none bg-black text-white shadow-sm">
+      <button
+        className={cn(buttonVariants(), "relative flex w-full items-center border-none bg-black text-white shadow-sm")}
+      >
         <Icon.Apple className="absolute left-4 rounded-full" />
         {l("user.signWithApple")}
       </button>
@@ -393,7 +424,7 @@ export const ForgotPassword = () => {
         />
       </div>
       <button
-        className="btn btn-primary w-full text-background"
+        className={cn(buttonVariants({ variant: "primary" }), "w-full text-background")}
         disabled={!isEmail(accountId) || finished}
         onClick={async () => {
           await st.do.resetPassword(accountId);
@@ -586,12 +617,9 @@ export const PushNotificationSwitch = ({ className }: PushNotificationSwitchProp
 
   return (
     <div>
-      <input
-        type="checkbox"
-        className="toggle"
-        // checked={checked}
+      <Switch
         checked={checked}
-        onClick={() => {
+        onChange={() => {
           if (checked) void st.do.subNotiDeviceTokenOfSelf(deviceToken);
           else void st.do.addNotiDeviceTokenOfSelf(deviceToken);
         }}

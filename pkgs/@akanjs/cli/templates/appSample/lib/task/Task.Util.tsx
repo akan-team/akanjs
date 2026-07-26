@@ -20,7 +20,7 @@ interface StartProps {
 
 export const Start = ({ taskId }: StartProps) => (
   <button
-    className="btn btn-xs border-primary/20 bg-primary/10 text-primary hover:bg-primary hover:text-primary-content"
+    className="btn btn-xs border-primary/20 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground"
     onClick={() => st.do.startTask(taskId)}
   >
     {usePage().l("task.taskStart")}
@@ -33,7 +33,7 @@ interface CompleteProps {
 
 export const Complete = ({ taskId }: CompleteProps) => (
   <button
-    className="btn btn-xs border-success/20 bg-success/10 text-success hover:bg-success hover:text-success-content"
+    className="btn btn-xs border-success/20 bg-success/10 text-success hover:bg-success hover:text-success-foreground"
     onClick={() => st.do.completeTask(taskId)}
   >
     {usePage().l("task.taskComplete")}
@@ -46,7 +46,7 @@ interface RemoveProps {
 
 export const Remove = ({ taskId }: RemoveProps) => (
   <Model.Remove modelId={taskId} slice={fetch.slice.task}>
-    <button className="btn btn-xs btn-ghost text-error">{usePage().l("task.taskRemove")}</button>
+    <button className="btn btn-xs btn-ghost text-destructive">{usePage().l("task.taskRemove")}</button>
   </Model.Remove>
 );
 
@@ -64,7 +64,7 @@ export const Toolbox = ({ taskId, status }: ToolboxProps) => {
       </button>
       <ul
         tabIndex={0}
-        className="dropdown-content menu z-[1] w-40 rounded-box border border-base-content/10 bg-base-100 p-2 shadow"
+        className="dropdown-content menu z-[1] w-40 rounded-box border border-foreground/10 bg-background p-2 shadow"
       >
         {status === "todo" && (
           <li>
@@ -77,7 +77,7 @@ export const Toolbox = ({ taskId, status }: ToolboxProps) => {
           </li>
         )}
         <li>
-          <button className="text-error" onClick={() => st.do.removeTask(taskId)}>
+          <button className="text-destructive" onClick={() => st.do.removeTask(taskId)}>
             {l("task.taskRemove")}
           </button>
         </li>

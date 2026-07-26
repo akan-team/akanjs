@@ -1,5 +1,6 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { clsx, cn } from "akanjs/client";
+import { buttonVariants } from "akanjs/ui";
 import { type ChangeEvent, type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
 import { AiOutlineDelete, AiOutlineUpload } from "react-icons/ai";
 import { BiEditAlt } from "react-icons/bi";
@@ -124,7 +125,11 @@ export const Signature = ({
         >
           <AiOutlineUpload /> {uploadLabel}
         </button>
-        <button type="button" className="btn btn-ghost btn-sm ml-auto text-destructive" onClick={clear}>
+        <button
+          type="button"
+          className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "ml-auto text-destructive")}
+          onClick={clear}
+        >
           <AiOutlineDelete /> {clearLabel}
         </button>
       </div>
@@ -141,7 +146,12 @@ export const Signature = ({
         />
       ) : (
         <div className="flex flex-col items-center gap-3 rounded-box border border-base-300 border-dashed p-4">
-          <input type="file" accept="image/*" className="file-input file-input-bordered w-full" onChange={onUpload} />
+          <input
+            type="file"
+            accept="image/*"
+            className="w-full rounded-field border border-input text-sm file:mr-3 file:border-0 file:bg-muted file:px-3 file:py-2 file:text-foreground"
+            onChange={onUpload}
+          />
           {value ? <img src={value} alt="signature" className="max-h-40 object-contain" /> : null}
         </div>
       )}

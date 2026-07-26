@@ -619,7 +619,7 @@ export class Stock extends via((field) => ({
               </tbody>
             </table>
           </div>
-          <div className="alert alert-warning mt-4">
+          <div className="mt-4 flex items-center gap-2 rounded-box border border-warning/30 bg-warning/10 p-4">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="h-6 w-6 shrink-0 stroke-current"

@@ -258,7 +258,7 @@ export class DeliveryService extends serve(db.delivery, ({ use, service }) => ({
             title="apps/koyo/lib/delivery/Delivery.Template.tsx"
             code={`
 "use client";
-import { Field, Layout } from "akanjs/ui";
+import { Field, Layout, buttonVariants } from "akanjs/ui";
 import { cnst, fetch, st, usePage } from "@apps/koyo/client";
 
 interface GeneralProps {
@@ -644,7 +644,7 @@ export const New = ({ className }: NewProps) => {
   return (
     <div className={className}>
       <button
-        className="btn btn-primary"
+        className={buttonVariants({ variant: "primary" })}
         onClick={() => {
           st.do.newDelivery();
         }}
@@ -704,10 +704,10 @@ export default async function Page() {
       <Inventory.Zone.Today />
       <Tab defaultMenu="icecreamOrder"> // [!code highlight:33]
         <Tab.Menus className="flex items-center">
-          <Tab.Menu menu="icecreamOrder" className="btn btn-xl" activeClassName="btn-primary">
+          <Tab.Menu menu="icecreamOrder" className={cn(buttonVariants({ size: "lg" }), "h-14 px-8 text-lg")} activeClassName="btn-primary">
             {l("icecreamOrder.modelName")}
           </Tab.Menu>
-          <Tab.Menu menu="delivery" className="btn btn-xl" activeClassName="btn-primary">
+          <Tab.Menu menu="delivery" className={cn(buttonVariants({ size: "lg" }), "h-14 px-8 text-lg")} activeClassName="btn-primary">
             {l("delivery.modelName")}
           </Tab.Menu>
         </Tab.Menus>
@@ -716,7 +716,7 @@ export default async function Page() {
             <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
             <IcecreamOrder.Util.PublicQueryMaker />
             <Model.New
-              className="btn btn-primary"
+              className={buttonVariants({ variant: "primary" })}
               slice={fetch.slice.icecreamOrderInPublic}
               renderTitle="name"
               partial={icecreamOrderForm}

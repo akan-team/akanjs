@@ -1,9 +1,9 @@
 "use client";
 import { type cnst, st, usePage } from "@libs/shared/client";
 import { Icon } from "@libs/util/ui";
-import { clsx, fetch } from "akanjs/client";
+import { clsx, cn, fetch } from "akanjs/client";
 // import { client } from "akanjs/signal";
-import { Input, Link, Modal } from "akanjs/ui";
+import { buttonVariants, Dropdown, Input, Link, Modal } from "akanjs/ui";
 import { type ReactNode, useEffect, useState } from "react";
 import { AiFillGithub, AiOutlineMenu, AiOutlinePoweroff } from "react-icons/ai";
 
@@ -27,37 +27,61 @@ export const Auth = ({ logo, password, ssoTypes = [], redirect }: AuthProps) => 
   }, []);
   const ssoButtons: { [key in cnst.SsoType["value"]]: ReactNode } = {
     github: (
-      <button className="btn relative flex w-full items-center border-none bg-black text-white shadow-sm">
+      <button
+        className={cn(buttonVariants(), "relative flex w-full items-center border-none bg-black text-white shadow-sm")}
+      >
         <AiFillGithub className="absolute left-[18px] text-4xl text-white" />
         {l("user.signWithGithub")}
       </button>
     ),
     google: (
-      <button className="btn relative flex w-full items-center border border-gray-200 bg-white text-black shadow-sm">
+      <button
+        className={cn(
+          buttonVariants(),
+          "relative flex w-full items-center border border-gray-200 bg-white text-black shadow-sm",
+        )}
+      >
         <Icon.Google className="absolute left-4 rounded-full" />
         {l("user.signWithGoogle")}
       </button>
     ),
     facebook: (
-      <button className="btn relative flex w-full items-center border-none bg-[#039be5] text-white shadow-sm">
+      <button
+        className={cn(
+          buttonVariants(),
+          "relative flex w-full items-center border-none bg-[#039be5] text-white shadow-sm",
+        )}
+      >
         <Icon.Facebook className="absolute left-[22px] rounded-full" width={30} />
         {l("user.signWithFacebook")}
       </button>
     ),
     apple: (
-      <button className="btn relative flex w-full items-center border-none bg-black text-white shadow-sm">
+      <button
+        className={cn(buttonVariants(), "relative flex w-full items-center border-none bg-black text-white shadow-sm")}
+      >
         <Icon.Apple className="absolute left-4 rounded-full" />
         {l("user.signWithApple")}
       </button>
     ),
     kakao: (
-      <button className="btn relative flex w-full items-center border-none bg-[#FEE500] text-[#3c1e1e] shadow-sm hover:text-white">
+      <button
+        className={cn(
+          buttonVariants(),
+          "relative flex w-full items-center border-none bg-[#FEE500] text-[#3c1e1e] shadow-sm hover:text-white",
+        )}
+      >
         <Icon.Kakao className="absolute left-4 rounded-full" />
         {l("user.signWithKakao")}
       </button>
     ),
     naver: (
-      <button className="btn relative flex w-full items-center border-none bg-[#1ec800] text-white shadow-sm hover:text-white">
+      <button
+        className={cn(
+          buttonVariants(),
+          "relative flex w-full items-center border-none bg-[#1ec800] text-white shadow-sm hover:text-white",
+        )}
+      >
         <Icon.Naver className="absolute left-4 rounded-full fill-white" />
         {l("user.signWithNaver")}
       </button>
@@ -90,7 +114,7 @@ export const Auth = ({ logo, password, ssoTypes = [], redirect }: AuthProps) => 
               />
             </div>
             <button
-              className="btn btn-primary w-full"
+              className={cn(buttonVariants({ variant: "primary" }), "w-full")}
               onKeyDown={(e) => {
                 if (e.key === "Enter") void st.do.signinAdmin({ redirect });
               }}
@@ -112,18 +136,18 @@ export const Auth = ({ logo, password, ssoTypes = [], redirect }: AuthProps) => 
 
 export const ToolMenu = () => {
   return (
-    <div className="dropdown dropdown-end">
-      <label tabIndex={0} className="btn btn-ghost m-1">
-        <AiOutlineMenu className="mt-0.5" />
-      </label>
-      <ul tabIndex={0} className="dropdown-content menu z-[1] w-32 rounded-box bg-background p-2 shadow-sm">
+    <Dropdown
+      buttonClassName="m-1"
+      value={<AiOutlineMenu className="mt-0.5" />}
+      dropdownClassName="w-32 rounded-box bg-background p-2"
+      content={
         <li onClick={() => void st.do.signoutAdmin()}>
           <div className="flex items-center gap-2 text-foreground">
             <AiOutlinePoweroff className="mt-0.5" /> Logout
           </div>
         </li>
-      </ul>
-    </div>
+      }
+    />
   );
 };
 
@@ -134,13 +158,19 @@ interface ManageAdminRoleProps {
 export const ManageAdminRole = ({ id, roles }: ManageAdminRoleProps) => {
   if (roles.includes("admin"))
     return (
-      <button className="btn btn-sm btn-error w-full" onClick={() => void st.do.subAdminRole(id, "admin")}>
+      <button
+        className={cn(buttonVariants({ variant: "destructive", size: "sm" }), "w-full")}
+        onClick={() => void st.do.subAdminRole(id, "admin")}
+      >
         Remove Admin
       </button>
     );
   else
     return (
-      <button className="btn btn-sm btn-warning w-full" onClick={() => void st.do.addAdminRole(id, "admin")}>
+      <button
+        className={cn(buttonVariants({ variant: "warning", size: "sm" }), "w-full")}
+        onClick={() => void st.do.addAdminRole(id, "admin")}
+      >
         Add Admin
       </button>
     );
@@ -153,13 +183,19 @@ interface ManageSuperAdminRoleProps {
 export const ManageSuperAdminRole = ({ id, roles }: ManageSuperAdminRoleProps) => {
   if (roles.includes("superAdmin"))
     return (
-      <button className="btn btn-sm btn-error w-full" onClick={() => void st.do.subAdminRole(id, "superAdmin")}>
+      <button
+        className={cn(buttonVariants({ variant: "destructive", size: "sm" }), "w-full")}
+        onClick={() => void st.do.subAdminRole(id, "superAdmin")}
+      >
         Remove SuperAdmin
       </button>
     );
   else
     return (
-      <button className="btn btn-sm btn-warning w-full" onClick={() => void st.do.addAdminRole(id, "superAdmin")}>
+      <button
+        className={cn(buttonVariants({ variant: "warning", size: "sm" }), "w-full")}
+        onClick={() => void st.do.addAdminRole(id, "superAdmin")}
+      >
         Add SuperAdmin
       </button>
     );
@@ -189,7 +225,7 @@ export const SetPassword = ({ className, id }: SetPasswordProps) => {
         }}
         action={
           <button
-            className="btn btn-primary"
+            className={buttonVariants({ variant: "primary" })}
             onClick={async () => {
               await st.do.setAdminPassword(id, passwordState.password);
               setPasswordState({ modalOpen: false, password: "" });

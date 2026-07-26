@@ -1,9 +1,9 @@
 "use client";
-import { Badge, Button, Layout, Loading, Pagination, ToggleSelect } from "akanjs/ui";
+import { Badge, Button, Loading, Pagination, System, ToggleSelect } from "akanjs/ui";
 import { type ReactNode, useState } from "react";
 
-// daisyui→shadcn 마이그레이션 QA 실험실. 변환된 프리미티브 + 토큰 스와치 +
-// 아직 daisyui 플러그인으로 렌더되는 컴포넌트를 실제 앱에서 나란히 확인한다.
+// daisyui→shadcn 마이그레이션 QA 실험실. 변환된 shadcn 프리미티브 + 토큰 스와치를
+// 실제 앱에서 light/dark로 나란히 확인한다.
 
 const Section = ({ title, note, children }: { title: string; note?: string; children: ReactNode }) => (
   <section className="border-border border-t px-5 py-6">
@@ -42,14 +42,19 @@ export const UiLab = () => {
 
   return (
     <div className="min-h-screen overflow-y-auto bg-background pb-24 text-foreground">
-      <Layout.Navbar className="bg-background" back>
+      <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-border border-b bg-background/95 px-5 py-3 backdrop-blur">
         <div className="font-semibold">UI 실험실 · daisyui→shadcn</div>
-      </Layout.Navbar>
+        <div className="flex items-center gap-2 text-foreground/60 text-xs">
+          <span>dark</span>
+          <System.ThemeToggle themes={["dark", "light"]} />
+          <span>light</span>
+        </div>
+      </header>
 
       <div className="px-5 pt-4">
         <p className="text-foreground/60 text-sm">
-          앱 테마 토글로 <b className="text-foreground">light/dark</b>를 바꿔가며 확인하세요. 상단은 변환 완료된 shadcn
-          프리미티브, 맨 아래는 아직 daisyui 플러그인으로 렌더되는 컴포넌트입니다.
+          상단 토글로 <b className="text-foreground">light/dark</b>를 바꿔가며 확인하세요. 모든 컴포넌트는 shadcn
+          프리미티브(cva + 시맨틱 토큰 + Radix)로 렌더됩니다.
         </p>
       </div>
 
@@ -138,30 +143,17 @@ export const UiLab = () => {
         </div>
       </Section>
 
-      <Section
-        title="⚠️ 아직 daisyui (플러그인 유지 확인)"
-        note="아래가 정상 렌더돼야 함 — 미변환 컴포넌트는 아직 @plugin daisyui로 렌더"
-      >
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn btn-primary btn-sm">
-              raw btn-primary
-            </button>
-            <button type="button" className="btn btn-outline btn-sm">
-              raw btn-outline
-            </button>
-            <span className="badge badge-primary">raw badge</span>
-            <span className="badge badge-outline">raw badge-outline</span>
+      <Section title="Accordion" note="daisyui collapse → 네이티브 <details>/<summary> + 시맨틱 토큰">
+        <details className="group rounded-box border border-border bg-muted/40">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 font-medium">
+            <span>열고 닫히는 아코디언</span>
+            <span className="text-foreground/50 transition-transform group-open:rotate-180">▾</span>
+          </summary>
+          <div className="border-border border-t px-4 py-3 text-foreground/70 text-sm">
+            daisyui 플러그인 없이 순수 HTML <code className="rounded bg-background px-1">&lt;details&gt;</code>로
+            동작합니다.
           </div>
-          <div className="collapse-arrow collapse rounded-box bg-base-200">
-            <input type="checkbox" />
-            <div className="collapse-title font-medium">raw collapse (열고 닫혀야 정상)</div>
-            <div className="collapse-content text-foreground/70 text-sm">
-              이 아코디언이 열리고 닫히면 daisyui 플러그인이 아직 살아 있는 것입니다. Phase 3에서 Radix/peer로 대체
-              예정.
-            </div>
-          </div>
-        </div>
+        </details>
       </Section>
     </div>
   );

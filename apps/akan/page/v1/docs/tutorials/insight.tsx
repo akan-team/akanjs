@@ -404,7 +404,7 @@ export default function Page() {
               <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
               <IcecreamOrder.Util.PublicQueryMaker /> // [!code ++]
               <Model.New
-                className="btn btn-primary"
+                className={buttonVariants({ variant: "primary" })}
                 sliceName="icecreamOrderInPublic"
                 renderTitle="name"
                 partial={icecreamOrderForm}
@@ -925,7 +925,7 @@ export default function Page() {
               <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div> // [!code collapse:10]
               <IcecreamOrder.Util.PublicQueryMaker />
               <Model.New
-                className="btn btn-primary"
+                className={buttonVariants({ variant: "primary" })}
                 sliceName="icecreamOrderInPublic"
                 renderTitle="name"
                 partial={icecreamOrderForm}

@@ -86,7 +86,7 @@ export default function Page() {
       init={init}
       renderEmpty={() => (
         <Model.NewWrapper partial={{ devAppId }} slice={fetch.slice.dbBackupInDevApp}>
-          <button className="btn btn-secondary">+ New</button>
+          <button className={buttonVariants({ variant: "secondary" })}>+ New</button>
         </Model.NewWrapper>
       )}
       renderItem={(dbBackup) => <DbBackup.Unit.Card key={dbBackup.id} dbBackup={dbBackup} />}

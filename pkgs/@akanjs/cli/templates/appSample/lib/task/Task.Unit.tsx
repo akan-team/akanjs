@@ -30,17 +30,17 @@ export const Card = ({ task, className, href }: CardProps) => {
   return (
     <Layout.Unit
       className={clsx(
-        "rounded-lg border border-base-content/10 bg-base-100 p-4 transition-shadow hover:shadow-md",
+        "rounded-lg border border-foreground/10 bg-background p-4 transition-shadow hover:shadow-md",
         className,
       )}
       href={href}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="font-semibold text-base-content">{task.title}</span>
+        <span className="font-semibold text-foreground">{task.title}</span>
         <span className={clsx("badge badge-sm shrink-0", statusBadge)}>{l(\`taskStatus.\${task.status}\`)}</span>
       </div>
       {task.due && (
-        <div className="mt-2 text-base-content/60 text-xs">
+        <div className="mt-2 text-foreground/60 text-xs">
           {l("task.taskDueLabel")} {task.due.toDate().toLocaleDateString()}
         </div>
       )}

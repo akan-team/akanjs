@@ -9,6 +9,49 @@
 - **Phase 1 codemod**: `scripts/codemods/daisyuiTokenRename.ts` (apps/libs 1,629건/123파일). 소비자 재사용 가능.
 - **Phase 2a 프리미티브(de-daisyui 완료)**: Button(정본 `buttonVariants`), Badge(`badgeVariants`), Loading 스피너(Area/Model.View/Signal.Response), Pagination, ToggleSelect, Model/Remove, Model/SureToRemove.
 
+## Phase 2b — de-daisyui 진행 (작업트리, 미커밋)
+
+- **컬러 무손실 접근성 수정(apps/{minimal,akan}/page/styles.css)**: dark의 warning/accent/open foreground를 흰색→어두운색(대비 1.4~2.4 실패 해소), card/popover를 background와 분리(elevation). light의 warning/accent foreground도 어두운색.
+- **컴포넌트 클래스 완전 제거(component-class-free)**: `Constant/Doc`(collapse→`<details>`, tabs→세그먼트, tooltip→`title`), `Data/{ListContainer,Item}`, `Signal/{Request,Response}`, `Signal/PubSub`(btn/join만·collapse 잔존), `Popconfirm`, `DraggableList`, `Layout/{Sider,LeftSider}`, `Model/EditModal`(btn만·modal 잔존), `Dialog/Modal`(btn만·modal 잔존), `Menu`(menu→flex 리스트), `Select`(트리거 btn→border/rounded). 모두 biome 0 error + import 스모크 통과.
+- `apps/minimal/ui/UiLab.tsx`(/lab QA): 헤더+ThemeToggle 복구, daisyui 섹션→shadcn/`<details>`.
+
+## Phase 2c — 프레임워크 de-daisyui 완료 (작업트리, 미커밋)
+
+- **`pkgs/akanjs/ui` 전체 daisyui 컴포넌트 클래스 0건.** Signal 허브 collapse→`SignalCollapse`(`<details>`), 공용 **Tooltip**(Radix)·**Switch**(Radix)·**SignalCollapse** 프리미티브 신설, dropdown→커스텀(외부클릭), toggle/swap→Switch, stat/stats→토큰 flex, Input/Field/Textarea 토큰 박스화, Menu/Select/Dashboard/Insight/ObjectId/RecentTime 등 변환.
+- 토큰 rename codemod 재적용(pkgs/apps/libs .tsx/.ts, ~1090건): `base-100→background`, `base-content→foreground`, `*-content→*-foreground`, `error→destructive`, `primary-focus→primary`. (`base-200/300`은 실토큰 유지.)
+- `server/systemPageDocument.tsx` btn 제거(자체 CSS), AI 프롬프트(`guideline.prompt.ts`/`module.request.ts`) → daisyui 금지·akanjs/ui 권장으로 플립.
+- biome 0 error + import 스모크 전부 통과.
+
+## Phase 2d — 앱/lib 컴포넌트 클래스 대량 변환 (작업트리, 미커밋)
+
+- **codemod**(`scratchpad/daisyuiComponentCodemod.ts`)로 순수 문자열 `className`의 btn/badge → `buttonVariants`/`badgeVariants` 자동 변환(60파일, btn ~180 · badge ~30, import 자동 추가).
+- 수동: 템플릿리터럴/조건부 btn, `btn-square/xl` 특수, collapse(`Docs/Layout` 2곳→`<details>`), dropdown(`Admin.Util`→`Dropdown`), tooltip(`User.Unit`→`Tooltip`), toggle(`User.Util`→`Switch`), alert/input/textarea/file-input 토큰화, `Badge`에 `info` variant 추가.
+- 문서 페이지의 **표시용 예제 코드**(`code={...}`)와 프로즈는 보존(변환 대상 아님).
+
+## ⚠️ 여전히 컷오버 불가 — akan 문서 앱의 롱테일 daisyui
+
+측정된 잔여 적용 클래스(주로 `apps/akan` 문서 사이트):
+- `className="divider"` **×706**, `.card` ×22, `.checkbox` ×12, bare `.input` ×14, `.loading` ×6 (+ hero/drawer/timeline 등 쇼케이스 클래스 가능성).
+- 대부분 순수 스왑(`divider`→`my-4 h-px w-full bg-border`)이라 codemod 가능하나, 수천 사이트 규모 + 실빌드 육안 QA 필요.
+- **판단 필요**: akan은 내부 문서/쇼케이스 앱 → (a) 전량 변환, (b) daisyui 유지 허용, (c) 호환 CSS shim 중 택1.
+
+## (구) ⚠️ 컷오버 불가 — 앱/라이브러리 페이지가 아직 daisyui 사용
+
+- `@plugin "daisyui"` + 별칭 블록은 **양 앱 styles.css에 그대로 유지**(제거 시 앱 페이지 깨짐).
+- 미변환 대량 표면(수백 건): `apps/minimal/page/**`, `apps/minimal/ui/**`, `apps/akan/page/**`(특히 `page/(docs)`·`v1/docs` 문서들), `apps/akan/ui/**`, `libs/shared/{lib,ui}/**`, `libs/util/ui/**`.
+- 생성 파이프라인(미변환): `pkgs/@akanjs/cli/templates/appSample/**`, devkit/frontendBuild의 daisyui 주입, `package.runner/workspace.runner/*.test.ts`의 daisyui, npm dep(`bun remove daisyui`). → 신규 생성 앱이 토큰 계층을 받도록 devkit 수정 + generate/build/test 검증 필요.
+
+## 남은 STRUCT 파일 (참고, 프레임워크는 이미 완료)
+
+- **collapse**(Signal 허브 `Signal/style.ts`의 `endpointCard/endpointContent` + 소비자 `Signal/{Doc,PubSub,Message,RestApi}`): `<details>` 또는 Radix Accordion으로 허브 일괄 전환.
+- **tooltip**(공용 Tooltip 프리미티브 신설 필요 → `ObjectId,RecentTime,Field,Signal/{Arg,Object},Tab/Menu` 언블록).
+- **dropdown→Radix**: `Dropdown,System/SelectLanguage,Model/ViewEditModal`.
+- **toggle/swap→Radix Switch**: `System/{ThemeToggle,DevModeToggle}`.
+- **stat/stats**: `Data/{Dashboard,Insight}`.
+- **Input/Field/Radio**(동적 className, 대형).
+- **`modal` 클래스**: `Dialog/Modal`, `Model/EditModal` 및 Model/* 래퍼(daisyui `.modal` → Tailwind fixed/flex).
+- **토큰 클래스 잔여**(별칭이 커버 중, 컷오버 전 일괄): `base-100/200/300`, `base-content`, `*-content`, `primary-focus`.
+
 ## 정본 변환 레시피
 
 - **버튼**: `btn btn-*` → `cn(buttonVariants({ variant, size }), extra)` (raw 요소) 또는 `<Button variant size>` (컴포넌트). 매핑: primary/secondary/outline/ghost/destructive(=btn-error)/success/warning/link, size xs/sm/md/lg/icon. `btn-square`=size icon.

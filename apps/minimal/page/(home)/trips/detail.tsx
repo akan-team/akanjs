@@ -1,5 +1,6 @@
 import type { PageConfig } from "akanjs/client";
-import { Layout, Link } from "akanjs/ui";
+import { cn } from "akanjs/client";
+import { buttonVariants, Layout, Link } from "akanjs/ui";
 import { AiOutlineCheckCircle, AiOutlineClose, AiOutlineCompass } from "react-icons/ai";
 
 export default function Page() {
@@ -43,7 +44,10 @@ export default function Page() {
         ))}
       </section>
       <Layout.BottomInset className="flex h-48 w-full bg-background/80 px-5 py-2 backdrop-blur" keyboardSticky>
-        <Link className="btn btn-primary h-full w-full rounded-2xl border-0" href="/explore/detail">
+        <Link
+          className={cn(buttonVariants({ variant: "primary" }), "h-full w-full rounded-2xl border-0")}
+          href="/explore/detail"
+        >
           <AiOutlineCompass /> View stay again
         </Link>
       </Layout.BottomInset>

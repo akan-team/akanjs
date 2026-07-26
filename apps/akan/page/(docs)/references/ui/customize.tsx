@@ -32,7 +32,7 @@ export default function Page() {
 
   const brandComponentCode = `"use client";
 // apps/<app>/ui/BrandModal.tsx
-import { Dialog, type AkanModalComponent } from "akanjs/ui";
+import { Dialog, type AkanModalComponent, buttonVariants } from "akanjs/ui";
 
 // Compose the framework's headless parts so you re-skin the surface without re-owning
 // focus-trap, escape handling, scroll-lock, or portal behavior. Typed as the slot contract,
@@ -65,7 +65,7 @@ export default override({ Modal: AdminModal, Table: AdminTable });`;
 import type { AkanUiOverrides } from "akanjs/ui";
 
 export const BrandButton: AkanUiOverrides["Button"] = ({ children, onClick, ...rest }) => (
-  <button className="btn btn-primary" onClick={(e) => onClick(e, { onError: () => {} })} {...rest}>
+  <button className={buttonVariants({ variant: "primary" })} onClick={(e) => onClick(e, { onError: () => {} })} {...rest}>
     {children}
   </button>
 );`;

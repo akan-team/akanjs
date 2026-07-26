@@ -83,7 +83,7 @@ export const Reconnect = () => {
   if (process.env.AKAN_PUBLIC_ENV !== "local") return null;
   if (connectStatus === "initial" || connectStatus === "normal") return null;
   return (
-    <div className="fixed top-0 left-0 flex h-screen w-screen animate-fadeIn flex-col items-center justify-center bg-base-100/50">
+    <div className="fixed top-0 left-0 flex h-screen w-screen animate-fadeIn flex-col items-center justify-center bg-background/50">
       <div className="flex w-4/5 flex-col items-center justify-center rounded-md bg-base-300 p-5 md:w-1/3">
         <div className="whitespace-nowrap font-bold text-3xl">
           {connectStatus === "disconnected"

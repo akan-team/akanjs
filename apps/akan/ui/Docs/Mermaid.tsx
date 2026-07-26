@@ -101,10 +101,10 @@ function getThemeColors() {
   const fallback = isDarkTheme(root) ? darkThemeFallback : lightThemeFallback;
 
   return {
-    base100: getMermaidColor(style, "--color-base-100", fallback.base100),
+    base100: getMermaidColor(style, "--color-background", fallback.base100),
     base200: getMermaidColor(style, "--color-base-200", fallback.base200),
     base300: getMermaidColor(style, "--color-base-300", fallback.base300),
-    baseContent: getMermaidColor(style, "--color-base-content", fallback.baseContent),
+    baseContent: getMermaidColor(style, "--color-foreground", fallback.baseContent),
     primary: getMermaidColor(style, "--color-primary", fallback.primary),
   };
 }

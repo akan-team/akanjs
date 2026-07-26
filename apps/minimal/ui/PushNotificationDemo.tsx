@@ -1,7 +1,7 @@
 "use client";
 
 import { type PushToken, usePushNotification } from "@libs/util/webkit";
-import { Link } from "akanjs/ui";
+import { buttonVariants, Link } from "akanjs/ui";
 import { useState } from "react";
 
 export const PushNotificationDemo = () => {
@@ -37,13 +37,13 @@ export const PushNotificationDemo = () => {
         </p>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-3">
-          <button className="btn btn-outline" onClick={refreshStatus} type="button">
+          <button className={buttonVariants({ variant: "outline" })} onClick={refreshStatus} type="button">
             Check status
           </button>
-          <button className="btn btn-primary" onClick={register} type="button">
+          <button className={buttonVariants({ variant: "primary" })} onClick={register} type="button">
             Register
           </button>
-          <button className="btn btn-secondary" onClick={initClickBridge} type="button">
+          <button className={buttonVariants({ variant: "secondary" })} onClick={initClickBridge} type="button">
             Init click bridge
           </button>
         </div>
@@ -68,13 +68,13 @@ if (pushToken) await appApi.registerPushToken(pushToken);`}</pre>
         </div>
 
         <div className="mt-6 flex flex-wrap gap-3">
-          <Link className="btn btn-ghost" href="/explore">
+          <Link className={buttonVariants({ variant: "ghost" })} href="/explore">
             Back to Explore
           </Link>
-          <Link className="btn btn-ghost" href="/push-notification/landing">
+          <Link className={buttonVariants({ variant: "ghost" })} href="/push-notification/landing">
             Open demo landing
           </Link>
-          <Link className="btn btn-ghost" href="/push-notification/guide">
+          <Link className={buttonVariants({ variant: "ghost" })} href="/push-notification/guide">
             Setup guide
           </Link>
         </div>

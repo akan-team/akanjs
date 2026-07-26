@@ -1,5 +1,6 @@
 import type { PageConfig } from "akanjs/client";
-import { Layout, Link } from "akanjs/ui";
+import { cn } from "akanjs/client";
+import { buttonVariants, Layout, Link } from "akanjs/ui";
 import { AiOutlineArrowLeft, AiOutlineShoppingCart } from "react-icons/ai";
 
 export default function Page() {
@@ -24,7 +25,7 @@ export default function Page() {
           <p className="apptest-muted text-xs uppercase tracking-[0.24em]">Expected local deep link</p>
           <p className="mt-2 break-all font-mono text-sm">http://localhost:8283/orders/detail</p>
         </section>
-        <Link className="btn btn-outline mt-5 w-full rounded-2xl" href="/explore">
+        <Link className={cn(buttonVariants({ variant: "outline" }), "mt-5 w-full rounded-2xl")} href="/explore">
           <AiOutlineArrowLeft /> Back to Explore
         </Link>
       </div>

@@ -24,10 +24,10 @@ export default async function Page() {
         </Link>
       </div>
       <div className="mb-6">
-        <h1 className="font-extrabold text-3xl text-base-content">New Task</h1>
-        <p className="mt-1 text-base-content/60 text-sm">Create a new task with title and description</p>
+        <h1 className="font-extrabold text-3xl text-foreground">New Task</h1>
+        <p className="mt-1 text-foreground/60 text-sm">Create a new task with title and description</p>
       </div>
-      <div className="rounded-xl border border-base-content/10 bg-base-100 p-6 shadow-sm">
+      <div className="rounded-xl border border-foreground/10 bg-background p-6 shadow-sm">
         <Load.Edit slice={fetch.slice.taskInPublic} edit={taskForm} type="form" onCancel="back" onSubmit="/task">
           <Task.Template.General />
         </Load.Edit>

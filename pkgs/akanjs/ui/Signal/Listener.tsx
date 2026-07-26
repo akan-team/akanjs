@@ -35,7 +35,7 @@ const ListenerResult = ({ status, data }: ListenerResultProps) => {
         <div
           className={`size-[10px] rounded-full ${
             status === "error"
-              ? "bg-error"
+              ? "bg-destructive"
               : status === "listening"
                 ? "animate-pop-300 bg-primary"
                 : status === "loading"

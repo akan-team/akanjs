@@ -1,7 +1,7 @@
 import { usePage } from "@apps/akan/client";
 import { Code, Docs } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
-import { Link } from "akanjs/ui";
+import { badgeVariants, buttonVariants, Link } from "akanjs/ui";
 import { BiLinkExternal } from "react-icons/bi";
 
 export default function Page() {
@@ -50,9 +50,9 @@ export default function Page() {
                 <div className="rounded-xl border border-primary/20 bg-background p-4 shadow">
                   <div className="mb-1 font-bold">{l.trans({ en: "Akan Runtime", ko: "Akan Runtime" })}</div>
                   <div className="flex flex-wrap gap-2">
-                    <span className="badge badge-primary">Bun</span>
-                    <span className="badge badge-outline">AkanApp</span>
-                    <span className="badge badge-outline">Gateway</span>
+                    <span className={badgeVariants({ variant: "primary" })}>Bun</span>
+                    <span className={badgeVariants({ variant: "outline" })}>AkanApp</span>
+                    <span className={badgeVariants({ variant: "outline" })}>Gateway</span>
                   </div>
                 </div>
 
@@ -78,10 +78,10 @@ export default function Page() {
                   <div className="rounded-xl bg-background p-4 shadow">
                     <div className="mb-2 font-bold">{l.trans({ en: "Data", ko: "Data" })}</div>
                     <div className="flex flex-wrap gap-2">
-                      <span className="badge badge-outline">SQLite</span>
-                      <span className="badge badge-outline">libSQL</span>
-                      <span className="badge badge-outline">Postgres</span>
-                      <span className="badge badge-outline">Redis</span>
+                      <span className={badgeVariants({ variant: "outline" })}>SQLite</span>
+                      <span className={badgeVariants({ variant: "outline" })}>libSQL</span>
+                      <span className={badgeVariants({ variant: "outline" })}>Postgres</span>
+                      <span className={badgeVariants({ variant: "outline" })}>Redis</span>
                     </div>
                   </div>
                 </div>
@@ -123,22 +123,22 @@ export default function Page() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Link href="https://react.dev/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> React
                     </button>
                   </Link>
                   <Link href="https://capacitorjs.com/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> Capacitor
                     </button>
                   </Link>
                   <Link href="https://tailwindcss.com/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> TailwindCSS
                     </button>
                   </Link>
                   <Link href="https://daisyui.com/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> DaisyUI
                     </button>
                   </Link>
@@ -150,27 +150,27 @@ export default function Page() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Link href="https://bun.sh/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> Bun
                     </button>
                   </Link>
                   <Link href="https://www.sqlite.org/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> SQLite
                     </button>
                   </Link>
                   <Link href="https://turso.tech/libsql" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> libSQL
                     </button>
                   </Link>
                   <Link href="https://www.postgresql.org/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> PostgreSQL
                     </button>
                   </Link>
                   <Link href="https://redis.io/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> Redis
                     </button>
                   </Link>
@@ -182,7 +182,7 @@ export default function Page() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Link href="https://biomejs.dev/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> Biome
                     </button>
                   </Link>
@@ -194,12 +194,12 @@ export default function Page() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Link href="https://www.docker.com/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> Docker
                     </button>
                   </Link>
                   <Link href="https://kubernetes.io/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> Kubernetes
                     </button>
                   </Link>
@@ -398,9 +398,9 @@ export default function Page() {
                 {l.trans({ en: "Application or Library Anatomy", ko: "Application or Library Anatomy" })}
               </div>
               <div className="flex flex-wrap gap-2 text-xs">
-                <span className="badge badge-error badge-outline">{l.trans({ en: "server", ko: "server" })}</span>
-                <span className="badge badge-success badge-outline">{l.trans({ en: "client", ko: "client" })}</span>
-                <span className="badge badge-warning badge-outline">{l.trans({ en: "shared", ko: "shared" })}</span>
+                <span className={badgeVariants({ variant: "outline" })}>{l.trans({ en: "server", ko: "server" })}</span>
+                <span className={badgeVariants({ variant: "outline" })}>{l.trans({ en: "client", ko: "client" })}</span>
+                <span className={badgeVariants({ variant: "outline" })}>{l.trans({ en: "shared", ko: "shared" })}</span>
               </div>
             </div>
 

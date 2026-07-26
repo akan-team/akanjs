@@ -197,7 +197,6 @@ export const StatusSelect = ({ status, setStatus }) => (
 
 export const SaveButton = ({ save }) => (
   <Button
-    className="btn-primary"
     onClick={async (_event, { onError }) => {
       const result = await save();
       if (!result.ok) onError("base.error");

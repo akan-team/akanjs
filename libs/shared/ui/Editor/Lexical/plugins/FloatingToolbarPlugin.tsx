@@ -2,6 +2,8 @@
 import { $isLinkNode, TOGGLE_LINK_COMMAND } from "@lexical/link";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { $findMatchingParent, mergeRegister } from "@lexical/utils";
+import { cn } from "akanjs/client";
+import { buttonVariants } from "akanjs/ui";
 import {
   $getSelection,
   $isRangeSelection,
@@ -190,9 +192,11 @@ export const FloatingToolbar = ({
               key={mark.format}
               type="button"
               title={mark.title}
-              className={`btn btn-ghost btn-xs min-h-7 px-2 font-mono ${
-                state.formats.has(mark.format) ? "btn-active" : ""
-              }`}
+              className={cn(
+                buttonVariants({ variant: "ghost", size: "xs" }),
+                "min-h-7 px-2 font-mono",
+                state.formats.has(mark.format) ? "bg-muted" : "",
+              )}
               onClick={() => onToggleMark(mark.format)}
             >
               {mark.label}
@@ -202,7 +206,11 @@ export const FloatingToolbar = ({
           <button
             type="button"
             title="Link (⌘K)"
-            className={`btn btn-ghost btn-xs min-h-7 px-2 ${state.linkUrl ? "btn-active" : ""}`}
+            className={cn(
+              buttonVariants({ variant: "ghost", size: "xs" }),
+              "min-h-7 px-2",
+              state.linkUrl ? "bg-muted" : "",
+            )}
             onClick={onStartLinkEdit}
           >
             Link
@@ -211,7 +219,7 @@ export const FloatingToolbar = ({
             <button
               type="button"
               title="Remove link"
-              className="btn btn-ghost btn-xs min-h-7 px-2"
+              className={cn(buttonVariants({ variant: "ghost", size: "xs" }), "min-h-7 px-2")}
               onClick={onRemoveLink}
             >
               Unlink
@@ -258,7 +266,11 @@ export const LinkInput = ({ initial, invalid, onSubmit, onCancel, onChange }: Li
           }
         }}
       />
-      <button type="button" className="btn btn-primary btn-xs min-h-7" onClick={() => onSubmit(url.trim())}>
+      <button
+        type="button"
+        className={cn(buttonVariants({ variant: "primary", size: "xs" }), "min-h-7")}
+        onClick={() => onSubmit(url.trim())}
+      >
         OK
       </button>
     </div>

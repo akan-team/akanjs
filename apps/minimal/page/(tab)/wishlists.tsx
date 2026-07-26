@@ -1,4 +1,5 @@
-import { Link } from "akanjs/ui";
+import { cn } from "akanjs/client";
+import { buttonVariants, Link } from "akanjs/ui";
 import { AiOutlineCamera, AiOutlineHeart } from "react-icons/ai";
 
 export default function Page({ searchParams }: { searchParams: { deepLink?: string } }) {
@@ -33,7 +34,10 @@ export default function Page({ searchParams }: { searchParams: { deepLink?: stri
           </div>
         ))}
       </div>
-      <Link className="btn btn-primary mt-5 w-full rounded-2xl border-0" href="/wishlists/camera?deepLink=true">
+      <Link
+        className={cn(buttonVariants({ variant: "primary" }), "mt-5 w-full rounded-2xl border-0")}
+        href="/wishlists/camera?deepLink=true"
+      >
         <AiOutlineCamera /> Capture a new place
       </Link>
     </div>

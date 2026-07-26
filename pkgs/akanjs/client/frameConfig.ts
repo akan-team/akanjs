@@ -141,8 +141,8 @@ export function resolvePageState({
         ? false
         : (config.gesture ?? false),
     cache: config.cache ?? false,
-    topSafeAreaColor: config.topSafeAreaColor ?? "var(--color-base-100, Canvas)",
-    bottomSafeAreaColor: config.bottomSafeAreaColor ?? "var(--color-base-100, Canvas)",
+    topSafeAreaColor: config.topSafeAreaColor ?? "var(--color-background, Canvas)",
+    bottomSafeAreaColor: config.bottomSafeAreaColor ?? "var(--color-background, Canvas)",
   };
 }
 

@@ -169,7 +169,7 @@ import * as cnst from "./price.constant";
 
 export class Price extends by(cnst.Price) {}`}
           />
-          <div className="alert alert-info my-4">
+          <div className="my-4 flex items-center gap-2 rounded-box border border-info/30 bg-info/10 p-4">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
@@ -413,7 +413,7 @@ export class Price extends via((field) => ({
   }
 }`}
           />
-          <div className="alert alert-warning my-4">
+          <div className="my-4 flex items-center gap-2 rounded-box border border-warning/30 bg-warning/10 p-4">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="h-6 w-6 shrink-0 stroke-current"

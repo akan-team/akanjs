@@ -1,5 +1,6 @@
 import type { PageConfig } from "akanjs/client";
-import { Layout, Link } from "akanjs/ui";
+import { cn } from "akanjs/client";
+import { buttonVariants, Layout, Link } from "akanjs/ui";
 import { AiOutlineCreditCard, AiOutlineRight, AiOutlineSafety } from "react-icons/ai";
 
 export default function Page() {
@@ -45,7 +46,10 @@ export default function Page() {
         </div>
       </section>
       <Layout.BottomInset className="flex h-[72px] w-full bg-background/80 px-5 backdrop-blur">
-        <Link className="btn btn-primary w-full rounded-2xl border-0" href="/profile/payments/methods">
+        <Link
+          className={cn(buttonVariants({ variant: "primary" }), "w-full rounded-2xl border-0")}
+          href="/profile/payments/methods"
+        >
           Manage payment methods
         </Link>
       </Layout.BottomInset>

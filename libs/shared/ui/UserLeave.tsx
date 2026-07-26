@@ -1,7 +1,7 @@
 "use client";
 import { cnst, msg, st, usePage } from "@libs/shared/client";
-import { clsx } from "akanjs/client";
-import { Input, Radio } from "akanjs/ui";
+import { clsx, cn } from "akanjs/client";
+import { buttonVariants, Input, Radio } from "akanjs/ui";
 import { useEffect, useState } from "react";
 
 interface LeaveInfoProps {
@@ -91,7 +91,7 @@ export const LeaveTypeStep = ({ className, value, onChange }: LeaveTypeStepProps
         ))}
       </Radio>
       <button
-        className="btn btn-primary w-full"
+        className={cn(buttonVariants({ variant: "primary" }), "w-full")}
         onClick={() => {
           onChange(type);
         }}
@@ -146,7 +146,7 @@ export const Reason = ({
         ))}
       </Radio>
       <button
-        className="btn btn-primary w-full"
+        className={cn(buttonVariants({ variant: "primary" }), "w-full")}
         disabled={!reason}
         onClick={() => {
           if (reason) onChange(reason);
@@ -184,7 +184,7 @@ export const Satisfaction = ({ className, value, onChange }: SatisfactionProps) 
         ))}
       </Radio>
       <button
-        className="btn btn-primary w-full"
+        className={cn(buttonVariants({ variant: "primary" }), "w-full")}
         disabled={satisfaction === null}
         onClick={() => {
           if (satisfaction !== null) onChange(satisfaction);
@@ -218,7 +218,7 @@ export const Voc = ({ className, value, onChange, redirect }: VocProps) => {
         }}
       />
       <button
-        className="btn btn-secondary w-full"
+        className={cn(buttonVariants({ variant: "secondary" }), "w-full")}
         onClick={async () => {
           await st.do.setLeaveInfoOfSelf();
           if (!window.confirm("탈퇴하시겠습니까?")) return;

@@ -1,5 +1,6 @@
 import type { PageConfig } from "akanjs/client";
-import { Layout } from "akanjs/ui";
+import { cn } from "akanjs/client";
+import { buttonVariants, Layout } from "akanjs/ui";
 import { AiOutlinePlus, AiOutlineSafetyCertificate } from "react-icons/ai";
 
 export default function Page() {
@@ -26,7 +27,7 @@ export default function Page() {
             </div>
           </div>
         </div>
-        <button className="btn btn-outline w-full rounded-2xl">
+        <button className={cn(buttonVariants({ variant: "outline" }), "w-full rounded-2xl")}>
           <AiOutlinePlus /> Add new card
         </button>
       </div>

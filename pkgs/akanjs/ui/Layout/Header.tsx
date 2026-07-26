@@ -28,7 +28,7 @@ export const Header = ({ className, type, children, height = 40 }: HeaderProps) 
       className={clsx(
         `fixed top-0 z-[9] flex duration-300 ${
           !visible ? "md:-translate-y-full" : ""
-        } w-full bg-base-100 shadow-sm backdrop-blur-lg`,
+        } w-full bg-background shadow-sm backdrop-blur-lg`,
         className,
       )}
     >

@@ -1,5 +1,6 @@
 "use client";
 import { dayjs } from "akanjs/base";
+import { buttonVariants } from "akanjs/ui";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { Area, MediaSize, Point, Size } from "react-easy-crop";
 import Cropper from "react-easy-crop";
@@ -192,7 +193,7 @@ export const CropImage = forwardRef<CropRef, CropImageProps>(
           />
 
           {download && (
-            <button className="btn" onClick={() => void downloadCroppedImage()}>
+            <button className={buttonVariants()} onClick={() => void downloadCroppedImage()}>
               download crop Image
             </button>
           )}

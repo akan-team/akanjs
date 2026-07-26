@@ -220,7 +220,7 @@ export const dictionary = modelDictionary(["en", "ko"])
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Template.tsx"
             code={`
 "use client"; // [!code collapse:4]
-import { Field, Layout } from "akanjs/ui";
+import { Field, Layout, buttonVariants } from "akanjs/ui";
 import { cnst, st, usePage } from "@apps/koyo/client";
 
 interface GeneralProps {
@@ -320,7 +320,7 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
       {showControls ? ( // [!code collapse:16]
         <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4">
           <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
-            <button className="btn btn-primary">
+            <button className={buttonVariants({ variant: "primary" })}>
               <span>{l.trans({ en: "View", ko: "보기" })}</span>
             </button>
           </Model.ViewWrapper>

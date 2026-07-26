@@ -664,7 +664,7 @@ export class InventoryStore extends store(sig.inventory, () => ({
             code={`
 "use client"; // [!code collapse:4]
 import { clsx } from "akanjs/client";
-import { Field, Layout } from "akanjs/ui";
+import { Field, Layout, buttonVariants } from "akanjs/ui";
 import { cnst, st, usePage } from "@apps/koyo/client";
 import { Loading } from "akanjs/ui"; // [!code ++:2]
 import { useEffect } from "react";
@@ -1061,7 +1061,7 @@ export default async function Page() {
       <div className="flex items-center gap-4 text-5xl font-black"> // [!code collapse:16]
         <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
         <Model.New
-          className="btn btn-primary"
+          className={buttonVariants({ variant: "primary" })}
           slice={fetch.slice.icecreamOrderInPublic}
           renderTitle="name"
           partial={icecreamOrderForm}

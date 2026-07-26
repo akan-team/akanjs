@@ -90,7 +90,7 @@ export default function Page() {
 import type { ClientInit, ClientView, SliceMeta } from "akanjs/fetch";
 import { cnst, fetch, IcecreamOrder } from "@apps/koyo/client";
 import { DefaultOf } from "akanjs/constant";
-import { Load, Model } from "akanjs/ui";
+import { Load, Model, buttonVariants } from "akanjs/ui";
 
 interface CardProps {
   className?: string;
@@ -221,7 +221,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
       </div>
       <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4"> // [!code ++:7]
         <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
-          <button className="btn btn-primary">
+          <button className={buttonVariants({ variant: "primary" })}>
             <span>{l.trans({ en: "View", ko: "보기" })}</span>
           </button>
         </Model.ViewWrapper>

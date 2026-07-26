@@ -1,6 +1,7 @@
 import { usePage } from "@apps/akan/client";
 import { Code, Docs } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
+import { badgeVariants } from "akanjs/ui";
 
 export default function Page() {
   const { l } = usePage();
@@ -86,7 +87,7 @@ export default function Page() {
               <tbody>
                 <tr>
                   <td>
-                    <span className="badge badge-warning">Common</span>
+                    <span className={badgeVariants({ variant: "warning" })}>Common</span>
                   </td>
                   <td>constant, dictionary, signal</td>
                   <td>
@@ -95,14 +96,14 @@ export default function Page() {
                 </tr>
                 <tr>
                   <td>
-                    <span className="badge badge-success">Backend</span>
+                    <span className={badgeVariants({ variant: "success" })}>Backend</span>
                   </td>
                   <td>document, service</td>
                   <td>{l.trans({ en: "MongoDB models, business logic", ko: "MongoDB 모델, 비즈니스 로직" })}</td>
                 </tr>
                 <tr>
                   <td>
-                    <span className="badge badge-info">Frontend</span>
+                    <span className={badgeVariants({ variant: "info" })}>Frontend</span>
                   </td>
                   <td>store, Template, Unit, View, Zone, Util</td>
                   <td>{l.trans({ en: "State management, UI components", ko: "상태 관리, UI 컴포넌트" })}</td>

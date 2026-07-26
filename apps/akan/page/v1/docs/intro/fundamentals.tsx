@@ -1,7 +1,7 @@
 import { usePage } from "@apps/akan/client";
 import { Code, Docs } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
-import { Image, Link } from "akanjs/ui";
+import { buttonVariants, Image, Link } from "akanjs/ui";
 import { BiLinkExternal } from "react-icons/bi";
 
 export default function Page() {
@@ -61,27 +61,27 @@ export default function Page() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Link href="https://nextjs.org/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> Next.js
                     </button>
                   </Link>
                   <Link href="https://react.dev/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> React
                     </button>
                   </Link>
                   <Link href="https://capacitorjs.com/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> Capacitor
                     </button>
                   </Link>
                   <Link href="https://tailwindcss.com/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> TailwindCSS
                     </button>
                   </Link>
                   <Link href="https://daisyui.com/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> DaisyUI
                     </button>
                   </Link>
@@ -93,22 +93,22 @@ export default function Page() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Link href="https://nestjs.com/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> NestJS
                     </button>
                   </Link>
                   <Link href="https://mongoosejs.com/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> MongoDB
                     </button>
                   </Link>
                   <Link href="https://redis.io/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> Redis
                     </button>
                   </Link>
                   <Link href="https://www.meilisearch.com/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> Meilisearch
                     </button>
                   </Link>
@@ -120,17 +120,17 @@ export default function Page() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Link href="https://jestjs.io/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> Jest
                     </button>
                   </Link>
                   <Link href="https://playwright.dev/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> Playwright
                     </button>
                   </Link>
                   <Link href="https://eslint.org/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> ESLint
                     </button>
                   </Link>
@@ -142,12 +142,12 @@ export default function Page() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Link href="https://www.docker.com/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> Docker
                     </button>
                   </Link>
                   <Link href="https://kubernetes.io/" target="_blank">
-                    <button className="btn btn-outline btn-xs">
+                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> Kubernetes
                     </button>
                   </Link>

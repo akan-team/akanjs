@@ -1,6 +1,6 @@
 "use client";
 import { type Cls, type EnumInstance, isEnum } from "akanjs/base";
-import { clsx, usePage } from "akanjs/client";
+import { cn, usePage } from "akanjs/client";
 import { useDebounce } from "akanjs/webkit";
 import { type ComponentType, createElement, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { BiCheck, BiChevronDown, BiX } from "react-icons/bi";
@@ -164,12 +164,12 @@ const DefaultSelect = <
   }, [value]);
 
   return (
-    <div className={clsx("relative min-w-[150px]", className)} ref={dropdownRef}>
+    <div className={cn("relative min-w-[150px]", className)} ref={dropdownRef}>
       <div
         data-open={isOpen}
-        className={clsx(
-          "btn flex h-auto min-h-[40px] w-full cursor-pointer items-center px-0 py-1 pr-5 pl-1 focus:outline-hidden",
-          "bg-base-100 data-[open=true]:border-primary",
+        className={cn(
+          "flex h-auto min-h-[40px] w-full cursor-pointer items-center rounded-field border border-input px-0 py-1 pr-5 pl-1 focus:outline-hidden",
+          "bg-background data-[open=true]:border-primary",
           disabled && "pointer-events-none opacity-50",
           selectClassName,
           { "border-base-300": isOpen },
@@ -187,7 +187,7 @@ const DefaultSelect = <
               return (
                 <div
                   key={index}
-                  className="flex items-center gap-2 rounded-lg bg-success/70 px-2 py-1 text-success-content text-xs"
+                  className="flex items-center gap-2 rounded-lg bg-success/70 px-2 py-1 text-success-foreground text-xs"
                 >
                   {renderSelected ? renderSelected(optionValue.value) : optionValue.label}
                   <button
@@ -256,13 +256,13 @@ const DefaultSelect = <
           />
         ) : null}
         <BiChevronDown
-          className={clsx("absolute top-1/2 right-2 -translate-y-1/2 text-lg duration-100", { "rotate-180": isOpen })}
+          className={cn("absolute top-1/2 right-2 -translate-y-1/2 text-lg duration-100", { "rotate-180": isOpen })}
         />
       </div>
       <div
         data-open={isOpen}
-        className={clsx(
-          "scrollbar-thin scrollbar-thumb-base-content/20 scrollbar-track scrollbar-track-base-content/40 absolute z-20 mt-0.5 w-full overflow-y-scroll rounded-md border-base-300 bg-base-200 shadow-lg transition-all",
+        className={cn(
+          "scrollbar-thin scrollbar-thumb-foreground/20 scrollbar-track scrollbar-track-foreground/40 absolute z-20 mt-0.5 w-full overflow-y-scroll rounded-md border-base-300 bg-base-200 shadow-lg transition-all",
           "origin-center duration-200 data-[open=false]:h-0 data-[open=true]:h-[270px] data-[open=true]:border data-[open=false]:border-none",
           selectorClassName,
         )}
@@ -281,11 +281,11 @@ const DefaultSelect = <
             return (
               <div key={index} className="group">
                 <div
-                  className={clsx(
+                  className={cn(
                     "relative m-2 cursor-pointer rounded-sm p-2 duration-100 last:border-b-0 hover:bg-base-300",
                     {
                       selectedClassName: !multiple && isSelected,
-                      "bg-success/70 text-success-content": isSelected,
+                      "bg-success/70 text-success-foreground": isSelected,
                     },
                   )}
                   onClick={() => {
@@ -295,9 +295,9 @@ const DefaultSelect = <
                 >
                   {/* {option.label} */}
                   {renderOption ? renderOption(option.value) : option.label}
-                  <div className={clsx("absolute top-1/2 right-2 -translate-y-1/2 flex-wrap duration-200", {})}>
+                  <div className={cn("absolute top-1/2 right-2 -translate-y-1/2 flex-wrap duration-200", {})}>
                     <div
-                      className={clsx("duration-200", {
+                      className={cn("duration-200", {
                         "translate-y-0 opacity-100": isSelected,
                         "-translate-y-full opacity-0": !isSelected,
                       })}
@@ -307,13 +307,13 @@ const DefaultSelect = <
                   </div>
                 </div>
                 <div className="h-px w-full px-2 group-last:hidden">
-                  <div className="size-full bg-base-content/10" />
+                  <div className="size-full bg-foreground/10" />
                 </div>
               </div>
             );
           })
         ) : (
-          <div className="flex size-full flex-col items-center justify-center gap-2 p-2 text-center text-5xl text-base-content/50">
+          <div className="flex size-full flex-col items-center justify-center gap-2 p-2 text-center text-5xl text-foreground/50">
             <BsQuestionCircleFill />
             <div className="text-sm">{l("base.noOptions")}</div>
           </div>

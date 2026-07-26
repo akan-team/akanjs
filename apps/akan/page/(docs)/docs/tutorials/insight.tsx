@@ -241,7 +241,7 @@ export const dictionary = modelDictionary(["en", "ko"])
 import { clsx } from "akanjs/client";
 import { st, usePage } from "@apps/koyo/client";
 import { cnst } from "@apps/koyo/client"; // [!code ++:2]
-import { Select } from "akanjs/ui";
+import { Select, buttonVariants } from "akanjs/ui";
 // [!code collapse:81]
 interface ProcessProps {
   className?: string;
@@ -396,7 +396,7 @@ export default async function Page() {
         <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
         <IcecreamOrder.Util.PublicQueryMaker /> // [!code ++]
         <Model.New
-          className="btn btn-primary"
+          className={buttonVariants({ variant: "primary" })}
           slice={fetch.slice.icecreamOrderInPublic}
           renderTitle="name"
           partial={icecreamOrderForm}
@@ -908,7 +908,7 @@ export default async function Page() {
           <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div> // [!code collapse:10]
           <IcecreamOrder.Util.PublicQueryMaker />
           <Model.New
-            className="btn btn-primary"
+            className={buttonVariants({ variant: "primary" })}
             slice={fetch.slice.icecreamOrderInPublic}
             renderTitle="name"
             partial={icecreamOrderForm}

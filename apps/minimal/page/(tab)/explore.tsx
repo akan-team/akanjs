@@ -1,11 +1,12 @@
-import { Link } from "akanjs/ui";
+import { cn } from "akanjs/client";
+import { buttonVariants, Link } from "akanjs/ui";
 import { AiOutlineArrowRight, AiOutlineEnvironment, AiOutlineStar } from "react-icons/ai";
 
 export default function Page() {
   return (
     <div className="h-screen bg-background px-5 pt-6 pb-28 text-foreground">
       <section className="rounded-[2rem] bg-gradient-to-br from-primary via-secondary to-accent p-[1px] shadow-2xl shadow-primary/20">
-        <div className="rounded-[2rem] bg-base-200/95 p-5">
+        <div className="rounded-[2rem] bg-muted/95 p-5">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-primary text-sm">Good afternoon</p>
@@ -20,10 +21,13 @@ export default function Page() {
             <p className="mt-2 font-semibold text-xl">Skyline loft in Seolleung</p>
             <p className="apptest-muted mt-1 text-sm">A premium space with city night views and a quiet lounge</p>
             <div className="mt-4 grid gap-2">
-              <Link className="btn btn-primary w-full rounded-2xl border-0" href="/push-notification">
+              <Link
+                className={cn(buttonVariants({ variant: "primary" }), "w-full rounded-2xl border-0")}
+                href="/push-notification"
+              >
                 Push notification demo <AiOutlineArrowRight />
               </Link>
-              <Link className="btn btn-ghost w-full rounded-2xl" href="/explore/detail">
+              <Link className={cn(buttonVariants({ variant: "ghost" }), "w-full rounded-2xl")} href="/explore/detail">
                 View details
               </Link>
             </div>

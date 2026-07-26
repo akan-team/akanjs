@@ -19,6 +19,7 @@ import type { ItemProps as RadioItemProps, RadioProps } from "../Radio";
 import type { SelectProps } from "../Select";
 import type { TableProps } from "../Table";
 import type { MultiProps as ToggleSelectMultiProps, ToggleSelectProps } from "../ToggleSelect";
+import type { TooltipProps } from "../Tooltip";
 import type { UnauthorizedProps } from "../Unauthorized";
 
 /**
@@ -42,6 +43,7 @@ export interface AkanUiOverrides {
   Dropdown: ComponentType<DropdownProps>;
   Table: ComponentType<TableProps>;
   Menu: ComponentType<MenuProps>;
+  Tooltip: ComponentType<TooltipProps>;
   Unauthorized: ComponentType<UnauthorizedProps>;
 
   // Generic components. The public export keeps its full generic signature; the slot stores the widest

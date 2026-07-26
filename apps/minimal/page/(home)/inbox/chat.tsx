@@ -1,5 +1,5 @@
-import type { PageConfig } from "akanjs/client";
-import { Layout } from "akanjs/ui";
+import { cn, type PageConfig } from "akanjs/client";
+import { buttonVariants, Layout } from "akanjs/ui";
 import { AiOutlineSend } from "react-icons/ai";
 
 export default function Page() {
@@ -61,7 +61,7 @@ export default function Page() {
             className="input w-full border-0 bg-transparent text-foreground placeholder:text-foreground/35 focus:outline-none"
             placeholder="Type message..."
           />
-          <button className="btn btn-primary btn-square rounded-2xl border-0">
+          <button className={cn(buttonVariants({ variant: "primary", size: "icon" }), "rounded-2xl border-0")}>
             <AiOutlineSend />
           </button>
         </div>

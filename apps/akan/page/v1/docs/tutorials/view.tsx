@@ -221,7 +221,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
       </div>
       <div className="bg-background/50 flex items-center justify-center gap-2 rounded-xl p-4"> // [!code ++:7]
         <Model.ViewWrapper sliceName="icecreamOrder" modelId={icecreamOrder.id}>
-          <button className="btn btn-primary">
+          <button className={buttonVariants({ variant: "primary" })}>
             <span>{l.trans({ en: "View", ko: "보기" })}</span>
           </button>
         </Model.ViewWrapper>

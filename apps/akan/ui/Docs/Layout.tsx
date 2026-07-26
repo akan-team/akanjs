@@ -45,11 +45,14 @@ export const Layout = ({ children, menuMap }: LayoutProps) => {
             {menuMap.map((menu, menuIdx) => (
               <details
                 key={menuIdx}
-                className="collapse-arrow collapse mb-2 rounded-2xl border border-foreground/10 bg-foreground/4"
+                className="group mb-2 rounded-2xl border border-foreground/10 bg-foreground/4"
                 open
               >
-                <summary className="collapse-title font-bold text-base">{menu.name}</summary>
-                <div className="collapse-content pl-4">
+                <summary className="flex cursor-pointer list-none items-center justify-between p-4 font-bold text-base [&::-webkit-details-marker]:hidden">
+                  {menu.name}
+                  <span className="text-foreground/40 transition-transform group-open:rotate-180">▾</span>
+                </summary>
+                <div className="pl-4">
                   {menu.subMenus.map((subMenu, subIdx) => {
                     const isActive = subMenu.href === currentPath;
                     return (
@@ -86,12 +89,12 @@ export const Layout = ({ children, menuMap }: LayoutProps) => {
             <div className="overflow-y-auto px-2 pb-6">
               <Search className="mb-3" />
               {menuMap.map((menu, idx) => (
-                <div key={idx} className="collapse-arrow collapse rounded-2xl">
-                  <input type="checkbox" defaultChecked={true} />
-                  <div className="collapse-title whitespace-nowrap font-bold text-foreground/50 text-sm uppercase tracking-[0.18em]">
+                <details key={idx} className="group rounded-2xl" open>
+                  <summary className="flex cursor-pointer list-none items-center justify-between whitespace-nowrap p-2 font-bold text-foreground/50 text-sm uppercase tracking-[0.18em] [&::-webkit-details-marker]:hidden">
                     {menu.name}
-                  </div>
-                  <div className="collapse-content pl-6 text-sm">
+                    <span className="transition-transform group-open:rotate-180">▾</span>
+                  </summary>
+                  <div className="pl-6 text-sm">
                     <div className="flex flex-col">
                       {menu.subMenus.map((subMenu, idx) => {
                         const isActive = subMenu.href === currentPath;
@@ -110,7 +113,7 @@ export const Layout = ({ children, menuMap }: LayoutProps) => {
                       })}
                     </div>
                   </div>
-                </div>
+                </details>
               ))}
             </div>
           </div>

@@ -148,8 +148,8 @@ Please update this page with the latest content below. A great design applicatio
 ${instruction}
 
 Please follow these CSS rules when writing:
-- Use tailwindcss
-- Use className from the daisyui library
+- Use tailwindcss with the semantic design tokens (bg-background, text-foreground, bg-primary, text-muted-foreground, border-border, …)
+- Use akanjs/ui primitives (Button, Badge, Input, Field, …) instead of raw daisyui classes; do not use daisyui
 
 Please return only the file result in the following format for easy parsing.
 \`\`\`tsx

@@ -5,11 +5,10 @@ export const signalUi = {
   sectionTitle: "font-extrabold text-lg",
   sectionDescription: "text-foreground/70 text-sm",
   sectionPanel: "rounded-xl bg-background p-3",
-  // TODO(daisyui): collapse-arrow/collapse는 구조적(checkbox+CSS) → Radix Accordion 또는 peer 기반으로.
-  // Message의 마크업(input/title/content) 재구성 + 실환경 expand/collapse 검증 필요.
-  endpointCard: "collapse-arrow collapse my-2 bg-base-200",
-  endpointContent: "collapse-content flex w-full flex-col gap-4 bg-background/60",
   tablePanel: "overflow-x-auto rounded-xl bg-background p-3",
+  // daisyui `.table` 대체: 시맨틱 토큰 표 스타일.
+  tableClass:
+    "w-full text-left text-sm [&_th]:px-3 [&_th]:py-2 [&_th]:font-medium [&_th]:text-foreground/60 [&_td]:px-3 [&_td]:py-2 [&_tbody_tr]:border-border [&_tbody_tr]:border-t",
   inputRow: "flex w-full flex-col gap-2 py-2 md:flex-row md:items-center",
   inputLabel: "w-full font-semibold text-foreground/70 text-sm md:w-36",
   codePanel:

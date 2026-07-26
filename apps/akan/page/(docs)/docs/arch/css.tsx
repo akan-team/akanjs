@@ -115,12 +115,12 @@ export default function Page() {
           <Code.Snippet
             language="typescript"
             code={`<div className="space-y-3 rounded-xl bg-background p-4 text-foreground">
-  <button className="btn btn-primary">Save</button>
-  <input className="input input-bordered w-full" placeholder="Product name" />
+  <button className={buttonVariants({ variant: "primary" })}>Save</button>
+  <input className="h-10 w-full rounded-field border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none" placeholder="Product name" />
   <div className="card border border-base-300 bg-background p-4">
     Product summary
   </div>
-  <div className="alert alert-info">Stock updated successfully.</div>
+  <div className="flex items-center gap-2 rounded-box border border-info/30 bg-info/10 p-4">Stock updated successfully.</div>
 </div>`}
           />
         </Docs.Description>
@@ -149,8 +149,8 @@ export default function Page() {
 @plugin "daisyui/theme" {
   name: "light";
   --color-primary: #c33c32;
-  --color-base-content: #2c3e50;
-  --color-base-100: #fafafa;
+  --color-foreground: #2c3e50;
+  --color-background: #fafafa;
   --color-base-200: #f5f5f5;
 }
 
@@ -158,8 +158,8 @@ export default function Page() {
   name: "dark";
   default: true;
   --color-primary: #ff493b;
-  --color-base-content: #ffffff;
-  --color-base-100: #1a1a1a;
+  --color-foreground: #ffffff;
+  --color-background: #1a1a1a;
   --color-base-200: #2a2a2a;
 }`}
           />

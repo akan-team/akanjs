@@ -1,5 +1,5 @@
 "use client";
-import { clsx, router, usePage } from "akanjs/client";
+import { cn, router, usePage } from "akanjs/client";
 import { capitalize, deepObjectify, lowerlize } from "akanjs/common";
 import { ConstantRegistry, immerify } from "akanjs/constant";
 import type { ClientEdit, ServerEdit, SliceMeta } from "akanjs/fetch";
@@ -72,16 +72,16 @@ const EditModel = <Full,>({
         : ({ children, className }: { children?: any; className?: string }) => {
             const modelFormLoading = storeUse[names.modelFormLoading]();
             return (
-              <div className={clsx("", className)}>
+              <div className={cn("", className)}>
                 {children}
-                {modelFormLoading ? <div className="absolute inset-0 animate-pulse bg-base-100/50" /> : null}
+                {modelFormLoading ? <div className="absolute inset-0 animate-pulse bg-background/50" /> : null}
               </div>
             );
           };
   }, []);
 
   // if (type === "empty") return null;
-  return <LoadingWrapper className={clsx("w-full", className)}>{children}</LoadingWrapper>;
+  return <LoadingWrapper className={cn("w-full", className)}>{children}</LoadingWrapper>;
 };
 
 interface EditModalProps<Full extends { id: string }> extends EditModelProps<Full> {
@@ -240,7 +240,7 @@ export default function EditModal<Full extends { id: string }>({
               };
               return (
                 <Button
-                  className={clsx("btn btn-primary mt-4 w-full gap-2 rounded-2xl", submitClassName)}
+                  className={cn("mt-4 w-full gap-2 rounded-2xl", submitClassName)}
                   disabled={modelSubmit.disabled || !!disabled}
                   onClick={async (e, { onError }) => {
                     await handleSubmit({ onError });

@@ -607,7 +607,7 @@ export default function Page() {
             <div className="flex items-center gap-4 text-5xl font-black">
               <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
               <Model.New
-                className="btn btn-primary"
+                className={buttonVariants({ variant: "primary" })}
                 sliceName="icecreamOrderInPublic"
                 renderTitle="name"
                 partial={icecreamOrderForm}

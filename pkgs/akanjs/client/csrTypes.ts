@@ -248,8 +248,8 @@ export const defaultPageState: PageState = {
   bottomInset: 0,
   gesture: true,
   cache: false,
-  topSafeAreaColor: "var(--color-base-100, Canvas)",
-  bottomSafeAreaColor: "var(--color-base-100, Canvas)",
+  topSafeAreaColor: "var(--color-background, Canvas)",
+  bottomSafeAreaColor: "var(--color-background, Canvas)",
 };
 
 export interface Location {

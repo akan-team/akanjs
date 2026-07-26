@@ -37,7 +37,7 @@ export default function Page() {
           }),
         },
       ],
-      code: `import { Data } from "akanjs/ui";
+      code: `import { Data, buttonVariants } from "akanjs/ui";
 
 export const ProductZone = ({ slice }) => (
   <Data.ListContainer
@@ -167,7 +167,7 @@ export const SummaryPanel = ({ loading, children }) => (
 
 export const EmptyProducts = () => (
   <Empty description="No products yet">
-    <Link href="/products/new" className="btn btn-primary">Create product</Link>
+    <Link href="/products/new" className={buttonVariants({ variant: "primary" })}>Create product</Link>
   </Empty>
 );`,
     },

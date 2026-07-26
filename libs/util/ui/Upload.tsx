@@ -1,8 +1,8 @@
 "use client";
 import { usePage } from "@libs/util/client";
-import { clsx, Device } from "akanjs/client";
+import { clsx, cn, Device } from "akanjs/client";
 import type { ProtoFile } from "akanjs/constant";
-import { BottomSheet, type BottomSheetRef, Image } from "akanjs/ui";
+import { BottomSheet, type BottomSheetRef, badgeVariants, buttonVariants, Image } from "akanjs/ui";
 import { useCamera } from "akanjs/webkit";
 import { type ChangeEvent, useRef, useState } from "react";
 import { AiFillFileImage, AiFillFileText, AiOutlineDelete } from "react-icons/ai";
@@ -286,7 +286,7 @@ export const FileList = ({
                         <td className="w-[70%] truncate text-xs md:w-[50%] md:text-sm">{file.filename}</td>
                         <td className="text-center text-xs md:text-sm">{formatSize(file.size)}</td>
                         <td className="text-center align-middle text-xs md:text-sm">
-                          <div className="badge badge-info">
+                          <div className={badgeVariants({ variant: "info" })}>
                             {file.status}
                             <div
                               className={clsx("loading loading-sm loading-spinner", {
@@ -297,7 +297,13 @@ export const FileList = ({
                           </div>
                         </td>
                         <td className="text-center align-middle text-sm">
-                          <div className="btn btn-xs btn-error btn-square btn-outline" onClick={() => onRemove?.(file)}>
+                          <div
+                            className={cn(
+                              buttonVariants({ variant: "outline", size: "icon" }),
+                              "size-6 border-destructive p-0 text-destructive hover:bg-destructive hover:text-destructive-foreground",
+                            )}
+                            onClick={() => onRemove?.(file)}
+                          >
                             <AiOutlineDelete />
                           </div>
                         </td>
@@ -312,7 +318,7 @@ export const FileList = ({
                 onClick={() => {
                   inputFileRef.current?.click();
                 }}
-                className="btn btn-outline btn- w-full px-2"
+                className={cn(buttonVariants({ variant: "outline" }), "w-full px-2")}
               >
                 {l("util.uploadFilesClick")}
               </button>
@@ -571,11 +577,11 @@ const UploadImage = ({
         >
           <CropImage aspectRatio={aspectRatio} ref={cropImageRef} src={image ?? ""} />
           <div className="flex w-full items-center justify-center gap-2">
-            <button className="btn w-full" onClick={onCancel}>
+            <button className={cn(buttonVariants(), "w-full")} onClick={onCancel}>
               취소
             </button>
             <button
-              className="btn btn-primary w-full"
+              className={cn(buttonVariants({ variant: "primary" }), "w-full")}
               onClick={() => {
                 void saveHandler();
               }}
