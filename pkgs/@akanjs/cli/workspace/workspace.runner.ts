@@ -7,7 +7,6 @@ const defaultWorkspacePeerDependencies = new Set([
   "@use-gesture/react",
   "chance",
   "croner",
-  "daisyui",
   "react",
   "react-dom",
   "react-icons",

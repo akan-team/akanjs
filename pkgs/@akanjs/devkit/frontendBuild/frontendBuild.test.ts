@@ -113,7 +113,9 @@ describe("PagesBundleBuilder", () => {
     await write(entry, ['import "./styles.css";', "export const marker = 1;", ""].join("\n"));
     await write(
       css,
-      ['@plugin "daisyui" {', "  themes: false;", "}", "@theme {", "  --color-primary: red;", "}", ""].join("\n"),
+      ['@plugin "tailwind-scrollbar" {', "  themes: false;", "}", "@theme {", "  --color-primary: red;", "}", ""].join(
+        "\n",
+      ),
     );
 
     const result = await Bun.build({

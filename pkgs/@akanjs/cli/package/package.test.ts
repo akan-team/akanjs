@@ -171,12 +171,10 @@ describe("PackageRunner", () => {
       description: "tool",
       exports: {},
       peerDependencies: {
-        daisyui: "5.5.20",
         "react-icons": "5.0.0",
         "tailwind-scrollbar": "4.0.0",
       },
       peerDependenciesMeta: {
-        daisyui: { optional: true },
         "react-icons": { optional: true },
         "tailwind-scrollbar": { optional: true },
       },
@@ -204,12 +202,10 @@ describe("PackageRunner", () => {
     expect(distPackageJson.dependencies).toEqual({ lodash: "4.0.0" });
     expect(distPackageJson.devDependencies).toEqual({ "@biomejs/biome": "2.3.5", "@types/bun": "1.3.14" });
     expect(distPackageJson.peerDependencies).toEqual({
-      daisyui: "5.5.20",
       "react-icons": "5.0.0",
       "tailwind-scrollbar": "4.0.0",
     });
     expect(distPackageJson.peerDependenciesMeta).toEqual({
-      daisyui: { optional: true },
       "react-icons": { optional: true },
       "tailwind-scrollbar": { optional: true },
     });

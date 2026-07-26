@@ -151,7 +151,6 @@
     "chance": "^1.1.13",
     "cordova-plugin-purchase": "^13.16.0",
     "croner": "^10.0.1",
-    "daisyui": "5.5.23",
     "firebase": "^12.13.0",
     "ioredis": "^5.10.1",
     "mermaid": "^11.15.0",
@@ -238,9 +237,6 @@
       "optional": true
     },
     "croner": {
-      "optional": true
-    },
-    "daisyui": {
       "optional": true
     },
     "firebase": {

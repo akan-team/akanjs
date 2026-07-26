@@ -139,7 +139,6 @@
     "cordova-plugin-purchase": "^13.16.0",
     "croner": "^10.0.1",
     "crypto-js": "^4.2.0",
-    "daisyui": "5.5.23",
     "dataloader": "^2.2.3",
     "dayjs": "^1.11.20",
     "discord.js": "^14.26.4",

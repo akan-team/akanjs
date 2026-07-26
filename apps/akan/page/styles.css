@@ -1,14 +1,6 @@
 @import "tailwindcss";
 @import "akanjs/ui/styles.css";
 
-/* 프레임워크(pkgs/akanjs/ui)는 daisyui-free지만, 앱 page/ui/libs가 아직 daisyui 컴포넌트 클래스를
-   사용하므로 컴포넌트 플러그인은 유지. 앱 페이지 마이그레이션 완료 후 제거 예정. */
-@plugin "daisyui" {
-  logs: false;
-  exclude: properties;
-  themes: false;
-}
-
 /* data-theme=dark 를 Tailwind dark: 변형에 연결(기존 data-theme 인프라 재사용) */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
@@ -121,19 +113,4 @@
 
   --radius-box: 1rem;
   --radius-field: 0.75rem;
-
-  /* daisyui 컴포넌트 CSS가 참조하는 구 토큰명 별칭(base-100/base-content/error/*-content).
-     앱 페이지가 daisyui 컴포넌트를 계속 쓰는 동안 유지. */
-  --color-base-100: var(--background);
-  --color-base-content: var(--foreground);
-  --color-error: var(--destructive);
-  --color-error-content: var(--destructive-foreground);
-  --color-primary-content: var(--primary-foreground);
-  --color-secondary-content: var(--secondary-foreground);
-  --color-accent-content: var(--accent-foreground);
-  --color-neutral-content: var(--neutral-foreground);
-  --color-info-content: var(--info-foreground);
-  --color-success-content: var(--success-foreground);
-  --color-warning-content: var(--warning-foreground);
-  --color-open-content: var(--open-foreground);
 }

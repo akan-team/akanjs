@@ -213,16 +213,19 @@ export default function Page() {
                 </div>
               </div>
 
-              <div className="mockup-code mt-5 border border-foreground/10 bg-background text-sm shadow-none">
-                <pre data-prefix="$">
+              <div className="mt-5 space-y-1 overflow-x-auto rounded-box border border-foreground/10 bg-foreground/5 p-4 font-mono text-sm">
+                <pre className="flex gap-3">
+                  <span className="select-none text-foreground/30">$</span>
                   <code className="text-primary">bun run akan start {appName}</code>
                 </pre>
-                <pre data-prefix="✓">
+                <pre className="flex gap-3">
+                  <span className="select-none text-foreground/30">✓</span>
                   <code className="text-accent">
                     {l.trans({ en: "web, app, server, db, and infra ready", ko: "웹, 앱, 서버, DB, 인프라 준비 완료" })}
                   </code>
                 </pre>
-                <pre data-prefix="→">
+                <pre className="flex gap-3">
+                  <span className="select-none text-foreground/30">→</span>
                   <code className="text-foreground/70">
                     {l.trans({
                       en: "edit page/_index.tsx around your business",

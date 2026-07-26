@@ -64,14 +64,13 @@ export class PackageRunner extends runner("package") {
     const scanner = await TypeScriptDependencyScanner.from(pkg);
     const { npmDeps, npmDevDeps, missingDeps } = await scanner.getPackageBuildDependencies(pkg.name);
     const packageRuntimeDependencies: Record<string, string[]> = {
-      "@akanjs/devkit": ["daisyui", "tailwind-scrollbar"],
+      "@akanjs/devkit": ["tailwind-scrollbar"],
     };
     const packageRuntimeDevDependencies: Record<string, string[]> = { akanjs: ["@biomejs/biome", "@types/bun"] };
     if (pkg.name === "@akanjs/cli") {
       const devkitPackageJson = await pkg.workspace.readJson("pkgs/@akanjs/devkit/package.json");
       packageRuntimeDependencies[pkg.name] = [
         ...Object.keys(((devkitPackageJson as PackageJson).dependencies ?? {}) as Record<string, string>),
-        "daisyui",
         "tailwind-scrollbar",
       ].filter((dep) => dep !== "akanjs" && dep !== "@akanjs/devkit");
     }
