@@ -91,7 +91,7 @@ export const File = ({
       <div
         className={clsx("btn flex size-full flex-col items-center border-2 py-5", uploadClassName, {
           "border-2 border-success border-dashed": isDragging && !isUploading,
-          "hover:bg-base-200": isUploading,
+          "hover:bg-muted": isUploading,
           "bg-background": file?.id,
         })}
       >
@@ -241,7 +241,7 @@ export const FileList = ({
       <div className={clsx("relative flex size-full flex-wrap gap-2", className)}>
         {fileList && fileList.length > 0 ? (
           <div
-            className={clsx("relative size-full rounded-md border-2 border-base-300 duration-200", {
+            className={clsx("relative size-full rounded-md border-2 border-border duration-200", {
               "border-2 border-success border-dashed": isDragging && !isUploading,
             })}
           >
@@ -313,7 +313,7 @@ export const FileList = ({
                 </tbody>
               </table>
             </div>
-            <div className="mx-2 border-base-300 border-t-2 p-4">
+            <div className="mx-2 border-border border-t-2 p-4">
               <button
                 onClick={() => {
                   inputFileRef.current?.click();
@@ -328,7 +328,7 @@ export const FileList = ({
           <div
             className={clsx("btn group flex size-full flex-col items-center border-2 py-5", uploadClassName, {
               "border-2 border-success border-dashed": isDragging && !isUploading,
-              "hover:bg-base-200": isUploading,
+              "hover:bg-muted": isUploading,
             })}
             onClick={() => {
               inputFileRef.current?.click();

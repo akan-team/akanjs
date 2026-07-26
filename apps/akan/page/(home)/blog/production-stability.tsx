@@ -187,7 +187,7 @@ export default function Page() {
           <h2 className="font-bold text-2xl leading-tight tracking-tight">
             {l.trans({ en: "How we measured", ko: "측정 방법" })}
           </h2>
-          <div className="mt-6 rounded-3xl bg-base-200 p-6 md:p-8">
+          <div className="mt-6 rounded-3xl bg-muted p-6 md:p-8">
             <div className="space-y-6 text-foreground/75 leading-7">
               <div>
                 <h3 className="font-semibold text-primary text-sm uppercase tracking-[0.2em]">
@@ -300,7 +300,7 @@ export default function Page() {
           <div className="mt-8 overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-base-300 border-b">
+                <tr className="border-border border-b">
                   <th className="py-2 pr-4 font-semibold text-foreground/45">
                     {l.trans({ en: "Target", ko: "타겟" })}
                   </th>
@@ -317,7 +317,7 @@ export default function Page() {
               </thead>
               <tbody>
                 {comparisonData.map((d) => (
-                  <tr key={d.name} className={`border-base-200 border-b ${d.isAkan ? "bg-primary/5" : ""}`}>
+                  <tr key={d.name} className={`border-muted border-b ${d.isAkan ? "bg-primary/5" : ""}`}>
                     <td className={`py-2 pr-4 ${d.isAkan ? "font-semibold text-primary" : ""}`}>
                       {d.name}
                       <span className="ml-1 text-foreground/35 text-xs">({d.runtime})</span>
@@ -369,7 +369,7 @@ export default function Page() {
           <div className="mt-8 overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-base-300 border-b">
+                <tr className="border-border border-b">
                   <th className="py-2 pr-4 font-semibold text-foreground/45">
                     {l.trans({ en: "Metric", ko: "지표" })}
                   </th>
@@ -383,7 +383,7 @@ export default function Page() {
               </thead>
               <tbody>
                 {stabilityMetrics.map((row) => (
-                  <tr key={row.metric.en} className="border-base-200 border-b">
+                  <tr key={row.metric.en} className="border-muted border-b">
                     <td className="py-2 pr-4 text-foreground/80">{l.trans(row.metric)}</td>
                     <td className="px-4 py-2 text-right font-mono text-primary">{row.value}</td>
                     <td className="py-2 pl-4 text-right font-mono text-foreground/55">{row.all}</td>
@@ -421,7 +421,7 @@ export default function Page() {
           </p>
         </section>
 
-        <footer className="mt-16 border-base-200 border-t pt-8">
+        <footer className="mt-16 border-muted border-t pt-8">
           <p className="text-foreground/40 text-sm leading-7">
             {l.trans({
               en: "Benchmark run ID: 2026-06-12T10-25-39-prod-compare. All targets used prebuilt production artifacts. Raw data and the open‑source harness are available in the benchmarks/api-benchmark directory of the Ieading-flight-guidance repository.",

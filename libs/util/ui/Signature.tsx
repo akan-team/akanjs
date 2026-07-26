@@ -138,14 +138,14 @@ export const Signature = ({
           ref={canvasRef}
           width={width}
           height={height}
-          className="aspect-[12/5] w-full touch-none rounded-box border border-base-300 bg-background"
+          className="aspect-[12/5] w-full touch-none rounded-box border border-border bg-background"
           onPointerDown={startDraw}
           onPointerMove={moveDraw}
           onPointerUp={endDraw}
           onPointerLeave={endDraw}
         />
       ) : (
-        <div className="flex flex-col items-center gap-3 rounded-box border border-base-300 border-dashed p-4">
+        <div className="flex flex-col items-center gap-3 rounded-box border border-border border-dashed p-4">
           <input
             type="file"
             accept="image/*"

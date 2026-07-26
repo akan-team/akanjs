@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 export default function Page() {
   return (
     <main className="min-h-screen bg-background px-5 py-8 text-foreground">
-      <section className="mx-auto max-w-2xl rounded-3xl bg-base-200 p-6 shadow-xl">
+      <section className="mx-auto max-w-2xl rounded-3xl bg-muted p-6 shadow-xl">
         <p className="text-primary text-sm uppercase tracking-[0.24em]">Setup Guide</p>
         <h1 className="mt-3 font-bold text-3xl">Minimal Push Notification Demo</h1>
 
@@ -35,7 +35,7 @@ export default function Page() {
         </GuideSection>
 
         <GuideSection title="Send Test Push">
-          <pre className="overflow-auto rounded-2xl bg-base-300 p-4 text-xs">{`await pushNotificationServer.send({
+          <pre className="overflow-auto rounded-2xl bg-border p-4 text-xs">{`await pushNotificationServer.send({
   token,
   title: "Push demo",
   body: "Open the landing page",
@@ -56,7 +56,7 @@ export default function Page() {
 }
 
 const GuideSection = ({ title, children }: { title: string; children: ReactNode }) => (
-  <section className="mt-6 rounded-2xl bg-base-300 p-4">
+  <section className="mt-6 rounded-2xl bg-border p-4">
     <h2 className="font-semibold text-lg">{title}</h2>
     <div className="mt-3 text-foreground/80 text-sm">{children}</div>
   </section>

@@ -46,7 +46,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background p-4">
+              <div key={title} className="rounded-xl border border-border bg-background p-4">
                 <div className="font-bold text-foreground">{title}</div>
                 <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               </div>
@@ -287,7 +287,7 @@ export class OrderService extends serve(db.order, () => ({
               ],
             },
           ].map(({ id, title, desc, before, after }) => (
-            <div key={id} className="rounded-2xl border border-base-300 bg-background p-4">
+            <div key={id} className="rounded-2xl border border-border bg-background p-4">
               <div className="font-bold text-foreground">{title}</div>
               <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               <div className="mt-4 grid gap-3 xl:grid-cols-2">

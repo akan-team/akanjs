@@ -150,7 +150,7 @@ export const General = ({ className, product }: GeneralProps) => {
            <div className="space-y-4">
              <h3>{l("product.options")}</h3>
              {product.options.map(option => (
-               <div key={option.name} className="p-4 bg-base-200 rounded-lg">
+               <div key={option.name} className="p-4 bg-muted rounded-lg">
                  {option.name}: {option.values.join(", ")}
                </div>
              ))}

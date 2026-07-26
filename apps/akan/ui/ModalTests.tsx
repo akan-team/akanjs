@@ -31,7 +31,7 @@ export const ModalTests = () => {
           </p>
         </div>
 
-        <div className="rounded-2xl border border-base-300 bg-base-200/60 p-4">
+        <div className="rounded-2xl border border-border bg-muted/60 p-4">
           <div className="text-foreground/60 text-sm">최근 action 결과</div>
           <div className="mt-1 font-semibold">{result}</div>
         </div>
@@ -84,7 +84,7 @@ export const ModalTests = () => {
         onCancel={close}
         title="Action Modal"
         action={
-          <div className="flex justify-end gap-2 border-base-300 border-t p-4">
+          <div className="flex justify-end gap-2 border-border border-t p-4">
             <button type="button" className={buttonVariants({ variant: "ghost" })} onClick={close}>
               취소
             </button>
@@ -117,7 +117,7 @@ export const ModalTests = () => {
           </p>
           <div className="grid gap-2">
             {longItems.map((item) => (
-              <div key={item} className="rounded-xl border border-base-300 bg-base-200 px-4 py-3">
+              <div key={item} className="rounded-xl border border-border bg-muted px-4 py-3">
                 {item}
               </div>
             ))}
@@ -156,7 +156,7 @@ interface TestCardProps {
 
 const TestCard = ({ title, description, onOpen }: TestCardProps) => {
   return (
-    <article className="flex min-h-44 flex-col justify-between rounded-2xl border border-base-300 bg-background p-5 shadow-sm">
+    <article className="flex min-h-44 flex-col justify-between rounded-2xl border border-border bg-background p-5 shadow-sm">
       <div>
         <h2 className="font-bold text-xl">{title}</h2>
         <p className="mt-2 text-foreground/65 text-sm leading-6">{description}</p>
@@ -174,7 +174,7 @@ interface CompoundDialogCardProps {
 
 const CompoundDialogCard = ({ onSave }: CompoundDialogCardProps) => {
   return (
-    <article className="flex min-h-44 flex-col justify-between rounded-2xl border border-base-300 bg-background p-5 shadow-sm">
+    <article className="flex min-h-44 flex-col justify-between rounded-2xl border border-border bg-background p-5 shadow-sm">
       <div>
         <h2 className="font-bold text-xl">Compound Dialog</h2>
         <p className="mt-2 text-foreground/65 text-sm leading-6">
@@ -199,7 +199,7 @@ const CompoundDialogCard = ({ onSave }: CompoundDialogCardProps) => {
             </div>
           </Dialog.Content>
           <Dialog.Action>
-            <div className="flex justify-end border-base-300 border-t p-4">
+            <div className="flex justify-end border-border border-t p-4">
               <button type="button" className={buttonVariants({ variant: "secondary" })} onClick={onSave}>
                 action 실행
               </button>

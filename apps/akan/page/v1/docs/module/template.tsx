@@ -46,7 +46,7 @@ export default function Page() {
             })}
           </div>
           <div className="mt-4">
-            <code className="rounded bg-base-200 px-2 py-1 text-sm">lib/[model]/[Model].Template.tsx</code>
+            <code className="rounded bg-muted px-2 py-1 text-sm">lib/[model]/[Model].Template.tsx</code>
           </div>
         </Docs.Description>
       </Scroll.Slide>

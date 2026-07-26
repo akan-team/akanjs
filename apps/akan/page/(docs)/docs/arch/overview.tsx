@@ -55,10 +55,10 @@ export default function Page() {
               ko: "Akan은 하나의 화면만 가지는 제품보다 여러 표면을 가진 제품을 위해 설계되었습니다. 스토어 고객 페이지, 관리자 콘솔, 파트너 클라이언트, 모바일 앱, 엣지 장비 워크플로우는 서로 다른 인터페이스를 보여주면서 같은 규칙과 데이터를 공유할 수 있습니다.",
             })}
           </div>
-          <div className="rounded-2xl border border-base-300 bg-background p-5">
+          <div className="rounded-2xl border border-border bg-background p-5">
             <div className="mb-4 font-bold text-foreground">{l.trans({ en: "Surface Map", ko: "표면 지도" })}</div>
             <div className="space-y-1">
-              <div className="rounded-xl border border-base-300 bg-base-200 px-4 py-2">
+              <div className="rounded-xl border border-border bg-muted px-4 py-2">
                 <span className="font-mono font-semibold text-primary">UI surfaces: </span>
                 <span className="text-foreground/70 text-sm">
                   {l.trans({
@@ -67,7 +67,7 @@ export default function Page() {
                   })}
                 </span>
               </div>
-              <div className="rounded-xl border border-base-300 bg-base-200 px-4 py-2">
+              <div className="rounded-xl border border-border bg-muted px-4 py-2">
                 <span className="font-mono font-semibold text-primary">Client helpers: </span>
                 <span className="text-foreground/70 text-sm">
                   {l.trans({
@@ -85,7 +85,7 @@ export default function Page() {
                   })}
                 </span>
               </div>
-              <div className="rounded-xl border border-base-300 bg-base-200 px-4 py-2">
+              <div className="rounded-xl border border-border bg-muted px-4 py-2">
                 <span className="font-mono font-semibold text-primary">Runtime shape: </span>
                 <span className="text-foreground/70 text-sm">
                   {l.trans({
@@ -159,7 +159,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-bold text-foreground">{title}: </span>
                 <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
@@ -224,7 +224,7 @@ export default function Page() {
               <Link
                 key={href}
                 href={href}
-                className="block rounded-xl border border-base-300 bg-background px-4 py-2 hover:border-primary/40"
+                className="block rounded-xl border border-border bg-background px-4 py-2 hover:border-primary/40"
               >
                 <span className="font-bold text-foreground">{title}: </span>
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -290,7 +290,7 @@ export default function Page() {
                 href: "/docs/arch/css",
               },
             ].map(({ need, page, href }) => (
-              <div key={href} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={href} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="text-foreground/70 text-sm">{need} </span>
                 <span className="text-foreground/40 text-sm">→ </span>
                 <Link href={href} className="font-mono font-semibold text-primary text-sm">

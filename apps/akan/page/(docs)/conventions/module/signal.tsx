@@ -231,7 +231,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4">
+              <div key={title} className="rounded-xl border border-border bg-background px-4">
                 <div className="font-bold text-foreground">{title}</div>
                 <div className="text-foreground/70">{desc}</div>
               </div>
@@ -480,7 +480,7 @@ const unsubscribe = fetch.subscribeChatAdded(rootId, (chat) => {
               desc: "resolveField(Return), interval(ms), cron(expr), timeout(ms), initialize(), destroy(), process(Return)",
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-background px-4">
+            <div key={title} className="rounded-xl border border-border bg-background px-4">
               <div className="font-bold text-foreground">{title}</div>
               <div className="text-foreground/70">{desc}</div>
             </div>
@@ -519,7 +519,7 @@ const unsubscribe = fetch.subscribeChatAdded(rootId, (chat) => {
                 ko: "required argument가 nullable argument 뒤에 올 수 없으므로 nullable argument는 뒤쪽에 둡니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-background px-4 text-foreground/70">
+              <div key={rule} className="rounded-xl border border-border bg-background px-4 text-foreground/70">
                 {rule}
               </div>
             ))}

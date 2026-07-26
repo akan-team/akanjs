@@ -46,7 +46,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -110,7 +110,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-bold text-foreground">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -168,7 +168,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-bold text-foreground">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -212,7 +212,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -292,23 +292,23 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc, database, queue, cache, performance }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <div className="font-mono font-semibold text-primary">{title}</div>
                 <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
                 <div className="mt-3 space-y-1 text-sm">
-                  <div className="rounded-lg bg-base-200 px-3 py-2">
+                  <div className="rounded-lg bg-muted px-3 py-2">
                     <span className="font-semibold">{l.trans({ en: "Database", ko: "데이터베이스" })}: </span>
                     <span className="font-mono">{database}</span>
                   </div>
-                  <div className="rounded-lg bg-base-200 px-3 py-2">
+                  <div className="rounded-lg bg-muted px-3 py-2">
                     <span className="font-semibold">{l.trans({ en: "Queue / PubSub", ko: "큐 / PubSub" })}: </span>
                     {queue}
                   </div>
-                  <div className="rounded-lg bg-base-200 px-3 py-2">
+                  <div className="rounded-lg bg-muted px-3 py-2">
                     <span className="font-semibold">{l.trans({ en: "Cache", ko: "캐시" })}: </span>
                     {cache}
                   </div>
-                  <div className="rounded-lg bg-base-200 px-3 py-2">
+                  <div className="rounded-lg bg-muted px-3 py-2">
                     <span className="font-semibold">{l.trans({ en: "Performance", ko: "성능" })}: </span>
                     {performance}
                   </div>
@@ -359,7 +359,7 @@ akan dbup --mode cluster`}
   stage3 --> stage4["4. Large Service<br/>Cloud Cluster<br/>Distributed Edge Servers"]`}
           />
           <div className="space-y-1">
-            <div className="gap-2 rounded-xl border border-base-300 bg-background p-4 lg:grid">
+            <div className="gap-2 rounded-xl border border-border bg-background p-4 lg:grid">
               <div className="space-y-1">
                 <div className="font-bold text-foreground">
                   {l.trans({ en: "1. Single server", ko: "1. 싱글 서버" })}
@@ -370,7 +370,7 @@ akan dbup --mode cluster`}
                     ko: "작은 제품, MVP, 내부 도구, 초기 관리자 화면은 서버 하나와 Akan 컨테이너 하나로 충분히 운영할 수 있습니다. 데이터베이스도 보통 single 모드면 충분합니다.",
                   })}
                 </div>
-                <div className="rounded-lg bg-base-200 px-3 py-2 font-mono text-foreground/80 text-xs">
+                <div className="rounded-lg bg-muted px-3 py-2 font-mono text-foreground/80 text-xs">
                   single server / single container / single mode
                 </div>
                 <Docs.Alert type="info">
@@ -392,7 +392,7 @@ akan dbup --mode cluster`}
               />
             </div>
 
-            <div className="gap-2 rounded-xl border border-base-300 bg-background p-4 lg:grid">
+            <div className="gap-2 rounded-xl border border-border bg-background p-4 lg:grid">
               <div className="space-y-1">
                 <div className="font-bold text-foreground">
                   {l.trans({ en: "2. Single server, multiple containers", ko: "2. 싱글 서버 다중 컨테이너" })}
@@ -403,7 +403,7 @@ akan dbup --mode cluster`}
                     ko: "트래픽은 늘었지만 서버 한 대로 아직 충분하다면 같은 서버 안에서 여러 컨테이너를 실행합니다. 더 강한 서버, 더 많은 컨테이너, multiple 또는 cluster 데이터베이스 모드로 올리는 수직 확장 단계입니다.",
                   })}
                 </div>
-                <div className="rounded-lg bg-base-200 px-3 py-2 font-mono text-foreground/80 text-xs">
+                <div className="rounded-lg bg-muted px-3 py-2 font-mono text-foreground/80 text-xs">
                   single server / multiple containers / multiple or cluster mode
                 </div>
                 <Docs.Alert type="info">
@@ -431,7 +431,7 @@ akan dbup --mode cluster`}
               />
             </div>
 
-            <div className="gap-2 rounded-xl border border-base-300 bg-background p-4 lg:grid">
+            <div className="gap-2 rounded-xl border border-border bg-background p-4 lg:grid">
               <div className="space-y-1">
                 <div className="font-bold text-foreground">
                   {l.trans({ en: "3. Cloud cluster scale", ko: "3. 클라우드 클러스터 확장" })}
@@ -442,7 +442,7 @@ akan dbup --mode cluster`}
                     ko: "서버 한 대로 부족해지면 클라우드 클러스터로 이동합니다. 여러 서버에서 여러 컨테이너가 실행되고, cluster 모드로 데이터베이스/캐시 계층도 운영에 가까운 형태가 됩니다.",
                   })}
                 </div>
-                <div className="rounded-lg bg-base-200 px-3 py-2 font-mono text-foreground/80 text-xs">
+                <div className="rounded-lg bg-muted px-3 py-2 font-mono text-foreground/80 text-xs">
                   multiple servers / multiple containers / cluster mode
                 </div>
               </div>
@@ -467,7 +467,7 @@ akan dbup --mode cluster`}
               />
             </div>
 
-            <div className="gap-2 rounded-xl border border-base-300 bg-background p-4 lg:grid">
+            <div className="gap-2 rounded-xl border border-border bg-background p-4 lg:grid">
               <div className="space-y-1">
                 <div className="font-bold text-foreground">
                   {l.trans({ en: "4. Cloud plus distributed edge", ko: "4. 클라우드와 분산 엣지" })}
@@ -478,7 +478,7 @@ akan dbup --mode cluster`}
                     ko: "초대형 서비스는 3번 단계의 클라우드 클러스터를 유지한 채 그 아래에 엣지 서버들을 추가할 수 있습니다. 각 엣지 서버는 자체 Akan 런타임과 로컬 데이터베이스를 가지므로 매장, 공장, 로봇, 로컬 네트워크가 가까운 곳에서 데이터를 계산하고 저장하는 분산 캐시 계층처럼 동작할 수 있습니다.",
                   })}
                 </div>
-                <div className="rounded-lg bg-base-200 px-3 py-2 font-mono text-foreground/80 text-xs">
+                <div className="rounded-lg bg-muted px-3 py-2 font-mono text-foreground/80 text-xs">
                   cloud cluster / edge runtime per site / database per edge
                 </div>
               </div>

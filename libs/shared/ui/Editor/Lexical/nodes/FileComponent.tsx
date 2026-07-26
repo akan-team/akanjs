@@ -22,7 +22,7 @@ export const FileComponent = ({ nodeKey, src, name, size, format }: FileComponen
     <div className="my-2 flex w-full" contentEditable={false}>
       <div
         className={clsx(
-          "group/media relative flex w-full max-w-md items-center gap-3 rounded-lg border border-foreground/15 bg-base-200/60 p-3",
+          "group/media relative flex w-full max-w-md items-center gap-3 rounded-lg border border-foreground/15 bg-muted/60 p-3",
           isSelected && "ring-2 ring-primary ring-offset-2 ring-offset-background",
         )}
       >

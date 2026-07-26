@@ -195,7 +195,7 @@ export const AkanjsHeader = ({
         <>
           <input type="checkbox" id="mobile-menu-toggle" className="peer hidden" />
           <div className="fixed inset-y-0 left-0 z-40 w-full -translate-x-full transform transition-transform duration-50 ease-in-out peer-checked:translate-x-0 lg:hidden">
-            <div className="h-full overflow-y-auto bg-base-200 shadow-lg">
+            <div className="h-full overflow-y-auto bg-muted shadow-lg">
               <div className="mt-28 p-5">
                 {mobileDrawerLinks.map((link) => (
                   <Link

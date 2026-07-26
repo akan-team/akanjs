@@ -234,7 +234,7 @@ export class UserStore extends store(
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-background p-4">
+            <div key={title} className="rounded-xl border border-border bg-background p-4">
               <div className="font-bold text-foreground">{title}</div>
               <div className="mt-2 text-foreground/70">{desc}</div>
             </div>
@@ -405,7 +405,7 @@ async applyUserProfile() {
                 ko: "cross-store coordination에는 RootStore casting을 필요한 만큼만 사용합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-background px-4 text-foreground/70">
+              <div key={rule} className="rounded-xl border border-border bg-background px-4 text-foreground/70">
                 {rule}
               </div>
             ))}

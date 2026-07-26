@@ -40,7 +40,7 @@ export const ChatBubble = ({
           {name ? <p className="text-sm">{name}</p> : null}
         </div>
         <div className={clsx("flex items-end gap-1", isMe ? "flex-row-reverse" : "flex-row")}>
-          <div className={clsx("w-full rounded-2xl bg-base-200 px-3 py-2", roundingClassName, className)}>
+          <div className={clsx("w-full rounded-2xl bg-muted px-3 py-2", roundingClassName, className)}>
             {children}
           </div>
           {at ? (

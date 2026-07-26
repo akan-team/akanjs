@@ -28,7 +28,7 @@ export const PushNotificationDemo = () => {
 
   return (
     <main className="min-h-screen bg-background px-5 py-8 text-foreground">
-      <section className="mx-auto max-w-2xl rounded-3xl bg-base-200 p-6 shadow-xl">
+      <section className="mx-auto max-w-2xl rounded-3xl bg-muted p-6 shadow-xl">
         <p className="text-primary text-sm uppercase tracking-[0.24em]">Push Notification Demo</p>
         <h1 className="mt-3 font-bold text-3xl">usePushNotification</h1>
         <p className="mt-3 text-foreground/70">
@@ -54,14 +54,14 @@ export const PushNotificationDemo = () => {
           <StatusRow label="Click bridge" value={bridgeReady === null ? "unknown" : String(bridgeReady)} />
         </div>
 
-        <div className="mt-6 rounded-2xl bg-base-300 p-4">
+        <div className="mt-6 rounded-2xl bg-border p-4">
           <p className="font-semibold">PushToken</p>
           <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-all text-xs">
             {pushToken ? JSON.stringify(pushToken, null, 2) : "No token yet"}
           </pre>
         </div>
 
-        <div className="mt-6 rounded-2xl bg-base-300 p-4 text-foreground/70 text-sm">
+        <div className="mt-6 rounded-2xl bg-border p-4 text-foreground/70 text-sm">
           <p className="font-semibold text-foreground">App-level storage example</p>
           <pre className="mt-3 overflow-auto whitespace-pre-wrap text-xs">{`const pushToken = await push.register();
 if (pushToken) await appApi.registerPushToken(pushToken);`}</pre>
@@ -84,7 +84,7 @@ if (pushToken) await appApi.registerPushToken(pushToken);`}</pre>
 };
 
 const StatusRow = ({ label, value }: { label: string; value: string }) => (
-  <div className="flex items-center justify-between rounded-2xl bg-base-300 px-4 py-3">
+  <div className="flex items-center justify-between rounded-2xl bg-border px-4 py-3">
     <span className="font-medium">{label}</span>
     <span className="text-foreground/70">{value}</span>
   </div>

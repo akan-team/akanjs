@@ -330,7 +330,7 @@ const ArgJson = ({ value, onChange }: ArgJsonProps) => {
     <Input.TextArea
       validate={(e) => true}
       className="w-full"
-      inputClassName="w-full min-h-[300px] rounded-xl border border-base-300 bg-background"
+      inputClassName="w-full min-h-[300px] rounded-xl border border-border bg-background"
       value={value}
       onPressEnter={(value) => {
         onChange(value);

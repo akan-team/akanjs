@@ -63,7 +63,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-bold text-foreground">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -160,7 +160,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, type, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <div className="flex items-center justify-between">
                   <div
                     className={clsx("font-mono font-semibold", {
@@ -245,7 +245,7 @@ BizCard.Zone.tsx      # large screen areas such as admin/list/detail`}
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-mono font-semibold text-success">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -368,7 +368,7 @@ export const PriceText = () => {}
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -446,7 +446,7 @@ import { ProductCard } from "@apps/myapp/ui";`}
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -529,7 +529,7 @@ export const Product = { Unit, Util, View, Zone };`}
                 desc: "Model.Zone.tsx",
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-bold text-foreground">{title}: </span>
 
                 <span className="font-mono text-primary text-sm">{desc}</span>

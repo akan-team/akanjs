@@ -283,10 +283,10 @@ interface CardProps extends ModelProps<"icecreamOrder", cnst.LightIcecreamOrder>
 export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
   const { l } = usePage();
   return (
-    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-base-200 to-base-300 px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
+    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-muted to-border px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
       <div className="flex flex-col justify-center">
         <div className="flex items-center gap-2 text-lg font-semibold text-primary">
-          <span className="inline-block rounded bg-base-200 px-2 py-1 text-xs font-bold tracking-wider uppercase">
+          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider uppercase">
             {l("icecreamOrder.id")}
           </span>
           <span className="ml-2 font-mono text-primary">#{icecreamOrder.id.slice(-4)}</span>
@@ -301,7 +301,7 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
           </span>
         </div>
         <div className="mt-4 flex items-center gap-2"> // [!code collapse:16]
-          <span className="inline-block rounded border border-base-300 bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded border border-border bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
             {l("icecreamOrder.status")}
           </span>
           <span
@@ -310,7 +310,7 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
               "border border-warning/40 bg-background text-warning": icecreamOrder.status === "processing",
               "border border-info/40 bg-info text-info-foreground": icecreamOrder.status === "served",
               "border border-accent/40 bg-background text-accent": icecreamOrder.status === "finished",
-              "border border-base-300 bg-background text-foreground/70": icecreamOrder.status === "canceled",
+              "border border-border bg-background text-foreground/70": icecreamOrder.status === "canceled",
             })}
           >
             {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
@@ -365,7 +365,7 @@ import { usePage } from "@apps/koyo/client";
 export default function Page() {
   const { l } = usePage();
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-linear-to-br from-background via-base-200 to-base-300 p-6">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-linear-to-br from-background via-muted to-border p-6">
       <div className="absolute top-6 right-6 flex gap-2">
         <Link.Lang
           lang="en"
@@ -382,7 +382,7 @@ export default function Page() {
       </div>
       <div className="w-full max-w-4xl space-y-8 text-center">
         <div className="space-y-4">
-          <h1 className="bg-linear-to-r from-background via-base-200 to-base-300 text-7xl font-bold text-primary duration-1000 md:text-8xl">
+          <h1 className="bg-linear-to-r from-background via-muted to-border text-7xl font-bold text-primary duration-1000 md:text-8xl">
             Koyo
           </h1>
           <p className="text-2xl font-light text-primary delay-150 duration-1000 md:text-3xl">
@@ -397,14 +397,14 @@ export default function Page() {
         <div className="flex flex-col items-center gap-4 pt-8 delay-500 duration-1000 sm:flex-row sm:justify-center">
           <Link
             href="/icecreamOrder/new?serveType=forHere"
-            className="inline-flex w-full items-center justify-center gap-3 rounded-full border border-base-300 bg-base-200 px-10 py-6 text-2xl font-semibold text-primary shadow-2xl transition-all duration-300 hover:scale-105 hover:bg-base-200 hover:shadow-md active:scale-95 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-3 rounded-full border border-border bg-muted px-10 py-6 text-2xl font-semibold text-primary shadow-2xl transition-all duration-300 hover:scale-105 hover:bg-muted hover:shadow-md active:scale-95 sm:w-auto"
           >
             <span className="text-4xl">🍽️</span>
             {l.trans({ en: "For Here", ko: "매장 식사" })}
           </Link>
           <Link
             href="/icecreamOrder/new?serveType=takeOut"
-            className="inline-flex w-full items-center justify-center gap-3 rounded-full border border-base-300 bg-base-200 px-10 py-6 text-2xl font-semibold text-primary shadow-2xl transition-all duration-300 hover:scale-105 hover:bg-base-200 hover:shadow-md active:scale-95 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-3 rounded-full border border-border bg-muted px-10 py-6 text-2xl font-semibold text-primary shadow-2xl transition-all duration-300 hover:scale-105 hover:bg-muted hover:shadow-md active:scale-95 sm:w-auto"
           >
             <span className="text-4xl">🛍️</span>
             {l.trans({ en: "Take Out", ko: "포장 주문" })}
@@ -423,7 +423,7 @@ export default function Page() {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🌍</span>
                 <strong className="text-primary">Link.Lang</strong>
@@ -435,7 +435,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔗</span>
                 <strong className="text-primary">{"Link with Query Params"}</strong>
@@ -447,7 +447,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">✨</span>
                 <strong className="text-primary">{l.trans({ en: "Visual Design", ko: "비주얼 디자인" })}</strong>
@@ -475,19 +475,19 @@ import { usePage } from "@apps/koyo/client";
 export default function Page() {
   const { l } = usePage();
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-linear-to-br from-background via-base-200 to-base-300 p-6">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-linear-to-br from-background via-muted to-border p-6">
       <div className="w-full max-w-2xl space-y-8 text-center">
         <div className="flex justify-center">
-          <div className="flex h-32 w-32 items-center justify-center rounded-full bg-linear-to-r from-background to-base-300 text-7xl shadow-2xl">
+          <div className="flex h-32 w-32 items-center justify-center rounded-full bg-linear-to-r from-background to-border text-7xl shadow-2xl">
             ✓
           </div>
         </div>
         <div className="space-y-4">
-          <h1 className="bg-linear-to-r from-background via-base-200 to-base-300 text-5xl font-bold text-primary md:text-6xl">
+          <h1 className="bg-linear-to-r from-background via-muted to-border text-5xl font-bold text-primary md:text-6xl">
             {l.trans({ en: "Order Placed!", ko: "주문 완료!" })}
           </h1>
         </div>
-        <div className="rounded-2xl border border-base-300 bg-background p-8 shadow-md backdrop-blur-sm">
+        <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
           <div className="space-y-3">
             <div className="flex items-center justify-center gap-2 text-lg text-primary">
               <span className="text-3xl">🎉</span>
@@ -506,7 +506,7 @@ export default function Page() {
         <div className="pt-4">
           <Link
             href="/icecreamOrder"
-            className="inline-flex items-center justify-center gap-3 rounded-full border border-base-300 bg-base-200 px-12 py-6 text-2xl font-semibold text-primary shadow-2xl transition-all hover:scale-105 hover:bg-base-200 hover:shadow-md active:scale-95"
+            className="inline-flex items-center justify-center gap-3 rounded-full border border-border bg-muted px-12 py-6 text-2xl font-semibold text-primary shadow-2xl transition-all hover:scale-105 hover:bg-muted hover:shadow-md active:scale-95"
           >
             <span className="text-4xl">🏠</span>
             {l.trans({ en: "Place New Order", ko: "새 주문하기" })}
@@ -588,13 +588,13 @@ export default function Page({ searchParams }: PageProps) {
   const icecreamOrderForm: Partial<cnst.IcecreamOrder> = { serveType };
         
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-linear-to-br from-background via-base-200 to-base-300 p-6">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-linear-to-br from-background via-muted to-border p-6">
       <div className="w-full max-w-2xl space-y-8">
         <div className="space-y-4 text-center">
           <div className="flex justify-center">
             <span className="text-8xl">🍦</span>
           </div>
-          <h1 className="bg-linear-to-r from-background via-base-200 to-base-300 text-5xl font-bold text-primary md:text-6xl">
+          <h1 className="bg-linear-to-r from-background via-muted to-border text-5xl font-bold text-primary md:text-6xl">
             {l("base.createModel", { model: l("icecreamOrder.modelName") })}
           </h1>
           <p className="text-xl font-light text-primary">
@@ -623,7 +623,7 @@ export default function Page({ searchParams }: PageProps) {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔍</span>
                 <strong className="text-primary">searchParams</strong>
@@ -635,7 +635,7 @@ export default function Page({ searchParams }: PageProps) {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📝</span>
                 <strong className="text-primary">Load.Edit</strong>
@@ -647,7 +647,7 @@ export default function Page({ searchParams }: PageProps) {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">↩️</span>
                 <strong className="text-primary">{'onCancel="back"'}</strong>
@@ -685,7 +685,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
   return (
     <Layout.Template className={clsx("w-full space-y-6", className)}> // [!code highlight:56]
       {showServeType ? (
-        <div className="rounded-2xl border border-base-300 bg-background p-8 shadow-md backdrop-blur-sm">
+        <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
           <div className="space-y-6">
             <div className="flex items-center gap-3">
               <span className="text-3xl">🍦</span>
@@ -699,7 +699,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           </div>
         </div>
       ) : null}
-      <div className="rounded-2xl border border-base-300 bg-background p-8 shadow-md backdrop-blur-sm">
+      <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <span className="text-3xl">📏</span>
@@ -712,7 +712,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           />
         </div>
       </div>
-      <div className="rounded-2xl border border-base-300 bg-background p-8 shadow-md backdrop-blur-sm">
+      <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <span className="text-3xl">🍓</span>
@@ -725,7 +725,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           />
         </div>
       </div>
-      <div className="rounded-2xl border border-base-300 bg-background p-8 shadow-md backdrop-blur-sm">
+      <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <span className="text-3xl">📱</span>
@@ -797,7 +797,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
             })}
           </div>
           <div className="my-4 space-y-4">
-            <div className="rounded-lg border border-base-300 bg-background p-4">
+            <div className="rounded-lg border border-border bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">1️⃣</span>
                 <strong className="text-primary">
@@ -811,7 +811,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-4">
+            <div className="rounded-lg border border-border bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">2️⃣</span>
                 <strong className="text-primary">
@@ -825,7 +825,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-4">
+            <div className="rounded-lg border border-border bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">3️⃣</span>
                 <strong className="text-primary">
@@ -839,7 +839,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-4">
+            <div className="rounded-lg border border-border bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">4️⃣</span>
                 <strong className="text-primary">{l.trans({ en: "State Preservation", ko: "상태 보존" })}</strong>
@@ -852,7 +852,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
               </div>
             </div>
           </div>
-          <div className="my-6 rounded-lg bg-linear-to-r from-background to-base-300 p-6">
+          <div className="my-6 rounded-lg bg-linear-to-r from-background to-border p-6">
             <div className="mb-3 font-bold text-lg text-primary">
               {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
             </div>

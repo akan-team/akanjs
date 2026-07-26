@@ -210,7 +210,7 @@ export const Mini = ({ article, className, href }: MiniProps) => (
               <col className="w-[40%]" />
             </colgroup>
             <thead>
-              <tr className="bg-base-200">
+              <tr className="bg-muted">
                 <th className="text-foreground">field</th>
                 <th className="text-foreground">{l.trans({ en: "Description", ko: "설명" })}</th>
                 <th className="text-foreground">{l.trans({ en: "Example", ko: "예제" })}</th>
@@ -293,7 +293,7 @@ export const Mini = ({ article, className, href }: MiniProps) => (
                 ko: "하나의 Card에 많은 flag를 추가하기보다 display 목적별 variant를 export합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-background px-4 text-foreground/70">
+              <div key={rule} className="rounded-xl border border-border bg-background px-4 text-foreground/70">
                 {rule}
               </div>
             ))}

@@ -52,7 +52,7 @@ export default function Page() {
               }),
             ],
           ].map(([title, desc]) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+            <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
               <span className="font-bold text-foreground">{title}: </span>
 
               <span className="text-foreground/70 text-sm">{desc}</span>
@@ -84,7 +84,7 @@ export default function Page() {
 };`}
         />
         <div className="space-y-1">
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-mono font-semibold text-primary">basePath</div>
             <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
@@ -93,7 +93,7 @@ export default function Page() {
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-mono font-semibold text-primary">domains</div>
             <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
@@ -117,7 +117,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <div className="space-y-1">
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">
               {l.trans({ en: "Use basePath", ko: "basePath를 쓰는 경우" })}
             </div>
@@ -128,7 +128,7 @@ export default function Page() {
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">
               {l.trans({ en: "Use normal routing", ko: "일반 라우팅을 쓰는 경우" })}
             </div>
@@ -171,7 +171,7 @@ export default function Page() {
               }),
             ],
           ].map(([title, desc]) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+            <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
               <span className="font-bold text-foreground">{title}: </span>
 
               <span className="text-foreground/70 text-sm">{desc}</span>

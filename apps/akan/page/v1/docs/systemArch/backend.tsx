@@ -40,7 +40,7 @@ export default function Page() {
               ko: `Akan.js의 각 데이터 모델은 전용 모듈을 가집니다. 이러한 모듈식 접근 방식은 관심사의 깔끔한 분리를 보장하고 코드베이스를 유지보수하고 확장하기 쉽게 만듭니다.`,
             })}
           </div>
-          <div className="my-6 rounded-lg bg-base-200 p-6">
+          <div className="my-6 rounded-lg bg-muted p-6">
             <Image src="/akanjsImage/back_0.png" width={1000} height={1000} className="w-full rounded-lg" />
           </div>
           <div>
@@ -50,7 +50,7 @@ export default function Page() {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
                   1
@@ -64,7 +64,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
                   2
@@ -78,7 +78,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
                   3
@@ -92,7 +92,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
                   4
@@ -121,7 +121,7 @@ export default function Page() {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg bg-base-200 p-4">
+            <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-2xl">⚡</span>
                 <strong className="text-foreground text-lg">
@@ -135,7 +135,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg bg-base-200 p-4">
+            <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-2xl">🔄</span>
                 <strong className="text-foreground text-lg">{l.trans({ en: "Batch Mode", ko: "배치 모드" })}</strong>
@@ -148,7 +148,7 @@ export default function Page() {
               </div>
             </div>
           </div>
-          <div className="my-6 rounded-lg bg-base-200 p-6">
+          <div className="my-6 rounded-lg bg-muted p-6">
             <Image src="/akanjsImage/back_1.png" width={1000} height={1000} className="w-full rounded-lg" />
           </div>
           <div>
@@ -158,7 +158,7 @@ export default function Page() {
             })}
           </div>
           <div className="my-4 grid gap-4 md:grid-cols-2">
-            <div className="rounded-lg bg-base-200 p-4">
+            <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 font-bold text-foreground">🗄️ MongoDB</div>
               <div className="text-foreground/70 text-sm">
                 {l.trans({
@@ -167,7 +167,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg bg-base-200 p-4">
+            <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 font-bold text-foreground">⚡ Redis</div>
               <div className="text-foreground/70 text-sm">
                 {l.trans({

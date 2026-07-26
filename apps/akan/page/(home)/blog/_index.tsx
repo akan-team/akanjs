@@ -74,7 +74,7 @@ export default function Page() {
 
   return (
     <main className="min-h-screen bg-background font-mono text-foreground">
-      <section className="border-base-300 border-b">
+      <section className="border-border border-b">
         <div className="mx-auto max-w-5xl px-6 pt-16 pb-8 lg:px-8">
           <h1 className="font-bold text-2xl text-primary leading-none tracking-tight md:text-4xl">
             {l.trans({ en: "Akan.js Blog", ko: "Akan.js Blog" })}
@@ -93,7 +93,7 @@ export default function Page() {
           <Link
             key={post.href}
             href={post.href}
-            className="group my-4 block rounded-2xl border border-base-300 p-5 transition hover:border-primary/30 hover:shadow-[0_18px_45px_rgba(var(--color-primary),0.18)]"
+            className="group my-4 block rounded-2xl border border-border p-5 transition hover:border-primary/30 hover:shadow-[0_18px_45px_rgba(var(--color-primary),0.18)]"
           >
             <article className="grid gap-6 md:grid-cols-[1fr_180px] md:items-center">
               <div>
@@ -106,7 +106,7 @@ export default function Page() {
                   {l.trans(post.meta)} · {l.trans(post.date)}
                 </p>
               </div>
-              <div className="hidden h-28 overflow-hidden rounded-sm bg-base-200 md:block">
+              <div className="hidden h-28 overflow-hidden rounded-sm bg-muted md:block">
                 <img
                   src={post.image}
                   alt={l.trans(post.title)}

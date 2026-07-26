@@ -16,7 +16,7 @@ export const IntroTable = ({ items, type }: { items: IntroItem[]; type: string }
       <div className="hidden overflow-x-auto lg:block">
         <table className="table w-full">
           <thead>
-            <tr className="bg-base-200">
+            <tr className="bg-muted">
               <th className="text-foreground">{type}</th>
               <th className="text-foreground">{l.trans({ en: "Description", ko: "설명" })}</th>
               {items.some((item) => !!item.example) ? (

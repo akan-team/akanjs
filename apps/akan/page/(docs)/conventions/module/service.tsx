@@ -324,7 +324,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <div className="space-y-3">
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">Database service</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -333,7 +333,7 @@ export default function Page() {
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">Plain service</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -342,7 +342,7 @@ export default function Page() {
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">Service option</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -351,7 +351,7 @@ export default function Page() {
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">Extension services</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -397,7 +397,7 @@ serve(db.user, ({ use }) => ({ githubApp: use<GithubApp>() }), ...user.services)
               <col className="w-[50%]" />
             </colgroup>
             <thead>
-              <tr className="bg-base-200">
+              <tr className="bg-muted">
                 <th className="text-foreground">method</th>
                 <th className="text-foreground">{l.trans({ en: "Description", ko: "설명" })}</th>
                 <th className="text-foreground">{l.trans({ en: "Example", ko: "예제" })}</th>
@@ -508,7 +508,7 @@ export class UserService extends serve(
           </div>
         </Docs.Description>
         <div className="space-y-3">
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">database()</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -524,7 +524,7 @@ export class UserService extends serve(
 }`}
             />
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">service&lt;T&gt;()</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -544,7 +544,7 @@ export class UserService extends serve(
 }`}
             />
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">use&lt;T&gt;()</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -564,7 +564,7 @@ export class UserService extends serve(
 }`}
             />
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">signal&lt;T&gt;()</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -587,7 +587,7 @@ export class UserService extends serve(
 }`}
             />
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">plug(Adaptor)</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -607,7 +607,7 @@ export class UserService extends serve(
 }`}
             />
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">env(factory)</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -627,7 +627,7 @@ export class UserService extends serve(
 }`}
             />
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">memory(modelRef, opts)</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -760,7 +760,7 @@ async onDestroy() {
                 ko: "service 간 순환 의존성을 피합니다. 두 service가 서로 필요하다면 shared operation을 더 작은 service나 srvkit helper로 분리합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-background px-4 text-foreground/70">
+              <div key={rule} className="rounded-xl border border-border bg-background px-4 text-foreground/70">
                 {rule}
               </div>
             ))}

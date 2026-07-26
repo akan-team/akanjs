@@ -62,7 +62,7 @@ Map       // Key-value mapping`}
           <div className="my-6 overflow-x-auto">
             <table className="table-zebra table w-full text-sm">
               <thead>
-                <tr className="bg-base-300">
+                <tr className="bg-border">
                   <th>{l.trans({ en: "Type", ko: "타입" })}</th>
                   <th>{l.trans({ en: "GraphQL", ko: "GraphQL" })}</th>
                   <th>{l.trans({ en: "MongoDB", ko: "MongoDB" })}</th>

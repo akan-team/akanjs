@@ -81,7 +81,7 @@ export default function Page() {
           </p>
         </header>
 
-        <section className="mt-12 rounded-3xl bg-base-200 p-6 md:p-8">
+        <section className="mt-12 rounded-3xl bg-muted p-6 md:p-8">
           <p className="font-bold text-primary text-sm uppercase tracking-[0.2em]">
             {l.trans({ en: "The problem", ko: "문제의식" })}
           </p>
@@ -138,7 +138,7 @@ export default function Page() {
 
         <section className="mt-12 grid gap-4 md:grid-cols-3">
           {principles.map((principle) => (
-            <div key={principle.title.en} className="rounded-2xl border border-base-300 bg-background p-5 shadow-sm">
+            <div key={principle.title.en} className="rounded-2xl border border-border bg-background p-5 shadow-sm">
               <h3 className="font-bold text-lg">{l.trans(principle.title)}</h3>
               <p className="mt-3 text-foreground/70 text-sm leading-6">{l.trans(principle.desc)}</p>
             </div>
@@ -151,7 +151,7 @@ export default function Page() {
           </h2>
           <div className="mt-6 space-y-4">
             {timeline.map((item) => (
-              <div key={item.year} className="rounded-2xl bg-base-200 p-5">
+              <div key={item.year} className="rounded-2xl bg-muted p-5">
                 <div className="flex flex-wrap items-baseline gap-3">
                   <span className="font-black text-2xl text-primary">{item.year}</span>
                   <h3 className="font-bold text-lg">{l.trans(item.title)}</h3>

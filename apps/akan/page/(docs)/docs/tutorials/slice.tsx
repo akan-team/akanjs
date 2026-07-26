@@ -318,7 +318,7 @@ export const dictionary = modelDictionary(["en", "ko"])
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📦</span>
                 <strong className="text-primary">Load.Page</strong>
@@ -330,7 +330,7 @@ export const dictionary = modelDictionary(["en", "ko"])
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🎯</span>
                 <strong className="text-primary">IcecreamOrder.Zone.Card</strong>
@@ -342,7 +342,7 @@ export const dictionary = modelDictionary(["en", "ko"])
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🚫</span>
                 <strong className="text-primary">{"showControls={false}"}</strong>
@@ -387,16 +387,16 @@ interface CardProps extends ModelProps<"icecreamOrder", cnst.LightIcecreamOrder>
 export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
   const { l } = usePage();
   return (
-    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-base-200 to-base-300 px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
+    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-muted to-border px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
       <div className="flex flex-col justify-center"> // [!code collapse:24]
         <div className="flex items-center gap-2 text-lg font-semibold text-primary">
-          <span className="inline-block rounded bg-base-200 px-2 py-1 text-xs font-bold tracking-wider uppercase">
+          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider uppercase">
             {l("icecreamOrder.id")}
           </span>
           <span className="ml-2 font-mono text-primary">#{icecreamOrder.id.slice(-4)}</span>
         </div>
         <div className="mt-4 flex items-center gap-2">
-          <span className="inline-block rounded border border-base-300 bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded border border-border bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
             {l("icecreamOrder.status")}
           </span>
           <span
@@ -405,7 +405,7 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
               "border border-warning/40 bg-background text-warning": icecreamOrder.status === "processing",
               "border border-info/40 bg-info text-info-foreground": icecreamOrder.status === "served",
               "border border-accent/40 bg-background text-accent": icecreamOrder.status === "finished",
-              "border border-base-300 bg-background text-foreground/70": icecreamOrder.status === "canceled",
+              "border border-border bg-background text-foreground/70": icecreamOrder.status === "canceled",
             })}
           >
             {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
@@ -514,7 +514,7 @@ export const View = ({ view }: ViewProps) => {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">⏱️</span>
                 <strong className="text-primary">useInterval</strong>
@@ -526,7 +526,7 @@ export const View = ({ view }: ViewProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔄</span>
                 <strong className="text-primary">refreshIcecreamOrder</strong>
@@ -538,7 +538,7 @@ export const View = ({ view }: ViewProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📋</span>
                 <strong className="text-primary">Load.Units</strong>
@@ -568,7 +568,7 @@ export const View = ({ view }: ViewProps) => {
             })}
           </div>
           <div className="my-4 space-y-4">
-            <div className="rounded-lg border border-base-300 bg-background p-4">
+            <div className="rounded-lg border border-border bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">1️⃣</span>
                 <strong className="text-primary">
@@ -582,7 +582,7 @@ export const View = ({ view }: ViewProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-4">
+            <div className="rounded-lg border border-border bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">2️⃣</span>
                 <strong className="text-primary">
@@ -596,7 +596,7 @@ export const View = ({ view }: ViewProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-4">
+            <div className="rounded-lg border border-border bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">3️⃣</span>
                 <strong className="text-primary">
@@ -610,7 +610,7 @@ export const View = ({ view }: ViewProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-4">
+            <div className="rounded-lg border border-border bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">4️⃣</span>
                 <strong className="text-primary">
@@ -625,7 +625,7 @@ export const View = ({ view }: ViewProps) => {
               </div>
             </div>
           </div>
-          <div className="my-6 rounded-lg bg-linear-to-r from-background to-base-300 p-6">
+          <div className="my-6 rounded-lg bg-linear-to-r from-background to-border p-6">
             <div className="mb-3 font-bold text-lg text-primary">
               {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
             </div>

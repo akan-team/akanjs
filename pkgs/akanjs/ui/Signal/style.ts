@@ -12,7 +12,7 @@ export const signalUi = {
   inputRow: "flex w-full flex-col gap-2 py-2 md:flex-row md:items-center",
   inputLabel: "w-full font-semibold text-foreground/70 text-sm md:w-36",
   codePanel:
-    "min-h-[300px] w-full rounded-xl border border-base-300 bg-background p-4 font-normal text-foreground text-sm",
+    "min-h-[300px] w-full rounded-xl border border-border bg-background p-4 font-normal text-foreground text-sm",
 };
 
 export const getEndpointBadgeClassName = (type: string) =>

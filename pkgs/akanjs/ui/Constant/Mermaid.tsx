@@ -80,9 +80,9 @@ export const Mermaid = ({ chart, title, className, highlightNodes = [], onSelect
   }, [chart, highlightNodes, onSelectNode, reactId]);
 
   return (
-    <div className={clsx("my-4 overflow-hidden rounded-xl border border-base-300 bg-base-200/40", className)}>
+    <div className={clsx("my-4 overflow-hidden rounded-xl border border-border bg-muted/40", className)}>
       {title ? (
-        <div className="border-base-300 border-b px-4 py-2 font-bold text-foreground/70 text-sm">{title}</div>
+        <div className="border-border border-b px-4 py-2 font-bold text-foreground/70 text-sm">{title}</div>
       ) : null}
       <div className="overflow-x-auto p-4">
         {error ? (
@@ -102,8 +102,8 @@ function getThemeColors() {
 
   return {
     base100: getMermaidColor(style, "--color-background", fallback.base100),
-    base200: getMermaidColor(style, "--color-base-200", fallback.base200),
-    base300: getMermaidColor(style, "--color-base-300", fallback.base300),
+    base200: getMermaidColor(style, "--color-muted", fallback.base200),
+    base300: getMermaidColor(style, "--color-border", fallback.base300),
     baseContent: getMermaidColor(style, "--color-foreground", fallback.baseContent),
     primary: getMermaidColor(style, "--color-primary", fallback.primary),
   };

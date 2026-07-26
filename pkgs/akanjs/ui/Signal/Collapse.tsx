@@ -19,7 +19,7 @@ export const SignalCollapse = ({
   className?: string;
   contentClassName?: string;
 }) => (
-  <details className={cn("group my-2 rounded-box bg-base-200", className)} open={open}>
+  <details className={cn("group my-2 rounded-box bg-muted", className)} open={open}>
     <summary className="flex cursor-pointer list-none items-center justify-between gap-2 p-4 [&::-webkit-details-marker]:hidden">
       <div className="min-w-0 flex-1">{summary}</div>
       <span className="shrink-0 text-foreground/50 transition-transform group-open:rotate-180">▾</span>

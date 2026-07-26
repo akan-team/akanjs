@@ -58,7 +58,7 @@ export default function Page() {
               desc: l.trans({ en: "How users see the data", ko: "사용자가 데이터를 어떻게 보는지" }),
             },
           ].map(({ name, desc }) => (
-            <div key={name} className="rounded-xl border border-base-300 bg-background p-4">
+            <div key={name} className="rounded-xl border border-border bg-background p-4">
               <div className="font-mono font-semibold text-primary">{name}</div>
               <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>
@@ -133,7 +133,7 @@ export class LightProduct extends via(
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+            <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
               <span className="font-bold text-foreground">{title}: </span>
 
               <span className="text-foreground/70 text-sm">{desc}</span>
@@ -256,7 +256,7 @@ export class ProductEndpoint extends endpoint(srv.product, ({ query, mutation })
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -302,7 +302,7 @@ export class ProductEndpoint extends endpoint(srv.product, ({ query, mutation })
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -442,7 +442,7 @@ export const General = () => {
                 desc: "model.store.ts",
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-bold text-foreground">{title}: </span>
 
                 <span className="font-mono text-primary text-sm">{desc}</span>

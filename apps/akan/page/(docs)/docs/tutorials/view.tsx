@@ -28,7 +28,7 @@ export default function Page() {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🎯</span>
                 <strong className="text-primary">ViewWrapper (Util.tsx)</strong>
@@ -40,7 +40,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🖼️</span>
                 <strong className="text-primary">ViewModal (Model component)</strong>
@@ -52,7 +52,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📋</span>
                 <strong className="text-primary">Detail View (View.tsx)</strong>
@@ -194,16 +194,16 @@ import { Model } from "akanjs/ui"; // [!code ++]
 export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIcecreamOrder>) => {
   const { l } = usePage();
   return (
-    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-base-200 to-base-300 px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
+    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-muted to-border px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
       <div className="flex flex-col justify-center">
         <div className="flex items-center gap-2 text-lg font-semibold text-primary">
-          <span className="inline-block rounded bg-base-200 px-2 py-1 text-xs font-bold tracking-wider uppercase">
+          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider uppercase">
             {l("icecreamOrder.id")}
           </span>
           <span className="ml-2 font-mono text-primary">#{icecreamOrder.id.slice(-4)}</span> // [!code ++]
         </div>
         <div className="mt-4 flex items-center gap-2"> // [!code collapse:16]
-          <span className="inline-block rounded border border-base-300 bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded border border-border bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
             {l("icecreamOrder.status")}
           </span>
           <span
@@ -212,7 +212,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
               "border border-warning/40 bg-background text-warning": icecreamOrder.status === "processing",
               "border border-info/40 bg-info text-info-foreground": icecreamOrder.status === "served",
               "border border-accent/40 bg-background text-accent": icecreamOrder.status === "finished",
-              "border border-base-300 bg-background text-foreground/70": icecreamOrder.status === "canceled",
+              "border border-border bg-background text-foreground/70": icecreamOrder.status === "canceled",
             })}
           >
             {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
@@ -328,7 +328,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
               "border border-warning/40 bg-background text-warning": icecreamOrder.status === "processing",
               "border border-info/40 bg-info text-info-foreground": icecreamOrder.status === "served",
               "border border-accent/40 bg-background text-accent": icecreamOrder.status === "finished",
-              "border border-base-300 bg-background text-foreground/70": icecreamOrder.status === "canceled",
+              "border border-border bg-background text-foreground/70": icecreamOrder.status === "canceled",
             })}
           >
             {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
@@ -350,7 +350,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🎨</span>
                 <strong className="text-primary">{l.trans({ en: "Header Section", ko: "헤더 섹션" })}</strong>
@@ -362,7 +362,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📊</span>
                 <strong className="text-primary">{l.trans({ en: "Grid Layout", ko: "그리드 레이아웃" })}</strong>
@@ -374,7 +374,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🏷️</span>
                 <strong className="text-primary">{l.trans({ en: "Visual Elements", ko: "시각적 요소" })}</strong>
@@ -399,7 +399,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
               ko: `상세 뷰 구현을 테스트해봅시다. 아이스크림 주문 페이지로 이동해서 주문 카드의 "보기" 버튼을 클릭하여 시스템이 올바르게 작동하는지 확인하세요.`,
             })}
           </div>
-          <div className="my-4 rounded-lg border border-base-300 bg-background p-4">
+          <div className="my-4 rounded-lg border border-border bg-background p-4">
             <div className="mb-2 font-semibold text-primary">
               {l.trans({ en: "Testing Steps:", ko: "테스트 단계:" })}
             </div>
@@ -458,7 +458,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             })}
           </div>
           <div className="my-4 space-y-4">
-            <div className="rounded-lg border border-base-300 bg-background p-4">
+            <div className="rounded-lg border border-border bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">✅</span>
                 <strong className="text-primary">
@@ -472,7 +472,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-4">
+            <div className="rounded-lg border border-border bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🎨</span>
                 <strong className="text-primary">
@@ -486,7 +486,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-4">
+            <div className="rounded-lg border border-border bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔧</span>
                 <strong className="text-primary">
@@ -500,7 +500,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-4">
+            <div className="rounded-lg border border-border bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">⚡</span>
                 <strong className="text-primary">{l.trans({ en: "Handle Empty States", ko: "빈 상태 처리" })}</strong>
@@ -525,7 +525,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
               ko: `아이스크림 주문에 대한 상세 뷰를 성공적으로 구현했습니다. 이제 고객들이 주문을 클릭해서 체계적인 형식으로 모든 세부사항을 볼 수 있습니다. 모달 시스템은 주문 정보를 보기 위한 깔끔한 인터페이스를 제공합니다.`,
             })}
           </div>
-          <div className="my-6 rounded-lg bg-linear-to-r from-background to-base-300 p-6">
+          <div className="my-6 rounded-lg bg-linear-to-r from-background to-border p-6">
             <div className="mb-3 font-bold text-lg text-primary">
               {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
             </div>

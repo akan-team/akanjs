@@ -46,7 +46,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-bold text-foreground">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -96,16 +96,16 @@ export default function Page() {
                 example: "forms, filters, modals, st, fetch",
               },
             ].map(({ title, desc, example }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <div className="font-bold text-foreground">{title}</div>
                 <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
-                <div className="mt-3 rounded-lg border border-base-300 bg-base-200 px-3 py-2 font-mono text-foreground/70 text-xs">
+                <div className="mt-3 rounded-lg border border-border bg-muted px-3 py-2 font-mono text-foreground/70 text-xs">
                   {example}
                 </div>
               </div>
             ))}
           </div>
-          <div className="rounded-2xl border border-base-300 bg-background p-5">
+          <div className="rounded-2xl border border-border bg-background p-5">
             <div className="mb-4">
               <div className="font-bold text-foreground">{l.trans({ en: "SSR Timeline", ko: "SSR 동작 흐름" })}</div>
               <div className="mt-1 text-foreground/70 text-sm">
@@ -173,7 +173,7 @@ export default function Page() {
               </div>
             </div>
           </div>
-          <div className="rounded-2xl border border-base-300 bg-background p-5">
+          <div className="rounded-2xl border border-border bg-background p-5">
             <div className="font-bold text-foreground">{l.trans({ en: "Business Example", ko: "비즈니스 예시" })}</div>
             <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
@@ -227,12 +227,12 @@ export default function Page() {
               </div>
             </div>
           </div>
-          <div className="rounded-2xl border border-base-300 bg-background p-5">
+          <div className="rounded-2xl border border-border bg-background p-5">
             <div className="font-bold text-foreground">
               {l.trans({ en: "Why Both Sides Exist", ko: "왜 두 방식을 함께 쓰는가" })}
             </div>
             <div className="mt-2 space-y-1">
-              <div className="rounded-xl border border-base-300 bg-base-200 p-4">
+              <div className="rounded-xl border border-border bg-muted p-4">
                 <div className="font-semibold text-foreground">
                   {l.trans({ en: "Server-side first content", ko: "서버사이드 첫 콘텐츠" })}
                 </div>
@@ -243,7 +243,7 @@ export default function Page() {
                   })}
                 </div>
               </div>
-              <div className="rounded-xl border border-base-300 bg-base-200 p-4">
+              <div className="rounded-xl border border-border bg-muted p-4">
                 <div className="font-semibold text-foreground">
                   {l.trans({ en: "Client-side working areas", ko: "클라이언트사이드 작업 영역" })}
                 </div>
@@ -256,7 +256,7 @@ export default function Page() {
               </div>
             </div>
           </div>
-          <div className="rounded-2xl border border-base-300 bg-background p-5">
+          <div className="rounded-2xl border border-border bg-background p-5">
             <div className="mb-4">
               <div className="font-bold text-foreground">
                 {l.trans({ en: "A Simpler Way To Decide", ko: "더 쉬운 결정 순서" })}
@@ -298,13 +298,13 @@ export default function Page() {
                   example: "st.use, st.do, fetch",
                 },
               ].map(({ step, title, desc, example }) => (
-                <div key={step} className="space-y-1 rounded-xl border border-base-300 bg-base-200 px-4 py-2">
+                <div key={step} className="space-y-1 rounded-xl border border-border bg-muted px-4 py-2">
                   <div className="flex items-center justify-between gap-3">
                     <div className="font-bold text-foreground">{title}</div>
                     <div className="rounded-full bg-primary/10 px-3 py-1 font-mono text-primary text-xs">{step}</div>
                   </div>
                   <div className="text-foreground/70 text-sm">{desc}</div>
-                  <div className="rounded-lg border border-base-300 bg-background px-3 py-2 font-mono text-foreground/70 text-xs">
+                  <div className="rounded-lg border border-border bg-background px-3 py-2 font-mono text-foreground/70 text-xs">
                     {example}
                   </div>
                 </div>
@@ -342,14 +342,14 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-bold text-foreground">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
-          <div className="rounded-2xl border border-base-300 bg-background p-5">
+          <div className="rounded-2xl border border-border bg-background p-5">
             <div className="mb-4">
               <div className="font-bold text-foreground">
                 {l.trans({ en: "How To Split One Screen", ko: "한 화면을 나누는 방법" })}
@@ -362,7 +362,7 @@ export default function Page() {
               </div>
             </div>
             <div className="grid gap-3 lg:grid-cols-[1fr_auto_1fr]">
-              <div className="rounded-xl border border-base-300 bg-base-200 p-4">
+              <div className="rounded-xl border border-border bg-muted p-4">
                 <div className="font-semibold text-foreground">
                   {l.trans({ en: "Stable information", ko: "안정적인 정보" })}
                 </div>
@@ -372,7 +372,7 @@ export default function Page() {
                     ko: "사용자가 바로 봐야 하는 제목, 가격, 요약, 첫 목록, 정책 문구, 글 본문에 사용합니다.",
                   })}
                 </div>
-                <div className="mt-3 rounded-lg border border-base-300 bg-background px-3 py-2 font-mono text-foreground/70 text-xs">
+                <div className="mt-3 rounded-lg border border-border bg-background px-3 py-2 font-mono text-foreground/70 text-xs">
                   Product title, price, first list, summary
                 </div>
               </div>
@@ -419,7 +419,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-bold text-foreground">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -439,7 +439,7 @@ export default function Page() {
               ko: "일반적인 비즈니스 화면은 서버에서 렌더링되는 껍데기와 클라이언트에서 동작하는 영역을 함께 사용합니다. 상품 목록 페이지는 제목과 첫 데이터를 서버에서 렌더링하고, 목록 영역은 페이지네이션, 필터, 실시간 업데이트, 사용자 액션을 위해 클라이언트 zone에 넘길 수 있습니다.",
             })}
           </div>
-          <div className="rounded-2xl border border-base-300 bg-background p-5">
+          <div className="rounded-2xl border border-border bg-background p-5">
             <div className="grid gap-5 xl:grid-cols-[240px_1fr]">
               <div className="flex flex-col justify-between rounded-xl border border-primary/20 bg-primary/5 p-5">
                 <div>
@@ -460,7 +460,7 @@ export default function Page() {
                 </div>
               </div>
               <div className="grid gap-3 lg:grid-cols-2">
-                <div className="rounded-xl border border-base-300 bg-base-200 p-4">
+                <div className="rounded-xl border border-border bg-muted p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <div className="font-mono font-semibold text-foreground">page</div>
@@ -475,7 +475,7 @@ export default function Page() {
                     })}
                   </div>
                 </div>
-                <div className="rounded-xl border border-base-300 bg-base-200 p-4">
+                <div className="rounded-xl border border-border bg-muted p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <div className="font-mono font-semibold text-foreground">component</div>
@@ -490,7 +490,7 @@ export default function Page() {
                     })}
                   </div>
                 </div>
-                <div className="rounded-xl border border-base-300 bg-base-200 p-4">
+                <div className="rounded-xl border border-border bg-muted p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <div className="font-mono font-semibold text-foreground">store</div>
@@ -505,7 +505,7 @@ export default function Page() {
                     })}
                   </div>
                 </div>
-                <div className="rounded-xl border border-base-300 bg-base-200 p-4">
+                <div className="rounded-xl border border-border bg-muted p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <div className="font-mono font-semibold text-foreground">fetch</div>
@@ -520,10 +520,10 @@ export default function Page() {
                     })}
                   </div>
                 </div>
-                <div className="rounded-xl border border-base-300 bg-base-200 p-4 lg:col-span-2">
+                <div className="rounded-xl border border-border bg-muted p-4 lg:col-span-2">
                   <div className="flex items-center justify-between gap-4">
                     <span className="font-mono font-semibold text-foreground">backend</span>
-                    <div className="h-px flex-1 bg-base-300" />
+                    <div className="h-px flex-1 bg-border" />
                     <span className="text-foreground/60 text-xs">
                       {l.trans({ en: "signals, services, database", ko: "signal, service, database" })}
                     </span>
@@ -532,7 +532,7 @@ export default function Page() {
               </div>
             </div>
           </div>
-          <div className="rounded-2xl border border-base-300 bg-background p-5">
+          <div className="rounded-2xl border border-border bg-background p-5">
             <div className="mb-4">
               <div className="font-bold text-foreground">
                 {l.trans({ en: "Typical Model Screen Flow", ko: "일반적인 모델 화면 흐름" })}
@@ -551,11 +551,11 @@ export default function Page() {
                     <div className="font-bold text-foreground">index page</div>
                     <div className="text-foreground/60 text-xs">Model</div>
                   </div>
-                  <div className="rounded-lg border border-base-300 bg-background px-3 py-1 font-mono text-xs">
+                  <div className="rounded-lg border border-border bg-background px-3 py-1 font-mono text-xs">
                     +New
                   </div>
                 </div>
-                <div className="rounded-lg border border-base-300 bg-background px-3 py-2 text-center text-foreground/70 text-sm">
+                <div className="rounded-lg border border-border bg-background px-3 py-2 text-center text-foreground/70 text-sm">
                   Search bar
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2">
@@ -568,7 +568,7 @@ export default function Page() {
                     </div>
                   ))}
                 </div>
-                <div className="mt-3 rounded-lg border border-base-300 bg-background px-3 py-2 text-center text-foreground/70 text-sm">
+                <div className="mt-3 rounded-lg border border-border bg-background px-3 py-2 text-center text-foreground/70 text-sm">
                   Pagination
                 </div>
               </div>
@@ -586,7 +586,7 @@ export default function Page() {
                     Edit
                   </div>
                   <div className="mt-3 flex justify-end gap-2">
-                    <div className="rounded-lg border border-base-300 bg-background px-3 py-1 text-sm">cancel</div>
+                    <div className="rounded-lg border border-border bg-background px-3 py-1 text-sm">cancel</div>
                     <div className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-1 text-primary text-sm">
                       submit
                     </div>
@@ -598,14 +598,14 @@ export default function Page() {
                       <div className="font-bold text-foreground">view page</div>
                       <div className="text-foreground/60 text-xs">Model 1</div>
                     </div>
-                    <div className="rounded-lg border border-base-300 bg-background px-3 py-1 font-mono text-xs">
+                    <div className="rounded-lg border border-border bg-background px-3 py-1 font-mono text-xs">
                       edit
                     </div>
                   </div>
                   <div className="rounded-xl border border-success/30 bg-success/10 px-4 py-12 text-center font-semibold text-success">
                     View
                   </div>
-                  <div className="mt-3 rounded-lg border border-base-300 bg-background px-3 py-2 text-center text-foreground/70 text-sm">
+                  <div className="mt-3 rounded-lg border border-border bg-background px-3 py-2 text-center text-foreground/70 text-sm">
                     etc
                   </div>
                 </div>
@@ -622,7 +622,7 @@ export default function Page() {
                   Edit
                 </div>
                 <div className="mt-3 flex justify-end gap-2">
-                  <div className="rounded-lg border border-base-300 bg-background px-3 py-1 text-sm">cancel</div>
+                  <div className="rounded-lg border border-border bg-background px-3 py-1 text-sm">cancel</div>
                   <div className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-1 text-primary text-sm">
                     submit
                   </div>
@@ -651,7 +651,7 @@ export default function Page() {
             </div>
           </div>
           <div className="space-y-1">
-            <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="rounded-xl border border-border bg-background p-4">
               <div className="font-bold text-foreground">{l.trans({ en: "Product listing", ko: "상품 목록" })}</div>
               <div className="mt-2 text-foreground/70 text-sm">
                 {l.trans({
@@ -660,7 +660,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="rounded-xl border border-border bg-background p-4">
               <div className="font-bold text-foreground">
                 {l.trans({ en: "Admin stock page", ko: "관리자 재고 화면" })}
               </div>
@@ -725,7 +725,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -799,7 +799,7 @@ export function StockEditor({ productId }: { productId: string }) {
           </div>
 
           <div className="space-y-1">
-            <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="rounded-xl border border-border bg-background p-4">
               <div className="font-bold text-foreground">
                 {l.trans({ en: "Call fetch directly", ko: "fetch 직접 호출" })}
               </div>
@@ -817,7 +817,7 @@ export function StockEditor({ productId }: { productId: string }) {
   endpoint --> service["Business Service"]`}
               />
             </div>
-            <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="rounded-xl border border-border bg-background p-4">
               <div className="font-bold text-foreground">
                 {l.trans({ en: "Wrap fetch in a store action", ko: "store action으로 감싸기" })}
               </div>
@@ -872,7 +872,7 @@ export function StockEditor({ productId }: { productId: string }) {
               ko: "Akan은 @apps/<app>/client에서 앱 전용 헬퍼를 제공합니다. 화면 구조, st, fetch를 이해하고 나면 이 헬퍼들이 UI 작업의 일상적인 진입점이 됩니다.",
             })}
           </div>
-          <div className="rounded-2xl border border-base-300 bg-background p-5">
+          <div className="rounded-2xl border border-border bg-background p-5">
             <div className="font-bold text-foreground">
               {l.trans({ en: "How They Work Together", ko: "함께 쓰이는 방식" })}
             </div>
@@ -889,7 +889,7 @@ export function StockEditor({ productId }: { productId: string }) {
                 { label: "st", detail: "state, derived, actions" },
                 { label: "fetch", detail: "endpoint calls" },
               ].map(({ label, detail }) => (
-                <div key={label} className="rounded-xl border border-base-300 bg-base-200 px-4 py-0">
+                <div key={label} className="rounded-xl border border-border bg-muted px-4 py-0">
                   <div className="font-mono font-semibold text-primary">{label}</div>
                   <div className="mt-2 text-foreground/70 text-sm">{detail}</div>
                 </div>
@@ -927,7 +927,7 @@ export function StockEditor({ productId }: { productId: string }) {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -980,10 +980,10 @@ export function StockEditor({ productId }: { productId: string }) {
                 example: "web, admin, mobile",
               },
             ].map(({ title, desc, example }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <div className="font-bold text-foreground">{title}</div>
                 <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
-                <div className="mt-3 rounded-lg border border-base-300 bg-base-200 px-3 py-2 font-mono text-foreground/70 text-xs">
+                <div className="mt-3 rounded-lg border border-border bg-muted px-3 py-2 font-mono text-foreground/70 text-xs">
                   {example}
                 </div>
               </div>
@@ -1064,7 +1064,7 @@ export function UserSigninButton() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-bold text-foreground">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -1077,7 +1077,7 @@ export function UserSigninButton() {
               ko: "클라이언트 대상은 인프라 결정이기 전에 제품 결정입니다. 먼저 누가 그 화면을 쓰고 무엇을 해야 하는지 정하세요. 해당 클라이언트가 어디에 배포되고 라우팅되는지는 Runtime And Infra에서 다룹니다.",
             })}
           </Docs.Alert>
-          <div className="rounded-2xl border border-base-300 bg-background p-5">
+          <div className="rounded-2xl border border-border bg-background p-5">
             <div className="font-bold text-foreground">
               {l.trans({ en: "Final Practical Checklist", ko: "마지막 실용 체크리스트" })}
             </div>
@@ -1102,7 +1102,7 @@ export function UserSigninButton() {
               ].map((desc) => (
                 <div
                   key={desc}
-                  className="rounded-xl border border-base-300 bg-background px-4 py-0 text-foreground/70 text-sm"
+                  className="rounded-xl border border-border bg-background px-4 py-0 text-foreground/70 text-sm"
                 >
                   {desc}
                 </div>

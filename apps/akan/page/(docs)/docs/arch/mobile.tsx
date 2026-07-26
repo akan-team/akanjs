@@ -51,7 +51,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-bold text-foreground">{title}: </span>
                 <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
@@ -154,7 +154,7 @@ export const pageConfig = {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-mono font-semibold text-primary">{title}: </span>
                 <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
@@ -204,7 +204,7 @@ export const pageConfig = {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-mono font-semibold text-primary">{title}: </span>
                 <span className="text-foreground/70 text-sm">{desc}</span>
               </div>

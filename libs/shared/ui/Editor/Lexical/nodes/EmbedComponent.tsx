@@ -30,7 +30,7 @@ export const EmbedComponent = ({ nodeKey, embedUrl, provider, width, height, ali
       <EmbedUrlForm nodeKey={nodeKey} />
     ) : (
       <div className="my-2 flex w-full justify-center" contentEditable={false}>
-        <div className="rounded-md bg-base-200 p-6 text-foreground/50">Embed URL is not configured.</div>
+        <div className="rounded-md bg-muted p-6 text-foreground/50">Embed URL is not configured.</div>
       </div>
     );
   }
@@ -57,7 +57,7 @@ export const EmbedComponent = ({ nodeKey, embedUrl, provider, width, height, ali
         width={width}
         height={height}
         allowFullScreen
-        className="block max-w-full rounded-md bg-base-200"
+        className="block max-w-full rounded-md bg-muted"
       />
     </MediaFrame>
   );
@@ -84,7 +84,7 @@ export const EmbedUrlForm = ({ nodeKey }: { nodeKey: NodeKey }) => {
 
   return (
     <div className="my-2 flex w-full justify-center" contentEditable={false}>
-      <div className="flex w-full max-w-md flex-col gap-2 rounded-lg border border-foreground/15 bg-base-200/60 p-3">
+      <div className="flex w-full max-w-md flex-col gap-2 rounded-lg border border-foreground/15 bg-muted/60 p-3">
         <span className="font-medium text-foreground/70 text-sm">
           Paste a {policy.allowedEmbedProviders.join(" / ")} URL
         </span>

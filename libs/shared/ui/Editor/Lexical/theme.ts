@@ -6,7 +6,7 @@ export type CalloutVariant = "default" | "info" | "success" | "warning" | "error
 
 const CALLOUT_BASE = "my-3 rounded-md border border-l-4 py-2 pr-3 pl-4 leading-7";
 export const CALLOUT_VARIANTS: Record<CalloutVariant, string> = {
-  default: `${CALLOUT_BASE} border-foreground/15 border-l-foreground/40 bg-base-200/60`,
+  default: `${CALLOUT_BASE} border-foreground/15 border-l-foreground/40 bg-muted/60`,
   info: `${CALLOUT_BASE} border-info/30 border-l-info bg-info/10`,
   success: `${CALLOUT_BASE} border-success/30 border-l-success bg-success/10`,
   warning: `${CALLOUT_BASE} border-warning/30 border-l-warning bg-warning/10`,
@@ -29,7 +29,7 @@ export const akanEditorTheme: EditorThemeClasses = {
     h2: "mt-6 scroll-m-20 font-semibold text-3xl tracking-tight transition-colors",
     h3: "mt-4 scroll-m-20 font-semibold text-2xl tracking-tight",
   },
-  quote: "mt-4 border-base-300 border-l-2 pl-6 leading-7",
+  quote: "mt-4 border-border border-l-2 pl-6 leading-7",
   list: {
     ul: "my-0 ml-6 list-disc leading-7",
     ol: "my-0 ml-6 list-decimal leading-7",
@@ -51,10 +51,10 @@ export const akanEditorTheme: EditorThemeClasses = {
     underline: "underline underline-offset-2",
     strikethrough: "line-through",
     underlineStrikethrough: "underline line-through underline-offset-2",
-    code: "rounded bg-base-200 px-1.5 py-0.5 font-mono text-sm",
+    code: "rounded bg-muted px-1.5 py-0.5 font-mono text-sm",
     highlight: "rounded bg-yellow-200 px-0.5 dark:bg-yellow-500/30",
   },
-  code: "mt-4 block overflow-x-auto rounded-lg bg-base-200 p-4 font-mono text-sm leading-6",
+  code: "mt-4 block overflow-x-auto rounded-lg bg-muted p-4 font-mono text-sm leading-6",
   // Render as a filled line, not a border: Tailwind preflight zeroes `<hr>`
   // border widths, so `border-*` alone is invisible.
   hr: "my-4 h-px border-none bg-foreground/25",
@@ -64,7 +64,7 @@ export const akanEditorTheme: EditorThemeClasses = {
   table: "my-3 w-full table-fixed border-collapse overflow-hidden rounded-md border border-foreground/20",
   tableRow: "",
   tableCell: "relative min-w-24 border border-foreground/15 px-3 py-1.5 align-top leading-7",
-  tableCellHeader: "bg-base-200/70 text-left font-semibold",
+  tableCellHeader: "bg-muted/70 text-left font-semibold",
   tableCellSelected: "bg-primary/10",
   tableSelection: "bg-primary/10",
   tableScrollableWrapper: "my-3 overflow-x-auto",

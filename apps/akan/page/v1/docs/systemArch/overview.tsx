@@ -30,7 +30,7 @@ export default function Page() {
         <Docs.SubTitle>{l.trans({ en: "System Components", ko: "시스템 구성 요소" })}</Docs.SubTitle>
         <Docs.Description>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg bg-base-200 p-4">
+            <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-2xl">📦</span>
                 <strong className="text-foreground text-lg">
@@ -44,7 +44,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg bg-base-200 p-4">
+            <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-2xl">🖥️</span>
                 <strong className="text-foreground text-lg">
@@ -58,7 +58,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg bg-base-200 p-4">
+            <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-2xl">🎨</span>
                 <strong className="text-foreground text-lg">
@@ -72,7 +72,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg bg-base-200 p-4">
+            <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-2xl">🌍</span>
                 <strong className="text-foreground text-lg">{l.trans({ en: "Environment", ko: "환경 설정" })}</strong>
@@ -105,7 +105,7 @@ export default function Page() {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
                   1
@@ -119,7 +119,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
                   2
@@ -133,7 +133,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
                   3
@@ -147,7 +147,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
                   4
@@ -161,7 +161,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
                   5
@@ -189,7 +189,7 @@ export default function Page() {
               ko: `Akan.js는 사용자 상호작용에서 데이터베이스 영속성까지, 그리고 다시 UI로 돌아오는 예측 가능한 데이터 흐름을 보장합니다.`,
             })}
           </div>
-          <div className="my-6 rounded-lg bg-base-200 p-6">
+          <div className="my-6 rounded-lg bg-muted p-6">
             <div className="mb-4 text-center font-bold text-foreground text-lg">
               {l.trans({ en: "End-to-End Flow", ko: "End-to-End 흐름" })}
             </div>
@@ -198,13 +198,13 @@ export default function Page() {
                 UI (Page/Zone)
               </div>
               <span className="text-foreground/50">→</span>
-              <div className="rounded-lg bg-base-300 px-4 py-2 font-medium text-foreground">Store</div>
+              <div className="rounded-lg bg-border px-4 py-2 font-medium text-foreground">Store</div>
               <span className="text-foreground/50">→</span>
-              <div className="rounded-lg bg-base-300 px-4 py-2 font-medium text-foreground">Signal (GraphQL)</div>
+              <div className="rounded-lg bg-border px-4 py-2 font-medium text-foreground">Signal (GraphQL)</div>
               <span className="text-foreground/50">→</span>
-              <div className="rounded-lg bg-base-300 px-4 py-2 font-medium text-foreground">Service</div>
+              <div className="rounded-lg bg-border px-4 py-2 font-medium text-foreground">Service</div>
               <span className="text-foreground/50">→</span>
-              <div className="rounded-lg bg-base-300 px-4 py-2 font-medium text-foreground">Document</div>
+              <div className="rounded-lg bg-border px-4 py-2 font-medium text-foreground">Document</div>
               <span className="text-foreground/50">→</span>
               <div className="rounded-lg bg-primary/70 px-4 py-2 font-medium text-primary-foreground">MongoDB</div>
             </div>

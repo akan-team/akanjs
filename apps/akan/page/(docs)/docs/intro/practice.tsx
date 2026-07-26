@@ -363,7 +363,7 @@ export class IcecreamOrderInsight extends via(IcecreamOrder, (field) => ({})) {}
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🏷️</span>
                 <strong className="text-primary">modelName</strong>
@@ -375,7 +375,7 @@ export class IcecreamOrderInsight extends via(IcecreamOrder, (field) => ({})) {}
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📝</span>
                 <strong className="text-primary">modelDesc</strong>
@@ -509,7 +509,7 @@ export const General = ({ className }: GeneralProps) => {
         </Docs.Description>
       </Scroll.Slide>
       <div className="my-4 h-px w-full bg-border" />
-      <div className="my-6 rounded-lg border border-base-300 bg-background p-4">
+      <div className="my-6 rounded-lg border border-border bg-background p-4">
         <div className="text-foreground/80">
           {l.trans({
             en: `🎉 Now customers can create orders using your form. But how do we show those orders in a nice, visual way? Let's create a card design to display each order beautifully.`,
@@ -535,19 +535,19 @@ import { cnst, usePage } from "@apps/koyo/client";
 export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIcecreamOrder>) => {
   const { l } = usePage();
   return (
-    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl border border-base-300 bg-background px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
+    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl border border-border bg-background px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
       <div className="flex flex-col justify-center">
         <div className="flex items-center gap-2 text-lg font-semibold text-primary">
-          <span className="inline-block rounded border border-base-300 bg-base-200 px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded border border-border bg-muted px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
             {l("icecreamOrder.id")}
           </span>
         </div>
         <div className="mt-4 flex items-center gap-2">
-          <span className="inline-block rounded bg-base-200 px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
             {l("icecreamOrder.status")}
           </span>
           <span
-            className={clsx("ml-2 rounded-full border border-base-300 bg-background px-3 py-1 text-sm font-semibold text-foreground/80", {
+            className={clsx("ml-2 rounded-full border border-border bg-background px-3 py-1 text-sm font-semibold text-foreground/80", {
               "bg-primary text-primary-foreground": icecreamOrder.status === "active",
               "bg-warning text-warning-foreground": icecreamOrder.status === "processing",
               "bg-secondary text-secondary-foreground": icecreamOrder.status === "served",
@@ -578,7 +578,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
         </Docs.Description>
       </Scroll.Slide>
       <div className="my-4 h-px w-full bg-border" />
-      <div className="my-6 rounded-lg border border-base-300 bg-background p-4">
+      <div className="my-6 rounded-lg border border-border bg-background p-4">
         <div className="text-foreground/80">
           {l.trans({
             en: `🚀 We have the form (Template) and the display card (Unit). Now let's put it all together on a webpage so customers can actually visit and use your ice cream ordering system!`,
@@ -634,7 +634,7 @@ export default async function Page() {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🏷️</span>
                 <strong className="text-primary">{`l("icecreamOrder.modelName")`}</strong>
@@ -646,7 +646,7 @@ export default async function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">➕</span>
                 <strong className="text-primary">Model.New Button</strong>
@@ -658,7 +658,7 @@ export default async function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📋</span>
                 <strong className="text-primary">Zone.Card</strong>

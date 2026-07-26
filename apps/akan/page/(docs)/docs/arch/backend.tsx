@@ -49,7 +49,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-bold text-foreground">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -72,7 +72,7 @@ export default function Page() {
               ko: "가장 흔한 비즈니스 서비스 경로는 UI 액션에서 시작합니다. 생성된 클라이언트 헬퍼가 signal endpoint를 호출하고, endpoint는 비즈니스 판단을 service에 맡기며, 결과는 저장 데이터를 바꾸거나 화면에 필요한 응답으로 돌아갑니다.",
             })}
           </div>
-          <div className="rounded-2xl border border-base-300 bg-background p-5">
+          <div className="rounded-2xl border border-border bg-background p-5">
             <div className="mb-4">
               <div className="font-bold text-foreground">
                 {l.trans({ en: "Example: Article Server Module", ko: "예시: Article 서버 모듈" })}
@@ -85,7 +85,7 @@ export default function Page() {
               </div>
             </div>
             <div className="grid items-stretch gap-3 xl:grid-cols-[1.4fr_auto_1fr_auto_1fr]">
-              <div className="rounded-xl border border-base-300 bg-base-200 p-4">
+              <div className="rounded-xl border border-border bg-muted p-4">
                 <div className="font-mono font-semibold text-foreground">Article.document.ts</div>
                 <div className="mt-2 text-foreground/70 text-sm">
                   {l.trans({
@@ -93,20 +93,20 @@ export default function Page() {
                     ko: "문서고의 처리 규칙을 정의합니다. schema, query filter, sort option, document-level helper를 담당합니다.",
                   })}
                 </div>
-                <div className="mt-3 rounded-lg border border-base-300 bg-background p-3">
+                <div className="mt-3 rounded-lg border border-border bg-background p-3">
                   <div className="text-foreground/60 text-xs">schema from Article.constant.ts</div>
-                  <div className="mt-2 rounded-lg border border-base-300 bg-base-200 p-3 font-mono text-foreground/70 text-xs">
+                  <div className="mt-2 rounded-lg border border-border bg-muted p-3 font-mono text-foreground/70 text-xs">
                     title
                     <br />
                     authors
                   </div>
                 </div>
                 <div className="mt-3 space-y-1">
-                  <div className="rounded-lg border border-base-300 bg-background p-3">
+                  <div className="rounded-lg border border-border bg-background p-3">
                     <div className="font-mono text-foreground text-xs">methods</div>
                     <div className="mt-1 text-foreground/70 text-xs">addAuthor</div>
                   </div>
-                  <div className="rounded-lg border border-base-300 bg-background p-3">
+                  <div className="rounded-lg border border-border bg-background p-3">
                     <div className="font-mono text-foreground text-xs">statics</div>
                     <div className="mt-1 text-foreground/70 text-xs">findAllByAuthorName</div>
                   </div>
@@ -115,7 +115,7 @@ export default function Page() {
               <div className="hidden items-center justify-center text-primary xl:flex">
                 <div className="h-px w-10 bg-primary/40" />
               </div>
-              <div className="rounded-xl border border-base-300 bg-base-200 p-4">
+              <div className="rounded-xl border border-border bg-muted p-4">
                 <div className="font-mono font-semibold text-foreground">Article.service.ts</div>
                 <div className="mt-2 text-foreground/70 text-sm">
                   {l.trans({
@@ -144,7 +144,7 @@ export default function Page() {
                 </div>
               </div>
             </div>
-            <div className="mt-4 flex flex-col gap-2 rounded-xl border border-base-300 bg-base-200 p-4 md:flex-row md:items-center md:justify-between">
+            <div className="mt-4 flex flex-col gap-2 rounded-xl border border-border bg-muted p-4 md:flex-row md:items-center md:justify-between">
               <div>
                 <div className="font-mono font-semibold text-foreground">API endpoint port</div>
                 <div className="mt-1 text-foreground/70 text-sm">
@@ -154,7 +154,7 @@ export default function Page() {
                   })}
                 </div>
               </div>
-              <div className="rounded-lg border border-base-300 bg-background px-4 py-2 font-mono text-foreground/70 text-sm">
+              <div className="rounded-lg border border-border bg-background px-4 py-2 font-mono text-foreground/70 text-sm">
                 8282/api
               </div>
             </div>
@@ -182,7 +182,7 @@ export default function Page() {
                   }),
                 },
               ].map(({ title, desc }) => (
-                <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+                <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                   <span className="font-bold text-foreground">{title}: </span>
 
                   <span className="text-foreground/70 text-sm">{desc}</span>
@@ -234,7 +234,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="space-x-2 rounded-xl border border-base-300 bg-background">
+              <div key={title} className="space-x-2 rounded-xl border border-border bg-background">
                 <span className="font-bold text-foreground">{title}: </span>
                 <span className="text-foreground/70">{desc}</span>
               </div>
@@ -246,7 +246,7 @@ export default function Page() {
               ko: "간단한 기준은 이렇습니다. 코드가 비즈니스 질문에 답한다면 service 로직에 두고, 화면을 그리거나 임시 UI 상태만 다룬다면 UI 쪽에 둡니다.",
             })}
           </Docs.Alert>
-          <div className="rounded-2xl border border-base-300 bg-background p-5">
+          <div className="rounded-2xl border border-border bg-background p-5">
             <div className="font-bold text-foreground">
               {l.trans({ en: "Dependency Injection", ko: "의존성 주입" })}
             </div>
@@ -301,7 +301,7 @@ export default function Page() {
                   }),
                 },
               ].map(({ title, desc }) => (
-                <div key={title} className="rounded-xl border border-base-300 bg-base-200 px-4 py-0">
+                <div key={title} className="rounded-xl border border-border bg-muted px-4 py-0">
                   <span className="font-mono font-semibold text-primary">{title}: </span>
 
                   <span className="text-foreground/70 text-sm">{desc}</span>
@@ -346,7 +346,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -354,7 +354,7 @@ export default function Page() {
             ))}
           </div>
           <div className="space-y-1">
-            <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="rounded-xl border border-border bg-background p-4">
               <div className="font-bold text-foreground">
                 {l.trans({ en: "Endpoint transport", ko: "Endpoint 전송 방식" })}
               </div>
@@ -365,7 +365,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="rounded-xl border border-border bg-background p-4">
               <div className="font-bold text-foreground">{l.trans({ en: "Operation controls", ko: "운영 제어" })}</div>
               <div className="mt-2 text-foreground/70 text-sm">
                 {l.trans({
@@ -375,7 +375,7 @@ export default function Page() {
               </div>
             </div>
           </div>
-          <div className="rounded-2xl border border-base-300 bg-background p-5">
+          <div className="rounded-2xl border border-border bg-background p-5">
             <div className="font-bold text-foreground">
               {l.trans({ en: "How To Choose A Signal Shape", ko: "Signal 형태 선택하기" })}
             </div>
@@ -398,7 +398,7 @@ export default function Page() {
   later --> internal["Use process or schedule"]`}
             />
             <div className="mt-4 space-y-1">
-              <div className="rounded-xl border border-base-300 bg-base-200 p-4">
+              <div className="rounded-xl border border-border bg-muted p-4">
                 <div className="font-semibold text-foreground">{l.trans({ en: "Answer now", ko: "지금 답하기" })}</div>
                 <div className="text-foreground/70 text-sm">
                   {l.trans({
@@ -406,11 +406,11 @@ export default function Page() {
                     ko: "화면이 한 번 요청하고 한 번의 결과를 기대한다면 query 또는 mutation을 사용합니다. 목록 불러오기, 폼 저장, 요청 승인, 재고 추가에 적합합니다.",
                   })}
                 </div>
-                <div className="mt-3 rounded-lg border border-base-300 bg-background p-3 font-mono text-foreground/70 text-xs">
+                <div className="mt-3 rounded-lg border border-border bg-background p-3 font-mono text-foreground/70 text-xs">
                   screen calls 8282/api, business service returns result
                 </div>
               </div>
-              <div className="rounded-xl border border-base-300 bg-base-200 p-4">
+              <div className="rounded-xl border border-border bg-muted p-4">
                 <div className="font-semibold text-foreground">
                   {l.trans({ en: "Keep talking", ko: "연결을 유지하며 대화" })}
                 </div>
@@ -420,11 +420,11 @@ export default function Page() {
                     ko: "열려 있는 화면이 서버와 WebSocket 방식으로 대화해야 한다면 message를 사용합니다. 장비 제어, 실시간 운영 패널, 단계형 작업 흐름에 적합합니다.",
                   })}
                 </div>
-                <div className="mt-3 rounded-lg border border-base-300 bg-background p-3 font-mono text-foreground/70 text-xs">
+                <div className="mt-3 rounded-lg border border-border bg-background p-3 font-mono text-foreground/70 text-xs">
                   open connection, send message, receive reply
                 </div>
               </div>
-              <div className="rounded-xl border border-base-300 bg-base-200 p-4">
+              <div className="rounded-xl border border-border bg-muted p-4">
                 <div className="font-semibold text-foreground">
                   {l.trans({ en: "Notify many screens", ko: "여러 화면에 알림" })}
                 </div>
@@ -434,11 +434,11 @@ export default function Page() {
                     ko: "하나의 비즈니스 변경을 여러 열린 화면, 대시보드, 장비, 사용자에게 밀어줘야 한다면 pubsub를 사용합니다.",
                   })}
                 </div>
-                <div className="mt-3 rounded-lg border border-base-300 bg-background p-3 font-mono text-foreground/70 text-xs">
+                <div className="mt-3 rounded-lg border border-border bg-background p-3 font-mono text-foreground/70 text-xs">
                   service changes data, publish, subscribers update
                 </div>
               </div>
-              <div className="rounded-xl border border-base-300 bg-base-200 p-4">
+              <div className="rounded-xl border border-border bg-muted p-4">
                 <div className="font-semibold text-foreground">
                   {l.trans({ en: "Finish later", ko: "나중에 끝내기" })}
                 </div>
@@ -448,7 +448,7 @@ export default function Page() {
                     ko: "작업이 queue에 들어가거나, 예약되거나, 반복되거나, 서버 생명주기와 연결된다면 process, cron, interval, timeout, initialize, destroy를 사용합니다.",
                   })}
                 </div>
-                <div className="mt-3 rounded-lg border border-base-300 bg-background p-3 font-mono text-foreground/70 text-xs">
+                <div className="mt-3 rounded-lg border border-border bg-background p-3 font-mono text-foreground/70 text-xs">
                   request or schedule, worker, save or publish result
                 </div>
               </div>
@@ -622,10 +622,10 @@ export class ChatRoomService extends serve(db.chatRoom, ({ signal }) => ({
 }`,
               },
             ].map(({ title, desc, shape, config, code }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <div className="font-bold text-foreground">{title}</div>
                 <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
-                <div className="mt-3 rounded-lg border border-base-300 bg-base-200 p-3 font-mono text-foreground/70 text-xs">
+                <div className="mt-3 rounded-lg border border-border bg-muted p-3 font-mono text-foreground/70 text-xs">
                   {shape}
                 </div>
                 <div className="mt-3 text-foreground/70 text-sm">{config}</div>

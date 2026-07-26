@@ -235,7 +235,7 @@ export default function Page() {
         </Docs.Description>
         <Docs.IntroTable type="method" items={internalTypes} />
         <div className="mb-4" />
-        <div className="rounded-lg bg-base-200 p-3 lg:p-4">
+        <div className="rounded-lg bg-muted p-3 lg:p-4">
           <Code.Snippet
             title="product.signal.ts"
             language="typescript"
@@ -281,7 +281,7 @@ export class ProductInternal extends internal(srv.product, ({ interval }) => ({
 
         <div className="mb-6" />
 
-        <div className="rounded-lg bg-base-200 p-3 lg:p-4">
+        <div className="rounded-lg bg-muted p-3 lg:p-4">
           <Code.Snippet
             title="Chat Example"
             language="typescript"
@@ -466,7 +466,7 @@ const { ticketInitInProject } = await fetch.initTicketInProject(projectId);
 
         <div className="mb-4" />
 
-        <div className="rounded-lg bg-base-200 p-3 lg:p-4">
+        <div className="rounded-lg bg-muted p-3 lg:p-4">
           <Code.Snippet
             title="libs/shared/nest/authGuards.ts"
             language="typescript"

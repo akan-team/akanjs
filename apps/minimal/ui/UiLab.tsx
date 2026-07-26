@@ -26,8 +26,6 @@ const SWATCHES = [
   { name: "warning", cls: "bg-warning text-warning-foreground" },
   { name: "destructive", cls: "bg-destructive text-destructive-foreground" },
   { name: "info", cls: "bg-info text-info-foreground" },
-  { name: "base-200 (존치)", cls: "bg-base-200 text-foreground" },
-  { name: "base-300 (존치)", cls: "bg-base-300 text-foreground" },
   { name: "card", cls: "bg-card text-card-foreground border border-border" },
 ];
 
@@ -58,7 +56,7 @@ export const UiLab = () => {
         </p>
       </div>
 
-      <Section title="색상 토큰" note="토큰이 값 그대로 이전됐는지 · base-200/300은 커스텀 존치">
+      <Section title="색상 토큰" note="시맨틱 토큰이 값 그대로 이전됐는지 확인">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {SWATCHES.map((s) => (
             <div key={s.name} className={`flex h-16 items-end rounded-box p-2 text-xs ${s.cls}`}>

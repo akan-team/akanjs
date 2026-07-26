@@ -1,5 +1,4 @@
 "use client";
-import * as RadixTooltip from "@radix-ui/react-tooltip";
 import { cn } from "akanjs/client";
 import type { ReactNode } from "react";
 
@@ -21,31 +20,35 @@ const variantClass = {
   info: "bg-info text-info-foreground",
 };
 
+const sideClass = {
+  top: "bottom-full left-1/2 mb-1.5 -translate-x-1/2",
+  bottom: "top-full left-1/2 mt-1.5 -translate-x-1/2",
+  left: "right-full top-1/2 mr-1.5 -translate-y-1/2",
+  right: "left-full top-1/2 ml-1.5 -translate-y-1/2",
+};
+
 /**
- * Radix 기반 툴팁. daisyui `tooltip`(CSS `data-tip`) 대체.
+ * 순수 CSS 툴팁 (hover/focus-within). daisyui `tooltip` 및 Radix Tooltip 대체.
+ * 트리거를 감싸 hover 또는 키보드 포커스 시 표시한다. 뷰포트 엣지 flip은 없다(힌트 UI 한정).
  * `page/**\/_overrides.tsx`로 라우트별 교체 가능(slot `Tooltip`).
  */
 const DefaultTooltip = ({ content, children, side = "top", className, variant = "default" }: TooltipProps) => {
   if (content === undefined || content === null || content === "") return <>{children}</>;
   return (
-    <RadixTooltip.Provider delayDuration={200}>
-      <RadixTooltip.Root>
-        <RadixTooltip.Trigger asChild>{children}</RadixTooltip.Trigger>
-        <RadixTooltip.Portal>
-          <RadixTooltip.Content
-            side={side}
-            sideOffset={6}
-            className={cn(
-              "z-50 max-w-xs animate-fadeIn rounded-field px-2 py-1 text-xs shadow-md",
-              variantClass[variant],
-              className,
-            )}
-          >
-            {content}
-          </RadixTooltip.Content>
-        </RadixTooltip.Portal>
-      </RadixTooltip.Root>
-    </RadixTooltip.Provider>
+    <span className="group/tooltip relative inline-flex">
+      {children}
+      <span
+        role="tooltip"
+        className={cn(
+          "pointer-events-none absolute z-50 w-max max-w-xs rounded-field px-2 py-1 text-xs opacity-0 shadow-md transition-opacity duration-150 group-focus-within/tooltip:opacity-100 group-hover/tooltip:opacity-100",
+          sideClass[side],
+          variantClass[variant],
+          className,
+        )}
+      >
+        {content}
+      </span>
+    </span>
   );
 };
 

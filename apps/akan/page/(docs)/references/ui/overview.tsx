@@ -98,7 +98,7 @@ export default function Page() {
             <Link
               key={title}
               href={href}
-              className="rounded-xl border border-base-300 bg-background p-4 hover:border-primary"
+              className="rounded-xl border border-border bg-background p-4 hover:border-primary"
             >
               <div className="font-bold text-foreground">{title}</div>
               <div className="mt-1 font-mono text-foreground/70">{components}</div>

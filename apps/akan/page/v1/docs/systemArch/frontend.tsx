@@ -43,11 +43,11 @@ export default function Page() {
               ko: `각 프론트엔드 모듈은 관심사를 분리하고 효율적인 개발을 가능하게 하는 계층 구조를 가집니다:`,
             })}
           </div>
-          <div className="my-6 rounded-lg bg-base-200 p-6">
+          <div className="my-6 rounded-lg bg-muted p-6">
             <Image src="/akanjsImage/front_0.png" width={1000} height={1000} className="w-full rounded-lg" />
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
                   1
@@ -61,7 +61,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
                   2
@@ -75,7 +75,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
                   3
@@ -89,7 +89,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
                   4
@@ -117,11 +117,11 @@ export default function Page() {
               ko: `데이터 기반 페이지는 네 가지 주요 페이지 타입으로 표준 CRUD 구조를 따릅니다:`,
             })}
           </div>
-          <div className="my-6 rounded-lg bg-base-200 p-6">
+          <div className="my-6 rounded-lg bg-muted p-6">
             <Image src="/akanjsImage/front_1.png" width={1000} height={1000} className="w-full rounded-lg" />
           </div>
           <div className="my-4 grid gap-4 md:grid-cols-2">
-            <div className="rounded-lg bg-base-200 p-4">
+            <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 font-bold text-foreground">📋 Index Page</div>
               <div className="text-foreground/70 text-sm">
                 {l.trans({
@@ -130,7 +130,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg bg-base-200 p-4">
+            <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 font-bold text-foreground">➕ New Page</div>
               <div className="text-foreground/70 text-sm">
                 {l.trans({
@@ -139,7 +139,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg bg-base-200 p-4">
+            <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 font-bold text-foreground">👁️ View Page</div>
               <div className="text-foreground/70 text-sm">
                 {l.trans({
@@ -148,7 +148,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg bg-base-200 p-4">
+            <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 font-bold text-foreground">✏️ Edit Page</div>
               <div className="text-foreground/70 text-sm">
                 {l.trans({
@@ -172,9 +172,9 @@ export default function Page() {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg bg-base-200 p-4">
+            <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
-                <span className="rounded bg-base-300 px-2 py-1 font-bold text-foreground text-xs">Server</span>
+                <span className="rounded bg-border px-2 py-1 font-bold text-foreground text-xs">Server</span>
                 <strong className="text-foreground">Unit</strong>
               </div>
               <div className="ml-8 text-foreground/70 text-sm">
@@ -184,9 +184,9 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg bg-base-200 p-4">
+            <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
-                <span className="rounded bg-base-300 px-2 py-1 font-bold text-foreground text-xs">Server</span>
+                <span className="rounded bg-border px-2 py-1 font-bold text-foreground text-xs">Server</span>
                 <strong className="text-foreground">View</strong>
               </div>
               <div className="ml-8 text-foreground/70 text-sm">
@@ -196,7 +196,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg bg-base-200 p-4">
+            <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="rounded bg-primary/70 px-2 py-1 font-bold text-primary-foreground text-xs">
                   Client
@@ -210,7 +210,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg bg-base-200 p-4">
+            <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="rounded bg-primary/70 px-2 py-1 font-bold text-primary-foreground text-xs">
                   Client
@@ -224,7 +224,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg bg-base-200 p-4">
+            <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="rounded bg-primary/70 px-2 py-1 font-bold text-primary-foreground text-xs">
                   Client

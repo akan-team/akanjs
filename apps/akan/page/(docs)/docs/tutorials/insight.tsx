@@ -100,7 +100,7 @@ export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query,
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔍</span>
                 <strong className="text-primary">{".search()"}</strong>
@@ -112,7 +112,7 @@ export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">⚡</span>
                 <strong className="text-primary">inWaiting / inPickup</strong>
@@ -515,7 +515,7 @@ export class IcecreamOrderInsight extends via(IcecreamOrder, (field) => ({
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🍦</span>
                 <strong className="text-primary">{"{}"}</strong>
@@ -527,7 +527,7 @@ export class IcecreamOrderInsight extends via(IcecreamOrder, (field) => ({
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🍓</span>
                 <strong className="text-primary">{'{ toppings: "strawberry" }'}</strong>
@@ -709,7 +709,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
               "border border-warning/40 bg-background text-warning": icecreamOrder.status === "processing",
               "border border-info/40 bg-info text-info-foreground": icecreamOrder.status === "served",
               "border border-accent/40 bg-background text-accent": icecreamOrder.status === "finished",
-              "border border-base-300 bg-background text-foreground/70": icecreamOrder.status === "canceled",
+              "border border-border bg-background text-foreground/70": icecreamOrder.status === "canceled",
             })}
           >
             {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
@@ -933,7 +933,7 @@ export default async function Page() {
               ko: `이제 사용자가 상태별로 주문을 필터링하면, 인사이트 대시보드가 자동으로 업데이트되어 필터링된 주문에 대한 집계 통계만 보여줍니다. 이는 실시간 운영 결정에 매우 강력합니다!`,
             })}
           </div>
-          <div className="my-6 rounded-lg bg-linear-to-r from-background to-base-300 p-6">
+          <div className="my-6 rounded-lg bg-linear-to-r from-background to-border p-6">
             <div className="mb-3 font-bold text-lg text-primary">
               {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
             </div>

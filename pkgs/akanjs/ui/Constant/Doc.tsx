@@ -70,7 +70,7 @@ const Zone = ({ models, scalars, enums, openAll }: ZoneProps) => {
         <SummaryCard title="Enums" value={filteredEnums.length} />
         <SummaryCard title="Relations" value={schemaDoc.relations.length} />
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-base-200 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-muted p-3">
         <Input
           nullable
           value={query}
@@ -182,7 +182,7 @@ const Model = ({ refName, database: databaseProp, openAll }: ModelProps) => {
   if (!database) return null;
   const activeVariant = database.variants[variant] ?? getDefaultVariant(database);
   return (
-    <details className="group rounded-box bg-base-200" open={openAll}>
+    <details className="group rounded-box bg-muted" open={openAll}>
       <summary className="flex cursor-pointer list-none items-center justify-between gap-2 p-4">
         <div className="flex flex-wrap items-center gap-2">
           <div className="font-bold text-xl">{database.modelName}</div>
@@ -214,7 +214,7 @@ const Scalar = ({ refName, scalar: scalarProp, openAll }: ScalarProps) => {
   const { l } = usePage();
   if (!scalar) return null;
   return (
-    <details className="group rounded-box bg-base-200" open={openAll}>
+    <details className="group rounded-box bg-muted" open={openAll}>
       <summary className="flex cursor-pointer list-none items-center justify-between gap-2 p-4">
         <div className="flex flex-wrap items-center gap-2">
           <div className="font-bold text-xl">{scalar.modelName}</div>
@@ -238,7 +238,7 @@ interface EnumProps {
 const EnumList = ({ enums = getConstantSchemaDoc().enums }: EnumProps) => {
   const { l } = usePage();
   return (
-    <div className="overflow-x-auto rounded-xl bg-base-200 p-3">
+    <div className="overflow-x-auto rounded-xl bg-muted p-3">
       <table className="table">
         <thead>
           <tr>
@@ -639,7 +639,7 @@ const FieldDetailModal = ({
         <div className="font-bold text-lg">{l._(`${refName}.${field.key}`)}</div>
         <div className="text-foreground/70">{l._(`${refName}.${field.key}.desc`)}</div>
       </div>
-      <pre className="max-h-[60vh] overflow-auto rounded-xl bg-base-200 p-4 text-sm">
+      <pre className="max-h-[60vh] overflow-auto rounded-xl bg-muted p-4 text-sm">
         {JSON.stringify(detail, null, 2)}
       </pre>
     </Modal>
@@ -657,7 +657,7 @@ const getPrintRelation = (field: FieldSchema) => {
 };
 
 const SummaryCard = ({ title, value }: { title: string; value: number }) => (
-  <div className="rounded-xl bg-base-200 p-4">
+  <div className="rounded-xl bg-muted p-4">
     <div className="text-foreground/60 text-sm">{title}</div>
     <div className="font-bold text-2xl">{value}</div>
   </div>
@@ -681,7 +681,7 @@ const Diagram = ({ databases, scalars }: { databases: DatabaseSchema[]; scalars:
         highlightNodes={selectedNode ? [selectedNode] : []}
         onSelectNode={setSelectedNode}
       />
-      <div className="rounded-xl bg-base-200 p-4">
+      <div className="rounded-xl bg-muted p-4">
         <div className="font-bold text-xl">Selected Model</div>
         {selectedDatabase ? (
           <Model database={selectedDatabase} openAll />

@@ -30,7 +30,7 @@ export default function Page() {
               Tailwind CSS
             </Link>
           </Docs.Alert>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="mb-2 font-bold text-foreground">
               {l.trans({ en: "How the layers work together", ko: "레이어가 함께 동작하는 방식" })}
             </div>
@@ -65,7 +65,7 @@ export default function Page() {
                   }),
                 },
               ].map(({ title, desc }, idx) => (
-                <div key={idx} className="flex gap-3 rounded-lg bg-base-200 px-4 py-2">
+                <div key={idx} className="flex gap-3 rounded-lg bg-muted px-4 py-2">
                   <div>
                     <span className="font-mono font-semibold text-primary">{title}: </span>
                     <span className="text-foreground/70 text-sm">{desc}</span>
@@ -107,7 +107,7 @@ export default function Page() {
             ].map((desc) => (
               <div
                 key={desc}
-                className="rounded-xl border border-base-300 bg-background px-4 py-2 text-foreground/70 text-sm"
+                className="rounded-xl border border-border bg-background px-4 py-2 text-foreground/70 text-sm"
               >
                 {desc}
               </div>

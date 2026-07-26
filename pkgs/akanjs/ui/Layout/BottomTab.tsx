@@ -48,7 +48,7 @@ export const BottomTab = ({ className, tabs, height = 64 }: BottomTabProps) => {
     >
       <div
         className={clsx(
-          `flex size-full items-center justify-around rounded-t-xl border border-base-200 border-b-0 bg-background`,
+          `flex size-full items-center justify-around rounded-t-xl border border-muted border-b-0 bg-background text-foreground`,
           className,
         )}
       >

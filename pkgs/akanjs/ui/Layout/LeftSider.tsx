@@ -15,7 +15,7 @@ export const LeftSider = ({ className, children, open, width, onCancel }: LeftSi
   return (
     <div
       className={cn(
-        "absolute top-0 border-base-200 border-r bg-background transition-all duration-150",
+        "absolute top-0 border-muted border-r bg-background transition-all duration-150",
         { "translate-x-0": open, "translate-x-[-100%]": !open },
         className,
       )}

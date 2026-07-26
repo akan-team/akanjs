@@ -84,7 +84,7 @@ export function createSystemPageDocument(options: SystemPageOptions): ReactNode 
               {copy.title}
             </h1>
             <p className="akan-system-description text-foreground/70">{copy.description}</p>
-            <p className="akan-system-path border border-foreground/10 bg-base-200/50" aria-label="Requested path">
+            <p className="akan-system-path border border-foreground/10 bg-muted/50" aria-label="Requested path">
               {options.pathname}
             </p>
             <div className="akan-system-actions">

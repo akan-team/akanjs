@@ -172,7 +172,7 @@ const DefaultSelect = <
           "bg-background data-[open=true]:border-primary",
           disabled && "pointer-events-none opacity-50",
           selectClassName,
-          { "border-base-300": isOpen },
+          { "border-border": isOpen },
         )}
         onClick={() => {
           if (disabled) return;
@@ -262,7 +262,7 @@ const DefaultSelect = <
       <div
         data-open={isOpen}
         className={cn(
-          "scrollbar-thin scrollbar-thumb-foreground/20 scrollbar-track scrollbar-track-foreground/40 absolute z-20 mt-0.5 w-full overflow-y-scroll rounded-md border-base-300 bg-base-200 shadow-lg transition-all",
+          "scrollbar-thin scrollbar-thumb-foreground/20 scrollbar-track scrollbar-track-foreground/40 absolute z-20 mt-0.5 w-full overflow-y-scroll rounded-md border-border bg-muted shadow-lg transition-all",
           "origin-center duration-200 data-[open=false]:h-0 data-[open=true]:h-[270px] data-[open=true]:border data-[open=false]:border-none",
           selectorClassName,
         )}
@@ -282,7 +282,7 @@ const DefaultSelect = <
               <div key={index} className="group">
                 <div
                   className={cn(
-                    "relative m-2 cursor-pointer rounded-sm p-2 duration-100 last:border-b-0 hover:bg-base-300",
+                    "relative m-2 cursor-pointer rounded-sm p-2 duration-100 last:border-b-0 hover:bg-border",
                     {
                       selectedClassName: !multiple && isSelected,
                       "bg-success/70 text-success-foreground": isSelected,

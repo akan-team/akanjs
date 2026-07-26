@@ -85,14 +85,14 @@ export default function Page() {
 
         <section className="mt-12 grid gap-4">
           {changes.map((change) => (
-            <div key={change.title.en} className="rounded-3xl border border-base-300 bg-background p-6 shadow-sm">
+            <div key={change.title.en} className="rounded-3xl border border-border bg-background p-6 shadow-sm">
               <h2 className="font-bold text-2xl">{l.trans(change.title)}</h2>
               <p className="mt-3 text-foreground/70 leading-7">{l.trans(change.desc)}</p>
             </div>
           ))}
         </section>
 
-        <section className="mt-12 rounded-3xl bg-base-200 p-6 md:p-8">
+        <section className="mt-12 rounded-3xl bg-muted p-6 md:p-8">
           <p className="font-bold text-primary text-sm uppercase tracking-[0.2em]">
             {l.trans({ en: "Why Bun-only", ko: "왜 Bun-only인가" })}
           </p>
@@ -125,7 +125,7 @@ export default function Page() {
           <h2 className="font-bold text-2xl">{l.trans({ en: "What changed from v1", ko: "v1에서 달라진 점" })}</h2>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             {migrationNotes.map((column) => (
-              <div key={column.label.en} className="rounded-2xl bg-base-200 p-5">
+              <div key={column.label.en} className="rounded-2xl bg-muted p-5">
                 <h3 className="font-black text-primary text-xl">{l.trans(column.label)}</h3>
                 <ul className="mt-4 list-disc space-y-2 pl-5 text-foreground/75 leading-7">
                   {column.items.map((item) => (

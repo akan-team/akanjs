@@ -15,40 +15,40 @@ export default function Page() {
         </div>
       </Layout.Navbar>
       <div className="space-y-3 px-5 pt-5">
-        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-base-200 p-4 text-foreground/75 text-sm">
+        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-muted p-4 text-foreground/75 text-sm">
           Hello. Check-in starts at 3 PM, and I will send the door lock instructions that morning.
         </div>
         <div className="ml-auto max-w-[78%] rounded-3xl rounded-tr-md bg-primary p-4 text-primary-foreground text-sm">
           Thank you. Is there parking available nearby?
         </div>
-        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-base-200 p-4 text-foreground/75 text-sm">
+        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-muted p-4 text-foreground/75 text-sm">
           I recommend the public parking lot behind the building. It is a 2-minute walk away.
         </div>
-        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-base-200 p-4 text-foreground/75 text-sm">
+        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-muted p-4 text-foreground/75 text-sm">
           Hello. Check-in starts at 3 PM, and I will send the door lock instructions that morning.
         </div>
         <div className="ml-auto max-w-[78%] rounded-3xl rounded-tr-md bg-primary p-4 text-primary-foreground text-sm">
           Thank you. Is there parking available nearby?
         </div>
-        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-base-200 p-4 text-foreground/75 text-sm">
+        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-muted p-4 text-foreground/75 text-sm">
           I recommend the public parking lot behind the building. It is a 2-minute walk away.
         </div>
-        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-base-200 p-4 text-foreground/75 text-sm">
+        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-muted p-4 text-foreground/75 text-sm">
           Hello. Check-in starts at 3 PM, and I will send the door lock instructions that morning.
         </div>
         <div className="ml-auto max-w-[78%] rounded-3xl rounded-tr-md bg-primary p-4 text-primary-foreground text-sm">
           Thank you. Is there parking available nearby?
         </div>
-        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-base-200 p-4 text-foreground/75 text-sm">
+        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-muted p-4 text-foreground/75 text-sm">
           I recommend the public parking lot behind the building. It is a 2-minute walk away.
         </div>
-        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-base-200 p-4 text-foreground/75 text-sm">
+        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-muted p-4 text-foreground/75 text-sm">
           Hello. Check-in starts at 3 PM, and I will send the door lock instructions that morning.
         </div>
         <div className="ml-auto max-w-[78%] rounded-3xl rounded-tr-md bg-primary p-4 text-primary-foreground text-sm">
           Thank you. Is there parking available nearby?
         </div>
-        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-base-200 p-4 text-foreground/75 text-sm">
+        <div className="max-w-[78%] rounded-3xl rounded-tl-md bg-muted p-4 text-foreground/75 text-sm">
           I recommend the public parking lot behind the building. It is a 2-minute walk away.
         </div>
       </div>

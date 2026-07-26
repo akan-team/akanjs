@@ -53,7 +53,7 @@ export const Sider = ({ className, bgClassName, children }: SiderProps) => {
 
       <animated.div
         style={siderAnimation}
-        className={cn("fixed top-0 left-0 z-50 h-full w-3/4 bg-base-200 p-4 text-foreground md:w-80", className)}
+        className={cn("fixed top-0 left-0 z-50 h-full w-3/4 bg-muted p-4 text-foreground md:w-80", className)}
       >
         <button
           className="absolute top-4 left-4 text-lg"

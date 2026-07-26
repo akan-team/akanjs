@@ -583,7 +583,7 @@ import { IcecreamOrder } from "@koyo/client"; // [!code ++]
 export const Card = ({ delivery, href }: ModelProps<"delivery", cnst.LightDelivery>) => {
   const { l } = usePage();
   return (
-    <Link href={href} className="bg-base-300 w-full rounded border p-4"> // [!code highlight:10]
+    <Link href={href} className="bg-border w-full rounded border p-4"> // [!code highlight:10]
       <div className="mb-3 text-lg font-bold">
         {l("delivery.modelName")} #{delivery.id.slice(-4)}
       </div>

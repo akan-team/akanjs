@@ -56,7 +56,7 @@ export default function Page() {
             ko: "기능이 로컬 상태(모달 등), 폼 처리 및 스토어 상호 작용을 필요로 할 때, 이를 Util 컴포넌트로 캡슐화합니다.",
           })}
         </Docs.Description>
-        <div className="rounded-lg bg-base-200 p-3 lg:p-4">
+        <div className="rounded-lg bg-muted p-3 lg:p-4">
           <Code.Snippet
             title="RefundModal Component"
             language="tsx"
@@ -119,7 +119,7 @@ export const RefundButton = ({ id, defaultReason }: RefundProps) => {
             ko: "클라이언트 측 이벤트가 서버 액션(fetch를 통해)과 네비게이션을 트리거하도록 처리하는 래퍼를 사용하여 자식 요소를 단순하게 유지합니다.",
           })}
         </Docs.Description>
-        <div className="rounded-lg bg-base-200 p-3 lg:p-4">
+        <div className="rounded-lg bg-muted p-3 lg:p-4">
           <Code.Snippet
             title="CreateOrderWrapper"
             language="tsx"
@@ -164,7 +164,7 @@ export const CreateOrderWrapper = ({ productId, children }: CreateOrderProps) =>
             ko: "특정 비즈니스 로직이나 엔드포인트를 트리거하는 간단한 버튼 컴포넌트입니다.",
           })}
         </Docs.Description>
-        <div className="rounded-lg bg-base-200 p-3 lg:p-4">
+        <div className="rounded-lg bg-muted p-3 lg:p-4">
           <Code.Snippet
             title="ApproveButton"
             language="tsx"
@@ -195,7 +195,7 @@ export const ApproveButton = ({ product }: { product: LightProduct }) => {
             ko: "전역 스토어 상태(예: 현재 경로, 사용자 역할)에 따라 렌더링을 조정하는 컴포넌트입니다.",
           })}
         </Docs.Description>
-        <div className="rounded-lg bg-base-200 p-3 lg:p-4">
+        <div className="rounded-lg bg-muted p-3 lg:p-4">
           <Code.Snippet
             title="ContextBackButton"
             language="tsx"

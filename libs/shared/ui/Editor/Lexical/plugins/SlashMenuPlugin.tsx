@@ -102,7 +102,7 @@ export const SlashMenuList = ({ options, selectedIndex, onSelect, onHighlight }:
               type="button"
               ref={(el) => option.setRefElement(el)}
               className={`flex w-full flex-col items-start rounded px-2 py-1.5 text-left transition-colors ${
-                index === selectedIndex ? "bg-base-200" : "hover:bg-base-200/60"
+                index === selectedIndex ? "bg-muted" : "hover:bg-muted/60"
               }`}
               // Keep editor selection intact while clicking the menu.
               onMouseDown={(event) => event.preventDefault()}

@@ -60,7 +60,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-3">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-3">
                 <div className="font-mono font-semibold text-primary">{title}</div>
                 <div className="mt-1 text-foreground/70 text-sm">{desc}</div>
               </div>
@@ -145,7 +145,7 @@ export default config;`}
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-mono font-semibold text-primary">{title}: </span>
                 <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
@@ -228,7 +228,7 @@ export default config;`}
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-mono font-semibold text-primary">{title}: </span>
                 <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
@@ -247,7 +247,7 @@ export default config;`}
               ko: "Android 설정은 에뮬레이터나 실기기에서 빌드/실행 가능한 Android 프로젝트를 준비하는 과정입니다. 핵심은 package name 일치입니다. mobile.appId와 생성된 Android applicationId가 같아야 합니다.",
             })}
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">{l.trans({ en: "Prerequisites", ko: "준비물" })}</div>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-foreground/70 text-sm">
               <li>
@@ -328,13 +328,13 @@ akan release-android myapp --target default --env main --assembleType aab`}
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-mono font-semibold text-primary">{title}: </span>
                 <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">{l.trans({ en: "Success check", ko: "성공 확인" })}</div>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-foreground/70 text-sm">
               <li>
@@ -370,7 +370,7 @@ akan release-android myapp --target default --env main --assembleType aab`}
               ko: "iOS 설정은 Xcode 프로젝트, bundle identity, signing, 시뮬레이터 실행, 스토어 빌드를 준비하는 과정입니다. Push 알림은 Push Setup에서 다룹니다.",
             })}
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">{l.trans({ en: "Prerequisites", ko: "준비물" })}</div>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-foreground/70 text-sm">
               <li>
@@ -399,7 +399,7 @@ akan release-android myapp --target default --env main --assembleType aab`}
               </li>
             </ul>
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">{l.trans({ en: "Xcode checks", ko: "Xcode 확인" })}</div>
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-foreground/70">
               <li>
@@ -455,7 +455,7 @@ akan release-ios myapp --target default --env main`}
             })}
           </div>
           <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="rounded-xl border border-border bg-background p-4">
               <div className="font-bold text-foreground">
                 {l.trans({ en: "Akan automates", ko: "Akan이 자동 처리" })}
               </div>
@@ -480,7 +480,7 @@ akan release-ios myapp --target default --env main`}
                 </li>
               </ul>
             </div>
-            <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="rounded-xl border border-border bg-background p-4">
               <div className="font-bold text-foreground">{l.trans({ en: "You provide", ko: "사용자가 준비" })}</div>
               <ul className="mt-2 list-disc space-y-1 pl-5 text-foreground/70 text-sm">
                 <li>
@@ -504,7 +504,7 @@ akan release-ios myapp --target default --env main`}
               </ul>
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">{l.trans({ en: "Web push", ko: "Web push" })}</div>
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-foreground/70">
               <li>
@@ -560,7 +560,7 @@ akan release-ios myapp --target default --env main`}
   },
 };`}
           />
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">{l.trans({ en: "Android push", ko: "Android push" })}</div>
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-foreground/70">
               <li>
@@ -621,7 +621,7 @@ akan release-ios myapp --target default --env main`}
               ko: "google-services.json은 client/native Firebase 설정 파일입니다. Firebase Admin service account JSON이 아닙니다. 서버 credential은 env.server.*에 둡니다.",
             })}
           </Docs.Alert>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">
               {l.trans({ en: "Android notification details", ko: "Android notification details" })}
             </div>
@@ -636,7 +636,7 @@ akan release-ios myapp --target default --env main`}
               />
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">{l.trans({ en: "iOS push", ko: "iOS push" })}</div>
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-foreground/70">
               <li>
@@ -719,7 +719,7 @@ akan release-ios myapp --target default --env main`}
               ko: "GoogleService-Info.plist는 앱 폴더에 두고, mobile.files로 생성된 iOS 프로젝트에 복사하세요. simctl push는 오는데 Firebase Console 토큰 발송이 안 오면 빌드된 aps-environment와 맞는 APNs development/production credential을 확인하세요.",
             })}
           </Docs.Alert>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">
               {l.trans({ en: "APNs environment mapping", ko: "APNs environment 매핑" })}
             </div>
@@ -750,7 +750,7 @@ akan release-ios myapp --target default --env main`}
                   }),
                 },
               ].map(({ command, value, desc }) => (
-                <div key={command} className="rounded-xl bg-base-200 p-3">
+                <div key={command} className="rounded-xl bg-muted p-3">
                   <div className="font-mono font-semibold text-primary">{command}</div>
                   <div className="font-mono text-foreground">{value}</div>
                   <div className="mt-1 text-foreground/70">{desc}</div>
@@ -764,7 +764,7 @@ akan release-ios myapp --target default --env main`}
               ko: "@capacitor-community/fcm을 사용할 때 Xcode에 firebase-ios-sdk를 직접 추가하지 마세요. 직접 추가한 Firebase Swift Package product는 플러그인이 요구하는 Firebase 의존성 버전과 충돌할 수 있습니다.",
             })}
           </Docs.Alert>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">
               {l.trans({ en: "Why two Capacitor plugins?", ko: "왜 Capacitor 플러그인을 두 개 쓰나요?" })}
             </div>
@@ -792,13 +792,13 @@ akan release-ios myapp --target default --env main`}
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-3">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-3">
                 <div className="font-mono font-semibold text-primary">{title}</div>
                 <div className="mt-1 text-foreground/70">{desc}</div>
               </div>
             ))}
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">
               {l.trans({ en: "Client registration", ko: "Client registration" })}
             </div>
@@ -856,13 +856,13 @@ export function EnablePushButton() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-mono font-semibold text-primary">{title}: </span>
                 <span className="text-foreground/70">{desc}</span>
               </div>
             ))}
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">
               {l.trans({ en: "Manage push tokens in the app DB", ko: "앱 DB에서 push token 관리하기" })}
             </div>
@@ -1046,7 +1046,7 @@ if (pushToken) {
                 }),
               },
             ].map(({ title, desc, links }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-mono font-semibold text-primary">{title}: </span>
                 <span className="text-foreground/70 text-sm">{desc}</span>
                 {links?.map((link) => (
@@ -1108,7 +1108,7 @@ if (pushToken) {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-mono font-semibold text-primary">{title}: </span>
                 <span className="text-foreground/70 text-sm">{desc}</span>
               </div>

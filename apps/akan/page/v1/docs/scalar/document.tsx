@@ -542,7 +542,7 @@ export class Price extends via((field) => ({
           })}
         </Docs.Title>
         <Docs.Description>
-          <div className="rounded-lg bg-base-200 p-4">
+          <div className="rounded-lg bg-muted p-4">
             <ul className="space-y-2">
               {[
                 l.trans({

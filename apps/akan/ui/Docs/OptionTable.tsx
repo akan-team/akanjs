@@ -25,7 +25,7 @@ export const OptionTable = ({ items }: { items: OptionItem[] }) => {
             <col style={{ width: "40%" }} />
           </colgroup>
           <thead>
-            <tr className="bg-base-300">
+            <tr className="bg-border">
               <th className="text-foreground text-xs lg:text-sm">{l.trans({ en: "Option", ko: "옵션" })}</th>
               <th className="text-foreground text-xs lg:text-sm">{l.trans({ en: "Type", ko: "타입" })}</th>
               <th className="text-foreground text-xs lg:text-sm">{l.trans({ en: "Default", ko: "기본값" })}</th>

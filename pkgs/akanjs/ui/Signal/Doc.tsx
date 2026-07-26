@@ -41,7 +41,7 @@ const DocSetting = ({
     .filter(([key, roleType]) => !!tryAccount[key as keyof typeof tryAccount])
     .map(([key, roleType]) => roleType);
   return (
-    <div className="flex w-full flex-wrap items-center justify-between gap-3 rounded-xl bg-base-200 p-3">
+    <div className="flex w-full flex-wrap items-center justify-between gap-3 rounded-xl bg-muted p-3">
       <div className="flex flex-1 flex-wrap items-center gap-2">
         <span className="font-semibold text-foreground/70 text-sm">BaseURL</span>
         <Copy text={baseUrl}>

@@ -51,7 +51,7 @@ export default function Page() {
               desc: "Remove, Toolbox, SetOrg, QueryMaker, BackButton",
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-background p-4">
+            <div key={title} className="rounded-xl border border-border bg-background p-4">
               <div className="font-bold text-foreground">{title}</div>
               <div className="mt-2 text-foreground/70">{desc}</div>
             </div>
@@ -218,7 +218,7 @@ export default function Page() {
                 ko: "큰 toolbox나 workflow modal은 하나의 component에 숨기지 말고 named export로 나눕니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-background px-4 text-foreground/70">
+              <div key={rule} className="rounded-xl border border-border bg-background px-4 text-foreground/70">
                 {rule}
               </div>
             ))}

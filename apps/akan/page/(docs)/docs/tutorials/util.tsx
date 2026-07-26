@@ -28,7 +28,7 @@ export default function Page() {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🟢</span>
                 <strong className="text-primary">Active</strong> → Processing
@@ -40,7 +40,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔵</span>
                 <strong className="text-primary">Processing</strong> → Served
@@ -52,7 +52,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">⚫</span>
                 <strong className="text-primary">Active</strong> → Canceled
@@ -65,7 +65,7 @@ export default function Page() {
               </div>
             </div>
           </div>
-          <div className="rounded-lg border border-base-300 bg-background p-4">
+          <div className="rounded-lg border border-border bg-background p-4">
             <div className="mb-2 flex items-center gap-2">
               <span className="text-primary">⚠️</span>
               <strong className="text-primary">{l.trans({ en: "Business Rules", ko: "비즈니스 규칙" })}</strong>
@@ -662,7 +662,7 @@ export const Cancel = ({ className, icecreamOrderId, disabled }: CancelProps) =>
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🎨</span>
                 <strong className="text-primary">{l.trans({ en: "Consistent Styling", ko: "일관된 스타일링" })}</strong>
@@ -674,7 +674,7 @@ export const Cancel = ({ className, icecreamOrderId, disabled }: CancelProps) =>
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔒</span>
                 <strong className="text-primary">{l.trans({ en: "Disabled State", ko: "비활성화 상태" })}</strong>
@@ -686,7 +686,7 @@ export const Cancel = ({ className, icecreamOrderId, disabled }: CancelProps) =>
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🌍</span>
                 <strong className="text-primary">{l.trans({ en: "Internationalization", ko: "국제화" })}</strong>
@@ -733,16 +733,16 @@ import { IcecreamOrder } from "@apps/koyo/client"; // [!code ++]
 export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIcecreamOrder>) => {
   const { l } = usePage();
   return (
-    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-base-200 to-base-300 px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
+    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-muted to-border px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
       <div className="flex flex-col justify-center"> // [!code collapse:24]
         <div className="flex items-center gap-2 text-lg font-semibold text-primary">
-          <span className="inline-block rounded bg-base-200 px-2 py-1 text-xs font-bold tracking-wider uppercase">
+          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider uppercase">
             {l("icecreamOrder.id")}
           </span>
           <span className="ml-2 font-mono text-primary">#{icecreamOrder.id.slice(-4)}</span>
         </div>
         <div className="mt-4 flex items-center gap-2">
-          <span className="inline-block rounded border border-base-300 bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded border border-border bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
             {l("icecreamOrder.status")}
           </span>
           <span
@@ -751,7 +751,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
               "border border-warning/40 bg-background text-warning": icecreamOrder.status === "processing",
               "border border-info/40 bg-info text-info-foreground": icecreamOrder.status === "served",
               "border border-accent/40 bg-background text-accent": icecreamOrder.status === "finished",
-              "border border-base-300 bg-background text-foreground/70": icecreamOrder.status === "canceled",
+              "border border-border bg-background text-foreground/70": icecreamOrder.status === "canceled",
             })}
           >
             {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
@@ -826,7 +826,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
               "border border-warning/40 bg-background text-warning": icecreamOrder.status === "processing",
               "border border-info/40 bg-info text-info-foreground": icecreamOrder.status === "served",
               "border border-accent/40 bg-background text-accent": icecreamOrder.status === "finished",
-              "border border-base-300 bg-background text-foreground/70": icecreamOrder.status === "canceled",
+              "border border-border bg-background text-foreground/70": icecreamOrder.status === "canceled",
             })}
           >
             {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
@@ -900,7 +900,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
               ko: `모든 것이 올바르게 작동하는지 확인하기 위해 상태 관리 구현을 테스트해봅시다:`,
             })}
           </div>
-          <div className="my-4 rounded-lg border border-base-300 bg-background p-4">
+          <div className="my-4 rounded-lg border border-border bg-background p-4">
             <div className="mb-2 font-semibold text-primary">
               {l.trans({ en: "Testing Steps:", ko: "테스트 단계:" })}
             </div>
@@ -949,7 +949,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
               </li>
             </ol>
           </div>
-          <div className="my-4 rounded-lg border border-base-300 bg-background p-4">
+          <div className="my-4 rounded-lg border border-border bg-background p-4">
             <div className="mb-2 font-semibold text-primary">
               {l.trans({ en: "Expected Behavior:", ko: "예상 동작:" })}
             </div>
@@ -990,7 +990,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             })}
           </div>
           <div className="my-4 space-y-4">
-            <div className="rounded-lg border border-base-300 bg-background p-4">
+            <div className="rounded-lg border border-border bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🛡️</span>
                 <strong className="text-primary">
@@ -1004,7 +1004,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-4">
+            <div className="rounded-lg border border-border bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">💡</span>
                 <strong className="text-primary">{l.trans({ en: "Smart UI Controls", ko: "스마트 UI 제어" })}</strong>
@@ -1016,7 +1016,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-4">
+            <div className="rounded-lg border border-border bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔄</span>
                 <strong className="text-primary">{l.trans({ en: "Consistent Patterns", ko: "일관된 패턴" })}</strong>
@@ -1028,7 +1028,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-4">
+            <div className="rounded-lg border border-border bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📝</span>
                 <strong className="text-primary">
@@ -1055,7 +1055,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
               ko: `훌륭한 작업입니다! 아이스크림 주문을 위한 완전한 상태 관리 시스템을 성공적으로 구현했습니다. 이제 가게 직원이 적절한 비즈니스 규칙 강제와 함께 주문 생명주기를 효율적으로 관리할 수 있습니다.`,
             })}
           </div>
-          <div className="my-6 rounded-lg bg-linear-to-r from-background to-base-300 p-6">
+          <div className="my-6 rounded-lg bg-linear-to-r from-background to-border p-6">
             <div className="mb-3 font-bold text-lg text-primary">
               {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
             </div>

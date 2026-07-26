@@ -9,7 +9,7 @@ export default function Page() {
       <Layout.Navbar className="apptest-nav" back right={<div className="font-semibold">Order detail</div>} />
       <div className="px-5 pt-5">
         <section className="rounded-4xl bg-linear-to-br from-primary via-secondary to-accent p-px shadow-2xl shadow-primary/20">
-          <div className="rounded-4xl bg-base-200/95 p-5">
+          <div className="rounded-4xl bg-muted/95 p-5">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15 text-3xl text-primary">
               <AiOutlineShoppingCart />
             </div>

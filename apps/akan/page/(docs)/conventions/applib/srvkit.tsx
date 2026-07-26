@@ -72,7 +72,7 @@ export default function Page() {
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-background p-4">
+            <div key={title} className="rounded-xl border border-border bg-background p-4">
               <div className="font-bold text-foreground">{title}</div>
               <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>
@@ -84,7 +84,7 @@ export default function Page() {
       <Scroll.Slide id="server-level-appliance" title={l.trans({ en: "Server Level Appliance", ko: "서버 레벨 적용" })}>
         <Docs.Title>{l.trans({ en: "Server Level Appliance", ko: "서버 레벨 적용" })}</Docs.Title>
         <div className="space-y-6">
-          <div className="rounded-2xl border border-base-300 bg-background p-4">
+          <div className="rounded-2xl border border-border bg-background p-4">
             <Docs.Description>
               <div>
                 {l.trans({
@@ -109,7 +109,7 @@ Middleware --> SignalEndpoint["Signal endpoint"]`}
               />
             </div>
           </div>
-          <div className="rounded-2xl border border-base-300 bg-background p-4">
+          <div className="rounded-2xl border border-border bg-background p-4">
             <Docs.Description>
               <div className="font-bold text-foreground">Middleware</div>
               <div>
@@ -136,7 +136,7 @@ export class RequestUserMiddleware implements Middleware {
 }`}
             />
           </div>
-          <div className="rounded-2xl border border-base-300 bg-background p-4">
+          <div className="rounded-2xl border border-border bg-background p-4">
             <Docs.Description>
               <div className="font-bold text-foreground">WebProxy</div>
               <div>
@@ -160,7 +160,7 @@ export class LegacyPageRedirect implements WebProxy {
 }`}
             />
           </div>
-          <div className="rounded-2xl border border-base-300 bg-background p-4">
+          <div className="rounded-2xl border border-border bg-background p-4">
             <Docs.Description>
               <div className="font-bold text-foreground">Apply Them In Options</div>
               <div>
@@ -187,7 +187,7 @@ export class LegacyPageRedirect implements WebProxy {
       >
         <Docs.Title>{l.trans({ en: "Signal Level Appliance", ko: "Signal 레벨 적용" })}</Docs.Title>
         <div className="space-y-6">
-          <div className="rounded-2xl border border-base-300 bg-background p-4">
+          <div className="rounded-2xl border border-border bg-background p-4">
             <Docs.Description>
               <div>
                 {l.trans({
@@ -212,7 +212,7 @@ Exec --> Service["Service logic"]`}
               />
             </div>
           </div>
-          <div className="rounded-2xl border border-base-300 bg-background p-4">
+          <div className="rounded-2xl border border-border bg-background p-4">
             <Docs.Description>
               <div className="font-bold text-foreground">Guard</div>
               <div>
@@ -249,7 +249,7 @@ export class OrderEndpoint extends endpoint(srv.order, ({ pubsub, query, mutatio
               />
             </div>
           </div>
-          <div className="rounded-2xl border border-base-300 bg-background p-4">
+          <div className="rounded-2xl border border-border bg-background p-4">
             <Docs.Description>
               <div className="font-bold text-foreground">InternalArg</div>
               <div>
@@ -427,7 +427,7 @@ export class OrderService extends serve(db.order, ({ plug }) => ({
                 ko: "앱 전용 연동은 app srvkit에, 재사용 가능한 연동은 library srvkit에 둡니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-background px-4 text-foreground/70">
+              <div key={rule} className="rounded-xl border border-border bg-background px-4 text-foreground/70">
                 {rule}
               </div>
             ))}

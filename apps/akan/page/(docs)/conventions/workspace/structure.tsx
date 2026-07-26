@@ -64,7 +64,7 @@ export default function Page() {
               }),
             },
           ].map(({ name, desc }) => (
-            <div key={name} className="rounded-xl border border-base-300 bg-background p-4">
+            <div key={name} className="rounded-xl border border-border bg-background p-4">
               <div className="font-mono font-semibold text-primary">{name}</div>
               <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>

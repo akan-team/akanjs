@@ -409,7 +409,7 @@ export class ProductService extends serve(db.product, ({ service }) => ({
         </Docs.Description>
         <Docs.IntroTable type="method" items={middlewareMethods} />
         <div className="mb-4" />
-        <div className="rounded-lg bg-base-200 p-3 lg:p-4">
+        <div className="rounded-lg bg-muted p-3 lg:p-4">
           <div className="mb-2">
             <span className="font-bold font-mono text-primary text-sm">Example: _preCreate</span>
           </div>
@@ -443,7 +443,7 @@ Promise<DataInputOf<db.ProductInput, db.Product>> {
         <div className="mb-8" />
 
         <Docs.SubTitle>3.2. Examples</Docs.SubTitle>
-        <div className="mb-6 rounded-lg bg-base-200 p-3 lg:p-4">
+        <div className="mb-6 rounded-lg bg-muted p-3 lg:p-4">
           <Code.Snippet
             title="Injecting Services & Envs"
             language="typescript"

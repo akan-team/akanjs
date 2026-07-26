@@ -73,7 +73,7 @@ export default function Page() {
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-background p-4">
+            <div key={title} className="rounded-xl border border-border bg-background p-4">
               <div className="font-bold text-foreground">{title}</div>
               <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>
@@ -165,7 +165,7 @@ type TicketStatusValue = TicketStatus["value"];`}
           </div>
         </Docs.Description>
         <div className="grid gap-3 xl:grid-cols-2">
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">field.hidden()</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -174,7 +174,7 @@ type TicketStatusValue = TicketStatus["value"];`}
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-bold text-foreground">field.secret()</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -432,7 +432,7 @@ export class TicketInsight extends via(Ticket, (field) => ({
                 ko: "순환 barrel reference를 피하기 위해 다른 constant는 직접 파일 경로에서 import합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-background px-4 text-foreground/70">
+              <div key={rule} className="rounded-xl border border-border bg-background px-4 text-foreground/70">
                 {rule}
               </div>
             ))}

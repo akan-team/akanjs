@@ -97,12 +97,12 @@ export const DefaultPopconfirm = ({
         </div>
         {isConfirming && (
           <animated.div
-            className="popconfirm absolute -right-2 bottom-0 z-10 translate-y-[106%] rounded-lg border border-base-300 bg-background p-4 shadow-xl"
+            className="popconfirm absolute -right-2 bottom-0 z-10 translate-y-[106%] rounded-lg border border-border bg-background p-4 shadow-xl"
             style={popconfirmProps}
           >
             <div
               className={cn(
-                "popconfirm-deco absolute -top-2 size-4 rotate-45 rounded-sm border-base-300 border-t border-l bg-background",
+                "popconfirm-deco absolute -top-2 size-4 rotate-45 rounded-sm border-border border-t border-l bg-background",
                 { "right-10": !decoClassName },
                 decoClassName,
               )}

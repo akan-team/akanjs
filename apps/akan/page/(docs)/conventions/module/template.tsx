@@ -101,7 +101,7 @@ export default function Page() {
               desc: "General, Phone, SubmitPhone, Preview",
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-background p-4">
+            <div key={title} className="rounded-xl border border-border bg-background p-4">
               <div className="font-bold text-foreground">{title}</div>
               <div className="mt-2 text-foreground/70">{desc}</div>
             </div>
@@ -378,7 +378,7 @@ export const General = ({ className }: TicketEditProps) => {
                 ko: "준비된 edit data가 있는 server page에는 Load.Edit, modal edit trigger에는 Model.Edit, new-form button에는 Model.NewWrapper를 사용합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-background px-4 text-foreground/70">
+              <div key={rule} className="rounded-xl border border-border bg-background px-4 text-foreground/70">
                 {rule}
               </div>
             ))}

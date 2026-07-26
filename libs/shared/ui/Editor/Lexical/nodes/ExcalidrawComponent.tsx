@@ -183,7 +183,7 @@ export const ExcalidrawComponent = ({
             onClick={() => {
               if (editable) setOpen(true);
             }}
-            className="flex h-40 w-80 max-w-full flex-col items-center justify-center gap-2 rounded-md border border-foreground/20 border-dashed bg-base-200/40 text-foreground/50"
+            className="flex h-40 w-80 max-w-full flex-col items-center justify-center gap-2 rounded-md border border-foreground/20 border-dashed bg-muted/40 text-foreground/50"
           >
             <AiOutlineEdit className="text-3xl" />
             <span className="text-sm">{editable ? "Click to draw" : "No drawing"}</span>

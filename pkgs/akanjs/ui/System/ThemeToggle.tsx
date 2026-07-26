@@ -72,7 +72,7 @@ export const ThemeToggle = ({ themes }: ThemeToggleProps) => {
           </svg>
         </>
       }
-      dropdownClassName="w-52 bg-base-300"
+      dropdownClassName="w-52 bg-border"
       content={themes.map((theme) => (
         <li key={theme}>
           <button

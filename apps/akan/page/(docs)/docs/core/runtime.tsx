@@ -237,14 +237,14 @@ AKAN_PUBLIC_LOG_LEVEL=debug`}
                 <div className="break-all font-mono font-semibold text-primary text-sm">{name}</div>
                 <div className="mt-1 font-bold text-foreground">{label}</div>
                 <div className="mt-2 text-foreground/70 text-sm leading-relaxed">{desc}</div>
-                <div className="mt-3 break-all rounded bg-base-200 px-2 py-1 font-mono text-foreground/80 text-xs">
+                <div className="mt-3 break-all rounded bg-muted px-2 py-1 font-mono text-foreground/80 text-xs">
                   ex) {values}
                 </div>
               </div>
             ))}
           </div>
           <div className="space-y-1">
-            <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="rounded-xl border border-border bg-background p-4">
               <div className="font-bold">{l.trans({ en: "AKAN_PUBLIC_ENV modes", ko: "AKAN_PUBLIC_ENV 모드" })}</div>
               <div className="mt-3 space-y-1">
                 {[
@@ -256,14 +256,14 @@ AKAN_PUBLIC_LOG_LEVEL=debug`}
                   ["develop", l.trans({ en: "Team integration checks.", ko: "팀 통합 상태 확인" })],
                   ["main", l.trans({ en: "Production-like behavior.", ko: "운영에 가까운 동작 확인" })],
                 ].map(([mode, desc]) => (
-                  <div key={mode} className="rounded-lg bg-base-200 p-3">
+                  <div key={mode} className="rounded-lg bg-muted p-3">
                     <div className="font-mono font-semibold text-sm">{mode}</div>
                     <div className="mt-1 text-foreground/70 text-sm">{desc}</div>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="rounded-xl border border-border bg-background p-4">
               <div className="font-bold">
                 {l.trans({ en: "AKAN_PUBLIC_OPERATION_MODE modes", ko: "AKAN_PUBLIC_OPERATION_MODE 모드" })}
               </div>
@@ -276,7 +276,7 @@ AKAN_PUBLIC_LOG_LEVEL=debug`}
                   ],
                   ["edge", l.trans({ en: "Client uses edge-facing paths.", ko: "클라이언트가 엣지 경로 사용" })],
                 ].map(([mode, desc]) => (
-                  <div key={mode} className="rounded-lg bg-base-200 p-3">
+                  <div key={mode} className="rounded-lg bg-muted p-3">
                     <div className="font-mono font-semibold text-sm">{mode}</div>
                     <div className="mt-1 text-foreground/70 text-sm">{desc}</div>
                   </div>
@@ -350,7 +350,7 @@ env.serverHttpUri; // API URL
 env.serverWsUri;   // WebSocket URL`}
           />
           <div className="space-y-1">
-            <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="rounded-xl border border-border bg-background p-4">
               <div className="font-bold">{l.trans({ en: "Local mode", ko: "로컬 모드" })}</div>
               <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
@@ -368,7 +368,7 @@ serverHttpUri=http://localhost:8282/api
 serverWsUri=ws://localhost:8282`}
               />
             </div>
-            <div className="rounded-xl border border-base-300 bg-background p-4">
+            <div className="rounded-xl border border-border bg-background p-4">
               <div className="font-bold">{l.trans({ en: "Cloud / edge mode", ko: "클라우드 / 엣지 모드" })}</div>
               <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
@@ -454,10 +454,10 @@ void run();`}
                 value: `new AkanServer("myapp", env, "all", lib, { openapi: true })`,
               },
             ].map(({ title, desc, value }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background p-4">
+              <div key={title} className="rounded-xl border border-border bg-background p-4">
                 <div className="font-bold text-foreground">{title}</div>
                 <div className="mt-2 text-foreground/70 text-sm leading-relaxed">{desc}</div>
-                <div className="mt-3 break-all rounded bg-base-200 px-2 py-1 font-mono text-foreground/80 text-xs">
+                <div className="mt-3 break-all rounded bg-muted px-2 py-1 font-mono text-foreground/80 text-xs">
                   {value}
                 </div>
               </div>
@@ -485,7 +485,7 @@ void run();`}
             })}
           </div>
           <div className="space-y-1">
-            <div className="rounded-xl border border-base-300 bg-background px-4">
+            <div className="rounded-xl border border-border bg-background px-4">
               <div className="font-bold">{l.trans({ en: "Health", ko: "상태 확인" })}</div>
               <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
@@ -500,7 +500,7 @@ void run();`}
                 code={`curl http://localhost:8282/_akan/app/health`}
               />
             </div>
-            <div className="rounded-xl border border-base-300 bg-background px-4">
+            <div className="rounded-xl border border-border bg-background px-4">
               <div className="font-bold">{l.trans({ en: "Metrics", ko: "메트릭" })}</div>
               <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
@@ -515,7 +515,7 @@ void run();`}
                 code={`curl http://localhost:8282/_akan/app/metrics`}
               />
             </div>
-            <div className="rounded-xl border border-base-300 bg-background px-4">
+            <div className="rounded-xl border border-border bg-background px-4">
               <div className="font-bold">{l.trans({ en: "Logs", ko: "로그" })}</div>
               <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({

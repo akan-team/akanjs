@@ -172,7 +172,7 @@ const CSRWrapper = ({
         className={clsx(className, "h-screen w-full overflow-hidden", {
           "fixed inset-0": layoutStyle === "mobile",
           "akan-mobile-frame": layoutStyle === "mobile",
-          "bg-base-200": layoutStyle === "mobile",
+          "bg-muted": layoutStyle === "mobile",
         })}
         rootRef={frameRootRef}
       >

@@ -36,7 +36,7 @@ const ReferenceTable = ({ title, headers, rows, getCells }: ReferenceTableProps)
   return (
     <section className="space-y-3">
       <Docs.SubTitle>{title}</Docs.SubTitle>
-      <div className="hidden overflow-x-auto rounded-2xl border border-base-300 bg-background lg:block">
+      <div className="hidden overflow-x-auto rounded-2xl border border-border bg-background lg:block">
         <table className="table w-full table-fixed">
           <colgroup>
             {headers.map((header, index) => (
@@ -49,7 +49,7 @@ const ReferenceTable = ({ title, headers, rows, getCells }: ReferenceTableProps)
             ))}
           </colgroup>
           <thead>
-            <tr className="border-base-300 border-b bg-base-200">
+            <tr className="border-border border-b bg-muted">
               {headers.map((header) => (
                 <th key={header} className="px-4 py-3 font-semibold text-foreground/80 text-xs uppercase tracking-wide">
                   {header}
@@ -59,7 +59,7 @@ const ReferenceTable = ({ title, headers, rows, getCells }: ReferenceTableProps)
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={`${title}-${row.name}`} className="border-base-300/80 border-b last:border-b-0">
+              <tr key={`${title}-${row.name}`} className="border-border/80 border-b last:border-b-0">
                 {getCells(row).map((cell, index) => (
                   <td
                     key={`${row.name}-${index}`}
@@ -81,7 +81,7 @@ const ReferenceTable = ({ title, headers, rows, getCells }: ReferenceTableProps)
         {rows.map((row) => {
           const cells = getCells(row);
           return (
-            <div key={`${title}-mobile-${row.name}`} className="rounded-2xl border border-base-300 bg-background p-4">
+            <div key={`${title}-mobile-${row.name}`} className="rounded-2xl border border-border bg-background p-4">
               <div className="font-mono font-semibold text-foreground text-sm">{cells[0]}</div>
               <div className="mt-3 grid gap-2 text-sm">
                 {headers.slice(1).map((header, index) => (

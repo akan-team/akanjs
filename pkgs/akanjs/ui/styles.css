@@ -1,9 +1,126 @@
 @source "./**/*";
 @plugin "tailwind-scrollbar";
 
+/* data-theme=dark 를 Tailwind dark: 변형에 연결. 프레임워크(system)가 소유하므로
+   앱 진입점에서 다시 선언할 필요가 없다. 런타임 data-theme 주입도 system(System/Client·SSR)이 담당. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ────────────────────────────────────────────────────────────────
+   akanjs 시맨틱 테마 토큰 시스템 (shadcn 스타일).
+   기본 팔레트는 브랜드-중립. 프레임워크가 소유 → 모든 앱이 즉시 동작하는 테마를 상속받는다.
+   앱은 자신의 page/styles.css :root 에서 원하는 토큰만 override 해 브랜드 색을 입힌다.
+   원시 값(:root/[data-theme]) → @theme inline 으로 Tailwind 색 이름에 매핑
+   (var() 참조 = 런타임 data-theme 전환).
+   기본 theme="css"는 data-theme 미부착 → :root 가 기본(dark). [data-theme="light"] override. */
+:root,
+[data-theme="dark"] {
+  --background: #0a0a0a;
+  --foreground: #fafafa;
+  --primary: #fafafa;
+  --primary-foreground: #171717;
+  --secondary: #262626;
+  --secondary-foreground: #fafafa;
+  --accent: #262626;
+  --accent-foreground: #fafafa;
+  --neutral: #262626;
+  --neutral-foreground: #fafafa;
+  --info: #3b82f6;
+  --info-foreground: #ffffff;
+  --success: #22c55e;
+  --success-foreground: #052e16;
+  --warning: #f59e0b;
+  --warning-foreground: #1a1a1a;
+  --destructive: #ef4444;
+  --destructive-foreground: #fafafa;
+  --open: #22c55e;
+  --open-foreground: #052e16;
+  --muted: #262626;
+  --muted-foreground: #a3a3a3;
+  --card: #171717;
+  --card-foreground: #fafafa;
+  --popover: #171717;
+  --popover-foreground: #fafafa;
+  --border: #262626;
+  --input: #262626;
+  --ring: #d4d4d4;
+}
+
+[data-theme="light"] {
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --primary: #171717;
+  --primary-foreground: #fafafa;
+  --secondary: #f5f5f5;
+  --secondary-foreground: #171717;
+  --accent: #f5f5f5;
+  --accent-foreground: #171717;
+  --neutral: #f5f5f5;
+  --neutral-foreground: #171717;
+  --info: #2563eb;
+  --info-foreground: #ffffff;
+  --success: #16a34a;
+  --success-foreground: #ffffff;
+  --warning: #d97706;
+  --warning-foreground: #ffffff;
+  --destructive: #dc2626;
+  --destructive-foreground: #fafafa;
+  --open: #16a34a;
+  --open-foreground: #ffffff;
+  --muted: #f5f5f5;
+  --muted-foreground: #737373;
+  --card: #ffffff;
+  --card-foreground: #0a0a0a;
+  --popover: #ffffff;
+  --popover-foreground: #0a0a0a;
+  --border: #e5e5e5;
+  --input: #e5e5e5;
+  --ring: #0a0a0a;
+}
+
+/* Tailwind 색상 네임스페이스 매핑 (inline = var() 참조 → 런타임 data-theme 전환) */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-neutral: var(--neutral);
+  --color-neutral-foreground: var(--neutral-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-open: var(--open);
+  --color-open-foreground: var(--open-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-box: 1rem;
+  --radius-field: 0.75rem;
+}
+
 html,
 body {
   margin: 0;
+  /* daisyUI 플러그인이 :root 에 깔아주던 전역 배경/텍스트색 복원.
+     이게 없으면 transition 중 노출되는 프레임 여백·safe-area·Portal 크롬이
+     브라우저 기본값(흰 배경·검정 텍스트)으로 폴백된다. */
+  background-color: var(--color-background, Canvas);
+  color: var(--color-foreground, CanvasText);
   /* -webkit-touch-callout: none;
   -webkit-user-select: none; */
 }
@@ -582,12 +699,6 @@ body.akan-mobile-document {
 }
 
 @theme {
-  /* Theme Extensions */
-  --color-primary-light: hsl(var(--primary-light) / <alpha-value>);
-  --color-primary-dark: hsl(var(--primary-dark) / <alpha-value>);
-  --color-secondary-light: hsl(var(--secondary-light) / <alpha-value>);
-  --color-secondary-dark: hsl(var(--secondary-dark) / <alpha-value>);
-
   /* Animation Variables */
   --animate-smaller: smaller 0.15s ease-in-out forwards;
   --animate-bigger: bigger 1s ease-in-out forwards;

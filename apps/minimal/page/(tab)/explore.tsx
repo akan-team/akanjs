@@ -30,6 +30,9 @@ export default function Page() {
               <Link className={cn(buttonVariants({ variant: "ghost" }), "w-full rounded-2xl")} href="/explore/detail">
                 View details
               </Link>
+              <Link className={cn(buttonVariants({ variant: "ghost" }), "w-full rounded-2xl")} href="/lab">
+                Lab
+              </Link>
             </div>
           </div>
         </div>

@@ -90,7 +90,7 @@ export const Auth = ({ logo, password, ssoTypes = [], redirect }: AuthProps) => 
   const ssos = ssoTypes.filter((ssoType) => !!ssoButtons[ssoType]);
   return (
     <div className="flex h-screen w-full items-center justify-center">
-      <div className="flex w-96 flex-col gap-4 rounded-2xl border border-background/30 bg-base-200 p-8 shadow-sm">
+      <div className="flex w-96 flex-col gap-4 rounded-2xl border border-background/30 bg-muted p-8 shadow-sm">
         <div className="text-center">Admin System</div>
         {logo ? <div className="mb-4 text-center">{logo} </div> : null}
         {password && (

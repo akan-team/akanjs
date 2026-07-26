@@ -12,7 +12,7 @@ export default function Page() {
         </Link.Back>
       </Layout.Navbar>
       <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-background text-foreground">
-        {/* <div className="absolute inset-5 rounded-[2rem] border border-foreground/15 bg-gradient-to-br from-base-300 via-base-200 to-background" /> */}
+        {/* <div className="absolute inset-5 rounded-[2rem] border border-foreground/15 bg-gradient-to-br from-border via-muted to-background" /> */}
         {/* <Link.Back>
           <div className="absolute top-6 left-6 z-10 flex h-12 w-12 items-center justify-center rounded-2xl bg-foreground/10 backdrop-blur">
             <AiOutlineClose className="text-3xl" />

@@ -118,7 +118,7 @@ export const Card = ({ className, user, href }: ModelProps<"user", cnst.LightUse
     <Link 
       href={href}
       className={clsx(
-        "bg-background border-base-200 block rounded-xl border p-4 transition-all hover:shadow-md", 
+        "bg-background border-muted block rounded-xl border p-4 transition-all hover:shadow-md", 
         className
       )}
     >
@@ -501,7 +501,7 @@ export const Card = ({ className, init, prefix = "" }: CardProps) => {
             </div>
           </div>
 
-          <div className="rounded-lg bg-base-200 p-4">
+          <div className="rounded-lg bg-muted p-4">
             <div className="mb-2 flex items-center gap-2">
               <span>♿</span>
               <strong>{l.trans({ en: "Accessibility", ko: "접근성" })}</strong>

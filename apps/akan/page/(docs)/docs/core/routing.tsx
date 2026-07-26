@@ -15,7 +15,7 @@ export default function Page() {
               ko: "Akan은 파일 기반 라우팅을 사용합니다. page/ 아래에 파일을 만들면 폴더 구조가 페이지 URL이 됩니다. 대부분의 페이지에는 언어 파라미터가 자동으로 붙어서 하나의 파일이 다국어 URL을 처리할 수 있습니다.",
             })}
           </div>
-          <div className="rounded-2xl border border-base-300 bg-background p-5">
+          <div className="rounded-2xl border border-border bg-background p-5">
             <div className="mb-4 font-bold text-foreground">
               {l.trans({ en: "How files become routes", ko: "파일이 라우트가 되는 방식" })}
             </div>
@@ -49,13 +49,13 @@ export default function Page() {
                   }),
                 },
               ].map(({ label, file, result, desc }) => (
-                <div key={label} className="rounded-xl border border-base-300 bg-base-200 p-4">
+                <div key={label} className="rounded-xl border border-border bg-muted p-4">
                   <div className="text-foreground/60 text-xs">{label}</div>
                   <div className="mt-2 break-all font-mono text-primary text-sm">{file}</div>
                   <div className="my-3 flex items-center gap-2 text-foreground/40 text-xs">
-                    <div className="h-px flex-1 bg-base-300" />
+                    <div className="h-px flex-1 bg-border" />
                     <span>to</span>
-                    <div className="h-px flex-1 bg-base-300" />
+                    <div className="h-px flex-1 bg-border" />
                   </div>
                   <div className="font-mono text-foreground text-sm">{result}</div>
                   <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
@@ -87,7 +87,7 @@ export default function Page() {
                 }),
               ],
             ].map(([title, desc]) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
                 <span className="font-bold text-foreground">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -125,7 +125,7 @@ export default function Page() {
 └── robots.txt.tsx`}
         />
         <div className="space-y-1">
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-mono font-semibold text-primary">_index.tsx</div>
             <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
@@ -134,7 +134,7 @@ export default function Page() {
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-mono font-semibold text-primary">_layout.tsx</div>
             <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
@@ -143,7 +143,7 @@ export default function Page() {
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-mono font-semibold text-primary">(group)</div>
             <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
@@ -152,7 +152,7 @@ export default function Page() {
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-mono font-semibold text-primary">&lt;path&gt;.tsx</div>
             <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
@@ -161,7 +161,7 @@ export default function Page() {
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-background p-4">
+          <div className="rounded-xl border border-border bg-background p-4">
             <div className="font-mono font-semibold text-primary">[&lt;param&gt;].tsx</div>
             <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
@@ -271,7 +271,7 @@ export const metadata = {
               }),
             },
           ].map(({ name, desc }) => (
-            <div key={name} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+            <div key={name} className="rounded-xl border border-border bg-background px-4 py-0">
               <div className="font-mono font-semibold text-primary">{name}</div>
               <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>
@@ -347,7 +347,7 @@ export function Error({ error }: { error?: unknown }) {
               }),
             },
           ].map(({ name, desc }) => (
-            <div key={name} className="rounded-xl border border-base-300 bg-background px-4 py-3">
+            <div key={name} className="rounded-xl border border-border bg-background px-4 py-3">
               <div className="font-mono font-semibold text-primary">{name}</div>
               <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>
@@ -497,7 +497,7 @@ export default function Layout({ children }: LayoutProps) {
               }),
             },
           ].map(({ name, desc }) => (
-            <div key={name} className="rounded-xl border border-base-300 bg-background px-4 py-0">
+            <div key={name} className="rounded-xl border border-border bg-background px-4 py-0">
               <div className="font-mono font-semibold text-primary">{name}</div>
               <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>

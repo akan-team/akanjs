@@ -157,11 +157,11 @@ export default override({ InputCheckbox: BrandCheckbox });
         </Docs.Description>
         <div className="grid gap-3 xl:grid-cols-2">
           {slotGroups.map(({ title, slots }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-background p-4">
+            <div key={title} className="rounded-xl border border-border bg-background p-4">
               <div className="mb-2 font-bold text-foreground">{title}</div>
               <div className="flex flex-wrap gap-2">
                 {slots.map((slot) => (
-                  <span key={slot} className="rounded-md bg-base-200 px-2 py-1 font-mono text-foreground/80 text-sm">
+                  <span key={slot} className="rounded-md bg-muted px-2 py-1 font-mono text-foreground/80 text-sm">
                     {slot}
                   </span>
                 ))}

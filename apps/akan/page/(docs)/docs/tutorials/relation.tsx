@@ -112,7 +112,7 @@ export class DeliveryInsight extends via(Delivery, (field) => ({})) {}`}
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔗</span>
                 <strong className="text-primary">{"field([LightIcecreamOrder], { minlength: 1 })"}</strong>
@@ -124,7 +124,7 @@ export class DeliveryInsight extends via(Delivery, (field) => ({})) {}`}
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📦</span>
                 <strong className="text-primary">
@@ -211,7 +211,7 @@ export class DeliveryService extends serve(db.delivery, ({ use, service }) => ({
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔌</span>
                 <strong className="text-primary">{"service<srv.IcecreamOrderService>()"}</strong>
@@ -223,7 +223,7 @@ export class DeliveryService extends serve(db.delivery, ({ use, service }) => ({
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">⚡</span>
                 <strong className="text-primary">_postCreate</strong>
@@ -235,7 +235,7 @@ export class DeliveryService extends serve(db.delivery, ({ use, service }) => ({
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🚫</span>
                 <strong className="text-primary">_preUpdate</strong>
@@ -577,7 +577,7 @@ import { IcecreamOrder } from "@apps/koyo/client"; // [!code ++]
 export const Card = ({ delivery, href }: ModelProps<"delivery", cnst.LightDelivery>) => {
   const { l } = usePage();
   return (
-    <Link href={href} className="block w-full rounded border bg-base-300 p-4"> // [!code highlight:10]
+    <Link href={href} className="block w-full rounded border bg-border p-4"> // [!code highlight:10]
       <div className="mb-3 text-lg font-bold">
         {l("delivery.modelName")} #{delivery.id.slice(-4)}
       </div>
@@ -774,7 +774,7 @@ export default async function Page() {
       <Scroll.Slide id="summary" title={l.trans({ en: "Summary", ko: "요약" })}>
         <Docs.Title>{l.trans({ en: "Summary", ko: "요약" })}</Docs.Title>
         <Docs.Description>
-          <div className="my-6 rounded-lg bg-linear-to-r from-background to-base-300 p-6">
+          <div className="my-6 rounded-lg bg-linear-to-r from-background to-border p-6">
             <div className="mb-3 font-bold text-lg text-primary">
               {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
             </div>
@@ -824,7 +824,7 @@ export default async function Page() {
             </ul>
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-background p-4">
+            <div className="rounded-lg border border-border bg-background p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">💡</span>
                 <strong className="text-primary">{l.trans({ en: "Best Practices", ko: "모범 사례" })}</strong>

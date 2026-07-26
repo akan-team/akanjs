@@ -6,7 +6,6 @@ import { extendTailwindMerge } from "tailwind-merge";
  * Registering them under `theme.color` teaches tailwind-merge that `bg-*`/`text-*`/
  * `border-*`/… built from these names belong to the same conflict group, so
  * `cn("bg-primary", "bg-open")` correctly resolves to `"bg-open"` instead of keeping both.
- * Numbered tokens (`base-200`/`base-300`) are especially prone to mis-parsing without this.
  */
 const colorTokens = [
   "background",
@@ -35,8 +34,6 @@ const colorTokens = [
   "neutral-foreground",
   "open",
   "open-foreground",
-  "base-200",
-  "base-300",
   "border",
   "input",
   "ring",

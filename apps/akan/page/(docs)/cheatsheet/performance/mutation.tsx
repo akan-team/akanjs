@@ -216,12 +216,12 @@ await this.Post.updateOne({ id }, ({ pull }) => ({ tags: pull("featured") }));`}
                     <code>{example.helper}</code>
                   </td>
                   <td className="align-top">
-                    <pre className="whitespace-pre-wrap rounded bg-base-200 p-2 text-xs">
+                    <pre className="whitespace-pre-wrap rounded bg-muted p-2 text-xs">
                       <code>{example.update}</code>
                     </pre>
                   </td>
                   <td className="align-top">
-                    <pre className="whitespace-pre-wrap rounded bg-base-200 p-2 text-xs">
+                    <pre className="whitespace-pre-wrap rounded bg-muted p-2 text-xs">
                       <code>{example.sql}</code>
                     </pre>
                   </td>

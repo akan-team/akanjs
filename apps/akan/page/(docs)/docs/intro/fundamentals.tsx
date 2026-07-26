@@ -32,7 +32,7 @@ export default function Page() {
               ko: "Akan.js는 비즈니스 정의가 web, app-oriented client surface, server runtime, data contract, deployment artifact의 단일 기준이 되는 풀스택 TypeScript 프레임워크입니다.",
             })}
           </div>
-          <div className="my-6 rounded-xl bg-base-200 p-4 md:p-6">
+          <div className="my-6 rounded-xl bg-muted p-4 md:p-6">
             <div className="grid items-center gap-4 xl:grid-cols-[1fr_auto_1fr]">
               <div className="rounded-xl bg-background p-5 shadow">
                 <div className="mb-2 font-bold text-primary text-xl">TypeScript</div>
@@ -241,7 +241,7 @@ export default function Page() {
               ko: "Akan.js는 monorepo 구조를 기본으로 합니다. 하나의 조직(팀)은 하나의 레포지토리(workspace) 위에서 여러 앱과 공통 라이브러리를 개발하며, 앱 실행부터 production build, library 개발, package 관리까지 모두 workspace root에서 실행하고 운영합니다.",
             })}
           </div>
-          <div className="my-6 rounded-xl bg-base-200 p-4 md:p-6">
+          <div className="my-6 rounded-xl bg-muted p-4 md:p-6">
             <div className="mb-4 text-center font-bold text-2xl">
               {l.trans({ en: "Akan Workspace", ko: "Akan Workspace" })}
             </div>
@@ -278,7 +278,7 @@ export default function Page() {
                   </div>
                 </div>
 
-                <div className="rounded-xl bg-base-200 p-4 text-center md:w-32">
+                <div className="rounded-xl bg-muted p-4 text-center md:w-32">
                   <div className="text-foreground/70 text-sm">{l.trans({ en: "code amount", ko: "코드 비중" })}</div>
                   <div className="mt-2 font-bold text-3xl text-info">20%</div>
                   <div className="text-foreground/60 text-xs">apps</div>
@@ -392,7 +392,7 @@ export default function Page() {
               ko: "워크스페이스 전체에서 같은 컨벤션이 반복되기 때문에 사람과 에이전트 모두 낯선 코드를 처음부터 추측하지 않고 탐색할 수 있습니다.",
             })}
           </div>
-          <div className="my-6 rounded-xl bg-base-200 p-4 md:p-6">
+          <div className="my-6 rounded-xl bg-muted p-4 md:p-6">
             <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div className="font-bold text-2xl">
                 {l.trans({ en: "Application or Library Anatomy", ko: "Application or Library Anatomy" })}

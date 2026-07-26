@@ -50,7 +50,7 @@ export const DefaultMenu = ({
 }: MenuProps) => {
   const [expandedKey, setExpandedKey] = useState<string>(); // 서브메뉴
   const [currentKey, setCurrentKey] = useState<string | null>(defaultSelectedKeys?.[0] ?? null); // 선택된 메뉴
-  const modeClassName = mode === "horizontal" ? "flex-row " : "bg-base-200";
+  const modeClassName = mode === "horizontal" ? "flex-row " : "bg-muted";
   const menuRef = useRef<HTMLDivElement | null>(null);
   const LiRefs = useRef<HTMLLIElement[]>([]);
   const overflowLiRef = useRef<HTMLLIElement | null>(null);
@@ -153,7 +153,7 @@ export const DefaultMenu = ({
                 id={item.key}
                 key={item.key}
                 className={cn("relative m-0 duration-200 hover:opacity-70", overflowClassName, liClassName, {
-                  "bg-base-300": activeStyle === "active" && checkIsActive(item.key),
+                  "bg-border": activeStyle === "active" && checkIsActive(item.key),
                   "border-background border-b-2": activeStyle === "bordered" && checkIsActive(item.key),
                 })}
                 onClick={() => {

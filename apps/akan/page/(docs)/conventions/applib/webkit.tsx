@@ -113,7 +113,7 @@ export function getSignedInUser() {
 }`,
             },
           ].map(({ title, desc, snippetTitle, code }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-background p-4">
+            <div key={title} className="rounded-xl border border-border bg-background p-4">
               <div className="font-bold text-foreground">{title}</div>
               <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               <div className="mt-3">
@@ -193,7 +193,7 @@ export function DownloadButton() {
                 ko: "downloadFile.ts가 downloadFile을 export하는 것처럼 파일명과 export명을 맞춥니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-background px-4 text-foreground/70">
+              <div key={rule} className="rounded-xl border border-border bg-background px-4 text-foreground/70">
                 {rule}
               </div>
             ))}

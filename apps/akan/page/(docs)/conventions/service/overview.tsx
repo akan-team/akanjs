@@ -120,7 +120,7 @@ export default function Page() {
         </Docs.Description>
         <div className="space-y-3">
           {moduleExamples.map(({ name, path, role }) => (
-            <div key={name} className="border-base-300 border-l-2 pl-4">
+            <div key={name} className="border-border border-l-2 pl-4">
               <div className="font-bold text-foreground">
                 {name} <span className="font-mono font-normal text-foreground/70">({path})</span>
               </div>
@@ -143,7 +143,7 @@ export default function Page() {
         </Docs.Description>
         <div className="space-y-3">
           {fileMap.map(({ file, role }) => (
-            <div key={file} className="border-base-300 border-l-2 pl-4">
+            <div key={file} className="border-border border-l-2 pl-4">
               <div className="font-bold text-foreground">{file}</div>
               <div className="text-foreground/70">{role}</div>
             </div>

@@ -196,7 +196,7 @@ export const dictionary = modelDictionary(["en", "ko"])
         </Docs.Description>
 
         <div className="mb-4" />
-        <div className="rounded-lg bg-base-200 p-3 lg:p-4">
+        <div className="rounded-lg bg-muted p-3 lg:p-4">
           <div className="mb-2">
             <span className="font-bold font-mono text-primary text-sm">Manual Access</span>
           </div>

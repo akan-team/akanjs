@@ -196,7 +196,7 @@ export class InventoryInsight extends via(Inventory, (field) => ({})) {}
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📋</span>
                 <strong className="text-primary">{"stocks: field([Stock])"}</strong>
@@ -208,7 +208,7 @@ export class InventoryInsight extends via(Inventory, (field) => ({})) {}
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📅</span>
                 <strong className="text-primary">at</strong>
@@ -345,7 +345,7 @@ export class InventoryModel extends into(Inventory, InventoryFilter, cnst.invent
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📉</span>
                 <strong className="text-primary">useStock / useStocks</strong>
@@ -357,7 +357,7 @@ export class InventoryModel extends into(Inventory, InventoryFilter, cnst.invent
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔄</span>
                 <strong className="text-primary">refill</strong>
@@ -369,7 +369,7 @@ export class InventoryModel extends into(Inventory, InventoryFilter, cnst.invent
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📅</span>
                 <strong className="text-primary">generateTodaysInventory</strong>
@@ -687,7 +687,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
   return (
     <Layout.Template className={clsx("w-full space-y-6", className)}>
       {showServeType ? ( // [!code collapse:15]
-        <div className="rounded-2xl border border-base-300 bg-background p-8 shadow-md backdrop-blur-sm">
+        <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
           <div className="space-y-6">
             <div className="flex items-center gap-3">
               <span className="text-3xl">🍦</span>
@@ -701,7 +701,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           </div>
         </div>
       ) : null}
-      <div className="rounded-2xl border border-base-300 bg-background p-8 shadow-md backdrop-blur-sm">
+      <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
         <div className="space-y-6">
           <div className="flex items-center gap-3"> // [!code collapse:4]
             <span className="text-3xl">📏</span>
@@ -718,7 +718,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           />
         </div>
       </div>
-      <div className="rounded-2xl border border-base-300 bg-background p-8 shadow-md backdrop-blur-sm">
+      <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
         <div className="space-y-6">
           <div className="flex items-center gap-3"> // [!code collapse:4]
             <span className="text-3xl">🍓</span>
@@ -735,7 +735,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           />
         </div>
       </div>
-      <div className="rounded-2xl border border-base-300 bg-background p-8 shadow-md backdrop-blur-sm"> // [!code collapse:13]
+      <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm"> // [!code collapse:13]
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <span className="text-3xl">📱</span>
@@ -759,7 +759,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔄</span>
                 <strong className="text-primary">loadTodaysInventory</strong>
@@ -771,7 +771,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🚫</span>
                 <strong className="text-primary">{l.trans({ en: "Out of Stock Check", ko: "품절 확인" })}</strong>
@@ -783,7 +783,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-background p-3">
+            <div className="rounded-lg border border-border bg-background p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">⚠️</span>
                 <strong className="text-primary">{"disabled: !isInStock"}</strong>
@@ -883,7 +883,7 @@ interface GeneralProps {
 export const General = ({ className, inventory }: GeneralProps) => {
   const { l } = usePage();
   return (
-    <div className={clsx("w-full space-y-2 rounded-xl border border-base-300 bg-background p-4", className)}>
+    <div className={clsx("w-full space-y-2 rounded-xl border border-border bg-background p-4", className)}>
       <div className="text-lg font-bold text-primary">{dayjs(inventory.at).format("YYYY-MM-DD")}</div>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {inventory.stocks.map((stock, index) => {
@@ -893,7 +893,7 @@ export const General = ({ className, inventory }: GeneralProps) => {
             <div
               key={\`\${stock.type}-\${index}\`}
               className={clsx("space-y-3 rounded-xl border bg-background px-6 py-4 shadow-md", {
-                "border-base-300": status === "empty",
+                "border-border": status === "empty",
                 "border-warning/40": status === "low",
                 "border-success/40": status === "normal",
               })}
@@ -901,7 +901,7 @@ export const General = ({ className, inventory }: GeneralProps) => {
               <div className="flex items-center justify-between">
                 <div
                   className={clsx("rounded px-2 py-1 text-xs font-bold", {
-                    "border border-base-300 bg-background text-foreground/70": status === "empty",
+                    "border border-border bg-background text-foreground/70": status === "empty",
                     "border border-warning/40 bg-background text-warning": status === "low",
                     "border border-success/40 bg-background text-success": status === "normal",
                   })}
@@ -919,10 +919,10 @@ export const General = ({ className, inventory }: GeneralProps) => {
                 </div>
               </div>
               <div className="flex items-center justify-between gap-4">
-                <div className="h-2 w-full overflow-hidden rounded-full bg-base-200">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                   <div
                     className={clsx("h-full", {
-                      "bg-base-300": status === "empty",
+                      "bg-border": status === "empty",
                       "bg-warning": status === "low",
                       "bg-success": status === "normal",
                     })}
@@ -1078,7 +1078,7 @@ export default async function Page() {
   );
 }`}
           />
-          <div className="my-6 rounded-lg bg-linear-to-r from-background to-base-300 p-6">
+          <div className="my-6 rounded-lg bg-linear-to-r from-background to-border p-6">
             <div className="mb-3 font-bold text-lg text-primary">
               {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
             </div>
