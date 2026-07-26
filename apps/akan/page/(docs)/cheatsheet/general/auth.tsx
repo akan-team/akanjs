@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="guard" title={l.trans({ en: "Use Guards", ko: "Guard 사용하기" })}>
         <Docs.Title>{l.trans({ en: "Use Guards", ko: "Guard 사용하기" })}</Docs.Title>
@@ -59,7 +59,7 @@ export default function Page() {
   });`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="with" title={l.trans({ en: "Use .with()", ko: ".with() 사용하기" })}>
         <Docs.Title>{l.trans({ en: "Use .with()", ko: ".with() 사용하기" })}</Docs.Title>
@@ -81,7 +81,7 @@ export default function Page() {
   });`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="choose" title={l.trans({ en: "Guard Or .with()", ko: "Guard와 .with() 구분" })}>
         <Docs.Title>{l.trans({ en: "Guard Or .with()", ko: "Guard와 .with() 구분" })}</Docs.Title>
@@ -108,7 +108,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

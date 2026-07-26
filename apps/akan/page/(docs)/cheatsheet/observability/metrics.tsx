@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="health" title={l.trans({ en: "Check Health", ko: "Health 확인" })}>
         <Docs.Title>{l.trans({ en: "Check Health", ko: "Health 확인" })}</Docs.Title>
@@ -70,7 +70,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="metrics" title={l.trans({ en: "Check Metrics", ko: "Metrics 확인" })}>
         <Docs.Title>{l.trans({ en: "Check Metrics", ko: "Metrics 확인" })}</Docs.Title>
@@ -109,7 +109,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="read" title={l.trans({ en: "How To Read", ko: "읽는 방법" })}>
         <Docs.Title>{l.trans({ en: "How To Read", ko: "읽는 방법" })}</Docs.Title>
@@ -142,7 +142,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="memory-log" title={l.trans({ en: "Memory Logs", ko: "메모리 로그" })}>
         <Docs.Title>{l.trans({ en: "Memory Logs", ko: "메모리 로그" })}</Docs.Title>
@@ -184,7 +184,7 @@ AKAN_MEMORY_GC_ON_REPORT=1`}
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="checklist" title={l.trans({ en: "Troubleshooting Order", ko: "확인 순서" })}>
         <Docs.Title>{l.trans({ en: "Troubleshooting Order", ko: "확인 순서" })}</Docs.Title>

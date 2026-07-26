@@ -87,7 +87,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="domain-architecture" title={l.trans({ en: "Domain Architecture", ko: "도메인 아키텍처" })}>
         <Docs.Title>{l.trans({ en: "Domain Architecture", ko: "도메인 아키텍처" })}</Docs.Title>
@@ -178,7 +178,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="data-flow" title={l.trans({ en: "Data Flow Overview", ko: "데이터 흐름 개요" })}>
         <Docs.Title>{l.trans({ en: "Data Flow Overview", ko: "데이터 흐름 개요" })}</Docs.Title>
@@ -217,7 +217,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>
   );

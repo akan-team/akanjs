@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="template" title={l.trans({ en: "Keep Template Simple", ko: "Template은 단순하게" })}>
         <Docs.Title>{l.trans({ en: "Keep Template Simple", ko: "Template은 단순하게" })}</Docs.Title>
@@ -81,7 +81,7 @@ export const General = () => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="create-page" title={l.trans({ en: "Create With SSR", ko: "SSR로 생성 form 만들기" })}>
         <Docs.Title>{l.trans({ en: "Create With SSR", ko: "SSR로 생성 form 만들기" })}</Docs.Title>
@@ -117,7 +117,7 @@ export const General = () => {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="update-page" title={l.trans({ en: "Update Page", ko: "수정 page" })}>
         <Docs.Title>{l.trans({ en: "Update Page", ko: "수정 page" })}</Docs.Title>
@@ -147,7 +147,7 @@ export const General = () => {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="client-modal" title={l.trans({ en: "Client Modal Edit", ko: "클라이언트 modal 수정" })}>
         <Docs.Title>{l.trans({ en: "Client Modal Edit", ko: "클라이언트 modal 수정" })}</Docs.Title>
@@ -174,7 +174,7 @@ export const General = () => {
 />`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

@@ -23,7 +23,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="what-belongs" title={l.trans({ en: "What Belongs In Srvkit", ko: "Srvkit에 두는 것" })}>
         <Docs.Title>{l.trans({ en: "What Belongs In srvkit/", ko: "srvkit/ 에 두는 것" })}</Docs.Title>
@@ -79,7 +79,7 @@ export default function Page() {
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="server-level-appliance" title={l.trans({ en: "Server Level Appliance", ko: "서버 레벨 적용" })}>
         <Docs.Title>{l.trans({ en: "Server Level Appliance", ko: "서버 레벨 적용" })}</Docs.Title>
@@ -179,7 +179,7 @@ export class LegacyPageRedirect implements WebProxy {
           </div>
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="signal-level-appliance"
@@ -286,7 +286,7 @@ export class OrderEndpoint extends endpoint(srv.order, ({ pubsub, query, mutatio
           </div>
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="service-logic"
@@ -352,7 +352,7 @@ export class OrderService extends serve(db.order, ({ use }) => ({
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="adaptor-plug" title={l.trans({ en: "Adaptor And plug", ko: "Adaptor와 plug" })}>
         <Docs.Title>{l.trans({ en: "Adaptor And plug", ko: "Adaptor와 plug" })}</Docs.Title>
@@ -399,7 +399,7 @@ export class OrderService extends serve(db.order, ({ plug }) => ({
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -434,7 +434,7 @@ export class OrderService extends serve(db.order, ({ plug }) => ({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

@@ -58,7 +58,7 @@ export default function Page() {
       >
         <div className="apptest-card flex h-full w-full items-center justify-center gap-2 rounded-3xl px-3">
           <input
-            className="input w-full border-0 bg-transparent text-foreground placeholder:text-foreground/35 focus:outline-none"
+            className="h-10 w-full border-0 bg-transparent px-3 text-foreground text-sm placeholder:text-foreground/35 focus:outline-none"
             placeholder="Type message..."
           />
           <button className={cn(buttonVariants({ variant: "primary", size: "icon" }), "rounded-2xl border-0")}>

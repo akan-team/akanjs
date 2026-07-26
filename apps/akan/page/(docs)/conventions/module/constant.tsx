@@ -23,7 +23,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="model-layering" title={l.trans({ en: "Model Layering Pattern", ko: "Model 계층 패턴" })}>
         <Docs.Title>{l.trans({ en: "Model Layering Pattern", ko: "Model 계층 패턴" })}</Docs.Title>
@@ -111,7 +111,7 @@ export class TicketInsight extends via(Ticket, (field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="fields-enums" title={l.trans({ en: "Fields And enumOf", ko: "Field와 enumOf" })}>
         <Docs.Title>{l.trans({ en: "Fields And enumOf", ko: "Field와 enumOf" })}</Docs.Title>
@@ -149,7 +149,7 @@ type TicketStatusValue = TicketStatus["value"];`}
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="hidden-secret-fields"
@@ -194,7 +194,7 @@ type TicketStatusValue = TicketStatus["value"];`}
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="generated-extension"
@@ -231,7 +231,7 @@ export class User extends via(UserObject, LightUser, (resolve) => ({}), ...user.
 export class UserInsight extends via(User, (field) => ({}), ...user.insights) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="model-helpers"
@@ -273,7 +273,7 @@ export class UserInsight extends via(User, (field) => ({}), ...user.insights) {}
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="resolve-fields" title={l.trans({ en: "Resolved Fields", ko: "Resolve field" })}>
         <Docs.Title>{l.trans({ en: "Resolved Fields", ko: "Resolve field" })}</Docs.Title>
@@ -331,7 +331,7 @@ export class UserInsight extends via(User, (field) => ({}), ...user.insights) {}
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="scalar-static-utilities"
@@ -374,7 +374,7 @@ export class Coordinate extends via((field) => ({
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="insight-constants" title={l.trans({ en: "Insight Constants", ko: "Insight constant" })}>
         <Docs.Title>{l.trans({ en: "Insight Constants", ko: "Insight constant" })}</Docs.Title>
@@ -396,7 +396,7 @@ export class TicketInsight extends via(Ticket, (field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -439,7 +439,7 @@ export class TicketInsight extends via(Ticket, (field) => ({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

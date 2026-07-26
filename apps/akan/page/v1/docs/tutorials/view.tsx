@@ -73,7 +73,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="view-wrapper" title={l.trans({ en: "Add View/Edit Modal", ko: "보기/수정 모달 추가하기" })}>
         <Docs.Title>{l.trans({ en: "Add View/Edit Modal", ko: "보기/수정 모달 추가하기" })}</Docs.Title>
         <Docs.Description>
@@ -171,7 +171,7 @@ export const View = ({ view }: ViewProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide
         id="button-on-unit"
         title={l.trans({ en: "Add View Button to Cards", ko: "카드에 뷰 버튼 추가하기" })}
@@ -270,7 +270,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="design-detail-view" title={l.trans({ en: "Design Detail View", ko: "상세 뷰 디자인하기" })}>
         <Docs.Title>{l.trans({ en: "Design Detail View", ko: "상세 뷰 디자인하기" })}</Docs.Title>
         <Docs.Description>
@@ -389,7 +389,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="test-implementation" title={l.trans({ en: "Test Your Implementation", ko: "구현 테스트하기" })}>
         <Docs.Title>{l.trans({ en: "Test Your Implementation", ko: "구현 테스트하기" })}</Docs.Title>
         <Docs.Description>
@@ -444,7 +444,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide
         id="best-practices"
         title={l.trans({ en: "Best Practices for Detail Views", ko: "상세 뷰 모범 사례" })}
@@ -517,7 +517,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="next-steps" title={l.trans({ en: "What's Next?", ko: "다음은 무엇인가요?" })}>
         <Docs.Title>{l.trans({ en: "What's Next?", ko: "다음은 무엇인가요?" })}</Docs.Title>
         <Docs.Description>

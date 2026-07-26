@@ -44,7 +44,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="many-surfaces" title={l.trans({ en: "One App, Many Surfaces", ko: "하나의 앱, 여러 표면" })}>
         <Docs.Title>{l.trans({ en: "One App, Many Surfaces", ko: "하나의 앱, 여러 표면" })}</Docs.Title>
@@ -104,7 +104,7 @@ export default function Page() {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="runtime-conversation"
@@ -167,7 +167,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="architecture-areas" title={l.trans({ en: "Architecture Areas", ko: "아키텍처 영역" })}>
         <Docs.Title>{l.trans({ en: "Architecture Areas", ko: "아키텍처 영역" })}</Docs.Title>
@@ -233,7 +233,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="reading-guide"
@@ -301,7 +301,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>
   );

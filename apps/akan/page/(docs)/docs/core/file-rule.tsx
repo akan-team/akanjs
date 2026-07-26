@@ -78,7 +78,7 @@ export default function Page() {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="module-files" title={l.trans({ en: "Module Files", ko: "모듈 파일" })}>
         <Docs.Title>{l.trans({ en: "Module Files", ko: "모듈 파일" })}</Docs.Title>
@@ -254,7 +254,7 @@ BizCard.Zone.tsx      # large screen areas such as admin/list/detail`}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="naming-rule" title={l.trans({ en: "Naming Rule", ko: "이름 규칙" })}>
         <Docs.Title>{l.trans({ en: "Naming Rule", ko: "이름 규칙" })}</Docs.Title>
@@ -309,7 +309,7 @@ Product.Zone.tsx`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="facet-files" title={l.trans({ en: "Facet Files And Barrels", ko: "Facet 파일과 Barrel" })}>
         <Docs.Title>{l.trans({ en: "Facet Files And Barrels", ko: "Facet 파일과 Barrel" })}</Docs.Title>
@@ -405,7 +405,7 @@ import { ProductCard } from "@apps/myapp/ui";`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="module-differences" title={l.trans({ en: "Module Differences", ko: "모듈별 차이" })}>
         <Docs.Title>{l.trans({ en: "Module Differences", ko: "모듈별 차이" })}</Docs.Title>
@@ -455,7 +455,7 @@ import { ProductCard } from "@apps/myapp/ui";`}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="workflow" title={l.trans({ en: "Codegen And Choices", ko: "자동생성과 선택 기준" })}>
         <Docs.Title>{l.trans({ en: "Codegen And Choices", ko: "자동생성과 선택 기준" })}</Docs.Title>
@@ -538,7 +538,7 @@ export const Product = { Unit, Util, View, Zone };`}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

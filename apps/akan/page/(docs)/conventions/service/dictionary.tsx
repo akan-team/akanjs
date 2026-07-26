@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="endpoint-labels" title={l.trans({ en: "Endpoint Labels", ko: "Endpoint label" })}>
         <Docs.Title>{l.trans({ en: "Endpoint Labels", ko: "Endpoint label" })}</Docs.Title>
@@ -46,7 +46,7 @@ export const dictionary = serviceDictionary(["en", "ko"]).endpoint<SearchEndpoin
 }));`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="endpoint-args" title={l.trans({ en: "Endpoint Arguments", ko: "Endpoint argument" })}>
         <Docs.Title>{l.trans({ en: "Endpoint Arguments", ko: "Endpoint argument" })}</Docs.Title>
@@ -67,7 +67,7 @@ export const dictionary = serviceDictionary(["en", "ko"]).endpoint<SearchEndpoin
 }));`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="translate-keys" title={l.trans({ en: "Translate Keys", ko: "Translate key" })}>
         <Docs.Title>{l.trans({ en: "Translate Keys", ko: "Translate key" })}</Docs.Title>
@@ -87,7 +87,7 @@ export const dictionary = serviceDictionary(["en", "ko"]).endpoint<SearchEndpoin
 });`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="using-keys" title={l.trans({ en: "Using Keys", ko: "Key 사용" })}>
         <Docs.Title>{l.trans({ en: "Using Keys", ko: "Key 사용" })}</Docs.Title>

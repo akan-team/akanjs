@@ -155,7 +155,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="basic" title={l.trans({ en: "Basic Filter", ko: "기본 filter" })}>
         <Docs.Title>{l.trans({ en: "Basic Filter", ko: "기본 filter" })}</Docs.Title>
@@ -184,7 +184,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="optional" title={l.trans({ en: "Optional Conditions", ko: "선택 조건" })}>
         <Docs.Title>{l.trans({ en: "Optional Conditions", ko: "선택 조건" })}</Docs.Title>
@@ -211,7 +211,7 @@ export default function Page() {
   ),`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="range" title={l.trans({ en: "Range And OR", ko: "범위와 OR" })}>
         <Docs.Title>{l.trans({ en: "Range And OR", ko: "범위와 OR" })}</Docs.Title>
@@ -238,7 +238,7 @@ export default function Page() {
   ),`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="raw" title={l.trans({ en: "Raw Query", ko: "Raw query" })}>
         <Docs.Title>{l.trans({ en: "Raw Query", ko: "Raw query" })}</Docs.Title>
@@ -262,7 +262,7 @@ export default function Page() {
   ),`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="sql" title={l.trans({ en: "How It Becomes SQL", ko: "SQL로 바뀌는 방식" })}>
         <Docs.Title>{l.trans({ en: "How It Becomes SQL", ko: "SQL로 바뀌는 방식" })}</Docs.Title>
@@ -349,7 +349,7 @@ export default function Page() {
           </div>
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

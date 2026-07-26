@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="document-cache" title={l.trans({ en: "Document Cache", ko: "Document cache" })}>
         <Docs.Title>{l.trans({ en: "Document Cache", ko: "Document cache" })}</Docs.Title>
@@ -68,7 +68,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="service-memory" title={l.trans({ en: "Service Memory", ko: "Service memory" })}>
         <Docs.Title>{l.trans({ en: "Service Memory", ko: "Service memory" })}</Docs.Title>
@@ -95,7 +95,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="choose" title={l.trans({ en: "Which One?", ko: "무엇을 쓸까?" })}>
         <Docs.Title>{l.trans({ en: "Which One?", ko: "무엇을 쓸까?" })}</Docs.Title>
@@ -122,7 +122,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

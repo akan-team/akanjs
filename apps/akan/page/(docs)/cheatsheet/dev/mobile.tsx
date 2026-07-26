@@ -68,7 +68,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="mobile-config" title={l.trans({ en: "Mobile Config", ko: "Mobile Config" })}>
         <Docs.Title>{l.trans({ en: "Mobile Config", ko: "Mobile Config" })}</Docs.Title>
@@ -159,7 +159,7 @@ export default config;`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="capacitor-plugins" title={l.trans({ en: "Capacitor Plugins", ko: "Capacitor Plugins" })}>
         <Docs.Title>{l.trans({ en: "Capacitor Plugins", ko: "Capacitor Plugins" })}</Docs.Title>
@@ -236,7 +236,7 @@ export default config;`}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="android-setup" title={l.trans({ en: "Android Setup", ko: "Android Setup" })}>
         <Docs.Title>{l.trans({ en: "Android Setup", ko: "Android Setup" })}</Docs.Title>
@@ -359,7 +359,7 @@ akan release-android myapp --target default --env main --assembleType aab`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="ios-setup" title={l.trans({ en: "iOS Setup", ko: "iOS Setup" })}>
         <Docs.Title>{l.trans({ en: "iOS Setup", ko: "iOS Setup" })}</Docs.Title>
@@ -443,7 +443,7 @@ akan release-ios myapp --target default --env main`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="push-setup" title={l.trans({ en: "Push Setup", ko: "Push Setup" })}>
         <Docs.Title>{l.trans({ en: "Push Setup", ko: "Push Setup" })}</Docs.Title>
@@ -965,7 +965,7 @@ if (pushToken) {
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="deep-link-setup" title={l.trans({ en: "Deep Link Setup", ko: "Deep Link Setup" })}>
         <Docs.Title>{l.trans({ en: "Deep Link Setup", ko: "Deep Link Setup" })}</Docs.Title>
@@ -1066,7 +1066,7 @@ if (pushToken) {
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="verify" title={l.trans({ en: "Verify Setup", ko: "Verify Setup" })}>
         <Docs.Title>{l.trans({ en: "Verify Setup", ko: "Verify Setup" })}</Docs.Title>

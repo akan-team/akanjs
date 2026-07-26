@@ -54,7 +54,7 @@ Describe create, update, approval, deletion, or state transition flows.
 - None documented yet.`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="update-rule" title={l.trans({ en: "Update Rule", ko: "갱신 규칙" })}>
         <Docs.Title>{l.trans({ en: "Update Rule", ko: "갱신 규칙" })}</Docs.Title>
         <Docs.Description>

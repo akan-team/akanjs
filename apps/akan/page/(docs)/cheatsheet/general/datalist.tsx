@@ -27,7 +27,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="enum" title={l.trans({ en: "Enum", ko: "Enum" })}>
         <Docs.Title>{l.trans({ en: "Enum", ko: "Enum" })}</Docs.Title>
@@ -55,7 +55,7 @@ export default function Page() {
 }));`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="datalist" title="DataList">
         <Docs.Title>DataList</Docs.Title>
@@ -95,7 +95,7 @@ users.set({ id: "u2", nickname: "Akan" });
 const user = users.pick("u1");`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="when" title={l.trans({ en: "When To Use", ko: "언제 쓰나" })}>
         <Docs.Title>{l.trans({ en: "When To Use", ko: "언제 쓰나" })}</Docs.Title>
@@ -122,7 +122,7 @@ const user = users.pick("u1");`}
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

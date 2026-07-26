@@ -48,7 +48,7 @@ export const TryButton = ({
           <Loading.Spin />
         ) : completed ? (
           <>
-            <input type="checkbox" className="checkbox checkbox-success checkbox-sm" checked readOnly />
+            <input type="checkbox" className="size-3.5 rounded border border-input accent-success" checked readOnly />
             {children}
           </>
         ) : (

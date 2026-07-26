@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="call-remote" title={l.trans({ en: "Call Another Server", ko: "다른 서버 호출하기" })}>
         <Docs.Title>{l.trans({ en: "Call Another Server", ko: "다른 서버 호출하기" })}</Docs.Title>
@@ -67,7 +67,7 @@ if (result === "ping") {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="commands" title={l.trans({ en: "Send Commands", ko: "명령 보내기" })}>
         <Docs.Title>{l.trans({ en: "Send Commands", ko: "명령 보내기" })}</Docs.Title>
@@ -87,7 +87,7 @@ await fetch.startJob(jobId, { origin: edgeOrigin });
 await fetch.stopJob(jobId, { origin: edgeOrigin });`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="subscribe" title={l.trans({ en: "Listen To Status", ko: "상태 듣기" })}>
         <Docs.Title>{l.trans({ en: "Listen To Status", ko: "상태 듣기" })}</Docs.Title>
@@ -112,7 +112,7 @@ await fetch.stopJob(jobId, { origin: edgeOrigin });`}
 unsubscribe();`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="remote-object" title={l.trans({ en: "Wrap A Remote Node", ko: "원격 노드 감싸기" })}>
         <Docs.Title>{l.trans({ en: "Wrap A Remote Node", ko: "원격 노드 감싸기" })}</Docs.Title>
@@ -139,7 +139,7 @@ unsubscribe();`}
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="fast-data" title={l.trans({ en: "Very Fast Data", ko: "아주 빠른 데이터" })}>
         <Docs.Title>{l.trans({ en: "Very Fast Data", ko: "아주 빠른 데이터" })}</Docs.Title>
@@ -164,7 +164,7 @@ unsubscribe();`}
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

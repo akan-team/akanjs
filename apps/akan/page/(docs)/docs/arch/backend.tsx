@@ -58,7 +58,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="request-to-business-action"
@@ -192,7 +192,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="service-layer" title={l.trans({ en: "Service Layer", ko: "서비스 계층" })}>
         <Docs.Title>{l.trans({ en: "Service Layer", ko: "서비스 계층" })}</Docs.Title>
@@ -311,7 +311,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="signal-surface" title={l.trans({ en: "Signal Surface", ko: "Signal 표면" })}>
         <Docs.Title>{l.trans({ en: "Signal Surface", ko: "Signal 표면" })}</Docs.Title>
@@ -456,7 +456,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="business-service-scenarios"
@@ -635,7 +635,7 @@ export class ChatRoomService extends serve(db.chatRoom, ({ signal }) => ({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

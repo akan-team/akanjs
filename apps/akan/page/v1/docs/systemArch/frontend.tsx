@@ -29,7 +29,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="module-structure"
@@ -106,7 +106,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="page-structure" title={l.trans({ en: "Page Structure", ko: "페이지 구조" })}>
         <Docs.Title>{l.trans({ en: "Page Structure", ko: "페이지 구조" })}</Docs.Title>
@@ -160,7 +160,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="component-types" title={l.trans({ en: "Component Types", ko: "컴포넌트 타입" })}>
         <Docs.Title>{l.trans({ en: "Component Types", ko: "컴포넌트 타입" })}</Docs.Title>
@@ -241,7 +241,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="state-management" title={l.trans({ en: "State Management", ko: "상태 관리" })}>
         <Docs.Title>{l.trans({ en: "State Management", ko: "상태 관리" })}</Docs.Title>
@@ -292,7 +292,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

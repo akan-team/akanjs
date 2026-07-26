@@ -77,7 +77,7 @@ export default function ViewDocsPage() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="comparison" title={l.trans({ en: "View vs Unit", ko: "View vs Unit" })}>
         <Docs.Title>{l.trans({ en: "View vs Unit", ko: "View vs Unit" })}</Docs.Title>
@@ -89,7 +89,7 @@ export default function ViewDocsPage() {
         </Docs.Description>
         <Docs.IntroTable type="Comparison" items={comparisonItems} />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="standard-view-shape" title={l.trans({ en: "Standard View Shape", ko: "표준 View 형태" })}>
         <Docs.Title>{l.trans({ en: "Standard View Shape", ko: "표준 View 형태" })}</Docs.Title>
@@ -122,7 +122,7 @@ export const General = ({ className, ticket }: GeneralProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="detail-patterns"
@@ -169,7 +169,7 @@ export const General = ({ order }: OrderViewProps) => {
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="using-view-pages" title={l.trans({ en: "Using View In Pages", ko: "Page에서 View 사용하기" })}>
         <Docs.Title>{l.trans({ en: "Using View In Pages", ko: "Page에서 View 사용하기" })}</Docs.Title>
@@ -189,7 +189,7 @@ export const General = ({ order }: OrderViewProps) => {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="load-view"
@@ -222,7 +222,7 @@ export const View = ({ view }: ViewProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -257,7 +257,7 @@ export const View = ({ view }: ViewProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

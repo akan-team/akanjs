@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="local" title={l.trans({ en: "Local Console", ko: "Local console" })}>
         <Docs.Title>{l.trans({ en: "Local Console", ko: "Local console" })}</Docs.Title>
@@ -56,7 +56,7 @@ export default function Page() {
           code="akan console myapp"
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="container" title={l.trans({ en: "Container Console", ko: "Container console" })}>
         <Docs.Title>{l.trans({ en: "Container Console", ko: "Container console" })}</Docs.Title>
@@ -85,7 +85,7 @@ export default function Page() {
           code="kubectl exec -it -n prod pod/myapp-xxxxx -c myapp -- sh -lc 'AKAN_CONSOLE=1 bun console.js'"
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="lifecycle" title={l.trans({ en: "Lifecycle", ko: "Lifecycle" })}>
         <Docs.Title>{l.trans({ en: "Lifecycle", ko: "Lifecycle" })}</Docs.Title>
@@ -118,7 +118,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="globals" title={l.trans({ en: "Globals", ko: "Globals" })}>
         <Docs.Title>{l.trans({ en: "Globals", ko: "Globals" })}</Docs.Title>
@@ -166,7 +166,7 @@ await service("user").__count()
 await get(srv.UserService).__count()`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="safety" title={l.trans({ en: "Safety", ko: "Safety" })}>
         <Docs.Title>{l.trans({ en: "Safety", ko: "Safety" })}</Docs.Title>

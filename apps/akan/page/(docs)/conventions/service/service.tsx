@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="basic-service" title={l.trans({ en: "Basic Service Shape", ko: "기본 service 형태" })}>
         <Docs.Title>{l.trans({ en: "Basic Service Shape", ko: "기본 service 형태" })}</Docs.Title>
@@ -47,7 +47,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="runtime-values" title={l.trans({ en: "Runtime Values", ko: "Runtime value" })}>
         <Docs.Title>{l.trans({ en: "Runtime Values", ko: "Runtime value" })}</Docs.Title>
@@ -71,7 +71,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="service-injection" title={l.trans({ en: "Service Injection", ko: "Service injection" })}>
         <Docs.Title>{l.trans({ en: "Service Injection", ko: "Service injection" })}</Docs.Title>
@@ -94,7 +94,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="server-mode" title={l.trans({ en: "Server Mode", ko: "Server mode" })}>
         <Docs.Title>{l.trans({ en: "Server Mode", ko: "Server mode" })}</Docs.Title>

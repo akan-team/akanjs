@@ -31,7 +31,7 @@ export default function Page() {
           </ol>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="provider" title={l.trans({ en: "Register Providers", ko: "Provider 등록" })}>
         <Docs.Title>{l.trans({ en: "Register Providers", ko: "Provider 등록" })}</Docs.Title>
@@ -53,7 +53,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="callback" title={l.trans({ en: "Write A Callback", ko: "Callback 작성" })}>
         <Docs.Title>{l.trans({ en: "Write A Callback", ko: "Callback 작성" })}</Docs.Title>
@@ -86,7 +86,7 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
   });`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="account-id" title={l.trans({ en: "Account Id", ko: "Account Id" })}>
         <Docs.Title>{l.trans({ en: "Account Id", ko: "Account Id" })}</Docs.Title>
@@ -119,7 +119,7 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
   provider === "github" ? profile.username : profile.email;`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="redirect" title={l.trans({ en: "Redirects", ko: "Redirect" })}>
         <Docs.Title>{l.trans({ en: "Redirects", ko: "Redirect" })}</Docs.Title>
@@ -152,7 +152,7 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

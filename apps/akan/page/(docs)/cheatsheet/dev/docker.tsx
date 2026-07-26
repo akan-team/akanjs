@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="compose" title={l.trans({ en: "Minimal Compose", ko: "최소 compose" })}>
         <Docs.Title>{l.trans({ en: "Minimal Compose", ko: "최소 compose" })}</Docs.Title>
@@ -74,7 +74,7 @@ services:
       - ./logs:/workspace/logs`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="console" title={l.trans({ en: "Open Console", ko: "Console 열기" })}>
         <Docs.Title>{l.trans({ en: "Open Console", ko: "Console 열기" })}</Docs.Title>
@@ -98,7 +98,7 @@ services:
           code="docker exec -it myapp sh -lc 'AKAN_CONSOLE=1 bun console.js'"
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="env" title={l.trans({ en: "Important Env", ko: "중요 env" })}>
         <Docs.Title>{l.trans({ en: "Important Env", ko: "중요 env" })}</Docs.Title>
@@ -131,7 +131,7 @@ services:
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="replica" title={l.trans({ en: "Scale With AKAN_REPLICA", ko: "AKAN_REPLICA로 확장" })}>
         <Docs.Title>{l.trans({ en: "Scale With AKAN_REPLICA", ko: "AKAN_REPLICA로 확장" })}</Docs.Title>
@@ -150,7 +150,7 @@ AKAN_REPLICA="2,1,0"  # two request children and one batch child
 AKAN_REPLICA="0,0,1"  # one all-purpose child`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

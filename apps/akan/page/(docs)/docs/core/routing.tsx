@@ -96,7 +96,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="file-convention" title={l.trans({ en: "File Convention", ko: "파일 컨벤션" })}>
         <Docs.Title>{l.trans({ en: "File Convention", ko: "파일 컨벤션" })}</Docs.Title>
@@ -172,7 +172,7 @@ export default function Page() {
           </div>
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="page-module" title={l.trans({ en: "Page File Shape", ko: "페이지 파일 구성" })}>
         <Docs.Title>{l.trans({ en: "Page File Shape", ko: "페이지 파일 구성" })}</Docs.Title>
@@ -284,7 +284,7 @@ export const metadata = {
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="layout-module" title={l.trans({ en: "Layout File Shape", ko: "레이아웃 파일 구성" })}>
         <Docs.Title>{l.trans({ en: "Layout File Shape", ko: "레이아웃 파일 구성" })}</Docs.Title>
@@ -360,7 +360,7 @@ export function Error({ error }: { error?: unknown }) {
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="base-paths" title={l.trans({ en: "Base Paths", ko: "Base Path" })}>
         <Docs.Title>{l.trans({ en: "Base Paths", ko: "Base Path" })}</Docs.Title>
@@ -397,7 +397,7 @@ export function Error({ error }: { error?: unknown }) {
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="root-layout-exports" title={l.trans({ en: "Root Layout Exports", ko: "Root Layout Exports" })}>
         <Docs.Title>{l.trans({ en: "Root Layout Exports", ko: "Root Layout Exports" })}</Docs.Title>

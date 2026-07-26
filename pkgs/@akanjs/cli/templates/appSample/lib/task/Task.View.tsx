@@ -5,6 +5,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { a
     filename: "Task.View.tsx",
     content: `import { type cnst, usePage } from "@apps/${dict.appName}/client";
 import { clsx } from "akanjs/client";
+import { badgeVariants } from "akanjs/ui";
 
 // ===== Task.View.tsx =====
 // Convention: lib/<module>/ — PascalCase .tsx, View suffix = detail display component.
@@ -52,11 +53,13 @@ export const General = ({ className, task }: GeneralProps) => {
             {task.workHistory.map((entry, i) => (
               <li key={i} className="flex items-start gap-3 text-sm">
                 <span
-                  className={clsx("badge badge-xs mt-0.5 shrink-0", {
-                    "badge-ghost": entry.action === "created",
-                    "badge-primary": entry.action === "started",
-                    "badge-success": entry.action === "completed",
-                  })}
+                  className={clsx(
+                    badgeVariants({
+                      variant:
+                        entry.action === "started" ? "primary" : entry.action === "completed" ? "success" : "default",
+                    }),
+                    "mt-0.5 shrink-0",
+                  )}
                 >
                   {l(\`workHistoryAction.\${entry.action}\`)}
                 </span>

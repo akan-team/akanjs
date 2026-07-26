@@ -44,7 +44,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="command" title={l.trans({ en: "Command", ko: "명령어" })}>
         <Docs.Title>{l.trans({ en: "Command", ko: "명령어" })}</Docs.Title>
@@ -64,7 +64,7 @@ export default function Page() {
 apps/myapp/script/hello.ts`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="lifecycle" title={l.trans({ en: "Server Lifecycle", ko: "Server lifecycle" })}>
         <Docs.Title>{l.trans({ en: "Server Lifecycle", ko: "Server lifecycle" })}</Docs.Title>
@@ -93,7 +93,7 @@ const run = async () => {
 void run();`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="service" title={l.trans({ en: "Use Services", ko: "Service 사용" })}>
         <Docs.Title>{l.trans({ en: "Use Services", ko: "Service 사용" })}</Docs.Title>
@@ -129,7 +129,7 @@ const run = async () => {
 void run();`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="lookup" title={l.trans({ en: "Lookup Helpers", ko: "Lookup helper" })}>
         <Docs.Title>{l.trans({ en: "Lookup Helpers", ko: "Lookup helper" })}</Docs.Title>
@@ -162,7 +162,7 @@ void run();`}
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

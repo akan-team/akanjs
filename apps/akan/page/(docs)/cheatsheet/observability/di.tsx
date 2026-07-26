@@ -44,7 +44,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="use" title={l.trans({ en: "Register With use", ko: "use로 등록하기" })}>
         <Docs.Title>{l.trans({ en: "Register With use", ko: "use로 등록하기" })}</Docs.Title>
@@ -77,7 +77,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="adaptor" title={l.trans({ en: "Adapt And Plug", ko: "adapt와 plug" })}>
         <Docs.Title>{l.trans({ en: "Adapt And Plug", ko: "adapt와 plug" })}</Docs.Title>
@@ -111,7 +111,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="service" title={l.trans({ en: "Inject Services", ko: "Service 주입" })}>
         <Docs.Title>{l.trans({ en: "Inject Services", ko: "Service 주입" })}</Docs.Title>
@@ -137,7 +137,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="env" title={l.trans({ en: "Read Environment", ko: "환경값 읽기" })}>
         <Docs.Title>{l.trans({ en: "Read Environment", ko: "환경값 읽기" })}</Docs.Title>
@@ -162,7 +162,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

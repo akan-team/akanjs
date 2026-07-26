@@ -11,7 +11,7 @@ export default function Page() {
           maintainability and proper theming across applications.
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="core-principles" title={"Core Principles"}>
         <Docs.Title>{"Core Principles"}</Docs.Title>
@@ -47,7 +47,7 @@ export default function Page() {
           ]}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="class-management-clsx" title={"Class Management (clsx)"}>
         <Docs.Title>{"Class Management (clsx)"}</Docs.Title>
@@ -79,7 +79,7 @@ export default function Page() {
 </div>`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="component-best-practices" title={"Component Best Practices"}>
         <Docs.Title>{"Component Best Practices"}</Docs.Title>
@@ -157,24 +157,30 @@ export const Card = ({ className }: CardProps) => (
 </div>`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="additional-resources" title={"Additional Resources"}>
         <Docs.Title>{"Additional Resources"}</Docs.Title>
         <Docs.Description>
           <ul className="list-disc space-y-2 pl-6">
             <li>
-              <a href="https://tailwindcss.com/docs" className="link link-primary">
+              <a
+                href="https://tailwindcss.com/docs"
+                className="text-primary underline underline-offset-4 hover:no-underline"
+              >
                 TailwindCSS Documentation
               </a>
             </li>
             <li>
-              <a href="https://daisyui.com/" className="link link-primary">
+              <a href="https://daisyui.com/" className="text-primary underline underline-offset-4 hover:no-underline">
                 DaisyUI Documentation
               </a>
             </li>
             <li>
-              <a href="https://nerdcave.com/tailwind-cheat-sheet" className="link link-primary">
+              <a
+                href="https://nerdcave.com/tailwind-cheat-sheet"
+                className="text-primary underline underline-offset-4 hover:no-underline"
+              >
                 Tailwind CSS Cheat Sheet
               </a>
             </li>
@@ -182,7 +188,7 @@ export const Card = ({ className }: CardProps) => (
         </Docs.Description>
       </Scroll.Slide>
 
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>
   );

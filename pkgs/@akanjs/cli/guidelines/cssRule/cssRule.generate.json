@@ -1,6 +1,6 @@
 {
   "title": "CSS Rule",
-  "description": "Tailwind and DaisyUI styling rules",
+  "description": "Tailwind and akanjs/ui (semantic token) styling rules",
   "group": "core",
   "docsSource": "apps/akan/page/(docs)/docs/arch/css.tsx",
   "codegenPriority": 3,

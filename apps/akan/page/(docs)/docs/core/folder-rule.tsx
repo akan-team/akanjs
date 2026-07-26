@@ -67,7 +67,7 @@ export default function Page() {
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="workspace-rule" title={l.trans({ en: "Workspace Rule", ko: "워크스페이스 규칙" })}>
         <Docs.Title>{l.trans({ en: "Workspace Rule", ko: "워크스페이스 규칙" })}</Docs.Title>
         <Docs.Description>
@@ -130,7 +130,7 @@ export default function Page() {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide
         id="app-lib-folder-rule"
         title={l.trans({ en: "App/Library Folder Rule", ko: "앱/라이브러리 폴더 규칙" })}
@@ -339,7 +339,7 @@ export default function Page() {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="module-folder-rule" title={l.trans({ en: "Module Folder Rule", ko: "모듈 폴더 규칙" })}>
         <Docs.Title>{l.trans({ en: "Module Folder Rule", ko: "모듈 폴더 규칙" })}</Docs.Title>
         <Docs.Description>
@@ -409,7 +409,7 @@ export default function Page() {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="growth-path" title={l.trans({ en: "Growth Path", ko: "성장에 따른 이동" })}>
         <Docs.Title>{l.trans({ en: "Growth Path", ko: "성장에 따른 이동" })}</Docs.Title>
         <Docs.Description>
@@ -464,7 +464,7 @@ pkgs/order-sdk/
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>
   );

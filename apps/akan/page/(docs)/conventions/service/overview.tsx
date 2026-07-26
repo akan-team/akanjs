@@ -106,7 +106,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="when-to-use" title={l.trans({ en: "When To Use It", ko: "언제 사용하나" })}>
         <Docs.Title>{l.trans({ en: "When To Use It", ko: "언제 사용하나" })}</Docs.Title>
@@ -129,7 +129,7 @@ export default function Page() {
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="file-map" title={l.trans({ en: "Service File Map", ko: "Service file map" })}>
         <Docs.Title>{l.trans({ en: "Service File Map", ko: "Service file map" })}</Docs.Title>
@@ -150,7 +150,7 @@ export default function Page() {
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="folder-shape" title={l.trans({ en: "Folder Shape", ko: "Folder shape" })}>
         <Docs.Title>{l.trans({ en: "Folder Shape", ko: "Folder shape" })}</Docs.Title>

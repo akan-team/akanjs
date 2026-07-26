@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="helper" title={l.trans({ en: "Spec Helper", ko: "Spec helper" })}>
         <Docs.Title>{l.trans({ en: "Spec Helper", ko: "Spec helper" })}</Docs.Title>
@@ -64,7 +64,7 @@ export const createArticle = async (agent, title = "Hello") => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="test-file" title={l.trans({ en: "Test File", ko: "Test file" })}>
         <Docs.Title>{l.trans({ en: "Test File", ko: "Test file" })}</Docs.Title>
@@ -98,7 +98,7 @@ describe("article signal", () => {
 });`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="targets" title={l.trans({ en: "What To Test", ko: "무엇을 테스트할까" })}>
         <Docs.Title>{l.trans({ en: "What To Test", ko: "무엇을 테스트할까" })}</Docs.Title>
@@ -137,7 +137,7 @@ describe("article signal", () => {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="command" title={l.trans({ en: "Command", ko: "명령어" })}>
         <Docs.Title>{l.trans({ en: "Command", ko: "명령어" })}</Docs.Title>
@@ -155,7 +155,7 @@ describe("article signal", () => {
 akan test myapp --write false`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

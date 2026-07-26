@@ -105,7 +105,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="styles" title={l.trans({ en: "Two Write Styles", ko: "두 가지 작성법" })}>
         <Docs.Title>{l.trans({ en: "Two Write Styles", ko: "두 가지 작성법" })}</Docs.Title>
@@ -137,7 +137,7 @@ export default function Page() {
           </div>
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="counters" title={l.trans({ en: "Counters And Sets", ko: "카운터와 집합" })}>
         <Docs.Title>{l.trans({ en: "Counters And Sets", ko: "카운터와 집합" })}</Docs.Title>
@@ -167,7 +167,7 @@ await this.Post.updateOne({ id }, ({ pull }) => ({ tags: pull("featured") }));`}
           </div>
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="upsert" title={l.trans({ en: "Upsert", ko: "Upsert" })}>
         <Docs.Title>{l.trans({ en: "Upsert", ko: "Upsert" })}</Docs.Title>
@@ -188,7 +188,7 @@ await this.Post.updateOne({ id }, ({ pull }) => ({ tags: pull("featured") }));`}
 );`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="sql" title={l.trans({ en: "How It Becomes SQL", ko: "SQL로 바뀌는 방식" })}>
         <Docs.Title>{l.trans({ en: "How It Becomes SQL", ko: "SQL로 바뀌는 방식" })}</Docs.Title>
@@ -263,7 +263,7 @@ await this.Post.updateOne({ id }, ({ pull }) => ({ tags: pull("featured") }));`}
           </div>
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

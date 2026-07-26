@@ -60,7 +60,7 @@ export default function Page() {
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="route-config" title={l.trans({ en: "Route Config", ko: "라우트 설정" })}>
         <Docs.Title>{l.trans({ en: "Route Config", ko: "라우트 설정" })}</Docs.Title>
@@ -104,7 +104,7 @@ export default function Page() {
           </div>
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="when-to-use" title={l.trans({ en: "When To Use", ko: "언제 나눌까" })}>
         <Docs.Title>{l.trans({ en: "When To Use", ko: "언제 나눌까" })}</Docs.Title>
@@ -179,7 +179,7 @@ export default function Page() {
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="page-structure" title={l.trans({ en: "Page Structure", ko: "페이지 구조" })}>
         <Docs.Title>{l.trans({ en: "Page Structure", ko: "페이지 구조" })}</Docs.Title>
@@ -221,7 +221,7 @@ export default function Page() {
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="local-production" title={l.trans({ en: "Local And Production", ko: "로컬과 배포" })}>
         <Docs.Title>{l.trans({ en: "Local And Production", ko: "로컬과 배포" })}</Docs.Title>
@@ -252,7 +252,7 @@ https://partner-main.example.com -> partner`}
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="csr-mobile" title={l.trans({ en: "CSR And Mobile Builds", ko: "CSR와 모바일 빌드" })}>
         <Docs.Title>{l.trans({ en: "CSR And Mobile Builds", ko: "CSR와 모바일 빌드" })}</Docs.Title>

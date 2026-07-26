@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="declare-errors" title={l.trans({ en: "Declare Errors", ko: "에러 선언하기" })}>
         <Docs.Title>{l.trans({ en: "Declare Errors", ko: "에러 선언하기" })}</Docs.Title>
@@ -64,7 +64,7 @@ export default function Page() {
   });`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="throw-err" title={l.trans({ en: "Throw Err", ko: "Err 던지기" })}>
         <Docs.Title>{l.trans({ en: "Throw Err", ko: "Err 던지기" })}</Docs.Title>
@@ -89,7 +89,7 @@ export class Order extends by(cnst.Order) {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="choose-status" title={l.trans({ en: "Choose Status", ko: "상태 코드 고르기" })}>
         <Docs.Title>{l.trans({ en: "Choose Status", ko: "상태 코드 고르기" })}</Docs.Title>
@@ -134,7 +134,7 @@ export class Order extends by(cnst.Order) {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="use-data" title={l.trans({ en: "Use Data", ko: "Data 사용하기" })}>
         <Docs.Title>{l.trans({ en: "Use Data", ko: "Data 사용하기" })}</Docs.Title>
@@ -161,7 +161,7 @@ export class Order extends by(cnst.Order) {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="client-handling" title={l.trans({ en: "Client Handling", ko: "클라이언트 처리" })}>
         <Docs.Title>{l.trans({ en: "Client Handling", ko: "클라이언트 처리" })}</Docs.Title>
@@ -195,7 +195,7 @@ export const AddOrderItem = ({ orderId, productId }: Props) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="response-shape" title={l.trans({ en: "Response Shape", ko: "응답 형태" })}>
         <Docs.Title>{l.trans({ en: "Response Shape", ko: "응답 형태" })}</Docs.Title>
@@ -221,7 +221,7 @@ export const AddOrderItem = ({ orderId, productId }: Props) => {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

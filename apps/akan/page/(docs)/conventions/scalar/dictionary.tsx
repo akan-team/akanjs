@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="basic-pattern" title={l.trans({ en: "Basic Pattern", ko: "기본 패턴" })}>
         <Docs.Title>{l.trans({ en: "Basic Pattern", ko: "기본 패턴" })}</Docs.Title>
@@ -50,7 +50,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
   }));`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="builder-order" title={l.trans({ en: "Builder Order", ko: "Builder 순서" })}>
         <Docs.Title>{l.trans({ en: "Builder Order", ko: "Builder 순서" })}</Docs.Title>
@@ -87,7 +87,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
           </ol>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="language-order" title={l.trans({ en: "Language Order", ko: "언어 순서" })}>
         <Docs.Title>{l.trans({ en: "Language Order", ko: "언어 순서" })}</Docs.Title>
@@ -105,7 +105,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
   .of((t) => t(["Price", "가격"]).desc(["Price value", "가격 값"]));`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="enum-matching" title={l.trans({ en: "Enum Name Matching", ko: "Enum 이름 맞추기" })}>
         <Docs.Title>{l.trans({ en: "Enum Name Matching", ko: "Enum 이름 맞추기" })}</Docs.Title>
@@ -130,7 +130,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
   }));`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="custom-text" title={l.trans({ en: "Small Custom Text", ko: "작은 custom text" })}>
         <Docs.Title>{l.trans({ en: "Small Custom Text", ko: "작은 custom text" })}</Docs.Title>
@@ -165,7 +165,7 @@ export const PriceLabel = () => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

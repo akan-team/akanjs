@@ -209,7 +209,7 @@ export default function Page() {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider"></div>
+      <div className="my-4 h-px w-full bg-border"></div>
       <Scroll.Slide
         id="make-dev-a-businessman"
         title={l.trans({ en: "Make Developer a Businessman", ko: "개발자를 비즈니스맨으로" })}
@@ -482,7 +482,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider"></div>
+      <div className="my-4 h-px w-full bg-border"></div>
       <Scroll.Slide id="collab-devs-cohesive" title={l.trans({ en: "Collab cohesively", ko: "동료들과 한몸처럼" })}>
         <Docs.Title>{l.trans({ en: "Collab cohesively", ko: "동료들과 한몸처럼" })}</Docs.Title>
         <Docs.Description>
@@ -581,7 +581,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider"></div>
+      <div className="my-4 h-px w-full bg-border"></div>
       <Scroll.Slide id="who-should-use" title={l.trans({ en: "Who should use?", ko: "누구에게 적합한가요?" })}>
         <Docs.Title>{l.trans({ en: "Who should use?", ko: "누구에게 적합한가요?" })}</Docs.Title>
         <Docs.Description>

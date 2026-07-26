@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="string-store" title={l.trans({ en: "String Store Ref", ko: "String store ref" })}>
         <Docs.Title>{l.trans({ en: "String Store Ref", ko: "String store ref" })}</Docs.Title>
@@ -45,7 +45,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="fetch-actions" title={l.trans({ en: "Fetch Actions", ko: "Fetch action" })}>
         <Docs.Title>{l.trans({ en: "Fetch Actions", ko: "Fetch action" })}</Docs.Title>
@@ -68,7 +68,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="pagination-state" title={l.trans({ en: "Feature State", ko: "Feature state" })}>
         <Docs.Title>{l.trans({ en: "Feature State", ko: "Feature state" })}</Docs.Title>
@@ -91,7 +91,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

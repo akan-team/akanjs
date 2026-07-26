@@ -36,12 +36,12 @@ export default function PrintableSchemaDocsPage() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="schema-doc" title={l.trans({ en: "Generated Schema", ko: "생성된 스키마" })}>
         <ConstantDocsDemo />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="print-schema-doc" title={l.trans({ en: "Printable Definition", ko: "출력용 정의서" })}>
         <Docs.Title>{l.trans({ en: "Printable Definition", ko: "출력용 정의서" })}</Docs.Title>

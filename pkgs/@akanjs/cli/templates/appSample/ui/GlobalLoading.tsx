@@ -20,7 +20,7 @@ interface GlobalLoadingProps {
 export const GlobalLoading = ({ className, message = "Loading..." }: GlobalLoadingProps) => {
   return (
     <div className={clsx("flex flex-col items-center justify-center gap-4 py-32", className)}>
-      <span className="loading loading-spinner loading-lg text-primary" />
+      <span className="inline-block size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       <span className="text-foreground/60 text-sm">{message}</span>
     </div>
   );

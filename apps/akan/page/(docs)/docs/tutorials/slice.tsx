@@ -20,7 +20,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="dashboard-slice" title={l.trans({ en: "Dashboard Slice", ko: "대시보드 슬라이스" })}>
         <Docs.Title>{l.trans({ en: "Dashboard Slice", ko: "대시보드 슬라이스" })}</Docs.Title>
@@ -176,7 +176,7 @@ export const dictionary = modelDictionary(["en", "ko"])
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="connect-to-zone" title={l.trans({ en: "Connect to Zone", ko: "존과 연결하기" })}>
         <Docs.Title>{l.trans({ en: "Connect to Zone", ko: "존과 연결하기" })}</Docs.Title>
@@ -357,7 +357,7 @@ export const dictionary = modelDictionary(["en", "ko"])
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="zone-with-slice" title={l.trans({ en: "Zone with Slice", ko: "슬라이스를 사용한 Zone" })}>
         <Docs.Title>{l.trans({ en: "Zone with Slice", ko: "슬라이스를 사용한 Zone" })}</Docs.Title>
@@ -553,7 +553,7 @@ export const View = ({ view }: ViewProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="slice-component-rules"
@@ -675,7 +675,7 @@ export const View = ({ view }: ViewProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

@@ -78,7 +78,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="translation-methods"
@@ -111,7 +111,7 @@ export default function Page() {
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="translation-format"
@@ -194,7 +194,7 @@ t(["English Label", "한국어 레이블"]).desc(["English description", "한국
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="complete-example"
@@ -229,7 +229,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="enum-matching"
@@ -295,7 +295,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="type-imports"
@@ -370,7 +370,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="common-mistakes"
@@ -452,7 +452,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="best-practices"
@@ -528,7 +528,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="checklist"
@@ -589,7 +589,11 @@ export const dictionary = scalarDictionary(["en", "ko"])
                 }),
               ].map((item, index) => (
                 <li key={index} className="flex items-start">
-                  <input type="checkbox" className="checkbox checkbox-primary mt-1 mr-2" readOnly />
+                  <input
+                    type="checkbox"
+                    className="mt-1 mr-2 size-4 rounded border border-input accent-primary"
+                    readOnly
+                  />
                   <span>{item}</span>
                 </li>
               ))}
@@ -625,7 +629,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

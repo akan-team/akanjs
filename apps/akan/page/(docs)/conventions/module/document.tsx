@@ -23,7 +23,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="standard-document-shape"
@@ -94,7 +94,7 @@ export class Ticket extends by(cnst.Ticket) {
 export class TicketModel extends into(Ticket, TicketFilter, cnst.ticket, () => ({})) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="query-sort-methods"
@@ -195,7 +195,7 @@ const exists = await this.existsInProject(projectId);
 const ticketInsight = await this.insightInProject(projectId);`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="document-by"
@@ -231,7 +231,7 @@ const ticketInsight = await this.insightInProject(projectId);`}
 await ticket.open().assign(userId).save();`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="model-into" title={l.trans({ en: "Model-Level Helpers", ko: "Model-level helper" })}>
         <Docs.Title>{l.trans({ en: "Model-Level Helpers", ko: "Model-level helper" })}</Docs.Title>
@@ -252,7 +252,7 @@ await ticket.open().assign(userId).save();`}
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="generated-extension"
@@ -280,7 +280,7 @@ export class User extends by(cnst.User, ...user.docs) {
 export class UserModel extends into(User, UserFilter, cnst.user, () => ({}), ...user.models) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="loaders-lookups"
@@ -319,7 +319,7 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({}), ...
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="schema-hooks" title={l.trans({ en: "Schema Hooks And Indexes", ko: "Schema hook과 index" })}>
         <Docs.Title>{l.trans({ en: "Schema Hooks And Indexes", ko: "Schema hook과 index" })}</Docs.Title>
@@ -351,7 +351,7 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({}), ...
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -390,7 +390,7 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({}), ...
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

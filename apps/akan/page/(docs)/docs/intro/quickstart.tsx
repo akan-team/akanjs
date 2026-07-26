@@ -35,7 +35,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="requirements" title={l.trans({ en: "Requirements", ko: "요구사항" })}>
         <Docs.Title>{l.trans({ en: "Requirements", ko: "요구사항" })}</Docs.Title>
@@ -48,15 +48,25 @@ export default function Page() {
           </div>
           <div className="flex flex-col gap-1 p-4 font-medium">
             <div>
-              <input className="checkbox" type="checkbox" checked readOnly />{" "}
+              <input className="size-4 rounded border border-input accent-primary" type="checkbox" checked readOnly />{" "}
               {l.trans({ en: "Bun 1.3.13 or higher", ko: "Bun 1.3.13 이상" })}
             </div>
             <div>
-              <input className="checkbox" type="checkbox" checked={false} readOnly />{" "}
+              <input
+                className="size-4 rounded border border-input accent-primary"
+                type="checkbox"
+                checked={false}
+                readOnly
+              />{" "}
               {l.trans({ en: "Docker for local database services", ko: "로컬 데이터 서비스 실행을 위한 Docker" })}
             </div>
             <div>
-              <input className="checkbox" type="checkbox" checked={false} readOnly />{" "}
+              <input
+                className="size-4 rounded border border-input accent-primary"
+                type="checkbox"
+                checked={false}
+                readOnly
+              />{" "}
               {l.trans({
                 en: "Android Studio or Xcode for native app builds",
                 ko: "네이티브 앱 빌드를 위한 Android Studio 또는 Xcode",
@@ -65,7 +75,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="create-workspace" title={l.trans({ en: "Create a Workspace", ko: "워크스페이스 생성" })}>
         <Docs.Title>{l.trans({ en: "Create a Workspace", ko: "워크스페이스 생성" })}</Docs.Title>
@@ -101,7 +111,7 @@ akan create-workspace myorg --app myapp
 cd myorg`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="run-app" title={l.trans({ en: "Run the App", ko: "앱 실행" })}>
         <Docs.Title>{l.trans({ en: "Run the App", ko: "앱 실행" })}</Docs.Title>
@@ -178,7 +188,9 @@ export default function Page() {
         <div className="w-full justify-center gap-4 sm:flex">
           <div className="mockup-browser w-full border-2 border-foreground/30 bg-background">
             <div className="mockup-browser-toolbar">
-              <div className="input">http://localhost:8282</div>
+              <div className="h-10 w-full rounded-field border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none">
+                http://localhost:8282
+              </div>
             </div>
             <div className="flex h-80 place-content-center items-center justify-center text-2xl">Hello Akan.js! 🎉</div>
           </div>
@@ -243,7 +255,7 @@ void run();
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="build" title={l.trans({ en: "Build", ko: "빌드" })}>
         <Docs.Title>{l.trans({ en: "Build", ko: "빌드" })}</Docs.Title>

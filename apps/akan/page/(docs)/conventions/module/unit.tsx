@@ -90,7 +90,7 @@ export default function UnitDocsPage() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="modelprops-light"
@@ -120,7 +120,7 @@ export const Card = ({ article, className, href }: ModelProps<"article", cnst.Li
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="unit-variants" title={l.trans({ en: "Unit Variants", ko: "Unit variant" })}>
         <Docs.Title>{l.trans({ en: "Unit Variants", ko: "Unit variant" })}</Docs.Title>
@@ -159,7 +159,7 @@ export const Mini = ({ article, className, href }: MiniProps) => (
 );`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="actions-inside-units" title={l.trans({ en: "Actions Inside Units", ko: "Unit 안의 action" })}>
         <Docs.Title>{l.trans({ en: "Actions Inside Units", ko: "Unit 안의 action" })}</Docs.Title>
@@ -181,7 +181,7 @@ export const Mini = ({ article, className, href }: MiniProps) => (
 </Layout.Unit>`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="loadunits-direct-rendering"
@@ -261,7 +261,7 @@ export const Mini = ({ article, className, href }: MiniProps) => (
 </div>`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -300,7 +300,7 @@ export const Mini = ({ article, className, href }: MiniProps) => (
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

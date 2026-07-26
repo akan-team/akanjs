@@ -257,7 +257,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="service-shapes" title={l.trans({ en: "Service Shapes", ko: "Service 형태" })}>
         <Docs.Title>{l.trans({ en: "Service Shapes", ko: "Service 형태" })}</Docs.Title>
@@ -311,7 +311,7 @@ export default function Page() {
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="serve-runtime" title={l.trans({ en: "What serve() Gives You", ko: "serve()가 제공하는 것" })}>
         <Docs.Title>{l.trans({ en: "What serve() Gives You", ko: "serve()가 제공하는 것" })}</Docs.Title>
@@ -372,7 +372,7 @@ serve("myapp" as const, { serverMode: "batch" }, ({ service }) => ({
 serve(db.user, ({ use }) => ({ githubApp: use<GithubApp>() }), ...user.services);`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="generated-methods" title={l.trans({ en: "Generated Methods", ko: "Generated Method" })}>
         <Docs.Title>{l.trans({ en: "Generated Methods", ko: "Generated Method" })}</Docs.Title>
@@ -438,7 +438,7 @@ serve(db.user, ({ use }) => ({ githubApp: use<GithubApp>() }), ...user.services)
         </Docs.Description>
         <Docs.IntroTable type="method" items={queryMethods} />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="service-extension" title={l.trans({ en: "Service Extension", ko: "Service 확장" })}>
         <Docs.Title>{l.trans({ en: "Service Extension", ko: "Service 확장" })}</Docs.Title>
@@ -471,7 +471,7 @@ export class UserService extends serve(
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="injection-overview" title={l.trans({ en: "Injection Builder", ko: "Injection Builder" })}>
         <Docs.Title>{l.trans({ en: "Injection Builder", ko: "Injection Builder" })}</Docs.Title>
@@ -495,7 +495,7 @@ export class UserService extends serve(
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="injection-types" title={l.trans({ en: "Injection Types", ko: "Injection 타입" })}>
         <Docs.Title>{l.trans({ en: "Injection Types", ko: "Injection 타입" })}</Docs.Title>
@@ -651,7 +651,7 @@ export class UserService extends serve(
           </div>
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="business-flow" title={l.trans({ en: "Business Logic Flow", ko: "비즈니스 로직 흐름" })}>
         <Docs.Title>{l.trans({ en: "Business Logic Flow", ko: "비즈니스 로직 흐름" })}</Docs.Title>
@@ -687,7 +687,7 @@ async archiveDbBackup(dbBackupId: string) {
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="lifecycle-hooks" title={l.trans({ en: "Lifecycle Hooks", ko: "Lifecycle Hook" })}>
         <Docs.Title>{l.trans({ en: "Lifecycle Hooks", ko: "Lifecycle Hook" })}</Docs.Title>
@@ -728,7 +728,7 @@ async onDestroy() {
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -767,7 +767,7 @@ async onDestroy() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

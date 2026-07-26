@@ -18,7 +18,7 @@ export default function UnitDocsPage() {
         </Docs.Description>
       </Scroll.Slide>
 
-      <div className="divider"></div>
+      <div className="my-4 h-px w-full bg-border"></div>
 
       <Scroll.Slide id="location" title={l.trans({ en: "File Location", ko: "파일 위치" })}>
         <Docs.SubTitle>
@@ -48,7 +48,7 @@ apps/my-app/lib/project/Project.Unit.tsx
         />
       </Scroll.Slide>
 
-      <div className="divider"></div>
+      <div className="my-4 h-px w-full bg-border"></div>
 
       <Scroll.Slide id="interface" title={l.trans({ en: "Interface", ko: "인터페이스" })}>
         <Docs.SubTitle>
@@ -79,7 +79,7 @@ export const Card = ({ className, project, href }: ModelProps<"project", cnst.Li
         />
       </Scroll.Slide>
 
-      <div className="divider"></div>
+      <div className="my-4 h-px w-full bg-border"></div>
 
       <Scroll.Slide id="basic-usage" title={l.trans({ en: "Basic Usage", ko: "기본 사용법" })}>
         <Docs.SubTitle>
@@ -134,7 +134,7 @@ export const Card = ({ className, user, href }: ModelProps<"user", cnst.LightUse
         />
       </Scroll.Slide>
 
-      <div className="divider"></div>
+      <div className="my-4 h-px w-full bg-border"></div>
 
       <Scroll.Slide id="advanced" title={l.trans({ en: "Advanced Usage", ko: "고급 사용법" })}>
         <Docs.SubTitle>
@@ -182,7 +182,7 @@ export const Card = ({ project }: ModelProps<"project", cnst.LightProject>) => {
         />
       </Scroll.Slide>
 
-      <div className="divider"></div>
+      <div className="my-4 h-px w-full bg-border"></div>
 
       <Scroll.Slide
         id="load-units"
@@ -333,7 +333,7 @@ export const Card = ({ init }: CardProps) => {
         />
       </Scroll.Slide>
 
-      <div className="divider"></div>
+      <div className="my-4 h-px w-full bg-border"></div>
 
       <Scroll.Slide
         id="examples"
@@ -415,9 +415,9 @@ export const Card = ({ className, init, prefix = "" }: CardProps) => {
           code={`
 // apps/my-app/app/.../story/page.tsx
 {storyList.map((story, index) => (
-  <div key={index} className="card bg-background shadow-sm">
-    <div className="card-body">
-      <h3 className="card-title">Stories</h3>
+  <div key={index} className="rounded-box bg-card shadow-sm">
+    <div className="p-6">
+      <h3 className="font-bold text-lg">Stories</h3>
 
       {/* Rendering a list of Units */}
       <div className="flex flex-col gap-2">
@@ -436,7 +436,7 @@ export const Card = ({ className, init, prefix = "" }: CardProps) => {
         />
       </Scroll.Slide>
 
-      <div className="divider"></div>
+      <div className="my-4 h-px w-full bg-border"></div>
 
       <Scroll.Slide id="best-practices" title={l.trans({ en: "Best Practices", ko: "모범 사례" })}>
         <Docs.SubTitle>

@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="zone" title={l.trans({ en: "Render A Zone", ko: "Zone 렌더링" })}>
         <Docs.Title>{l.trans({ en: "Render A Zone", ko: "Zone 렌더링" })}</Docs.Title>
@@ -61,7 +61,7 @@ export default function ApiDocsPage() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="try-api" title={l.trans({ en: "Try An Endpoint", ko: "Endpoint 실습" })}>
         <Docs.Title>{l.trans({ en: "Try An Endpoint", ko: "Endpoint 실습" })}</Docs.Title>
@@ -75,7 +75,7 @@ export default function ApiDocsPage() {
         </Docs.Description>
         <PingTester />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="auth" title={l.trans({ en: "Auth And Roles", ko: "Auth와 role" })}>
         <Docs.Title>{l.trans({ en: "Auth And Roles", ko: "Auth와 role" })}</Docs.Title>
@@ -108,7 +108,7 @@ export default function ApiDocsPage() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

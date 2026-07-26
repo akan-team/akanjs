@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="endpoint-query" title={l.trans({ en: "Endpoint Queries", ko: "Endpoint query" })}>
         <Docs.Title>{l.trans({ en: "Endpoint Queries", ko: "Endpoint query" })}</Docs.Title>
@@ -48,7 +48,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="endpoint-mutation" title={l.trans({ en: "Endpoint Mutations", ko: "Endpoint mutation" })}>
         <Docs.Title>{l.trans({ en: "Endpoint Mutations", ko: "Endpoint mutation" })}</Docs.Title>
@@ -71,7 +71,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="internal-and-cron" title={l.trans({ en: "Internal And Cron", ko: "Internal과 cron" })}>
         <Docs.Title>{l.trans({ en: "Internal And Cron", ko: "Internal과 cron" })}</Docs.Title>
@@ -92,7 +92,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="custom-routes" title={l.trans({ en: "Custom Routes", ko: "Custom route" })}>
         <Docs.Title>{l.trans({ en: "Custom Routes", ko: "Custom route" })}</Docs.Title>

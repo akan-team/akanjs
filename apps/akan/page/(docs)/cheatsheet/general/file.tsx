@@ -44,7 +44,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="minimal-model" title={l.trans({ en: "Minimal File Model", ko: "최소 File 모델" })}>
         <Docs.Title>{l.trans({ en: "Minimal File Model", ko: "최소 File 모델" })}</Docs.Title>
@@ -79,7 +79,7 @@ export class LightFile extends via(FileObject, ["filename", "url", "size", "stat
 export class File extends via(FileObject, LightFile, (resolve) => ({})) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="upload-endpoint" title={l.trans({ en: "Upload Endpoint", ko: "Upload Endpoint" })}>
         <Docs.Title>{l.trans({ en: "Upload Endpoint", ko: "Upload Endpoint" })}</Docs.Title>
@@ -106,7 +106,7 @@ export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="file-service" title={l.trans({ en: "File Service", ko: "File Service" })}>
         <Docs.Title>{l.trans({ en: "File Service", ko: "File Service" })}</Docs.Title>
@@ -173,7 +173,7 @@ export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="use-in-ui" title={l.trans({ en: "Use In UI", ko: "UI에서 사용하기" })}>
         <Docs.Title>{l.trans({ en: "Use In UI", ko: "UI에서 사용하기" })}</Docs.Title>
@@ -208,7 +208,7 @@ return (
 );`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="auto-field" title={l.trans({ en: "Auto-attach To A Model Field", ko: "모델 필드 자동 연결" })}>
         <Docs.Title>{l.trans({ en: "Auto-attach To A Model Field", ko: "모델 필드 자동 연결" })}</Docs.Title>
@@ -249,7 +249,7 @@ return (
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="grow-later" title={l.trans({ en: "Grow Later", ko: "나중에 확장하기" })}>
         <Docs.Title>{l.trans({ en: "Grow Later", ko: "나중에 확장하기" })}</Docs.Title>
@@ -282,7 +282,7 @@ return (
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

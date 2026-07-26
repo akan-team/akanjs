@@ -40,7 +40,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="recommended-shape" title={l.trans({ en: "Recommended Shape", ko: "권장 구조" })}>
         <Docs.Title>{l.trans({ en: "Recommended Shape", ko: "권장 구조" })}</Docs.Title>
@@ -78,7 +78,7 @@ export const AutoClose = ({ timeout = 0 }: AutoCloseProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="barrel-optimization"
@@ -115,7 +115,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="composite-components" title={l.trans({ en: "Composite Components", ko: "Composite 컴포넌트" })}>
         <Docs.Title>{l.trans({ en: "Composite Components", ko: "Composite 컴포넌트" })}</Docs.Title>
@@ -173,7 +173,7 @@ export default function Page() {
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -204,7 +204,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

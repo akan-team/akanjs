@@ -65,7 +65,7 @@ export default function Page() {
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="choose-option"
@@ -119,7 +119,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="traffic-flow" title={l.trans({ en: "How Traffic Moves", ko: "트래픽 흐름" })}>
         <Docs.Title>{l.trans({ en: "How Traffic Moves", ko: "트래픽 흐름" })}</Docs.Title>
@@ -227,7 +227,7 @@ export default function Page() {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="database-mode" title={l.trans({ en: "Database Mode", ko: "데이터베이스 모드" })}>
         <Docs.Title>{l.trans({ en: "Database Mode", ko: "데이터베이스 모드" })}</Docs.Title>
@@ -340,7 +340,7 @@ akan dbup --mode cluster`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="growth-stage" title={l.trans({ en: "Growth Stages", ko: "성장 단계" })}>
         <Docs.Title>{l.trans({ en: "Growth Stages", ko: "성장 단계" })}</Docs.Title>
@@ -516,7 +516,7 @@ akan dbup --mode cluster`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

@@ -71,7 +71,7 @@ export default function Page() {
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="workspace-commands" title={l.trans({ en: "Workspace Commands", ko: "워크스페이스 명령" })}>
         <Docs.Title>{l.trans({ en: "Workspace Commands", ko: "워크스페이스 명령" })}</Docs.Title>
@@ -93,7 +93,7 @@ akan lint <app/lib/pkg-name>
 akan lintAll`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

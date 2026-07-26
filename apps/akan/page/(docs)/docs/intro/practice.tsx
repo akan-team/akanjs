@@ -47,7 +47,7 @@ export default function Page() {
           <Code.Snippet className="w-full" title="Terminal" language="bash" code="akan start koyo" />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide
         id="create-module"
         title={l.trans({ en: "Create icecream order module", ko: "아이스크림 주문 모듈 만들기" })}
@@ -276,7 +276,7 @@ akan create-module icecreamOrder
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="define-constant" title={l.trans({ en: "Define Constant", ko: "Constant 정의하기" })}>
         <Docs.Title>{l.trans({ en: "Define Constant", ko: "Constant 정의하기" })}</Docs.Title>
         <Docs.Description>
@@ -346,7 +346,7 @@ export class IcecreamOrderInsight extends via(IcecreamOrder, (field) => ({})) {}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="fill-dictionary" title={l.trans({ en: "Fill dictionary", ko: "Dictionary 채우기" })}>
         <Docs.Title>{l.trans({ en: "Fill dictionary", ko: "Dictionary 채우기" })}</Docs.Title>
         <Docs.Description>
@@ -452,7 +452,7 @@ export const dictionary = modelDictionary(["en", "ko"])
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="make-template" title={l.trans({ en: "Make template file", ko: "Template 파일 만들기" })}>
         <Docs.Title>{l.trans({ en: "Make template file", ko: "Template 파일 만들기" })}</Docs.Title>
         <Docs.Description>
@@ -508,7 +508,7 @@ export const General = ({ className }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <div className="my-6 rounded-lg border border-base-300 bg-background p-4">
         <div className="text-foreground/80">
           {l.trans({
@@ -577,7 +577,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <div className="my-6 rounded-lg border border-base-300 bg-background p-4">
         <div className="text-foreground/80">
           {l.trans({

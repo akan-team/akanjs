@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="when-to-use" title={l.trans({ en: "When To Use Scalar", ko: "Scalar를 쓰는 경우" })}>
         <Docs.Title>{l.trans({ en: "When To Use Scalar", ko: "Scalar를 쓰는 경우" })}</Docs.Title>
@@ -61,7 +61,7 @@ export class ProductInput extends via((field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="file-map" title={l.trans({ en: "Scalar Files", ko: "Scalar 파일" })}>
         <Docs.Title>{l.trans({ en: "Scalar Files", ko: "Scalar 파일" })}</Docs.Title>
@@ -132,7 +132,7 @@ export class ProductInput extends via((field) => ({
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="small-example" title={l.trans({ en: "Small Example", ko: "작은 예시" })}>
         <Docs.Title>{l.trans({ en: "Small Example", ko: "작은 예시" })}</Docs.Title>
@@ -155,7 +155,7 @@ export class Price extends via((field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

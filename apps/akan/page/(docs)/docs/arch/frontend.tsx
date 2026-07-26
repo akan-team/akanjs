@@ -55,7 +55,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="server-side-rendering"
@@ -190,7 +190,7 @@ export default function Page() {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="rendering-boundary" title={l.trans({ en: "Rendering Boundary", ko: "렌더링 경계" })}>
         <Docs.Title>{l.trans({ en: "Rendering Boundary", ko: "렌더링 경계" })}</Docs.Title>
@@ -428,7 +428,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="page-composition" title={l.trans({ en: "Page Composition Pattern", ko: "페이지 구성 패턴" })}>
         <Docs.Title>{l.trans({ en: "Page Composition Pattern", ko: "페이지 구성 패턴" })}</Docs.Title>
@@ -674,7 +674,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="client-state-st" title={l.trans({ en: "Client State With st", ko: "st 클라이언트 상태관리" })}>
         <Docs.Title>{l.trans({ en: "Client State With st", ko: "st 클라이언트 상태관리" })}</Docs.Title>
@@ -786,7 +786,7 @@ export function StockEditor({ productId }: { productId: string }) {
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="server-calls-fetch" title={l.trans({ en: "Server Calls With fetch", ko: "fetch 서버 호출" })}>
         <Docs.Title>{l.trans({ en: "Server Calls With fetch", ko: "fetch 서버 호출" })}</Docs.Title>
@@ -861,7 +861,7 @@ export function StockEditor({ productId }: { productId: string }) {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="generated-client" title={l.trans({ en: "Generated Helpers Summary", ko: "생성된 헬퍼 요약" })}>
         <Docs.Title>{l.trans({ en: "Generated Helpers Summary", ko: "생성된 헬퍼 요약" })}</Docs.Title>
@@ -942,7 +942,7 @@ export function StockEditor({ productId }: { productId: string }) {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="i18n" title={l.trans({ en: "i18n", ko: "다국어" })}>
         <Docs.Title>{l.trans({ en: "i18n", ko: "다국어" })}</Docs.Title>
@@ -1022,7 +1022,7 @@ export function UserSigninButton() {
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="client-targets" title={l.trans({ en: "Client Targets", ko: "클라이언트 대상" })}>
         <Docs.Title>{l.trans({ en: "Client Targets", ko: "클라이언트 대상" })}</Docs.Title>
@@ -1111,7 +1111,7 @@ export function UserSigninButton() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

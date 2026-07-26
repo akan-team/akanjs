@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="basic-shape" title={l.trans({ en: "Basic Shape", ko: "기본 형태" })}>
         <Docs.Title>{l.trans({ en: "Basic Shape", ko: "기본 형태" })}</Docs.Title>
@@ -47,7 +47,7 @@ export class Price extends via((field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="defaults-optional"
@@ -85,7 +85,7 @@ export class Price extends via((field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="arrays" title={l.trans({ en: "Array Fields", ko: "Array field" })}>
         <Docs.Title>{l.trans({ en: "Array Fields", ko: "Array field" })}</Docs.Title>
@@ -107,7 +107,7 @@ export class ContactInfo extends via((field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="enum-fields" title={l.trans({ en: "Enum Fields", ko: "Enum field" })}>
         <Docs.Title>{l.trans({ en: "Enum Fields", ko: "Enum field" })}</Docs.Title>
@@ -132,7 +132,7 @@ export class Price extends via((field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="helper-methods" title={l.trans({ en: "Small Helpers", ko: "작은 helper" })}>
         <Docs.Title>{l.trans({ en: "Small Helpers", ko: "작은 helper" })}</Docs.Title>
@@ -156,7 +156,7 @@ export class Price extends via((field) => ({
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="external" title={l.trans({ en: "External Libraries", ko: "외부 라이브러리" })}>
         <Docs.Title>{l.trans({ en: "External Libraries", ko: "외부 라이브러리" })}</Docs.Title>
@@ -57,7 +57,7 @@ import { lazy } from "akanjs/webkit";
 
 const MapWidget = lazy(() => import("heavy-map-widget"), {
   ssr: false,
-  loading: () => <div className="skeleton h-64" />,
+  loading: () => <div className="h-64 animate-pulse rounded-box bg-muted" />,
 });
 
 interface ArticleMapProps {
@@ -68,7 +68,7 @@ export const ArticleMap = ({ center }: ArticleMapProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="internal" title={l.trans({ en: "Large Components", ko: "큰 component" })}>
         <Docs.Title>{l.trans({ en: "Large Components", ko: "큰 component" })}</Docs.Title>
@@ -97,7 +97,7 @@ export const EditPanel = ({ open }: EditPanelProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="ssr" title={l.trans({ en: "SSR Or Client Only", ko: "SSR 또는 client only" })}>
         <Docs.Title>{l.trans({ en: "SSR Or Client Only", ko: "SSR 또는 client only" })}</Docs.Title>
@@ -124,7 +124,7 @@ export const EditPanel = ({ open }: EditPanelProps) => {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

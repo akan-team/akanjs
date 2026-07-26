@@ -72,7 +72,7 @@ akan install-library shared`,
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       {commands.map((command) => (
         <CommandReferenceSlide key={command.name} command={command} />
       ))}

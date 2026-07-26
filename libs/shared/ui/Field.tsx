@@ -174,7 +174,7 @@ export const Postcode = ({
         {label ? <AkanField.Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
         <input
           value={address ?? ""}
-          className="input w-96"
+          className="h-10 w-96 rounded-field border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none"
           onClick={() => {
             setPostModalOpen(true);
           }}

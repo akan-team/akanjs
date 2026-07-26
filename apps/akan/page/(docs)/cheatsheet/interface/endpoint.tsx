@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="flow" title={l.trans({ en: "The Flow", ko: "흐름 이해하기" })}>
         <Docs.Title>{l.trans({ en: "The Flow", ko: "흐름 이해하기" })}</Docs.Title>
@@ -59,7 +59,7 @@ export default function Page() {
   -> postService.publishPost(postId)`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="endpoint" title={l.trans({ en: "Declare Endpoint", ko: "Endpoint 선언" })}>
         <Docs.Title>{l.trans({ en: "Declare Endpoint", ko: "Endpoint 선언" })}</Docs.Title>
@@ -82,7 +82,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="service" title={l.trans({ en: "Put Rules In Service", ko: "규칙은 service에 두기" })}>
         <Docs.Title>{l.trans({ en: "Put Rules In Service", ko: "규칙은 service에 두기" })}</Docs.Title>
@@ -105,7 +105,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="store" title={l.trans({ en: "Call It From Store", ko: "Store에서 호출하기" })}>
         <Docs.Title>{l.trans({ en: "Call It From Store", ko: "Store에서 호출하기" })}</Docs.Title>
@@ -128,7 +128,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="util" title={l.trans({ en: "Make One Util", ko: "Util 하나로 만들기" })}>
         <Docs.Title>{l.trans({ en: "Make One Util", ko: "Util 하나로 만들기" })}</Docs.Title>
@@ -158,7 +158,7 @@ export const Publish = ({ postId }: PublishProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

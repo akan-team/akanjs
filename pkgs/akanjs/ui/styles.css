@@ -77,8 +77,8 @@ body.akan-mobile-document {
   box-sizing: border-box;
   overflow-y: auto;
   overscroll-behavior: contain;
-  background: var(--color-base-100, Canvas);
-  color: var(--color-base-content, CanvasText);
+  background: var(--color-background, Canvas);
+  color: var(--color-foreground, CanvasText);
   transition: height 285ms ease-out;
 }
 

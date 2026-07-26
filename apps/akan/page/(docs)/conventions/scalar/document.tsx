@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="basic-wrapper" title={l.trans({ en: "Basic Wrapper", ko: "기본 wrapper" })}>
         <Docs.Title>{l.trans({ en: "Basic Wrapper", ko: "기본 wrapper" })}</Docs.Title>
@@ -45,7 +45,7 @@ import * as cnst from "./price.constant";
 export class Price extends by(cnst.Price) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="helper-example" title={l.trans({ en: "Small Helper Example", ko: "작은 helper 예시" })}>
         <Docs.Title>{l.trans({ en: "Small Helper Example", ko: "작은 helper 예시" })}</Docs.Title>
@@ -70,7 +70,7 @@ export class Price extends by(cnst.Price) {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="when-to-use" title={l.trans({ en: "When To Use It", ko: "사용하는 경우" })}>
         <Docs.Title>{l.trans({ en: "When To Use It", ko: "사용하는 경우" })}</Docs.Title>
@@ -103,7 +103,7 @@ export class Price extends by(cnst.Price) {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

@@ -6,6 +6,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { a
     content: `"use client";
 
 import { clsx } from "akanjs/client";
+import { buttonVariants } from "akanjs/ui";
 
 // ===== QuantityControl.tsx =====
 // Convention: ui/ folder — reusable visual components. PascalCase .tsx, "use client" directive.
@@ -30,7 +31,7 @@ export const QuantityControl = ({
   return (
     <div className={clsx("inline-flex items-center gap-1", className)}>
       <button
-        className="btn btn-circle btn-outline btn-xs"
+        className={clsx(buttonVariants({ variant: "outline", size: "icon" }), "size-6 rounded-full")}
         disabled={value <= min}
         onClick={() => onChange(Math.max(min, value - 1))}
       >
@@ -38,7 +39,7 @@ export const QuantityControl = ({
       </button>
       <span className="w-8 text-center font-medium tabular-nums">{value}</span>
       <button
-        className="btn btn-circle btn-outline btn-xs"
+        className={clsx(buttonVariants({ variant: "outline", size: "icon" }), "size-6 rounded-full")}
         disabled={value >= max}
         onClick={() => onChange(Math.min(max, value + 1))}
       >

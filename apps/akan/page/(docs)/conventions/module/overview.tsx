@@ -266,7 +266,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="module-file-map" title={l.trans({ en: "Module File Map", ko: "Module file map" })}>
         <Docs.Title>{l.trans({ en: "Module File Map", ko: "Module file map" })}</Docs.Title>
@@ -306,7 +306,7 @@ export default function Page() {
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="server-client-flow"
@@ -341,7 +341,7 @@ Util -> small controls
 Zone -> page section composition`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="role-boundaries" title={l.trans({ en: "Role Boundaries", ko: "역할 경계" })}>
         <Docs.Title>{l.trans({ en: "Role Boundaries", ko: "역할 경계" })}</Docs.Title>
@@ -362,7 +362,7 @@ Zone -> page section composition`}
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="reading-paths" title={l.trans({ en: "Recommended Reading Paths", ko: "추천 읽기 순서" })}>
         <Docs.Title>{l.trans({ en: "Recommended Reading Paths", ko: "추천 읽기 순서" })}</Docs.Title>
@@ -384,7 +384,7 @@ Zone -> page section composition`}
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -419,7 +419,7 @@ Zone -> page section composition`}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

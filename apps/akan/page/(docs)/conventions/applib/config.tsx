@@ -31,7 +31,7 @@ const config: AppConfig = {};
 export default config;`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="config-shape" title={l.trans({ en: "Config File Shape", ko: "설정 파일 형태" })}>
         <Docs.Title>{l.trans({ en: "Config File Shape", ko: "설정 파일 형태" })}</Docs.Title>
@@ -69,7 +69,7 @@ export default config;`}
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="routes" title="routes">
         <Docs.Title>routes</Docs.Title>
@@ -107,7 +107,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="mobile" title="mobile">
         <Docs.Title>mobile</Docs.Title>
@@ -159,7 +159,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="default-database-mode" title="defaultDatabaseMode">
         <Docs.Title>defaultDatabaseMode</Docs.Title>
@@ -193,14 +193,17 @@ export default config;`}
               en: "Only customize this when your deployment model really needs separated or clustered database behavior. For details, see ",
               ko: "배포 모델에서 database 분리 또는 cluster 동작이 실제로 필요할 때만 커스터마이징하세요. 자세한 내용은 ",
             })}
-            <a href="/docs/arch/infra#database-mode" className="link link-primary">
+            <a
+              href="/docs/arch/infra#database-mode"
+              className="text-primary underline underline-offset-4 hover:no-underline"
+            >
               {l.trans({ en: "Database Mode", ko: "Database Mode" })}
             </a>
             {l.trans({ en: ".", ko: "를 참고하세요." })}
           </span>
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="images" title="images">
         <Docs.Title>images</Docs.Title>
@@ -236,7 +239,7 @@ const config: AppConfig = {
 export default config;`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="i18n" title="i18n">
         <Docs.Title>i18n</Docs.Title>
@@ -274,7 +277,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="public-env" title="publicEnv">
         <Docs.Title>publicEnv</Docs.Title>
@@ -309,7 +312,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="secrets" title="secrets">
         <Docs.Title>secrets</Docs.Title>
@@ -359,7 +362,7 @@ apps/api/secrets/**/*
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="external-libs" title="externalLibs">
         <Docs.Title>externalLibs</Docs.Title>
@@ -394,7 +397,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="barrel-imports" title="barrelImports">
         <Docs.Title>barrelImports</Docs.Title>
@@ -429,7 +432,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="optimize-imports" title="optimizeImports">
         <Docs.Title>optimizeImports</Docs.Title>
@@ -464,7 +467,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="docker" title="docker">
         <Docs.Title>docker</Docs.Title>
@@ -537,7 +540,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="library-config-fields"
@@ -569,7 +572,7 @@ const config: LibConfig = {
 export default config;`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

@@ -115,7 +115,7 @@ void run();`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="dev-prod" title={l.trans({ en: "Root-level Env Variables", ko: "루트 환경변수" })}>
         <Docs.Title>{l.trans({ en: "Root-level Env Variables", ko: "루트 환경변수" })}</Docs.Title>
         <Docs.Description>
@@ -329,7 +329,7 @@ AKAN_PUBLIC_LOG_LEVEL=info`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="get-env" title={l.trans({ en: "getEnv()", ko: "getEnv()" })}>
         <Docs.Title>{l.trans({ en: "getEnv()", ko: "getEnv()" })}</Docs.Title>
         <Docs.Description>
@@ -397,7 +397,7 @@ serverWsUri=wss://myapp-main.mydomain.com`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="openapi-json" title={l.trans({ en: "OpenAPI JSON", ko: "OpenAPI JSON" })}>
         <Docs.Title>{l.trans({ en: "OpenAPI JSON", ko: "OpenAPI JSON" })}</Docs.Title>
         <Docs.Description>
@@ -471,7 +471,7 @@ void run();`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide
         id="health-metrics-logs"
         title={l.trans({ en: "Health, Metrics, Logs", ko: "상태 확인, 메트릭, 로그" })}

@@ -21,11 +21,21 @@ export default function Page() {
               en: "Use Tailwind for structure and layout. Use DaisyUI for theme-aware component vocabulary and semantic colors.",
               ko: "구조와 레이아웃에는 Tailwind를 사용하고, 테마를 인식하는 컴포넌트 표현과 의미 기반 색상에는 DaisyUI를 사용하세요.",
             })}{" "}
-            <Link href="https://tailwindcss.com/docs" className="link link-primary" target="_blank" rel="noreferrer">
+            <Link
+              href="https://tailwindcss.com/docs"
+              className="text-primary underline underline-offset-4 hover:no-underline"
+              target="_blank"
+              rel="noreferrer"
+            >
               Tailwind CSS
             </Link>{" "}
             /{" "}
-            <Link href="https://daisyui.com/docs/intro/" className="link link-primary" target="_blank" rel="noreferrer">
+            <Link
+              href="https://daisyui.com/docs/intro/"
+              className="text-primary underline underline-offset-4 hover:no-underline"
+              target="_blank"
+              rel="noreferrer"
+            >
               DaisyUI
             </Link>
           </Docs.Alert>
@@ -75,7 +85,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="design-system-first"
@@ -117,7 +127,7 @@ export default function Page() {
             code={`<div className="space-y-3 rounded-xl bg-background p-4 text-foreground">
   <button className={buttonVariants({ variant: "primary" })}>Save</button>
   <input className="h-10 w-full rounded-field border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none" placeholder="Product name" />
-  <div className="card border border-base-300 bg-background p-4">
+  <div className="rounded-box border border-border bg-card p-4">
     Product summary
   </div>
   <div className="flex items-center gap-2 rounded-box border border-info/30 bg-info/10 p-4">Stock updated successfully.</div>
@@ -125,7 +135,7 @@ export default function Page() {
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="theme-system" title={l.trans({ en: "Theme System Declaration", ko: "테마 시스템 선언 방식" })}>
         <Docs.Title>{l.trans({ en: "Theme System Declaration", ko: "테마 시스템 선언 방식" })}</Docs.Title>
@@ -170,7 +180,7 @@ export default function Page() {
             })}{" "}
             <Link
               href="https://daisyui.com/docs/themes/"
-              className="link link-primary"
+              className="text-primary underline underline-offset-4 hover:no-underline"
               target="_blank"
               rel="noreferrer"
             >
@@ -179,7 +189,7 @@ export default function Page() {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="font-declaration" title={l.trans({ en: "Font Declaration", ko: "폰트 선언 방식" })}>
         <Docs.Title>{l.trans({ en: "Font Declaration", ko: "폰트 선언 방식" })}</Docs.Title>
@@ -220,7 +230,7 @@ export const fonts: Font[] = [
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

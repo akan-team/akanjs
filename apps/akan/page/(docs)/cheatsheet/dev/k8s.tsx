@@ -39,7 +39,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="architecture" title={l.trans({ en: "Architecture", ko: "구조" })}>
         <Docs.Title>{l.trans({ en: "Architecture", ko: "구조" })}</Docs.Title>
@@ -60,7 +60,7 @@ export default function Page() {
   -> PVC /workspace/sqlite`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="console" title={l.trans({ en: "Open Console", ko: "Console 열기" })}>
         <Docs.Title>{l.trans({ en: "Open Console", ko: "Console 열기" })}</Docs.Title>
@@ -84,7 +84,7 @@ export default function Page() {
           code="kubectl exec -it -n prod pod/myapp-xxxxx -c myapp -- sh -lc 'AKAN_CONSOLE=1 bun console.js'"
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="values" title={l.trans({ en: "Values", ko: "Values" })}>
         <Docs.Title>{l.trans({ en: "Values", ko: "Values" })}</Docs.Title>
@@ -117,7 +117,7 @@ main:
       storage: 5Gi`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="scale" title={l.trans({ en: "Scale", ko: "확장" })}>
         <Docs.Title>{l.trans({ en: "Scale", ko: "확장" })}</Docs.Title>
@@ -150,7 +150,7 @@ main:
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

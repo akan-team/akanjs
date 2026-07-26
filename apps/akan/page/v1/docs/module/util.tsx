@@ -46,7 +46,7 @@ export default function Page() {
         </Docs.Description>
         <Docs.IntroTable type="field" items={utilPatterns} />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="complex-state" title={l.trans({ en: "Packaging Complex Logic", ko: "복잡한 로직 패키징" })}>
         <Docs.Title>{l.trans({ en: "Packaging Complex Logic", ko: "복잡한 로직 패키징" })}</Docs.Title>
@@ -109,7 +109,7 @@ export const RefundButton = ({ id, defaultReason }: RefundProps) => {
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="ssr-wrapper" title={l.trans({ en: "Wrapper for Server Actions", ko: "서버 액션 래퍼" })}>
         <Docs.Title>{l.trans({ en: "Wrapper for Server Actions", ko: "서버 액션 래퍼" })}</Docs.Title>
@@ -151,7 +151,7 @@ export const CreateOrderWrapper = ({ productId, children }: CreateOrderProps) =>
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="action-component"
@@ -185,7 +185,7 @@ export const ApproveButton = ({ product }: { product: LightProduct }) => {
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="reusable-component" title={l.trans({ en: "Context-Aware UI", ko: "컨텍스트 인지 UI" })}>
         <Docs.Title>{l.trans({ en: "Context-Aware UI", ko: "컨텍스트 인지 UI" })}</Docs.Title>
@@ -217,7 +217,7 @@ export const ContextBackButton = ({ sectionId }: { sectionId: string }) => {
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

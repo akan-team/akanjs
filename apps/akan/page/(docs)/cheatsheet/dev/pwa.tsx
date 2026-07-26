@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="when-to-use" title={l.trans({ en: "When To Use PWA", ko: "PWA를 쓰기 좋은 경우" })}>
         <Docs.Title>{l.trans({ en: "When To Use PWA", ko: "PWA를 쓰기 좋은 경우" })}</Docs.Title>
@@ -71,7 +71,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="static-manifest" title={l.trans({ en: "Static Manifest File", ko: "정적 manifest 파일" })}>
         <Docs.Title>{l.trans({ en: "Static Manifest File", ko: "정적 manifest 파일" })}</Docs.Title>
@@ -128,7 +128,7 @@ export default function Layout({ children }: LayoutProps) {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="layout-manifest"
@@ -200,7 +200,7 @@ export default function Layout({ children }: LayoutProps) {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="assets" title={l.trans({ en: "Required Assets", ko: "필수 asset" })}>
         <Docs.Title>{l.trans({ en: "Required Assets", ko: "필수 asset" })}</Docs.Title>
@@ -239,7 +239,7 @@ export default function Layout({ children }: LayoutProps) {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

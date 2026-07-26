@@ -54,7 +54,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="fix-errors"
@@ -324,7 +324,7 @@ export class OrderService extends serve(db.order, () => ({
           </Docs.Alert>
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="commands" title={l.trans({ en: "Commands", ko: "명령어" })}>
         <Docs.Title>{l.trans({ en: "Commands", ko: "명령어" })}</Docs.Title>
@@ -344,7 +344,7 @@ akan lintAll
 bunx biome check "apps/myapp/page/akanjs/(docs)/conventions/workspace/lint.tsx"`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

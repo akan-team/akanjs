@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="usage" title={l.trans({ en: "Use Image", ko: "Image 사용" })}>
         <Docs.Title>{l.trans({ en: "Use Image", ko: "Image 사용" })}</Docs.Title>
@@ -72,7 +72,7 @@ export const Cover = ({ className, article }: CoverProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="config" title={l.trans({ en: "Config", ko: "설정" })}>
         <Docs.Title>{l.trans({ en: "Config", ko: "설정" })}</Docs.Title>
@@ -97,7 +97,7 @@ export const Cover = ({ className, article }: CoverProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="remote" title="remotePatterns">
         <Docs.Title>remotePatterns</Docs.Title>
@@ -124,7 +124,7 @@ export const Cover = ({ className, article }: CoverProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="cache-hit" title={l.trans({ en: "Cache Hits", ko: "Cache hit" })}>
         <Docs.Title>{l.trans({ en: "Cache Hits", ko: "Cache hit" })}</Docs.Title>

@@ -151,7 +151,7 @@ const form: LoginForm = {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       {symbols.map((symbol) => (
         <Scroll.Slide key={symbol.name} id={symbol.name} title={symbol.name}>
           <Docs.Title>{symbol.name}</Docs.Title>

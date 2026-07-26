@@ -103,7 +103,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="class-structure" title={l.trans({ en: "Store Class Structure", ko: "Store class 구조" })}>
         <Docs.Title>{l.trans({ en: "Store Class Structure", ko: "Store class 구조" })}</Docs.Title>
@@ -141,7 +141,7 @@ export class TicketStore extends store(sig.ticket, () => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="generated-extension"
@@ -174,7 +174,7 @@ export class UserStore extends store(
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="writable-derived-state"
@@ -241,7 +241,7 @@ export class UserStore extends store(
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="state-management" title={l.trans({ en: "State Interaction", ko: "State 상호작용" })}>
         <Docs.Title>{l.trans({ en: "State Interaction", ko: "State 상호작용" })}</Docs.Title>
@@ -261,7 +261,7 @@ export class UserStore extends store(
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="standard-api" title={l.trans({ en: "Standard Model API", ko: "표준 model API" })}>
         <Docs.Title>{l.trans({ en: "Standard Model API", ko: "표준 model API" })}</Docs.Title>
@@ -279,7 +279,7 @@ export class UserStore extends store(
         <Docs.SubTitle>Base Actions</Docs.SubTitle>
         <Docs.IntroTable type="method" items={baseMethods} />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="slice-features"
@@ -310,7 +310,7 @@ export class UserStore extends store(
         <Docs.SubTitle>Generated Slice Actions</Docs.SubTitle>
         <Docs.IntroTable type="method" items={sliceMethods} />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="usage-patterns" title={l.trans({ en: "Usage Patterns", ko: "사용 패턴" })}>
         <Docs.Title>{l.trans({ en: "Usage Patterns", ko: "사용 패턴" })}</Docs.Title>
@@ -347,7 +347,7 @@ export class UserStore extends store(
 st.set({ ticketModal: null });`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="rootstore-access"
@@ -373,7 +373,7 @@ async applyUserProfile() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -412,7 +412,7 @@ async applyUserProfile() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

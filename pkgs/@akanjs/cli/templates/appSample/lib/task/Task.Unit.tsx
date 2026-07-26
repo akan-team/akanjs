@@ -5,7 +5,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { a
     filename: "Task.Unit.tsx",
     content: `import { type cnst, usePage } from "@apps/${dict.appName}/client";
 import { type ModelProps, clsx } from "akanjs/client";
-import { Layout } from "akanjs/ui";
+import { badgeVariants, Layout } from "akanjs/ui";
 
 // ===== Task.Unit.tsx =====
 // Convention: lib/<module>/ — PascalCase .tsx, Unit suffix = card/list-item component.
@@ -22,9 +22,9 @@ interface CardProps extends ModelProps<"task", cnst.LightTask> {
 export const Card = ({ task, className, href }: CardProps) => {
   const { l } = usePage();
   const statusBadge = {
-    todo: "badge-ghost",
-    inProgress: "badge-primary",
-    completed: "badge-success",
+    todo: badgeVariants({ variant: "default" }),
+    inProgress: badgeVariants({ variant: "primary" }),
+    completed: badgeVariants({ variant: "success" }),
   }[task.status];
 
   return (
@@ -37,7 +37,7 @@ export const Card = ({ task, className, href }: CardProps) => {
     >
       <div className="flex items-start justify-between gap-2">
         <span className="font-semibold text-foreground">{task.title}</span>
-        <span className={clsx("badge badge-sm shrink-0", statusBadge)}>{l(\`taskStatus.\${task.status}\`)}</span>
+        <span className={clsx(statusBadge, "shrink-0")}>{l(\`taskStatus.\${task.status}\`)}</span>
       </div>
       {task.due && (
         <div className="mt-2 text-foreground/60 text-xs">

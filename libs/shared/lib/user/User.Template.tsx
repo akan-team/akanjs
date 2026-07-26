@@ -489,7 +489,7 @@ export const SetAccountIdByAdmin = ({ className, accountId }: SetAccountIdByAdmi
     <div className={clsx("flex items-center gap-2", className)}>
       <label className="w-24">AccountId: </label>
       <input
-        className="input"
+        className="h-10 w-full rounded-field border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none"
         value={changeId}
         onChange={(e) => {
           setChangeId(e.target.value);
@@ -548,7 +548,7 @@ export const SetPasswordByAdmin = ({ className }: SetPasswordByAdminProps) => {
     <div className={clsx("flex items-center gap-2", className)}>
       <label className="w-24">Password: </label>
       <input
-        className="input"
+        className="h-10 w-full rounded-field border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none"
         type="password"
         value={password}
         onChange={(e) => {
@@ -605,7 +605,7 @@ export const SetPhoneByAdmin = ({ className, phone }: SetPhoneByAdminProps) => {
     <div className={clsx("flex items-center gap-2", className)}>
       <label className="w-24">Phone: </label>
       <input
-        className="input"
+        className="h-10 w-full rounded-field border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none"
         value={changePhone}
         onChange={(e) => {
           setChangePhone(formatPhone(e.target.value));

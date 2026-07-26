@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="file-convention" title={l.trans({ en: "File Convention And Props", ko: "파일 규칙과 props" })}>
         <Docs.Title>{l.trans({ en: "File Convention And Props", ko: "파일 규칙과 props" })}</Docs.Title>
@@ -62,7 +62,7 @@ export default function Page() {
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="load-units-zone"
@@ -125,7 +125,7 @@ export default function Page() {
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="load-view-zone" title={l.trans({ en: "View Zone With Load.View", ko: "Load.View view Zone" })}>
         <Docs.Title>{l.trans({ en: "View Zone With Load.View", ko: "Load.View view Zone" })}</Docs.Title>
@@ -150,7 +150,7 @@ export default function Page() {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="orchestration-zones"
@@ -204,7 +204,7 @@ export default function Page() {
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="live-dashboard-zones"
@@ -241,7 +241,7 @@ export default function Page() {
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="when-to-use" title={l.trans({ en: "When To Use Zone", ko: "Zone을 쓰는 경우" })}>
         <Docs.Title>{l.trans({ en: "When To Use Zone", ko: "Zone을 쓰는 경우" })}</Docs.Title>
@@ -292,7 +292,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -327,7 +327,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

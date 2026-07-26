@@ -134,7 +134,7 @@ ${await this.getDocumentation("framework")}
 2. Documentation page writing method
 ${await this.getDocumentation("docPageRule")}
 
-3. CSS rule with TailwindCSS and DaisyUI
+3. CSS rule with TailwindCSS and akanjs/ui primitives (semantic tokens; no daisyui)
 ${await this.getDocumentation("cssRule")}
 
 I want to update the Next.js server-side page located at ${writePath}.

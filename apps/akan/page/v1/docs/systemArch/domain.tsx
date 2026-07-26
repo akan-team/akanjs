@@ -47,7 +47,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="architecture" title={l.trans({ en: "Module Architecture", ko: "모듈 아키텍처" })}>
         <Docs.Title>{l.trans({ en: "Module Architecture", ko: "모듈 아키텍처" })}</Docs.Title>
@@ -113,7 +113,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="common-files" title={l.trans({ en: "Common Files", ko: "공통 파일" })}>
         <Docs.Title>{l.trans({ en: "Common Files", ko: "공통 파일" })}</Docs.Title>
@@ -179,7 +179,7 @@ export default function Page() {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="backend-files" title={l.trans({ en: "Backend Files", ko: "백엔드 파일" })}>
         <Docs.Title>{l.trans({ en: "Backend Files", ko: "백엔드 파일" })}</Docs.Title>
@@ -235,7 +235,7 @@ constant.ts (Schema)
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="frontend-files" title={l.trans({ en: "Frontend Files", ko: "프론트엔드 파일" })}>
         <Docs.Title>{l.trans({ en: "Frontend Files", ko: "프론트엔드 파일" })}</Docs.Title>
@@ -366,7 +366,7 @@ constant.ts (Schema)
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="naming-convention" title={l.trans({ en: "File Naming Convention", ko: "파일 명명 규칙" })}>
         <Docs.Title>{l.trans({ en: "File Naming Convention", ko: "파일 명명 규칙" })}</Docs.Title>
@@ -421,7 +421,7 @@ constant.ts (Schema)
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="best-practices"
@@ -531,7 +531,7 @@ constant.ts (Schema)
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

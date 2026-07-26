@@ -17,7 +17,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="add-schema" title={l.trans({ en: "Add Schema", ko: "스키마 추가" })}>
         <Docs.Title>{l.trans({ en: "Add Schema", ko: "스키마 추가" })}</Docs.Title>
@@ -339,7 +339,7 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="kiosk-landing-page" title={l.trans({ en: "Kiosk Landing Page", ko: "키오스크 랜딩 페이지" })}>
         <Docs.Title>{l.trans({ en: "Kiosk Landing Page", ko: "키오스크 랜딩 페이지" })}</Docs.Title>
@@ -554,7 +554,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="order-form-page" title={l.trans({ en: "Order Form Page", ko: "주문 양식 페이지" })}>
         <Docs.Title>{l.trans({ en: "Order Form Page", ko: "주문 양식 페이지" })}</Docs.Title>
@@ -782,7 +782,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="page-best-practices"
@@ -902,7 +902,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

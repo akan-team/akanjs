@@ -23,7 +23,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="model-dictionary-pattern"
@@ -96,7 +96,7 @@ export const dictionary = modelDictionary(["en", "ko"])
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="using-dictionary" title={l.trans({ en: "Using Dictionaries", ko: "Dictionary 사용하기" })}>
         <Docs.Title>{l.trans({ en: "Using Dictionaries", ko: "Dictionary 사용하기" })}</Docs.Title>
@@ -137,7 +137,7 @@ msg.error("ticket.error.cannotArchive");`}
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="generated-extension"
@@ -166,7 +166,7 @@ export const dictionary = modelDictionary(["en", "ko"], ...user.dictionaries)
   .translate({});`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="scalar-service-dictionaries"
@@ -234,7 +234,7 @@ export const dictionary = serviceDictionary(["en", "ko"]).translate({
 });`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="errors-language-rules"
@@ -265,7 +265,7 @@ export const dictionary = serviceDictionary(["en", "ko"]).translate({
 });`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -304,7 +304,7 @@ export const dictionary = serviceDictionary(["en", "ko"]).translate({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

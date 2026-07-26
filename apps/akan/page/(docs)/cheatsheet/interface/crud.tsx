@@ -33,7 +33,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="slice" title={l.trans({ en: "Start With A Slice", ko: "Slice부터 시작하기" })}>
         <Docs.Title>{l.trans({ en: "Start With A Slice", ko: "Slice부터 시작하기" })}</Docs.Title>
@@ -58,7 +58,7 @@ export default function Page() {
 ) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="list" title={l.trans({ en: "List And Open", ko: "목록과 열기" })}>
         <Docs.Title>{l.trans({ en: "List And Open", ko: "목록과 열기" })}</Docs.Title>
@@ -89,7 +89,7 @@ export default function Page() {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="create-edit" title={l.trans({ en: "Create And Edit", ko: "생성하고 수정하기" })}>
         <Docs.Title>{l.trans({ en: "Create And Edit", ko: "생성하고 수정하기" })}</Docs.Title>
@@ -119,7 +119,7 @@ export default function Page() {
 </Model.EditModal>`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="remove" title={l.trans({ en: "Remove In Util", ko: "삭제는 Util에 두기" })}>
         <Docs.Title>{l.trans({ en: "Remove In Util", ko: "삭제는 Util에 두기" })}</Docs.Title>
@@ -143,7 +143,7 @@ export default function Page() {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

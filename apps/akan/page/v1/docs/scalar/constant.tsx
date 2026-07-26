@@ -155,7 +155,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="file-structure"
@@ -188,7 +188,7 @@ export default function Page() {
           <Docs.IntroTable type="field" items={fileStructureItems} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="basic-syntax"
@@ -239,7 +239,7 @@ export class RestrictInfo extends via((field) => ({
           <Docs.IntroTable type="method" items={viaPatternPoints} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="field-types"
@@ -325,7 +325,7 @@ export class FileMeta extends via((field) => ({
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="enum-definition"
@@ -389,7 +389,7 @@ export class Order extends via((field) => ({
           <Docs.IntroTable type="field" items={enumPoints} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="field-options"
@@ -480,7 +480,7 @@ export class OrderInfo extends via((field) => ({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="instance-methods"
@@ -539,7 +539,7 @@ export class Stock extends via((field) => ({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="common-mistakes"
@@ -642,7 +642,7 @@ export class Stock extends via((field) => ({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="checklist"
@@ -679,7 +679,11 @@ export class Stock extends via((field) => ({
                 l.trans({ en: "Add 'as const' for large enum value arrays", ko: "큰 enum 값 배열에 'as const' 추가" }),
               ].map((item, index) => (
                 <li key={index} className="flex items-start">
-                  <input type="checkbox" className="checkbox checkbox-primary mt-1 mr-2" readOnly />
+                  <input
+                    type="checkbox"
+                    className="mt-1 mr-2 size-4 rounded border border-input accent-primary"
+                    readOnly
+                  />
                   <span>{item}</span>
                 </li>
               ))}
@@ -722,7 +726,7 @@ export class Stock extends via((field) => ({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

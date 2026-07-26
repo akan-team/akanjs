@@ -90,7 +90,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide
         id="document-logic"
         title={l.trans({ en: "Implement Document Business Logic", ko: "도큐먼트 비즈니스 로직 구현하기" })}
@@ -250,7 +250,7 @@ export const dictionary = modelDictionary(["en", "ko"])
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide
         id="manage-service"
         title={l.trans({ en: "Implement Service Layer", ko: "서비스 레이어 구현하기" })}
@@ -335,7 +335,7 @@ export class IcecreamOrderService extends serve(db.icecreamOrder, ({ use, servic
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide
         id="signal-endpoints"
         title={l.trans({ en: "Create Signal Endpoints", ko: "시그널 엔드포인트 생성하기" })}
@@ -482,7 +482,7 @@ export const dictionary = modelDictionary(["en", "ko"])
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide
         id="store-actions"
         title={l.trans({ en: "Create Frontend Store Actions", ko: "프론트엔드 스토어 액션 생성하기" })}
@@ -562,7 +562,7 @@ export class IcecreamOrderStore extends store(sig.icecreamOrder, () => ({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide
         id="util-components"
         title={l.trans({ en: "Create Utility Components", ko: "유틸리티 컴포넌트 생성하기" })}
@@ -710,7 +710,7 @@ export const Cancel = ({ className, icecreamOrderId, disabled }: CancelProps) =>
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide
         id="apply-to-components"
         title={l.trans({ en: "Apply To Unit & View Components", ko: "유닛 & 뷰 컴포넌트에 적용하기" })}
@@ -896,7 +896,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide
         id="test-implementation"
         title={l.trans({ en: "Test Status Management", ko: "상태 관리 테스트하기" })}
@@ -985,7 +985,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide
         id="best-practices"
         title={l.trans({ en: "Status Management Best Practices", ko: "상태 관리 모범 사례" })}
@@ -1054,7 +1054,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="next-steps" title={l.trans({ en: "What's Next?", ko: "다음은 무엇인가요?" })}>
         <Docs.Title>{l.trans({ en: "What's Next?", ko: "다음은 무엇인가요?" })}</Docs.Title>
         <Docs.Description>

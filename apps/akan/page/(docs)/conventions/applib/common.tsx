@@ -23,7 +23,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="what-belongs" title={l.trans({ en: "What Belongs In Common", ko: "Common에 두는 것" })}>
         <Docs.Title>{l.trans({ en: "What Belongs In Common", ko: "Common에 두는 것" })}</Docs.Title>
@@ -120,7 +120,7 @@ export const getQueryMeta = (refName: string) => new QueryMeta(refName);`,
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="barrel-optimization"
@@ -155,7 +155,7 @@ export const getQueryMeta = (refName: string) => new QueryMeta(refName);`,
           <Code.Snippet title="common/index.ts" code={`export { randomCode } from "./randomCode";`} />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="server-client-usage"
@@ -191,7 +191,7 @@ export function PreviewCode() {
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -222,7 +222,7 @@ export function PreviewCode() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

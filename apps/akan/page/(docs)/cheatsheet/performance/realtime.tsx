@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="message" title={l.trans({ en: "Use message", ko: "message 사용" })}>
         <Docs.Title>{l.trans({ en: "Use message", ko: "message 사용" })}</Docs.Title>
@@ -63,7 +63,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="pubsub" title={l.trans({ en: "Use pubsub", ko: "pubsub 사용" })}>
         <Docs.Title>{l.trans({ en: "Use pubsub", ko: "pubsub 사용" })}</Docs.Title>
@@ -87,7 +87,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="flow" title={l.trans({ en: "Chat Flow", ko: "채팅 흐름" })}>
         <Docs.Title>{l.trans({ en: "Chat Flow", ko: "채팅 흐름" })}</Docs.Title>
@@ -138,7 +138,7 @@ export const ChatMessages = ({ chatId }: { chatId: string }) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="room" title={l.trans({ en: "Design Rooms", ko: "Room 설계" })}>
         <Docs.Title>{l.trans({ en: "Design Rooms", ko: "Room 설계" })}</Docs.Title>
@@ -165,7 +165,7 @@ export const ChatMessages = ({ chatId }: { chatId: string }) => {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

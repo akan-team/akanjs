@@ -160,7 +160,7 @@ export const File = ({
             )}
           >
             <div className="flex w-[30%] flex-col items-center justify-center gap-2">
-              <div className="loading loading-spinner loading-info loading-lg" />
+              <div className="inline-block size-8 animate-spin rounded-full border-2 border-info border-t-transparent" />
               <Progress value={file?.progress ? (file.status !== "uploading" ? 0 : file.progress) : 0} max={100} />
             </div>
           </div>
@@ -557,7 +557,7 @@ const UploadImage = ({
                       },
                     )}
                   >
-                    <div className="loading loading-spinner loading-lg" />
+                    <div className="inline-block size-8 animate-spin rounded-full border-2 border-current border-t-transparent" />
                     <Progress value={protoFile.progress ?? 0} max={100} />
                   </div>
                 ) : null}

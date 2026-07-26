@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="endpoint" title={l.trans({ en: "Queue From Endpoint", ko: "Endpoint에서 queue 넣기" })}>
         <Docs.Title>{l.trans({ en: "Queue From Endpoint", ko: "Endpoint에서 queue 넣기" })}</Docs.Title>
@@ -70,7 +70,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="process" title={l.trans({ en: "Run In Process", ko: "Process에서 실행" })}>
         <Docs.Title>{l.trans({ en: "Run In Process", ko: "Process에서 실행" })}</Docs.Title>
@@ -107,7 +107,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="replica" title={l.trans({ en: "Replica Roles", ko: "Replica 역할" })}>
         <Docs.Title>{l.trans({ en: "Replica Roles", ko: "Replica 역할" })}</Docs.Title>
@@ -133,7 +133,7 @@ export default function Page() {
   status --> userView["User Sees Progress"]`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

@@ -28,7 +28,15 @@
 - 수동: 템플릿리터럴/조건부 btn, `btn-square/xl` 특수, collapse(`Docs/Layout` 2곳→`<details>`), dropdown(`Admin.Util`→`Dropdown`), tooltip(`User.Unit`→`Tooltip`), toggle(`User.Util`→`Switch`), alert/input/textarea/file-input 토큰화, `Badge`에 `info` variant 추가.
 - 문서 페이지의 **표시용 예제 코드**(`code={...}`)와 프로즈는 보존(변환 대상 아님).
 
-## ⚠️ 여전히 컷오버 불가 — akan 문서 앱의 롱테일 daisyui
+## Phase 3 — minimal 완전 컷오버 + akan 존치 (작업트리, 미커밋)
+
+- **`minimal` 앱: daisyui 완전 제거.** btn/badge codemod + divider(×706)/card/checkbox/input/loading/textarea/link 등 순수 스왑 codemod + 구조적 수동 변환. `@plugin "daisyui"` + 별칭 블록 **제거** 완료. minimal+libs 적용 daisyui 컴포넌트 클래스 0 확인.
+- **프레임워크 `styles.css`**: `var(--color-base-100/base-content)` → `--color-background/foreground` (별칭 없이도 테마 적용).
+- **생성 파이프라인**: `appSample` 템플릿 de-daisyui(btn/badge/collapse→details/dropdown→Dropdown/toggle→Switch/loading spinner). AI 프롬프트(`guideline.prompt.ts`·`module.request.ts`·`cssRule.json`) daisyui 금지로 플립. → **신규 생성 앱은 daisyui-free.**
+- **`akan` 앱: daisyui 존치(의도적).** akan은 daisyui를 문서로 가르치고 `mockup-phone/browser/code` 쇼케이스를 사용 → `@plugin`+별칭+dep 유지. akan 페이지도 btn/badge/divider 등은 변환됨(플러그인은 mockup 등 잔여용).
+- **daisyui npm dep 유지**(akan이 사용). `bun remove daisyui`는 akan mockup 대체 컴포넌트 작성 후 가능.
+
+## (참고) akan 잔여 daisyui
 
 측정된 잔여 적용 클래스(주로 `apps/akan` 문서 사이트):
 - `className="divider"` **×706**, `.card` ×22, `.checkbox` ×12, bare `.input` ×14, `.loading` ×6 (+ hero/drawer/timeline 등 쇼케이스 클래스 가능성).

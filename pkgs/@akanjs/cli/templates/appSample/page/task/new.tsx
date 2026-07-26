@@ -4,7 +4,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { a
   return {
     filename: "new.tsx",
     content: `import { type cnst, fetch, Task, usePage } from "@apps/${dict.appName}/client";
-import { Load, Link } from "akanjs/ui";
+import { Load, Link, buttonVariants } from "akanjs/ui";
 
 // ===== page/task/new.tsx =====
 // Convention: Server-side form page using Load.Edit from akanjs/ui.
@@ -19,7 +19,7 @@ export default async function Page() {
   return (
     <main className="mx-auto max-w-2xl px-6 py-8">
       <div className="mb-6">
-        <Link href="/task" className="btn btn-ghost btn-sm">
+        <Link href="/task" className={buttonVariants({ variant: "ghost", size: "sm" })}>
           ← Tasks
         </Link>
       </div>

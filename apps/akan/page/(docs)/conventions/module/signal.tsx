@@ -251,7 +251,7 @@ export class StoryEndpoint extends endpoint(srv.story, ({ query }) => ({
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="signal-extension"
@@ -283,7 +283,7 @@ export class UserEndpoint extends endpoint(
 ) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="internal-signal" title={l.trans({ en: "Defining Internal Tasks", ko: "Internal 작업 정의" })}>
         <Docs.Title>{l.trans({ en: "Defining Internal Tasks", ko: "Internal 작업 정의" })}</Docs.Title>
@@ -311,7 +311,7 @@ export class UserEndpoint extends endpoint(
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="endpoint-signal" title={l.trans({ en: "Defining Public APIs", ko: "Public API 정의" })}>
         <Docs.Title>{l.trans({ en: "Defining Public APIs", ko: "Public API 정의" })}</Docs.Title>
@@ -398,7 +398,7 @@ const unsubscribe = fetch.subscribeChatAdded(rootId, (chat) => {
 });`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="standard-signal" title={l.trans({ en: "Standard Model APIs", ko: "표준 Model API" })}>
         <Docs.Title>{l.trans({ en: "Standard Model APIs", ko: "표준 Model API" })}</Docs.Title>
@@ -412,7 +412,7 @@ const unsubscribe = fetch.subscribeChatAdded(rootId, (chat) => {
         </Docs.Description>
         <Docs.IntroTable type="method" items={moduleAutoMethods} />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="slice-signal" title={l.trans({ en: "Defining Slices And Stores", ko: "Slice와 Store 정의" })}>
         <Docs.Title>{l.trans({ en: "Defining Slices And Stores", ko: "Slice와 Store 정의" })}</Docs.Title>
@@ -453,7 +453,7 @@ const unsubscribe = fetch.subscribeChatAdded(rootId, (chat) => {
         <Docs.SubTitle>Client Usage</Docs.SubTitle>
         <Code.Snippet title="page.tsx" code="const data = await fetch.initStoryInRoot(rootId);" />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="builder-types" title={l.trans({ en: "Builder Function Types", ko: "Builder 함수 타입" })}>
         <Docs.Title>{l.trans({ en: "Builder Function Types", ko: "Builder 함수 타입" })}</Docs.Title>
@@ -487,7 +487,7 @@ const unsubscribe = fetch.subscribeChatAdded(rootId, (chat) => {
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -526,7 +526,7 @@ const unsubscribe = fetch.subscribeChatAdded(rootId, (chat) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

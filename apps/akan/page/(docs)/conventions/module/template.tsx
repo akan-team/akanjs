@@ -74,7 +74,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="file-convention" title={l.trans({ en: "File Convention", ko: "파일 규칙" })}>
         <Docs.Title>{l.trans({ en: "File Convention", ko: "파일 규칙" })}</Docs.Title>
@@ -108,7 +108,7 @@ export default function Page() {
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="standard-form-template"
@@ -151,7 +151,7 @@ export const General = ({ className }: TicketEditProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="field-patterns" title={l.trans({ en: "Field Patterns", ko: "Field 패턴" })}>
         <Docs.Title>{l.trans({ en: "Field Patterns", ko: "Field 패턴" })}</Docs.Title>
@@ -212,7 +212,7 @@ export const General = ({ className }: TicketEditProps) => {
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="split-components" title={l.trans({ en: "Split Components", ko: "Component 분리" })}>
         <Docs.Title>{l.trans({ en: "Split Components", ko: "Component 분리" })}</Docs.Title>
@@ -254,7 +254,7 @@ export const General = ({ className }: TicketEditProps) => {
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="template-usage" title={l.trans({ en: "Template Usage Patterns", ko: "Template 사용 패턴" })}>
         <Docs.Title>{l.trans({ en: "Template Usage Patterns", ko: "Template 사용 패턴" })}</Docs.Title>
@@ -342,7 +342,7 @@ export const General = ({ className }: TicketEditProps) => {
 </Model.NewWrapper>`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -385,7 +385,7 @@ export const General = ({ className }: TicketEditProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

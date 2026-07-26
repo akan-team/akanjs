@@ -126,7 +126,7 @@ export const ExportPDF = () => {
     >
       <div className="w-3">
         {loading === true ? (
-          <span className="loading loading-spinner loading-xs" />
+          <span className="inline-block size-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
         ) : loading === false ? (
           <AiOutlineCheckCircle className="animate-pop-300" />
         ) : null}

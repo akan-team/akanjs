@@ -29,7 +29,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="module-structure" title={l.trans({ en: "Backend Module Structure", ko: "백엔드 모듈 구조" })}>
         <Docs.Title>{l.trans({ en: "Backend Module Structure", ko: "백엔드 모듈 구조" })}</Docs.Title>
@@ -109,7 +109,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="server-cluster" title={l.trans({ en: "Server Cluster Structure", ko: "서버 클러스터 구조" })}>
         <Docs.Title>{l.trans({ en: "Server Cluster Structure", ko: "서버 클러스터 구조" })}</Docs.Title>
@@ -179,7 +179,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="request-handling" title={l.trans({ en: "Request Handling", ko: "요청 처리" })}>
         <Docs.Title>{l.trans({ en: "Request Handling", ko: "요청 처리" })}</Docs.Title>
@@ -230,7 +230,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

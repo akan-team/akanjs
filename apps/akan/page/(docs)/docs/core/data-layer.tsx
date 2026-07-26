@@ -71,7 +71,7 @@ export default function Page() {
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="model-shape" title={l.trans({ en: "Model Shape", ko: "모델 형태" })}>
         <Docs.Title>{l.trans({ en: "Model Shape", ko: "모델 형태" })}</Docs.Title>
@@ -141,7 +141,7 @@ export class LightProduct extends via(
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="document-and-service" title={l.trans({ en: "Document And Service", ko: "Document와 Service" })}>
         <Docs.Title>{l.trans({ en: "Document And Service", ko: "Document와 Service" })}</Docs.Title>
@@ -193,7 +193,7 @@ export class ProductService extends serve(db.product, ({ use, service }) => ({})
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="signal-to-ui" title={l.trans({ en: "Signal To UI", ko: "Signal에서 UI까지" })}>
         <Docs.Title>{l.trans({ en: "Signal To UI", ko: "Signal에서 UI까지" })}</Docs.Title>
@@ -265,7 +265,7 @@ export class ProductEndpoint extends endpoint(srv.product, ({ query, mutation })
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="fetch-and-st"
@@ -401,7 +401,7 @@ export const General = () => {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="common-decisions" title={l.trans({ en: "Common Decisions", ko: "자주 하는 판단" })}>
         <Docs.Title>{l.trans({ en: "Common Decisions", ko: "자주 하는 판단" })}</Docs.Title>

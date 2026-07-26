@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="query-first" title={l.trans({ en: "Start From The Screen", ko: "화면에서 시작하기" })}>
         <Docs.Title>{l.trans({ en: "Start From The Screen", ko: "화면에서 시작하기" })}</Docs.Title>
@@ -65,7 +65,7 @@ export default function Page() {
 ) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="relationship-size" title={l.trans({ en: "Relationship Size", ko: "관계 크기" })}>
         <Docs.Title>{l.trans({ en: "Relationship Size", ko: "관계 크기" })}</Docs.Title>
@@ -105,7 +105,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="denormalize" title={l.trans({ en: "Copy Small Snapshots", ko: "작은 스냅샷 복사하기" })}>
         <Docs.Title>{l.trans({ en: "Copy Small Snapshots", ko: "작은 스냅샷 복사하기" })}</Docs.Title>
@@ -140,7 +140,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="layers" title={l.trans({ en: "Akan Model Layers", ko: "Akan Model Layer" })}>
         <Docs.Title>{l.trans({ en: "Akan Model Layers", ko: "Akan Model Layer" })}</Docs.Title>
@@ -187,7 +187,7 @@ export class LightPost extends via(PostObject, ["title", "status"] as const, (re
 export class Post extends via(PostObject, LightPost, (resolve) => ({})) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>

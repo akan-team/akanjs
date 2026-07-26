@@ -40,7 +40,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="public-assets" title={l.trans({ en: "Public Assets", ko: "Public 애셋" })}>
         <Docs.Title>{l.trans({ en: "Public Assets", ko: "Public 애셋" })}</Docs.Title>
@@ -80,7 +80,7 @@ export function GetProductGuide() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="optimized-images" title={l.trans({ en: "Optimized Images", ko: "Optimized Image" })}>
         <Docs.Title>{l.trans({ en: "Optimized Images", ko: "Optimized Image" })}</Docs.Title>
@@ -109,7 +109,7 @@ export function HeroImage() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="private-assets" title={l.trans({ en: "Private Assets", ko: "Private 애셋" })}>
         <Docs.Title>{l.trans({ en: "Private Assets", ko: "Private 애셋" })}</Docs.Title>
@@ -144,7 +144,7 @@ libs/shared/asset/private/recommendation/default-rules.json`}
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="library-asset-sync" title={l.trans({ en: "Library Asset Sync", ko: "라이브러리 애셋 sync" })}>
         <Docs.Title>{l.trans({ en: "Library Asset Sync", ko: "라이브러리 애셋 sync" })}</Docs.Title>
@@ -195,7 +195,7 @@ export function SharedLogo() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -226,7 +226,7 @@ export function SharedLogo() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>
