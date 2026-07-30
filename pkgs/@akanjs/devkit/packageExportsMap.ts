@@ -67,7 +67,7 @@ export class PackageExportsMap {
     for (const { prefix, suffix, target } of this.#patterns) {
       if (!subpath.startsWith(prefix) || !subpath.endsWith(suffix)) continue;
       if (subpath.length < prefix.length + suffix.length) continue;
-      return target.replace("*", subpath.slice(prefix.length, subpath.length - suffix.length));
+      return target.replace(/\*/g, subpath.slice(prefix.length, subpath.length - suffix.length));
     }
     return null;
   }
