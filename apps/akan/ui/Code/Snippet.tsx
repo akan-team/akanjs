@@ -1,7 +1,7 @@
 import "./styles.css";
 
 import { clsx } from "akanjs/client";
-import type { BundledLanguage, BundledTheme } from "shiki";
+import type { BundledLanguage } from "shiki";
 
 import { CodeView } from "./CodeView";
 import { Raw } from "./Raw";
@@ -12,7 +12,6 @@ interface SnippetProps {
   language?: BundledLanguage;
   title?: string;
   copy?: boolean;
-  theme?: BundledTheme;
   showLineNumbers?: boolean;
   wrapperClassName?: string;
 }
@@ -23,7 +22,6 @@ export const Snippet = ({
   language = "typescript",
   title,
   copy = true,
-  theme,
   showLineNumbers = true,
   wrapperClassName,
 }: SnippetProps) => {
@@ -38,7 +36,7 @@ export const Snippet = ({
       wrapperClassName={wrapperClassName}
       copyText={copy ? copyText : undefined}
     >
-      <Raw className="p-2" language={language} theme={theme} code={trimmedCode} showLineNumbers={showLineNumbers} />
+      <Raw className="p-2" language={language} code={trimmedCode} showLineNumbers={showLineNumbers} />
     </CodeView>
   );
 };

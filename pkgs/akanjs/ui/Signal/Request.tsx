@@ -1,6 +1,6 @@
 import { AiOutlineCopy } from "react-icons/ai";
 
-import { buttonVariants } from "../Button";
+import { buttonRecipe } from "../Button";
 import { Copy } from "../Copy";
 
 export default function Request() {
@@ -20,7 +20,7 @@ const RequestExample = ({ value }: RequestExampleProps) => {
       />
       <div className="absolute top-4 right-4">
         <Copy text={value}>
-          <button className={buttonVariants({ variant: "secondary", size: "sm" })}>
+          <button className={buttonRecipe({ variant: "secondary", size: "sm" })}>
             <AiOutlineCopy /> Copy
           </button>
         </Copy>

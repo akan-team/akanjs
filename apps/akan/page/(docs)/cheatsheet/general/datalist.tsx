@@ -40,6 +40,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Fixed values", ko: "정해진 값" })}
           code={`export class PostStatus extends enumOf("postStatus", [
   "draft",
@@ -48,6 +49,7 @@ export default function Page() {
 ] as const) {}`}
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Use values in UI", ko: "UI에서 값 사용" })}
           code={`const options = PostStatus.map((status) => ({
   value: status,
@@ -85,6 +87,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "List by id", ko: "id 기준 목록" })}
           code={`const users = new DataList([
   { id: "u1", nickname: "Akan" },

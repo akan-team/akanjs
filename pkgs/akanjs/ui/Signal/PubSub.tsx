@@ -1,12 +1,12 @@
 "use client";
 import { PrimitiveRegistry } from "akanjs/base";
-import { cn, fetch, usePage } from "akanjs/client";
+import { fetch, usePage } from "akanjs/client";
 import { type ConstantCls, ConstantRegistry } from "akanjs/constant";
 import type { SerializedEndpoint } from "akanjs/signal";
 import { useEffect, useMemo, useState } from "react";
 import { AiOutlineDisconnect, AiOutlineFileWord, AiOutlineSwap } from "react-icons/ai";
 import { BiSolidNetworkChart } from "react-icons/bi";
-import { buttonVariants } from "../Button";
+import { buttonRecipe } from "../Button";
 import Arg from "./Arg";
 import { SignalCollapse } from "./Collapse";
 import Listener from "./Listener";
@@ -62,8 +62,8 @@ const PubSubEndpoint = ({ refName, endpointKey, endpoint, open }: PubSubEndpoint
             onClick={() => {
               setViewStatus("doc");
             }}
-            className={cn(
-              buttonVariants({ variant: viewStatus === "doc" ? "primary" : "outline", size: "sm" }),
+            className={buttonRecipe(
+              { variant: viewStatus === "doc" ? "primary" : "outline", size: "sm" },
               "rounded-none",
             )}
           >
@@ -73,8 +73,8 @@ const PubSubEndpoint = ({ refName, endpointKey, endpoint, open }: PubSubEndpoint
             onClick={() => {
               setViewStatus("test");
             }}
-            className={cn(
-              buttonVariants({ variant: viewStatus === "test" ? "primary" : "outline", size: "sm" }),
+            className={buttonRecipe(
+              { variant: viewStatus === "test" ? "primary" : "outline", size: "sm" },
               "rounded-none",
             )}
           >
@@ -212,7 +212,7 @@ const PubSubTry = ({ refName, endpointKey, endpoint }: PubSubTryProps) => {
         <div className="relative flex items-center justify-center gap-2">
           <button
             disabled={!!unsubscribe}
-            className={cn(buttonVariants({ variant: "primary" }), "w-1/2")}
+            className={buttonRecipe({ variant: "primary" }, "w-1/2")}
             onClick={() => {
               onSubscribe();
             }}
@@ -221,7 +221,7 @@ const PubSubTry = ({ refName, endpointKey, endpoint }: PubSubTryProps) => {
           </button>
           <button
             disabled={!unsubscribe}
-            className={cn(buttonVariants({ variant: "outline" }), "w-1/2")}
+            className={buttonRecipe({ variant: "outline" }, "w-1/2")}
             onClick={() => {
               onUnsubscribe();
             }}

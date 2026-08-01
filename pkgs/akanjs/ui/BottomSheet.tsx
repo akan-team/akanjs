@@ -66,7 +66,7 @@ export const BottomSheet = forwardRef<BottomSheetRef, BottomSheetProps>(
             opacity,
           }}
           onClick={() => void closeModal()}
-          className={clsx("fixed top-0 left-0 size-full bg-gray-500/50", {
+          className={clsx("fixed top-0 left-0 size-full bg-muted-foreground/50", {
             "z-50": open,
             "-z-[1]": !open,
           })}
@@ -82,7 +82,7 @@ export const BottomSheet = forwardRef<BottomSheetRef, BottomSheetProps>(
           <div className="flex h-8 w-full items-start justify-center pt-2">
             {type === "half" ? (
               <animated.div {...bind()} className="flex h-8 w-full items-start justify-center pt-2">
-                <div className="h-2 w-32 rounded-full bg-gray-300"></div>
+                <div className="h-2 w-32 rounded-full bg-muted"></div>
               </animated.div>
             ) : (
               <button

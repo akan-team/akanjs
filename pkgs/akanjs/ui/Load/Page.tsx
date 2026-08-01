@@ -31,7 +31,7 @@ const Page: <Return>(props: PageProps<Return>) => ReactNode =
               else {
                 // eslint-disable-next-line no-console
                 console.error(error);
-                resolve(<div className="text-red-500">{message}</div>);
+                resolve(<div className="text-destructive">{message}</div>);
               }
             });
         });

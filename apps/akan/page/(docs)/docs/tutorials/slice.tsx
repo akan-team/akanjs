@@ -32,6 +32,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.signal.ts"
             code={`
 import { ID } from "akanjs/base"; // [!code collapse:13]
@@ -92,6 +93,7 @@ export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query,
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.dictionary.ts"
             code={`
 import { modelDictionary } from "akanjs/dictionary"; // [!code collapse:5]
@@ -188,9 +190,10 @@ export const dictionary = modelDictionary(["en", "ko"])
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/page/dashboard.tsx"
             code={`
-import { Load, buttonVariants } from "akanjs/ui";
+import { Load, buttonRecipe } from "akanjs/ui";
 import { fetch, IcecreamOrder, usePage } from "@apps/koyo/client";
 
 export default async function Page() {
@@ -231,6 +234,7 @@ export default async function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.dictionary.ts"
             code={`
 import { modelDictionary } from "akanjs/dictionary"; // [!code collapse:5]
@@ -375,6 +379,7 @@ export const dictionary = modelDictionary(["en", "ko"])
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx"
             code={`
 import { clsx, type ModelProps } from "akanjs/client"; // [!code collapse:4]
@@ -415,7 +420,7 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
       {showControls ? ( // [!code ++]
         <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4">
           <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
-            <button className={buttonVariants({ variant: "primary" })}>
+            <button className={buttonRecipe({ variant: "primary" })}>
               <span>{l.trans({ en: "View", ko: "보기" })}</span>
             </button>
           </Model.ViewWrapper>
@@ -445,6 +450,7 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Zone.tsx"
             code={`
 "use client"; // [!code collapse:5]

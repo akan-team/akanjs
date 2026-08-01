@@ -1,5 +1,4 @@
-import { cn } from "akanjs/client";
-import { buttonVariants, Link } from "akanjs/ui";
+import { buttonRecipe, Link } from "akanjs/ui";
 
 export default function Page() {
   return (
@@ -10,7 +9,7 @@ export default function Page() {
         <p className="mt-3 text-foreground/70">
           Use this route as the demo payload URL: <code>/push-notification/landing</code>
         </p>
-        <Link className={cn(buttonVariants({ variant: "primary" }), "mt-6")} href="/push-notification">
+        <Link className={buttonRecipe({ variant: "primary" }, "mt-6")} href="/push-notification">
           Back to push demo
         </Link>
       </section>

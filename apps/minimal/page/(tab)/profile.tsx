@@ -1,14 +1,15 @@
+import { appCard, appNav, appScreen } from "@apps/minimal/ui";
 import type { PageConfig } from "akanjs/client";
 import { Layout, Link } from "akanjs/ui";
 import { AiOutlineCreditCard, AiOutlineFileText, AiOutlineRight, AiOutlineUser } from "react-icons/ai";
 
 export default function Page() {
   return (
-    <div className="apptest-screen px-5 pb-28">
-      <Layout.TopInset className="apptest-nav flex items-center px-5" estimatedHeight={pageConfig.topInset}>
+    <div className={appScreen(undefined, "px-5 pb-28")}>
+      <Layout.TopInset className={appNav(undefined, "flex items-center px-5")} estimatedHeight={pageConfig.topInset}>
         <div className="flex w-full items-center justify-between">
           <div>
-            <p className="apptest-subtle text-xs uppercase tracking-[0.24em]">Account</p>
+            <p className="text-foreground/40 text-xs uppercase tracking-[0.24em]">Account</p>
             <h2 className="font-semibold text-xl">Profile</h2>
           </div>
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
@@ -28,7 +29,7 @@ export default function Page() {
             </div>
           </div>
         </div>
-        <div className="apptest-card mt-5 overflow-hidden rounded-[1.75rem]">
+        <div className={appCard(undefined, "mt-5 overflow-hidden rounded-[1.75rem]")}>
           {[
             ["/profile/self", "My profile", "Manage your details and preferences", <AiOutlineUser key="user" />],
             [
@@ -49,9 +50,9 @@ export default function Page() {
               </div>
               <div className="flex-1">
                 <p className="font-semibold">{title}</p>
-                <p className="apptest-muted text-sm">{desc}</p>
+                <p className="text-foreground/50 text-sm">{desc}</p>
               </div>
-              <AiOutlineRight className="apptest-subtle" />
+              <AiOutlineRight className="text-foreground/40" />
             </Link>
           ))}
         </div>

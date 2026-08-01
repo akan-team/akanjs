@@ -52,6 +52,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="minimal service zone"
           code={`"use client";
 

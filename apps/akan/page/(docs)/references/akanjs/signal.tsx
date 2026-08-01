@@ -82,7 +82,12 @@ const utilSignal = SignalRegistry.getService("util");`,
           <Docs.Description>
             <div>{symbol.desc}</div>
           </Docs.Description>
-          <Code.Snippet title={l.trans({ en: "Usage", ko: "사용 예시" })} language="typescript" code={symbol.code} />
+          <Code.Snippet
+            className="w-full"
+            title={l.trans({ en: "Usage", ko: "사용 예시" })}
+            language="typescript"
+            code={symbol.code}
+          />
         </Scroll.Slide>
       ))}
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />

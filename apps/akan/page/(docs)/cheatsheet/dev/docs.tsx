@@ -51,6 +51,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Developer API page", ko: "개발자 API page" })}
           code={`"use client";
 import { fetch } from "@apps/myapp/client";

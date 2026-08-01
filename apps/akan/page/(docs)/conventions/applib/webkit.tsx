@@ -39,11 +39,11 @@ export default function Page() {
               code: `export const ticketStatusColorMap = {
   active: {
     label: "Active",
-    badgeColor: "badge-secondary",
+    badgeColor: "secondary",
   },
   rejected: {
     label: "Rejected",
-    badgeColor: "badge-error",
+    badgeColor: "error",
   },
 };`,
             },
@@ -117,7 +117,7 @@ export function getSignedInUser() {
               <div className="font-bold text-foreground">{title}</div>
               <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               <div className="mt-3">
-                <Code.Snippet title={snippetTitle} code={code} />
+                <Code.Snippet className="w-full" title={snippetTitle} code={code} />
               </div>
             </div>
           ))}
@@ -148,6 +148,7 @@ export function getSignedInUser() {
         </Docs.Description>
         <div className="space-y-3">
           <Code.Snippet
+            className="w-full"
             title="webkit/downloadFile.ts"
             code={`"use client";
 
@@ -158,8 +159,13 @@ export const downloadFile = async (url: string, filename: string) => {
   saveAs(await res.blob(), filename);
 };`}
           />
-          <Code.Snippet title="webkit/index.ts" code={`export { downloadFile } from "./downloadFile";`} />
           <Code.Snippet
+            className="w-full"
+            title="webkit/index.ts"
+            code={`export { downloadFile } from "./downloadFile";`}
+          />
+          <Code.Snippet
+            className="w-full"
             title="page.tsx"
             code={`import { downloadFile } from "@libs/shared/webkit";
 

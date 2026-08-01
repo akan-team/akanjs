@@ -20,7 +20,7 @@ const DefaultRadio = ({ value, children, disabled, className, onChange }: RadioP
             <input
               type="radio"
               disabled={disabled}
-              className="radio radio-primary radio-sm"
+              className="size-4 accent-primary"
               checked={value === child.props.value || value === idx}
               onChange={() => {
                 onChange(child.props.value, idx);

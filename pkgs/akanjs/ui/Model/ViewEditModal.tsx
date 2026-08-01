@@ -1,5 +1,5 @@
 "use client";
-import { cn, usePage } from "akanjs/client";
+import { usePage } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 import { AiOutlineEdit, AiOutlineSave } from "react-icons/ai";
 import { BiDotsVertical, BiTrash } from "react-icons/bi";
 
-import { buttonVariants } from "../Button";
+import { buttonRecipe } from "../Button";
 import { Dropdown } from "../Dropdown";
 import { Modal } from "../Modal";
 import Remove from "./Remove";
@@ -95,7 +95,7 @@ export default function ViewEditModal({
       action={
         modelModal === "view" ? (
           <button
-            className={cn(buttonVariants({ variant: "primary" }), "w-full")}
+            className={buttonRecipe({ variant: "primary" }, "w-full")}
             onClick={() => {
               if (model) storeDo[names.editModel](model.id);
             }}
@@ -104,7 +104,7 @@ export default function ViewEditModal({
           </button>
         ) : (
           <button
-            className={cn(buttonVariants({ variant: "primary" }), "w-full")}
+            className={buttonRecipe({ variant: "primary" }, "w-full")}
             onClick={() => {
               storeDo[names.submitModel]({ sliceName, modal: "view" });
             }}

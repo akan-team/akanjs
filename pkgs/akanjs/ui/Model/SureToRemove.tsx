@@ -6,7 +6,7 @@ import { st } from "akanjs/store";
 import { useMemo, useState } from "react";
 import { AiOutlineDelete } from "react-icons/ai";
 
-import { buttonVariants } from "../Button";
+import { buttonRecipe } from "../Button";
 import { Modal } from "../Modal";
 
 interface SureToRemoveProps {
@@ -67,7 +67,7 @@ export default function SureToRemove({
         bodyClassName="border-destructive"
         action={
           <button
-            className={cn(buttonVariants({ variant: "destructive" }), "w-full")}
+            className={buttonRecipe({ variant: "destructive" }, "w-full")}
             disabled={typeNameToRemove && repeatName !== name}
             onClick={async () => {
               await storeDo[names.removeModel](modelId);

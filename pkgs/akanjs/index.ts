@@ -184,6 +184,13 @@ export interface AppConfigResult {
   publicEnv: string[];
   mobile: AkanMobileConfig;
   secrets: string[];
+  /**
+   * Whether this app is under the closed color vocabulary (semantic tokens only). Default `true`.
+   * When `false`, the framework's styleGuard/themeValidator enforcement is skipped for this app — used
+   * by apps that intentionally retain the open Tailwind palette / daisyUI (e.g. the docs app) until they
+   * migrate. Per-file `styleguard-disable` still exists for narrow exceptions inside enforced apps.
+   */
+  vocabularyClosure: boolean;
 }
 
 export interface LibConfigResult {

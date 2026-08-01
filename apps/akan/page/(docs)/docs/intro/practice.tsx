@@ -159,6 +159,7 @@ akan create-module icecreamOrder
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             language="bash"
             copy={false}
             showLineNumbers={false}
@@ -287,6 +288,7 @@ akan create-module icecreamOrder
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.constant.ts"
             code={`
 import { enumOf, Int } from "akanjs/base";
@@ -389,6 +391,7 @@ export class IcecreamOrderInsight extends via(IcecreamOrder, (field) => ({})) {}
             </div>
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.dictionary.ts"
             code={`
 import { modelDictionary } from "akanjs/dictionary"; // [!code collapse:2]
@@ -463,6 +466,7 @@ export const dictionary = modelDictionary(["en", "ko"])
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Template.tsx"
             code={`
 "use client"; // [!code collapse:8]
@@ -527,6 +531,7 @@ export const General = ({ className }: GeneralProps) => {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx"
             code={`
 import { clsx, ModelProps } from "akanjs/client"; // [!code collapse:3]
@@ -596,6 +601,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/page/_index.tsx"
             code={`import { Model } from "akanjs/ui";
 import { cnst, fetch, IcecreamOrder, usePage } from "@apps/koyo/client";
@@ -609,7 +615,7 @@ export default async function Page() {
       <div className="flex items-center gap-4 text-5xl font-black">
         <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
         <Model.New
-          className={buttonVariants({ variant: "primary" })}
+          className={buttonRecipe({ variant: "primary" })}
           slice={fetch.slice.icecreamOrderInPublic}
           renderTitle="name"
           partial={icecreamOrderForm}

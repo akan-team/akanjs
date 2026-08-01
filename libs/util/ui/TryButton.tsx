@@ -17,7 +17,7 @@ interface TryButtonProps {
 export const TryButton = ({
   children,
   wrapperClassName,
-  className = "btn-primary",
+  className = "",
   disabled,
   completeOnSuccess,
   footer,

@@ -106,6 +106,7 @@ export default function UnitDocsPage() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Article.Unit.tsx"
           code={`import { type ModelProps, clsx } from "akanjs/client";
 import { Layout } from "akanjs/ui";
@@ -139,6 +140,7 @@ export const Card = ({ article, className, href }: ModelProps<"article", cnst.Li
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Article.Unit.tsx"
           code={`interface MiniProps extends ModelProps<"article", cnst.LightArticle> {}
 
@@ -150,6 +152,7 @@ export const Mini = ({ article, className, href }: MiniProps) => (
 );`}
         />
         <Code.Snippet
+          className="w-full"
           title="Article.Unit.tsx"
           code={`export const Gallery = ({ article, href }: ModelProps<"article", cnst.LightArticle>) => (
   <Link href={href} className="overflow-hidden rounded-md border">
@@ -172,6 +175,7 @@ export const Mini = ({ article, className, href }: MiniProps) => (
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Article.Unit.tsx"
           code={`<Layout.Unit className="relative rounded-lg border">
   <div>{article.title}</div>
@@ -245,6 +249,7 @@ export const Mini = ({ article, className, href }: MiniProps) => (
           ))}
         </div>
         <Code.Snippet
+          className="w-full"
           title="Load.Units"
           code={`<Load.Units
   init={articleInit}
@@ -253,6 +258,7 @@ export const Mini = ({ article, className, href }: MiniProps) => (
 />`}
         />
         <Code.Snippet
+          className="w-full"
           title="Direct SSR rendering"
           code={`<div className="flex flex-col gap-2">
   {articleList.map((article) => (

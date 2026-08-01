@@ -1,9 +1,9 @@
 "use client";
 
-import { cn, setCookie } from "akanjs/client";
+import { setCookie } from "akanjs/client";
 import { useCallback, useEffect, useState } from "react";
 
-import { buttonVariants } from "../Button";
+import { buttonRecipe } from "../Button";
 import { Dropdown } from "../Dropdown";
 import { Switch } from "../Switch";
 
@@ -77,7 +77,7 @@ export const ThemeToggle = ({ themes }: ThemeToggleProps) => {
         <li key={theme}>
           <button
             type="button"
-            className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "w-full justify-start")}
+            className={buttonRecipe({ variant: "ghost", size: "sm" }, "w-full justify-start")}
             onClick={() => {
               applyTheme(theme);
             }}

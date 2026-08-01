@@ -18,6 +18,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Developer schema page", ko: "개발자 스키마 page" })}
           code={`import "@apps/myapp/lib/cnst";
 import { Constant } from "akanjs/ui";
@@ -27,6 +28,7 @@ export default function SchemaDocsPage() {
 }`}
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Printable schema definition", ko: "출력용 스키마 정의서" })}
           code={`import "@apps/myapp/lib/cnst";
 import { Constant } from "akanjs/ui";

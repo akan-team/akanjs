@@ -109,6 +109,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="page/"
           language="bash"
           code={`page/
@@ -185,6 +186,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="page/(user)/project/[projectId]/_index.tsx"
           code={`import type { GenerateMetadata, PageConfig } from "akanjs/client";
 
@@ -209,6 +211,7 @@ export function Loading() {
 }`}
         />
         <Code.Snippet
+          className="w-full"
           title="Static metadata example"
           code={`import type { AkanMetadata } from "akanjs/client";
 
@@ -297,6 +300,7 @@ export const metadata = {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="page/(user)/project/[projectId]/_layout.tsx"
           code={`interface LayoutProps {
   children: React.ReactNode;
@@ -373,6 +377,7 @@ export function Error({ error }: { error?: unknown }) {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/myapp/akan.config.ts"
           code={`const config = {
   routes: [
@@ -382,6 +387,7 @@ export function Error({ error }: { error?: unknown }) {
 };`}
         />
         <Code.Snippet
+          className="w-full"
           title="page/"
           language="bash"
           code={`page/
@@ -410,6 +416,7 @@ export function Error({ error }: { error?: unknown }) {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="page/_layout.tsx"
           code={`import type { Font, LayoutProps, WebAppManifest } from "akanjs/client";
 

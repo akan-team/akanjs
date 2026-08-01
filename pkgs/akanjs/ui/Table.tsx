@@ -58,15 +58,18 @@ export const DefaultTable = ({
   rowClassName,
   rowKey,
 }: TableProps) => {
-  const sizeClassName = size === "small" ? "table-compact" : "";
+  const sizeClassName = size === "small" ? "[&_td]:py-1 [&_th]:py-1" : "";
   const loadingClassName = loading ? "opacity-30" : "";
-  const borderedClassName = bordered ? "border border-gray-200 rounded-xl" : "";
+  const borderedClassName = bordered ? "border border-border rounded-xl" : "";
   const responsive = st.use.responsive();
   const renderedColumns = useMemo(() => {
     return columns
       .filter((c) => !c.responsive || c.responsive.includes(responsive))
       .map((column, idx) => (
-        <th key={idx} className="whitespace-nowrap">
+        <th
+          key={idx}
+          className="whitespace-nowrap border-border border-b px-3 py-2 text-left font-medium text-muted-foreground"
+        >
           {column.title}
         </th>
       ));
@@ -80,7 +83,7 @@ export const DefaultTable = ({
           <td
             key={idx}
             className={clsx(
-              "whitespace-nowrap",
+              "whitespace-nowrap border-border border-b px-3 py-2 align-middle",
               rowClassName ? (typeof rowClassName === "string" ? rowClassName : rowClassName(rowData, rowIndex)) : "",
             )}
             {...onRow?.(rowData, rowIndex)}
@@ -104,7 +107,7 @@ export const DefaultTable = ({
           <AiOutlineLoading3Quarters className="animate-spin text-3xl" />
         </div>
       )}
-      <table className={clsx("table w-full", sizeClassName)}>
+      <table className={clsx("w-full border-collapse text-left text-sm", sizeClassName)}>
         {showHeader === true || (Array.isArray(showHeader) && showHeader.includes(responsive)) ? (
           <thead className="normal-case">
             <tr>{renderedColumns}</tr>

@@ -51,6 +51,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="product.constant.ts"
           code={`import { via } from "akanjs/constant";
 import { Price } from "../__scalar/price/price.constant";
@@ -74,6 +75,7 @@ export class ProductInput extends via((field) => ({
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           language="bash"
           code={`lib/
 └── __scalar/
@@ -145,6 +147,7 @@ export class ProductInput extends via((field) => ({
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="price.constant.ts"
           code={`import { Float } from "akanjs/base";
 import { via } from "akanjs/constant";

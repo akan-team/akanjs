@@ -37,6 +37,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="minimal service"
           code={`export class SecurityService extends serve("security" as const, ({ use }) => ({
   jwtSecret: use<string>(),
@@ -60,6 +61,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="runtime injection"
           code={`export class SecurityService extends serve("security" as const, ({ use }) => ({
   jwtSecret: use<string>(),
@@ -84,6 +86,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="service injection"
           code={`export class SearchAdminService extends serve("searchAdmin" as const, ({ service }) => ({
   searchService: service<srv.SearchService>(),
@@ -107,6 +110,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="batch service"
           code={`export class SearchWorkerService extends serve(
   "searchWorker" as const,

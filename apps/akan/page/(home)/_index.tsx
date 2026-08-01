@@ -1,69 +1,7 @@
 import { usePage } from "@apps/akan/client";
-import { cn } from "akanjs/client";
-import { badgeVariants, buttonVariants, Link } from "akanjs/ui";
+import { Code } from "@apps/akan/ui";
+import { badgeRecipe, buttonRecipe, Link } from "akanjs/ui";
 import { BsArrowRight, BsCheckCircle, BsCloud, BsCodeSlash, BsTerminal } from "react-icons/bs";
-
-const highlightCode = (code: string) => {
-  const tokenPattern =
-    /("(?:[^"\\]|\\.)*"|\b(?:export|class|extends|const|type|interface)\b|\b(?:via|field|String|Number|Boolean)\b|\bbunx\b|create-akan-workspace@latest)/g;
-  return code.split(tokenPattern).map((token, index) => {
-    if (!token) return null;
-    if (/^"/.test(token)) {
-      return (
-        <span key={`${token}-${index}`} className="text-emerald-300">
-          {token}
-        </span>
-      );
-    }
-    if (/^(export|class|extends|const|type|interface)$/.test(token)) {
-      return (
-        <span key={`${token}-${index}`} className="text-pink-300">
-          {token}
-        </span>
-      );
-    }
-    if (/^(via|field|String|Number|Boolean)$/.test(token)) {
-      return (
-        <span key={`${token}-${index}`} className="text-sky-300">
-          {token}
-        </span>
-      );
-    }
-    if (token === "bunx") {
-      return (
-        <span key={`${token}-${index}`} className="text-violet-300">
-          {token}
-        </span>
-      );
-    }
-    if (token === "create-akan-workspace@latest") {
-      return (
-        <span key={`${token}-${index}`} className="text-sky-300">
-          {token}
-        </span>
-      );
-    }
-    return token;
-  });
-};
-
-const RawCode = ({ code, prompt, className = "" }: { code: string; prompt?: string; className?: string }) => {
-  return (
-    <pre
-      className={`w-full overflow-x-auto rounded-lg bg-slate-800 p-4 text-left font-mono text-sm ${className}`}
-      style={{ overflowWrap: "break-word", whiteSpace: "pre-wrap" }}
-    >
-      <code className="block text-slate-100">
-        {prompt && (
-          <span className="select-none text-slate-400" aria-hidden="true">
-            {prompt}{" "}
-          </span>
-        )}
-        {highlightCode(code)}
-      </code>
-    </pre>
-  );
-};
 
 export default function Page() {
   const { l } = usePage();
@@ -282,7 +220,7 @@ export default function Page() {
 
       <section className="relative mx-auto grid min-h-screen w-full max-w-7xl items-center gap-10 px-6 pt-32 pb-20 lg:grid-cols-[1.02fr_0.98fr] lg:px-8">
         <div>
-          <div className={cn(badgeVariants(), "mb-6 border-primary/20 bg-primary/10 px-4 py-3 text-primary")}>
+          <div className={badgeRecipe(undefined, "mb-6 border-primary/20 bg-primary/10 px-4 py-3 text-primary")}>
             <BsCheckCircle />
             {l.trans({ en: "One line, every platform", ko: "한 줄, 모든 플랫폼" })}
           </div>
@@ -314,8 +252,8 @@ export default function Page() {
             {["akan.config.ts", "Web", "iOS", "Android", "Server", "DB", "Type-safe", "Plugins"].map((surface) => (
               <span
                 key={surface}
-                className={cn(
-                  badgeVariants(),
+                className={badgeRecipe(
+                  undefined,
                   "border-foreground/10 bg-foreground/10 px-3 py-1 text-foreground text-sm",
                 )}
               >
@@ -325,7 +263,7 @@ export default function Page() {
           </div>
           <div className="mt-10 flex flex-col gap-3 sm:flex-row">
             <Link href="/docs/intro/quickstart">
-              <button className={cn(buttonVariants(), "border-none bg-primary text-background hover:bg-primary/80")}>
+              <button className={buttonRecipe(undefined, "border-none bg-primary text-background hover:bg-primary/80")}>
                 {l.trans({ en: "Get Started", ko: "시작하기" })} <BsArrowRight className="ml-2" />
               </button>
             </Link>
@@ -344,7 +282,8 @@ export default function Page() {
               </div>
               <div className="rounded-xl bg-primary/10 px-3 py-2 font-medium text-primary text-sm">1 → All</div>
             </div>
-            <RawCode
+            <Code.Snippet
+              showLineNumbers={false}
               code={`export class ProductInput extends via((field) => ({
   name: field(String),
 })) {}`}
@@ -392,7 +331,7 @@ export default function Page() {
 
       <section className="relative mx-auto w-full max-w-7xl px-6 pb-20 lg:px-8">
         <div className="mb-10 text-center">
-          <div className={cn(badgeVariants(), "mb-4 border-foreground/10 bg-foreground/10 text-foreground")}>
+          <div className={badgeRecipe(undefined, "mb-4 border-foreground/10 bg-foreground/10 text-foreground")}>
             {l.trans({ en: "Built for the pain you already feel", ko: "이미 느끼고 있는 문제를 위해" })}
           </div>
           <h2 className="font-black text-3xl tracking-tight md:text-5xl">
@@ -409,7 +348,7 @@ export default function Page() {
           {personaCards.map((card, index) => (
             <div key={card.title} className="rounded-3xl border border-foreground/10 bg-foreground/4 p-6 backdrop-blur">
               <div className="mb-5 flex items-center justify-between gap-4">
-                <span className={cn(badgeVariants(), "border-primary/20 bg-primary/10 text-primary")}>
+                <span className={badgeRecipe(undefined, "border-primary/20 bg-primary/10 text-primary")}>
                   {card.audience}
                 </span>
                 <span className="font-black text-4xl text-foreground/20">{index + 1}</span>
@@ -423,7 +362,7 @@ export default function Page() {
 
       <section className="relative mx-auto w-full max-w-7xl px-6 py-20 lg:px-8">
         <div className="mb-8 text-center md:mb-12">
-          <div className={cn(badgeVariants(), "mb-4 border-primary/20 bg-primary/10 text-primary")}>
+          <div className={badgeRecipe(undefined, "mb-4 border-primary/20 bg-primary/10 text-primary")}>
             {l.trans({ en: "8 in 1", ko: "8 in 1" })}
           </div>
           <h2 className="font-black text-3xl tracking-tight md:text-5xl">
@@ -440,7 +379,7 @@ export default function Page() {
           <div className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-primary/70 to-transparent" />
           <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
             <div className="rounded-3xl border border-foreground/10 bg-background/80 p-6">
-              <div className={cn(badgeVariants(), "mb-4 border-destructive/20 bg-destructive/10 text-destructive")}>
+              <div className={badgeRecipe(undefined, "mb-4 border-destructive/20 bg-destructive/10 text-destructive")}>
                 {l.trans({ en: "Before", ko: "Before" })}
               </div>
               <h3 className="font-bold text-2xl">
@@ -473,7 +412,7 @@ export default function Page() {
               </p>
             </div>
             <div className="rounded-3xl border border-primary/20 bg-background/80 p-6">
-              <div className={cn(badgeVariants(), "mb-4 border-primary/20 bg-primary/10 text-primary")}>
+              <div className={badgeRecipe(undefined, "mb-4 border-primary/20 bg-primary/10 text-primary")}>
                 {l.trans({ en: "After — Akan.js", ko: "After — Akan.js" })}
               </div>
               <h3 className="font-bold text-2xl">
@@ -483,7 +422,8 @@ export default function Page() {
                 })}
               </h3>
               <div className="mt-5">
-                <RawCode
+                <Code.Snippet
+                  showLineNumbers={false}
                   code={`export class ProductInput extends via((field) => ({
   name: field(String),
 })) {}`}
@@ -515,7 +455,7 @@ export default function Page() {
 
       <section className="relative mx-auto w-full max-w-7xl px-6 py-20 lg:px-8">
         <div className="mb-10 max-w-4xl">
-          <div className={cn(badgeVariants(), "mb-4 border-accent/20 bg-accent/10 text-accent")}>
+          <div className={badgeRecipe(undefined, "mb-4 border-accent/20 bg-accent/10 text-accent")}>
             {l.trans({ en: "Rules Create Quality", ko: "규칙이 품질을 만듭니다" })}
           </div>
           <h2 className="font-black text-3xl tracking-tight md:text-5xl">
@@ -564,7 +504,7 @@ export default function Page() {
         <div className="mb-8 rounded-4xl border border-foreground/10 bg-foreground/4 p-6 backdrop-blur md:p-8">
           <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
             <div>
-              <div className={cn(badgeVariants(), "mb-4 border-primary/20 bg-primary/10 text-primary")}>
+              <div className={badgeRecipe(undefined, "mb-4 border-primary/20 bg-primary/10 text-primary")}>
                 {l.trans({ en: "Platform Surfaces", ko: "플랫폼 표현" })}
               </div>
               <h2 className="font-black text-3xl tracking-tight md:text-5xl">
@@ -592,7 +532,7 @@ export default function Page() {
 
         <div className="mb-10 rounded-4xl border border-foreground/10 bg-foreground/4 p-5 backdrop-blur md:p-8">
           <div className="mb-8 text-center">
-            <div className={cn(badgeVariants(), "mb-4 border-primary/20 bg-primary/10 text-primary")}>
+            <div className={badgeRecipe(undefined, "mb-4 border-primary/20 bg-primary/10 text-primary")}>
               {l.trans({ en: "Generated From Intent", ko: "의도에서 자동 생성" })}
             </div>
             <h2 className="font-black text-3xl tracking-tight md:text-5xl">
@@ -620,7 +560,7 @@ export default function Page() {
 
         <div className="mb-10 rounded-4xl border border-foreground/10 bg-foreground/4 p-5 backdrop-blur md:p-8">
           <div className="mb-6 max-w-3xl">
-            <div className={cn(badgeVariants(), "mb-4 border-primary/20 bg-primary/10 text-primary")}>
+            <div className={badgeRecipe(undefined, "mb-4 border-primary/20 bg-primary/10 text-primary")}>
               {l.trans({ en: "Native-Feeling App Packaging", ko: "네이티브스러운 앱 패키징" })}
             </div>
             <h3 className="font-black text-2xl tracking-tight md:text-4xl">
@@ -671,10 +611,10 @@ export default function Page() {
               ko: "아래 데모는 하나의 컨벤션 기반 워크스페이스가 비즈니스 의도를 여러 표현으로 이어가는 방식을 보여줍니다.",
             })}
           </p>
-          <RawCode code="bunx create-akan-workspace@latest" prompt="$" className="mx-auto mt-3 max-w-full md:w-fit" />
+          <Code.Snippet title="Terminal" code="bunx create-akan-workspace@latest" language="bash" />
           <div className="mt-4">
             <Link href="/docs/intro/quickstart">
-              <button className={buttonVariants({ variant: "primary", size: "lg" })}>
+              <button className={buttonRecipe({ variant: "primary", size: "lg" })}>
                 {l.trans({ en: "Get Started", ko: "시작하기" })} <BsArrowRight className="ml-2" />
               </button>
             </Link>
@@ -696,7 +636,7 @@ export default function Page() {
               >
                 <div className="grid items-center gap-6 p-5 md:p-6 lg:grid-cols-[0.8fr_1.2fr]">
                   <div className={index % 2 === 1 ? "lg:order-2" : ""}>
-                    <div className={cn(badgeVariants(), "mb-4 border-primary/20 bg-primary/10 text-primary")}>
+                    <div className={badgeRecipe(undefined, "mb-4 border-primary/20 bg-primary/10 text-primary")}>
                       {String(index + 1).padStart(2, "0")}
                     </div>
                     <h3 className="font-bold text-2xl">{item.title}</h3>
@@ -714,7 +654,7 @@ export default function Page() {
 
       <section className="relative mx-auto w-full max-w-7xl px-6 py-20 lg:px-8">
         <div className="overflow-hidden rounded-4xl border border-foreground/10 bg-foreground/6 p-8 text-center shadow-2xl backdrop-blur md:p-12">
-          <div className={cn(badgeVariants(), "mb-5 border-primary/20 bg-primary/10 text-primary")}>
+          <div className={badgeRecipe(undefined, "mb-5 border-primary/20 bg-primary/10 text-primary")}>
             {l.trans({ en: "Built for developer happiness", ko: "개발자의 행복을 위해 설계" })}
           </div>
           <h2 className="font-black text-3xl tracking-tight md:text-5xl">
@@ -729,10 +669,10 @@ export default function Page() {
               ko: "적은 코드량은 적은 토큰소모, 선명한 의도, 쉬운 리뷰, 안정적인 업데이트로 이어집니다. Akan은 실제 제품을 출시하는 개발자의 행복에 최적화되어 있습니다.",
             })}
           </p>
-          <RawCode code="bunx create-akan-workspace@latest" prompt="$" className="mx-auto mt-3 max-w-full md:w-fit" />
+          <Code.Snippet title="Terminal" code="bunx create-akan-workspace@latest" language="bash" />
           <div className="mt-4">
             <Link href="/docs/intro/quickstart">
-              <button className={buttonVariants({ variant: "primary", size: "lg" })}>
+              <button className={buttonRecipe({ variant: "primary", size: "lg" })}>
                 {l.trans({ en: "Get Started", ko: "시작하기" })} <BsArrowRight className="ml-2" />
               </button>
             </Link>

@@ -330,6 +330,7 @@ export default function Page() {
           ))}
         </div>
         <Code.Snippet
+          className="w-full"
           title="module flow"
           code={`constant -> dictionary -> document -> service -> signal -> store -> UI files
 

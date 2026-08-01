@@ -1,14 +1,15 @@
+import { appCard, appNav, appScreen } from "@apps/minimal/ui";
 import type { PageConfig } from "akanjs/client";
 import { Layout, Link } from "akanjs/ui";
 import { AiOutlineCalendar, AiOutlineRight } from "react-icons/ai";
 
 export default function Page() {
   return (
-    <div className="apptest-screen px-5 pb-28">
-      <Layout.TopInset className="apptest-nav flex items-center px-5" estimatedHeight={pageConfig.topInset}>
+    <div className={appScreen(undefined, "px-5 pb-28")}>
+      <Layout.TopInset className={appNav(undefined, "flex items-center px-5")} estimatedHeight={pageConfig.topInset}>
         <div className="flex w-full items-center justify-between">
           <div>
-            <p className="apptest-subtle text-xs uppercase tracking-[0.24em]">Upcoming</p>
+            <p className="text-foreground/40 text-xs uppercase tracking-[0.24em]">Upcoming</p>
             <h2 className="font-semibold text-xl">Trips</h2>
           </div>
           <AiOutlineCalendar className="text-2xl text-primary" />
@@ -18,11 +19,11 @@ export default function Page() {
         <Link className="block overflow-hidden rounded-[2rem] bg-muted text-foreground" href="/trips/detail">
           <div className="h-36 bg-gradient-to-br from-primary via-secondary to-accent" />
           <div className="p-5">
-            <p className="apptest-muted text-xs uppercase tracking-[0.24em]">Next trip</p>
+            <p className="text-foreground/50 text-xs uppercase tracking-[0.24em]">Next trip</p>
             <div className="mt-2 flex items-center justify-between">
               <div>
                 <h3 className="font-bold text-2xl">Seoul City Stay</h3>
-                <p className="apptest-muted mt-1 text-sm">May 28 - May 30 · 2 guests</p>
+                <p className="mt-1 text-foreground/50 text-sm">May 28 - May 30 · 2 guests</p>
               </div>
               <AiOutlineRight />
             </div>
@@ -30,9 +31,9 @@ export default function Page() {
         </Link>
         <div className="mt-4 grid gap-3">
           {["Check-in guide", "Host message", "Local places"].map((item) => (
-            <div className="apptest-card rounded-3xl p-4" key={item}>
+            <div className={appCard(undefined, "rounded-3xl p-4")} key={item}>
               <p className="font-semibold">{item}</p>
-              <p className="apptest-muted mt-1 text-sm">Helpful details are ready for you before your trip.</p>
+              <p className="mt-1 text-foreground/50 text-sm">Helpful details are ready for you before your trip.</p>
             </div>
           ))}
         </div>

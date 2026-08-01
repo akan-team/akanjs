@@ -37,6 +37,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="endpoint label"
           code={`import { serviceDictionary } from "akanjs/dictionary";
 import type { SearchEndpoint } from "./search.signal";
@@ -59,6 +60,7 @@ export const dictionary = serviceDictionary(["en", "ko"]).endpoint<SearchEndpoin
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="one argument"
           code={`export const dictionary = serviceDictionary(["en", "ko"]).endpoint<SearchEndpoint>((fn) => ({
   getSearchResult: fn(["Get search result", "검색 결과 가져오기"]).arg((t) => ({
@@ -80,6 +82,7 @@ export const dictionary = serviceDictionary(["en", "ko"]).endpoint<SearchEndpoin
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="service phrases"
           code={`export const dictionary = serviceDictionary(["en", "ko"]).translate({
   loading: ["Loading...", "불러오는 중..."],
@@ -99,7 +102,11 @@ export const dictionary = serviceDictionary(["en", "ko"]).endpoint<SearchEndpoin
             })}
           </div>
         </Docs.Description>
-        <Code.Snippet title="client usage" code={`<button>{l("search.signal.getSearchResult")}</button>`} />
+        <Code.Snippet
+          className="w-full"
+          title="client usage"
+          code={`<button>{l("search.signal.getSearchResult")}</button>`}
+        />
       </Scroll.Slide>
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

@@ -1,7 +1,7 @@
 "use client";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { useLexicalEditable } from "@lexical/react/useLexicalEditable";
-import { buttonVariants } from "akanjs/ui";
+import { buttonRecipe } from "akanjs/ui";
 import type { NodeKey } from "lexical";
 import type { JSX, SyntheticEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -231,10 +231,10 @@ export const ExcalidrawModal = ({
       <div className="relative z-10 flex items-center justify-between border-foreground/10 border-b bg-background px-4 py-3">
         <div className="font-semibold">Edit Excalidraw</div>
         <div className="flex gap-2">
-          <button type="button" className={buttonVariants({ variant: "ghost", size: "sm" })} onClick={onCancel}>
+          <button type="button" className={buttonRecipe({ variant: "ghost", size: "sm" })} onClick={onCancel}>
             Cancel
           </button>
-          <button type="button" className={buttonVariants({ variant: "primary", size: "sm" })} onClick={onSave}>
+          <button type="button" className={buttonRecipe({ variant: "primary", size: "sm" })} onClick={onSave}>
             Save
           </button>
         </div>

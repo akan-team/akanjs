@@ -63,6 +63,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Service logging"
             code={`import { Logger } from "akanjs/common";
 
@@ -105,6 +106,7 @@ export class BillingService {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title=".env"
             language="bash"
             code={`# Terminal output
@@ -153,6 +155,7 @@ AKAN_LOG_TO_FILE=0`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Default log files"
             language="bash"
             code={`local/apps/myapp/runtime/logs/
@@ -161,6 +164,7 @@ AKAN_LOG_TO_FILE=0`}
   myapp-local-local-2026-05-25-1-federation-0001.log`}
           />
           <Code.Snippet
+            className="w-full"
             title="Rotation configuration"
             language="bash"
             code={`# Override the log directory
@@ -192,6 +196,7 @@ AKAN_LOG_MAX_FILES=100`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Local lookup"
             language="bash"
             code={`# List current log files
@@ -207,6 +212,7 @@ tail -f local/apps/myapp/runtime/logs/*-0-all-*.log
 rg "ERROR|Unhandled|Failed" local/apps/myapp/runtime/logs`}
           />
           <Code.Snippet
+            className="w-full"
             title="Server lookup"
             language="bash"
             code={`# When AKAN_LOG_DIR is configured

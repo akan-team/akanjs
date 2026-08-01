@@ -1,6 +1,6 @@
 import { getEnv } from "akanjs/base";
-import { cn, usePage } from "akanjs/client";
-import { badgeVariants, buttonVariants, Link, System } from "akanjs/ui";
+import { usePage } from "akanjs/client";
+import { badgeRecipe, buttonRecipe, Link, System } from "akanjs/ui";
 import {
   FaBookOpen,
   FaBoxOpen,
@@ -44,8 +44,8 @@ export default function Page() {
             <System.SelectLanguage languages={["en", "ko"]} />
             <Link href="https://akanjs.com" target="_blank">
               <button
-                className={cn(
-                  buttonVariants({ size: "sm" }),
+                className={buttonRecipe(
+                  { size: "sm" },
                   "border-foreground/10 bg-foreground/10 text-foreground hover:border-primary hover:bg-primary hover:text-background",
                 )}
               >
@@ -58,7 +58,7 @@ export default function Page() {
 
         <div className="grid flex-1 items-center gap-10 py-16 lg:grid-cols-[1.04fr_0.96fr] lg:py-10">
           <div>
-            <div className={cn(badgeVariants(), "mb-6 border-primary/20 bg-primary/10 px-4 py-3 text-primary")}>
+            <div className={badgeRecipe(undefined, "mb-6 border-primary/20 bg-primary/10 px-4 py-3 text-primary")}>
               <FaCheckCircle />
               {l.trans({ en: "Your app is running", ko: "앱이 실행 중입니다" })}
             </div>
@@ -77,32 +77,32 @@ export default function Page() {
 
             <div className="mt-8 flex flex-wrap gap-3">
               <span
-                className={cn(
-                  badgeVariants(),
+                className={badgeRecipe(
+                  undefined,
                   "border-foreground/10 bg-foreground/10 px-3 py-1 text-foreground text-sm",
                 )}
               >
                 Agent-ready
               </span>
               <span
-                className={cn(
-                  badgeVariants(),
+                className={badgeRecipe(
+                  undefined,
                   "border-foreground/10 bg-foreground/10 px-3 py-1 text-foreground text-sm",
                 )}
               >
                 Minimal code
               </span>
               <span
-                className={cn(
-                  badgeVariants(),
+                className={badgeRecipe(
+                  undefined,
                   "border-foreground/10 bg-foreground/10 px-3 py-1 text-foreground text-sm",
                 )}
               >
                 Readable by default
               </span>
               <span
-                className={cn(
-                  badgeVariants(),
+                className={badgeRecipe(
+                  undefined,
                   "border-foreground/10 bg-foreground/10 px-3 py-1 text-foreground text-sm",
                 )}
               >
@@ -112,15 +112,17 @@ export default function Page() {
 
             <div className="mt-10 flex flex-col gap-3 sm:flex-row">
               <Link href="https://akanjs.com/docs/intro/quickstart" target="_blank">
-                <button className={cn(buttonVariants(), "border-none bg-primary text-background hover:bg-primary/80")}>
+                <button
+                  className={buttonRecipe(undefined, "border-none bg-primary text-background hover:bg-primary/80")}
+                >
                   {l.trans({ en: "Read Quick Start", ko: "빠른 시작 읽기" })}
                   <FaBookOpen />
                 </button>
               </Link>
               <Link href="https://akanjs.com/docs/intro/practice" target="_blank">
                 <button
-                  className={cn(
-                    buttonVariants(),
+                  className={buttonRecipe(
+                    undefined,
                     "border-foreground/10 bg-foreground/10 text-foreground hover:border-foreground/20 hover:bg-foreground/15",
                   )}
                 >

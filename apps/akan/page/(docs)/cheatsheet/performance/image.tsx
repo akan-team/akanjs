@@ -51,6 +51,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Article cover", ko: "Article cover" })}
           code={`import { Image } from "akanjs/ui";
 interface CoverProps {
@@ -85,6 +86,7 @@ export const Cover = ({ className, article }: CoverProps) => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="akan.config.ts"
           code={`export default {
   images: {
@@ -110,6 +112,7 @@ export const Cover = ({ className, article }: CoverProps) => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Allow CDN images", ko: "CDN 이미지 허용" })}
           code={`export default {
   images: {

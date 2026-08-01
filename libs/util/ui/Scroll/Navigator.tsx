@@ -23,7 +23,7 @@ export const Navigator = ({ className }: NavigatorProps) => {
           href={`#${slideId}`}
           className={clsx("mb-2 size-3 cursor-pointer rounded-full hover:text-primary", {
             "bg-primary": slide === slideId,
-            "bg-slate-400": slide !== slideId,
+            "bg-muted-foreground": slide !== slideId,
           })}
         />
       ))}

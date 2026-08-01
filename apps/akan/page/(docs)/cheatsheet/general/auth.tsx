@@ -51,6 +51,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "User-only mutation", ko: "사용자 전용 mutation" })}
           code={`setNickname: mutation(User, { guards: [User] })
   .body("nickname", String)
@@ -72,6 +73,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Current user from the server", ko: "서버에서 현재 사용자 받기" })}
           code={`getSelf: query(User, { nullable: true })
   .with(Self, { nullable: true })

@@ -1,7 +1,7 @@
 "use client";
 import { PrimitiveRegistry } from "akanjs/base";
 // import { isGqlScalar } from "akanjs/base";
-import { cn, fetch, usePage } from "akanjs/client";
+import { fetch, usePage } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import { type ConstantCls, ConstantRegistry } from "akanjs/constant";
 import type { SerializedEndpoint } from "akanjs/signal";
@@ -10,7 +10,7 @@ import type { SerializedEndpoint } from "akanjs/signal";
 import { useEffect, useMemo, useState } from "react";
 import { AiOutlineDisconnect, AiOutlineFileWord, AiOutlineSend, AiOutlineSwap } from "react-icons/ai";
 import { BiSolidNetworkChart } from "react-icons/bi";
-import { buttonVariants } from "../Button";
+import { buttonRecipe } from "../Button";
 import Arg from "./Arg";
 import { SignalCollapse } from "./Collapse";
 import Listener from "./Listener";
@@ -66,8 +66,8 @@ const MessageEndpoint = ({ refName, endpointKey, endpoint, open }: MessageEndpoi
             onClick={() => {
               setViewStatus("doc");
             }}
-            className={cn(
-              buttonVariants({ variant: viewStatus === "doc" ? "primary" : "outline", size: "sm" }),
+            className={buttonRecipe(
+              { variant: viewStatus === "doc" ? "primary" : "outline", size: "sm" },
               "rounded-none",
             )}
           >
@@ -77,8 +77,8 @@ const MessageEndpoint = ({ refName, endpointKey, endpoint, open }: MessageEndpoi
             onClick={() => {
               setViewStatus("test");
             }}
-            className={cn(
-              buttonVariants({ variant: viewStatus === "test" ? "primary" : "outline", size: "sm" }),
+            className={buttonRecipe(
+              { variant: viewStatus === "test" ? "primary" : "outline", size: "sm" },
               "rounded-none",
             )}
           >
@@ -227,7 +227,7 @@ const MessageTry = ({ endpointKey, endpoint }: MessageTryProps) => {
           <div className="flex w-full flex-col gap-2">
             <button
               disabled={!!stopListen}
-              className={cn(buttonVariants({ variant: "primary" }), "w-full")}
+              className={buttonRecipe({ variant: "primary" }, "w-full")}
               onClick={() => {
                 onListen();
               }}
@@ -236,14 +236,14 @@ const MessageTry = ({ endpointKey, endpoint }: MessageTryProps) => {
             </button>
             <button
               disabled={!stopListen}
-              className={cn(buttonVariants({ variant: "secondary" }), "w-full")}
+              className={buttonRecipe({ variant: "secondary" }, "w-full")}
               onClick={() => void onSend()}
             >
               <AiOutlineSend className="" /> Send Message
             </button>
             <button
               disabled={!stopListen}
-              className={cn(buttonVariants({ variant: "outline" }), "w-full")}
+              className={buttonRecipe({ variant: "outline" }, "w-full")}
               onClick={() => {
                 onStopListen();
               }}

@@ -95,11 +95,11 @@ export const Reconnect = () => {
         <div className="flex flex-col items-center justify-center">
           <div className="py-5">
             {connectStatus === "disconnected" ? (
-              <div className="text-[150px] text-gray-500">
+              <div className="text-[150px] text-muted-foreground">
                 <TbPlugConnectedX />
               </div>
             ) : connectStatus === "connecting" ? (
-              <div className="animate-pulse py-5 text-[150px] text-gray-500">
+              <div className="animate-pulse py-5 text-[150px] text-muted-foreground">
                 <TbPlugConnectedX />
               </div>
             ) : (
@@ -140,7 +140,7 @@ export const Reconnect = () => {
 
         <div
           className={clsx(
-            "mt-2 text-center text-gray-500 text-sm leading-tight",
+            "mt-2 text-center text-muted-foreground text-sm leading-tight",
             connectStatus === "disconnected" || connectStatus === "connecting" ? "visible" : "invisible",
           )}
         >

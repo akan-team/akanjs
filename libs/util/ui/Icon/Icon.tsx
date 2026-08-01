@@ -1,3 +1,5 @@
+// styleguard-disable arbitrary-color — 외부 서비스 로고 색(Kakao·Naver·Google·Discord 등)은 브랜드
+// 가이드가 강제하는 고정값이라 테마 토큰으로 대체할 수 없다. 브랜드 준수 목적의 명시적 예외.
 import { clsx } from "akanjs/client";
 import type { IconProps } from "./type";
 

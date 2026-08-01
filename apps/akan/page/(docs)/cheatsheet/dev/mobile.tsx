@@ -80,6 +80,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/myapp/akan.config.ts"
             code={`import type { AppConfig } from "akanjs";
 
@@ -171,6 +172,7 @@ export default config;`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Base mobile shell dependencies"
             code={`{
   "dependencies": {
@@ -184,6 +186,7 @@ export default config;`}
 }`}
           />
           <Code.Snippet
+            className="w-full"
             title="Push notification add-on dependencies"
             code={`{
   "dependencies": {
@@ -274,6 +277,7 @@ export default config;`}
             </ul>
           </div>
           <Code.Snippet
+            className="w-full"
             title="1. Configure local toolchain"
             language="bash"
             code={`brew install openjdk@21
@@ -282,6 +286,7 @@ export PATH="$JAVA_HOME/bin:$PATH"
 export ANDROID_HOME="$HOME/Library/Android/sdk"`}
           />
           <Code.Snippet
+            className="w-full"
             title="2. Set Android package identity"
             code={`const config: AppConfig = {
   mobile: {
@@ -298,6 +303,7 @@ export ANDROID_HOME="$HOME/Library/Android/sdk"`}
 };`}
           />
           <Code.Snippet
+            className="w-full"
             title="3. Sync and build"
             language="bash"
             code={`akan start-android myapp --target default
@@ -429,6 +435,7 @@ akan release-android myapp --target default --env main --assembleType aab`}
             </ol>
           </div>
           <Code.Snippet
+            className="w-full"
             title="1. Sync and build"
             language="bash"
             code={`akan start-ios myapp --target default
@@ -547,6 +554,7 @@ akan release-ios myapp --target default --env main`}
             </ol>
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/myapp/env/env.client.local.ts"
             code={`export const env = {
   firebase: {
@@ -599,6 +607,7 @@ akan release-ios myapp --target default --env main`}
             </ol>
           </div>
           <Code.Snippet
+            className="w-full"
             title="Android push file copy"
             code={`const config: AppConfig = {
   mobile: {
@@ -697,6 +706,7 @@ akan release-ios myapp --target default --env main`}
             </ol>
           </div>
           <Code.Snippet
+            className="w-full"
             title="iOS push file copy"
             code={`const config: AppConfig = {
   mobile: {
@@ -810,6 +820,7 @@ akan release-ios myapp --target default --env main`}
             </div>
           </div>
           <Code.Snippet
+            className="w-full"
             title="Client registration"
             code={`import { fetch } from "@apps/myapp/client";
 import { usePushNotification } from "akanjs/webkit";
@@ -895,6 +906,7 @@ export function EnablePushButton() {
   cleanup --> db`}
           />
           <Code.Snippet
+            className="w-full"
             title="apps/myapp/lib/userDevice/userDevice.constant.ts"
             code={`export class PushProvider extends enumOf("pushProvider", ["fcm"] as const) {}
 export class PushPlatform extends enumOf("pushPlatform", ["web", "android", "ios"] as const) {}
@@ -910,6 +922,7 @@ export class UserDeviceToken extends via((field) => ({
           />
 
           <Code.Snippet
+            className="w-full"
             title="apps/myapp/lib/userDevice/userDevice.signal.ts"
             code={`export class UserDeviceEndpoint extends endpoint(srv.userDevice, ({ mutation }) => ({
   registerPushToken: mutation(Boolean, { guards: [User] })
@@ -928,6 +941,7 @@ export class UserDeviceToken extends via((field) => ({
 })) {}`}
           />
           <Code.Snippet
+            className="w-full"
             title="apps/myapp/ui/PushTokenRegister.tsx"
             code={`import { fetch } from "@apps/myapp/client";
 import { usePushNotification } from "akanjs/webkit";
@@ -945,6 +959,7 @@ if (pushToken) {
 }`}
           />
           <Code.Snippet
+            className="w-full"
             title="Server send"
             code={`await pushNotificationServer.send({
   token,
@@ -954,6 +969,7 @@ if (pushToken) {
 });`}
           />
           <Code.Snippet
+            className="w-full"
             title="Cleanup after failed send"
             code={`try {
   await pushNotificationServer.send({ token, title, body, url });
@@ -983,6 +999,7 @@ if (pushToken) {
             })}
           </Docs.Alert>
           <Code.Snippet
+            className="w-full"
             title="apps/myapp/akan.config.ts"
             code={`const config: AppConfig = {
   mobile: {
@@ -1056,6 +1073,7 @@ if (pushToken) {
             ))}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Android debug SHA-256"
             language="bash"
             code={`keytool -list -v \\

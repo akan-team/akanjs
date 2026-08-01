@@ -24,6 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="lib/product/product.abstract.md"
           language="markdown"
           code={`# Product Abstract

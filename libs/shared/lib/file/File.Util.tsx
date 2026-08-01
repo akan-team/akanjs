@@ -1,7 +1,7 @@
 "use client";
 import { fetch, st } from "@libs/shared/client";
 import { clsx, getCookie } from "akanjs/client";
-import { Image, Loading } from "akanjs/ui";
+import { buttonRecipe, Image, Loading } from "akanjs/ui";
 import { lazy } from "akanjs/webkit";
 import { type ReactNode, useState } from "react";
 import { AiOutlineCheckCircle } from "react-icons/ai";
@@ -119,9 +119,12 @@ export const ExportPDF = () => {
         // 메모리 정리
         URL.revokeObjectURL(url);
       }}
-      className={clsx("btn btn-primary", {
-        "bg-primary/80": loading === true,
-      })}
+      className={buttonRecipe(
+        { variant: "primary" },
+        {
+          "bg-primary/80": loading === true,
+        },
+      )}
       disabled={loading === true}
     >
       <div className="w-3">

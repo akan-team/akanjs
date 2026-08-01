@@ -44,6 +44,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Example options", ko: "설정 예시" })}
           code={`security: {
   sso: {
@@ -72,6 +73,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Small callback", ko: "작은 callback" })}
           code={`google: query(Any, { guards: [SSO.Google] })
   .with(Req)
@@ -114,6 +116,7 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
           </ul>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Normalize provider profile", ko: "Provider profile 맞추기" })}
           code={`const accountId =
   provider === "github" ? profile.username : profile.email;`}

@@ -12,10 +12,10 @@ const config: AppConfig = {
         permissions: ["push"],
         files: {
           android: {
-            "app/google-services.json": "public/google-services.json",
+            "app/google-services.json": "secrets/google-services.json",
           },
           ios: {
-            "App/GoogleService-Info.plist": "public/GoogleService-Info.plist",
+            "App/GoogleService-Info.plist": "secrets/GoogleService-Info.plist",
           },
         },
         deepLinks: {

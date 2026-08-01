@@ -1,3 +1,4 @@
+// styleguard-disable arbitrary-color — Discord 등 외부 서비스 로고 색은 브랜드 가이드 고정값이다. 명시적 예외.
 import { type cnst, User, usePage } from "@libs/shared/client";
 import { Icon } from "@libs/util/ui";
 import { clsx } from "akanjs/client";
@@ -54,10 +55,10 @@ export const Discord = ({ className, imageUrl, joinUrl, user }: DiscordProps) =>
         <Icon.Discord className="fill-[#5865F2]" width="40" />
         <p className="ml-2 text-2xl">Discord</p>
       </div>
-      <div className="rounded-2xl border border-slate-200 p-4 text-center">
+      <div className="rounded-2xl border border-border p-4 text-center">
         <div className="flex items-center space-x-4">
           {imageUrl ? (
-            <div className="flex size-14 items-center justify-center rounded-full bg-slate-600">
+            <div className="flex size-14 items-center justify-center rounded-full bg-muted-foreground">
               <Image src={imageUrl} width={32} height={32} />
             </div>
           ) : null}
@@ -68,13 +69,13 @@ export const Discord = ({ className, imageUrl, joinUrl, user }: DiscordProps) =>
   ) : (
     <div className={className}>
       <div className="-mb-4 flex items-center">
-        <Icon.Discord className="mb-5 fill-gray-500" viewBox="0 0 50 50" width={40} />
-        <p className="ml-2 text-2xl text-gray-500">Discord</p>
+        <Icon.Discord className="mb-5 fill-muted-foreground" viewBox="0 0 50 50" width={40} />
+        <p className="ml-2 text-2xl text-muted-foreground">Discord</p>
       </div>
-      <div className="rounded-2xl border border-gray-500 p-4 text-center">
+      <div className="rounded-2xl border border-border p-4 text-center">
         <div className="mb-1 flex flex-col">
-          <p className="mb-2 font-light text-2xl text-gray-400">Not Connected</p>
-          <p className="mb-4 whitespace-pre font-light text-gray-400 text-x">
+          <p className="mb-2 font-light text-2xl text-muted-foreground">Not Connected</p>
+          <p className="mb-4 whitespace-pre font-light text-muted-foreground text-x">
             Join our Discord and
             <br />
             link your Discord account!

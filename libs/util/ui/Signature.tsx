@@ -1,6 +1,6 @@
 "use client";
-import { clsx, cn } from "akanjs/client";
-import { buttonVariants } from "akanjs/ui";
+import { clsx } from "akanjs/client";
+import { buttonRecipe } from "akanjs/ui";
 import { type ChangeEvent, type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
 import { AiOutlineDelete, AiOutlineUpload } from "react-icons/ai";
 import { BiEditAlt } from "react-icons/bi";
@@ -109,7 +109,7 @@ export const Signature = ({
       <div className="flex gap-1">
         <button
           type="button"
-          className={clsx("btn btn-sm", mode === "draw" ? "btn-primary" : "btn-ghost")}
+          className={buttonRecipe({ variant: mode === "draw" ? "primary" : "ghost", size: "sm" })}
           onClick={() => {
             setMode("draw");
           }}
@@ -118,7 +118,7 @@ export const Signature = ({
         </button>
         <button
           type="button"
-          className={clsx("btn btn-sm", mode === "upload" ? "btn-primary" : "btn-ghost")}
+          className={buttonRecipe({ variant: mode === "upload" ? "primary" : "ghost", size: "sm" })}
           onClick={() => {
             setMode("upload");
           }}
@@ -127,7 +127,7 @@ export const Signature = ({
         </button>
         <button
           type="button"
-          className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "ml-auto text-destructive")}
+          className={buttonRecipe({ variant: "ghost", size: "sm" }, "ml-auto text-destructive")}
           onClick={clear}
         >
           <AiOutlineDelete /> {clearLabel}

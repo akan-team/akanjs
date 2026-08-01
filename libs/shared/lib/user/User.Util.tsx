@@ -1,12 +1,14 @@
 "use client";
+// styleguard-disable arbitrary-color — SNS 로그인 버튼 색(Kakao #FEE500·Naver #1ec800·Google 등)은
+// 각 서비스 브랜드 가이드가 강제하는 고정값이다. 브랜드 준수 목적의 명시적 예외.
 import { type cnst, fetch, st, usePage } from "@libs/shared/client";
 import { pad } from "@libs/util/common";
 import { AreYouRobot, Icon } from "@libs/util/ui";
 import { usePushNotification } from "@libs/util/webkit";
 import { dayjs } from "akanjs/base";
-import { clsx, cn, getCookie, router, setCookie } from "akanjs/client";
+import { clsx, getCookie, router, setCookie } from "akanjs/client";
 import { isEmail, isPhoneNumber } from "akanjs/common";
-import { buttonVariants, Input, Link, Loading, Modal, Switch } from "akanjs/ui";
+import { buttonRecipe, Input, Link, Loading, Modal, Switch } from "akanjs/ui";
 import { useInterval } from "akanjs/webkit";
 import { type ReactNode, useEffect, useState } from "react";
 import { AiFillCheckCircle, AiFillGithub } from "react-icons/ai";
@@ -41,8 +43,8 @@ export const SetPasswordWithPhone = ({ disabled, hash = "verify" }: SetPasswordW
             validate={(value) => true}
           />
           <button
-            className={cn(
-              buttonVariants({ variant: !phoneCodeAt ? "primary" : "secondary" }),
+            className={buttonRecipe(
+              { variant: !phoneCodeAt ? "primary" : "secondary" },
               "w-20 whitespace-nowrap text-xs",
             )}
             disabled={!!disabled || !isPhoneNumber(self.phone)} // || self.verifies.includes("phone")}
@@ -71,7 +73,7 @@ export const SetPasswordWithPhone = ({ disabled, hash = "verify" }: SetPasswordW
             </div>
           )}
           <button
-            className={cn(buttonVariants({ variant: "primary" }), "w-20 whitespace-nowrap text-xs")}
+            className={buttonRecipe({ variant: "primary" }, "w-20 whitespace-nowrap text-xs")}
             disabled={!phoneCodeAt || isPhoneVerified}
             onClick={() => void st.do.getSignTokenForSetPassword()}
           >
@@ -143,7 +145,7 @@ export const SignInPassword = ({
           validate={(value: string) => true}
         />
       </div>
-      <div className="mt-4 mb-2 flex w-full items-center justify-end gap-3 text-gray-500 text-sm tracking-tight">
+      <div className="mt-4 mb-2 flex w-full items-center justify-end gap-3 text-muted-foreground text-sm tracking-tight">
         {forgotPasswordHref ? (
           <Link href={forgotPasswordHref} className="cursor-pointer duration-300 hover:opacity-50">
             {l("user.forgotPassword")}
@@ -151,7 +153,7 @@ export const SignInPassword = ({
         ) : null}
         {signupHref ? (
           <>
-            <div className="text-gray-400">|</div>
+            <div className="text-muted-foreground">|</div>
             <Link href={signupHref} className="cursor-pointer bg-none duration-300 hover:opacity-50">
               {l("user.signup")}
             </Link>
@@ -169,11 +171,10 @@ export const SignInPassword = ({
       ) : null}
       <button
         id="signin-button"
-        className={cn(
-          buttonVariants({ variant: "primary" }),
+        className={buttonRecipe({ variant: "primary" }, [
           "w-full gap-2 text-background md:mt-5",
           isReady ? "" : "pointer-events-none opacity-50",
-        )}
+        ])}
         disabled={!isSubmitable}
         onClick={() => void st.do.signinWithPassword({ redirect, replace })}
       >
@@ -202,7 +203,7 @@ export const ChangePassword = ({ siteKey }: { siteKey: string }) => {
   return (
     <>
       <button
-        className={buttonVariants({ size: "sm" })}
+        className={buttonRecipe({ size: "sm" })}
         onClick={() => {
           st.do.setUserModal("changePassword");
         }}
@@ -217,7 +218,7 @@ export const ChangePassword = ({ siteKey }: { siteKey: string }) => {
         title="비밀번호 변경"
         action={
           <button
-            className={cn(buttonVariants(), "w-full")}
+            className={buttonRecipe(undefined, "w-full")}
             onClick={() => void st.do.changePassword()}
             disabled={password.length < 7 || password !== passwordConfirm || !turnstileToken}
           >
@@ -273,8 +274,8 @@ export const SSOButtons = ({
   const mainSsoButtonMap: { [key in cnst.SsoType["value"]]: ReactNode } = {
     kakao: (
       <button
-        className={cn(
-          buttonVariants(),
+        className={buttonRecipe(
+          undefined,
           "relative flex w-full items-center border-none bg-[#FEE500] text-[#3c1e1e] shadow-sm hover:bg-[#FEE500] hover:opacity-50",
         )}
       >
@@ -284,8 +285,8 @@ export const SSOButtons = ({
     ),
     naver: (
       <button
-        className={cn(
-          buttonVariants(),
+        className={buttonRecipe(
+          undefined,
           "relative flex w-full items-center border-none bg-[#1ec800] text-white shadow-sm hover:bg-[#1ec800] hover:opacity-50",
         )}
       >
@@ -295,7 +296,10 @@ export const SSOButtons = ({
     ),
     github: (
       <button
-        className={cn(buttonVariants(), "relative flex w-full items-center border-none bg-black text-white shadow-sm")}
+        className={buttonRecipe(
+          undefined,
+          "relative flex w-full items-center border-none bg-black text-white shadow-sm",
+        )}
       >
         <AiFillGithub className="absolute left-[18px] text-4xl text-white" />
         {l("user.signWithGithub")}
@@ -303,9 +307,9 @@ export const SSOButtons = ({
     ),
     google: (
       <button
-        className={cn(
-          buttonVariants(),
-          "relative flex w-full items-center border border-gray-200 bg-white text-black shadow-sm",
+        className={buttonRecipe(
+          undefined,
+          "relative flex w-full items-center border border-border bg-white text-black shadow-sm",
         )}
       >
         <Icon.Google className="absolute left-4 rounded-full" />
@@ -314,8 +318,8 @@ export const SSOButtons = ({
     ),
     facebook: (
       <button
-        className={cn(
-          buttonVariants(),
+        className={buttonRecipe(
+          undefined,
           "relative flex w-full items-center border-none bg-[#039be5] text-white shadow-sm",
         )}
       >
@@ -325,7 +329,10 @@ export const SSOButtons = ({
     ),
     apple: (
       <button
-        className={cn(buttonVariants(), "relative flex w-full items-center border-none bg-black text-white shadow-sm")}
+        className={buttonRecipe(
+          undefined,
+          "relative flex w-full items-center border-none bg-black text-white shadow-sm",
+        )}
       >
         <Icon.Apple className="absolute left-4 rounded-full" />
         {l("user.signWithApple")}
@@ -424,7 +431,7 @@ export const ForgotPassword = () => {
         />
       </div>
       <button
-        className={cn(buttonVariants({ variant: "primary" }), "w-full text-background")}
+        className={buttonRecipe({ variant: "primary" }, "w-full text-background")}
         disabled={!isEmail(accountId) || finished}
         onClick={async () => {
           await st.do.resetPassword(accountId);
@@ -505,7 +512,7 @@ interface ActivateProps {
 export const Activate = ({ className, userId, redirect }: ActivateProps) => {
   return (
     <button
-      className={clsx("btn btn-primary", className)}
+      className={buttonRecipe({ variant: "primary" }, className)}
       onClick={() => {
         void st.do.activateUser(userId, { redirect });
       }}
@@ -529,7 +536,7 @@ export const PhoneSignRoute = ({
   const phone = st.use.phone();
   return (
     <button
-      className={clsx("btn btn-primary", className)}
+      className={buttonRecipe({ variant: "primary" }, className)}
       disabled={!isPhoneNumber(phone)}
       onClick={async () => {
         const userId = await fetch.getUserIdHasPhone(phone);
@@ -569,7 +576,11 @@ export const SigninWithPhoneCode = ({ redirect, userId, className = "" }: Signin
     if (phoneCode.length === 6) void handleClick();
   }, [phoneCode]);
   return (
-    <button className={clsx("btn btn-primary", className)} disabled={phoneCode.length !== 6} onClick={handleClick}>
+    <button
+      className={buttonRecipe({ variant: "primary" }, className)}
+      disabled={phoneCode.length !== 6}
+      onClick={handleClick}
+    >
       다음
     </button>
   );
@@ -588,7 +599,11 @@ export const VerifyPhoneInPrepareUser = ({ userId, redirect, className = "" }: V
     if (phoneCode.length === 6) void handleClick();
   }, [phoneCode]);
   return (
-    <button className={clsx("btn btn-primary", className)} disabled={phoneCode.length !== 6} onClick={handleClick}>
+    <button
+      className={buttonRecipe({ variant: "primary" }, className)}
+      disabled={phoneCode.length !== 6}
+      onClick={handleClick}
+    >
       다음
     </button>
   );

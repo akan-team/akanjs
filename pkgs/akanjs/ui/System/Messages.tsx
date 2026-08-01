@@ -94,7 +94,7 @@ const Message = ({ content, type = "info" as MessageType, duration, keyForMessag
         className={clsx(
           "typo-body1 flex w-full items-center gap-2 rounded-[4px] border px-4 py-2 text-foreground drop-shadow-lg",
           {
-            "border-[#EEEEEE] bg-primary-foreground stroke-foreground": type === "loading" || type === "info",
+            "border-border bg-primary-foreground stroke-foreground": type === "loading" || type === "info",
             "border-success-border bg-success/80 stroke-success": type === "success",
             "border-destructive-border bg-destructive/80 stroke-destructive": type === "error",
             "border-warning-border bg-warning/80 stroke-warning": type === "warning",

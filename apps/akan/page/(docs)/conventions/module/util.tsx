@@ -74,10 +74,11 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Project.Util.tsx"
           code={`export const Toolbox = ({ projectId, name, role }: ToolboxProps) => {
   return (
-    <ul className="dropdown-content menu">
+    <ul className="flex flex-col gap-1 rounded-box border border-border bg-popover p-2 shadow-lg">
       <li>
         <Model.Edit renderTitle="name" slice={fetch.slice.projectInOrg} modelId={projectId}>
           <Project.Template.General />
@@ -93,6 +94,7 @@ export default function Page() {
 };`}
         />
         <Code.Snippet
+          className="w-full"
           title="__Model__.Util.tsx"
           code={`export const Remove = ({ productId }: RemoveProps) => {
   const { l } = usePage();
@@ -120,13 +122,14 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="BizLicense.Util.tsx"
           code={`export const SetOrg = ({ bizLicenseId }: SetOrgProps) => {
   const [orgId, setOrgId] = useState<string | null>(null);
   return (
     <Dialog>
       <Dialog.Trigger>
-        <button className={buttonVariants()}>Set Org</button>
+        <button className={buttonRecipe()}>Set Org</button>
       </Dialog.Trigger>
       <Dialog.Modal>
         <Field.ParentId value={orgId} onChange={setOrgId} slice={fetch.slice.orgInSelf} />
@@ -139,6 +142,7 @@ export default function Page() {
 };`}
         />
         <Code.Snippet
+          className="w-full"
           title="Report.Util.tsx"
           code={`export const Resolve = ({ report }: ResolveProps) => {
   const reportModal = st.use.reportModal();
@@ -169,6 +173,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Ticket.Util.tsx"
           code={`export const QueryMakerInSelf = () => {
   const [projectIds, userIds] = st.use.queryArgsOfTicketInSelf();
@@ -182,6 +187,7 @@ export default function Page() {
 };`}
         />
         <Code.Snippet
+          className="w-full"
           title="Board.Util.tsx"
           code={`export const BackButton = ({ id }: { id: string }) => {
   const path = st.use.path();

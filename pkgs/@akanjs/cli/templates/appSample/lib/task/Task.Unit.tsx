@@ -5,7 +5,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { a
     filename: "Task.Unit.tsx",
     content: `import { type cnst, usePage } from "@apps/${dict.appName}/client";
 import { type ModelProps, clsx } from "akanjs/client";
-import { badgeVariants, Layout } from "akanjs/ui";
+import { badgeRecipe, Layout } from "akanjs/ui";
 
 // ===== Task.Unit.tsx =====
 // Convention: lib/<module>/ — PascalCase .tsx, Unit suffix = card/list-item component.
@@ -22,9 +22,9 @@ interface CardProps extends ModelProps<"task", cnst.LightTask> {
 export const Card = ({ task, className, href }: CardProps) => {
   const { l } = usePage();
   const statusBadge = {
-    todo: badgeVariants({ variant: "default" }),
-    inProgress: badgeVariants({ variant: "primary" }),
-    completed: badgeVariants({ variant: "success" }),
+    todo: badgeRecipe({ variant: "default" }),
+    inProgress: badgeRecipe({ variant: "primary" }),
+    completed: badgeRecipe({ variant: "success" }),
   }[task.status];
 
   return (

@@ -65,6 +65,7 @@ export default function Page() {
           ))}
         </div>
         <Code.Snippet
+          className="w-full"
           title="apps/minimal/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -228,6 +229,7 @@ export const env: ModulesOptions = {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/myapp/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -282,6 +284,7 @@ export default config;`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Mobile config"
           code={`const config: AppConfig = {
   mobile: {
@@ -586,6 +589,7 @@ apps/api/secrets/**/*
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Build and runtime fields"
           code={`const config: AppConfig = {
   externalLibs: ["shiki"],

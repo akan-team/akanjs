@@ -37,6 +37,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="price.constant.ts"
           code={`import { Float } from "akanjs/base";
 import { via } from "akanjs/constant";
@@ -77,6 +78,7 @@ export class Price extends via((field) => ({
           </ul>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="price.constant.ts"
           code={`export class Price extends via((field) => ({
   amount: field(Float, { default: 0 }),
@@ -98,6 +100,7 @@ export class Price extends via((field) => ({
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="contactInfo.constant.ts"
           code={`import { via } from "akanjs/constant";
 
@@ -120,6 +123,7 @@ export class ContactInfo extends via((field) => ({
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="price.constant.ts"
           code={`import { enumOf, Float } from "akanjs/base";
 import { via } from "akanjs/constant";
@@ -145,6 +149,7 @@ export class Price extends via((field) => ({
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="price.constant.ts"
           code={`export class Price extends via((field) => ({
   amount: field(Float, { default: 0 }),

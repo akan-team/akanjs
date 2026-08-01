@@ -125,7 +125,7 @@ const DefaultRangePicker = ({
         filterDate={(date: Date) => (!disabledDate?.(dayjs(date)) ? true : false)}
         dateFormat={format}
       />
-      <AiOutlineSwapRight className="text-3xl text-gray-400" />
+      <AiOutlineSwapRight className="text-3xl text-muted-foreground" />
       <ReactDatePicker
         className={pickerClassName}
         selected={value[1] ? value[1].toDate() : undefined}

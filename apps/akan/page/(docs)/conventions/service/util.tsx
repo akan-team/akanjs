@@ -40,6 +40,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="small service control"
           code={`"use client";
 
@@ -66,6 +67,7 @@ export const ResyncButton = () => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="when Util is enough"
           code={`export const SearchInput = () => {
   return <input onChange={(e) => st.do.setSearchString(e.target.value)} />;

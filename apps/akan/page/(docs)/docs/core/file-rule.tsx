@@ -23,6 +23,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="lib/product/"
             language="bash"
             code={`lib/product/
@@ -199,6 +200,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="lib/bizCard/"
             language="bash"
             code={`BizCard.View.tsx      # how a biz card is displayed
@@ -389,6 +391,7 @@ export const PriceText = () => {}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="barrel import"
             code={`// ui/index.ts
 export * from "./ProductCard";
@@ -473,6 +476,7 @@ import { ProductCard } from "@apps/myapp/ui";`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Generated UI index idea"
             code={`import * as Unit from "./Product.Unit";
 import * as Util from "./Product.Util";

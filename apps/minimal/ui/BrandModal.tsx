@@ -19,14 +19,14 @@ export const BrandModal: AkanModalComponent = ({
 }) => (
   <Dialog open={open}>
     <Dialog.Modal
-      className={`rounded-none border-4 border-fuchsia-600 bg-fuchsia-50 shadow-none ${className ?? ""}`}
+      className={`rounded-none border-4 border-primary bg-card shadow-none ${className ?? ""}`}
       onCancel={onCancel}
       bodyClassName={bodyClassName}
       confirmClose={confirmClose}
     >
       {title ? <Dialog.Title>{title}</Dialog.Title> : null}
       <Dialog.Content>
-        <div data-testid="brand-modal" className="mb-2 font-semibold text-fuchsia-700">
+        <div data-testid="brand-modal" className="mb-2 font-semibold text-primary">
           🎨 BrandModal override active
         </div>
         {children}

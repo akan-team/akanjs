@@ -69,6 +69,7 @@ export default function Page() {
           ))}
         </div>
         <Code.Snippet
+          className="w-full"
           title="ticket.document.ts"
           code={`import { ID } from "akanjs/base";
 import { by, from, into } from "akanjs/document";
@@ -118,6 +119,7 @@ export class TicketModel extends into(Ticket, TicketFilter, cnst.ticket, () => (
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="story.document.ts"
           code={`export class TicketFilter extends from(cnst.Ticket, (filter) => ({
   query: {
@@ -175,6 +177,7 @@ export class TicketModel extends into(Ticket, TicketFilter, cnst.ticket, () => (
           </div>
         </div>
         <Code.Snippet
+          className="w-full"
           title="ticket.service.ts | ticket.document.ts"
           code={`const ticket = await this.getTicket(ticketId);
 const ticket = await this.loadTicket(ticketId);
@@ -185,6 +188,7 @@ const ticket = await this.updateTicket(ticketId, updateData);
 await this.removeTicket(ticketId);`}
         />
         <Code.Snippet
+          className="w-full"
           title="ticket.service.ts | ticket.document.ts"
           code={`const tickets = await this.listInProject(projectId, { sort: "highPriority" });
 const ticket = await this.findInProject(projectId);
@@ -217,6 +221,7 @@ const ticketInsight = await this.insightInProject(projectId);`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="ticket.document.ts"
           code={`export class Ticket extends by(cnst.Ticket) {
   open() {
@@ -226,6 +231,7 @@ const ticketInsight = await this.insightInProject(projectId);`}
 }`}
         />
         <Code.Snippet
+          className="w-full"
           title="ticket.service.ts"
           code={`const ticket = await this.getTicket(ticketId);
 await ticket.open().assign(userId).save();`}
@@ -244,6 +250,7 @@ await ticket.open().assign(userId).save();`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="story.document.ts"
           code={`export class StoryModel extends into(Story, StoryFilter, cnst.story, () => ({})) {
   async publish(storyId: string) {
@@ -268,6 +275,7 @@ await ticket.open().assign(userId).save();`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="user.document.ts"
           code={`export class UserFilter extends from(cnst.User, (filter) => ({ query: {}, sort: {} }), ...user.filters) {}
 
@@ -296,6 +304,7 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({}), ...
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="product.document.ts"
           code={`export class ProductModel extends into(Product, ProductFilter, cnst.product, ({ byField }) => ({
   productSellerLoader: byField("seller"),
@@ -309,6 +318,7 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({}), ...
 }`}
         />
         <Code.Snippet
+          className="w-full"
           title="order.document.ts"
           code={`export class OrderModel extends into(Order, OrderFilter, cnst.order, ({ byQuery }) => ({
   orderLoader: byQuery(["shop", "orderNumber"] as const),
@@ -332,6 +342,7 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({}), ...
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="story.document.ts"
           code={`export class StoryModel extends into(Story, StoryFilter, cnst.story, () => ({})) {
   static override _onSchema(schema: SchemaOf) {
@@ -340,6 +351,7 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({}), ...
 }`}
         />
         <Code.Snippet
+          className="w-full"
           title="user.document.ts"
           code={`export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
   static override _onSchema(schema: SchemaOf) {

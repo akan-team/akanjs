@@ -51,6 +51,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Map widget", ko: "지도 widget" })}
           code={`"use client";
 import { lazy } from "akanjs/webkit";
@@ -81,6 +82,7 @@ export const ArticleMap = ({ center }: ArticleMapProps) => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Lazy editor", ko: "Lazy editor" })}
           code={`import { lazy } from "akanjs/webkit";
 

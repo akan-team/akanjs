@@ -1,6 +1,6 @@
 "use client";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import { buttonVariants } from "akanjs/ui";
+import { buttonRecipe } from "akanjs/ui";
 import type { NodeKey } from "lexical";
 import { useState } from "react";
 import type { EmbedProviderType } from "../embed";
@@ -103,7 +103,7 @@ export const EmbedUrlForm = ({ nodeKey }: { nodeKey: NodeKey }) => {
               }
             }}
           />
-          <button type="button" className={buttonVariants({ variant: "primary", size: "sm" })} onClick={submit}>
+          <button type="button" className={buttonRecipe({ variant: "primary", size: "sm" })} onClick={submit}>
             Embed
           </button>
         </div>

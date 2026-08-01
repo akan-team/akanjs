@@ -104,7 +104,7 @@ export default function QueryMaker({ className, slice, query }: QueryMakerProps)
   //     ) : (
   //       getFilterArgMetas(filterRef, querySetting.queryKey).map((queryArgMeta, idx) => (
   //         <div className="flex flex-col gap-2" key={idx}>
-  //           <div className="text-sm text-gray-500">{l.qarg(slice, querySetting.queryKey, queryArgMeta.name)}</div>
+  //           <div className="text-sm text-muted-foreground">{l.qarg(slice, querySetting.queryKey, queryArgMeta.name)}</div>
   //           <QueryArg
   //             queryArgMeta={queryArgMeta}
   //             value={querySetting.arg[queryArgMeta.name] as string}

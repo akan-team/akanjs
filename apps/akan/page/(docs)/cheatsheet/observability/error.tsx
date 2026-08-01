@@ -51,6 +51,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="order.dictionary.ts"
           code={`export const dictionary = modelDictionary(["en", "ko"])
   .of((t) => t(["Order", "주문"]).desc(["Order description", "주문 설명"]))
@@ -77,6 +78,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="order.document.ts"
           code={`import { Err } from "../dict";
 
@@ -122,6 +124,7 @@ export class Order extends by(cnst.Order) {
           </ul>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="order.service.ts"
           code={`async addItem(orderId: string, productId: string, quantity: number) {
   const order = await this.getOrder(orderId);
@@ -147,6 +150,7 @@ export class Order extends by(cnst.Order) {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="order.document.ts"
           code={`addItem(product: Product, quantity: number) {
   if (product.stock < quantity) {
@@ -174,6 +178,7 @@ export class Order extends by(cnst.Order) {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Order.Util.tsx"
           code={`import { Err, fetch, msg } from "@apps/myApp/client";
 
@@ -208,6 +213,7 @@ export const AddOrderItem = ({ orderId, productId }: Props) => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Error response"
           code={`{
   "error": "order.error.stockNotEnough",

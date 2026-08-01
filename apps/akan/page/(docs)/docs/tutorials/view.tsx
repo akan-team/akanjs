@@ -84,13 +84,14 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Zone.tsx"
             code={`
 "use client"; // [!code collapse:3]
 import type { ClientInit, ClientView, SliceMeta } from "akanjs/fetch";
 import { cnst, fetch, IcecreamOrder } from "@apps/koyo/client";
 import { DefaultOf } from "akanjs/constant";
-import { Load, Model, buttonVariants } from "akanjs/ui";
+import { Load, Model, buttonRecipe } from "akanjs/ui";
 
 interface CardProps {
   className?: string;
@@ -185,6 +186,7 @@ export const View = ({ view }: ViewProps) => {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx"
             code={`
 import { clsx, type ModelProps } from "akanjs/client"; // [!code collapse:2]
@@ -221,7 +223,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
       </div>
       <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4"> // [!code ++:7]
         <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
-          <button className={buttonVariants({ variant: "primary" })}>
+          <button className={buttonRecipe({ variant: "primary" })}>
             <span>{l.trans({ en: "View", ko: "보기" })}</span>
           </button>
         </Model.ViewWrapper>
@@ -262,8 +264,8 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
               <div>
                 <strong>Button styling</strong>:{" "}
                 {l.trans({
-                  en: "The button uses btn-primary and btn-xl classes for consistent styling across the app",
-                  ko: "버튼은 앱 전체에서 일관된 스타일링을 위해 btn-primary와 btn-xl 클래스를 사용합니다",
+                  en: "The button uses the buttonRecipe primary variant and lg size for consistent styling across the app",
+                  ko: "버튼은 앱 전체에서 일관된 스타일링을 위해 buttonRecipe의 primary variant와 lg size를 사용합니다",
                 })}
               </div>
             </div>
@@ -281,6 +283,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.View.tsx"
             code={`
 import { clsx } from "akanjs/client"; // [!code collapse:8]

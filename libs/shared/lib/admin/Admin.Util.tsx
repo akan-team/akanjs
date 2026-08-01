@@ -1,9 +1,11 @@
 "use client";
+// styleguard-disable arbitrary-color — SNS 로그인 버튼 색(Kakao·Naver·Google 등)은 각 서비스 브랜드
+// 가이드가 강제하는 고정값이다. 브랜드 준수 목적의 명시적 예외.
 import { type cnst, st, usePage } from "@libs/shared/client";
 import { Icon } from "@libs/util/ui";
-import { clsx, cn, fetch } from "akanjs/client";
+import { fetch } from "akanjs/client";
 // import { client } from "akanjs/signal";
-import { buttonVariants, Dropdown, Input, Link, Modal } from "akanjs/ui";
+import { buttonRecipe, Dropdown, Input, Link, Modal } from "akanjs/ui";
 import { type ReactNode, useEffect, useState } from "react";
 import { AiFillGithub, AiOutlineMenu, AiOutlinePoweroff } from "react-icons/ai";
 
@@ -28,7 +30,10 @@ export const Auth = ({ logo, password, ssoTypes = [], redirect }: AuthProps) => 
   const ssoButtons: { [key in cnst.SsoType["value"]]: ReactNode } = {
     github: (
       <button
-        className={cn(buttonVariants(), "relative flex w-full items-center border-none bg-black text-white shadow-sm")}
+        className={buttonRecipe(
+          undefined,
+          "relative flex w-full items-center border-none bg-black text-white shadow-sm",
+        )}
       >
         <AiFillGithub className="absolute left-[18px] text-4xl text-white" />
         {l("user.signWithGithub")}
@@ -36,9 +41,9 @@ export const Auth = ({ logo, password, ssoTypes = [], redirect }: AuthProps) => 
     ),
     google: (
       <button
-        className={cn(
-          buttonVariants(),
-          "relative flex w-full items-center border border-gray-200 bg-white text-black shadow-sm",
+        className={buttonRecipe(
+          undefined,
+          "relative flex w-full items-center border border-border bg-white text-black shadow-sm",
         )}
       >
         <Icon.Google className="absolute left-4 rounded-full" />
@@ -47,8 +52,8 @@ export const Auth = ({ logo, password, ssoTypes = [], redirect }: AuthProps) => 
     ),
     facebook: (
       <button
-        className={cn(
-          buttonVariants(),
+        className={buttonRecipe(
+          undefined,
           "relative flex w-full items-center border-none bg-[#039be5] text-white shadow-sm",
         )}
       >
@@ -58,7 +63,10 @@ export const Auth = ({ logo, password, ssoTypes = [], redirect }: AuthProps) => 
     ),
     apple: (
       <button
-        className={cn(buttonVariants(), "relative flex w-full items-center border-none bg-black text-white shadow-sm")}
+        className={buttonRecipe(
+          undefined,
+          "relative flex w-full items-center border-none bg-black text-white shadow-sm",
+        )}
       >
         <Icon.Apple className="absolute left-4 rounded-full" />
         {l("user.signWithApple")}
@@ -66,8 +74,8 @@ export const Auth = ({ logo, password, ssoTypes = [], redirect }: AuthProps) => 
     ),
     kakao: (
       <button
-        className={cn(
-          buttonVariants(),
+        className={buttonRecipe(
+          undefined,
           "relative flex w-full items-center border-none bg-[#FEE500] text-[#3c1e1e] shadow-sm hover:text-white",
         )}
       >
@@ -77,8 +85,8 @@ export const Auth = ({ logo, password, ssoTypes = [], redirect }: AuthProps) => 
     ),
     naver: (
       <button
-        className={cn(
-          buttonVariants(),
+        className={buttonRecipe(
+          undefined,
           "relative flex w-full items-center border-none bg-[#1ec800] text-white shadow-sm hover:text-white",
         )}
       >
@@ -114,7 +122,7 @@ export const Auth = ({ logo, password, ssoTypes = [], redirect }: AuthProps) => 
               />
             </div>
             <button
-              className={cn(buttonVariants({ variant: "primary" }), "w-full")}
+              className={buttonRecipe({ variant: "primary" }, "w-full")}
               onKeyDown={(e) => {
                 if (e.key === "Enter") void st.do.signinAdmin({ redirect });
               }}
@@ -159,7 +167,7 @@ export const ManageAdminRole = ({ id, roles }: ManageAdminRoleProps) => {
   if (roles.includes("admin"))
     return (
       <button
-        className={cn(buttonVariants({ variant: "destructive", size: "sm" }), "w-full")}
+        className={buttonRecipe({ variant: "destructive", size: "sm" }, "w-full")}
         onClick={() => void st.do.subAdminRole(id, "admin")}
       >
         Remove Admin
@@ -168,7 +176,7 @@ export const ManageAdminRole = ({ id, roles }: ManageAdminRoleProps) => {
   else
     return (
       <button
-        className={cn(buttonVariants({ variant: "warning", size: "sm" }), "w-full")}
+        className={buttonRecipe({ variant: "warning", size: "sm" }, "w-full")}
         onClick={() => void st.do.addAdminRole(id, "admin")}
       >
         Add Admin
@@ -184,7 +192,7 @@ export const ManageSuperAdminRole = ({ id, roles }: ManageSuperAdminRoleProps) =
   if (roles.includes("superAdmin"))
     return (
       <button
-        className={cn(buttonVariants({ variant: "destructive", size: "sm" }), "w-full")}
+        className={buttonRecipe({ variant: "destructive", size: "sm" }, "w-full")}
         onClick={() => void st.do.subAdminRole(id, "superAdmin")}
       >
         Remove SuperAdmin
@@ -193,7 +201,7 @@ export const ManageSuperAdminRole = ({ id, roles }: ManageSuperAdminRoleProps) =
   else
     return (
       <button
-        className={cn(buttonVariants({ variant: "warning", size: "sm" }), "w-full")}
+        className={buttonRecipe({ variant: "warning", size: "sm" }, "w-full")}
         onClick={() => void st.do.addAdminRole(id, "superAdmin")}
       >
         Add SuperAdmin
@@ -211,7 +219,7 @@ export const SetPassword = ({ className, id }: SetPasswordProps) => {
   return (
     <>
       <button
-        className={clsx("btn btn-sm", className)}
+        className={buttonRecipe({ variant: "secondary", size: "sm" }, className)}
         onClick={() => {
           setPasswordState({ modalOpen: true, password: "" });
         }}
@@ -225,7 +233,7 @@ export const SetPassword = ({ className, id }: SetPasswordProps) => {
         }}
         action={
           <button
-            className={buttonVariants({ variant: "primary" })}
+            className={buttonRecipe({ variant: "primary" })}
             onClick={async () => {
               await st.do.setAdminPassword(id, passwordState.password);
               setPasswordState({ modalOpen: false, password: "" });

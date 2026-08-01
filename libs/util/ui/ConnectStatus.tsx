@@ -1,4 +1,5 @@
-import { clsx } from "akanjs/client";
+import { clsx, cn } from "akanjs/client";
+import { AiOutlineLoading3Quarters } from "react-icons/ai";
 
 interface ConnectStatusProps {
   className?: string;
@@ -29,15 +30,15 @@ export const ConnectStatus = ({
             [connectedClassName ?? ""]: conn === "healthy",
             "bg-warning": conn === "unhealthy",
             [unhealthyClassName ?? ""]: conn === "unhealthy",
-            "bg-gray-300": conn === "disconnected",
+            "bg-muted": conn === "disconnected",
             [disconnectedClassName ?? ""]: conn === "disconnected",
           },
           className,
         )}
       />
       {conn !== "disconnected" ? (
-        <span
-          className={clsx("loading loading-ring loading-xs absolute", {
+        <AiOutlineLoading3Quarters
+          className={cn("absolute size-3 animate-spin", {
             "text-success": conn === "healthy",
             "text-warning": conn === "unhealthy",
           })}

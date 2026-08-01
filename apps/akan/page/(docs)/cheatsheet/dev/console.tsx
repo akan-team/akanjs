@@ -51,6 +51,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Run locally", ko: "Local 실행" })}
           language="bash"
           code="akan console myapp"
@@ -75,11 +76,13 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Docker", ko: "Docker" })}
           language="bash"
           code="docker exec -it myapp sh -lc 'AKAN_CONSOLE=1 bun console.js'"
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Kubernetes", ko: "Kubernetes" })}
           language="bash"
           code="kubectl exec -it -n prod pod/myapp-xxxxx -c myapp -- sh -lc 'AKAN_CONSOLE=1 bun console.js'"
@@ -157,6 +160,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Examples", ko: "예시" })}
           code={`process.env.AKAN_PUBLIC_ENV
 env

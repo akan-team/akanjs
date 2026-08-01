@@ -295,7 +295,7 @@ export class OrderService extends serve(db.order, () => ({
                   <div className="mb-3 font-bold text-destructive">❌ Before</div>
                   <div className="space-y-3">
                     {before.map(({ title: snippetTitle, code }) => (
-                      <Code.Snippet key={snippetTitle} title={snippetTitle} code={code} />
+                      <Code.Snippet className="w-full" key={snippetTitle} title={snippetTitle} code={code} />
                     ))}
                   </div>
                 </div>
@@ -303,7 +303,7 @@ export class OrderService extends serve(db.order, () => ({
                   <div className="mb-3 font-bold text-success">✅ After</div>
                   <div className="space-y-3">
                     {after.map(({ title: snippetTitle, code }) => (
-                      <Code.Snippet key={snippetTitle} title={snippetTitle} code={code} />
+                      <Code.Snippet className="w-full" key={snippetTitle} title={snippetTitle} code={code} />
                     ))}
                   </div>
                 </div>
@@ -337,6 +337,7 @@ export class OrderService extends serve(db.order, () => ({
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Lint commands"
           language="bash"
           code={`akan lint apps/myapp

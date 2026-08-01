@@ -2,7 +2,7 @@
 import { cn } from "akanjs/client";
 import type { ReactNode } from "react";
 import { BiX } from "react-icons/bi";
-import { buttonVariants } from "../Button";
+import { buttonRecipe } from "../Button";
 
 export interface LeftSiderProps {
   className?: string;
@@ -23,7 +23,7 @@ export const LeftSider = ({ className, children, open, width, onCancel }: LeftSi
     >
       {children}
       <button
-        className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "absolute top-0 right-0")}
+        className={buttonRecipe({ variant: "ghost", size: "icon" }, "absolute top-0 right-0")}
         onClick={() => {
           onCancel();
         }}

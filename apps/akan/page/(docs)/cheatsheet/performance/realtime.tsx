@@ -51,6 +51,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Read receipt", ko: "읽음 처리" })}
           code={`export class ChatEndpoint extends endpoint(srv.chat, ({ message }) => ({
   readMessage: message(Boolean, { guards: [User] })
@@ -76,6 +77,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Chat broadcast", ko: "채팅 broadcast" })}
           code={`export class ChatEndpoint extends endpoint(srv.chat, ({ pubsub }) => ({
   messageAdded: pubsub(cnst.ChatMessage)
@@ -100,6 +102,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Save then publish", ko: "저장 후 publish" })}
           code={`async addMessage(chatId: string, content: string, senderId: string) {
   const message = await this.chatModel.createMessage({
@@ -120,6 +123,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Client subscription", ko: "클라이언트 구독" })}
           code={`"use client";
 

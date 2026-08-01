@@ -41,6 +41,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             language="bash"
             title="Terminal"
             code={`
@@ -54,6 +55,7 @@ akan create-scalar stock
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/__scalar/stock/stock.constant.ts"
             code={`
 import { enumOf, Int } from "akanjs/base";
@@ -105,6 +107,7 @@ export class Stock extends via((field) => ({
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/__scalar/stock/stock.dictionary.ts"
             code={`
 import { scalarDictionary } from "akanjs/dictionary";
@@ -153,6 +156,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             language="bash"
             title="Terminal"
             code={`
@@ -166,6 +170,7 @@ akan create-module inventory
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/inventory/inventory.constant.ts"
             code={`
 import { via } from "akanjs/constant";
@@ -228,6 +233,7 @@ export class InventoryInsight extends via(Inventory, (field) => ({})) {}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/inventory/inventory.dictionary.ts"
             code={`
 import { modelDictionary } from "akanjs/dictionary"; // [!code collapse:5]
@@ -284,6 +290,7 @@ export const dictionary = modelDictionary(["en", "ko"])
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/inventory/inventory.document.ts"
             code={`
 import { dayjs } from "akanjs/base"; // [!code ++]
@@ -389,6 +396,7 @@ export class InventoryModel extends into(Inventory, InventoryFilter, cnst.invent
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/inventory/inventory.service.ts"
             code={`
 import { serve } from "akanjs/service"; // [!code collapse:5]
@@ -430,6 +438,7 @@ export class InventoryService extends serve(db.inventory, ({ use, service }) => 
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.service.ts"
             code={`
 import { dayjs } from "akanjs/base"; // [!code collapse:5]
@@ -533,6 +542,7 @@ export class IcecreamOrderService extends serve(db.icecreamOrder, ({ use, servic
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/inventory/inventory.signal.ts"
             code={`
 import { endpoint, internal, Public, slice } from "akanjs/signal"; // [!code collapse:17]
@@ -567,6 +577,7 @@ export class InventoryEndpoint extends endpoint(srv.inventory, ({ query, mutatio
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/inventory/inventory.dictionary.ts"
             code={`
 import { modelDictionary } from "akanjs/dictionary"; // [!code collapse:5]
@@ -620,6 +631,7 @@ export const dictionary = modelDictionary(["en", "ko"])
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/inventory/inventory.store.ts"
             code={`
 import { store } from "akanjs/store"; // [!code collapse:5]
@@ -660,11 +672,12 @@ export class InventoryStore extends store(sig.inventory, () => ({
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Template.tsx"
             code={`
 "use client"; // [!code collapse:4]
 import { clsx } from "akanjs/client";
-import { Field, Layout, buttonVariants } from "akanjs/ui";
+import { Field, Layout, buttonRecipe } from "akanjs/ui";
 import { cnst, st, usePage } from "@apps/koyo/client";
 import { Loading } from "akanjs/ui"; // [!code ++:2]
 import { useEffect } from "react";
@@ -803,6 +816,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/inventory/inventory.constant.ts"
             code={`
 import { dayjs } from "akanjs/base"; // [!code collapse:4]
@@ -838,11 +852,13 @@ export class InventoryInsight extends via(Inventory, (field) => ({})) {}`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/inventory/Inventory.Util.tsx"
             code={`
 "use client";
 import { clsx } from "akanjs/client";
 import { st, usePage } from "@apps/koyo/client";
+import { buttonRecipe } from "akanjs/ui";
 import { BiRefresh } from "react-icons/bi";
 
 interface RefillProps {
@@ -852,7 +868,7 @@ export const Refill = ({ className }: RefillProps) => {
   const { l } = usePage();
   return (
     <button
-      className={clsx("btn btn-primary", className)}
+      className={buttonRecipe({ variant: "primary" }, className)}
       onClick={() => {
         void st.do.refillTodaysInventory();
       }}
@@ -869,6 +885,7 @@ export const Refill = ({ className }: RefillProps) => {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/inventory/Inventory.View.tsx"
             code={`
 import { dayjs } from "akanjs/base";
@@ -954,6 +971,7 @@ export const General = ({ className, inventory }: GeneralProps) => {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/__scalar/stock/stock.constant.ts"
             code={`
 import { enumOf, Int } from "akanjs/base"; // [!code collapse:7]
@@ -987,6 +1005,7 @@ export class Stock extends via((field) => ({
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/inventory/Inventory.Zone.tsx"
             code={`
 "use client"; // [!code collapse:4]
@@ -1040,6 +1059,7 @@ export const Today = ({ className }: TodayProps) => {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/page/_index.tsx"
             code={`
 import { Load, Model } from "akanjs/ui"; // [!code collapse:2]
@@ -1061,7 +1081,7 @@ export default async function Page() {
       <div className="flex items-center gap-4 text-5xl font-black"> // [!code collapse:16]
         <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
         <Model.New
-          className={buttonVariants({ variant: "primary" })}
+          className={buttonRecipe({ variant: "primary" })}
           slice={fetch.slice.icecreamOrderInPublic}
           renderTitle="name"
           partial={icecreamOrderForm}

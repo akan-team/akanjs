@@ -75,7 +75,7 @@ export const RefundButton = ({ id, defaultReason }: RefundProps) => {
 
   return (
     <>
-      <button className={buttonVariants({ variant: "destructive" })} onClick={() => setModalOpen(true)}>
+      <button className={buttonRecipe({ variant: "destructive" })} onClick={() => setModalOpen(true)}>
         Refund
       </button>
       
@@ -85,7 +85,7 @@ export const RefundButton = ({ id, defaultReason }: RefundProps) => {
         onCancel={() => setModalOpen(false)}
         action={
           <Button
-            className={cn(buttonVariants({ variant: "destructive" }), "w-full")}
+            className={cn(buttonRecipe({ variant: "destructive" }), "w-full")}
             onClick={async (e, { onError }) => {
               // Trigger Store Action
               await st.do.refundProduct(id, reason, { onError });
@@ -174,7 +174,7 @@ import { AiOutlineCheck } from "react-icons/ai";
 export const ApproveButton = ({ product }: { product: LightProduct }) => {
   return (
     <button 
-      className={cn(buttonVariants({ variant: "primary", size: "sm" }), "gap-2")} 
+      className={cn(buttonRecipe({ variant: "primary", size: "sm" }), "gap-2")} 
       onClick={() => st.do.approveProduct(product.id)}
     >
       <AiOutlineCheck />
@@ -209,7 +209,7 @@ export const ContextBackButton = ({ sectionId }: { sectionId: string }) => {
   if (!path.startsWith(\`/section/\${sectionId}/\`)) return null;
 
   return (
-    <Link.Back className={buttonVariants({ variant: "ghost" })}>
+    <Link.Back className={buttonRecipe({ variant: "ghost" })}>
       &larr; Back
     </Link.Back>
   );

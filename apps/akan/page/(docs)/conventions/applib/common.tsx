@@ -114,7 +114,7 @@ export const getQueryMeta = (refName: string) => new QueryMeta(refName);`,
               <div className="font-bold text-foreground">{title}</div>
               <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               <div className="mt-3">
-                <Code.Snippet title={snippetTitle} code={code} />
+                <Code.Snippet className="w-full" title={snippetTitle} code={code} />
               </div>
             </div>
           ))}
@@ -145,6 +145,7 @@ export const getQueryMeta = (refName: string) => new QueryMeta(refName);`,
         </Docs.Description>
         <div className="space-y-3">
           <Code.Snippet
+            className="w-full"
             title="common/randomCode.ts"
             code={`export const randomCode = (length = 6) => {
   return Math.floor(Math.random() * 10 ** length)
@@ -152,7 +153,11 @@ export const getQueryMeta = (refName: string) => new QueryMeta(refName);`,
     .padStart(length, "0");
 };`}
           />
-          <Code.Snippet title="common/index.ts" code={`export { randomCode } from "./randomCode";`} />
+          <Code.Snippet
+            className="w-full"
+            title="common/index.ts"
+            code={`export { randomCode } from "./randomCode";`}
+          />
         </div>
       </Scroll.Slide>
       <div className="my-4 h-px w-full bg-border" />
@@ -172,6 +177,7 @@ export const getQueryMeta = (refName: string) => new QueryMeta(refName);`,
         </Docs.Description>
         <div className="grid gap-3 xl:grid-cols-2">
           <Code.Snippet
+            className="w-full"
             title="order.service.ts"
             code={`import { randomCode } from "@libs/util/common";
 
@@ -182,6 +188,7 @@ export class OrderService extends serve(db.order, () => ({})) {
 }`}
           />
           <Code.Snippet
+            className="w-full"
             title="page.tsx"
             code={`import { randomCode } from "@libs/util/common";
 

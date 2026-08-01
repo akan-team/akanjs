@@ -51,11 +51,13 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           language="bash"
           title={l.trans({ en: "Health endpoint", ko: "Health endpoint" })}
           code={`curl http://localhost:8282/_akan/app/health`}
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Simplified response", ko: "단순화한 응답 예시" })}
           code={`{
   "status": "running",
@@ -83,11 +85,13 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           language="bash"
           title={l.trans({ en: "Metrics endpoint", ko: "Metrics endpoint" })}
           code={`curl http://localhost:8282/_akan/app/metrics`}
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Simplified response", ko: "단순화한 응답 예시" })}
           code={`{
   "rooms": 12,
@@ -155,6 +159,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           language="bash"
           title={l.trans({ en: "Useful env", ko: "유용한 env" })}
           code={`AKAN_MEMORY_LOG=1

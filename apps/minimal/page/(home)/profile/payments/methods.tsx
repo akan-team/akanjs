@@ -1,12 +1,12 @@
+import { appCard, appNav, appScreen } from "@apps/minimal/ui";
 import type { PageConfig } from "akanjs/client";
-import { cn } from "akanjs/client";
-import { buttonVariants, Layout } from "akanjs/ui";
+import { buttonRecipe, Layout } from "akanjs/ui";
 import { AiOutlinePlus, AiOutlineSafetyCertificate } from "react-icons/ai";
 
 export default function Page() {
   return (
-    <div className="apptest-screen px-5 pb-8">
-      <Layout.Navbar className="apptest-nav" back>
+    <div className={appScreen(undefined, "px-5 pb-8")}>
+      <Layout.Navbar className={appNav()} back>
         <div className="font-semibold">Payment method</div>
       </Layout.Navbar>
       <div className="space-y-4 pt-5">
@@ -18,16 +18,16 @@ export default function Page() {
             <span>12/29</span>
           </div>
         </div>
-        <div className="apptest-card rounded-3xl p-4">
+        <div className={appCard(undefined, "rounded-3xl p-4")}>
           <div className="flex items-center gap-3">
             <AiOutlineSafetyCertificate className="text-2xl text-success" />
             <div>
               <p className="font-semibold">Secure payment</p>
-              <p className="apptest-muted text-sm">Your payment information is securely encrypted and stored.</p>
+              <p className="text-foreground/50 text-sm">Your payment information is securely encrypted and stored.</p>
             </div>
           </div>
         </div>
-        <button className={cn(buttonVariants({ variant: "outline" }), "w-full rounded-2xl")}>
+        <button className={buttonRecipe({ variant: "outline" }, "w-full rounded-2xl")}>
           <AiOutlinePlus /> Add new card
         </button>
       </div>

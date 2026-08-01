@@ -24,7 +24,7 @@ export const CodeInput = ({
 }: CodeInputProps) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const defaultUnitClassName =
-    unitStyle === "box" ? "border border-gray-300 rounded-sm items-center" : "border-b border-gray-300 items-end pb-2";
+    unitStyle === "box" ? "border border-border rounded-sm items-center" : "border-b border-border items-end pb-2";
   const Box = ({ indexNum, children }: { indexNum: number; children: ReactNode }) => {
     return (
       <div
@@ -32,7 +32,7 @@ export const CodeInput = ({
           "flex h-16 w-full justify-center text-2xl duration-150",
           defaultUnitClassName,
           unitClassName,
-          indexNum === value.length ? "border-primary" : "border-gray-300",
+          indexNum === value.length ? "border-primary" : "border-border",
         )}
       >
         {children}

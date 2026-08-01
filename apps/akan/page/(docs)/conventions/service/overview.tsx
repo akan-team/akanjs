@@ -163,6 +163,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="_search service module"
           code={`libs/util/lib/_search/
   search.abstract.md     // workflow intent

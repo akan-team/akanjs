@@ -71,6 +71,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/myapp/akan.config.ts"
             code={`import type { AppConfig } from "akanjs";
 
@@ -113,6 +114,7 @@ export default config;`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="page/store/product/[productId].tsx"
             code={`import type { PageConfig } from "akanjs/client";
 import { Layout } from "akanjs/ui";

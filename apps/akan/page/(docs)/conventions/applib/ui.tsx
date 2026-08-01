@@ -53,6 +53,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/myapp/ui"
           language="bash"
           code={`apps/myapp/ui/
@@ -60,6 +61,7 @@ export default function Page() {
   HomeHeader.tsx`}
         />
         <Code.Snippet
+          className="w-full"
           title="AutoClose.tsx"
           code={`"use client";
 
@@ -100,6 +102,7 @@ export const AutoClose = ({ timeout = 0 }: AutoCloseProps) => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="index.ts"
           code={`export { AutoClose } from "./AutoClose";
 export { HomeHeader } from "./HomeHeader";
@@ -107,6 +110,7 @@ export { Metrics } from "./Metrics";
 export { StepBox } from "./StepBox";`}
         />
         <Code.Snippet
+          className="w-full"
           title="page.tsx"
           code={`import { AutoClose } from "@apps/myapp/ui";
 
@@ -129,6 +133,7 @@ export default function Page() {
         </Docs.Description>
         <div className="grid gap-3 xl:grid-cols-2">
           <Code.Snippet
+            className="w-full"
             title="Only/Web.tsx"
             code={`"use client";
 
@@ -145,6 +150,7 @@ export const Web = ({ children }: WebProps) => {
 };`}
           />
           <Code.Snippet
+            className="w-full"
             title="Only/index.tsx"
             code={`import { Admin } from "./Admin";
 import { Dev } from "./Dev";
@@ -162,8 +168,9 @@ export const Only = {
   Dev,
 };`}
           />
-          <Code.Snippet title="libs/shared/ui/index.ts" code={`export { Only } from "./Only";`} />
+          <Code.Snippet className="w-full" title="libs/shared/ui/index.ts" code={`export { Only } from "./Only";`} />
           <Code.Snippet
+            className="w-full"
             title="page.tsx"
             code={`import { Only } from "@libs/shared/ui";
 

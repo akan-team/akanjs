@@ -1,3 +1,6 @@
+// styleguard-disable inline-color — 이 서버 부트스트랩 파일은 백엔드가 뜨지 못했을 때 보여주는 독립형
+// "Backend failed to start" 에러 페이지 HTML(인라인 <style>)을 렌더한다. 그 실패 경로에서는 앱 테마/토큰
+// CSS 파이프라인이 없으므로 하드코딩 색이 불가피하다. 파일 전체 범위의 명시적 예외.
 import { mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { Logger } from "akanjs/common";

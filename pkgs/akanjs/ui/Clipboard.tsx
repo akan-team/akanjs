@@ -31,7 +31,7 @@ export const Clipboard = ({ text, className }: ClipboardProps): ReactElement => 
         await handleCopy();
       }}
       className={clsx(
-        "flex h-6 w-6 items-center justify-center rounded-md bg-white/30 text-white transition-all duration-300 hover:bg-white/20",
+        "flex h-6 w-6 items-center justify-center rounded-md bg-foreground/10 text-foreground transition-all duration-300 hover:bg-foreground/20",
         className,
       )}
     >

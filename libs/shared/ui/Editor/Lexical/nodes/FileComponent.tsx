@@ -1,6 +1,6 @@
 "use client";
-import { clsx, cn } from "akanjs/client";
-import { buttonVariants } from "akanjs/ui";
+import { clsx } from "akanjs/client";
+import { buttonRecipe } from "akanjs/ui";
 import type { NodeKey } from "lexical";
 import { AiOutlineDelete, AiOutlineDownload, AiOutlineFile } from "react-icons/ai";
 import { formatSize } from "./fileNode.util";
@@ -41,7 +41,7 @@ export const FileComponent = ({ nodeKey, src, name, size, format }: FileComponen
             target="_blank"
             rel="noreferrer"
             download={name}
-            className={cn(buttonVariants({ variant: "ghost", size: "xs" }), "min-h-7")}
+            className={buttonRecipe({ variant: "ghost", size: "xs" }, "min-h-7")}
             title="Download"
             onMouseDown={(event) => event.preventDefault()}
           >
@@ -51,7 +51,7 @@ export const FileComponent = ({ nodeKey, src, name, size, format }: FileComponen
             <button
               type="button"
               title="Delete"
-              className={cn(buttonVariants({ variant: "ghost", size: "xs" }), "min-h-7")}
+              className={buttonRecipe({ variant: "ghost", size: "xs" }, "min-h-7")}
               onMouseDown={(event) => event.preventDefault()}
               onClick={removeNode}
             >

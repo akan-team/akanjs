@@ -1,6 +1,7 @@
 "use client";
+import type { ClassValue } from "clsx";
 import { type ComponentType, createContext } from "react";
-
+import type { BadgeProps } from "../Badge";
 import type { ButtonProps } from "../Button";
 import type { DatePickerProps, RangePickerProps, TimePickerProps } from "../DatePicker";
 import type { DropdownProps } from "../Dropdown";
@@ -16,6 +17,7 @@ import type { ModalProps } from "../Modal";
 import type { PaginationProps } from "../Pagination";
 import type { PopconfirmProps } from "../Popconfirm";
 import type { ItemProps as RadioItemProps, RadioProps } from "../Radio";
+import type { BadgeVariants, ButtonVariants } from "../recipe";
 import type { SelectProps } from "../Select";
 import type { TableProps } from "../Table";
 import type { MultiProps as ToggleSelectMultiProps, ToggleSelectProps } from "../ToggleSelect";
@@ -36,6 +38,7 @@ import type { UnauthorizedProps } from "../Unauthorized";
  */
 export interface AkanUiOverrides {
   // Leaf primitives — plain drop-in components.
+  Badge: ComponentType<BadgeProps>;
   Modal: ComponentType<ModalProps>;
   Empty: ComponentType<EmptyProps>;
   Pagination: ComponentType<PaginationProps>;
@@ -87,8 +90,23 @@ export type AkanUiOverrideName = keyof AkanUiOverrides;
 export type AkanModalComponent = AkanUiOverrides["Modal"];
 
 /**
+ * Registry of framework recipe slots an app may swap through the same `_overrides.tsx`
+ * manifest: `override({ recipes: { button: neonButtonRecipe } })`. A recipe swap changes
+ * only the className factory — the component's structure/behavior (async states, focus,
+ * a11y) is untouched. Each replacement must accept the framework recipe's full variant
+ * contract, so every call site keeps working.
+ */
+export interface AkanUiRecipes {
+  button: (variants?: ButtonVariants, className?: ClassValue) => string;
+  badge: (variants?: BadgeVariants, className?: ClassValue) => string;
+}
+
+/** Shape of an `_overrides.tsx` manifest: component slots plus an optional recipe-slot map. */
+export type AkanUiOverrideManifest = Partial<AkanUiOverrides> & { recipes?: Partial<AkanUiRecipes> };
+
+/**
  * Holds the override map for the current route subtree. Empty at the root, then
  * merged (child wins) by each nested `UiOverrideProvider`, mirroring how nested
  * `_layout.tsx` / `_overrides.tsx` stack down the route tree.
  */
-export const UiOverrideContext = createContext<Partial<AkanUiOverrides>>({});
+export const UiOverrideContext = createContext<AkanUiOverrideManifest>({});

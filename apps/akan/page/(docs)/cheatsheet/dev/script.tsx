@@ -57,6 +57,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Run a script", ko: "Script 실행" })}
           code={`akan script myapp hello
 
@@ -77,6 +78,7 @@ apps/myapp/script/hello.ts`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/myapp/script/hello.ts"
           code={`import { server } from "../server";
 
@@ -106,6 +108,7 @@ void run();`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Read and update data", ko: "데이터 조회와 수정" })}
           code={`import { server, srv } from "../server";
 

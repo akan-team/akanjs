@@ -78,6 +78,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="DbBackup.Zone.tsx"
           code={`export const Card = ({ className, init, devAppId }: CardProps) => {
   return (
@@ -86,7 +87,7 @@ export default function Page() {
       init={init}
       renderEmpty={() => (
         <Model.NewWrapper partial={{ devAppId }} slice={fetch.slice.dbBackupInDevApp}>
-          <button className={buttonVariants({ variant: "secondary" })}>+ New</button>
+          <button className={buttonRecipe({ variant: "secondary" })}>+ New</button>
         </Model.NewWrapper>
       )}
       renderItem={(dbBackup) => <DbBackup.Unit.Card key={dbBackup.id} dbBackup={dbBackup} />}
@@ -138,6 +139,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Ticket.Zone.tsx"
           code={`export const View = ({ className, view, self }: ViewProps) => {
   return (
@@ -167,6 +169,7 @@ export default function Page() {
         </Docs.Description>
         <div className="grid gap-3 xl:grid-cols-2">
           <Code.Snippet
+            className="w-full"
             title="Ticket.Zone.tsx"
             code={`export const Kanban = ({ init, slice = fetch.slice.ticket }: KanbanProps) => {
   const [tab, setTab] = useState("open");
@@ -185,6 +188,7 @@ export default function Page() {
 };`}
           />
           <Code.Snippet
+            className="w-full"
             title="Dessert.Zone.tsx"
             code={`export const Card = ({ init }: CardProps) => {
   return (
@@ -221,6 +225,7 @@ export default function Page() {
         </Docs.Description>
         <div className="grid gap-3 xl:grid-cols-2">
           <Code.Snippet
+            className="w-full"
             title="Summary.Zone.tsx"
             code={`export const Dashboard = () => {
   const summary = st.use.summary();
@@ -230,6 +235,7 @@ export default function Page() {
 };`}
           />
           <Code.Snippet
+            className="w-full"
             title="ChatRoom.Zone.tsx"
             code={`useEffect(() => {
   st.do.readChat(root);

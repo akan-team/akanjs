@@ -57,6 +57,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Ping an edge server", ko: "엣지 서버 ping" })}
           code={`const origin = "https://edge.example.com/api";
 
@@ -80,6 +81,7 @@ if (result === "ping") {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Remote command", ko: "원격 명령" })}
           code={`const edgeOrigin = "https://edge.example.com/api";
 
@@ -100,6 +102,7 @@ await fetch.stopJob(jobId, { origin: edgeOrigin });`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Subscribe and cleanup", ko: "구독과 정리" })}
           code={`const unsubscribe = fetch.subscribeJobStatus(
   (status) => {
@@ -125,6 +128,7 @@ unsubscribe();`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Small wrapper", ko: "작은 wrapper" })}
           code={`class RemoteEdge {
   constructor(private origin: string) {}

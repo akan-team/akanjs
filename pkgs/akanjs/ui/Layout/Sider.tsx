@@ -6,7 +6,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { AiOutlineMenu } from "react-icons/ai";
 import { BiX } from "react-icons/bi";
 import { useSpring } from "react-spring";
-import { buttonVariants } from "../Button";
+import { buttonRecipe } from "../Button";
 
 export interface SiderProps {
   className?: string;
@@ -33,7 +33,7 @@ export const Sider = ({ className, bgClassName, children }: SiderProps) => {
   return (
     <>
       <button
-        className={buttonVariants({ variant: "ghost" })}
+        className={buttonRecipe({ variant: "ghost" })}
         onClick={() => {
           setIsOpen(true);
         }}

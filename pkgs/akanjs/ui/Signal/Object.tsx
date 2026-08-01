@@ -1,11 +1,11 @@
 "use client";
 import { type Cls, FIELD_META, getNonArrayModel, PrimitiveRegistry, type PrimitiveScalar } from "akanjs/base";
-import { cn, usePage } from "akanjs/client";
+import { usePage } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import { type ConstantCls, ConstantRegistry } from "akanjs/constant";
 import { useState } from "react";
-import { badgeVariants } from "../Badge";
-import { buttonVariants } from "../Button";
+import { badgeRecipe } from "../Badge";
+import { buttonRecipe } from "../Button";
 import { Modal } from "../Modal";
 import { Tooltip } from "../Tooltip";
 import { signalUi } from "./style";
@@ -27,9 +27,7 @@ const ObjectType = ({ objRef, arrDepth, nullable }: ObjectTypeProps) => {
     <>
       <div
         className={
-          isModelType
-            ? cn(badgeVariants({ variant: "primary" }), "cursor-pointer")
-            : badgeVariants({ variant: "outline" })
+          isModelType ? badgeRecipe({ variant: "primary" }, "cursor-pointer") : badgeRecipe({ variant: "outline" })
         }
         onClick={() => {
           if (isModelType) setOpenDetail(true);
@@ -106,7 +104,7 @@ const ObjectDetail = ({ objRef }: ObjectDetailProps) => {
                   {enumOpt
                     ? enumOpt.map((opt, idx: number) => (
                         <Tooltip key={idx} content={l._(`${enumOpt.refName}.${opt}`)} variant="primary">
-                          <button className={buttonVariants({ variant: "outline", size: "xs" })}>{opt}</button>
+                          <button className={buttonRecipe({ variant: "outline", size: "xs" })}>{opt}</button>
                         </Tooltip>
                       ))
                     : "-"}

@@ -168,6 +168,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Tasks in project", ko: "Project의 task" })}
           code={`export class TaskFilter extends from(cnst.Task, (filter) => ({
   query: {
@@ -197,6 +198,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Filter by assignees", ko: "담당자 조건" })}
           code={`inProjectWithAssignees: filter()
   .arg("projectId", ID)
@@ -224,6 +226,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Dashboard period", ko: "Dashboard 기간" })}
           code={`inPeriod: filter()
   .arg("projectId", ID)
@@ -251,6 +254,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Score threshold", ko: "점수 조건" })}
           code={`popular: filter()
   .arg("minScore", Number)

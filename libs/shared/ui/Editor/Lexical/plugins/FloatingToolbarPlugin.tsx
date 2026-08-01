@@ -3,7 +3,7 @@ import { $isLinkNode, TOGGLE_LINK_COMMAND } from "@lexical/link";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { $findMatchingParent, mergeRegister } from "@lexical/utils";
 import { cn } from "akanjs/client";
-import { buttonVariants } from "akanjs/ui";
+import { buttonRecipe } from "akanjs/ui";
 import {
   $getSelection,
   $isRangeSelection,
@@ -192,11 +192,10 @@ export const FloatingToolbar = ({
               key={mark.format}
               type="button"
               title={mark.title}
-              className={cn(
-                buttonVariants({ variant: "ghost", size: "xs" }),
+              className={buttonRecipe({ variant: "ghost", size: "xs" }, [
                 "min-h-7 px-2 font-mono",
                 state.formats.has(mark.format) ? "bg-muted" : "",
-              )}
+              ])}
               onClick={() => onToggleMark(mark.format)}
             >
               {mark.label}
@@ -206,11 +205,10 @@ export const FloatingToolbar = ({
           <button
             type="button"
             title="Link (⌘K)"
-            className={cn(
-              buttonVariants({ variant: "ghost", size: "xs" }),
+            className={buttonRecipe({ variant: "ghost", size: "xs" }, [
               "min-h-7 px-2",
               state.linkUrl ? "bg-muted" : "",
-            )}
+            ])}
             onClick={onStartLinkEdit}
           >
             Link
@@ -219,7 +217,7 @@ export const FloatingToolbar = ({
             <button
               type="button"
               title="Remove link"
-              className={cn(buttonVariants({ variant: "ghost", size: "xs" }), "min-h-7 px-2")}
+              className={buttonRecipe({ variant: "ghost", size: "xs" }, "min-h-7 px-2")}
               onClick={onRemoveLink}
             >
               Unlink
@@ -250,7 +248,10 @@ export const LinkInput = ({ initial, invalid, onSubmit, onCancel, onChange }: Li
         type="url"
         value={url}
         placeholder="https://…"
-        className={`input input-xs w-52 ${invalid ? "input-error" : ""}`}
+        className={cn(
+          "h-8 w-52 rounded-field border bg-background px-2 text-foreground text-sm focus:outline-none",
+          invalid ? "border-destructive" : "border-input focus:border-primary",
+        )}
         onMouseDown={(event) => event.stopPropagation()}
         onChange={(event) => {
           setUrl(event.target.value);
@@ -268,7 +269,7 @@ export const LinkInput = ({ initial, invalid, onSubmit, onCancel, onChange }: Li
       />
       <button
         type="button"
-        className={cn(buttonVariants({ variant: "primary", size: "xs" }), "min-h-7")}
+        className={buttonRecipe({ variant: "primary", size: "xs" }, "min-h-7")}
         onClick={() => onSubmit(url.trim())}
       >
         OK

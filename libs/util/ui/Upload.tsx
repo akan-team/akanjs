@@ -2,10 +2,10 @@
 import { usePage } from "@libs/util/client";
 import { clsx, cn, Device } from "akanjs/client";
 import type { ProtoFile } from "akanjs/constant";
-import { BottomSheet, type BottomSheetRef, badgeVariants, buttonVariants, Image } from "akanjs/ui";
+import { BottomSheet, type BottomSheetRef, badgeRecipe, buttonRecipe, Image } from "akanjs/ui";
 import { useCamera } from "akanjs/webkit";
 import { type ChangeEvent, useRef, useState } from "react";
-import { AiFillFileImage, AiFillFileText, AiOutlineDelete } from "react-icons/ai";
+import { AiFillFileImage, AiFillFileText, AiOutlineDelete, AiOutlineLoading3Quarters } from "react-icons/ai";
 import { GiFiles } from "react-icons/gi";
 import { TbDragDrop } from "react-icons/tb";
 
@@ -89,11 +89,15 @@ export const File = ({
   return (
     <div className={clsx("relative flex flex-wrap gap-2", className)}>
       <div
-        className={clsx("btn flex size-full flex-col items-center border-2 py-5", uploadClassName, {
-          "border-2 border-success border-dashed": isDragging && !isUploading,
-          "hover:bg-muted": isUploading,
-          "bg-background": file?.id,
-        })}
+        className={clsx(
+          "flex size-full cursor-pointer flex-col items-center rounded-field border-2 py-5 transition-colors",
+          uploadClassName,
+          {
+            "border-2 border-success border-dashed": isDragging && !isUploading,
+            "hover:bg-muted": isUploading,
+            "bg-background": file?.id,
+          },
+        )}
       >
         <button
           className={clsx("group w-full rounded-md")}
@@ -135,7 +139,7 @@ export const File = ({
             onChange={onFileSelect}
           />
           {file?.id ? (
-            <div key={file.id} className="flex flex-col items-center justify-center gap-2 text-gray-400">
+            <div key={file.id} className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
               <AiFillFileText className="text-[75px]" />
               <div>
                 <div className="text-sm">{file.filename}</div>
@@ -286,20 +290,15 @@ export const FileList = ({
                         <td className="w-[70%] truncate text-xs md:w-[50%] md:text-sm">{file.filename}</td>
                         <td className="text-center text-xs md:text-sm">{formatSize(file.size)}</td>
                         <td className="text-center align-middle text-xs md:text-sm">
-                          <div className={badgeVariants({ variant: "info" })}>
+                          <div className={badgeRecipe({ variant: "info" })}>
                             {file.status}
-                            <div
-                              className={clsx("loading loading-sm loading-spinner", {
-                                hidden: !isUploading,
-                                block: isUploading,
-                              })}
-                            />
+                            <AiOutlineLoading3Quarters className={cn("animate-spin", { hidden: !isUploading })} />
                           </div>
                         </td>
                         <td className="text-center align-middle text-sm">
                           <div
-                            className={cn(
-                              buttonVariants({ variant: "outline", size: "icon" }),
+                            className={buttonRecipe(
+                              { variant: "outline", size: "icon" },
                               "size-6 border-destructive p-0 text-destructive hover:bg-destructive hover:text-destructive-foreground",
                             )}
                             onClick={() => onRemove?.(file)}
@@ -318,7 +317,7 @@ export const FileList = ({
                 onClick={() => {
                   inputFileRef.current?.click();
                 }}
-                className={cn(buttonVariants({ variant: "outline" }), "w-full px-2")}
+                className={buttonRecipe({ variant: "outline" }, "w-full px-2")}
               >
                 {l("util.uploadFilesClick")}
               </button>
@@ -326,10 +325,14 @@ export const FileList = ({
           </div>
         ) : (
           <div
-            className={clsx("btn group flex size-full flex-col items-center border-2 py-5", uploadClassName, {
-              "border-2 border-success border-dashed": isDragging && !isUploading,
-              "hover:bg-muted": isUploading,
-            })}
+            className={clsx(
+              "group flex size-full cursor-pointer flex-col items-center rounded-field border-2 py-5 transition-colors",
+              uploadClassName,
+              {
+                "border-2 border-success border-dashed": isDragging && !isUploading,
+                "hover:bg-muted": isUploading,
+              },
+            )}
             onClick={() => {
               inputFileRef.current?.click();
             }}
@@ -530,11 +533,14 @@ const UploadImage = ({
                     } else setIsAccepted(false);
                   }
                 }}
-                className={clsx("btn group relative flex size-full items-center justify-center md:text-lg", {
-                  "rounded-full": styleType === "circle",
-                  "rounded-md": styleType === "square",
-                  "border-2 border-success border-dashed": isDragging,
-                })}
+                className={clsx(
+                  "group relative flex size-full cursor-pointer items-center justify-center rounded-field transition-colors md:text-lg",
+                  {
+                    "rounded-full": styleType === "circle",
+                    "rounded-md": styleType === "square",
+                    "border-2 border-success border-dashed": isDragging,
+                  },
+                )}
               >
                 {renderEmpty ? (
                   renderEmpty(onSelectImage)
@@ -577,11 +583,11 @@ const UploadImage = ({
         >
           <CropImage aspectRatio={aspectRatio} ref={cropImageRef} src={image ?? ""} />
           <div className="flex w-full items-center justify-center gap-2">
-            <button className={cn(buttonVariants(), "w-full")} onClick={onCancel}>
+            <button className={buttonRecipe(undefined, "w-full")} onClick={onCancel}>
               취소
             </button>
             <button
-              className={cn(buttonVariants({ variant: "primary" }), "w-full")}
+              className={buttonRecipe({ variant: "primary" }, "w-full")}
               onClick={() => {
                 void saveHandler();
               }}
@@ -665,7 +671,7 @@ export const EmptyUpload = ({ type, isDragging, desc, dndDesc }: EmptyUploadProp
   return (
     <div
       className={clsx(
-        "flex flex-col items-center justify-center gap-5 text-[45px] text-gray-400 duration-300 group-hover:text-background",
+        "flex flex-col items-center justify-center gap-5 text-[45px] text-muted-foreground duration-300 group-hover:text-background",
         {
           "text-success": isDragging,
         },
@@ -675,7 +681,7 @@ export const EmptyUpload = ({ type, isDragging, desc, dndDesc }: EmptyUploadProp
         {type === "image" ? <AiFillFileImage /> : type === "file" ? <AiFillFileText /> : <GiFiles />}
       </div>
       <div
-        className={clsx("w-fit text-gray-400 text-sm duration-300 group-hover:text-background", {
+        className={clsx("w-fit text-muted-foreground text-sm duration-300 group-hover:text-background", {
           "text-success": isDragging,
         })}
       >
@@ -683,7 +689,7 @@ export const EmptyUpload = ({ type, isDragging, desc, dndDesc }: EmptyUploadProp
       </div>
       <div
         className={clsx(
-          "flex flex-row items-center justify-center gap-2 rounded-md border border-dashed px-1 py-1 text-[8px] text-gray-400 duration-300 group-hover:text-background",
+          "flex flex-row items-center justify-center gap-2 rounded-md border border-dashed px-1 py-1 text-[8px] text-muted-foreground duration-300 group-hover:text-background",
           {
             "border-success text-success": isDragging,
           },

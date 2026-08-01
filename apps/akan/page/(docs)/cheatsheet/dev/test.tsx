@@ -51,6 +51,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="article.signal.spec.ts"
           code={`export const getUserAgent = async () => {
   const agent = await createTestAgent();
@@ -77,6 +78,7 @@ export const createArticle = async (agent, title = "Hello") => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="article.signal.test.ts"
           code={`import { beforeAll, describe, expect, it } from "bun:test";
 import { createArticle, getUserAgent } from "./article.signal.spec";
@@ -150,6 +152,7 @@ describe("article signal", () => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Run tests", ko: "테스트 실행" })}
           code={`akan test myapp
 akan test myapp --write false`}

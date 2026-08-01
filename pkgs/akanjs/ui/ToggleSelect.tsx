@@ -2,11 +2,11 @@
 import { cn, usePage } from "akanjs/client";
 import { type ComponentType, createElement } from "react";
 
-import { buttonVariants } from "./Button";
+import { buttonRecipe } from "./Button";
 import { createOverridable, useUiOverride } from "./UiOverride";
 
 /** Toggle-select cell: outline button, filled success when selected. */
-const toggleBtn = buttonVariants({ variant: "outline", size: "sm" });
+const toggleBtn = buttonRecipe({ variant: "outline", size: "sm" });
 const selectedCls = "border-transparent bg-success/70 text-success-foreground hover:bg-success/70";
 
 export interface ToggleSelectProps<I extends string | number | boolean | null> {

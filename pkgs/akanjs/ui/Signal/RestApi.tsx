@@ -1,13 +1,13 @@
 "use client";
 import { PrimitiveRegistry } from "akanjs/base";
-import { cn, usePage } from "akanjs/client";
+import { usePage } from "akanjs/client";
 import { type ConstantCls, ConstantRegistry } from "akanjs/constant";
 import { FetchClient, type FetchProxy } from "akanjs/fetch";
 import type { SerializedEndpoint } from "akanjs/signal";
 import { st } from "akanjs/store";
 import { useMemo, useState } from "react";
 import { AiOutlineApi, AiOutlineCopy, AiOutlineFileWord, AiOutlineSend } from "react-icons/ai";
-import { buttonVariants } from "../Button";
+import { buttonRecipe } from "../Button";
 import { Copy } from "../Copy";
 import { Signal } from ".";
 import Arg from "./Arg";
@@ -136,8 +136,8 @@ const RestApiEndpoint = ({
             onClick={() => {
               setViewStatus("doc");
             }}
-            className={cn(
-              buttonVariants({ variant: viewStatus === "doc" ? "primary" : "outline", size: "sm" }),
+            className={buttonRecipe(
+              { variant: viewStatus === "doc" ? "primary" : "outline", size: "sm" },
               "rounded-none",
             )}
           >
@@ -147,8 +147,8 @@ const RestApiEndpoint = ({
             onClick={() => {
               setViewStatus("test");
             }}
-            className={cn(
-              buttonVariants({ variant: viewStatus === "test" ? "primary" : "outline", size: "sm" }),
+            className={buttonRecipe(
+              { variant: viewStatus === "test" ? "primary" : "outline", size: "sm" },
               "rounded-none",
             )}
           >
@@ -310,7 +310,7 @@ const RestApiTry = ({ signalPrefix, refName, endpointKey, endpoint, fetch, httpU
       <div className="flex flex-wrap items-center gap-2 rounded-xl bg-background p-3">
         <div className={signalUi.sectionTitle}>Request URL</div>
         <Copy text={`${httpUri ?? ""}${requestPath}`}>
-          <button className={buttonVariants({ variant: "outline", size: "sm" })}>
+          <button className={buttonRecipe({ variant: "outline", size: "sm" })}>
             {requestPath} <AiOutlineCopy />
           </button>
         </Copy>
@@ -370,7 +370,7 @@ const RestApiTry = ({ signalPrefix, refName, endpointKey, endpoint, fetch, httpU
         </div>
       ) : null}
       <div>
-        <button className={cn(buttonVariants({ variant: "primary" }), "w-full")} onClick={() => void onSend()}>
+        <button className={buttonRecipe({ variant: "primary" }, "w-full")} onClick={() => void onSend()}>
           <AiOutlineSend className="-mt-0.5" /> Send Request
         </button>
       </div>

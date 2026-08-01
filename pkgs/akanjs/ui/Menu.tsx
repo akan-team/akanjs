@@ -3,7 +3,7 @@ import { cn } from "akanjs/client";
 import { st } from "akanjs/store";
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AiFillCaretDown, AiOutlineEllipsis } from "react-icons/ai";
-import { buttonVariants } from "./Button";
+import { buttonRecipe } from "./Button";
 
 import { createOverridable } from "./UiOverride";
 
@@ -64,19 +64,11 @@ export const DefaultMenu = ({
 
   const subMenuItemClassName =
     mode === "inline"
-      ? cn(buttonVariants({ variant: "ghost" }), "m-0 h-full w-full px-2 font-normal text-primary hover:bg-primary/20")
-      : cn(
-          buttonVariants({ variant: "ghost" }),
+      ? buttonRecipe({ variant: "ghost" }, "m-0 h-full w-full px-2 font-normal text-primary hover:bg-primary/20")
+      : buttonRecipe(
+          { variant: "ghost" },
           "w-full whitespace-nowrap text-center font-normal text-primary duration-300",
         );
-
-  // const activeClassName = activeStyle === "active" ? "[&>div]:bg-primary/20 [&>div]:text-primary" : "bordered";
-  const activeClassName =
-    activeStyle === "active"
-      ? "bg-primary text-primary"
-      : activeStyle === "bordered"
-        ? " border-b-2 border-white"
-        : activeStyle;
 
   const [overflowMenuItems, setOverflowMenuItems] = useState<MenuItem[]>([]);
 
@@ -246,10 +238,7 @@ const OverflowMenu = ({ overflowItems, onClick }: OverflowMenuProps) => {
             <div
               key={item.key}
               onClick={() => onClick?.(item)}
-              className={cn(
-                buttonVariants({ variant: "ghost" }),
-                "relative whitespace-nowrap font-normal text-primary",
-              )}
+              className={buttonRecipe({ variant: "ghost" }, "relative whitespace-nowrap font-normal text-primary")}
               onMouseEnter={() => {
                 if (item.children && expandedKey !== item.key) setExpandedKey(item.key);
               }}
@@ -268,8 +257,8 @@ const OverflowMenu = ({ overflowItems, onClick }: OverflowMenuProps) => {
                         setExpandedKey(undefined);
                       }}
                       key={child.key}
-                      className={cn(
-                        buttonVariants({ variant: "ghost" }),
+                      className={buttonRecipe(
+                        { variant: "ghost" },
                         "flex items-center justify-center text-center font-normal text-primary",
                       )}
                     >

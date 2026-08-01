@@ -51,6 +51,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="docker-compose.yaml"
           code={`version: "3.8"
 
@@ -93,6 +94,7 @@ services:
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Docker exec", ko: "Docker exec" })}
           language="bash"
           code="docker exec -it myapp sh -lc 'AKAN_CONSOLE=1 bun console.js'"
@@ -144,6 +146,7 @@ services:
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Replica examples", ko: "Replica 예시" })}
           code={`AKAN_REPLICA="1,0,0"  # one request-serving child
 AKAN_REPLICA="2,1,0"  # two request children and one batch child

@@ -57,6 +57,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Option registers values", ko: "Option에서 값 등록" })}
           code={`export const option = new AkanOption<AppEnv>().use((env) => ({
   mailApi: env.mail ? new MailApi(env.mail) : null,
@@ -65,6 +66,7 @@ export default function Page() {
 }));`}
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Service receives values", ko: "Service에서 값 받기" })}
           code={`export class ArticleService extends serve(db.article, ({ use }) => ({
   mailApi: use<MailApi>(),
@@ -90,6 +92,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Declare adaptor", ko: "Adaptor 선언" })}
           code={`export class ImageStorage extends adapt("imageStorage", ({ env }) => ({
   bucket: env((env: AppEnv) => env.imageBucket),
@@ -100,6 +103,7 @@ export default function Page() {
 }`}
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Plug adaptor into service", ko: "Service에 plug하기" })}
           code={`export class ArticleService extends serve(db.article, ({ plug }) => ({
   imageStorage: plug(ImageStorage),
@@ -124,6 +128,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Service to service", ko: "Service끼리 연결" })}
           code={`export class ArticleService extends serve(db.article, ({ service }) => ({
   fileService: service<srv.FileService>(),
@@ -150,6 +155,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Environment value", ko: "환경값 사용" })}
           code={`export class ArticleService extends serve(db.article, ({ env }) => ({
   publicUrl: env((env: AppEnv) =>

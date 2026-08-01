@@ -1,5 +1,5 @@
 "use client";
-import { badgeVariants } from "../Badge";
+import { badgeRecipe } from "../Badge";
 
 export const signalUi = {
   sectionTitle: "font-extrabold text-lg",
@@ -16,13 +16,13 @@ export const signalUi = {
 };
 
 export const getEndpointBadgeClassName = (type: string) =>
-  badgeVariants({ variant: type === "query" || type === "pubsub" ? "primary" : "secondary" });
+  badgeRecipe({ variant: type === "query" || type === "pubsub" ? "primary" : "secondary" });
 
 export const getGuardBadgeClassName = (guard: string) =>
-  badgeVariants({ variant: guard === "Public" ? "primary" : guard === "None" ? "default" : "secondary" });
+  badgeRecipe({ variant: guard === "Public" ? "primary" : guard === "None" ? "default" : "secondary" });
 
 export const getStatusBadgeClassName = (status: string) =>
-  badgeVariants({
+  badgeRecipe({
     variant: status === "error" ? "error" : status === "success" || status === "listening" ? "primary" : "outline",
   });
 

@@ -12,8 +12,8 @@ export default function Page() {
         <Docs.Description>
           <div>
             {l.trans({
-              en: "Akan uses Tailwind CSS with a semantic design-token layer (shadcn-style) and the akanjs/ui primitives as the default styling foundation. Tailwind gives screens a fast utility language for layout, spacing, responsive behavior, and one-off composition. The token layer + primitives add semantic names, so app screens can say primary, background, warning, or destructive instead of hard-coding every color.",
-              ko: "Akan은 Tailwind CSS와 시맨틱 디자인 토큰 계층(shadcn 스타일), 그리고 akanjs/ui 프리미티브를 기본 스타일링 기반으로 사용합니다. Tailwind는 레이아웃, 간격, 반응형 동작, 일회성 조합을 빠르게 작성할 수 있는 유틸리티 언어를 제공합니다. 토큰 계층 + 프리미티브는 의미 기반 이름을 더해, 앱 화면이 모든 색상을 하드코딩하지 않고 primary, background, warning, destructive 같은 의도를 표현할 수 있게 합니다.",
+              en: "Akan uses Tailwind CSS with a semantic design-token layer and the akanjs/ui primitives as the default styling foundation. Tailwind gives screens a fast utility language for layout, spacing, responsive behavior, and one-off composition. The token layer + primitives add semantic names, so app screens can say primary, background, warning, or destructive instead of hard-coding every color.",
+              ko: "Akan은 Tailwind CSS와 시맨틱 디자인 토큰 계층, 그리고 akanjs/ui 프리미티브를 기본 스타일링 기반으로 사용합니다. Tailwind는 레이아웃, 간격, 반응형 동작, 일회성 조합을 빠르게 작성할 수 있는 유틸리티 언어를 제공합니다. 토큰 계층 + 프리미티브는 의미 기반 이름을 더해, 앱 화면이 모든 색상을 하드코딩하지 않고 primary, background, warning, destructive 같은 의도를 표현할 수 있게 합니다.",
             })}
           </div>
           <Docs.Alert type="info">
@@ -114,9 +114,10 @@ export default function Page() {
             ))}
           </div>
           <Code.Snippet
+            className="w-full"
             language="typescript"
             code={`<div className="space-y-3 rounded-xl bg-background p-4 text-foreground">
-  <button className={buttonVariants({ variant: "primary" })}>Save</button>
+  <button className={buttonRecipe({ variant: "primary" })}>Save</button>
   <input className="h-10 w-full rounded-field border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none" placeholder="Product name" />
   <div className="rounded-box border border-border bg-card p-4">
     Product summary
@@ -138,6 +139,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/myapp/page/styles.css"
             code={`@import "tailwindcss";
 @import "akanjs/ui/styles.css";
@@ -192,6 +194,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/myapp/page/akanjs/_layout.tsx"
             language="typescript"
             code={`import type { Font } from "akanjs/client";
@@ -209,6 +212,7 @@ export const fonts: Font[] = [
 ];`}
           />
           <Code.Snippet
+            className="w-full"
             title="Using font classes"
             language="typescript"
             code={`<span className="font-pretendard text-foreground">

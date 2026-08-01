@@ -1,13 +1,13 @@
 "use client";
-import { cn, fetch, usePage } from "akanjs/client";
+import { fetch, usePage } from "akanjs/client";
 import { decodeJwtPayload, lowerlize } from "akanjs/common";
 import { type Account, type FetchProxy, getDefaultAccount } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import { type ReactNode, useEffect, useState } from "react";
 import { AiOutlineApi, AiOutlineCopy } from "react-icons/ai";
 import { BiLock } from "react-icons/bi";
-import { badgeVariants } from "../Badge";
-import { buttonVariants } from "../Button";
+import { badgeRecipe } from "../Badge";
+import { buttonRecipe } from "../Button";
 import { Copy } from "../Copy";
 import { Input } from "../Input";
 import { Modal } from "../Modal";
@@ -45,7 +45,7 @@ const DocSetting = ({
       <div className="flex flex-1 flex-wrap items-center gap-2">
         <span className="font-semibold text-foreground/70 text-sm">BaseURL</span>
         <Copy text={baseUrl}>
-          <button className={buttonVariants({ variant: "outline", size: "sm" })}>
+          <button className={buttonRecipe({ variant: "outline", size: "sm" })}>
             {baseUrl}
             <AiOutlineCopy />
           </button>
@@ -54,7 +54,7 @@ const DocSetting = ({
       <div className="flex items-center gap-2">
         <span className="font-semibold text-foreground/70 text-sm">Mode</span>
         <button
-          className={buttonVariants({ variant: "primary", size: "sm" })}
+          className={buttonRecipe({ variant: "primary", size: "sm" })}
           onClick={() => {
             st.do.setTrySignalType("restapi");
           }}
@@ -66,7 +66,7 @@ const DocSetting = ({
       <div className="flex flex-wrap items-center gap-1">
         <span className="font-semibold text-foreground/70 text-sm">For</span>
         <button
-          className={buttonVariants({ variant: tryRoleForAll ? "secondary" : "outline", size: "sm" })}
+          className={buttonRecipe({ variant: tryRoleForAll ? "secondary" : "outline", size: "sm" })}
           onClick={() => {
             if (!tryRoleForAll) st.do.setTryRoles([...roleTypes]);
           }}
@@ -76,7 +76,7 @@ const DocSetting = ({
         {roleTypes.map((roleType) => (
           <button
             key={roleType}
-            className={buttonVariants({
+            className={buttonRecipe({
               variant: !tryRoleForAll && tryRoles.includes(roleType) ? "secondary" : "outline",
               size: "sm",
             })}
@@ -93,7 +93,7 @@ const DocSetting = ({
       <div className="flex items-center gap-2">
         <span className="font-semibold text-foreground/70 text-sm">Auth</span>
         <DocAuthModal>
-          <button className={buttonVariants({ variant: currentRoles.length > 0 ? "primary" : "outline", size: "sm" })}>
+          <button className={buttonRecipe({ variant: currentRoles.length > 0 ? "primary" : "outline", size: "sm" })}>
             <BiLock /> {currentRoles.length > 0 ? currentRoles.join(", ") : "Public"}
           </button>
         </DocAuthModal>
@@ -131,7 +131,7 @@ const DocAuthModal = ({ children }: DocAuthModalProps) => {
         title="Set JWT for Authorization"
         action={
           <button
-            className={cn(buttonVariants({ variant: "primary" }), "w-full")}
+            className={buttonRecipe({ variant: "primary" }, "w-full")}
             onClick={() => {
               st.set(
                 decodedAccount
@@ -162,7 +162,7 @@ const DocAuthModal = ({ children }: DocAuthModalProps) => {
             {decodedAccount ? (
               <div className="absolute top-4 right-4">
                 <Copy text={accountStr}>
-                  <button className={buttonVariants({ variant: "secondary", size: "sm" })}>
+                  <button className={buttonRecipe({ variant: "secondary", size: "sm" })}>
                     <AiOutlineCopy /> Copy
                   </button>
                 </Copy>
@@ -208,7 +208,7 @@ const DocSignal = ({ refName, fetch }: DocSignalProps) => {
       summary={
         <div className="flex flex-wrap items-center gap-2">
           <div className="font-bold text-xl">{refName}</div>
-          <div className={badgeVariants({ variant: "primary" })}>Signal</div>
+          <div className={badgeRecipe({ variant: "primary" })}>Signal</div>
         </div>
       }
     >

@@ -51,6 +51,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Article template", ko: "Article template" })}
           code={`"use client";
 
@@ -94,6 +95,7 @@ export const General = () => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "New article page", ko: "새 article page" })}
           code={`export default async function Page({ params }: PageProps) {
   const { boardId } = params;
@@ -130,6 +132,7 @@ export const General = () => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Edit article page", ko: "Article 수정 page" })}
           code={`export default async function Page({ params }: PageProps) {
   const articleEdit = await fetch.editArticle(params.articleId);
@@ -160,12 +163,14 @@ export const General = () => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Edit current item", ko: "현재 항목 수정" })}
           code={`<Model.EditModal id={article.id} type="form" slice={fetch.slice.articleInBoard}>
   <Article.Template.General />
 </Model.EditModal>`}
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "View and edit modal", ko: "보기와 수정 modal" })}
           code={`<Model.ViewEditModal
   slice={fetch.slice.articleInPublic}

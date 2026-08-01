@@ -61,10 +61,10 @@ export const BottomTab = ({ className, tabs, height = 64 }: BottomTabProps) => {
               isActiveTab(tab.href) ? "" : "opacity-60"
             }`}
           >
-            <div className="indicator">
+            <div className="relative inline-flex w-max">
               {isActiveTab(tab.href) ? (tab.activeIcon ?? tab.icon) : tab.icon}
               {tab.notiCount && tab.notiCount > 0 ? (
-                <div className="indicator-item flex size-2 items-center justify-center rounded-full bg-secondary text-[10px] text-background"></div>
+                <div className="absolute top-0 right-0 z-[1] flex size-2 translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-secondary text-[10px] text-background"></div>
               ) : null}
             </div>
             <span>{tab.name}</span>

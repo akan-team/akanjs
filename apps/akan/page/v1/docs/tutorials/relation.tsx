@@ -650,7 +650,7 @@ export const New = ({ className }: NewProps) => {
   return (
     <div className={className}>
       <button
-        className={buttonVariants({ variant: "primary" })}
+        className={buttonRecipe({ variant: "primary" })}
         onClick={() => {
           st.do.newDelivery();
         }}
@@ -717,10 +717,10 @@ export default function Page() {
             <Inventory.Zone.Today />
             <Tab defaultMenu="icecreamOrder"> // [!code highlight:33]
               <Tab.Menus className="flex items-center">
-                <Tab.Menu menu="icecreamOrder" className={cn(buttonVariants({ size: "lg" }), "h-14 px-8 text-lg")} activeClassName="btn-primary">
+                <Tab.Menu menu="icecreamOrder" className={cn(buttonRecipe({ size: "lg" }), "h-14 px-8 text-lg")} activeClassName="btn-primary">
                   {l("icecreamOrder.modelName")}
                 </Tab.Menu>
-                <Tab.Menu menu="delivery" className={cn(buttonVariants({ size: "lg" }), "h-14 px-8 text-lg")} activeClassName="btn-primary">
+                <Tab.Menu menu="delivery" className={cn(buttonRecipe({ size: "lg" }), "h-14 px-8 text-lg")} activeClassName="btn-primary">
                   {l("delivery.modelName")}
                 </Tab.Menu>
               </Tab.Menus>
@@ -729,7 +729,7 @@ export default function Page() {
                   <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
                   <IcecreamOrder.Util.PublicQueryMaker />
                   <Model.New
-                    className={buttonVariants({ variant: "primary" })}
+                    className={buttonRecipe({ variant: "primary" })}
                     sliceName="icecreamOrderInPublic"
                     renderTitle="name"
                     partial={icecreamOrderForm}

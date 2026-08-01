@@ -4,7 +4,7 @@ import { capitalize } from "akanjs/common";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
 
-import { buttonVariants } from "../Button";
+import { buttonRecipe } from "../Button";
 import { Link } from "../Link";
 
 export interface DashboardProps<T extends string, State> {
@@ -42,11 +42,10 @@ export default function Dashboard<T extends string, State>({
             queryMap[column] !== undefined && (
               <button
                 key={column}
-                className={cn(
-                  buttonVariants({ variant: "ghost" }),
+                className={buttonRecipe({ variant: "ghost" }, [
                   "mx-1 h-32 w-48 rounded-none pt-3 hover:border",
                   filter === column ? "border" : "border-0",
-                )}
+                ])}
               >
                 <Link
                   key={column}
@@ -66,7 +65,7 @@ export default function Dashboard<T extends string, State>({
                 queryMap[column] !== undefined && (
                   <button
                     key={column}
-                    className={cn(buttonVariants({ variant: "ghost" }), "mx-1 h-32 w-48 rounded-none border-none pt-3")}
+                    className={buttonRecipe({ variant: "ghost" }, "mx-1 h-32 w-48 rounded-none border-none pt-3")}
                   >
                     <div className="flex flex-col gap-1">
                       <div className="text-foreground/60 text-xs">{l(`summary.${column}` as "base.new")}</div>

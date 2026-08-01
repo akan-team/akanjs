@@ -37,6 +37,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="minimal service store"
           code={`export class SearchStore extends store("search" as const, () => ({
   searchIndexName: null as string | null,
@@ -58,6 +59,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="loading and fetch"
           code={`async setSearchIndexName(searchIndexName: string) {
   this.set({ searchIndexName, loading: true });
@@ -81,6 +83,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="pagination action"
           code={`async setPage(page: number) {
   const { searchIndexName } = this.get();

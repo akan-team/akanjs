@@ -320,7 +320,7 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
       {showControls ? ( // [!code collapse:16]
         <div className="bg-background/50 flex items-center justify-center gap-2 rounded-xl p-4">
           <Model.ViewWrapper sliceName="icecreamOrder" modelId={icecreamOrder.id}>
-            <button className={buttonVariants({ variant: "primary" })}>
+            <button className={buttonRecipe({ variant: "primary" })}>
               <span>{l.trans({ en: "View", ko: "보기" })}</span>
             </button>
           </Model.ViewWrapper>

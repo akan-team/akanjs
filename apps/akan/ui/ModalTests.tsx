@@ -1,6 +1,5 @@
 "use client";
-import { cn } from "akanjs/client";
-import { buttonVariants, Dialog, Modal } from "akanjs/ui";
+import { buttonRecipe, Dialog, Modal } from "akanjs/ui";
 import { useState } from "react";
 
 type ModalKey = "basic" | "action" | "long" | "confirm" | "plain";
@@ -85,12 +84,12 @@ export const ModalTests = () => {
         title="Action Modal"
         action={
           <div className="flex justify-end gap-2 border-border border-t p-4">
-            <button type="button" className={buttonVariants({ variant: "ghost" })} onClick={close}>
+            <button type="button" className={buttonRecipe({ variant: "ghost" })} onClick={close}>
               취소
             </button>
             <button
               type="button"
-              className={buttonVariants({ variant: "primary" })}
+              className={buttonRecipe({ variant: "primary" })}
               onClick={() => {
                 setResult(`Modal action saved: ${new Date().toLocaleTimeString()}`);
                 close();
@@ -161,7 +160,7 @@ const TestCard = ({ title, description, onOpen }: TestCardProps) => {
         <h2 className="font-bold text-xl">{title}</h2>
         <p className="mt-2 text-foreground/65 text-sm leading-6">{description}</p>
       </div>
-      <button type="button" className={cn(buttonVariants({ variant: "primary" }), "mt-5")} onClick={onOpen}>
+      <button type="button" className={buttonRecipe({ variant: "primary" }, "mt-5")} onClick={onOpen}>
         열기
       </button>
     </article>
@@ -183,7 +182,7 @@ const CompoundDialogCard = ({ onSave }: CompoundDialogCardProps) => {
       </div>
       <Dialog>
         <Dialog.Trigger className="mt-5">
-          <button type="button" className={cn(buttonVariants({ variant: "secondary" }), "w-full")}>
+          <button type="button" className={buttonRecipe({ variant: "secondary" }, "w-full")}>
             열기
           </button>
         </Dialog.Trigger>
@@ -200,7 +199,7 @@ const CompoundDialogCard = ({ onSave }: CompoundDialogCardProps) => {
           </Dialog.Content>
           <Dialog.Action>
             <div className="flex justify-end border-border border-t p-4">
-              <button type="button" className={buttonVariants({ variant: "secondary" })} onClick={onSave}>
+              <button type="button" className={buttonRecipe({ variant: "secondary" })} onClick={onSave}>
                 action 실행
               </button>
             </div>

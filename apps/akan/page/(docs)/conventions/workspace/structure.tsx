@@ -17,6 +17,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Workspace root"
           language="bash"
           code={`.
@@ -84,6 +85,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Workspace command examples"
           language="bash"
           code={`akan create-application

@@ -5,7 +5,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { a
     filename: "Task.View.tsx",
     content: `import { type cnst, usePage } from "@apps/${dict.appName}/client";
 import { clsx } from "akanjs/client";
-import { badgeVariants } from "akanjs/ui";
+import { badgeRecipe } from "akanjs/ui";
 
 // ===== Task.View.tsx =====
 // Convention: lib/<module>/ — PascalCase .tsx, View suffix = detail display component.
@@ -54,7 +54,7 @@ export const General = ({ className, task }: GeneralProps) => {
               <li key={i} className="flex items-start gap-3 text-sm">
                 <span
                   className={clsx(
-                    badgeVariants({
+                    badgeRecipe({
                       variant:
                         entry.action === "started" ? "primary" : entry.action === "completed" ? "success" : "default",
                     }),

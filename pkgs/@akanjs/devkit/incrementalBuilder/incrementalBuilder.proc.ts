@@ -7,14 +7,18 @@ import {
   type ClientEntryDiscovery,
   CsrArtifactBuilder,
   type CssCompiler,
+  countBlocking,
   DevChangePlanner,
   DevGeneratedIndexSync,
   FontOptimizer,
+  formatStyleContract,
   GraphClientEntryDiscovery,
   HmrWatcher,
   PagesBundleBuilder,
   RouteClientBuilder,
   SsrBaseArtifactBuilder,
+  type StyleContractViolations,
+  StyleGuard,
   WatchRootResolver,
   WorkspaceExecutor,
 } from "@akanjs/devkit";
@@ -171,6 +175,7 @@ class IncrementalBuilder {
     const cssByBasePathStarted = Date.now();
     const cssByBasePath = await this.#cssCompiler.getCssByBasePath({ refresh });
     this.#logger.verbose(`css-get-by-base-path ok (${Date.now() - cssByBasePathStarted}ms)`);
+    await this.#warnStyleContract(changedFiles);
     const fontStarted = Date.now();
     const optimizedFonts = await this.#getOptimizedFonts(changedFiles ?? []);
     this.#logger.verbose(`font-assets ready (${Date.now() - fontStarted}ms)`);
@@ -209,6 +214,39 @@ class IncrementalBuilder {
         changedFiles,
       },
     });
+  }
+
+  /**
+   * dev=warn: 스타일 계약 위반을 경고로만 알린다(막지 않음). 편집한 소스만 스캔해 HMR 루프를 가볍게 유지하고,
+   * 변경 목록이 없으면(초기/전체 리빌드) 전체를 한 번 스캔한다. 가드 자체 실패는 dev 를 막지 않는다.
+   */
+  async #warnStyleContract(changedFiles?: string[]): Promise<void> {
+    try {
+      const changed = (changedFiles ?? []).filter(
+        (f) => /\.(tsx|ts|jsx|js)$/.test(f) && !f.includes(`${path.sep}node_modules${path.sep}`),
+      );
+      const violations: StyleContractViolations = {
+        style: changed.length
+          ? new StyleGuard().run(
+              await Promise.all(
+                changed.map(async (p) => ({
+                  path: p,
+                  content: await Bun.file(p)
+                    .text()
+                    .catch(() => ""),
+                })),
+              ),
+            )
+          : await this.#cssCompiler.collectStyleViolations({ refresh: true }),
+        theme: await this.#cssCompiler.collectThemeViolations({ refresh: true }),
+      };
+      if (countBlocking(violations) === 0) return;
+      this.#logger.warn(
+        `[styleGuard] style-contract 위반 (dev=warn / build·CI=error):\n${formatStyleContract(violations)}`,
+      );
+    } catch (error) {
+      this.#logger.verbose(`styleGuard dev check skipped: ${String(error)}`);
+    }
   }
 
   scheduleCssRebuild(

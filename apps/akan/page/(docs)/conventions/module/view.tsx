@@ -102,6 +102,7 @@ export default function ViewDocsPage() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Ticket.View.tsx"
           code={`import { type cnst, usePage } from "@apps/myapp/client";
 import { clsx } from "akanjs/client";
@@ -139,6 +140,7 @@ export const General = ({ className, ticket }: GeneralProps) => {
         </Docs.Description>
         <div className="grid gap-3 xl:grid-cols-2">
           <Code.Snippet
+            className="w-full"
             title="Article.View.tsx"
             code={`interface ArticleViewProps {
   article: cnst.Article;
@@ -152,6 +154,7 @@ export const General = ({ article }: ArticleViewProps) => (
 );`}
           />
           <Code.Snippet
+            className="w-full"
             title="Order.View.tsx"
             code={`interface OrderViewProps {
   order: cnst.Order;
@@ -182,6 +185,7 @@ export const General = ({ order }: OrderViewProps) => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="detail page"
           code={`export default async function Page({ params }: PageProps) {
   const { releaseView } = await fetch.viewRelease(params.releaseId);
@@ -212,6 +216,7 @@ export const General = ({ order }: OrderViewProps) => {
         </Docs.Description>
         <Docs.IntroTable type="field" items={loadViewStateItems} />
         <Code.Snippet
+          className="w-full"
           title="Release.Zone.tsx"
           code={`interface ViewProps {
   view: ClientView<"release", cnst.Release>;

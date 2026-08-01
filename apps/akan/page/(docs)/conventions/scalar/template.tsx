@@ -37,6 +37,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           language="bash"
           code={`lib/
 └── __scalar/
@@ -58,6 +59,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="price.Template.tsx"
           code={`"use client";
 
@@ -102,6 +104,7 @@ export const General = ({ value, onChange }: GeneralProps) => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="product.Template.tsx"
           code={`"use client";
 

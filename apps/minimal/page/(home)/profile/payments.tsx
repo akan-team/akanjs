@@ -1,12 +1,12 @@
+import { appCard, appNav, appScreen } from "@apps/minimal/ui";
 import type { PageConfig } from "akanjs/client";
-import { cn } from "akanjs/client";
-import { buttonVariants, Layout, Link } from "akanjs/ui";
+import { buttonRecipe, Layout, Link } from "akanjs/ui";
 import { AiOutlineCreditCard, AiOutlineRight, AiOutlineSafety } from "react-icons/ai";
 
 export default function Page() {
   return (
-    <div className="apptest-screen px-5 pb-24">
-      <Layout.Navbar className="apptest-nav" back>
+    <div className={appScreen(undefined, "px-5 pb-24")}>
+      <Layout.Navbar className={appNav()} back>
         <div className="font-semibold">Payments</div>
       </Layout.Navbar>
       <section className="pt-5">
@@ -19,15 +19,18 @@ export default function Page() {
             <AiOutlineSafety className="text-4xl" />
           </div>
         </div>
-        <Link className="apptest-card mt-5 flex items-center gap-3 rounded-3xl p-4" href="/profile/payments/methods">
+        <Link
+          className={appCard(undefined, "mt-5 flex items-center gap-3 rounded-3xl p-4")}
+          href="/profile/payments/methods"
+        >
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/15 text-primary text-xl">
             <AiOutlineCreditCard />
           </div>
           <div className="flex-1">
             <p className="font-semibold">Payment methods</p>
-            <p className="apptest-muted text-sm">Visa ending in 4242</p>
+            <p className="text-foreground/50 text-sm">Visa ending in 4242</p>
           </div>
-          <AiOutlineRight className="apptest-subtle" />
+          <AiOutlineRight className="text-foreground/40" />
         </Link>
         <div className="mt-5 space-y-3">
           {[
@@ -35,10 +38,10 @@ export default function Page() {
             ["Garden House", "₩92,000", "Refunded"],
             ["Service fee", "₩20,000", "Paid"],
           ].map(([title, amount, status]) => (
-            <div className="apptest-card flex items-center justify-between rounded-3xl p-4" key={title}>
+            <div className={appCard(undefined, "flex items-center justify-between rounded-3xl p-4")} key={title}>
               <div>
                 <p className="font-semibold">{title}</p>
-                <p className="apptest-muted text-sm">{status}</p>
+                <p className="text-foreground/50 text-sm">{status}</p>
               </div>
               <p className="font-semibold">{amount}</p>
             </div>
@@ -47,7 +50,7 @@ export default function Page() {
       </section>
       <Layout.BottomInset className="flex h-[72px] w-full bg-background/80 px-5 backdrop-blur">
         <Link
-          className={cn(buttonVariants({ variant: "primary" }), "w-full rounded-2xl border-0")}
+          className={buttonRecipe({ variant: "primary" }, "w-full rounded-2xl border-0")}
           href="/profile/payments/methods"
         >
           Manage payment methods

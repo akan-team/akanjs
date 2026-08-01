@@ -25,7 +25,8 @@
     "react-spring": "^10.0.4",
     "axios": "^1.14.0",
     "react-dom": "19.2.6",
-    "react-globe.gl": "^2.38.0"
+    "react-globe.gl": "^2.38.0",
+    "class-variance-authority": "0.7.1"
   },
   "devDependencies": {
     "tsconfig-paths": "^4.2.0"

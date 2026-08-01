@@ -41,6 +41,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             language="typescript"
             title="apps/koyo/srvkit/alarmApi.ts"
             code={`
@@ -62,6 +63,7 @@ export class AlarmApi {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/srvkit/index.ts"
             code={`
 export * from "./alarmApi";`}
@@ -112,6 +114,7 @@ export * from "./alarmApi";`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/option.ts"
             code={`
 import { AlarmApi } from "@apps/koyo/srvkit"; // [!code ++]
@@ -137,6 +140,7 @@ export const option = new AkanOption<ModulesOptions>().use((options) => ({
         </div>
 
         <Code.Snippet
+          className="w-full"
           title="apps/koyo/lib/icecreamOrder/icecreamOrder.service.ts"
           code={`
 import { AlarmApi } from "@apps/koyo/srvkit"; // [!code ++]
@@ -181,6 +185,7 @@ export class IcecreamOrderService extends serve(db.icecreamOrder, ({ use, servic
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.service.ts"
             code={`
 import { dayjs } from "akanjs/base"; // [!code ++]
@@ -230,6 +235,7 @@ export class IcecreamOrderService extends serve(db.icecreamOrder, ({ use, servic
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.document.ts"
             code={`
 import { by, from, into, type SchemaOf } from "akanjs/document"; // [!code collapse:5]
@@ -301,6 +307,7 @@ export class IcecreamOrderModel extends into(IcecreamOrder, IcecreamOrderFilter,
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.signal.ts"
             code={`
 import { ID } from "akanjs/base"; // [!code collapse:7]
@@ -355,6 +362,7 @@ export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query,
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             language="bash"
             code={`[AlarmApi] 44136 - 11/06/2025, 22:19:29 PM    WARN  myapp: IcecreamOrder 690c9f5d83050b6bb34b93bc is melting 😱 +331830ms`}
           />

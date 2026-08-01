@@ -52,6 +52,7 @@ export default function Page() {
           </ol>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Button to service", ko: "버튼에서 service까지" })}
           code={`Post.Util.PublishButton
   -> st.do.publishPost(postId)
@@ -72,6 +73,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Publish endpoint", ko: "발행 endpoint" })}
           code={`export class PostEndpoint extends endpoint(srv.post, ({ mutation }) => ({
   publishPost: mutation(cnst.Post)
@@ -95,6 +97,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Service method", ko: "Service method" })}
           code={`export class PostService extends serve(db.post, () => ({})) {
   async publishPost(postId: string) {
@@ -118,6 +121,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Store action", ko: "Store action" })}
           code={`export class PostStore extends store(sig.post, () => ({})) {
   async publishPost(postId: string) {
@@ -141,6 +145,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Publish button", ko: "발행 버튼" })}
           code={`"use client";
 interface PublishProps {
@@ -151,7 +156,7 @@ interface PublishProps {
 export const Publish = ({ postId }: PublishProps) => {
   const { l } = usePage();
   return (
-    <button className={clsx("btn btn-primary", className)} onClick={() => st.do.publishPost(postId)}>
+    <button className={buttonRecipe({ variant: "primary" }, className)} onClick={() => st.do.publishPost(postId)}>
       {l("post.signal.publishPost")}
     </button>
   );

@@ -124,11 +124,12 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Ticket.Template.tsx"
           code={`"use client";
 import { st, usePage } from "@apps/akan/client";
 import { Field } from "@libs/shared/ui";
-import { Layout, buttonVariants } from "akanjs/ui";
+import { Layout, buttonRecipe } from "akanjs/ui";
 
 interface TicketEditProps {
   className?: string;
@@ -171,6 +172,7 @@ export const General = ({ className }: TicketEditProps) => {
         </Docs.Description>
         <div className="grid gap-3 xl:grid-cols-2">
           <Code.Snippet
+            className="w-full"
             title="Field.Parent"
             code={`<Field.Parent
   slice={fetch.slice.projectInSelf}
@@ -181,6 +183,7 @@ export const General = ({ className }: TicketEditProps) => {
 />`}
           />
           <Code.Snippet
+            className="w-full"
             title="Field.ToggleSelect"
             code={`<Field.ToggleSelect
   label={l("ticket.type")}
@@ -190,6 +193,7 @@ export const General = ({ className }: TicketEditProps) => {
 />`}
           />
           <Code.Snippet
+            className="w-full"
             title="Field.Img"
             code={`<Field.Img
   slice={fetch.slice.bizCard}
@@ -200,6 +204,7 @@ export const General = ({ className }: TicketEditProps) => {
 />`}
           />
           <Code.Snippet
+            className="w-full"
             title="Field.Yoopta"
             code={`<Field.Yoopta
   label={l("ticket.content")}
@@ -226,6 +231,7 @@ export const General = ({ className }: TicketEditProps) => {
         </Docs.Description>
         <div className="grid gap-3 xl:grid-cols-2">
           <Code.Snippet
+            className="w-full"
             title="User.Template.tsx"
             code={`export const Phone = ({ userId, redirect }: PhoneProps) => {
   const phone = st.use.phone();
@@ -242,6 +248,7 @@ export const General = ({ className }: TicketEditProps) => {
 };`}
           />
           <Code.Snippet
+            className="w-full"
             title="Submit component"
             code={`export const SubmitPhone = ({ userId, redirect }: SubmitPhoneProps) => {
   const phone = st.use.phone();
@@ -284,6 +291,7 @@ export const General = ({ className }: TicketEditProps) => {
         <Docs.IntroTable type="field" items={loadEditStateItems} />
         <div className="grid gap-3 xl:grid-cols-2">
           <Code.Snippet
+            className="w-full"
             title="new.tsx"
             code={`export default async function Page() {
   const pickupInPhoneForm: Partial<cnst.Pickup> = {};
@@ -301,6 +309,7 @@ export const General = ({ className }: TicketEditProps) => {
 }`}
           />
           <Code.Snippet
+            className="w-full"
             title="edit.tsx"
             code={`const { story, storyEdit } = await fetch.editStory(storyId);
 
@@ -319,6 +328,7 @@ export const General = ({ className }: TicketEditProps) => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Ticket.Util.tsx"
           code={`<Model.Edit renderTitle="title" slice={fetch.slice.ticket} modelId={ticketId}>
   <Ticket.Template.General />
@@ -336,9 +346,10 @@ export const General = ({ className }: TicketEditProps) => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Release.Zone.tsx"
           code={`<Model.NewWrapper partial={{ devApp }} slice={fetch.slice.releaseInDevApp}>
-  <button className={buttonVariants({ variant: "secondary" })}>+ New</button>
+  <button className={buttonRecipe({ variant: "secondary" })}>+ New</button>
 </Model.NewWrapper>`}
         />
       </Scroll.Slide>

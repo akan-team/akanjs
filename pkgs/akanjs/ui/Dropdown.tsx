@@ -2,7 +2,7 @@
 import { cn } from "akanjs/client";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
-import { buttonVariants } from "./Button";
+import { buttonRecipe } from "./Button";
 import { createOverridable } from "./UiOverride";
 
 export interface DropdownProps {
@@ -32,10 +32,10 @@ export const DefaultDropdown = ({ value, content, className, buttonClassName, dr
     };
   }, [opened]);
   return (
-    <div ref={ref} className={cn("relative", className)}>
+    <div ref={ref} className={cn("relative inline-block", className)}>
       <button
         type="button"
-        className={cn(buttonVariants({ variant: "ghost" }), "flex", buttonClassName)}
+        className={buttonRecipe({ variant: "ghost" }, ["flex", buttonClassName])}
         onClick={() => {
           setOpened((o) => !o);
         }}

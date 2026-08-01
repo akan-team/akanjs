@@ -118,10 +118,12 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Object form (bare value = set)", ko: "Object 형태 (값 = set)" })}
           code={`await this.Post.updateOne({ id }, { status: "published", pinned: true });`}
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Builder form (operators)", ko: "Builder 형태 (operator)" })}
           code={`await this.Post.updateOne({ id }, ({ inc, addToSet }) => ({
   views: inc(1),
@@ -150,6 +152,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Atomic counters", ko: "원자적 카운터" })}
           code={`// bump a view counter for every matching row in one statement
 await this.Post.updateMany({ status: "published" }, ({ inc }) => ({ viewCount: inc(1) }));
@@ -180,6 +183,7 @@ await this.Post.updateOne({ id }, ({ pull }) => ({ tags: pull("featured") }));`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Insert or increment", ko: "삽입 또는 증가" })}
           code={`await this.Counter.updateOne(
   { key: "daily-visits" },

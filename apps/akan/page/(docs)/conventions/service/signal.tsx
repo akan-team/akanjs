@@ -37,6 +37,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="minimal query endpoint"
           code={`export class SearchEndpoint extends endpoint(srv.search, ({ query }) => ({
   getSearchResult: query(cnst.SearchResult)
@@ -61,6 +62,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="minimal mutation endpoint"
           code={`export class SecurityEndpoint extends endpoint(srv.security, ({ mutation }) => ({
   encrypt: mutation(String)
@@ -84,6 +86,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="minimal cron"
           code={`export class SearchInternal extends internal(srv.search, ({ cron }) => ({
   refreshIndex: cron("0 * * * *", { serverMode: "batch" }).exec(async function () {
@@ -105,6 +108,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="prefixless endpoint"
           code={`export class LocalFileEndpoint extends endpoint(srv.localFile, ({ query }) => ({
   getBlob: query(Any, { path: "localFile/getBlob/*" })

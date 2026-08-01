@@ -52,6 +52,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Mental model", ko: "이해 모델" })}
           code={`Domain
   -> Ingress
@@ -79,6 +80,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Pod exec", ko: "Pod exec" })}
           language="bash"
           code="kubectl exec -it -n prod pod/myapp-xxxxx -c myapp -- sh -lc 'AKAN_CONSOLE=1 bun console.js'"
@@ -97,6 +99,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="values.yaml"
           language="yaml"
           code={`appName: myapp

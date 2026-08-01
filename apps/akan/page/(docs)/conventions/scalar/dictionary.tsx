@@ -37,6 +37,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="price.dictionary.ts"
           code={`import { scalarDictionary } from "akanjs/dictionary";
 
@@ -100,6 +101,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="language order"
           code={`export const dictionary = scalarDictionary(["en", "ko"])
   .of((t) => t(["Price", "가격"]).desc(["Price value", "가격 값"]));`}
@@ -118,10 +120,12 @@ export const dictionary = scalarDictionary(["en", "ko"])
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="price.constant.ts"
           code={`export class Currency extends enumOf("currency", ["KRW", "USD"] as const) {}`}
         />
         <Code.Snippet
+          className="w-full"
           title="price.dictionary.ts"
           code={`export const dictionary = scalarDictionary(["en", "ko"])
   .enum<Currency>("currency", (t) => ({
@@ -143,6 +147,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="price.dictionary.ts"
           code={`export const dictionary = scalarDictionary(["en", "ko"])
   .translate({
@@ -150,6 +155,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
   });`}
         />
         <Code.Snippet
+          className="w-full"
           title="PriceLabel.tsx"
           code={`import { usePage } from "@apps/myapp/client";
 

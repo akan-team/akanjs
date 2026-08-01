@@ -271,6 +271,7 @@ export default function Page() {
         </Docs.Description>
         <div className="space-y-3">
           <Code.Snippet
+            className="w-full"
             title="story.service.ts"
             code={`export class StoryService extends serve(db.story, ({ service }) => ({
   boardService: service<srv.BoardService>(),
@@ -283,6 +284,7 @@ export default function Page() {
 }`}
           />
           <Code.Snippet
+            className="w-full"
             title="base.service.ts"
             code={`export class BaseService extends serve("base" as const, ({ env, signal }) => ({
   onCleanup: env(({ onCleanup }: { onCleanup?: () => Promise<void> }) => onCleanup),
@@ -294,6 +296,7 @@ export default function Page() {
 }`}
           />
           <Code.Snippet
+            className="w-full"
             title="user.service.ts"
             code={`export class UserService extends serve(
   db.user,
@@ -362,6 +365,7 @@ export default function Page() {
           </div>
         </div>
         <Code.Snippet
+          className="w-full"
           title="serve signatures"
           code={`serve(db.story, ({ service }) => ({ actionLogService: service<srv.ActionLogService>() }));
 
@@ -451,6 +455,7 @@ serve(db.user, ({ use }) => ({ githubApp: use<GithubApp>() }), ...user.services)
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/myapp/lib/user/user.service.ts"
           code={`import { user } from "../__lib/lib.service";
 
@@ -484,6 +489,7 @@ export class UserService extends serve(
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="service injection shape"
           code={`export class ExampleService extends serve(db.example, ({ service, use, signal, plug, env, memory }) => ({
   userService: service<srv.UserService>(),
@@ -517,6 +523,7 @@ export class UserService extends serve(
               })}
             </div>
             <Code.Snippet
+              className="w-full"
               title="model access"
               code={`async approve(storyId: string) {
   const story = await this.storyModel.getStory(storyId);
@@ -533,6 +540,7 @@ export class UserService extends serve(
               })}
             </div>
             <Code.Snippet
+              className="w-full"
               title="story.service.ts"
               code={`export class StoryService extends serve(db.story, ({ service }) => ({
   actionLogService: service<srv.ActionLogService>(),
@@ -553,6 +561,7 @@ export class UserService extends serve(
               })}
             </div>
             <Code.Snippet
+              className="w-full"
               title="user.service.ts"
               code={`export class UserService extends serve(db.user, ({ use }) => ({
   githubApp: use<GithubApp>(),
@@ -573,6 +582,7 @@ export class UserService extends serve(
               })}
             </div>
             <Code.Snippet
+              className="w-full"
               title="dbBackup.service.ts"
               code={`export class DbBackupService extends serve(db.dbBackup, ({ service, signal }) => ({
   fileService: service<srv.shared.FileService>(),
@@ -596,6 +606,7 @@ export class UserService extends serve(
               })}
             </div>
             <Code.Snippet
+              className="w-full"
               title="file.service.ts"
               code={`export class FileService extends serve(db.file, ({ use, plug }) => ({
   storageApi: use<StorageApi>(),
@@ -616,6 +627,7 @@ export class UserService extends serve(
               })}
             </div>
             <Code.Snippet
+              className="w-full"
               title="devProject.service.ts"
               code={`export class DevProjectService extends serve(db.devProject, ({ service, env }) => ({
   userService: service<srv.UserService>(),
@@ -636,6 +648,7 @@ export class UserService extends serve(
               })}
             </div>
             <Code.Snippet
+              className="w-full"
               title="memory examples"
               code={`export class RuntimeService extends serve("runtime" as const, ({ memory }) => ({
   localCounter: memory(Int, { local: true, default: 3 }),
@@ -665,6 +678,7 @@ export class UserService extends serve(
         </Docs.Description>
         <div className="space-y-3">
           <Code.Snippet
+            className="w-full"
             title="story.service.ts"
             code={`async like(target: string, user: string) {
   const prev = await this.actionLogService.set({ type: "story", target, user, action: "like" }, 1);
@@ -672,6 +686,7 @@ export class UserService extends serve(
 }`}
           />
           <Code.Snippet
+            className="w-full"
             title="dbBackup.service.ts"
             code={`override async _postCreate(doc: db.DbBackup): Promise<db.DbBackup> {
   await this.dbBackupSignal.archiveDbBackup(doc.id);
@@ -703,6 +718,7 @@ async archiveDbBackup(dbBackupId: string) {
         <div className="mb-8" />
         <div className="space-y-3">
           <Code.Snippet
+            className="w-full"
             title="pre/post database hooks"
             code={`override async _preCreate(data: DataInputOf<db.DbBackupInput, db.DbBackup>) {
   if (await this.dbBackupModel.workingBackupExists(data.devApp, data.branch)) {
@@ -717,6 +733,7 @@ override async _postCreate(doc: db.DbBackup) {
 }`}
           />
           <Code.Snippet
+            className="w-full"
             title="service lifecycle"
             code={`async onInit() {
   this.logger.info("service is ready");

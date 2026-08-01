@@ -7,8 +7,8 @@ import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import type { ReactNode } from "react";
 import { AiOutlineDelete, AiOutlineEdit, AiOutlineEye, AiOutlineMore } from "react-icons/ai";
-import { badgeVariants } from "../Badge";
-import { buttonVariants } from "../Button";
+import { badgeRecipe } from "../Badge";
+import { buttonRecipe } from "../Button";
 import { Dropdown } from "../Dropdown";
 import { ObjectId } from "../ObjectId";
 import { Popconfirm } from "../Popconfirm";
@@ -165,7 +165,7 @@ export default function Item<T extends string, Full extends { id: string }, Ligh
           ))}
           {customActions.length ? (
             <Dropdown
-              buttonClassName={cn(buttonVariants({ variant: "ghost", size: "icon" }), "m-1 size-8 text-center")}
+              buttonClassName={buttonRecipe({ variant: "ghost", size: "icon" }, "m-1 size-8 text-center")}
               value={<AiOutlineMore />}
               content={customActions.map((action) => <div key={action.key}>{action.label}</div>)}
             />
@@ -205,22 +205,20 @@ export const Action = <T extends string, M extends { id: string }, L extends { i
   };
   return action === "edit" ? (
     <button
-      className={cn(
-        buttonVariants({ variant: outline ? "outline" : "ghost", size: "icon" }),
+      className={buttonRecipe({ variant: outline ? "outline" : "ghost", size: "icon" }, [
         "m-1 size-8 text-center",
         outline && "border-dashed",
-      )}
+      ])}
       onClick={() => void storeDo[namesOfSlice.editModel](model.id)}
     >
       <AiOutlineEdit key={action} />
     </button>
   ) : action === "view" ? (
     <button
-      className={cn(
-        buttonVariants({ variant: outline ? "outline" : "ghost", size: "icon" }),
+      className={buttonRecipe({ variant: outline ? "outline" : "ghost", size: "icon" }, [
         "m-1 size-8 text-center",
         outline && "border-dashed",
-      )}
+      ])}
       onClick={() => void storeDo[namesOfSlice.viewModel](model.id)}
     >
       <AiOutlineEye key={action} />
@@ -232,11 +230,10 @@ export const Action = <T extends string, M extends { id: string }, L extends { i
       onConfirm={() => void storeDo[namesOfSlice.removeModel](model.id)}
     >
       <button
-        className={cn(
-          buttonVariants({ variant: outline ? "outline" : "ghost", size: "icon" }),
+        className={buttonRecipe({ variant: outline ? "outline" : "ghost", size: "icon" }, [
           "m-1 size-8 text-center",
           outline && "border-dashed",
-        )}
+        ])}
       >
         <AiOutlineDelete />
       </button>
@@ -246,7 +243,7 @@ export const Action = <T extends string, M extends { id: string }, L extends { i
   );
 };
 
-// daisyui badge-* 매핑 → 시맨틱 토큰 색 오버라이드(badgeVariants outline 위에 얹음). "-outline"류는 색 테두리+텍스트만.
+// daisyui badge-* 매핑 → 시맨틱 토큰 색 오버라이드(badgeRecipe outline 위에 얹음). "-outline"류는 색 테두리+텍스트만.
 const statusColors = {
   active: "border-info text-info",
   applied: "border-transparent bg-warning text-warning-foreground",
@@ -266,12 +263,11 @@ const statusColors = {
 const StatusTag = ({ status, className }: { status: string; className?: string }) => {
   return (
     <div
-      className={cn(
-        badgeVariants({ variant: "outline" }),
+      className={badgeRecipe({ variant: "outline" }, [
         "mr-1 p-3",
         statusColors[status as keyof typeof statusColors] ?? "",
         className,
-      )}
+      ])}
     >
       {status}
     </div>
@@ -290,14 +286,14 @@ const RoleTags = ({ role }: { role: string | string[] }) => {
   return Array.isArray(role) ? (
     role.map((role) => (
       <div
-        className={cn(badgeVariants({ variant: "outline" }), "mr-1", roleColors[role as keyof typeof roleColors])}
+        className={badgeRecipe({ variant: "outline" }, ["mr-1", roleColors[role as keyof typeof roleColors]])}
         key={role}
       >
         {role}
       </div>
     ))
   ) : (
-    <div className={cn(badgeVariants({ variant: "outline" }), "mr-1", roleColors[role as keyof typeof roleColors])}>
+    <div className={badgeRecipe({ variant: "outline" }, ["mr-1", roleColors[role as keyof typeof roleColors]])}>
       {role}
     </div>
   );

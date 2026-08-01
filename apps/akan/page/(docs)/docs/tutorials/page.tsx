@@ -29,6 +29,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.constant.ts"
             code={`
 import { isPhoneNumber } from "akanjs/common"; // [!code ++]
@@ -123,6 +124,7 @@ export class IcecreamOrderInsight extends via(IcecreamOrder, (field) => ({})) {}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.dictionary.ts"
             code={`
 import { modelDictionary } from "akanjs/dictionary"; // [!code collapse:4]
@@ -217,10 +219,11 @@ export const dictionary = modelDictionary(["en", "ko"])
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Template.tsx"
             code={`
 "use client"; // [!code collapse:4]
-import { Field, Layout, buttonVariants } from "akanjs/ui";
+import { Field, Layout, buttonRecipe } from "akanjs/ui";
 import { cnst, st, usePage } from "@apps/koyo/client";
 
 interface GeneralProps {
@@ -271,6 +274,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => { 
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx"
             code={`
 import { clsx, type ModelProps } from "akanjs/client"; // [!code collapse:7]
@@ -320,7 +324,7 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
       {showControls ? ( // [!code collapse:16]
         <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4">
           <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
-            <button className={buttonVariants({ variant: "primary" })}>
+            <button className={buttonRecipe({ variant: "primary" })}>
               <span>{l.trans({ en: "View", ko: "보기" })}</span>
             </button>
           </Model.ViewWrapper>
@@ -357,6 +361,7 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/page/icecreamOrder.tsx"
             code={`
 import { Link } from "akanjs/ui";
@@ -467,6 +472,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/page/icecreamOrder/success.tsx"
             code={`
 import { Link } from "akanjs/ui";
@@ -572,6 +578,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/page/icecreamOrder/new.tsx"
             code={`
 import { Load } from "akanjs/ui";
@@ -667,6 +674,7 @@ export default function Page({ searchParams }: PageProps) {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Template.tsx"
             code={`
 "use client";

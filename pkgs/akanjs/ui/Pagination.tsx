@@ -3,11 +3,11 @@ import { cn } from "akanjs/client";
 import type { FC, ReactNode } from "react";
 import { BiChevronLeft, BiChevronRight, BiDotsHorizontalRounded } from "react-icons/bi";
 
-import { buttonVariants } from "./Button";
+import { buttonRecipe } from "./Button";
 import { createOverridable } from "./UiOverride";
 
-/** Square ghost button style shared by every pager control (canonical buttonVariants). */
-const pageBtn = buttonVariants({ variant: "ghost", size: "icon" });
+/** Square ghost button style shared by every pager control (canonical buttonRecipe). */
+const pageBtn = buttonRecipe({ variant: "ghost", size: "icon" });
 
 export interface PaginationProps {
   /** Current 1-based page number. */

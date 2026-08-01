@@ -377,7 +377,7 @@ export const Card = ({ className, init, prefix = "" }: CardProps) => {
       init={init}
       renderEmpty={() => (
         <button
-          className={cn(buttonVariants({ variant: "outline" }), "border-dashed h-full w-full")}
+          className={cn(buttonRecipe({ variant: "outline" }), "border-dashed h-full w-full")}
           onClick={() => st.do.newProject({ org })}
         >
           + {l("base.createModel", { model: l("project.modelName") })}

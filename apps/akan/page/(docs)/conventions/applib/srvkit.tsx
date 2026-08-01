@@ -120,6 +120,7 @@ Middleware --> SignalEndpoint["Signal endpoint"]`}
               </div>
             </Docs.Description>
             <Code.Snippet
+              className="w-full"
               title="srvkit/middlewares.ts"
               code={`import type { Middleware, SignalContext } from "akanjs/signal";
 
@@ -147,6 +148,7 @@ export class RequestUserMiddleware implements Middleware {
               </div>
             </Docs.Description>
             <Code.Snippet
+              className="w-full"
               title="srvkit/webProxies.ts"
               code={`import type { WebProxy } from "akanjs/server";
 
@@ -171,6 +173,7 @@ export class LegacyPageRedirect implements WebProxy {
               </div>
             </Docs.Description>
             <Code.Snippet
+              className="w-full"
               title="lib/option.ts"
               code={`export const option = new AkanOption()
   .applyMiddleware(RequestUserMiddleware)
@@ -224,6 +227,7 @@ Exec --> Service["Service logic"]`}
             </Docs.Description>
             <div className="grid gap-3 xl:grid-cols-2">
               <Code.Snippet
+                className="w-full"
                 title="srvkit/guards.ts"
                 code={`import type { Guard, SignalContext } from "akanjs/signal";
 
@@ -237,6 +241,7 @@ export class SignedIn implements Guard {
 }`}
               />
               <Code.Snippet
+                className="w-full"
                 title="order.signal.ts"
                 code={`import { SignedIn } from "@apps/myapp/srvkit";
 export class OrderEndpoint extends endpoint(srv.order, ({ pubsub, query, mutation }) => ({
@@ -261,6 +266,7 @@ export class OrderEndpoint extends endpoint(srv.order, ({ pubsub, query, mutatio
             </Docs.Description>
             <div className="grid gap-3 xl:grid-cols-2">
               <Code.Snippet
+                className="w-full"
                 title="srvkit/internalArgs.ts"
                 code={`import type { InternalArg, SignalContext } from "akanjs/signal";
 
@@ -271,6 +277,7 @@ export class CurrentUserId implements InternalArg {
 }`}
               />
               <Code.Snippet
+                className="w-full"
                 title="signal exec shape"
                 code={`import { SignedIn } from "@apps/myapp/srvkit";
 export class OrderEndpoint extends endpoint(srv.order, ({ pubsub, query, mutation }) => ({
@@ -305,6 +312,7 @@ export class OrderEndpoint extends endpoint(srv.order, ({ pubsub, query, mutatio
         </Docs.Description>
         <div className="grid gap-3 xl:grid-cols-2">
           <Code.Snippet
+            className="w-full"
             title="srvkit/createHash.ts"
             code={`import { createHash } from "crypto";
 
@@ -313,6 +321,7 @@ export function createOrderHash(orderId: string) {
 }`}
           />
           <Code.Snippet
+            className="w-full"
             title="srvkit/EmailClient.ts"
             code={`import { Mailer } from "some-mail-provider";
 
@@ -329,6 +338,7 @@ export class EmailClient {
 }`}
           />
           <Code.Snippet
+            className="w-full"
             title="option.ts"
             code={`import { EmailClient } from "../srvkit";
 
@@ -338,6 +348,7 @@ export const option = new AkanOption()
   }));`}
           />
           <Code.Snippet
+            className="w-full"
             title="order.service.ts"
             code={`import { createOrderHash, type EmailClient } from "../srvkit";
 
@@ -366,6 +377,7 @@ export class OrderService extends serve(db.order, ({ use }) => ({
         </Docs.Description>
         <div className="grid gap-3 xl:grid-cols-2">
           <Code.Snippet
+            className="w-full"
             title="srvkit/paymentApi.ts"
             code={`import { adapt } from "akanjs/service";
 
@@ -385,6 +397,7 @@ export class PaymentApi extends adapt("paymentApi", ({ env }) => ({
 }`}
           />
           <Code.Snippet
+            className="w-full"
             title="order.service.ts"
             code={`import { PaymentApi } from "../srvkit";
 import { serve } from "akanjs/service";

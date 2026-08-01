@@ -116,6 +116,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="ticket.store.ts"
           code={`import { msg } from "@apps/akan/client";
 import { store } from "akanjs/store";
@@ -135,6 +136,7 @@ export class TicketStore extends store(sig.ticket, () => ({
 }`}
         />
         <Code.Snippet
+          className="w-full"
           title="service-only store"
           code={`export class MyappStore extends store("myapp" as const, () => ({
   menuOpen: false,
@@ -157,6 +159,7 @@ export class TicketStore extends store(sig.ticket, () => ({
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="user.store.ts"
           code={`import { user } from "../__lib/lib.store";
 
@@ -190,6 +193,7 @@ export class UserStore extends store(
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="store state builders"
           code={`export class TicketStore extends store(
   sig.ticket,
@@ -295,6 +299,7 @@ export class UserStore extends store(
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="ticket.signal.ts"
           code={`export class TicketSlice extends slice(srv.ticket, { guards: { root: User } }, (init) => ({
   inProject: init()
@@ -324,6 +329,7 @@ export class UserStore extends store(
         </Docs.Description>
         <div className="grid gap-3 xl:grid-cols-2">
           <Code.Snippet
+            className="w-full"
             title="Inside store"
             code={`async archiveTicketMany() {
   const { ticketList } = this.get();
@@ -332,6 +338,7 @@ export class UserStore extends store(
 }`}
           />
           <Code.Snippet
+            className="w-full"
             title="Inside component"
             code={`const ticket = st.use.ticket();
 
@@ -342,6 +349,7 @@ export class UserStore extends store(
         </div>
         <Docs.SubTitle>{l.trans({ en: "Auto-Generated Setters", ko: "자동 생성 setter" })}</Docs.SubTitle>
         <Code.Snippet
+          className="w-full"
           title="setter examples"
           code={`st.do.setTicketModal(null);
 st.set({ ticketModal: null });`}
@@ -363,6 +371,7 @@ st.set({ ticketModal: null });`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="user.store.ts"
           code={`import type { RootStore } from "../st";
 

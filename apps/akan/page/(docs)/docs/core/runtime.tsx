@@ -16,6 +16,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/myapp/main.ts"
             code={`import { AkanApp } from "akanjs/server";
 
@@ -126,6 +127,7 @@ void run();`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title=".env"
             language="bash"
             code={`AKAN_PUBLIC_REPO_NAME=myorg
@@ -340,6 +342,7 @@ AKAN_PUBLIC_LOG_LEVEL=info`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Using getEnv()"
             code={`import { getEnv } from "akanjs/base";
 
@@ -408,6 +411,7 @@ serverWsUri=wss://myapp-main.mydomain.com`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/myapp/main.ts"
             code={`import { AkanApp } from "akanjs/server";
 
@@ -423,6 +427,7 @@ void run();`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Read the OpenAPI document"
             language="bash"
             code={`curl http://localhost:8282/openapi.json`}

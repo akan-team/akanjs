@@ -37,6 +37,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="price.document.ts"
           code={`import { by } from "akanjs/document";
 
@@ -58,6 +59,7 @@ export class Price extends by(cnst.Price) {}`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="price.document.ts"
           code={`import { by } from "akanjs/document";
 

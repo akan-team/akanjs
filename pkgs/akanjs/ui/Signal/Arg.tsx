@@ -1,12 +1,12 @@
 "use client";
 import { type Dayjs, type DefaultPrimitiveName, PrimitiveRegistry, type PrimitiveScalar } from "akanjs/base";
-import { cn, usePage } from "akanjs/client";
+import { usePage } from "akanjs/client";
 import { type ConstantCls, ConstantRegistry } from "akanjs/constant";
 import type { SerializedArg } from "akanjs/signal";
 import { st } from "akanjs/store";
 import type { ChangeEvent } from "react";
 import { AiOutlineDelete } from "react-icons/ai";
-import { buttonVariants } from "../Button";
+import { buttonRecipe } from "../Button";
 import { DatePicker } from "../DatePicker";
 import { Input } from "../Input";
 import { Tooltip } from "../Tooltip";
@@ -89,7 +89,7 @@ const ArgTable = ({ refName, endpointKey, args }: ArgTableProps) => {
                             onClick={() => {
                               onCopy(opt.toString());
                             }}
-                            className={buttonVariants({ variant: "outline", size: "xs" })}
+                            className={buttonRecipe({ variant: "outline", size: "xs" })}
                           >
                             {opt}
                           </button>
@@ -166,7 +166,7 @@ const ArgQuery = ({ endpointKey, arg, value, onChange }: ArgQueryProps) => {
                   }}
                 />
                 <button
-                  className={cn(buttonVariants({ variant: "outline", size: "icon" }), "size-8")}
+                  className={buttonRecipe({ variant: "outline", size: "icon" }, "size-8")}
                   onClick={() => {
                     onChange([...(value.slice(0, idx) as string[]), ...(value.slice(idx + 1) as string[])]);
                   }}
@@ -176,7 +176,7 @@ const ArgQuery = ({ endpointKey, arg, value, onChange }: ArgQueryProps) => {
               </div>
             ))}
             <button
-              className={buttonVariants({ variant: "outline", size: "sm" })}
+              className={buttonRecipe({ variant: "outline", size: "sm" })}
               onClick={() => {
                 onChange([...(value as string[]), arg.example]);
               }}

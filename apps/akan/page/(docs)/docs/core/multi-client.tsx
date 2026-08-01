@@ -73,6 +73,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/myapp/akan.config.ts"
           code={`const config = {
   routes: [
@@ -192,6 +193,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="page/"
           language="bash"
           code={`page/
@@ -275,6 +277,7 @@ https://partner-main.example.com -> partner`}
   ios --> backend`}
         />
         <Code.Snippet
+          className="w-full"
           title="Mobile targets"
           code={`const config = {
   routes: [

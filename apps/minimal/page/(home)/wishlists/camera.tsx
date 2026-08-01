@@ -1,6 +1,5 @@
 import type { PageConfig } from "akanjs/client";
-import { cn } from "akanjs/client";
-import { buttonVariants, Layout, Link } from "akanjs/ui";
+import { buttonRecipe, Layout, Link } from "akanjs/ui";
 import { AiOutlineClose } from "react-icons/ai";
 
 export default function Page() {
@@ -21,14 +20,16 @@ export default function Page() {
         <div className="relative z-10 text-center">
           <div className="mx-auto h-40 w-40 rounded-[2rem] border border-foreground/20 bg-foreground/5 shadow-2xl shadow-primary/20" />
           <p className="mt-6 font-semibold text-2xl">Camera preview</p>
-          <p className="apptest-muted mt-2 text-sm">Capture your favorite places and save them to your wishlist.</p>
+          <p className="mt-2 text-foreground/50 text-sm">
+            Capture your favorite places and save them to your wishlist.
+          </p>
         </div>
         <Layout.BottomInset
           className="flex h-[72px] w-full bg-background/70 px-5 py-2 backdrop-blur"
           estimatedHeight={pageConfig.bottomInset}
           keyboardSticky
         >
-          <button className={cn(buttonVariants({ variant: "primary" }), "h-full w-full rounded-2xl border-0")}>
+          <button className={buttonRecipe({ variant: "primary" }, "h-full w-full rounded-2xl border-0")}>
             Take photo
           </button>
         </Layout.BottomInset>

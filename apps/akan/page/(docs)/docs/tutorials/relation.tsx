@@ -67,6 +67,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             language="bash"
             title="Terminal"
             code={`
@@ -87,6 +88,7 @@ akan create-module delivery
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/delivery/delivery.constant.ts"
             code={`
 import { via } from "akanjs/constant";
@@ -146,6 +148,7 @@ export class DeliveryInsight extends via(Delivery, (field) => ({})) {}`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/delivery/delivery.dictionary.ts"
             code={`
 import { modelDictionary } from "akanjs/dictionary"; // [!code collapse:5]
@@ -183,6 +186,7 @@ export const dictionary = modelDictionary(["en", "ko"])
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/delivery/delivery.service.ts"
             code={`
 import { serve } from "akanjs/service";
@@ -255,10 +259,11 @@ export class DeliveryService extends serve(db.delivery, ({ use, service }) => ({
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/delivery/Delivery.Template.tsx"
             code={`
 "use client";
-import { Field, Layout, buttonVariants } from "akanjs/ui";
+import { Field, Layout, buttonRecipe } from "akanjs/ui";
 import { cnst, fetch, st, usePage } from "@apps/koyo/client";
 
 interface GeneralProps {
@@ -330,6 +335,7 @@ export const General = ({ className }: GeneralProps) => {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.signal.ts"
             code={`
 import { ID } from "akanjs/base"; // [!code collapse:13]
@@ -397,6 +403,7 @@ export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query,
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.document.ts"
             code={`
 import { by, from, into, type SchemaOf } from "akanjs/document"; // [!code collapse:5]
@@ -449,6 +456,7 @@ export class IcecreamOrderModel extends into(IcecreamOrder, IcecreamOrderFilter,
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.dictionary.ts"
             code={`
 import { modelDictionary } from "akanjs/dictionary"; // [!code collapse:11]
@@ -567,6 +575,7 @@ export const dictionary = modelDictionary(["en", "ko"])
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/delivery/Delivery.Unit.tsx"
             code={`
 import type { ModelProps } from "akanjs/client"; // [!code collapse:3]
@@ -603,6 +612,7 @@ export const Card = ({ delivery, href }: ModelProps<"delivery", cnst.LightDelive
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/delivery/Delivery.Zone.tsx"
             code={`
 "use client"; // [!code collapse:4]
@@ -644,7 +654,7 @@ export const New = ({ className }: NewProps) => {
   return (
     <div className={className}>
       <button
-        className={buttonVariants({ variant: "primary" })}
+        className={buttonRecipe({ variant: "primary" })}
         onClick={() => {
           st.do.newDelivery();
         }}
@@ -681,6 +691,7 @@ export const New = ({ className }: NewProps) => {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/page/_index.tsx"
             code={`
 import { Load, Model } from "akanjs/ui"; // [!code collapse:2]
@@ -704,10 +715,10 @@ export default async function Page() {
       <Inventory.Zone.Today />
       <Tab defaultMenu="icecreamOrder"> // [!code highlight:33]
         <Tab.Menus className="flex items-center">
-          <Tab.Menu menu="icecreamOrder" className={cn(buttonVariants({ size: "lg" }), "h-14 px-8 text-lg")} activeClassName="btn-primary">
+          <Tab.Menu menu="icecreamOrder" className={buttonRecipe({ size: "lg" }, "h-14 px-8 text-lg")} activeClassName="bg-primary text-primary-foreground">
             {l("icecreamOrder.modelName")}
           </Tab.Menu>
-          <Tab.Menu menu="delivery" className={cn(buttonVariants({ size: "lg" }), "h-14 px-8 text-lg")} activeClassName="btn-primary">
+          <Tab.Menu menu="delivery" className={buttonRecipe({ size: "lg" }, "h-14 px-8 text-lg")} activeClassName="bg-primary text-primary-foreground">
             {l("delivery.modelName")}
           </Tab.Menu>
         </Tab.Menus>
@@ -716,7 +727,7 @@ export default async function Page() {
             <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
             <IcecreamOrder.Util.PublicQueryMaker />
             <Model.New
-              className={buttonVariants({ variant: "primary" })}
+              className={buttonRecipe({ variant: "primary" })}
               slice={fetch.slice.icecreamOrderInPublic}
               renderTitle="name"
               partial={icecreamOrderForm}

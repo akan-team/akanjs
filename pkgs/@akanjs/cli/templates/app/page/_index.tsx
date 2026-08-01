@@ -52,7 +52,7 @@ export default function Page() {
             <System.ThemeToggle themes={["light", "dark"]} />
             <System.SelectLanguage languages={["en", "ko"]} />
             <Link href="https://akanjs.com" target="_blank">
-              <button className="btn btn-sm border-foreground/10 bg-foreground/10 text-foreground hover:border-primary hover:bg-primary hover:text-background">
+              <button className="inline-flex items-center gap-2 rounded-field border border-foreground/10 bg-foreground/10 px-3 py-2 text-foreground text-sm transition-colors hover:border-primary hover:bg-primary hover:text-background">
                 {l.trans({ en: "Official Site", ko: "공식 사이트" })}
                 <FaExternalLinkAlt />
               </button>
@@ -62,7 +62,7 @@ export default function Page() {
 
         <div className="grid flex-1 items-center gap-10 py-16 lg:grid-cols-[1.04fr_0.96fr] lg:py-10">
           <div>
-            <div className="badge mb-6 border-primary/20 bg-primary/10 px-4 py-3 text-primary">
+            <div className="mb-6 inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-4 py-3 text-primary">
               <FaCheckCircle />
               {l.trans({ en: "Your app is running", ko: "앱이 실행 중입니다" })}
             </div>
@@ -80,29 +80,29 @@ export default function Page() {
             </p>
 
             <div className="mt-8 flex flex-wrap gap-3">
-              <span className="badge badge-lg border-foreground/10 bg-foreground/10 text-foreground">
+              <span className="inline-flex items-center gap-1 rounded-full border border-foreground/10 bg-foreground/10 px-4 py-1.5 text-foreground text-sm">
                 Agent-ready
               </span>
-              <span className="badge badge-lg border-foreground/10 bg-foreground/10 text-foreground">
+              <span className="inline-flex items-center gap-1 rounded-full border border-foreground/10 bg-foreground/10 px-4 py-1.5 text-foreground text-sm">
                 Minimal code
               </span>
-              <span className="badge badge-lg border-foreground/10 bg-foreground/10 text-foreground">
+              <span className="inline-flex items-center gap-1 rounded-full border border-foreground/10 bg-foreground/10 px-4 py-1.5 text-foreground text-sm">
                 Readable by default
               </span>
-              <span className="badge badge-lg border-foreground/10 bg-foreground/10 text-foreground">
+              <span className="inline-flex items-center gap-1 rounded-full border border-foreground/10 bg-foreground/10 px-4 py-1.5 text-foreground text-sm">
                 Review-friendly
               </span>
             </div>
 
             <div className="mt-10 flex flex-col gap-3 sm:flex-row">
               <Link href="https://akanjs.com/docs/intro/quickstart" target="_blank">
-                <button className="btn border-none bg-primary text-background hover:bg-primary/80">
+                <button className="inline-flex items-center justify-center gap-2 rounded-field bg-primary px-4 py-2 text-background text-sm transition-colors hover:bg-primary/80">
                   {l.trans({ en: "Read Quick Start", ko: "빠른 시작 읽기" })}
                   <FaBookOpen />
                 </button>
               </Link>
               <Link href="https://akanjs.com/docs/intro/practice" target="_blank">
-                <button className="btn border-foreground/10 bg-foreground/10 text-foreground hover:border-foreground/20 hover:bg-foreground/15">
+                <button className="inline-flex items-center justify-center gap-2 rounded-field border border-foreground/10 bg-foreground/10 px-4 py-2 text-foreground text-sm transition-colors hover:border-foreground/20 hover:bg-foreground/15">
                   {l.trans({ en: "Learn By Building", ko: "만들면서 배우기" })}
                   <FaCodeBranch />
                 </button>

@@ -48,6 +48,7 @@ export default function Page() {
             ))}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Commerce app example"
             language="bash"
             code={`apps/commerce/
@@ -78,6 +79,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Workspace"
             language="bash"
             code={`.
@@ -350,6 +352,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="lib/"
             language="bash"
             code={`lib/
@@ -420,6 +423,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Code movement"
             language="bash"
             code={`apps/commerce/lib/order/

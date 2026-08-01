@@ -23,6 +23,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/myapp/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -45,6 +46,7 @@ export default config;`}
         </Docs.Description>
         <div className="grid gap-3 xl:grid-cols-2">
           <Code.Snippet
+            className="w-full"
             title="object config"
             code={`import type { AppConfig } from "akanjs";
 
@@ -55,6 +57,7 @@ const config: AppConfig = {
 export default config;`}
           />
           <Code.Snippet
+            className="w-full"
             title="function config"
             code={`import type { AppConfig } from "akanjs";
 
@@ -88,6 +91,7 @@ export default config;`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/shop/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -126,6 +130,7 @@ export default config;`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/shop/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -178,6 +183,7 @@ export default config;`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/enterprise/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -222,6 +228,7 @@ export default config;`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/catalog/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -258,6 +265,7 @@ export default config;`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/global/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -296,6 +304,7 @@ export default config;`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/landing/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -332,6 +341,7 @@ export default config;`}
         </Docs.Description>
         <div className="grid gap-3 xl:grid-cols-2">
           <Code.Snippet
+            className="w-full"
             title="apps/api/akan.config.ts"
             code={`import type { AppConfig } from "akanjs";
 
@@ -342,6 +352,7 @@ const config: AppConfig = {
 export default config;`}
           />
           <Code.Snippet
+            className="w-full"
             title=".gitignore (auto-synced)"
             code={`# akan:secrets (managed by akan.config.ts — do not edit)
 apps/api/certs/*.pem
@@ -381,6 +392,7 @@ apps/api/secrets/**/*
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/media/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -416,6 +428,7 @@ export default config;`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/admin/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -451,6 +464,7 @@ export default config;`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/dashboard/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -486,6 +500,7 @@ export default config;`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/worker/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -500,6 +515,7 @@ const config: AppConfig = {
 export default config;`}
         />
         <Code.Snippet
+          className="w-full"
           title="apps/custom-runtime/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -562,6 +578,7 @@ export default config;`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="libs/shared/akan.config.ts"
           code={`import type { LibConfig } from "akanjs";
 

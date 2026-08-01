@@ -23,7 +23,7 @@ import {
   AiOutlineRedo,
 } from "react-icons/ai";
 
-import { buttonVariants } from "../Button";
+import { buttonRecipe } from "../Button";
 import { Dropdown } from "../Dropdown";
 import { Loading } from "../Loading";
 import { Model } from "../Model";
@@ -192,7 +192,7 @@ export default function ListContainer<
             key: "export-csv",
             render: () => (
               <div
-                className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "flex flex-nowrap justify-start gap-2")}
+                className={buttonRecipe({ variant: "ghost", size: "sm" }, "flex flex-nowrap justify-start gap-2")}
                 onClick={() => {
                   const header = columns
                     .map((column) => {
@@ -226,7 +226,7 @@ export default function ListContainer<
           {
             render: () => (
               <div
-                className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "flex flex-nowrap justify-start gap-2")}
+                className={buttonRecipe({ variant: "ghost", size: "sm" }, "flex flex-nowrap justify-start gap-2")}
                 onClick={() => {
                   const json = JSON.stringify(deepObjectify([...modelList], { serializable: true }));
                   const blob = new Blob([json], { type: "application/json" });
@@ -241,8 +241,8 @@ export default function ListContainer<
         ];
     return (
       <Dropdown
-        buttonClassName={cn(
-          buttonVariants({ variant: "primary", size: "sm" }),
+        buttonClassName={buttonRecipe(
+          { variant: "primary", size: "sm" },
           renderTemplate && create ? "rounded-l-none" : "",
         )}
         value={<AiOutlineEllipsis />}
@@ -275,7 +275,7 @@ export default function ListContainer<
             {renderTemplate && create ? (
               <button
                 onClick={() => void storeDo[namesOfSlice.newModel]()}
-                className={cn(buttonVariants({ variant: "primary", size: "sm" }), "mr-[0.5px] rounded-r-none")}
+                className={buttonRecipe({ variant: "primary", size: "sm" }, "mr-[0.5px] rounded-r-none")}
               >
                 <AiOutlinePlus /> {l("base.new")}
               </button>
@@ -285,7 +285,7 @@ export default function ListContainer<
         </div>
         <div className="flex">
           <button
-            className={cn(buttonVariants({ variant: "primary", size: "icon" }), "mx-1 size-8")}
+            className={buttonRecipe({ variant: "primary", size: "icon" }, "mx-1 size-8")}
             onClick={() => void storeDo[namesOfSlice.refreshModel]()}
           >
             <AiOutlineRedo className="mx-2" />

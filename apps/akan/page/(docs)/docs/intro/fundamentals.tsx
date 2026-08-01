@@ -1,7 +1,7 @@
 import { usePage } from "@apps/akan/client";
 import { Code, Docs } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
-import { badgeVariants, buttonVariants, Link } from "akanjs/ui";
+import { badgeRecipe, buttonRecipe, Link } from "akanjs/ui";
 import { BiLinkExternal } from "react-icons/bi";
 
 export default function Page() {
@@ -50,9 +50,9 @@ export default function Page() {
                 <div className="rounded-xl border border-primary/20 bg-background p-4 shadow">
                   <div className="mb-1 font-bold">{l.trans({ en: "Akan Runtime", ko: "Akan Runtime" })}</div>
                   <div className="flex flex-wrap gap-2">
-                    <span className={badgeVariants({ variant: "primary" })}>Bun</span>
-                    <span className={badgeVariants({ variant: "outline" })}>AkanApp</span>
-                    <span className={badgeVariants({ variant: "outline" })}>Gateway</span>
+                    <span className={badgeRecipe({ variant: "primary" })}>Bun</span>
+                    <span className={badgeRecipe({ variant: "outline" })}>AkanApp</span>
+                    <span className={badgeRecipe({ variant: "outline" })}>Gateway</span>
                   </div>
                 </div>
 
@@ -78,10 +78,10 @@ export default function Page() {
                   <div className="rounded-xl bg-background p-4 shadow">
                     <div className="mb-2 font-bold">{l.trans({ en: "Data", ko: "Data" })}</div>
                     <div className="flex flex-wrap gap-2">
-                      <span className={badgeVariants({ variant: "outline" })}>SQLite</span>
-                      <span className={badgeVariants({ variant: "outline" })}>libSQL</span>
-                      <span className={badgeVariants({ variant: "outline" })}>Postgres</span>
-                      <span className={badgeVariants({ variant: "outline" })}>Redis</span>
+                      <span className={badgeRecipe({ variant: "outline" })}>SQLite</span>
+                      <span className={badgeRecipe({ variant: "outline" })}>libSQL</span>
+                      <span className={badgeRecipe({ variant: "outline" })}>Postgres</span>
+                      <span className={badgeRecipe({ variant: "outline" })}>Redis</span>
                     </div>
                   </div>
                 </div>
@@ -123,22 +123,22 @@ export default function Page() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Link href="https://react.dev/" target="_blank">
-                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
+                    <button className={buttonRecipe({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> React
                     </button>
                   </Link>
                   <Link href="https://capacitorjs.com/" target="_blank">
-                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
+                    <button className={buttonRecipe({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> Capacitor
                     </button>
                   </Link>
                   <Link href="https://tailwindcss.com/" target="_blank">
-                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
+                    <button className={buttonRecipe({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> TailwindCSS
                     </button>
                   </Link>
                   <Link href="https://www.radix-ui.com/" target="_blank">
-                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
+                    <button className={buttonRecipe({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> Radix UI
                     </button>
                   </Link>
@@ -150,27 +150,27 @@ export default function Page() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Link href="https://bun.sh/" target="_blank">
-                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
+                    <button className={buttonRecipe({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> Bun
                     </button>
                   </Link>
                   <Link href="https://www.sqlite.org/" target="_blank">
-                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
+                    <button className={buttonRecipe({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> SQLite
                     </button>
                   </Link>
                   <Link href="https://turso.tech/libsql" target="_blank">
-                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
+                    <button className={buttonRecipe({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> libSQL
                     </button>
                   </Link>
                   <Link href="https://www.postgresql.org/" target="_blank">
-                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
+                    <button className={buttonRecipe({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> PostgreSQL
                     </button>
                   </Link>
                   <Link href="https://redis.io/" target="_blank">
-                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
+                    <button className={buttonRecipe({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> Redis
                     </button>
                   </Link>
@@ -182,7 +182,7 @@ export default function Page() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Link href="https://biomejs.dev/" target="_blank">
-                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
+                    <button className={buttonRecipe({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> Biome
                     </button>
                   </Link>
@@ -194,12 +194,12 @@ export default function Page() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Link href="https://www.docker.com/" target="_blank">
-                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
+                    <button className={buttonRecipe({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> Docker
                     </button>
                   </Link>
                   <Link href="https://kubernetes.io/" target="_blank">
-                    <button className={buttonVariants({ variant: "outline", size: "xs" })}>
+                    <button className={buttonRecipe({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> Kubernetes
                     </button>
                   </Link>
@@ -248,7 +248,7 @@ export default function Page() {
             <div className="rounded-3xl border border-foreground/20 bg-background p-4 md:p-6">
               <div className="grid gap-4 md:grid-cols-[auto_1fr_auto]">
                 <div className="flex flex-row items-center gap-3 md:flex-col md:items-start">
-                  <div className="font-bold text-info text-xl">apps</div>
+                  <div className="font-bold text-success/70 text-xl">apps</div>
                   <div className="h-px flex-1 border-foreground/30 border-t border-dashed md:h-28 md:border-t-0 md:border-l" />
                   <div className="font-bold text-success text-xl">libs</div>
                 </div>
@@ -280,7 +280,7 @@ export default function Page() {
 
                 <div className="rounded-xl bg-muted p-4 text-center md:w-32">
                   <div className="text-foreground/70 text-sm">{l.trans({ en: "code amount", ko: "코드 비중" })}</div>
-                  <div className="mt-2 font-bold text-3xl text-info">20%</div>
+                  <div className="mt-2 font-bold text-3xl text-success/70">20%</div>
                   <div className="text-foreground/60 text-xs">apps</div>
                   <div className="mt-4 font-bold text-3xl text-success">80%</div>
                   <div className="text-foreground/60 text-xs">libs</div>
@@ -305,6 +305,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             language="bash"
             showLineNumbers={false}
             copy={false}
@@ -367,6 +368,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             language="bash"
             showLineNumbers={false}
             copy={false}
@@ -398,9 +400,9 @@ export default function Page() {
                 {l.trans({ en: "Application or Library Anatomy", ko: "Application or Library Anatomy" })}
               </div>
               <div className="flex flex-wrap gap-2 text-xs">
-                <span className={badgeVariants({ variant: "outline" })}>{l.trans({ en: "server", ko: "server" })}</span>
-                <span className={badgeVariants({ variant: "outline" })}>{l.trans({ en: "client", ko: "client" })}</span>
-                <span className={badgeVariants({ variant: "outline" })}>{l.trans({ en: "shared", ko: "shared" })}</span>
+                <span className={badgeRecipe({ variant: "outline" })}>{l.trans({ en: "server", ko: "server" })}</span>
+                <span className={badgeRecipe({ variant: "outline" })}>{l.trans({ en: "client", ko: "client" })}</span>
+                <span className={badgeRecipe({ variant: "outline" })}>{l.trans({ en: "shared", ko: "shared" })}</span>
               </div>
             </div>
 
@@ -525,6 +527,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             language="bash"
             showLineNumbers={false}
             copy={false}
@@ -552,6 +555,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             language="bash"
             showLineNumbers={false}
             copy={false}

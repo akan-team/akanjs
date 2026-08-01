@@ -1,4 +1,6 @@
 "use client";
+// styleguard-disable raw-palette — 의도적 브랜드 데모(위 BrandModal 과 짝). fuchsia 버튼은 override 가
+// 걸렸음을 눈으로 확인시키는 장치다. 데모 목적의 명시적 예외.
 import { Modal } from "akanjs/ui";
 import { useState } from "react";
 
@@ -19,7 +21,7 @@ export const OverrideDemo = () => {
       <button
         type="button"
         data-testid="open-modal"
-        className="rounded bg-fuchsia-600 px-4 py-2 font-semibold text-white"
+        className="rounded bg-primary px-4 py-2 font-semibold text-white"
         onClick={() => setOpen(true)}
       >
         Open Modal
@@ -29,7 +31,7 @@ export const OverrideDemo = () => {
         onCancel={() => setOpen(false)}
         title="Override Demo"
         action={
-          <button type="button" className="rounded bg-gray-200 px-4 py-2" onClick={() => setOpen(false)}>
+          <button type="button" className="rounded bg-muted px-4 py-2" onClick={() => setOpen(false)}>
             Close
           </button>
         }

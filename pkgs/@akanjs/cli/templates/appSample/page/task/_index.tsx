@@ -4,7 +4,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { a
   return {
     filename: "_index.tsx",
     content: `import { fetch, Task, usePage } from "@apps/${dict.appName}/client";
-import { Link, buttonVariants } from "akanjs/ui";
+import { Link, buttonRecipe } from "akanjs/ui";
 
 // ===== page/task/_index.tsx =====
 // Convention: Akan.js file-based routing — _index.tsx is the index page for /task.
@@ -21,7 +21,7 @@ export default async function Page() {
           <h1 className="font-extrabold text-3xl text-foreground">{l("task.modelName")}</h1>
           <p className="mt-1 text-foreground/60 text-sm">{l("task.modelDesc")}</p>
         </div>
-        <Link href="/task/new" className={buttonVariants({ variant: "primary", size: "sm" })}>
+        <Link href="/task/new" className={buttonRecipe({ variant: "primary", size: "sm" })}>
           {l("task.taskNew")}
         </Link>
       </div>

@@ -1,3 +1,6 @@
+// styleguard-disable raw-palette — 코드 신택스 하이라이트(Prism 토큰별 색)와 형광펜 마커는
+// 각 토큰 종류를 구분하는 다색 팔레트가 본질적 요구다. 시맨틱 토큰으로 접으면 하이라이팅이 무너지므로
+// 이 에디터 색 테마 파일은 raw 팔레트를 명시적으로 허용한다.
 import type { EditorThemeClasses } from "lexical";
 
 /** Callout color variants (5). Kept out of `EditorThemeClasses` (which has no

@@ -184,6 +184,8 @@ export class SsrBaseArtifactBuilder {
   }> {
     const cssCompiler = new CssCompiler(this.#app);
     const cssByBasePath = await cssCompiler.getCssByBasePath();
+    // 스타일 계약(어휘 폐쇄 + WCAG): 프로덕션 빌드는 위반 시 실패한다.
+    await cssCompiler.enforceStyleContract({ mode: "build" });
     const optimizedFonts = await new FontOptimizer(this.#app, this.#command).optimize();
     const cssAssets = Object.fromEntries(
       await Promise.all(

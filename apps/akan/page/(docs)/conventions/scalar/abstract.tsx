@@ -18,6 +18,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="lib/__scalar/money/money.abstract.md"
           language="markdown"
           code={`# Money Scalar Abstract

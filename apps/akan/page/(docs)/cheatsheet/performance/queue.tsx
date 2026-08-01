@@ -51,6 +51,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Queue report generation", ko: "Report 생성 queue" })}
           code={`export class ReportEndpoint extends endpoint(srv.report, ({ mutation }) => ({
   queueGenerateReport: mutation(cnst.Report)
@@ -61,6 +62,7 @@ export default function Page() {
 })) {}`}
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Service queues process", ko: "Service에서 process 호출" })}
           code={`async queueGenerateReport(reportId: string) {
   const report = await this.reportModel.getReport(reportId);
@@ -83,6 +85,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Internal process", ko: "Internal process" })}
           code={`export class ReportInternal extends internal(srv.report, ({ process }) => ({
   generateReport: process(Boolean)
@@ -94,6 +97,7 @@ export default function Page() {
 })) {}`}
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Slow job", ko: "느린 작업" })}
           code={`async generateReport(reportId: string) {
   const report = await this.reportModel.getReport(reportId);

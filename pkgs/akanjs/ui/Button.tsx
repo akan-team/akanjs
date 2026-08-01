@@ -1,45 +1,14 @@
 "use client";
-import { cn, usePage } from "akanjs/client";
-import { cva, type VariantProps } from "class-variance-authority";
+import { usePage } from "akanjs/client";
 import type React from "react";
 import { type ButtonHTMLAttributes, type ComponentType, createElement, useState } from "react";
 import { AiOutlineCheckCircle, AiOutlineLoading3Quarters } from "react-icons/ai";
+import { type ButtonVariants, buttonRecipe } from "./recipe";
+import { useUiOverride, useUiRecipe } from "./UiOverride";
 
-import { useUiOverride } from "./UiOverride";
-
-/**
- * Canonical cva pattern for Akan primitives: a `*Variants` factory drives the
- * base + variant classes, `cn(...)` merges the caller's className last (so it
- * can override), and semantic tokens (bg-primary/text-primary-foreground/…)
- * keep theming automatic. Other primitives should follow this shape.
- */
-export const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-field font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
-  {
-    variants: {
-      variant: {
-        primary: "bg-primary text-primary-foreground hover:bg-primary/90",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        outline: "border border-input bg-background hover:bg-muted hover:text-foreground",
-        ghost: "hover:bg-muted hover:text-foreground",
-        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-        success: "bg-success text-success-foreground hover:bg-success/90",
-        warning: "bg-warning text-warning-foreground hover:bg-warning/90",
-        link: "text-primary underline-offset-4 hover:underline",
-      },
-      size: {
-        xs: "h-6 px-2 text-xs",
-        sm: "h-8 px-3 text-sm",
-        md: "h-10 px-4",
-        lg: "h-12 px-6 text-lg",
-        icon: "h-10 w-10",
-      },
-    },
-    defaultVariants: { variant: "primary", size: "md" },
-  },
-);
-
-export type ButtonVariants = VariantProps<typeof buttonVariants>;
+// buttonRecipe/ButtonVariants live in the server-safe ./recipe layer (no "use client") so server
+// components can compose classNames. Re-exported here so `from "./Button"` relative importers keep resolving.
+export { buttonRecipe, type ButtonVariants };
 
 export type ButtonProps<Result> = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick"> &
   ButtonVariants & {
@@ -62,6 +31,8 @@ const DefaultButton = <Result = unknown>({
   ...rest
 }: ButtonProps<Result>) => {
   const { l } = usePage();
+  // Route-scoped look swap (recipe slot). Behavior below is untouched by a swap.
+  const recipe = useUiRecipe("button") ?? buttonRecipe;
   const [state, setState] = useState<{
     mode: "idle" | "loading" | "success" | "error";
     error: string | null;
@@ -74,7 +45,7 @@ const DefaultButton = <Result = unknown>({
   return (
     <>
       <button
-        className={cn(buttonVariants({ variant, size }), className)}
+        className={recipe({ variant, size }, className)}
         {...rest}
         disabled={!!rest.disabled || ["loading", "success"].includes(state.mode)}
         onClick={(e) => {

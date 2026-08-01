@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { BrowserMockup, Code, Docs, MobileMockup } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -160,6 +160,7 @@ cd myorg`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/myapp/page/_index.tsx"
           code={`
 export default function Page() {
@@ -186,23 +187,11 @@ export default function Page() {
           </div>
         </Docs.Description>
         <div className="w-full justify-center gap-4 sm:flex">
-          <div className="w-full overflow-hidden rounded-box border-2 border-foreground/30 bg-background">
-            <div className="flex items-center gap-2 border-foreground/10 border-b p-3">
-              <div className="h-10 w-full rounded-field border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none">
-                http://localhost:8282
-              </div>
-            </div>
-            <div className="flex h-80 place-content-center items-center justify-center text-2xl">Hello Akan.js! 🎉</div>
-          </div>
+          <BrowserMockup>Hello Akan.js! 🎉</BrowserMockup>
 
-          <div className="relative hidden h-96 w-80 sm:block">
-            <div className="absolute w-72 -translate-x-1/4 -translate-y-1/4 scale-50 overflow-hidden rounded-[2.5rem] border-[10px] border-foreground/80 bg-foreground/80 pb-4 shadow-xl">
-              <div className="mx-auto mt-2 mb-4 h-4 w-28 rounded-full bg-foreground/40"></div>
-              <div className="flex h-80 items-center justify-center rounded-[1.8rem] bg-background px-4 text-center text-4xl">
-                Hello Akan.js! 🎉
-              </div>
-            </div>
-          </div>
+          <MobileMockup className="hidden self-center sm:block">
+            <span className="text-lg">Hello Akan.js! 🎉</span>
+          </MobileMockup>
         </div>
 
         <div className="h-12" />
@@ -223,6 +212,7 @@ export default function Page() {
         </Docs.Description>
         <div className="flex flex-col gap-2">
           <Code.Snippet
+            className="w-full"
             title="apps/myapp/main.ts"
             code={`
 import { AkanApp } from "akanjs/server";
@@ -243,6 +233,7 @@ void run();
             </div>
           </Docs.Description>
           <Code.Snippet
+            className="w-full"
             language="bash"
             title="Terminal"
             showLineNumbers={false}

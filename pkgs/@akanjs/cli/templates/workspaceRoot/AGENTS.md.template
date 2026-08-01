@@ -235,7 +235,7 @@ final fallback when no CLI command covers the change.
 | Add a pure workflow / integration (e.g., Payment, Email) | `lib/_<service>/` → service, signal, store, dictionary, abstract | `akan sync <name>` |
 | Add a reusable value type (e.g., Address, WorkHistory) | `lib/__scalar/<type>/` → constant, dictionary, abstract | `akan sync <name>` |
 | Create a new URL-visitable page | `page/` → `_index.tsx`, `_layout.tsx`, `[param]/_index.tsx` | Rebuild (akan start auto-detects) |
-| Change the app color theme / design tokens | `apps/<app>/page/styles.css` → edit the daisyUI `@plugin "daisyui/theme"` blocks (`light`/`dark`, the `--color-*` variables) | akan start hot-reloads |
+| Change the app color theme / design tokens | `apps/<app>/page/styles.css` → override the semantic token values under `:root, [data-theme="dark"]` and `[data-theme="light"]` (`--primary`, `--background`, `--foreground`, …) | akan start hot-reloads |
 | Add a form or reusable UI component | `ui/` → PascalCase `.tsx` with `"use client"` if needed | `akan sync <name>` |
 | Add a React hook or browser helper | `webkit/` → camelCase `.ts` with `"use client"` | `akan sync <name>` |
 | Add a server-only guard, middleware, or adaptor | `srvkit/` → PascalCase `.ts` | `akan sync <name>` |
@@ -326,11 +326,9 @@ const form = st.use.taskForm();
 
 // 4. apps/<app>/lib/<model>/<Model>.Unit.tsx
 // Display the new field in card/list views
-<span className={clsx("badge badge-sm", {
-  "badge-error": task.priority === "high",
-  "badge-warning": task.priority === "medium",
-  "badge-ghost": task.priority === "low",
-})}>{task.priority}</span>
+<Badge variant={task.priority === "high" ? "error" : task.priority === "medium" ? "warning" : "default"}>
+  {task.priority}
+</Badge>
 
 // 5. Regenerate barrels
 // akan sync <name>
@@ -516,7 +514,7 @@ async startTask(taskId: string) {
 
 // 6. <Model>.Util.tsx — Reusable button component
 export const Start = ({ taskId }: { taskId: string }) => (
-  <button className="btn btn-xs btn-primary" onClick={() => st.do.startTask(taskId)}>
+  <button className={buttonRecipe({ variant: "primary", size: "xs" })} onClick={() => st.do.startTask(taskId)}>
     Start
   </button>
 );
@@ -578,13 +576,13 @@ export class TaskInsight extends via(Task, (field) => ({
 // 3. <Model>.View.tsx — Display component consuming an Insight model
 export const Stats = ({ taskInsight }: { taskInsight: cnst.TaskInsight }) => (
   <div className="grid grid-cols-2 gap-4">
-    <div className="stat rounded-lg border border-base-content/10 bg-base-100 p-4">
-      <div className="stat-title text-base-content/60">{l("task.totalCount")}</div>
-      <div className="stat-value text-primary">{taskInsight.totalCount}</div>
+    <div className="rounded-lg border border-border bg-card p-4">
+      <div className="text-muted-foreground text-sm">{l("task.totalCount")}</div>
+      <div className="font-bold text-2xl text-primary">{taskInsight.totalCount}</div>
     </div>
-    <div className="stat rounded-lg border border-base-content/10 bg-base-100 p-4">
-      <div className="stat-title text-base-content/60">{l("task.completedCount")}</div>
-      <div className="stat-value text-success">{taskInsight.completedCount}</div>
+    <div className="rounded-lg border border-border bg-card p-4">
+      <div className="text-muted-foreground text-sm">{l("task.completedCount")}</div>
+      <div className="font-bold text-2xl text-success">{taskInsight.completedCount}</div>
     </div>
   </div>
 );

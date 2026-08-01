@@ -20,8 +20,8 @@ export const Title = ({ children, className, direction = "right" }: TitleProps) 
       </h1>
       <div
         className={clsx("absolute bottom-[30px] left-[-16px] z-10 size-8 rounded-full border-8 border-primary", {
-          "bg-slate-700 md:left-[-52px]": direction === "right",
-          "bg-slate-800 md:right-[-52px] md:left-auto": direction === "left",
+          "bg-secondary md:left-[-52px]": direction === "right",
+          "bg-secondary md:right-[-52px] md:left-auto": direction === "left",
         })}
       />
     </div>

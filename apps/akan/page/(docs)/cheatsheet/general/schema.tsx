@@ -57,6 +57,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Small list shape", ko: "작은 목록 모양" })}
           code={`export class LightPost extends via(
   PostObject,
@@ -98,6 +99,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Growing child model", ko: "계속 늘어나는 child model" })}
           code={`export class CommentInput extends via((field) => ({
   post: field(ID, { ref: "post" }),
@@ -132,6 +134,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Light snapshot", ko: "Light snapshot" })}
           code={`export class PostInput extends via((field) => ({
   author: field(LightUser),
@@ -174,6 +177,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Common shape", ko: "기본 모양" })}
           code={`export class PostInput extends via((field) => ({
   title: field(String),

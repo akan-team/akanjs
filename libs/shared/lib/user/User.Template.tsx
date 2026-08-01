@@ -5,7 +5,7 @@ import { CodeInput, Upload } from "@libs/util/ui";
 import { clsx } from "akanjs/client";
 import { formatPhone, isEmail, isPhoneNumber } from "akanjs/common";
 import type { ProtoFile } from "akanjs/constant";
-import { Button, buttonVariants, Image, Input, Layout } from "akanjs/ui";
+import { Button, buttonRecipe, Image, Input, Layout } from "akanjs/ui";
 import { useEffect, useRef, useState } from "react";
 import { AiOutlineClose, AiOutlineEdit, AiOutlinePlus, AiOutlineSave } from "react-icons/ai";
 
@@ -85,7 +85,7 @@ export const SubmitPhone = ({ className = "", userId, redirect, hash }: SubmitPh
   const phone = st.use.phone();
   return (
     <button
-      className={clsx("btn btn-primary", className)}
+      className={buttonRecipe({ variant: "primary" }, className)}
       disabled={!isPhoneNumber(phone)}
       onClick={() => {
         void st.do.setPhoneInPrepareUser(userId, phone, { hash, redirect });
@@ -150,7 +150,7 @@ export const SubmitName = ({ userId, redirect, className }: SubmitNameProps) => 
   const userForm = st.use.userForm();
   return (
     <button
-      className={clsx("btn btn-primary", className)}
+      className={buttonRecipe({ variant: "primary" }, className)}
       disabled={!userForm.name || userForm.name.length < 2}
       onClick={async () => {
         if (!userForm.name) return;
@@ -205,7 +205,7 @@ export const GeneratePrepareUserWithAccountId = ({ redirect }: GeneratePrepareUs
   const accountId = st.use.accountId();
   return (
     <button
-      className={buttonVariants({ variant: "primary" })}
+      className={buttonRecipe({ variant: "primary" })}
       disabled={!accountId || !isEmail(accountId)}
       onClick={() => {
         if (!accountId || !isEmail(accountId)) return;
@@ -225,7 +225,7 @@ export const SubmitAccountId = ({ userId, redirect }: SubmitAccountIdProps) => {
   const accountId = st.use.accountId();
   return (
     <button
-      className={"btn btn-primary"}
+      className={buttonRecipe({ variant: "primary" })}
       disabled={!accountId || !isEmail(accountId)}
       onClick={() => {
         if (!accountId || !isEmail(accountId)) return;
@@ -279,7 +279,7 @@ export const SubmitPassword = ({ userId, redirect }: SubmitPasswordProps) => {
   const passwordConfirm = st.use.passwordConfirm();
   return (
     <button
-      className={"btn btn-primary"}
+      className={buttonRecipe({ variant: "primary" })}
       disabled={!accountId || !password || !passwordConfirm || password !== passwordConfirm}
       onClick={() => {
         void st.do.setPasswordInPrepareUser(userId, { redirect });
@@ -303,7 +303,7 @@ export const SubmitPolicy = ({
   const agreePolicies = st.use.agreePolicies();
   return (
     <button
-      className={"btn btn-primary"}
+      className={buttonRecipe({ variant: "primary" })}
       disabled={!mandatoryPolicies.every((policy) => agreePolicies.includes(policy))}
       onClick={() => {
         void st.do.setAgreePoliciesOfPrepareUser(userId, agreePolicies, { redirect });
@@ -345,7 +345,7 @@ export const SubmitNicknameOfPrepareUser = ({ redirect, userId, className }: Sub
   const userForm = st.use.userForm();
   return (
     <button
-      className={clsx("btn border-primary-light bg-primary-light", className)}
+      className={buttonRecipe({ variant: "outline" }, ["border-primary-light bg-primary-light", className])}
       disabled={!userForm.nickname || userForm.nickname.length < 2 || userForm.nickname.length > 20}
       onClick={() => {
         void st.do.setNicknameOfPrepareUser(userId, { redirect });
@@ -364,7 +364,7 @@ export const SubmitNickname = ({ redirect, className }: SubmitNicknameProps) => 
   const userForm = st.use.userForm();
   return (
     <button
-      className={clsx("btn border-primary-light bg-primary-light", className)}
+      className={buttonRecipe({ variant: "outline" }, ["border-primary-light bg-primary-light", className])}
       disabled={!userForm.nickname || userForm.nickname.length < 2 || userForm.nickname.length > 20}
       onClick={() => {
         void st.do.setNicknameOfSelf({ redirect });
@@ -397,7 +397,7 @@ export const AppliedImages = () => {
             renderEmpty={() => (
               <div
                 className={clsx(
-                  "flex aspect-1 w-full items-center justify-center rounded-2xl bg-gray-200 duration-300 hover:opacity-50",
+                  "flex aspect-1 w-full items-center justify-center rounded-2xl bg-muted duration-300 hover:opacity-50",
                   { "border-4 border-primary": i === 0 },
                 )}
               >
@@ -432,7 +432,7 @@ export const AppliedImages = () => {
               onRemove(i + 2);
             }}
             renderEmpty={() => (
-              <div className="flex aspect-1 w-full items-center justify-center rounded-xl bg-gray-200 text-primary duration-300 hover:opacity-50">
+              <div className="flex aspect-1 w-full items-center justify-center rounded-xl bg-muted text-primary duration-300 hover:opacity-50">
                 <AiOutlinePlus className="font-bold text-2xl opacity-60" />
               </div>
             )}
@@ -451,7 +451,7 @@ export const AppliedImages = () => {
       {/* <BottomSheet onCancel={() => {}} open={false}>
         <CropImage src={""} download ref={cropRef} />
         <div className="relative  flex w-full items-center justify-center gap-2">
-          <button onClick={() => {}} className={cn(buttonVariants({ variant: "primary" }), "flex-1 rounded-2xl")}>
+          <button onClick={() => {}} className={buttonRecipe({ variant: "primary" }, "flex-1 rounded-2xl")}>
             저장
           </button>
         </div>
@@ -499,7 +499,7 @@ export const SetAccountIdByAdmin = ({ className, accountId }: SetAccountIdByAdmi
       {editState ? (
         <>
           <button
-            className={buttonVariants({ variant: "primary" })}
+            className={buttonRecipe({ variant: "primary" })}
             disabled={
               editState === "saving" ||
               changeId === accountId ||
@@ -515,7 +515,7 @@ export const SetAccountIdByAdmin = ({ className, accountId }: SetAccountIdByAdmi
             <AiOutlineSave />
           </button>
           <button
-            className={buttonVariants({ variant: "outline" })}
+            className={buttonRecipe({ variant: "outline" })}
             disabled={editState === "saving"}
             onClick={() => {
               setChangeId(accountId ?? "");
@@ -527,7 +527,7 @@ export const SetAccountIdByAdmin = ({ className, accountId }: SetAccountIdByAdmi
         </>
       ) : (
         <button
-          className={buttonVariants()}
+          className={buttonRecipe()}
           onClick={() => {
             setEditState("edit");
           }}
@@ -559,7 +559,7 @@ export const SetPasswordByAdmin = ({ className }: SetPasswordByAdminProps) => {
       {editState ? (
         <>
           <button
-            className={buttonVariants({ variant: "primary" })}
+            className={buttonRecipe({ variant: "primary" })}
             disabled={editState === "saving" || password.length < 8 || password.length > 20}
             onClick={async () => {
               setEditState("saving");
@@ -570,7 +570,7 @@ export const SetPasswordByAdmin = ({ className }: SetPasswordByAdminProps) => {
             <AiOutlineSave />
           </button>
           <button
-            className={buttonVariants({ variant: "outline" })}
+            className={buttonRecipe({ variant: "outline" })}
             disabled={editState === "saving"}
             onClick={() => {
               setPassword("********");
@@ -582,7 +582,7 @@ export const SetPasswordByAdmin = ({ className }: SetPasswordByAdminProps) => {
         </>
       ) : (
         <button
-          className={buttonVariants()}
+          className={buttonRecipe()}
           onClick={() => {
             setEditState("edit");
           }}
@@ -615,7 +615,7 @@ export const SetPhoneByAdmin = ({ className, phone }: SetPhoneByAdminProps) => {
       {editState ? (
         <>
           <button
-            className={buttonVariants({ variant: "primary" })}
+            className={buttonRecipe({ variant: "primary" })}
             disabled={editState === "saving" || !isPhoneNumber(changePhone) || changePhone === phone}
             onClick={async () => {
               setEditState("saving");
@@ -626,7 +626,7 @@ export const SetPhoneByAdmin = ({ className, phone }: SetPhoneByAdminProps) => {
             <AiOutlineSave />
           </button>
           <button
-            className={buttonVariants({ variant: "outline" })}
+            className={buttonRecipe({ variant: "outline" })}
             disabled={editState === "saving"}
             onClick={() => {
               setChangePhone(phone ?? "");
@@ -638,7 +638,7 @@ export const SetPhoneByAdmin = ({ className, phone }: SetPhoneByAdminProps) => {
         </>
       ) : (
         <button
-          className={buttonVariants()}
+          className={buttonRecipe()}
           onClick={() => {
             setEditState("edit");
           }}

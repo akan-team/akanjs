@@ -7,7 +7,7 @@ import { extendTailwindMerge } from "tailwind-merge";
  * `border-*`/… built from these names belong to the same conflict group, so
  * `cn("bg-primary", "bg-open")` correctly resolves to `"bg-open"` instead of keeping both.
  */
-const colorTokens = [
+export const colorTokens = [
   "background",
   "foreground",
   "primary",

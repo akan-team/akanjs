@@ -51,6 +51,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Cache a short-lived code", ko: "짧게 사는 코드 캐싱" })}
           code={`export class ArticleModel extends into(Article, ArticleFilter, cnst.article, () => ({})) {
   async savePreviewToken(articleId: string, token: string) {
@@ -81,6 +82,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Service-level cache", ko: "Service 단위 cache" })}
           code={`export class ArticleService extends serve(db.article, ({ memory }) => ({
   latestArticleId: memory(String),

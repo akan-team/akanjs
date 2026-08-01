@@ -39,6 +39,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="ticket.dictionary.ts"
           code={`import { modelDictionary } from "akanjs/dictionary";
 
@@ -110,6 +111,7 @@ export const dictionary = modelDictionary(["en", "ko"])
         </Docs.Description>
         <div className="">
           <Code.Snippet
+            className="w-full"
             title="Client UI"
             code={`import { usePage } from "@apps/myapp/client";
 
@@ -119,6 +121,7 @@ export const UserNameField = () => {
 };`}
           />
           <Code.Snippet
+            className="w-full"
             title="Server Error"
             code={`import { Err } from "../dict";
 
@@ -127,6 +130,7 @@ if (!ticket.canArchive()) {
 }`}
           />
           <Code.Snippet
+            className="w-full"
             title="Client Toast"
             code={`import { msg } from "@apps/myapp/client";
 
@@ -153,6 +157,7 @@ msg.error("ticket.error.cannotArchive");`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="user.dictionary.ts"
           code={`import { modelDictionary } from "akanjs/dictionary";
 
@@ -213,6 +218,7 @@ export const dictionary = modelDictionary(["en", "ko"], ...user.dictionaries)
         </div>
 
         <Code.Snippet
+          className="w-full"
           title="coordinate.dictionary.ts"
           code={`import { scalarDictionary } from "akanjs/dictionary";
 
@@ -226,6 +232,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
   }));`}
         />
         <Code.Snippet
+          className="w-full"
           title="util.dictionary.ts"
           code={`import { serviceDictionary } from "akanjs/dictionary";
 
@@ -250,6 +257,7 @@ export const dictionary = serviceDictionary(["en", "ko"]).translate({
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="ticket.dictionary.ts"
           code={`.error({
   cannotArchive: ["Cannot archive ticket that is not completed", "완료되지 않은 티켓은 보관할 수 없습니다"],
@@ -259,6 +267,7 @@ export const dictionary = serviceDictionary(["en", "ko"]).translate({
 })`}
         />
         <Code.Snippet
+          className="w-full"
           title="akan.dictionary.ts"
           code={`export const dictionary = serviceDictionary(["en", "ko", "zhChs", "zhCht"]).translate({
   menuGallery: ["Gallery", "갤러리", "画廊", "畫廊"],

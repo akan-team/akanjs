@@ -3,11 +3,12 @@ import { type ComponentType, createElement, type ReactNode } from "react";
 import { renderToReadableStream } from "react-dom/server.browser";
 
 import type { ButtonProps } from "../Button";
-import type { AkanModalComponent, AkanUiOverrides } from "./context";
+import type { AkanModalComponent, AkanUiOverrides, AkanUiRecipes } from "./context";
 import { createOverridable } from "./createOverridable";
 import { override } from "./override";
 import { UiOverrideProvider } from "./Provider";
 import { useUiOverride } from "./useUiOverride";
+import { useUiRecipe } from "./useUiRecipe";
 
 // The shipped `../Modal` transitively loads the store, which reads these at import time. Default them so this
 // test is self-contained (it never imports `../Modal` statically — see the dynamic import below).
@@ -163,6 +164,95 @@ describe("UiOverride", () => {
     );
     expect(overridden).toContain('data-skin="brand-btn"');
     expect(overridden).not.toContain('data-skin="default-btn"');
+  });
+
+  test("recipe slot: falls back to the framework recipe when no swap is active", async () => {
+    const { buttonRecipe } = await import("../recipe");
+    // Mirrors the shipped Button's resolution line: useUiRecipe("button") ?? buttonRecipe.
+    const RecipeWidget = ({ variant }: { variant?: "primary" | "ghost" }) => {
+      const recipe = useUiRecipe("button") ?? buttonRecipe;
+      return <button type="button" data-cls={recipe({ variant })} />;
+    };
+    const html = await renderToText(<RecipeWidget variant="primary" />);
+    expect(html).toContain("bg-primary");
+  });
+
+  test("recipe slot: swaps the look app-wide while the consumer stays unchanged", async () => {
+    const { buttonRecipe } = await import("../recipe");
+    const neon: AkanUiRecipes["button"] = (variants, className) =>
+      ["neon", variants?.variant ?? "primary", className].filter(Boolean).join(" ");
+    const RecipeWidget = ({ variant }: { variant?: "primary" | "ghost" }) => {
+      const recipe = useUiRecipe("button") ?? buttonRecipe;
+      return <button type="button" data-cls={recipe({ variant }, "w-full")} />;
+    };
+    const html = await renderToText(
+      <UiOverrideProvider value={{ recipes: { button: neon } }}>
+        <RecipeWidget variant="ghost" />
+      </UiOverrideProvider>,
+    );
+    expect(html).toContain("neon ghost w-full");
+    expect(html).not.toContain("bg-primary");
+  });
+
+  test("recipe slots merge per-slot down the tree (child button swap keeps parent badge swap)", async () => {
+    const parentBadge: AkanUiRecipes["badge"] = () => "parent-badge";
+    const childButton: AkanUiRecipes["button"] = () => "child-button";
+    const Probe = () => {
+      const button = useUiRecipe("button");
+      const badge = useUiRecipe("badge");
+      return <div data-btn={button?.()} data-bdg={badge?.()} />;
+    };
+    const html = await renderToText(
+      <UiOverrideProvider value={{ recipes: { badge: parentBadge } }}>
+        <UiOverrideProvider value={{ recipes: { button: childButton } }}>
+          <Probe />
+        </UiOverrideProvider>
+      </UiOverrideProvider>,
+    );
+    expect(html).toContain('data-btn="child-button"');
+    expect(html).toContain('data-bdg="parent-badge"');
+  });
+
+  test("one manifest carries component slots and recipe slots together", async () => {
+    const neon: AkanUiRecipes["button"] = () => "neon";
+    const manifest = override({ Modal: BrandModal, recipes: { button: neon } });
+    const Probe = () => {
+      const button = useUiRecipe("button");
+      return <div data-btn={button?.()} />;
+    };
+    const html = await renderToText(
+      <UiOverrideProvider value={manifest}>
+        <Widget open onCancel={() => {}} title="HELLO" />
+        <Probe />
+      </UiOverrideProvider>,
+    );
+    expect(html).toContain('data-skin="brand"');
+    expect(html).toContain('data-btn="neon"');
+  });
+
+  test("the SHIPPED Button routes its recipe through the override slot (real wiring, not a mirror)", async () => {
+    // Register a minimal client runtime so the real Button's usePage() resolves. State lives on
+    // globalThis, so this stub is shared with the runtime Button reads through "akanjs/client".
+    const { registerClientRuntime } = await import("../../client/clientRuntime");
+    registerClientRuntime({ usePage: () => ({ l: (key: string) => key }) } as never, { scope: "app" });
+    const { Button } = await import("../Button");
+    const neon: AkanUiRecipes["button"] = (variants, className) =>
+      ["neon", variants?.variant ?? "primary", className].filter(Boolean).join(" ");
+
+    // No override → the real Button renders with the framework recipe.
+    const def = await renderToText(<Button onClick={() => {}}>GO</Button>);
+    expect(def).toContain("bg-primary");
+
+    // With a recipe swap in the subtree → the SAME <Button> renders the swapped recipe, unchanged call site.
+    const swapped = await renderToText(
+      <UiOverrideProvider value={{ recipes: { button: neon } }}>
+        <Button variant="ghost" onClick={() => {}}>
+          GO
+        </Button>
+      </UiOverrideProvider>,
+    );
+    expect(swapped).toContain("neon ghost");
+    expect(swapped).not.toContain("bg-primary");
   });
 
   test("compound leaf slots resolve independently (RadioItem)", async () => {

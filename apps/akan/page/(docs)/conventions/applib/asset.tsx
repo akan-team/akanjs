@@ -53,6 +53,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="public asset examples"
           language="bash"
           code={`apps/myapp/asset/public/docs/product-guide.pdf
@@ -66,6 +67,7 @@ apps/myapp/asset/public/images/hero.png
         />
 
         <Code.Snippet
+          className="w-full"
           title="Link to a PDF"
           code={`import { Link } from "akanjs/ui";              
 export function GetProductGuide() {
@@ -73,6 +75,7 @@ export function GetProductGuide() {
 }`}
         />
         <Code.Snippet
+          className="w-full"
           title="Fetch static JSON"
           code={`export async function loadSampleProducts() {
   const res = await fetch("/data/sample-products.json");
@@ -93,6 +96,7 @@ export function GetProductGuide() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="HeroImage.tsx"
           code={`import { Image } from "akanjs/ui";
 
@@ -122,6 +126,7 @@ export function HeroImage() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="private asset examples"
           language="bash"
           code={`apps/myapp/asset/private/seed/products.json
@@ -129,6 +134,7 @@ apps/myapp/asset/private/model/yolo.onnx
 libs/shared/asset/private/recommendation/default-rules.json`}
         />
         <Code.Snippet
+          className="w-full"
           title="Load private JSON on the server"
           code={`export async function loadInitialProducts() {
   const file = Bun.file("./private/seed/products.json");
@@ -136,6 +142,7 @@ libs/shared/asset/private/recommendation/default-rules.json`}
 }`}
         />
         <Code.Snippet
+          className="w-full"
           title="Use a private model file on the server"
           code={`export async function detectObjects(image: ArrayBuffer) {
   const file = Bun.file("./private/model/yolo.onnx");
@@ -157,6 +164,7 @@ libs/shared/asset/private/recommendation/default-rules.json`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="library asset mapping"
           language="bash"
           code={`# Source in a library
@@ -173,6 +181,7 @@ apps/myapp/private/libs/shared/recommendation/default-rules.json
 /libs/shared/banner/logo.png`}
         />
         <Code.Snippet
+          className="w-full"
           title="Use synced public library asset"
           code={`import { Image } from "akanjs/ui";
 
@@ -188,6 +197,7 @@ export function SharedLogo() {
 }`}
         />
         <Code.Snippet
+          className="w-full"
           title="Use synced private library asset"
           code={`export async function loadDefaultRules() {
   const file = Bun.file("./private/libs/shared/recommendation/default-rules.json");

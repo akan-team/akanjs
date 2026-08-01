@@ -41,7 +41,7 @@ export default function Page() {
           desc: l.trans({ en: "Ask for confirmation before closing.", ko: "닫기 전에 confirmation을 요청합니다." }),
         },
       ],
-      code: `import { Modal, buttonVariants } from "akanjs/ui";
+      code: `import { Modal, buttonRecipe } from "akanjs/ui";
 
 export const ProductModal = ({ open, close, product }) => (
   <Modal open={open} onCancel={close} title="Product">
@@ -87,12 +87,12 @@ export const ProductModal = ({ open, close, product }) => (
 
 <Dialog defaultOpen={false}>
   <Dialog.Trigger>
-    <button className={buttonVariants()}>Open</button>
+    <button className={buttonRecipe()}>Open</button>
   </Dialog.Trigger>
   <Dialog.Modal>
     <Dialog.Title>Custom dialog</Dialog.Title>
     <Dialog.Content>Body content</Dialog.Content>
-    <Dialog.Action><button className={buttonVariants()}>Save</button></Dialog.Action>
+    <Dialog.Action><button className={buttonRecipe()}>Save</button></Dialog.Action>
   </Dialog.Modal>
 </Dialog>;`,
     },
@@ -127,7 +127,7 @@ export const ProductModal = ({ open, close, product }) => (
       code: `import { Popconfirm } from "akanjs/ui";
 
 <Popconfirm title="Remove product?" onConfirm={() => remove(product.id)}>
-  <button className={buttonVariants({ variant: "destructive", size: "sm" })}>Remove</button>
+  <button className={buttonRecipe({ variant: "destructive", size: "sm" })}>Remove</button>
 </Popconfirm>;`,
     },
     {
@@ -196,7 +196,7 @@ export const ProductModal = ({ open, close, product }) => (
       code: `import { Copy } from "akanjs/ui";
 
 <Copy text={shareUrl}>
-  <button className={buttonVariants({ size: "sm" })}>Copy link</button>
+  <button className={buttonRecipe({ size: "sm" })}>Copy link</button>
 </Copy>;`,
     },
   ];

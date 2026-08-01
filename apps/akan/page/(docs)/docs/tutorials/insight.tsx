@@ -35,6 +35,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.signal.ts"
             code={`
 import { ID } from "akanjs/base"; // [!code collapse:13]
@@ -132,6 +133,7 @@ export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query,
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.dictionary.ts"
             code={`
 import { modelDictionary } from "akanjs/dictionary"; // [!code collapse:11]
@@ -235,13 +237,14 @@ export const dictionary = modelDictionary(["en", "ko"])
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Util.tsx"
             code={`
 "use client"; // [!code collapse:3]
 import { clsx } from "akanjs/client";
 import { st, usePage } from "@apps/koyo/client";
 import { cnst } from "@apps/koyo/client"; // [!code ++:2]
-import { Select, buttonVariants } from "akanjs/ui";
+import { Select, buttonRecipe } from "akanjs/ui";
 // [!code collapse:81]
 interface ProcessProps {
   className?: string;
@@ -252,7 +255,7 @@ export const Process = ({ className, icecreamOrderId, disabled }: ProcessProps) 
   const { l } = usePage();
   return (
     <button
-      className={clsx("btn btn-secondary", className)}
+      className={buttonRecipe({ variant: "secondary" }, className)}
       disabled={disabled}
       onClick={() => {
         void st.do.processIcecreamOrder(icecreamOrderId);
@@ -272,7 +275,7 @@ export const Serve = ({ className, icecreamOrderId, disabled }: ServeProps) => {
   const { l } = usePage();
   return (
     <button
-      className={clsx("btn btn-accent", className)}
+      className={buttonRecipe({ variant: "accent" }, className)}
       disabled={disabled}
       onClick={() => {
         void st.do.serveIcecreamOrder(icecreamOrderId);
@@ -292,7 +295,7 @@ export const Finish = ({ className, icecreamOrderId, disabled }: FinishProps) =>
   const { l } = usePage();
   return (
     <button
-      className={clsx("btn btn-success", className)}
+      className={buttonRecipe({ variant: "success" }, className)}
       disabled={disabled}
       onClick={() => {
         void st.do.finishIcecreamOrder(icecreamOrderId);
@@ -312,7 +315,7 @@ export const Cancel = ({ className, icecreamOrderId, disabled }: CancelProps) =>
   const { l } = usePage();
   return (
     <button
-      className={clsx("btn btn-warning", className)}
+      className={buttonRecipe({ variant: "warning" }, className)}
       disabled={disabled}
       onClick={() => {
         void st.do.cancelIcecreamOrder(icecreamOrderId);
@@ -376,6 +379,7 @@ export const PublicQueryMaker = ({ className }: PublicQueryMakerProps) => {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/page/_index.tsx"
             code={`
 import { Load, Model } from "akanjs/ui"; // [!code collapse:3]
@@ -396,7 +400,7 @@ export default async function Page() {
         <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
         <IcecreamOrder.Util.PublicQueryMaker /> // [!code ++]
         <Model.New
-          className={buttonVariants({ variant: "primary" })}
+          className={buttonRecipe({ variant: "primary" })}
           slice={fetch.slice.icecreamOrderInPublic}
           renderTitle="name"
           partial={icecreamOrderForm}
@@ -436,6 +440,7 @@ export default async function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.constant.ts"
             code={`
 import { enumOf, Int } from "akanjs/base"; // [!code collapse:45]
@@ -547,6 +552,7 @@ export class IcecreamOrderInsight extends via(IcecreamOrder, (field) => ({
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.dictionary.ts"
             code={`
 import { modelDictionary } from "akanjs/dictionary"; // [!code collapse:11]
@@ -663,6 +669,7 @@ export const dictionary = modelDictionary(["en", "ko"])
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.View.tsx"
             code={`
 import { clsx } from "akanjs/client"; // [!code collapse:65]
@@ -797,6 +804,7 @@ export const Insight = ({ className, icecreamOrderInsight }: InsightProps) => {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Zone.tsx"
             code={`
 "use client"; // [!code collapse:54]
@@ -887,6 +895,7 @@ export const Insight = ({ className, slice = fetch.slice.icecreamOrder }: Insigh
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/page/_index.tsx"
             code={`
 import { Load, Model } from "akanjs/ui"; // [!code collapse:21]
@@ -908,7 +917,7 @@ export default async function Page() {
           <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div> // [!code collapse:10]
           <IcecreamOrder.Util.PublicQueryMaker />
           <Model.New
-            className={buttonVariants({ variant: "primary" })}
+            className={buttonRecipe({ variant: "primary" })}
             slice={fetch.slice.icecreamOrderInPublic}
             renderTitle="name"
             partial={icecreamOrderForm}

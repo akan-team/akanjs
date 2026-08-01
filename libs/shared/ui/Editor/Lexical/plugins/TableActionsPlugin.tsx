@@ -15,8 +15,7 @@ import {
   TableCellHeaderStates,
 } from "@lexical/table";
 import { mergeRegister } from "@lexical/utils";
-import { cn } from "akanjs/client";
-import { buttonVariants } from "akanjs/ui";
+import { buttonRecipe } from "akanjs/ui";
 import {
   $getNodeByKey,
   $getSelection,
@@ -187,7 +186,7 @@ export const TableActionButton = ({ children, title, onClick }: TableActionButto
   <button
     type="button"
     title={title}
-    className={cn(buttonVariants({ variant: "ghost", size: "xs" }), "min-h-7 px-1.5")}
+    className={buttonRecipe({ variant: "ghost", size: "xs" }, "min-h-7 px-1.5")}
     onClick={onClick}
   >
     {children}

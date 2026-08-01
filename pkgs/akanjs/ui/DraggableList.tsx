@@ -6,7 +6,7 @@ import { animated } from "akanjs/ui";
 import { createContext, type ReactElement, type ReactNode, useContext, useRef } from "react";
 import { BiTrash } from "react-icons/bi";
 import { MdDragIndicator } from "react-icons/md";
-import { buttonVariants } from "./Button";
+import { buttonRecipe } from "./Button";
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
@@ -111,6 +111,8 @@ const DragList = <V,>({ className, mode = "vertical", children, onChange, onRemo
           key={i}
           style={{
             zIndex,
+            // 드래그 리프트 그림자(반투명 흑색)는 테마 중립 + react-spring 동적 계산값이라 토큰화 불가.
+            // styleguard-disable-next-line inline-color
             boxShadow: shadow.to((s) => `rgba(0, 0, 0, 0.15) 0px ${s}px ${2 * s}px 0px`),
             scale,
             ...(mode === "vertical" ? { y: movement } : { x: movement }),
@@ -178,11 +180,10 @@ const Item = ({
       {children}
       {removable && (
         <button
-          className={cn(
-            buttonVariants({ variant: "outline", size: "xs" }),
+          className={buttonRecipe({ variant: "outline", size: "xs" }, [
             "size-6 border-destructive p-0 text-destructive hover:bg-destructive hover:text-destructive-foreground",
             removeClassName,
-          )}
+          ])}
           onClick={() => {
             onRemove(value);
           }}

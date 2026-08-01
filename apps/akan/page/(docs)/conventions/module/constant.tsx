@@ -80,6 +80,7 @@ export default function Page() {
           ))}
         </div>
         <Code.Snippet
+          className="w-full"
           title="ticket.constant.ts"
           code={`import { dayjs, enumOf, Int } from "akanjs/base";
 import { via } from "akanjs/constant";
@@ -125,6 +126,7 @@ export class TicketInsight extends via(Ticket, (field) => ({
         </Docs.Description>
         <div className="grid gap-3 xl:grid-cols-2">
           <Code.Snippet
+            className="w-full"
             title="status enum"
             code={`import { enumOf } from "akanjs/base";
 
@@ -137,6 +139,7 @@ export class TicketStatus extends enumOf("ticketStatus", [
 type TicketStatusValue = TicketStatus["value"];`}
           />
           <Code.Snippet
+            className="w-full"
             title="practical field options"
             code={`export class TicketInput extends via((field) => ({
   title: field(String, { example: "Fix payment bug" }),
@@ -185,6 +188,7 @@ type TicketStatusValue = TicketStatus["value"];`}
           </div>
         </div>
         <Code.Snippet
+          className="w-full"
           title="user.constant.ts"
           code={`export class UserObject extends via(UserInput, (field) => ({
   accountId: field.secret(String).optional(),
@@ -210,6 +214,7 @@ type TicketStatusValue = TicketStatus["value"];`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="user.constant.ts"
           code={`import { via } from "akanjs/constant";
 import { user } from "../__lib/lib.constant";
@@ -248,6 +253,7 @@ export class UserInsight extends via(User, (field) => ({}), ...user.insights) {}
         </Docs.Description>
         <div className="grid gap-3 xl:grid-cols-2">
           <Code.Snippet
+            className="w-full"
             title="LightBoard helper"
             code={`export class LightBoard extends via(
   BoardObject,
@@ -264,6 +270,7 @@ export class UserInsight extends via(User, (field) => ({}), ...user.insights) {}
 }`}
           />
           <Code.Snippet
+            className="w-full"
             title="Board static helper"
             code={`export class Board extends via(BoardObject, LightBoard, (resolve) => ({})) {
   static getBoard(boardList: LightBoard[], boardId: string) {
@@ -293,6 +300,7 @@ export class UserInsight extends via(User, (field) => ({}), ...user.insights) {}
         </Docs.Description>
         <div className="grid gap-3 xl:grid-cols-2">
           <Code.Snippet
+            className="w-full"
             title="story.constant.ts"
             code={`export class LightStory extends via(
   StoryObject,
@@ -311,6 +319,7 @@ export class UserInsight extends via(User, (field) => ({}), ...user.insights) {}
 }`}
           />
           <Code.Snippet
+            className="w-full"
             title="story.signal.ts"
             code={`export class StoryInternal extends internal(srv.story.with(srv.actionLog), ({ resolveField }) => ({
   view: resolveField(Int)
@@ -349,6 +358,7 @@ export class UserInsight extends via(User, (field) => ({}), ...user.insights) {}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="coordinate.constant.ts"
           code={`import { enumOf, Float } from "akanjs/base";
 import { via } from "akanjs/constant";
@@ -387,6 +397,7 @@ export class Coordinate extends via((field) => ({
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="ticket.constant.ts"
           code={`import { Int } from "akanjs/base";
 

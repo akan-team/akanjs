@@ -1,8 +1,8 @@
 "use client";
-import { cn, router, usePage } from "akanjs/client";
+import { router, usePage } from "akanjs/client";
 import { parseAkanI18nEnv } from "akanjs/common";
 
-import { buttonVariants } from "../Button";
+import { buttonRecipe } from "../Button";
 import { Dropdown } from "../Dropdown";
 
 const languageNames = {
@@ -29,7 +29,7 @@ export const SelectLanguage = ({ className, languages = parseAkanI18nEnv().local
           <li key={lang}>
             <button
               type="button"
-              className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "w-full justify-start")}
+              className={buttonRecipe({ variant: "ghost", size: "sm" }, "w-full justify-start")}
               onClick={() => {
                 router.setLang(lang);
               }}

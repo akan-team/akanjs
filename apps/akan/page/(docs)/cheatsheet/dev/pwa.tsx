@@ -84,6 +84,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/myapp/public/manifest.json"
           code={`{
   "name": "My Akan App",
@@ -112,6 +113,7 @@ export default function Page() {
 }`}
         />
         <Code.Snippet
+          className="w-full"
           title="apps/myapp/page/_layout.tsx"
           code={`import type { LayoutProps } from "akanjs/client";
 
@@ -164,6 +166,7 @@ export default function Layout({ children }: LayoutProps) {
           </ul>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/myapp/page/_layout.tsx"
           code={`import type { LayoutProps, WebAppManifest } from "akanjs/client";
 

@@ -5,6 +5,9 @@ import type { App } from "../commandDecorators";
 import { BarrelAnalyzer } from "../transforms/barrelAnalyzer";
 import { createTsconfigPackageResolver, rewriteBarrelImports } from "../transforms/barrelImportsPlugin";
 import { CssImportResolver } from "./cssImportResolver";
+import { countBlocking, formatStyleContract } from "./styleContract";
+import { StyleGuard, type StyleGuardViolation } from "./styleGuard";
+import { type ThemeContrastViolation, ThemeValidator } from "./themeValidator";
 
 const SOURCE_EXTS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"] as const;
 const NON_SOURCE_EXT_RE = /\.(json|svg|png|jpe?g|webp|gif|avif|ico|woff2?|ttf|otf|mp3|mp4|wav)$/i;
@@ -70,6 +73,65 @@ export class CssCompiler {
   async discoverCss({ refresh }: { refresh?: boolean } = {}): Promise<string[]> {
     const { cssPaths } = await this.discoverCssAndSources({ refresh });
     return cssPaths;
+  }
+
+  async collectStyleViolations({ refresh }: { refresh?: boolean } = {}): Promise<StyleGuardViolation[]> {
+    const { sourcePaths } = await this.discoverCssAndSources({ refresh });
+    return this.#runStyleGuard(sourcePaths);
+  }
+
+  async collectThemeViolations({ refresh }: { refresh?: boolean } = {}): Promise<ThemeContrastViolation[]> {
+    const { cssPaths } = await this.discoverCssAndSources({ refresh });
+    return this.#runThemeValidator(cssPaths);
+  }
+
+  /**
+   * 스타일 계약(어휘 폐쇄 + WCAG 콘트라스트) 강제. build=error(위반 시 throw) / dev=warn(로그만).
+   * discovery 를 한 번만 수행해 두 검사기에 공유한다.
+   */
+  async enforceStyleContract({ mode }: { mode: "build" | "dev" }): Promise<void> {
+    // 앱 단위 opt-out: 어휘 폐쇄를 도입하지 않은 앱(예: daisyUI 존치 문서앱)은 강제 대상에서 제외.
+    const akanConfig = await this.#app.getConfig();
+    if (!akanConfig.vocabularyClosure) return;
+    const { cssPaths, sourcePaths } = await this.discoverCssAndSources();
+    const [style, theme] = await Promise.all([this.#runStyleGuard(sourcePaths), this.#runThemeValidator(cssPaths)]);
+    const violations = { style, theme };
+    const blocking = countBlocking(violations);
+    if (blocking === 0) return;
+    const report = formatStyleContract(violations);
+    if (mode === "build")
+      throw new Error(
+        `[styleGuard] ${blocking} blocking style-contract violation(s):\n${report}\n\n` +
+          "시맨틱 토큰으로 교체하거나, 정당한 경우 사유와 함께 styleguard-disable 지시어로 명시적 예외 처리하세요.",
+      );
+    this.#logger.warn(`[styleGuard] ${blocking} style-contract violation(s) (dev=warn, build/CI=error):\n${report}`);
+  }
+
+  async #runStyleGuard(sourcePaths: string[]): Promise<StyleGuardViolation[]> {
+    // 프레임워크(node_modules/akanjs)는 프레임워크가 책임진다 — 테넌트 빌드에서 재검사하지 않는다.
+    const paths = sourcePaths.filter((p) => !NODE_MODULES_RE.test(p));
+    const files = await Promise.all(
+      paths.map(async (p) => ({
+        path: p,
+        content: await Bun.file(p)
+          .text()
+          .catch(() => ""),
+      })),
+    );
+    return new StyleGuard().run(files.filter((f) => f.content.length > 0));
+  }
+
+  async #runThemeValidator(cssPaths: string[]): Promise<ThemeContrastViolation[]> {
+    const css = (
+      await Promise.all(
+        cssPaths.map((p) =>
+          Bun.file(p)
+            .text()
+            .catch(() => ""),
+        ),
+      )
+    ).join("\n");
+    return new ThemeValidator().validate(css);
   }
 
   async discoverCssAndSources({

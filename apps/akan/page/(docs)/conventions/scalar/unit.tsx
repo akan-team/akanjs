@@ -37,6 +37,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           language="bash"
           code={`lib/
 └── __scalar/
@@ -58,6 +59,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="price.Unit.tsx"
           code={`import { cnst } from "@apps/myapp/client";
 
@@ -86,6 +88,7 @@ export const Label = ({ price, className }: LabelProps) => (
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="product.Unit.tsx"
           code={`import { Layout } from "akanjs/ui";
 import { cnst, Price } from "@apps/myapp/client";
@@ -111,6 +114,7 @@ export const Card = ({ product }: { product: cnst.Product }) => (
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="price.Unit.tsx"
           code={`export const Compact = ({ price }: { price: Price }) => (
   <span>{price.amount.toLocaleString()}</span>

@@ -1,5 +1,18 @@
 import path from "node:path";
-import { type Exec, FileSys, type PackageJson, runner, type Workspace, WorkspaceExecutor } from "@akanjs/devkit";
+import {
+  AppExecutor,
+  countBlocking,
+  type Exec,
+  FileSys,
+  formatStyleContract,
+  type PackageJson,
+  runner,
+  type StyleContractViolations,
+  StyleGuard,
+  ThemeValidator,
+  type Workspace,
+  WorkspaceExecutor,
+} from "@akanjs/devkit";
 import { getLatestPackageVersion, getNpmRegistryUrl } from "../npmRegistry";
 
 const defaultWorkspacePeerDependencies = new Set([
@@ -190,6 +203,48 @@ export class WorkspaceRunner extends runner("workspace") {
       "--no-errors-on-unmatched",
       exec.cwdPath,
     ]);
+    await this.#enforceStyleContract(exec);
+  }
+
+  /**
+   * CI=error: 어휘 폐쇄(styleGuard) + WCAG 콘트라스트(themeValidator) 계약을 lint 에서 강제한다.
+   * 순수 함수라 CSS 파이프라인 없이 타깃 소스를 직접 스캔한다. 위반 시 throw 로 lint 를 실패시킨다.
+   */
+  async #enforceStyleContract(exec: Exec) {
+    const cwdPath = exec.cwdPath;
+    if (!cwdPath) return;
+    // 앱 단위 opt-out: 어휘 폐쇄 미도입 앱(daisyUI 존치 등)은 skip. lib/pkg 는 공유 코드라 항상 강제.
+    if (exec instanceof AppExecutor) {
+      const config = await exec.getConfig();
+      if (!config.vocabularyClosure) return;
+    }
+    const files: { path: string; content: string }[] = [];
+    try {
+      const glob = new Bun.Glob("**/*.{tsx,ts,jsx,js}");
+      for await (const abs of glob.scan({ cwd: cwdPath, absolute: true })) {
+        if (/[\\/](node_modules|\.akan|dist)[\\/]/.test(abs) || /\.(test|spec)\.[jt]sx?$/.test(abs)) continue;
+        files.push({
+          path: abs,
+          content: await Bun.file(abs)
+            .text()
+            .catch(() => ""),
+        });
+      }
+    } catch {
+      return; // 경로 없음/스캔 불가 → 스킵
+    }
+    const style = new StyleGuard().run(files.filter((file) => file.content.length > 0));
+    const stylesCssPath = path.join(cwdPath, "page", "styles.css");
+    const theme = (await Bun.file(stylesCssPath).exists())
+      ? new ThemeValidator().validate(await Bun.file(stylesCssPath).text())
+      : [];
+    const violations: StyleContractViolations = { style, theme };
+    const blocking = countBlocking(violations);
+    if (blocking === 0) return;
+    throw new Error(
+      `[styleGuard] ${blocking} blocking style-contract violation(s):\n${formatStyleContract(violations)}\n\n` +
+        "시맨틱 토큰으로 교체하거나, 정당한 경우 사유와 함께 styleguard-disable 지시어로 예외 처리하세요.",
+    );
   }
   async writeTopLevelEnv(workspace: Workspace, devProjectId: string) {
     await workspace.writeFile(

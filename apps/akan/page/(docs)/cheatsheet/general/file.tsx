@@ -57,6 +57,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="file.constant.ts"
           code={`import { enumOf, Int } from "akanjs/base";
 import { via } from "akanjs/constant";
@@ -92,6 +93,7 @@ export class File extends via(FileObject, LightFile, (resolve) => ({})) {}`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="file.signal.ts"
           code={`import { Upload } from "akanjs/base";
 import { endpoint } from "akanjs/signal";
@@ -136,6 +138,7 @@ export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
           </ol>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="file.service.ts"
           code={`export class FileService extends serve(db.file, ({ use }) => ({
   storageApi: use<StorageApi>(),
@@ -186,6 +189,7 @@ export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Call fetch.uploadFiles"
           code={`const onChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
   const files = [...(event.target.files ?? [])];
@@ -195,6 +199,7 @@ export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
 };`}
         />
         <Code.Snippet
+          className="w-full"
           title="Preview or download"
           code={`const [file] = await fetch.uploadFiles([selectedFile], "profile");
 
@@ -235,6 +240,7 @@ return (
           </ul>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="file.signal.ts"
           code={`export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
   addFiles: mutation([cnst.File], { fileUpload: true })

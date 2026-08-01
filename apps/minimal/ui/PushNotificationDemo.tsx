@@ -1,7 +1,7 @@
 "use client";
 
 import { type PushToken, usePushNotification } from "@libs/util/webkit";
-import { buttonVariants, Link } from "akanjs/ui";
+import { buttonRecipe, Link } from "akanjs/ui";
 import { useState } from "react";
 
 export const PushNotificationDemo = () => {
@@ -37,13 +37,13 @@ export const PushNotificationDemo = () => {
         </p>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-3">
-          <button className={buttonVariants({ variant: "outline" })} onClick={refreshStatus} type="button">
+          <button className={buttonRecipe({ variant: "outline" })} onClick={refreshStatus} type="button">
             Check status
           </button>
-          <button className={buttonVariants({ variant: "primary" })} onClick={register} type="button">
+          <button className={buttonRecipe({ variant: "primary" })} onClick={register} type="button">
             Register
           </button>
-          <button className={buttonVariants({ variant: "secondary" })} onClick={initClickBridge} type="button">
+          <button className={buttonRecipe({ variant: "secondary" })} onClick={initClickBridge} type="button">
             Init click bridge
           </button>
         </div>
@@ -68,13 +68,13 @@ if (pushToken) await appApi.registerPushToken(pushToken);`}</pre>
         </div>
 
         <div className="mt-6 flex flex-wrap gap-3">
-          <Link className={buttonVariants({ variant: "ghost" })} href="/explore">
+          <Link className={buttonRecipe({ variant: "ghost" })} href="/explore">
             Back to Explore
           </Link>
-          <Link className={buttonVariants({ variant: "ghost" })} href="/push-notification/landing">
+          <Link className={buttonRecipe({ variant: "ghost" })} href="/push-notification/landing">
             Open demo landing
           </Link>
-          <Link className={buttonVariants({ variant: "ghost" })} href="/push-notification/guide">
+          <Link className={buttonRecipe({ variant: "ghost" })} href="/push-notification/guide">
             Setup guide
           </Link>
         </div>

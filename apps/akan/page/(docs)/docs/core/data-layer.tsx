@@ -89,6 +89,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/shop/lib/product/product.constant.ts"
             code={`import { enumOf, Int } from "akanjs/base";
 import { via } from "akanjs/constant";
@@ -153,6 +154,7 @@ export class LightProduct extends via(
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/shop/lib/product/product.document.ts"
             code={`import { by, from, into } from "akanjs/document"; // [!code collapse:9]
 
@@ -179,6 +181,7 @@ export class ProductModel extends into(Product, ProductFilter, cnst.product, () 
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/shop/lib/product/product.service.ts"
             code={`import { serve } from "akanjs/service"; // [!code collapse:4]
 
@@ -205,6 +208,7 @@ export class ProductService extends serve(db.product, ({ use, service }) => ({})
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/shop/lib/product/product.signal.ts"
             code={`import { Admin } from "@libs/shared/srvkit"; // [!code collapse:17]
 import { endpoint, internal, Public, slice } from "akanjs/signal";
@@ -310,6 +314,7 @@ export class ProductEndpoint extends endpoint(srv.product, ({ query, mutation })
             ))}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Server action: call addStock with fetch"
             code={`import { fetch } from "@apps/shop/client";
 
@@ -329,6 +334,7 @@ export const addProductStock = async (productId: string, quantity: number) => {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Client zone: pass fetch.slice metadata to UI components"
             code={`"use client";
 import { type cnst, fetch, Product } from "@apps/shop/client";
@@ -362,6 +368,7 @@ export const Card = ({ init }: CardProps) => {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Client form: read and change state with st"
             code={`"use client";
 import { fetch, st, usePage } from "@apps/shop/client";

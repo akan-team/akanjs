@@ -5,7 +5,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { a
     filename: "Task.Util.tsx",
     content: `"use client";
 import { fetch, st, usePage } from "@apps/${dict.appName}/client";
-import { buttonVariants, Dropdown, Model } from "akanjs/ui";
+import { buttonRecipe, Dropdown, Model } from "akanjs/ui";
 
 // ===== Task.Util.tsx =====
 // Convention: lib/<module>/ — PascalCase .tsx, Util suffix = action buttons/utility components.
@@ -20,7 +20,7 @@ interface StartProps {
 
 export const Start = ({ taskId }: StartProps) => (
   <button
-    className={cn(buttonVariants({ size: "xs" }), "border-primary/20 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground")}
+    className={buttonRecipe({ size: "xs" }, "border-primary/20 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground")}
     onClick={() => st.do.startTask(taskId)}
   >
     {usePage().l("task.taskStart")}
@@ -33,7 +33,7 @@ interface CompleteProps {
 
 export const Complete = ({ taskId }: CompleteProps) => (
   <button
-    className={cn(buttonVariants({ size: "xs" }), "border-success/20 bg-success/10 text-success hover:bg-success hover:text-success-foreground")}
+    className={buttonRecipe({ size: "xs" }, "border-success/20 bg-success/10 text-success hover:bg-success hover:text-success-foreground")}
     onClick={() => st.do.completeTask(taskId)}
   >
     {usePage().l("task.taskComplete")}
@@ -46,7 +46,7 @@ interface RemoveProps {
 
 export const Remove = ({ taskId }: RemoveProps) => (
   <Model.Remove modelId={taskId} slice={fetch.slice.task}>
-    <button className={cn(buttonVariants({ variant: "ghost", size: "xs" }), "text-destructive")}>{usePage().l("task.taskRemove")}</button>
+    <button className={buttonRecipe({ variant: "ghost", size: "xs" }, "text-destructive")}>{usePage().l("task.taskRemove")}</button>
   </Model.Remove>
 );
 
@@ -59,7 +59,7 @@ export const Toolbox = ({ taskId, status }: ToolboxProps) => {
   const { l } = usePage();
   return (
     <Dropdown
-      buttonClassName={buttonVariants({ variant: "ghost", size: "xs" })}
+      buttonClassName={buttonRecipe({ variant: "ghost", size: "xs" })}
       value={<span>···</span>}
       dropdownClassName="w-40 rounded-box border border-foreground/10 bg-background p-2"
       content={
@@ -96,7 +96,7 @@ export const Toolbox = ({ taskId, status }: ToolboxProps) => {
 // New Task Button: Model.NewWrapper — triggers new Task creation form
 // export const NewTask = () => (
 //   <Model.NewWrapper partial={{}}>
-//     <button className={buttonVariants({ variant: "primary", size: "sm" })}>+ New Task</button>
+//     <button className={buttonRecipe({ variant: "primary", size: "sm" })}>+ New Task</button>
 //   </Model.NewWrapper>
 // );
 `,

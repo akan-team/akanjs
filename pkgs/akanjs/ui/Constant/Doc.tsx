@@ -6,8 +6,8 @@ import { useMemo, useState } from "react";
 import { AiOutlineInfoCircle, AiOutlineSearch } from "react-icons/ai";
 import { BiNetworkChart, BiTable } from "react-icons/bi";
 
-import { badgeVariants } from "../Badge";
-import { buttonVariants } from "../Button";
+import { badgeRecipe } from "../Badge";
+import { buttonRecipe } from "../Button";
 import { Input } from "../Input";
 import { Modal } from "../Modal";
 import { Mermaid } from "./Mermaid";
@@ -81,8 +81,8 @@ const Zone = ({ models, scalars, enums, openAll }: ZoneProps) => {
         />
         <div className="inline-flex w-fit overflow-hidden rounded-field">
           <button
-            className={cn(
-              buttonVariants({ variant: viewMode === "table" ? "primary" : "outline", size: "sm" }),
+            className={buttonRecipe(
+              { variant: viewMode === "table" ? "primary" : "outline", size: "sm" },
               "rounded-none",
             )}
             onClick={() => setViewMode("table")}
@@ -90,8 +90,8 @@ const Zone = ({ models, scalars, enums, openAll }: ZoneProps) => {
             <BiTable /> Table
           </button>
           <button
-            className={cn(
-              buttonVariants({ variant: viewMode === "diagram" ? "primary" : "outline", size: "sm" }),
+            className={buttonRecipe(
+              { variant: viewMode === "diagram" ? "primary" : "outline", size: "sm" },
               "rounded-none",
             )}
             onClick={() => setViewMode("diagram")}
@@ -186,7 +186,7 @@ const Model = ({ refName, database: databaseProp, openAll }: ModelProps) => {
       <summary className="flex cursor-pointer list-none items-center justify-between gap-2 p-4">
         <div className="flex flex-wrap items-center gap-2">
           <div className="font-bold text-xl">{database.modelName}</div>
-          <div className={badgeVariants({ variant: "primary" })}>{database.refName}</div>
+          <div className={badgeRecipe({ variant: "primary" })}>{database.refName}</div>
           <div className="text-foreground/70 text-sm">{l._(`${database.refName}.modelDesc`)}</div>
         </div>
         <span className="text-foreground/50 transition-transform group-open:rotate-180">▾</span>
@@ -218,7 +218,7 @@ const Scalar = ({ refName, scalar: scalarProp, openAll }: ScalarProps) => {
       <summary className="flex cursor-pointer list-none items-center justify-between gap-2 p-4">
         <div className="flex flex-wrap items-center gap-2">
           <div className="font-bold text-xl">{scalar.modelName}</div>
-          <div className={badgeVariants({ variant: "secondary" })}>{scalar.refName}</div>
+          <div className={badgeRecipe({ variant: "secondary" })}>{scalar.refName}</div>
           <div className="text-foreground/70 text-sm">{l._(`${scalar.refName}.modelDesc`)}</div>
         </div>
         <span className="text-foreground/50 transition-transform group-open:rotate-180">▾</span>
@@ -260,7 +260,7 @@ const EnumList = ({ enums = getConstantSchemaDoc().enums }: EnumProps) => {
                   {enumSchema.values.map((value) => (
                     <button
                       key={String(value)}
-                      className={buttonVariants({ variant: "outline", size: "xs" })}
+                      className={buttonRecipe({ variant: "outline", size: "xs" })}
                       title={l._(`${enumSchema.refName}.${value}`)}
                     >
                       {String(value)}
@@ -274,7 +274,7 @@ const EnumList = ({ enums = getConstantSchemaDoc().enums }: EnumProps) => {
                     ? enumSchema.usedBy.map((usage) => (
                         <span
                           key={`${usage.refName}-${usage.variant}-${usage.fieldKey}`}
-                          className={badgeVariants({ variant: "outline" })}
+                          className={badgeRecipe({ variant: "outline" })}
                         >
                           {usage.refName}.{usage.fieldKey}
                         </span>
@@ -318,7 +318,7 @@ const ModelVariantTable = ({ variant }: { variant: ReturnType<typeof getDefaultV
   <div className="flex flex-col gap-2">
     <div className="flex flex-wrap items-center gap-2">
       <div className="font-extrabold text-lg">{variant.modelName}</div>
-      <div className={badgeVariants({ variant: "outline" })}>{getVariantTitle(variant.variant)}</div>
+      <div className={badgeRecipe({ variant: "outline" })}>{getVariantTitle(variant.variant)}</div>
       <div className="text-foreground/60 text-sm">{variant.fields.length} fields</div>
     </div>
     <FieldTable refName={variant.refName} fields={variant.fields} />
@@ -333,8 +333,8 @@ const PrintDatabase = ({ database }: { database: DatabaseSchema }) => {
         <div className="flex flex-wrap items-center gap-2">
           <div className="font-bold text-3xl">{database.modelName}</div>
           <div
-            className={cn(
-              badgeVariants({ variant: "primary" }),
+            className={badgeRecipe(
+              { variant: "primary" },
               "print:border print:border-black print:bg-white print:text-black",
             )}
           >
@@ -368,8 +368,8 @@ const PrintScalar = ({ scalar }: { scalar: ScalarSchema }) => {
         <div className="flex flex-wrap items-center gap-2">
           <div className="font-bold text-2xl">{scalar.modelName}</div>
           <div
-            className={cn(
-              badgeVariants({ variant: "secondary" }),
+            className={badgeRecipe(
+              { variant: "secondary" },
               "print:border print:border-black print:bg-white print:text-black",
             )}
           >
@@ -388,7 +388,7 @@ const PrintSectionTitle = ({ title }: { title: string }) => <div className="font
 const PrintVariantHeader = ({ title, badge, fields }: { title: string; badge: string; fields: number }) => (
   <div className="flex flex-wrap items-center gap-2">
     <div className="font-extrabold text-xl">{title}</div>
-    <div className={cn(badgeVariants({ variant: "outline" }), "print:border print:border-black")}>{badge}</div>
+    <div className={badgeRecipe({ variant: "outline" }, "print:border print:border-black")}>{badge}</div>
     <div className="text-foreground/60 text-sm print:text-black">{fields} fields</div>
   </div>
 );
@@ -426,7 +426,7 @@ const FieldTable = ({ refName, fields }: { refName: string; fields: FieldSchema[
                     className={
                       field.typeKind === "primitive"
                         ? ""
-                        : cn(badgeVariants({ variant: "outline" }), "border-primary text-primary")
+                        : badgeRecipe({ variant: "outline" }, "border-primary text-primary")
                     }
                   >
                     {field.typeLabel}
@@ -434,20 +434,20 @@ const FieldTable = ({ refName, fields }: { refName: string; fields: FieldSchema[
                 </td>
                 <td>
                   {field.required ? (
-                    <span className={badgeVariants({ variant: "destructive" })}>Required</span>
+                    <span className={badgeRecipe({ variant: "error" })}>Required</span>
                   ) : (
-                    <span className={badgeVariants()}>Optional</span>
+                    <span className={badgeRecipe()}>Optional</span>
                   )}
                 </td>
                 <td>
-                  <span className={badgeVariants({ variant: "outline" })}>{field.fieldType}</span>
+                  <span className={badgeRecipe({ variant: "outline" })}>{field.fieldType}</span>
                   {!field.select ? (
-                    <span className={cn(badgeVariants({ variant: "warning" }), "ml-1")}>select:false</span>
+                    <span className={badgeRecipe({ variant: "warning" }, "ml-1")}>select:false</span>
                   ) : null}
                 </td>
                 <td>
                   {field.relationLabel ? (
-                    <span className={badgeVariants({ variant: "secondary" })}>{field.relationLabel}</span>
+                    <span className={badgeRecipe({ variant: "secondary" })}>{field.relationLabel}</span>
                   ) : (
                     "-"
                   )}
@@ -457,7 +457,7 @@ const FieldTable = ({ refName, fields }: { refName: string; fields: FieldSchema[
                   <div className="flex flex-wrap gap-1">
                     {field.constraints.length
                       ? field.constraints.map((constraint) => (
-                          <span key={constraint} className={badgeVariants({ variant: "outline" })}>
+                          <span key={constraint} className={badgeRecipe({ variant: "outline" })}>
                             {constraint}
                           </span>
                         ))
@@ -468,7 +468,7 @@ const FieldTable = ({ refName, fields }: { refName: string; fields: FieldSchema[
                   {field.enumValues ? (
                     <div className="flex flex-wrap gap-1">
                       {field.enumValues.map((value) => (
-                        <span key={String(value)} className={badgeVariants()}>
+                        <span key={String(value)} className={badgeRecipe()}>
                           {String(value)}
                         </span>
                       ))}
@@ -480,7 +480,7 @@ const FieldTable = ({ refName, fields }: { refName: string; fields: FieldSchema[
                 <td className="min-w-52">{l._(`${refName}.${field.key}.desc`)}</td>
                 <td>
                   <button
-                    className={buttonVariants({ variant: "ghost", size: "xs" })}
+                    className={buttonRecipe({ variant: "ghost", size: "xs" })}
                     onClick={() => setSelectedField(field)}
                   >
                     <AiOutlineInfoCircle /> Detail
@@ -500,7 +500,7 @@ const PrintFieldTable = ({ refName, fields }: { refName: string; fields: FieldSc
   const { l } = usePage();
   return (
     <div className="overflow-x-auto rounded-xl bg-background p-3 print:overflow-visible print:rounded-none print:p-0">
-      <table className="table-sm table">
+      <table className={tableClass}>
         <thead>
           <tr>
             <th>Key</th>
@@ -560,7 +560,7 @@ const PrintEnumTable = ({ enums }: { enums: ReturnType<typeof getConstantSchemaD
   const { l } = usePage();
   return (
     <div className="overflow-x-auto rounded-xl bg-background p-3 print:overflow-visible print:rounded-none print:p-0">
-      <table className="table-sm table">
+      <table className={tableClass}>
         <thead>
           <tr>
             <th>Key</th>
@@ -689,7 +689,7 @@ const Diagram = ({ databases, scalars }: { databases: DatabaseSchema[]; scalars:
           <Scalar scalar={selectedScalar} openAll />
         ) : selectedRefName ? (
           <div className="mt-4">
-            <div className={badgeVariants({ variant: "outline" })}>External</div>
+            <div className={badgeRecipe({ variant: "outline" })}>External</div>
             <div className="mt-2 font-bold">{selectedRefName}</div>
           </div>
         ) : (

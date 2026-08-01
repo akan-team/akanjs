@@ -1,5 +1,6 @@
 "use client";
 import { clsx } from "akanjs/client";
+import { buttonRecipe } from "akanjs/ui";
 import type { NodeKey } from "lexical";
 import { type ReactNode, type PointerEvent as ReactPointerEvent, useRef } from "react";
 import {
@@ -167,7 +168,12 @@ export const MediaMenuButton = ({ children, title, active, onClick }: MediaMenuB
   <button
     type="button"
     title={title}
-    className={clsx("btn btn-xs btn-ghost min-h-7 gap-1 px-2", { "btn-active": active })}
+    className={buttonRecipe({ variant: "ghost", size: "xs" }, [
+      "min-h-7 gap-1 px-2",
+      {
+        "bg-muted text-foreground": active,
+      },
+    ])}
     onClick={onClick}
   >
     {children}

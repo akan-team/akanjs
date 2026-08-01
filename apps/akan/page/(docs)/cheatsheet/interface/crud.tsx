@@ -46,6 +46,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Post slice", ko: "Post slice" })}
           code={`export class PostSlice extends slice(
   srv.post,
@@ -71,6 +72,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Post list zone", ko: "Post list zone" })}
           code={`export const PublicPosts = ({ init }) => {
   return (
@@ -102,6 +104,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Create page", ko: "생성 page" })}
           code={`<Load.Edit
   slice={fetch.slice.postInAdmin}
@@ -113,6 +116,7 @@ export default function Page() {
 </Load.Edit>`}
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Edit modal", ko: "수정 modal" })}
           code={`<Model.EditModal id={post.id} slice={fetch.slice.postInAdmin} type="form">
   <Post.Template.General />
@@ -132,6 +136,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Remove helper", ko: "삭제 helper" })}
           code={`export const Remove = ({ postId }: { postId: string }) => {
   const { l } = usePage();

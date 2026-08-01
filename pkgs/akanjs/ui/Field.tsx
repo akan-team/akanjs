@@ -9,8 +9,8 @@ import { AiOutlinePlus } from "react-icons/ai";
 import { BiHelpCircle, BiTrash, BiX } from "react-icons/bi";
 import { MdDragIndicator } from "react-icons/md";
 
-import { badgeVariants } from "./Badge";
-import { buttonVariants } from "./Button";
+import { badgeRecipe } from "./Badge";
+import { buttonRecipe } from "./Button";
 import { DraggableList } from "./DraggableList";
 import { Input } from "./Input";
 import { Select } from "./Select";
@@ -39,7 +39,7 @@ const Label = ({ className, label, desc, unit, nullable, mode = "edit" }: LabelP
           </span>
         </Tooltip>
       ) : null}
-      {nullable ? <span className="text-gray-400 text-sm">{"(optional)"}</span> : null}
+      {nullable ? <span className="text-muted-foreground text-sm">{"(optional)"}</span> : null}
     </span>
   );
 };
@@ -104,15 +104,15 @@ const List = <Item,>({
   return (
     <div className={cn("flex w-full flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
-      <div className="mb-2 flex w-full flex-col gap-2 rounded-md border border-gray-300 p-2">
+      <div className="mb-2 flex w-full flex-col gap-2 rounded-md border border-border p-2">
         {value.map((item, idx) => (
           <>
             <div key={idx} className="flex h-full w-full items-center justify-between gap-2">
               {renderItem(item, idx)}
-              <div className="flex gap-2 border-gray-300 border-l pl-2">
+              <div className="flex gap-2 border-border border-l pl-2">
                 <button
-                  className={cn(
-                    buttonVariants({ variant: "outline", size: "icon" }),
+                  className={buttonRecipe(
+                    { variant: "outline", size: "icon" },
                     "size-6 border-destructive p-0 text-destructive hover:bg-destructive hover:text-destructive-foreground",
                   )}
                   onClick={() => {
@@ -123,11 +123,11 @@ const List = <Item,>({
                 </button>
               </div>
             </div>
-            <div className="h-[0.5px] w-full bg-gray-300 px-2 last:h-0" />
+            <div className="h-[0.5px] w-full bg-muted px-2 last:h-0" />
           </>
         ))}
         <button
-          className={buttonVariants({ variant: "outline" })}
+          className={buttonRecipe({ variant: "outline" })}
           onClick={() => {
             onAdd();
           }}
@@ -537,7 +537,7 @@ const TextList = ({
   return (
     <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={!minlength} label={label} desc={desc} /> : null}
-      <div className="mb-5 h-full gap-2 rounded-md border border-gray-300 p-2">
+      <div className="mb-5 h-full gap-2 rounded-md border border-border p-2">
         <DraggableList
           className="h-full gap-2"
           onChange={onChange}
@@ -566,13 +566,13 @@ const TextList = ({
                       else return validate?.(text) ?? true;
                     }}
                     className={cn("w-full", inputClassName)}
-                    inputClassName="w-full input-sm"
+                    inputClassName="h-8 w-full"
                     placeholder={placeholder}
                     disabled={disabled}
                   />
                   <button
-                    className={cn(
-                      buttonVariants({ variant: "outline", size: "icon" }),
+                    className={buttonRecipe(
+                      { variant: "outline", size: "icon" },
                       "size-6 border-destructive p-0 text-destructive hover:bg-destructive hover:text-destructive-foreground",
                     )}
                     onClick={() => {
@@ -589,7 +589,7 @@ const TextList = ({
         <div className="my-5 h-[0.5px] bg-foreground/20" />
         {value.length <= maxTextlength ? (
           <button
-            className={cn(buttonVariants({ variant: "outline" }), "w-full")}
+            className={buttonRecipe({ variant: "outline" }, "w-full")}
             onClick={() => {
               onChange([...value, ""]);
             }}
@@ -653,7 +653,7 @@ const Tags = ({
       {label ? <Label className={labelClassName} nullable={!minlength} label={label} desc={desc} /> : null}
       <div className="flex w-full flex-wrap items-center gap-1 rounded-md border border-foreground/20 p-2">
         {value.map((val, idx) => (
-          <span className={cn(badgeVariants({ variant: "outline" }), "items-center")} key={idx}>
+          <span className={badgeRecipe({ variant: "outline" }, "items-center")} key={idx}>
             <div className="text-xs italic">#</div>
             {val}
             <BiX
