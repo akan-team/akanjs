@@ -11,18 +11,18 @@ let package = Package(
             targets: ["CapApp-SPM"])
     ],
     dependencies: [
-        .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.4.0"),
-        .package(name: "CapacitorCommunityFcm", path: "../../../../../node_modules/.bun/@capacitor-community+fcm@8.1.0+1b808583819c2ac6/node_modules/@capacitor-community/fcm"),
-        .package(name: "CapacitorApp", path: "../../../../../node_modules/.bun/@capacitor+app@8.1.0+1b808583819c2ac6/node_modules/@capacitor/app"),
-        .package(name: "CapacitorBrowser", path: "../../../../../node_modules/.bun/@capacitor+browser@8.0.3+1b808583819c2ac6/node_modules/@capacitor/browser"),
-        .package(name: "CapacitorCamera", path: "../../../../../node_modules/.bun/@capacitor+camera@8.2.0+1b808583819c2ac6/node_modules/@capacitor/camera"),
-        .package(name: "CapacitorDevice", path: "../../../../../node_modules/.bun/@capacitor+device@8.0.2+1b808583819c2ac6/node_modules/@capacitor/device"),
-        .package(name: "CapacitorGeolocation", path: "../../../../../node_modules/.bun/@capacitor+geolocation@8.2.0+1b808583819c2ac6/node_modules/@capacitor/geolocation"),
-        .package(name: "CapacitorHaptics", path: "../../../../../node_modules/.bun/@capacitor+haptics@8.0.2+1b808583819c2ac6/node_modules/@capacitor/haptics"),
-        .package(name: "CapacitorKeyboard", path: "../../../../../node_modules/.bun/@capacitor+keyboard@8.0.3+1b808583819c2ac6/node_modules/@capacitor/keyboard"),
-        .package(name: "CapacitorPreferences", path: "../../../../../node_modules/.bun/@capacitor+preferences@8.0.1+1b808583819c2ac6/node_modules/@capacitor/preferences"),
-        .package(name: "CapacitorPushNotifications", path: "../../../../../node_modules/.bun/@capacitor+push-notifications@8.1.1+1b808583819c2ac6/node_modules/@capacitor/push-notifications"),
-        .package(name: "CapacitorPluginSafeArea", path: "../../../../../node_modules/.bun/capacitor-plugin-safe-area@5.0.0+1b808583819c2ac6/node_modules/capacitor-plugin-safe-area")
+        .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.3.4"),
+        .package(name: "CapacitorCommunityFcm", path: "../../../../../node_modules/.bun/@capacitor-community+fcm@8.1.0+33da1c2fb16abc29/node_modules/@capacitor-community/fcm"),
+        .package(name: "CapacitorApp", path: "../../../../../node_modules/.bun/@capacitor+app@8.1.0+33da1c2fb16abc29/node_modules/@capacitor/app"),
+        .package(name: "CapacitorBrowser", path: "../../../../../node_modules/.bun/@capacitor+browser@8.0.3+33da1c2fb16abc29/node_modules/@capacitor/browser"),
+        .package(name: "CapacitorCamera", path: "../../../../../node_modules/.bun/@capacitor+camera@8.2.0+33da1c2fb16abc29/node_modules/@capacitor/camera"),
+        .package(name: "CapacitorDevice", path: "../../../../../node_modules/.bun/@capacitor+device@8.0.2+33da1c2fb16abc29/node_modules/@capacitor/device"),
+        .package(name: "CapacitorGeolocation", path: "../../../../../node_modules/.bun/@capacitor+geolocation@8.2.0+33da1c2fb16abc29/node_modules/@capacitor/geolocation"),
+        .package(name: "CapacitorHaptics", path: "../../../../../node_modules/.bun/@capacitor+haptics@8.0.2+33da1c2fb16abc29/node_modules/@capacitor/haptics"),
+        .package(name: "CapacitorKeyboard", path: "../../../../../node_modules/.bun/@capacitor+keyboard@8.0.3+33da1c2fb16abc29/node_modules/@capacitor/keyboard"),
+        .package(name: "CapacitorPreferences", path: "../../../../../node_modules/.bun/@capacitor+preferences@8.0.1+33da1c2fb16abc29/node_modules/@capacitor/preferences"),
+        .package(name: "CapacitorPushNotifications", path: "../../../../../node_modules/.bun/@capacitor+push-notifications@8.1.1+33da1c2fb16abc29/node_modules/@capacitor/push-notifications"),
+        .package(name: "CapacitorPluginSafeArea", path: "../../../../../node_modules/.bun/capacitor-plugin-safe-area@5.0.0+33da1c2fb16abc29/node_modules/capacitor-plugin-safe-area")
     ],
     targets: [
         .target(

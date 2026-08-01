@@ -2,6 +2,7 @@ import type {
   AkanNotFoundError,
   AkanRedirectError,
   LayoutFallbackRoute,
+  PageState,
   PathRoute,
   RedirectStatus,
   ResolvedHead,
@@ -9,6 +10,7 @@ import type {
 import { type AkanI18nConfig, DEFAULT_AKAN_I18N, getBasePathFromPathname, Logger } from "akanjs/common";
 import {
   getRequestDynamicUsage,
+  getRequestFrameState,
   getRequestPolicy,
   getRequestTheme,
   requestStorage,
@@ -214,6 +216,12 @@ export class RscRenderer {
     }
     this.#send = process.send.bind(process) as (message: unknown) => void;
     process.on("message", (msg: InMsg) => this.#handleMessage(msg));
+    // The IPC channel closes when the parent replica dies (including SIGKILL); exit instead of
+    // lingering as an orphaned renderer.
+    process.on("disconnect", () => {
+      this.#logger.warn("parent IPC channel closed; exiting rsc worker");
+      process.exit(0);
+    });
     this.#logger.verbose(`constructed (pid=${process.pid})`);
   }
 
@@ -527,6 +535,7 @@ export class RscRenderer {
               patchStartSegment: undefined,
               patchHeadSafe: undefined,
               patchHeadSnapshot: undefined,
+              ssrBlocking: cached.ssrBlocking,
             },
             send: (message) => this.#send(message),
             isCancelled: () => this.#cancelledRenderRequests.has(requestId),
@@ -555,9 +564,11 @@ export class RscRenderer {
         else element = await this.#renderNotFound(urlObj);
         const traceCacheKey =
           effectivePatchDecision.status === "patch" ? (patchCacheEntry?.key ?? cacheEntry?.key) : cacheEntry?.key;
+        const ssrBlocking = getRequestFrameState<PageState>()?.ssr === "block";
         const trace: RscTraceMetadata = {
           ...createTraceBase(effectivePatchDecision, traceCacheKey),
           cache: cacheEntry ? "miss" : "bypass",
+          ssrBlocking,
         };
         this.#logger.verbose(`render[${requestId}] starting Flight stream`);
         const result = await this.#renderFlightElement(element, msg.clientManifest ?? this.#clientManifest, {
@@ -599,6 +610,7 @@ export class RscRenderer {
                   routeId,
                   tags: cacheState.tags,
                   theme: getRequestTheme(),
+                  ssrBlocking,
                   cacheState,
                   patch: createCachedRscPatchMetadata({
                     targetRouterState,
@@ -618,6 +630,7 @@ export class RscRenderer {
                   routeId,
                   tags: cacheState.tags,
                   theme: getRequestTheme(),
+                  ssrBlocking,
                   cacheState,
                 },
                 storeTtl,
@@ -1247,6 +1260,7 @@ export class RscRenderer {
       pathRoute,
       params: match.params,
       searchParams,
+      navKey: url.pathname + url.search,
     });
     return (
       <html
@@ -1287,11 +1301,15 @@ export class RscRenderer {
       basePath: this.#getBasePath(url),
     });
     setRequestFrameState(pathRoute.pageState);
+    // The suffix path skips `resolveHead`, so populate `Loading` explicitly
+    // before composing or the client-navigation fallback would be empty.
+    await RouteElementComposer.resolveSuffixLoadings(pathRoute, patchStartIndex);
     return RouteElementComposer.composeSuffix({
       pathRoute,
       params: match.params,
       searchParams,
       patchStartIndex,
+      navKey: url.pathname + url.search,
     });
   }
 

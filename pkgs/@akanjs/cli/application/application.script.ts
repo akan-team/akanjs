@@ -87,6 +87,30 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       throw error;
     }
   }
+  // `npx cap sync` discovers plugins from the app directory's package.json, so the default Capacitor
+  // plugins must be declared there (not just installed at the workspace root) before a mobile target
+  // is built. Declaring the missing ones with a "*" range lets bun resolve them to the version
+  // already hoisted at the workspace root.
+  async syncMobileAppCapacitorPlugins(app: App, akanConfig: AkanAppConfig) {
+    const plugins = akanConfig.getMobileAppCapacitorPlugins();
+    if (plugins.length === 0) return;
+    const packageJson = await app.getPackageJson({ refresh: true });
+    const dependencies = packageJson.dependencies ?? {};
+    const missing = plugins.filter((plugin) => !dependencies[plugin]);
+    if (missing.length === 0) return;
+
+    const spinner = app.workspace.spinning(`Adding default Capacitor plugins to ${app.name}...`);
+    try {
+      packageJson.dependencies = { ...dependencies, ...Object.fromEntries(missing.map((plugin) => [plugin, "*"])) };
+      await app.setPackageJson(packageJson);
+      await app.workspace.spawn("bun", ["install"], { stdio: "inherit" });
+      await app.getPackageJson({ refresh: true });
+      spinner.succeed(`Added default Capacitor plugins to ${app.name}: ${missing.join(", ")}`);
+    } catch (error) {
+      spinner.fail(`Failed to add default Capacitor plugins to ${app.name}`);
+      throw error;
+    }
+  }
   async createApplication(
     appName: string,
     workspace: Workspace,
@@ -225,6 +249,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       env = "local",
       write = true,
       target,
+      device,
       regenerate = false,
       noAllowProvisioningUpdates = false,
     }: {
@@ -233,17 +258,21 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       open?: boolean;
       write?: boolean;
       target?: string;
+      device?: string;
       regenerate?: boolean;
       noAllowProvisioningUpdates?: boolean;
     } = {},
   ) {
     await app.scanSync({ write });
-    await this.syncMobileDependencies(app, await app.getConfig());
+    const akanConfig = await app.getConfig();
+    await this.syncMobileDependencies(app, akanConfig);
+    await this.syncMobileAppCapacitorPlugins(app, akanConfig);
     await this.applicationRunner.startIos(app, {
       open,
       operation,
       env,
       target,
+      device,
       regenerate,
       noAllowProvisioningUpdates,
     });
@@ -282,7 +311,9 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     } = {},
   ) {
     await app.scanSync({ write });
-    await this.syncMobileDependencies(app, await app.getConfig());
+    const akanConfig = await app.getConfig();
+    await this.syncMobileDependencies(app, akanConfig);
+    await this.syncMobileAppCapacitorPlugins(app, akanConfig);
     await this.applicationRunner.startAndroid(app, {
       open,
       operation,

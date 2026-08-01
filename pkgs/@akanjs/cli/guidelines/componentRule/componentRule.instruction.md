@@ -15,6 +15,14 @@ Use this for shared UI rules across module, scalar, app UI, and docs components.
 - Client components can use store hooks and event handlers where interaction is required.
 - Use generated model types from app client or module constants; do not invent duplicate UI-only model shapes.
 
+## Customizing Framework Components (Slot Overrides)
+- When a default `akanjs/ui` component (Button, Select, Modal, Table, Input, Radio, DatePicker, Loading, …) is too restrictive for the design, re-skin it per route with a slot override instead of forking, wrapping every call site, or fighting it with `!important`.
+- Write the drop-in replacement in `apps/<app>/ui/`, typed against the slot contract — `AkanModalComponent`, or `AkanUiOverrides["<Slot>"]` for any other slot — so it is compile-checked as a real substitute. Compose the framework's headless parts (e.g. `Dialog`) rather than re-implementing focus trapping, portals, or scroll-lock.
+- Bind it in a logic-free `page/**/_overrides.tsx` manifest: imports plus a single `export default override({ Slot: BrandComponent })` (from `akanjs/ui`), no `"use client"`.
+- Place the manifest at `page/` for an app-wide skin, or inside a route group/segment to scope it; nested manifests merge over ancestors slot-by-slot (closest ancestor wins, unlisted slots keep inheriting).
+- Compound components expose one slot per leaf named `<Base><Sub>` (e.g. `InputPassword`, `RadioItem`, `LoadingSpin`); override only the leaves you need.
+- See the `references/ui/customize` docs page for the full slot list and examples.
+
 ## Codegen Rules
 - Do not put business workflow decisions in render code.
 - Do not use undocumented UI components or props.

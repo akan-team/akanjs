@@ -34,6 +34,7 @@ export const defaultPageState: PageState = {
   bottomInset: 0,
   gesture: true,
   cache: false,
+  ssr: "stream",
   topSafeAreaColor: "transparent",
   bottomSafeAreaColor: "transparent",
 };
@@ -343,6 +344,10 @@ export class RouteTreeBuilder {
     const loadModule = RouteTreeBuilder.#makeLazyModule(key, kind, loader);
     const routeRender: RouteRender = {
       isAsync: true,
+      resolveLoading: async () => {
+        const mod = await loadModule();
+        routeRender.Loading = mod.Loading as never;
+      },
       render: async (props: LayoutProps | PageProps) => {
         const mod = await loadModule();
         routeRender.Loading = mod.Loading as never;

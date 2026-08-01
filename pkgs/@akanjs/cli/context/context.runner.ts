@@ -3,6 +3,7 @@ import {
   type AkanContextFormat,
   type AkanMcpInstallTarget,
   type AkanMcpMode,
+  AppExecutor,
   akanMcpInstallConfigPaths,
   applyFirstPolicy,
   type CursorMcpConfig,
@@ -12,7 +13,9 @@ import {
   createAkanValidationContract,
   createWorkflowBaselineSummary,
   defaultWorkflowPlanPath,
+  getMobileTargets,
   inspectAkanContext,
+  isPlaceholderAppId,
   type JsonRpcRequest,
   jsonText,
   listAkanMcpTools,
@@ -90,10 +93,46 @@ export class ContextRunner extends runner("context") {
 
   async doctor(
     workspace: Workspace,
-    { format = "text", strict = false }: { format?: "text" | "json"; strict?: boolean } = {},
+    {
+      format = "text",
+      strict = false,
+      ios = false,
+    }: { format?: "text" | "json"; strict?: boolean; ios?: boolean } = {},
   ) {
+    if (ios) return await this.#doctorIos(workspace, format);
     const result = await AkanContextAnalyzer.doctor(workspace, { strict });
     return format === "json" ? jsonText(result) : renderDoctorText(result);
+  }
+
+  // `akan doctor --ios`: proactively flag mobile-config problems that otherwise only surface as an
+  // opaque device-signing failure — chiefly placeholder bundle ids that Apple's portal already claims.
+  async #doctorIos(workspace: Workspace, format: "text" | "json") {
+    const appNames = await workspace.getApps();
+    const diagnostics: { severity: "warning" | "error"; code: string; path: string; message: string }[] = [];
+    for (const appName of appNames) {
+      const app = AppExecutor.from(workspace, appName);
+      const config = await app.getConfig();
+      if (!config.hasMobileConfig) continue;
+      for (const { name, config: target } of await getMobileTargets(app)) {
+        if (!isPlaceholderAppId(target.appId)) continue;
+        diagnostics.push({
+          severity: "warning",
+          code: "mobile-appid-placeholder",
+          path: `apps/${appName}/akan.config.ts`,
+          message: `Mobile target '${name}' uses placeholder bundle id '${target.appId}'. Apple's developer portal almost always already claims it, so signing to a physical device fails with "cannot be registered to your development team". Set a unique mobile.appId (reverse-DNS of your org).`,
+        });
+      }
+    }
+    const status = diagnostics.some((diagnostic) => diagnostic.severity === "error") ? "failed" : "passed";
+    if (format === "json") return jsonText({ schemaVersion: 1, kind: "ios", status, diagnostics });
+    const lines = [`Akan iOS diagnostics for ${workspace.repoName}`];
+    if (diagnostics.length === 0) lines.push("  No mobile configuration issues found.");
+    else
+      for (const diagnostic of diagnostics) {
+        lines.push(`  [${diagnostic.severity}] ${diagnostic.code}: ${diagnostic.message}`);
+        lines.push(`    ${diagnostic.path}`);
+      }
+    return lines.join("\n");
   }
 
   async getGuidelineResource(name: string) {

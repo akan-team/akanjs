@@ -1463,7 +1463,9 @@ export class AppExecutor extends SysExecutor {
   #akanConfig: AkanAppConfig | null = null;
   override async getConfig({ refresh }: { refresh?: boolean } = {}) {
     if (this.#akanConfig && !refresh) return this.#akanConfig;
-    this.#akanConfig = await AkanAppConfig.from(this);
+    // A refresh means the config file may have been edited; bust the import cache so the fresh
+    // module is evaluated instead of Bun's cached instance.
+    this.#akanConfig = await AkanAppConfig.from(this, { bustImportCache: refresh });
     return this.#akanConfig;
   }
 

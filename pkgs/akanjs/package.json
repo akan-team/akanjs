@@ -1,6 +1,6 @@
 {
   "name": "akanjs",
-  "version": "2.3.12",
+  "version": "2.4.0",
   "sourceType": "module",
   "type": "module",
   "publishConfig": {
@@ -121,8 +121,9 @@
   },
   "peerDependencies": {
     "@capacitor-community/contacts": "^7.2.0",
-    "@capacitor-community/fcm": "^8.1.0",
+    "@capacitor/android": "^8.3.4",
     "@capacitor/app": "^8.1.0",
+    "@capacitor/assets": "^3.0.5",
     "@capacitor/browser": "^8.0.3",
     "@capacitor/camera": "^8.2.0",
     "@capacitor/cli": "^8.3.4",
@@ -130,6 +131,8 @@
     "@capacitor/device": "^8.0.2",
     "@capacitor/geolocation": "^8.2.0",
     "@capacitor/haptics": "^8.0.2",
+    "@capacitor/inappbrowser": "^4.0.1",
+    "@capacitor/ios": "^8.3.4",
     "@capacitor/keyboard": "^8.0.3",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/push-notifications": "^8.1.1",
@@ -165,10 +168,13 @@
     "@capacitor-community/contacts": {
       "optional": true
     },
-    "@capacitor-community/fcm": {
+    "@capacitor/android": {
       "optional": true
     },
     "@capacitor/app": {
+      "optional": true
+    },
+    "@capacitor/assets": {
       "optional": true
     },
     "@capacitor/browser": {
@@ -190,6 +196,12 @@
       "optional": true
     },
     "@capacitor/haptics": {
+      "optional": true
+    },
+    "@capacitor/inappbrowser": {
+      "optional": true
+    },
+    "@capacitor/ios": {
       "optional": true
     },
     "@capacitor/keyboard": {

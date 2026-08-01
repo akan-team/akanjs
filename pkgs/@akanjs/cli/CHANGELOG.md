@@ -1,5 +1,58 @@
 # @akanjs/cli
 
+## 2.4.0
+
+### Minor Changes
+
+- 23d43b3: Harden dev host recovery during failed builds:
+
+  - Defer builder/backend recycle while a generation's build is still failing
+  - Merge deferred invalidate batches so restarts cover every skipped change
+  - Recover the builder with exponential backoff instead of giving up
+  - Revive a backend that gave up once the build goes green again
+  - Resurrect dev children after a failed recycle so the error overlay stays reachable
+  - Enter degraded builder boot mode on compile errors and retry on the next edit
+  - Announce recovered pages/css state after a degraded boot succeeds
+
+- 18abf71: Improve dev server stability:
+
+  - Add `isPortInUseError` utility for detecting EADDRINUSE across Bun versions
+  - Stop crash-looping replicas after max boot failures in dev mode (`akan start`)
+  - Handle parent IPC disconnect to prevent orphaned gateway/child processes
+  - Report `wsUpstream` in ready IPC so gateway routes to the actual bound port
+  - Fall back to ephemeral port when preferred WS port is in use
+  - Support controlled dev-host restart on config changes (`akan.config.ts`, `tsconfig`)
+  - Forward backend build-status IPC to dev host for error surfacing in HMR overlay
+  - Limit backend recovery attempts (5 max) and idle until next server-side edit
+  - Add integration tests for config-edit restart and boot-failure recovery
+
+- 23d43b3: Improve the mobile Capacitor workflow:
+
+  - Auto-declare default Capacitor plugins in the app package.json before iOS/Android launch
+  - Expand mobile runtime peer dependencies and workspace-root preflight installs
+  - Derive repo-scoped default bundle ids to avoid Apple portal collisions
+  - Add `akan doctor --ios` to flag placeholder bundle identifiers
+  - Add `--device` to `akan start ios` for non-interactive simulator/device selection
+  - Prefer newer iOS runtimes and warn on SwiftUICore-incompatible simulators
+  - Detect SwiftUICore dyld failures with actionable guidance
+  - Select a routable LAN host for mobile live reload with override support
+  - Raise Android minSdkVersion to 26 for bundled Capacitor plugins
+  - Include `@capacitor-community/fcm` in push notification runtime packages
+  - Resolve client port from `window.location` on the browser client
+
+### Patch Changes
+
+- d56a8f0: Ship Pretendard as the default font for newly created apps:
+
+  - Bundle Pretendard woff2 files under the app template `public/fonts`
+  - Declare `fonts` with `default: true` in the generated root `_layout.tsx`
+
+- Updated dependencies [d56a8f0]
+- Updated dependencies [23d43b3]
+- Updated dependencies [18abf71]
+- Updated dependencies [23d43b3]
+  - akanjs@2.4.0
+
 ## 2.3,11
 
 ### Minor Changes

@@ -1,4 +1,4 @@
-import type { PageConfig, PageSafeAreaConfig, PageState, TransitionType } from "./csrTypes";
+import type { PageConfig, PageSafeAreaConfig, PageState, SsrRenderMode, TransitionType } from "./csrTypes";
 
 export type DevicePlatform = "ios" | "android" | "web" | (string & {});
 export type SafeAreaInsets = { top: number; bottom: number };
@@ -19,11 +19,13 @@ const pageConfigKeys = new Set<keyof PageConfig>([
   "bottomInset",
   "gesture",
   "cache",
+  "ssr",
   "rscPatchHeadSafe",
   "topSafeAreaColor",
   "bottomSafeAreaColor",
 ]);
 const transitionTypes = new Set<TransitionType>(["none", "fade", "bottomUp", "stack", "scaleOut"]);
+const ssrRenderModes = new Set<SsrRenderMode>(["stream", "block"]);
 const DEFAULT_BOOLEAN_INSET = 48;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -42,6 +44,9 @@ export function validatePageConfig(routeKey: string, config?: PageConfig) {
   }
   if (pageConfig.transition !== undefined && !transitionTypes.has(pageConfig.transition)) {
     throw new Error(`[route-convention] unsupported pageConfig.transition "${pageConfig.transition}" in ${routeKey}`);
+  }
+  if (pageConfig.ssr !== undefined && !ssrRenderModes.has(pageConfig.ssr)) {
+    throw new Error(`[route-convention] unsupported pageConfig.ssr "${pageConfig.ssr}" in ${routeKey}`);
   }
   if (pageConfig.topInset !== undefined && !isValidInsetValue(pageConfig.topInset)) {
     throw new Error(
@@ -141,8 +146,9 @@ export function resolvePageState({
         ? false
         : (config.gesture ?? false),
     cache: config.cache ?? false,
-    topSafeAreaColor: config.topSafeAreaColor ?? "var(--color-background, Canvas)",
-    bottomSafeAreaColor: config.bottomSafeAreaColor ?? "var(--color-background, Canvas)",
+    ssr: config.ssr ?? "stream",
+    topSafeAreaColor: config.topSafeAreaColor ?? "var(color-background, Canvas)",
+    bottomSafeAreaColor: config.bottomSafeAreaColor ?? "var(color-background, Canvas)",
   };
 }
 

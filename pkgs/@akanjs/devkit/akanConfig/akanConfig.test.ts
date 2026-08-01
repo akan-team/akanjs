@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PackageJson } from "../types";
-import { AkanAppConfig } from "./akanConfig";
+import { AkanAppConfig, AkanLibConfig, deriveDefaultAppId } from "./akanConfig";
+import type { DeepPartial, LibConfigResult } from "./types";
 
 const akanPackageJson = JSON.parse(
   fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../akanjs/package.json"), "utf8"),
@@ -46,14 +48,14 @@ describe("AkanAppConfig", () => {
     expect(config.images.formats).toEqual(["image/webp"]);
     expect(config.mobile).toMatchObject({
       appName: "portal",
-      appId: "com.portal.app",
+      appId: "com.akanjs.portal",
       version: "0.0.1",
       buildNum: 1,
       targets: {
         default: {
           name: "default",
           appName: "portal",
-          appId: "com.portal.app",
+          appId: "com.akanjs.portal",
           version: "0.0.1",
           buildNum: 1,
         },
@@ -263,8 +265,44 @@ describe("AkanAppConfig", () => {
       `postgres@${runtimeDependencies.postgres}`,
       `protobufjs@${runtimeDependencies.protobufjs}`,
     ]);
-    expect(config.getMobileRuntimePackages()).toEqual(["firebase"]);
-    expect(config.getMissingMobileDependencySpecs()).toEqual([`firebase@${runtimeDependencies.firebase}`]);
+    // The workspace-root install covers the toolchain/runtime plus every app Capacitor plugin
+    // (deduped — "@capacitor/core" appears in both source lists).
+    const expectedMobilePackages: string[] = [
+      "@capacitor/cli",
+      "@capacitor/core",
+      "@capacitor/ios",
+      "@capacitor/android",
+      "@capacitor/assets",
+      "@capacitor/app",
+      "@capacitor/browser",
+      "@capacitor/camera",
+      "@capacitor/device",
+      "@capacitor/geolocation",
+      "@capacitor/haptics",
+      "@capacitor/inappbrowser",
+      "@capacitor/keyboard",
+      "@capacitor/preferences",
+      "@capacitor/push-notifications",
+      "capacitor-plugin-safe-area",
+    ];
+    expect(config.getMobileRuntimePackages() as string[]).toEqual(expectedMobilePackages);
+    expect(config.getMissingMobileDependencySpecs()).toEqual(
+      expectedMobilePackages.map((lib) => `${lib}@${runtimeDependencies[lib as keyof typeof runtimeDependencies]}`),
+    );
+    expect(config.getMobileAppCapacitorPlugins()).toEqual([
+      "@capacitor/app",
+      "@capacitor/browser",
+      "@capacitor/camera",
+      "@capacitor/core",
+      "@capacitor/device",
+      "@capacitor/geolocation",
+      "@capacitor/haptics",
+      "@capacitor/inappbrowser",
+      "@capacitor/keyboard",
+      "@capacitor/preferences",
+      "@capacitor/push-notifications",
+      "capacitor-plugin-safe-area",
+    ]);
   });
 
   test("normalizes multiple mobile targets and validates base paths", () => {
@@ -330,6 +368,28 @@ describe("AkanAppConfig", () => {
         ),
     ).toThrow("unknown basePath");
   });
+
+  test("derives a repo-scoped default appId and records explicit-mobile intent", () => {
+    // No mobile section: appId defaults to the repo-scoped reverse-DNS id, and mobile is not explicit.
+    const withoutMobile = new AkanAppConfig(app, [], packageJson, {}, baseDevEnv);
+    expect(withoutMobile.mobile.appId).toBe("com.akanjs.portal");
+    expect(withoutMobile.hasMobileConfig).toBe(false);
+
+    // Explicit mobile section without appId still uses the repo-scoped default but marks intent.
+    const withMobile = new AkanAppConfig(app, [], packageJson, { mobile: { version: "2.0.0" } }, baseDevEnv);
+    expect(withMobile.mobile.appId).toBe("com.akanjs.portal");
+    expect(withMobile.hasMobileConfig).toBe(true);
+  });
+});
+
+describe("deriveDefaultAppId", () => {
+  test("sanitizes org/app names into a valid reverse-DNS bundle id", () => {
+    expect(deriveDefaultAppId("leading-flight-guidance", "myapp")).toBe("com.leadingflightguidance.myapp");
+    expect(deriveDefaultAppId("Acme Corp", "Store")).toBe("com.acmecorp.store");
+    // Empty org and digit-leading segments stay valid package identifiers.
+    expect(deriveDefaultAppId("", "app")).toBe("com.app.app");
+    expect(deriveDefaultAppId("123repo", "9app")).toBe("com.app123repo.app9app");
+  });
 });
 
 describe("AkanLibConfig", () => {
@@ -341,5 +401,28 @@ describe("AkanLibConfig", () => {
       externalLibs: ["firebase-admin"],
     };
     expect(new AkanLibConfig(lib, config).externalLibs).toEqual(["firebase-admin"]);
+  });
+});
+
+describe("AkanAppConfig.importConfigModule", () => {
+  test("busting the import cache re-evaluates an edited config module", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "akan-config-bust-"));
+    try {
+      const configPath = path.join(root, "akan.config.ts");
+      fs.writeFileSync(configPath, "export default { basePaths: ['first'] };\n");
+      const first = await AkanAppConfig.importConfigModule<{ basePaths: string[] }>(root);
+      expect(first.basePaths).toEqual(["first"]);
+
+      fs.writeFileSync(configPath, "export default { basePaths: ['second'] };\n");
+      const stale = await AkanAppConfig.importConfigModule<{ basePaths: string[] }>(root);
+      expect(stale.basePaths).toEqual(["first"]);
+
+      const busted = await AkanAppConfig.importConfigModule<{ basePaths: string[] }>(root, {
+        bustImportCache: true,
+      });
+      expect(busted.basePaths).toEqual(["second"]);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });

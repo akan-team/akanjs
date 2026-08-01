@@ -1,6 +1,6 @@
 import path from "node:path";
 import { Logger } from "akanjs/common";
-import type { BuilderMessage, BuildPhase, DevBuildStatus, DevChangeRole } from "akanjs/server";
+import type { BuilderMessage, BuildPhase, DevBuildStatus, DevChangePlan, DevChangeRole } from "akanjs/server";
 import type { App } from "../commandDecorators";
 import { createTunnel } from "../createTunnel";
 import { WorkspaceExecutor } from "../executors";
@@ -8,12 +8,19 @@ import { IncrementalBuilderHost } from "../incrementalBuilder";
 
 const backendMsgTypeSet = new Set<BuilderMessage["type"]>(["build-route"]);
 const BACKEND_RESTART_DEBOUNCE_MS = 120;
-const BACKEND_GRACEFUL_TIMEOUT_MS = 3000;
+// Must exceed the gateway's child-wait budget (AkanApp child shutdown, ~5s in dev) so the gateway
+// is never SIGKILLed while its replicas are still shutting down — that's what strands orphans.
+const BACKEND_GRACEFUL_TIMEOUT_MS = 8_000;
 const BACKEND_RECOVERY_BASE_DELAY_MS = 1_000;
 const BACKEND_RECOVERY_MAX_DELAY_MS = 30_000;
+const BACKEND_RECOVERY_MAX_ATTEMPTS = 5;
 const BACKEND_STDERR_TAIL_LIMIT = 40;
 const BUILDER_READY_TIMEOUT_MS = 150000;
 const BUILDER_START_MAX_ATTEMPTS = 3;
+// The builder is the file watcher: while it is down no edit can trigger a retry, so unlike the
+// backend the recovery loop never gives up — it only backs off.
+const BUILDER_RECOVERY_BASE_DELAY_MS = 2_000;
+const BUILDER_RECOVERY_MAX_DELAY_MS = 60_000;
 const SOURCE_EXTS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
 const NON_SOURCE_EXT_RE =
   /\.(css|scss|sass|less|json|svg|png|jpe?g|webp|gif|avif|ico|woff2?|ttf|otf|mp3|mp4|wav|html)$/i;
@@ -38,6 +45,17 @@ export const shouldRestartBackendByDevPlan = (
 
 export const shouldRestartBuilderByDevPlan = (message: Extract<BuilderMessage, { type: "invalidate" }>): boolean =>
   message.devPlan?.actions.includes("restart-builder") ?? false;
+
+/**
+ * A backend that keeps dying isn't going to heal by retrying the same code; after this many
+ * consecutive attempts the host idles and the next server-side edit triggers a fresh restart.
+ */
+export const shouldAbandonBackendRecovery = (attempts: number, maxAttempts = BACKEND_RECOVERY_MAX_ATTEMPTS): boolean =>
+  attempts >= maxAttempts;
+
+/** The gateway reports backend failures with `generation: -1`; the host assigns its own counter then. */
+export const normalizeBackendReportedGeneration = (generation: number): number | undefined =>
+  generation >= 0 ? generation : undefined;
 
 export const shouldRestartDevHostByDevPlan = (message: Extract<BuilderMessage, { type: "invalidate" }>): boolean =>
   message.devPlan?.actions.includes("restart-dev-host") ?? message.kinds.includes("config");
@@ -141,6 +159,55 @@ export const shouldReplaceLastGoodMessage = (
 
 export const shouldQueueBuildStatusReplay = (backendReady: boolean, pendingReplayCount: number): boolean =>
   !backendReady || pendingReplayCount > 0;
+
+/**
+ * Recycling the builder/backend on a generation whose build already failed is guaranteed to strand
+ * the dev server: the rebooted builder hits the same compile error and exits before builder-ready.
+ * Failing phase statuses for a generation arrive over IPC before that generation's invalidate, so
+ * the host can check them here and defer the recycle until a healthy batch lands.
+ */
+export const hasBuildFailureForGeneration = (
+  statusByPhase: ReadonlyMap<BuildPhase, DevBuildStatus>,
+  generation: number | undefined,
+): boolean => {
+  if (typeof generation !== "number") return false;
+  for (const status of statusByPhase.values()) {
+    if (!status.ok && status.generation === generation) return true;
+  }
+  return false;
+};
+
+const mergeDevPlans = (current?: DevChangePlan, next?: DevChangePlan): DevChangePlan | undefined => {
+  if (!current) return next;
+  if (!next) return current;
+  const reasonByFile: Record<string, string[]> = { ...current.reasonByFile };
+  for (const [file, reasons] of Object.entries(next.reasonByFile)) {
+    reasonByFile[file] = [...new Set([...(reasonByFile[file] ?? []), ...reasons])].sort();
+  }
+  return {
+    generation: Math.max(current.generation, next.generation),
+    files: [...new Set([...current.files, ...next.files])].sort(),
+    generatedFiles: [...new Set([...current.generatedFiles, ...next.generatedFiles])].sort(),
+    roles: [...new Set([...current.roles, ...next.roles])].sort(),
+    actions: [...new Set([...current.actions, ...next.actions])].sort(),
+    reasonByFile,
+  };
+};
+
+/** A deferred recycle accumulates every batch it skipped so the eventual restart covers them all. */
+export const mergeInvalidateMessages = (
+  current: Extract<BuilderMessage, { type: "invalidate" }>,
+  next: Extract<BuilderMessage, { type: "invalidate" }>,
+): Extract<BuilderMessage, { type: "invalidate" }> => {
+  const generation = Math.max(generationValue(current.generation), generationValue(next.generation));
+  return {
+    type: "invalidate",
+    kinds: [...new Set([...current.kinds, ...next.kinds])].sort(),
+    files: [...new Set([...current.files, ...next.files])].sort(),
+    generation: generation >= 0 ? generation : undefined,
+    devPlan: mergeDevPlans(current.devPlan, next.devPlan),
+  };
+};
 
 export const buildStatusReplaySequence = (
   pendingReplay: readonly DevBuildStatus[],
@@ -267,8 +334,12 @@ export class AkanAppHost {
   #restartTimer: ReturnType<typeof setTimeout> | null = null;
   #backendRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
   #backendRecoveryAttempts = 0;
+  #backendGaveUp = false;
   #backendLifecycleState: BackendLifecycleState = "stopped";
   #pendingRestartReason: BackendRestartReason | null = null;
+  #pendingRecycle: { message: Extract<BuilderMessage, { type: "invalidate" }>; refreshConfig: boolean } | null = null;
+  #builderRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
+  #builderRecoveryAttempts = 0;
   #backendStartStatus: { generation?: number; files: string[] } | null = null;
   #backendBuildStatusGeneration = 0;
   #backendStderrTail: string[] = [];
@@ -306,6 +377,10 @@ export class AkanAppHost {
       clearTimeout(this.#backendRecoveryTimer);
       this.#backendRecoveryTimer = null;
     }
+    if (this.#builderRecoveryTimer) {
+      clearTimeout(this.#builderRecoveryTimer);
+      this.#builderRecoveryTimer = null;
+    }
     await this.#stopBackend();
     this.#stopBuilder();
     return this;
@@ -321,6 +396,7 @@ export class AkanAppHost {
   }
   #startBackend(startStatus: { generation?: number; files: string[] } | null = null) {
     this.#backendStartStatus = startStatus;
+    this.#backendGaveUp = false;
     this.#setBackendLifecycleState("starting");
     this.#backendReady = false;
     this.#backendStderrTail = [];
@@ -337,6 +413,18 @@ export class AkanAppHost {
           this.#recordBackendReadyStatus();
           this.logger.verbose(`backend ready pid=${msg.pid}`);
           this.#replayBuilderState();
+          return;
+        }
+        if (msg.type === "build-status") {
+          // The gateway reports replica boot failures (crash loops, port conflicts) this way so
+          // they reach the build-status log and the HMR overlay like any other build failure.
+          const status = this.#recordBackendBuildStatus({
+            generation: normalizeBackendReportedGeneration(msg.data.generation),
+            ok: msg.data.ok,
+            files: msg.data.files,
+            message: msg.data.message,
+          });
+          this.#sendOrQueueBuildStatus(status);
           return;
         }
         if (backendMsgTypeSet.has(msg.type)) this.#sendToBuilder(msg);
@@ -504,6 +592,18 @@ export class AkanAppHost {
   }
   #scheduleBackendRecovery(reason: string) {
     if (this.#backendRecoveryTimer || this.#backend) return;
+    if (shouldAbandonBackendRecovery(this.#backendRecoveryAttempts)) {
+      const message = `Backend exited ${this.#backendRecoveryAttempts} times in a row (${reason}); waiting for an edit or a green build to retry.`;
+      this.#backendGaveUp = true;
+      this.#setBackendLifecycleState("stopped", `gave up after ${this.#backendRecoveryAttempts} recovery attempts`);
+      this.logger.error(`[backend-recovery] ${message}`);
+      if (this.#backendStderrTail.length > 0) {
+        this.logger.error(`[backend-recovery] recent backend stderr:\n${this.#backendStderrTail.join("\n")}`);
+      }
+      const abandonedStatus = this.#recordBackendBuildStatus({ ok: false, files: [], message });
+      this.#sendOrQueueBuildStatus(abandonedStatus);
+      return;
+    }
     this.#setBackendLifecycleState("recovering", reason);
     const attempt = this.#backendRecoveryAttempts;
     const delay = Math.min(BACKEND_RECOVERY_BASE_DELAY_MS * 2 ** attempt, BACKEND_RECOVERY_MAX_DELAY_MS);
@@ -539,6 +639,7 @@ export class AkanAppHost {
     if (message.type === "build-status") {
       this.#recordBuildStatus(message.data);
       this.#sendOrQueueBuildStatus(message.data);
+      this.#reviveBackendAfterGreenBuild(message.data);
       return;
     }
     if (message.type === "pages-updated") this.#recordLastGood(message);
@@ -550,16 +651,29 @@ export class AkanAppHost {
     this.#sendToBackend(message);
   }
   async #handleInvalidate(message: Extract<BuilderMessage, { type: "invalidate" }>) {
-    if (shouldRestartBuilderByDevPlan(message)) {
-      try {
-        await this.#restartDevChildren(message);
-      } catch (err) {
-        this.#recordDevHostRestartFailure(message, err);
+    this.#logDevPlan(message);
+    // Config changes subsume builder restarts: the dev-host restart recycles builder and backend
+    // AND re-runs the prepare step, so check it first when a batch carries both actions.
+    const wantsDevHostRestart = shouldRestartDevHostByDevPlan(message);
+    const pending = this.#pendingRecycle;
+    // A pending (deferred) recycle rides along on the next code batch — that batch is where the
+    // fix lands; css-only batches cannot heal a compile error, so they never resume it.
+    if (wantsDevHostRestart || shouldRestartBuilderByDevPlan(message) || (pending && message.kinds.includes("code"))) {
+      const refreshConfig = wantsDevHostRestart || (pending?.refreshConfig ?? false);
+      const merged = pending ? mergeInvalidateMessages(pending.message, message) : message;
+      const generation = message.devPlan?.generation ?? message.generation;
+      if (hasBuildFailureForGeneration(this.#buildStatusByPhase, generation)) {
+        this.#deferRecycle(merged, { refreshConfig, generation });
+        return;
       }
-      return;
-    }
-    if (shouldRestartDevHostByDevPlan(message)) {
-      this.#recordDevHostRestartRequired(message);
+      this.#pendingRecycle = null;
+      try {
+        if (refreshConfig) await this.#restartDevHost(merged);
+        else await this.#restartDevChildren(merged);
+      } catch (err) {
+        this.#recordDevHostRestartFailure(merged, err, refreshConfig ? "Config" : "Runtime metadata");
+        this.#resurrectDevChildren(merged);
+      }
       return;
     }
     if (await this.#shouldRestartBackend(message)) {
@@ -568,11 +682,105 @@ export class AkanAppHost {
     }
     this.#sendToBackend(message);
   }
+  #deferRecycle(
+    message: Extract<BuilderMessage, { type: "invalidate" }>,
+    { refreshConfig, generation }: { refreshConfig: boolean; generation?: number },
+  ): void {
+    this.#pendingRecycle = { message, refreshConfig };
+    const kind = refreshConfig ? "Config" : "Runtime metadata";
+    this.logger.warn(
+      `[dev-host] ${kind.toLowerCase()} restart deferred generation=${generation ?? "(unknown)"}; keeping the running dev server until the build error is fixed`,
+    );
+    const status: DevBuildStatus = {
+      generation: generation ?? this.#nextBackendBuildStatusGeneration(),
+      phase: "scan",
+      ok: false,
+      files: message.files,
+      message: `${kind} change is on hold while the build is failing; it will apply automatically once the error is fixed.`,
+    };
+    this.#recordBuildStatus(status);
+    this.#sendOrQueueBuildStatus(status);
+  }
+  /**
+   * A failed recycle must never leave the dev server dead: bring the backend back up on the
+   * last-good artifact so the error overlay stays reachable, and keep retrying the builder —
+   * the builder is the file watcher, so without it no edit could ever trigger a recovery.
+   */
+  #resurrectDevChildren(message: Extract<BuilderMessage, { type: "invalidate" }>): void {
+    const generation = message.devPlan?.generation ?? message.generation;
+    if (!this.#backend) this.#startBackend({ generation, files: message.files });
+    this.#scheduleBuilderRecovery({ generation, files: message.files });
+  }
+  #scheduleBuilderRecovery(reason: { generation?: number; files: string[] }): void {
+    if (this.#builderRecoveryTimer || this.#builder) return;
+    const attempt = this.#builderRecoveryAttempts;
+    const delay = Math.min(BUILDER_RECOVERY_BASE_DELAY_MS * 2 ** attempt, BUILDER_RECOVERY_MAX_DELAY_MS);
+    this.#builderRecoveryAttempts = attempt + 1;
+    this.logger.warn(
+      `[builder-recovery] builder is down; retrying start in ${delay}ms (attempt ${this.#builderRecoveryAttempts})`,
+    );
+    this.#builderRecoveryTimer = setTimeout(() => {
+      this.#builderRecoveryTimer = null;
+      if (this.#builder) return;
+      void this.#recoverBuilder(reason);
+    }, delay);
+  }
+  async #recoverBuilder(reason: { generation?: number; files: string[] }): Promise<void> {
+    try {
+      await this.#startBuilder();
+    } catch (err) {
+      this.logger.warn(`[builder-recovery] builder start failed: ${err instanceof Error ? err.message : String(err)}`);
+      this.#scheduleBuilderRecovery(reason);
+      return;
+    }
+    this.#builderRecoveryAttempts = 0;
+    this.logger.info("[builder-recovery] builder recovered");
+    const status: DevBuildStatus = {
+      generation: reason.generation ?? this.#nextBackendBuildStatusGeneration(),
+      phase: "scan",
+      ok: true,
+      files: reason.files,
+      message: "Builder recovered",
+    };
+    this.#recordBuildStatus(status);
+    this.#sendOrQueueBuildStatus(status);
+    if (!this.#backend && !this.#backendRecoveryTimer) {
+      this.#startBackend({ generation: reason.generation, files: reason.files });
+    }
+  }
+  /** A backend that gave up recovering on broken code gets one fresh chance whenever a build goes green. */
+  #reviveBackendAfterGreenBuild(status: DevBuildStatus): void {
+    if (!status.ok || !this.#backendGaveUp || this.#backend || this.#backendRecoveryTimer) return;
+    this.logger.info(`[backend-recovery] build went green (generation=${status.generation}); retrying backend`);
+    this.#backendRecoveryAttempts = 0;
+    this.#startBackend({ generation: status.generation, files: status.files });
+  }
   async #restartDevChildren(message: Extract<BuilderMessage, { type: "invalidate" }>): Promise<void> {
     const generation = message.devPlan?.generation ?? message.generation;
     this.logger.warn(
       `[dev-host] recycling builder/backend for runtime metadata generation=${generation ?? "(unknown)"} files=${message.files.length}`,
     );
+    await this.#recycleDevChildren(message);
+  }
+  /**
+   * Controlled dev-host restart for config changes (akan.config.ts, tsconfig, package.json):
+   * re-runs the prepare step so env and codegen reflect the new config, then recycles the builder
+   * and backend. The config module is re-imported with a cache-busting query; modules it imports
+   * keep their cached instances, so a change inside an imported plugin file still needs a manual
+   * `akan start` restart.
+   */
+  async #restartDevHost(message: Extract<BuilderMessage, { type: "invalidate" }>): Promise<void> {
+    const generation = message.devPlan?.generation ?? message.generation;
+    this.logger.warn(
+      `[dev-host] config change detected; restarting dev host generation=${generation ?? "(unknown)"} files=${message.files.length}`,
+    );
+    await this.#recycleDevChildren(message, { refreshConfig: true });
+  }
+  async #recycleDevChildren(
+    message: Extract<BuilderMessage, { type: "invalidate" }>,
+    { refreshConfig = false }: { refreshConfig?: boolean } = {},
+  ): Promise<void> {
+    const generation = message.devPlan?.generation ?? message.generation;
     if (this.#restartTimer) {
       clearTimeout(this.#restartTimer);
       this.#restartTimer = null;
@@ -581,12 +789,24 @@ export class AkanAppHost {
       clearTimeout(this.#backendRecoveryTimer);
       this.#backendRecoveryTimer = null;
     }
+    if (this.#builderRecoveryTimer) {
+      clearTimeout(this.#builderRecoveryTimer);
+      this.#builderRecoveryTimer = null;
+    }
+    this.#builderRecoveryAttempts = 0;
     this.#pendingRestartReason = null;
     this.#lastGoodFrontend = {};
     this.#buildStatusByPhase.clear();
     this.#pendingBuildStatusReplay = [];
     await this.#stopBackend();
     this.#stopBuilder();
+    if (refreshConfig) {
+      await this.app.getConfig({ refresh: true });
+      // Merge instead of replace: start() enriched this.env with values prepare doesn't produce
+      // (e.g. REDIS_HOST from the tunnel), and the spawned children must keep seeing them.
+      const { env } = await this.app.prepareCommand("start");
+      Object.assign(this.env, env);
+    }
     await this.#backendGraph.refresh();
     await this.#startBuilder();
     this.#startBackend({ generation, files: message.files });
@@ -608,34 +828,20 @@ export class AkanAppHost {
       `[last-good] css generation=${message.data.generation ?? "(unknown)"} assets=${Object.keys(message.data.cssAssets).length}`,
     );
   }
-  #recordDevHostRestartRequired(message: Extract<BuilderMessage, { type: "invalidate" }>): void {
-    const generation = message.devPlan?.generation ?? message.generation;
-    const detail = `generation=${generation ?? "(unknown)"} files=${message.files.length}`;
-    this.logger.warn(
-      `[dev-host] config change requires a manual restart until controlled dev-host restart is implemented (${detail})`,
-    );
-    if (typeof generation === "number") {
-      const status: DevBuildStatus = {
-        generation,
-        phase: "scan",
-        ok: false,
-        files: message.files,
-        message: "Config change requires restarting `akan start` to apply.",
-      };
-      this.#recordBuildStatus(status);
-      this.#sendOrQueueBuildStatus(status);
-    }
-  }
-  #recordDevHostRestartFailure(message: Extract<BuilderMessage, { type: "invalidate" }>, err: unknown): void {
+  #recordDevHostRestartFailure(
+    message: Extract<BuilderMessage, { type: "invalidate" }>,
+    err: unknown,
+    kind: "Config" | "Runtime metadata",
+  ): void {
     const generation = message.devPlan?.generation ?? message.generation ?? this.#nextBackendBuildStatusGeneration();
     const detail = err instanceof Error ? err.message : String(err);
-    this.logger.warn(`[dev-host] runtime metadata restart failed generation=${generation}: ${detail}`);
+    this.logger.warn(`[dev-host] ${kind.toLowerCase()} restart failed generation=${generation}: ${detail}`);
     const status: DevBuildStatus = {
       generation,
       phase: "scan",
       ok: false,
       files: message.files,
-      message: `Runtime metadata change requires restarting \`akan start\` to apply: ${detail}`,
+      message: `${kind} change failed to apply; recovering the dev server automatically: ${detail}`,
     };
     this.#recordBuildStatus(status);
     this.#sendOrQueueBuildStatus(status);
@@ -666,13 +872,18 @@ export class AkanAppHost {
       this.#sendToBackend({ type: "build-status", data: status });
     }
   }
+  /** One log line per planned generation, regardless of which action branch handles it. */
+  #logDevPlan(message: Extract<BuilderMessage, { type: "invalidate" }>): void {
+    if (!message.devPlan) return;
+    const { generation, roles, actions, reasonByFile } = message.devPlan;
+    this.logger.verbose(
+      `[dev-plan] generation=${generation} roles=${roles.join(",") || "(none)"} actions=${actions.join(",") || "(none)"} reasons=${Object.keys(reasonByFile).length}`,
+    );
+  }
+
   async #shouldRestartBackend(message: Extract<BuilderMessage, { type: "invalidate" }>): Promise<boolean> {
     if (message.kinds.length === 1 && message.kinds[0] === "css") return false;
     if (message.devPlan) {
-      const { generation, roles, actions, reasonByFile } = message.devPlan;
-      this.logger.verbose(
-        `[dev-plan] generation=${generation} roles=${roles.join(",") || "(none)"} actions=${actions.join(",") || "(none)"} reasons=${Object.keys(reasonByFile).length}`,
-      );
       const shouldRestart = shouldRestartBackendByDevPlan(message) ?? false;
       if (shouldRestart && message.kinds.includes("code")) await this.#backendGraph.refresh();
       return shouldRestart;

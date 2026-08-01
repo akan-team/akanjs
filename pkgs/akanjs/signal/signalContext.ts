@@ -99,6 +99,11 @@ export class SignalContext<
     }
     return instance as T;
   }
+  getService<T>(refName: string): T {
+    const service = this.#live.service.get(refName);
+    if (!service) throw new Exception.Error(`Service "${refName}" not found in live registry`);
+    return service as T;
+  }
   async init() {
     if (this.trace) {
       const start = performance.now();

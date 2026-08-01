@@ -131,6 +131,7 @@ apps/*/lib/__scalar/*/index.ts
 apps/*/client.ts
 apps/*/server.ts
 apps/*/lib/*/index.tsx
+apps/*/capacitor.config.json
 libs/*/lib/cnst.ts
 libs/*/lib/dict.ts
 libs/*/lib/db.ts

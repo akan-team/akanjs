@@ -16,6 +16,20 @@ export type PageSafeAreaConfig =
       bottom?: boolean;
       android?: "auto" | "edge-to-edge" | "none";
     };
+/**
+ * Server-render strategy for the initial full-document SSR pass.
+ * - `"stream"` (default): flush the shell — including any `Loading` Suspense
+ *   fallback — as soon as it is ready, then stream the resolved page. Redirects
+ *   decided in the shell still become real HTTP redirects; redirects thrown
+ *   inside suspended content degrade to soft (client) redirects.
+ * - `"block"`: buffer the whole document until every Suspense boundary resolves
+ *   before sending a byte. The `Loading` fallback never reaches the browser, but
+ *   a non-redirect error thrown in slow content can still yield a clean error
+ *   page. Use only for routes that need that guarantee and do not care about SEO
+ *   or first-paint of the fallback.
+ */
+export type SsrRenderMode = "stream" | "block";
+
 /** Per-page CSR configuration for transition, safe-area, and gesture behavior. */
 export interface PageConfig {
   transition?: TransitionType;
@@ -26,6 +40,8 @@ export interface PageConfig {
   bottomInset?: number | boolean;
   gesture?: boolean;
   cache?: boolean;
+  /** Initial full-document SSR strategy. Defaults to `"stream"`. */
+  ssr?: SsrRenderMode;
   /**
    * Opt in to guarded RSC page suffix commits when the page does not require
    * head/metadata updates and the retained route chain head is invariant for
@@ -44,6 +60,7 @@ export interface CsrState {
   bottomInset: number;
   gesture: boolean;
   cache: boolean;
+  ssr: SsrRenderMode;
   topSafeAreaColor?: string;
   bottomSafeAreaColor?: string;
 }
@@ -99,6 +116,9 @@ export interface RouteRender {
   render: LayoutRender | PageRender;
   isAsync?: boolean;
   Loading?: LayoutLoadingRender | PageLoadingRender;
+  /** Loads the module and populates `Loading` without running `render`/`resolveHead`.
+   * Used by the patch (suffix) compose path, which never calls `resolveHead`. */
+  resolveLoading?: () => void | Promise<void>;
   NotFound?: LayoutNotFoundRender;
   Error?: LayoutErrorRender;
   resolveNotFound?: () => PromiseOrObject<LayoutNotFoundRender | undefined>;
@@ -248,6 +268,7 @@ export const defaultPageState: PageState = {
   bottomInset: 0,
   gesture: true,
   cache: false,
+  ssr: "stream",
   topSafeAreaColor: "var(--color-background, Canvas)",
   bottomSafeAreaColor: "var(--color-background, Canvas)",
 };

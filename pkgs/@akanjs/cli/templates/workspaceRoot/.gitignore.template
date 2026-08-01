@@ -102,6 +102,7 @@ apps/*/common/index.ts
 apps/*/plugin/index.ts
 apps/*/client.ts
 apps/*/server.ts
+apps/*/capacitor.config.json
 libs/*/lib/cnst.ts
 libs/*/lib/dict.ts
 libs/*/lib/db.ts

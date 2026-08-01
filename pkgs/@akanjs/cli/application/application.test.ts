@@ -65,7 +65,15 @@ const createStartApp = ({
   };
 };
 
-const createMobileApp = ({ missingMobileSpecs = [] }: { missingMobileSpecs?: string[] } = {}) => {
+const createMobileApp = ({
+  missingMobileSpecs = [],
+  appPlugins = [],
+  appDependencies = {},
+}: {
+  missingMobileSpecs?: string[];
+  appPlugins?: string[];
+  appDependencies?: Record<string, string>;
+} = {}) => {
   const recorder = createCallRecorder();
   const workspace = createFakeExecutor(
     "workspace",
@@ -78,19 +86,38 @@ const createMobileApp = ({ missingMobileSpecs = [] }: { missingMobileSpecs?: str
     recorder,
   );
   const getMissingMobileDependencySpecs = mock(() => missingMobileSpecs);
+  const getMobileAppCapacitorPlugins = mock(() => appPlugins);
   const akanConfig = {
     getMissingMobileDependencySpecs,
+    getMobileAppCapacitorPlugins,
   } as unknown as AkanAppConfig;
+  let appPackageJson: Record<string, unknown> = { name: "app", version: "1.0.0", dependencies: { ...appDependencies } };
   const app = createFakeExecutor(
     "app",
     {
       scanSync: async (...args: unknown[]) => recorder.record("scanSync", ...args),
       getConfig: async () => akanConfig,
+      getPackageJson: async (...args: unknown[]) => {
+        recorder.record("app.getPackageJson", ...args);
+        return appPackageJson;
+      },
+      setPackageJson: async (packageJson: Record<string, unknown>) => {
+        recorder.record("app.setPackageJson", packageJson);
+        appPackageJson = packageJson;
+      },
       workspace,
     },
     recorder,
   );
-  return { app, akanConfig, getMissingMobileDependencySpecs, recorder, workspace };
+  return {
+    app,
+    akanConfig,
+    getMissingMobileDependencySpecs,
+    getMobileAppCapacitorPlugins,
+    recorder,
+    workspace,
+    getAppPackageJson: () => appPackageJson,
+  };
 };
 
 afterEach(async () => {
@@ -378,7 +405,11 @@ describe("ApplicationScript", () => {
       "demo",
       {
         scanSync: async (...args: unknown[]) => recorder.record("scanSync", ...args),
-        getConfig: async () => ({ getMissingMobileDependencySpecs: () => [] }) as unknown as AkanAppConfig,
+        getConfig: async () =>
+          ({
+            getMissingMobileDependencySpecs: () => [],
+            getMobileAppCapacitorPlugins: () => [],
+          }) as unknown as AkanAppConfig,
       },
       recorder,
     );
@@ -450,6 +481,55 @@ describe("ApplicationScript", () => {
     });
     expect(recorder.calls).toContainEqual({ name: "workspace.getPackageJson", args: [{ refresh: true }] });
     expect(recorder.names().indexOf("workspace.spawn")).toBeLessThan(recorder.names().indexOf("runner.startAndroid"));
+  });
+
+  test("startIos declares missing default Capacitor plugins in the app package.json before launch", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const { app, recorder, getAppPackageJson } = createMobileApp({
+      appPlugins: ["@capacitor/core", "@capacitor/device", "@capacitor/browser"],
+      appDependencies: { "@capacitor/core": "^8.3.4" },
+    });
+    script.confirmMobileDependencyInstall = async () => true;
+    script.applicationRunner.startIos = async (...args: unknown[]) => {
+      recorder.record("runner.startIos", ...args);
+    };
+
+    await script.startIos(app as never, { write: false });
+
+    // Only the plugins absent from the app package.json are added, each pinned to "*"; the
+    // pre-declared "@capacitor/core" keeps its existing range.
+    expect(getAppPackageJson().dependencies as Record<string, string>).toEqual({
+      "@capacitor/core": "^8.3.4",
+      "@capacitor/device": "*",
+      "@capacitor/browser": "*",
+    });
+    expect(recorder.calls).toContainEqual({ name: "app.setPackageJson", args: [getAppPackageJson()] });
+    expect(recorder.calls).toContainEqual({
+      name: "workspace.spawn",
+      args: ["bun", ["install"], { stdio: "inherit" }],
+    });
+    expect(recorder.names().indexOf("workspace.spawn")).toBeLessThan(recorder.names().indexOf("runner.startIos"));
+  });
+
+  test("startIos leaves the app package.json untouched when all default Capacitor plugins are present", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const { app, recorder } = createMobileApp({
+      appPlugins: ["@capacitor/core", "@capacitor/device"],
+      appDependencies: { "@capacitor/core": "*", "@capacitor/device": "*" },
+    });
+    script.confirmMobileDependencyInstall = async () => true;
+    script.applicationRunner.startIos = async (...args: unknown[]) => {
+      recorder.record("runner.startIos", ...args);
+    };
+
+    await script.startIos(app as never, { write: false });
+
+    expect(recorder.names()).not.toContain("app.setPackageJson");
+    expect(recorder.calls).not.toContainEqual({
+      name: "workspace.spawn",
+      args: ["bun", ["install"], { stdio: "inherit" }],
+    });
+    expect(recorder.names()).toContain("runner.startIos");
   });
 
   test("startIos aborts before launch when mobile dependency install is declined", async () => {

@@ -23,7 +23,7 @@ interface DefaultProps<L extends { id: string }> {
   loading?: ReactNode;
   filter?: (item: L, idx: number) => boolean;
   sort?: (a: L, b: L) => number;
-  renderEmpty?: null | (() => ReactNode);
+  renderEmpty?: null | (() => ReactNode) | false;
   renderItem?: (item: L, idx: number) => ReactNode;
   renderList?: (list: DataList<L>) => ReactNode;
   reverse?: boolean;
@@ -173,7 +173,7 @@ function Render<RefName extends string, Light extends { id: string }>({
   if (renderList)
     return (
       <>
-        {modelDataList.length ? (
+        {modelDataList.length || renderEmpty === false ? (
           <ContainerWrapper
             containerRef={containerRef}
             className={clsx(className, {

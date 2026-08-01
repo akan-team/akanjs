@@ -1,4 +1,4 @@
-import { beforeAll, expect, mock, test } from "bun:test";
+import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 
 type RenderHookResult<T> = {
   get current(): T;
@@ -284,7 +284,7 @@ afterEach(() => {
   effectCleanups.splice(0);
   hookIndex = 0;
   hookStates.length = 0;
-  hookMemoStates = [];
+  hookMemoStates.length = 0;
 });
 
 describe("native hooks", () => {

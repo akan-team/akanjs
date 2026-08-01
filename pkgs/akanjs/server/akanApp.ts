@@ -1,10 +1,11 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { Logger } from "akanjs/common";
 import type { AkanChildRole, AkanChildStatus, AkanIpcMessage, AkanMetricsReport, AkanUpstream } from "akanjs/service";
 import { isTraceEnabled } from "akanjs/signal";
 import { makeAkanChildProxyHeaders } from "./akanAppHeaders";
 import type { BuilderMessage, BuilderReq, BuilderRes } from "./artifact";
+import { isPortInUseError } from "./lifecycle/portInUse";
 import { RotatingLogWriter } from "./logging/rotatingLogWriter";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
 
@@ -16,9 +17,11 @@ interface ChildState {
   status: AkanChildStatus;
   pid?: number;
   upstream?: AkanUpstream;
+  wsUpstream?: Extract<AkanUpstream, { type: "tcp" }>;
   healthPath?: string;
   metrics: AkanMetricsReport;
-  lastPongAt?: number;
+  /** Monotonic (`performance.now()`) so sleep/wake wall-clock jumps cannot fake a health timeout. */
+  lastPongAtMono?: number;
   restartAttempts: number;
   restartCount: number;
   restartTimer: Timer | null;
@@ -26,6 +29,7 @@ interface ChildState {
   lastExitCode?: number | null;
   lastRestartAt?: number;
   lastRestartReason?: string;
+  lastErrorMessage?: string;
 }
 
 interface GatewayWsData {
@@ -62,8 +66,13 @@ export class AkanApp {
   static readonly #childRestartBaseDelayMs = 1_000;
   static readonly #childRestartMaxDelayMs = 30_000;
   static readonly #childRestartGraceMs = 5_000;
+  /** In dev, stop restarting a replica that never boots after this many consecutive failures. */
+  static readonly #devMaxChildBootFailures = 3;
 
   readonly logger = new Logger("AkanApp");
+  /** Hosted by `akan start`: crash loops should yield to the dev host, which restarts on file edits. */
+  readonly #devHosted = process.env.AKAN_COMMAND_TYPE === "start";
+  readonly #healthTimeoutMs = AkanApp.#parseHealthTimeoutMs();
   readonly #serverPath: string;
   readonly #artifactDir: string;
   readonly #replica: AkanReplicaConfig;
@@ -103,10 +112,13 @@ export class AkanApp {
     this.#serverPath = AkanApp.#resolveServerPath(resolvedOptions.serverPath ?? serverPath);
     this.#artifactDir = path.resolve(path.dirname(this.#serverPath), ".akan", "artifact");
     this.#replica = AkanApp.#parseReplicaConfig(resolvedOptions.replica);
-    this.#runtimeDir =
-      (resolvedOptions.runtimeDir ?? process.env.AKAN_RUNTIME_DIR ?? process.env.NODE_ENV === "production")
-        ? path.resolve(process.cwd(), "runtime")
-        : path.resolve(process.cwd(), "local", "apps", process.env.AKAN_PUBLIC_APP_NAME ?? "unknown", "runtime");
+    this.#runtimeDir = path.resolve(
+      resolvedOptions.runtimeDir ??
+        process.env.AKAN_RUNTIME_DIR ??
+        (process.env.NODE_ENV === "production"
+          ? path.resolve(process.cwd(), "runtime")
+          : path.resolve(process.cwd(), "local", "apps", process.env.AKAN_PUBLIC_APP_NAME ?? "unknown", "runtime")),
+    );
     this.#port = Number(resolvedOptions.port ?? process.env.PORT ?? 8282);
     this.#wsBasePort = Number(resolvedOptions.wsBasePort ?? process.env.AKAN_WS_BASE_PORT ?? this.#port + 10_000);
     this.#openapi = resolvedOptions.openapi;
@@ -149,15 +161,46 @@ export class AkanApp {
     return Bun.main.endsWith(".js") ? "production" : "development";
   }
 
+  /**
+   * Dev builds and first-touch transpiles can stall a child's event loop well past the production
+   * pong budget, so `akan start` runs with a wider timeout to avoid restarting healthy replicas.
+   */
+  static #parseHealthTimeoutMs() {
+    const configured = Number(process.env.AKAN_HEALTH_TIMEOUT_MS);
+    if (Number.isFinite(configured) && configured > 0) return configured;
+    return process.env.AKAN_COMMAND_TYPE === "start" ? 15_000 : 5_000;
+  }
+
+  /**
+   * Must exceed the child's own shutdown timeout (see `AkanServer.#defaultShutdownTimeoutMs`) so
+   * children always get to exit on their own before this gateway stops waiting.
+   */
+  static #childShutdownWaitMs() {
+    const configured = Number(process.env.AKAN_CHILD_SHUTDOWN_WAIT_MS);
+    if (Number.isFinite(configured) && configured > 0) return configured;
+    return process.env.AKAN_COMMAND_TYPE === "start" ? 5_000 : 30_000;
+  }
+
   async start() {
     await this.#prepareRuntimeDir();
     this.#startFileLogging();
     for (let idx = 0; idx < this.#replica.total; idx++) this.#spawn(idx);
-    this.#listen();
+    try {
+      this.#listen();
+    } catch (error) {
+      if (isPortInUseError(error)) {
+        const message = `Port ${this.#port} is already in use — another \`akan start\` or an orphaned gateway may still be running (try: lsof -ti :${this.#port}).`;
+        this.logger.error(message);
+        this.#reportBackendBuildStatus({ ok: false, message });
+      }
+      await this.stop("listen-failed");
+      throw error;
+    }
     this.#snapshotTimer = setInterval(() => this.#requestRoomSnapshots(), 30_000);
     this.#healthTimer = setInterval(() => this.#checkHealth(), 2_000);
     this.#startMetricsReporting();
     process.on("message", (message) => this.#handleHostMessage(message as BuilderMessage));
+    process.on("disconnect", () => this.#handleHostDisconnect());
     process.on("SIGINT", () => this.#handleShutdownSignal("SIGINT"));
     process.on("SIGTERM", () => this.#handleShutdownSignal("SIGTERM"));
     await new Promise<void>((resolve) => {
@@ -192,11 +235,13 @@ export class AkanApp {
     }
     await Promise.race([
       Promise.all([...this.#children.values()].map((child) => child.proc.exited.catch(() => undefined))),
-      new Promise((resolve) => setTimeout(resolve, 30_000)),
+      new Promise((resolve) => setTimeout(resolve, AkanApp.#childShutdownWaitMs())),
     ]);
-    for (const child of this.#children.values()) {
-      if (!child.proc.killed) child.proc.kill();
-    }
+    // The graceful path was the shutdown IPC message above; anything still alive after the full
+    // budget is stuck (or trapping SIGTERM), so escalate straight to SIGKILL and wait it out.
+    const stragglers = [...this.#children.values()].filter((child) => !child.proc.killed);
+    for (const child of stragglers) child.proc.kill("SIGKILL");
+    await Promise.all(stragglers.map((child) => child.proc.exited.catch(() => undefined)));
     this.#children.clear();
     await this.#stopFileLogging();
     this.#resolveStopped?.();
@@ -211,6 +256,18 @@ export class AkanApp {
       this.logger.error(`Failed to shutdown gateway: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(1);
     });
+  }
+
+  /**
+   * The IPC channel closes when the dev host dies (including SIGKILL). Exiting takes the children
+   * down too, so a dead host never strands a gateway tree that would block the next `akan start`.
+   */
+  #handleHostDisconnect() {
+    if (this.#stopping) return;
+    this.logger.warn("Host IPC channel closed; shutting down gateway and children");
+    this.#exitAfterStop = true;
+    setTimeout(() => process.exit(1), AkanApp.#childShutdownWaitMs() + 5_000);
+    void this.stop("ipc-disconnect").catch(() => process.exit(1));
   }
 
   #spawn(idx: number) {
@@ -261,6 +318,7 @@ export class AkanApp {
   #handleChildExit(idx: number, proc: Bun.Subprocess<"ignore", "pipe", "pipe">, code: number | null) {
     const child = this.#children.get(idx);
     if (!child || child.proc !== proc) return;
+    if (child.status === "crashed") return;
     child.status = "exited";
     child.lastExitCode = code;
     this.#invalidateFederationChildCache();
@@ -276,11 +334,16 @@ export class AkanApp {
       child.lastRestartReason = reason;
       return;
     }
+    if (this.#devHosted && child.restartAttempts >= AkanApp.#devMaxChildBootFailures - 1 && !child.ready) {
+      this.#markChildCrashed(child, reason);
+      return;
+    }
 
     child.restartPending = true;
     child.ready = false;
     child.status = reason === "health-timeout" || reason === "upstream-open-failed" ? "unhealthy" : "exited";
     child.upstream = undefined;
+    child.wsUpstream = undefined;
     child.healthPath = undefined;
     this.#invalidateFederationChildCache();
     child.lastRestartReason = reason;
@@ -341,6 +404,41 @@ export class AkanApp {
     this.#spawn(idx);
   }
 
+  /**
+   * Dev-only terminal state: the same broken code fails every boot, so retrying is pure churn.
+   * The dev host replaces this whole gateway on the next server-side edit, which clears the state.
+   */
+  #markChildCrashed(child: ChildState, reason: string) {
+    // The child's `error` IPC and its exit event both funnel here; report only once.
+    if (child.status === "crashed") return;
+    child.ready = false;
+    child.status = "crashed";
+    child.restartPending = false;
+    child.upstream = undefined;
+    child.wsUpstream = undefined;
+    child.healthPath = undefined;
+    child.lastRestartReason = reason;
+    this.#invalidateFederationChildCache();
+    this.#removeChildRooms(child.idx);
+    const attempts = child.restartAttempts + 1;
+    const detail = child.lastErrorMessage ?? reason;
+    const message = `Backend replica ${child.idx}/${child.role} failed ${attempts} consecutive boots; waiting for a code change to retry: ${detail}`;
+    this.logger.error(`[child-crash-loop] ${message}`);
+    this.#reportBackendBuildStatus({ ok: false, message });
+  }
+
+  /** Forwards a backend-phase build status to the dev host so failures reach the HMR overlay. */
+  #reportBackendBuildStatus({ ok, message }: { ok: boolean; message: string }) {
+    process.send?.({
+      type: "build-status",
+      data: { generation: -1, phase: "backend", ok, files: [], message },
+    } satisfies BuilderMessage);
+  }
+
+  #isChildUnavailable(child: ChildState): boolean {
+    return child.proc.killed || child.status === "exited" || child.status === "crashed";
+  }
+
   async #stopChildForRestart(child: ChildState, proc: Bun.Subprocess<"ignore", "pipe", "pipe">, reason: string) {
     if (reason.startsWith("exit:") || proc.killed) return;
     if (!proc.killed) {
@@ -359,9 +457,14 @@ export class AkanApp {
 
   async #prepareRuntimeDir() {
     await mkdir(this.#runtimeDir, { recursive: true });
-    for (let idx = 0; idx < this.#replica.total; idx++) {
-      await this.#removeChildSocket(idx, this.#getRole(idx));
-    }
+    // Socket names are run-scoped, so leftovers from crashed runs never conflict — but they also
+    // never get reused; sweep them all instead of only this run's paths.
+    const entries = await readdir(this.#runtimeDir).catch(() => []);
+    await Promise.all(
+      entries
+        .filter((name) => /^akan-child-.*\.sock$/.test(name))
+        .map((name) => rm(path.join(this.#runtimeDir, name), { force: true }).catch(() => undefined)),
+    );
   }
 
   async #removeChildSocket(idx: number, role: AkanChildRole) {
@@ -456,11 +559,10 @@ export class AkanApp {
 
   #upgradeWebSocket(req: Request, server: Bun.Server<GatewayWsData>): Response | undefined {
     const child = this.#pickFederationChild();
-    if (!child?.upstream || !child.upstream || !this.#getChildUpstream(child.idx, child.role).ws) {
-      return new Response("No websocket upstream is ready", { status: 503 });
-    }
-    const upstream = this.#getChildUpstream(child.idx, child.role).ws;
-    if (!upstream) return new Response("No websocket upstream is ready", { status: 503 });
+    // Prefer the ws upstream the child actually bound (it may have fallen back from the preferred
+    // port); the computed port is only a fallback for children that predate wsUpstream reporting.
+    const upstream = child?.upstream ? (child.wsUpstream ?? this.#getChildUpstream(child.idx, child.role).ws) : null;
+    if (!child || !upstream) return new Response("No websocket upstream is ready", { status: 503 });
     const url = new URL(req.url);
     const upstreamWs = new WebSocket(`ws://${upstream.host}:${upstream.port}${url.pathname}${url.search}`, {
       headers: this.#makeProxyHeaders(req, child.idx),
@@ -514,6 +616,7 @@ export class AkanApp {
   #getHealthStatus() {
     return {
       status: this.#stopping ? "stopping" : "running",
+      pid: process.pid,
       children: [...this.#children.values()].map((child) => ({
         idx: child.idx,
         role: child.role,
@@ -527,6 +630,7 @@ export class AkanApp {
         lastExitCode: child.lastExitCode,
         lastRestartAt: child.lastRestartAt,
         lastRestartReason: child.lastRestartReason,
+        lastErrorMessage: child.lastErrorMessage,
       })),
     };
   }
@@ -561,7 +665,7 @@ export class AkanApp {
   async #proxyHttp(req: Request): Promise<Response> {
     const child = this.#pickFederationChild();
     if (!child?.upstream || child.upstream.type !== "unix") {
-      return new Response("No healthy federation child is ready", { status: 503 });
+      return this.#respondWithCrashPage(req) ?? new Response("No healthy federation child is ready", { status: 503 });
     }
     const url = new URL(req.url);
     const upstreamUrl = `http://akan-child${url.pathname}${url.search}`;
@@ -599,6 +703,70 @@ export class AkanApp {
     if (!error || typeof error !== "object") return false;
     const candidate = error as { code?: unknown; message?: unknown };
     return candidate.code === "FailedToOpenSocket" || String(candidate.message ?? "").includes("FailedToOpenSocket");
+  }
+
+  /**
+   * Dev-only: every traffic replica is in the crashed terminal state, so a bare 503 would hide the
+   * boot error from the browser. Surface it, and reload once a fixed gateway takes over the port.
+   */
+  #respondWithCrashPage(req: Request): Response | null {
+    if (!this.#devHosted) return null;
+    const trafficChildren = [...this.#children.values()].filter((child) => child.role !== "batch");
+    if (trafficChildren.length === 0) return null;
+    if (!trafficChildren.every((child) => child.status === "crashed")) return null;
+    const detail =
+      trafficChildren.map((child) => child.lastErrorMessage ?? child.lastRestartReason).find(Boolean) ??
+      "unknown boot error";
+    const message = `Backend failed to start after ${AkanApp.#devMaxChildBootFailures} boot attempts: ${detail}`;
+    if (!req.headers.get("accept")?.includes("text/html")) {
+      return new Response(message, { status: 503, headers: { "cache-control": "no-store" } });
+    }
+    const html = `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Backend failed to start</title>
+<style>
+  body { margin: 0; padding: 48px 24px; background: #111827; color: #e5e7eb; font-family: ui-sans-serif, system-ui, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 20px; color: #f87171; }
+  pre { padding: 16px; border-radius: 8px; background: #1f2937; color: #fca5a5; white-space: pre-wrap; word-break: break-word; }
+  p { color: #9ca3af; font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Backend failed to start</h1>
+<pre>${AkanApp.#escapeHtml(detail)}</pre>
+<p>The dev server stopped retrying after ${AkanApp.#devMaxChildBootFailures} failed boots. Fix the error and save &mdash; this page reloads automatically.</p>
+</main>
+<script>
+  const poll = async () => {
+    try {
+      const res = await fetch(location.href, { cache: "no-store" });
+      if (res.ok) { location.reload(); return; }
+    } catch {}
+    setTimeout(poll, 1000);
+  };
+  setTimeout(poll, 1000);
+</script>
+</body>
+</html>`;
+    return new Response(html, {
+      status: 503,
+      headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+    });
+  }
+
+  static #escapeHtml(text: string) {
+    const replacements: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return text.replace(/[&<>"']/g, (ch) => replacements[ch] ?? ch);
   }
 
   /**
@@ -712,8 +880,7 @@ export class AkanApp {
           (child.role === "federation" || child.role === "all") &&
           child.ready &&
           child.status !== "unhealthy" &&
-          child.status !== "exited" &&
-          !child.proc.killed,
+          !this.#isChildUnavailable(child),
       );
     this.#federationChildCache = candidates;
     if (candidates.length === 0) return null;
@@ -770,6 +937,7 @@ export class AkanApp {
         return;
       case "error":
         this.logger.error(message.message);
+        if (child) child.lastErrorMessage = message.message;
         if (child && proc) void this.#scheduleChildRestart(child, proc, "child-error");
         return;
       case "build-route":
@@ -801,13 +969,19 @@ export class AkanApp {
     child.status = "ready";
     child.pid = message.pid;
     child.upstream = message.upstream;
+    child.wsUpstream = message.wsUpstream;
     child.healthPath = message.healthPath;
-    child.lastPongAt = Date.now();
+    child.lastPongAtMono = performance.now();
     child.restartAttempts = 0;
     child.restartPending = false;
+    child.lastErrorMessage = undefined;
     this.#invalidateFederationChildCache();
-    if ([...this.#children.values()].every((item) => item.ready)) {
+    // Batch children serve no HTTP/HMR traffic, so they must not gate frontend readiness.
+    const trafficChildren = [...this.#children.values()].filter((item) => item.role !== "batch");
+    if (child.role !== "batch" && trafficChildren.every((item) => item.ready)) {
       process.send?.({ type: "backend-ready", pid: process.pid } satisfies AkanIpcMessage);
+    }
+    if ([...this.#children.values()].every((item) => item.ready)) {
       this.logger.verbose(`All ${this.#children.size} child process(es) are ready`);
     }
   }
@@ -816,7 +990,7 @@ export class AkanApp {
     const child = this.#children.get(idx);
     if (!child) return;
     child.status = "healthy";
-    child.lastPongAt = Date.now();
+    child.lastPongAtMono = performance.now();
     this.#invalidateFederationChildCache();
   }
 
@@ -831,7 +1005,7 @@ export class AkanApp {
     for (const childIdx of targets) {
       if (childIdx === originIdx) continue;
       const child = this.#children.get(childIdx);
-      if (!child || child.proc.killed || child.status === "exited") continue;
+      if (!child || this.#isChildUnavailable(child)) continue;
       if (
         !this.#sendToChild(child, {
           type: "pubsub.deliver",
@@ -938,31 +1112,30 @@ export class AkanApp {
 
   #requestRoomSnapshots() {
     for (const child of this.#children.values()) {
-      if (child.proc.killed || child.status === "exited") continue;
+      if (this.#isChildUnavailable(child)) continue;
       this.#sendToChild(child, { type: "pubsub.snapshot.request" } satisfies AkanIpcMessage);
     }
   }
 
   #checkHealth() {
-    const now = Date.now();
+    const nowMono = performance.now();
     for (const child of this.#children.values()) {
-      if (child.proc.killed || child.status === "exited") continue;
-      if (child.lastPongAt && now - child.lastPongAt > 5_000) {
+      if (this.#isChildUnavailable(child)) continue;
+      if (child.lastPongAtMono && nowMono - child.lastPongAtMono > this.#healthTimeoutMs) {
         child.status = "unhealthy";
         this.#invalidateFederationChildCache();
         void this.#scheduleChildRestart(child, child.proc, "health-timeout");
-        return;
+        continue;
       }
       const sent = this.#sendToChild(child, {
         type: "health.ping",
         nonce: crypto.randomUUID(),
-        sentAt: now,
+        sentAt: Date.now(),
       } satisfies AkanIpcMessage);
       if (!sent) {
         child.status = "unhealthy";
         this.#invalidateFederationChildCache();
         void this.#scheduleChildRestart(child, child.proc, "health-send-failed");
-        return;
       }
     }
   }
@@ -1003,7 +1176,7 @@ export class AkanApp {
   }
 
   #sendToChild(child: ChildState, message: AkanIpcMessage | BuilderMessage): boolean {
-    if (child.proc.killed || child.status === "exited") return false;
+    if (this.#isChildUnavailable(child)) return false;
     try {
       child.proc.send(message);
       return true;

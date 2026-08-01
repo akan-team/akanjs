@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AkanMobileTargetConfig } from "./akanConfig";
 import {
+  ANDROID_MIN_SDK_VERSION,
   assertJsonSerializable,
   buildIosNativeRunCommand,
   classifyIosRunFailure,
@@ -11,11 +12,17 @@ import {
   formatAndroidReleaseSigningError,
   getAdbDeviceStateIssues,
   getMissingAndroidReleaseSigningKeys,
+  isPlaceholderAppId,
   materializeCapacitorConfig,
   parseDevicectlDevices,
+  parseIosRuntimeMajor,
   parseSimctlDevices,
+  raiseGradleMinSdkVersion,
   rootCapacitorConfigFilenames,
+  SWIFTUICORE_MIN_IOS_MAJOR,
   sanitizeIosNativeRunEnv,
+  selectLocalDevHost,
+  sortIosRunTargets,
   writeRootCapacitorConfig,
 } from "./capacitorApp";
 
@@ -180,15 +187,40 @@ describe("iOS native run helpers", () => {
       parseSimctlDevices(
         JSON.stringify({
           devices: {
-            "iOS 18.0": [
+            "com.apple.CoreSimulator.SimRuntime.iOS-18-2": [
               { udid: "11111111-2222-3333-4444-555555555555", name: "iPhone 16", state: "Shutdown", isAvailable: true },
             ],
           },
         }),
       ),
     ).toEqual([
-      { id: "11111111-2222-3333-4444-555555555555", name: "iPhone 16", kind: "simulator", state: "Shutdown" },
+      {
+        id: "11111111-2222-3333-4444-555555555555",
+        name: "iPhone 16",
+        kind: "simulator",
+        state: "Shutdown",
+        runtime: "iOS 18.2",
+      },
     ]);
+  });
+
+  test("sorts run targets so booted / connected / newest-runtime targets come first", () => {
+    const ios17 = { id: "a", name: "iPhone 15", kind: "simulator" as const, state: "Shutdown", runtime: "iOS 17.5" };
+    const ios18 = { id: "b", name: "iPhone 16", kind: "simulator" as const, state: "Shutdown", runtime: "iOS 18.2" };
+    const booted17 = { id: "c", name: "iPhone SE", kind: "simulator" as const, state: "Booted", runtime: "iOS 17.0" };
+    const device = { id: "d", name: "Seok iPhone", kind: "device" as const, state: "available wired paired" };
+    // Input is in the old ascending-runtime order that used to default to iOS 17.
+    const sorted = sortIosRunTargets([ios17, ios18, booted17, device]);
+    expect(sorted.map((t) => t.id)).toEqual(["d", "c", "b", "a"]);
+    // Newest available simulator beats the older one, so the interactive default is no longer iOS 17.
+    expect(sortIosRunTargets([ios17, ios18]).map((t) => t.id)).toEqual(["b", "a"]);
+  });
+
+  test("parses the major iOS runtime version", () => {
+    expect(parseIosRuntimeMajor("iOS 18.2")).toBe(18);
+    expect(parseIosRuntimeMajor("iOS 17.5")).toBe(17);
+    expect(parseIosRuntimeMajor(undefined)).toBeUndefined();
+    expect(SWIFTUICORE_MIN_IOS_MAJOR).toBe(18);
   });
 
   test("builds xcodebuild destinations and output paths by target kind", () => {
@@ -226,6 +258,11 @@ describe("iOS native run helpers", () => {
     expect(classifyIosRunFailure("arm64-apple-darwin20.0: error: unknown argument: '-index-store-path'").kind).toBe(
       "compiler-toolchain",
     );
+    expect(
+      classifyIosRunFailure(
+        "dyld[1234]: Library not loaded: /System/Library/Frameworks/SwiftUICore.framework/SwiftUICore",
+      ).kind,
+    ).toBe("simulator-runtime");
   });
 
   test("removes shell compiler variables from iOS native run env", () => {
@@ -237,6 +274,55 @@ describe("iOS native run helpers", () => {
         SDKROOT: "/wrong/sdk",
       }),
     ).toEqual({ AKAN_PUBLIC_APP_NAME: "minimal" });
+  });
+
+  test("flags placeholder bundle identifiers that Apple's portal already claims", () => {
+    for (const appId of ["com.myapp.app", "com.myorg.myapp", "com.example.foo", "com.changeme.app", ""]) {
+      expect(isPlaceholderAppId(appId)).toBe(true);
+    }
+    for (const appId of ["com.minimal.app", "com.nearthlab.leadingflight", "io.akanjs.demo"]) {
+      expect(isPlaceholderAppId(appId)).toBe(false);
+    }
+  });
+});
+
+describe("selectLocalDevHost", () => {
+  const build = (map: Record<string, { family: string; address: string; internal?: boolean }[]>) =>
+    map as unknown as Parameters<typeof selectLocalDevHost>[0];
+
+  test("prefers a routable LAN NIC over an inactive bridge enumerated first", () => {
+    const resolution = selectLocalDevHost(
+      build({
+        bridge0: [{ family: "IPv4", address: "192.168.2.1" }],
+        en0: [{ family: "IPv4", address: "172.25.140.140" }],
+        bridge100: [{ family: "IPv4", address: "192.168.3.1" }],
+        en8: [{ family: "IPv4", address: "172.25.40.227" }],
+      }),
+    );
+    expect(resolution.host).toBe("172.25.140.140");
+    expect(resolution.source).toBe("detected");
+  });
+
+  test("an explicit override always wins and is trimmed", () => {
+    const resolution = selectLocalDevHost(build({ en0: [{ family: "IPv4", address: "172.25.140.140" }] }), {
+      override: " 10.0.0.9 ",
+    });
+    expect(resolution).toMatchObject({ host: "10.0.0.9", source: "override" });
+  });
+
+  test("never selects a link-local address when a real LAN address exists", () => {
+    const resolution = selectLocalDevHost(
+      build({
+        en0: [{ family: "IPv4", address: "169.254.10.10" }],
+        en1: [{ family: "IPv4", address: "192.168.1.5" }],
+      }),
+    );
+    expect(resolution.host).toBe("192.168.1.5");
+  });
+
+  test("falls back to loopback when nothing routable is present", () => {
+    const resolution = selectLocalDevHost(build({ lo0: [{ family: "IPv4", address: "127.0.0.1", internal: true }] }));
+    expect(resolution).toMatchObject({ host: "127.0.0.1", source: "loopback" });
   });
 });
 
@@ -253,5 +339,26 @@ describe("Android signing diagnostics", () => {
       "Android device abc123 is unauthorized. Confirm USB debugging authorization on the device.",
       "Android device xyz is offline. Reconnect the device or restart adb.",
     ]);
+  });
+});
+
+describe("raiseGradleMinSdkVersion", () => {
+  test("raises the scaffold minSdkVersion to the bundled-plugin floor, preserving formatting", () => {
+    const scaffold = "ext {\n    minSdkVersion = 24\n    compileSdkVersion = 35\n}\n";
+    expect(raiseGradleMinSdkVersion(scaffold)).toBe(
+      `ext {\n    minSdkVersion = ${ANDROID_MIN_SDK_VERSION}\n    compileSdkVersion = 35\n}\n`,
+    );
+  });
+
+  test("returns null when nothing needs changing", () => {
+    // Already at the floor, already above it, and no assignment present.
+    expect(raiseGradleMinSdkVersion(`ext {\n    minSdkVersion = ${ANDROID_MIN_SDK_VERSION}\n}\n`)).toBeNull();
+    expect(raiseGradleMinSdkVersion("ext {\n    minSdkVersion = 34\n}\n")).toBeNull();
+    expect(raiseGradleMinSdkVersion("ext {\n    compileSdkVersion = 35\n}\n")).toBeNull();
+  });
+
+  test("honors an explicit floor and leaves higher user values untouched", () => {
+    expect(raiseGradleMinSdkVersion("minSdkVersion = 21", 23)).toBe("minSdkVersion = 23");
+    expect(raiseGradleMinSdkVersion("minSdkVersion = 28", 26)).toBeNull();
   });
 });

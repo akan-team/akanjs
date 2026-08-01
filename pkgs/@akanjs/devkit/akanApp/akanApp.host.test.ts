@@ -4,8 +4,12 @@ import {
   backendRestartReasonFromMessage,
   buildStatusReplaySequence,
   createBackendBuildStatus,
+  hasBuildFailureForGeneration,
   isLegacyBackendFallbackFile,
   mergeBackendRestartReasons,
+  mergeInvalidateMessages,
+  normalizeBackendReportedGeneration,
+  shouldAbandonBackendRecovery,
   shouldMarkBuildPhaseRecovered,
   shouldQueueBuildStatusReplay,
   shouldReplaceLastGoodMessage,
@@ -207,5 +211,120 @@ describe("legacy backend graph fallback", () => {
   test("does not restart backend for client-only path roles", () => {
     expect(isLegacyBackendFallbackFile(`${root}/libs/shared/ui/Foo.tsx`, root)).toBe(false);
     expect(isLegacyBackendFallbackFile(`${root}/apps/akan/page/_index.tsx`, root)).toBe(false);
+  });
+});
+
+describe("backend recovery abandonment", () => {
+  test("keeps retrying below the attempt ceiling and abandons at it", () => {
+    expect(shouldAbandonBackendRecovery(0)).toBe(false);
+    expect(shouldAbandonBackendRecovery(4)).toBe(false);
+    expect(shouldAbandonBackendRecovery(5)).toBe(true);
+    expect(shouldAbandonBackendRecovery(9)).toBe(true);
+  });
+
+  test("honors a custom attempt ceiling", () => {
+    expect(shouldAbandonBackendRecovery(2, 3)).toBe(false);
+    expect(shouldAbandonBackendRecovery(3, 3)).toBe(true);
+  });
+});
+
+describe("hasBuildFailureForGeneration", () => {
+  const status = (phase: DevBuildStatus["phase"], generation: number, ok: boolean): DevBuildStatus => ({
+    generation,
+    phase,
+    ok,
+    files: [],
+  });
+
+  test("detects a failing phase recorded for the same generation", () => {
+    const statusByPhase = new Map<DevBuildStatus["phase"], DevBuildStatus>([
+      ["csr", status("csr", 3, false)],
+      ["barrel", status("barrel", 3, true)],
+    ]);
+    expect(hasBuildFailureForGeneration(statusByPhase, 3)).toBe(true);
+  });
+
+  test("ignores stale failures from earlier generations", () => {
+    const statusByPhase = new Map<DevBuildStatus["phase"], DevBuildStatus>([
+      ["csr", status("csr", 3, false)],
+      ["barrel", status("barrel", 4, true)],
+    ]);
+    expect(hasBuildFailureForGeneration(statusByPhase, 4)).toBe(false);
+  });
+
+  test("treats unknown generations and green boards as healthy", () => {
+    const statusByPhase = new Map<DevBuildStatus["phase"], DevBuildStatus>([["csr", status("csr", 3, false)]]);
+    expect(hasBuildFailureForGeneration(statusByPhase, undefined)).toBe(false);
+    expect(hasBuildFailureForGeneration(new Map(), 3)).toBe(false);
+  });
+});
+
+describe("mergeInvalidateMessages", () => {
+  const invalidate = (
+    generation: number,
+    files: string[],
+    actions: DevChangeAction[],
+  ): Extract<BuilderMessage, { type: "invalidate" }> => ({
+    type: "invalidate",
+    kinds: ["code"],
+    files,
+    generation,
+    devPlan: {
+      generation,
+      files,
+      generatedFiles: [],
+      roles: ["shared"],
+      actions,
+      reasonByFile: { [files[0] ?? "/repo/a.ts"]: ["shared-path"] },
+    },
+  });
+
+  test("unions files, kinds, and actions while keeping the latest generation", () => {
+    const merged = mergeInvalidateMessages(
+      invalidate(3, ["/repo/b.ts", "/repo/a.ts"], ["restart-builder"]),
+      invalidate(5, ["/repo/c.ts"], ["rebuild-client"]),
+    );
+
+    expect(merged.generation).toBe(5);
+    expect(merged.files).toEqual(["/repo/a.ts", "/repo/b.ts", "/repo/c.ts"]);
+    expect(merged.devPlan?.generation).toBe(5);
+    expect(merged.devPlan?.actions).toEqual(["rebuild-client", "restart-builder"]);
+  });
+
+  test("keeps the surviving devPlan when only one side carries one", () => {
+    const withPlan = invalidate(3, ["/repo/a.ts"], ["restart-builder"]);
+    const withoutPlan: Extract<BuilderMessage, { type: "invalidate" }> = {
+      type: "invalidate",
+      kinds: ["css"],
+      files: ["/repo/style.css"],
+      generation: 4,
+    };
+
+    const merged = mergeInvalidateMessages(withPlan, withoutPlan);
+    expect(merged.devPlan?.actions).toEqual(["restart-builder"]);
+    expect(merged.kinds).toEqual(["code", "css"]);
+    expect(merged.generation).toBe(4);
+  });
+
+  test("merges per-file reasons without duplicating entries", () => {
+    const current = invalidate(3, ["/repo/a.ts"], ["restart-builder"]);
+    const next = invalidate(4, ["/repo/a.ts"], ["restart-builder"]);
+    const nextPlan = next.devPlan;
+    if (!nextPlan) throw new Error("devPlan expected");
+    nextPlan.reasonByFile["/repo/a.ts"] = ["runtime-metadata", "shared-path"];
+
+    const merged = mergeInvalidateMessages(current, next);
+    expect(merged.devPlan?.reasonByFile["/repo/a.ts"]).toEqual(["runtime-metadata", "shared-path"]);
+  });
+});
+
+describe("normalizeBackendReportedGeneration", () => {
+  test("drops the gateway's unknown-generation sentinel", () => {
+    expect(normalizeBackendReportedGeneration(-1)).toBeUndefined();
+  });
+
+  test("keeps real generations including zero", () => {
+    expect(normalizeBackendReportedGeneration(0)).toBe(0);
+    expect(normalizeBackendReportedGeneration(7)).toBe(7);
   });
 });

@@ -39,6 +39,8 @@ describe("WorkspaceCommand", () => {
       ["Option", 4],
       ["Option", 5],
       ["Option", 6],
+      ["Option", 7],
+      ["Option", 8],
     ]);
 
     const command = CommandContainer.get(WorkspaceCommand);
@@ -108,6 +110,12 @@ describe("WorkspaceScript", () => {
       recorder.record("version", ...args);
       return "2.0.0-beta.0";
     };
+    script.agentScript.agent = async (...args: unknown[]) => {
+      recorder.record("agent", ...args);
+    };
+    script.contextScript.mcpInstall = async (...args: unknown[]) => {
+      recorder.record("mcpInstall", ...args);
+    };
 
     try {
       await script.createWorkspace("repo", "demo", { dirname: "local", installLibs: true, init: false });
@@ -118,6 +126,8 @@ describe("WorkspaceScript", () => {
         "installLibrary",
         "createApplication",
         "applyTemplate",
+        "agent",
+        "mcpInstall",
         "workspace.spinning",
         "commit",
         "spinner.succeed",
@@ -132,11 +142,54 @@ describe("WorkspaceScript", () => {
         workspace,
         { libs: ["util", "shared"] },
       ]);
+      expect(recorder.calls.find((call) => call.name === "agent")?.args).toEqual([
+        workspace,
+        "install",
+        "all",
+        { force: true },
+      ]);
+      expect(recorder.calls.find((call) => call.name === "mcpInstall")?.args).toEqual([
+        workspace,
+        "all",
+        { force: true },
+      ]);
       expect(recorder.calls.find((call) => call.name === "commit")?.args).toEqual(["Initial commit", { init: true }]);
     } finally {
       if (previousUseAkanjsPkgs === undefined) delete process.env.USE_AKANJS_PKGS;
       else process.env.USE_AKANJS_PKGS = previousUseAkanjsPkgs;
     }
+  });
+
+  test("skips agent and mcp install when opted out", async () => {
+    const script = CommandContainer.get(WorkspaceScript);
+    const recorder = createCallRecorder();
+    const workspace = createFakeExecutor(
+      "workspace",
+      {
+        commit: async (...args: unknown[]) => recorder.record("commit", ...args),
+        applyTemplate: async (...args: unknown[]) => recorder.record("applyTemplate", ...args),
+      },
+      recorder,
+    );
+    script.workspaceRunner.createWorkspace = async () => workspace as never;
+    script.applicationScript.createApplication = async () => {};
+    script.packageScript.version = async () => "2.0.0-beta.0";
+    script.agentScript.agent = async (...args: unknown[]) => {
+      recorder.record("agent", ...args);
+    };
+    script.contextScript.mcpInstall = async (...args: unknown[]) => {
+      recorder.record("mcpInstall", ...args);
+    };
+
+    await script.createWorkspace("repo", "demo", {
+      dirname: "local",
+      init: false,
+      mcpInstall: false,
+      agentInstall: false,
+    });
+
+    expect(recorder.names()).not.toContain("agent");
+    expect(recorder.names()).not.toContain("mcpInstall");
   });
 
   test("lints all apps/libs/packages except contract after syncing apps and libs", async () => {

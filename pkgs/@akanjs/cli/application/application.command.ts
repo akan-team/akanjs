@@ -110,7 +110,11 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       desc: "disable automatic iOS provisioning updates for physical devices",
       default: false,
     })
-    .exec(async function (app, target, env, open, release, write, regenerate, noAllowProvisioningUpdates) {
+    .option("device", String, {
+      desc: "run target to select non-interactively: udid, device name, or runtime (e.g. 'iPhone 16' or 'iOS 18')",
+      default: "",
+    })
+    .exec(async function (app, target, env, open, release, write, regenerate, noAllowProvisioningUpdates, device) {
       await this.applicationScript.startIos(app, {
         target,
         env: asMobileEnv(env),
@@ -119,6 +123,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
         write,
         regenerate,
         noAllowProvisioningUpdates,
+        device: device || undefined,
       });
     }),
   startAndroid: target({ short: true, desc: "Start Android app in emulator or device" })

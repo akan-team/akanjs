@@ -102,7 +102,11 @@ export const getEnv = (): ClientEnv => {
   const clientHost =
     process.env.AKAN_PUBLIC_CLIENT_HOST ??
     (operationMode === "local" || side === "server" ? "localhost" : window.location.hostname);
-  const clientPort = parseInt(process.env.AKAN_PUBLIC_CLIENT_PORT ?? (operationMode === "local" ? "8282" : "443"));
+  const clientPort =
+    side === "server"
+      ? parseInt(process.env.AKAN_PUBLIC_CLIENT_PORT ?? (operationMode === "local" ? "8282" : "443"))
+      : parseInt(window.location.port || (window.location.protocol === "https:" ? "443" : "80"));
+
   const clientHttpProtocol =
     side === "client"
       ? (window.location.protocol as "http:" | "https:")

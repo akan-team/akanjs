@@ -21,16 +21,20 @@ export class ContextCommand extends command("context", [ContextScript], ({ publi
       enum: ["text", "json"],
     })
     .option("strict", Boolean, { desc: "treat recommended conventions as errors", default: false })
+    .option("ios", Boolean, {
+      desc: "report iOS/mobile config diagnostics (placeholder bundle ids, etc.)",
+      default: false,
+    })
     .with(Workspace)
-    .exec(async function (format, strict, workspace) {
-      await this.contextScript.doctor(workspace, { format: format as "text" | "json", strict });
+    .exec(async function (format, strict, ios, workspace) {
+      await this.contextScript.doctor(workspace, { format: format as "text" | "json", strict, ios });
     }),
   mcpInstall: target({ desc: "Install the Akan MCP server config for Cursor, Claude Code, and Codex" })
     .arg("target", String, { desc: "cursor, claude, codex, or all", nullable: true })
     .option("force", Boolean, { desc: "overwrite an existing Akan MCP server entry", default: false })
     .option("mode", String, {
       desc: "MCP permission mode",
-      default: "readonly",
+      default: "apply",
       enum: ["readonly", "plan", "apply"],
     })
     .with(Workspace)

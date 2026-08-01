@@ -1,4 +1,5 @@
 export * from "./allRoutesBuilder";
+export * from "./autoImportSync";
 export * from "./clientBuildTypes";
 export * from "./clientEntriesBundler";
 export * from "./clientEntryDiscovery";

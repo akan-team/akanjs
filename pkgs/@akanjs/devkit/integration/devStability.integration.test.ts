@@ -45,6 +45,50 @@ const waitForFileIncludes = async (filePath: string, text: string, timeoutMs = 5
   return null;
 };
 
+interface GatewayHealth {
+  status: string;
+  pid?: number;
+  children: Array<{ idx: number; role: string; status: string; ready: boolean; pid?: number }>;
+}
+
+const fetchGatewayHealth = async (port: number): Promise<GatewayHealth | null> => {
+  const res = await fetch(`http://127.0.0.1:${port}/_akan/app/health`).catch(() => null);
+  if (!res?.ok) return null;
+  return (await res.json()) as GatewayHealth;
+};
+
+const waitForGatewayHealth = async (
+  port: number,
+  predicate: (health: GatewayHealth) => boolean,
+  timeoutMs = 60_000,
+): Promise<GatewayHealth> => {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const health = await fetchGatewayHealth(port);
+    if (health && predicate(health)) return health;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  throw new Error(`Timed out waiting for gateway health on port ${port}`);
+};
+
+const isProcessAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const waitForProcessesGone = async (pids: number[], timeoutMs = 15_000): Promise<boolean> => {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (pids.every((pid) => !isProcessAlive(pid))) return true;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return false;
+};
+
 afterEach(async () => {
   await Promise.all(harnesses.splice(0).map((harness) => harness.cleanup()));
 });
@@ -159,6 +203,32 @@ export const dictionary = serviceDictionary(["en", "ko"])
     hmr?.close();
   });
 
+  integrationTest("config edits restart the dev host and keep serving", async () => {
+    const harness = await createHarness();
+    const host = await harness.startHost();
+    const initialHtml = await harness.tryWaitForHttpText("initial-shared-marker", 3_000);
+    if (!initialHtml) {
+      expect(host.proc.killed).toBe(false);
+      return;
+    }
+    const mark = host.markLog();
+
+    await harness.writeFile(
+      "akan.config.ts",
+      `import type { AppConfig } from "akanjs";
+
+const config: AppConfig = { externalLibs: [] };
+export default config;
+`,
+    );
+
+    await host.waitForLogSince(mark, /\[dev-plan\].*actions=.*restart-dev-host/);
+    await host.waitForLogSince(mark, /\[dev-host\] config change detected; restarting dev host/);
+    await host.waitForLogSince(mark, /backend ready pid=(\d+)|AkanApp gateway is running on port/);
+    await harness.waitForHttpText("initial-shared-marker");
+    expect(host.proc.killed).toBe(false);
+  });
+
   integrationTest("client build failure reports error and recovers after fix", async () => {
     const harness = await createHarness();
     const host = await harness.startHost();
@@ -205,16 +275,20 @@ export const dictionary = serviceDictionary(["en", "ko"])
   integrationTest("barrel add/delete includes generated indexes in watch generation", async () => {
     const harness = await createHarness();
     const sync = new DevGeneratedIndexSync({ workspaceRoot: harness.workspaceRoot });
-    const facets = ["common", "ui"] as const;
+    // `common` barrels export camelCase names; `ui` barrels export PascalCase component names. Each facet's
+    // fixture file must follow its own casing convention or the barrel deliberately skips it.
+    const facets = [
+      { facet: "common", moduleName: "tmpExample", fileName: "tmpExample.ts", exportName: "commonTmpExample" },
+      { facet: "ui", moduleName: "TmpExample", fileName: "TmpExample.tsx", exportName: "TmpExample" },
+    ] as const;
 
-    for (const facet of facets) {
-      const exportName = `${facet}TmpExample`;
+    for (const { facet, moduleName, fileName, exportName } of facets) {
       const indexPath = `${facet}/index.ts`;
-      const absChangedFile = `${harness.appDir}/${facet}/tmpExample.ts`;
+      const absChangedFile = `${harness.appDir}/${facet}/${fileName}`;
       const absIndexPath = `${harness.appDir}/${indexPath}`;
 
       await harness.writeFile(
-        `${facet}/tmpExample.ts`,
+        `${facet}/${fileName}`,
         `export const ${exportName} = "added-${facet}-example";
 `,
       );
@@ -222,18 +296,102 @@ export const dictionary = serviceDictionary(["en", "ko"])
       const added = await sync.syncForBatch([absChangedFile]);
       expect(added.errors).toEqual([]);
       expect(added.changedFiles).toContain(absIndexPath);
-      const addedIndex = await waitForFileIncludes(absIndexPath, "tmpExample");
+      const addedIndex = await waitForFileIncludes(absIndexPath, moduleName);
       expect(addedIndex).not.toBeNull();
-      expect(addedIndex ?? "").toContain("tmpExample");
+      expect(addedIndex ?? "").toContain(moduleName);
 
-      await harness.removeFile(`${facet}/tmpExample.ts`);
+      await harness.removeFile(`${facet}/${fileName}`);
       const removed = await sync.syncForBatch([absChangedFile]);
       expect(removed.errors).toEqual([]);
       expect(removed.changedFiles).toContain(absIndexPath);
-      const deletedIndex = await waitForFileIncludes(absIndexPath, "tmpExample", 1_000);
-      if (deletedIndex) throw new Error(`${indexPath} still contains tmpExample after delete`);
+      const deletedIndex = await waitForFileIncludes(absIndexPath, moduleName, 1_000);
+      if (deletedIndex) throw new Error(`${indexPath} still contains ${moduleName} after delete`);
       const finalIndex = await Bun.file(absIndexPath).text();
       expect(finalIndex).toBeString();
+    }
+  });
+
+  integrationTest("backend boot failure stops the crash loop, surfaces build-status, and recovers on fix", async () => {
+    const harness = await createHarness();
+    const host = await harness.startHost();
+    const failureMark = host.markLog();
+
+    // The service file is part of the generated server graph (`akan start` regenerates server.ts
+    // from lib/), so a module-level throw here breaks every replica boot.
+    await harness.writeFile(
+      "lib/_fixture/fixture.service.ts",
+      `import { serve } from "akanjs/service";
+
+export class FixtureService extends serve("fixture" as const, { serverMode: "batch" }, () => ({})) {}
+
+throw new Error("intentional-backend-boot-crash");
+`,
+    );
+
+    // The gateway abandons the replica after three failed boots instead of retrying forever...
+    await host.waitForLogSince(failureMark, /\[child-crash-loop\].*failed 3 consecutive boots/);
+    // ...and the failure reaches the dev host's build-status pipeline (HMR overlay path).
+    await host.waitForLogSince(failureMark, /\[build-status\].*phase=backend.*ok=false/);
+    expect(host.proc.killed).toBe(false);
+
+    const recoveryMark = host.markLog();
+    await harness.writeFile(
+      "lib/_fixture/fixture.service.ts",
+      `import { serve } from "akanjs/service";
+
+export class FixtureService extends serve("fixture" as const, { serverMode: "batch" }, () => ({})) {}
+`,
+    );
+
+    await host.waitForLogSince(recoveryMark, /backend ready pid=(\d+)|AkanApp gateway is running on port/);
+    expect(host.proc.killed).toBe(false);
+  });
+
+  integrationTest("SIGKILL'd gateway leaves no orphaned replicas and the host recovers", async () => {
+    const harness = await createHarness();
+    const host = await harness.startHost();
+    const port = await harness.resolvePort();
+
+    const healthy = await waitForGatewayHealth(
+      port,
+      (health) =>
+        typeof health.pid === "number" &&
+        health.children.length > 0 &&
+        health.children.every((child) => child.ready && typeof child.pid === "number"),
+    );
+    const gatewayPid = healthy.pid as number;
+    const childPids = healthy.children.map((child) => child.pid as number);
+    const mark = host.markLog();
+
+    process.kill(gatewayPid, "SIGKILL");
+
+    // Children must notice the closed IPC channel and exit instead of orphaning (they would
+    // otherwise keep holding their ws ports and break every subsequent boot).
+    expect(await waitForProcessesGone(childPids)).toBe(true);
+
+    await host.waitForLogSince(mark, /backend ready pid=(\d+)|AkanApp gateway is running on port/);
+    const recovered = await waitForGatewayHealth(
+      port,
+      (health) => typeof health.pid === "number" && health.pid !== gatewayPid && health.children.some((c) => c.ready),
+    );
+    expect(recovered.pid).not.toBe(gatewayPid);
+    expect(host.proc.killed).toBe(false);
+  });
+
+  integrationTest("occupied preferred ws port falls back to an ephemeral port and stays bootable", async () => {
+    const harness = await createHarness();
+    const port = await harness.resolvePort();
+    // The gateway assigns child 0 the deterministic ws port `port + 10_000`; occupy it up front
+    // the way an orphaned replica from a killed run would.
+    const blocker = Bun.serve({ port: port + 10_000, fetch: () => new Response("occupied") });
+    try {
+      const host = await harness.startHost();
+      await host.waitForLog(/falling back to an ephemeral port/);
+      const health = await waitForGatewayHealth(port, (h) => h.children.some((child) => child.ready));
+      expect(health.children.some((child) => child.ready)).toBe(true);
+      expect(host.proc.killed).toBe(false);
+    } finally {
+      blocker.stop(true);
     }
   });
 

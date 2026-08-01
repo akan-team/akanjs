@@ -1,5 +1,5 @@
-import path from "node:path";
 import { rm } from "node:fs/promises";
+import path from "node:path";
 import type {
   AppConfigResult,
   AppScanResult,
@@ -71,6 +71,7 @@ const appRootAllowedDirs = new Set([
   "srvkit",
   "webkit",
   "common",
+  "secrets",
 ]);
 const libRootAllowedFiles = new Set([
   "cnst.ts",

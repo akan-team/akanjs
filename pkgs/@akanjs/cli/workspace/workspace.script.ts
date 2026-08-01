@@ -2,8 +2,10 @@ import path from "node:path";
 import { AppExecutor, type Exec, LibExecutor, PkgExecutor, script, type Workspace } from "@akanjs/devkit";
 import { Logger } from "akanjs/common";
 
+import { AgentScript } from "../agent/agent.script";
 import { ApplicationScript } from "../application/application.script";
 import { CloudScript } from "../cloud/cloud.script";
+import { ContextScript } from "../context/context.script";
 import { LibraryScript } from "../library/library.script";
 import { PackageScript } from "../package/package.script";
 import { WorkspaceRunner } from "./workspace.runner";
@@ -14,6 +16,8 @@ export class WorkspaceScript extends script("workspace", [
   LibraryScript,
   PackageScript,
   CloudScript,
+  ContextScript,
+  AgentScript,
 ]) {
   async createWorkspace(
     repoName: string,
@@ -24,7 +28,17 @@ export class WorkspaceScript extends script("workspace", [
       init = true,
       registryUrl,
       owner,
-    }: { dirname?: string; installLibs?: boolean; init?: boolean; registryUrl?: string; owner?: string | null },
+      mcpInstall = true,
+      agentInstall = true,
+    }: {
+      dirname?: string;
+      installLibs?: boolean;
+      init?: boolean;
+      registryUrl?: string;
+      owner?: string | null;
+      mcpInstall?: boolean;
+      agentInstall?: boolean;
+    },
   ) {
     const akanVersion = await this.packageScript.version(null, { log: false });
     const workspace = await this.workspaceRunner.createWorkspace(repoName, appName, {
@@ -45,6 +59,8 @@ export class WorkspaceScript extends script("workspace", [
       dict: { appName },
       options: { libs: installLibs ? ["util", "shared"] : [] },
     });
+    if (agentInstall) await this.agentScript.agent(workspace, "install", "all", { force: true });
+    if (mcpInstall) await this.contextScript.mcpInstall(workspace, "all", { force: true });
     const gitSpinner = workspace.spinning("Initializing git repository and commit...");
     try {
       await workspace.commit("Initial commit", { init: true });

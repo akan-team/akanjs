@@ -259,6 +259,9 @@ export const dictionary = serviceDictionary(["en", "ko"])
       env: {
         ...process.env,
         AKAN_VERBOSE: "1",
+        // The dev-plan/hmr assertions match verbose-level Logger lines; without this the log
+        // stream only carries info/warn/error and those waits time out with empty tails.
+        AKAN_PUBLIC_LOG_LEVEL: "verbose",
         NODE_NO_WARNINGS: "1",
         PORT_OFFSET: String(this.portOffset),
       },
@@ -422,9 +425,21 @@ export const dictionary = serviceDictionary(["en", "ko"])
   }
 
   async resolvePort(): Promise<number> {
-    const apps = await readdir(path.join(this.workspaceRoot, "apps")).catch(() => []);
-    const appIndex = Math.max([...new Set([...apps, this.appName])].sort().indexOf(this.appName), 0);
-    return 8282 + appIndex + this.portOffset;
+    // Mirror the CLI's `getDevPort()` exactly (apps = directories containing akan.config.ts,
+    // locale-sorted): counting stray entries like .DS_Store would put us one port off the gateway.
+    const appsDir = path.join(this.workspaceRoot, "apps");
+    const entries = await readdir(appsDir, { withFileTypes: true }).catch(() => []);
+    const checked = await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory())
+        .map(async (entry) =>
+          (await Bun.file(path.join(appsDir, entry.name, "akan.config.ts")).exists()) ? entry.name : null,
+        ),
+    );
+    const apps = [...new Set([...checked.filter((name): name is string => name !== null), this.appName])].sort((a, b) =>
+      a.localeCompare(b),
+    );
+    return 8282 + Math.max(apps.indexOf(this.appName), 0) + this.portOffset;
   }
 }
 

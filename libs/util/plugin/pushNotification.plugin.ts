@@ -66,7 +66,7 @@ const configurePushNative = async (ctx: AkanNativeContext) => {
 export const pushNotificationPlugin: AkanPlugin = {
   name: "push-notification",
   // firebase is only needed when a mobile target actually requests push.
-  runtimePackages: (ctx) => (ctx.hasMobilePermission("push") ? ["firebase"] : []),
+  runtimePackages: (ctx) => (ctx.hasMobilePermission("push") ? ["firebase", "@capacitor-community/fcm"] : []),
   capacitor: {
     permission: "push",
     configureNative: configurePushNative,

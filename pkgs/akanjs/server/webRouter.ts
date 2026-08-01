@@ -584,6 +584,7 @@ export class WebRouter {
             importmap: this.#artifact.vendorMap,
             theme: themeCookieExists ? undefined : (rscResult.theme ?? "system"),
             lateControl: rscResult.lateControl,
+            waitForAllReady: rscResult.trace?.ssrBlocking ?? false,
             onCancel: (reason: unknown) => {
               rscResult.cancel(reason);
             },

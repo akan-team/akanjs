@@ -44,6 +44,7 @@ rule changes, update it here and mirror it into the matching `.cursor/rules/*.md
 - Write TypeScript tests with Bun's test runner and import `describe`, `expect`, and `test` from `bun:test`.
 - Keep tests colocated with the source they cover using `*.test.ts` or `*.spec.ts`, following the existing nearby pattern.
 - Prefer focused behavior tests for public contracts and edge cases over implementation-detail assertions.
+- Run package suites with `bun run akan test <pkg>` from the repo root, or `cd <pkg> && bun test --isolate`. Plain `bun test` without `--isolate` shares one global object across test files and fails dozens of tests from cross-file state pollution (`bunfig.toml` `[test] isolate` is not honored as of Bun 1.3), and running `bun test` from the repo root breaks subprocess stdio pipes.
 
 ## TypeScript And Imports (`**/*.{ts,tsx}`)
 

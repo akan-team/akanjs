@@ -142,6 +142,7 @@
         "!**/*.test.tsx",
         "!**/*.spec.ts",
         "!**/*.spec.tsx",
+        "!**/*.constant.ts",
         "!**/common/**"
       ],
       "plugins": ["./node_modules/@akanjs/devkit/lint/no-throw-raw-error.grit"]

@@ -44,6 +44,7 @@ export class BaseStore extends store("base" as const, () => ({
     bottomInset: 0,
     gesture: true,
     cache: false,
+    ssr: "stream",
     topSafeAreaColor: "var(--color-background, Canvas)",
     bottomSafeAreaColor: "var(--color-background, Canvas)",
   } as PageState,

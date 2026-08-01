@@ -601,12 +601,19 @@ export class SsrFromRscRenderer {
       ? `${SsrFromRscRenderer.#clientBootstrap}\n${input.extraBootstrapInline}`
       : SsrFromRscRenderer.#clientBootstrap;
 
+    // Default to shell-first streaming: `renderToReadableStream` resolves once
+    // the shell (everything outside Suspense, including any `Loading` fallback)
+    // is ready, and rejects if the shell itself errors — so shell-scoped
+    // redirects/errors are still catchable before a byte is sent. Only `block`
+    // routes await `allReady`, buffering the whole document (which suppresses the
+    // fallback) so a non-redirect error in slow content can yield a clean page.
+    const waitForAllReady = input.waitForAllReady || process.env.AKAN_SSR_WAIT_FOR_ALL_READY === "1";
     const renderHtml = async () => {
       const root = await thenable;
       const stream = await renderToReadableStream(root, {
         bootstrapScriptContent: bootstrap,
       });
-      await stream.allReady;
+      if (waitForAllReady) await stream.allReady;
       return stream;
     };
     const requestContext = input.requestStore ?? input.request;

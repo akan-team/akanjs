@@ -52,9 +52,39 @@ const WORKSPACE_BARREL_FACETS = ["ui", "webkit", "common", "client", "server"] a
 const SSR_RUNTIME_PACKAGES = ["react", "react-dom", "react-server-dom-webpack"] as const;
 const NATIVE_RUNTIME_PACKAGES = ["sharp"] as const;
 const DEFAULT_BACKEND_RUNTIME_PACKAGES = ["croner"] as const;
-// Native-only client packages that are not bundled into the base bootstrap; installed
-// on demand when a mobile target is built or started (e.g. firebase for push tokens).
-const MOBILE_RUNTIME_PACKAGES = ["firebase"] as const;
+// The firebase client (push tokens) and the Capacitor toolchain — `@capacitor/cli` (`npx cap`),
+// `@capacitor/assets` (`npx @capacitor/assets`) plus the `@capacitor/core`/`ios`/`android` runtime
+// and native-platform packages that `npx cap add`/`sync` resolve from the workspace node_modules.
+// All are declared only as optional peers, so a fresh workspace never auto-installs them; the mobile
+// preflight installs them (together with MOBILE_APP_CAPACITOR_PLUGINS) at the workspace root.
+const MOBILE_RUNTIME_PACKAGES = [
+  "@capacitor/cli",
+  "@capacitor/core",
+  "@capacitor/ios",
+  "@capacitor/android",
+  "@capacitor/assets",
+] as const;
+// Capacitor plugins that must additionally be declared in the *app's* package.json
+// (apps/<app>/package.json): `npx cap sync` discovers plugins by scanning the app directory's
+// dependencies and registers their native code into the iOS/Android projects; packages present only
+// at the workspace root are never registered, so the JS bridge throws
+// `Capacitor plugin "Device" is not available.` at runtime. They are installed at the workspace root
+// alongside MOBILE_RUNTIME_PACKAGES (pinned via optional peers) and declared in the app with a "*"
+// range so bun dedupes them to that hoisted version instead of pinning a second source of truth.
+const MOBILE_APP_CAPACITOR_PLUGINS = [
+  "@capacitor/app",
+  "@capacitor/browser",
+  "@capacitor/camera",
+  "@capacitor/core",
+  "@capacitor/device",
+  "@capacitor/geolocation",
+  "@capacitor/haptics",
+  "@capacitor/inappbrowser",
+  "@capacitor/keyboard",
+  "@capacitor/preferences",
+  "@capacitor/push-notifications",
+  "capacitor-plugin-safe-area",
+] as const;
 const DATABASE_MODE_RUNTIME_PACKAGES = {
   single: [],
   multiple: ["@libsql/client", "bullmq", "ioredis", "protobufjs"],
@@ -92,6 +122,21 @@ const normalizeStringList = (values: string[] | undefined) => {
   const normalized = values?.map((value) => value.trim()).filter(Boolean) ?? [];
   return normalized.length > 0 ? [...new Set(normalized)] : undefined;
 };
+
+// Reduce a free-form name to a valid reverse-DNS / Android package segment: lowercase, alphanumerics
+// only (hyphens/spaces dropped), never empty, never starting with a digit.
+const sanitizeAppIdSegment = (value: string): string => {
+  const cleaned = value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (!cleaned) return "app";
+  return /^[a-z]/.test(cleaned) ? cleaned : `app${cleaned}`;
+};
+
+// The default mobile bundle id for an app that has not pinned `mobile.appId`. Uses the workspace
+// (repo) name as the org segment so the default is far less collision-prone than a bare
+// `com.<appName>.app`, which Apple's portal routinely already has claimed. Apps that ship pin an
+// explicit appId, so this only affects unconfigured/dev apps.
+export const deriveDefaultAppId = (orgName: string, appName: string): string =>
+  `com.${sanitizeAppIdSegment(orgName)}.${sanitizeAppIdSegment(appName)}`;
 
 const normalizeDeepLinkDomain = (domain: string) => {
   const normalized = domain.trim();
@@ -134,6 +179,8 @@ export class AkanAppConfig implements AppConfigResult {
   i18n: AkanI18nConfig;
   publicEnv: string[];
   mobile: AkanMobileConfig;
+  /** True only when the app's akan.config.ts explicitly declares a `mobile` section (vs. the synthesized default). */
+  hasMobileConfig: boolean;
   secrets: string[];
   baseDevEnv: BaseDevEnv;
   libs: string[];
@@ -172,6 +219,7 @@ export class AkanAppConfig implements AppConfigResult {
     process.env.AKAN_PUBLIC_LOCALES = this.i18n.locales.join(",");
     this.publicEnv = (config?.publicEnv as string[] | undefined) ?? ([] as string[]);
     this.secrets = (config?.secrets as string[] | undefined) ?? ([] as string[]);
+    this.hasMobileConfig = Boolean(config.mobile);
     this.mobile = this.#resolveMobileConfig(config.mobile);
     this.docker = this.#makeDockerContent(config?.docker ?? {});
   }
@@ -182,7 +230,7 @@ export class AkanAppConfig implements AppConfigResult {
       ...rawMobile
     } = (mobile ?? {}) as DeepPartial<AkanMobileConfig> & { indexPath?: unknown };
     const appName = rawMobile.appName ?? this.app.name;
-    const appId = rawMobile.appId ?? `com.${this.app.name}.app`;
+    const appId = rawMobile.appId ?? deriveDefaultAppId(this.baseDevEnv.repoName, this.app.name);
     const version = rawMobile.version ?? "0.0.1";
     const buildNum = rawMobile.buildNum ?? 1;
     const defaultTargetName = this.#defaultMobileTargetName(rawTargets);
@@ -339,9 +387,26 @@ CMD [${command.map((c) => `"${c}"`).join(",")}]`;
       command,
     };
   }
-  static async from(app: App) {
+  static #importGeneration = 0;
+  /**
+   * Bun caches dynamic imports by path, so a plain re-import after the user edits the config file
+   * returns the stale module. `bustImportCache` appends a fresh query string to force re-evaluation
+   * of the config module itself; modules it imports keep their cached instances.
+   */
+  static async importConfigModule<T = unknown>(
+    cwdPath: string,
+    { bustImportCache = false }: { bustImportCache?: boolean } = {},
+  ): Promise<T> {
+    const configPath = `${cwdPath}/akan.config.ts`;
+    const importPath = bustImportCache
+      ? `${configPath}?akanConfigGeneration=${++AkanAppConfig.#importGeneration}`
+      : configPath;
+    return (await import(importPath).then((mod: { default: T }) => mod.default)) as T;
+  }
+
+  static async from(app: App, { bustImportCache = false }: { bustImportCache?: boolean } = {}) {
     const [configImp, baseDevEnv, libs, rootPackageJson] = await Promise.all([
-      import(`${app.cwdPath}/akan.config.ts`).then((mod) => mod.default),
+      AkanAppConfig.importConfigModule(app.cwdPath, { bustImportCache }),
       WorkspaceExecutor.getBaseDevEnv(path.join(app.workspace.workspaceRoot, ".env")),
       app.workspace.getLibs(),
       app.workspace.getPackageJson(),
@@ -375,10 +440,15 @@ CMD [${command.map((c) => `"${c}"`).join(",")}]`;
     return this.#getMissingDependencySpecs(this.getDatabaseModeRuntimePackages(databaseMode));
   }
   getMobileRuntimePackages() {
-    return [...MOBILE_RUNTIME_PACKAGES];
+    // The app Capacitor plugins are installed at the workspace root too, so bun can resolve the
+    // app's "*" declarations to a hoisted, peer-pinned version instead of fetching latest.
+    return [...new Set([...MOBILE_RUNTIME_PACKAGES, ...MOBILE_APP_CAPACITOR_PLUGINS])];
   }
   getMissingMobileDependencySpecs() {
     return this.#getMissingDependencySpecs(this.getMobileRuntimePackages());
+  }
+  getMobileAppCapacitorPlugins() {
+    return [...MOBILE_APP_CAPACITOR_PLUGINS];
   }
   #getMissingDependencySpecs(libs: readonly string[]) {
     const rootDependencies = {

@@ -34,6 +34,8 @@ export interface IosRunTarget {
   name: string;
   kind: IosRunTargetKind;
   state?: string;
+  /** Display runtime for simulators, e.g. "iOS 18.2". Undefined for physical devices. */
+  runtime?: string;
   devicectlId?: string;
   xcodebuildId?: string;
 }
@@ -56,7 +58,12 @@ export type IosRunFailureKind =
   | "device-registration"
   | "device-state"
   | "devicectl-unavailable"
+  | "simulator-runtime"
   | "unknown";
+
+// Recent iOS SDKs (iOS 18+) split SwiftUI into a SwiftUICore dylib that does not exist on older
+// runtimes, so an app built against them dyld-crashes at launch on an iOS <18 simulator/device.
+export const SWIFTUICORE_MIN_IOS_MAJOR = 18;
 
 export interface IosRunFailureClassification {
   kind: IosRunFailureKind;
@@ -113,15 +120,75 @@ interface MaterializeCapacitorConfigOptions {
   localIp?: string;
 }
 
-const getLocalIP = () => {
-  const interfaces = os.networkInterfaces();
-  for (const iface of Object.values(interfaces)) {
-    if (!iface) continue;
-    for (const alias of iface) {
-      if (alias.family === "IPv4" && !alias.internal) return alias.address;
+export interface LocalDevHostResolution {
+  host: string;
+  source: "override" | "detected" | "loopback";
+  candidates: { name: string; address: string }[];
+}
+
+// Interface-name prefixes that are almost never the routable LAN NIC a physical device can reach:
+// bridges (Thunderbolt/USB), tunnels, AirDrop/awrl, VM/container virtual adapters.
+const virtualInterfacePrefixes = [
+  "bridge",
+  "utun",
+  "llw",
+  "awdl",
+  "ap",
+  "vmnet",
+  "vnic",
+  "tap",
+  "tun",
+  "docker",
+  "veth",
+  "vboxnet",
+  "gif",
+  "stf",
+];
+const physicalInterfacePrefixes = ["en", "eth", "wlan", "wlp", "enp", "eno", "wlo"];
+
+const isPrivateLanIpv4 = (address: string): boolean => {
+  if (address.startsWith("10.") || address.startsWith("192.168.")) return true;
+  const secondOctet = Number(address.match(/^172\.(\d+)\./)?.[1]);
+  return Number.isFinite(secondOctet) && secondOctet >= 16 && secondOctet <= 31;
+};
+
+// Higher = more likely to be the reachable LAN address. Link-local (169.254) is never routable;
+// virtual/bridge interfaces are demoted below real NICs; private-LAN ranges get a small boost.
+const scoreDevHostCandidate = (name: string, address: string): number => {
+  const lowerName = name.toLowerCase();
+  let score = 0;
+  if (address.startsWith("169.254.")) score -= 1000;
+  if (virtualInterfacePrefixes.some((prefix) => lowerName.startsWith(prefix))) score -= 100;
+  else if (physicalInterfacePrefixes.some((prefix) => lowerName.startsWith(prefix))) score += 100;
+  if (isPrivateLanIpv4(address)) score += 10;
+  return score;
+};
+
+// Pick the dev-server host a physical device should connect to. An explicit override always wins;
+// otherwise rank non-internal IPv4 interfaces so a down/virtual interface (e.g. an inactive
+// Thunderbolt bridge enumerated first) never shadows a real LAN NIC. Deterministic tie-break.
+export const selectLocalDevHost = (
+  interfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]>,
+  { override }: { override?: string } = {},
+): LocalDevHostResolution => {
+  const candidates: { name: string; address: string }[] = [];
+  for (const [name, aliases] of Object.entries(interfaces)) {
+    for (const alias of aliases ?? []) {
+      if (alias.family !== "IPv4" || alias.internal) continue;
+      candidates.push({ name, address: alias.address });
     }
   }
-  return "127.0.0.1";
+  const trimmedOverride = override?.trim();
+  if (trimmedOverride) return { host: trimmedOverride, source: "override", candidates };
+  const [best] = [...candidates].sort(
+    (a, b) =>
+      scoreDevHostCandidate(b.name, b.address) - scoreDevHostCandidate(a.name, a.address) ||
+      a.name.localeCompare(b.name) ||
+      a.address.localeCompare(b.address),
+  );
+  return best
+    ? { host: best.address, source: "detected", candidates }
+    : { host: "127.0.0.1", source: "loopback", candidates };
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -146,6 +213,38 @@ const dedupeIosRunTargets = (targets: IosRunTarget[]) => {
   }
   return [...byKey.values()];
 };
+
+// Normalize a simctl runtime — either the JSON key ("com.apple.CoreSimulator.SimRuntime.iOS-18-2")
+// or a per-device `runtimeIdentifier` / text header ("iOS 18.2") — into a "iOS 18.2" display string.
+const formatSimctlRuntime = (key?: string): string | undefined => {
+  if (!key) return undefined;
+  if (/^(iOS|watchOS|tvOS|visionOS)\s+[\d.]+$/i.test(key)) return key;
+  const match = key.match(/(iOS|watchOS|tvOS|visionOS)-(\d+)(?:-(\d+))?/i);
+  if (!match) return undefined;
+  return `${match[1]} ${match[2]}${match[3] ? `.${match[3]}` : ""}`;
+};
+
+// Extract the major OS version from a runtime display string ("iOS 18.2" → 18). Undefined for
+// physical devices (no runtime) or unparseable values.
+export const parseIosRuntimeMajor = (runtime?: string): number | undefined => {
+  const major = runtime?.match(/(\d+)/)?.[1];
+  if (major === undefined) return undefined;
+  const parsed = Number.parseInt(major, 10);
+  return Number.isNaN(parsed) ? undefined : parsed;
+};
+
+// Rank for default-target ordering: ready targets (booted simulator / connected device) first, then
+// physical devices, then newer simulator runtimes. Fixes the old ascending-runtime order that made a
+// stale iOS 17.x simulator the default pick.
+const iosRunTargetRank = (target: IosRunTarget): number => {
+  const state = target.state?.toLowerCase() ?? "";
+  const ready = state.includes("booted") || state.includes("connected") || state.includes("available") ? 1000 : 0;
+  const device = target.kind === "device" ? 500 : 0;
+  return ready + device + (parseIosRuntimeMajor(target.runtime) ?? 0);
+};
+
+export const sortIosRunTargets = (targets: IosRunTarget[]): IosRunTarget[] =>
+  [...targets].sort((a, b) => iosRunTargetRank(b) - iosRunTargetRank(a) || a.name.localeCompare(b.name));
 
 function walkRecords(value: unknown, visit: (record: Record<string, unknown>) => void) {
   if (Array.isArray(value)) {
@@ -202,22 +301,36 @@ export function parseSimctlDevices(output: string): IosRunTarget[] {
   try {
     const json = JSON.parse(output) as { devices?: Record<string, unknown[]> };
     const devices = json.devices ?? {};
-    return Object.values(devices)
-      .flatMap((runtimeDevices) => runtimeDevices)
-      .filter(isRecord)
-      .flatMap((device) => {
+    return Object.entries(devices).flatMap(([runtimeKey, list]) => {
+      const runtime = formatSimctlRuntime(runtimeKey);
+      return (Array.isArray(list) ? list : []).filter(isRecord).flatMap((device) => {
         const id = firstString(device.udid, device.UDID, device.identifier);
         const name = firstString(device.name, device.displayName);
         const isAvailable = device.isAvailable !== false && device.availabilityError === undefined;
         if (!id || !name || !isAvailable) return [];
-        return [{ id, name, kind: "simulator" as const, state: asString(device.state) }];
+        return [
+          {
+            id,
+            name,
+            kind: "simulator" as const,
+            state: asString(device.state),
+            runtime: runtime ?? formatSimctlRuntime(asString(device.runtimeIdentifier)),
+          },
+        ];
       });
+    });
   } catch {
     const targets: IosRunTarget[] = [];
+    let runtime: string | undefined;
     for (const line of output.split(/\r?\n/)) {
+      const header = line.match(/^--\s*(.+?)\s*--\s*$/);
+      if (header) {
+        runtime = formatSimctlRuntime(header[1]);
+        continue;
+      }
       const match = line.match(/^\s*(.+?)\s+\(([0-9A-Fa-f-]{20,})\)\s+\(([^)]+)\)/);
       if (!match) continue;
-      targets.push({ id: match[2], name: match[1].trim(), kind: "simulator", state: match[3] });
+      targets.push({ id: match[2], name: match[1].trim(), kind: "simulator", state: match[3], runtime });
     }
     return targets;
   }
@@ -260,6 +373,16 @@ export function buildIosNativeRunCommand({
 
 export function classifyIosRunFailure(log: string): IosRunFailureClassification {
   const lower = log.toLowerCase();
+  if (
+    lower.includes("swiftuicore") &&
+    (lower.includes("library not loaded") || lower.includes("library missing") || lower.includes("dyld"))
+  ) {
+    return {
+      kind: "simulator-runtime",
+      title: "App crashed loading SwiftUICore — the iOS runtime is too old.",
+      detail: `The build links SwiftUICore, which only exists on iOS ${SWIFTUICORE_MIN_IOS_MAJOR}+. Rerun on an iOS ${SWIFTUICORE_MIN_IOS_MAJOR} or newer simulator/device (pass --device to pick one non-interactively).`,
+    };
+  }
   if (lower.includes("unknown argument: '-index-store-path'") || lower.includes("compiler was not recognized")) {
     return {
       kind: "compiler-toolchain",
@@ -379,6 +502,24 @@ export function sanitizeIosNativeRunEnv(env: MobileCommandEnv): MobileCommandEnv
   return Object.fromEntries(Object.entries(env).filter(([key]) => !iosNativeBlockedEnvKeys.has(key)));
 }
 
+// Bundle IDs that ship as scaffold placeholders (or use an obviously generic org segment) and are
+// almost always already claimed on Apple's developer portal, so device signing fails with
+// "cannot be registered to your development team". A unique reverse-DNS id fixes it.
+export const PLACEHOLDER_APP_IDS = [
+  "com.myapp.app",
+  "com.myorg.myapp",
+  "com.example.app",
+  "com.example.myapp",
+] as const;
+const placeholderAppIdSegment = /^(example|examples|myorg|myapp|mycompany|myorganization|changeme|todo|sample|test)$/;
+
+export const isPlaceholderAppId = (appId: string | null | undefined): boolean => {
+  const normalized = appId?.trim().toLowerCase() ?? "";
+  if (!normalized) return true;
+  if ((PLACEHOLDER_APP_IDS as readonly string[]).includes(normalized)) return true;
+  return normalized.split(".").some((segment) => placeholderAppIdSegment.test(segment));
+};
+
 const androidReleaseSigningKeys = [
   "MYAPP_RELEASE_STORE_FILE",
   "MYAPP_RELEASE_STORE_PASSWORD",
@@ -422,6 +563,15 @@ export function getAdbDeviceStateIssues(output: string) {
       if (state === "offline") return [`Android device ${id} is offline. Reconnect the device or restart adb.`];
       return [];
     });
+}
+
+export const ANDROID_MIN_SDK_VERSION = 26;
+export function raiseGradleMinSdkVersion(content: string, floor: number = ANDROID_MIN_SDK_VERSION): string | null {
+  const match = content.match(/minSdkVersion\s*=\s*(\d+)/);
+  if (!match?.[1]) return null;
+  const current = Number.parseInt(match[1], 10);
+  if (Number.isNaN(current) || current >= floor) return null;
+  return content.replace(/(minSdkVersion\s*=\s*)\d+/, `$1${floor}`);
 }
 
 const mergeAllowNavigation = (configured: unknown, localIp: string | undefined) => {
@@ -642,22 +792,46 @@ export class CapacitorApp {
   }
 
   async #selectIosRunTarget(deviceId?: string) {
-    const targets = await this.#loadIosRunTargets();
+    const targets = sortIosRunTargets(await this.#loadIosRunTargets());
     if (deviceId) {
-      const found = targets.find((target) => target.id === deviceId);
-      if (!found) throw new Error(`iOS run target '${deviceId}' was not found.`);
+      const needle = deviceId.toLowerCase();
+      const found =
+        targets.find((target) => target.id === deviceId) ??
+        targets.find((target) => target.name.toLowerCase() === needle) ??
+        targets.find(
+          (target) =>
+            target.name.toLowerCase().includes(needle) ||
+            target.id.toLowerCase().includes(needle) ||
+            (target.runtime?.toLowerCase().includes(needle) ?? false),
+        );
+      if (!found) {
+        const available = targets.map((t) => `${t.name}${t.runtime ? ` (${t.runtime})` : ""}`).join(", ") || "none";
+        throw new Error(`iOS run target '${deviceId}' was not found. Available: ${available}`);
+      }
+      this.#warnIfLegacySimulatorRuntime(found);
       return found;
     }
     if (targets.length === 0) {
       throw new Error("No iOS run targets found. Open Simulator or connect an iPhone, then retry.");
     }
-    return await select<IosRunTarget>({
+    const selected = await select<IosRunTarget>({
       message: "Select iOS run target",
       choices: targets.map((target) => ({
-        name: `[${target.kind}] ${target.name}${target.state ? ` (${target.state})` : ""}`,
+        name: `[${target.kind}] ${target.name}${target.runtime ? ` — ${target.runtime}` : ""}${target.state ? ` (${target.state})` : ""}`,
         value: target,
       })),
     });
+    this.#warnIfLegacySimulatorRuntime(selected);
+    return selected;
+  }
+
+  #warnIfLegacySimulatorRuntime(target: IosRunTarget) {
+    if (target.kind !== "simulator") return;
+    const major = parseIosRuntimeMajor(target.runtime);
+    if (major === undefined || major >= SWIFTUICORE_MIN_IOS_MAJOR) return;
+    this.app.logger.warn(
+      `Selected simulator runs ${target.runtime ?? "an older iOS"}. Recent SDK builds link SwiftUICore and require iOS ${SWIFTUICORE_MIN_IOS_MAJOR}+; if the app crashes at launch with a "Library not loaded: SwiftUICore" dyld error, pick an iOS ${SWIFTUICORE_MIN_IOS_MAJOR}+ simulator instead.`,
+    );
   }
 
   async #loadIosRunTargets() {
@@ -766,6 +940,7 @@ export class CapacitorApp {
     await this.#prepareTargetAssets();
     await this.#prepareExternalFiles("android");
     await this.#applyAndroidMetadata();
+    await this.#applyAndroidMinSdkVersion();
     await this.#applyPermissions({ operation, env });
     await this.#applyDeepLinks("android", { operation, env });
     await this.project.commit();
@@ -927,7 +1102,13 @@ export class CapacitorApp {
   }
   async #writeCapacitorConfig({ operation }: Pick<RunConfig, "operation">, commandEnv: MobileCommandEnv) {
     await mkdir(this.targetRoot, { recursive: true });
-    const localIp = operation === "local" ? getLocalIP() : undefined;
+    let localIp: string | undefined;
+    if (operation === "local") {
+      const override = commandEnv.AKAN_PUBLIC_CLIENT_HOST ?? process.env.AKAN_PUBLIC_CLIENT_HOST;
+      const resolution = selectLocalDevHost(os.networkInterfaces(), { override });
+      localIp = resolution.host;
+      this.#logDevHostResolution(resolution, commandEnv);
+    }
     const config = materializeCapacitorConfig(this.target, {
       operation,
       localIp,
@@ -936,6 +1117,21 @@ export class CapacitorApp {
     const content = `${JSON.stringify(config, null, 2)}\n`;
     await Bun.write(path.join(this.targetRoot, "capacitor.config.json"), content);
     return content;
+  }
+  // Surface the live-reload URL a physical device must reach, and warn when auto-detection landed on
+  // a likely-unreachable host so a blank WebView is not mistaken for an app bug.
+  #logDevHostResolution(resolution: LocalDevHostResolution, commandEnv: MobileCommandEnv) {
+    this.app.log(`Mobile live-reload server: ${this.#localCsrUrl(resolution.host, commandEnv)}`);
+    if (resolution.source === "override") return;
+    const suspicious = resolution.host === "127.0.0.1" || resolution.host.startsWith("169.254.");
+    const alternatives = resolution.candidates.filter((candidate) => candidate.address !== resolution.host);
+    if (!suspicious && alternatives.length === 0) return;
+    const alternativeText = alternatives.length
+      ? ` Other interfaces: ${alternatives.map((candidate) => `${candidate.address} (${candidate.name})`).join(", ")}.`
+      : "";
+    this.app.logger.warn(
+      `A physical device must reach ${resolution.host} on your LAN.${suspicious ? " That address looks non-routable." : ""}${alternativeText} If the device shows a blank screen, pin the right one with AKAN_PUBLIC_CLIENT_HOST=<ip>.`,
+    );
   }
   async #prepareTargetAssets() {
     if (!this.target.assets) return;
@@ -991,6 +1187,14 @@ export class CapacitorApp {
     await this.project.android.setPackageName(this.target.appId);
     await this.project.android.setVersionCode(this.target.buildNum);
     await this.project.android.setAppName(this.target.appName);
+  }
+  async #applyAndroidMinSdkVersion() {
+    const variablesGradlePath = path.join(this.app.cwdPath, this.androidRootPath, "variables.gradle");
+    if (!(await Bun.file(variablesGradlePath).exists())) return;
+    const updated = raiseGradleMinSdkVersion(await Bun.file(variablesGradlePath).text());
+    if (!updated) return;
+    await writeFile(variablesGradlePath, updated);
+    this.app.verbose(`Raised Android minSdkVersion to ${ANDROID_MIN_SDK_VERSION} in variables.gradle`);
   }
   async #applyPermissions({ operation, env }: Pick<RunConfig, "operation" | "env">) {
     const plugins = await this.app.collectPlugins();
