@@ -28,6 +28,7 @@ export * from "./incrementalBuilder";
 export * from "./mobile";
 export * from "./prompter";
 export * from "./qualityScanner";
+export * from "./recipeScanner";
 export * from "./scanInfo";
 export * from "./selectModel";
 export * from "./spinner";

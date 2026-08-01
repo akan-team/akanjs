@@ -1,4 +1,12 @@
-import { AkanContextAnalyzer, Prompter, runner, type Workspace } from "@akanjs/devkit";
+import {
+  AkanContextAnalyzer,
+  Prompter,
+  type RecipeInfo,
+  type RecipeSource,
+  runner,
+  scanRecipes,
+  type Workspace,
+} from "@akanjs/devkit";
 
 type AgentTarget = "cursor" | "agents-md" | "claude";
 
@@ -57,14 +65,55 @@ Keep a sample only while you are still learning its pattern; delete it once your
 `;
 };
 
+// The always-present recipe index. Recipes are Tailwind-variant look factories authored in each app/lib's
+// `ui/Recipe.ts`; consumers hallucinate their names/imports when those aren't in context. Listing them here (loaded
+// via CLAUDE.md → @AGENTS.md) grounds consumption with zero tool calls. Compact by design — names + import + one-line
+// doc, no variant surface (variants are typed, so tsc catches variant mistakes). Empty string when none exist.
+const renderRecipeIndex = async (workspace: Workspace, appNames: string[], libNames: string[]) => {
+  const sources: RecipeSource[] = [];
+  const collect = async (path: string, importFrom: string) => {
+    if (!(await workspace.exists(path))) return;
+    const content = await workspace.readFile(path).catch(() => "");
+    if (content) sources.push({ path, content, importFrom });
+  };
+  for (const name of appNames) await collect(`apps/${name}/ui/Recipe.ts`, `@apps/${name}/ui`);
+  for (const name of libNames) await collect(`libs/${name}/ui/Recipe.ts`, `@libs/${name}/ui`);
+
+  const recipes = scanRecipes(sources);
+  if (recipes.length === 0) return "";
+  const groups = new Map<string, RecipeInfo[]>();
+  for (const recipe of recipes) groups.set(recipe.importFrom, [...(groups.get(recipe.importFrom) ?? []), recipe]);
+  const blocks = [...groups.entries()].map(([importFrom, list]) => {
+    const items = list
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((recipe) => `- \`${recipe.name}\`${recipe.doc ? ` — ${recipe.doc}` : ""}`)
+      .join("\n");
+    return `Import from \`${importFrom}\`:\n${items}`;
+  });
+  return `## Recipes
+
+Available UI recipes (Tailwind-variant look factories). Consume by exact name — \`import { <name> } from "<import path>"\`,
+then \`<name>(variants?, className?)\`. Do not guess recipe names or import paths; use the list below. Variant options are
+typed (\`Parameters<typeof <name>>[0]\`), so tsc reports variant mistakes. **Before inlining a repeated surface (card, box,
+tile, …): reuse a recipe below, or add one to \`apps/<app>/ui/Recipe.ts\` — never re-implement the same look inline in
+several places, and never author a near-duplicate.** Full authoring/consumption policy: the \`recipeRule\` guideline.
+
+${blocks.join("\n\n")}
+
+`;
+};
+
 // The generated, workspace-derived section. It is the only part of AGENTS.md that
 // `akan agent install` rewrites; everything outside the markers is preserved.
 const renderManagedBlock = async (workspace: Workspace) => {
   const context = await AkanContextAnalyzer.analyze(workspace);
   const frameworkGuide = await Prompter.getInstruction("framework");
-  const sampleCleanup = await renderSampleCleanup(
+  const appNames = context.apps.map((app) => app.name);
+  const sampleCleanup = await renderSampleCleanup(workspace, appNames);
+  const recipeIndex = await renderRecipeIndex(
     workspace,
-    context.apps.map((app) => app.name),
+    appNames,
+    context.libs.map((lib) => lib.name),
   );
   return `## Workspace
 
@@ -85,7 +134,7 @@ ${sampleCleanup}## Akan Module Abstracts
 Do not hand-edit generated Akan files such as ${context.generatedFiles.map((file) => `\`${file}\``).join(", ")}.
 If generated output is stale or broken, update the owning source file and run \`akan repair generated\` or \`akan sync <app-or-lib>\`.
 
-## MCP Workflow Policy
+${recipeIndex}## MCP Workflow Policy
 
 - Prefer Akan MCP workflows before direct source edits.
 - Direct source edits are denied when an allowlisted Akan workflow or repair tool can perform the change.
