@@ -27,20 +27,6 @@ export const panelRecipe = recipe(
 );
 export type PanelVariants = NonNullable<Parameters<typeof panelRecipe>[0]>;
 
-/** 보조 텍스트 — `text-foreground/NN text-*` 계열 통합. margin 은 호출부에서 붙인다. */
-export const mutedTextRecipe = recipe(
-  tv({
-    base: "",
-    variants: {
-      tone: { strong: "text-foreground/70", soft: "text-foreground/60", faint: "text-foreground/50" },
-      size: { xs: "text-xs", sm: "text-sm", base: "text-base" },
-      leading: { relaxed: "leading-relaxed", six: "leading-6", seven: "leading-7" },
-    },
-    defaultVariants: { tone: "strong", size: "sm" },
-  }),
-);
-export type MutedTextVariants = NonNullable<Parameters<typeof mutedTextRecipe>[0]>;
-
 /** 문서 불릿 리스트 — `list-disc space-y-2 pl-5`. */
 export const docsListRecipe = recipe(tv({ base: "list-disc space-y-2 pl-5" }));
 

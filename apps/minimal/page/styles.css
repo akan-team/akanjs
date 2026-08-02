@@ -4,6 +4,7 @@
 /* akanjs 기본 팔레트는 브랜드-중립(pkgs/akanjs/ui/styles.css). dark 변형·런타임 전환도 프레임워크 소유.
    이 앱은 자신의 레드 팔레트로 토큰만 override 한다. base-200/300 은 제거됐고
    그 값은 muted(#2a2a2a/#f5f5f5)·border(#3a3a3a/#e5e5e5)가 그대로 이어받는다. */
+   
 :root,
 [data-theme="dark"] {
   --background: #1a1a1a;
