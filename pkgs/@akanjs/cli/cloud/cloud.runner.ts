@@ -1,15 +1,8 @@
 import path from "node:path";
-import {
-  AiSession,
-  AppExecutor,
-  CloudApi,
-  GlobalConfig,
-  getDefaultHostConfig,
-  type RemoteEnvServerConfig,
-  runner,
-  type Workspace,
-  WorkspaceExecutor,
-} from "@akanjs/devkit";
+import { AiSession } from "@akanjs/devkit/aiEditor";
+import { CloudApi, GlobalConfig, getDefaultHostConfig, type RemoteEnvServerConfig } from "@akanjs/devkit/cloud";
+import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { AppExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
 import { confirm, input, select } from "@inquirer/prompts";
 import { Logger, sleep } from "akanjs/common";
 import chalk from "chalk";

@@ -1,19 +1,17 @@
+import { AkanContextAnalyzer } from "@akanjs/devkit/akanContext";
+import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import {
-  AkanContextAnalyzer,
   createRepairReport,
   generatedFilePathsForTarget,
   type RepairAction,
   type RepairReport,
   renderRepairReport,
-  runner,
   type WorkflowDiagnostic,
   type WorkflowFormat,
   type WorkflowValidationCommandExecutor,
-  type Workspace,
   writeGeneratedSyncState,
   writeWorkflowRunArtifact,
-} from "@akanjs/devkit";
-
+} from "@akanjs/devkit/workflow";
 export type RepairKind = RepairAction["kind"];
 
 const commandForShell = (command: string) => (command.startsWith("akan ") ? `bun run ${command}` : command);

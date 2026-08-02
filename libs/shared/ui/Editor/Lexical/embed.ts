@@ -11,9 +11,6 @@ export interface ResolvedEmbed {
   embedUrl: string;
 }
 
-const isHostOrSubdomainOf = (host: string, domain: string): boolean =>
-  host === domain || host.endsWith(`.${domain}`);
-
 /**
  * Resolves a user-pasted URL to a safe provider embed URL, or `null` when the
  * URL is unsafe, unsupported, or the provider is not in `allowedProviders`.
@@ -28,7 +25,7 @@ export const resolveEmbed = (rawUrl: string, allowedProviders: string[]): Resolv
   if (allowedProviders.includes("youtube")) {
     let id: string | null = null;
     if (host === "youtu.be") id = url.pathname.slice(1);
-    else if (isHostOrSubdomainOf(host, "youtube.com")) {
+    else if (host.endsWith("youtube.com")) {
       if (url.pathname === "/watch") id = url.searchParams.get("v");
       else if (url.pathname.startsWith("/embed/") || url.pathname.startsWith("/shorts/")) {
         id = url.pathname.split("/")[2] ?? null;
@@ -37,7 +34,7 @@ export const resolveEmbed = (rawUrl: string, allowedProviders: string[]): Resolv
     if (id) return { type: "youtube", embedUrl: `https://www.youtube.com/embed/${id}` };
   }
 
-  if (allowedProviders.includes("vimeo") && isHostOrSubdomainOf(host, "vimeo.com")) {
+  if (allowedProviders.includes("vimeo") && host.endsWith("vimeo.com")) {
     const id = url.pathname.split("/").filter(Boolean).pop();
     if (id && /^\d+$/.test(id)) return { type: "vimeo", embedUrl: `https://player.vimeo.com/video/${id}` };
   }

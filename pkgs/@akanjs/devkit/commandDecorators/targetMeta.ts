@@ -22,6 +22,24 @@ export const getTargetMetas = (command: CommandCls): TargetMeta[] => {
   return [...targetMetaMap.values()];
 };
 
+const camelToKebabCase = (str: string) => str.replace(/([A-Z])/g, "-$1").toLowerCase();
+
+/**
+ * CLI names a target answers to. Shared with the command-manifest generator so a lazily-loaded CLI
+ * resolves `argv[2]` to the same module that `runCommands` would have registered it under.
+ */
+export const getTargetCommandNames = (targetMeta: TargetMeta): string[] => {
+  const kebabKey = camelToKebabCase(targetMeta.key);
+  if (targetMeta.targetOption.short !== true) return [kebabKey];
+  return [
+    kebabKey,
+    kebabKey
+      .split("-")
+      .map((s) => s.slice(0, 1))
+      .join(""),
+  ];
+};
+
 export interface TargetOption {
   type: "public" | "cloud" | "dev";
   short?: string | true;

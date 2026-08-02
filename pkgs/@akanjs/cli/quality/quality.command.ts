@@ -1,5 +1,4 @@
-import { command, Workspace } from "@akanjs/devkit";
-
+import { command, Workspace } from "@akanjs/devkit/commandDecorators";
 import { QualityScript } from "./quality.script";
 
 export class QualityCommand extends command("quality", [QualityScript], ({ public: target }) => ({

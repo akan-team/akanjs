@@ -419,6 +419,9 @@ describe("CssCompiler", () => {
 
     const compiler = new CssCompiler({
       workspace: { workspaceRoot: root },
+      // The candidate cache lands under `<cwdPath>/.akan/cache`, so point it at this test's temp root
+      // rather than wherever the suite happens to run from.
+      cwdPath: root,
       getTsConfig: async () => ({ compilerOptions: { paths: {} } }),
     } as never);
     const css = await compiler.compileCss([cssPath], []);

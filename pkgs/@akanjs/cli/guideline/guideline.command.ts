@@ -1,5 +1,4 @@
-import { command, Workspace } from "@akanjs/devkit";
-
+import { command, Workspace } from "@akanjs/devkit/commandDecorators";
 import { GuidelineScript } from "./guideline.script";
 
 export class GuidelineCommand extends command("guideline", [GuidelineScript], ({ public: target }) => ({

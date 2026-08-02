@@ -1,4 +1,4 @@
-import type { SysExecutor } from "@akanjs/devkit";
+import type { SysExecutor } from "@akanjs/devkit/executors";
 import type { AppInfo, LibInfo } from "akanjs";
 
 interface Dict {

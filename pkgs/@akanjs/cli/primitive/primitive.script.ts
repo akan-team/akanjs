@@ -1,9 +1,10 @@
+import { type Sys, script, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { AppExecutor, LibExecutor, ModuleExecutor } from "@akanjs/devkit/executors";
 import {
   type AddEnumFieldInput,
   type AddFieldInput,
   type AddMutationInput,
   type AddSliceInput,
-  AppExecutor,
   addFieldUiPolicyForType,
   coerceFieldDefault,
   compactDiagnostics,
@@ -27,9 +28,7 @@ import {
   insertLightProjectionField,
   insertSignalFactoryEntry,
   insertTemplateField,
-  LibExecutor,
   lowerlize,
-  ModuleExecutor,
   moduleComponentName,
   moduleSourcePaths,
   nextActionsForTarget,
@@ -38,15 +37,12 @@ import {
   type PrimitiveGeneratedFile,
   type PrimitiveTargetInput,
   parseValues,
-  type Sys,
-  script,
   sourceFile,
   type UiSurface,
   validationCommandsForTarget,
   viaBuilderParameterName,
   type WorkflowDiagnostic,
-  type Workspace,
-} from "@akanjs/devkit";
+} from "@akanjs/devkit/workflow";
 import { capitalize } from "akanjs/common";
 import { ModuleScript } from "../module/module.script";
 

@@ -1,18 +1,15 @@
 import path from "node:path";
+import { type Exec, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { AppExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
+import { FileSys } from "@akanjs/devkit/fileSys";
 import {
-  AppExecutor,
   countBlocking,
-  type Exec,
-  FileSys,
   formatStyleContract,
-  type PackageJson,
-  runner,
   type StyleContractViolations,
-  StyleGuard,
-  ThemeValidator,
-  type Workspace,
-  WorkspaceExecutor,
-} from "@akanjs/devkit";
+} from "@akanjs/devkit/frontendBuild/styleContract";
+import { StyleGuard } from "@akanjs/devkit/frontendBuild/styleGuard";
+import { ThemeValidator } from "@akanjs/devkit/frontendBuild/themeValidator";
+import type { PackageJson } from "@akanjs/devkit/types";
 import { getLatestPackageVersion, getNpmRegistryUrl } from "../npmRegistry";
 
 const defaultWorkspacePeerDependencies = new Set([

@@ -1,4 +1,5 @@
-import { script, type WorkflowFormat, type Workspace } from "@akanjs/devkit";
+import { script, type Workspace } from "@akanjs/devkit/commandDecorators";
+import type { WorkflowFormat } from "@akanjs/devkit/workflow";
 import { Logger } from "akanjs/common";
 import { type RepairKind, RepairRunner } from "./repair.runner";
 

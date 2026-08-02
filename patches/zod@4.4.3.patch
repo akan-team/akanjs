@@ -1,0 +1,11 @@
+diff --git a/v4/classic/schemas.js b/v4/classic/schemas.js
+index 0000000000000000000000000000000000000000..0000000000000000000000000000000000000000 100644
+--- a/v4/classic/schemas.js
++++ b/v4/classic/schemas.js
+@@ -1,5 +1,5 @@
+ import * as core from "../core/index.js";
+-import { util } from "../core/index.js";
++import * as util from "../core/util.js";
+ import * as processors from "../core/json-schema-processors.js";
+ import { createStandardJSONSchemaMethod, createToJSONSchemaMethod } from "../core/to-json-schema.js";
+ import * as checks from "./checks.js";

@@ -1,11 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { ENDPOINT_META } from "akanjs/base";
+import { rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { type Dayjs, dayjs, ENDPOINT_META, ID } from "akanjs/base";
 import type { SchemaOf } from "akanjs/document";
 import {
+  type AkanJob,
   adapt,
   getDefaultInjectRegistry,
   getDefaultLiveRegistry,
+  getSolidConfig,
   SolidPubSub,
+  SolidQueue,
   type WebsocketAdaptor,
 } from "akanjs/service";
 import { internal } from "../../signal/internal";
@@ -525,7 +531,8 @@ describe("SignalResolver declaration contracts", () => {
       intervalFederation: builder.interval(1000, { serverMode: "federation", lock: false }).exec(() => {
         resolverOrder.push("intervalFederation");
       }),
-      processAll: builder.process(Boolean, { enabled: true }).exec(() => true),
+      processAll: builder.process(Boolean).exec(() => true),
+      processDisabled: builder.process(Boolean, { enabled: false }).exec(() => true),
     })) {}
     const internalInstance = Object.assign(new ScheduleInternal(), {
       schedule: makeFakeSchedule(),
@@ -535,11 +542,96 @@ describe("SignalResolver declaration contracts", () => {
     SignalResolver.resolveSchedule(ScheduleInternal, internalInstance, "federation");
 
     expect(internalInstance.schedule.calls.map((call) => call.method)).toEqual(["registerInit", "registerInterval"]);
+    // `process` defaults to enabled: placement is governed by serverMode/operationMode, not an extra opt-in flag.
     expect(internalInstance.queue.calls.map((call) => call.method)).toEqual(["registerProcessWorker"]);
+    expect(internalInstance.queue.calls[0]?.args[0]).toBe("processAll");
     expect(internalInstance.schedule.calls[1]).toMatchObject({
       method: "registerInterval",
       args: ["intervalFederation", 1000, expect.any(Function), { lock: false }],
     });
+  });
+
+  test("calls process workers with the declared msg args, then the job", async () => {
+    resetResolverOrder();
+    const execArgs: unknown[][] = [];
+    class ProcessInternal extends internal(serverResolverTestServiceModel, (builder) => ({
+      handleItem: builder
+        .process(Boolean)
+        .msg("itemId", ID)
+        .msg("at", Date)
+        .exec(((...args: unknown[]) => {
+          execArgs.push(args);
+          return true;
+        }) as never),
+    })) {}
+    const internalInstance = Object.assign(new ProcessInternal(), {
+      schedule: makeFakeSchedule(),
+      queue: makeFakeQueue(),
+    });
+
+    SignalResolver.resolveSchedule(ProcessInternal, internalInstance, "all");
+
+    const handler = internalInstance.queue.calls[0]?.args[1] as (job: AkanJob) => Promise<void>;
+    const job: AkanJob = {
+      id: "job-1",
+      name: "handleItem",
+      // a queue round-trips the payload through JSON, so the declared Date arrives as a string
+      data: [validId, "2026-07-26T00:00:00.000Z"],
+      attemptsMade: 1,
+    };
+    await handler(job);
+
+    expect(execArgs).toHaveLength(1);
+    const [itemId, at, passedJob] = execArgs[0] as [string, Dayjs, AkanJob];
+    expect(itemId).toBe(validId);
+    // deserialized against the declared arg type, so `Date` lands as dayjs rather than the raw JSON string
+    expect(dayjs.isDayjs(at)).toBe(true);
+    expect(at.toISOString()).toBe("2026-07-26T00:00:00.000Z");
+    expect(passedJob).toBe(job);
+  });
+
+  test("runs an enqueued job end-to-end through the solid queue", async () => {
+    resetResolverOrder();
+    const filePath = path.join(tmpdir(), `solid-queue-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
+    const queue = Object.assign(new SolidQueue(), {
+      config: getSolidConfig({ appName: "test", environment: "test", solid: { filePath, queuePollIntervalMs: 20 } }),
+      queueName: "queue-test",
+      workerId: "worker-test",
+    });
+    await queue.onInit();
+
+    const ran: unknown[][] = [];
+    class QueuedInternal extends internal(serverResolverTestServiceModel, (builder) => ({
+      archiveItem: builder
+        .process(Boolean)
+        .msg("itemId", ID)
+        .exec(((...args: unknown[]) => {
+          ran.push(args);
+          return true;
+        }) as never),
+    })) {}
+    const internalInstance = Object.assign(new QueuedInternal(), { schedule: makeFakeSchedule(), queue });
+
+    // the worker side: `process` needs no `enabled` flag to be registered
+    SignalResolver.resolveSchedule(QueuedInternal, internalInstance, "all");
+    // the producer side: exactly what resolveServerSignal's generated method calls
+    await queue.registerProcessQueue("archiveItem", [validId]);
+
+    const startedAt = Date.now();
+    while (!ran.length && Date.now() - startedAt < 2000) await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(ran).toHaveLength(1);
+    expect(ran[0]?.[0]).toBe(validId);
+    expect((ran[0]?.[1] as AkanJob).name).toBe("archiveItem");
+
+    await queue.onDestroy();
+    for (const suffix of ["", "-wal", "-shm"]) {
+      try {
+        rmSync(`${filePath}${suffix}`);
+      } catch {
+        // ignore missing files
+      }
+    }
   });
 });
 

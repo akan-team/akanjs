@@ -46,6 +46,20 @@ rule changes, update it here and mirror it into the matching `.cursor/rules/*.md
 - Prefer focused behavior tests for public contracts and edge cases over implementation-detail assertions.
 - Run package suites with `bun run akan test <pkg>` from the repo root, or `cd <pkg> && bun test --isolate`. Plain `bun test` without `--isolate` shares one global object across test files and fails dozens of tests from cross-file state pollution (`bunfig.toml` `[test] isolate` is not honored as of Bun 1.3), and running `bun test` from the repo root breaks subprocess stdio pipes.
 
+## Comments
+
+- Never add comments in code by default.
+- Prefer clear names and structure so the code needs no explanation.
+- Do not narrate what the code already says.
+- Do not add JSDoc, section banners, or "why/how" comments for ordinary logic.
+- Comments are allowed only for these purposes:
+  1. `TODO` — unfinished work that must be tracked in-code
+  2. `FIXME` — known broken or incorrect behavior that must be fixed
+  3. `XXX` — dangerous / surprising hazard that a reader must not miss
+  4. Deletion caution — warn why removing a line or block would break something non-obvious
+- Keep allowed comments one short line when possible.
+- Match nearby file style: if the surrounding code has few comments, keep it that way.
+
 ## TypeScript And Imports (`**/*.{ts,tsx}`)
 
 - Use Bun and ESM assumptions from the root `tsconfig.json`.

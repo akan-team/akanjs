@@ -1,0 +1,22 @@
+diff --git a/v4/classic/schemas.js b/v4/classic/schemas.js
+index 2decc914b2e35eb540fcc3625095c1413bda7c8c..9dd258ad2b6f5144337f814e4adf30e1025ed0a7 100644
+--- a/v4/classic/schemas.js
++++ b/v4/classic/schemas.js
+@@ -1,5 +1,5 @@
+ import * as core from "../core/index.js";
+-import { util } from "../core/index.js";
++import * as util from "../core/util.js";
+ import * as checks from "./checks.js";
+ import * as iso from "./iso.js";
+ import * as parse from "./parse.js";
+diff --git a/v4/mini/schemas.js b/v4/mini/schemas.js
+index 3a142d1924630f6d7004da255e3f5cb9a8eefa5c..1c6c7afaf49dfc48c18c56a63743fcd48145d30a 100644
+--- a/v4/mini/schemas.js
++++ b/v4/mini/schemas.js
+@@ -1,5 +1,5 @@
+ import * as core from "../core/index.js";
+-import { util } from "../core/index.js";
++import * as util from "../core/util.js";
+ import * as parse from "./parse.js";
+ export const ZodMiniType = /*@__PURE__*/ core.$constructor("ZodMiniType", (inst, def) => {
+     if (!inst._zod)

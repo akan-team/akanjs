@@ -1,6 +1,6 @@
 "use client";
 import { getEnv } from "akanjs/base";
-import { clsx, debugFrame, DEFAULT_TOP_INSET, usePathCtx } from "akanjs/client";
+import { clsx, DEFAULT_TOP_INSET, debugFrame, usePathCtx } from "akanjs/client";
 import { type ReactNode, useLayoutEffect } from "react";
 
 import { Portal } from "../Portal";
@@ -22,18 +22,15 @@ export const TopInset = ({ className, children, estimatedHeight = DEFAULT_TOP_IN
     debugFrame("topInset.mount", { path, estimatedHeight });
     return () => debugFrame("topInset.unmount", { path, estimatedHeight });
   }, [path, estimatedHeight]);
-  useLayoutEffect(
-    () => {
-      if (!path) return;
-      return registerFrameSlot({
-        type: "topInset",
-        scope: "page",
-        source: "topInset",
-        estimatedHeight,
-      });
-    },
-    [registerFrameSlot, estimatedHeight, path],
-  );
+  useLayoutEffect(() => {
+    if (!path) return;
+    return registerFrameSlot({
+      type: "topInset",
+      scope: "page",
+      source: "topInset",
+      estimatedHeight,
+    });
+  }, [registerFrameSlot, estimatedHeight, path]);
 
   return (
     <Portal id={`topInsetContent${suffix}`}>

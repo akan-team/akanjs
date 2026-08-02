@@ -112,7 +112,10 @@ const normalizeRouteManifestPath = (href: string, prefix = "") => {
   return segments.length === 0 ? "/" : `/${segments.join("/")}`;
 };
 
-export const normalizeDeepLinkHref = (href: string, origin = globalThis.window?.location?.origin ?? "http://localhost") => {
+export const normalizeDeepLinkHref = (
+  href: string,
+  origin = globalThis.window?.location?.origin ?? "http://localhost",
+) => {
   const url = new URL(href, origin);
   if (url.protocol === "http:" || url.protocol === "https:") return `${url.pathname}${url.search}${url.hash}`;
   const hostPath = url.hostname ? `/${url.hostname}` : "";
@@ -273,7 +276,11 @@ class Router {
     const state = (history.state ?? {}) as Record<string, unknown>;
     const akanState = (state.__akanRouter ?? {}) as { idx?: number };
     this.#historyIdx = Number.isInteger(akanState.idx) ? (akanState.idx as number) : this.#historyIdx;
-    history.replaceState({ ...state, __akanRouter: { ...akanState, idx: this.#historyIdx } }, "", globalThis.window.location.href);
+    history.replaceState(
+      { ...state, __akanRouter: { ...akanState, idx: this.#historyIdx } },
+      "",
+      globalThis.window.location.href,
+    );
     if (!globalThis.window.addEventListener) return;
     globalThis.window.addEventListener("popstate", (event) => {
       const nextState = ((event.state as Record<string, unknown> | null)?.__akanRouter ?? {}) as { idx?: number };
@@ -341,7 +348,9 @@ class Router {
     }
     const stack = this.#routePaths.size > 0 ? this.#getExistingSegmentStack(path) : [path];
     const baseStack =
-      stack.length > 1 || this.#indexPath === path || stack.includes(this.#indexPath) ? stack : [this.#indexPath, ...stack];
+      stack.length > 1 || this.#indexPath === path || stack.includes(this.#indexPath)
+        ? stack
+        : [this.#indexPath, ...stack];
     const dedupedStack = baseStack.filter((candidate, index) => baseStack.indexOf(candidate) === index);
     const target = `${path}${search ? `?${search}` : ""}${hash ? `#${hash}` : ""}`;
     return dedupedStack.map((candidate, index) => (index === dedupedStack.length - 1 ? target : candidate));

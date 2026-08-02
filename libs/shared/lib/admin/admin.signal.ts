@@ -1,11 +1,13 @@
 import {
   Account,
+  Admin as AdminGuard,
   Me,
   makeAdminAccessTokenResponse as makeAccessTokenResponse,
   makeAdminSignoutResponse as makeSignoutResponse,
+  SuperAdmin,
 } from "@libs/shared/srvkit";
 import { ID } from "akanjs/base";
-import { endpoint, internal, Public, Req, slice } from "akanjs/signal";
+import { endpoint, internal, Req, slice } from "akanjs/signal";
 import * as cnst from "../cnst";
 import { Err } from "../dict";
 import * as srv from "../srv";
@@ -16,7 +18,11 @@ export class AdminInternal extends internal(srv.admin, ({ initialize, process, r
   }),
 })) {}
 
-export class AdminSlice extends slice(srv.admin, { guards: { root: Public, get: Public, cru: Public } }, () => ({})) {}
+export class AdminSlice extends slice(
+  srv.admin,
+  { guards: { root: AdminGuard, get: AdminGuard, cru: SuperAdmin } },
+  () => ({}),
+) {}
 
 export class AdminEndpoint extends endpoint(srv.admin, ({ query, mutation, pubsub, message }) => ({
   isAdminSystemInitialized: query(Boolean).exec(async function () {

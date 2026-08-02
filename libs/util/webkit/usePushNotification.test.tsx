@@ -1,5 +1,11 @@
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 
+// Type-only (erased) so the module under test is still first evaluated by the in-test dynamic import,
+// after `mock.module` has replaced react / akanjs.
+import type { PushNotificationGlobals } from "./usePushNotification";
+
+const pushGlobals = globalThis as unknown as PushNotificationGlobals;
+
 type RenderHookResult<T> = {
   get current(): T;
   unmount: () => void;
@@ -115,8 +121,8 @@ afterEach(() => {
   pushState.actionListeners = [];
   pushState.registrationListeners = [];
   deepLinks.length = 0;
-  globalThis.__AKAN_PUSH_CLICK_BRIDGE__ = undefined;
-  globalThis.__AKAN_CLIENT_ENV__ = undefined;
+  pushGlobals.__AKAN_PUSH_CLICK_BRIDGE__ = undefined;
+  pushGlobals.__AKAN_CLIENT_ENV__ = undefined;
   effectCleanups.splice(0);
 });
 

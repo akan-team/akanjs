@@ -1,5 +1,6 @@
-import type { AppConfigResult, LibConfigResult } from "@akanjs/devkit";
-import { type FileContent, Prompter } from "@akanjs/devkit";
+import type { AppConfigResult, LibConfigResult } from "@akanjs/devkit/akanConfig";
+import { Prompter } from "@akanjs/devkit/prompter";
+import type { FileContent } from "@akanjs/devkit/types";
 import { capitalize } from "akanjs/common";
 
 import * as prompt from "./module.prompt";

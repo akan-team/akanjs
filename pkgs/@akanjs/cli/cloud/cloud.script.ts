@@ -1,4 +1,7 @@
-import { AiSession, CloudApi, GlobalConfig, PkgExecutor, script, type Workspace } from "@akanjs/devkit";
+import { AiSession } from "@akanjs/devkit/aiEditor";
+import { CloudApi, GlobalConfig } from "@akanjs/devkit/cloud";
+import { script, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { PkgExecutor } from "@akanjs/devkit/executors";
 import { Logger } from "akanjs/common";
 import { ApplicationScript } from "../application/application.script";
 import { PackageScript } from "../package/package.script";

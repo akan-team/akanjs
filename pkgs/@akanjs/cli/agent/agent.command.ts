@@ -1,4 +1,4 @@
-import { command, Workspace } from "@akanjs/devkit";
+import { command, Workspace } from "@akanjs/devkit/commandDecorators";
 import { AgentScript } from "./agent.script";
 
 export class AgentCommand extends command("agent", [AgentScript], ({ public: target }) => ({

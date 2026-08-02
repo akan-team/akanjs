@@ -14,6 +14,16 @@ const AKANJS_NODE_MODULE_RE = /[\\/]node_modules[\\/]akanjs[\\/]/;
 const NON_SOURCE_EXT_RE = /\.(css|scss|sass|less|json|svg|png|jpe?g|webp|gif|avif|ico|woff2?|ttf|otf|mp3|mp4|wav)$/i;
 type PackageResolver = Awaited<ReturnType<typeof createTsconfigPackageResolver>>;
 
+/**
+ * Everything the traversal ever asks of a file, which is why its text is not kept.
+ *
+ * `imports` is empty for a client entry: the walk stops there, so they are never scanned.
+ */
+interface FileFacts {
+  isClientEntry: boolean;
+  imports: ScannedImport[];
+}
+
 const shouldSkipNodeModule = (absPath: string) => NODE_MODULES_RE.test(absPath) && !AKANJS_NODE_MODULE_RE.test(absPath);
 
 /**
@@ -29,12 +39,23 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   #analyzer: BarrelAnalyzer;
   #tsTranspiler = new Bun.Transpiler({ loader: "tsx" });
   #fileExistsCache = new Map<string, Promise<boolean>>();
-  #readCache = new Map<string, Promise<string | null>>();
-  #rewriteCache = new Map<string, Promise<string>>();
-  #importCache = new Map<string, Promise<ScannedImport[]>>();
+  /**
+   * Derived facts per file, never the source text.
+   *
+   * This instance lives as long as the builder process does — it is rebuilt only when the akan config
+   * changes — so caching whole source texts (and a second, barrel-rewritten copy of each) meant the
+   * watcher held every source file it had ever walked for the whole dev session. Nothing downstream
+   * wanted the text: the walk needs one boolean and one import list per file, and both were already
+   * cached separately under the same key.
+   */
+  #factsCache = new Map<string, Promise<FileFacts | null>>();
   #resolvedFileCache = new Map<string, Promise<string | null>>();
   #resolvedSpecifierCache = new Map<string, Promise<string | null>>();
   #reachableEntriesCache = new Map<string, Set<string>>();
+  /** Keys of the three caches above whose answer was "not there" — see `#forgetMissing`. */
+  #missingFiles = new Set<string>();
+  #unresolvedPaths = new Set<string>();
+  #unresolvedSpecifiers = new Set<string>();
 
   constructor(akanConfig: AkanConfig, resolvePackage: PackageResolver) {
     this.#akanConfig = akanConfig;
@@ -57,36 +78,86 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   invalidate(files: string[]): void {
     for (const file of files) {
       const absPath = path.resolve(file);
-      this.#readCache.delete(absPath);
-      this.#rewriteCache.delete(absPath);
-      this.#importCache.delete(absPath);
+      this.#factsCache.delete(absPath);
+      this.#fileExistsCache.delete(absPath);
       this.#reachableEntriesCache.delete(absPath);
     }
+    if (files.length === 0) return;
     // Parent files cache the transitive result of their imports, so a changed
     // child can affect any reachable-entry cache above it.
-    if (files.length > 0) this.#reachableEntriesCache.clear();
+    this.#reachableEntriesCache.clear();
+    this.#forgetMissing();
+  }
+
+  /**
+   * Drop every "there is no such file" answer, because a batch may be what created it.
+   *
+   * These caches are keyed by extension-less path and by `dir\0specifier`, neither of which maps back
+   * to the path that just appeared, so a negative recorded before a module existed is unreachable any
+   * other way — and this instance lives as long as the builder process. Positive answers are kept:
+   * they are keyed by a real path, which arrives in `files` when it changes or goes away.
+   */
+  #forgetMissing(): void {
+    for (const key of this.#missingFiles) this.#fileExistsCache.delete(key);
+    for (const key of this.#unresolvedPaths) this.#resolvedFileCache.delete(key);
+    for (const key of this.#unresolvedSpecifiers) this.#resolvedSpecifierCache.delete(key);
+    this.#missingFiles.clear();
+    this.#unresolvedPaths.clear();
+    this.#unresolvedSpecifiers.clear();
   }
 
   async #fileExists(p: string): Promise<boolean> {
     const absPath = path.resolve(p);
     let cached = this.#fileExistsCache.get(absPath);
     if (!cached) {
-      cached = Bun.file(absPath).exists();
+      cached = Bun.file(absPath)
+        .exists()
+        .then((exists) => {
+          if (!exists) this.#missingFiles.add(absPath);
+          return exists;
+        });
       this.#fileExistsCache.set(absPath, cached);
     }
     return cached;
   }
 
-  #readFile(file: string): Promise<string | null> {
+  /**
+   * Read a file once and keep only what the traversal asks of it. The text itself is dropped as soon
+   * as the boolean and the import list are out of it — see `#factsCache`.
+   */
+  #facts(file: string): Promise<FileFacts | null> {
     const absPath = path.resolve(file);
-    let cached = this.#readCache.get(absPath);
+    let cached = this.#factsCache.get(absPath);
     if (!cached) {
-      cached = Bun.file(absPath)
-        .text()
-        .catch(() => null);
-      this.#readCache.set(absPath, cached);
+      cached = (async () => {
+        const content = await Bun.file(absPath)
+          .text()
+          .catch(() => null);
+        if (content === null) return null;
+        // A client entry ends the walk, so its imports are never needed.
+        if (USE_CLIENT_RE.test(content)) return { isClientEntry: true, imports: [] };
+        return { isClientEntry: false, imports: this.#scanImports(await this.#rewrite(content)) };
+      })();
+      this.#factsCache.set(absPath, cached);
     }
     return cached;
+  }
+
+  async #rewrite(content: string): Promise<string> {
+    if (this.#akanConfig.barrelImports.length === 0) return content;
+    try {
+      return (await rewriteBarrelImports(content, this.#akanConfig.barrelImports, this.#analyzer)) ?? content;
+    } catch {
+      return content;
+    }
+  }
+
+  #scanImports(source: string): ScannedImport[] {
+    try {
+      return this.#tsTranspiler.scanImports(source);
+    } catch {
+      return [];
+    }
   }
 
   async #resolveFileCandidate(absPathNoExt: string): Promise<string | null> {
@@ -103,6 +174,7 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
         const f = path.join(cacheKey, `index${ext}`);
         if (await this.#fileExists(f)) return f;
       }
+      this.#unresolvedPaths.add(cacheKey);
       return null;
     })();
     this.#resolvedFileCache.set(cacheKey, cached);
@@ -120,42 +192,10 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
       }
       const pkg = await this.#resolvePackage(spec);
       if (pkg) return pkg.entryFile;
+      this.#unresolvedSpecifiers.add(cacheKey);
       return null;
     })();
     this.#resolvedSpecifierCache.set(cacheKey, cached);
-    return cached;
-  }
-
-  async #getRewrittenSource(file: string, content: string): Promise<string> {
-    const absPath = path.resolve(file);
-    let cached = this.#rewriteCache.get(absPath);
-    if (!cached) {
-      cached = (async () => {
-        if (this.#akanConfig.barrelImports.length === 0) return content;
-        try {
-          return (await rewriteBarrelImports(content, this.#akanConfig.barrelImports, this.#analyzer)) ?? content;
-        } catch {
-          return content;
-        }
-      })();
-      this.#rewriteCache.set(absPath, cached);
-    }
-    return cached;
-  }
-
-  async #getImports(file: string, source: string): Promise<ScannedImport[]> {
-    const absPath = path.resolve(file);
-    let cached = this.#importCache.get(absPath);
-    if (!cached) {
-      cached = Promise.resolve().then(() => {
-        try {
-          return this.#tsTranspiler.scanImports(source);
-        } catch {
-          return [];
-        }
-      });
-      this.#importCache.set(absPath, cached);
-    }
     return cached;
   }
 
@@ -167,18 +207,16 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
 
     visiting.add(absPath);
     const entries = new Set<string>();
-    const content = await this.#readFile(absPath);
-    if (content === null) return this.#finishDiscovery(absPath, visiting, entries);
+    const facts = await this.#facts(absPath);
+    if (!facts) return this.#finishDiscovery(absPath, visiting, entries);
 
-    if (USE_CLIENT_RE.test(content)) {
+    if (facts.isClientEntry) {
       entries.add(absPath);
       return this.#finishDiscovery(absPath, visiting, entries);
     }
 
-    const source = await this.#getRewrittenSource(absPath, content);
-    const imports = await this.#getImports(absPath, source);
     const importerDir = path.dirname(absPath);
-    for (const imp of imports) {
+    for (const imp of facts.imports) {
       const spec = imp.path;
       if (!spec) continue;
       if (NON_SOURCE_EXT_RE.test(spec)) continue;

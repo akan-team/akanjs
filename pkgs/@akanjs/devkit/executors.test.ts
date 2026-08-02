@@ -271,6 +271,66 @@ describe("Workspace and app executor environment contracts", () => {
     expect((await stat(path.join(root, "dist/apps/demo/public"))).isDirectory()).toBe(true);
   });
 
+  describe("getDevPort", () => {
+    const makeWorkspaceWithApps = async (names: string[]) => {
+      const root = await makeTempRoot();
+      process.env.AKAN_PUBLIC_REPO_NAME = "repo";
+      process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
+      process.env.AKAN_PUBLIC_ENV = "local";
+      process.env.PORT_OFFSET = "0";
+      await writeJson(path.join(root, "package.json"), rootPackageJson());
+      for (const name of names) {
+        await mkdir(path.join(root, "apps", name), { recursive: true });
+        await writeFile(path.join(root, "apps", name, "akan.config.ts"), "export default {};\n");
+      }
+      // `AppExecutor.from` memoises by name, so each test needs names no other test has used.
+      return new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" });
+    };
+
+    test("derives the port from the app's position in the sorted apps listing", async () => {
+      const workspace = await makeWorkspaceWithApps(["port-a", "port-b"]);
+
+      expect(await AppExecutor.from(workspace, "port-a").getDevPort()).toBe(8282);
+      expect(await AppExecutor.from(workspace, "port-b").getDevPort()).toBe(8283);
+    });
+
+    test("moves when another app appears before it, which is why pinning exists", async () => {
+      const workspace = await makeWorkspaceWithApps(["drift-b"]);
+      const app = AppExecutor.from(workspace, "drift-b");
+      expect(await app.getDevPort()).toBe(8282);
+
+      // Sorts ahead of `drift-b`, so the same app now answers with a different port — and a dev host
+      // recomputes this on every restart.
+      await mkdir(path.join(workspace.workspaceRoot, "apps/drift-a"), { recursive: true });
+      await writeFile(path.join(workspace.workspaceRoot, "apps/drift-a/akan.config.ts"), "export default {};\n");
+
+      expect(await app.getDevPort()).toBe(8283);
+    });
+
+    test("AKAN_DEV_PORT pins it, and survives an app appearing before it", async () => {
+      const workspace = await makeWorkspaceWithApps(["pin-b"]);
+      const app = AppExecutor.from(workspace, "pin-b");
+      process.env.AKAN_DEV_PORT = "12345";
+
+      expect(await app.getDevPort()).toBe(12345);
+
+      await mkdir(path.join(workspace.workspaceRoot, "apps/pin-a"), { recursive: true });
+      await writeFile(path.join(workspace.workspaceRoot, "apps/pin-a/akan.config.ts"), "export default {};\n");
+
+      expect(await app.getDevPort()).toBe(12345);
+    });
+
+    test("ignores an unusable AKAN_DEV_PORT rather than binding a nonsense port", async () => {
+      const workspace = await makeWorkspaceWithApps(["bad-a"]);
+      const app = AppExecutor.from(workspace, "bad-a");
+
+      for (const value of ["0", "-1", "nope", "", "70000", "8282.5"]) {
+        process.env.AKAN_DEV_PORT = value;
+        expect(await app.getDevPort()).toBe(8282);
+      }
+    });
+  });
+
   test("accepts metadata route exports during page key discovery", async () => {
     const root = await makeTempRoot();
     process.env.AKAN_PUBLIC_REPO_NAME = "repo";

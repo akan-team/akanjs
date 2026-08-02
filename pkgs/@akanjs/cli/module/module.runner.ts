@@ -1,10 +1,5 @@
-import {
-  bilingualDescriptionForField,
-  bilingualLabelForField,
-  type Module,
-  moduleSourcePaths,
-  runner,
-} from "@akanjs/devkit";
+import { type Module, runner } from "@akanjs/devkit/commandDecorators";
+import { bilingualDescriptionForField, bilingualLabelForField, moduleSourcePaths } from "@akanjs/devkit/workflow";
 import { capitalize } from "akanjs/common";
 import { pluralizeName } from "../pluralizeName";
 

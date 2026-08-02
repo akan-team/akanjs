@@ -14,4 +14,5 @@ export const env: option.ModulesOptions = {
   message: undefined,
   discord: undefined,
   iapVerify: undefined,
+  pushNoti: undefined,
 };

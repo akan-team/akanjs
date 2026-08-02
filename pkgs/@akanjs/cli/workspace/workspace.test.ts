@@ -1,13 +1,6 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import {
-  AppExecutor,
-  CommandContainer,
-  getArgMetas,
-  getTargetMetas,
-  LibExecutor,
-  PkgExecutor,
-  WorkspaceExecutor,
-} from "@akanjs/devkit";
+import { CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
+import { AppExecutor, LibExecutor, PkgExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
 import {
   cleanupCliTempWorkspace,
   createCallRecorder,

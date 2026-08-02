@@ -80,17 +80,15 @@ export class BlobStorageApi implements StorageApi {
   }: UploadReadableStreamRequest): Promise<UploadResult> {
     const filePath = access === "private" ? `${this.privateRoot}/${path}` : `${this.root}/${path}`;
     let size = 0;
-    const reader = body.getReader();
-    const chunks: Uint8Array[] = [];
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) {
-        size += value.length;
-        chunks.push(value);
-      }
-    }
-    await Bun.write(filePath, new Blob(chunks));
+    const countedBody = body.pipeThrough(
+      new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          size += chunk.length;
+          controller.enqueue(chunk);
+        },
+      }),
+    );
+    await Bun.write(filePath, new Response(countedBody));
     return { url: this.#localPathToUrl(path), size };
   }
   async saveData({ path, localPath, renamePath }: DownloadRequest): Promise<LocalFilePath> {

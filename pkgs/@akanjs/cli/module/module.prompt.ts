@@ -1,5 +1,4 @@
-import type { FileContent } from "@akanjs/devkit";
-
+import type { FileContent } from "@akanjs/devkit/types";
 export interface ComponentDefaultDescriptionProps {
   sysName: string;
   modelName: string;

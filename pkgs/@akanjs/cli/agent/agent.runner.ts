@@ -1,12 +1,7 @@
-import {
-  AkanContextAnalyzer,
-  Prompter,
-  type RecipeInfo,
-  type RecipeSource,
-  runner,
-  scanRecipes,
-  type Workspace,
-} from "@akanjs/devkit";
+import { AkanContextAnalyzer } from "@akanjs/devkit/akanContext";
+import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { Prompter } from "@akanjs/devkit/prompter";
+import { type RecipeInfo, type RecipeSource, scanRecipes } from "@akanjs/devkit/recipeScanner";
 
 type AgentTarget = "cursor" | "agents-md" | "claude";
 

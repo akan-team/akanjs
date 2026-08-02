@@ -1,11 +1,15 @@
 import path from "node:path";
-import { confirm, input, select } from "@inquirer/prompts";
+import type { confirm as inquirerConfirm, input as inquirerInput, select as inquirerSelect } from "@inquirer/prompts";
 import { Logger } from "akanjs/common";
 import chalk from "chalk";
 import { type Command, program } from "commander";
-
-import { FileSys, getDirname, type PackageJson } from "..";
 import { AppExecutor, Executor, LibExecutor, ModuleExecutor, PkgExecutor, WorkspaceExecutor } from "../executors";
+// Import the owning modules directly, never the root barrel: `..` re-exports all 41 devkit modules,
+// so a barrel import here drags ink, @trapezedev/project, ssh2, @langchain/* and the cloud stack into
+// every process that registers a command (measured: 236MB vs 3MB).
+import { FileSys } from "../fileSys";
+import { getDirname } from "../getDirname";
+import type { PackageJson } from "../types";
 import {
   type ArgMeta,
   type CommandContext,
@@ -16,7 +20,7 @@ import {
 } from "./argMeta";
 import { CommandContainer } from "./dependencyBuilder";
 import { formatCommandHelp, formatHelp } from "./helpFormatter";
-import { type CommandCls, getTargetMetas } from "./targetMeta";
+import { type CommandCls, getTargetCommandNames, getTargetMetas } from "./targetMeta";
 
 const camelToKebabCase = (str: string) => str.replace(/([A-Z])/g, "-$1").toLowerCase();
 const loggedCliErrorObjects = new WeakSet<object>();
@@ -84,6 +88,21 @@ const normalizeEnumChoices = (enumChoices: EnumChoices) =>
       ? { value: choice.value, name: choice.label }
       : { value: choice, name: choice.toString() },
   );
+
+/**
+ * The interactive prompt stack, loaded on the first prompt instead of at import.
+ *
+ * `runCommands` lives in this module, so a static import put `@inquirer/prompts` (~24MB) in the CLI
+ * entry's chunk closure — and `akan start` holds that process for the whole dev session while never
+ * asking a question, because every argument it needs is already on the command line.
+ *
+ * The wrappers are typed from the real prompts so no call site changes, and `import type` leaves no
+ * runtime edge for the bundler to follow (`entryModuleGraph.test.ts` asserts that).
+ */
+const prompts = async () => await import("@inquirer/prompts");
+const select = ((config, context) => prompts().then((m) => m.select(config, context))) as typeof inquirerSelect;
+const confirm = ((config, context) => prompts().then((m) => m.confirm(config, context))) as typeof inquirerConfirm;
+const input = ((config, context) => prompts().then((m) => m.input(config, context))) as typeof inquirerInput;
 
 const resolveEnumChoices = async (argMeta: ArgMeta, context: CommandContext) => {
   const enumChoices = argMeta.argsOption.enum;
@@ -295,19 +314,7 @@ It may cause unexpected behavior. Run \`akan update\` to update latest akanjs.`,
   for (const command of commands) {
     const targetMetas = getTargetMetas(command);
     for (const targetMeta of targetMetas) {
-      const kebabKey = camelToKebabCase(targetMeta.key);
-      const commandNames =
-        targetMeta.targetOption.short === true
-          ? [
-              kebabKey,
-              typeof targetMeta.targetOption.short === "string"
-                ? targetMeta.targetOption.short
-                : kebabKey
-                    .split("-")
-                    .map((s) => s.slice(0, 1))
-                    .join(""),
-            ]
-          : [kebabKey];
+      const commandNames = getTargetCommandNames(targetMeta);
       for (const commandName of commandNames) {
         let programCommand = program.command(commandName, {
           hidden: targetMeta.targetOption.devOnly,

@@ -1,4 +1,6 @@
-import { type AiSession, Prompter, script, type Workspace } from "@akanjs/devkit";
+import type { AiSession } from "@akanjs/devkit/aiEditor";
+import { script, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { Prompter } from "@akanjs/devkit/prompter";
 import { Logger } from "akanjs/common";
 
 import { GuidelineRunner } from "./guideline.runner";

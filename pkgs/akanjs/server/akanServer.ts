@@ -14,6 +14,7 @@ import { createOpenApiDocument } from "../signal/openapi";
 import { FetchSerializer } from "../signal/serializer";
 import type { AkanLib, AkanLibProps } from "./akanLib";
 import type { BuilderRpc } from "./artifact";
+import { DevtoolsRouter } from "./devtools";
 import { DiLifecycle } from "./di/diLifecycle";
 import type { HmrWsData, HmrWsHub } from "./hmr/wsHub";
 import { isPortInUseError } from "./lifecycle/portInUse";
@@ -451,19 +452,33 @@ export class AkanServer {
   }
 
   #createBuiltinRoutes(): HttpRoutes {
-    if (!this.openapi) return {};
-    return {
-      "/openapi.json": {
-        GET: () =>
-          Response.json(
-            createOpenApiDocument(FetchSerializer.serializeRegistry(this.#di.live).signal, {
-              title: `${this.env.appName} API`,
-              version: "0.0.0",
-              servers: this.#getOpenApiServers(),
-            }),
-          ),
-      },
-    };
+    const openapiRoutes: HttpRoutes = this.openapi
+      ? {
+          "/openapi.json": {
+            GET: () =>
+              Response.json(
+                createOpenApiDocument(FetchSerializer.serializeRegistry(this.#di.live).signal, {
+                  title: `${this.env.appName} API`,
+                  version: "0.0.0",
+                  servers: this.#getOpenApiServers(),
+                }),
+              ),
+          },
+        }
+      : {};
+    // Registered only when the gate passes, so outside `local` the paths do not exist at all and fall
+    // through to the SSR catch-all as a natural 404 rather than a handler that answers "forbidden".
+    const devtoolsRoutes = new DevtoolsRouter({
+      di: this.#di,
+      env: this.env,
+      name: this.name,
+      serverMode: this.serverMode,
+      prefix: this.prefix,
+      websocketPrefix: this.websocketPrefix,
+      openapi: this.openapi,
+      getStatus: () => this.status,
+    }).createRoutes();
+    return { ...openapiRoutes, ...devtoolsRoutes };
   }
 
   #getOpenApiServers() {

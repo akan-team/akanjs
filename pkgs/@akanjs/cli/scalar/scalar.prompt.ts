@@ -1,4 +1,6 @@
-import { type FileContent, Prompter, type Sys } from "@akanjs/devkit";
+import type { Sys } from "@akanjs/devkit/commandDecorators";
+import { Prompter } from "@akanjs/devkit/prompter";
+import type { FileContent } from "@akanjs/devkit/types";
 import { input } from "@inquirer/prompts";
 import { pluralizeName } from "../pluralizeName";
 

@@ -1,4 +1,4 @@
-import { script, type Workspace } from "@akanjs/devkit";
+import { script, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { Logger } from "akanjs/common";
 import { AgentRunner } from "./agent.runner";
 

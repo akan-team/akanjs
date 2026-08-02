@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { CommandContainer } from "@akanjs/devkit";
+import { CommandContainer } from "@akanjs/devkit/commandDecorators";
 import { ModuleRunner } from "../module/module.runner";
 import { cleanupCliTempWorkspace, createTempModule } from "../testHelpers";
 import { PrimitiveScript } from "./primitive.script";

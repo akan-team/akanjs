@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { CommandContainer } from "@akanjs/devkit/commandDecorators";
 import {
-  CommandContainer,
   createWorkflowStepRegistry,
   type WorkflowApplyReport,
   type WorkflowPlan,
   type WorkflowValidationRunReport,
   workflowStepKey,
-} from "@akanjs/devkit";
+} from "@akanjs/devkit/workflow";
 import { ModuleRunner } from "../module/module.runner";
 import { ModuleScript } from "../module/module.script";
 import { PrimitiveScript } from "../primitive/primitive.script";

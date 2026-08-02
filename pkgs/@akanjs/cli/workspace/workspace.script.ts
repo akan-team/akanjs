@@ -1,5 +1,6 @@
 import path from "node:path";
-import { AppExecutor, type Exec, LibExecutor, PkgExecutor, script, type Workspace } from "@akanjs/devkit";
+import { type Exec, script, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { AppExecutor, LibExecutor, PkgExecutor } from "@akanjs/devkit/executors";
 import { Logger } from "akanjs/common";
 
 import { AgentScript } from "../agent/agent.script";

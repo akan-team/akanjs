@@ -10,8 +10,8 @@ import {
   getPathInfo,
   initAuth,
   type Location,
-  type PageState,
   navigateRsc,
+  type PageState,
   type PathRoute,
   pathContext,
   router,
@@ -36,11 +36,10 @@ import {
   useRef,
   useState,
 } from "react";
-
+import { getFrameCssVars } from "./frameCssVars";
 import { Gtag } from "./Gtag";
 import { Messages } from "./Messages";
 import { Reconnect } from "./Reconnect";
-import { getFrameCssVars } from "./frameCssVars";
 
 declare global {
   var __AKAN_GET_SYNC_ROUTE_HREF__: ((href: string) => string) | undefined;
@@ -449,8 +448,8 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
       }, 1000);
     };
     const handleSyncNavigation = (event: Event) => {
-      const { href, kind = "push" } = (event as CustomEvent<{ href?: string; kind?: "push" | "replace" | "back" | "pop" }>)
-        .detail ?? {};
+      const { href, kind = "push" } =
+        (event as CustomEvent<{ href?: string; kind?: "push" | "replace" | "back" | "pop" }>).detail ?? {};
       if (!href) return;
       const target = new URL(href, window.location.origin);
       const targetHref = `${target.pathname}${target.search}${target.hash}`;

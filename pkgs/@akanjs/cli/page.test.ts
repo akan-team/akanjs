@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { CommandContainer } from "@akanjs/devkit";
+import { CommandContainer } from "@akanjs/devkit/commandDecorators";
 import { PageRunner } from "./page/page.runner";
 import { PageScript } from "./page/page.script";
 import { cleanupCliTempWorkspace, createCallRecorder, createTempModule } from "./testHelpers";

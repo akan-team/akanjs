@@ -1,6 +1,6 @@
 {
   "name": "akanjs",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "sourceType": "module",
   "type": "module",
   "publishConfig": {
@@ -109,6 +109,16 @@
       "import": "./server/rscWorker.tsx",
       "types": "./server/rscWorker.tsx",
       "default": "./server/rscWorker.tsx"
+    },
+    "./server/memoryLimit": {
+      "import": "./server/memoryLimit.ts",
+      "types": "./server/memoryLimit.ts",
+      "default": "./server/memoryLimit.ts"
+    },
+    "./server/lifecycle/portInUse": {
+      "import": "./server/lifecycle/portInUse.ts",
+      "types": "./server/lifecycle/portInUse.ts",
+      "default": "./server/lifecycle/portInUse.ts"
     }
   },
   "dependencies": {

@@ -12,7 +12,8 @@ import {
 } from "akanjs/service";
 import { endpoint } from "./endpoint";
 import { buildEndpoint } from "./endpointInfo";
-import type { Guard } from "./guard";
+import { Exception } from "./exception";
+import type { Guard, GuardCls } from "./guard";
 import { None, Public } from "./guards";
 import { type Internal, internal } from "./internal";
 import type { InternalArg } from "./internalArg";
@@ -719,6 +720,147 @@ describe("SignalContext execution", () => {
 
     expect(response).toBeInstanceOf(Response);
     expect(await response.json()).toEqual({ ok: true });
+  });
+});
+
+describe("SignalContext guards", () => {
+  let guardTrace: string[] = [];
+  let guardContexts: SignalContext[] = [];
+
+  const trackedGuard = (
+    name: string,
+    { canPass, mode, delayMs = 0 }: { canPass: boolean | "throw"; mode: "sync" | "async"; delayMs?: number },
+  ): GuardCls => {
+    class TrackedGuard implements Guard {
+      static name = name;
+      canPass(context: SignalContext): boolean | Promise<boolean> {
+        guardTrace.push(name);
+        guardContexts.push(context);
+        if (mode === "sync") {
+          if (canPass === "throw") throw new Exception.Unauthorized(`${name} rejected`);
+          return canPass;
+        }
+        return (async () => {
+          if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
+          if (canPass === "throw") throw new Exception.Unauthorized(`${name} rejected`);
+          return canPass;
+        })();
+      }
+    }
+    return TrackedGuard as GuardCls;
+  };
+
+  const execWithGuards = async (guards: GuardCls[]) => {
+    guardTrace = [];
+    guardContexts = [];
+    const endpointInfo = buildEndpoint.query(String, { guards }).exec(() => {
+      guardTrace.push("exec");
+      return "passed";
+    });
+    const adaptor = new (adapt("signalTestGuardAdaptor"))();
+    const response = (await SignalContext.try(adaptor, endpointInfo, "guarded", async () => {
+      const context = makeSignalContext({ endpointInfo, adaptor });
+      await context.init();
+      return (await context.exec()) as Response;
+    })) as Response;
+    return { status: response.status, body: (await response.json()) as unknown };
+  };
+
+  test("runs the endpoint when a sync guard allows and blocks with 403 when it denies", async () => {
+    const allowed = await execWithGuards([trackedGuard("SyncAllow", { canPass: true, mode: "sync" })]);
+    const denied = await execWithGuards([trackedGuard("SyncDeny", { canPass: false, mode: "sync" })]);
+
+    expect(allowed.status).toBe(200);
+    expect(allowed.body).toBe("passed");
+    expect(denied.status).toBe(403);
+    expect(denied.body).toMatchObject({ statusCode: 403, error: "Access denied by guard: SyncDeny" });
+    expect(guardTrace).toEqual(["SyncDeny"]);
+  });
+
+  test("awaits async guards instead of treating the returned promise as allowed", async () => {
+    const allowed = await execWithGuards([trackedGuard("AsyncAllow", { canPass: true, mode: "async" })]);
+    const denied = await execWithGuards([trackedGuard("AsyncDeny", { canPass: false, mode: "async" })]);
+
+    expect(allowed.status).toBe(200);
+    expect(allowed.body).toBe("passed");
+    expect(denied.status).toBe(403);
+    expect(denied.body).toMatchObject({ statusCode: 403, error: "Access denied by guard: AsyncDeny" });
+    expect(guardTrace).toEqual(["AsyncDeny"]);
+  });
+
+  test("denies when an async guard resolves false after a sync guard already allowed", async () => {
+    const denied = await execWithGuards([
+      trackedGuard("FastSyncAllow", { canPass: true, mode: "sync" }),
+      trackedGuard("SlowAsyncDeny", { canPass: false, mode: "async", delayMs: 10 }),
+    ]);
+
+    expect(denied.status).toBe(403);
+    expect(denied.body).toMatchObject({ statusCode: 403, error: "Access denied by guard: SlowAsyncDeny" });
+    expect(guardTrace).not.toContain("exec");
+  });
+
+  test("requires every guard to allow and passes the signal context to each of them", async () => {
+    const allowed = await execWithGuards([
+      trackedGuard("MultiSyncAllow", { canPass: true, mode: "sync" }),
+      trackedGuard("MultiAsyncAllow", { canPass: true, mode: "async", delayMs: 5 }),
+      Public,
+    ]);
+    const contexts = guardContexts;
+
+    expect(allowed.status).toBe(200);
+    expect(allowed.body).toBe("passed");
+    expect(guardTrace).toEqual(["MultiSyncAllow", "MultiAsyncAllow", "exec"]);
+    expect(contexts).toHaveLength(2);
+    expect(contexts.every((context) => context instanceof SignalContext && context.key === "contextKey")).toBe(true);
+  });
+
+  test("blocks the endpoint when any guard in a multi-guard list denies", async () => {
+    const asyncDenyLast = await execWithGuards([
+      trackedGuard("HeadSyncAllow", { canPass: true, mode: "sync" }),
+      trackedGuard("TailAsyncDeny", { canPass: false, mode: "async", delayMs: 5 }),
+    ]);
+    const syncDenyLast = await execWithGuards([
+      trackedGuard("HeadAsyncAllow", { canPass: true, mode: "async", delayMs: 5 }),
+      trackedGuard("TailSyncDeny", { canPass: false, mode: "sync" }),
+    ]);
+    const middleDeny = await execWithGuards([
+      Public,
+      trackedGuard("MiddleAsyncDeny", { canPass: false, mode: "async" }),
+      trackedGuard("LastAsyncAllow", { canPass: true, mode: "async", delayMs: 5 }),
+    ]);
+
+    expect(asyncDenyLast.status).toBe(403);
+    expect(asyncDenyLast.body).toMatchObject({ error: "Access denied by guard: TailAsyncDeny" });
+    expect(syncDenyLast.status).toBe(403);
+    expect(syncDenyLast.body).toMatchObject({ error: "Access denied by guard: TailSyncDeny" });
+    expect(middleDeny.status).toBe(403);
+    expect(middleDeny.body).toMatchObject({ error: "Access denied by guard: MiddleAsyncDeny" });
+    expect(guardTrace).not.toContain("exec");
+  });
+
+  test("surfaces exceptions thrown from sync and async guards", async () => {
+    const syncThrow = await execWithGuards([
+      trackedGuard("SyncThrow", { canPass: "throw", mode: "sync" }),
+      trackedGuard("SyncThrowPeer", { canPass: true, mode: "async", delayMs: 5 }),
+    ]);
+    const asyncThrow = await execWithGuards([
+      Public,
+      trackedGuard("AsyncThrow", { canPass: "throw", mode: "async", delayMs: 5 }),
+    ]);
+
+    expect(syncThrow.status).toBe(401);
+    expect(syncThrow.body).toMatchObject({ statusCode: 401, error: "SyncThrow rejected" });
+    expect(asyncThrow.status).toBe(401);
+    expect(asyncThrow.body).toMatchObject({ statusCode: 401, error: "AsyncThrow rejected" });
+    expect(guardTrace).not.toContain("exec");
+  });
+
+  test("skips guard checking entirely when no guards are configured", async () => {
+    const noGuards = await execWithGuards([]);
+
+    expect(noGuards.status).toBe(200);
+    expect(noGuards.body).toBe("passed");
+    expect(guardTrace).toEqual(["exec"]);
   });
 });
 

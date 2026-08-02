@@ -1604,6 +1604,41 @@ export class SqlDocumentStore {
       throw new Error(`Invalid database identifier: ${refName}`);
   }
 }
+
+/**
+ * The schema setups `getStore` starts but nobody awaits.
+ *
+ * `getStore` returns a store synchronously while `ensure()` goes on creating tables and indexes, so
+ * the connection could be closed out from under one — a server shutting down, or a test tearing its
+ * fixture down. That surfaced as an unhandled `Cannot use a closed database` blamed on whatever ran
+ * next, which made it look like a flaky test rather than a race at shutdown.
+ *
+ * Every statement `ensure()` runs is `IF NOT EXISTS`, so one cut short is simply redone on the next
+ * boot; a failure *before* the close is still a real problem and still surfaces.
+ */
+class PendingStoreEnsures {
+  readonly #pending = new Set<Promise<void>>();
+  #closed = false;
+
+  track(ensure: Promise<void>): void {
+    const tracked = ensure
+      .catch((error: unknown) => {
+        if (this.#closed) return;
+        throw error;
+      })
+      .finally(() => {
+        this.#pending.delete(tracked);
+      });
+    this.#pending.add(tracked);
+  }
+
+  /** Let them finish against a live connection. Call before closing it. */
+  async settle(): Promise<void> {
+    this.#closed = true;
+    await Promise.allSettled([...this.#pending]);
+  }
+}
+
 export class SqliteDatabase
   extends adapt("sqliteDatabase", ({ env }) => ({
     config: env((env: SqliteEnv) => {
@@ -1635,6 +1670,7 @@ export class SqliteDatabase
   #client!: BunSqliteClient;
   #stores = new Map<string, SqlDocumentStore>();
   #transaction = new AsyncLocalStorage<TransactionContext>();
+  #ensures = new PendingStoreEnsures();
 
   override async onInit() {
     await mkdir(path.dirname(this.config.filePath), { recursive: true });
@@ -1652,6 +1688,7 @@ export class SqliteDatabase
   }
 
   override async onDestroy() {
+    await this.#ensures.settle();
     this.#db?.run("PRAGMA wal_checkpoint(TRUNCATE)");
     await this.#client?.close();
   }
@@ -1665,7 +1702,7 @@ export class SqliteDatabase
     if (existing) return existing;
     const store = new SqlDocumentStore(this, constant, database, schema as DocumentSchema);
     this.#stores.set(database.refName, store);
-    void store.ensure();
+    this.#ensures.track(store.ensure());
     return store;
   }
 
@@ -1742,6 +1779,7 @@ export class LibsqlDatabase
   #client!: LibsqlAkanClient;
   #stores = new Map<string, SqlDocumentStore>();
   #transaction = new AsyncLocalStorage<TransactionContext>();
+  #ensures = new PendingStoreEnsures();
 
   override async onInit() {
     const url = this.config.url ?? "file:local.db";
@@ -1754,6 +1792,7 @@ export class LibsqlDatabase
   }
 
   override async onDestroy() {
+    await this.#ensures.settle();
     await this.#client?.close();
   }
 
@@ -1766,7 +1805,7 @@ export class LibsqlDatabase
     if (existing) return existing;
     const store = new SqlDocumentStore(this, constant, database, schema as DocumentSchema);
     this.#stores.set(database.refName, store);
-    void store.ensure();
+    this.#ensures.track(store.ensure());
     return store;
   }
 
@@ -1826,6 +1865,7 @@ export class PostgresDatabase
   #client!: PostgresAkanClient;
   #stores = new Map<string, SqlDocumentStore>();
   #transaction = new AsyncLocalStorage<TransactionContext>();
+  #ensures = new PendingStoreEnsures();
 
   override async onInit() {
     const { default: postgres } = await import("postgres");
@@ -1845,6 +1885,7 @@ export class PostgresDatabase
   }
 
   override async onDestroy() {
+    await this.#ensures.settle();
     await this.#client?.close();
   }
 
@@ -1857,7 +1898,7 @@ export class PostgresDatabase
     if (existing) return existing;
     const store = new SqlDocumentStore(this, constant, database, schema as DocumentSchema, new PostgresDialect());
     this.#stores.set(database.refName, store);
-    void store.ensure();
+    this.#ensures.track(store.ensure());
     return store;
   }
 

@@ -1,5 +1,5 @@
-import { command, Exec, GlobalConfig, Workspace } from "@akanjs/devkit";
-
+import { GlobalConfig } from "@akanjs/devkit/cloud";
+import { command, Exec, Workspace } from "@akanjs/devkit/commandDecorators";
 import { WorkspaceScript } from "./workspace.script";
 
 export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({ public: target }) => ({

@@ -117,11 +117,13 @@ export class SignalContext<
   async #checkGuards() {
     const guards = this.endpointInfo.signalOption.guards ?? [];
     if (guards.length === 0) return;
-    for (const GuardCls of guards) {
-      const guard = new GuardCls();
-      const canPass = guard.canPass(this);
-      if (!canPass) throw new Exception.Forbidden(`Access denied by guard: ${GuardCls.name}`);
-    }
+    await Promise.all(
+      guards.map(async (GuardCls) => {
+        const guard = new GuardCls();
+        const canPass = await guard.canPass(this);
+        if (!canPass) throw new Exception.Forbidden(`Access denied by guard: ${GuardCls.name}`);
+      }),
+    );
   }
   async exec() {
     if (!this.trace) return await this.#exec();

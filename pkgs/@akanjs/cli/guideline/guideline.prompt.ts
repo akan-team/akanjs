@@ -1,4 +1,9 @@
-import { type FileContent, FileSys, type GuideScan, getDirname, Prompter, type Workspace } from "@akanjs/devkit";
+import type { Workspace } from "@akanjs/devkit/commandDecorators";
+import { FileSys } from "@akanjs/devkit/fileSys";
+import { getDirname } from "@akanjs/devkit/getDirname";
+import type { GuideScan } from "@akanjs/devkit/guideline";
+import { Prompter } from "@akanjs/devkit/prompter";
+import type { FileContent } from "@akanjs/devkit/types";
 import { randomPicks } from "akanjs/common";
 
 export class GuidelinePrompt extends Prompter {

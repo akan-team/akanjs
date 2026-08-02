@@ -6,7 +6,6 @@ An official akanjs library providing comprehensive shared utilities, components,
 
 The `akanjs/shared` library is a comprehensive collection of shared utilities divided into five main categories:
 
-
 ### 🖥️ **Server-side Utilities** (`/server`)
 
 Backend integration utilities for NestJS applications:
@@ -174,7 +173,6 @@ await addFileUntilActive(fileList, {
   onComplete: (files) => console.log("Upload complete", files),
 });
 ```
-
 
 ### UI Components
 

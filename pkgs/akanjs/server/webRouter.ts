@@ -279,6 +279,8 @@ export class WebRouter {
   #builderRpc: BuilderRpc | null;
   #routeCache: RouteClientCache;
   #devHmr: DevHmrController | null = null;
+  #csrArmed = false;
+  #csrOnDemandBuild: Promise<unknown> | null = null;
   readonly #requestStats = {
     fullSsr: 0,
     rscNavigation: 0,
@@ -346,7 +348,7 @@ export class WebRouter {
     const renderEnvRoutes: HttpRoutes = {
       "/__csr": async () => {
         this.#requestStats.csr += 1;
-        const csrHtml = WebRouter.#resolveCsrHtmlPath(csrOutputDir, "/", this.#artifact);
+        const csrHtml = await this.#resolveCsrHtml(csrOutputDir, "/");
         const csrFile = csrHtml ? Bun.file(csrHtml) : null;
         const htmlText =
           csrFile && (await csrFile.exists())
@@ -482,8 +484,8 @@ export class WebRouter {
         const isCsr = url.searchParams.get("csr") === "true";
         if (isCsr) {
           this.#requestStats.csr += 1;
-          const csrHtml = WebRouter.#resolveCsrHtmlPath(csrOutputDir, url.pathname, this.#artifact);
-          if (!csrHtml) return new Response("Not Found", { status: 404 });
+          const csrHtml = await this.#resolveCsrHtml(csrOutputDir, url.pathname);
+          if (!csrHtml) return this.#csrUnavailableResponse(url.pathname);
           const html = await Bun.file(csrHtml).text();
           return new Response(this.#withCsrHmr(html), {
             headers: { "Content-Type": "text/html; charset=utf-8" },
@@ -889,6 +891,42 @@ export class WebRouter {
   #withCsrHmr(html: string): string {
     if (this.#prodMode) return html;
     return WebRouter.#injectBeforeBodyEnd(html, `<script>${HMR_CLIENT_SCRIPT}</script>`);
+  }
+  /**
+   * Resolve a CSR html file, asking the builder to build the artifact first if it is not there yet.
+   * Dev CSR is only reachable through `/__csr` and `?csr=true`, so the builder skips it until one of
+   * them is requested; the first request pays for the build and every save keeps it in sync after.
+   */
+  async #resolveCsrHtml(csrOutputDir: string, pathname: string): Promise<string | null> {
+    const resolved = WebRouter.#resolveCsrHtmlPath(csrOutputDir, pathname, this.#artifact);
+    if (resolved) return resolved;
+    await this.#armCsrArtifact(pathname);
+    return WebRouter.#resolveCsrHtmlPath(csrOutputDir, pathname, this.#artifact);
+  }
+  #armCsrArtifact(reason: string): Promise<unknown> {
+    const rpc = this.#builderRpc;
+    // Arm once per process: after a successful build the builder rebuilds CSR on every save, so a
+    // still-missing html file means the basePath does not exist rather than that CSR is unbuilt.
+    if (this.#csrArmed || !rpc) return Promise.resolve();
+    this.#csrOnDemandBuild ??= rpc
+      .buildCsr(reason)
+      .then(() => {
+        this.#csrArmed = true;
+        this.#logger.info(`[csr] dev CSR artifact built on demand (${reason})`);
+      })
+      .catch((err: unknown) => {
+        this.#logger.error(`[csr] on-demand build failed: ${err instanceof Error ? err.message : String(err)}`);
+      })
+      .finally(() => {
+        this.#csrOnDemandBuild = null;
+      });
+    return this.#csrOnDemandBuild;
+  }
+  #csrUnavailableResponse(pathname: string): Response {
+    if (this.#prodMode) return new Response("Not Found", { status: 404 });
+    const message = `No CSR artifact for ${pathname}. Dev CSR is built on demand; check the dev server log for a csr-build failure and verify the basePath in the URL.`;
+    this.#logger.warn(`[csr] ${message}`);
+    return new Response(message, { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
   }
   static #injectBeforeBodyEnd(html: string, snippet: string): string {
     const matches = [...html.matchAll(/<\/body\s*>/gi)];

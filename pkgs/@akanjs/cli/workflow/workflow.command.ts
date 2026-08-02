@@ -1,4 +1,4 @@
-import { command, Workspace } from "@akanjs/devkit";
+import { command, Workspace } from "@akanjs/devkit/commandDecorators";
 import { WorkflowScript } from "./workflow.script";
 
 export class WorkflowCommand extends command("workflow", [WorkflowScript], ({ public: target }) => ({

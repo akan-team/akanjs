@@ -1,4 +1,4 @@
-import { command, Workspace } from "@akanjs/devkit";
+import { command, Workspace } from "@akanjs/devkit/commandDecorators";
 import { ContextScript } from "./context.script";
 
 export class ContextCommand extends command("context", [ContextScript], ({ public: target }) => ({

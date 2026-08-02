@@ -2,14 +2,14 @@
 
 import { router } from "akanjs/client";
 import { loadCapacitorDevice, loadCapacitorFcm, loadCapacitorPushNotifications } from "akanjs/client/capacitor";
-
+import { getApps, initializeApp } from "firebase/app";
+import { getToken as getFirebaseToken, getMessaging } from "firebase/messaging";
 import { useEffect } from "react";
 
 export type PushNotificationPlatform = "web" | "ios" | "android";
 export type PushNotificationProvider = "fcm";
 
-// Minimal mirror of firebase's `FirebaseOptions` so this module never statically
-// depends on the optional `firebase` package (it is loaded lazily in getWebToken).
+// Client env shape for firebase web push; mirrors the fields of firebase's `FirebaseOptions`.
 export interface FirebaseOptions {
   apiKey?: string;
   authDomain?: string;
@@ -36,26 +36,21 @@ export interface PushNotificationClientEnv {
   };
 }
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __AKAN_PUSH_CLICK_BRIDGE__: Promise<boolean> | undefined;
-  // eslint-disable-next-line no-var
-  var __AKAN_CLIENT_ENV__: PushNotificationClientEnv | undefined;
+/** The two runtime globals this integration touches: the injected client env, and the click-bridge promise
+ *  cached on `globalThis` so repeated `initPushNotificationClickBridge` calls register the native listener
+ *  once per page. */
+export interface PushNotificationGlobals {
+  __AKAN_PUSH_CLICK_BRIDGE__?: Promise<boolean>;
+  __AKAN_CLIENT_ENV__?: PushNotificationClientEnv;
 }
 
-const getClientEnv = () => globalThis.__AKAN_CLIENT_ENV__;
+/** Typed view of those globals. An explicit accessor instead of `declare global` keeps the augmentation
+ *  local to this low-level integration rather than merging `var` declarations into every compilation. */
+export const pushNotificationGlobals = (): PushNotificationGlobals => globalThis as unknown as PushNotificationGlobals;
+
+const getClientEnv = () => pushNotificationGlobals().__AKAN_CLIENT_ENV__;
 
 const getFirebaseConfig = () => getClientEnv()?.firebase;
-
-// `firebase` is an optional peer that is not part of the bootstrap install, so it
-// must never appear as a statically-analyzable import — otherwise the app bundler
-// tries to resolve it and fails with "Could not resolve firebase/app" when it is
-// absent. Loading through an indirect specifier keeps it invisible to the bundler
-// (same idea as akanjs/client/capacitor, which reaches plugins via the global
-// Capacitor registry instead of importing the optional native packages). The
-// modules resolve at runtime only on the web platform, where firebase is present.
-const firebaseAppPackage = "firebase/app";
-const firebaseMessagingPackage = "firebase/messaging";
 
 const normalizePlatform = (platform: string): PushNotificationPlatform | null => {
   if (platform === "web" || platform === "ios" || platform === "android") return platform;
@@ -114,12 +109,6 @@ const getWebToken = async (): Promise<PushToken | undefined> => {
   ) {
     return undefined;
   }
-  const [{ getApps, initializeApp }, { getToken: getFirebaseToken, getMessaging }] = await Promise.all([
-    null as unknown as typeof import("firebase/app"), //! temporary disabled
-    null as unknown as typeof import("firebase/messaging"), //@ temporary disabled
-    // import("firebase/app"),
-    // import("firebase/messaging"),
-  ]);
   const firebase = getApps()[0] ?? initializeApp(firebaseConfig);
   const messaging = getMessaging(firebase);
   const serviceWorkerRegistration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
@@ -177,13 +166,14 @@ const waitForNativeRegistration = async (
 };
 
 export const initPushNotificationClickBridge = async () => {
-  if (globalThis.__AKAN_PUSH_CLICK_BRIDGE__) return await globalThis.__AKAN_PUSH_CLICK_BRIDGE__;
+  const globals = pushNotificationGlobals();
+  if (globals.__AKAN_PUSH_CLICK_BRIDGE__) return await globals.__AKAN_PUSH_CLICK_BRIDGE__;
 
   try {
     const platform = await getNativePlatform();
     if (!platform || platform === "web") return true;
 
-    globalThis.__AKAN_PUSH_CLICK_BRIDGE__ = (async () => {
+    globals.__AKAN_PUSH_CLICK_BRIDGE__ = (async () => {
       const { PushNotifications } = await loadCapacitorPushNotifications();
       await PushNotifications.addListener("pushNotificationActionPerformed", (event) => {
         const url = getPushUrlFromNativeEvent(event);
@@ -197,7 +187,7 @@ export const initPushNotificationClickBridge = async () => {
       return true;
     })();
 
-    return await globalThis.__AKAN_PUSH_CLICK_BRIDGE__;
+    return await globals.__AKAN_PUSH_CLICK_BRIDGE__;
   } catch {
     return false;
   }

@@ -126,9 +126,11 @@ export const getEnv = (): ClientEnv => {
           ? (window.location.host.split(":")[0] ?? "unknown")
           : "localhost");
 
-  const serverPort = parseInt(
-    process.env.AKAN_PUBLIC_SERVER_PORT ?? (operationMode === "local" || side === "server" ? "8282" : "443"),
-  );
+  const serverPort =
+    side === "server"
+      ? parseInt(process.env.AKAN_PUBLIC_SERVER_PORT ?? "8282")
+      : parseInt(window.location.port || (window.location.protocol === "https:" ? "443" : "80"));
+
   const serverHttpProtocol: "http:" | "https:" =
     (process.env.SERVER_HTTP_PROTOCOL as "http:" | "https:" | undefined) ??
     (operationMode === "local"

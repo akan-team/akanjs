@@ -22,6 +22,8 @@
     "release:verify-packages": "bun dist/pkgs/@akanjs/cli/index.js verify-akan-publish-packages",
     "release:smoke-registry": "bun run akan reset-registry && bun run akan smoke-registry --test=true --tag=rc --registry=http://127.0.0.1:4873",
     "akan": "bun pkgs/@akanjs/cli/build.ts && bun dist/pkgs/@akanjs/cli/index.js",
+    "testPkgs": "bun run buildAkan && for p in akanjs @akanjs/devkit @akanjs/cli; do printf '\\n== %s\\n' \"$p\" && bun run runAkan test \"$p\" || exit 1; done",
+    "testDevStability": "cd pkgs/@akanjs/devkit && AKAN_DEV_STABILITY_INTEGRATION=1 bun test --isolate \"$PWD/integration/devStability.integration.test.ts\"",
     "killAkan": "lsof -ti tcp:8282,18282-18300 | xargs kill -9",
     "buildAkan": "bun pkgs/@akanjs/cli/build.ts",
     "runAkan": "bun dist/pkgs/@akanjs/cli/index.js",
@@ -192,6 +194,7 @@
     "react-icons": "^5.6.0",
     "react-lite-youtube-embed": "2.4.0",
     "react-lottie-player": "^2.1.0",
+    "react-markdown": "^10.1.0",
     "react-pdf": "^10.4.1",
     "react-refresh": "^0.18.0",
     "react-server-dom-bun": "0.0.0-experimental-603e6108-20241029",
@@ -201,6 +204,7 @@
     "react-spring": "^10.0.4",
     "react-to-print": "^3.3.0",
     "react-tweet": "3.2.1",
+    "remark-gfm": "^4.0.1",
     "scheduler": "^0.27.0",
     "sharp": "^0.34.5",
     "shiki": "^4.1.0",
@@ -217,9 +221,12 @@
     "tailwind-variants": "^3.3.0",
     "tailwindcss": "^4.3.0",
     "ua-parser-js": "^2.0.9",
+    "zod": "3.25.76",
     "zustand": "^5.0.13"
   },
   "patchedDependencies": {
-    "react-dom@19.2.7": "patches/react-dom@19.2.7.patch"
+    "react-dom@19.2.7": "patches/react-dom@19.2.7.patch",
+    "zod@3.25.76": "patches/zod@3.25.76.patch",
+    "zod@4.4.3": "patches/zod@4.4.3.patch"
   }
 }

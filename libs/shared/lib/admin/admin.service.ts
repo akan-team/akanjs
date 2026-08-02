@@ -21,7 +21,11 @@ export class AdminService extends serve(db.admin, ({ use, service, memory, signa
       (await this.adminModel.findByAccountId(this.rootAdminInfo.accountId)) ??
       (await this.adminModel.createAdmin(this.rootAdminInfo));
     await rootAdmin.set({ roles: ["admin", "superAdmin"] }).save();
-    const isRootPasswordMatched = await isPasswordMatch(this.rootAdminInfo.password, rootAdmin.password || "");
+    const storedPassword = await this.adminModel
+      .getAdminSecret(this.rootAdminInfo.accountId)
+      .then((adminSecret) => adminSecret.password)
+      .catch(() => "");
+    const isRootPasswordMatched = await isPasswordMatch(this.rootAdminInfo.password, storedPassword || "");
     if (!isRootPasswordMatched) await this.setPassword(rootAdmin.id, this.rootAdminInfo.password);
   }
   private _makeMe(admin: db.Admin): Me {

@@ -111,17 +111,22 @@ pipeline {
                 }
             }
         }
-        // stage("Test"){
-        //     steps {
-        //         script {
-        //             TESTS = ALL_PROJECTS.tokenize(",") + TEST_LIBS.tokenize(",");
-        //             TEST_PROJECTS = TESTS.join(",");
-        //             if(TESTS.size() >= 1) {
-        //                 sh "ssh -i $SSH_KEY $BUILD_USER@$BUILD_HOST -p $BUILD_PORT \"cd $REPO_NAME/$BRANCH && npx pnpm nx run-many --target=test --parallel=3 --projects=$TEST_PROJECTS --nxBail\""
-        //             }
-        //         }
-        //     }
-        // }
+        stage("Test"){
+            steps {
+                // The framework unit suites, gating Dockerize and Deploy. `testPkgs` is the same command
+                // developers run locally, so a red build here reproduces with one line and no Jenkins.
+                //
+                // Prepare Build has already run `bun install` and written AKAN_PUBLIC_REPO_NAME /
+                // AKAN_PUBLIC_SERVE_DOMAIN / AKAN_PUBLIC_ENV into `.env`, which the cli suite needs:
+                // 8 of its tests build temp workspaces through `WorkspaceExecutor.getBaseDevEnv`, which
+                // throws without them.
+                sh "ssh -i $SSH_KEY $BUILD_USER@$BUILD_HOST -p $BUILD_PORT \"cd $REPO_NAME/$BRANCH && bun run testPkgs\""
+            }
+        }
+        // The app and lib suites (ALL_PROJECTS + TEST_LIBS) are still not run anywhere. Their testing
+        // credentials are already fetched in Prepare Build, so the missing piece is only a command —
+        // but they have never been green in CI, so enabling them belongs in its own change rather than
+        // silently blocking every deploy.
         stage("Dockerize"){
             steps {
                 script {

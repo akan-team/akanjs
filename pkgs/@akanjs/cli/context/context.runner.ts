@@ -3,35 +3,34 @@ import {
   type AkanContextFormat,
   type AkanMcpInstallTarget,
   type AkanMcpMode,
-  AppExecutor,
   akanMcpInstallConfigPaths,
-  applyFirstPolicy,
   type CursorMcpConfig,
   codexMcpConfigPath,
   createAkanCodexMcpServerBlock,
   createAkanMcpServer,
-  createAkanValidationContract,
-  createWorkflowBaselineSummary,
-  defaultWorkflowPlanPath,
-  getMobileTargets,
-  inspectAkanContext,
-  isPlaceholderAppId,
   type JsonRpcRequest,
-  jsonText,
-  listAkanMcpTools,
   type McpFraming,
-  Prompter,
-  parseJsonOutput,
   renderDoctorText,
   resourceList,
-  runner,
-  stringArg,
   upsertCodexMcpServerBlock,
-  type WorkflowDiagnostic,
-  type Workspace,
+} from "@akanjs/devkit/akanContext";
+import {
+  applyFirstPolicy,
+  createAkanValidationContract,
+  defaultWorkflowPlanPath,
+  inspectAkanContext,
+  listAkanMcpTools,
+  parseJsonOutput,
+  stringArg,
   workflowInputsArg,
   workspacePath,
-} from "@akanjs/devkit";
+} from "@akanjs/devkit/akanMcpContract";
+import { isPlaceholderAppId } from "@akanjs/devkit/capacitorApp";
+import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { AppExecutor } from "@akanjs/devkit/executors";
+import { getMobileTargets } from "@akanjs/devkit/mobile";
+import { Prompter } from "@akanjs/devkit/prompter";
+import { createWorkflowBaselineSummary, jsonText, type WorkflowDiagnostic } from "@akanjs/devkit/workflow";
 import { RepairRunner } from "../repair/repair.runner";
 import { WorkflowRunner } from "../workflow/workflow.runner";
 import { createCliWorkflowStepRegistry } from "./context.workflowRegistry";

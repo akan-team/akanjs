@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import type {
   ReactFont,
@@ -8,15 +8,7 @@ import type {
   ReactFontStyle,
   ReactFontSubset,
 } from "akanjs/client";
-import {
-  type FontCategory,
-  generateFontFace,
-  getMetricsForFamily,
-  readMetrics,
-  resolveCategoryFallbacks,
-} from "fontaine";
-import { createFont, woff2 } from "fonteditor-core";
-import subsetFont from "subset-font";
+import type { FontCategory } from "fontaine";
 import ts from "typescript";
 import type { App } from "../commandDecorators";
 
@@ -26,6 +18,17 @@ const DEFAULT_FONT_SUBSETS: ReactFontSubset[] = ["latin"];
 export interface OptimizeAppFontsResult {
   css: string;
   fonts: ReactFont[];
+  files: string[];
+}
+
+/**
+ * Lets a boot that changed nothing about its fonts skip re-subsetting them. `files` is stored relative
+ * to the artifact root so the `build` and `start` roots keep independent, relocatable caches.
+ */
+interface FontOptimizerCache {
+  version: number;
+  key: string;
+  css: string;
   files: string[];
 }
 
@@ -40,6 +43,7 @@ export class FontOptimizer {
   #woff2Ready: Promise<void> | null = null;
 
   static #ksX1001Text: string | null = null;
+  static readonly #cacheVersion = 1;
 
   constructor(app: App, command: FontOptimizerCommand = "start") {
     this.#app = app;
@@ -49,13 +53,83 @@ export class FontOptimizer {
 
   async optimize(): Promise<OptimizeAppFontsResult> {
     const fonts = await this.discoverFonts();
+    const cacheKey = await this.#buildCacheKey(fonts);
+    const cached = cacheKey ? await this.#readCache(cacheKey) : null;
+    if (cached) {
+      this.#app.verbose(`[font] reused ${cached.files.length} cached file(s); skipped subsetting`);
+      return { css: cached.css, fonts, files: cached.files };
+    }
     for (const font of fonts) {
       if (!this.#isFontOptimizationEnabled(font)) continue;
       await this.#optimizeFont(font);
     }
     const fontUtilityCss = this.#buildFontUtilityRules(fonts);
     if (fontUtilityCss) this.#cssParts.push(fontUtilityCss);
-    return { css: this.#cssParts.join("\n"), fonts, files: this.#files };
+    const result = { css: this.#cssParts.join("\n"), fonts, files: this.#files };
+    if (cacheKey) await this.#writeCache(cacheKey, result);
+    return result;
+  }
+
+  get #cachePath() {
+    return path.join(this.#artifactRoot, "fontCache.json");
+  }
+
+  /**
+   * Null means "do not cache this run": a source we cannot stat is a source whose staleness we cannot
+   * detect, and the uncached path is also the one that warns about it.
+   */
+  async #buildCacheKey(fonts: ReactFont[]): Promise<string | null> {
+    const sources: unknown[] = [];
+    for (const font of fonts) {
+      if (!this.#isFontOptimizationEnabled(font)) continue;
+      for (const face of this.#getFontFaces(font)) {
+        const sourcePath = await this.#resolveFontSourcePath(face.src);
+        const stamp = sourcePath ? await this.#fileStamp(sourcePath) : null;
+        if (!stamp) return null;
+        sources.push({ optimizedSrc: face.optimizedSrc, ...stamp });
+      }
+      for (const filePath of font.subsetFiles ?? []) {
+        const abs = path.isAbsolute(filePath) ? filePath : path.join(this.#app.cwdPath, filePath);
+        const stamp = await this.#fileStamp(abs);
+        if (!stamp) return null;
+        sources.push({ subsetFile: filePath, ...stamp });
+      }
+      // `auto` derives the subset from app source text, which no font config hash can capture.
+      if (this.#getFontSubsets(font).includes("auto"))
+        sources.push({ autoSubsetText: this.#hashFontConfig(await this.#collectAutoSubsetText()) });
+    }
+    return this.#hashFontConfig({ version: FontOptimizer.#cacheVersion, fonts, sources });
+  }
+
+  async #fileStamp(filePath: string): Promise<{ mtimeMs: number; size: number } | null> {
+    try {
+      const stats = await stat(filePath);
+      return { mtimeMs: Math.round(stats.mtimeMs), size: stats.size };
+    } catch {
+      return null;
+    }
+  }
+
+  async #readCache(key: string): Promise<{ css: string; files: string[] } | null> {
+    const cache = (await Bun.file(this.#cachePath)
+      .json()
+      .catch(() => null)) as FontOptimizerCache | null;
+    if (cache?.version !== FontOptimizer.#cacheVersion || cache.key !== key) return null;
+    const files = cache.files.map((relativePath) => path.join(this.#artifactRoot, relativePath));
+    for (const filePath of files) {
+      if (!(await Bun.file(filePath).exists())) return null;
+    }
+    return { css: cache.css, files };
+  }
+
+  async #writeCache(key: string, result: OptimizeAppFontsResult): Promise<void> {
+    const cache: FontOptimizerCache = {
+      version: FontOptimizer.#cacheVersion,
+      key,
+      css: result.css,
+      files: result.files.map((filePath) => path.relative(this.#artifactRoot, filePath)),
+    };
+    await Bun.write(this.#cachePath, JSON.stringify(cache));
   }
 
   async discoverFonts(): Promise<ReactFont[]> {
@@ -66,7 +140,11 @@ export class FontOptimizer {
         const filePath = path.resolve(this.#app.cwdPath, "page", key);
         const file = Bun.file(filePath);
         if (!(await file.exists())) return;
-        fonts.push(...this.#extractFontsExport(await file.text(), filePath));
+        const source = await file.text();
+        // A declaration named `fonts` cannot exist in text that never mentions it, and parsing the
+        // route files that never declare one is what a cached optimize() otherwise spends its time on.
+        if (!source.includes("fonts")) return;
+        fonts.push(...this.#extractFontsExport(source, filePath));
       }),
     );
     return this.#dedupeFonts(fonts);
@@ -85,10 +163,7 @@ export class FontOptimizer {
       await mkdir(path.dirname(outputPath), { recursive: true });
 
       const sourceBuffer = Buffer.from(await Bun.file(sourcePath).arrayBuffer());
-      const outputBuffer =
-        font.subset === false
-          ? await this.#convertToWoff2(sourceBuffer, sourcePath)
-          : await subsetFont(sourceBuffer, await this.#getSubsetText(font), { targetFormat: "woff2" });
+      const outputBuffer = await this.#buildFontBuffer(font, sourceBuffer, sourcePath);
       await Bun.write(outputPath, outputBuffer);
       this.#files.push(outputPath);
 
@@ -255,14 +330,23 @@ export class FontOptimizer {
     return null;
   }
 
+  /** `subset-font`, `fonteditor-core` and `fontaine` are imported here rather than at module scope so a
+   * cache hit — the common case once the cache exists — loads none of them. */
+  async #buildFontBuffer(font: ReactFont, sourceBuffer: Buffer, sourcePath: string) {
+    if (font.subset === false) return this.#convertToWoff2(sourceBuffer, sourcePath);
+    const { default: subsetFont } = await import("subset-font");
+    return subsetFont(sourceBuffer, await this.#getSubsetText(font), { targetFormat: "woff2" });
+  }
+
   async #convertToWoff2(buffer: Buffer, sourcePath: string) {
+    const { createFont } = await import("fonteditor-core");
     await this.#initWoff2();
     const font = createFont(buffer, { type: this.#getFontType(sourcePath, buffer) });
     return font.write({ type: "woff2", toBuffer: true });
   }
 
   async #initWoff2() {
-    this.#woff2Ready ??= woff2.init().then(() => undefined);
+    this.#woff2Ready ??= import("fonteditor-core").then(({ woff2 }) => woff2.init()).then(() => undefined);
     return this.#woff2Ready;
   }
 
@@ -363,6 +447,7 @@ export class FontOptimizer {
 
   async #buildFontaineFallbackCss(font: ReactFont, face: ReactFontFace, outputPath: string) {
     if (font.adjustFontFallback === false) return "";
+    const { generateFontFace, getMetricsForFamily, readMetrics, resolveCategoryFallbacks } = await import("fontaine");
     const metrics = await readMetrics(outputPath).catch(() => null);
     if (!metrics) return "";
     const fallbacks = resolveCategoryFallbacks({

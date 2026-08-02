@@ -1,5 +1,6 @@
-import { AiSession, Prompter, runner, type Workspace } from "@akanjs/devkit";
-
+import { AiSession } from "@akanjs/devkit/aiEditor";
+import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { Prompter } from "@akanjs/devkit/prompter";
 import { GuidelinePrompt } from "./guideline.prompt";
 
 export class GuidelineRunner extends runner("guideline") {

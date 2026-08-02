@@ -1,6 +1,6 @@
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
-import { runner, type Workspace } from "@akanjs/devkit";
+import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { Logger } from "akanjs/common";
 import { getNpmRegistryUrl } from "../npmRegistry";
 

@@ -59,8 +59,27 @@ export class DiLifecycle {
   readonly #adaptor = new Map<string, AdaptorCls>();
   readonly #middleware = new Map<string, MiddlewareCls>();
   readonly webProxies: WebProxyRegistration[] = [];
+  /** refName → why the module was dropped at construction time. Kept for introspection, not control flow. */
+  readonly disabledModules = new Map<string, string>();
   readonly #predefinedAdaptor;
   readonly #predefinedAdaptorRole = predefinedAdaptorRole;
+
+  /** Read-only view of the resolved module maps, for tooling that needs to describe the container. */
+  get modules(): {
+    database: ReadonlyMap<string, DatabaseModule>;
+    service: ReadonlyMap<string, ServiceModule>;
+    scalar: ReadonlyMap<string, ScalarModule>;
+    adaptor: ReadonlyMap<string, AdaptorCls>;
+    middleware: ReadonlyMap<string, MiddlewareCls>;
+  } {
+    return {
+      database: this.#database,
+      service: this.#service,
+      scalar: this.#scalar,
+      adaptor: this.#adaptor,
+      middleware: this.#middleware,
+    };
+  }
 
   constructor(env: BaseEnv, serverMode: "federation" | "batch" | "all", ...libs: AkanLib[]) {
     this.#env = env;
@@ -143,6 +162,7 @@ export class DiLifecycle {
     }
 
     disabledReasons.forEach((reason, refName) => {
+      this.disabledModules.set(refName, reason);
       this.logger.verbose(`Skipping disabled module "${refName}": ${reason}`);
     });
     return new Set(disabledReasons.keys());

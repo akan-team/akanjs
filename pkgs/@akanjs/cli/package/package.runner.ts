@@ -1,13 +1,10 @@
 import path from "node:path";
-import {
-  FileSys,
-  type PackageJson,
-  type Pkg,
-  PkgExecutor,
-  runner,
-  TypeScriptDependencyScanner,
-  type Workspace,
-} from "@akanjs/devkit";
+import { type Pkg, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { TypeScriptDependencyScanner } from "@akanjs/devkit/dependencyScanner";
+import { PkgExecutor } from "@akanjs/devkit/executors";
+import { FileSys } from "@akanjs/devkit/fileSys";
+import { PackageExportsMap } from "@akanjs/devkit/packageExportsMap";
+import type { PackageJson } from "@akanjs/devkit/types";
 import { Logger } from "akanjs/common";
 import { $ } from "bun";
 
@@ -118,7 +115,93 @@ export class PackageRunner extends runner("package") {
     await this.#copyPackageReadmes(pkg);
   }
 
-  async verifyDistPackage(pkg: Pkg): Promise<{ name: string; version: string; files: number; size: number }> {
+  /** Dist files worth scanning for imports; `.d.ts` is excluded as type-only. */
+  static readonly #scannableDistFiles = "**/*.{ts,tsx,js,jsx,mjs,cjs}";
+  /** Matches the tail of the text preceding a specifier when that specifier is actually imported. */
+  static readonly #importPosition = /(?:\bfrom\s*|\brequire\s*\(\s*|\bimport\s*\(\s*|\bimport\s+)$/;
+
+  /** Splits `akanjs/server/akanApp` into the package name and the `exports` subpath to look up. */
+  static #splitSpecifier(specifier: string) {
+    const segments = specifier.split("/");
+    const name = specifier.startsWith("@") ? segments.slice(0, 2).join("/") : segments[0];
+    const subpath = specifier.slice(name.length).replace(/^\//, "");
+    return { name, subpath: subpath ? `./${subpath}` : "." };
+  }
+
+  /**
+   * Collects every specifier the dist tree imports from `packageNames`, mapped to the importing files.
+   *
+   * Only import positions in non-test files count. Test files are skipped because the transform suites
+   * carry specifiers as fixture *data* (`"akanjs/server/akanApp"`, `"akanjs/ui/*"`) that never resolve
+   * and never run for a consumer, and whole-line comments are skipped because this package documents
+   * subpath imports in prose.
+   */
+  async #collectDistAkanImports(distPath: string, packageNames: Iterable<string>) {
+    const alternatives = [...new Set(packageNames)].map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const specifierPattern = new RegExp(`["'](${alternatives.join("|")})((?:/[^"'\\s]*)?)["']`, "g");
+    const glob = new Bun.Glob(PackageRunner.#scannableDistFiles);
+    const imports = new Map<string, Set<string>>();
+    for await (const relative of glob.scan({ cwd: distPath })) {
+      if (relative.includes("node_modules/") || relative.endsWith(".d.ts")) continue;
+      if (/\.(test|spec)\.[a-z]+$/.test(relative)) continue;
+      const source = await Bun.file(`${distPath}/${relative}`).text();
+      for (const line of source.split("\n")) {
+        const trimmed = line.trimStart();
+        if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
+        for (const match of line.matchAll(specifierPattern)) {
+          if (!PackageRunner.#importPosition.test(line.slice(0, match.index))) continue;
+          const specifier = `${match[1]}${match[2] ?? ""}`;
+          const importers = imports.get(specifier) ?? new Set<string>();
+          imports.set(specifier, importers.add(relative));
+        }
+      }
+    }
+    return imports;
+  }
+
+  /**
+   * Fails when the dist tree imports a subpath of itself, or of a sibling akan package, that the
+   * corresponding `exports` map cannot reach.
+   *
+   * This is the check that `"exports": { "./*": "./*" }` in `@akanjs/devkit` needed and did not have.
+   * Exports targets are matched exactly — no extension appended, no `index.ts` probed — so every
+   * subpath import in the published package failed at runtime while `tsc`, the bundle, and the whole
+   * test suite stayed green, because inside the monorepo those specifiers resolve through tsconfig
+   * `paths` instead. Nothing short of resolving against the built manifest can see the difference.
+   */
+  async #verifyDistExportsReachable(pkg: Pkg, peerExportsMaps: Map<string, PackageExportsMap>) {
+    const exportsMaps = new Map(peerExportsMaps).set(pkg.name, await PackageExportsMap.from(pkg.dist.cwdPath));
+    const imports = await this.#collectDistAkanImports(pkg.dist.cwdPath, exportsMaps.keys());
+    const failures: string[] = [];
+    for (const [specifier, importers] of imports) {
+      const { name, subpath } = PackageRunner.#splitSpecifier(specifier);
+      const exportsMap = exportsMaps.get(name);
+      if (!exportsMap) continue; // that package was not built in this run, so its manifest is unknown
+      const [unreachable] = exportsMap.findUnreachable([subpath]);
+      if (!unreachable) continue;
+      const reason = unreachable.target
+        ? `its exports map yields ${unreachable.target}, which is not a file`
+        : "no exports entry matches it";
+      const files = [...importers].sort();
+      const shown = files.slice(0, 3).join(", ") + (files.length > 3 ? ` (+${files.length - 3} more)` : "");
+      failures.push(`  ${specifier} — ${reason}; imported by ${shown}`);
+    }
+    if (!failures.length) return;
+    throw new Error(
+      `[package] ${pkg.name} dist imports ${failures.length} subpath(s) no consumer can resolve:\n` +
+        `${failures.sort().join("\n")}\n` +
+        `Add the missing "exports" entries: a bare file facet needs "./*": "./*.ts", a directory facet ` +
+        `needs its own "./name": "./name/index.ts", and "./*.ts": "./*.ts" keeps an already-suffixed ` +
+        `specifier from gaining a second extension.`,
+    );
+  }
+
+  async verifyDistPackage(
+    pkg: Pkg,
+    {
+      peerExportsMaps = new Map<string, PackageExportsMap>(),
+    }: { peerExportsMaps?: Map<string, PackageExportsMap> } = {},
+  ): Promise<{ name: string; version: string; files: number; size: number }> {
     const distPackageJsonPath = `${pkg.dist.cwdPath}/package.json`;
     if (!(await Bun.file(distPackageJsonPath).exists())) {
       throw new Error(`[package] dist package not found for ${pkg.name}. Run build-package first.`);
@@ -149,6 +232,7 @@ export class PackageRunner extends runner("package") {
         throw new Error("[package] akanjs dist exports must point type declarations at ./types");
       }
     }
+    await this.#verifyDistExportsReachable(pkg, peerExportsMaps);
     const packOutput = await pkg.workspace.spawn("npm", ["pack", "--dry-run", "--json", pkg.dist.cwdPath], {
       cwd: pkg.workspace.workspaceRoot,
     });
@@ -162,9 +246,16 @@ export class PackageRunner extends runner("package") {
   }
 
   async verifyAkanPublishPackages(workspace: Workspace) {
+    const pkgs = PackageRunner.publishableAkanPackages.map((pkgName) => PkgExecutor.from(workspace, pkgName));
+    // Built up front so each package can resolve specifiers that point at its siblings, not just itself.
+    const peerExportsMaps = new Map<string, PackageExportsMap>();
+    for (const pkg of pkgs) {
+      if (!(await Bun.file(`${pkg.dist.cwdPath}/package.json`).exists())) continue;
+      peerExportsMaps.set(pkg.name, await PackageExportsMap.from(pkg.dist.cwdPath));
+    }
     const results = [];
-    for (const pkgName of PackageRunner.publishableAkanPackages) {
-      results.push(await this.verifyDistPackage(PkgExecutor.from(workspace, pkgName)));
+    for (const pkg of pkgs) {
+      results.push(await this.verifyDistPackage(pkg, { peerExportsMaps }));
     }
     return results;
   }

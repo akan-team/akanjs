@@ -36,17 +36,17 @@ export class UserInternal extends internal(srv.user, () => ({})) {}
 
 export class UserSlice extends slice(
   srv.user,
-  { guards: { root: Admin, get: Public, cru: Every, remove: SelfOrAdmin } },
+  { guards: { root: Admin, get: Public, cru: SelfOrAdmin, create: Admin } },
   () => ({}),
 ) {}
 
 export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ query, mutation }) => ({
-  addBadgeCount: mutation(cnst.User)
+  addBadgeCount: mutation(cnst.User, { guards: [SelfOrAdmin] })
     .param("userId", ID)
     .exec(async function (userId) {
       return await this.userService.addBadgeCount(userId);
     }),
-  subBadgeCount: mutation(cnst.User)
+  subBadgeCount: mutation(cnst.User, { guards: [SelfOrAdmin] })
     .param("userId", ID)
     .exec(async function (userId) {
       return await this.userService.subBadgeCount(userId);
@@ -270,7 +270,7 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
       await this.userService.releaseUser(userId);
       return true;
     }),
-  getRestrictInfo: query(cnst.RestrictInfo, { nullable: true })
+  getRestrictInfo: query(cnst.RestrictInfo, { guards: [SelfOrAdmin], nullable: true })
     .param("userId", ID)
     .exec(async function (userId) {
       return await this.userService.getRestrictInfo(userId);
@@ -362,7 +362,7 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
       await this.userService.setDiscordOfPrepareUser(userId, discord);
       return true;
     }),
-  setNotiSettingOfUser: mutation(Boolean)
+  setNotiSettingOfUser: mutation(Boolean, { guards: [SelfOrAdmin] })
     .body("userId", ID)
     .body("notiSetting", cnst.NotiSetting)
     .exec(async function (userId, notiSetting) {

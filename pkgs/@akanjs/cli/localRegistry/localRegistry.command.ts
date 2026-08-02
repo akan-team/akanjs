@@ -1,4 +1,4 @@
-import { command, Workspace } from "@akanjs/devkit";
+import { command, Workspace } from "@akanjs/devkit/commandDecorators";
 import { LocalRegistryScript } from "./localRegistry.script";
 
 export class LocalRegistryCommand extends command("local-registry", [LocalRegistryScript], ({ public: target }) => ({

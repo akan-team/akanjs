@@ -1,4 +1,5 @@
-import { App, command, Exec, getMobileTargetChoices, Sys, Workspace } from "@akanjs/devkit";
+import { App, command, Exec, Sys, Workspace } from "@akanjs/devkit/commandDecorators";
+import { getMobileTargetChoices } from "@akanjs/devkit/mobile";
 import { select } from "@inquirer/prompts";
 
 import { ApplicationScript } from "./application.script";

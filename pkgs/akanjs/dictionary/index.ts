@@ -8,5 +8,6 @@ export {
   getDictionary,
   translate,
 } from "./dictionary";
+export * from "./dictionaryRegistry";
 export * from "./locale";
 export * from "./trans";

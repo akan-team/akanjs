@@ -1,5 +1,4 @@
-import { type App, type Module, script } from "@akanjs/devkit";
-
+import { type App, type Module, script } from "@akanjs/devkit/commandDecorators";
 import { PageRunner } from "./page.runner";
 
 export class PageScript extends script("page", [PageRunner]) {

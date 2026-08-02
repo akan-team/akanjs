@@ -10,7 +10,6 @@ import type {
   ScanResult,
 } from "./akanConfig";
 
-import { TypeScriptDependencyScanner } from "./dependencyScanner";
 import { AppExecutor, LibExecutor, PkgExecutor, WorkspaceExecutor } from "./executors";
 
 const scalarFileTypes = ["constant", "dictionary", "document", "template", "unit", "util", "view", "zone"] as const;
@@ -97,6 +96,11 @@ const moduleUiFileTypes = {
 } satisfies Record<ModuleKind, Set<string>>;
 const testFilePattern = /\.(test|spec)\.(ts|tsx)$/;
 const rootSignalTestFilePattern = /^[A-Za-z][A-Za-z0-9_-]*\.signal\.(test|spec)\.(ts|tsx)$/;
+
+// The dependency scanner needs `typescript` (~65MB resident). Only the scan/sync commands run it, so
+// load it on demand rather than through the module graph of every process that imports scan info.
+const createDependencyScanner = async (exec: AppExecutor | LibExecutor | PkgExecutor) =>
+  (await import("./dependencyScanner")).TypeScriptDependencyScanner.from(exec);
 
 const isAllowedTestFile = (filename: string) => testFilePattern.test(filename);
 const isAllowedLibRootFile = (filename: string) =>
@@ -241,7 +245,7 @@ class ScanInfo {
   static async getScanResult(exec: AppExecutor | LibExecutor) {
     const [akanConfig, scanner, pkgs, libs] = await Promise.all([
       exec.getConfig(),
-      TypeScriptDependencyScanner.from(exec),
+      createDependencyScanner(exec),
       exec.workspace.getPkgs(),
       exec.workspace.getLibs(),
     ]);
@@ -546,7 +550,7 @@ export class PkgInfo {
 
   static async scanExecutor(exec: PkgExecutor) {
     const [tsconfig, rootPackageJson] = await Promise.all([exec.getTsConfig(), exec.workspace.getPackageJson()]);
-    const scanner = await TypeScriptDependencyScanner.from(exec);
+    const scanner = await createDependencyScanner(exec);
     const npmSet = new Set(Object.keys({ ...rootPackageJson.dependencies, ...rootPackageJson.devDependencies }));
     const pkgPathSet = new Set(
       Object.keys(tsconfig.compilerOptions.paths ?? {})

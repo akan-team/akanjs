@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { CommandContainer, Prompter } from "@akanjs/devkit";
+import { CommandContainer } from "@akanjs/devkit/commandDecorators";
+import { Prompter } from "@akanjs/devkit/prompter";
 import { createCallRecorder, createFakeExecutor } from "../testHelpers";
 import { GuidelineScript } from "./guideline.script";
 

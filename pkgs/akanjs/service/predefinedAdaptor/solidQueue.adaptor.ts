@@ -21,7 +21,7 @@ class SolidWorker implements AkanWorker {
   constructor(
     private readonly queue: SolidQueue,
     private readonly name: string,
-    private readonly handler: (job: AkanJob) => Promise<void>,
+    private readonly handler: (job: AkanJob) => Promise<unknown>,
     pollIntervalMs: number,
   ) {
     this.#timer = setInterval(() => void this.pump(), pollIntervalMs);
@@ -116,7 +116,7 @@ export class SolidQueue
     this.#db?.close();
   }
 
-  registerProcessWorker(key: string, handler: (job: AkanJob) => Promise<void>): AkanWorker {
+  registerProcessWorker(key: string, handler: (job: AkanJob) => Promise<unknown>): AkanWorker {
     const worker = new SolidWorker(this, key, handler, this.config.queuePollIntervalMs);
     this.#workers.set(key, worker);
     return worker;
@@ -169,7 +169,7 @@ export class SolidQueue
     }
   }
 
-  async runJob(job: AkanJob, handler: (job: AkanJob) => Promise<void>) {
+  async runJob(job: AkanJob, handler: (job: AkanJob) => Promise<unknown>) {
     try {
       await handler({ ...job, data: job.data });
       this.#db

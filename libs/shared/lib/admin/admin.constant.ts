@@ -9,7 +9,7 @@ export class AdminInput extends via((field) => ({
 })) {}
 
 export class AdminObject extends via(AdminInput, (field) => ({
-  password: field(String, { type: "password", example: "qwer1234", minlength: 8 }).optional(),
+  password: field.secret(String, { type: "password", example: "qwer1234", minlength: 8 }).optional(),
   roles: field([AdminRole], { example: ["admin", "superAdmin"] }),
   lastLoginAt: field(Date, { default: () => dayjs(), example: dayjs() }),
 })) {}

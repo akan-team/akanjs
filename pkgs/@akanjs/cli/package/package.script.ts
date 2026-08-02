@@ -1,5 +1,4 @@
-import { type Pkg, script, type Workspace } from "@akanjs/devkit";
-
+import { type Pkg, script, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { PackageRunner } from "./package.runner";
 
 export class PackageScript extends script("package", [PackageRunner]) {

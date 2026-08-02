@@ -334,7 +334,13 @@ describe("useFrameRuntime", () => {
       toFrame,
     });
 
-    expect(plan.actions.map((action) => action.type)).toEqual(["safeArea", "topChrome", "bottomChrome", "keyboard", "page"]);
+    expect(plan.actions.map((action) => action.type)).toEqual([
+      "safeArea",
+      "topChrome",
+      "bottomChrome",
+      "keyboard",
+      "page",
+    ]);
     expect(plan.fromFrame.pageState.bottomInset).toBe(64);
     expect(plan.toFrame.pageState.bottomInset).toBe(192);
   });

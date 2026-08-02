@@ -1,5 +1,5 @@
-import { command, GlobalConfig, Workspace } from "@akanjs/devkit";
-
+import { GlobalConfig } from "@akanjs/devkit/cloud";
+import { command, Workspace } from "@akanjs/devkit/commandDecorators";
 import { CloudScript } from "./cloud.script";
 
 const localRegistryUrl = () => process.env.AKAN_NPM_REGISTRY ?? "http://127.0.0.1:4873";

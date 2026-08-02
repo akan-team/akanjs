@@ -1,4 +1,4 @@
-import { Admin, Every, Self } from "@libs/shared/srvkit";
+import { Admin, Self } from "@libs/shared/srvkit";
 import { endpoint, internal, Public, slice } from "akanjs/signal";
 
 import * as cnst from "../cnst";
@@ -8,7 +8,7 @@ export class NotificationInternal extends internal(srv.notification, () => ({}))
 
 export class NotificationSlice extends slice(
   srv.notification,
-  { guards: { root: Admin, get: Public, cru: Every } },
+  { guards: { root: Admin, get: Public, cru: Admin } },
   () => ({}),
 ) {}
 

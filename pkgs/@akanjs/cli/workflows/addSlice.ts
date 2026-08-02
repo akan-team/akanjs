@@ -1,4 +1,4 @@
-import type { WorkflowSpec } from "@akanjs/devkit";
+import type { WorkflowSpec } from "@akanjs/devkit/workflow";
 import { baseValidation, moduleInput, sysInputs } from "./shared";
 
 export const addSliceWorkflowSpec: WorkflowSpec = {

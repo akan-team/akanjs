@@ -1,5 +1,5 @@
-import type { CSSProperties } from "react";
 import type { PageState } from "akanjs/client";
+import type { CSSProperties } from "react";
 
 export type AkanFrameCssVarName =
   | "--akan-top-safe-area"

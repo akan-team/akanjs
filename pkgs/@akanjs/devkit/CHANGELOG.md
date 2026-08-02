@@ -1,5 +1,35 @@
 # @akanjs/devkit
 
+## 2.4.1
+
+### Patch Changes
+
+- Updated dependencies [473be34]
+- Updated dependencies [f5bfa27]
+- Updated dependencies [473be34]
+- Updated dependencies [068158b]
+- Updated dependencies [46a1a4a]
+- Updated dependencies [90c6597]
+- Updated dependencies [aca901d]
+- Updated dependencies [068158b]
+- Updated dependencies [cb895b7]
+- Updated dependencies [f8a9bc5]
+- Updated dependencies [d973712]
+- Updated dependencies [068158b]
+- Updated dependencies [cc3dd40]
+- Updated dependencies [8a2b795]
+- Updated dependencies [068158b]
+- Updated dependencies [473be34]
+- Updated dependencies [e5fde3b]
+- Updated dependencies [473be34]
+- Updated dependencies [f28466f]
+- Updated dependencies [51851fa]
+- Updated dependencies [1c3436f]
+- Updated dependencies [128e9a3]
+- Updated dependencies [a5d4a8a]
+- Updated dependencies [473be34]
+  - akanjs@2.4.1
+
 ## 2.4.0
 
 ### Minor Changes

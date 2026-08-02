@@ -11,9 +11,10 @@ import {
   SLICE_META,
 } from "akanjs/base";
 import { capitalize, Logger } from "akanjs/common";
-import { serialize } from "akanjs/constant";
+import { deserialize, serialize } from "akanjs/constant";
 import { documentQueryHelper } from "akanjs/document";
 import {
+  type AkanJob,
   type AkanJobOptions,
   type InjectRegistry,
   type LiveRegistry,
@@ -97,21 +98,23 @@ export class SignalResolver {
   static resolveSchedule(internalCls: InternalCls, internal: Internal, serverMode: "federation" | "batch" | "all") {
     const internalMeta = internalCls[INTERNAL_META] as { [key: string]: InternalInfo };
     Object.entries(internalMeta).forEach(([key, internalInfo]) => {
-      const { enabled, operationMode, serverMode: targetServerMode } = internalInfo.signalOption;
-      if (!enabled) return;
-      else if (operationMode && !operationMode.includes(getEnv().operationMode)) return;
-      else if (
-        targetServerMode &&
-        targetServerMode !== "all" &&
-        serverMode !== "all" &&
-        targetServerMode !== serverMode
-      )
+      const skip = SignalResolver.getScheduleSkipReason(internalInfo, serverMode);
+      if (skip) {
+        SignalResolver.#warnMissingProcessWorker(key, internalInfo, skip);
         return;
+      }
       switch (internalInfo.type) {
-        case "process":
+        case "process": {
           if (!internalInfo.execFn) throw new Error(`Exec function is not set for ${key}`);
-          internal.queue.registerProcessWorker(key, internalInfo.execFn.bind(internal));
+          const execFn = internalInfo.execFn.bind(internal);
+          // Queue adaptors invoke the handler with the job only; the declared payload lives in `job.data`.
+          // Spread it back onto the `msg` args so the `exec` signature (...msgArgs, job) holds at runtime.
+          internal.queue.registerProcessWorker(
+            key,
+            async (job) => await execFn(...SignalResolver.#getJobArgs(key, internalInfo, job), job),
+          );
           break;
+        }
         case "init":
           internal.schedule.registerInit(key, () => internalInfo.execFn?.bind(internal)());
           break;
@@ -150,6 +153,52 @@ export class SignalResolver {
       }
     });
   }
+  /** Why an internal is not scheduled on this server, or null when it is. `placement` marks a deliberate role split. */
+  static getScheduleSkipReason(
+    internalInfo: InternalInfo,
+    serverMode: "federation" | "batch" | "all",
+  ): { reason: string; placement: boolean } | null {
+    const { enabled, operationMode, serverMode: targetServerMode } = internalInfo.signalOption;
+    if (!enabled) return { reason: "the internal is disabled (`enabled: false`)", placement: false };
+    if (operationMode && !operationMode.includes(getEnv().operationMode))
+      return {
+        reason: `operationMode "${getEnv().operationMode}" is not in [${operationMode.join(", ")}]`,
+        placement: true,
+      };
+    if (targetServerMode && targetServerMode !== "all" && serverMode !== "all" && targetServerMode !== serverMode)
+      return {
+        reason: `serverMode is "${serverMode}" but the internal declares "${targetServerMode}"`,
+        placement: true,
+      };
+    return null;
+  }
+
+  /**
+   * A `process` producer is installed on every server regardless of placement, so a skipped worker means this
+   * server can enqueue jobs that nothing here consumes. Surface that asymmetry instead of failing silently.
+   */
+  static #warnMissingProcessWorker(
+    key: string,
+    internalInfo: InternalInfo,
+    { reason, placement }: { reason: string; placement: boolean },
+  ) {
+    if (internalInfo.type !== "process") return;
+    const message = `No worker registered for process internal "${key}" because ${reason}. Jobs enqueued here stay pending unless another server consumes them.`;
+    if (placement) SignalResolver.logger.verbose(message);
+    else SignalResolver.logger.warn(message);
+  }
+
+  /** Maps a job payload back onto the internal's declared `msg` args, deserializing each to its declared type. */
+  static #getJobArgs(key: string, internalInfo: InternalInfo, job: AkanJob): unknown[] {
+    const data = Array.isArray(job.data) ? (job.data as unknown[]) : job.data === undefined ? [] : [job.data];
+    return internalInfo.args.map((arg, idx) =>
+      deserialize(arg.argRef, arg.arrDepth, data[idx], {
+        key: `${key}.${arg.name}`,
+        nullable: arg.option?.nullable,
+      }),
+    );
+  }
+
   static resolveSlice(sliceCls: SliceCls): EndpointCls {
     const sliceMeta = sliceCls[SLICE_META] as { [key: string]: SliceInfo };
     const cnst = sliceCls.srv.cnst;
