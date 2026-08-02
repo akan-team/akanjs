@@ -345,7 +345,7 @@ export const SubmitNicknameOfPrepareUser = ({ redirect, userId, className }: Sub
   const userForm = st.use.userForm();
   return (
     <button
-      className={buttonRecipe({ variant: "outline" }, ["border-primary-light bg-primary-light", className])}
+      className={buttonRecipe({ variant: "outline" }, ["border-primary bg-primary", className])}
       disabled={!userForm.nickname || userForm.nickname.length < 2 || userForm.nickname.length > 20}
       onClick={() => {
         void st.do.setNicknameOfPrepareUser(userId, { redirect });

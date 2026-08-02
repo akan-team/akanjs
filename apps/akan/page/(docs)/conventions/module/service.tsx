@@ -777,7 +777,7 @@ async onDestroy() {
                 ko: "service 간 순환 의존성을 피합니다. 두 service가 서로 필요하다면 shared operation을 더 작은 service나 srvkit helper로 분리합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-border bg-background px-4 text-foreground/70">
+              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {rule}
               </div>
             ))}

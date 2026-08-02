@@ -1,4 +1,5 @@
 import { usePage } from "@apps/akan/client";
+import { docsListRecipe } from "@apps/akan/ui";
 
 const latestRun = "2026-05-30T17-11-35-780Z";
 
@@ -134,7 +135,7 @@ export default function Page() {
 
         <section className="mt-12">
           <h2 className="font-bold text-2xl">{l.trans({ en: "Summary", ko: "요약" })}</h2>
-          <ul className="mt-4 list-disc space-y-2 pl-5 text-foreground/75 leading-7">
+          <ul className={docsListRecipe(undefined, "mt-4 text-foreground/75 leading-7")}>
             <li>
               {l.trans({
                 en: "All measured Akan scenarios passed their throughput and p99 latency SLOs.",
@@ -221,7 +222,7 @@ export default function Page() {
               ko: "벤치마크는 MacBook M4 Pro에서 Akan.js 2.0.7로 로컬 실행했습니다. 로컬 벤치마크 수치는 machine state의 영향을 받지만, framework가 충분한 실용 성능 여유를 갖는지 확인하기에는 유용합니다.",
             })}
           </p>
-          <ul className="mt-4 list-disc space-y-2 pl-5 text-foreground/75 leading-7">
+          <ul className={docsListRecipe(undefined, "mt-4 text-foreground/75 leading-7")}>
             <li>{l.trans({ en: "Machine: MacBook M4 Pro", ko: "Machine: MacBook M4 Pro" })}</li>
             <li>{l.trans({ en: "Akan.js version: 2.0.7", ko: "Akan.js version: 2.0.7" })}</li>
             <li>{l.trans({ en: "Akan runtime: Bun", ko: "Akan runtime: Bun" })}</li>

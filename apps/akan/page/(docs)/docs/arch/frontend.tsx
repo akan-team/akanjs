@@ -304,7 +304,12 @@ export default function Page() {
                     <div className="rounded-full bg-primary/10 px-3 py-1 font-mono text-primary text-xs">{step}</div>
                   </div>
                   <div className="text-foreground/70 text-sm">{desc}</div>
-                  <div className="rounded-lg border border-border bg-background px-3 py-2 font-mono text-foreground/70 text-xs">
+                  <div
+                    className={panelRecipe(
+                      { radius: "lg", padding: "none" },
+                      "px-3 py-2 font-mono text-foreground/70 text-xs",
+                    )}
+                  >
                     {example}
                   </div>
                 </div>
@@ -372,7 +377,12 @@ export default function Page() {
                     ko: "사용자가 바로 봐야 하는 제목, 가격, 요약, 첫 목록, 정책 문구, 글 본문에 사용합니다.",
                   })}
                 </div>
-                <div className="mt-3 rounded-lg border border-border bg-background px-3 py-2 font-mono text-foreground/70 text-xs">
+                <div
+                  className={panelRecipe(
+                    { radius: "lg", padding: "none" },
+                    "mt-3 px-3 py-2 font-mono text-foreground/70 text-xs",
+                  )}
+                >
                   Product title, price, first list, summary
                 </div>
               </div>
@@ -551,9 +561,16 @@ export default function Page() {
                     <div className="font-bold text-foreground">index page</div>
                     <div className="text-foreground/60 text-xs">Model</div>
                   </div>
-                  <div className="rounded-lg border border-border bg-background px-3 py-1 font-mono text-xs">+New</div>
+                  <div className={panelRecipe({ radius: "lg", padding: "none" }, "px-3 py-1 font-mono text-xs")}>
+                    +New
+                  </div>
                 </div>
-                <div className="rounded-lg border border-border bg-background px-3 py-2 text-center text-foreground/70 text-sm">
+                <div
+                  className={panelRecipe(
+                    { radius: "lg", padding: "none" },
+                    "px-3 py-2 text-center text-foreground/70 text-sm",
+                  )}
+                >
                   Search bar
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2">
@@ -566,7 +583,12 @@ export default function Page() {
                     </div>
                   ))}
                 </div>
-                <div className="mt-3 rounded-lg border border-border bg-background px-3 py-2 text-center text-foreground/70 text-sm">
+                <div
+                  className={panelRecipe(
+                    { radius: "lg", padding: "none" },
+                    "mt-3 px-3 py-2 text-center text-foreground/70 text-sm",
+                  )}
+                >
                   Pagination
                 </div>
               </div>
@@ -584,7 +606,7 @@ export default function Page() {
                     Edit
                   </div>
                   <div className="mt-3 flex justify-end gap-2">
-                    <div className="rounded-lg border border-border bg-background px-3 py-1 text-sm">cancel</div>
+                    <div className={panelRecipe({ radius: "lg", padding: "none" }, "px-3 py-1 text-sm")}>cancel</div>
                     <div className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-1 text-primary text-sm">
                       submit
                     </div>
@@ -596,14 +618,19 @@ export default function Page() {
                       <div className="font-bold text-foreground">view page</div>
                       <div className="text-foreground/60 text-xs">Model 1</div>
                     </div>
-                    <div className="rounded-lg border border-border bg-background px-3 py-1 font-mono text-xs">
+                    <div className={panelRecipe({ radius: "lg", padding: "none" }, "px-3 py-1 font-mono text-xs")}>
                       edit
                     </div>
                   </div>
                   <div className="rounded-xl border border-success/30 bg-success/10 px-4 py-12 text-center font-semibold text-success">
                     View
                   </div>
-                  <div className="mt-3 rounded-lg border border-border bg-background px-3 py-2 text-center text-foreground/70 text-sm">
+                  <div
+                    className={panelRecipe(
+                      { radius: "lg", padding: "none" },
+                      "mt-3 px-3 py-2 text-center text-foreground/70 text-sm",
+                    )}
+                  >
                     etc
                   </div>
                 </div>
@@ -620,7 +647,7 @@ export default function Page() {
                   Edit
                 </div>
                 <div className="mt-3 flex justify-end gap-2">
-                  <div className="rounded-lg border border-border bg-background px-3 py-1 text-sm">cancel</div>
+                  <div className={panelRecipe({ radius: "lg", padding: "none" }, "px-3 py-1 text-sm")}>cancel</div>
                   <div className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-1 text-primary text-sm">
                     submit
                   </div>
@@ -1098,10 +1125,7 @@ export function UserSigninButton() {
                   ko: "직접 API 연결 코드를 만들기 전에 생성된 fetch와 st가 서버 통신과 클라이언트 상태를 처리하게 하세요.",
                 }),
               ].map((desc) => (
-                <div
-                  key={desc}
-                  className="rounded-xl border border-border bg-background px-4 py-0 text-foreground/70 text-sm"
-                >
+                <div key={desc} className={panelRecipe({ padding: "row" }, "text-foreground/70 text-sm")}>
                   {desc}
                 </div>
               ))}

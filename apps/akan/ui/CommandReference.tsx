@@ -1,8 +1,8 @@
 import { usePage } from "@apps/akan/client";
 import { Scroll } from "@libs/util/ui";
-
 import { Code } from "./Code";
 import { Docs } from "./Docs";
+import { panelRecipe } from "./Recipe";
 
 export interface ReferenceRow {
   name: string;
@@ -36,7 +36,7 @@ const ReferenceTable = ({ title, headers, rows, getCells }: ReferenceTableProps)
   return (
     <section className="space-y-3">
       <Docs.SubTitle>{title}</Docs.SubTitle>
-      <div className="hidden overflow-x-auto rounded-2xl border border-border bg-background lg:block">
+      <div className={panelRecipe({ radius: "2xl", padding: "none" }, "hidden overflow-x-auto lg:block")}>
         <table className="table w-full table-fixed">
           <colgroup>
             {headers.map((header, index) => (
@@ -81,7 +81,7 @@ const ReferenceTable = ({ title, headers, rows, getCells }: ReferenceTableProps)
         {rows.map((row) => {
           const cells = getCells(row);
           return (
-            <div key={`${title}-mobile-${row.name}`} className="rounded-2xl border border-border bg-background p-4">
+            <div key={`${title}-mobile-${row.name}`} className={panelRecipe({ radius: "2xl" })}>
               <div className="font-mono font-semibold text-foreground text-sm">{cells[0]}</div>
               <div className="mt-3 grid gap-2 text-sm">
                 {headers.slice(1).map((header, index) => (

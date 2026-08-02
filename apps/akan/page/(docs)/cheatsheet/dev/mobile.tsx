@@ -60,7 +60,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-3">
+              <div key={title} className={panelRecipe({ padding: "none" }, "px-4 py-3")}>
                 <div className="font-mono font-semibold text-primary">{title}</div>
                 <div className="mt-1 text-foreground/70 text-sm">{desc}</div>
               </div>
@@ -802,7 +802,7 @@ akan release-ios myapp --target default --env main`}
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-3">
+              <div key={title} className={panelRecipe({ padding: "none" }, "px-4 py-3")}>
                 <div className="font-mono font-semibold text-primary">{title}</div>
                 <div className="mt-1 text-foreground/70">{desc}</div>
               </div>

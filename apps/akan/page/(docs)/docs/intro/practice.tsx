@@ -513,7 +513,7 @@ export const General = ({ className }: GeneralProps) => {
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
-      <div className="my-6 rounded-lg border border-border bg-background p-4">
+      <div className={panelRecipe({ radius: "lg" }, "my-6")}>
         <div className="text-foreground/80">
           {l.trans({
             en: `🎉 Now customers can create orders using your form. But how do we show those orders in a nice, visual way? Let's create a card design to display each order beautifully.`,
@@ -583,7 +583,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
-      <div className="my-6 rounded-lg border border-border bg-background p-4">
+      <div className={panelRecipe({ radius: "lg" }, "my-6")}>
         <div className="text-foreground/80">
           {l.trans({
             en: `🚀 We have the form (Template) and the display card (Unit). Now let's put it all together on a webpage so customers can actually visit and use your ice cream ordering system!`,

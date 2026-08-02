@@ -1,4 +1,5 @@
 import { usePage } from "@apps/akan/client";
+import { docsListRecipe, panelRecipe } from "@apps/akan/ui";
 
 const changes = [
   {
@@ -85,7 +86,10 @@ export default function Page() {
 
         <section className="mt-12 grid gap-4">
           {changes.map((change) => (
-            <div key={change.title.en} className="rounded-3xl border border-border bg-background p-6 shadow-sm">
+            <div
+              key={change.title.en}
+              className={panelRecipe({ radius: "none", padding: "none" }, "rounded-3xl p-6 shadow-sm")}
+            >
               <h2 className="font-bold text-2xl">{l.trans(change.title)}</h2>
               <p className="mt-3 text-foreground/70 leading-7">{l.trans(change.desc)}</p>
             </div>
@@ -127,7 +131,7 @@ export default function Page() {
             {migrationNotes.map((column) => (
               <div key={column.label.en} className="rounded-2xl bg-muted p-5">
                 <h3 className="font-black text-primary text-xl">{l.trans(column.label)}</h3>
-                <ul className="mt-4 list-disc space-y-2 pl-5 text-foreground/75 leading-7">
+                <ul className={docsListRecipe(undefined, "mt-4 text-foreground/75 leading-7")}>
                   {column.items.map((item) => (
                     <li key={item.en}>{l.trans(item)}</li>
                   ))}

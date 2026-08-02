@@ -440,7 +440,7 @@ export class OrderService extends serve(db.order, ({ plug }) => ({
                 ko: "앱 전용 연동은 app srvkit에, 재사용 가능한 연동은 library srvkit에 둡니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-border bg-background px-4 text-foreground/70">
+              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {rule}
               </div>
             ))}

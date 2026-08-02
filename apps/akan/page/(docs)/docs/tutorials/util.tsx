@@ -910,7 +910,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
               ko: `모든 것이 올바르게 작동하는지 확인하기 위해 상태 관리 구현을 테스트해봅시다:`,
             })}
           </div>
-          <div className="my-4 rounded-lg border border-border bg-background p-4">
+          <div className={panelRecipe({ radius: "lg" }, "my-4")}>
             <div className="mb-2 font-semibold text-primary">
               {l.trans({ en: "Testing Steps:", ko: "테스트 단계:" })}
             </div>
@@ -959,7 +959,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
               </li>
             </ol>
           </div>
-          <div className="my-4 rounded-lg border border-border bg-background p-4">
+          <div className={panelRecipe({ radius: "lg" }, "my-4")}>
             <div className="mb-2 font-semibold text-primary">
               {l.trans({ en: "Expected Behavior:", ko: "예상 동작:" })}
             </div>

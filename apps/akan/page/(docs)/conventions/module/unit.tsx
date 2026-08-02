@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, type IntroItem } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, type IntroItem, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function UnitDocsPage() {
@@ -299,7 +299,7 @@ export const Mini = ({ article, className, href }: MiniProps) => (
                 ko: "하나의 Card에 많은 flag를 추가하기보다 display 목적별 variant를 export합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-border bg-background px-4 text-foreground/70">
+              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {rule}
               </div>
             ))}

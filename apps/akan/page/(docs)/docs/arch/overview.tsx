@@ -224,7 +224,7 @@ export default function Page() {
               <Link
                 key={href}
                 href={href}
-                className="block rounded-xl border border-border bg-background px-4 py-2 hover:border-primary/40"
+                className={panelRecipe({ padding: "none" }, "block px-4 py-2 hover:border-primary/40")}
               >
                 <span className="font-bold text-foreground">{title}: </span>
                 <span className="text-foreground/70 text-sm">{desc}</span>

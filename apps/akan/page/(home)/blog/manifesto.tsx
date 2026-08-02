@@ -1,4 +1,5 @@
 import { usePage } from "@apps/akan/client";
+import { panelRecipe } from "@apps/akan/ui";
 
 const principles = [
   {
@@ -138,7 +139,7 @@ export default function Page() {
 
         <section className="mt-12 grid gap-4 md:grid-cols-3">
           {principles.map((principle) => (
-            <div key={principle.title.en} className="rounded-2xl border border-border bg-background p-5 shadow-sm">
+            <div key={principle.title.en} className={panelRecipe({ radius: "2xl", padding: "lg" }, "shadow-sm")}>
               <h3 className="font-bold text-lg">{l.trans(principle.title)}</h3>
               <p className="mt-3 text-foreground/70 text-sm leading-6">{l.trans(principle.desc)}</p>
             </div>

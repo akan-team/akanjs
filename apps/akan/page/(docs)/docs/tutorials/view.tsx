@@ -402,7 +402,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
               ko: `상세 뷰 구현을 테스트해봅시다. 아이스크림 주문 페이지로 이동해서 주문 카드의 "보기" 버튼을 클릭하여 시스템이 올바르게 작동하는지 확인하세요.`,
             })}
           </div>
-          <div className="my-4 rounded-lg border border-border bg-background p-4">
+          <div className={panelRecipe({ radius: "lg" }, "my-4")}>
             <div className="mb-2 font-semibold text-primary">
               {l.trans({ en: "Testing Steps:", ko: "테스트 단계:" })}
             </div>

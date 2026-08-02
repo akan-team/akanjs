@@ -224,7 +224,7 @@ export default function Page() {
                 ko: "큰 toolbox나 workflow modal은 하나의 component에 숨기지 말고 named export로 나눕니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-border bg-background px-4 text-foreground/70">
+              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {rule}
               </div>
             ))}

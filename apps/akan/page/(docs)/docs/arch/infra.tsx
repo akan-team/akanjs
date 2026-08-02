@@ -359,7 +359,7 @@ akan dbup --mode cluster`}
   stage3 --> stage4["4. Large Service<br/>Cloud Cluster<br/>Distributed Edge Servers"]`}
           />
           <div className="space-y-1">
-            <div className="gap-2 rounded-xl border border-border bg-background p-4 lg:grid">
+            <div className={panelRecipe({}, "gap-2 lg:grid")}>
               <div className="space-y-1">
                 <div className="font-bold text-foreground">
                   {l.trans({ en: "1. Single server", ko: "1. 싱글 서버" })}
@@ -392,7 +392,7 @@ akan dbup --mode cluster`}
               />
             </div>
 
-            <div className="gap-2 rounded-xl border border-border bg-background p-4 lg:grid">
+            <div className={panelRecipe({}, "gap-2 lg:grid")}>
               <div className="space-y-1">
                 <div className="font-bold text-foreground">
                   {l.trans({ en: "2. Single server, multiple containers", ko: "2. 싱글 서버 다중 컨테이너" })}
@@ -431,7 +431,7 @@ akan dbup --mode cluster`}
               />
             </div>
 
-            <div className="gap-2 rounded-xl border border-border bg-background p-4 lg:grid">
+            <div className={panelRecipe({}, "gap-2 lg:grid")}>
               <div className="space-y-1">
                 <div className="font-bold text-foreground">
                   {l.trans({ en: "3. Cloud cluster scale", ko: "3. 클라우드 클러스터 확장" })}
@@ -467,7 +467,7 @@ akan dbup --mode cluster`}
               />
             </div>
 
-            <div className="gap-2 rounded-xl border border-border bg-background p-4 lg:grid">
+            <div className={panelRecipe({}, "gap-2 lg:grid")}>
               <div className="space-y-1">
                 <div className="font-bold text-foreground">
                   {l.trans({ en: "4. Cloud plus distributed edge", ko: "4. 클라우드와 분산 엣지" })}

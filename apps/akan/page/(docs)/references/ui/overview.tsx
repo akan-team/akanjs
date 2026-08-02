@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { cardGridRecipe, Divider, Docs, DocsToc } from "@apps/akan/ui";
+import { cardGridRecipe, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 import { Link } from "akanjs/ui";
 
@@ -95,11 +95,7 @@ export default function Page() {
         </Docs.Description>
         <div className={cardGridRecipe()}>
           {pages.map(({ title, href, components, desc }) => (
-            <Link
-              key={title}
-              href={href}
-              className="rounded-xl border border-border bg-background p-4 hover:border-primary"
-            >
+            <Link key={title} href={href} className={panelRecipe({}, "hover:border-primary")}>
               <div className="font-bold text-foreground">{title}</div>
               <div className="mt-1 font-mono text-foreground/70">{components}</div>
               <div className="mt-2 text-foreground/70">{desc}</div>

@@ -1,6 +1,7 @@
 "use client";
 import { buttonRecipe, Dialog, Modal } from "akanjs/ui";
 import { useState } from "react";
+import { panelRecipe } from "./Recipe";
 
 type ModalKey = "basic" | "action" | "long" | "confirm" | "plain";
 
@@ -155,7 +156,9 @@ interface TestCardProps {
 
 const TestCard = ({ title, description, onOpen }: TestCardProps) => {
   return (
-    <article className="flex min-h-44 flex-col justify-between rounded-2xl border border-border bg-background p-5 shadow-sm">
+    <article
+      className={panelRecipe({ radius: "2xl", padding: "lg" }, "flex min-h-44 flex-col justify-between shadow-sm")}
+    >
       <div>
         <h2 className="font-bold text-xl">{title}</h2>
         <p className="mt-2 text-foreground/65 text-sm leading-6">{description}</p>
@@ -173,7 +176,9 @@ interface CompoundDialogCardProps {
 
 const CompoundDialogCard = ({ onSave }: CompoundDialogCardProps) => {
   return (
-    <article className="flex min-h-44 flex-col justify-between rounded-2xl border border-border bg-background p-5 shadow-sm">
+    <article
+      className={panelRecipe({ radius: "2xl", padding: "lg" }, "flex min-h-44 flex-col justify-between shadow-sm")}
+    >
       <div>
         <h2 className="font-bold text-xl">Compound Dialog</h2>
         <p className="mt-2 text-foreground/65 text-sm leading-6">

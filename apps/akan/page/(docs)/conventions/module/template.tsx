@@ -389,7 +389,7 @@ export const General = ({ className }: TicketEditProps) => {
                 ko: "준비된 edit data가 있는 server page에는 Load.Edit, modal edit trigger에는 Model.Edit, new-form button에는 Model.NewWrapper를 사용합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-border bg-background px-4 text-foreground/70">
+              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {rule}
               </div>
             ))}

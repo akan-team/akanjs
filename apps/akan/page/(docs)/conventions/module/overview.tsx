@@ -281,11 +281,7 @@ export default function Page() {
         <Docs.SubTitle>{l.trans({ en: "Data And Server Files", ko: "Data와 server 파일" })}</Docs.SubTitle>
         <div className={cardGridRecipe({ cols: "three" })}>
           {coreFiles.map(({ name, route, role }) => (
-            <Link
-              key={name}
-              href={route}
-              className="rounded-xl border border-border bg-background p-4 hover:border-primary"
-            >
+            <Link key={name} href={route} className={panelRecipe({}, "hover:border-primary")}>
               <div className="font-bold text-foreground">{name}</div>
               <div className="mt-2 text-foreground/70">{role}</div>
             </Link>
@@ -295,11 +291,7 @@ export default function Page() {
         <Docs.SubTitle>{l.trans({ en: "UI And Client Files", ko: "UI와 client 파일" })}</Docs.SubTitle>
         <div className={cardGridRecipe({ cols: "three" })}>
           {uiFiles.map(({ name, route, role }) => (
-            <Link
-              key={name}
-              href={route}
-              className="rounded-xl border border-border bg-background p-4 hover:border-primary"
-            >
+            <Link key={name} href={route} className={panelRecipe({}, "hover:border-primary")}>
               <div className="font-bold text-foreground">{name}</div>
               <div className="mt-2 text-foreground/70">{role}</div>
             </Link>
@@ -323,7 +315,7 @@ export default function Page() {
         </Docs.Description>
         <div className="grid xl:grid-cols-7">
           {flowSteps.map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-border bg-background p-1">
+            <div key={title} className={panelRecipe({ padding: "none" }, "p-1")}>
               <div className="font-bold text-foreground">{title}</div>
               <div className="mt-2 text-foreground/70">{desc}</div>
             </div>
@@ -413,7 +405,7 @@ Zone -> page section composition`}
                 ko: "section이 커지면 Zone을 키우기 전에 display는 Unit/View로, control은 Util로 옮깁니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-border bg-background px-4 text-foreground/70">
+              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {rule}
               </div>
             ))}

@@ -105,10 +105,7 @@ export default function Page() {
                 ko: "가져온 모듈도 같은 Tailwind와 시맨틱 디자인 토큰을 사용하면 일관되게 보입니다.",
               }),
             ].map((desc) => (
-              <div
-                key={desc}
-                className="rounded-xl border border-border bg-background px-4 py-2 text-foreground/70 text-sm"
-              >
+              <div key={desc} className={panelRecipe({ padding: "none" }, "px-4 py-2 text-foreground/70 text-sm")}>
                 {desc}
               </div>
             ))}

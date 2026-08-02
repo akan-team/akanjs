@@ -395,7 +395,7 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({}), ...
                 ko: "scalar document 파일은 작게 유지합니다. 보통 단순한 document class면 충분합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-border bg-background px-4 text-foreground/70">
+              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {rule}
               </div>
             ))}

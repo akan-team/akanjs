@@ -93,7 +93,7 @@ export default function Page() {
                     ko: "문서고의 처리 규칙을 정의합니다. schema, query filter, sort option, document-level helper를 담당합니다.",
                   })}
                 </div>
-                <div className="mt-3 rounded-lg border border-border bg-background p-3">
+                <div className={panelRecipe({ radius: "lg", padding: "sm" }, "mt-3")}>
                   <div className="text-foreground/60 text-xs">schema from Article.constant.ts</div>
                   <div className="mt-2 rounded-lg border border-border bg-muted p-3 font-mono text-foreground/70 text-xs">
                     title
@@ -154,7 +154,12 @@ export default function Page() {
                   })}
                 </div>
               </div>
-              <div className="rounded-lg border border-border bg-background px-4 py-2 font-mono text-foreground/70 text-sm">
+              <div
+                className={panelRecipe(
+                  { radius: "lg", padding: "none" },
+                  "px-4 py-2 font-mono text-foreground/70 text-sm",
+                )}
+              >
                 8282/api
               </div>
             </div>
@@ -234,7 +239,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="space-x-2 rounded-xl border border-border bg-background">
+              <div key={title} className={panelRecipe({ padding: "none" }, "space-x-2")}>
                 <span className="font-bold text-foreground">{title}: </span>
                 <span className="text-foreground/70">{desc}</span>
               </div>
@@ -406,7 +411,9 @@ export default function Page() {
                     ko: "화면이 한 번 요청하고 한 번의 결과를 기대한다면 query 또는 mutation을 사용합니다. 목록 불러오기, 폼 저장, 요청 승인, 재고 추가에 적합합니다.",
                   })}
                 </div>
-                <div className="mt-3 rounded-lg border border-border bg-background p-3 font-mono text-foreground/70 text-xs">
+                <div
+                  className={panelRecipe({ radius: "lg", padding: "sm" }, "mt-3 font-mono text-foreground/70 text-xs")}
+                >
                   screen calls 8282/api, business service returns result
                 </div>
               </div>
@@ -420,7 +427,9 @@ export default function Page() {
                     ko: "열려 있는 화면이 서버와 WebSocket 방식으로 대화해야 한다면 message를 사용합니다. 장비 제어, 실시간 운영 패널, 단계형 작업 흐름에 적합합니다.",
                   })}
                 </div>
-                <div className="mt-3 rounded-lg border border-border bg-background p-3 font-mono text-foreground/70 text-xs">
+                <div
+                  className={panelRecipe({ radius: "lg", padding: "sm" }, "mt-3 font-mono text-foreground/70 text-xs")}
+                >
                   open connection, send message, receive reply
                 </div>
               </div>
@@ -434,7 +443,9 @@ export default function Page() {
                     ko: "하나의 비즈니스 변경을 여러 열린 화면, 대시보드, 장비, 사용자에게 밀어줘야 한다면 pubsub를 사용합니다.",
                   })}
                 </div>
-                <div className="mt-3 rounded-lg border border-border bg-background p-3 font-mono text-foreground/70 text-xs">
+                <div
+                  className={panelRecipe({ radius: "lg", padding: "sm" }, "mt-3 font-mono text-foreground/70 text-xs")}
+                >
                   service changes data, publish, subscribers update
                 </div>
               </div>
@@ -448,7 +459,9 @@ export default function Page() {
                     ko: "작업이 queue에 들어가거나, 예약되거나, 반복되거나, 서버 생명주기와 연결된다면 process, cron, interval, timeout, initialize, destroy를 사용합니다.",
                   })}
                 </div>
-                <div className="mt-3 rounded-lg border border-border bg-background p-3 font-mono text-foreground/70 text-xs">
+                <div
+                  className={panelRecipe({ radius: "lg", padding: "sm" }, "mt-3 font-mono text-foreground/70 text-xs")}
+                >
                   request or schedule, worker, save or publish result
                 </div>
               </div>

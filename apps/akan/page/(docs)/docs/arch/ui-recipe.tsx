@@ -98,10 +98,7 @@ export default function Page() {
                 ko: "모든 variant 클래스는 시맨틱 토큰(bg-primary, text-success-foreground …)이라 자동으로 테마를 따라갑니다.",
               }),
             ].map((desc) => (
-              <div
-                key={desc}
-                className="rounded-xl border border-border bg-background px-4 py-2 text-foreground/70 text-sm"
-              >
+              <div key={desc} className={panelRecipe({ padding: "none" }, "px-4 py-2 text-foreground/70 text-sm")}>
                 {desc}
               </div>
             ))}
@@ -204,10 +201,7 @@ export type ChatBubbleVariants = NonNullable<Parameters<typeof chatBubbleRecipe>
                 ko: "정말 일회성인 className → 인라인 유지; 과하게 추상화하지 마세요.",
               }),
             ].map((desc) => (
-              <div
-                key={desc}
-                className="rounded-xl border border-border bg-background px-4 py-2 text-foreground/70 text-sm"
-              >
+              <div key={desc} className={panelRecipe({ padding: "none" }, "px-4 py-2 text-foreground/70 text-sm")}>
                 {desc}
               </div>
             ))}
@@ -297,10 +291,7 @@ export default override({ recipes: { button: neonButtonRecipe } });`}
                 ko: "lib 에 없는 표면(챗 버블·타일)? → 앱 recipe 신규 추가(확장 — lib 대응물 없으니 충돌 없음).",
               }),
             ].map((desc) => (
-              <div
-                key={desc}
-                className="rounded-xl border border-border bg-background px-4 py-2 text-foreground/70 text-sm"
-              >
+              <div key={desc} className={panelRecipe({ padding: "none" }, "px-4 py-2 text-foreground/70 text-sm")}>
                 {desc}
               </div>
             ))}

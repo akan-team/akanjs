@@ -199,7 +199,7 @@ export function DownloadButton() {
                 ko: "downloadFile.ts가 downloadFile을 export하는 것처럼 파일명과 export명을 맞춥니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-border bg-background px-4 text-foreground/70">
+              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {rule}
               </div>
             ))}

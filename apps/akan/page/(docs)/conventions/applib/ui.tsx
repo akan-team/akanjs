@@ -204,7 +204,7 @@ export default function Page() {
                 ko: "Only.Web 또는 Only.Admin처럼 namespace로 읽히는 API에는 composite folder를 사용합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-border bg-background px-4 text-foreground/70">
+              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {rule}
               </div>
             ))}

@@ -222,7 +222,7 @@ export function PreviewCode() {
                 ko: "common helper는 작고 순수하게 유지하고 barrel에서 import합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-border bg-background px-4 text-foreground/70">
+              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {rule}
               </div>
             ))}

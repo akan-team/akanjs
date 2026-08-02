@@ -306,7 +306,7 @@ export const dictionary = serviceDictionary(["en", "ko"]).translate({
                 ko: "모든 translation tuple은 language list와 같은 순서와 길이를 유지합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-border bg-background px-4 text-foreground/70">
+              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {rule}
               </div>
             ))}

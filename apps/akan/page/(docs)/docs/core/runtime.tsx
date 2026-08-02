@@ -490,7 +490,7 @@ void run();`}
             })}
           </div>
           <div className="space-y-1">
-            <div className="rounded-xl border border-border bg-background px-4">
+            <div className={panelRecipe({ padding: "row" })}>
               <div className="font-bold">{l.trans({ en: "Health", ko: "상태 확인" })}</div>
               <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
@@ -505,7 +505,7 @@ void run();`}
                 code={`curl http://localhost:8282/_akan/app/health`}
               />
             </div>
-            <div className="rounded-xl border border-border bg-background px-4">
+            <div className={panelRecipe({ padding: "row" })}>
               <div className="font-bold">{l.trans({ en: "Metrics", ko: "메트릭" })}</div>
               <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
@@ -520,7 +520,7 @@ void run();`}
                 code={`curl http://localhost:8282/_akan/app/metrics`}
               />
             </div>
-            <div className="rounded-xl border border-border bg-background px-4">
+            <div className={panelRecipe({ padding: "row" })}>
               <div className="font-bold">{l.trans({ en: "Logs", ko: "로그" })}</div>
               <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
