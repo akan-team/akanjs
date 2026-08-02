@@ -849,7 +849,7 @@ export class InventoryInsight extends via(Inventory, (field) => ({})) {}`}
             title="apps/koyo/lib/inventory/Inventory.Util.tsx"
             code={`
 "use client";
-import { clsx } from "@akanjs/client";
+import { buttonRecipe } from "@akanjs/ui";
 import { st, usePage } from "@koyo/client";
 import { BiRefresh } from "react-icons/bi";
 
@@ -860,7 +860,7 @@ export const Refill = ({ className }: RefillProps) => {
   const { l } = usePage();
   return (
     <button
-      className={clsx("btn btn-primary", className)}
+      className={buttonRecipe({ variant: "primary" }, className)}
       onClick={() => {
         void st.do.refillTodaysInventory();
       }}

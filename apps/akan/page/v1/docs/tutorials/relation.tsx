@@ -717,10 +717,10 @@ export default function Page() {
             <Inventory.Zone.Today />
             <Tab defaultMenu="icecreamOrder"> // [!code highlight:33]
               <Tab.Menus className="flex items-center">
-                <Tab.Menu menu="icecreamOrder" className={cn(buttonRecipe({ size: "lg" }), "h-14 px-8 text-lg")} activeClassName="btn-primary">
+                <Tab.Menu menu="icecreamOrder" className={cn(buttonRecipe({ size: "lg" }), "h-14 px-8 text-lg")} activeClassName="bg-primary text-primary-foreground">
                   {l("icecreamOrder.modelName")}
                 </Tab.Menu>
-                <Tab.Menu menu="delivery" className={cn(buttonRecipe({ size: "lg" }), "h-14 px-8 text-lg")} activeClassName="btn-primary">
+                <Tab.Menu menu="delivery" className={cn(buttonRecipe({ size: "lg" }), "h-14 px-8 text-lg")} activeClassName="bg-primary text-primary-foreground">
                   {l("delivery.modelName")}
                 </Tab.Menu>
               </Tab.Menus>

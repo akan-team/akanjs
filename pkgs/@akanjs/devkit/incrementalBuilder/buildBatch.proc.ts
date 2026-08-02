@@ -139,7 +139,16 @@ class BuildBatch {
   async #buildCss(): Promise<void> {
     const started = Date.now();
     try {
-      const cssByBasePath = await new CssCompiler(this.#app).getCssByBasePath({ refresh: true });
+      const cssCompiler = new CssCompiler(this.#app);
+      const cssByBasePath = await cssCompiler.getCssByBasePath({ refresh: true });
+      // dev=warn: per-save style-contract check. build/CI enforce the same contract as an error
+      // (SsrBaseArtifactBuilder boot build / workspace lint); on a per-save rebuild it only logs, and a
+      // guard failure must never break the rebuild. Reuses this compiler's warm discovery cache.
+      try {
+        await cssCompiler.enforceStyleContract({ mode: "dev" });
+      } catch (error) {
+        this.#logger.verbose(`styleGuard dev check skipped: ${String(error)}`);
+      }
       const optimizedFonts = await this.#optimizeFonts();
       const cssAssetEntries: Array<[string, { cssUrl: string; cssRelPath: string }]> = [];
       const cssBase64ByUrl: Record<string, string> = {};

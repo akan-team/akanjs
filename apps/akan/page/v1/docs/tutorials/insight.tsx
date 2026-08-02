@@ -239,7 +239,7 @@ export const dictionary = modelDictionary(["en", "ko"])
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Util.tsx"
             code={`
 "use client"; // [!code collapse:3]
-import { clsx } from "@akanjs/client";
+import { buttonRecipe } from "@akanjs/ui";
 import { st, usePage } from "@koyo/client";
 import { cnst } from "@koyo/client"; // [!code ++:2]
 import { Select } from "@akanjs/ui";
@@ -253,7 +253,7 @@ export const Process = ({ className, icecreamOrderId, disabled }: ProcessProps) 
   const { l } = usePage();
   return (
     <button
-      className={clsx("btn btn-secondary", className)}
+      className={buttonRecipe({ variant: "secondary" }, className)}
       disabled={disabled}
       onClick={() => {
         void st.do.processIcecreamOrder(icecreamOrderId);
@@ -273,7 +273,7 @@ export const Serve = ({ className, icecreamOrderId, disabled }: ServeProps) => {
   const { l } = usePage();
   return (
     <button
-      className={clsx("btn btn-accent", className)}
+      className={buttonRecipe({ variant: "accent" }, className)}
       disabled={disabled}
       onClick={() => {
         void st.do.serveIcecreamOrder(icecreamOrderId);
@@ -293,7 +293,7 @@ export const Finish = ({ className, icecreamOrderId, disabled }: FinishProps) =>
   const { l } = usePage();
   return (
     <button
-      className={clsx("btn btn-success", className)}
+      className={buttonRecipe({ variant: "success" }, className)}
       disabled={disabled}
       onClick={() => {
         void st.do.finishIcecreamOrder(icecreamOrderId);
@@ -313,7 +313,7 @@ export const Cancel = ({ className, icecreamOrderId, disabled }: CancelProps) =>
   const { l } = usePage();
   return (
     <button
-      className={clsx("btn btn-warning", className)}
+      className={buttonRecipe({ variant: "warning" }, className)}
       disabled={disabled}
       onClick={() => {
         void st.do.cancelIcecreamOrder(icecreamOrderId);
