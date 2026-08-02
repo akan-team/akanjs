@@ -300,70 +300,59 @@ Priority: P0
 
 Headings:
 - Mobile App Architecture
-- CSR Web Workflow
-- Android Packaging Workflow
-- iOS Packaging Workflow
-- Native Build Troubleshooting
+- Mobile Targets
+- CSR Runtime
+- Native Bridge
 
 Mobile App Architecture
 
-Akan mobile apps are built by opening a CSR web client inside a Capacitor native shell, then packaging that shell as Android and iOS apps. The screen is developed with the same Akan UI system, while Capacitor provides the native project, app identity, and device bridge.
+Akan mobile apps are CSR web clients running inside a Capacitor native shell. The product screen is still built with Akan page, UI, state, and service patterns; Capacitor supplies the native project, app identity, store package, and device bridge.
 
-If the app declares multiple basePaths, one Akan app can release multiple mobile packages. For example, a customer app, an admin stock app, and a field worker app can each open a different basePath while sharing the same services, permissions, database rules, and generated fetch calls.
+One UI surface
 
-CSR web surface
+Web and mobile share the same Akan page tree, client router, generated fetch calls, dictionaries, and UI components.
 
-The app opens a Single Page Application client, not a separate native UI rewrite.
+Native shell boundary
 
-Capacitor package
+Native code owns packaging, signing, app capabilities, plugin linking, and store distribution.
 
-Capacitor wraps the CSR client with Android and iOS project files, app metadata, and device APIs.
+Shared backend
 
-Shared business logic
+Android, iOS, and web clients call the same Akan services and can share auth, permission, database rules, and app-level domains.
 
-Web and mobile use the same Akan service, signal, document, auth, and generated client helpers.
+Mobile Targets
 
-CSR Web Workflow
+A mobile target is one native package built from an Akan app. A single Akan app can publish multiple mobile packages by pointing each target at a different basePath while reusing the same backend modules.
 
-Akan mobile work starts as normal UI work. Build the page, component, st state, fetch calls, and dictionary text the same way you would for the web. Then test it as a CSR Single Page Application before packaging it into Android or iOS.
+Use targets when packages need different app IDs, display names, entry surfaces, permissions, deep links, or store release tracks.
 
-The csr=true search parameter is useful when you want to check SPA navigation, client state, page transition, and mobile-like behavior from the browser. This is faster than opening the simulator for every small UI change.
+CSR Runtime
 
-Controls how screens move. Detail pages often use stack; tab roots often use none.
+Inside the native shell, Akan uses the CSR router and mobile page frame. Page transitions, safe area, navbar/bottom inset layers, keyboard accessories, and page cache are handled at the client runtime layer instead of requiring a native UI rewrite.
 
-Prevents content from colliding with notches, home indicators, and system bars.
+Controls CSR page motion so mobile navigation can feel closer to native apps.
 
-Reserves space for fixed headers, tab bars, keyboards, or bottom actions.
+Handles OS system areas such as notches, home indicators, and Android system bars.
 
-Keeps CSR page state when users return to list or tab screens.
+Separates app chrome such as navbars, tabs, fixed actions, and keyboard accessories from page content.
 
-Akan CSR pages can apply mobile-style page transitions from pageConfig. Use the demos below to compare the four transition presets in a browser CSR environment before packaging the same pages into a native shell.
+Native Bridge
 
-/csr/bottomup_en.mp4
+Device capabilities are accessed through Capacitor plugins. Akan keeps the app-level API small: declare the needed native capability, sync/build the native project, then call the matching client hook or plugin wrapper from the CSR app.
 
-Good for modal-like flows or pages that should rise from the bottom.
+Permissions describe which native capabilities a mobile target intends to use.
 
-/csr/fade_en.mp4
+Native config files such as Firebase config are copied from the app folder into generated native project paths.
 
-Keeps the movement calm when the screen context changes without hierarchy.
+Native schemes, universal links, and app links enter the Akan CSR router as normalized routes.
 
-/csr/scale_en.mp4
+Push delivery uses Firebase/FCM setup, while click routing uses a standard data.url field.
 
-Adds a light zoom motion for focused entry into the next page.
+For concrete setup steps, see
 
-/csr/stack_en.mp4
+Cheatsheet > Development > Mobile
 
-Works well for detail pages that push over a list or parent screen.
-
-FAQ: Are hybrid apps worse than native apps?
-
-Akan improves the user experience with page transitions, safe-area handling, inset support, CSR page cache, and mobile pageConfig. Device capabilities are not blocked by the hybrid model: Capacitor plugins can bridge camera, Bluetooth, device, haptics, keyboard, safe area, and other native APIs when needed.
-
-Android Packaging Workflow
-
-Use the Android flow when you want to run the CSR client in an emulator/device, verify the native Android project, or prepare Play Store artifacts. Akan prepares the Capacitor project, syncs Android, applies metadata, and builds APK or AAB outputs.
-
-Use startAndroid while developing screens and checking live reload.
+.
 
 ## Architecture Overview
 
@@ -451,6 +440,7 @@ Headings:
 - Routes and Domains
 - Mobile Metadata
 - Images And Public Env
+- Secret Files
 - Build And Runtime
 - Defaults And Rules
 
@@ -467,6 +457,8 @@ Env values
 Image rules
 
 Browser env
+
+Secret files
 
 Build options
 
@@ -511,8 +503,6 @@ Server env can also include options from shared libraries through env.server.typ
 Routes and Domains
 
 routes is where you list the public domains for the app. If your app has several clients, each route can also name the client with basePath. The multi-client page explains that structure in detail; here we focus on the config fields.
-
-Optional client name for this route. Akan normalizes /store/ to store.
 
 ## Data Layer
 
@@ -721,7 +711,7 @@ Shared
 
 Can be used from both server and client. Keep it pure and environment-safe.
 
-Put pages here when a user can visit them by URL. Examples: home, sign in, product detail, admin dashboard.
+Put pages here when a user can visit them by URL. Examples: home, sign in, product detail, admin dashboard. A library can hold one too, and apps that opt in with syncPageLibs serve its routes.
 
 Put business concepts here. Examples: user, product, order, invoice, payment, notification.
 
@@ -821,6 +811,8 @@ Headings:
 - Page File Shape
 - Layout File Shape
 - Base Paths
+- Library Pages
+- Dev Only Routes
 - Root Layout Exports
 
 File Based Routing
@@ -873,15 +865,15 @@ A page file must export a default component. It can also export optional helpers
 
 The page component. This is required.
 
-Client page options such as transition or mobile safe-area behavior.
+Optional override for client frame behavior. If omitted, Akan applies platform defaults and frame components such as Navbar or BottomInset register their own insets.
 
-Static metadata for the page.
+Declarative static metadata for title, description, robots, Open Graph, Twitter, canonical, and language alternates.
 
-Dynamic metadata that can use route params.
+Dynamic declarative metadata that can use route params and search params.
+
+Escape hatch for custom JSX head elements when declarative metadata is not enough.
 
 Fallback UI shown while the page is loading.
-
-Use either head or generateHead, not both. Use head for fixed metadata and generateHead when the title or tags depend on params.
 
 ## Akan Runtime
 
@@ -893,6 +885,7 @@ Headings:
 - Akan Runtime
 - Root-level Env Variables
 - getEnv()
+- OpenAPI JSON
 - Health, Metrics, Logs
 
 Akan Runtime
@@ -945,15 +938,15 @@ Log detail
 
 Choose how much runtime output you want to see in the terminal.
 
+Text search index
+
+Unset means on. Set 0 to switch the full-text index off; indexed data is kept and re-enabling reconciles every model. Give every process in a deployment the same value, because a process cannot clean up triggers for models it does not mount.
+
+Search tokenizer
+
+The fts5 tokenizer the index is built with. Defaults to unicode61 remove_diacritics 2. Changing it rebuilds the index from the mirror on the next boot, so no data is re-read from the model tables. The rebuild takes no cross-process claim, so a fleet restarted at once repeats it in every process; stagger the restart when the mirror is large. database.search.tokenizer in the app config takes precedence. A value this SQLite build cannot provide fails the boot and names the fix, rather than starting a server whose every search would raise. That boot failure leaves writes alone: the index is dropped but nothing else is, so the models on that database keep accepting writes and the next healthy boot recovers the index in full.
+
 File log detail
-
-Choose how much structured Logger output is written to files. Defaults to trace, independent from terminal log level.
-
-File logging
-
-AkanApp writes gateway and child process logs to runtime/logs by default. Set this to 0 to disable file logging.
-
-Log directory
 
 ## Fundamentals
 
@@ -1221,7 +1214,7 @@ Re-export of `clsx` for composing class names across Akan UI code. Most view/uni
 
 Common props for generated Unit, Zone, and list UI components. They carry model data, slice metadata, query/init settings, actions, columns, and click handlers.
 
-Route module types for page/layout files. `PageConfig` controls transition, safe area, gesture, and cache behavior, while `LayoutProps` describes layout children and route params.
+Route module types for page/layout files. `PageConfig` controls transition, safe area, gesture, and cache behavior, plus `devOnly` to keep the route out of `akan build`, while `LayoutProps` describes layout children and route params.
 
 Font declaration types and client-side font factory shims. Layout modules use `Font` data so the server build can optimize local font assets while CSR code receives safe no-op shims.
 
@@ -1364,7 +1357,7 @@ Headings:
 
 akanjs/signal
 
-Guard classes decide whether a request can pass before endpoint or slice execution. `Public` always passes, `None` blocks, and `guard(name)` creates a named guard base class for app-specific rules.
+Guard classes decide whether a request can pass before endpoint or slice execution. `Public` always passes, `None` blocks, and `guard(name)` creates a named guard base class for app-specific rules. Guards run on every transport, so read the caller with `context.get("account")` instead of branching on http/websocket. Slice `guards` cover only the generated query/mutation endpoints — declare `guards` on each `pubsub`/`message` endpoint to protect a socket.
 
 Internal argument providers for advanced endpoints. `Req` gives the Bun request, `Res` gives the mutable response context, and `Ws` gives websocket subscription state and event hooks.
 
@@ -1403,7 +1396,7 @@ Capacitor contacts hook for mobile signup/social flows. It requests contact perm
 
 Capacitor geolocation hook. It requests location permissions, redirects to app settings when denied, and returns current coordinates for map or location flows.
 
-Push notification hook for native clients. It initializes FCM/push plugins, checks permission state, registers the device, and reads the FCM token when supported.
+Unified push notification client hook for web and native apps. It requests permission, registers the runtime, returns a PushToken, and bridges notification clicks through `data.url` when supported.
 
 CSR router hooks for translating hrefs into route state and tracking navigation history. They power cached page transitions, scroll restoration, and back/forward detection.
 
@@ -1738,6 +1731,8 @@ Headings:
 - images
 - i18n
 - publicEnv
+- secrets
+- syncPageLibs
 - externalLibs
 - barrelImports
 - optimizeImports
@@ -1915,6 +1910,7 @@ Headings:
 - Model Layering Pattern
 - Fields And enumOf
 - field.hidden And field.secret
+- Text Search Fields
 - Extending Generated Models
 - Light And Full Model Helpers
 - Resolved Fields
@@ -1975,7 +1971,7 @@ Labels fields from the constant model. Base fields such as id, createdAt, update
 
 Labels reporting fields. The base count insight is added automatically.
 
-Labels document filter options. Base query and sort labels such as any, latest, and oldest are included.
+Labels document filter options. Base query and sort labels such as any, latest, oldest, and relevance are included.
 
 Using Dictionaries
 
@@ -1995,6 +1991,7 @@ Headings:
 - model.document.ts
 - Standard Document Shape
 - Query, Sort, And Generated Methods
+- Text Search Query
 - Document Instance Behavior
 - Model-Level Helpers
 - Extending Generated Documents
@@ -3211,7 +3208,7 @@ Show Details
 
 Imagine walking into an ice cream shop and placing an order. You'd want to see exactly what you ordered, right? Maybe check if you remembered to add those strawberries, or confirm the size you picked. That's exactly what detailed views do in our application - they give customers a complete, beautiful summary of their order that they can access anytime with just a click.
 
-Think of it like the difference between an order ticket and a detailed receipt. The summary card is like a stub - it shows the basics so you can identify the order. But the detailed view is like the full receipt that shows everything: every topping you chose, when you placed the order, and whether it's ready to pick up. It's the complete story of your ice cream order!
+Here's a simpler way to think about it. The summary card is like seeing "Vanilla Cone" in your order list — just enough to know which order is yours. The detailed view is what you see when you tap on it: the exact size you picked, every topping you added, when you placed the order, and whether it's ready. It's the difference between a one-line note and the full story of your ice cream order!
 
 In Akan.js, showing detailed views follows a clean architecture pattern. We use three main components that work together:
 
@@ -3263,6 +3260,44 @@ File object with `url`, `imageSize`, and optional `abstractData`.
 Blur/placeholder preview data.
 
 Marks the image as high-priority and eager-loaded.
+
+## Customization
+
+Source: /references/ui/customize
+Mirror: /llms/pages/references/ui/customize.md
+Priority: P1
+
+Headings:
+- Customization
+- How it works
+- Scoping
+- Overridable slots
+- Generic components
+- Compound components
+
+Customization
+
+Leaf primitives
+
+Generic
+
+Input (compound)
+
+Radio (compound)
+
+DatePicker (compound)
+
+ToggleSelect (compound)
+
+Loading (namespace)
+
+Any `akanjs/ui` component can be re-skinned per route without forking it. You write a drop-in replacement in your app's `ui/` folder and bind it to a framework slot in a `page/**/_overrides.tsx` manifest. Every existing `<Modal>`, `<Button>`, `<Table>` call site in that route subtree then renders your version instead — no call-site changes.
+
+Overrides cascade down the route tree exactly like layouts: an override declared higher up applies to everything below it, and a nested manifest narrows or replaces it for its own subtree (closest ancestor wins).
+
+The `_overrides.tsx` manifest is logic-free and needs no `"use client"` directive. `override()` returns a plain, server-safe map; the framework generates the client boundary that mounts the provider. Keep the file to imports plus a single `export default override({ … })`.
+
+How it works
 
 ## Display
 
@@ -3395,7 +3430,7 @@ System
 
 Application shell helpers, CSR guards, admin signal tools, tab state, and animation wrappers.
 
-akanjs/ui
+Customization
 
 ## System
 
@@ -3605,6 +3640,46 @@ Open Console
 Use `kubectl exec` to run the generated `console.js` already embedded in the built app image.
 
 The console starts a separate no-listen server process in the same pod; it does not attach to the running `main.js` memory.
+
+## Mobile
+
+Source: /cheatsheet/dev/mobile
+Mirror: /llms/pages/cheatsheet/dev/mobile.md
+Priority: P2
+
+Headings:
+- Mobile Setup Flow
+- Mobile Config
+- Capacitor Plugins
+- Android Setup
+- iOS Setup
+- Push Setup
+- Deep Link Setup
+- Verify Setup
+
+Mobile
+
+Mobile Setup Flow
+
+Akan mobile apps reuse the CSR web app inside a Capacitor Android/iOS shell. The web app owns pages and business logic. The native shell owns package identity, device permissions, plugin linking, native files, signing, and store builds.
+
+Start with the mobile identity, declare only the Capacitor plugins the app actually uses, then prepare Android and iOS builds. Push notifications and deep links are optional features; configure them only when the app needs them.
+
+App name, package id, version, target basePath, permissions, native files.
+
+List the native plugins used by this app in apps/myapp/package.json.
+
+Prepare platform toolchains, app IDs, signing, and sync/build commands.
+
+Mobile Config
+
+The mobile block in akan.config.ts describes the native package. These values become Android application metadata, iOS bundle metadata, target entry paths, native permission hints, and native file copy rules.
+
+Native display name. Users see it on the launcher/home screen unless the platform or store overrides it.
+
+Stable native package identity. Android uses it as applicationId/package name; iOS uses it as bundle id. Any platform console registration must match it exactly.
+
+version is the user-facing version. buildNum is the store build number and must increase for every native store submission.
 
 ## PWA
 
@@ -3844,7 +3919,6 @@ Headings:
 - Minimal File Model
 - Upload Endpoint
 - File Service
-- Local File Serving
 - Use In UI
 - Auto-attach To A Model Field
 - Grow Later
@@ -3911,6 +3985,45 @@ Relationship Size
 When one thing has many children, first ask how many children there will be. The answer changes the schema.
 
 One to few: embed it. Example: a user's two or three links, a post's small settings.
+
+## Text Search
+
+Source: /cheatsheet/general/search
+Mirror: /llms/pages/cheatsheet/general/search.md
+Priority: P2
+
+Headings:
+- Text Search
+- 1. Mark The Fields
+- 2. Write The Filter
+- 3. Tune The Match
+- Publishing To Clients
+- Operating It
+- Gotchas
+
+Text Search
+
+Akan has built-in full-text search. There is no separate search server to run and no index to keep in sync by hand: you mark fields in constant.ts, write one filter, and the database does the rest.
+
+Declare a text role on the fields you want searchable.
+
+Write a filter that calls q.search(text).
+
+Call the generated listBySearch and sort by "relevance".
+
+1. Mark The Fields
+
+Five roles exist. Pick one by what the value is, not by how badly you want it found: the roles carry different ranking weights.
+
+The name a person searches for. Ranked well above everything else.
+
+A keyword list. Above prose, below the title.
+
+Prose. Matched, but it should not beat a name match.
+
+A scoping value like status or owner. Weighted zero: searchable, never a reason to rank first.
+
+Carried along so you can draw the result. Not indexed, so it never matches.
 
 ## Single Sign-On
 
@@ -4330,6 +4443,44 @@ Lazy editor
 
 SSR Or Client Only
 
+## Mutating
+
+Source: /cheatsheet/performance/mutation
+Mirror: /llms/pages/cheatsheet/performance/mutation.md
+Priority: P2
+
+Headings:
+- Mutating
+- Two Write Styles
+- Counters And Sets
+- Upsert
+- How It Becomes SQL
+- Tips
+
+Mutating
+
+Akan has two ways to change stored data. Use document methods when you edit one loaded document, and use query updates when you change matching rows directly in the database.
+
+Document methods (`.set().save()`, `Model.update`, `Model.remove`) load a document, run save/update/remove hooks, then persist it.
+
+Query updates (`updateOne`, `updateMany`, `deleteMany`, `bulkWrite`) compile to a single atomic SQL statement and do not load documents.
+
+Use the `u` update helper for operators, the same way `q` is used for query conditions.
+
+Two Write Styles
+
+Pass a plain object for simple value assignments, or a builder function to reach the operator helpers scoped to that call. A bare value is shorthand for `set`.
+
+Object form (bare value = set)
+
+Builder form (operators)
+
+The builder runs synchronously. Compute awaited values (like a password hash) before the call and reference them inside the builder.
+
+Counters And Sets
+
+Numeric operators (`inc`, `mul`, `min`, `max`) and array operators (`push`, `addToSet`, `pull`) run inside the database, so concurrent writers do not lose each other's changes.
+
 ## Querying
 
 Source: /cheatsheet/performance/query
@@ -4451,6 +4602,7 @@ Chat Flow
 - Docker: /llms/pages/cheatsheet/dev/docker.md
 - Documentation: /llms/pages/cheatsheet/dev/docs.md
 - Kubernetes: /llms/pages/cheatsheet/dev/k8s.md
+- Mobile: /llms/pages/cheatsheet/dev/mobile.md
 - PWA: /llms/pages/cheatsheet/dev/pwa.md
 - Script: /llms/pages/cheatsheet/dev/script.md
 - Testing: /llms/pages/cheatsheet/dev/test.md
@@ -4459,6 +4611,7 @@ Chat Flow
 - Edge Computing: /llms/pages/cheatsheet/general/edge.md
 - File Management: /llms/pages/cheatsheet/general/file.md
 - Schema Design: /llms/pages/cheatsheet/general/schema.md
+- Text Search: /llms/pages/cheatsheet/general/search.md
 - Single Sign-On: /llms/pages/cheatsheet/general/sso.md
 - CRUD: /llms/pages/cheatsheet/interface/crud.md
 - Endpoint: /llms/pages/cheatsheet/interface/endpoint.md
@@ -4470,6 +4623,7 @@ Chat Flow
 - Caching: /llms/pages/cheatsheet/performance/caching.md
 - Image Optimization: /llms/pages/cheatsheet/performance/image.md
 - Lazy Loading: /llms/pages/cheatsheet/performance/lazy.md
+- Mutating: /llms/pages/cheatsheet/performance/mutation.md
 - Querying: /llms/pages/cheatsheet/performance/query.md
 - Queueing: /llms/pages/cheatsheet/performance/queue.md
 - Realtime: /llms/pages/cheatsheet/performance/realtime.md

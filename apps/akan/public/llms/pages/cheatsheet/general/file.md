@@ -12,7 +12,6 @@
 - Minimal File Model (#minimal-model)
 - Upload Endpoint (#upload-endpoint)
 - File Service (#file-service)
-- Local File Serving (#local-serving)
 - Use In UI (#use-in-ui)
 - Auto-attach To A Model Field (#auto-field)
 - Grow Later (#grow-later)
@@ -51,10 +50,6 @@ Create a record with `uploading` status.
 Use the record id in the storage path to avoid filename collisions.
 
 When upload finishes, save the returned URL and set status to `active`.
-
-Local File Serving
-
-If your local storage returns URLs like `/api/localFile/getBlob/...`, add a tiny endpoint that reads the file stream and returns it as a response.
 
 Use In UI
 
@@ -167,20 +162,6 @@ export class FileService extends serve(db.file, ({ use }) => ({
     return record;
   }
 }
-```
-
-### localFile.signal.ts
-
-```ts
-export class LocalFileEndpoint extends endpoint(srv.localFile, ({ query }) => ({
-  getBlob: query(Any, { path: "localFile/getBlob/*" })
-    .with(Req)
-    .exec(async function (req) {
-      const path = req.url.split("/localFile/getBlob/").at(1) ?? "";
-      const stream = await this.localFileService.readLocalFile(path);
-      return new Response(stream);
-    }),
-})) {}
 ```
 
 ### Call fetch.uploadFiles

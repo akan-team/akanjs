@@ -1,5 +1,5 @@
 "use client";
-import { cn, router, usePage } from "akanjs/client";
+import { cn, isRscNavigationFromCache, router, usePage } from "akanjs/client";
 import { capitalize, deepObjectify, lowerlize } from "akanjs/common";
 import { ConstantRegistry, immerify } from "akanjs/constant";
 import type { ClientEdit, ServerEdit, SliceMeta } from "akanjs/fetch";
@@ -10,6 +10,8 @@ import { AiOutlinePlus, AiOutlineSave } from "react-icons/ai";
 
 import { Button } from "../Button";
 import { Modal } from "../Modal";
+
+const EDIT_PAYLOAD_MAX_AGE_MS = 60_000;
 
 interface EditModelProps<Full> {
   /** Rendering mode for the edit shell. */
@@ -149,6 +151,7 @@ export default function EditModal<Full extends { id: string }>({
       setModelModal: `set${ModelName}Modal`,
       modelLoading: `${modelName}Loading`,
       modelViewAt: `${modelName}ViewAt`,
+      editModel: `edit${ModelName}`,
       newModel: `new${ModelName}`,
       crystalizeModel: `crystalize${ModelName}`,
       modelObj: `${modelName}Obj`,
@@ -160,10 +163,19 @@ export default function EditModal<Full extends { id: string }>({
     (state: unknown) => (state as { [key: string]: { id: string | null } })[names.modelForm].id,
   );
   const modelFormLoading = storeUse[names.modelFormLoading]() as string | boolean;
+  const modalId = id ?? ((modelEdit as any)?.[names.modelObj] as Full | undefined)?.id ?? undefined;
   const isModalOpen =
     modelModal === (modal ?? "edit") &&
-    (modelFormLoading === false || modelFormLoading === id) &&
-    ((!modelFormId && !id) || id === modelFormId);
+    (modelFormLoading === false || modelFormLoading === modalId) &&
+    ((!modelFormId && !modalId) || modalId === modelFormId);
+  const isEditPayloadStale = useCallback((viewAt?: Date | null) => {
+    if (isRscNavigationFromCache()) return true;
+    return (
+      viewAt instanceof Date &&
+      !Number.isNaN(viewAt.getTime()) &&
+      Date.now() - viewAt.getTime() > EDIT_PAYLOAD_MAX_AGE_MS
+    );
+  }, []);
   useEffect(() => {
     if (!modelEdit) return;
     const refName = (modelEdit as ServerEdit<string, Full>).refName;
@@ -171,15 +183,21 @@ export default function EditModal<Full extends { id: string }>({
     const cnst = ConstantRegistry.getDatabase(modelName);
     const modelRef = cnst.full;
     if (editType === "edit") {
-      const crystal = new modelRef().set((modelEdit as any)[names.modelObj] as Full) as unknown as Full;
+      const modelObj = (modelEdit as any)[names.modelObj] as Full;
+      const viewAt = (modelEdit as any)[names.modelViewAt] as Date;
+      const crystal = new modelRef().set(modelObj) as unknown as Full;
       st.set({
         [names.model]: crystal,
         [names.modelLoading]: false,
         [names.modelForm]: immerify(modelRef, crystal),
         [names.modelFormLoading]: false,
         [names.modelModal]: modal ?? "edit",
-        [names.modelViewAt]: (modelEdit as any)[names.modelViewAt] as Date,
+        [names.modelViewAt]: viewAt,
       });
+      if (isEditPayloadStale(viewAt))
+        void storeDo[names.editModel](modelObj.id, { modal }).catch(() => {
+          st.set({ [names.modelFormLoading]: false });
+        });
     } else {
       // new
       const crystal = new modelRef().set(modelEdit as Full) as unknown as Full;
@@ -188,7 +206,7 @@ export default function EditModal<Full extends { id: string }>({
     return () => {
       // st.do[names.resetModel]();
     };
-  }, [modelEdit]);
+  }, [modelEdit, isEditPayloadStale]);
 
   const handleCancel = useCallback(() => {
     const modelForm = (st.get() as any)[names.modelForm] as Full;

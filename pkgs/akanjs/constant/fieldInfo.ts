@@ -17,6 +17,7 @@ import {
   type UnCls,
 } from "akanjs/base";
 import { ConstantRegistry } from "./constantRegistry";
+import type { TextFieldRole } from "./textFieldPaths";
 import type { BaseObject } from "./types";
 import type { ConstantModelRef } from "./via";
 
@@ -103,7 +104,7 @@ export interface ConstantFieldProps<
   example?: FieldValue;
   of?: MapValue; // for Map type fields
   validate?: (value: FieldValue, model: any) => boolean;
-  text?: "search" | "filter";
+  text?: TextFieldRole;
   meta?: Metadata;
 }
 export const fieldPresets = ["email", "password", "url"] as const;
@@ -193,7 +194,7 @@ interface ConstantFieldBuildProps<
   example?: FieldValue;
   of?: MapValue; // for Map type fields
   validate?: (value: FieldValue, model: any) => boolean;
-  text?: "search" | "filter";
+  text?: TextFieldRole;
   modelRef: ConstantModelRef;
   arrDepth: number;
   optArrDepth: number;
@@ -316,7 +317,7 @@ export class ConstantField<
   readonly example?: FieldValue;
   readonly of?: MapValue; // for Map type fields
   readonly validate?: (value: FieldValue, model: any) => boolean;
-  readonly text?: "search" | "filter";
+  readonly text?: TextFieldRole;
   readonly modelRef: ConstantModelRef;
   readonly arrDepth: number;
   readonly optArrDepth: number;

@@ -54,3 +54,8 @@ export { sleep } from "./sleep";
 export { splitVersion } from "./splitVersion";
 export { getBasePathFromPathname, parseBasePaths } from "./subRoute";
 export type * from "./types";
+export {
+  type WebsocketAuthAckData,
+  type WebsocketAuthRequest,
+  websocketAuthContract,
+} from "./websocketAuth";

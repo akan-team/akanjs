@@ -1,0 +1,61 @@
+---
+description: Per-file shape for constant, document, service, signal, store, dictionary, and abstract files
+globs: apps/**/lib/**/*.{ts,tsx,md},libs/**/lib/**/*.{ts,tsx,md}
+alwaysApply: false
+---
+
+# Module File Playbook
+
+## `<model>.constant.ts`
+
+Five classes in order with one blank line between them and `enumOf("camelName", [...] as const)` classes above: `XInput → XObject → LightX → X → XInsight`. Write `XInsight` even when it is empty.
+
+- Put display and predicate logic on `LightX` (`isNew()`, `canWrite(user?)`, `formatTimes()`, `isCancellable()`) — the Light class is the one both server and client hold, so shared logic belongs there instead of in a util module. This is the most commonly missed rule in the codebase.
+- Collection-level helpers go `static` on the full model.
+- Defaults are a literal for scalars and a thunk for anything constructed. Arrays are `field([T])`; optional is the postfix `.optional()`.
+- Give any field whose business meaning is not obvious a short trailing comment.
+
+## `<model>.document.ts`
+
+Fixed order: `XFilter extends from(...)` → `X extends by(...)` → `XModel extends into(...)`, with `sort: {}` always present.
+
+- Chain methods validate → mutate → `return this`, and never `save()`; the caller saves, so chains compose (`org.removeUser(id).removeInvite(id).save()`).
+- Put a one-line comment above each chain method stating the transition.
+- Atomic counters live on the Model class with the updater-callback form, returning `!!modifiedCount`.
+- Indexes and derived totals go in `static override _onSchema`, not in the service.
+
+## `<model>.service.ts`
+
+- Keep methods to a few lines: load → chain → `return await ….save()`. Write `return await` explicitly in tail position; do not "optimize" it away.
+- Side effects belong in `override async _preUpdate` / `_postCreate`, not inline.
+- Fire-and-forget is explicitly `void`-ed.
+- Order deliberately: load every referenced document, then save, then notify.
+- Return `null` / `false` for "not allowed" or "not found" and let the signal decide whether that is an error.
+
+## `<model>.signal.ts`
+
+- `XInternal` → `XSlice` → `XEndpoint`, all three declared even when empty. `exec` is a one-liner delegating to the service.
+- Every `slice()` takes an explicit `{ guards: {…} }` second argument, and `root:` is always `Admin`.
+- Every custom `mutation` / `query` / `message` names its own `guards: [...]` array. `Public` belongs on a slice `get:`, never on a mutation.
+- The acting user arrives via `.with(Self)` / `.with(CurrentUserId)` / `.with(Me)`. Never trust a client-supplied id.
+
+## `<model>.store.ts`
+
+- Write a custom action only for a toast, an optimistic update, or a multi-field write; most stores need none, because state and CRUD actions are generated.
+- The body is three lines: `await fetch.X` → `this.setX(...)` → toast. The optimistic shape is mutate the client model, `void fetch.*`, then commit.
+- Use `this.pick(...)` when the value must exist, `this.get()` when it may not, and `this.set({...})` to write.
+- Mutate lists through the collection API (`this.set({ xList: xList.set(x).save() })`), not array spread.
+- **Never `import type { RootStore } from "../st"`** — it crashes `akan build` with a Bun SSR segfault.
+- Store actions do not `try/catch`; let the framework toast the `Err`.
+
+## `<model>.dictionary.ts`
+
+Fixed chain, with empty stages still written: `.of() → .model() → .insight() → .query() → .sort() → .enum() → .slice() → .endpoint() → .error() → .translate()`.
+
+- Every label is `t(["English", "한국어"])`, and nearly every one also carries `.desc([en, ko])`.
+- Name every argument in `.arg()`, including framework-supplied `skip` / `limit` / `sort`.
+- Use `modelDictionary`, `scalarDictionary`, or `serviceDictionary` to match the module kind.
+
+## `<module>.abstract.md`
+
+A title line, one declarative sentence naming what the module owns, a `## Rules` list of two to five invariants the code cannot show, and an optional workflow arrow chain (`draft -> signed -> active -> completed`). Never restate field lists or types. Update it whenever an invariant or workflow changes.

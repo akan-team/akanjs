@@ -98,7 +98,7 @@ export const fillMissingFilterArgs = (filterInfo: FilterInfo, args: unknown[]) =
   return [...args, ...Array(filterInfo.args.length - args.length).fill(undefined)];
 };
 
-export type BaseFilterSortKey = "latest" | "oldest";
+export type BaseFilterSortKey = "latest" | "oldest" | "relevance";
 export type BaseFilterQueryKey = "any";
 export type BaseFilterKey = BaseFilterSortKey | BaseFilterQueryKey;
 
@@ -130,6 +130,9 @@ interface BaseQuery<Model> {
 interface BaseSort {
   latest: { createdAt: -1 };
   oldest: { createdAt: 1 };
+  // Named no field on purpose: an empty sort map is how a store is told to order by search relevance instead.
+  // Without a `q.search()` in the query it falls back to the default ordering.
+  relevance: Record<string, never>;
 }
 type LibFilterQuery<LibFilters extends FilterCls[]> = MergeAllDoubleKeyOfObjects<
   LibFilters,
@@ -189,7 +192,7 @@ export const from = <
         any: filter().query((_q) => ({ removedAt: { empty: true } })),
         ...querySort.query,
       },
-      sort: Object.assign({ latest: { createdAt: -1 }, oldest: { createdAt: 1 } }, querySort.sort),
+      sort: Object.assign({ latest: { createdAt: -1 }, oldest: { createdAt: 1 }, relevance: {} }, querySort.sort),
     },
     ...libFilterRefs.map((libFilterRef) => getFilterMeta(libFilterRef)),
   );

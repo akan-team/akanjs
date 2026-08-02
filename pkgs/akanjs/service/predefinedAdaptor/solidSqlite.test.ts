@@ -148,6 +148,10 @@ class TestDatabaseOwner {
     return this.client;
   }
 
+  getSearchIndex() {
+    return null;
+  }
+
   getMeta(key: string) {
     return this.meta.get(key);
   }

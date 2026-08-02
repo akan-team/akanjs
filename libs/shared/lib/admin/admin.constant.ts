@@ -5,12 +5,12 @@ import { via } from "akanjs/constant";
 export class AdminRole extends enumOf("adminRole", ["manager", "admin", "superAdmin"] as const) {}
 
 export class AdminInput extends via((field) => ({
-  accountId: field(String, { validate: validate.email, type: "email", example: "hello@naver.com", text: "search" }),
+  accountId: field(String, { validate: validate.email, type: "email", example: "hello@naver.com", text: "title" }),
 })) {}
 
 export class AdminObject extends via(AdminInput, (field) => ({
   password: field.secret(String, { type: "password", example: "qwer1234", minlength: 8 }).optional(),
-  roles: field([AdminRole], { example: ["admin", "superAdmin"] }),
+  roles: field([AdminRole], { example: ["admin", "superAdmin"], text: "filter" }),
   lastLoginAt: field(Date, { default: () => dayjs(), example: dayjs() }),
 })) {}
 

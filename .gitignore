@@ -74,6 +74,7 @@ apps/*/android/keystore.properties
 **/public/fallback-*.js
 **/public/libs
 **/private/libs
+**/page/**/(libs)
 
 **/vendor/bundle/
 

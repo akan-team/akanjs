@@ -23,12 +23,24 @@ export const isDocumentId = (value: unknown): value is DocumentId =>
 export type DocumentPrimitive = string | number | boolean | null | Dayjs | Date;
 export type DocumentPath<T = any> = Extract<keyof T, string> | (string & {});
 
+// The fts5 index columns in the order `bm25()` weights them positionally. `thumb` is mirrored for rendering a hit
+// but never indexed, so it is absent here.
+export const searchColumns = ["title", "desc", "tag", "filter"] as const;
+export type SearchColumn = (typeof searchColumns)[number];
+
+export interface DocumentSearchOptions {
+  columns?: SearchColumn[];
+  prefix?: boolean;
+  weights?: number[];
+}
+
 export type DocumentQueryNode =
   | { kind: "all"; queries: DocumentQuery[] }
   | { kind: "any"; queries: DocumentQuery[] }
   | { kind: "not"; query: DocumentQuery }
   | { kind: "op"; op: DocumentQueryOperator; value?: unknown }
-  | { kind: "raw"; sql: string; params: unknown[] };
+  | { kind: "raw"; sql: string; params: unknown[] }
+  | ({ kind: "search"; text: string } & DocumentSearchOptions);
 
 export type DocumentQueryOperator =
   | "eq"
@@ -155,6 +167,13 @@ export const createDocumentQueryHelper = () => ({
   has: (value: unknown) => op("has", value),
   contains: (value: unknown) => op("contains", value),
   raw: (sql: string, params: unknown[] = []): DocumentQueryNode => ({ kind: "raw", sql, params }),
+  // A pure descriptor: whether search is available at all is decided by the compiler, so a filter declaring
+  // `q.search(...)` still typechecks and still builds on a process that has the index switched off.
+  search: (text: string, options: DocumentSearchOptions = {}): DocumentQueryNode => ({
+    kind: "search",
+    text,
+    ...options,
+  }),
   when: (condition: unknown, query: DocumentQuery): DocumentQuery => (condition ? query : {}),
 });
 

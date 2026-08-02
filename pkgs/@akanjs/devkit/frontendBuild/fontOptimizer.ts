@@ -388,12 +388,20 @@ export class FontOptimizer {
   }
 
   async #collectAutoSubsetText() {
-    const roots = ["page", "ui"].map((dir) => path.join(this.#app.cwdPath, dir));
+    //* Synced lib pages hold app-visible text too, and a glob never crosses the symlink that mounts them.
+    const libPageRoots = (await this.#app.getPageRoots()).filter((root) => root.keyPrefix).map((root) => root.dir);
+    const roots = [...["page", "ui"].map((dir) => path.join(this.#app.cwdPath, dir)), ...libPageRoots];
     const glob = new Bun.Glob("**/*.{ts,tsx,js,jsx,html,md}");
     const parts: string[] = [];
     await Promise.all(
       roots.map(async (root) => {
-        if (!(await Bun.file(root).exists())) return;
+        if (
+          !(await stat(root).then(
+            (entry) => entry.isDirectory(),
+            () => false,
+          ))
+        )
+          return;
         for await (const filePath of glob.scan({ cwd: root, absolute: true })) {
           parts.push(await Bun.file(filePath).text());
         }

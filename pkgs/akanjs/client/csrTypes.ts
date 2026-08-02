@@ -50,6 +50,13 @@ export interface PageConfig {
   rscPatchHeadSafe?: boolean;
   topSafeAreaColor?: string;
   bottomSafeAreaColor?: string;
+  /**
+   * Keeps the route out of `akan build`. The route still serves under `akan start`, but nothing about it
+   * reaches production: no bundle, no manifest entry, no URL. On a `_layout`, every route under that
+   * directory is excluded with it. Must be written as a literal `true`/`false` — the build reads it from
+   * the source without evaluating the module.
+   */
+  devOnly?: boolean;
 }
 
 export interface CsrState {

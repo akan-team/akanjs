@@ -272,6 +272,13 @@ void run().catch((error) => {
   async #writeTypecheckTsconfig({ incremental = true }: TypecheckOptions = {}) {
     const typecheckDir = path.join(this.#app.cwdPath, ".akan", "typecheck");
     await mkdir(typecheckDir, { recursive: true });
+    //* TypeScript's `include` globs do not cross a symlink, so synced lib pages need their real path.
+    const libPageIncludes = (await this.#app.getPageRoots())
+      .filter((root) => root.keyPrefix)
+      .flatMap((root) => {
+        const rel = path.relative(typecheckDir, root.realDir).split(path.sep).join("/");
+        return [`${rel}/**/*.ts`, `${rel}/**/*.tsx`];
+      });
     const tsconfig = {
       extends: "../../tsconfig.json",
       compilerOptions: {
@@ -285,6 +292,7 @@ void run().catch((error) => {
         "../../client.ts",
         "../../page/**/*.ts",
         "../../page/**/*.tsx",
+        ...libPageIncludes,
         "../../../../pkgs/akanjs/*/types/**/*.d.ts",
       ],
       references: [],

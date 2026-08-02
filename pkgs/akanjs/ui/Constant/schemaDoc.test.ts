@@ -43,7 +43,7 @@ const LightConstantDocUser = makeRef({
 });
 const ConstantDocUser = makeRef({
   ...ConstantDocUserObject[FIELD_META],
-  displayName: field(String, { text: "search" }).toField(),
+  displayName: field(String, { text: "title" }).toField(),
 });
 const ConstantDocUserInsight = makeRef({
   ...ConstantDocUser[FIELD_META],
@@ -93,7 +93,7 @@ describe("constant schema docs", () => {
     expect(password?.fieldType).toBe("secret");
     expect(password?.select).toBe(false);
     expect(metadata?.typeLabel).toBe("Map<String, String>");
-    expect(displayName?.constraints).toContain("text:search");
+    expect(displayName?.constraints).toContain("text:title");
   });
 
   test("collects enum usages and scalar fields", () => {

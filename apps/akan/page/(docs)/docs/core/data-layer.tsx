@@ -426,6 +426,10 @@ export const General = () => {
                 desc: "model.constant.ts",
               },
               {
+                title: l.trans({ en: "Which fields are text searchable?", ko: "어떤 필드가 텍스트 검색 대상인가요?" }),
+                desc: "model.constant.ts",
+              },
+              {
                 title: l.trans({ en: "How is it stored or searched?", ko: "어떻게 저장하고 검색하나요?" }),
                 desc: "model.document.ts",
               },

@@ -67,6 +67,7 @@ local.properties
 **/public/fallback-*.js
 **/public/libs
 **/private/libs
+**/page/**/(libs)
 **/public/firebase-messaging-sw.js
 
 **/android/keystore.properties

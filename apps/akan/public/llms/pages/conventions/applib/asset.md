@@ -41,7 +41,7 @@ Files under asset/private are for server-only resources. Put files here when the
 
 Library Asset Sync
 
-When a library has assets, Akan syncs both public and private assets into each app. Public assets become browser-requestable files, while private assets stay server-only after sync.
+When a library has assets, Akan syncs both public and private assets into each app. Public assets become browser-requestable files, while private assets stay server-only after sync. Sync links the library folder into the app, so editing a library asset takes effect without another sync; a production build copies the real files into the build output.
 
 Practical Rules
 
@@ -138,11 +138,14 @@ export async function detectObjects(image: ArrayBuffer) {
 libs/shared/asset/public/banner/logo.png
 libs/shared/asset/private/recommendation/default-rules.json
 
-# Synced into an app as public assets
+# Linked into an app as public assets
 apps/myapp/public/libs/shared/banner/logo.png
 
-# Synced into an app as private assets
+# Linked into an app as private assets
 apps/myapp/private/libs/shared/recommendation/default-rules.json
+
+# Copied as real files into the production build
+dist/apps/myapp/public/libs/shared/banner/logo.png
 
 # Browser request
 /libs/shared/banner/logo.png

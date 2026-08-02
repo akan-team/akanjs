@@ -27,8 +27,8 @@ export class ProfileStatus extends enumOf("profileStatus", [
 export class UserStatus extends enumOf("userStatus", ["prepare", "active", "dormant", "restricted"] as const) {}
 
 export class UserInput extends via((field) => ({
-  nickname: field(String, { default: "", maxlength: 12 }),
-  image: field(File).optional(),
+  nickname: field(String, { default: "", maxlength: 12, text: "title" }),
+  image: field(File, { text: "thumb" }).optional(),
   images: field([File]),
   appliedImages: field([File]),
 })) {}
@@ -46,14 +46,14 @@ export class UserObject extends via(UserInput, (field) => ({
   restrictInfo: field.secret(RestrictInfo).optional(),
   leaveInfo: field.secret(LeaveInfo).optional(),
   verifies: field([Verify]),
-  roles: field([UserRole], { default: ["user"] }),
-  playing: field([String]),
+  roles: field([UserRole], { default: ["user"], text: "filter" }),
+  playing: field([String], { text: "tag" }),
   isOnline: field(Boolean, { default: true }),
   lastLoginAt: field(Date, { default: () => dayjs() }),
   joinAt: field(Date).optional(),
   profileStatus: field(ProfileStatus, { default: "prepare" }),
   badgeCount: field(Int, { default: 0 }),
-  status: field(UserStatus, { default: "prepare" }),
+  status: field(UserStatus, { default: "prepare", text: "filter" }),
 })) {}
 
 export class LightUser extends via(

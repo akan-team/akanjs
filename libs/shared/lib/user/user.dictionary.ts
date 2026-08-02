@@ -51,6 +51,10 @@ export const dictionary = modelDictionary(["en", "ko"])
     byStatuses: fn(["By Statuses", "상태별 조회"]).arg((t) => ({
       statuses: t(["Statuses", "상태들"]).desc(["Statuses to search", "상태들로 조회"]),
     })),
+    bySearch: fn(["By Search", "검색어별 조회"]).arg((t) => ({
+      text: t(["Search Text", "검색어"]).desc(["Text to search for", "검색할 문자열"]),
+      statuses: t(["Statuses", "상태들"]).desc(["Statuses to narrow the search", "검색 범위를 좁힐 상태들"]),
+    })),
     byNickname: fn(["By Nickname", "닉네임별 조회"]).arg((t) => ({
       nickname: t(["Nickname", "닉네임"]).desc(["Nickname to search", "닉네임으로 조회"]),
       status: t(["Status", "상태"]).desc(["Status to search", "상태로 조회"]),

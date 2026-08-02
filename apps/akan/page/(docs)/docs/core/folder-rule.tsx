@@ -173,6 +173,7 @@ export default function Page() {
               code={`libs/shared/
 ├── akan.config.ts
 ├── lib/
+├── page/
 ├── ui/
 ├── env/
 ├── public/
@@ -231,8 +232,8 @@ export default function Page() {
                 title: "page/",
                 type: "client",
                 desc: l.trans({
-                  en: "Put pages here when a user can visit them by URL. Examples: home, sign in, product detail, admin dashboard.",
-                  ko: "사용자가 URL로 방문하는 화면을 둡니다. 예: 홈, 로그인, 상품 상세, 관리자 대시보드.",
+                  en: "Put pages here when a user can visit them by URL. Examples: home, sign in, product detail, admin dashboard. A library can hold one too, and apps that opt in with syncPageLibs serve its routes.",
+                  ko: "사용자가 URL로 방문하는 화면을 둡니다. 예: 홈, 로그인, 상품 상세, 관리자 대시보드. 라이브러리도 page 폴더를 가질 수 있고, syncPageLibs로 사용을 선언한 앱이 그 라우트를 서비스합니다.",
                 }),
               },
               {

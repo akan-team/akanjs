@@ -1,4 +1,4 @@
-import { stat } from "node:fs/promises";
+import { lstat, stat } from "node:fs/promises";
 import { Logger } from "akanjs/common";
 
 export class FileSys {
@@ -13,6 +13,12 @@ export class FileSys {
   }
   static async exists(path: string) {
     return await stat(path)
+      .then(() => true)
+      .catch(() => false);
+  }
+  //* Unlike `exists`, this reports a symlink whose target is gone, so stale links can be cleaned up.
+  static async entryExists(path: string) {
+    return await lstat(path)
       .then(() => true)
       .catch(() => false);
   }

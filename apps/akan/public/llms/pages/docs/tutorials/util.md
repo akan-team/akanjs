@@ -81,7 +81,7 @@ Create Signal Endpoints
 
 Think of signal endpoints as the communication system between the frontend (like the shop's order display screen) and the backend (the kitchen and management system). When staff clicks a "Process" button on the screen, it needs to communicate with the backend to actually update the order. Akan.js automatically creates both REST and GraphQL versions of these endpoints, so different parts of your system can communicate however they prefer.
 
-Each signal endpoint is decorated with @Mutation.Public() and takes the order ID as a parameter. The resolve() function ensures the returned data is properly formatted for both API formats.
+Each signal endpoint is defined using the mutation() builder, specifying the return type and accepting the order ID as a parameter via .param(). The .exec() callback delegates to the corresponding service method to perform the actual business logic.
 
 We also need to add dictionary entries for these API endpoints so they display properly in the UI:
 
@@ -598,11 +598,11 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
           </span>
           <span
             className={clsx("ml-2 rounded-full px-3 py-1 text-sm font-semibold", {
-              "border border-base-300 bg-primary text-primary-content": icecreamOrder.status === "active",
-              "border border-base-300 bg-warning text-warning-content": icecreamOrder.status === "processing",
-              "border border-base-300 bg-secondary text-secondary-content": icecreamOrder.status === "served",
-              "border border-base-300 bg-accent text-accent-content": icecreamOrder.status === "finished",
-              "border border-base-300 bg-neutral text-neutral-content": icecreamOrder.status === "canceled",
+              "border border-primary/40 bg-base-100 text-primary": icecreamOrder.status === "active",
+              "border border-warning/40 bg-base-100 text-warning": icecreamOrder.status === "processing",
+              "border border-info/40 bg-info text-info-content": icecreamOrder.status === "served",
+              "border border-accent/40 bg-base-100 text-accent": icecreamOrder.status === "finished",
+              "border border-base-300 bg-base-100 text-base-content/70": icecreamOrder.status === "canceled",
             })}
           >
             {l(`icecreamOrderStatus.${icecreamOrder.status}`)}
@@ -668,11 +668,11 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
         <div>
           <span
             className={clsx("inline-block rounded-full px-2 py-1 text-xs font-semibold", {
-              "border border-base-300 bg-primary text-primary-content": icecreamOrder.status === "active",
-              "border border-base-300 bg-warning text-warning-content": icecreamOrder.status === "processing",
-              "border border-base-300 bg-secondary text-secondary-content": icecreamOrder.status === "served",
-              "border border-base-300 bg-accent text-accent-content": icecreamOrder.status === "finished",
-              "border border-base-300 bg-neutral text-neutral-content": icecreamOrder.status === "canceled",
+              "border border-primary/40 bg-base-100 text-primary": icecreamOrder.status === "active",
+              "border border-warning/40 bg-base-100 text-warning": icecreamOrder.status === "processing",
+              "border border-info/40 bg-info text-info-content": icecreamOrder.status === "served",
+              "border border-accent/40 bg-base-100 text-accent": icecreamOrder.status === "finished",
+              "border border-base-300 bg-base-100 text-base-content/70": icecreamOrder.status === "canceled",
             })}
           >
             {l(`icecreamOrderStatus.${icecreamOrder.status}`)}

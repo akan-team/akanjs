@@ -41,8 +41,8 @@ export function UserZone({ slice, init }: ModelsProps<LightUser>) {}`,
     {
       name: "PageConfig / LayoutProps",
       desc: l.trans({
-        en: "Route module types for page/layout files. `PageConfig` controls transition, safe area, gesture, and cache behavior, while `LayoutProps` describes layout children and route params.",
-        ko: "page/layout 파일을 위한 route module type입니다. `PageConfig`는 transition, safe area, gesture, cache behavior를 제어하고, `LayoutProps`는 layout children과 route params를 설명합니다.",
+        en: "Route module types for page/layout files. `PageConfig` controls transition, safe area, gesture, and cache behavior, plus `devOnly` to keep the route out of `akan build`, while `LayoutProps` describes layout children and route params.",
+        ko: "page/layout 파일을 위한 route module type입니다. `PageConfig`는 transition, safe area, gesture, cache behavior와 함께 `akan build`에서 라우트를 제외하는 `devOnly`를 제어하고, `LayoutProps`는 layout children과 route params를 설명합니다.",
       }),
       code: `import type { LayoutProps, PageConfig } from "akanjs/client";
 

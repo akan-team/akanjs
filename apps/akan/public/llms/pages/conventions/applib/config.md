@@ -16,6 +16,8 @@
 - images (#images)
 - i18n (#i18n)
 - publicEnv (#public-env)
+- secrets (#secrets)
+- syncPageLibs (#sync-page-libs)
 - externalLibs (#external-libs)
 - barrelImports (#barrel-imports)
 - optimizeImports (#optimize-imports)
@@ -85,6 +87,24 @@ publicEnv lists environment keys that are allowed to be exposed to browser code.
 Akan keeps the list in resolved app config so build and runtime code know which env values may cross the server-to-browser boundary.
 
 Never include secrets, database URLs, private tokens, or server credentials in publicEnv.
+
+secrets
+
+secrets lists glob patterns for private files that must ship to the cloud alongside the default env/ files. On `akan upload-env` Akan bundles every matched file into the env archive, and `akan download-env` restores them to the same paths.
+
+Patterns are resolved relative to the app directory. Akan also syncs them into a managed block in the workspace root .gitignore on upload-env, so declaring a pattern here is enough to both ship and git-ignore the files. You do not maintain .gitignore separately.
+
+Use secrets for private key files, service-account JSON, or certificates that env.server.* cannot inline. The default env/env.(client|server).*.ts files are always included, so you only list extra paths here.
+
+Only the glob patterns live in akan.config.ts. The matched files stay local and git-ignored — never commit their contents. Removing a pattern also removes it from the managed .gitignore block on the next upload-env.
+
+syncPageLibs
+
+syncPageLibs declares which library page folders this app serves. On akan sync, each selected library is linked into apps/<app>/page/(libs)/(<lib>), so the library keeps ownership of its routes and the app only opts in.
+
+true takes every library dependency that ships a page folder, an array takes exactly the libraries listed, and false (the default) syncs nothing and removes what an earlier sync created.
+
+The linked folder is generated and gitignored, so edit the library source instead. An explicit list fails the sync when a named library is not a dependency or has no page folder, while true simply skips libraries without one.
 
 externalLibs
 
@@ -260,6 +280,39 @@ import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
   publicEnv: ["PUBLIC_ANALYTICS_KEY", "PUBLIC_FEATURE_PREVIEW"],
+};
+
+export default config;
+```
+
+### apps/api/akan.config.ts
+
+```ts
+import type { AppConfig } from "akanjs";
+
+const config: AppConfig = {
+  secrets: ["secrets/**/*", "certs/*.pem"],
+};
+
+export default config;
+```
+
+### .gitignore (auto-synced)
+
+```ts
+# akan:secrets (managed by akan.config.ts — do not edit)
+apps/api/certs/*.pem
+apps/api/secrets/**/*
+# akan:secrets:end
+```
+
+### apps/myapp/akan.config.ts
+
+```ts
+import type { AppConfig } from "akanjs";
+
+const config: AppConfig = {
+  syncPageLibs: ["shared"],
 };
 
 export default config;

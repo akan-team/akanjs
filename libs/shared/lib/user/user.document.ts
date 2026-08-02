@@ -19,6 +19,12 @@ export class UserFilter extends from(cnst.User, (filter) => ({
     byStatuses: filter()
       .opt("statuses", [cnst.UserStatus])
       .query((statuses, q) => (statuses?.length ? { status: q.oneOf(statuses) } : {})),
+    bySearch: filter()
+      .arg("text", String)
+      .opt("statuses", [cnst.UserStatus])
+      .query((text, statuses, q) =>
+        q.all(q.search(text, { prefix: true }), statuses?.length ? { status: q.oneOf(statuses) } : {}),
+      ),
     byNickname: filter()
       .arg("nickname", String)
       .opt("status", cnst.UserStatus)

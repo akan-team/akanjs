@@ -158,8 +158,8 @@ libs/shared/asset/private/recommendation/default-rules.json`}
         <Docs.Description>
           <div>
             {l.trans({
-              en: "When a library has assets, Akan syncs both public and private assets into each app. Public assets become browser-requestable files, while private assets stay server-only after sync.",
-              ko: "라이브러리가 애셋을 가지고 있으면 Akan은 public과 private 애셋을 모두 각 앱으로 sync합니다. public 애셋은 브라우저가 요청할 수 있는 파일이 되고, private 애셋은 sync 이후에도 서버 전용으로 남습니다.",
+              en: "When a library has assets, Akan syncs both public and private assets into each app. Public assets become browser-requestable files, while private assets stay server-only after sync. Sync links the library folder into the app, so editing a library asset takes effect without another sync; a production build copies the real files into the build output.",
+              ko: "라이브러리가 애셋을 가지고 있으면 Akan은 public과 private 애셋을 모두 각 앱으로 sync합니다. public 애셋은 브라우저가 요청할 수 있는 파일이 되고, private 애셋은 sync 이후에도 서버 전용으로 남습니다. sync는 라이브러리 폴더를 앱에 링크하므로 라이브러리 애셋을 수정하면 다시 sync하지 않아도 반영되고, 프로덕션 빌드에서는 실제 파일이 빌드 결과물로 복사됩니다.",
             })}
           </div>
         </Docs.Description>
@@ -171,11 +171,14 @@ libs/shared/asset/private/recommendation/default-rules.json`}
 libs/shared/asset/public/banner/logo.png
 libs/shared/asset/private/recommendation/default-rules.json
 
-# Synced into an app as public assets
+# Linked into an app as public assets
 apps/myapp/public/libs/shared/banner/logo.png
 
-# Synced into an app as private assets
+# Linked into an app as private assets
 apps/myapp/private/libs/shared/recommendation/default-rules.json
+
+# Copied as real files into the production build
+dist/apps/myapp/public/libs/shared/banner/logo.png
 
 # Browser request
 /libs/shared/banner/logo.png`}

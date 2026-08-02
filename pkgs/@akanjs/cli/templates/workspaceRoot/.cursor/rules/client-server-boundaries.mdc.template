@@ -12,6 +12,6 @@ alwaysApply: false
 - Let server page/layout files own route-level concerns: `usePage`, headers, static layout, and `akanjs/ui` `Tab` composition.
 - Keep interactive loading, submit/import actions, local form inputs, and `router.push` inside client `Util`, `Template`, or `Zone` components.
 - Prefer server-rendered `Tab` shells for static mode selection; put one client component inside each `Tab.Panel` instead of managing the selected mode with extra `useState`.
-- In domain UI, `Template`, `Zone`, and `Util` components are usually client components; `Unit` and `View` components are usually server components.
+- In domain UI the boundary is mechanical, not a judgment call: `Template`, `Zone`, and `Util` are always client components with `"use client"` on line 1; `Unit` and `View` are always server components and never carry the directive. `usePage()` is still legal in server files.
 - Preserve established domain file roles such as `.document.ts`, `.service.ts`, `.store.ts`, `.constant.ts`, and `.client.ts`.
 - When unsure, inspect nearby files in the same app or package before introducing a new boundary pattern.

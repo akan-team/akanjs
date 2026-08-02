@@ -85,8 +85,8 @@ export const dictionary = modelDictionary(["en", "ko"])
             {
               title: ".query / .sort",
               desc: l.trans({
-                en: "Labels document filter options. Base query and sort labels such as any, latest, and oldest are included.",
-                ko: "document filter option에 label을 붙입니다. any, latest, oldest 같은 base query/sort label이 포함됩니다.",
+                en: "Labels document filter options. Base query and sort labels such as any, latest, oldest, and relevance are included.",
+                ko: "document filter option에 label을 붙입니다. any, latest, oldest, relevance 같은 base query/sort label이 포함됩니다.",
               }),
             },
           ].map(({ title, desc }) => (

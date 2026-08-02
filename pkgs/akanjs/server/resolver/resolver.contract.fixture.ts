@@ -149,6 +149,13 @@ export class ServerResolverTestMiddleware extends middleware("serverResolverTest
   }
 }
 
+export class ServerResolverTestRoomGuard {
+  static name = "ServerResolverTestRoomGuard";
+  canPass(context: SignalContext): boolean {
+    return context.get<{ role?: string }>("account")?.role === "member";
+  }
+}
+
 export class ServerResolverTestEndpoint extends endpoint(serverResolverTestServiceModel, (builder) => ({
   getTitle: builder
     .query(String, {
@@ -176,6 +183,10 @@ export class ServerResolverTestEndpoint extends endpoint(serverResolverTestServi
     .exec(() => {
       resolverOrder.push("pubsub-subscribe");
     }),
+  guardedRoomFeed: builder
+    .pubsub(ServerResolverTestLight, { guards: [ServerResolverTestRoomGuard] })
+    .room("roomId", ID)
+    .exec(() => undefined),
   echoMessage: builder
     .message(String)
     .msg("text", String)

@@ -11,6 +11,7 @@
 - Akan Runtime (#akan-runtime)
 - Root-level Env Variables (#dev-prod)
 - getEnv() (#get-env)
+- OpenAPI JSON (#openapi-json)
 - Health, Metrics, Logs (#health-metrics-logs)
 
 ## Content
@@ -64,6 +65,14 @@ Choose whether clients connect to local runtime, edge paths, or cloud services.
 Log detail
 
 Choose how much runtime output you want to see in the terminal.
+
+Text search index
+
+Unset means on. Set 0 to switch the full-text index off; indexed data is kept and re-enabling reconciles every model. Give every process in a deployment the same value, because a process cannot clean up triggers for models it does not mount.
+
+Search tokenizer
+
+The fts5 tokenizer the index is built with. Defaults to unicode61 remove_diacritics 2. Changing it rebuilds the index from the mirror on the next boot, so no data is re-read from the model tables. The rebuild takes no cross-process claim, so a fleet restarted at once repeats it in every process; stagger the restart when the mirror is large. database.search.tokenizer in the app config takes precedence. A value this SQLite build cannot provide fails the boot and names the fix, rather than starting a server whose every search would raise. That boot failure leaves writes alone: the index is dropped but nothing else is, so the models on that database keep accepting writes and the next healthy boot recovers the index in full.
 
 File log detail
 
@@ -129,6 +138,26 @@ When OPERATION_MODE is cloud or edge, getEnv() builds service URLs from the app 
 
 Use getEnv() when application code needs runtime addresses or environment identity. It keeps URL decisions in one place and makes local, cloud, and edge modes easier to switch.
 
+OpenAPI JSON
+
+Akan can expose the HTTP query and mutation surface declared in signal files as an OpenAPI 3.1 document. This is useful when you want to connect Swagger, Redoc, external clients, or SDK generation tools to the same API shape Akan already uses.
+
+After enabling it, request /openapi.json from the app origin. In local mode, the document is usually available at localhost:8282/openapi.json. The normal API prefix stays at /api; OpenAPI JSON is served as a framework metadata route.
+
+App option
+
+Use this when the app should always expose OpenAPI JSON in that entry point.
+
+Environment variable
+
+Use this when deployment or local scripts should decide whether the endpoint is available.
+
+Server option
+
+Use this when you start AkanServer directly instead of going through AkanApp.
+
+OpenAPI JSON is opt-in. Enable it only for environments where exposing API structure is acceptable, because it describes routes, request fields, response schemas, and guard metadata.
+
 Health, Metrics, Logs
 
 Akan runtime exposes simple ways to check whether the app is alive, how busy it is, and what it is doing. In local development, these are mostly useful when a page does not load or a background job seems stuck.
@@ -170,6 +199,8 @@ AKAN_PUBLIC_SERVE_DOMAIN="mydomain.com"
 AKAN_PUBLIC_ENV=local
 AKAN_PUBLIC_OPERATION_MODE=local
 AKAN_PUBLIC_LOG_LEVEL=debug
+AKAN_SEARCH_ENABLED=1
+AKAN_SEARCH_TOKENIZER="unicode61 remove_diacritics 2"
 ```
 
 ### Code
@@ -234,6 +265,23 @@ AKAN_PUBLIC_SERVE_DOMAIN=akanjs.com
 
 serverHttpUri=https://myapp-main.mydomain.com/api
 serverWsUri=wss://myapp-main.mydomain.com
+```
+
+### apps/myapp/main.ts
+
+```ts
+import { AkanApp } from "akanjs/server";
+
+const run = async () => {
+  await new AkanApp("./server", { openapi: true }).start();
+};
+void run();
+```
+
+### Read the OpenAPI document
+
+```bash
+curl http://localhost:8282/openapi.json
 ```
 
 ### health

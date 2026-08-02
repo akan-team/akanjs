@@ -101,10 +101,6 @@ export interface ProtoPatch {
 }
 
 export const DEFAULT_PAGE_SIZE = 20;
-export interface TextDoc {
-  [key: string]: string | TextDoc;
-}
-
 export type NonFunctionalKeys<T> = {
   [K in keyof T]: T[K] extends (...args: never[]) => unknown ? never : K;
 }[keyof T];

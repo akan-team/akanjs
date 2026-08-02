@@ -11,7 +11,7 @@ import {
   serve,
 } from "akanjs/service";
 import { endpoint } from "./endpoint";
-import { buildEndpoint } from "./endpointInfo";
+import { buildEndpoint, type EndpointInfo } from "./endpointInfo";
 import { Exception } from "./exception";
 import type { Guard, GuardCls } from "./guard";
 import { None, Public } from "./guards";
@@ -1033,5 +1033,127 @@ describe("representative signal usage regressions", () => {
     expect(processInternal.defaultArgs).toEqual(["Job"]);
     expect(processInternal.args[0]?.name).toBe("force");
     expect(processInternal.signalOption.serverMode).toBe("all");
+  });
+});
+
+describe("SignalContext websocket authorization", () => {
+  class AccountGuard implements Guard {
+    static name = "AccountGuard";
+    canPass(context: SignalContext): boolean {
+      return !!context.get<{ role?: string }>("account")?.role;
+    }
+  }
+  class WsAccountMiddleware extends middleware("wsAccount") {
+    override async use() {
+      return async (context: SignalContext, next: () => Promise<unknown>) => {
+        const data = context.getWebSocketContext<{ token?: string; account?: unknown }>().ws.data;
+        data.account = data.token ? { role: data.token } : undefined;
+        return await next();
+      };
+    }
+  }
+
+  const makeWsContext = ({
+    endpointInfo,
+    wsData = {},
+    eventType = "subscribe",
+    middlewareMap = new Map(),
+  }: {
+    endpointInfo: EndpointInfo;
+    wsData?: Record<string, unknown>;
+    eventType?: string;
+    middlewareMap?: Map<string, typeof GlobalMiddleware>;
+  }) =>
+    new SignalContext("wsKey", { ws: { data: wsData }, data: ["room-1"], eventType } as never, {
+      endpointInfo,
+      adaptor: new (adapt("signalTestWsGuardAdaptor"))(),
+      registry: getDefaultInjectRegistry(),
+      env: {} as never,
+      live: makeLiveRegistry(),
+      middleware: middlewareMap as never,
+    });
+
+  test("reads the account from the socket on websocket and from the request on http", () => {
+    const wsContext = makeWsContext({
+      endpointInfo: buildEndpoint
+        .pubsub(String)
+        .room("roomId", String)
+        .exec(() => undefined),
+      wsData: { account: { role: "admin" } },
+    });
+    const httpContext = makeSignalContext({
+      request: { ...makeHttpRequest(), account: { role: "user" } } as unknown as Bun.BunRequest,
+    });
+
+    expect(wsContext.get<{ role?: string }>("account")).toEqual({ role: "admin" });
+    expect(httpContext.get<{ role?: string }>("account")).toEqual({ role: "user" });
+    expect(
+      makeWsContext({ endpointInfo: buildEndpoint.pubsub(String).exec(() => undefined) }).get("account"),
+    ).toBeNull();
+  });
+
+  test("blocks a pubsub subscribe whose guard denies and runs it when the socket carries an account", async () => {
+    const endpointInfo = buildEndpoint
+      .pubsub(String, { guards: [AccountGuard as GuardCls] })
+      .room("roomId", String)
+      .exec(() => undefined);
+    const denied = makeWsContext({ endpointInfo });
+    const allowed = makeWsContext({ endpointInfo, wsData: { account: { role: "admin" } } });
+
+    await denied.init();
+    await allowed.init();
+
+    await expect(denied.exec()).rejects.toThrow("Access denied by guard: AccountGuard");
+    await allowed.exec();
+    expect(allowed.getRoomId("wsKey")).toBe("wsKey-room-1");
+  });
+
+  test("blocks a websocket message whose guard denies", async () => {
+    const endpointInfo = buildEndpoint
+      .message(String, { guards: [AccountGuard as GuardCls] })
+      .msg("text", String)
+      .exec((text) => text);
+    const context = makeWsContext({ endpointInfo, eventType: "message" });
+
+    await context.init();
+
+    await expect(context.exec()).rejects.toThrow("Access denied by guard: AccountGuard");
+  });
+
+  test("authorize re-runs global middleware so a changed credential is re-resolved", async () => {
+    const wsData: Record<string, unknown> = { token: "admin" };
+    const context = makeWsContext({
+      endpointInfo: buildEndpoint
+        .pubsub(String, { guards: [AccountGuard as GuardCls] })
+        .room("roomId", String)
+        .exec(() => undefined),
+      wsData,
+      middlewareMap: new Map([["wsAccount", WsAccountMiddleware]]) as never,
+    });
+
+    await context.init();
+
+    expect(await context.authorize()).toBe(true);
+    wsData.token = undefined;
+    expect(await context.authorize()).toBe(false);
+    wsData.token = "admin";
+    expect(await context.authorize()).toBe(true);
+  });
+
+  test("authorize skips endpoint middlewares so an unexecuted call cannot be observed", async () => {
+    signalTestOrder = [];
+    const context = makeWsContext({
+      endpointInfo: buildEndpoint
+        .pubsub(String, { guards: [Public], middlewares: [EndpointMiddleware] })
+        .room("roomId", String)
+        .exec(() => undefined),
+      wsData: { account: { role: "admin" } },
+      middlewareMap: new Map([["global", GlobalMiddleware]]),
+    });
+
+    await context.init();
+
+    expect(await context.authorize()).toBe(true);
+    expect(signalTestOrder).toEqual(["global:before", "global:after"]);
   });
 });

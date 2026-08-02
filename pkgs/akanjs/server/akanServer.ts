@@ -23,6 +23,7 @@ import { ProcessMetricsCollector } from "./processMetricsCollector";
 import { WebProxyRunner } from "./proxy";
 import { SignalResolver } from "./resolver";
 import { ApiRouter } from "./routing/apiRouter";
+import type { AppWsData } from "./routing/appWsData";
 import type { HttpRoutes, SignalRoutes, WebsocketRoutes } from "./types";
 import type { WebRouter } from "./webRouter";
 
@@ -66,8 +67,8 @@ export class AkanServer {
   status: "stopped" | "initializing" | "initialized" | "starting" | "running" | "stopping" = "stopped";
   // Union the app-signal data shape with the HMR channel's data shape so
   // `server.upgrade(...)` type-checks for both.
-  #server: Bun.Server<{ createdAt: number } | HmrWsData> | null = null;
-  #wsServer: Bun.Server<{ createdAt: number } | HmrWsData> | null = null;
+  #server: Bun.Server<AppWsData | HmrWsData> | null = null;
+  #wsServer: Bun.Server<AppWsData | HmrWsData> | null = null;
   #prepared: AkanAppPrepared | null = null;
   readonly logger: Logger;
   readonly name: string;
@@ -242,7 +243,7 @@ export class AkanServer {
       }),
       // `data` is typed by the upgrade call site; the runtime default is unused.
       data: {},
-    } as Bun.WebSocketHandler<{ createdAt: number } | HmrWsData>;
+    } as Bun.WebSocketHandler<AppWsData | HmrWsData>;
     // `builderRpc` lives in `#prepared` only so `stop()` can dispose it.
     this.#server = Bun.serve({
       idleTimeout: 0,
@@ -271,7 +272,7 @@ export class AkanServer {
           builtinRoutes,
           routeOptions,
           renderEnvRoutes,
-          upgradeAppWs: (req: Request, data: { createdAt: number }) => this.#wsServer?.upgrade(req, { data }) ?? false,
+          upgradeAppWs: (req: Request, data: AppWsData) => this.#wsServer?.upgrade(req, { data }) ?? false,
           webProxyRunner,
         }),
         websocket: websocketHandlers,

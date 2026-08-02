@@ -1,5 +1,5 @@
 ---
-description: Coding style conventions for classes and functions
+description: Coding style conventions for classes, functions, files, and types
 globs: **/*.{ts,tsx}
 alwaysApply: false
 ---
@@ -8,7 +8,7 @@ alwaysApply: false
 
 - For large units of work, prefer declaring a class and running the flow through an instance instead of scattering many standalone functions.
 - Prefer class methods or `static` methods over unrelated top-level helper functions when the logic belongs to a class-level workflow.
-- Prefer ECMAScript `#private` fields and methods over TypeScript `private`; `*.service.ts` files are the main exception where `private` methods are encouraged.
+- Prefer ECMAScript `#private` fields and methods over TypeScript `private`, except in the four suffixes where `#private` is lint-banned (`*.constant.ts`, `*.document.ts`, `*.service.ts`, `*.store.ts`) — those use TypeScript `private`. `#private` is the house style under `srvkit/`, including `adapt()` classes.
 - In files that declare a class, avoid top-level functions or variables when they can reasonably live inside the class.
 - Prefer `const` function expressions over `function` declarations unless hoisting, overloads, generators, or framework conventions make `function` the better fit.
 - Prefer declaring only one class per file; split the file when two or more class declarations are needed.
@@ -17,9 +17,29 @@ alwaysApply: false
 - Except for React component files or convention files, TypeScript filenames should use camelCase.
 - In React components, keep one-off `className` strings inline. Only extract class name constants when the class is reused, conditionally composed, or too large to read comfortably in JSX.
 
+# File Size And Duplication
+
+- Keep files small. The house median is well under 50 lines; split a component before it reaches ~150 lines rather than adding section comments.
+- Ship every scaffold file even when it is empty — `export class XInternal extends internal(srv.x, () => ({})) {}`, empty dictionary stages, the `// state` / `// action` markers in an empty store. They mark where things go.
+- Never add a sibling helper file inside `lib/<model>/`. Helpers go to `common/`, `webkit/`, `srvkit/`, or `ui/`.
+- Prefer duplication to premature abstraction at the leaf. Near-identical sibling modules and per-vendor pages are deliberately copied, not parameterised. Copy the file and change the literals; share enums by import only.
+
+# TypeScript Shape
+
+- Use `interface` for object shapes and `type` only for unions and aliases.
+- Declare `interface <ComponentName>Props` immediately above the component with no blank line between, and put `className?: string` first. Name it for the component (`CardProps`, `WorldProps`), never for the model. Do not export it unless a sibling imports it.
+- Never use a non-null assertion. Narrow with `?.`, an early return, or a type predicate such as `.filter((id): id is string => !!id)`.
+- Escape with `as unknown as T`. Never `as any`.
+- Never annotate a component's return type. Annotate a helper only when the return is a union, a tuple, or a type predicate.
+- Use `as const` on every `enumOf(...)` array, every `via(Model, [...] as const, …)` Light tuple, and every module-scope lookup map. Never use the TypeScript `enum` keyword.
+- Async functions carry no `Async` suffix.
+
 # Test Code
 
 - Write TypeScript tests with Bun's test runner and import `describe`, `expect`, and `test` from `bun:test`.
 - Keep tests colocated with the source they cover using `*.test.ts` or `*.spec.ts`, following the existing nearby pattern.
 - Prefer focused behavior tests for public contracts and edge cases over implementation-detail assertions.
+- Split signal tests in two. `<model>.signal.spec.ts` holds reusable fixtures built on `sampleOf(cnst.XInput)` with explicit `Promise<cnst.X>` return types and **no assertions**. `<model>.signal.test.ts` holds the assertions: `describe("<Model> Signal")`, `let` fixtures at describe scope, one `beforeAll`, story-ordered `it`s, and negatives via `await expect(p).rejects.toThrow()`.
+- `lib/user/user.signal.spec.ts` is the one place agent types are re-exported and re-typed; import `UserAgent` / `AdminAgent` from there rather than from the shared lib directly.
+- A placeholder `it` with a descriptive title is an acceptable floor. Write a real suite when the behaviour is security-relevant.
 - Run package suites with `bun run akan test <pkg>` from the repo root, or `cd <pkg> && bun test --isolate`. Plain `bun test` without `--isolate` shares one global object across test files and fails dozens of tests from cross-file state pollution (`bunfig.toml` `[test] isolate` is not honored as of Bun 1.3), and running `bun test` from the repo root breaks subprocess stdio pipes.

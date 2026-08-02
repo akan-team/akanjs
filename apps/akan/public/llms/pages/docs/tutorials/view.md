@@ -22,7 +22,7 @@ Show Details
 
 Imagine walking into an ice cream shop and placing an order. You'd want to see exactly what you ordered, right? Maybe check if you remembered to add those strawberries, or confirm the size you picked. That's exactly what detailed views do in our application - they give customers a complete, beautiful summary of their order that they can access anytime with just a click.
 
-Think of it like the difference between an order ticket and a detailed receipt. The summary card is like a stub - it shows the basics so you can identify the order. But the detailed view is like the full receipt that shows everything: every topping you chose, when you placed the order, and whether it's ready to pick up. It's the complete story of your ice cream order!
+Here's a simpler way to think about it. The summary card is like seeing "Vanilla Cone" in your order list — just enough to know which order is yours. The detailed view is what you see when you tap on it: the exact size you picked, every topping you added, when you placed the order, and whether it's ready. It's the difference between a one-line note and the full story of your ice cream order!
 
 In Akan.js, showing detailed views follows a clean architecture pattern. We use three main components that work together:
 
@@ -214,11 +214,11 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
           </span>
           <span
             className={clsx("ml-2 rounded-full px-3 py-1 text-sm font-semibold", {
-              "border border-base-300 bg-primary text-primary-content": icecreamOrder.status === "active",
-              "border border-base-300 bg-warning text-warning-content": icecreamOrder.status === "processing",
-              "border border-base-300 bg-secondary text-secondary-content": icecreamOrder.status === "served",
-              "border border-base-300 bg-accent text-accent-content": icecreamOrder.status === "finished",
-              "border border-base-300 bg-neutral text-neutral-content": icecreamOrder.status === "canceled",
+              "border border-primary/40 bg-base-100 text-primary": icecreamOrder.status === "active",
+              "border border-warning/40 bg-base-100 text-warning": icecreamOrder.status === "processing",
+              "border border-info/40 bg-info text-info-content": icecreamOrder.status === "served",
+              "border border-accent/40 bg-base-100 text-accent": icecreamOrder.status === "finished",
+              "border border-base-300 bg-base-100 text-base-content/70": icecreamOrder.status === "canceled",
             })}
           >
             {l(`icecreamOrderStatus.${icecreamOrder.status}`)}
@@ -281,11 +281,11 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
         <div>
           <span
             className={clsx("inline-block rounded-full px-2 py-1 text-xs font-semibold", {
-              "border border-base-300 bg-primary text-primary-content": icecreamOrder.status === "active",
-              "border border-base-300 bg-warning text-warning-content": icecreamOrder.status === "processing",
-              "border border-base-300 bg-secondary text-secondary-content": icecreamOrder.status === "served",
-              "border border-base-300 bg-accent text-accent-content": icecreamOrder.status === "finished",
-              "border border-base-300 bg-neutral text-neutral-content": icecreamOrder.status === "canceled",
+              "border border-primary/40 bg-base-100 text-primary": icecreamOrder.status === "active",
+              "border border-warning/40 bg-base-100 text-warning": icecreamOrder.status === "processing",
+              "border border-info/40 bg-info text-info-content": icecreamOrder.status === "served",
+              "border border-accent/40 bg-base-100 text-accent": icecreamOrder.status === "finished",
+              "border border-base-300 bg-base-100 text-base-content/70": icecreamOrder.status === "canceled",
             })}
           >
             {l(`icecreamOrderStatus.${icecreamOrder.status}`)}

@@ -405,6 +405,75 @@ export function Error({ error }: { error?: unknown }) {
       </Scroll.Slide>
       <Divider />
 
+      <Scroll.Slide id="library-pages" title={l.trans({ en: "Library Pages", ko: "라이브러리 페이지" })}>
+        <Docs.Title>{l.trans({ en: "Library Pages", ko: "라이브러리 페이지" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "A library can ship routes from its own page folder. An app opts in with syncPageLibs, and sync links those routes into page/(libs)/(<lib>). Both folder names are route groups, so a library route keeps its own path.",
+              ko: "라이브러리도 자체 page 폴더에 라우트를 담을 수 있습니다. 앱이 syncPageLibs로 사용을 선언하면 sync가 해당 라우트를 page/(libs)/(<lib>)로 링크합니다. 두 폴더 이름 모두 route group이라 라이브러리 라우트는 자기 경로를 그대로 사용합니다.",
+            })}
+          </div>
+        </Docs.Description>
+        <Code.Snippet
+          title="apps/myapp/akan.config.ts"
+          code={`const config = {
+  // true: every lib dependency that has a page folder
+  // ["shared"]: only the libs listed
+  // false (default): nothing is synced
+  syncPageLibs: ["shared"],
+};`}
+        />
+        <Code.Snippet
+          title="library route mapping"
+          language="bash"
+          code={`# Source in a library
+libs/shared/page/login/_index.tsx
+
+# Linked into an app by \`akan sync\` (generated, gitignored)
+apps/myapp/page/(libs)/(shared)/login/_index.tsx
+
+# Browser request
+/login`}
+        />
+        <Docs.Alert type="info">
+          {l.trans({
+            en: "Edit the library file, never the linked copy. Apps with base paths get the library routes under every base path, and two synced routes that resolve to the same path are reported as an error.",
+            ko: "링크된 쪽이 아니라 라이브러리 파일을 수정해야 합니다. base path가 있는 앱은 모든 base path 아래에 라이브러리 라우트를 받고, 같은 경로로 겹치는 라우트가 두 개면 에러로 알려줍니다.",
+          })}
+        </Docs.Alert>
+      </Scroll.Slide>
+      <div className="divider" />
+
+      <Scroll.Slide id="dev-only-routes" title={l.trans({ en: "Dev Only Routes", ko: "개발 전용 라우트" })}>
+        <Docs.Title>{l.trans({ en: "Dev Only Routes", ko: "개발 전용 라우트" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "pageConfig.devOnly keeps a route out of akan build. It still serves under akan start and is still typechecked, but nothing about it reaches production: no bundle, no route manifest entry, no URL.",
+              ko: "pageConfig.devOnly를 켜면 해당 라우트가 akan build에서 제외됩니다. akan start에서는 그대로 동작하고 타입 검사도 계속 받지만, 번들에도 라우트 매니페스트에도 들어가지 않아 프로덕션에서는 존재하지 않습니다.",
+            })}
+          </div>
+        </Docs.Description>
+        <Code.Snippet
+          title="page/(dev)/playground/_index.tsx"
+          code={`import type { PageConfig } from "akanjs/client";
+
+export const pageConfig = { devOnly: true } satisfies PageConfig;
+
+export default function Page() {
+  return <div>Component playground</div>;
+}`}
+        />
+        <Docs.Alert type="info">
+          {l.trans({
+            en: "On a _layout file, devOnly removes every route under that directory too, so a whole dev-only section can be marked once. Write it as a literal true or false — the build reads it from the source without running the module.",
+            ko: "_layout 파일에 지정하면 그 디렉토리 아래 라우트가 모두 함께 제외되므로 개발 전용 구역 전체를 한 번에 표시할 수 있습니다. 빌드는 모듈을 실행하지 않고 소스에서 값을 읽으므로 반드시 리터럴 true 또는 false로 작성해야 합니다.",
+          })}
+        </Docs.Alert>
+      </Scroll.Slide>
+      <div className="divider" />
+
       <Scroll.Slide id="root-layout-exports" title={l.trans({ en: "Root Layout Exports", ko: "Root Layout Exports" })}>
         <Docs.Title>{l.trans({ en: "Root Layout Exports", ko: "Root Layout Exports" })}</Docs.Title>
         <Docs.Description>

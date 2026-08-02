@@ -375,6 +375,41 @@ apps/api/secrets/**/*
       </Scroll.Slide>
       <Divider />
 
+      <Scroll.Slide id="sync-page-libs" title="syncPageLibs">
+        <Docs.Title>syncPageLibs</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "syncPageLibs declares which library page folders this app serves. On akan sync, each selected library is linked into apps/<app>/page/(libs)/(<lib>), so the library keeps ownership of its routes and the app only opts in.",
+              ko: "syncPageLibs는 이 앱이 어떤 라이브러리의 page 폴더를 서비스할지 선언합니다. akan sync를 실행하면 선택된 라이브러리가 apps/<app>/page/(libs)/(<lib>)로 링크되므로, 라우트의 소유권은 라이브러리에 남고 앱은 사용 여부만 선언합니다.",
+            })}
+          </div>
+          <div>
+            {l.trans({
+              en: "true takes every library dependency that ships a page folder, an array takes exactly the libraries listed, and false (the default) syncs nothing and removes what an earlier sync created.",
+              ko: "true는 page 폴더가 있는 모든 라이브러리 의존성을 가져오고, 배열은 나열한 라이브러리만 가져오며, 기본값인 false는 아무것도 동기화하지 않고 이전 sync가 만든 링크를 제거합니다.",
+            })}
+          </div>
+        </Docs.Description>
+        <Code.Snippet
+          title="apps/myapp/akan.config.ts"
+          code={`import type { AppConfig } from "akanjs";
+
+const config: AppConfig = {
+  syncPageLibs: ["shared"],
+};
+
+export default config;`}
+        />
+        <Docs.Alert type="info">
+          {l.trans({
+            en: "The linked folder is generated and gitignored, so edit the library source instead. An explicit list fails the sync when a named library is not a dependency or has no page folder, while true simply skips libraries without one.",
+            ko: "링크된 폴더는 생성물이고 gitignore 대상이므로 라이브러리 원본을 수정해야 합니다. 배열로 명시한 라이브러리가 의존성이 아니거나 page 폴더가 없으면 sync가 실패하고, true는 page 폴더가 없는 라이브러리를 그냥 건너뜁니다.",
+          })}
+        </Docs.Alert>
+      </Scroll.Slide>
+      <div className="divider" />
+
       <Scroll.Slide id="external-libs" title="externalLibs">
         <Docs.Title>externalLibs</Docs.Title>
         <Docs.Description>

@@ -36,7 +36,13 @@ describe("SignalSerializer", () => {
 
   test("keeps declared endpoints separate from framework-generated ones", () => {
     const signal = data.signals[fixtureRefName];
-    expect(Object.keys(signal.endpoint).sort()).toEqual(["echoMessage", "getTitle", "roomFeed", "updateTitle"]);
+    expect(Object.keys(signal.endpoint).sort()).toEqual([
+      "echoMessage",
+      "getTitle",
+      "guardedRoomFeed",
+      "roomFeed",
+      "updateTitle",
+    ]);
     expect(Object.keys(signal.generated.crud)).toContain(`create${"ServerResolverTestItem"}`);
     expect(Object.keys(signal.generated.crud)).toContain(fixtureRefName);
     // The root slice registers under the empty key, so it contributes the unsuffixed list/insight pair.

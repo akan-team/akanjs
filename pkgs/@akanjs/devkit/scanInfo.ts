@@ -422,6 +422,10 @@ export class AppInfo extends ScanInfo {
     return this.scanResult as AppScanResult;
   }
 
+  setRoutes(routes: string[]) {
+    (this.scanResult as AppScanResult).routes = routes;
+  }
+
   static async #getAllLibDeps(exec: AppExecutor, libDeps: string[], libSet = new Set<string>()) {
     await Promise.all(
       libDeps.map(async (libName) => {

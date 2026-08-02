@@ -8,7 +8,16 @@ import {
   spawn,
 } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { copyFile, mkdir, readdir as readDirEntries, stat } from "node:fs/promises";
+import {
+  copyFile,
+  cp as cpEntry,
+  mkdir,
+  readdir as readDirEntries,
+  realpath,
+  rm,
+  stat,
+  symlink,
+} from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { AkanPlugin, AkanSyncContext, PluginRuntimeContext } from "akanjs";
@@ -32,6 +41,15 @@ import { Spinner } from "./spinner";
 // the resident module graph.
 import type { TypeChecker } from "./typeChecker";
 import type { FileContent, PackageJson, TsConfigJson } from "./types";
+
+export interface PageRoot {
+  /** App-relative location of the route files, i.e. the symlink for a synced lib. */
+  dir: string;
+  /** Where the files actually live, which is what a file watcher reports. */
+  realDir: string;
+  /** Prefix that turns a `dir`-relative path into an app page key (empty for the app's own `page`). */
+  keyPrefix: string;
+}
 
 const staticTemplateFileExtensions = new Set([
   ".avif",
@@ -389,8 +407,10 @@ export class Executor {
     return this;
   }
   async removeDir(dirPath: string) {
-    const readPath = this.getPath(dirPath);
-    if (await FileSys.dirExists(readPath)) await $`rm -rf ${readPath}`;
+    //* XXX: `path.join(…, ".")` drops a trailing separator — `rm -rf link/` resolves through a symlink
+    //* and wipes its target, while `rm -rf link` only unlinks it.
+    const readPath = path.join(this.getPath(dirPath), ".");
+    if (await FileSys.entryExists(readPath)) await rm(readPath, { recursive: true, force: true });
     this.logger.verbose(`Remove directory ${readPath}`);
     return this;
   }
@@ -435,13 +455,16 @@ export class Executor {
     const readPath = this.getPath(filePath);
     return await FileSys.readJson<object>(readPath);
   }
-  async cp(srcPath: string, destPath: string) {
+  async cp(srcPath: string, destPath: string, { dereference = false }: { dereference?: boolean } = {}) {
     const src = this.getPath(srcPath);
     const dest = this.getPath(destPath);
     if (!(await FileSys.exists(src))) return;
     const isDirectory = (await stat(src)).isDirectory();
     if (!(await FileSys.exists(dest)) && isDirectory) await mkdir(dest, { recursive: true });
-    await $`cp -r ${src}${isDirectory ? "/." : ""} ${dest}`;
+    //* `cp -r` keeps symlinks on GNU coreutils but follows them on macOS, so anything that must land as
+    //* real files regardless of platform has to say so explicitly.
+    if (dereference) await cpEntry(src, dest, { recursive: isDirectory, dereference: true, force: true });
+    else await $`cp -r ${src}${isDirectory ? "/." : ""} ${dest}`;
   }
   log(msg: string) {
     this.logger.info(msg);
@@ -890,7 +913,9 @@ export class WorkspaceExecutor extends Executor {
         dirs.map(async (dir) => {
           if (AVOID_DIRS.includes(dir)) return;
           const dirPath = path.join(dirname, dir);
-          if ((await stat(dirPath)).isDirectory()) {
+          //* A dangling symlink (e.g. a synced lib page whose source was deleted) must not fail the walk —
+          //* this runs for `getApps`, so throwing here would break every command until it is repaired.
+          if (await FileSys.dirExists(dirPath)) {
             const hasTargetFile = await FileSys.fileExists(path.join(dirPath, targetFilename));
             if (hasTargetFile) results.push(`${prefix}${dir}`);
             if (maxDepth > 0) await getDirs(dirPath, maxDepth - 1, results, `${prefix}${dir}/`);
@@ -1299,11 +1324,17 @@ export class AppExecutor extends SysExecutor {
     };
     Object.assign(process.env, routeEnv);
     if (type === "build") {
+      //* `scanSync` already read the route set, and it reads it unfiltered — dev-only routes are still
+      //* generated against and typechecked. Drop the cache so the build phases re-read it without them.
+      this.#excludeDevOnlyPages = true;
+      this.#pageKeys = null;
       if (await this.exists(this.dist.cwdPath)) await this.dist.exec(`rm -rf ${this.dist.cwdPath}`);
       await Promise.all([this.dist.mkdir("private"), this.dist.mkdir("public")]);
+      //* Lib assets are symlinks in the app dir (see syncAssets). dist is the docker build context and the
+      //* release tarball root, neither of which follows a link out of itself, so materialize them here.
       await Promise.all([
-        this.cp("private", `${this.dist.cwdPath}/private`),
-        this.cp("public", `${this.dist.cwdPath}/public`),
+        this.cp("private", `${this.dist.cwdPath}/private`, { dereference: true }),
+        this.cp("public", `${this.dist.cwdPath}/public`, { dereference: true }),
       ]);
     } else await this.removeDir(".akan");
     const devPort = type === "start" ? (await this.getDevPort()).toString() : undefined;
@@ -1351,75 +1382,192 @@ export class AppExecutor extends SysExecutor {
   }
 
   #pageKeys: string[] | null = null;
+  /** Set once `prepareCommand("build")` runs, so every later consumer of the route set agrees on it. */
+  #excludeDevOnlyPages = false;
   async getPageKeys({ refresh }: { refresh?: boolean } = {}): Promise<string[]> {
     if (this.#pageKeys && !refresh) return this.#pageKeys;
     const akanConfig = await this.getConfig();
     const glob = new Bun.Glob("**/*");
     const pageKeys: string[] = [];
-    const pageDir = `${this.cwdPath}/page`;
-    if (!(await FileSys.dirExists(pageDir))) {
-      this.#pageKeys = [];
-      return this.#pageKeys;
-    }
-    for await (const rel of glob.scan({
-      cwd: pageDir,
-      absolute: false,
-      onlyFiles: true,
-    })) {
-      const segments = rel.split(path.sep);
-      if (segments.some((s) => s === "node_modules")) continue;
-      const posix = segments.join("/");
-      const absPath = path.join(pageDir, posix);
-      validatePageSourceFile(posix, { filePath: absPath });
-      if (!isRouteSourceFile(posix)) continue;
-      const key = `./${posix}`;
-      validateSubRoutePageKey(key, akanConfig.basePaths, {
-        appName: this.name,
-        filePath: absPath,
-      });
-      const parsed = parseRouteModuleKey(key);
-      if (parsed.isInternalRootLayout) {
-        throw new Error(`[route-convention] __root_layout is reserved for Akan.js generated root layout: ${absPath}`);
+    const owners = new Map<string, { absPath: string; fromLib: boolean }>();
+    const devOnlyKeys = new Set<string>();
+    const devOnlyDirs: string[] = [];
+    for (const root of await this.getPageRoots()) {
+      if (!(await FileSys.dirExists(root.dir))) continue;
+      for await (const rel of glob.scan({
+        cwd: root.dir,
+        absolute: false,
+        onlyFiles: true,
+      })) {
+        const segments = rel.split(path.sep);
+        if (segments.some((s) => s === "node_modules")) continue;
+        const posix = `${root.keyPrefix}${segments.join("/")}`;
+        const absPath = path.join(root.dir, ...segments);
+        validatePageSourceFile(posix, { filePath: absPath });
+        if (!isRouteSourceFile(posix)) continue;
+        const key = `./${posix}`;
+        validateSubRoutePageKey(key, akanConfig.basePaths, {
+          appName: this.name,
+          filePath: absPath,
+        });
+        const parsed = parseRouteModuleKey(key);
+        if (parsed.isInternalRootLayout) {
+          throw new Error(`[route-convention] __root_layout is reserved for Akan.js generated root layout: ${absPath}`);
+        }
+        const fromLib = !!root.keyPrefix;
+        const routeId = `${parsed.kind}:${parsed.pattern}`;
+        const owner = owners.get(routeId);
+        //* App-owned routes have always been allowed to collide (two groups, one pattern); only report a
+        //* collision once a synced lib is involved, where neither side can see the other.
+        if (owner && (owner.fromLib || fromLib)) {
+          throw new Error(
+            `[route-convention] duplicate ${parsed.kind} route "${parsed.pattern}" in app "${this.name}":\n- ${owner.absPath}\n- ${absPath}`,
+          );
+        }
+        if (!owner) owners.set(routeId, { absPath, fromLib });
+        const isRootLayout = parsed.kind === "layout" && parsed.moduleSegments.at(-1) === "_layout";
+        const routeSource = await Bun.file(absPath).text();
+        const validator = await AppExecutor.#getRouteSourceValidator();
+        if (parsed.kind === "overrides") validator.validateOverridesSourceExports(routeSource, absPath);
+        else {
+          const info = validator.validateRouteSourceExports(routeSource, absPath, parsed.kind, {
+            rootLayout: isRootLayout,
+          });
+          if (info.devOnly) {
+            devOnlyKeys.add(key);
+            //* A layout owns its directory, so a dev-only one takes the whole subtree with it — leaving its
+            //* pages behind would ship them stripped of the chrome they were written under.
+            if (parsed.kind === "layout") devOnlyDirs.push(key.replace(/[^/]+$/, ""));
+          }
+        }
+        pageKeys.push(key);
       }
-      const isRootLayout = parsed.kind === "layout" && parsed.moduleSegments.at(-1) === "_layout";
-      const routeSource = await Bun.file(absPath).text();
-      const validator = await AppExecutor.#getRouteSourceValidator();
-      if (parsed.kind === "overrides") validator.validateOverridesSourceExports(routeSource, absPath);
-      else validator.validateRouteSourceExports(routeSource, absPath, parsed.kind, { rootLayout: isRootLayout });
-      pageKeys.push(key);
     }
     pageKeys.sort();
-    this.#pageKeys = pageKeys;
+    this.#pageKeys = this.#excludeDevOnlyPages ? this.#dropDevOnlyPages(pageKeys, devOnlyKeys, devOnlyDirs) : pageKeys;
     return this.#pageKeys;
+  }
+  #dropDevOnlyPages(pageKeys: string[], devOnlyKeys: Set<string>, devOnlyDirs: string[]): string[] {
+    if (!devOnlyKeys.size) return pageKeys;
+    const isDevOnly = (key: string) => devOnlyKeys.has(key) || devOnlyDirs.some((dir) => key.startsWith(dir));
+    const dropped = pageKeys.filter(isDevOnly);
+    this.log(`[route] excluded ${dropped.length} dev-only route file(s) from the build: ${dropped.join(", ")}`);
+    return pageKeys.filter((key) => !isDevOnly(key));
+  }
+  /**
+   * Every directory that contributes route files, as `page`-relative key prefixes. Lib roots are the
+   * symlinks `syncPages` created, so route keys stay app-relative while `realDir` is what a file watcher
+   * reports. Enumeration never crosses a symlink (neither Bun's glob nor TypeScript's `include` does),
+   * which is why linked page folders have to be listed here instead of found by walking `page`.
+   */
+  async getPageRoots(): Promise<PageRoot[]> {
+    const akanConfig = await this.getConfig();
+    const pageDir = `${this.cwdPath}/page`;
+    const roots: PageRoot[] = [{ dir: pageDir, realDir: pageDir, keyPrefix: "" }];
+    for (const parent of AppExecutor.#pageLibParents(akanConfig.basePaths)) {
+      const libsDir = `${pageDir}/${parent}${AppExecutor.#pageLibsDir}`;
+      const entries = await readDirEntries(libsDir).catch(() => [] as string[]);
+      for (const entry of entries.sort()) {
+        const dir = `${libsDir}/${entry}`;
+        if (!(await FileSys.dirExists(dir))) continue;
+        roots.push({ dir, realDir: await realpath(dir), keyPrefix: `${parent}${AppExecutor.#pageLibsDir}/${entry}/` });
+      }
+    }
+    return roots;
   }
   setPageKeys(pageKeys: string[]) {
     this.#pageKeys = pageKeys;
   }
 
+  static readonly #pageLibsDir = "(libs)";
+  /** Where `(libs)` may live: once at the page root, or once per basePath when the app declares subRoutes. */
+  static #pageLibParents(basePaths: Iterable<string>): string[] {
+    const parents = [...basePaths].map((basePath) => `${basePath}/`);
+    return parents.length ? parents : [""];
+  }
+  /** Returns whether the linked page set changed, which is what makes the app's route keys stale. */
+  async syncPages(libDeps: string[]): Promise<boolean> {
+    const akanConfig = await this.getConfig();
+    const parents = AppExecutor.#pageLibParents(akanConfig.basePaths);
+    const libs = await this.#resolvePageLibs(akanConfig.syncPageLibs, libDeps);
+    //* Listed rather than taken from `getPageRoots`, which drops links whose target is gone — those are
+    //* exactly the ones a sync has to clean up.
+    const linked = (
+      await Promise.all(
+        parents.map(async (parent) => {
+          const libsDir = `${this.cwdPath}/page/${parent}${AppExecutor.#pageLibsDir}`;
+          const entries = await readDirEntries(libsDir).catch(() => [] as string[]);
+          return entries.map((entry) => `${parent}${AppExecutor.#pageLibsDir}/${entry}/`);
+        }),
+      )
+    ).flat();
+    const wanted = parents.flatMap((parent) => libs.map((lib) => `${parent}${AppExecutor.#pageLibsDir}/(${lib})/`));
+    if (linked.sort().join(",") === wanted.sort().join(",")) return false;
+    await Promise.all(
+      parents.map((parent) => this.removeDir(`${this.cwdPath}/page/${parent}${AppExecutor.#pageLibsDir}`)),
+    );
+    for (const parent of parents) {
+      if (!libs.length) break;
+      const libsDir = `${this.cwdPath}/page/${parent}${AppExecutor.#pageLibsDir}`;
+      await this.mkdir(libsDir);
+      await Promise.all(
+        libs.map((lib) =>
+          AppExecutor.#linkLibAsset(`${this.workspace.workspaceRoot}/libs/${lib}/page`, `${libsDir}/(${lib})`),
+        ),
+      );
+    }
+    this.#pageKeys = null;
+    return true;
+  }
+  async #resolvePageLibs(syncPageLibs: string[] | boolean, libDeps: string[]): Promise<string[]> {
+    if (!syncPageLibs) return [];
+    const hasPageDir = async (lib: string) =>
+      await FileSys.dirExists(`${this.workspace.workspaceRoot}/libs/${lib}/page`);
+    if (syncPageLibs === true) {
+      const libs: string[] = [];
+      for (const lib of libDeps) if (await hasPageDir(lib)) libs.push(lib);
+      return libs;
+    }
+    for (const lib of syncPageLibs) {
+      if (!libDeps.includes(lib))
+        throw new Error(
+          `[syncPageLibs] app "${this.name}" lists lib "${lib}" but does not depend on it (deps: ${libDeps.join(", ") || "none"})`,
+        );
+      if (!(await hasPageDir(lib)))
+        throw new Error(`[syncPageLibs] app "${this.name}" lists lib "${lib}" but libs/${lib}/page does not exist`);
+    }
+    return [...syncPageLibs];
+  }
   async syncAssets(libDeps: string[]) {
-    const projectPublicPath = `${this.cwdPath}/public`;
-    const projectAssetsPath = `${this.cwdPath}/private`;
-    const projectPublicLibPath = `${projectPublicPath}/libs`;
-    const projectAssetsLibPath = `${projectAssetsPath}/libs`;
-    await Promise.all([this.removeDir(projectPublicLibPath), this.removeDir(projectAssetsLibPath)]);
-    const targetPublicDeps = [] as string[];
+    await Promise.all((["public", "private"] as const).map((facet) => this.#syncLibAssets(facet, libDeps)));
+  }
+  async #syncLibAssets(facet: "public" | "private", libDeps: string[]) {
+    const libLinkPath = `${this.cwdPath}/${facet}/libs`;
+    await this.removeDir(libLinkPath);
+    const targetDeps = [] as string[];
     for (const dep of libDeps) {
-      if (await this.exists(`${this.workspace.workspaceRoot}/libs/${dep}/public`)) targetPublicDeps.push(dep);
+      if (await this.exists(`${this.workspace.workspaceRoot}/libs/${dep}/${facet}`)) targetDeps.push(dep);
     }
-    const targetAssetsDeps = [] as string[];
-    for (const dep of libDeps) {
-      if (await this.exists(`${this.workspace.workspaceRoot}/libs/${dep}/private`)) targetAssetsDeps.push(dep);
+    if (!targetDeps.length) return;
+    await this.mkdir(libLinkPath);
+    await Promise.all(
+      targetDeps.map((dep) =>
+        AppExecutor.#linkLibAsset(`${this.workspace.workspaceRoot}/libs/${dep}/${facet}`, `${libLinkPath}/${dep}`),
+      ),
+    );
+  }
+  static async #linkLibAsset(targetPath: string, linkPath: string) {
+    //* A relative link keeps working when the workspace is mounted at another path (containers, CI);
+    //* Windows junctions are the exception and resolve their target as an absolute path.
+    const isWindows = process.platform === "win32";
+    try {
+      const target = isWindows ? targetPath : path.relative(path.dirname(linkPath), targetPath);
+      await symlink(target, linkPath, isWindows ? "junction" : "dir");
+    } catch (error) {
+      if (!isWindows) throw error;
+      await mkdir(linkPath, { recursive: true });
+      await cpEntry(targetPath, linkPath, { recursive: true, dereference: true, force: true });
     }
-    await Promise.all(targetPublicDeps.map((dep) => this.mkdir(`${projectPublicLibPath}/${dep}`)));
-    await Promise.all(targetAssetsDeps.map((dep) => this.mkdir(`${projectAssetsLibPath}/${dep}`)));
-    await Promise.all([
-      ...targetPublicDeps.map((dep) =>
-        this.cp(`${this.workspace.workspaceRoot}/libs/${dep}/public`, `${projectPublicLibPath}/${dep}`),
-      ),
-      ...targetAssetsDeps.map((dep) =>
-        this.cp(`${this.workspace.workspaceRoot}/libs/${dep}/private`, `${projectAssetsLibPath}/${dep}`),
-      ),
-    ]);
   }
   async scanSync({ refresh = false, write = true }: { refresh?: boolean; write?: boolean } = {}) {
     const scanInfo = (await this.scan({
@@ -1428,6 +1576,9 @@ export class AppExecutor extends SysExecutor {
       writeLib: write,
     })) as AppInfo;
     if (write) await this.syncAssets(scanInfo.getScanResult().libDeps);
+    //* `scan` read the routes off the page tree this sync may be about to change, so re-read them.
+    if (write && (await this.syncPages(scanInfo.getScanResult().libDeps)))
+      scanInfo.setRoutes(await this.getPageKeys({ refresh: true }));
     if (write) await this.#runPluginSyncAssets();
     return scanInfo;
   }

@@ -200,6 +200,94 @@ type TicketStatusValue = TicketStatus["value"];`}
       </Scroll.Slide>
       <Divider />
 
+      <Scroll.Slide id="text-search-fields" title={l.trans({ en: "Text Search Fields", ko: "텍스트 검색 field" })}>
+        <Docs.Title>{l.trans({ en: "Text Search Fields", ko: "텍스트 검색 field" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "A field joins the full-text index by declaring a text role. There is no separate index file and no per-model switch: the role on the field is the whole configuration.",
+              ko: "field에 text 역할을 선언하면 전문 검색 index에 포함됩니다. 별도의 index 파일도, 모델 단위 스위치도 없습니다. field의 역할 선언이 설정의 전부입니다.",
+            })}
+          </div>
+          <div>
+            {l.trans({
+              en: "Choose the role by what the value is, because the roles are weighted differently when results are ranked.",
+              ko: "결과 순위를 매길 때 역할마다 가중치가 다르므로, 값의 성격에 맞는 역할을 고르세요.",
+            })}
+          </div>
+        </Docs.Description>
+        <div className="grid gap-3 xl:grid-cols-2">
+          {[
+            {
+              title: 'text: "title"',
+              desc: l.trans({
+                en: "The one line a human scans for. Weighted highest.",
+                ko: "사람이 눈으로 훑는 그 한 줄입니다. 가중치가 가장 높습니다.",
+              }),
+            },
+            {
+              title: 'text: "tag"',
+              desc: l.trans({
+                en: "A keyword list. Weighted above prose, below the title.",
+                ko: "키워드 목록입니다. 본문보다 높고 제목보다 낮은 가중치입니다.",
+              }),
+            },
+            {
+              title: 'text: "desc"',
+              desc: l.trans({
+                en: "Prose. Weighted lowest of the matchable roles.",
+                ko: "본문입니다. 검색 대상 역할 중 가중치가 가장 낮습니다.",
+              }),
+            },
+            {
+              title: 'text: "filter"',
+              desc: l.trans({
+                en: "A scoping value such as status, role, or owner. Matchable but weighted zero, so it never outranks a real title hit.",
+                ko: "status, role, owner처럼 범위를 좁히는 값입니다. 검색은 되지만 가중치가 0이라 실제 제목 매치를 이기지 못합니다.",
+              }),
+            },
+            {
+              title: 'text: "thumb"',
+              desc: l.trans({
+                en: "Mirrored so a hit can be rendered, but never indexed. Do not expect it to match.",
+                ko: "결과를 그릴 수 있도록 함께 저장되지만 색인되지는 않습니다. 매치를 기대하면 안 됩니다.",
+              }),
+            },
+            {
+              title: l.trans({ en: "Relations and arrays", ko: "관계와 배열" }),
+              desc: l.trans({
+                en: "A role works on a File reference and on an array field. An array of objects is indexed by leaf key, including a leaf that is itself an array. A field inside a Map is not indexed, because there is no fixed path to read it from.",
+                ko: "File 참조와 배열 field에도 역할을 붙일 수 있습니다. 객체 배열은 leaf key 기준으로 색인되며, leaf 자체가 배열이어도 됩니다. Map 안의 field는 읽어올 고정 경로가 없어 색인되지 않습니다.",
+              }),
+            },
+          ].map(({ title, desc }) => (
+            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
+              <div className="font-bold text-base-content">{title}</div>
+              <div className="mt-2 text-base-content/70">{desc}</div>
+            </div>
+          ))}
+        </div>
+        <Code.Snippet
+          title="user.constant.ts"
+          code={`export class UserInput extends via((field) => ({
+  nickname: field(String, { default: "", text: "title" }),
+  bio: field(String, { default: "", text: "desc" }),
+  playing: field([String], { text: "tag" }),
+  image: field(File, { text: "thumb" }).optional(),
+  status: field(UserStatus, { default: "prepare", text: "filter" }),
+})) {}`}
+        />
+        <Docs.Description>
+          <div className="rounded-xl border border-error/30 bg-error/5 p-4">
+            {l.trans({
+              en: "A secret, hidden, or resolved field with a text role throws while the class is being built, not at query time. The same throw covers a role declared underneath one of them: field.secret(Noti) is rejected when Noti carries a role of its own, because the stored document holds that subtree in plaintext too. The search mirror stores plaintext, so indexing a secret would leak it through search. Treat the error as the rule working, not as something to route around.",
+              ko: "secret, hidden, resolve field에 text 역할을 붙이면 query 시점이 아니라 class를 만드는 시점에 에러가 납니다. 그 아래에 선언된 역할도 같이 막습니다. Noti 자체가 역할을 들고 있으면 field.secret(Noti)도 거부되는데, 저장된 document는 그 하위 트리도 평문으로 담기 때문입니다. 검색 미러는 평문을 저장하므로 secret을 색인하면 검색을 통해 새어나갑니다. 우회할 대상이 아니라 규칙이 동작하는 것으로 보세요.",
+            })}
+          </div>
+        </Docs.Description>
+      </Scroll.Slide>
+      <div className="divider" />
+
       <Scroll.Slide
         id="generated-extension"
         title={l.trans({ en: "Extending Generated Models", ko: "Generated model 확장" })}

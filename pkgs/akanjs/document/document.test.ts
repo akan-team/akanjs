@@ -64,10 +64,10 @@ const DocumentTestItemObject = via(DocumentTestItemInput, (f) => ({
   memo: f(String).optional(),
 }));
 const DocumentTestItemLight = via(DocumentTestItemObject, ["title", "score"] as const, (f) => ({
-  searchText: f(String, { text: "search" }),
+  searchText: f(String),
 }));
 const DocumentTestItemFull = via(DocumentTestItemObject, DocumentTestItemLight, (f) => ({
-  ownerTitle: f(String, { text: "filter" }),
+  ownerTitle: f(String),
 }));
 const DocumentTestItemInsight = via(DocumentTestItemFull, (f) => ({
   count: f(Int, { default: 0, accumulate: {} }),
@@ -428,6 +428,7 @@ describe("by, from, into, and DatabaseRegistry", () => {
     expect(filterMeta.sort).toEqual({
       latest: { createdAt: -1 },
       oldest: { createdAt: 1 },
+      relevance: {},
       highScore: { score: -1 },
       lowScore: { score: 1 },
     });
@@ -669,10 +670,10 @@ describe("document query helpers and schemas", () => {
       .post("remove", () => undefined)
       .hook("afterUpdate", afterUpdate)
       .index({ ownerId: 1, score: -1 }, { name: "owner_score", unique: true })
-      .text("title", "memo")
+      .index({ title: "text", memo: "text" })
       .createIndex("active_title")
       .path("archived", 1)
-      .text("title")
+      .path("title", 1)
       .where((q) => ({ archived: q.eq(false) }))
       .done();
 
@@ -682,11 +683,10 @@ describe("document query helpers and schemas", () => {
     expect(() => schema.hook("duringSave" as never, () => undefined)).toThrow("Invalid document hook");
     expect(schema.indexes).toEqual([
       { name: "owner_score", unique: true, fields: { ownerId: 1, score: -1 } },
-      { text: true, fields: { title: "text", memo: "text" } },
+      { fields: { title: "text", memo: "text" } },
       {
         name: "active_title",
-        fields: { archived: 1, title: "text" },
-        text: true,
+        fields: { archived: 1, title: 1 },
         where: { archived: { kind: "op", op: "eq", value: false } },
       },
     ]);

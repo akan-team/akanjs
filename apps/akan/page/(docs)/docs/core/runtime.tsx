@@ -134,7 +134,9 @@ void run();`}
 AKAN_PUBLIC_SERVE_DOMAIN="mydomain.com"
 AKAN_PUBLIC_ENV=local
 AKAN_PUBLIC_OPERATION_MODE=local
-AKAN_PUBLIC_LOG_LEVEL=debug`}
+AKAN_PUBLIC_LOG_LEVEL=debug
+AKAN_SEARCH_ENABLED=1
+AKAN_SEARCH_TOKENIZER="unicode61 remove_diacritics 2"`}
           />
           <Docs.Alert type="warning">
             {l.trans({
@@ -188,6 +190,24 @@ AKAN_PUBLIC_LOG_LEVEL=debug`}
                   ko: "터미널에 어느 정도 자세한 런타임 로그를 볼지 정합니다.",
                 }),
                 "trace | debug | info | warn | error",
+              ],
+              [
+                "AKAN_SEARCH_ENABLED",
+                l.trans({ en: "Text search index", ko: "텍스트 검색 색인" }),
+                l.trans({
+                  en: "Unset means on. Set 0 to switch the full-text index off; indexed data is kept and re-enabling reconciles every model. Give every process in a deployment the same value, because a process cannot clean up triggers for models it does not mount.",
+                  ko: "값을 주지 않으면 켜져 있습니다. 0으로 두면 전문 검색 색인을 끄며, 색인된 데이터는 유지되고 다시 켜면 모든 모델을 재정합합니다. 프로세스는 자신이 마운트하지 않은 모델의 trigger를 정리할 수 없으므로 한 배포의 모든 프로세스에 같은 값을 주세요.",
+                }),
+                "0 | 1",
+              ],
+              [
+                "AKAN_SEARCH_TOKENIZER",
+                l.trans({ en: "Search tokenizer", ko: "검색 토크나이저" }),
+                l.trans({
+                  en: "The fts5 tokenizer the index is built with. Defaults to unicode61 remove_diacritics 2. Changing it rebuilds the index from the mirror on the next boot, so no data is re-read from the model tables. The rebuild takes no cross-process claim, so a fleet restarted at once repeats it in every process; stagger the restart when the mirror is large. database.search.tokenizer in the app config takes precedence. A value this SQLite build cannot provide fails the boot and names the fix, rather than starting a server whose every search would raise. That boot failure leaves writes alone: the index is dropped but nothing else is, so the models on that database keep accepting writes and the next healthy boot recovers the index in full.",
+                  ko: "색인을 만들 때 쓰는 fts5 토크나이저입니다. 기본값은 unicode61 remove_diacritics 2입니다. 값을 바꾸면 다음 부팅에서 미러로부터 색인을 다시 만들며, 모델 테이블을 다시 읽지는 않습니다. 이 재생성에는 프로세스 간 클레임이 없어서, 한 번에 재시작한 여러 프로세스가 각자 다시 만듭니다. 미러가 크다면 재시작을 나눠서 하세요. 앱 설정의 database.search.tokenizer가 우선합니다. 이 SQLite 빌드가 제공할 수 없는 값이면, 모든 검색이 에러를 내는 서버를 띄우는 대신 부팅을 실패시키고 고칠 방법을 알려줍니다. 이때 쓰기는 그대로 살아 있습니다. 색인만 없어지고 다른 것은 건드리지 않으므로 해당 데이터베이스의 모델은 계속 쓰기를 받고, 다음 정상 부팅이 색인을 온전히 복구합니다.",
+                }),
+                "unicode61 remove_diacritics 2 | trigram | porter unicode61",
               ],
               [
                 "AKAN_LOG_FILE_LEVEL",

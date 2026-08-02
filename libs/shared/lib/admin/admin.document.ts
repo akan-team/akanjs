@@ -14,6 +14,12 @@ export class AdminFilter extends from(cnst.Admin, (filter) => ({
     byAccountId: filter()
       .arg("accountId", String)
       .query((accountId) => ({ accountId })),
+    bySearch: filter()
+      .arg("text", String)
+      .opt("roles", [cnst.AdminRole])
+      .query((text, roles, q) =>
+        q.all(q.search(text, { prefix: true }), roles?.length ? { roles: q.oneOf(roles) } : {}),
+      ),
   },
   sort: {},
 })) {}

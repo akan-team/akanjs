@@ -8,16 +8,22 @@ export default function Page() {
     {
       name: "Public / None / guard",
       desc: l.trans({
-        en: "Guard classes decide whether a request can pass before endpoint or slice execution. `Public` always passes, `None` blocks, and `guard(name)` creates a named guard base class for app-specific rules.",
-        ko: "Guard class는 endpoint 또는 slice 실행 전에 request가 통과할 수 있는지 결정합니다. `Public`은 항상 통과하고, `None`은 막으며, `guard(name)`은 app-specific rule을 위한 named guard base class를 생성합니다.",
+        en: 'Guard classes decide whether a request can pass before endpoint or slice execution. `Public` always passes, `None` blocks, and `guard(name)` creates a named guard base class for app-specific rules. Guards run on every transport, so read the caller with `context.get("account")` instead of branching on http/websocket. Slice `guards` cover only the generated query/mutation endpoints — declare `guards` on each `pubsub`/`message` endpoint to protect a socket.',
+        ko: 'Guard class는 endpoint 또는 slice 실행 전에 request가 통과할 수 있는지 결정합니다. `Public`은 항상 통과하고, `None`은 막으며, `guard(name)`은 app-specific rule을 위한 named guard base class를 생성합니다. Guard는 모든 transport에서 실행되므로 http/websocket을 분기하지 말고 `context.get("account")`로 caller를 읽으세요. Slice `guards`는 생성된 query/mutation endpoint만 덮으므로, socket을 보호하려면 각 `pubsub`/`message` endpoint에 `guards`를 선언해야 합니다.',
       }),
       code: `import { guard, Public } from "akanjs/signal";
 
 export class AdminOnly extends guard("AdminOnly") {
   override canPass(context) {
-    return context.account?.role === "admin";
+    return context.get("account")?.role === "admin";
   }
-}`,
+}
+
+export class RoomEndpoint extends endpoint(roomSrv, ({ pubsub }) => ({
+  feed: pubsub(cnst.Message, { guards: [AdminOnly] })
+    .room("roomId", ID)
+    .exec(() => undefined),
+})) {}`,
     },
     {
       name: "Req / Res / Ws",

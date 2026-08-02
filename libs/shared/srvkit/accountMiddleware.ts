@@ -4,6 +4,11 @@ import type { Account } from "akanjs/fetch";
 import type { Middleware, SignalContext } from "akanjs/signal";
 import type { AccessAccount, ReqType } from "./accountMiddleware.helper";
 
+interface WsAuthState {
+  account?: Account;
+  resolvedAuthorization?: string;
+}
+
 export class AccountMiddleware implements Middleware {
   static readonly refName = "AccountMiddleware";
 
@@ -13,11 +18,15 @@ export class AccountMiddleware implements Middleware {
       const req = (
         context.transport === "http" ? context.getHttpContext().req : context.getWebSocketContext().ws.data
       ) as Partial<ReqType>;
-      const account = await resolveJwt<AccessAccount>(
-        jwtSecret,
-        req.headers?.get("authorization") ?? (req.cookies?.has("jwt") ? `Bearer ${req.cookies.get("jwt")}` : undefined),
-        { appName: env.appName, environment: env.environment } as unknown as AccessAccount,
-      );
+      const authorization =
+        req.headers?.get("authorization") ?? (req.cookies?.has("jwt") ? `Bearer ${req.cookies.get("jwt")}` : undefined);
+      // A socket verifies its token once per credential instead of once per frame.
+      const wsState = context.transport === "websocket" ? (req as WsAuthState) : null;
+      if (wsState?.account && wsState.resolvedAuthorization === (authorization ?? "")) return await next();
+      const account = await resolveJwt<AccessAccount>(jwtSecret, authorization, {
+        appName: env.appName,
+        environment: env.environment,
+      } as unknown as AccessAccount);
       Object.assign(req, {
         account:
           account.tokenType === "access"
@@ -25,6 +34,7 @@ export class AccountMiddleware implements Middleware {
             : ({ appName: env.appName, environment: env.environment } as Account),
         userAgent: req["user-agent"],
       });
+      if (wsState) wsState.resolvedAuthorization = authorization ?? "";
       return await next();
     };
   }

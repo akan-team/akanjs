@@ -20,7 +20,7 @@ Re-export of `clsx` for composing class names across Akan UI code. Most view/uni
 
 Common props for generated Unit, Zone, and list UI components. They carry model data, slice metadata, query/init settings, actions, columns, and click handlers.
 
-Route module types for page/layout files. `PageConfig` controls transition, safe area, gesture, and cache behavior, while `LayoutProps` describes layout children and route params.
+Route module types for page/layout files. `PageConfig` controls transition, safe area, gesture, and cache behavior, plus `devOnly` to keep the route out of `akan build`, while `LayoutProps` describes layout children and route params.
 
 Font declaration types and client-side font factory shims. Layout modules use `Font` data so the server build can optimize local font assets while CSR code receives safe no-op shims.
 

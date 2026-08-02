@@ -30,7 +30,7 @@ Capacitor contacts hook for mobile signup/social flows. It requests contact perm
 
 Capacitor geolocation hook. It requests location permissions, redirects to app settings when denied, and returns current coordinates for map or location flows.
 
-Push notification hook for native clients. It initializes FCM/push plugins, checks permission state, registers the device, and reads the FCM token when supported.
+Unified push notification client hook for web and native apps. It requests permission, registers the runtime, returns a PushToken, and bridges notification clicks through `data.url` when supported.
 
 CSR router hooks for translating hrefs into route state and tracking navigation history. They power cached page transitions, scroll restoration, and back/forward detection.
 

@@ -5,7 +5,7 @@ import path from "node:path";
 // (~40MB) into a process that then holds them for the whole dev session. Phase 2 moved css compilation
 // into the batch worker, so this process has no use for them — `entryModuleGraph.test.ts` keeps it that way.
 import type { App } from "@akanjs/devkit/commandDecorators";
-import { AppExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
+import { AppExecutor, type PageRoot, WorkspaceExecutor } from "@akanjs/devkit/executors";
 import { AutoImportSync } from "@akanjs/devkit/frontendBuild/autoImportSync";
 import type { ClientEntryDiscovery } from "@akanjs/devkit/frontendBuild/clientBuildTypes";
 import { GraphClientEntryDiscovery } from "@akanjs/devkit/frontendBuild/clientEntryDiscovery";
@@ -209,23 +209,31 @@ class IncrementalBuilder {
   get shuttingDown(): boolean {
     return this.#shuttingDown;
   }
-  batchTouchesPagesTree(appDir: string, batch: ChangeBatch): boolean {
-    const absAppDir = path.resolve(appDir);
+  //* Watch events name the file's real path, so synced lib pages are matched by `realDir` while their
+  //* page key still carries the app-relative `(libs)/(<lib>)` prefix.
+  static #matchPageRoot(roots: PageRoot[], abs: string): PageRoot | null {
+    for (const root of roots) {
+      const absRoot = path.resolve(root.realDir);
+      if (abs === absRoot || abs.startsWith(`${absRoot}${path.sep}`)) return root;
+    }
+    return null;
+  }
+  batchTouchesPagesTree(roots: PageRoot[], batch: ChangeBatch): boolean {
     for (const f of batch.files) {
       const abs = path.resolve(f);
-      if (!abs.startsWith(`${absAppDir}${path.sep}`) && abs !== absAppDir) continue;
+      if (!IncrementalBuilder.#matchPageRoot(roots, abs)) continue;
       if (/\.(tsx|ts|jsx|js)$/.test(abs)) return true;
     }
     return false;
   }
-  async batchMayChangePageKeys(appDir: string, batch: ChangeBatch): Promise<boolean> {
-    const absAppDir = path.resolve(appDir);
+  async batchMayChangePageKeys(roots: PageRoot[], batch: ChangeBatch): Promise<boolean> {
     const pageKeys = new Set((await this.#app.getPageKeys()).map((key) => path.normalize(key)));
     for (const f of batch.files) {
       const abs = path.resolve(f);
-      if (!abs.startsWith(`${absAppDir}${path.sep}`) && abs !== absAppDir) continue;
+      const root = IncrementalBuilder.#matchPageRoot(roots, abs);
+      if (!root) continue;
       if (!/\.(tsx|ts|jsx|js)$/.test(abs)) continue;
-      const rel = path.normalize(path.relative(absAppDir, abs));
+      const rel = path.normalize(`${root.keyPrefix}${path.relative(path.resolve(root.realDir), abs)}`);
       if (!(await Bun.file(abs).exists()) || !pageKeys.has(rel)) return true;
     }
     return false;
@@ -265,13 +273,13 @@ class IncrementalBuilder {
     }, 150);
   }
   async installWatcher() {
-    const [appDir, artifactDir] = [`${this.#app.cwdPath}/page`, this.#artifactDir];
+    const artifactDir = this.#artifactDir;
     const roots = await new WatchRootResolver(this.#app).resolve();
     const watcher = new HmrWatcher({
       roots,
       logger: this.#logger,
       onBatch: async (batch: ChangeBatch) => {
-        await this.#enqueueWork("hmr-batch", async () => this.#handleWatchBatch(appDir, artifactDir, batch));
+        await this.#enqueueWork("hmr-batch", async () => this.#handleWatchBatch(artifactDir, batch));
       },
     });
     await watcher.start();
@@ -279,7 +287,7 @@ class IncrementalBuilder {
     this.#logger.verbose(`watching ${roots.length} roots`);
   }
 
-  async #handleWatchBatch(appDir: string, artifactDir: string, batch: ChangeBatch) {
+  async #handleWatchBatch(artifactDir: string, batch: ChangeBatch) {
     const rawKinds = new Set(batch.kinds);
     if (rawKinds.size === 0) return;
     const generation = ++this.#generation;
@@ -330,11 +338,12 @@ class IncrementalBuilder {
       this.#logger.verbose(`client rebuild skipped; devPlan actions=${devPlan.actions.join(",") || "(none)"}`);
     }
 
-    if (kinds.includes("code") && rebuildClient && (await this.batchMayChangePageKeys(appDir, expandedBatch))) {
+    const pageRoots = await this.#app.getPageRoots();
+    if (kinds.includes("code") && rebuildClient && (await this.batchMayChangePageKeys(pageRoots, expandedBatch))) {
       const started = Date.now();
       await this.#app.getPageKeys({ refresh: true });
       this.#logger.verbose(`pageKeys updated, app pageKeys are refreshed (${Date.now() - started}ms)`);
-    } else if (kinds.includes("code") && rebuildClient && this.batchTouchesPagesTree(appDir, expandedBatch)) {
+    } else if (kinds.includes("code") && rebuildClient && this.batchTouchesPagesTree(pageRoots, expandedBatch)) {
       this.#logger.verbose("pageKeys refresh skipped; changed page source cannot add/remove a route key");
     }
 

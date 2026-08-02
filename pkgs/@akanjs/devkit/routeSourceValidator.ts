@@ -1,5 +1,11 @@
 import ts from "typescript";
 
+/** What the build needs out of a route module without evaluating it. */
+export interface RouteSourceInfo {
+  /** `pageConfig.devOnly === true`, read straight off the AST. */
+  devOnly: boolean;
+}
+
 /**
  * Static enforcement of the `page/` route conventions, split out of `executors.ts` so that importing
  * an executor does not pull `typescript` (+65MB resident) into the module graph. Both validators need
@@ -53,7 +59,7 @@ export class RouteSourceValidator {
     filePath: string,
     kind: "page" | "layout",
     options: { rootLayout?: boolean } = {},
-  ) {
+  ): RouteSourceInfo {
     const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     const allowed =
       kind === "page"
@@ -117,6 +123,50 @@ export class RouteSourceValidator {
     if (exported.has("metadata") && exported.has("generateMetadata")) {
       throw new Error(`[route-convention] metadata and generateMetadata cannot both be exported in ${filePath}`);
     }
+    return { devOnly: RouteSourceValidator.#readDevOnly(sourceFile, filePath) };
+  }
+
+  /**
+   * `devOnly` decides whether the route exists in the production build at all, so it is read from the
+   * source rather than from an evaluated module — the build never imports route files to enumerate them.
+   * That is why only a literal is accepted: anything the parser cannot settle would otherwise ship a
+   * route the author believed was excluded.
+   */
+  static #readDevOnly(sourceFile: ts.SourceFile, filePath: string): boolean {
+    for (const statement of sourceFile.statements) {
+      if (!ts.isVariableStatement(statement)) continue;
+      const isExported = ts.getModifiers(statement)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
+      if (!isExported) continue;
+      for (const declaration of statement.declarationList.declarations) {
+        if (!ts.isIdentifier(declaration.name) || declaration.name.text !== "pageConfig") continue;
+        const initializer = RouteSourceValidator.#unwrapExpression(declaration.initializer);
+        if (!initializer || !ts.isObjectLiteralExpression(initializer)) continue;
+        for (const property of initializer.properties) {
+          if (!ts.isPropertyAssignment(property)) continue;
+          const name = property.name;
+          const key = ts.isIdentifier(name) ? name.text : ts.isStringLiteral(name) ? name.text : null;
+          if (key !== "devOnly") continue;
+          const value = RouteSourceValidator.#unwrapExpression(property.initializer);
+          if (value?.kind === ts.SyntaxKind.TrueKeyword) return true;
+          if (value?.kind === ts.SyntaxKind.FalseKeyword) return false;
+          throw new Error(
+            `[route-convention] pageConfig.devOnly must be a literal true or false in ${filePath} — the build reads it without evaluating the module`,
+          );
+        }
+      }
+    }
+    return false;
+  }
+
+  static #unwrapExpression(expression?: ts.Expression): ts.Expression | undefined {
+    let current = expression;
+    while (
+      current &&
+      (ts.isAsExpression(current) || ts.isSatisfiesExpression(current) || ts.isParenthesizedExpression(current))
+    ) {
+      current = current.expression;
+    }
+    return current;
   }
 
   /**

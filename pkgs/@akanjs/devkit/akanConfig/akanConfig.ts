@@ -184,6 +184,8 @@ export class AkanAppConfig implements AppConfigResult {
   secrets: string[];
   /** Whether this app is under the closed color vocabulary (styleGuard enforced). Default true. */
   vocabularyClosure: boolean;
+  /** Raw setting; resolved against the app's lib deps at sync time (see `AppExecutor.syncPages`). */
+  syncPageLibs: string[] | boolean;
   baseDevEnv: BaseDevEnv;
   libs: string[];
   /** Live-only: plugins declared in this app's `akan.config.ts` (never serialized). */
@@ -222,6 +224,7 @@ export class AkanAppConfig implements AppConfigResult {
     this.publicEnv = (config?.publicEnv as string[] | undefined) ?? ([] as string[]);
     this.secrets = (config?.secrets as string[] | undefined) ?? ([] as string[]);
     this.vocabularyClosure = config?.vocabularyClosure ?? true;
+    this.syncPageLibs = (config?.syncPageLibs as string[] | boolean | undefined) ?? false;
     this.hasMobileConfig = Boolean(config.mobile);
     this.mobile = this.#resolveMobileConfig(config.mobile);
     this.docker = this.#makeDockerContent(config?.docker ?? {});

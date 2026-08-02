@@ -176,6 +176,12 @@ export interface AppConfigResult {
   docker: DockerConfig;
   defaultDatabaseMode: DatabaseMode;
   routes?: AkanRouteConfig[];
+  /**
+   * Mounts `libs/<lib>/page` into this app under `page/(libs)/(<lib>)` on sync. `true` takes every lib
+   * dependency that ships a `page` folder, an array takes exactly the libs listed, `false` (the default)
+   * syncs nothing and removes what a previous sync created.
+   */
+  syncPageLibs?: string[] | boolean;
   externalLibs: string[];
   barrelImports: string[];
   optimizeImports: string[];

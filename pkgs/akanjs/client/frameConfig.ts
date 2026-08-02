@@ -24,6 +24,9 @@ const pageConfigKeys = new Set<keyof PageConfig>([
   "topSafeAreaColor",
   "bottomSafeAreaColor",
 ]);
+//* Read by the build off the source file, never merged into a page's runtime state — keep it out of
+//* `pageConfigKeys` so `mergePageConfigs` cannot leak it down the layout chain.
+const buildPageConfigKeys = new Set<keyof PageConfig>(["devOnly"]);
 const transitionTypes = new Set<TransitionType>(["none", "fade", "bottomUp", "stack", "scaleOut"]);
 const ssrRenderModes = new Set<SsrRenderMode>(["stream", "block"]);
 const DEFAULT_BOOLEAN_INSET = 48;
@@ -38,9 +41,12 @@ export function validatePageConfig(routeKey: string, config?: PageConfig) {
   if (!isRecord(config)) throw new Error(`[route-convention] pageConfig in ${routeKey} must be an object.`);
   const pageConfig = config as PageConfig;
   for (const key of Object.keys(pageConfig)) {
-    if (!pageConfigKeys.has(key as keyof PageConfig)) {
+    if (!pageConfigKeys.has(key as keyof PageConfig) && !buildPageConfigKeys.has(key as keyof PageConfig)) {
       throw new Error(`[route-convention] unsupported pageConfig option "${key}" in ${routeKey}`);
     }
+  }
+  if (pageConfig.devOnly !== undefined && typeof pageConfig.devOnly !== "boolean") {
+    throw new Error(`[route-convention] pageConfig.devOnly in ${routeKey} must be a boolean.`);
   }
   if (pageConfig.transition !== undefined && !transitionTypes.has(pageConfig.transition)) {
     throw new Error(`[route-convention] unsupported pageConfig.transition "${pageConfig.transition}" in ${routeKey}`);

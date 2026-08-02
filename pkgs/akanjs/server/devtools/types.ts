@@ -8,7 +8,7 @@
  *   GET /_akan/deps        -> DevtoolsEnvelope<"deps",       DepsData>
  */
 
-import type { ConstantType } from "akanjs/constant";
+import type { ConstantType, TextFieldRole } from "akanjs/constant";
 import type { RootDictionary } from "akanjs/dictionary";
 import type { ArgType, SerializedArg, SerializedReturns } from "akanjs/signal";
 
@@ -77,7 +77,7 @@ export interface ConstantFieldNode {
   maxlength?: number;
   /** `ConstantFieldProps["type"]`: "email" | "password" | "url". */
   preset?: string;
-  text?: "search" | "filter";
+  text?: TextFieldRole;
   accumulate?: unknown;
   example?: unknown;
   meta?: Record<string, unknown>;

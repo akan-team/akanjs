@@ -1,19 +1,25 @@
 ---
-description: Never comment in code except TODO/FIXME/XXX or deletion warnings
+description: Do not narrate code; document only what the code cannot say
 alwaysApply: true
 ---
 
 # Comments
 
-- Never add comments in code by default.
-- Prefer clear names and structure so the code needs no explanation.
-- Do not narrate what the code already says.
+Do not narrate code. Do document the thing the code cannot say. Both halves are the rule.
+
+- Never add a comment that restates the identifier, the signature, or the control flow.
+- Prefer clear names and structure so ordinary logic needs no explanation.
 - Do not add JSDoc, section banners, or "why/how" comments for ordinary logic.
-- Comments are allowed only for these purposes:
+- Comment density tracks the layer, not the author: pages carry none, product `lib/` and `ui/` code stays under 1 %, and `srvkit/` adapters and `guards.ts` carry as much as the external constraints require.
+- A comment is warranted for: a vendor spec or protocol quirk; an infrastructure constraint; a third-party library gotcha; security reasoning; why a rule that looks arbitrary is correct; a math derivation; a domain field's business meaning; a state transition above a document chain method; why an obvious alternative was rejected.
+- In-code markers:
   1. `TODO` — unfinished work that must be tracked in-code
   2. `FIXME` — known broken or incorrect behavior that must be fixed
   3. `XXX` — dangerous / surprising hazard that a reader must not miss
-  4. Deletion caution — warn why removing a line or block would break something non-obvious
+  4. `//!` — disabled or must-fix code
+  5. `//?` — an explanatory aside
+  6. `//*` — a design note
+  7. Deletion caution — warn why removing a line or block would break something non-obvious
 - Keep allowed comments one short line when possible.
+- Every suppression carries a reason: `// biome-ignore lint/<rule>: <why>`. Never a bare disable block.
 - Match nearby file style: if the surrounding code has few comments, keep it that way.
-

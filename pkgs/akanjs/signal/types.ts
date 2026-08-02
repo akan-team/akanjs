@@ -149,4 +149,5 @@ export type WebsocketReqData = { key: string; data: unknown[]; subscribe?: boole
 export type WebsocketMessageData = { type: "msg"; key: string; data: object | object[] };
 export type WebsocketSubscribeAck = { type: "sub"; roomId: string; subscribe: boolean };
 export type WebsocketPublishData = { type: "pub"; roomId: string; data: object | object[] };
-export type WebsocketResData = WebsocketMessageData | WebsocketSubscribeAck | WebsocketPublishData;
+export type WebsocketAuthAck = { type: "auth"; revokedRooms: string[] };
+export type WebsocketResData = WebsocketMessageData | WebsocketSubscribeAck | WebsocketPublishData | WebsocketAuthAck;

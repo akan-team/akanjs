@@ -1,11 +1,12 @@
 import { dayjs } from "akanjs/base";
-import type { Logger } from "akanjs/common";
+import { type Logger, websocketAuthContract } from "akanjs/common";
 import type { InjectRegistry } from "akanjs/service";
 import { Exception, type WebsocketReqData } from "akanjs/signal";
 import type { HmrWsData, HmrWsHub } from "../hmr/wsHub";
 import { copyBunRequestFields, type WebProxyRunner } from "../proxy";
 import { SignalResolver } from "../resolver";
 import type { HttpRoutes, SignalRouteOptions, WebsocketRoutes } from "../types";
+import { AppWsData } from "./appWsData";
 
 /**
  * Minimal render-state view the HMR WS hello message needs.
@@ -30,7 +31,7 @@ export interface ApiRouteInputs {
   routeOptions?: Record<string, SignalRouteOptions>;
   renderEnvRoutes: HttpRoutes;
   /** Upgrades the incoming request into an app-signal WebSocket. */
-  upgradeAppWs: (req: Request, data: { createdAt: number }) => boolean;
+  upgradeAppWs: (req: Request, data: AppWsData) => boolean;
   webProxyRunner?: WebProxyRunner | null;
 }
 
@@ -85,7 +86,7 @@ export class ApiRouter {
     const endpointPaths = new Set([...endpointEntries.map(([path]) => path), ...builtinEntries.map(([path]) => path)]);
     const routeTable = {
       [`${prefix}${websocketPrefix}` as "/api/ws"]: (req) => {
-        const upgraded = upgradeAppWs(req, { createdAt: Date.now() });
+        const upgraded = upgradeAppWs(req, AppWsData.fromRequest(req));
         if (upgraded) return;
         return new Response("Failed to upgrade to WebSocket", { status: 500 });
       },
@@ -140,6 +141,14 @@ export class ApiRouter {
           if (typeof message === "string") {
             const msg = JSON.parse(message) as WebsocketReqData;
             if (!msg.key) throw new Error("Message key is required");
+            if (msg.key === websocketAuthContract.key) {
+              // Must stay synchronous: a subscribe frame sent right behind this one is dispatched
+              // next and has to see the new credential, not the one it replaced.
+              AppWsData.applyCredential(AppWsData.of(ws), websocketAuthContract.readJwt(msg.data));
+              const revokedRooms = await SignalResolver.revalidateWsRooms(ws, registry);
+              ws.send(JSON.stringify(websocketAuthContract.makeAck(revokedRooms)));
+              return;
+            }
             const wsRoute = wsRoutes[msg.key];
             if (!wsRoute) throw new Error(`WebSocket route "${msg.key}" is not registered`);
             const eventType =

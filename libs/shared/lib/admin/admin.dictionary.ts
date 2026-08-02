@@ -22,6 +22,10 @@ export const dictionary = modelDictionary(["en", "ko"])
     byAccountId: fn(["By Account ID", "아이디별 조회"]).arg((t) => ({
       accountId: t(["Account ID", "아이디"]).desc(["Account ID Description", "아이디 설명"]),
     })),
+    bySearch: fn(["By Search", "검색어별 조회"]).arg((t) => ({
+      text: t(["Search Text", "검색어"]).desc(["Text to search for", "검색할 문자열"]),
+      roles: t(["Roles", "역할"]).desc(["Roles to narrow the search", "검색 범위를 좁힐 역할"]),
+    })),
   }))
   .enum<AdminRole>("adminRole", (t) => ({
     manager: t(["Manager", "매니저"]).desc(["Manager Description", "매니저 설명"]),

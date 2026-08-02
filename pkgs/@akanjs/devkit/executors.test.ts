@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, readlink, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { AkanAppConfig } from "./akanConfig";
@@ -20,6 +20,8 @@ const writeJson = async (filePath: string, value: object) => {
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`);
 };
+
+const PAGE_SOURCE = "export default function Page() {\n  return null;\n}\n";
 
 const rootPackageJson = (extra: Partial<PackageJson> = {}): PackageJson => ({
   name: "fixture",
@@ -269,6 +271,293 @@ describe("Workspace and app executor environment contracts", () => {
     expect(prepared.env.AKAN_PUBLIC_BASE_PATHS).toBe("admin");
     expect((await stat(path.join(root, "dist/apps/demo/private"))).isDirectory()).toBe(true);
     expect((await stat(path.join(root, "dist/apps/demo/public"))).isDirectory()).toBe(true);
+  });
+
+  describe("syncPages", () => {
+    // `AppExecutor.from` memoises by name, so each test needs a name no other test has used.
+    const makeAppWithLibPages = async (
+      appName: string,
+      { config = "export default {};\n", libs = { shared: ["about"] } as Record<string, string[] | null> } = {},
+    ) => {
+      const root = await makeTempRoot();
+      process.env.AKAN_PUBLIC_REPO_NAME = "repo";
+      process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
+      process.env.AKAN_PUBLIC_ENV = "local";
+      process.env.PORT_OFFSET = "0";
+      await writeJson(path.join(root, "package.json"), rootPackageJson());
+      for (const [lib, routes] of Object.entries(libs)) {
+        await mkdir(path.join(root, "libs", lib), { recursive: true });
+        for (const route of routes ?? []) {
+          await mkdir(path.join(root, "libs", lib, "page", route), { recursive: true });
+          await writeFile(path.join(root, "libs", lib, "page", route, "_index.tsx"), PAGE_SOURCE);
+        }
+      }
+      await mkdir(path.join(root, "apps", appName, "page"), { recursive: true });
+      await writeFile(path.join(root, "apps", appName, "akan.config.ts"), config);
+      const workspace = new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" });
+      return { root, app: AppExecutor.from(workspace, appName), appRoot: path.join(root, "apps", appName) };
+    };
+
+    test("links every lib dep that ships a page folder when enabled with true", async () => {
+      const { app, appRoot } = await makeAppWithLibPages("pages-true", {
+        config: "export default { syncPageLibs: true };\n",
+        libs: { shared: ["about"], util: null },
+      });
+      expect(await app.syncPages(["shared", "util"])).toBe(true);
+
+      const link = path.join(appRoot, "page/(libs)/(shared)");
+      expect((await lstat(link)).isSymbolicLink()).toBe(true);
+      expect(await lstat(path.join(appRoot, "page/(libs)/(util)")).catch(() => null)).toBeNull();
+      expect(await app.getPageKeys({ refresh: true })).toEqual(["./(libs)/(shared)/about/_index.tsx"]);
+    });
+
+    test("is a no-op when the links already match the config", async () => {
+      const { app } = await makeAppWithLibPages("pages-noop", {
+        config: "export default { syncPageLibs: ['shared'] };\n",
+      });
+      expect(await app.syncPages(["shared"])).toBe(true);
+      expect(await app.syncPages(["shared"])).toBe(false);
+    });
+
+    test("removes the synced page folder when disabled", async () => {
+      const { app, appRoot } = await makeAppWithLibPages("pages-disable", {
+        config: "export default { syncPageLibs: true };\n",
+      });
+      await app.syncPages(["shared"]);
+      expect((await lstat(path.join(appRoot, "page/(libs)/(shared)"))).isSymbolicLink()).toBe(true);
+
+      await writeFile(path.join(appRoot, "akan.config.ts"), "export default { syncPageLibs: false };\n");
+      await app.getConfig({ refresh: true });
+      expect(await app.syncPages(["shared"])).toBe(true);
+      expect(await lstat(path.join(appRoot, "page/(libs)")).catch(() => null)).toBeNull();
+    });
+
+    test("clears a link whose lib page folder was deleted, and keeps the workspace walkable", async () => {
+      const { root, app, appRoot } = await makeAppWithLibPages("pages-dangling", {
+        config: "export default { syncPageLibs: true };\n",
+      });
+      await app.syncPages(["shared"]);
+      await rm(path.join(root, "libs/shared/page"), { recursive: true, force: true });
+
+      // A dangling link sits 3 levels under apps/, which is inside the workspace app scan's walk.
+      expect(await app.workspace.getApps()).toEqual(["pages-dangling"]);
+      expect(await app.syncPages(["shared"])).toBe(true);
+      expect(await lstat(path.join(appRoot, "page/(libs)")).catch(() => null)).toBeNull();
+    });
+
+    test("rejects a lib the app does not depend on, and one without a page folder", async () => {
+      const { app } = await makeAppWithLibPages("pages-unknown", {
+        config: "export default { syncPageLibs: ['missing'] };\n",
+      });
+      await expect(app.syncPages(["shared"])).rejects.toThrow("does not depend on it");
+
+      const { app: noPage } = await makeAppWithLibPages("pages-nopage", {
+        config: "export default { syncPageLibs: ['util'] };\n",
+        libs: { util: null },
+      });
+      await expect(noPage.syncPages(["util"])).rejects.toThrow("libs/util/page does not exist");
+    });
+
+    test("links into every basePath when the app declares subRoutes", async () => {
+      const { app, appRoot } = await makeAppWithLibPages("pages-baseroutes", {
+        config: [
+          "export default {",
+          "  syncPageLibs: true,",
+          '  routes: [{ basePath: "admin", domains: {} }, { basePath: "shop", domains: {} }],',
+          "};",
+          "",
+        ].join("\n"),
+      });
+      await app.syncPages(["shared"]);
+
+      expect((await lstat(path.join(appRoot, "page/admin/(libs)/(shared)"))).isSymbolicLink()).toBe(true);
+      expect((await lstat(path.join(appRoot, "page/shop/(libs)/(shared)"))).isSymbolicLink()).toBe(true);
+      expect(await app.getPageKeys({ refresh: true })).toEqual([
+        "./admin/(libs)/(shared)/about/_index.tsx",
+        "./shop/(libs)/(shared)/about/_index.tsx",
+      ]);
+    });
+
+    test("rejects a lib route that collides with an app route", async () => {
+      const { app, appRoot } = await makeAppWithLibPages("pages-collide", {
+        config: "export default { syncPageLibs: true };\n",
+      });
+      await mkdir(path.join(appRoot, "page/(marketing)/about"), { recursive: true });
+      await writeFile(path.join(appRoot, "page/(marketing)/about/_index.tsx"), PAGE_SOURCE);
+      await app.syncPages(["shared"]);
+
+      await expect(app.getPageKeys({ refresh: true })).rejects.toThrow('duplicate page route "/:lang/about"');
+    });
+
+    test("rejects two libs that mount the same route", async () => {
+      const { app } = await makeAppWithLibPages("pages-collide-libs", {
+        config: "export default { syncPageLibs: true };\n",
+        libs: { shared: ["about"], social: ["about"] },
+      });
+      await app.syncPages(["shared", "social"]);
+
+      await expect(app.getPageKeys({ refresh: true })).rejects.toThrow('duplicate page route "/:lang/about"');
+    });
+  });
+
+  describe("syncAssets", () => {
+    // `AppExecutor.from` memoises by name, so each test needs a name no other test has used.
+    const makeAppWithLibAssets = async (appName: string) => {
+      const root = await makeTempRoot();
+      process.env.AKAN_PUBLIC_REPO_NAME = "repo";
+      process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
+      process.env.AKAN_PUBLIC_ENV = "local";
+      process.env.PORT_OFFSET = "0";
+      await writeJson(path.join(root, "package.json"), rootPackageJson());
+      await mkdir(path.join(root, "libs/shared/public"), { recursive: true });
+      await writeFile(path.join(root, "libs/shared/public/logo.png"), "logo");
+      await mkdir(path.join(root, "libs/shared/private"), { recursive: true });
+      await writeFile(path.join(root, "libs/shared/private/rules.json"), "{}");
+      await mkdir(path.join(root, "apps", appName), { recursive: true });
+      await writeFile(path.join(root, "apps", appName, "akan.config.ts"), "export default {};\n");
+      const workspace = new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" });
+      return { root, app: AppExecutor.from(workspace, appName), appRoot: path.join(root, "apps", appName) };
+    };
+
+    test("links lib assets into the app instead of copying them", async () => {
+      const { app, appRoot } = await makeAppWithLibAssets("assets-link");
+      await app.syncAssets(["shared"]);
+
+      const publicLink = path.join(appRoot, "public/libs/shared");
+      const privateLink = path.join(appRoot, "private/libs/shared");
+      expect((await lstat(publicLink)).isSymbolicLink()).toBe(true);
+      expect((await lstat(privateLink)).isSymbolicLink()).toBe(true);
+      expect(await readFile(path.join(publicLink, "logo.png"), "utf8")).toBe("logo");
+      expect(await readFile(path.join(privateLink, "rules.json"), "utf8")).toBe("{}");
+      if (process.platform !== "win32") expect(path.isAbsolute(await readlink(publicLink))).toBe(false);
+    });
+
+    test("drops links for deps that no longer ship assets", async () => {
+      const { app, appRoot } = await makeAppWithLibAssets("assets-drop");
+      await app.syncAssets(["shared"]);
+      await app.syncAssets([]);
+
+      expect(await lstat(path.join(appRoot, "public/libs")).catch(() => null)).toBeNull();
+      expect(await lstat(path.join(appRoot, "private/libs")).catch(() => null)).toBeNull();
+    });
+
+    test("removes a link whose target disappeared", async () => {
+      const { root, app, appRoot } = await makeAppWithLibAssets("assets-dangling");
+      await app.syncAssets(["shared"]);
+      await rm(path.join(root, "libs/shared/public"), { recursive: true, force: true });
+
+      const publicLink = path.join(appRoot, "public/libs/shared");
+      await app.removeDir(publicLink);
+      expect(await lstat(publicLink).catch(() => null)).toBeNull();
+    });
+
+    test("removing a linked dir with a trailing separator keeps the lib source", async () => {
+      const { root, app, appRoot } = await makeAppWithLibAssets("assets-trailing");
+      await app.syncAssets(["shared"]);
+
+      const publicLink = path.join(appRoot, "public/libs/shared");
+      await app.removeDir(`${publicLink}${path.sep}`);
+      expect(await lstat(publicLink).catch(() => null)).toBeNull();
+      expect(await readFile(path.join(root, "libs/shared/public/logo.png"), "utf8")).toBe("logo");
+    });
+
+    test("materializes linked lib assets into dist on build", async () => {
+      const { root, app } = await makeAppWithLibAssets("assets-dist");
+      await app.syncAssets(["shared"]);
+      await app.prepareCommand("build");
+
+      const distPublicLib = path.join(root, "dist/apps/assets-dist/public/libs/shared");
+      expect((await lstat(distPublicLib)).isSymbolicLink()).toBe(false);
+      expect(await readFile(path.join(distPublicLib, "logo.png"), "utf8")).toBe("logo");
+      expect(await readFile(path.join(root, "dist/apps/assets-dist/private/libs/shared/rules.json"), "utf8")).toBe(
+        "{}",
+      );
+    });
+  });
+
+  describe("devOnly routes", () => {
+    // `AppExecutor.from` memoises by name, so each test needs a name no other test has used.
+    const makeAppWithRoutes = async (appName: string, routes: Record<string, string>) => {
+      const root = await makeTempRoot();
+      process.env.AKAN_PUBLIC_REPO_NAME = "repo";
+      process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
+      process.env.AKAN_PUBLIC_ENV = "local";
+      process.env.PORT_OFFSET = "0";
+      await writeJson(path.join(root, "package.json"), rootPackageJson());
+      await mkdir(path.join(root, "apps", appName, "page"), { recursive: true });
+      await writeFile(path.join(root, "apps", appName, "akan.config.ts"), "export default {};\n");
+      for (const [rel, source] of Object.entries(routes)) {
+        const filePath = path.join(root, "apps", appName, "page", rel);
+        await mkdir(path.dirname(filePath), { recursive: true });
+        await writeFile(filePath, source);
+      }
+      const workspace = new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" });
+      return { root, app: AppExecutor.from(workspace, appName) };
+    };
+    const devOnlyPage = `export const pageConfig = { devOnly: true };\n${PAGE_SOURCE}`;
+    const layout = "export default function Layout({ children }) { return children; }\n";
+    const devOnlyLayout = `export const pageConfig = { devOnly: true };\n${layout}`;
+
+    test("keeps dev-only routes outside of a build", async () => {
+      const { app } = await makeAppWithRoutes("devonly-start", {
+        "_index.tsx": PAGE_SOURCE,
+        "debug/_index.tsx": devOnlyPage,
+      });
+
+      expect(await app.getPageKeys({ refresh: true })).toEqual(["./_index.tsx", "./debug/_index.tsx"]);
+    });
+
+    test("drops a dev-only page from the build", async () => {
+      const { app } = await makeAppWithRoutes("devonly-page", {
+        "_index.tsx": PAGE_SOURCE,
+        "debug/_index.tsx": devOnlyPage,
+      });
+      await app.prepareCommand("build");
+
+      expect(await app.getPageKeys()).toEqual(["./_index.tsx"]);
+    });
+
+    test("drops a dev-only layout together with every route under it", async () => {
+      const { app } = await makeAppWithRoutes("devonly-layout", {
+        "_index.tsx": PAGE_SOURCE,
+        "(dev)/_layout.tsx": devOnlyLayout,
+        "(dev)/debug/_index.tsx": PAGE_SOURCE,
+        "(dev)/debug/deep/_index.tsx": PAGE_SOURCE,
+        "keep/_index.tsx": PAGE_SOURCE,
+      });
+      await app.prepareCommand("build");
+
+      expect(await app.getPageKeys()).toEqual(["./_index.tsx", "./keep/_index.tsx"]);
+    });
+
+    test("treats devOnly: false as a normal route", async () => {
+      const { app } = await makeAppWithRoutes("devonly-false", {
+        "_index.tsx": `export const pageConfig = { devOnly: false, cache: true };\n${PAGE_SOURCE}`,
+      });
+      await app.prepareCommand("build");
+
+      expect(await app.getPageKeys()).toEqual(["./_index.tsx"]);
+    });
+
+    test("rejects a devOnly value the build cannot read statically", async () => {
+      const { app } = await makeAppWithRoutes("devonly-dynamic", {
+        "_index.tsx": `export const pageConfig = { devOnly: process.env.NODE_ENV !== "production" };\n${PAGE_SOURCE}`,
+      });
+
+      await expect(app.getPageKeys({ refresh: true })).rejects.toThrow(
+        "pageConfig.devOnly must be a literal true or false",
+      );
+    });
+
+    test("reads devOnly through a satisfies annotation", async () => {
+      const { app } = await makeAppWithRoutes("devonly-satisfies", {
+        "_index.tsx": PAGE_SOURCE,
+        "debug/_index.tsx": `export const pageConfig = { devOnly: true } satisfies { devOnly: boolean };\n${PAGE_SOURCE}`,
+      });
+      await app.prepareCommand("build");
+
+      expect(await app.getPageKeys()).toEqual(["./_index.tsx"]);
+    });
   });
 
   describe("getDevPort", () => {

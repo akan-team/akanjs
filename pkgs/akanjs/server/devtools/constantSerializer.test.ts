@@ -66,7 +66,7 @@ describe("ConstantSerializer", () => {
       { name: "includeRemoved", type: { kind: "primitive", refName: "Boolean" }, arrDepth: 0, nullable: true },
     ]);
     expect(filter?.query.byOwner[0]).toMatchObject({ name: "ownerId", ref: "user" });
-    expect(filter?.sort.sort()).toEqual(["latest", "oldest", "titleAsc"]);
+    expect(filter?.sort.sort()).toEqual(["latest", "oldest", "relevance", "titleAsc"]);
   });
 
   test("lists registered scalars and primitives", () => {

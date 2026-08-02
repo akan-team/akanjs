@@ -156,4 +156,12 @@ describe("frameConfig", () => {
     expect(() => validatePageConfig("bad.tsx", { ssr: "wait" as never })).toThrow('unsupported pageConfig.ssr "wait"');
     expect(() => validatePageConfig("ok.tsx", { ssr: "block" })).not.toThrow();
   });
+
+  test("accepts pageConfig.devOnly but never merges it into page state", () => {
+    expect(() => validatePageConfig("ok.tsx", { devOnly: true })).not.toThrow();
+    expect(() => validatePageConfig("bad.tsx", { devOnly: "yes" as never })).toThrow(
+      "pageConfig.devOnly in bad.tsx must be a boolean.",
+    );
+    expect(mergePageConfigs([{ devOnly: true }, { cache: true }])).toEqual({ cache: true });
+  });
 });

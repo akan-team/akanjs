@@ -22,9 +22,25 @@ import {
   resolveDocumentUpdate,
   type SchemaOf,
   sanitizeJson,
+  searchColumns,
 } from "akanjs/document";
 import type { Sql } from "postgres";
 import { adapt } from "../adapt";
+import { ScheduleAdaptorRole } from "./role.adaptor";
+import {
+  DEFAULT_SEARCH_WEIGHTS,
+  DEFAULT_TOKENIZER,
+  DOC_TABLE,
+  FTS_TABLE,
+  OPTIMIZE_CRON,
+  OPTIMIZE_CRON_KEY,
+  parseSearchEnabled,
+  RETRY_INTERVAL_KEY,
+  RETRY_INTERVAL_MS,
+  SearchIndex,
+  toMatchExpression,
+} from "./searchIndex";
+import { descriptorHash, jsonPath, quoteIdent, stableJson } from "./sqlDescriptor";
 import { resolveDefaultSqliteFile } from "./sqlitePath";
 
 export interface SqliteDatabaseConfig {
@@ -51,11 +67,17 @@ export interface PostgresDatabaseConfig {
   password?: string;
 }
 
+export interface SearchConfig {
+  enabled?: boolean;
+  tokenizer?: string;
+}
+
 export interface DatabaseConfig {
   driver?: "sqlite" | "libsql" | "postgres";
   sqlite?: SqliteDatabaseConfig;
   libsql?: LibsqlDatabaseConfig;
   postgres?: PostgresDatabaseConfig;
+  search?: SearchConfig;
 }
 
 export interface DocumentStore {
@@ -117,6 +139,9 @@ export interface DatabaseAdaptor {
   getConnection(): AkanSqlClient;
   getStore(constant: ConstantModel, database: DatabaseModel, schema: DocumentSchema): DocumentStore;
   transaction<T>(fn: () => PromiseOrObject<T>): Promise<T>;
+  // Declared here so a service holding `plug(DatabaseAdaptorRole)` can reach `suspend`/`resume` around a bulk
+  // import without casting. `null` on adaptors that have no text search, which is how callers tell them apart.
+  getSearchIndex(): SearchIndex | null;
 }
 
 interface SqliteEnv extends BaseEnv {
@@ -129,7 +154,7 @@ interface TransactionContext {
 }
 
 const BASE_COLUMNS = new Set(["id", "createdAt", "updatedAt", "removedAt"]);
-const RESERVED_RE = /^sqlite_|^_akan_meta$/i;
+const RESERVED_RE = /^sqlite_|^_akan_meta$|^search_doc$|^search_fts$/i;
 const REF_NAME_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
 const toSafeRefName = (value: string) => value.replace(/[^A-Za-z0-9_]+/g, "_").replace(/_+/g, "_");
 type DocumentRecord = Record<string, unknown>;
@@ -146,10 +171,7 @@ type FindManyOptions = {
 };
 type FindOneOptions = { sort?: SortOption; skip?: number | null; sample?: boolean; select?: ProjectionOption };
 type WriteHookOptions = { runSaveHooks?: boolean; crudType?: "update" | "remove" };
-type QueryOperatorName = Exclude<
-  DocumentQueryNode,
-  { kind: "all" } | { kind: "any" } | { kind: "not" } | { kind: "raw" }
->["op"];
+type QueryOperatorName = Extract<DocumentQueryNode, { kind: "op" }>["op"];
 interface SqliteDocumentRow {
   id: string;
   createdAt: number | string;
@@ -161,6 +183,7 @@ type ProjectedSqliteDocumentRow = Omit<SqliteDocumentRow, "_doc"> & Record<strin
 
 interface DocumentDatabaseOwner {
   getConnection(): AkanSqlClient;
+  getSearchIndex(): SearchIndex | null;
   getMeta(key: string): Promise<string | undefined> | string | undefined;
   setMeta(key: string, value: string): Promise<void>;
   afterCommit(fn: () => PromiseOrObject<void>): Promise<void>;
@@ -259,7 +282,6 @@ class PostgresAkanClient implements AkanSqlClient {
   }
 }
 
-const quoteIdent = (identifier: string) => `"${identifier.replaceAll('"', '""')}"`;
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value) && !(value instanceof Buffer);
 const toLibsqlValue = (value: unknown): InValue => {
@@ -300,11 +322,6 @@ const toPostgresSql = (sql: string, params: unknown[]) => {
     params,
   };
 };
-const jsonPath = (path: string) =>
-  `$.${path
-    .split(".")
-    .map((part) => part.replaceAll('"', '\\"'))
-    .join(".")}`;
 const encodeSqlValue = (value: unknown) => encodeDocumentValue(value);
 // Dates are persisted as epoch ms, but legacy rows may hold ISO strings; accept both.
 const decodeDateValue = (value: unknown) => {
@@ -330,26 +347,32 @@ const QUERY_OPERATOR_KEYS = new Set([
   "contains",
 ]);
 
-const stableJson = (value: unknown): string => {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
-  if (value && typeof value === "object") {
-    return `{${Object.entries(value as Record<string, unknown>)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, val]) => `${JSON.stringify(key)}:${stableJson(val)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
-};
-
-const descriptorHash = async (value: unknown) => {
-  const bytes = new TextEncoder().encode(stableJson(value));
-  const hash = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-};
-
 interface SqlFrag {
   sql: string;
   params: unknown[];
+}
+
+// `ref` names both the model table and the `search_doc."ref"` value — the mirror keys rows by table name.
+interface SearchJoinProps {
+  alias: string;
+  ref: string;
+  match: string;
+  weights: number[];
+}
+
+interface SearchJoin extends SqlFrag {
+  alias: string;
+}
+
+interface CompiledQuery {
+  where: string;
+  params: unknown[];
+  joins: SearchJoin[];
+}
+
+interface CompileContext {
+  joins: SearchJoin[];
+  conjunctive: boolean;
 }
 
 // A `SqlDialect` owns every dialect-specific SQL fragment so the compilers stay dialect-agnostic. Leaf query
@@ -374,6 +397,7 @@ interface SqlDialect {
   empty(path: string): SqlFrag;
   arrayHas(path: string, value: unknown): SqlFrag;
   contains(path: string, value: unknown): SqlFrag;
+  searchJoin(props: SearchJoinProps): SqlFrag;
   applyUpdate(acc: string, op: DocumentUpdateOperator, path: string, value: unknown): SqlFrag;
   affectedRows(result: unknown): number;
 }
@@ -450,6 +474,18 @@ export class SqliteDialect implements SqlDialect {
   }
   contains(path: string, value: unknown): SqlFrag {
     return { sql: `${this.extract(path)} LIKE ?`, params: [`%${String(value)}%`] };
+  }
+  searchJoin({ alias, ref, match, weights }: SearchJoinProps): SqlFrag {
+    // The subquery exposes only `rid`/`score`: `search_doc` carries a `title` column of its own, so joining it
+    // unwrapped raises `ambiguous column name` against any model that also has one. Aliasing `refId` to `rid`
+    // keeps `"id"` in the outer WHERE unambiguous, which is what lets the base table stay un-aliased.
+    return {
+      sql:
+        `JOIN (SELECT d."refId" AS rid, bm25(${FTS_TABLE}, ${weights.join(", ")}) AS score ` +
+        `FROM ${FTS_TABLE} JOIN ${DOC_TABLE} d ON d."fid" = ${FTS_TABLE}."rowid" ` +
+        `WHERE ${FTS_TABLE} MATCH ? AND d."ref" = ?) ${alias} ON ${alias}."rid" = ${quoteIdent(ref)}."id"`,
+      params: [match, ref],
+    };
   }
   applyUpdate(acc: string, op: DocumentUpdateOperator, path: string, value: unknown): SqlFrag {
     const p = this.#path(path);
@@ -569,6 +605,12 @@ export class PostgresDialect implements SqlDialect {
   contains(path: string, value: unknown): SqlFrag {
     return { sql: `${this.#text(path)} LIKE ?`, params: [`%${String(value)}%`] };
   }
+  searchJoin({ ref }: SearchJoinProps): SqlFrag {
+    // Failing loudly beats returning every row: a silently dropped search reads as "the query matched everything".
+    throw new Error(
+      `Text search on "${ref}" requires the sqlite or libsql database; Postgres has no fts5 index to join.`,
+    );
+  }
   applyUpdate(acc: string, op: DocumentUpdateOperator, path: string, value: unknown): SqlFrag {
     const p = this.#path(path);
     // Reads target the original `_doc` column (param-free) so folding never duplicates prior placeholders; `acc` is
@@ -684,18 +726,21 @@ class QueryCompiler {
   constructor(
     private readonly fields: FieldMap,
     private readonly dialect: SqlDialect,
+    private readonly ref: string,
+    private readonly searchEnabled: () => boolean,
   ) {}
 
   #leaf(path: string): QueryLeafOps {
     return BASE_COLUMNS.has(path) ? BASE_COLUMN_LEAF : this.dialect;
   }
 
-  compile(query?: DocumentQuery): { where: string; params: unknown[] } {
+  compile(query?: DocumentQuery): CompiledQuery {
+    const joins: SearchJoin[] = [];
     if (!query || (typeof query === "object" && !Array.isArray(query) && Object.keys(query).length === 0)) {
-      return { where: "1 = 1", params: [] };
+      return { where: "1 = 1", params: [], joins };
     }
-    const compiled = this.compileNode(query);
-    return { where: compiled.sql || "1 = 1", params: compiled.params };
+    const compiled = this.compileNode(query, { joins, conjunctive: true });
+    return { where: compiled.sql || "1 = 1", params: compiled.params, joins };
   }
 
   orderBy(sort: Record<string, 1 | -1> = { createdAt: -1 }) {
@@ -709,10 +754,23 @@ class QueryCompiler {
     return BASE_COLUMNS.has(path) ? quoteIdent(path) : this.dialect.extract(path);
   }
 
-  private compileNode(query: DocumentQuery): { sql: string; params: unknown[] } {
+  // A search node compiles to a JOIN rather than a WHERE fragment, so it contributes no SQL here and instead
+  // accumulates into `ctx.joins`. `conjunctive` tracks whether the node is still reachable by AND alone — a JOIN
+  // cannot express OR or NOT, so anything below `any`/`not` must be rejected instead of silently widening the result.
+  private compileNode(query: DocumentQuery, ctx: CompileContext): { sql: string; params: unknown[] } {
     if (this.isQueryNode(query)) {
+      if (query.kind === "search") {
+        if (!ctx.conjunctive)
+          throw new Error(
+            `Text search on "${this.ref}" must sit at an AND position; q.search() cannot be nested under q.any() or q.not().`,
+          );
+        const join = this.#searchJoin(query, ctx.joins.length);
+        if (join) ctx.joins.push(join);
+        return { sql: join ? "" : "0 = 1", params: [] };
+      }
       if (query.kind === "all" || query.kind === "any") {
-        const parts = query.queries.map((sub) => this.compileNode(sub)).filter((part) => part.sql);
+        const subCtx = query.kind === "all" ? ctx : { ...ctx, conjunctive: false };
+        const parts = query.queries.map((sub) => this.compileNode(sub, subCtx)).filter((part) => part.sql);
         if (!parts.length) return { sql: "1 = 1", params: [] };
         const joiner = query.kind === "all" ? " AND " : " OR ";
         return {
@@ -721,7 +779,7 @@ class QueryCompiler {
         };
       }
       if (query.kind === "not") {
-        const part = this.compileNode(query.query);
+        const part = this.compileNode(query.query, { ...ctx, conjunctive: false });
         return { sql: `NOT (${part.sql})`, params: part.params };
       }
       if (query.kind === "raw") {
@@ -732,7 +790,7 @@ class QueryCompiler {
     }
     const parts = Object.entries(query).flatMap(([path, value]) => {
       if (value === undefined) throw new Error(`Undefined query value is not allowed: ${path}`);
-      return [this.compileField(path, value)];
+      return [this.compileField(path, value, ctx)];
     });
     if (!parts.length) return { sql: "1 = 1", params: [] };
     return {
@@ -741,12 +799,34 @@ class QueryCompiler {
     };
   }
 
-  private compileField(path: string, value: unknown): { sql: string; params: unknown[] } {
+  #searchJoin(node: Extract<DocumentQueryNode, { kind: "search" }>, index: number): SearchJoin | null {
+    if (!this.searchEnabled())
+      throw new Error(
+        `Text search on "${this.ref}" is unavailable because the search index is switched off (AKAN_SEARCH_ENABLED).`,
+      );
+    const columns = node.columns?.filter((column) => searchColumns.includes(column));
+    if (node.columns?.length && !columns?.length)
+      throw new Error(`Unknown search column on "${this.ref}": ${node.columns.join(", ")}`);
+    const match = toMatchExpression(node.text, { prefix: node.prefix, columns });
+    // Blank input matches nothing rather than everything: an unscoped fallthrough would turn a search endpoint
+    // into a full listing, which is the failure that leaks rows.
+    if (!match) return null;
+    const weights = node.weights ?? DEFAULT_SEARCH_WEIGHTS;
+    // bm25 takes no bind parameters, so weights are interpolated into the SQL text and must be proven numeric.
+    if (weights.length !== searchColumns.length || weights.some((weight) => !Number.isFinite(weight)))
+      throw new Error(
+        `Search weights on "${this.ref}" must be ${searchColumns.length} finite numbers: ${JSON.stringify(node.weights)}`,
+      );
+    const alias = `__s${index}`;
+    return { alias, ...this.dialect.searchJoin({ alias, ref: this.ref, match, weights }) };
+  }
+
+  private compileField(path: string, value: unknown, ctx: CompileContext): { sql: string; params: unknown[] } {
     this.assertPath(path);
     const field = this.fields[path]?.getProps?.() ?? this.fields[path];
     const leaf = this.#leaf(path);
     if (this.isQueryNode(value)) {
-      if (value.kind !== "op") return this.compileNode({ [path]: value } as DocumentQuery);
+      if (value.kind !== "op") return this.compileNode({ [path]: value } as DocumentQuery, ctx);
       switch (value.op) {
         case "eq":
           return leaf.eq(path, value.value);
@@ -804,12 +884,12 @@ class QueryCompiler {
         const parts = keys.flatMap((key) => {
           if (!QUERY_OPERATOR_KEYS.has(key)) return [];
           if (key === "exists")
-            return [this.compileField(path, { kind: "op", op: operators.exists ? "exists" : "missing" })];
+            return [this.compileField(path, { kind: "op", op: operators.exists ? "exists" : "missing" }, ctx)];
           if (key === "missing")
-            return [this.compileField(path, { kind: "op", op: operators.missing ? "missing" : "exists" })];
+            return [this.compileField(path, { kind: "op", op: operators.missing ? "missing" : "exists" }, ctx)];
           if (key === "empty")
-            return [this.compileField(path, { kind: "op", op: operators.empty ? "empty" : "exists" })];
-          return [this.compileField(path, { kind: "op", op: key as QueryOperatorName, value: operators[key] })];
+            return [this.compileField(path, { kind: "op", op: operators.empty ? "empty" : "exists" }, ctx)];
+          return [this.compileField(path, { kind: "op", op: key as QueryOperatorName, value: operators[key] }, ctx)];
         });
         return {
           sql: `(${parts.map((part) => part.sql).join(" AND ")})`,
@@ -915,7 +995,9 @@ export class SqlDocumentStore {
     this.schema = schema;
     this.table = database.refName;
     const fields = database.doc[FIELD_META] as unknown as FieldMap;
-    this.compiler = new QueryCompiler(fields, dialect);
+    // Resolved per compile rather than captured: the store is built before the adaptor finishes `onInit`, so the
+    // search index does not exist yet at this point.
+    this.compiler = new QueryCompiler(fields, dialect, this.table, () => !!this.owner.getSearchIndex()?.enabled);
     this.updateCompiler = new UpdateCompiler(fields, dialect);
   }
 
@@ -950,6 +1032,7 @@ export class SqlDocumentStore {
       );
       await this.owner.setMeta(metaKey, hash);
     }
+    await this.owner.getSearchIndex()?.ensureRef(this.constant, this.database);
   }
 
   async create(data: DocumentRecord, { runSaveHooks = true }: WriteHookOptions = {}) {
@@ -992,7 +1075,7 @@ export class SqlDocumentStore {
   async updateOneByQuery(query: DocumentQuery, update: DocumentUpdateInput, options: DocumentUpdateOptions = {}) {
     const resolved = resolveDocumentUpdate(update);
     const { assignments, params } = this.compiledUpdate(resolved);
-    const { where, params: whereParams } = this.safeQuery(query);
+    const { where, params: whereParams } = this.writeQuery(query, "updateOneByQuery");
     const subquery = `SELECT ${quoteIdent("id")} FROM ${quoteIdent(this.table)} WHERE ${where} ORDER BY ${this.compiler.orderBy()} LIMIT 1`;
     const sql = `UPDATE ${quoteIdent(this.table)} SET ${assignments.join(", ")} WHERE ${quoteIdent("id")} IN (${subquery})`;
     const changes = this.dialect.affectedRows(
@@ -1011,7 +1094,7 @@ export class SqlDocumentStore {
 
   async updateManyByQuery(query: DocumentQuery, update: DocumentUpdateInput) {
     const { assignments, params } = this.compiledUpdate(resolveDocumentUpdate(update));
-    const { where, params: whereParams } = this.safeQuery(query);
+    const { where, params: whereParams } = this.writeQuery(query, "updateManyByQuery");
     const sql = `UPDATE ${quoteIdent(this.table)} SET ${assignments.join(", ")} WHERE ${where}`;
     const changes = this.dialect.affectedRows(
       await this.owner
@@ -1054,22 +1137,27 @@ export class SqlDocumentStore {
   }
 
   async find(query?: DocumentQuery, options: FindManyOptions = {}) {
-    const { where, params } = this.safeQuery(query);
+    const { where, params, joins } = this.safeQuery(query);
     const limitValue = Number(options.limit ?? 0);
     const skipValue = Number(options.skip ?? 0);
     const limit = limitValue ? ` LIMIT ${limitValue}` : "";
     const offset = skipValue ? ` OFFSET ${skipValue}` : "";
-    const order = options.sample ? "ORDER BY random()" : `ORDER BY ${this.compiler.orderBy(options.sort ?? undefined)}`;
+    const join = this.joinSql(joins);
+    const order = options.sample ? "ORDER BY random()" : `ORDER BY ${this.orderBy(options.sort, joins)}`;
+    const args = [...this.joinParams(joins), ...params];
     const projection = this.resolveProjection(options.select);
     if (projection) {
       const rows = await this.prepareReadStmt(
-        `SELECT ${this.projectionSql(projection)} FROM ${quoteIdent(this.table)} WHERE ${where} ${order}${limit}${offset}`,
-      ).all<ProjectedSqliteDocumentRow>(...params);
+        `SELECT ${this.projectionSql(projection)} FROM ${quoteIdent(this.table)}${join} WHERE ${where} ${order}${limit}${offset}`,
+      ).all<ProjectedSqliteDocumentRow>(...args);
       return rows.map((row) => this.hydrate(this.fromProjectedRow(row, projection)));
     }
+    // A bare `*` would also drag the join subquery's `rid`/`score` into the row, so the star is qualified once a
+    // join is present.
+    const star = joins.length ? `${quoteIdent(this.table)}.*` : "*";
     const rows = await this.prepareReadStmt(
-      `SELECT * FROM ${quoteIdent(this.table)} WHERE ${where} ${order}${limit}${offset}`,
-    ).all<SqliteDocumentRow>(...params);
+      `SELECT ${star} FROM ${quoteIdent(this.table)}${join} WHERE ${where} ${order}${limit}${offset}`,
+    ).all<SqliteDocumentRow>(...args);
     return rows.map((row) => this.hydrate(this.fromRow(row)));
   }
 
@@ -1077,15 +1165,16 @@ export class SqlDocumentStore {
     query?: DocumentQuery,
     options: { sort?: SortOption; skip?: number | null; limit?: number | null; sample?: number } = {},
   ) {
-    const { where, params } = this.safeQuery(query);
+    const { where, params, joins } = this.safeQuery(query);
     const limitValue = Number(options.limit ?? 0);
     const skipValue = Number(options.skip ?? 0);
     const limit = limitValue ? ` LIMIT ${limitValue}` : "";
     const offset = skipValue ? ` OFFSET ${skipValue}` : "";
-    const order = options.sample ? "ORDER BY random()" : `ORDER BY ${this.compiler.orderBy(options.sort ?? undefined)}`;
+    const join = this.joinSql(joins);
+    const order = options.sample ? "ORDER BY random()" : `ORDER BY ${this.orderBy(options.sort, joins)}`;
     const rows = await this.prepareReadStmt(
-      `SELECT "id" FROM ${quoteIdent(this.table)} WHERE ${where} ${order}${limit}${offset}`,
-    ).all<{ id: string }>(...params);
+      `SELECT ${quoteIdent(this.table)}."id" FROM ${quoteIdent(this.table)}${join} WHERE ${where} ${order}${limit}${offset}`,
+    ).all<{ id: string }>(...this.joinParams(joins), ...params);
     return rows.map((row) => row.id);
   }
 
@@ -1114,10 +1203,10 @@ export class SqlDocumentStore {
   }
 
   async count(query?: DocumentQuery) {
-    const { where, params } = this.safeQuery(query);
+    const { where, params, joins } = this.safeQuery(query);
     const row = await this.prepareReadStmt(
-      `SELECT count(*) as count FROM ${quoteIdent(this.table)} WHERE ${where}`,
-    ).get<{ count: number }>(...params);
+      `SELECT count(*) as count FROM ${quoteIdent(this.table)}${this.joinSql(joins)} WHERE ${where}`,
+    ).get<{ count: number }>(...this.joinParams(joins), ...params);
     return row?.count ?? 0;
   }
 
@@ -1140,30 +1229,36 @@ export class SqlDocumentStore {
     return result;
   }
 
-  async search(
-    searchText: string | undefined | null,
-    options: { skip?: number | null; limit?: number | null; sort?: SortOption } = {},
-  ) {
-    const textFields = this.schema.indexes.flatMap((index) =>
-      Object.entries(index.fields)
-        .filter(([, mode]) => mode === "text")
-        .map(([field]) => field),
-    );
-    const query =
-      searchText && textFields.length
-        ? documentQueryHelper.any(
-            ...textFields.map((field) =>
-              documentQueryHelper.raw(`${this.compiler.fieldExpr(field)} LIKE ?`, [`%${searchText}%`]),
-            ),
-          )
-        : {};
-    const docs = await this.find(query, options);
-    const count = await this.count(query);
-    return { docs, count };
-  }
-
   private safeQuery(query?: DocumentQuery) {
     return this.compiler.compile(documentQueryHelper.all(documentQueryHelper.empty("removedAt"), query ?? {}));
+  }
+
+  // An atomic UPDATE/DELETE has no join to hang the search index on. Ignoring the search node would widen the write
+  // to every row matching the remaining conditions, so the caller is told instead.
+  private writeQuery(query: DocumentQuery | undefined, operation: string) {
+    const compiled = this.safeQuery(query);
+    if (compiled.joins.length)
+      throw new Error(`q.search() cannot be used in ${operation} on "${this.table}"; query-level writes take no join.`);
+    return compiled;
+  }
+
+  private joinSql(joins: SearchJoin[]) {
+    return joins.length ? ` ${joins.map((join) => join.sql).join(" ")}` : "";
+  }
+
+  // The JOIN precedes the WHERE in the statement text, so its bindings must precede the WHERE bindings too.
+  // Getting this order wrong produces no error, only wrong rows.
+  private joinParams(joins: SearchJoin[]) {
+    return joins.flatMap((join) => join.params);
+  }
+
+  // bm25 scores are negative and grow more negative with a better match, so ascending is most-relevant-first.
+  // The `id` tiebreaker keeps skip/limit paging stable when two rows score identically. An explicitly requested
+  // sort always wins; `relevance` reaches here as an empty sort map, which is what asks for the score order.
+  private orderBy(sort: SortOption, joins: SearchJoin[]) {
+    const explicit = sort && Object.keys(sort).length ? sort : null;
+    if (!explicit && joins.length) return `${joins[0].alias}."score", ${quoteIdent(this.table)}."id" DESC`;
+    return this.compiler.orderBy(explicit ?? undefined);
   }
 
   private prepareDocument(data: DocumentRecord) {
@@ -1368,15 +1463,17 @@ export class SqlDocumentStore {
   }
 
   private async findForWrite(query?: DocumentQuery, options: FindManyOptions = {}) {
-    const { where, params } = this.safeQuery(query);
+    const { where, params, joins } = this.safeQuery(query);
     const limitValue = Number(options.limit ?? 0);
     const skipValue = Number(options.skip ?? 0);
     const limit = limitValue ? ` LIMIT ${limitValue}` : "";
     const offset = skipValue ? ` OFFSET ${skipValue}` : "";
-    const order = options.sample ? "ORDER BY random()" : `ORDER BY ${this.compiler.orderBy(options.sort ?? undefined)}`;
+    const join = this.joinSql(joins);
+    const order = options.sample ? "ORDER BY random()" : `ORDER BY ${this.orderBy(options.sort, joins)}`;
+    const star = joins.length ? `${quoteIdent(this.table)}.*` : "*";
     const rows = await this.prepareReadStmt(
-      `SELECT * FROM ${quoteIdent(this.table)} WHERE ${where} ${order}${limit}${offset}`,
-    ).all<SqliteDocumentRow>(...params);
+      `SELECT ${star} FROM ${quoteIdent(this.table)}${join} WHERE ${where} ${order}${limit}${offset}`,
+    ).all<SqliteDocumentRow>(...this.joinParams(joins), ...params);
     return rows.map((row) => this.hydrate(this.fromRow(row)));
   }
 
@@ -1640,7 +1737,8 @@ class PendingStoreEnsures {
 }
 
 export class SqliteDatabase
-  extends adapt("sqliteDatabase", ({ env }) => ({
+  extends adapt("sqliteDatabase", ({ env, plug }) => ({
+    scheduler: plug(ScheduleAdaptorRole),
     config: env((env: SqliteEnv) => {
       const appName = env.appName ?? "akan";
       const environment = env.environment ?? "local";
@@ -1658,10 +1756,14 @@ export class SqliteDatabase
         foreignKeys: true,
         ...env.database?.sqlite,
         filePath: env.database?.sqlite?.filePath ?? process.env.SQLITE_DATABASE_PATH ?? defaultFile,
+        search: {
+          enabled: env.database?.search?.enabled ?? parseSearchEnabled(process.env.AKAN_SEARCH_ENABLED),
+          tokenizer: env.database?.search?.tokenizer ?? process.env.AKAN_SEARCH_TOKENIZER ?? DEFAULT_TOKENIZER,
+        },
       } satisfies Required<
         Pick<SqliteDatabaseConfig, "filePath" | "journalMode" | "busyTimeoutMs" | "synchronous" | "foreignKeys">
       > &
-        SqliteDatabaseConfig;
+        SqliteDatabaseConfig & { search: Required<SearchConfig> };
     }),
   }))
   implements DatabaseAdaptor
@@ -1671,6 +1773,7 @@ export class SqliteDatabase
   #stores = new Map<string, SqlDocumentStore>();
   #transaction = new AsyncLocalStorage<TransactionContext>();
   #ensures = new PendingStoreEnsures();
+  #searchIndex!: SearchIndex;
 
   override async onInit() {
     await mkdir(path.dirname(this.config.filePath), { recursive: true });
@@ -1685,9 +1788,19 @@ export class SqliteDatabase
     this.#db.run(
       `CREATE TABLE IF NOT EXISTS "_akan_meta" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL, "updatedAt" INTEGER NOT NULL)`,
     );
+    this.#searchIndex = new SearchIndex(this, this.config.search);
+    await this.#searchIndex.ensureSchema();
+    this.scheduler.registerCron(OPTIMIZE_CRON_KEY, OPTIMIZE_CRON, async () => {
+      await this.#searchIndex.optimize();
+    });
+    this.scheduler.registerInterval(RETRY_INTERVAL_KEY, RETRY_INTERVAL_MS, async () => {
+      await this.#searchIndex.retryPending();
+    });
   }
 
   override async onDestroy() {
+    this.scheduler.unregisterCron(OPTIMIZE_CRON_KEY);
+    this.scheduler.unregisterInterval(RETRY_INTERVAL_KEY);
     await this.#ensures.settle();
     this.#db?.run("PRAGMA wal_checkpoint(TRUNCATE)");
     await this.#client?.close();
@@ -1695,6 +1808,10 @@ export class SqliteDatabase
 
   getConnection() {
     return this.#client;
+  }
+
+  getSearchIndex() {
+    return this.#searchIndex;
   }
 
   getStore(constant: ConstantModel, database: DatabaseModel, schema: SchemaOf) {
@@ -1753,7 +1870,8 @@ export class SqliteDatabase
 }
 
 export class LibsqlDatabase
-  extends adapt("libsqlDatabase", ({ env }) => ({
+  extends adapt("libsqlDatabase", ({ env, plug }) => ({
+    scheduler: plug(ScheduleAdaptorRole),
     config: env((env: SqliteEnv) => {
       const appName = env.appName ?? "akan";
       const environment = env.environment ?? "local";
@@ -1771,7 +1889,11 @@ export class LibsqlDatabase
           process.env.LIBSQL_URI ??
           `file:${env.database?.sqlite?.filePath ?? process.env.SQLITE_DATABASE_PATH ?? defaultFile}`,
         authToken: env.database?.libsql?.authToken ?? process.env.LIBSQL_AUTH_TOKEN,
-      } satisfies LibsqlDatabaseConfig;
+        search: {
+          enabled: env.database?.search?.enabled ?? parseSearchEnabled(process.env.AKAN_SEARCH_ENABLED),
+          tokenizer: env.database?.search?.tokenizer ?? process.env.AKAN_SEARCH_TOKENIZER ?? DEFAULT_TOKENIZER,
+        },
+      } satisfies LibsqlDatabaseConfig & { search: Required<SearchConfig> };
     }),
   }))
   implements DatabaseAdaptor
@@ -1780,6 +1902,7 @@ export class LibsqlDatabase
   #stores = new Map<string, SqlDocumentStore>();
   #transaction = new AsyncLocalStorage<TransactionContext>();
   #ensures = new PendingStoreEnsures();
+  #searchIndex!: SearchIndex;
 
   override async onInit() {
     const url = this.config.url ?? "file:local.db";
@@ -1789,15 +1912,29 @@ export class LibsqlDatabase
     await this.#client.execute(
       `CREATE TABLE IF NOT EXISTS "_akan_meta" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL, "updatedAt" INTEGER NOT NULL)`,
     );
+    this.#searchIndex = new SearchIndex(this, this.config.search);
+    await this.#searchIndex.ensureSchema();
+    this.scheduler.registerCron(OPTIMIZE_CRON_KEY, OPTIMIZE_CRON, async () => {
+      await this.#searchIndex.optimize();
+    });
+    this.scheduler.registerInterval(RETRY_INTERVAL_KEY, RETRY_INTERVAL_MS, async () => {
+      await this.#searchIndex.retryPending();
+    });
   }
 
   override async onDestroy() {
+    this.scheduler.unregisterCron(OPTIMIZE_CRON_KEY);
+    this.scheduler.unregisterInterval(RETRY_INTERVAL_KEY);
     await this.#ensures.settle();
     await this.#client?.close();
   }
 
   getConnection() {
     return this.#client;
+  }
+
+  getSearchIndex() {
+    return this.#searchIndex;
   }
 
   getStore(constant: ConstantModel, database: DatabaseModel, schema: SchemaOf) {
@@ -1891,6 +2028,11 @@ export class PostgresDatabase
 
   getConnection() {
     return this.#client;
+  }
+
+  // Postgres has no fts5; text search is a SQLite/libsql feature until a tsvector dialect exists.
+  getSearchIndex() {
+    return null;
   }
 
   getStore(constant: ConstantModel, database: DatabaseModel, schema: SchemaOf) {

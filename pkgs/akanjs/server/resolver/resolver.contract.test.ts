@@ -217,7 +217,7 @@ describe("DatabaseResolver declaration contracts", () => {
       method: "findOne",
       args: [
         { kind: "all", queries: [{ category: "news" }, { removedAt: { kind: "op", op: "empty" } }] },
-        { sort: { createdAt: -1 }, skip: 0, sample: false, select: { secret: true } },
+        { sort: null, skip: 0, sample: false, select: { secret: true } },
       ],
     });
     await instance.pickInCategory("news", false, { select: { secret: true } });
@@ -225,7 +225,7 @@ describe("DatabaseResolver declaration contracts", () => {
       method: "pickOne",
       args: [
         { kind: "all", queries: [{ category: "news" }, { removedAt: { kind: "op", op: "empty" } }] },
-        { sort: { createdAt: -1 }, skip: 0, sample: false, select: { secret: true } },
+        { sort: null, skip: 0, sample: false, select: { secret: true } },
       ],
     });
     const bulkLoaded = await instance.serverResolverTestItemLoader.loadMany(["doc-2", "missing", "doc-1"]);
@@ -389,6 +389,43 @@ describe("SignalResolver declaration contracts", () => {
 
     const message = await resolved.wsRoutes?.echoMessage?.(ws, ["hello"], "message");
     expect(message).toEqual({ type: "msg", key: "echoMessage", data: "echo:hello" });
+  });
+
+  test("guards a pubsub subscribe and revokes the room once the socket loses access", async () => {
+    resetResolverOrder();
+    const registry = getDefaultInjectRegistry();
+    const live = getDefaultLiveRegistry();
+    const endpointInstance = new ServerResolverTestEndpoint() as InstanceType<typeof ServerResolverTestEndpoint> & {
+      serverResolverTestItemService: InstanceType<typeof ServerResolverTestService>;
+    };
+    endpointInstance.serverResolverTestItemService = new ServerResolverTestService();
+    const websocket = makeFakeWebsocket();
+    registry.adaptor.set(SolidPubSub, websocket.instance);
+    const resolved = SignalResolver.resolveEndpoint(ServerResolverTestEndpoint, endpointInstance, {
+      registry,
+      env: makeEnv(),
+      live,
+      middleware: new Map(),
+    });
+    const roomId = `guardedRoomFeed-${validId}`;
+
+    const anonymous = makeWs();
+    await expect(resolved.wsRoutes?.guardedRoomFeed?.(anonymous, [validId], "subscribe")).rejects.toThrow(
+      "Access denied by guard: ServerResolverTestRoomGuard",
+    );
+
+    const member = makeWs();
+    member.data.account = { role: "member" };
+    const ack = await resolved.wsRoutes?.guardedRoomFeed?.(member, [validId], "subscribe");
+    expect(ack).toEqual({ type: "sub", roomId, subscribe: true });
+    expect(member.subscribed).toEqual([roomId]);
+    expect(await SignalResolver.revalidateWsRooms(member, registry)).toEqual([]);
+
+    member.data.account = { role: "guest" };
+    expect(await SignalResolver.revalidateWsRooms(member, registry)).toEqual([roomId]);
+    expect(member.unsubscribed).toEqual([roomId]);
+    expect(websocket.instance.calls).toContainEqual({ method: "leaveRoom", args: [member, roomId] });
+    expect(await SignalResolver.revalidateWsRooms(member, registry)).toEqual([]);
   });
 
   test("turns slice declarations into CRUD/list/insight endpoint declarations", async () => {
@@ -666,6 +703,7 @@ const makeFakeWebsocket = () => {
 
 const makeWs = () =>
   ({
+    data: {} as Record<string, unknown>,
     subscribed: [] as string[],
     unsubscribed: [] as string[],
     subscribe(roomId: string) {
@@ -674,7 +712,11 @@ const makeWs = () =>
     unsubscribe(roomId: string) {
       this.unsubscribed.push(roomId);
     },
-  }) as unknown as Bun.ServerWebSocket<unknown> & { subscribed: string[]; unsubscribed: string[] };
+  }) as unknown as Bun.ServerWebSocket<unknown> & {
+    data: Record<string, unknown>;
+    subscribed: string[];
+    unsubscribed: string[];
+  };
 
 const makeFakeSchedule = () => ({
   calls: [] as { method: string; args: unknown[] }[],

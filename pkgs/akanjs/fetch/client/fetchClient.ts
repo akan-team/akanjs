@@ -197,6 +197,7 @@ export class FetchClient {
   }
   setJwt(jwt: string | null) {
     this.jwt = jwt;
+    this.ws.setJwt(jwt);
   }
   #makeAuthHeaders(option?: FetchPolicy): Record<string, string> {
     if (option?.token) return { Authorization: `Bearer ${option.token}` };

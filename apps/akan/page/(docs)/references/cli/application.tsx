@@ -97,7 +97,7 @@ akan create-application blog --start true`,
     {
       name: "sync",
       signature: "akan sync <system>",
-      desc: "Synchronize dependency and configuration surfaces for a selected app or library.\nRun it after structural changes, package changes, or generated configuration changes that need to be reflected in the target system.",
+      desc: "Synchronize dependency and configuration surfaces for a selected app or library.\nRun it after structural changes, package changes, or generated configuration changes that need to be reflected in the target system.\nIt also links library assets into public/libs and private/libs, and library routes into page/(libs) for apps that declare syncPageLibs.",
       examples: `akan sync myapp
 akan sync util`,
     },

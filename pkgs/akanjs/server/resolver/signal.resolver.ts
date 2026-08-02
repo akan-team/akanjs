@@ -463,6 +463,29 @@ export class SignalResolver {
     return Boolean(req.headers.get("authorization") || req.headers.get("cookie")?.includes("jwt="));
   }
 
+  /**
+   * Re-checks the guards of every room this socket is subscribed to and drops the ones that no
+   * longer pass. Called when the socket's credential changes: a pubsub room is authorized once at
+   * subscribe time, so without this a signed-out socket would keep receiving its old rooms.
+   */
+  static async revalidateWsRooms(ws: Bun.ServerWebSocket<any>, registry: InjectRegistry): Promise<string[]> {
+    const roomCtxMap = SignalResolver.#liveWsPubsubRoomCtx.get(ws);
+    if (!roomCtxMap?.size) return [];
+    const websocket = SignalResolver.#getWebsocket(registry);
+    const revokedRooms: string[] = [];
+    for (const [roomId, roomCtx] of [...roomCtxMap]) {
+      if (await roomCtx.authorize()) continue;
+      ws.unsubscribe(roomId);
+      await Promise.all([...roomCtx.getWebSocketContext().onUnsubscribe.values()].map((handler) => handler()));
+      roomCtxMap.delete(roomId);
+      websocket.leaveRoom(ws, roomId);
+      revokedRooms.push(roomId);
+      SignalResolver.logger.verbose(`WebSocket lost access to room ${roomId}; unsubscribed`);
+    }
+    if (roomCtxMap.size === 0) SignalResolver.#liveWsPubsubRoomCtx.delete(ws);
+    return revokedRooms;
+  }
+
   static async handleWsOpen(ws: Bun.ServerWebSocket<any>, registry: InjectRegistry) {
     await SignalResolver.#getWebsocket(registry).registerSocket(ws);
   }

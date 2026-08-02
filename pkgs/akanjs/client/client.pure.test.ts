@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { createFont, Inter, Nanum_Gothic_Coding, Noto_Sans_KR, Roboto } from "./createFont";
-import { clearRscNavigationCache, navigateRsc } from "./rscNavigation";
+import { clearRscNavigationCache, isRscNavigationFromCache, navigateRsc } from "./rscNavigation";
 import { Translator } from "./translator";
 import {
   clsx,
@@ -31,12 +31,13 @@ beforeAll(() => {
 
 afterEach(() => {
   globalThis.__AKAN_RSC_CLEAR_CACHE__ = undefined;
+  globalThis.__AKAN_RSC_IS_FROM_CACHE__ = undefined;
   globalThis.__AKAN_RSC_NAVIGATE__ = undefined;
 });
 
 describe("client pure exports and utilities", () => {
   test("exports class composition and font helpers through the package surface", () => {
-    expect(clsx("base", false && "hidden", ["nested"], { active: true })).toBe("base nested active");
+    expect(clsx("base", null, ["nested"], { active: true })).toBe("base nested active");
     expect(typeof loadFonts).toBe("function");
     expect(typeof getFontFaces).toBe("function");
     expect(typeof Translator).toBe("function");
@@ -104,6 +105,16 @@ describe("client pure exports and utilities", () => {
     await navigateRsc("/next", { replace: true, scrollToTop: false });
 
     expect(calls).toEqual(["clear", { href: "/next", options: { replace: true, scrollToTop: false } }]);
+  });
+
+  test("reports a replayed page tree only when the rsc client says so", () => {
+    expect(isRscNavigationFromCache()).toBe(false);
+
+    globalThis.__AKAN_RSC_IS_FROM_CACHE__ = () => true;
+    expect(isRscNavigationFromCache()).toBe(true);
+
+    globalThis.__AKAN_RSC_IS_FROM_CACHE__ = () => false;
+    expect(isRscNavigationFromCache()).toBe(false);
   });
 });
 
