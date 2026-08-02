@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "Lazy loading은 첫 화면에서 모든 무거운 component를 바로 받지 않는 방식입니다. 사용자가 실제로 볼 때 비싼 UI를 불러오세요.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Good for maps, charts, editors, 3D viewers, and wallet widgets.",
@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="external" title={l.trans({ en: "External Libraries", ko: "외부 라이브러리" })}>
         <Docs.Title>{l.trans({ en: "External Libraries", ko: "외부 라이브러리" })}</Docs.Title>
@@ -69,7 +69,7 @@ export const ArticleMap = ({ center }: ArticleMapProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="internal" title={l.trans({ en: "Large Components", ko: "큰 component" })}>
         <Docs.Title>{l.trans({ en: "Large Components", ko: "큰 component" })}</Docs.Title>
@@ -99,12 +99,12 @@ export const EditPanel = ({ open }: EditPanelProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="ssr" title={l.trans({ en: "SSR Or Client Only", ko: "SSR 또는 client only" })}>
         <Docs.Title>{l.trans({ en: "SSR Or Client Only", ko: "SSR 또는 client only" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Use default lazy when the component can render on the server.",
@@ -126,12 +126,12 @@ export const EditPanel = ({ open }: EditPanelProps) => {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Split by user intent: editor, map, chart, modal, viewer.",
@@ -153,7 +153,7 @@ export const EditPanel = ({ open }: EditPanelProps) => {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

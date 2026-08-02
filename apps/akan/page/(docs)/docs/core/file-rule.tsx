@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 import { clsx } from "akanjs/client";
 
@@ -64,7 +64,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-bold text-foreground">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -79,7 +79,7 @@ export default function Page() {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="module-files" title={l.trans({ en: "Module Files", ko: "모듈 파일" })}>
         <Docs.Title>{l.trans({ en: "Module Files", ko: "모듈 파일" })}</Docs.Title>
@@ -161,7 +161,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, type, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <div className="flex items-center justify-between">
                   <div
                     className={clsx("font-mono font-semibold", {
@@ -247,7 +247,7 @@ BizCard.Zone.tsx      # large screen areas such as admin/list/detail`}
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-mono font-semibold text-success">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -256,7 +256,7 @@ BizCard.Zone.tsx      # large screen areas such as admin/list/detail`}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="naming-rule" title={l.trans({ en: "Naming Rule", ko: "이름 규칙" })}>
         <Docs.Title>{l.trans({ en: "Naming Rule", ko: "이름 규칙" })}</Docs.Title>
@@ -311,7 +311,7 @@ Product.Zone.tsx`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="facet-files" title={l.trans({ en: "Facet Files And Barrels", ko: "Facet 파일과 Barrel" })}>
         <Docs.Title>{l.trans({ en: "Facet Files And Barrels", ko: "Facet 파일과 Barrel" })}</Docs.Title>
@@ -370,7 +370,7 @@ export const PriceText = () => {}
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -408,7 +408,7 @@ import { ProductCard } from "@apps/myapp/ui";`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="module-differences" title={l.trans({ en: "Module Differences", ko: "모듈별 차이" })}>
         <Docs.Title>{l.trans({ en: "Module Differences", ko: "모듈별 차이" })}</Docs.Title>
@@ -449,7 +449,7 @@ import { ProductCard } from "@apps/myapp/ui";`}
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -458,7 +458,7 @@ import { ProductCard } from "@apps/myapp/ui";`}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="workflow" title={l.trans({ en: "Codegen And Choices", ko: "자동생성과 선택 기준" })}>
         <Docs.Title>{l.trans({ en: "Codegen And Choices", ko: "자동생성과 선택 기준" })}</Docs.Title>
@@ -533,7 +533,7 @@ export const Product = { Unit, Util, View, Zone };`}
                 desc: "Model.Zone.tsx",
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-bold text-foreground">{title}: </span>
 
                 <span className="font-mono text-primary text-sm">{desc}</span>
@@ -542,9 +542,9 @@ export const Product = { Unit, Util, View, Zone };`}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

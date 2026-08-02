@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -17,7 +17,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="create-query-maker" title={l.trans({ en: "Create Query Maker", ko: "쿼리 메이커 생성하기" })}>
         <Docs.Title>{l.trans({ en: "Create Query Maker", ko: "쿼리 메이커 생성하기" })}</Docs.Title>
@@ -101,7 +101,7 @@ export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query,
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔍</span>
                 <strong className="text-primary">{".search()"}</strong>
@@ -113,7 +113,7 @@ export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">⚡</span>
                 <strong className="text-primary">inWaiting / inPickup</strong>
@@ -419,7 +419,7 @@ export default async function Page() {
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="accelerate-with-insight"
@@ -520,7 +520,7 @@ export class IcecreamOrderInsight extends via(IcecreamOrder, (field) => ({
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🍦</span>
                 <strong className="text-primary">{"{}"}</strong>
@@ -532,7 +532,7 @@ export class IcecreamOrderInsight extends via(IcecreamOrder, (field) => ({
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🍓</span>
                 <strong className="text-primary">{'{ toppings: "strawberry" }'}</strong>
@@ -992,9 +992,9 @@ export default async function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

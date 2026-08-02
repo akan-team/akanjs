@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "`akan script`는 seed data, migration, 점검, 작은 유지보수 수정 같은 일회성 개발/운영 작업에 사용합니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "The script starts the app server container without opening a normal web page.",
@@ -44,7 +44,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="command" title={l.trans({ en: "Command", ko: "명령어" })}>
         <Docs.Title>{l.trans({ en: "Command", ko: "명령어" })}</Docs.Title>
@@ -65,7 +65,7 @@ export default function Page() {
 apps/myapp/script/hello.ts`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="lifecycle" title={l.trans({ en: "Server Lifecycle", ko: "Server lifecycle" })}>
         <Docs.Title>{l.trans({ en: "Server Lifecycle", ko: "Server lifecycle" })}</Docs.Title>
@@ -95,7 +95,7 @@ const run = async () => {
 void run();`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="service" title={l.trans({ en: "Use Services", ko: "Service 사용" })}>
         <Docs.Title>{l.trans({ en: "Use Services", ko: "Service 사용" })}</Docs.Title>
@@ -132,12 +132,12 @@ const run = async () => {
 void run();`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="lookup" title={l.trans({ en: "Lookup Helpers", ko: "Lookup helper" })}>
         <Docs.Title>{l.trans({ en: "Lookup Helpers", ko: "Lookup helper" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "`server.get(ArticleService)`: class-based lookup with strong types.",
@@ -165,12 +165,12 @@ void run();`}
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Print the target environment before changing data.",
@@ -192,7 +192,7 @@ void run();`}
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

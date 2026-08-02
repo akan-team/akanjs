@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 import { Link } from "akanjs/ui";
 
@@ -51,7 +51,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-bold text-foreground">{title}: </span>
                 <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
@@ -59,7 +59,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="mobile-targets" title={l.trans({ en: "Mobile Targets", ko: "모바일 Target" })}>
         <Docs.Title>{l.trans({ en: "Mobile Targets", ko: "모바일 Target" })}</Docs.Title>
@@ -102,7 +102,7 @@ export default config;`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="csr-runtime" title={l.trans({ en: "CSR Runtime", ko: "CSR 런타임" })}>
         <Docs.Title>{l.trans({ en: "CSR Runtime", ko: "CSR 런타임" })}</Docs.Title>
@@ -156,7 +156,7 @@ export const pageConfig = {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-mono font-semibold text-primary">{title}: </span>
                 <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
@@ -164,7 +164,7 @@ export const pageConfig = {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="native-bridge" title={l.trans({ en: "Native Bridge", ko: "네이티브 브리지" })}>
         <Docs.Title>{l.trans({ en: "Native Bridge", ko: "네이티브 브리지" })}</Docs.Title>
@@ -206,7 +206,7 @@ export const pageConfig = {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-mono font-semibold text-primary">{title}: </span>
                 <span className="text-foreground/70 text-sm">{desc}</span>
               </div>

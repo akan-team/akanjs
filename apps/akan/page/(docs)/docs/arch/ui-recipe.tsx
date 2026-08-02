@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -15,7 +15,7 @@ export default function Page() {
               ko: "recipe는 토큰 계층과 컴포넌트 사이에 있는 변형 팩토리(tailwind-variants 기반)입니다. 토큰이 '이 색은 무엇인가'를 답한다면, recipe는 시맨틱 토큰 클래스를 이름 붙인 변형으로 조합해 '이 컴포넌트는 어떻게 보이는가'를 답하고, 컴포넌트는 '어떻게 동작하는가'를 답합니다. 각 레이어는 바로 아래 레이어만 압니다.",
             })}
           </div>
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="mb-2 font-bold text-foreground">
               {l.trans({ en: "The three UI layers", ko: "UI 세 계층" })}
             </div>
@@ -60,7 +60,7 @@ export default function Page() {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="framework-recipes" title={l.trans({ en: "Framework Recipes", ko: "프레임워크 레시피" })}>
         <Docs.Title>{l.trans({ en: "Framework Recipes", ko: "프레임워크 레시피" })}</Docs.Title>
@@ -114,7 +114,7 @@ export default function Page() {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="app-recipes" title={l.trans({ en: "App-Level Recipes", ko: "앱 레벨 레시피" })}>
         <Docs.Title>{l.trans({ en: "App-Level Recipes", ko: "앱 레벨 레시피" })}</Docs.Title>
@@ -174,7 +174,7 @@ export type ChatBubbleVariants = NonNullable<Parameters<typeof chatBubbleRecipe>
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="when-recipe" title={l.trans({ en: "When To Reach For A Recipe", ko: "언제 레시피를 쓸까" })}>
         <Docs.Title>{l.trans({ en: "When To Reach For A Recipe", ko: "언제 레시피를 쓸까" })}</Docs.Title>
@@ -214,7 +214,7 @@ export type ChatBubbleVariants = NonNullable<Parameters<typeof chatBubbleRecipe>
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="recipe-override" title={l.trans({ en: "Recipe Override", ko: "레시피 오버라이드" })}>
         <Docs.Title>
@@ -264,7 +264,7 @@ export default override({ recipes: { button: neonButtonRecipe } });`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="customization-decision"
@@ -313,9 +313,9 @@ export default override({ recipes: { button: neonButtonRecipe } });`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

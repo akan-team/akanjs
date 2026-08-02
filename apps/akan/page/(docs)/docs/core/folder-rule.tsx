@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 import { clsx } from "akanjs/client";
 
@@ -40,7 +40,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-bold text-foreground">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -68,7 +68,7 @@ export default function Page() {
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       <Scroll.Slide id="workspace-rule" title={l.trans({ en: "Workspace Rule", ko: "워크스페이스 규칙" })}>
         <Docs.Title>{l.trans({ en: "Workspace Rule", ko: "워크스페이스 규칙" })}</Docs.Title>
         <Docs.Description>
@@ -111,7 +111,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -132,7 +132,7 @@ export default function Page() {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       <Scroll.Slide
         id="app-lib-folder-rule"
         title={l.trans({ en: "App/Library Folder Rule", ko: "앱/라이브러리 폴더 규칙" })}
@@ -308,7 +308,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, type, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <div className="flex items-center gap-3">
                   <div
                     className={clsx("font-mono font-semibold", {
@@ -341,7 +341,7 @@ export default function Page() {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       <Scroll.Slide id="module-folder-rule" title={l.trans({ en: "Module Folder Rule", ko: "모듈 폴더 규칙" })}>
         <Docs.Title>{l.trans({ en: "Module Folder Rule", ko: "모듈 폴더 규칙" })}</Docs.Title>
         <Docs.Description>
@@ -391,7 +391,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -412,7 +412,7 @@ export default function Page() {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       <Scroll.Slide id="growth-path" title={l.trans({ en: "Growth Path", ko: "성장에 따른 이동" })}>
         <Docs.Title>{l.trans({ en: "Growth Path", ko: "성장에 따른 이동" })}</Docs.Title>
         <Docs.Description>
@@ -459,7 +459,7 @@ pkgs/order-sdk/
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -468,8 +468,8 @@ pkgs/order-sdk/
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <Divider />
+      <DocsToc />
     </Scroll>
   );
 }

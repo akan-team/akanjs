@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, cardGridRecipe, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -15,7 +15,7 @@ export default function Page() {
               ko: "앱과 라이브러리는 모두 asset 폴더를 가질 수 있습니다. 브라우저가 요청할 수 있는 파일은 public에 두고, 서버 코드만 읽어야 하는 파일은 private에 둡니다.",
             })}
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className={cardGridRecipe({ cols: "mdTwo" })}>
             {[
               {
                 title: "asset/public/",
@@ -32,7 +32,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background p-4">
+              <div key={title} className={panelRecipe()}>
                 <div className="font-mono font-semibold text-primary">{title}</div>
                 <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               </div>
@@ -40,7 +40,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="public-assets" title={l.trans({ en: "Public Assets", ko: "Public 애셋" })}>
         <Docs.Title>{l.trans({ en: "Public Assets", ko: "Public 애셋" })}</Docs.Title>
@@ -83,7 +83,7 @@ export function GetProductGuide() {
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="optimized-images" title={l.trans({ en: "Optimized Images", ko: "Optimized Image" })}>
         <Docs.Title>{l.trans({ en: "Optimized Images", ko: "Optimized Image" })}</Docs.Title>
@@ -113,7 +113,7 @@ export function HeroImage() {
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="private-assets" title={l.trans({ en: "Private Assets", ko: "Private 애셋" })}>
         <Docs.Title>{l.trans({ en: "Private Assets", ko: "Private 애셋" })}</Docs.Title>
@@ -151,7 +151,7 @@ libs/shared/asset/private/recommendation/default-rules.json`}
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="library-asset-sync" title={l.trans({ en: "Library Asset Sync", ko: "라이브러리 애셋 sync" })}>
         <Docs.Title>{l.trans({ en: "Library Asset Sync", ko: "라이브러리 애셋 sync" })}</Docs.Title>
@@ -205,7 +205,7 @@ export function SharedLogo() {
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -236,9 +236,9 @@ export function SharedLogo() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

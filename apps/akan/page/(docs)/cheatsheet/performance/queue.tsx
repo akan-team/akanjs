@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "큐 작업은 사용자 요청을 막으면 안 되는 일을 처리할 때 씁니다. 버튼 요청은 빠르게 끝나고, 무거운 작업은 백그라운드 process가 수행합니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Good for backups, exports, report generation, imports, and long AI jobs.",
@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="endpoint" title={l.trans({ en: "Queue From Endpoint", ko: "Endpoint에서 queue 넣기" })}>
         <Docs.Title>{l.trans({ en: "Queue From Endpoint", ko: "Endpoint에서 queue 넣기" })}</Docs.Title>
@@ -72,7 +72,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="process" title={l.trans({ en: "Run In Process", ko: "Process에서 실행" })}>
         <Docs.Title>{l.trans({ en: "Run In Process", ko: "Process에서 실행" })}</Docs.Title>
@@ -111,7 +111,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="replica" title={l.trans({ en: "Replica Roles", ko: "Replica 역할" })}>
         <Docs.Title>{l.trans({ en: "Replica Roles", ko: "Replica 역할" })}</Docs.Title>
@@ -137,12 +137,12 @@ export default function Page() {
   status --> userView["User Sees Progress"]`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Always store job status: `waiting`, `running`, `done`, `failed`.",
@@ -170,7 +170,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

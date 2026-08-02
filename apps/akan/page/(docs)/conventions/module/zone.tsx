@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, cardGridRecipe, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="file-convention" title={l.trans({ en: "File Convention And Props", ko: "파일 규칙과 props" })}>
         <Docs.Title>{l.trans({ en: "File Convention And Props", ko: "파일 규칙과 props" })}</Docs.Title>
@@ -55,14 +55,14 @@ export default function Page() {
               desc: "className, view, self, context data",
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-border bg-background p-4">
+            <div key={title} className={panelRecipe()}>
               <div className="font-bold text-foreground">{title}</div>
               <div className="mt-2 text-foreground/70">{desc}</div>
             </div>
           ))}
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="load-units-zone"
@@ -95,7 +95,7 @@ export default function Page() {
   );
 };`}
         />
-        <div className="grid gap-3 xl:grid-cols-3">
+        <div className={cardGridRecipe({ cols: "three" })}>
           {[
             {
               title: "renderItem",
@@ -119,14 +119,14 @@ export default function Page() {
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-border bg-background p-4">
+            <div key={title} className={panelRecipe()}>
               <div className="font-bold text-foreground">{title}</div>
               <div className="mt-2 text-foreground/70">{desc}</div>
             </div>
           ))}
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="load-view-zone" title={l.trans({ en: "View Zone With Load.View", ko: "Load.View view Zone" })}>
         <Docs.Title>{l.trans({ en: "View Zone With Load.View", ko: "Load.View view Zone" })}</Docs.Title>
@@ -152,7 +152,7 @@ export default function Page() {
 };`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="orchestration-zones"
@@ -167,7 +167,7 @@ export default function Page() {
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
             className="w-full"
             title="Ticket.Zone.tsx"
@@ -208,7 +208,7 @@ export default function Page() {
           />
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="live-dashboard-zones"
@@ -223,7 +223,7 @@ export default function Page() {
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
             className="w-full"
             title="Summary.Zone.tsx"
@@ -247,7 +247,7 @@ export default function Page() {
           />
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="when-to-use" title={l.trans({ en: "When To Use Zone", ko: "Zone을 쓰는 경우" })}>
         <Docs.Title>{l.trans({ en: "When To Use Zone", ko: "Zone을 쓰는 경우" })}</Docs.Title>
@@ -290,7 +290,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background p-4">
+              <div key={title} className={panelRecipe()}>
                 <div className="font-bold text-foreground">{title}</div>
                 <div className="mt-2 text-foreground/70">{desc}</div>
               </div>
@@ -298,7 +298,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -333,9 +333,9 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

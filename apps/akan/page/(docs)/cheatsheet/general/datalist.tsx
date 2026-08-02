@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "Enum과 DataList는 Akan에서 자주 보게 되는 작은 도구입니다. Enum은 정해진 값 목록에 쓰고, DataList는 id가 있는 목록에 씁니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>{l.trans({ en: "Enum: status, role, type, category.", ko: "Enum: 상태, 역할, 종류, 카테고리." })}</li>
             <li>
               {l.trans({
@@ -27,7 +27,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="enum" title={l.trans({ en: "Enum", ko: "Enum" })}>
         <Docs.Title>{l.trans({ en: "Enum", ko: "Enum" })}</Docs.Title>
@@ -57,7 +57,7 @@ export default function Page() {
 }));`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="datalist" title="DataList">
         <Docs.Title>DataList</Docs.Title>
@@ -68,7 +68,7 @@ export default function Page() {
               ko: "이미 불러온 목록을 id 기준으로 다루고 싶다면 DataList를 사용합니다. UI 상태에서 항목을 추가, 교체, 선택, 필터링하기 편합니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "`set(item)`: add or replace an item.",
@@ -98,12 +98,12 @@ users.set({ id: "u2", nickname: "Akan" });
 const user = users.pick("u1");`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="when" title={l.trans({ en: "When To Use", ko: "언제 쓰나" })}>
         <Docs.Title>{l.trans({ en: "When To Use", ko: "언제 쓰나" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Use Enum when the value is a kind of label: status, role, type, size, visibility.",
@@ -125,12 +125,12 @@ const user = users.pick("u1");`}
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Give enum names stable `refName`s because dictionaries and schemas can refer to them.",
@@ -152,7 +152,7 @@ const user = users.pick("u1");`}
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

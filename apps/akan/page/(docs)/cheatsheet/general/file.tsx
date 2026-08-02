@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "최소 파일 기능의 핵심은 단순합니다. 실제 파일은 저장소에 두고, DB에는 파일을 찾기 위한 기록만 저장합니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "A File model saves filename, url, size, status, and progress.",
@@ -44,7 +44,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="minimal-model" title={l.trans({ en: "Minimal File Model", ko: "최소 File 모델" })}>
         <Docs.Title>{l.trans({ en: "Minimal File Model", ko: "최소 File 모델" })}</Docs.Title>
@@ -80,7 +80,7 @@ export class LightFile extends via(FileObject, ["filename", "url", "size", "stat
 export class File extends via(FileObject, LightFile, (resolve) => ({})) {}`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="upload-endpoint" title={l.trans({ en: "Upload Endpoint", ko: "Upload Endpoint" })}>
         <Docs.Title>{l.trans({ en: "Upload Endpoint", ko: "Upload Endpoint" })}</Docs.Title>
@@ -108,7 +108,7 @@ export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="file-service" title={l.trans({ en: "File Service", ko: "File Service" })}>
         <Docs.Title>{l.trans({ en: "File Service", ko: "File Service" })}</Docs.Title>
@@ -176,7 +176,7 @@ export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="use-in-ui" title={l.trans({ en: "Use In UI", ko: "UI에서 사용하기" })}>
         <Docs.Title>{l.trans({ en: "Use In UI", ko: "UI에서 사용하기" })}</Docs.Title>
@@ -213,7 +213,7 @@ return (
 );`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="auto-field" title={l.trans({ en: "Auto-attach To A Model Field", ko: "모델 필드 자동 연결" })}>
         <Docs.Title>{l.trans({ en: "Auto-attach To A Model Field", ko: "모델 필드 자동 연결" })}</Docs.Title>
@@ -224,7 +224,7 @@ return (
               ko: "업로드 mutation 하나에 `{ fileUpload: true }`를 달면, 프레임워크가 `add{Model}Files` fetch 헬퍼와 폼 필드 업로드 액션(`add{Field}FilesOn{Model}`)을 자동 생성합니다. `Field`/`Upload` 컴포넌트가 이를 사용해 모델의 파일 field가 자동으로 업로드·연결됩니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Mark exactly one REST upload mutation; the marker rides the serialized signal to the client.",
@@ -255,7 +255,7 @@ return (
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="grow-later" title={l.trans({ en: "Grow Later", ko: "나중에 확장하기" })}>
         <Docs.Title>{l.trans({ en: "Grow Later", ko: "나중에 확장하기" })}</Docs.Title>
@@ -266,7 +266,7 @@ return (
               ko: "처음에는 local storage로 시작하세요. 기능이 잘 동작하면 모든 업로드 API를 고치지 말고 storage adapter만 바꿔 S3, R2, MinIO 같은 저장소로 옮기면 됩니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Local: easy to debug and good for development.",
@@ -288,12 +288,12 @@ return (
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Keep the database record and the real file separate. The DB stores how to find the file.",
@@ -321,7 +321,7 @@ return (
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

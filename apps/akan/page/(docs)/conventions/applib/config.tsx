@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, cardGridRecipe, Divider, Docs, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -32,7 +32,7 @@ const config: AppConfig = {};
 export default config;`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="config-shape" title={l.trans({ en: "Config File Shape", ko: "설정 파일 형태" })}>
         <Docs.Title>{l.trans({ en: "Config File Shape", ko: "설정 파일 형태" })}</Docs.Title>
@@ -44,7 +44,7 @@ export default config;`}
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
             className="w-full"
             title="object config"
@@ -72,7 +72,7 @@ export default config;`}
           />
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="routes" title="routes">
         <Docs.Title>routes</Docs.Title>
@@ -111,7 +111,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="mobile" title="mobile">
         <Docs.Title>mobile</Docs.Title>
@@ -164,7 +164,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="default-database-mode" title="defaultDatabaseMode">
         <Docs.Title>defaultDatabaseMode</Docs.Title>
@@ -209,7 +209,7 @@ export default config;`}
           </span>
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="images" title="images">
         <Docs.Title>images</Docs.Title>
@@ -246,7 +246,7 @@ const config: AppConfig = {
 export default config;`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="i18n" title="i18n">
         <Docs.Title>i18n</Docs.Title>
@@ -285,7 +285,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="public-env" title="publicEnv">
         <Docs.Title>publicEnv</Docs.Title>
@@ -321,7 +321,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="secrets" title="secrets">
         <Docs.Title>secrets</Docs.Title>
@@ -339,7 +339,7 @@ export default config;`}
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
             className="w-full"
             title="apps/api/akan.config.ts"
@@ -373,7 +373,7 @@ apps/api/secrets/**/*
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="external-libs" title="externalLibs">
         <Docs.Title>externalLibs</Docs.Title>
@@ -409,7 +409,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="barrel-imports" title="barrelImports">
         <Docs.Title>barrelImports</Docs.Title>
@@ -445,7 +445,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="optimize-imports" title="optimizeImports">
         <Docs.Title>optimizeImports</Docs.Title>
@@ -481,7 +481,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="docker" title="docker">
         <Docs.Title>docker</Docs.Title>
@@ -556,7 +556,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="library-config-fields"
@@ -589,9 +589,9 @@ const config: LibConfig = {
 export default config;`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

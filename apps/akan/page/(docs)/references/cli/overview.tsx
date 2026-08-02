@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Docs } from "@apps/akan/ui";
+import { cardGridRecipe, Divider, Docs, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 import { Link } from "akanjs/ui";
 
@@ -149,7 +149,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="command-index" title={l.trans({ en: "Command Index", ko: "Command index" })}>
         <Docs.Title>{l.trans({ en: "Command Index", ko: "Command index" })}</Docs.Title>
@@ -161,7 +161,7 @@ export default function Page() {
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           {cliGroups.map(({ title, href, commands, desc }) => (
             <Link
               key={title}
@@ -181,7 +181,7 @@ export default function Page() {
           ))}
         </div>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

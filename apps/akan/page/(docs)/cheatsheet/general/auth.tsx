@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "Akan의 인증은 두 가지 질문에 답합니다. 누가 이 API를 호출했는지, 그리고 그 사람이 이 기능을 써도 되는지입니다. 각 signal 앞에 작은 문을 세운다고 생각하면 쉽습니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Middleware reads login information from the request.",
@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="guard" title={l.trans({ en: "Use Guards", ko: "Guard 사용하기" })}>
         <Docs.Title>{l.trans({ en: "Use Guards", ko: "Guard 사용하기" })}</Docs.Title>
@@ -60,7 +60,7 @@ export default function Page() {
   });`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="with" title={l.trans({ en: "Use .with()", ko: ".with() 사용하기" })}>
         <Docs.Title>{l.trans({ en: "Use .with()", ko: ".with() 사용하기" })}</Docs.Title>
@@ -83,12 +83,12 @@ export default function Page() {
   });`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="choose" title={l.trans({ en: "Guard Or .with()", ko: "Guard와 .with() 구분" })}>
         <Docs.Title>{l.trans({ en: "Guard Or .with()", ko: "Guard와 .with() 구분" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Use `guards: [User]` when unauthenticated users must not enter the API.",
@@ -110,12 +110,12 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Do not receive `userId` from the client when you mean the current user. Use `.with(Self)` instead.",
@@ -137,7 +137,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

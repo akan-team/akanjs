@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -116,7 +116,7 @@ void run();`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       <Scroll.Slide id="dev-prod" title={l.trans({ en: "Root-level Env Variables", ko: "루트 환경변수" })}>
         <Docs.Title>{l.trans({ en: "Root-level Env Variables", ko: "루트 환경변수" })}</Docs.Title>
         <Docs.Description>
@@ -246,7 +246,7 @@ AKAN_PUBLIC_LOG_LEVEL=debug`}
             ))}
           </div>
           <div className="space-y-1">
-            <div className="rounded-xl border border-border bg-background p-4">
+            <div className={panelRecipe()}>
               <div className="font-bold">{l.trans({ en: "AKAN_PUBLIC_ENV modes", ko: "AKAN_PUBLIC_ENV 모드" })}</div>
               <div className="mt-3 space-y-1">
                 {[
@@ -265,7 +265,7 @@ AKAN_PUBLIC_LOG_LEVEL=debug`}
                 ))}
               </div>
             </div>
-            <div className="rounded-xl border border-border bg-background p-4">
+            <div className={panelRecipe()}>
               <div className="font-bold">
                 {l.trans({ en: "AKAN_PUBLIC_OPERATION_MODE modes", ko: "AKAN_PUBLIC_OPERATION_MODE 모드" })}
               </div>
@@ -331,7 +331,7 @@ AKAN_PUBLIC_LOG_LEVEL=info`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       <Scroll.Slide id="get-env" title={l.trans({ en: "getEnv()", ko: "getEnv()" })}>
         <Docs.Title>{l.trans({ en: "getEnv()", ko: "getEnv()" })}</Docs.Title>
         <Docs.Description>
@@ -353,7 +353,7 @@ env.serverHttpUri; // API URL
 env.serverWsUri;   // WebSocket URL`}
           />
           <div className="space-y-1">
-            <div className="rounded-xl border border-border bg-background p-4">
+            <div className={panelRecipe()}>
               <div className="font-bold">{l.trans({ en: "Local mode", ko: "로컬 모드" })}</div>
               <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
@@ -371,7 +371,7 @@ serverHttpUri=http://localhost:8282/api
 serverWsUri=ws://localhost:8282`}
               />
             </div>
-            <div className="rounded-xl border border-border bg-background p-4">
+            <div className={panelRecipe()}>
               <div className="font-bold">{l.trans({ en: "Cloud / edge mode", ko: "클라우드 / 엣지 모드" })}</div>
               <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
@@ -400,7 +400,7 @@ serverWsUri=wss://myapp-main.mydomain.com`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       <Scroll.Slide id="openapi-json" title={l.trans({ en: "OpenAPI JSON", ko: "OpenAPI JSON" })}>
         <Docs.Title>{l.trans({ en: "OpenAPI JSON", ko: "OpenAPI JSON" })}</Docs.Title>
         <Docs.Description>
@@ -459,7 +459,7 @@ void run();`}
                 value: `new AkanServer("myapp", env, "all", lib, { openapi: true })`,
               },
             ].map(({ title, desc, value }) => (
-              <div key={title} className="rounded-xl border border-border bg-background p-4">
+              <div key={title} className={panelRecipe()}>
                 <div className="font-bold text-foreground">{title}</div>
                 <div className="mt-2 text-foreground/70 text-sm leading-relaxed">{desc}</div>
                 <div className="mt-3 break-all rounded bg-muted px-2 py-1 font-mono text-foreground/80 text-xs">
@@ -476,7 +476,7 @@ void run();`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       <Scroll.Slide
         id="health-metrics-logs"
         title={l.trans({ en: "Health, Metrics, Logs", ko: "상태 확인, 메트릭, 로그" })}
@@ -565,7 +565,7 @@ AKAN_LOG_MAX_FILES=100`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

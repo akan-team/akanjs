@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, cardGridRecipe, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -23,7 +23,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="model-dictionary-pattern"
@@ -66,7 +66,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     active: t(["Active", "활성"]),
   }));`}
         />
-        <div className="grid gap-3 xl:grid-cols-3">
+        <div className={cardGridRecipe({ cols: "three" })}>
           {[
             {
               title: ".model",
@@ -90,14 +90,14 @@ export const dictionary = modelDictionary(["en", "ko"])
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-border bg-background p-4">
+            <div key={title} className={panelRecipe()}>
               <div className="font-bold text-foreground">{title}</div>
               <div className="mt-2 text-foreground/70">{desc}</div>
             </div>
           ))}
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="using-dictionary" title={l.trans({ en: "Using Dictionaries", ko: "Dictionary 사용하기" })}>
         <Docs.Title>{l.trans({ en: "Using Dictionaries", ko: "Dictionary 사용하기" })}</Docs.Title>
@@ -141,7 +141,7 @@ msg.error("ticket.error.cannotArchive");`}
           />
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="generated-extension"
@@ -171,7 +171,7 @@ export const dictionary = modelDictionary(["en", "ko"], ...user.dictionaries)
   .translate({});`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="scalar-service-dictionaries"
@@ -186,7 +186,7 @@ export const dictionary = modelDictionary(["en", "ko"], ...user.dictionaries)
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-3">
+        <div className={cardGridRecipe({ cols: "three" })}>
           {[
             {
               title: "modelDictionary",
@@ -210,7 +210,7 @@ export const dictionary = modelDictionary(["en", "ko"], ...user.dictionaries)
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-border bg-background p-4">
+            <div key={title} className={panelRecipe()}>
               <div className="font-bold text-foreground">{title}</div>
               <div className="mt-2 text-foreground/70">{desc}</div>
             </div>
@@ -241,7 +241,7 @@ export const dictionary = serviceDictionary(["en", "ko"]).translate({
 });`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="errors-language-rules"
@@ -274,7 +274,7 @@ export const dictionary = serviceDictionary(["en", "ko"]).translate({
 });`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -313,9 +313,9 @@ export const dictionary = serviceDictionary(["en", "ko"]).translate({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

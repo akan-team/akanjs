@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -23,7 +23,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="what-belongs" title={l.trans({ en: "What Belongs In Webkit", ko: "Webkit에 두는 것" })}>
         <Docs.Title>{l.trans({ en: "What Belongs In Webkit", ko: "Webkit에 두는 것" })}</Docs.Title>
@@ -113,7 +113,7 @@ export function getSignedInUser() {
 }`,
             },
           ].map(({ title, desc, snippetTitle, code }) => (
-            <div key={title} className="rounded-xl border border-border bg-background p-4">
+            <div key={title} className={panelRecipe()}>
               <div className="font-bold text-foreground">{title}</div>
               <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               <div className="mt-3">
@@ -123,7 +123,7 @@ export function getSignedInUser() {
           ))}
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="barrel-optimization"
@@ -175,7 +175,7 @@ export function DownloadButton() {
           />
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -206,9 +206,9 @@ export function DownloadButton() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

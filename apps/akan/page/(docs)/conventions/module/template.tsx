@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs, type IntroItem } from "@apps/akan/ui";
+import { Code, cardGridRecipe, Divider, Docs, DocsToc, type IntroItem, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -74,7 +74,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="file-convention" title={l.trans({ en: "File Convention", ko: "파일 규칙" })}>
         <Docs.Title>{l.trans({ en: "File Convention", ko: "파일 규칙" })}</Docs.Title>
@@ -86,7 +86,7 @@ export default function Page() {
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-3">
+        <div className={cardGridRecipe({ cols: "three" })}>
           {[
             {
               title: "Path",
@@ -101,14 +101,14 @@ export default function Page() {
               desc: "General, Phone, SubmitPhone, Preview",
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-border bg-background p-4">
+            <div key={title} className={panelRecipe()}>
               <div className="font-bold text-foreground">{title}</div>
               <div className="mt-2 text-foreground/70">{desc}</div>
             </div>
           ))}
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="standard-form-template"
@@ -152,7 +152,7 @@ export const General = ({ className }: TicketEditProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="field-patterns" title={l.trans({ en: "Field Patterns", ko: "Field 패턴" })}>
         <Docs.Title>{l.trans({ en: "Field Patterns", ko: "Field 패턴" })}</Docs.Title>
@@ -170,7 +170,7 @@ export const General = ({ className }: TicketEditProps) => {
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
             className="w-full"
             title="Field.Parent"
@@ -217,7 +217,7 @@ export const General = ({ className }: TicketEditProps) => {
           />
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="split-components" title={l.trans({ en: "Split Components", ko: "Component 분리" })}>
         <Docs.Title>{l.trans({ en: "Split Components", ko: "Component 분리" })}</Docs.Title>
@@ -229,7 +229,7 @@ export const General = ({ className }: TicketEditProps) => {
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
             className="w-full"
             title="User.Template.tsx"
@@ -261,7 +261,7 @@ export const General = ({ className }: TicketEditProps) => {
           />
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="template-usage" title={l.trans({ en: "Template Usage Patterns", ko: "Template 사용 패턴" })}>
         <Docs.Title>{l.trans({ en: "Template Usage Patterns", ko: "Template 사용 패턴" })}</Docs.Title>
@@ -289,7 +289,7 @@ export const General = ({ className }: TicketEditProps) => {
           </div>
         </Docs.Description>
         <Docs.IntroTable type="field" items={loadEditStateItems} />
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
             className="w-full"
             title="new.tsx"
@@ -353,7 +353,7 @@ export const General = ({ className }: TicketEditProps) => {
 </Model.NewWrapper>`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -396,9 +396,9 @@ export const General = ({ className }: TicketEditProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

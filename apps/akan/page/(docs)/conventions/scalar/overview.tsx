@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="when-to-use" title={l.trans({ en: "When To Use Scalar", ko: "Scalar를 쓰는 경우" })}>
         <Docs.Title>{l.trans({ en: "When To Use Scalar", ko: "Scalar를 쓰는 경우" })}</Docs.Title>
@@ -35,7 +35,7 @@ export default function Page() {
               ko: "다른 model의 일부로 저장되는 값이면 scalar를 사용합니다. 독립적인 list page, permission, service method, lifecycle이 필요하면 일반 module model을 사용합니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Good scalar examples: Price, Address, ContactInfo, Coordinate, FileMeta.",
@@ -62,7 +62,7 @@ export class ProductInput extends via((field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="file-map" title={l.trans({ en: "Scalar Files", ko: "Scalar 파일" })}>
         <Docs.Title>{l.trans({ en: "Scalar Files", ko: "Scalar 파일" })}</Docs.Title>
@@ -88,7 +88,7 @@ export class ProductInput extends via((field) => ({
         └── price.Unit.tsx`}
         />
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               <code>*.abstract.md</code>:{" "}
               {l.trans({
@@ -134,7 +134,7 @@ export class ProductInput extends via((field) => ({
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="small-example" title={l.trans({ en: "Small Example", ko: "작은 예시" })}>
         <Docs.Title>{l.trans({ en: "Small Example", ko: "작은 예시" })}</Docs.Title>
@@ -158,9 +158,9 @@ export class Price extends via((field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

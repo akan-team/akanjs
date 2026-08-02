@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -83,7 +83,7 @@ export default function Page() {
               ko: "Akan에는 저장된 데이터를 바꾸는 두 가지 방법이 있습니다. 하나의 로드된 document를 수정할 때는 document method를, 조건에 맞는 행을 데이터베이스에서 직접 바꿀 때는 query update를 사용합니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Document methods (`.set().save()`, `Model.update`, `Model.remove`) load a document, run save/update/remove hooks, then persist it.",
@@ -105,7 +105,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="styles" title={l.trans({ en: "Two Write Styles", ko: "두 가지 작성법" })}>
         <Docs.Title>{l.trans({ en: "Two Write Styles", ko: "두 가지 작성법" })}</Docs.Title>
@@ -139,7 +139,7 @@ export default function Page() {
           </div>
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="counters" title={l.trans({ en: "Counters And Sets", ko: "카운터와 집합" })}>
         <Docs.Title>{l.trans({ en: "Counters And Sets", ko: "카운터와 집합" })}</Docs.Title>
@@ -170,7 +170,7 @@ await this.Post.updateOne({ id }, ({ pull }) => ({ tags: pull("featured") }));`}
           </div>
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="upsert" title={l.trans({ en: "Upsert", ko: "Upsert" })}>
         <Docs.Title>{l.trans({ en: "Upsert", ko: "Upsert" })}</Docs.Title>
@@ -192,7 +192,7 @@ await this.Post.updateOne({ id }, ({ pull }) => ({ tags: pull("featured") }));`}
 );`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="sql" title={l.trans({ en: "How It Becomes SQL", ko: "SQL로 바뀌는 방식" })}>
         <Docs.Title>{l.trans({ en: "How It Becomes SQL", ko: "SQL로 바뀌는 방식" })}</Docs.Title>
@@ -250,7 +250,7 @@ await this.Post.updateOne({ id }, ({ pull }) => ({ tags: pull("featured") }));`}
                 ko: "Query update는 document hook을 실행하지 않습니다.",
               })}
             </div>
-            <ul className="list-disc space-y-2 pl-5">
+            <ul className={docsListRecipe()}>
               <li>
                 {l.trans({
                   en: "`updateOne`, `updateMany`, `deleteMany`, and `bulkWrite` write directly in the database and do not fire save/update/remove hooks.",
@@ -267,12 +267,12 @@ await this.Post.updateOne({ id }, ({ pull }) => ({ tags: pull("featured") }));`}
           </div>
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Prefer query updates for counters and bulk state changes; prefer document methods when hooks or rich domain logic must run.",
@@ -294,7 +294,7 @@ await this.Post.updateOne({ id }, ({ pull }) => ({ tags: pull("featured") }));`}
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

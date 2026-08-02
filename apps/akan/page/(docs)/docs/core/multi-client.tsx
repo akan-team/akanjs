@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -52,7 +52,7 @@ export default function Page() {
               }),
             ],
           ].map(([title, desc]) => (
-            <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+            <div key={title} className={panelRecipe({ padding: "row" })}>
               <span className="font-bold text-foreground">{title}: </span>
 
               <span className="text-foreground/70 text-sm">{desc}</span>
@@ -60,7 +60,7 @@ export default function Page() {
           ))}
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="route-config" title={l.trans({ en: "Route Config", ko: "라우트 설정" })}>
         <Docs.Title>{l.trans({ en: "Route Config", ko: "라우트 설정" })}</Docs.Title>
@@ -85,7 +85,7 @@ export default function Page() {
 };`}
         />
         <div className="space-y-1">
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-mono font-semibold text-primary">basePath</div>
             <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
@@ -94,7 +94,7 @@ export default function Page() {
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-mono font-semibold text-primary">domains</div>
             <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
@@ -105,7 +105,7 @@ export default function Page() {
           </div>
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="when-to-use" title={l.trans({ en: "When To Use", ko: "언제 나눌까" })}>
         <Docs.Title>{l.trans({ en: "When To Use", ko: "언제 나눌까" })}</Docs.Title>
@@ -118,7 +118,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <div className="space-y-1">
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-bold text-foreground">
               {l.trans({ en: "Use basePath", ko: "basePath를 쓰는 경우" })}
             </div>
@@ -129,7 +129,7 @@ export default function Page() {
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-bold text-foreground">
               {l.trans({ en: "Use normal routing", ko: "일반 라우팅을 쓰는 경우" })}
             </div>
@@ -172,7 +172,7 @@ export default function Page() {
               }),
             ],
           ].map(([title, desc]) => (
-            <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+            <div key={title} className={panelRecipe({ padding: "row" })}>
               <span className="font-bold text-foreground">{title}: </span>
 
               <span className="text-foreground/70 text-sm">{desc}</span>
@@ -180,7 +180,7 @@ export default function Page() {
           ))}
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="page-structure" title={l.trans({ en: "Page Structure", ko: "페이지 구조" })}>
         <Docs.Title>{l.trans({ en: "Page Structure", ko: "페이지 구조" })}</Docs.Title>
@@ -223,7 +223,7 @@ export default function Page() {
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="local-production" title={l.trans({ en: "Local And Production", ko: "로컬과 배포" })}>
         <Docs.Title>{l.trans({ en: "Local And Production", ko: "로컬과 배포" })}</Docs.Title>
@@ -254,7 +254,7 @@ https://partner-main.example.com -> partner`}
           />
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="csr-mobile" title={l.trans({ en: "CSR And Mobile Builds", ko: "CSR와 모바일 빌드" })}>
         <Docs.Title>{l.trans({ en: "CSR And Mobile Builds", ko: "CSR와 모바일 빌드" })}</Docs.Title>
@@ -311,7 +311,7 @@ https://partner-main.example.com -> partner`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

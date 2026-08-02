@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -106,7 +106,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="when-to-use" title={l.trans({ en: "When To Use It", ko: "언제 사용하나" })}>
         <Docs.Title>{l.trans({ en: "When To Use It", ko: "언제 사용하나" })}</Docs.Title>
@@ -129,7 +129,7 @@ export default function Page() {
           ))}
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="file-map" title={l.trans({ en: "Service File Map", ko: "Service file map" })}>
         <Docs.Title>{l.trans({ en: "Service File Map", ko: "Service file map" })}</Docs.Title>
@@ -150,7 +150,7 @@ export default function Page() {
           ))}
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="folder-shape" title={l.trans({ en: "Folder Shape", ko: "Folder shape" })}>
         <Docs.Title>{l.trans({ en: "Folder Shape", ko: "Folder shape" })}</Docs.Title>
@@ -175,7 +175,7 @@ export default function Page() {
   Search.Zone.tsx        // page section`}
         />
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

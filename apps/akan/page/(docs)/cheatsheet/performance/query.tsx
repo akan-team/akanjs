@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -133,7 +133,7 @@ export default function Page() {
               ko: "Akan에서 데이터베이스 쿼리는 보통 `document.ts`의 filter에 둡니다. Page와 service는 같은 조건을 매번 만들지 않고 이름 붙은 filter를 호출합니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Use `filter().arg()` for required inputs.",
@@ -155,7 +155,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="basic" title={l.trans({ en: "Basic Filter", ko: "기본 filter" })}>
         <Docs.Title>{l.trans({ en: "Basic Filter", ko: "기본 filter" })}</Docs.Title>
@@ -185,7 +185,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="optional" title={l.trans({ en: "Optional Conditions", ko: "선택 조건" })}>
         <Docs.Title>{l.trans({ en: "Optional Conditions", ko: "선택 조건" })}</Docs.Title>
@@ -213,7 +213,7 @@ export default function Page() {
   ),`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="range" title={l.trans({ en: "Range And OR", ko: "범위와 OR" })}>
         <Docs.Title>{l.trans({ en: "Range And OR", ko: "범위와 OR" })}</Docs.Title>
@@ -241,7 +241,7 @@ export default function Page() {
   ),`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="raw" title={l.trans({ en: "Raw Query", ko: "Raw query" })}>
         <Docs.Title>{l.trans({ en: "Raw Query", ko: "Raw query" })}</Docs.Title>
@@ -266,7 +266,7 @@ export default function Page() {
   ),`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="sql" title={l.trans({ en: "How It Becomes SQL", ko: "SQL로 바뀌는 방식" })}>
         <Docs.Title>{l.trans({ en: "How It Becomes SQL", ko: "SQL로 바뀌는 방식" })}</Docs.Title>
@@ -324,7 +324,7 @@ export default function Page() {
                 ko: "Akan은 왜 대부분의 model 데이터를 JSON document 형태로 저장하나요?",
               })}
             </div>
-            <ul className="list-disc space-y-2 pl-5">
+            <ul className={docsListRecipe()}>
               <li>
                 {l.trans({
                   en: "Schema changes are lighter. Adding a small field usually does not require a table migration, so product code can move faster.",
@@ -353,12 +353,12 @@ export default function Page() {
           </div>
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Name filters after screens or use cases: `inProject`, `inPeriod`, `forDashboard`.",
@@ -386,7 +386,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

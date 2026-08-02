@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="endpoint-query" title={l.trans({ en: "Endpoint Queries", ko: "Endpoint query" })}>
         <Docs.Title>{l.trans({ en: "Endpoint Queries", ko: "Endpoint query" })}</Docs.Title>
@@ -49,7 +49,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="endpoint-mutation" title={l.trans({ en: "Endpoint Mutations", ko: "Endpoint mutation" })}>
         <Docs.Title>{l.trans({ en: "Endpoint Mutations", ko: "Endpoint mutation" })}</Docs.Title>
@@ -73,7 +73,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="internal-and-cron" title={l.trans({ en: "Internal And Cron", ko: "Internal과 cron" })}>
         <Docs.Title>{l.trans({ en: "Internal And Cron", ko: "Internal과 cron" })}</Docs.Title>
@@ -95,7 +95,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="custom-routes" title={l.trans({ en: "Custom Routes", ko: "Custom route" })}>
         <Docs.Title>{l.trans({ en: "Custom Routes", ko: "Custom route" })}</Docs.Title>
@@ -119,7 +119,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

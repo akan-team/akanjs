@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, cardGridRecipe, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -23,7 +23,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="what-belongs" title={l.trans({ en: "What Belongs In Srvkit", ko: "Srvkit에 두는 것" })}>
         <Docs.Title>{l.trans({ en: "What Belongs In srvkit/", ko: "srvkit/ 에 두는 것" })}</Docs.Title>
@@ -72,19 +72,19 @@ export default function Page() {
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-border bg-background p-4">
+            <div key={title} className={panelRecipe()}>
               <div className="font-bold text-foreground">{title}</div>
               <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>
           ))}
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="server-level-appliance" title={l.trans({ en: "Server Level Appliance", ko: "서버 레벨 적용" })}>
         <Docs.Title>{l.trans({ en: "Server Level Appliance", ko: "서버 레벨 적용" })}</Docs.Title>
         <div className="space-y-6">
-          <div className="rounded-2xl border border-border bg-background p-4">
+          <div className={panelRecipe({ radius: "2xl" })}>
             <Docs.Description>
               <div>
                 {l.trans({
@@ -109,7 +109,7 @@ Middleware --> SignalEndpoint["Signal endpoint"]`}
               />
             </div>
           </div>
-          <div className="rounded-2xl border border-border bg-background p-4">
+          <div className={panelRecipe({ radius: "2xl" })}>
             <Docs.Description>
               <div className="font-bold text-foreground">Middleware</div>
               <div>
@@ -137,7 +137,7 @@ export class RequestUserMiddleware implements Middleware {
 }`}
             />
           </div>
-          <div className="rounded-2xl border border-border bg-background p-4">
+          <div className={panelRecipe({ radius: "2xl" })}>
             <Docs.Description>
               <div className="font-bold text-foreground">WebProxy</div>
               <div>
@@ -162,7 +162,7 @@ export class LegacyPageRedirect implements WebProxy {
 }`}
             />
           </div>
-          <div className="rounded-2xl border border-border bg-background p-4">
+          <div className={panelRecipe({ radius: "2xl" })}>
             <Docs.Description>
               <div className="font-bold text-foreground">Apply Them In Options</div>
               <div>
@@ -182,7 +182,7 @@ export class LegacyPageRedirect implements WebProxy {
           </div>
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="signal-level-appliance"
@@ -190,7 +190,7 @@ export class LegacyPageRedirect implements WebProxy {
       >
         <Docs.Title>{l.trans({ en: "Signal Level Appliance", ko: "Signal 레벨 적용" })}</Docs.Title>
         <div className="space-y-6">
-          <div className="rounded-2xl border border-border bg-background p-4">
+          <div className={panelRecipe({ radius: "2xl" })}>
             <Docs.Description>
               <div>
                 {l.trans({
@@ -215,7 +215,7 @@ Exec --> Service["Service logic"]`}
               />
             </div>
           </div>
-          <div className="rounded-2xl border border-border bg-background p-4">
+          <div className={panelRecipe({ radius: "2xl" })}>
             <Docs.Description>
               <div className="font-bold text-foreground">Guard</div>
               <div>
@@ -225,7 +225,7 @@ Exec --> Service["Service logic"]`}
                 })}
               </div>
             </Docs.Description>
-            <div className="grid gap-3 xl:grid-cols-2">
+            <div className={cardGridRecipe()}>
               <Code.Snippet
                 className="w-full"
                 title="srvkit/guards.ts"
@@ -254,7 +254,7 @@ export class OrderEndpoint extends endpoint(srv.order, ({ pubsub, query, mutatio
               />
             </div>
           </div>
-          <div className="rounded-2xl border border-border bg-background p-4">
+          <div className={panelRecipe({ radius: "2xl" })}>
             <Docs.Description>
               <div className="font-bold text-foreground">InternalArg</div>
               <div>
@@ -264,7 +264,7 @@ export class OrderEndpoint extends endpoint(srv.order, ({ pubsub, query, mutatio
                 })}
               </div>
             </Docs.Description>
-            <div className="grid gap-3 xl:grid-cols-2">
+            <div className={cardGridRecipe()}>
               <Code.Snippet
                 className="w-full"
                 title="srvkit/internalArgs.ts"
@@ -293,7 +293,7 @@ export class OrderEndpoint extends endpoint(srv.order, ({ pubsub, query, mutatio
           </div>
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="service-logic"
@@ -310,7 +310,7 @@ export class OrderEndpoint extends endpoint(srv.order, ({ pubsub, query, mutatio
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
             className="w-full"
             title="srvkit/createHash.ts"
@@ -363,7 +363,7 @@ export class OrderService extends serve(db.order, ({ use }) => ({
           />
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="adaptor-plug" title={l.trans({ en: "Adaptor And plug", ko: "Adaptor와 plug" })}>
         <Docs.Title>{l.trans({ en: "Adaptor And plug", ko: "Adaptor와 plug" })}</Docs.Title>
@@ -375,7 +375,7 @@ export class OrderService extends serve(db.order, ({ use }) => ({
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
             className="w-full"
             title="srvkit/paymentApi.ts"
@@ -412,7 +412,7 @@ export class OrderService extends serve(db.order, ({ plug }) => ({
           />
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -447,9 +447,9 @@ export class OrderService extends serve(db.order, ({ plug }) => ({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

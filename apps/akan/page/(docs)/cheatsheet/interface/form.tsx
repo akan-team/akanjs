@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "모델 schema가 설계되면 form은 그 모양 위에 얇게 올리는 UI가 됩니다. 가장 쉬운 패턴은 wrapper에서 데이터를 준비하고, Template에서는 field만 그리는 것입니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Server page prepares create defaults or parent ids.",
@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="template" title={l.trans({ en: "Keep Template Simple", ko: "Template은 단순하게" })}>
         <Docs.Title>{l.trans({ en: "Keep Template Simple", ko: "Template은 단순하게" })}</Docs.Title>
@@ -82,7 +82,7 @@ export const General = () => {
 };`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="create-page" title={l.trans({ en: "Create With SSR", ko: "SSR로 생성 form 만들기" })}>
         <Docs.Title>{l.trans({ en: "Create With SSR", ko: "SSR로 생성 form 만들기" })}</Docs.Title>
@@ -119,7 +119,7 @@ export const General = () => {
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="update-page" title={l.trans({ en: "Update Page", ko: "수정 page" })}>
         <Docs.Title>{l.trans({ en: "Update Page", ko: "수정 page" })}</Docs.Title>
@@ -150,7 +150,7 @@ export const General = () => {
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="client-modal" title={l.trans({ en: "Client Modal Edit", ko: "클라이언트 modal 수정" })}>
         <Docs.Title>{l.trans({ en: "Client Modal Edit", ko: "클라이언트 modal 수정" })}</Docs.Title>
@@ -179,12 +179,12 @@ export const General = () => {
 />`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Reuse one Template for create, update page, and edit modal.",
@@ -212,7 +212,7 @@ export const General = () => {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "PWA(Progressive Web App)는 설치된 앱에 가까운 경험을 줄 수 있는 web app입니다. 여전히 browser 위에서 실행되지만, 설치 metadata, app icon, standalone 표시 방식, 여러 browser 기능을 사용해 더 앱다운 경험을 만들 수 있습니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Use it when users repeatedly open the same web app and benefit from a home-screen or desktop launcher.",
@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="when-to-use" title={l.trans({ en: "When To Use PWA", ko: "PWA를 쓰기 좋은 경우" })}>
         <Docs.Title>{l.trans({ en: "When To Use PWA", ko: "PWA를 쓰기 좋은 경우" })}</Docs.Title>
@@ -49,7 +49,7 @@ export default function Page() {
               ko: "PWA는 web app에 다시 들어오기 쉽게 만드는 방법으로 이해하면 좋습니다. 모든 native app을 대체하는 것은 아니지만, web 배포 속도가 중요하고 깊은 device 전용 API가 필요하지 않은 앱에는 좋은 첫 선택입니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Good fit: users need quick access to the same workflow every day, such as office tasks, approvals, reports, or checklists.",
@@ -71,7 +71,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="static-manifest" title={l.trans({ en: "Static Manifest File", ko: "정적 manifest 파일" })}>
         <Docs.Title>{l.trans({ en: "Static Manifest File", ko: "정적 manifest 파일" })}</Docs.Title>
@@ -130,7 +130,7 @@ export default function Layout({ children }: LayoutProps) {
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="layout-manifest"
@@ -144,7 +144,7 @@ export default function Layout({ children }: LayoutProps) {
               ko: "Akan은 root layout에서 export한 `manifest`도 읽을 수 있습니다. 이 object는 document head의 manifest link로 변환됩니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Write author-facing keys in camelCase, such as `shortName`, `startUrl`, and `themeColor`.",
@@ -203,7 +203,7 @@ export default function Layout({ children }: LayoutProps) {
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="assets" title={l.trans({ en: "Required Assets", ko: "필수 asset" })}>
         <Docs.Title>{l.trans({ en: "Required Assets", ko: "필수 asset" })}</Docs.Title>
@@ -214,7 +214,7 @@ export default function Layout({ children }: LayoutProps) {
               ko: "설치 테스트 전에 manifest 안의 모든 URL이 배포된 app에서 접근 가능한지 확인하세요.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "`/icon-192x192.png` and `/icon-512x512.png` are good first icon sizes for browser install prompts.",
@@ -242,12 +242,12 @@ export default function Layout({ children }: LayoutProps) {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Start with one simple manifest, then add screenshots, categories, or shortcuts after installation works.",
@@ -275,7 +275,7 @@ export default function Layout({ children }: LayoutProps) {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

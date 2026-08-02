@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Docs } from "@apps/akan/ui";
+import { cardGridRecipe, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -103,7 +103,7 @@ export default override({ InputCheckbox: BrandCheckbox });
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="how-it-works" title={l.trans({ en: "How it works", ko: "동작 방식" })}>
         <Docs.Title>{l.trans({ en: "How it works", ko: "동작 방식" })}</Docs.Title>
@@ -129,7 +129,7 @@ export default override({ InputCheckbox: BrandCheckbox });
         </Docs.Description>
         <Docs.CodeSnippet title={l.trans({ en: "2. Manifest", ko: "2. Manifest" })} code={manifestCode} />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="scoping" title={l.trans({ en: "Scoping", ko: "적용 범위" })}>
         <Docs.Title>{l.trans({ en: "Scoping", ko: "적용 범위" })}</Docs.Title>
@@ -143,7 +143,7 @@ export default override({ InputCheckbox: BrandCheckbox });
         </Docs.Description>
         <Docs.CodeSnippet title={l.trans({ en: "Nested scoping", ko: "중첩 적용" })} code={scopingCode} />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="slots" title={l.trans({ en: "Overridable slots", ko: "Override 가능한 slot" })}>
         <Docs.Title>{l.trans({ en: "Overridable slots", ko: "Override 가능한 slot" })}</Docs.Title>
@@ -155,9 +155,9 @@ export default override({ InputCheckbox: BrandCheckbox });
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           {slotGroups.map(({ title, slots }) => (
-            <div key={title} className="rounded-xl border border-border bg-background p-4">
+            <div key={title} className={panelRecipe()}>
               <div className="mb-2 font-bold text-foreground">{title}</div>
               <div className="flex flex-wrap gap-2">
                 {slots.map((slot) => (
@@ -170,7 +170,7 @@ export default override({ InputCheckbox: BrandCheckbox });
           ))}
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="generic-components" title={l.trans({ en: "Generic components", ko: "Generic 컴포넌트" })}>
         <Docs.Title>{l.trans({ en: "Generic components", ko: "Generic 컴포넌트" })}</Docs.Title>
@@ -184,7 +184,7 @@ export default override({ InputCheckbox: BrandCheckbox });
         </Docs.Description>
         <Docs.CodeSnippet title={l.trans({ en: "Generic override", ko: "Generic override" })} code={genericCode} />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="compound-components" title={l.trans({ en: "Compound components", ko: "Compound 컴포넌트" })}>
         <Docs.Title>{l.trans({ en: "Compound components", ko: "Compound 컴포넌트" })}</Docs.Title>
@@ -202,7 +202,7 @@ export default override({ InputCheckbox: BrandCheckbox });
         />
       </Scroll.Slide>
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

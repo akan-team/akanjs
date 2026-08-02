@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Docs } from "@apps/akan/ui";
+import { Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -46,7 +46,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-bold text-foreground">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -55,7 +55,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="server-side-rendering"
@@ -96,7 +96,7 @@ export default function Page() {
                 example: "forms, filters, modals, st, fetch",
               },
             ].map(({ title, desc, example }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <div className="font-bold text-foreground">{title}</div>
                 <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
                 <div className="mt-3 rounded-lg border border-border bg-muted px-3 py-2 font-mono text-foreground/70 text-xs">
@@ -105,7 +105,7 @@ export default function Page() {
               </div>
             ))}
           </div>
-          <div className="rounded-2xl border border-border bg-background p-5">
+          <div className={panelRecipe({ radius: "2xl", padding: "lg" })}>
             <div className="mb-4">
               <div className="font-bold text-foreground">{l.trans({ en: "SSR Timeline", ko: "SSR 동작 흐름" })}</div>
               <div className="mt-1 text-foreground/70 text-sm">
@@ -173,7 +173,7 @@ export default function Page() {
               </div>
             </div>
           </div>
-          <div className="rounded-2xl border border-border bg-background p-5">
+          <div className={panelRecipe({ radius: "2xl", padding: "lg" })}>
             <div className="font-bold text-foreground">{l.trans({ en: "Business Example", ko: "비즈니스 예시" })}</div>
             <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
@@ -190,7 +190,7 @@ export default function Page() {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="rendering-boundary" title={l.trans({ en: "Rendering Boundary", ko: "렌더링 경계" })}>
         <Docs.Title>{l.trans({ en: "Rendering Boundary", ko: "렌더링 경계" })}</Docs.Title>
@@ -227,7 +227,7 @@ export default function Page() {
               </div>
             </div>
           </div>
-          <div className="rounded-2xl border border-border bg-background p-5">
+          <div className={panelRecipe({ radius: "2xl", padding: "lg" })}>
             <div className="font-bold text-foreground">
               {l.trans({ en: "Why Both Sides Exist", ko: "왜 두 방식을 함께 쓰는가" })}
             </div>
@@ -256,7 +256,7 @@ export default function Page() {
               </div>
             </div>
           </div>
-          <div className="rounded-2xl border border-border bg-background p-5">
+          <div className={panelRecipe({ radius: "2xl", padding: "lg" })}>
             <div className="mb-4">
               <div className="font-bold text-foreground">
                 {l.trans({ en: "A Simpler Way To Decide", ko: "더 쉬운 결정 순서" })}
@@ -342,14 +342,14 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-bold text-foreground">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
-          <div className="rounded-2xl border border-border bg-background p-5">
+          <div className={panelRecipe({ radius: "2xl", padding: "lg" })}>
             <div className="mb-4">
               <div className="font-bold text-foreground">
                 {l.trans({ en: "How To Split One Screen", ko: "한 화면을 나누는 방법" })}
@@ -419,7 +419,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-bold text-foreground">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -428,7 +428,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="page-composition" title={l.trans({ en: "Page Composition Pattern", ko: "페이지 구성 패턴" })}>
         <Docs.Title>{l.trans({ en: "Page Composition Pattern", ko: "페이지 구성 패턴" })}</Docs.Title>
@@ -439,7 +439,7 @@ export default function Page() {
               ko: "일반적인 비즈니스 화면은 서버에서 렌더링되는 껍데기와 클라이언트에서 동작하는 영역을 함께 사용합니다. 상품 목록 페이지는 제목과 첫 데이터를 서버에서 렌더링하고, 목록 영역은 페이지네이션, 필터, 실시간 업데이트, 사용자 액션을 위해 클라이언트 zone에 넘길 수 있습니다.",
             })}
           </div>
-          <div className="rounded-2xl border border-border bg-background p-5">
+          <div className={panelRecipe({ radius: "2xl", padding: "lg" })}>
             <div className="grid gap-5 xl:grid-cols-[240px_1fr]">
               <div className="flex flex-col justify-between rounded-xl border border-primary/20 bg-primary/5 p-5">
                 <div>
@@ -532,7 +532,7 @@ export default function Page() {
               </div>
             </div>
           </div>
-          <div className="rounded-2xl border border-border bg-background p-5">
+          <div className={panelRecipe({ radius: "2xl", padding: "lg" })}>
             <div className="mb-4">
               <div className="font-bold text-foreground">
                 {l.trans({ en: "Typical Model Screen Flow", ko: "일반적인 모델 화면 흐름" })}
@@ -551,9 +551,7 @@ export default function Page() {
                     <div className="font-bold text-foreground">index page</div>
                     <div className="text-foreground/60 text-xs">Model</div>
                   </div>
-                  <div className="rounded-lg border border-border bg-background px-3 py-1 font-mono text-xs">
-                    +New
-                  </div>
+                  <div className="rounded-lg border border-border bg-background px-3 py-1 font-mono text-xs">+New</div>
                 </div>
                 <div className="rounded-lg border border-border bg-background px-3 py-2 text-center text-foreground/70 text-sm">
                   Search bar
@@ -651,7 +649,7 @@ export default function Page() {
             </div>
           </div>
           <div className="space-y-1">
-            <div className="rounded-xl border border-border bg-background p-4">
+            <div className={panelRecipe()}>
               <div className="font-bold text-foreground">{l.trans({ en: "Product listing", ko: "상품 목록" })}</div>
               <div className="mt-2 text-foreground/70 text-sm">
                 {l.trans({
@@ -660,7 +658,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-xl border border-border bg-background p-4">
+            <div className={panelRecipe()}>
               <div className="font-bold text-foreground">
                 {l.trans({ en: "Admin stock page", ko: "관리자 재고 화면" })}
               </div>
@@ -674,7 +672,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="client-state-st" title={l.trans({ en: "Client State With st", ko: "st 클라이언트 상태관리" })}>
         <Docs.Title>{l.trans({ en: "Client State With st", ko: "st 클라이언트 상태관리" })}</Docs.Title>
@@ -725,7 +723,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -786,7 +784,7 @@ export function StockEditor({ productId }: { productId: string }) {
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="server-calls-fetch" title={l.trans({ en: "Server Calls With fetch", ko: "fetch 서버 호출" })}>
         <Docs.Title>{l.trans({ en: "Server Calls With fetch", ko: "fetch 서버 호출" })}</Docs.Title>
@@ -799,7 +797,7 @@ export function StockEditor({ productId }: { productId: string }) {
           </div>
 
           <div className="space-y-1">
-            <div className="rounded-xl border border-border bg-background p-4">
+            <div className={panelRecipe()}>
               <div className="font-bold text-foreground">
                 {l.trans({ en: "Call fetch directly", ko: "fetch 직접 호출" })}
               </div>
@@ -817,7 +815,7 @@ export function StockEditor({ productId }: { productId: string }) {
   endpoint --> service["Business Service"]`}
               />
             </div>
-            <div className="rounded-xl border border-border bg-background p-4">
+            <div className={panelRecipe()}>
               <div className="font-bold text-foreground">
                 {l.trans({ en: "Wrap fetch in a store action", ko: "store action으로 감싸기" })}
               </div>
@@ -861,7 +859,7 @@ export function StockEditor({ productId }: { productId: string }) {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="generated-client" title={l.trans({ en: "Generated Helpers Summary", ko: "생성된 헬퍼 요약" })}>
         <Docs.Title>{l.trans({ en: "Generated Helpers Summary", ko: "생성된 헬퍼 요약" })}</Docs.Title>
@@ -872,7 +870,7 @@ export function StockEditor({ productId }: { productId: string }) {
               ko: "Akan은 @apps/<app>/client에서 앱 전용 헬퍼를 제공합니다. 화면 구조, st, fetch를 이해하고 나면 이 헬퍼들이 UI 작업의 일상적인 진입점이 됩니다.",
             })}
           </div>
-          <div className="rounded-2xl border border-border bg-background p-5">
+          <div className={panelRecipe({ radius: "2xl", padding: "lg" })}>
             <div className="font-bold text-foreground">
               {l.trans({ en: "How They Work Together", ko: "함께 쓰이는 방식" })}
             </div>
@@ -927,7 +925,7 @@ export function StockEditor({ productId }: { productId: string }) {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -942,7 +940,7 @@ export function StockEditor({ productId }: { productId: string }) {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="i18n" title={l.trans({ en: "i18n", ko: "다국어" })}>
         <Docs.Title>{l.trans({ en: "i18n", ko: "다국어" })}</Docs.Title>
@@ -980,7 +978,7 @@ export function StockEditor({ productId }: { productId: string }) {
                 example: "web, admin, mobile",
               },
             ].map(({ title, desc, example }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <div className="font-bold text-foreground">{title}</div>
                 <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
                 <div className="mt-3 rounded-lg border border-border bg-muted px-3 py-2 font-mono text-foreground/70 text-xs">
@@ -1022,7 +1020,7 @@ export function UserSigninButton() {
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="client-targets" title={l.trans({ en: "Client Targets", ko: "클라이언트 대상" })}>
         <Docs.Title>{l.trans({ en: "Client Targets", ko: "클라이언트 대상" })}</Docs.Title>
@@ -1064,7 +1062,7 @@ export function UserSigninButton() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-bold text-foreground">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -1077,7 +1075,7 @@ export function UserSigninButton() {
               ko: "클라이언트 대상은 인프라 결정이기 전에 제품 결정입니다. 먼저 누가 그 화면을 쓰고 무엇을 해야 하는지 정하세요. 해당 클라이언트가 어디에 배포되고 라우팅되는지는 Runtime And Infra에서 다룹니다.",
             })}
           </Docs.Alert>
-          <div className="rounded-2xl border border-border bg-background p-5">
+          <div className={panelRecipe({ radius: "2xl", padding: "lg" })}>
             <div className="font-bold text-foreground">
               {l.trans({ en: "Final Practical Checklist", ko: "마지막 실용 체크리스트" })}
             </div>
@@ -1111,9 +1109,9 @@ export function UserSigninButton() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

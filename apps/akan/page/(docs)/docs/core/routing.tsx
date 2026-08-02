@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -15,7 +15,7 @@ export default function Page() {
               ko: "Akan은 파일 기반 라우팅을 사용합니다. page/ 아래에 파일을 만들면 폴더 구조가 페이지 URL이 됩니다. 대부분의 페이지에는 언어 파라미터가 자동으로 붙어서 하나의 파일이 다국어 URL을 처리할 수 있습니다.",
             })}
           </div>
-          <div className="rounded-2xl border border-border bg-background p-5">
+          <div className={panelRecipe({ radius: "2xl", padding: "lg" })}>
             <div className="mb-4 font-bold text-foreground">
               {l.trans({ en: "How files become routes", ko: "파일이 라우트가 되는 방식" })}
             </div>
@@ -87,7 +87,7 @@ export default function Page() {
                 }),
               ],
             ].map(([title, desc]) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-bold text-foreground">{title}: </span>
 
                 <span className="text-foreground/70 text-sm">{desc}</span>
@@ -96,7 +96,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="file-convention" title={l.trans({ en: "File Convention", ko: "파일 컨벤션" })}>
         <Docs.Title>{l.trans({ en: "File Convention", ko: "파일 컨벤션" })}</Docs.Title>
@@ -126,7 +126,7 @@ export default function Page() {
 └── robots.txt.tsx`}
         />
         <div className="space-y-1">
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-mono font-semibold text-primary">_index.tsx</div>
             <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
@@ -135,7 +135,7 @@ export default function Page() {
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-mono font-semibold text-primary">_layout.tsx</div>
             <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
@@ -144,7 +144,7 @@ export default function Page() {
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-mono font-semibold text-primary">(group)</div>
             <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
@@ -153,7 +153,7 @@ export default function Page() {
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-mono font-semibold text-primary">&lt;path&gt;.tsx</div>
             <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
@@ -162,7 +162,7 @@ export default function Page() {
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-mono font-semibold text-primary">[&lt;param&gt;].tsx</div>
             <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
@@ -173,7 +173,7 @@ export default function Page() {
           </div>
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="page-module" title={l.trans({ en: "Page File Shape", ko: "페이지 파일 구성" })}>
         <Docs.Title>{l.trans({ en: "Page File Shape", ko: "페이지 파일 구성" })}</Docs.Title>
@@ -274,7 +274,7 @@ export const metadata = {
               }),
             },
           ].map(({ name, desc }) => (
-            <div key={name} className="rounded-xl border border-border bg-background px-4 py-0">
+            <div key={name} className={panelRecipe({ padding: "row" })}>
               <div className="font-mono font-semibold text-primary">{name}</div>
               <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>
@@ -287,7 +287,7 @@ export const metadata = {
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="layout-module" title={l.trans({ en: "Layout File Shape", ko: "레이아웃 파일 구성" })}>
         <Docs.Title>{l.trans({ en: "Layout File Shape", ko: "레이아웃 파일 구성" })}</Docs.Title>
@@ -364,7 +364,7 @@ export function Error({ error }: { error?: unknown }) {
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="base-paths" title={l.trans({ en: "Base Paths", ko: "Base Path" })}>
         <Docs.Title>{l.trans({ en: "Base Paths", ko: "Base Path" })}</Docs.Title>
@@ -403,7 +403,7 @@ export function Error({ error }: { error?: unknown }) {
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="root-layout-exports" title={l.trans({ en: "Root Layout Exports", ko: "Root Layout Exports" })}>
         <Docs.Title>{l.trans({ en: "Root Layout Exports", ko: "Root Layout Exports" })}</Docs.Title>
@@ -504,7 +504,7 @@ export default function Layout({ children }: LayoutProps) {
               }),
             },
           ].map(({ name, desc }) => (
-            <div key={name} className="rounded-xl border border-border bg-background px-4 py-0">
+            <div key={name} className={panelRecipe({ padding: "row" })}>
               <div className="font-mono font-semibold text-primary">{name}</div>
               <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>
@@ -517,7 +517,7 @@ export default function Layout({ children }: LayoutProps) {
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

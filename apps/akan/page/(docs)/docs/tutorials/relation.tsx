@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -52,7 +52,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="create-delivery-module"
@@ -76,7 +76,7 @@ akan create-module delivery
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="define-relationship" title={l.trans({ en: "Define Relationship", ko: "관계 정의하기" })}>
         <Docs.Title>{l.trans({ en: "Define Relationship", ko: "관계 정의하기" })}</Docs.Title>
@@ -114,7 +114,7 @@ export class DeliveryInsight extends via(Delivery, (field) => ({})) {}`}
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔗</span>
                 <strong className="text-primary">{"field([LightIcecreamOrder], { minlength: 1 })"}</strong>
@@ -126,7 +126,7 @@ export class DeliveryInsight extends via(Delivery, (field) => ({})) {}`}
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📦</span>
                 <strong className="text-primary">
@@ -215,7 +215,7 @@ export class DeliveryService extends serve(db.delivery, ({ use, service }) => ({
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔌</span>
                 <strong className="text-primary">{"service<srv.IcecreamOrderService>()"}</strong>
@@ -227,7 +227,7 @@ export class DeliveryService extends serve(db.delivery, ({ use, service }) => ({
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">⚡</span>
                 <strong className="text-primary">_postCreate</strong>
@@ -239,7 +239,7 @@ export class DeliveryService extends serve(db.delivery, ({ use, service }) => ({
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🚫</span>
                 <strong className="text-primary">_preUpdate</strong>
@@ -780,7 +780,7 @@ export default async function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="summary" title={l.trans({ en: "Summary", ko: "요약" })}>
         <Docs.Title>{l.trans({ en: "Summary", ko: "요약" })}</Docs.Title>
@@ -835,7 +835,7 @@ export default async function Page() {
             </ul>
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-border bg-background p-4">
+            <div className={panelRecipe({ radius: "lg" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">💡</span>
                 <strong className="text-primary">{l.trans({ en: "Best Practices", ko: "모범 사례" })}</strong>
@@ -878,9 +878,9 @@ export default async function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -31,7 +31,7 @@ export default function Page() {
           </ol>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="provider" title={l.trans({ en: "Register Providers", ko: "Provider 등록" })}>
         <Docs.Title>{l.trans({ en: "Register Providers", ko: "Provider 등록" })}</Docs.Title>
@@ -54,7 +54,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="callback" title={l.trans({ en: "Write A Callback", ko: "Callback 작성" })}>
         <Docs.Title>{l.trans({ en: "Write A Callback", ko: "Callback 작성" })}</Docs.Title>
@@ -88,7 +88,7 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
   });`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="account-id" title={l.trans({ en: "Account Id", ko: "Account Id" })}>
         <Docs.Title>{l.trans({ en: "Account Id", ko: "Account Id" })}</Docs.Title>
@@ -99,7 +99,7 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
               ko: "provider마다 사용자 식별값 이름이 다릅니다. service를 호출하기 전에 하나의 `accountId`로 맞춰주세요.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>{l.trans({ en: "GitHub often uses `username`.", ko: "GitHub는 보통 `username`을 사용합니다." })}</li>
             <li>
               {l.trans({
@@ -122,7 +122,7 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
   provider === "github" ? profile.username : profile.email;`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="redirect" title={l.trans({ en: "Redirects", ko: "Redirect" })}>
         <Docs.Title>{l.trans({ en: "Redirects", ko: "Redirect" })}</Docs.Title>
@@ -133,7 +133,7 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
               ko: "callback 이후 service는 보통 세 곳 중 하나로 이동시킵니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Existing user: go to the signed-in page.",
@@ -155,12 +155,12 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Keep provider-specific code inside the callback. Keep sign-in rules inside the service.",
@@ -182,7 +182,7 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

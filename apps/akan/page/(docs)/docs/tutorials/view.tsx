@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -28,7 +28,7 @@ export default function Page() {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🎯</span>
                 <strong className="text-primary">ViewWrapper (Util.tsx)</strong>
@@ -40,7 +40,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🖼️</span>
                 <strong className="text-primary">ViewModal (Model component)</strong>
@@ -52,7 +52,7 @@ export default function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📋</span>
                 <strong className="text-primary">Detail View (View.tsx)</strong>
@@ -73,7 +73,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       <Scroll.Slide id="view-wrapper" title={l.trans({ en: "Add View/Edit Modal", ko: "보기/수정 모달 추가하기" })}>
         <Docs.Title>{l.trans({ en: "Add View/Edit Modal", ko: "보기/수정 모달 추가하기" })}</Docs.Title>
         <Docs.Description>
@@ -172,7 +172,7 @@ export const View = ({ view }: ViewProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       <Scroll.Slide
         id="button-on-unit"
         title={l.trans({ en: "Add View Button to Cards", ko: "카드에 뷰 버튼 추가하기" })}
@@ -272,7 +272,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       <Scroll.Slide id="design-detail-view" title={l.trans({ en: "Design Detail View", ko: "상세 뷰 디자인하기" })}>
         <Docs.Title>{l.trans({ en: "Design Detail View", ko: "상세 뷰 디자인하기" })}</Docs.Title>
         <Docs.Description>
@@ -353,7 +353,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🎨</span>
                 <strong className="text-primary">{l.trans({ en: "Header Section", ko: "헤더 섹션" })}</strong>
@@ -365,7 +365,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📊</span>
                 <strong className="text-primary">{l.trans({ en: "Grid Layout", ko: "그리드 레이아웃" })}</strong>
@@ -377,7 +377,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🏷️</span>
                 <strong className="text-primary">{l.trans({ en: "Visual Elements", ko: "시각적 요소" })}</strong>
@@ -392,7 +392,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       <Scroll.Slide id="test-implementation" title={l.trans({ en: "Test Your Implementation", ko: "구현 테스트하기" })}>
         <Docs.Title>{l.trans({ en: "Test Your Implementation", ko: "구현 테스트하기" })}</Docs.Title>
         <Docs.Description>
@@ -447,7 +447,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       <Scroll.Slide
         id="best-practices"
         title={l.trans({ en: "Best Practices for Detail Views", ko: "상세 뷰 모범 사례" })}
@@ -461,7 +461,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             })}
           </div>
           <div className="my-4 space-y-4">
-            <div className="rounded-lg border border-border bg-background p-4">
+            <div className={panelRecipe({ radius: "lg" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">✅</span>
                 <strong className="text-primary">
@@ -475,7 +475,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-4">
+            <div className={panelRecipe({ radius: "lg" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🎨</span>
                 <strong className="text-primary">
@@ -489,7 +489,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-4">
+            <div className={panelRecipe({ radius: "lg" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔧</span>
                 <strong className="text-primary">
@@ -503,7 +503,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-4">
+            <div className={panelRecipe({ radius: "lg" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">⚡</span>
                 <strong className="text-primary">{l.trans({ en: "Handle Empty States", ko: "빈 상태 처리" })}</strong>
@@ -518,7 +518,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       <Scroll.Slide id="next-steps" title={l.trans({ en: "What's Next?", ko: "다음은 무엇인가요?" })}>
         <Docs.Title>{l.trans({ en: "What's Next?", ko: "다음은 무엇인가요?" })}</Docs.Title>
         <Docs.Description>
@@ -554,7 +554,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

@@ -234,6 +234,12 @@ Import from `@apps/minimal/ui`:
 - `iconTileRecipe` — 아이콘 타일 — 토큰 배경 위 아이콘. size 로 사각 크기와 글자 스케일을 함께 잡는다.
 - `neonButtonRecipe` — 네온/사이버펑크 버튼 스킨 — 프레임워크 buttonRecipe 의 **look 교체용**.
 
+Import from `@apps/akan/ui`:
+- `cardGridRecipe` — 카드/셀 그리드 — `grid gap-3` 위에 cols 브레이크포인트를 얹는다.
+- `docsListRecipe` — 문서 불릿 리스트 — `list-disc space-y-2 pl-5`.
+- `mutedTextRecipe` — 보조 텍스트 — `text-foreground/NN text-*` 계열 통합. margin 은 호출부에서 붙인다.
+- `panelRecipe` — 콘텐츠 표면 패널 — `rounded-* border bg-background p-*` 계열 통합. row 는 리스트/행 표면(px만).
+
 ## MCP Workflow Policy
 
 - Prefer Akan MCP workflows before direct source edits.

@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 import { Image } from "akanjs/ui";
 
@@ -47,7 +47,7 @@ export default function Page() {
           <Code.Snippet className="w-full" title="Terminal" language="bash" code="akan start koyo" />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       <Scroll.Slide
         id="create-module"
         title={l.trans({ en: "Create icecream order module", ko: "아이스크림 주문 모듈 만들기" })}
@@ -277,7 +277,7 @@ akan create-module icecreamOrder
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       <Scroll.Slide id="define-constant" title={l.trans({ en: "Define Constant", ko: "Constant 정의하기" })}>
         <Docs.Title>{l.trans({ en: "Define Constant", ko: "Constant 정의하기" })}</Docs.Title>
         <Docs.Description>
@@ -348,7 +348,7 @@ export class IcecreamOrderInsight extends via(IcecreamOrder, (field) => ({})) {}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       <Scroll.Slide id="fill-dictionary" title={l.trans({ en: "Fill dictionary", ko: "Dictionary 채우기" })}>
         <Docs.Title>{l.trans({ en: "Fill dictionary", ko: "Dictionary 채우기" })}</Docs.Title>
         <Docs.Description>
@@ -365,7 +365,7 @@ export class IcecreamOrderInsight extends via(IcecreamOrder, (field) => ({})) {}
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🏷️</span>
                 <strong className="text-primary">modelName</strong>
@@ -377,7 +377,7 @@ export class IcecreamOrderInsight extends via(IcecreamOrder, (field) => ({})) {}
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📝</span>
                 <strong className="text-primary">modelDesc</strong>
@@ -455,7 +455,7 @@ export const dictionary = modelDictionary(["en", "ko"])
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       <Scroll.Slide id="make-template" title={l.trans({ en: "Make template file", ko: "Template 파일 만들기" })}>
         <Docs.Title>{l.trans({ en: "Make template file", ko: "Template 파일 만들기" })}</Docs.Title>
         <Docs.Description>
@@ -512,7 +512,7 @@ export const General = ({ className }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       <div className="my-6 rounded-lg border border-border bg-background p-4">
         <div className="text-foreground/80">
           {l.trans({
@@ -582,7 +582,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       <div className="my-6 rounded-lg border border-border bg-background p-4">
         <div className="text-foreground/80">
           {l.trans({
@@ -640,7 +640,7 @@ export default async function Page() {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🏷️</span>
                 <strong className="text-primary">{`l("icecreamOrder.modelName")`}</strong>
@@ -652,7 +652,7 @@ export default async function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">➕</span>
                 <strong className="text-primary">Model.New Button</strong>
@@ -664,7 +664,7 @@ export default async function Page() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📋</span>
                 <strong className="text-primary">Zone.Card</strong>
@@ -685,7 +685,7 @@ export default async function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

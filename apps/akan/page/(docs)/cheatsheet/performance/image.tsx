@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "Akan Image는 작은 이미지 최적화기처럼 동작합니다. width와 quality가 포함된 최적화 URL을 만들고, 가능하면 WebP로 제공하며, 생성된 결과를 캐시합니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Use `Image` for images shown in UI.",
@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="usage" title={l.trans({ en: "Use Image", ko: "Image 사용" })}>
         <Docs.Title>{l.trans({ en: "Use Image", ko: "Image 사용" })}</Docs.Title>
@@ -73,7 +73,7 @@ export const Cover = ({ className, article }: CoverProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="config" title={l.trans({ en: "Config", ko: "설정" })}>
         <Docs.Title>{l.trans({ en: "Config", ko: "설정" })}</Docs.Title>
@@ -99,7 +99,7 @@ export const Cover = ({ className, article }: CoverProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="remote" title="remotePatterns">
         <Docs.Title>remotePatterns</Docs.Title>
@@ -127,7 +127,7 @@ export const Cover = ({ className, article }: CoverProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="cache-hit" title={l.trans({ en: "Cache Hits", ko: "Cache hit" })}>
         <Docs.Title>{l.trans({ en: "Cache Hits", ko: "Cache hit" })}</Docs.Title>
@@ -138,7 +138,7 @@ export const Cover = ({ className, article }: CoverProps) => {
               ko: "Optimizer cache key는 URL, width, quality, output format이 바뀌면 달라집니다. Width나 quality 선택지가 너무 많으면 캐시가 잘게 쪼개져 잘 재사용되지 않습니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Use a few repeated card sizes instead of many one-off widths.",
@@ -160,7 +160,7 @@ export const Cover = ({ className, article }: CoverProps) => {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

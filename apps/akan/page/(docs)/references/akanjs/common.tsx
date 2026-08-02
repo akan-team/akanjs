@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -111,7 +111,7 @@ const tags = randomPicks(["api", "ui", "db"], 2);`,
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       {symbols.map((symbol) => (
         <Scroll.Slide key={symbol.name} id={symbol.name} title={symbol.name}>
           <Docs.Title>{symbol.name}</Docs.Title>
@@ -126,7 +126,7 @@ const tags = randomPicks(["api", "ui", "db"], 2);`,
           />
         </Scroll.Slide>
       ))}
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

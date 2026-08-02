@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -20,7 +20,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="dashboard-slice" title={l.trans({ en: "Dashboard Slice", ko: "대시보드 슬라이스" })}>
         <Docs.Title>{l.trans({ en: "Dashboard Slice", ko: "대시보드 슬라이스" })}</Docs.Title>
@@ -178,7 +178,7 @@ export const dictionary = modelDictionary(["en", "ko"])
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="connect-to-zone" title={l.trans({ en: "Connect to Zone", ko: "존과 연결하기" })}>
         <Docs.Title>{l.trans({ en: "Connect to Zone", ko: "존과 연결하기" })}</Docs.Title>
@@ -322,7 +322,7 @@ export const dictionary = modelDictionary(["en", "ko"])
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📦</span>
                 <strong className="text-primary">Load.Page</strong>
@@ -334,7 +334,7 @@ export const dictionary = modelDictionary(["en", "ko"])
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🎯</span>
                 <strong className="text-primary">IcecreamOrder.Zone.Card</strong>
@@ -346,7 +346,7 @@ export const dictionary = modelDictionary(["en", "ko"])
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🚫</span>
                 <strong className="text-primary">{"showControls={false}"}</strong>
@@ -361,7 +361,7 @@ export const dictionary = modelDictionary(["en", "ko"])
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="zone-with-slice" title={l.trans({ en: "Zone with Slice", ko: "슬라이스를 사용한 Zone" })}>
         <Docs.Title>{l.trans({ en: "Zone with Slice", ko: "슬라이스를 사용한 Zone" })}</Docs.Title>
@@ -520,7 +520,7 @@ export const View = ({ view }: ViewProps) => {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">⏱️</span>
                 <strong className="text-primary">useInterval</strong>
@@ -532,7 +532,7 @@ export const View = ({ view }: ViewProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔄</span>
                 <strong className="text-primary">refreshIcecreamOrder</strong>
@@ -544,7 +544,7 @@ export const View = ({ view }: ViewProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📋</span>
                 <strong className="text-primary">Load.Units</strong>
@@ -559,7 +559,7 @@ export const View = ({ view }: ViewProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="slice-component-rules"
@@ -574,7 +574,7 @@ export const View = ({ view }: ViewProps) => {
             })}
           </div>
           <div className="my-4 space-y-4">
-            <div className="rounded-lg border border-border bg-background p-4">
+            <div className={panelRecipe({ radius: "lg" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">1️⃣</span>
                 <strong className="text-primary">
@@ -588,7 +588,7 @@ export const View = ({ view }: ViewProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-4">
+            <div className={panelRecipe({ radius: "lg" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">2️⃣</span>
                 <strong className="text-primary">
@@ -602,7 +602,7 @@ export const View = ({ view }: ViewProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-4">
+            <div className={panelRecipe({ radius: "lg" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">3️⃣</span>
                 <strong className="text-primary">
@@ -616,7 +616,7 @@ export const View = ({ view }: ViewProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-4">
+            <div className={panelRecipe({ radius: "lg" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">4️⃣</span>
                 <strong className="text-primary">
@@ -681,9 +681,9 @@ export const View = ({ view }: ViewProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

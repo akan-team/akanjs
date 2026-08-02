@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="basic-shape" title={l.trans({ en: "Basic Shape", ko: "기본 형태" })}>
         <Docs.Title>{l.trans({ en: "Basic Shape", ko: "기본 형태" })}</Docs.Title>
@@ -48,7 +48,7 @@ export class Price extends via((field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="defaults-optional"
@@ -62,7 +62,7 @@ export class Price extends via((field) => ({
               ko: "값이 안정적인 초기 상태를 가져야 하면 default를 추가합니다. 상위 model이 해당 field 없이도 존재할 수 있다면 `.optional()`을 사용합니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "`currency` can default to a normal business value such as `KRW`.",
@@ -87,7 +87,7 @@ export class Price extends via((field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="arrays" title={l.trans({ en: "Array Fields", ko: "Array field" })}>
         <Docs.Title>{l.trans({ en: "Array Fields", ko: "Array field" })}</Docs.Title>
@@ -110,7 +110,7 @@ export class ContactInfo extends via((field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="enum-fields" title={l.trans({ en: "Enum Fields", ko: "Enum field" })}>
         <Docs.Title>{l.trans({ en: "Enum Fields", ko: "Enum field" })}</Docs.Title>
@@ -136,7 +136,7 @@ export class Price extends via((field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="helper-methods" title={l.trans({ en: "Small Helpers", ko: "작은 helper" })}>
         <Docs.Title>{l.trans({ en: "Small Helpers", ko: "작은 helper" })}</Docs.Title>
@@ -161,9 +161,9 @@ export class Price extends via((field) => ({
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

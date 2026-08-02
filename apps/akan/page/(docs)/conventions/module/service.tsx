@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs, type IntroItem } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, type IntroItem, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -257,7 +257,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="service-shapes" title={l.trans({ en: "Service Shapes", ko: "Service 형태" })}>
         <Docs.Title>{l.trans({ en: "Service Shapes", ko: "Service 형태" })}</Docs.Title>
@@ -314,7 +314,7 @@ export default function Page() {
           />
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="serve-runtime" title={l.trans({ en: "What serve() Gives You", ko: "serve()가 제공하는 것" })}>
         <Docs.Title>{l.trans({ en: "What serve() Gives You", ko: "serve()가 제공하는 것" })}</Docs.Title>
@@ -327,7 +327,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <div className="space-y-3">
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-bold text-foreground">Database service</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -336,7 +336,7 @@ export default function Page() {
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-bold text-foreground">Plain service</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -345,7 +345,7 @@ export default function Page() {
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-bold text-foreground">Service option</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -354,7 +354,7 @@ export default function Page() {
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-bold text-foreground">Extension services</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -376,7 +376,7 @@ serve("myapp" as const, { serverMode: "batch" }, ({ service }) => ({
 serve(db.user, ({ use }) => ({ githubApp: use<GithubApp>() }), ...user.services);`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="generated-methods" title={l.trans({ en: "Generated Methods", ko: "Generated Method" })}>
         <Docs.Title>{l.trans({ en: "Generated Methods", ko: "Generated Method" })}</Docs.Title>
@@ -442,7 +442,7 @@ serve(db.user, ({ use }) => ({ githubApp: use<GithubApp>() }), ...user.services)
         </Docs.Description>
         <Docs.IntroTable type="method" items={queryMethods} />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="service-extension" title={l.trans({ en: "Service Extension", ko: "Service 확장" })}>
         <Docs.Title>{l.trans({ en: "Service Extension", ko: "Service 확장" })}</Docs.Title>
@@ -476,7 +476,7 @@ export class UserService extends serve(
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="injection-overview" title={l.trans({ en: "Injection Builder", ko: "Injection Builder" })}>
         <Docs.Title>{l.trans({ en: "Injection Builder", ko: "Injection Builder" })}</Docs.Title>
@@ -501,7 +501,7 @@ export class UserService extends serve(
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="injection-types" title={l.trans({ en: "Injection Types", ko: "Injection 타입" })}>
         <Docs.Title>{l.trans({ en: "Injection Types", ko: "Injection 타입" })}</Docs.Title>
@@ -514,7 +514,7 @@ export class UserService extends serve(
           </div>
         </Docs.Description>
         <div className="space-y-3">
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-bold text-foreground">database()</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -531,7 +531,7 @@ export class UserService extends serve(
 }`}
             />
           </div>
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-bold text-foreground">service&lt;T&gt;()</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -552,7 +552,7 @@ export class UserService extends serve(
 }`}
             />
           </div>
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-bold text-foreground">use&lt;T&gt;()</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -573,7 +573,7 @@ export class UserService extends serve(
 }`}
             />
           </div>
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-bold text-foreground">signal&lt;T&gt;()</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -597,7 +597,7 @@ export class UserService extends serve(
 }`}
             />
           </div>
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-bold text-foreground">plug(Adaptor)</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -618,7 +618,7 @@ export class UserService extends serve(
 }`}
             />
           </div>
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-bold text-foreground">env(factory)</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -639,7 +639,7 @@ export class UserService extends serve(
 }`}
             />
           </div>
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-bold text-foreground">memory(modelRef, opts)</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -664,7 +664,7 @@ export class UserService extends serve(
           </div>
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="business-flow" title={l.trans({ en: "Business Logic Flow", ko: "비즈니스 로직 흐름" })}>
         <Docs.Title>{l.trans({ en: "Business Logic Flow", ko: "비즈니스 로직 흐름" })}</Docs.Title>
@@ -702,7 +702,7 @@ async archiveDbBackup(dbBackupId: string) {
           />
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="lifecycle-hooks" title={l.trans({ en: "Lifecycle Hooks", ko: "Lifecycle Hook" })}>
         <Docs.Title>{l.trans({ en: "Lifecycle Hooks", ko: "Lifecycle Hook" })}</Docs.Title>
@@ -745,7 +745,7 @@ async onDestroy() {
           />
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -784,9 +784,9 @@ async onDestroy() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

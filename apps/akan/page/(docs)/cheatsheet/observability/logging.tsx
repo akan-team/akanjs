@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -42,7 +42,7 @@ export default function Page() {
                 }),
               ],
             ].map(([title, code, desc]) => (
-              <div key={title} className="rounded-xl border border-border bg-background p-4">
+              <div key={title} className={panelRecipe()}>
                 <div className="font-bold text-foreground">{title}</div>
                 <div className="my-2 font-mono text-primary text-sm">{code}</div>
                 <div className="text-foreground/70 text-sm">{desc}</div>
@@ -51,7 +51,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="using-logger" title={l.trans({ en: "Using Logger", ko: "Logger 사용법" })}>
         <Docs.Title>{l.trans({ en: "Using Logger", ko: "Logger 사용법" })}</Docs.Title>
@@ -94,7 +94,7 @@ export class BillingService {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="log-levels" title={l.trans({ en: "Log Levels", ko: "로그 레벨" })}>
         <Docs.Title>{l.trans({ en: "Log Levels", ko: "로그 레벨" })}</Docs.Title>
@@ -135,7 +135,7 @@ AKAN_LOG_TO_FILE=0`}
                 }),
               ],
             ].map(([title, desc]) => (
-              <div key={title} className="rounded-xl border border-border bg-background p-4">
+              <div key={title} className={panelRecipe()}>
                 <div className="font-bold text-foreground">{title}</div>
                 <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               </div>
@@ -143,7 +143,7 @@ AKAN_LOG_TO_FILE=0`}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="file-logging" title={l.trans({ en: "File Logging & Rotation", ko: "파일 로그와 로테이션" })}>
         <Docs.Title>{l.trans({ en: "File Logging & Rotation", ko: "파일 로그와 로테이션" })}</Docs.Title>
@@ -184,7 +184,7 @@ AKAN_LOG_MAX_FILES=100`}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="reading-logs" title={l.trans({ en: "Reading Logs", ko: "로그 조회" })}>
         <Docs.Title>{l.trans({ en: "Reading Logs", ko: "로그 조회" })}</Docs.Title>
@@ -228,7 +228,7 @@ rg "invoice-sync|ERROR" /var/log/akan`}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="operational-checklist" title={l.trans({ en: "Operational Checklist", ko: "운영 체크리스트" })}>
         <Docs.Title>{l.trans({ en: "Operational Checklist", ko: "운영 체크리스트" })}</Docs.Title>
@@ -264,7 +264,7 @@ rg "invoice-sync|ERROR" /var/log/akan`}
                 }),
               ],
             ].map(([title, desc]) => (
-              <div key={title} className="rounded-xl border border-border bg-background p-4">
+              <div key={title} className={panelRecipe()}>
                 <div className="font-bold text-foreground">{title}</div>
                 <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               </div>
@@ -272,7 +272,7 @@ rg "invoice-sync|ERROR" /var/log/akan`}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

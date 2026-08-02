@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -65,14 +65,14 @@ export default function Page() {
               }),
             },
           ].map(({ name, desc }) => (
-            <div key={name} className="rounded-xl border border-border bg-background p-4">
+            <div key={name} className={panelRecipe()}>
               <div className="font-mono font-semibold text-primary">{name}</div>
               <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>
           ))}
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="workspace-commands" title={l.trans({ en: "Workspace Commands", ko: "워크스페이스 명령" })}>
         <Docs.Title>{l.trans({ en: "Workspace Commands", ko: "워크스페이스 명령" })}</Docs.Title>
@@ -95,9 +95,9 @@ akan lint <app/lib/pkg-name>
 akan lintAll`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, ConstantDocsDemo, ConstantDocsPrintDemo, Docs } from "@apps/akan/ui";
+import { Code, ConstantDocsDemo, ConstantDocsPrintDemo, Divider, Docs, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -38,12 +38,12 @@ export default function PrintableSchemaDocsPage() {
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="schema-doc" title={l.trans({ en: "Generated Schema", ko: "생성된 스키마" })}>
         <ConstantDocsDemo />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="print-schema-doc" title={l.trans({ en: "Printable Definition", ko: "출력용 정의서" })}>
         <Docs.Title>{l.trans({ en: "Printable Definition", ko: "출력용 정의서" })}</Docs.Title>
@@ -57,7 +57,7 @@ export default function PrintableSchemaDocsPage() {
         </Docs.Description>
         <ConstantDocsPrintDemo />
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

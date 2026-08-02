@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 import { Link } from "akanjs/ui";
 
@@ -27,7 +27,7 @@ export default function Page() {
             { name: "secrets", desc: l.trans({ en: "Secret files", ko: "시크릿 파일" }) },
             { name: "advanced", desc: l.trans({ en: "Build options", ko: "빌드 옵션" }) },
           ].map(({ name, desc }) => (
-            <div key={name} className="rounded-xl border border-border bg-background px-4 py-0">
+            <div key={name} className={panelRecipe({ padding: "row" })}>
               <div className="font-mono font-semibold text-primary">{name}</div>
               <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>
@@ -57,7 +57,7 @@ export default function Page() {
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+            <div key={title} className={panelRecipe({ padding: "row" })}>
               <span className="font-bold text-foreground">{title}: </span>
 
               <span className="text-foreground/70 text-sm">{desc}</span>
@@ -74,7 +74,7 @@ const config: AppConfig = {};
 export default config;`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="config-shape" title={l.trans({ en: "Config Shape", ko: "설정 파일 형태" })}>
         <Docs.Title>{l.trans({ en: "Config Shape", ko: "설정 파일 형태" })}</Docs.Title>
@@ -120,7 +120,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="app-env" title={l.trans({ en: "Application Env", ko: "애플리케이션 환경설정" })}>
         <Docs.Title>{l.trans({ en: "Application Env", ko: "애플리케이션 환경설정" })}</Docs.Title>
@@ -196,7 +196,7 @@ export const env: ModulesOptions = {
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+            <div key={title} className={panelRecipe({ padding: "row" })}>
               <span className="font-mono font-semibold text-primary">{title}: </span>
 
               <span className="text-foreground/70 text-sm">{desc}</span>
@@ -216,7 +216,7 @@ export const env: ModulesOptions = {
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="routes" title={l.trans({ en: "Routes and Domains", ko: "Route와 Domain" })}>
         <Docs.Title>{l.trans({ en: "Routes and Domains", ko: "Route와 Domain" })}</Docs.Title>
@@ -245,7 +245,7 @@ const config: AppConfig = {
 export default config;`}
         />
         <div className="space-y-1">
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-mono font-semibold text-primary">basePath</div>
             <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
@@ -254,7 +254,7 @@ export default config;`}
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-mono font-semibold text-primary">domains</div>
             <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
@@ -271,7 +271,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="mobile" title={l.trans({ en: "Mobile Metadata", ko: "모바일 메타데이터" })}>
         <Docs.Title>{l.trans({ en: "Mobile Metadata", ko: "모바일 메타데이터" })}</Docs.Title>
@@ -446,7 +446,7 @@ export default config;`}
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+            <div key={title} className={panelRecipe({ padding: "row" })}>
               <span className="font-mono font-semibold text-primary">{title}: </span>
 
               <span className="text-foreground/70 text-sm">{desc}</span>
@@ -495,7 +495,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="images-env" title={l.trans({ en: "Images And Public Env", ko: "이미지와 공개 환경변수" })}>
         <Docs.Title>{l.trans({ en: "Images And Public Env", ko: "이미지와 공개 환경변수" })}</Docs.Title>
@@ -534,7 +534,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="secret-files" title={l.trans({ en: "Secret Files", ko: "시크릿 파일" })}>
         <Docs.Title>{l.trans({ en: "Secret Files", ko: "시크릿 파일" })}</Docs.Title>
@@ -576,7 +576,7 @@ apps/api/secrets/**/*
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="build-runtime" title={l.trans({ en: "Build And Runtime", ko: "빌드와 런타임" })}>
         <Docs.Title>{l.trans({ en: "Build And Runtime", ko: "빌드와 런타임" })}</Docs.Title>
@@ -635,7 +635,7 @@ apps/api/secrets/**/*
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+            <div key={title} className={panelRecipe({ padding: "row" })}>
               <span className="font-mono font-semibold text-primary">{title}: </span>
 
               <span className="text-foreground/70 text-sm">{desc}</span>
@@ -643,7 +643,7 @@ apps/api/secrets/**/*
           ))}
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="defaults" title={l.trans({ en: "Defaults And Rules", ko: "기본값과 규칙" })}>
         <Docs.Title>{l.trans({ en: "Defaults And Rules", ko: "기본값과 규칙" })}</Docs.Title>
@@ -693,7 +693,7 @@ apps/api/secrets/**/*
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+            <div key={title} className={panelRecipe({ padding: "row" })}>
               <span className="font-bold text-foreground">{title}: </span>
 
               <span className="text-foreground/70 text-sm">{desc}</span>
@@ -707,7 +707,7 @@ apps/api/secrets/**/*
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

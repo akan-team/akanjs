@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="basic-service" title={l.trans({ en: "Basic Service Shape", ko: "기본 service 형태" })}>
         <Docs.Title>{l.trans({ en: "Basic Service Shape", ko: "기본 service 형태" })}</Docs.Title>
@@ -48,7 +48,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="runtime-values" title={l.trans({ en: "Runtime Values", ko: "Runtime value" })}>
         <Docs.Title>{l.trans({ en: "Runtime Values", ko: "Runtime value" })}</Docs.Title>
@@ -73,7 +73,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="service-injection" title={l.trans({ en: "Service Injection", ko: "Service injection" })}>
         <Docs.Title>{l.trans({ en: "Service Injection", ko: "Service injection" })}</Docs.Title>
@@ -97,7 +97,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="server-mode" title={l.trans({ en: "Server Mode", ko: "Server mode" })}>
         <Docs.Title>{l.trans({ en: "Server Mode", ko: "Server mode" })}</Docs.Title>
@@ -123,7 +123,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

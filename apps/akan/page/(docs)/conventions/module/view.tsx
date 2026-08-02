@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs, type IntroItem } from "@apps/akan/ui";
+import { Code, cardGridRecipe, Divider, Docs, DocsToc, type IntroItem } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function ViewDocsPage() {
@@ -77,7 +77,7 @@ export default function ViewDocsPage() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="comparison" title={l.trans({ en: "View vs Unit", ko: "View vs Unit" })}>
         <Docs.Title>{l.trans({ en: "View vs Unit", ko: "View vs Unit" })}</Docs.Title>
@@ -89,7 +89,7 @@ export default function ViewDocsPage() {
         </Docs.Description>
         <Docs.IntroTable type="Comparison" items={comparisonItems} />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="standard-view-shape" title={l.trans({ en: "Standard View Shape", ko: "표준 View 형태" })}>
         <Docs.Title>{l.trans({ en: "Standard View Shape", ko: "표준 View 형태" })}</Docs.Title>
@@ -123,7 +123,7 @@ export const General = ({ className, ticket }: GeneralProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="detail-patterns"
@@ -138,7 +138,7 @@ export const General = ({ className, ticket }: GeneralProps) => {
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
             className="w-full"
             title="Article.View.tsx"
@@ -172,7 +172,7 @@ export const General = ({ order }: OrderViewProps) => {
           />
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="using-view-pages" title={l.trans({ en: "Using View In Pages", ko: "Page에서 View 사용하기" })}>
         <Docs.Title>{l.trans({ en: "Using View In Pages", ko: "Page에서 View 사용하기" })}</Docs.Title>
@@ -193,7 +193,7 @@ export const General = ({ order }: OrderViewProps) => {
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="load-view"
@@ -227,7 +227,7 @@ export const View = ({ view }: ViewProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -262,9 +262,9 @@ export const View = ({ view }: ViewProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

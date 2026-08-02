@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, cardGridRecipe, Docs, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 import { badgeRecipe, buttonRecipe, Link } from "akanjs/ui";
 import { BiLinkExternal } from "react-icons/bi";
@@ -262,7 +262,7 @@ export default function Page() {
                     ))}
                   </div>
 
-                  <div className="grid gap-3 md:grid-cols-2">
+                  <div className={cardGridRecipe({ cols: "mdTwo" })}>
                     <div className="rounded-xl border border-success/30 bg-success/10 p-8 text-center font-bold text-xl">
                       libA
                     </div>
@@ -689,7 +689,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

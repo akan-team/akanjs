@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, cardGridRecipe, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -23,7 +23,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="model-layering" title={l.trans({ en: "Model Layering Pattern", ko: "Model 계층 패턴" })}>
         <Docs.Title>{l.trans({ en: "Model Layering Pattern", ko: "Model 계층 패턴" })}</Docs.Title>
@@ -73,7 +73,7 @@ export default function Page() {
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-border bg-background p-4">
+            <div key={title} className={panelRecipe()}>
               <div className="font-bold text-foreground">{title}</div>
               <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>
@@ -112,7 +112,7 @@ export class TicketInsight extends via(Ticket, (field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="fields-enums" title={l.trans({ en: "Fields And enumOf", ko: "Field와 enumOf" })}>
         <Docs.Title>{l.trans({ en: "Fields And enumOf", ko: "Field와 enumOf" })}</Docs.Title>
@@ -124,7 +124,7 @@ export class TicketInsight extends via(Ticket, (field) => ({
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
             className="w-full"
             title="status enum"
@@ -152,7 +152,7 @@ type TicketStatusValue = TicketStatus["value"];`}
           />
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="hidden-secret-fields"
@@ -167,8 +167,8 @@ type TicketStatusValue = TicketStatus["value"];`}
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
-          <div className="rounded-xl border border-border bg-background p-4">
+        <div className={cardGridRecipe()}>
+          <div className={panelRecipe()}>
             <div className="font-bold text-foreground">field.hidden()</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -177,7 +177,7 @@ type TicketStatusValue = TicketStatus["value"];`}
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-border bg-background p-4">
+          <div className={panelRecipe()}>
             <div className="font-bold text-foreground">field.secret()</div>
             <div className="mt-2 text-foreground/70">
               {l.trans({
@@ -198,7 +198,7 @@ type TicketStatusValue = TicketStatus["value"];`}
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="generated-extension"
@@ -236,7 +236,7 @@ export class User extends via(UserObject, LightUser, (resolve) => ({}), ...user.
 export class UserInsight extends via(User, (field) => ({}), ...user.insights) {}`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="model-helpers"
@@ -251,7 +251,7 @@ export class UserInsight extends via(User, (field) => ({}), ...user.insights) {}
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
             className="w-full"
             title="LightBoard helper"
@@ -280,7 +280,7 @@ export class UserInsight extends via(User, (field) => ({}), ...user.insights) {}
           />
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="resolve-fields" title={l.trans({ en: "Resolved Fields", ko: "Resolve field" })}>
         <Docs.Title>{l.trans({ en: "Resolved Fields", ko: "Resolve field" })}</Docs.Title>
@@ -298,7 +298,7 @@ export class UserInsight extends via(User, (field) => ({}), ...user.insights) {}
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
             className="w-full"
             title="story.constant.ts"
@@ -340,7 +340,7 @@ export class UserInsight extends via(User, (field) => ({}), ...user.insights) {}
           />
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="scalar-static-utilities"
@@ -384,7 +384,7 @@ export class Coordinate extends via((field) => ({
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="insight-constants" title={l.trans({ en: "Insight Constants", ko: "Insight constant" })}>
         <Docs.Title>{l.trans({ en: "Insight Constants", ko: "Insight constant" })}</Docs.Title>
@@ -407,7 +407,7 @@ export class TicketInsight extends via(Ticket, (field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -450,9 +450,9 @@ export class TicketInsight extends via(Ticket, (field) => ({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

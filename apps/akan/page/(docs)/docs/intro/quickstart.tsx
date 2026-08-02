@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { BrowserMockup, Code, Docs, MobileMockup } from "@apps/akan/ui";
+import { BrowserMockup, Code, Divider, Docs, DocsToc, MobileMockup } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -35,7 +35,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="requirements" title={l.trans({ en: "Requirements", ko: "요구사항" })}>
         <Docs.Title>{l.trans({ en: "Requirements", ko: "요구사항" })}</Docs.Title>
@@ -75,7 +75,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="create-workspace" title={l.trans({ en: "Create a Workspace", ko: "워크스페이스 생성" })}>
         <Docs.Title>{l.trans({ en: "Create a Workspace", ko: "워크스페이스 생성" })}</Docs.Title>
@@ -111,7 +111,7 @@ akan create-workspace myorg --app myapp
 cd myorg`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="run-app" title={l.trans({ en: "Run the App", ko: "앱 실행" })}>
         <Docs.Title>{l.trans({ en: "Run the App", ko: "앱 실행" })}</Docs.Title>
@@ -246,7 +246,7 @@ void run();
           />
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="build" title={l.trans({ en: "Build", ko: "빌드" })}>
         <Docs.Title>{l.trans({ en: "Build", ko: "빌드" })}</Docs.Title>
@@ -266,7 +266,7 @@ void run();
           })}
         </div>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

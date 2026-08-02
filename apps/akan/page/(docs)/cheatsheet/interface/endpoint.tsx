@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="flow" title={l.trans({ en: "The Flow", ko: "흐름 이해하기" })}>
         <Docs.Title>{l.trans({ en: "The Flow", ko: "흐름 이해하기" })}</Docs.Title>
@@ -60,7 +60,7 @@ export default function Page() {
   -> postService.publishPost(postId)`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="endpoint" title={l.trans({ en: "Declare Endpoint", ko: "Endpoint 선언" })}>
         <Docs.Title>{l.trans({ en: "Declare Endpoint", ko: "Endpoint 선언" })}</Docs.Title>
@@ -84,7 +84,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="service" title={l.trans({ en: "Put Rules In Service", ko: "규칙은 service에 두기" })}>
         <Docs.Title>{l.trans({ en: "Put Rules In Service", ko: "규칙은 service에 두기" })}</Docs.Title>
@@ -108,7 +108,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="store" title={l.trans({ en: "Call It From Store", ko: "Store에서 호출하기" })}>
         <Docs.Title>{l.trans({ en: "Call It From Store", ko: "Store에서 호출하기" })}</Docs.Title>
@@ -132,7 +132,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="util" title={l.trans({ en: "Make One Util", ko: "Util 하나로 만들기" })}>
         <Docs.Title>{l.trans({ en: "Make One Util", ko: "Util 하나로 만들기" })}</Docs.Title>
@@ -163,12 +163,12 @@ export const Publish = ({ postId }: PublishProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Use endpoint names as verbs: `publishPost`, `approveTicket`, `archiveProject`.",
@@ -190,7 +190,7 @@ export const Publish = ({ postId }: PublishProps) => {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

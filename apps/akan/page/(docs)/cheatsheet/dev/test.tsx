@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "Akan app에서는 signal 테스트부터 시작하세요. Signal test는 UI 세부사항보다 먼저 generated fetch API를 통해 실제 business flow를 확인합니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Test signup, permission, validation, and state transitions at the API layer.",
@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="helper" title={l.trans({ en: "Spec Helper", ko: "Spec helper" })}>
         <Docs.Title>{l.trans({ en: "Spec Helper", ko: "Spec helper" })}</Docs.Title>
@@ -65,7 +65,7 @@ export const createArticle = async (agent, title = "Hello") => {
 };`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="test-file" title={l.trans({ en: "Test File", ko: "Test file" })}>
         <Docs.Title>{l.trans({ en: "Test File", ko: "Test file" })}</Docs.Title>
@@ -100,12 +100,12 @@ describe("article signal", () => {
 });`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="targets" title={l.trans({ en: "What To Test", ko: "무엇을 테스트할까" })}>
         <Docs.Title>{l.trans({ en: "What To Test", ko: "무엇을 테스트할까" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Happy path: create, update, publish, archive.",
@@ -139,7 +139,7 @@ describe("article signal", () => {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="command" title={l.trans({ en: "Command", ko: "명령어" })}>
         <Docs.Title>{l.trans({ en: "Command", ko: "명령어" })}</Docs.Title>
@@ -158,12 +158,12 @@ describe("article signal", () => {
 akan test myapp --write false`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Create data through signals when possible so the test uses the same rules as the app.",
@@ -185,7 +185,7 @@ akan test myapp --write false`}
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

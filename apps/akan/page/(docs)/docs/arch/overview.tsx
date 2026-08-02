@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Docs } from "@apps/akan/ui";
+import { Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 import { Link } from "akanjs/ui";
 
@@ -44,7 +44,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="many-surfaces" title={l.trans({ en: "One App, Many Surfaces", ko: "하나의 앱, 여러 표면" })}>
         <Docs.Title>{l.trans({ en: "One App, Many Surfaces", ko: "하나의 앱, 여러 표면" })}</Docs.Title>
@@ -55,7 +55,7 @@ export default function Page() {
               ko: "Akan은 하나의 화면만 가지는 제품보다 여러 표면을 가진 제품을 위해 설계되었습니다. 스토어 고객 페이지, 관리자 콘솔, 파트너 클라이언트, 모바일 앱, 엣지 장비 워크플로우는 서로 다른 인터페이스를 보여주면서 같은 규칙과 데이터를 공유할 수 있습니다.",
             })}
           </div>
-          <div className="rounded-2xl border border-border bg-background p-5">
+          <div className={panelRecipe({ radius: "2xl", padding: "lg" })}>
             <div className="mb-4 font-bold text-foreground">{l.trans({ en: "Surface Map", ko: "표면 지도" })}</div>
             <div className="space-y-1">
               <div className="rounded-xl border border-border bg-muted px-4 py-2">
@@ -104,7 +104,7 @@ export default function Page() {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="runtime-conversation"
@@ -159,7 +159,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-bold text-foreground">{title}: </span>
                 <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
@@ -167,7 +167,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="architecture-areas" title={l.trans({ en: "Architecture Areas", ko: "아키텍처 영역" })}>
         <Docs.Title>{l.trans({ en: "Architecture Areas", ko: "아키텍처 영역" })}</Docs.Title>
@@ -233,7 +233,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="reading-guide"
@@ -290,7 +290,7 @@ export default function Page() {
                 href: "/docs/arch/css",
               },
             ].map(({ need, page, href }) => (
-              <div key={href} className="rounded-xl border border-border bg-background px-4 py-0">
+              <div key={href} className={panelRecipe({ padding: "row" })}>
                 <span className="text-foreground/70 text-sm">{need} </span>
                 <span className="text-foreground/40 text-sm">→ </span>
                 <Link href={href} className="font-mono font-semibold text-primary text-sm">
@@ -301,8 +301,8 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <Divider />
+      <DocsToc />
     </Scroll>
   );
 }

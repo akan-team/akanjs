@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -23,7 +23,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="create-scalar" title={l.trans({ en: "Create Scalar", ko: "스칼라 생성하기" })}>
         <Docs.Title>{l.trans({ en: "Create Scalar", ko: "스칼라 생성하기" })}</Docs.Title>
@@ -138,7 +138,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="create-inventory" title={l.trans({ en: "Create Inventory", ko: "인벤토리 생성하기" })}>
         <Docs.Title>{l.trans({ en: "Create Inventory", ko: "인벤토리 생성하기" })}</Docs.Title>
@@ -201,7 +201,7 @@ export class InventoryInsight extends via(Inventory, (field) => ({})) {}
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📋</span>
                 <strong className="text-primary">{"stocks: field([Stock])"}</strong>
@@ -213,7 +213,7 @@ export class InventoryInsight extends via(Inventory, (field) => ({})) {}
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📅</span>
                 <strong className="text-primary">at</strong>
@@ -273,7 +273,7 @@ export const dictionary = modelDictionary(["en", "ko"])
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
       <Scroll.Slide id="business-logic" title={l.trans({ en: "Business Logic", ko: "비즈니스 로직" })}>
         <Docs.Title>{l.trans({ en: "Business Logic", ko: "비즈니스 로직" })}</Docs.Title>
         <Docs.Description>
@@ -352,7 +352,7 @@ export class InventoryModel extends into(Inventory, InventoryFilter, cnst.invent
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📉</span>
                 <strong className="text-primary">useStock / useStocks</strong>
@@ -364,7 +364,7 @@ export class InventoryModel extends into(Inventory, InventoryFilter, cnst.invent
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔄</span>
                 <strong className="text-primary">refill</strong>
@@ -376,7 +376,7 @@ export class InventoryModel extends into(Inventory, InventoryFilter, cnst.invent
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📅</span>
                 <strong className="text-primary">generateTodaysInventory</strong>
@@ -420,7 +420,7 @@ export class InventoryService extends serve(db.inventory, ({ use, service }) => 
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="connect-service" title={l.trans({ en: "Connect Service", ko: "서비스 연결하기" })}>
         <Docs.Title>{l.trans({ en: "Connect Service", ko: "서비스 연결하기" })}</Docs.Title>
@@ -524,7 +524,7 @@ export class IcecreamOrderService extends serve(db.icecreamOrder, ({ use, servic
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="connect-signal" title={l.trans({ en: "Connect Signal", ko: "신호 연결하기" })}>
         <Docs.Title>{l.trans({ en: "Connect Signal", ko: "신호 연결하기" })}</Docs.Title>
@@ -654,7 +654,7 @@ export class InventoryStore extends store(sig.inventory, () => ({
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="interact-on-ui" title={l.trans({ en: "Interact on UI", ko: "UI와 상호작용하기" })}>
         <Docs.Title>{l.trans({ en: "Interact on UI", ko: "UI와 상호작용하기" })}</Docs.Title>
@@ -772,7 +772,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔄</span>
                 <strong className="text-primary">loadTodaysInventory</strong>
@@ -784,7 +784,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🚫</span>
                 <strong className="text-primary">{l.trans({ en: "Out of Stock Check", ko: "품절 확인" })}</strong>
@@ -796,7 +796,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-background p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">⚠️</span>
                 <strong className="text-primary">{"disabled: !isInStock"}</strong>
@@ -1155,9 +1155,9 @@ export default async function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

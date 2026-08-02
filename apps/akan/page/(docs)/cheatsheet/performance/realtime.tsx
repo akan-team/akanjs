@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "실시간 기능은 WebSocket 연결을 유지해 작은 이벤트를 빠르게 주고받게 합니다. 채팅, 게임, 라이브 에디터, 대시보드, 접속 상태에 사용하세요.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "`message` is a client-to-server event.",
@@ -38,7 +38,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="message" title={l.trans({ en: "Use message", ko: "message 사용" })}>
         <Docs.Title>{l.trans({ en: "Use message", ko: "message 사용" })}</Docs.Title>
@@ -64,7 +64,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="pubsub" title={l.trans({ en: "Use pubsub", ko: "pubsub 사용" })}>
         <Docs.Title>{l.trans({ en: "Use pubsub", ko: "pubsub 사용" })}</Docs.Title>
@@ -89,7 +89,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="flow" title={l.trans({ en: "Chat Flow", ko: "채팅 흐름" })}>
         <Docs.Title>{l.trans({ en: "Chat Flow", ko: "채팅 흐름" })}</Docs.Title>
@@ -142,12 +142,12 @@ export const ChatMessages = ({ chatId }: { chatId: string }) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="room" title={l.trans({ en: "Design Rooms", ko: "Room 설계" })}>
         <Docs.Title>{l.trans({ en: "Design Rooms", ko: "Room 설계" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Use a narrow room key such as `chatId`, `gameId`, or `documentId`.",
@@ -169,12 +169,12 @@ export const ChatMessages = ({ chatId }: { chatId: string }) => {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <ul className={docsListRecipe()}>
             <li>
               {l.trans({
                 en: "Keep payloads small. Send ids and small patches instead of full pages.",
@@ -202,7 +202,7 @@ export const ChatMessages = ({ chatId }: { chatId: string }) => {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

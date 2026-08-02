@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -46,7 +46,7 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-border bg-background p-4">
+              <div key={title} className={panelRecipe()}>
                 <div className="font-bold text-foreground">{title}</div>
                 <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               </div>
@@ -54,7 +54,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide
         id="fix-errors"
@@ -287,7 +287,7 @@ export class OrderService extends serve(db.order, () => ({
               ],
             },
           ].map(({ id, title, desc, before, after }) => (
-            <div key={id} className="rounded-2xl border border-border bg-background p-4">
+            <div key={id} className={panelRecipe({ radius: "2xl" })}>
               <div className="font-bold text-foreground">{title}</div>
               <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               <div className="mt-4 grid gap-3 xl:grid-cols-2">
@@ -324,7 +324,7 @@ export class OrderService extends serve(db.order, () => ({
           </Docs.Alert>
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
       <Scroll.Slide id="commands" title={l.trans({ en: "Commands", ko: "명령어" })}>
         <Docs.Title>{l.trans({ en: "Commands", ko: "명령어" })}</Docs.Title>
@@ -345,9 +345,9 @@ akan lintAll
 bunx biome check "apps/myapp/page/akanjs/(docs)/conventions/workspace/lint.tsx"`}
         />
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }
