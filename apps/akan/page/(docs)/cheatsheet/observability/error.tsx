@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "Akan의 에러 처리는 단순한 규칙 하나로 시작합니다. 서버 코드는 타입 안전한 dictionary key를 던지고, 클라이언트는 그 key를 번역해서 보여줍니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Declare user-facing errors in the module dictionary.",
@@ -35,7 +35,7 @@ export default function Page() {
                 ko: "fetch가 응답을 `Err`로 복원하게 두고, UI에서는 `msg.error()`로 보여줍니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -102,7 +102,7 @@ export class Order extends by(cnst.Order) {
               ko: "`new Err()`는 기본으로 400을 사용합니다. HTTP 의미가 중요할 때만 이름 있는 helper를 고르세요. 이렇게 하면 모든 규칙을 장황하게 만들지 않으면서 응답 의미를 분명히 할 수 있습니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "`Err.NotFound`: a requested record does not exist.",
@@ -121,7 +121,7 @@ export class Order extends by(cnst.Order) {
                 ko: "`Err.Forbidden`: 사용자는 확인됐지만 이 동작을 할 수 없습니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
         <Code.Snippet
           className="w-full"
@@ -232,7 +232,7 @@ export const AddOrderItem = ({ orderId, productId }: Props) => {
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Use `Err` for user-facing domain failures. Use normal `Error` for programmer mistakes, missing setup, or impossible states.",
@@ -257,7 +257,7 @@ export const AddOrderItem = ({ orderId, productId }: Props) => {
                 ko: "서버에서 번역하지 마세요. key와 data를 보내고, 클라이언트가 사용자의 언어로 번역하게 둡니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <DocsToc />

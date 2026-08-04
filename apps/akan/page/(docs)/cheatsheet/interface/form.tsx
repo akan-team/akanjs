@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "모델 schema가 설계되면 form은 그 모양 위에 얇게 올리는 UI가 됩니다. 가장 쉬운 패턴은 wrapper에서 데이터를 준비하고, Template에서는 field만 그리는 것입니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Server page prepares create defaults or parent ids.",
@@ -35,7 +35,7 @@ export default function Page() {
                 ko: "Modal wrapper는 빠른 클라이언트 수정 흐름을 처리합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -184,7 +184,7 @@ export const General = () => {
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Reuse one Template for create, update page, and edit modal.",
@@ -209,7 +209,7 @@ export const General = () => {
                 ko: "Field 로직이 커지면 작은 field group으로 나누되, form의 주인은 Template으로 유지하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <DocsToc />

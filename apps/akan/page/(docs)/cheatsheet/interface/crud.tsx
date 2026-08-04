@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "CRUD는 보통 가장 먼저 만드는 화면입니다. 목록을 보고, 하나를 열고, 새로 만들고, 수정하고, 삭제합니다. Akan에서는 이런 작업 대부분이 model slice 주변에 이미 준비되어 있습니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Slice decides which records this screen can read and edit.",
@@ -30,7 +30,7 @@ export default function Page() {
                 ko: "Load와 Model component는 slice를 UI 동작에 연결합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -153,7 +153,7 @@ export default function Page() {
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Name slices after screens, not database queries.",
@@ -172,7 +172,7 @@ export default function Page() {
                 ko: "삭제, 발행, 승인, dialog 열기처럼 반복되는 동작은 Util component로 빼세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <DocsToc />

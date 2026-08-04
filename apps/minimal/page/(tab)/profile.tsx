@@ -1,12 +1,13 @@
-import { appCard, appNav, appScreen } from "@apps/minimal/ui";
+import { appCard, appNavClass, iconTileRecipe, Screen } from "@apps/minimal/ui";
 import type { PageConfig } from "akanjs/client";
+import { clsx } from "akanjs/client";
 import { Layout, Link } from "akanjs/ui";
 import { AiOutlineCreditCard, AiOutlineFileText, AiOutlineRight, AiOutlineUser } from "react-icons/ai";
 
 export default function Page() {
   return (
-    <div className={appScreen(undefined, "px-5 pb-28")}>
-      <Layout.TopInset className={appNav(undefined, "flex items-center px-5")} estimatedHeight={pageConfig.topInset}>
+    <Screen className="px-5 pb-28">
+      <Layout.TopInset className={clsx(appNavClass, "flex items-center px-5")} estimatedHeight={pageConfig.topInset}>
         <div className="flex w-full items-center justify-between">
           <div>
             <p className="text-foreground/40 text-xs uppercase tracking-[0.24em]">Account</p>
@@ -45,9 +46,7 @@ export default function Page() {
               href={href as string}
               key={href as string}
             >
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/15 text-primary text-xl">
-                {icon}
-              </div>
+              <div className={iconTileRecipe()}>{icon}</div>
               <div className="flex-1">
                 <p className="font-semibold">{title}</p>
                 <p className="text-foreground/50 text-sm">{desc}</p>
@@ -57,7 +56,7 @@ export default function Page() {
           ))}
         </div>
       </section>
-    </div>
+    </Screen>
   );
 }
 export const pageConfig = { topInset: 72 } satisfies PageConfig;

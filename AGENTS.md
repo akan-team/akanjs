@@ -34,6 +34,12 @@ that looks wrong; do not "fix" it back.
 - **Never hand-order Tailwind classes.** `nursery/useSortedClasses` is an error and also sorts the string
   arguments to `clsx()` and `cva()`. Sorter output such as `font-bold text-2xl text-base-content` or
   `border-base-content/5 border-t` is correct. Write the classes in any order, run the formatter, leave the result.
+- **Stay inside the color vocabulary.** Vocabulary closure strips the raw Tailwind palette, so these render as
+  no CSS and fail lint (`no-raw-palette-class.grit`, `no-arbitrary-color.grit`, `no-daisyui-legacy-class.grit`,
+  `no-inline-color.grit`): raw palette classes (`bg-blue-500`), arbitrary color values (`bg-[#3b82f6]`), daisyUI
+  legacy classes (`btn-primary`, `card-body`), and color literals in `style={{...}}`. Use semantic tokens
+  (`bg-primary`, `text-foreground/70`). A legitimate fixed color (OS-chrome mockups, data-viz) takes a
+  `// biome-ignore lint/plugin: <reason>` with the reason spelled out. `apps/akan/page/v1/**` is excluded.
 - **Never `throw new Error`.** Throw `new Err("<module>.error.<key>")` and register the key as `[en, ko]` in that
   module's dictionary `.error({})`. Import `Err` from `"../dict"` on the server and from `"@libs/<lib>/client"` or
   `"@apps/<app>/client"` in UI. `no-throw-raw-error.grit` exempts `*.test.ts`, `*.spec.ts`, `*.constant.ts`, and
@@ -487,7 +493,6 @@ cd dist/apps/akan && USE_AKANJS_PKGS=true AKAN_PUBLIC_REPO_NAME=akanjs AKAN_PUBL
 
 - Adjust `<appName>`, `AKAN_PUBLIC_APP_NAME`, and `AKAN_PUBLIC_BASE_PATHS` to match the app being tested.
 
-<<<<<<< HEAD
 <!-- akan:agent:start -->
 ## Workspace
 
@@ -511,25 +516,28 @@ If generated output is stale or broken, update the owning source file and run `a
 ## Recipes
 
 Available UI recipes (Tailwind-variant look factories). Consume by exact name — `import { <name> } from "<import path>"`,
-then `<name>(variants?, className?)`. Do not guess recipe names or import paths; use the list below. Variant options are
-typed (`Parameters<typeof <name>>[0]`), so tsc reports variant mistakes. **Before inlining a repeated surface (card, box,
+then `<name>(variants?, className?)`. Do not guess recipe names, import paths, or variant values; the list below carries
+the full contract (`*` marks the default, `key?` is a boolean flag), so there is no need to open the recipe file to
+consume one. tsc still reports variant mistakes. **Before inlining a repeated surface (card, box,
 tile, …): reuse a recipe below, or add one to `apps/<app>/ui/Recipe.ts` — never re-implement the same look inline in
 several places, and never author a near-duplicate.** Full authoring/consumption policy: the `recipeRule` guideline.
 
+Import from `akanjs/ui`:
+- `badgeRecipe`(variant: default*|primary|secondary|accent|success|warning|info|error|outline) — 뱃지 look — 시맨틱 variant. `<Badge>` 가 소비하며, recipes.badge 슬롯으로 교체 가능.
+- `buttonRecipe`(variant: primary*|secondary|accent|outline|ghost|destructive|success|warning|info|link · size: xs|sm|md*|lg|icon) — 버튼 look — 시맨틱 variant × size. `<Button>` 이 소비하며, `_overrides.tsx` 의 recipes.button 슬롯으로 교체 가능.
+- `inputRecipe`(kind: field*|area) — 입력 표면 look — Input/TextArea 가 공유하는 필드 셸. kind 로 한 줄 필드(field)/멀티라인(area)을 고른다.
+
 Import from `@apps/minimal/ui`:
-- `appBox` — 유틸리티 패널/콜아웃 표면 — rounded-box + border 위 시맨틱 tone(default/muted/primary/success/warning/info/outline) × padding(none/sm/md/lg). 카드가 콘텐츠 표면이면 박스는 톤으로 강조하는 그룹/콜아웃 컨테이너.
-- `appCard` — 카드 표면 — 은은한 경계선 위 표면. `tone` 으로 채움을 고른다(muted 기본/card/glass).
-- `appNav` — 상단 내비 바 — 반투명 배경 + 블러 + 하단 경계선.
-- `appScreen` — 전체 화면 배경/전경. 페이지 루트 컨테이너.
-- `chatBubbleRecipe` — 챗 버블 — 수신(incoming)/발신(outgoing) 방향에 따라 정렬·모서리·색을 바꾼다.
-- `gradientSurfaceRecipe` — 브랜드 그라디언트 표면. radius/padding/shadow 는 호출부에서 조합한다.
-- `iconTileRecipe` — 아이콘 타일 — 토큰 배경 위 아이콘. size 로 사각 크기와 글자 스케일을 함께 잡는다.
-- `neonButtonRecipe` — 네온/사이버펑크 버튼 스킨 — 프레임워크 buttonRecipe 의 **look 교체용**.
+- `appBox`(tone: default|muted*|primary|success|warning|info|outline · padding: none|sm|md*|lg) — 유틸리티 패널/콜아웃 표면 — rounded-box + border 위 시맨틱 tone(default/muted/primary/success/warning/info/outline) × padding(none/sm/md/lg). 카드가 콘텐츠 표면이면 박스는 톤으로 강조하는 그룹/콜아웃 컨테이너.
+- `appCard`(tone: muted*|card|glass) — 카드 표면 — 은은한 경계선 위 표면. `tone` 으로 채움을 고른다(muted 기본/card/glass).
+- `chatBubbleRecipe`(side: incoming*|outgoing) — 챗 버블 — 수신(incoming)/발신(outgoing) 방향에 따라 정렬·모서리·색을 바꾼다.
+- `gradientSurfaceRecipe`(tone: brand*|duo|warm) — 브랜드 그라디언트 표면. radius/padding/shadow 는 호출부에서 조합한다.
+- `iconTileRecipe`(size: sm|md*|lg|xl) — 아이콘 타일 — 토큰 배경 위 아이콘. size 로 사각 크기와 글자 스케일을 함께 잡는다.
+- `neonButtonRecipe`(variant: primary*|secondary|accent|outline|ghost|destructive|success|warning|info|link · size: xs|sm|md*|lg|icon) — 네온/사이버펑크 버튼 스킨 — 프레임워크 buttonRecipe 의 **look 교체용**.
 
 Import from `@apps/akan/ui`:
-- `cardGridRecipe` — 카드/셀 그리드 — `grid gap-3` 위에 cols 브레이크포인트를 얹는다.
-- `docsListRecipe` — 문서 불릿 리스트 — `list-disc space-y-2 pl-5`.
-- `panelRecipe` — 콘텐츠 표면 패널 — `rounded-* border bg-background p-*` 계열 통합. row 는 리스트/행 표면(px만).
+- `cardGridRecipe`(cols: two*|three|mdTwo) — 카드/셀 그리드 — `grid gap-3` 위에 cols 브레이크포인트를 얹는다.
+- `panelRecipe`(tone: solid*|glass · radius: none|lg|xl*|2xl · padding: none|sm|md*|lg|xl|row · shadow?) — 콘텐츠 표면 패널 — `rounded-* border bg-background p-*` 계열 통합. row 는 리스트/행 표면(px만).
 
 ## MCP Workflow Policy
 
@@ -590,7 +598,7 @@ When a request implies a distinct look and feel, do not stop at colors — custo
 - The output contract tells the model which file paths to return.
 - The guide avoids broad framework essays when a concrete file rule is better.
 <!-- akan:agent:end -->
-=======
+
 ## Before You Finish
 
 1. `bun run akan lint <appName>` — Tailwind class order, `Err`, `console`, `#private` scope, unused imports.
@@ -599,4 +607,3 @@ When a request implies a distinct look and feel, do not stop at colors — custo
 4. Re-read the file you wrote against its section above.
 5. Did you add a comment? Delete it unless it documents an external constraint or a security decision.
 6. Did behavior or an invariant change? Update the module's `*.abstract.md`.
->>>>>>> 6d58c7ed0cf8d76def9010e3085a33c92101af2a

@@ -1,16 +1,16 @@
-import { appCard, appScreen } from "@apps/minimal/ui";
+import { appCard, iconTileRecipe, Screen } from "@apps/minimal/ui";
 import { buttonRecipe, Link } from "akanjs/ui";
 import { AiOutlineCamera, AiOutlineHeart } from "react-icons/ai";
 
 export default function Page({ searchParams }: { searchParams: { deepLink?: string } }) {
   return (
-    <div className={appScreen(undefined, "px-5 pt-6 pb-28")}>
+    <Screen className="px-5 pt-6 pb-28">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-foreground/40 text-xs uppercase tracking-[0.24em]">Saved places</p>
           <h1 className="font-bold text-3xl">Wishlists</h1>
         </div>
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/15 text-2xl text-primary">
+        <div className={iconTileRecipe({ size: "lg" })}>
           <AiOutlineHeart />
         </div>
       </div>
@@ -40,6 +40,6 @@ export default function Page({ searchParams }: { searchParams: { deepLink?: stri
       >
         <AiOutlineCamera /> Capture a new place
       </Link>
-    </div>
+    </Screen>
   );
 }

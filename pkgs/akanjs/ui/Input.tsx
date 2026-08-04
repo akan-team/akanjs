@@ -13,13 +13,12 @@ import React, {
 } from "react";
 import { AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 
+import { inputRecipe } from "./recipe";
 import { createOverridable } from "./UiOverride";
 
-// daisyui `input`/`textarea` 클래스 대체(토큰 기반 박스 스타일).
-const inputBase =
-  "h-10 w-full rounded-field border border-input bg-background px-3 text-foreground text-sm focus:border-primary focus:outline-none";
-const textareaBase =
-  "w-full rounded-field border border-input bg-background p-3 text-foreground text-sm focus:border-primary focus:outline-none";
+// 입력 표면은 서버-안전 recipe 레이어(./recipe)의 inputRecipe 가 단일 소스다 — 여기서 클래스를 재작성하지 않는다.
+const inputBase = inputRecipe();
+const textareaBase = inputRecipe({ kind: "area" });
 
 export type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange"> & {
   /** Visual input style. */

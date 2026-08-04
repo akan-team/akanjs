@@ -26,8 +26,11 @@ export const BrowserMockup = ({
   <div className={clsx("w-full overflow-hidden rounded-box border-2 border-foreground/30 bg-background", className)}>
     <div className="flex items-center border-0 border-foreground/10 border-b-2 border-b-foreground/30 px-2">
       <div className="flex items-center gap-2">
+        {/* biome-ignore lint/plugin: macOS traffic-light dots are fixed OS-chrome colors, not theme tokens */}
         <div className="size-3 rounded-full bg-[#f02020]" />
+        {/* biome-ignore lint/plugin: macOS traffic-light dots are fixed OS-chrome colors, not theme tokens */}
         <div className="size-3 rounded-full bg-[#ffcc00]" />
+        {/* biome-ignore lint/plugin: macOS traffic-light dots are fixed OS-chrome colors, not theme tokens */}
         <div className="size-3 rounded-full bg-[#3ed13b]" />
       </div>
       <div className="flex w-full items-center gap-2 border-foreground/10 p-3">

@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "Akan의 인증은 두 가지 질문에 답합니다. 누가 이 API를 호출했는지, 그리고 그 사람이 이 기능을 써도 되는지입니다. 각 signal 앞에 작은 문을 세운다고 생각하면 쉽습니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Middleware reads login information from the request.",
@@ -35,7 +35,7 @@ export default function Page() {
                 ko: "`.with()`는 현재 사용자처럼 서버가 확인한 값을 handler에 넣어줍니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -88,7 +88,7 @@ export default function Page() {
       <Scroll.Slide id="choose" title={l.trans({ en: "Guard Or .with()", ko: "Guard와 .with() 구분" })}>
         <Docs.Title>{l.trans({ en: "Guard Or .with()", ko: "Guard와 .with() 구분" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Use `guards: [User]` when unauthenticated users must not enter the API.",
@@ -107,7 +107,7 @@ export default function Page() {
                 ko: "대부분의 사용자 전용 API는 둘 다 사용합니다. 먼저 guard로 막고, handler 안에서는 `.with(Self)`로 현재 사용자를 받습니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -115,7 +115,7 @@ export default function Page() {
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Do not receive `userId` from the client when you mean the current user. Use `.with(Self)` instead.",
@@ -134,7 +134,7 @@ export default function Page() {
                 ko: "누가 API를 호출할 수 있는지 바로 보이도록 권한 조건은 signal 근처에 두세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <DocsToc />

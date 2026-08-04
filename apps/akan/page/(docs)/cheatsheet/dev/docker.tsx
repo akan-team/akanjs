@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "작은 edge server에서는 Akan app 컨테이너 하나로 시작하세요.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Expose the app on port 8282. Route to service port 80.",
@@ -35,7 +35,7 @@ export default function Page() {
                 ko: "컨테이너 수명과 상관없이 문제를 볼 수 있도록 log를 mount합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -105,7 +105,7 @@ services:
       <Scroll.Slide id="env" title={l.trans({ en: "Important Env", ko: "중요 env" })}>
         <Docs.Title>{l.trans({ en: "Important Env", ko: "중요 env" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "`AKAN_PUBLIC_OPERATION_MODE=edge`: tells the app it is running as an edge deployment.",
@@ -130,7 +130,7 @@ services:
                 ko: "`AKAN_REPLICA`: 확장을 위한 child process 역할을 조절합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -158,7 +158,7 @@ AKAN_REPLICA="0,0,1"  # one all-purpose child`}
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Keep the first compose file boring. Add extra services only when the app really needs them.",
@@ -177,7 +177,7 @@ AKAN_REPLICA="0,0,1"  # one all-purpose child`}
                 ko: "컨테이너가 반복 재시작되면 mount된 log 폴더를 확인하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <DocsToc />

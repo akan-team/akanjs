@@ -12,6 +12,7 @@ import { recipe, tv } from "./recipeFactory";
  * 로 추가한다. 레이어: styles.css(토큰) → recipe(변형) → 컴포넌트(동작).
  */
 
+/** 버튼 look — 시맨틱 variant × size. `<Button>` 이 소비하며, `_overrides.tsx` 의 recipes.button 슬롯으로 교체 가능. */
 export const buttonRecipe = recipe(
   tv({
     base: "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-field font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
@@ -41,6 +42,19 @@ export const buttonRecipe = recipe(
 );
 export type ButtonVariants = NonNullable<Parameters<typeof buttonRecipe>[0]>;
 
+/** 입력 표면 look — Input/TextArea 가 공유하는 필드 셸. kind 로 한 줄 필드(field)/멀티라인(area)을 고른다. */
+export const inputRecipe = recipe(
+  tv({
+    base: "w-full rounded-field border border-input bg-background text-foreground text-sm focus:border-primary focus:outline-none",
+    variants: {
+      kind: { field: "h-10 px-3", area: "p-3" },
+    },
+    defaultVariants: { kind: "field" },
+  }),
+);
+export type InputSurfaceVariants = NonNullable<Parameters<typeof inputRecipe>[0]>;
+
+/** 뱃지 look — 시맨틱 variant. `<Badge>` 가 소비하며, recipes.badge 슬롯으로 교체 가능. */
 export const badgeRecipe = recipe(
   tv({
     base: "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 font-medium text-xs",

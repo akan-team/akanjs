@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "의존성 주입은 service가 필요한 것을 직접 만들지 않고 받아서 쓰는 방식입니다. 이렇게 하면 비즈니스 코드는 작아지고, 외부 시스템도 쉽게 교체할 수 있습니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "`use` receives values registered in app or library options.",
@@ -41,7 +41,7 @@ export default function Page() {
                 ko: "`env`는 런타임 설정을 모든 함수에 넘기지 않고 읽게 해줍니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -173,7 +173,7 @@ export default function Page() {
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Do not create external clients inside every method. Register them once with `use` or `adapt`.",
@@ -198,7 +198,7 @@ export default function Page() {
                 ko: "여러 service가 공유하는 값은 보통 `AkanOption.use()`에 두는 것이 가장 깔끔합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <DocsToc />

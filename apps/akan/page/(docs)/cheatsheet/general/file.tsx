@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "최소 파일 기능의 핵심은 단순합니다. 실제 파일은 저장소에 두고, DB에는 파일을 찾기 위한 기록만 저장합니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "A File model saves filename, url, size, status, and progress.",
@@ -41,7 +41,7 @@ export default function Page() {
                 ko: "로컬 개발에서는 작은 endpoint가 파일을 stream으로 다시 제공할 수 있습니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -224,7 +224,7 @@ return (
               ko: "업로드 mutation 하나에 `{ fileUpload: true }`를 달면, 프레임워크가 `add{Model}Files` fetch 헬퍼와 폼 필드 업로드 액션(`add{Field}FilesOn{Model}`)을 자동 생성합니다. `Field`/`Upload` 컴포넌트가 이를 사용해 모델의 파일 field가 자동으로 업로드·연결됩니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Mark exactly one REST upload mutation; the marker rides the serialized signal to the client.",
@@ -237,7 +237,7 @@ return (
                 ko: "멀티파트 폼은 고정 필드 `files`, `metas`, `type`, `parentId`를 사용합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
         <Code.Snippet
           className="w-full"
@@ -266,7 +266,7 @@ return (
               ko: "처음에는 local storage로 시작하세요. 기능이 잘 동작하면 모든 업로드 API를 고치지 말고 storage adapter만 바꿔 S3, R2, MinIO 같은 저장소로 옮기면 됩니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Local: easy to debug and good for development.",
@@ -285,7 +285,7 @@ return (
                 ko: "Same service: 업로드 로직은 `storageApi` 뒤에 숨겨둡니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -293,7 +293,7 @@ return (
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Keep the database record and the real file separate. The DB stores how to find the file.",
@@ -318,7 +318,7 @@ return (
                 ko: "파일을 삭제할 때는 File record와 storage object를 함께 정리하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <DocsToc />

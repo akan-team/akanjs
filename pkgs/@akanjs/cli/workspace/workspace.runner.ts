@@ -7,8 +7,8 @@ import {
   formatStyleContract,
   type StyleContractViolations,
 } from "@akanjs/devkit/frontendBuild/styleContract";
-import { StyleGuard } from "@akanjs/devkit/frontendBuild/styleGuard";
 import { ThemeValidator } from "@akanjs/devkit/frontendBuild/themeValidator";
+import { type RecipeSource, scanRecipes } from "@akanjs/devkit/recipeScanner";
 import type { PackageJson } from "@akanjs/devkit/types";
 import { getLatestPackageVersion, getNpmRegistryUrl } from "../npmRegistry";
 
@@ -201,11 +201,41 @@ export class WorkspaceRunner extends runner("workspace") {
       exec.cwdPath,
     ]);
     await this.#enforceStyleContract(exec);
+    await this.#enforceRecipeGate(exec);
   }
 
   /**
-   * CI=error: 어휘 폐쇄(styleGuard) + WCAG 콘트라스트(themeValidator) 계약을 lint 에서 강제한다.
-   * 순수 함수라 CSS 파이프라인 없이 타깃 소스를 직접 스캔한다. 위반 시 throw 로 lint 를 실패시킨다.
+   * recipe 자격 게이트: 고를 옵션(값 2개 이상인 variant 축, 또는 불리언 플래그)이 없는 look 은 recipe 가
+   * 아니다 — 함수로 감쌀 이유가 없어 간접층만 늘고, 컴포넌트/상수와의 경계가 무너진다(docsList 사례).
+   * 자기 마크업이 있으면 컴포넌트로, 남의 컴포넌트 className 에 주입하면 공유 클래스 상수로 승격시킨다.
+   */
+  async #enforceRecipeGate(exec: Exec) {
+    const cwdPath = exec.cwdPath;
+    if (!cwdPath) return;
+    const sources: RecipeSource[] = [];
+    for (const rel of ["ui/Recipe.ts", "ui/recipe.ts"]) {
+      const abs = path.join(cwdPath, rel);
+      if (await Bun.file(abs).exists()) sources.push({ path: abs, content: await Bun.file(abs).text(), importFrom: rel });
+    }
+    if (sources.length === 0) return;
+    const offenders = scanRecipes(sources).filter(
+      (recipe) =>
+        !Object.values(recipe.variants).some(
+          (values) => values.length >= 2 || (values.length === 1 && values[0] === "true"),
+        ),
+    );
+    if (offenders.length === 0) return;
+    throw new Error(
+      `[recipeGate] variant-less recipe(s): ${offenders.map((recipe) => recipe.name).join(", ")}\n` +
+        "고를 옵션 없는 look 은 recipe 로 두지 마세요 — 자기 마크업이 있으면 컴포넌트로 승격하고, " +
+        "다른 컴포넌트의 className 에 주입하는 스킨이면 공유 클래스 상수로 두세요.",
+    );
+  }
+
+  /**
+   * CI=error: WCAG 콘트라스트(themeValidator) 계약을 lint 에서 강제한다. 어휘 폐쇄(구 styleGuard)는
+   * 위의 biome 실행이 grit 플러그인(devkit/lint/no-raw-palette-class.grit 외 3종)으로 잡으므로 여기서
+   * 다시 스캔하지 않는다 — 콘트라스트는 토큰 값 계산이라 lint 규칙로 표현할 수 없어 이곳이 유일한 집이다.
    */
   async #enforceStyleContract(exec: Exec) {
     const cwdPath = exec.cwdPath;
@@ -215,32 +245,16 @@ export class WorkspaceRunner extends runner("workspace") {
       const config = await exec.getConfig();
       if (!config.vocabularyClosure) return;
     }
-    const files: { path: string; content: string }[] = [];
-    try {
-      const glob = new Bun.Glob("**/*.{tsx,ts,jsx,js}");
-      for await (const abs of glob.scan({ cwd: cwdPath, absolute: true })) {
-        if (/[\\/](node_modules|\.akan|dist)[\\/]/.test(abs) || /\.(test|spec)\.[jt]sx?$/.test(abs)) continue;
-        files.push({
-          path: abs,
-          content: await Bun.file(abs)
-            .text()
-            .catch(() => ""),
-        });
-      }
-    } catch {
-      return; // 경로 없음/스캔 불가 → 스킵
-    }
-    const style = new StyleGuard().run(files.filter((file) => file.content.length > 0));
     const stylesCssPath = path.join(cwdPath, "page", "styles.css");
     const theme = (await Bun.file(stylesCssPath).exists())
       ? new ThemeValidator().validate(await Bun.file(stylesCssPath).text())
       : [];
-    const violations: StyleContractViolations = { style, theme };
+    const violations: StyleContractViolations = { style: [], theme };
     const blocking = countBlocking(violations);
     if (blocking === 0) return;
     throw new Error(
-      `[styleGuard] ${blocking} blocking style-contract violation(s):\n${formatStyleContract(violations)}\n\n` +
-        "시맨틱 토큰으로 교체하거나, 정당한 경우 사유와 함께 styleguard-disable 지시어로 예외 처리하세요.",
+      `[themeValidator] ${blocking} blocking contrast violation(s):\n${formatStyleContract(violations)}\n\n` +
+        "테마 토큰 값의 전경/배경 콘트라스트를 WCAG 기준 이상으로 조정하세요.",
     );
   }
   async writeTopLevelEnv(workspace: Workspace, devProjectId: string) {

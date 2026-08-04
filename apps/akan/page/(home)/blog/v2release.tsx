@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { docsListRecipe, panelRecipe } from "@apps/akan/ui";
+import { DocsList, panelRecipe } from "@apps/akan/ui";
 
 const changes = [
   {
@@ -131,11 +131,11 @@ export default function Page() {
             {migrationNotes.map((column) => (
               <div key={column.label.en} className="rounded-2xl bg-muted p-5">
                 <h3 className="font-black text-primary text-xl">{l.trans(column.label)}</h3>
-                <ul className={docsListRecipe(undefined, "mt-4 text-foreground/75 leading-7")}>
+                <DocsList className="mt-4 text-foreground/75 leading-7">
                   {column.items.map((item) => (
                     <li key={item.en}>{l.trans(item)}</li>
                   ))}
-                </ul>
+                </DocsList>
               </div>
             ))}
           </div>

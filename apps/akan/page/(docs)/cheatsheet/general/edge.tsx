@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "Akan에서 엣지 컴퓨팅은 이렇게 이해하면 됩니다. 한 Akan 서버가 앱에서 쓰던 generated `fetch` 객체로 다른 Akan 서버를 호출하는 것입니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Cloud server: decides what should happen.",
@@ -35,7 +35,7 @@ export default function Page() {
                 ko: "Akan fetch: 양쪽을 type-safe signal 호출로 연결합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -154,7 +154,7 @@ unsubscribe();`}
               ko: "명령과 상태는 Akan fetch로 유지하세요. 아주 큰 영상이나 binary stream이 필요하다면 그 데이터만을 위한 다른 통로를 추가할 수 있습니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>{l.trans({ en: "Commands: `fetch.startJob(...)`", ko: "명령: `fetch.startJob(...)`" })}</li>
             <li>
               {l.trans({ en: "Status: `fetch.subscribeJobStatus(...)`", ko: "상태: `fetch.subscribeJobStatus(...)`" })}
@@ -165,7 +165,7 @@ unsubscribe();`}
                 ko: "큰 stream: 꼭 필요할 때만 별도 경로를 둡니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -173,7 +173,7 @@ unsubscribe();`}
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Start with a normal signal. If it works locally, it can usually be called remotely by changing `{ origin }`.",
@@ -192,7 +192,7 @@ unsubscribe();`}
                 ko: "subscription은 항상 정리하세요. 오래 실행되는 worker에서는 연결이 새기 쉽습니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <DocsToc />

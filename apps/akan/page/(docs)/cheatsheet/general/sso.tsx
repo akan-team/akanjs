@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -99,7 +99,7 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
               ko: "provider마다 사용자 식별값 이름이 다릅니다. service를 호출하기 전에 하나의 `accountId`로 맞춰주세요.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>{l.trans({ en: "GitHub often uses `username`.", ko: "GitHub는 보통 `username`을 사용합니다." })}</li>
             <li>
               {l.trans({
@@ -113,7 +113,7 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
                 ko: "Kakao와 Naver는 주로 `email`을 사용합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
         <Code.Snippet
           className="w-full"
@@ -133,7 +133,7 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
               ko: "callback 이후 service는 보통 세 곳 중 하나로 이동시킵니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Existing user: go to the signed-in page.",
@@ -152,7 +152,7 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
                 ko: "오류: 이해하기 쉬운 메시지와 함께 오류 화면으로 이동합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -160,7 +160,7 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Keep provider-specific code inside the callback. Keep sign-in rules inside the service.",
@@ -179,7 +179,7 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
                 ko: "SSO를 시작하기 전에 성공, 가입, 오류 redirect를 준비해두세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <DocsToc />

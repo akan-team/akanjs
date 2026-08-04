@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -35,7 +35,7 @@ export default function Page() {
               ko: "다른 model의 일부로 저장되는 값이면 scalar를 사용합니다. 독립적인 list page, permission, service method, lifecycle이 필요하면 일반 module model을 사용합니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Good scalar examples: Price, Address, ContactInfo, Coordinate, FileMeta.",
@@ -48,7 +48,7 @@ export default function Page() {
                 ko: "좋은 module model 예시: Product, Order, User, Post, Ticket.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
         <Code.Snippet
           className="w-full"
@@ -88,7 +88,7 @@ export class ProductInput extends via((field) => ({
         └── price.Unit.tsx`}
         />
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               <code>*.abstract.md</code>:{" "}
               {l.trans({
@@ -131,7 +131,7 @@ export class ProductInput extends via((field) => ({
                 ko: "상위 card나 detail page 안에서 scalar를 표시하는 재사용 renderer를 렌더링합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />

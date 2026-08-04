@@ -1,12 +1,16 @@
-import { appCard, appNav, appScreen } from "@apps/minimal/ui";
+import { appCard, appNavClass, Screen } from "@apps/minimal/ui";
 import type { PageConfig } from "akanjs/client";
 import { buttonRecipe, Layout, Link } from "akanjs/ui";
 import { AiOutlineCalendar, AiOutlineHeart, AiOutlineStar } from "react-icons/ai";
 
 export default function Page() {
   return (
-    <div className={appScreen(undefined, "pb-8")}>
-      <Layout.Navbar right={<div className="font-semibold">Stay detail</div>} className={appNav()} back></Layout.Navbar>
+    <Screen className="pb-8">
+      <Layout.Navbar
+        right={<div className="font-semibold">Stay detail</div>}
+        className={appNavClass}
+        back
+      ></Layout.Navbar>
       <div className="px-5 pt-5">
         <div className="relative h-72 overflow-hidden rounded-[2rem] bg-gradient-to-br from-primary via-secondary to-accent">
           <button className="absolute top-4 right-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-black/20 text-xl backdrop-blur">
@@ -50,7 +54,7 @@ export default function Page() {
           <User.Util.SignInPassword redirect="/explore/detail" />
         </div> */}
       </div>
-    </div>
+    </Screen>
   );
 }
 

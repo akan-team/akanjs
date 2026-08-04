@@ -1,16 +1,16 @@
-import { appCard, appNav, appScreen } from "@apps/minimal/ui";
+import { appCard, appNavClass, iconTileRecipe, Screen } from "@apps/minimal/ui";
 import type { PageConfig } from "akanjs/client";
 import { buttonRecipe, Layout, Link } from "akanjs/ui";
 import { AiOutlineArrowLeft, AiOutlineShoppingCart } from "react-icons/ai";
 
 export default function Page() {
   return (
-    <div className={appScreen(undefined, "pb-8")}>
-      <Layout.Navbar className={appNav()} back right={<div className="font-semibold">Order detail</div>} />
+    <Screen className="pb-8">
+      <Layout.Navbar className={appNavClass} back right={<div className="font-semibold">Order detail</div>} />
       <div className="px-5 pt-5">
         <section className="rounded-4xl bg-linear-to-br from-primary via-secondary to-accent p-px shadow-2xl shadow-primary/20">
           <div className="rounded-4xl bg-muted/95 p-5">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15 text-3xl text-primary">
+            <div className={iconTileRecipe({ size: "xl" })}>
               <AiOutlineShoppingCart />
             </div>
             <p className="mt-5 text-primary text-sm">Deep link exception</p>
@@ -29,7 +29,7 @@ export default function Page() {
           <AiOutlineArrowLeft /> Back to Explore
         </Link>
       </div>
-    </div>
+    </Screen>
   );
 }
 

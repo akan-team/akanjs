@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -133,7 +133,7 @@ export default function Page() {
               ko: "Akan에서 데이터베이스 쿼리는 보통 `document.ts`의 filter에 둡니다. Page와 service는 같은 조건을 매번 만들지 않고 이름 붙은 filter를 호출합니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Use `filter().arg()` for required inputs.",
@@ -152,7 +152,7 @@ export default function Page() {
                 ko: "읽기 쉬운 조건을 위해 `q` helper를 사용합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -324,7 +324,7 @@ export default function Page() {
                 ko: "Akan은 왜 대부분의 model 데이터를 JSON document 형태로 저장하나요?",
               })}
             </div>
-            <ul className={docsListRecipe()}>
+            <DocsList>
               <li>
                 {l.trans({
                   en: "Schema changes are lighter. Adding a small field usually does not require a table migration, so product code can move faster.",
@@ -349,7 +349,7 @@ export default function Page() {
                   ko: "목록/상세 화면에 맞춰 의도적으로 denormalize하고, 트래픽이 많아진 경로에만 index를 추가할 수 있습니다.",
                 })}
               </li>
-            </ul>
+            </DocsList>
           </div>
         </Docs.Alert>
       </Scroll.Slide>
@@ -358,7 +358,7 @@ export default function Page() {
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Name filters after screens or use cases: `inProject`, `inPeriod`, `forDashboard`.",
@@ -383,7 +383,7 @@ export default function Page() {
                 ko: "중요 트래픽 경로가 된 filter에는 index를 추가하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <DocsToc />

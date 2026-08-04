@@ -31,7 +31,8 @@ import {
   Tooltip,
 } from "akanjs/ui";
 import { type ReactNode, useState } from "react";
-import { appBox, appCard, appNav, appScreen } from "./Recipe";
+import { appBox, appCard, appNavClass } from "./Recipe";
+import { Screen } from "./Screen";
 
 // akanjs/ui 프리미티브 데모 실험실. 카테고리별 페이지(page/(home)/lab/*)에서 렌더된다.
 // 모든 색은 시맨틱 토큰만 사용 → styleGuard 통과. 상단 토글로 light/dark 를 나란히 확인.
@@ -68,14 +69,14 @@ const Section = ({ title, note, children }: { title: string; note?: string; chil
 
 // 모바일 프레임이 페이지 스크롤(.akan-page-content)과 상단 크롬을 소유하므로, 페이지는 자체 overflow 스크롤
 // 컨테이너나 sticky 헤더를 만들지 않는다(스택 슬라이드 전환과 충돌 → "렌더 후 이동" 글리치). 기존 stack
-// 페이지처럼 appScreen + Layout.Navbar(프레임 고정 크롬에 포털) 패턴을 따른다.
+// 페이지처럼 <Screen> + Layout.Navbar(프레임 고정 크롬에 포털) 패턴을 따른다.
 const LabShell = ({ title, children }: { title: string; children: ReactNode }) => (
-  <div className={appScreen(undefined, "pb-24")}>
-    <Layout.Navbar className={appNav()} back right={<System.ThemeToggle themes={["dark", "light"]} />}>
+  <Screen className="pb-24">
+    <Layout.Navbar className={appNavClass} back right={<System.ThemeToggle themes={["dark", "light"]} />}>
       <span className="font-semibold">{title}</span>
     </Layout.Navbar>
     {children}
-  </div>
+  </Screen>
 );
 
 // ── /lab (허브) ─────────────────────────────────────────────

@@ -1,12 +1,13 @@
-import { appCard, appNav, appScreen } from "@apps/minimal/ui";
+import { appCard, appNavClass, Screen } from "@apps/minimal/ui";
 import type { PageConfig } from "akanjs/client";
+import { clsx } from "akanjs/client";
 import { Layout, Link } from "akanjs/ui";
 import { AiOutlineCalendar, AiOutlineRight } from "react-icons/ai";
 
 export default function Page() {
   return (
-    <div className={appScreen(undefined, "px-5 pb-28")}>
-      <Layout.TopInset className={appNav(undefined, "flex items-center px-5")} estimatedHeight={pageConfig.topInset}>
+    <Screen className="px-5 pb-28">
+      <Layout.TopInset className={clsx(appNavClass, "flex items-center px-5")} estimatedHeight={pageConfig.topInset}>
         <div className="flex w-full items-center justify-between">
           <div>
             <p className="text-foreground/40 text-xs uppercase tracking-[0.24em]">Upcoming</p>
@@ -38,7 +39,7 @@ export default function Page() {
           ))}
         </div>
       </section>
-    </div>
+    </Screen>
   );
 }
 export const pageConfig = { topInset: 72 } satisfies PageConfig;

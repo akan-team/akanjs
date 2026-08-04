@@ -71,25 +71,39 @@ const renderRecipeIndex = async (workspace: Workspace, appNames: string[], libNa
     const content = await workspace.readFile(path).catch(() => "");
     if (content) sources.push({ path, content, importFrom });
   };
+  await collect("pkgs/akanjs/ui/recipe.ts", "akanjs/ui");
   for (const name of appNames) await collect(`apps/${name}/ui/Recipe.ts`, `@apps/${name}/ui`);
   for (const name of libNames) await collect(`libs/${name}/ui/Recipe.ts`, `@libs/${name}/ui`);
 
   const recipes = scanRecipes(sources);
   if (recipes.length === 0) return "";
+  // Variant signature — the full consumption contract, so an agent never has to open the recipe
+  // file (and pull its css bodies into context) just to call one. `*` = default, `key?` = boolean flag.
+  const signatureOf = (recipe: RecipeInfo) => {
+    const entries = Object.entries(recipe.variants);
+    if (entries.length === 0) return "";
+    const parts = entries.map(([key, values]) => {
+      if (values.length === 1 && values[0] === "true") return `${key}?`;
+      const def = recipe.defaultVariants?.[key];
+      return `${key}: ${values.map((value) => (value === def ? `${value}*` : value)).join("|")}`;
+    });
+    return `(${parts.join(" · ")})`;
+  };
   const groups = new Map<string, RecipeInfo[]>();
   for (const recipe of recipes) groups.set(recipe.importFrom, [...(groups.get(recipe.importFrom) ?? []), recipe]);
   const blocks = [...groups.entries()].map(([importFrom, list]) => {
     const items = list
       .sort((a, b) => a.name.localeCompare(b.name))
-      .map((recipe) => `- \`${recipe.name}\`${recipe.doc ? ` — ${recipe.doc}` : ""}`)
+      .map((recipe) => `- \`${recipe.name}\`${signatureOf(recipe)}${recipe.doc ? ` — ${recipe.doc}` : ""}`)
       .join("\n");
     return `Import from \`${importFrom}\`:\n${items}`;
   });
   return `## Recipes
 
 Available UI recipes (Tailwind-variant look factories). Consume by exact name — \`import { <name> } from "<import path>"\`,
-then \`<name>(variants?, className?)\`. Do not guess recipe names or import paths; use the list below. Variant options are
-typed (\`Parameters<typeof <name>>[0]\`), so tsc reports variant mistakes. **Before inlining a repeated surface (card, box,
+then \`<name>(variants?, className?)\`. Do not guess recipe names, import paths, or variant values; the list below carries
+the full contract (\`*\` marks the default, \`key?\` is a boolean flag), so there is no need to open the recipe file to
+consume one. tsc still reports variant mistakes. **Before inlining a repeated surface (card, box,
 tile, …): reuse a recipe below, or add one to \`apps/<app>/ui/Recipe.ts\` — never re-implement the same look inline in
 several places, and never author a near-duplicate.** Full authoring/consumption policy: the \`recipeRule\` guideline.
 

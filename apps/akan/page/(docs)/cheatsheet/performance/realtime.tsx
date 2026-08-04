@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "실시간 기능은 WebSocket 연결을 유지해 작은 이벤트를 빠르게 주고받게 합니다. 채팅, 게임, 라이브 에디터, 대시보드, 접속 상태에 사용하세요.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "`message` is a client-to-server event.",
@@ -35,7 +35,7 @@ export default function Page() {
                 ko: "`room`은 누가 이벤트를 받을지 정합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -147,7 +147,7 @@ export const ChatMessages = ({ chatId }: { chatId: string }) => {
       <Scroll.Slide id="room" title={l.trans({ en: "Design Rooms", ko: "Room 설계" })}>
         <Docs.Title>{l.trans({ en: "Design Rooms", ko: "Room 설계" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Use a narrow room key such as `chatId`, `gameId`, or `documentId`.",
@@ -166,7 +166,7 @@ export const ChatMessages = ({ chatId }: { chatId: string }) => {
                 ko: "허용된 사용자만 보내거나 구독할 수 있도록 guard를 사용하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -174,7 +174,7 @@ export const ChatMessages = ({ chatId }: { chatId: string }) => {
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Keep payloads small. Send ids and small patches instead of full pages.",
@@ -199,7 +199,7 @@ export const ChatMessages = ({ chatId }: { chatId: string }) => {
                 ko: "게임이나 커서는 너무 잦은 이벤트를 client에서 throttle하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <DocsToc />

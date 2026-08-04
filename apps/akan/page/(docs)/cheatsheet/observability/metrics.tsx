@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "Akan 앱이 느리거나 응답하지 않을 때는 두 가지 런타임 endpoint부터 확인하세요. Health는 앱이 살아있는지 알려주고, metrics는 얼마나 바쁜지 알려줍니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "`/_akan/app/health` checks gateway and child process status.",
@@ -35,7 +35,7 @@ export default function Page() {
                 ko: "숫자의 이유가 필요하면 metrics 다음에 log를 확인하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -118,7 +118,7 @@ export default function Page() {
       <Scroll.Slide id="read" title={l.trans({ en: "How To Read", ko: "읽는 방법" })}>
         <Docs.Title>{l.trans({ en: "How To Read", ko: "읽는 방법" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "`activeRequests` means requests currently being handled. If it stays high, a slow endpoint may be blocking work.",
@@ -143,7 +143,7 @@ export default function Page() {
                 ko: "`rscPendingRenderCount`는 서버 렌더링 작업이 대기 중인지 볼 때 힌트가 됩니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -167,7 +167,7 @@ AKAN_MEMORY_LOG_INTERVAL_MS=10000
 AKAN_MEMORY_GC_ON_REPORT=1`}
         />
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "`AKAN_MEMORY_LOG=1` prints memory summaries periodically.",
@@ -186,7 +186,7 @@ AKAN_MEMORY_GC_ON_REPORT=1`}
                 ko: "`AKAN_MEMORY_GC_ON_REPORT=1`은 보고 전에 GC를 실행해 진단에 도움을 줍니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />

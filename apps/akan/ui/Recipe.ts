@@ -30,9 +30,6 @@ export const panelRecipe = recipe(
 );
 export type PanelVariants = NonNullable<Parameters<typeof panelRecipe>[0]>;
 
-/** 문서 불릿 리스트 — `list-disc space-y-2 pl-5`. */
-export const docsListRecipe = recipe(tv({ base: "list-disc space-y-2 pl-5" }));
-
 /** 카드/셀 그리드 — `grid gap-3` 위에 cols 브레이크포인트를 얹는다. */
 export const cardGridRecipe = recipe(
   tv({

@@ -1,11 +1,11 @@
-import { appCard, appScreen } from "@apps/minimal/ui";
+import { appCard, Screen } from "@apps/minimal/ui";
 import type { PageConfig } from "akanjs/client";
 import { buttonRecipe, Layout, Link } from "akanjs/ui";
 import { AiOutlineCheckCircle, AiOutlineClose, AiOutlineCompass } from "react-icons/ai";
 
 export default function Page() {
   return (
-    <div className={appScreen(undefined, "pb-24")}>
+    <Screen className="pb-24">
       {/* <Layout.TopLeftAction>
         <Link.Back>
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-black/30 backdrop-blur">
@@ -51,7 +51,7 @@ export default function Page() {
           <AiOutlineCompass /> View stay again
         </Link>
       </Layout.BottomInset>
-    </div>
+    </Screen>
   );
 }
 export const pageConfig = {

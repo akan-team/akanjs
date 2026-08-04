@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "`akan script`는 seed data, migration, 점검, 작은 유지보수 수정 같은 일회성 개발/운영 작업에 사용합니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "The script starts the app server container without opening a normal web page.",
@@ -41,7 +41,7 @@ export default function Page() {
                 ko: "Interactive 점검이나 작은 운영 명령에는 `akan console`을 사용하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -137,7 +137,7 @@ void run();`}
       <Scroll.Slide id="lookup" title={l.trans({ en: "Lookup Helpers", ko: "Lookup helper" })}>
         <Docs.Title>{l.trans({ en: "Lookup Helpers", ko: "Lookup helper" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "`server.get(ArticleService)`: class-based lookup with strong types.",
@@ -162,7 +162,7 @@ void run();`}
                 ko: '`server.getAdaptor("storage")`: infrastructure 작업에서 adaptor를 조회할 때 사용합니다.',
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -170,7 +170,7 @@ void run();`}
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Print the target environment before changing data.",
@@ -189,7 +189,7 @@ void run();`}
                 ko: "Domain rule이 한곳에 남도록 직접 database를 쓰기보다 service method를 우선 사용하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <DocsToc />

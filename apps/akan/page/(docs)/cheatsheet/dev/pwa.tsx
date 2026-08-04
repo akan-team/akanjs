@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "PWA(Progressive Web App)는 설치된 앱에 가까운 경험을 줄 수 있는 web app입니다. 여전히 browser 위에서 실행되지만, 설치 metadata, app icon, standalone 표시 방식, 여러 browser 기능을 사용해 더 앱다운 경험을 만들 수 있습니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Use it when users repeatedly open the same web app and benefit from a home-screen or desktop launcher.",
@@ -35,7 +35,7 @@ export default function Page() {
                 ko: "PWA 지원은 browser에게 앱의 이름, icon, 시작 URL, 표시 방식, 색상을 알려주는 것에서 시작합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -49,7 +49,7 @@ export default function Page() {
               ko: "PWA는 web app에 다시 들어오기 쉽게 만드는 방법으로 이해하면 좋습니다. 모든 native app을 대체하는 것은 아니지만, web 배포 속도가 중요하고 깊은 device 전용 API가 필요하지 않은 앱에는 좋은 첫 선택입니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Good fit: users need quick access to the same workflow every day, such as office tasks, approvals, reports, or checklists.",
@@ -68,7 +68,7 @@ export default function Page() {
                 ko: "주의할 경우: 깊은 native 기능, 무거운 background 작업, 엄격한 app-store 존재감이 핵심이라면 native wrapper나 native app도 함께 계획하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -144,7 +144,7 @@ export default function Layout({ children }: LayoutProps) {
               ko: "Akan은 root layout에서 export한 `manifest`도 읽을 수 있습니다. 이 object는 document head의 manifest link로 변환됩니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Write author-facing keys in camelCase, such as `shortName`, `startUrl`, and `themeColor`.",
@@ -163,7 +163,7 @@ export default function Layout({ children }: LayoutProps) {
                 ko: "Manifest를 독립 JSON 파일보다 app code와 함께 관리하고 싶을 때 편합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
         <Code.Snippet
           className="w-full"
@@ -214,7 +214,7 @@ export default function Layout({ children }: LayoutProps) {
               ko: "설치 테스트 전에 manifest 안의 모든 URL이 배포된 app에서 접근 가능한지 확인하세요.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "`/icon-192x192.png` and `/icon-512x512.png` are good first icon sizes for browser install prompts.",
@@ -239,7 +239,7 @@ export default function Layout({ children }: LayoutProps) {
                 ko: '`display: "standalone"`은 앱을 일반 browser toolbar 없이 열리게 합니다.',
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -247,7 +247,7 @@ export default function Layout({ children }: LayoutProps) {
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Start with one simple manifest, then add screenshots, categories, or shortcuts after installation works.",
@@ -272,7 +272,7 @@ export default function Layout({ children }: LayoutProps) {
                 ko: "TypeScript 도움을 받고 app metadata를 한곳에서 관리하고 싶다면 layout object 방식을 사용하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <DocsToc />

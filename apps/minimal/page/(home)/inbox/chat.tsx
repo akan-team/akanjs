@@ -1,4 +1,4 @@
-import { appCard, appNav, appScreen, chatBubbleRecipe, gradientSurfaceRecipe } from "@apps/minimal/ui";
+import { appCard, appNavClass, chatBubbleRecipe, gradientSurfaceRecipe, Screen } from "@apps/minimal/ui";
 import type { PageConfig } from "akanjs/client";
 import { buttonRecipe, Layout } from "akanjs/ui";
 import { AiOutlineSend } from "react-icons/ai";
@@ -17,8 +17,8 @@ const messages: { side: "incoming" | "outgoing"; text: string }[] = Array.from({
 
 export default function Page() {
   return (
-    <div className={appScreen()}>
-      <Layout.Navbar className={appNav()} back>
+    <Screen>
+      <Layout.Navbar className={appNavClass} back>
         <div className="flex items-center gap-3">
           <div className={gradientSurfaceRecipe({ tone: "duo" }, "h-9 w-9 rounded-2xl")} />
           <div>
@@ -48,7 +48,7 @@ export default function Page() {
           </button>
         </div>
       </Layout.BottomInset>
-    </div>
+    </Screen>
   );
 }
 export const pageConfig = {

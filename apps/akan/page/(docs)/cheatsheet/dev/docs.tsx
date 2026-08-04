@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe, PingTester } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc, PingTester } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "Akan은 생성된 fetch 객체에서 signal 문서를 렌더링할 수 있습니다. 단순한 목록이 아니라 argument, guard, REST 호출, realtime endpoint를 확인할 수 있습니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Use `Signal.Doc.Zone` for one signal namespace.",
@@ -35,7 +35,7 @@ export default function Page() {
                 ko: "REST와 WebSocket 테스트 화면을 함께 볼 수 있습니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -87,7 +87,7 @@ export default function ApiDocsPage() {
               ko: "Guard가 있는 endpoint는 auth modal을 열고 JWT를 붙여넣으세요. Decode된 account를 보면 어떤 role로 테스트하는지 확인할 수 있습니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "BaseURL tells you which server the document is calling.",
@@ -106,7 +106,7 @@ export default function ApiDocsPage() {
                 ko: "JWT는 이 UI에서 개발자 테스트용으로만 사용하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -114,7 +114,7 @@ export default function ApiDocsPage() {
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Expose API docs only to developers or admins.",
@@ -133,7 +133,7 @@ export default function ApiDocsPage() {
                 ko: "문서 UI는 빠른 수동 점검에 사용하고, 자동 테스트의 대체물로 보지는 마세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <DocsToc />

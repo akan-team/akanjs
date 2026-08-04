@@ -14,14 +14,13 @@ import { recipe, tv } from "akanjs/ui";
  */
 
 /**
- * 앱 화면 셸 표면 — 이전 `styles.css` 의 `@layer components` 그림자 클래스(`.apptest-*`)를 recipe 로 이관한 것.
- * styles.css 는 토큰 *값* 만 소유하고(`--primary: #hex`), 조합된 look 은 이 recipe 레이어가 소유한다.
- * 모두 무변형(variant 없음) 재사용 표면이라 `appScreen(undefined, "추가클래스")` 형태로 호출한다.
+ * 무변형(variant 없음) 표면은 recipe 가 아니다 — 고를 옵션이 없는 look 을 함수로 감싸면 간접층만 는다.
+ * 자기 마크업을 소유하면 컴포넌트(`<Screen>`, ui/Screen.tsx), 남의 컴포넌트 className 에 스킨을
+ * 주입하면 아래처럼 공유 클래스 상수로 둔다.
  */
-/** 전체 화면 배경/전경. 페이지 루트 컨테이너. */
-export const appScreen = recipe(tv({ base: "min-h-screen bg-background text-foreground" }));
-/** 상단 내비 바 — 반투명 배경 + 블러 + 하단 경계선. */
-export const appNav = recipe(tv({ base: "border-foreground/10 border-b bg-background/80 px-5 backdrop-blur" }));
+/** 상단 내비 바 스킨 — Layout.Navbar / Layout.TopInset 의 className 에 주입하는 무변형 상수. */
+export const appNavClass = "border-foreground/10 border-b bg-background/80 px-5 backdrop-blur";
+
 /**
  * 카드 표면 — 은은한 경계선 위 표면. `tone` 으로 채움을 고른다(muted 기본/card/glass).
  * radius/padding 은 기존 규약대로 호출부에서 조합한다: `appCard({ tone: "card" }, "rounded-3xl p-4")`.

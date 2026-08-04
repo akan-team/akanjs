@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "큐 작업은 사용자 요청을 막으면 안 되는 일을 처리할 때 씁니다. 버튼 요청은 빠르게 끝나고, 무거운 작업은 백그라운드 process가 수행합니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Good for backups, exports, report generation, imports, and long AI jobs.",
@@ -35,7 +35,7 @@ export default function Page() {
                 ko: "Process는 느린 작업을 request 경로 밖에서 수행합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -142,7 +142,7 @@ export default function Page() {
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Always store job status: `waiting`, `running`, `done`, `failed`.",
@@ -167,7 +167,7 @@ export default function Page() {
                 ko: "Endpoint는 빠르게 반환하고, 느린 작업은 process에서 하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <DocsToc />

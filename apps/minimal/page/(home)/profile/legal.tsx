@@ -1,12 +1,12 @@
-import { appCard, appNav, appScreen } from "@apps/minimal/ui";
+import { appCard, appNavClass, Screen } from "@apps/minimal/ui";
 import type { PageConfig } from "akanjs/client";
 import { Layout } from "akanjs/ui";
 import { AiOutlineFileProtect } from "react-icons/ai";
 
 export default function Page() {
   return (
-    <div className={appScreen(undefined, "px-5 pb-8")}>
-      <Layout.Navbar className={appNav()} back>
+    <Screen className="px-5 pb-8">
+      <Layout.Navbar className={appNavClass} back>
         <div className="font-semibold">Legal info</div>
       </Layout.Navbar>
       <section className="pt-5">
@@ -26,7 +26,7 @@ export default function Page() {
           ))}
         </div>
       </section>
-    </div>
+    </Screen>
   );
 }
 export const pageConfig = { topInset: 48, transition: "stack" } satisfies PageConfig;

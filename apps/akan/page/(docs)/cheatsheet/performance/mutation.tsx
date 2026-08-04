@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -83,7 +83,7 @@ export default function Page() {
               ko: "Akan에는 저장된 데이터를 바꾸는 두 가지 방법이 있습니다. 하나의 로드된 document를 수정할 때는 document method를, 조건에 맞는 행을 데이터베이스에서 직접 바꿀 때는 query update를 사용합니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Document methods (`.set().save()`, `Model.update`, `Model.remove`) load a document, run save/update/remove hooks, then persist it.",
@@ -102,7 +102,7 @@ export default function Page() {
                 ko: "query 조건에 `q`를 쓰듯, 변경 연산에는 `u` update helper를 사용합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -250,7 +250,7 @@ await this.Post.updateOne({ id }, ({ pull }) => ({ tags: pull("featured") }));`}
                 ko: "Query update는 document hook을 실행하지 않습니다.",
               })}
             </div>
-            <ul className={docsListRecipe()}>
+            <DocsList>
               <li>
                 {l.trans({
                   en: "`updateOne`, `updateMany`, `deleteMany`, and `bulkWrite` write directly in the database and do not fire save/update/remove hooks.",
@@ -263,7 +263,7 @@ await this.Post.updateOne({ id }, ({ pull }) => ({ tags: pull("featured") }));`}
                   ko: "document마다 항상 실행되어야 하는 규칙이 있다면 document 경로를 사용하세요: `Model.update(id, patch)`, `Model.remove(id)`, 또는 `doc.set(...).save()`.",
                 })}
               </li>
-            </ul>
+            </DocsList>
           </div>
         </Docs.Alert>
       </Scroll.Slide>
@@ -272,7 +272,7 @@ await this.Post.updateOne({ id }, ({ pull }) => ({ tags: pull("featured") }));`}
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Prefer query updates for counters and bulk state changes; prefer document methods when hooks or rich domain logic must run.",
@@ -291,7 +291,7 @@ await this.Post.updateOne({ id }, ({ pull }) => ({ tags: pull("featured") }));`}
                 ko: "변경이 반드시 어떤 행에 적용되어야 한다면 결과의 `modifiedCount`를 확인하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <DocsToc />

@@ -19,6 +19,19 @@ hallucinated, re-derived inline, or duplicated across an app.
 - Variant options are typed (`Parameters<typeof <name>>[0]`), so a wrong variant is a compile error — let tsc validate
   options rather than memorizing strings.
 
+## Recipe vs Component vs Constant — The Gate
+The form of a shared look is decided by **counting**, not judgment (`akan lint` enforces this as `recipeGate`):
+
+1. **Does the caller choose an option?** (at least one variant axis with 2+ values, or a boolean flag)
+   - **No** → it is **never a recipe** — a fixed look wrapped in a function is dead indirection.
+     - Reused with its own markup → a small **component** (`<Divider/>`, `<DocsList/>`, `<Screen/>`).
+     - Injected into another component's `className` prop → a shared **class constant** (`appNavClass`).
+     - Used once → plain **inline** classes.
+   - **Yes** → it is a recipe. Then:
+2. **Does it need markup or behavior** (own tag, structure, state, a11y)?
+   - No → pages call the recipe directly on their own element (`panelRecipe({ padding: "row" })`).
+   - Yes → a component consumes the recipe internally (`<Button variant>` → `buttonRecipe`).
+
 ## Authoring Recipes
 - A **reusable or repeated surface** (card, box, tile, chat bubble, hero, …) belongs in a recipe, **not** inline. If the same
   token-class stack appears in more than one place, extract it into a recipe.

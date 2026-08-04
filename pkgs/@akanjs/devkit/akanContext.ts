@@ -3,6 +3,7 @@ import path from "node:path";
 import { capitalize } from "akanjs/common";
 import { AppExecutor, LibExecutor, type SysExecutor, type WorkspaceExecutor } from "./executors";
 import { FileSys } from "./fileSys";
+import { findInlineRecipeDuplicates, scanRecipes } from "./recipeScanner";
 import type { PackageJson } from "./types";
 import {
   type GeneratedSyncState,
@@ -750,6 +751,40 @@ export class AkanContextAnalyzer {
           }
         }
       }
+    }
+
+    // Recipe SSOT advisory (항상 warning — 차단하지 않음): recipe 지문이 인라인 className 으로 재작성된
+    // 곳의 추이를 보이게 한다. 유입이 실제로 재발하면 그때 lint 승격을 검토한다 — 증거 기반 에스컬레이션.
+    for (const sys of [...context.apps, ...context.libs]) {
+      const recipePath = path.join(workspace.workspaceRoot, sys.path, "ui/Recipe.ts");
+      const recipeContent = await Bun.file(recipePath)
+        .text()
+        .catch(() => "");
+      if (!recipeContent) continue;
+      const recipes = scanRecipes([{ path: recipePath, content: recipeContent, importFrom: "ui" }]);
+      const files: { path: string; content: string }[] = [];
+      const glob = new Bun.Glob("**/*.tsx");
+      for await (const abs of glob.scan({ cwd: path.join(workspace.workspaceRoot, sys.path), absolute: true })) {
+        if (/[\\/](node_modules|\.akan|dist)[\\/]|[\\/]v1[\\/]/.test(abs) || /\.(test|spec)\.tsx$/.test(abs)) continue;
+        files.push({
+          path: abs,
+          content: await Bun.file(abs)
+            .text()
+            .catch(() => ""),
+        });
+      }
+      const duplicates = findInlineRecipeDuplicates(recipes, files);
+      if (duplicates.length === 0) continue;
+      const preview = duplicates
+        .slice(0, 3)
+        .map((duplicate) => `${path.relative(workspace.workspaceRoot, duplicate.path)}:${duplicate.line}`)
+        .join(", ");
+      diagnostics.push({
+        severity: "warning",
+        code: "recipe-inline-duplicate",
+        path: path.join(sys.path, "ui/Recipe.ts"),
+        message: `${sys.name}: ${duplicates.length} inline className(s) re-author a recipe fingerprint (${preview}${duplicates.length > 3 ? ", …" : ""}) — consume the recipe instead.`,
+      });
     }
 
     const scopedDiagnostics = diagnostics.map((diagnostic) => ({

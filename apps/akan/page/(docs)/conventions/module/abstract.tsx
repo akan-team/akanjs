@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -59,7 +59,7 @@ Describe create, update, approval, deletion, or state transition flows.
       <Scroll.Slide id="update-rule" title={l.trans({ en: "Update Rule", ko: "갱신 규칙" })}>
         <Docs.Title>{l.trans({ en: "Update Rule", ko: "갱신 규칙" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Update it when business invariants, workflows, public behavior, permissions, or state transitions change.",
@@ -78,7 +78,7 @@ Describe create, update, approval, deletion, or state transition flows.
                 ko: "같은 모듈의 constant, document, service, signal, store, UI 파일을 수정하기 전에 먼저 읽습니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <DocsToc />

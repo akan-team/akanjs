@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "Lazy loading은 첫 화면에서 모든 무거운 component를 바로 받지 않는 방식입니다. 사용자가 실제로 볼 때 비싼 UI를 불러오세요.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Good for maps, charts, editors, 3D viewers, and wallet widgets.",
@@ -35,7 +35,7 @@ export default function Page() {
                 ko: "작은 버튼이나 첫 화면 핵심 content에는 별로 도움이 되지 않습니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -104,7 +104,7 @@ export const EditPanel = ({ open }: EditPanelProps) => {
       <Scroll.Slide id="ssr" title={l.trans({ en: "SSR Or Client Only", ko: "SSR 또는 client only" })}>
         <Docs.Title>{l.trans({ en: "SSR Or Client Only", ko: "SSR 또는 client only" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Use default lazy when the component can render on the server.",
@@ -123,7 +123,7 @@ export const EditPanel = ({ open }: EditPanelProps) => {
                 ko: "빈 공간이 어색하다면 항상 loading fallback을 제공하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -131,7 +131,7 @@ export const EditPanel = ({ open }: EditPanelProps) => {
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Split by user intent: editor, map, chart, modal, viewer.",
@@ -150,7 +150,7 @@ export const EditPanel = ({ open }: EditPanelProps) => {
                 ko: "많은 페이지가 같은 component를 즉시 사용한다면 lazy가 오히려 지연을 만들 수 있습니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <DocsToc />

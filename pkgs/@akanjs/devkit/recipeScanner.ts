@@ -11,6 +11,8 @@ export interface RecipeInfo {
   variants: Record<string, string[]>;
   defaultVariants?: Record<string, string>;
   doc?: string;
+  /** The recipe's `base` class string when it is a plain string literal — the SSOT fingerprint. */
+  base?: string;
 }
 
 export interface RecipeSource {
@@ -47,6 +49,7 @@ export const scanRecipes = (sources: RecipeSource[]): RecipeInfo[] => {
           variants: parsed.variants,
           ...(parsed.defaultVariants ? { defaultVariants: parsed.defaultVariants } : {}),
           ...(getLeadingDoc(source.content, statement) ? { doc: getLeadingDoc(source.content, statement) } : {}),
+          ...(parsed.base ? { base: parsed.base } : {}),
         });
       }
     }
@@ -60,7 +63,7 @@ const isExported = (statement: ts.VariableStatement): boolean =>
 /** Matches `recipe( tv( <ObjectLiteral> ) )` and returns the variant surface, or null for anything else. */
 const parseRecipeCall = (
   initializer: ts.Expression,
-): { variants: Record<string, string[]>; defaultVariants?: Record<string, string> } | null => {
+): { variants: Record<string, string[]>; defaultVariants?: Record<string, string>; base?: string } | null => {
   if (!ts.isCallExpression(initializer)) return null;
   if (!ts.isIdentifier(initializer.expression) || initializer.expression.text !== "recipe") return null;
   const tvCall = initializer.arguments[0];
@@ -74,10 +77,13 @@ const parseRecipeCall = (
 const extractVariants = (config: ts.ObjectLiteralExpression) => {
   const variants: Record<string, string[]> = {};
   let defaultVariants: Record<string, string> | undefined;
+  let base: string | undefined;
   for (const property of config.properties) {
     if (!ts.isPropertyAssignment(property) || !isNamed(property.name)) continue;
     const key = propName(property.name);
-    if (key === "variants" && ts.isObjectLiteralExpression(property.initializer)) {
+    if (key === "base" && ts.isStringLiteral(property.initializer)) {
+      base = property.initializer.text;
+    } else if (key === "variants" && ts.isObjectLiteralExpression(property.initializer)) {
       for (const variant of property.initializer.properties) {
         if (!ts.isPropertyAssignment(variant) || !isNamed(variant.name)) continue;
         if (!ts.isObjectLiteralExpression(variant.initializer)) continue;
@@ -95,12 +101,72 @@ const extractVariants = (config: ts.ObjectLiteralExpression) => {
       }
     }
   }
-  return { variants, defaultVariants };
+  return { variants, defaultVariants, base };
 };
 
 const isNamed = (name: ts.PropertyName): name is ts.Identifier | ts.StringLiteral =>
   ts.isIdentifier(name) || ts.isStringLiteral(name);
 const propName = (name: ts.Identifier | ts.StringLiteral): string => name.text;
+
+export interface RecipeDuplicate {
+  recipe: string;
+  path: string;
+  line: number;
+  className: string;
+}
+
+/**
+ * SSOT advisory: finds JSX `className` string values that hand-rewrite a recipe's base fingerprint instead of
+ * consuming the recipe. Only recipes whose base has 3+ distinctive tokens are checked — shorter fingerprints
+ * (`grid gap-3` …) are generic utilities and would flood the report with false positives. AST-scoped to real
+ * `className` attributes, so class strings inside doc-example template literals never match.
+ */
+export const findInlineRecipeDuplicates = (
+  recipes: RecipeInfo[],
+  files: { path: string; content: string }[],
+): RecipeDuplicate[] => {
+  const fingerprints = recipes
+    .map((recipe) => ({ recipe: recipe.name, tokens: (recipe.base ?? "").split(/\s+/).filter(Boolean) }))
+    .filter((fingerprint) => fingerprint.tokens.length >= 3);
+  if (fingerprints.length === 0) return [];
+  const duplicates: RecipeDuplicate[] = [];
+  for (const file of files) {
+    const sourceFile = ts.createSourceFile(file.path, file.content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const visit = (node: ts.Node) => {
+      if (ts.isJsxAttribute(node) && node.name.getText(sourceFile) === "className" && node.initializer) {
+        for (const value of stringValuesIn(node.initializer)) {
+          const classSet = new Set(value.split(/\s+/));
+          for (const fingerprint of fingerprints) {
+            if (fingerprint.tokens.every((token) => classSet.has(token))) {
+              const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+              duplicates.push({ recipe: fingerprint.recipe, path: file.path, line: line + 1, className: value });
+            }
+          }
+        }
+      }
+      node.forEachChild(visit);
+    };
+    visit(sourceFile);
+  }
+  return duplicates;
+};
+
+const stringValuesIn = (node: ts.Node): string[] => {
+  const values: string[] = [];
+  const visit = (child: ts.Node) => {
+    if (
+      ts.isStringLiteral(child) ||
+      ts.isNoSubstitutionTemplateLiteral(child) ||
+      ts.isTemplateHead(child) ||
+      ts.isTemplateMiddle(child) ||
+      ts.isTemplateTail(child)
+    )
+      values.push(child.text);
+    child.forEachChild(visit);
+  };
+  visit(node);
+  return values;
+};
 
 /** The first non-empty line of the JSDoc/line comment immediately preceding the statement, markers stripped. */
 const getLeadingDoc = (fullText: string, node: ts.Node): string | undefined => {

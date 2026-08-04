@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -83,7 +83,7 @@ export class Price extends by(cnst.Price) {
               ko: "같은 표시나 계산이 여러 곳에 반복된다면 scalar document method를 사용합니다. 예를 들어 `Price.getLabel()`은 product card, order summary, invoice에서 재사용할 수 있습니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "Good: formatting a price label from `amount` and `currency`.",
@@ -102,7 +102,7 @@ export class Price extends by(cnst.Price) {
                 ko: "피하기: scalar method에서 다른 record를 load하거나 backend service를 호출.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />

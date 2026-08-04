@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, docsListRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -62,7 +62,7 @@ export class Price extends via((field) => ({
               ko: "값이 안정적인 초기 상태를 가져야 하면 default를 추가합니다. 상위 model이 해당 field 없이도 존재할 수 있다면 `.optional()`을 사용합니다.",
             })}
           </div>
-          <ul className={docsListRecipe()}>
+          <DocsList>
             <li>
               {l.trans({
                 en: "`currency` can default to a normal business value such as `KRW`.",
@@ -75,7 +75,7 @@ export class Price extends via((field) => ({
                 ko: "모든 price에 note가 필요한 것은 아니므로 `memo`는 optional일 수 있습니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
         <Code.Snippet
           className="w-full"
