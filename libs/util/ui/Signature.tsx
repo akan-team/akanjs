@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { buttonRecipe } from "akanjs/ui";
 import { type ChangeEvent, type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
 import { AiOutlineDelete, AiOutlineUpload } from "react-icons/ai";
@@ -105,7 +105,7 @@ export const Signature = ({
   };
 
   return (
-    <div className={clsx("flex flex-col gap-2", className)}>
+    <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex gap-1">
         <button
           type="button"

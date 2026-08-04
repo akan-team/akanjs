@@ -1,7 +1,7 @@
 "use client";
 import { usePage } from "@libs/util/client";
 import { useCamera } from "@libs/util/webkit";
-import { clsx, cn, Device } from "akanjs/client";
+import { cn, Device } from "akanjs/client";
 import type { ProtoFile } from "akanjs/constant";
 import { BottomSheet, type BottomSheetRef, badgeRecipe, buttonRecipe, Image } from "akanjs/ui";
 import { type ChangeEvent, useRef, useState } from "react";
@@ -87,20 +87,18 @@ export const File = ({
   };
 
   return (
-    <div className={clsx("relative flex flex-wrap gap-2", className)}>
+    <div className={cn("relative flex flex-wrap gap-2", className)}>
       <div
-        className={clsx(
+        className={cn(
           "flex size-full cursor-pointer flex-col items-center rounded-field border-2 py-5 transition-colors",
           uploadClassName,
-          {
-            "border-2 border-success border-dashed": isDragging && !isUploading,
-            "hover:bg-muted": isUploading,
-            "bg-background": file?.id,
-          },
+          isDragging && !isUploading && "border-2 border-success border-dashed",
+          isUploading && "hover:bg-muted",
+          file?.id && "bg-background",
         )}
       >
         <button
-          className={clsx("group w-full rounded-md")}
+          className={cn("group w-full rounded-md")}
           onClick={(e) => {
             // e.preventDefault();
             // e.stopPropagation();
@@ -155,12 +153,10 @@ export const File = ({
           )}
 
           <div
-            className={clsx(
+            className={cn(
               "absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center rounded-md backdrop-blur-lg duration-100",
-              {
-                "opacity-0": !isUploading,
-                "opacity-100": isUploading,
-              },
+              !isUploading && "opacity-0",
+              isUploading && "opacity-100",
             )}
           >
             <div className="flex w-[30%] flex-col items-center justify-center gap-2">
@@ -242,14 +238,15 @@ export const FileList = ({
 
   return (
     <>
-      <div className={clsx("relative flex size-full flex-wrap gap-2", className)}>
+      <div className={cn("relative flex size-full flex-wrap gap-2", className)}>
         {fileList && fileList.length > 0 ? (
           <div
-            className={clsx("relative size-full rounded-md border-2 border-border duration-200", {
-              "border-2 border-success border-dashed": isDragging && !isUploading,
-            })}
+            className={cn(
+              "relative size-full rounded-md border-2 border-border duration-200",
+              isDragging && !isUploading && "border-2 border-success border-dashed",
+            )}
           >
-            <div className={clsx("relative size-full overflow-x-auto", {})}>
+            <div className={cn("relative size-full overflow-x-auto")}>
               <table
                 onDragEnter={(e) => {
                   e.preventDefault();
@@ -267,7 +264,7 @@ export const FileList = ({
                   setIsDragging(false);
                 }}
                 onDrop={onDrop}
-                className={clsx("table size-full")}
+                className={cn("table size-full")}
               >
                 <tbody className="w-full rounded-md">
                   <tr className="w-full">
@@ -280,13 +277,7 @@ export const FileList = ({
                     const isUploading = file.status === "uploading";
                     // const isUploading = true;
                     return (
-                      <tr
-                        key={file.id}
-                        className={clsx("", {
-                          "opacity-50": isUploading,
-                          "opacity-100": !isUploading,
-                        })}
-                      >
+                      <tr key={file.id} className={cn("", isUploading && "opacity-50", !isUploading && "opacity-100")}>
                         <td className="w-[70%] truncate text-xs md:w-[50%] md:text-sm">{file.filename}</td>
                         <td className="text-center text-xs md:text-sm">{formatSize(file.size)}</td>
                         <td className="text-center align-middle text-xs md:text-sm">
@@ -325,13 +316,11 @@ export const FileList = ({
           </div>
         ) : (
           <div
-            className={clsx(
+            className={cn(
               "group flex size-full cursor-pointer flex-col items-center rounded-field border-2 py-5 transition-colors",
               uploadClassName,
-              {
-                "border-2 border-success border-dashed": isDragging && !isUploading,
-                "hover:bg-muted": isUploading,
-              },
+              isDragging && !isUploading && "border-2 border-success border-dashed",
+              isUploading && "hover:bg-muted",
             )}
             onClick={() => {
               inputFileRef.current?.click();
@@ -471,20 +460,19 @@ const UploadImage = ({
               className="group relative flex size-56"
             >
               <Image
-                className={clsx("bg-background object-cover px-0", {
-                  "rounded-full": styleType === "circle",
-                  "rounded-md": styleType === "square",
-                })}
+                className={cn(
+                  "bg-background object-cover px-0",
+                  styleType === "circle" && "rounded-full",
+                  styleType === "square" && "rounded-md",
+                )}
                 file={protoFile}
               />
 
               <button
-                className={clsx(
+                className={cn(
                   "absolute flex size-full flex-wrap items-center justify-center opacity-0 backdrop-blur-lg group-hover:animate-fadeIn",
-                  {
-                    "rounded-full": styleType === "circle",
-                    "rounded-md": styleType === "square",
-                  },
+                  styleType === "circle" && "rounded-full",
+                  styleType === "square" && "rounded-md",
                 )}
               >
                 <AiOutlineDelete className="text-3xl text-primary/0 transition duration-300 group-hover:text-destructive" />
@@ -494,12 +482,12 @@ const UploadImage = ({
         ) : (
           <div className="relative flex w-full">
             <button
-              className={clsx("group aspect-1 size-56 bg-background px-0 duration-300", {
-                "rounded-full": styleType === "circle",
-                "rounded-md": styleType === "square",
-
-                "cursor-not-allowed": !isAccepted,
-              })}
+              className={cn(
+                "group aspect-1 size-56 bg-background px-0 duration-300",
+                styleType === "circle" && "rounded-full",
+                styleType === "square" && "rounded-md",
+                !isAccepted && "cursor-not-allowed",
+              )}
             >
               <div
                 onClick={() => {
@@ -533,13 +521,11 @@ const UploadImage = ({
                     } else setIsAccepted(false);
                   }
                 }}
-                className={clsx(
+                className={cn(
                   "group relative flex size-full cursor-pointer items-center justify-center rounded-field transition-colors md:text-lg",
-                  {
-                    "rounded-full": styleType === "circle",
-                    "rounded-md": styleType === "square",
-                    "border-2 border-success border-dashed": isDragging,
-                  },
+                  styleType === "circle" && "rounded-full",
+                  styleType === "square" && "rounded-md",
+                  isDragging && "border-2 border-success border-dashed",
                 )}
               >
                 {renderEmpty ? (
@@ -555,12 +541,10 @@ const UploadImage = ({
 
                 {protoFile && protoFile.status === "uploading" ? (
                   <div
-                    className={clsx(
+                    className={cn(
                       "absolute top-0 left-0 z-[100] flex size-full flex-col items-center justify-center gap-2 bg-background/30 px-10 backdrop-blur-sm",
-                      {
-                        "rounded-full": styleType === "circle",
-                        "rounded-md": styleType === "square",
-                      },
+                      styleType === "circle" && "rounded-full",
+                      styleType === "square" && "rounded-md",
                     )}
                   >
                     <div className="inline-block size-8 animate-spin rounded-full border-2 border-current border-t-transparent" />
@@ -670,29 +654,26 @@ interface EmptyUploadProps {
 export const EmptyUpload = ({ type, isDragging, desc, dndDesc }: EmptyUploadProps) => {
   return (
     <div
-      className={clsx(
+      className={cn(
         "flex flex-col items-center justify-center gap-5 text-[45px] text-muted-foreground duration-300 group-hover:text-background",
-        {
-          "text-success": isDragging,
-        },
+        isDragging && "text-success",
       )}
     >
       <div className="flex h-full items-center justify-center gap-4">
         {type === "image" ? <AiFillFileImage /> : type === "file" ? <AiFillFileText /> : <GiFiles />}
       </div>
       <div
-        className={clsx("w-fit text-muted-foreground text-sm duration-300 group-hover:text-background", {
-          "text-success": isDragging,
-        })}
+        className={cn(
+          "w-fit text-muted-foreground text-sm duration-300 group-hover:text-background",
+          isDragging && "text-success",
+        )}
       >
         {desc}
       </div>
       <div
-        className={clsx(
+        className={cn(
           "flex flex-row items-center justify-center gap-2 rounded-md border border-dashed px-1 py-1 text-[8px] text-muted-foreground duration-300 group-hover:text-background",
-          {
-            "border-success text-success": isDragging,
-          },
+          isDragging && "border-success text-success",
         )}
       >
         {dndDesc}

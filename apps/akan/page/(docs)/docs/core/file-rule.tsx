@@ -1,7 +1,7 @@
 import { usePage } from "@apps/akan/client";
 import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 
 export default function Page() {
   const { l } = usePage();
@@ -164,20 +164,22 @@ export default function Page() {
               <div key={title} className={panelRecipe({ padding: "row" })}>
                 <div className="flex items-center justify-between">
                   <div
-                    className={clsx("font-mono font-semibold", {
-                      "text-success": type === "client",
-                      "text-primary": type === "server",
-                      "text-warning": type === "shared",
-                    })}
+                    className={cn(
+                      "font-mono font-semibold",
+                      type === "client" && "text-success",
+                      type === "server" && "text-primary",
+                      type === "shared" && "text-warning",
+                    )}
                   >
                     {title}
                   </div>
                   <div
-                    className={clsx("rounded-full px-2 py-1 font-semibold text-xs", {
-                      "bg-success/10 text-success": type === "client",
-                      "bg-primary/10 text-primary": type === "server",
-                      "bg-warning/10 text-warning": type === "shared",
-                    })}
+                    className={cn(
+                      "rounded-full px-2 py-1 font-semibold text-xs",
+                      type === "client" && "bg-success/10 text-success",
+                      type === "server" && "bg-primary/10 text-primary",
+                      type === "shared" && "bg-warning/10 text-warning",
+                    )}
                   >
                     {type}
                   </div>

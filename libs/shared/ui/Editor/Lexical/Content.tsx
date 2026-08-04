@@ -3,7 +3,7 @@ import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { useState } from "react";
 
 import { createEditorConfig } from "./config";
@@ -22,7 +22,7 @@ export default function Content({ content, className = "" }: { content: unknown;
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
-      <div className={clsx("akan-editor akan-editor-readonly relative w-full", className)}>
+      <div className={cn("akan-editor akan-editor-readonly relative w-full", className)}>
         <RichTextPlugin
           contentEditable={<ContentEditable className="leading-7 outline-none" />}
           ErrorBoundary={LexicalErrorBoundary}

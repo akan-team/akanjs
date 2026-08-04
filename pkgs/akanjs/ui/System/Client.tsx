@@ -2,7 +2,7 @@
 import { type ClientEnv, dayjs, getEnv, logo } from "akanjs/base";
 import {
   clearRscNavigationCache,
-  clsx,
+  cn,
   Device,
   debugFrame,
   defaultPageState,
@@ -194,7 +194,7 @@ export const ClientPathWrapper = ({
       <animated.div
         {...bindProps}
         {...props}
-        className={clsx("group/path", className)}
+        className={cn("group/path", className)}
         ref={wrapperRef}
         style={{ ...frameCssVars, ...(bindProps.style ?? {}), ...(style ?? {}) } as TransitionStyle}
         data-lang={lang}

@@ -1,4 +1,4 @@
-import { clsx, cn } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { AiOutlineLoading3Quarters } from "react-icons/ai";
 
 interface ConnectStatusProps {
@@ -22,17 +22,15 @@ export const ConnectStatus = ({
     <div className="relative grid place-items-center">
       <div
         data-tip={tooltip}
-        className={clsx(
+        className={cn(
           `size-1.5 rounded-full`,
-          {
-            tooltip: !!tooltip,
-            "bg-success": conn === "healthy",
-            [connectedClassName ?? ""]: conn === "healthy",
-            "bg-warning": conn === "unhealthy",
-            [unhealthyClassName ?? ""]: conn === "unhealthy",
-            "bg-muted": conn === "disconnected",
-            [disconnectedClassName ?? ""]: conn === "disconnected",
-          },
+          !!tooltip && "tooltip",
+          conn === "healthy" && "bg-success",
+          conn === "healthy" && (connectedClassName ?? ""),
+          conn === "unhealthy" && "bg-warning",
+          conn === "unhealthy" && (unhealthyClassName ?? ""),
+          conn === "disconnected" && "bg-muted",
+          conn === "disconnected" && (disconnectedClassName ?? ""),
           className,
         )}
       />

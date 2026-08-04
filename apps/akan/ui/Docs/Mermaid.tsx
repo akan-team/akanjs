@@ -1,6 +1,6 @@
 "use client";
 
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { useEffect, useId, useRef, useState } from "react";
 
 interface MermaidProps {
@@ -80,7 +80,7 @@ export const Mermaid = ({ chart, title, className, highlightNodes = [] }: Mermai
   }, [chart, highlightNodes, reactId]);
 
   return (
-    <div className={clsx("my-4 overflow-hidden rounded-xl border border-border bg-muted/40", className)}>
+    <div className={cn("my-4 overflow-hidden rounded-xl border border-border bg-muted/40", className)}>
       {title ? (
         <div className="border-border border-b px-4 py-2 font-bold text-foreground/70 text-sm">{title}</div>
       ) : null}

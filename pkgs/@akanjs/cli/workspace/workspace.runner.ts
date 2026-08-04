@@ -215,7 +215,8 @@ export class WorkspaceRunner extends runner("workspace") {
     const sources: RecipeSource[] = [];
     for (const rel of ["ui/Recipe.ts", "ui/recipe.ts"]) {
       const abs = path.join(cwdPath, rel);
-      if (await Bun.file(abs).exists()) sources.push({ path: abs, content: await Bun.file(abs).text(), importFrom: rel });
+      if (await Bun.file(abs).exists())
+        sources.push({ path: abs, content: await Bun.file(abs).text(), importFrom: rel });
     }
     if (sources.length === 0) return;
     const offenders = scanRecipes(sources).filter(

@@ -5,7 +5,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { a
     filename: "Task.Template.tsx",
     content: `"use client";
 import { st, usePage } from "@apps/${dict.appName}/client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { Field, Layout } from "akanjs/ui";
 
 // ===== Task.Template.tsx =====
@@ -25,7 +25,7 @@ export const General = ({ className }: TaskEditProps) => {
   const { l } = usePage();
 
   return (
-    <Layout.Template className={clsx("flex flex-col gap-4", className)}>
+    <Layout.Template className={cn("flex flex-col gap-4", className)}>
       <Field.Text
         label={l("task.title")}
         desc={l("task.title.desc")}

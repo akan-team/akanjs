@@ -1,9 +1,9 @@
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import { cn } from "./cn";
 import { createFont, Inter, Nanum_Gothic_Coding, Noto_Sans_KR, Roboto } from "./createFont";
 import { clearRscNavigationCache, isRscNavigationFromCache, navigateRsc } from "./rscNavigation";
 import { Translator } from "./translator";
 import {
-  clsx,
   getFontFaces,
   getFontFallbackName,
   getFontStyles,
@@ -37,7 +37,7 @@ afterEach(() => {
 
 describe("client pure exports and utilities", () => {
   test("exports class composition and font helpers through the package surface", () => {
-    expect(clsx("base", null, ["nested"], { active: true })).toBe("base nested active");
+    expect(cn("base", null, ["nested"], "active")).toBe("base nested active");
     expect(typeof loadFonts).toBe("function");
     expect(typeof getFontFaces).toBe("function");
     expect(typeof Translator).toBe("function");

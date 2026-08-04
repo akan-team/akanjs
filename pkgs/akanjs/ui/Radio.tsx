@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import type { ReactElement, ReactNode } from "react";
 
 import { createOverridable } from "./UiOverride";
@@ -13,7 +13,7 @@ export interface RadioProps {
 }
 const DefaultRadio = ({ value, children, disabled, className, onChange }: RadioProps) => {
   return (
-    <div className={clsx(`flex gap-2`, className)}>
+    <div className={cn(`flex gap-2`, className)}>
       {(children as ReactElement<{ value: string | number | null }>[]).map((child, idx) => {
         return (
           <div className="flex items-center justify-center gap-1" key={idx}>
@@ -50,7 +50,7 @@ export interface ItemProps {
 }
 
 const DefaultItem = ({ value, className, children }: ItemProps) => {
-  return <div className={clsx("", className)}>{children}</div>;
+  return <div className={cn("", className)}>{children}</div>;
 };
 
 const RadioBase = createOverridable("Radio", DefaultRadio);

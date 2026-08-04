@@ -16,7 +16,7 @@ import { TablePlugin } from "@lexical/react/LexicalTablePlugin";
 import { type cnst, Err } from "@libs/shared/client";
 import { addFileUntilActive } from "@libs/shared/webkit";
 import type { Any } from "akanjs/base";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import type { ProtoFile } from "akanjs/constant";
 import type { EditorState } from "lexical";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -244,15 +244,15 @@ export default function Editor({
   return (
     <LexicalComposer initialConfig={initialConfig}>
       <EditorUploadProvider value={uploadValue}>
-        <div ref={setAnchorElem} className={clsx("akan-editor relative w-full", className)}>
+        <div ref={setAnchorElem} className={cn("akan-editor relative w-full", className)}>
           <RichTextPlugin
             contentEditable={
               <ContentEditable
-                className={clsx("leading-7 outline-none", showHandle && "pl-2")}
+                className={cn("leading-7 outline-none", showHandle && "pl-2")}
                 aria-placeholder={placeholder}
                 placeholder={
                   <div
-                    className={clsx(
+                    className={cn(
                       "pointer-events-none absolute top-2 select-none text-foreground/40",
                       showHandle ? "left-7" : "left-0",
                     )}

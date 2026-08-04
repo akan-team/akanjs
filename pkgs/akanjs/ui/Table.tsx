@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import type { Responsive } from "akanjs/constant";
 import { st } from "akanjs/store";
 import type React from "react";
@@ -82,7 +82,7 @@ export const DefaultTable = ({
         .map((column, idx) => (
           <td
             key={idx}
-            className={clsx(
+            className={cn(
               "whitespace-nowrap border-border border-b px-3 py-2 align-middle",
               rowClassName ? (typeof rowClassName === "string" ? rowClassName : rowClassName(rowData, rowIndex)) : "",
             )}
@@ -101,13 +101,13 @@ export const DefaultTable = ({
   }, [columns, dataSource, responsive]);
 
   return (
-    <div className={clsx("relative w-full", loadingClassName, borderedClassName)}>
+    <div className={cn("relative w-full", loadingClassName, borderedClassName)}>
       {loading && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
           <AiOutlineLoading3Quarters className="animate-spin text-3xl" />
         </div>
       )}
-      <table className={clsx("w-full border-collapse text-left text-sm", sizeClassName)}>
+      <table className={cn("w-full border-collapse text-left text-sm", sizeClassName)}>
         {showHeader === true || (Array.isArray(showHeader) && showHeader.includes(responsive)) ? (
           <thead className="normal-case">
             <tr>{renderedColumns}</tr>

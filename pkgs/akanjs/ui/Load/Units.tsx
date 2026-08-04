@@ -1,6 +1,6 @@
 "use client";
 import { DataList } from "akanjs/base";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { capitalize, isQueryEqual, lowerlize } from "akanjs/common";
 import type { BaseInsight } from "akanjs/constant";
 import { ConstantRegistry } from "akanjs/constant";
@@ -176,9 +176,7 @@ function Render<RefName extends string, Light extends { id: string }>({
         {modelDataList.length || renderEmpty === false ? (
           <ContainerWrapper
             containerRef={containerRef}
-            className={clsx(className, {
-              "grid-cols-1 md:grid-cols-1 lg:grid-cols-1": modelDataList.length === 0,
-            })}
+            className={cn(className, modelDataList.length === 0 && "grid-cols-1 md:grid-cols-1 lg:grid-cols-1")}
             noDiv={noDiv}
             pagination={pagination}
             moreProps={moreProps}

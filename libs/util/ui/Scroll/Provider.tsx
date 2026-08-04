@@ -1,6 +1,6 @@
 "use client";
 import { Err } from "@libs/util/client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import React, { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ScrollContext } from "./context";
@@ -97,7 +97,7 @@ export const Provider = ({ className, children }: ProviderProps) => {
 
   return (
     <ScrollContext.Provider value={{ slide, setSlide: setActiveSlide, registerSlideElement, slideIds, slides }}>
-      <div data-slide={slide} className={clsx(className, "group/slide")}>
+      <div data-slide={slide} className={cn(className, "group/slide")}>
         {children}
       </div>
     </ScrollContext.Provider>

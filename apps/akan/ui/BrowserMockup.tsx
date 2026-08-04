@@ -1,4 +1,4 @@
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import type { ReactNode } from "react";
 
 interface BrowserMockupProps {
@@ -23,7 +23,7 @@ export const BrowserMockup = ({
   className,
   screenClassName,
 }: BrowserMockupProps) => (
-  <div className={clsx("w-full overflow-hidden rounded-box border-2 border-foreground/30 bg-background", className)}>
+  <div className={cn("w-full overflow-hidden rounded-box border-2 border-foreground/30 bg-background", className)}>
     <div className="flex items-center border-0 border-foreground/10 border-b-2 border-b-foreground/30 px-2">
       <div className="flex items-center gap-2">
         {/* biome-ignore lint/plugin: macOS traffic-light dots are fixed OS-chrome colors, not theme tokens */}
@@ -39,7 +39,7 @@ export const BrowserMockup = ({
         </div>
       </div>
     </div>
-    <div className={clsx("flex h-80 place-content-center items-center justify-center text-2xl", screenClassName)}>
+    <div className={cn("flex h-80 place-content-center items-center justify-center text-2xl", screenClassName)}>
       {children}
     </div>
   </div>

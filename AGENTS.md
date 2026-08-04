@@ -32,7 +32,7 @@ Enforced by `biome.json` and the grit plugins in `pkgs/@akanjs/devkit/lint/`. Se
 that looks wrong; do not "fix" it back.
 
 - **Never hand-order Tailwind classes.** `nursery/useSortedClasses` is an error and also sorts the string
-  arguments to `clsx()` and `cva()`. Sorter output such as `font-bold text-2xl text-base-content` or
+  arguments to `cn()`. Sorter output such as `font-bold text-2xl text-base-content` or
   `border-base-content/5 border-t` is correct. Write the classes in any order, run the formatter, leave the result.
 - **Stay inside the color vocabulary.** Vocabulary closure strips the raw Tailwind palette, so these render as
   no CSS and fail lint (`no-raw-palette-class.grit`, `no-arbitrary-color.grit`, `no-daisyui-legacy-class.grit`,
@@ -160,7 +160,7 @@ Do not narrate code. Do document the thing the code cannot say. Both halves are 
 - Avoid hooks. `useState` is for modal-open, tab, draft-input, and drag state only — never for server data. `useEffect` must be a genuine effect such as subscribe-with-cleanup or one-shot init. Prefer `Tab` over a `useState` mode switch. `.Template.tsx` files contain zero `useState`.
 - Forms are entirely store-driven: `value={xForm.field}` with `onChange={st.do.setFieldOnX}`, the setter passed by reference. Always use `Field.*`, never a bare `<input>` for a model field. Nested rows use `st.do.writeOnX("payments.3.name", v)` plus the generated `add<Field>OnX` / `sub<Field>OnX`.
 - Read with `st.use.*` and write with `st.do.*`. Client components do not call `fetch.*`.
-- Static class strings stay plain strings. Reach for `clsx` only for a conditional or to merge an incoming `className`, and merge the caller last: `clsx("base classes", conditional, className)`. `clsx` comes from `akanjs/client`. No `twMerge`, no `cn()`.
+- Static class strings stay plain strings. Reach for `cn` only for a conditional or to merge an incoming `className`, and merge the caller last: `cn("base classes", cond && "extra", className)`. `cn` comes from `akanjs/client` (token-aware tailwind-merge) and is the only class-combining function — no `clsx` (removed), no raw `twMerge` imports, no object syntax (`{ x: cond }` → `cond && "x"`).
 - Multi-slot components take extra named props (`wrapperClassName`, `bodyClassName`), never a `classNames` object.
 - Use daisyUI semantic tokens with opacity modifiers (`text-base-content/60`, `border-base-content/10`, `bg-base-100/70`, `bg-primary/10`). Never use `dark:` — theming is the daisyUI theme block in `page/*/styles.css`. Raw hex belongs only in marketing surfaces; match the neighbouring files.
 - Hoist enum→class lookups to a module-scope `as const` map typed `{ [key in cnst.XStatus["value"]]: string }`. Do not use `Record<...>`. Escalate the map to `webkit/` when a second module needs it.

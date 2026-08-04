@@ -11,7 +11,7 @@ import type { App } from "../commandDecorators";
  *   - `packages: "external"` externalizes every bare specifier, including
  *     `@apps/*` / `@libs/*` — workspace packages that must stay bundled
  *     so the `"use client"` plugin can rewrite their exports — and ordinary
- *     npm dependencies like `dayjs` / `clsx`, which the production runtime
+ *     npm dependencies like `dayjs` / `tailwind-merge`, which the production runtime
  *     package.json does not install for the SSR pages artifact.
  *   - Top-level `external: [...]` applies to macro-time module resolution
  *     too; any `with { type: "macro" }` import chain that transitively
@@ -169,7 +169,7 @@ export async function createExternalizeFrameworkPlugin(options: ExternalizeFrame
           // that case directly.
           return undefined;
         }
-        // Everything else (ordinary npm dependencies like dayjs / clsx /
+        // Everything else (ordinary npm dependencies like dayjs / tailwind-merge /
         // immer) is bundled into the pages artifact.
         return undefined;
       });

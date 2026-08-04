@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { useContext, useRef } from "react";
 import { BiX } from "react-icons/bi";
 
@@ -18,14 +18,14 @@ export const Unit = ({ className, closeClassName, children }: UnitProps) => {
     <GridUnitContext.Provider value={{ open }}>
       <div
         data-open={open}
-        className={clsx("group/gridunit cursor-pointer transition-all duration-150", className)}
+        className={cn("group/gridunit cursor-pointer transition-all duration-150", className)}
         onClick={() => {
           setViewRef(ref);
         }}
       >
         {children}
         <div
-          className={clsx(
+          className={cn(
             "absolute top-2 right-2 z-10 hidden cursor-pointer group-data-[open=true]/gridunit:block",
             closeClassName,
           )}

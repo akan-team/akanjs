@@ -1,6 +1,6 @@
 "use client";
-import type { ClassValue } from "clsx";
 import { type ComponentType, createContext } from "react";
+import type { ClassNameValue as ClassValue } from "tailwind-merge";
 import type { BadgeProps } from "../Badge";
 import type { ButtonProps } from "../Button";
 import type { DatePickerProps, RangePickerProps, TimePickerProps } from "../DatePicker";

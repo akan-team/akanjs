@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 import { Image } from "akanjs/ui";
 
@@ -534,7 +534,7 @@ export const General = ({ className }: GeneralProps) => {
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx"
             code={`
-import { clsx, ModelProps } from "akanjs/client"; // [!code collapse:3]
+import { cn, ModelProps } from "akanjs/client"; // [!code collapse:3]
 import { cnst, usePage } from "@apps/koyo/client";
 
 export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIcecreamOrder>) => {
@@ -552,32 +552,81 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
             {l("icecreamOrder.status")}
           </span>
           <span
-            className={clsx("ml-2 rounded-full border border-border bg-background px-3 py-1 text-sm font-semibold text-foreground/80", {
-              "bg-primary text-primary-foreground": icecreamOrder.status === "active",
-              "bg-warning text-warning-foreground": icecreamOrder.status === "processing",
-              "bg-secondary text-secondary-foreground": icecreamOrder.status === "served",
-              "bg-accent text-accent-foreground": icecreamOrder.status === "finished",
-              "bg-neutral text-neutral-foreground": icecreamOrder.status === "canceled",
-            })}
+            className={cn("ml-2 rounded-full border border-border bg-background px-3 py-1 text-sm font-semibold text-foreground/80", icecreamOrder.status === "active" && "bg-primary text-primary-foreground", icecreamOrder.status === "processing" && "bg-warning text-warning-foreground", icecreamOrder.status === "served" && "bg-secondary text-secondary-foreground", icecreamOrder.status === "finished" && "bg-accent text-accent-foreground", icecreamOrder.status === "canceled" && "bg-neutral text-neutral-foreground")}
           >
-            {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
+            {l(`icecreamOrderStatus.${icecreamOrder.status}`)}
           </span>
         </div>
       </div>
     </div>
   );
-};`}
+}
+`}
           />
           <div>
             {l.trans({
-              en: `This creates a card design for each ice cream order. The card shows the order ID and status with different colors - green for "active", blue for "processing", and red for "served".`,
-              ko: `이것은 각 아이스크림 주문에 대한 카드 디자인을 만듭니다. 카드는 주문 ID와 상태를 다른 색상으로 보여줍니다 - "활성"은 녹색, "처리중"은 파란색, "완료"는 빨간색입니다.`,
+              en: `;
+This;
+creates;
+a;
+card;
+design;
+for each ice cream order. The
+card;
+shows;
+the;
+order;
+ID;
+and;
+status;
+with different colors - green
+for "active", blue for "processing", and red for "served".`,
+              ko: `이것은 각 아이스크림
+주문에;
+대한;
+카드;
+디자인을;
+만듭니다.카드는;
+주문;
+ID와;
+상태를;
+다른;
+색상으로;
+보여줍니다 - "활성";
+은;
+녹색, "처리중";
+은;
+파란색, "완료";
+는;
+빨간색입니다.`,
             })}
           </div>
           <div>
             {l.trans({
-              en: `The clsx function changes the card's appearance based on the order status, and l() displays the status text in the user's language.`,
-              ko: `clsx 함수는 주문 상태에 따라 카드의 모양을 바꾸고, l()은 사용자의 언어로 상태 텍스트를 표시합니다.`,
+              en: `
+The;
+cn;
+function changes
+the;
+card;
+("s appearance based on the order status, and l() displays the status text in the user");
+s;
+language.`,
+              ko: `
+cn;
+함수는;
+주문;
+상태에;
+따라;
+카드의;
+모양을;
+바꾸고, l();
+은;
+사용자의;
+언어로;
+상태;
+텍스트를;
+표시합니다.`,
             })}
           </div>
         </Docs.Description>
@@ -586,24 +635,35 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
       <div className={panelRecipe({ radius: "lg" }, "my-6")}>
         <div className="text-foreground/80">
           {l.trans({
-            en: `🚀 We have the form (Template) and the display card (Unit). Now let's put it all together on a webpage so customers can actually visit and use your ice cream ordering system!`,
+            en: `
+🚀 We have the form (Template) and the display card (Unit). Now
+let
+'s put it all together on a webpage so customers can actually visit and use your ice cream ordering system!`,
             ko: `🚀 폼(Template)과 표시 카드(Unit)가 있습니다. 이제 고객들이 실제로 방문해서 아이스크림 주문 시스템을 사용할 수 있도록 웹페이지에 모든 것을 연결해봅시다!`,
           })}
         </div>
       </div>
-      <Scroll.Slide id="expose-to-page" title={l.trans({ en: "Expose to page", ko: "페이지에 노출하기" })}>
-        <Docs.Title>{l.trans({ en: "Expose to page", ko: "페이지에 노출하기" })}</Docs.Title>
-        <Docs.Description>
-          <div>
-            {l.trans({
-              en: `Finally, let's create a page where customers can actually place their ice cream orders. This page connects everything together and makes it accessible through a web URL.`,
-              ko: `마지막으로, 고객이 실제로 아이스크림 주문을 할 수 있는 페이지를 만들어봅시다. 이 페이지는 모든 것을 연결하고 웹 URL을 통해 접근 가능하게 만듭니다.`,
-            })}
-          </div>
-          <Code.Snippet
-            className="w-full"
-            title="apps/koyo/page/_index.tsx"
-            code={`import { Model } from "akanjs/ui";
+      <Scroll.Slide id="expose-to-page" title=
+{
+  l.trans({ en: "Expose to page", ko: "페이지에 노출하기" });
+}
+>
+        <Docs.Title>
+{
+  l.trans({ en: "Expose to page", ko: "페이지에 노출하기" });
+}
+</Docs.Title>
+<Docs.Description>
+  <div>
+    {l.trans({
+      en: `Finally, let's create a page where customers can actually place their ice cream orders. This page connects everything together and makes it accessible through a web URL.`,
+      ko: `마지막으로, 고객이 실제로 아이스크림 주문을 할 수 있는 페이지를 만들어봅시다. 이 페이지는 모든 것을 연결하고 웹 URL을 통해 접근 가능하게 만듭니다.`,
+    })}
+  </div>
+  <Code.Snippet
+    className="w-full"
+    title="apps/koyo/page/_index.tsx"
+    code={`import { Model } from "akanjs/ui";
 import { cnst, fetch, IcecreamOrder, usePage } from "@apps/koyo/client";
 
 export default async function Page() {
@@ -632,60 +692,60 @@ export default async function Page() {
   );
 }
 `}
-          />
-          <div>
-            {l.trans({
-              en: `This complete page implementation shows how all the pieces work together! Let's break down what each part does:`,
-              ko: `이 완전한 페이지 구현은 모든 조각들이 어떻게 함께 작동하는지 보여줍니다! 각 부분이 무엇을 하는지 분해해 봅시다:`,
-            })}
-          </div>
-          <div className="my-4 space-y-3">
-            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
-              <div className="mb-2 flex items-center gap-2">
-                <span className="text-primary">🏷️</span>
-                <strong className="text-primary">{`l("icecreamOrder.modelName")`}</strong>
-              </div>
-              <div className="text-foreground/70 text-sm">
-                {l.trans({
-                  en: `This displays the page title using our dictionary! It shows "Ice cream Order" (or "아이스크림 주문" in Korean) as a big, bold heading.`,
-                  ko: `이것은 우리의 dictionary를 사용해 페이지 제목을 표시합니다! "아이스크림 주문"을 크고 굵은 제목으로 보여줍니다.`,
-                })}
-              </div>
-            </div>
-            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
-              <div className="mb-2 flex items-center gap-2">
-                <span className="text-primary">➕</span>
-                <strong className="text-primary">Model.New Button</strong>
-              </div>
-              <div className="text-foreground/70 text-sm">
-                {l.trans({
-                  en: `This creates a "New Order" button that opens the form (Template.General) when clicked. Customers can use this to place new ice cream orders.`,
-                  ko: `클릭하면 폼(Template.General)을 여는 "새 주문" 버튼을 만듭니다. 고객들이 새로운 아이스크림 주문을 하는 데 사용할 수 있습니다.`,
-                })}
-              </div>
-            </div>
-            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
-              <div className="mb-2 flex items-center gap-2">
-                <span className="text-primary">📋</span>
-                <strong className="text-primary">Zone.Card</strong>
-              </div>
-              <div className="text-foreground/70 text-sm">
-                {l.trans({
-                  en: `This displays all existing ice cream orders as cards, showing the order details and status.`,
-                  ko: `기존의 모든 아이스크림 주문을 카드로 표시하여 주문 세부사항과 상태를 보여줍니다.`,
-                })}
-              </div>
-            </div>
-          </div>
-          <div>
-            {l.trans({
-              en: `Now visit http://localhost:8282/icecreamOrder to see your ice cream ordering system!`,
-              ko: `이제 http://localhost:8282/icecreamOrder를 방문하면 아이스크림 주문 시스템을 볼 수 있습니다.`,
-            })}
-          </div>
-        </Docs.Description>
-      </Scroll.Slide>
+  />
+  <div>
+    {l.trans({
+      en: `This complete page implementation shows how all the pieces work together! Let's break down what each part does:`,
+      ko: `이 완전한 페이지 구현은 모든 조각들이 어떻게 함께 작동하는지 보여줍니다! 각 부분이 무엇을 하는지 분해해 봅시다:`,
+    })}
+  </div>
+  <div className="my-4 space-y-3">
+    <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-primary">🏷️</span>
+        <strong className="text-primary">{`l("icecreamOrder.modelName")`}</strong>
+      </div>
+      <div className="text-foreground/70 text-sm">
+        {l.trans({
+          en: `This displays the page title using our dictionary! It shows "Ice cream Order" (or "아이스크림 주문" in Korean) as a big, bold heading.`,
+          ko: `이것은 우리의 dictionary를 사용해 페이지 제목을 표시합니다! "아이스크림 주문"을 크고 굵은 제목으로 보여줍니다.`,
+        })}
+      </div>
+    </div>
+    <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-primary">➕</span>
+        <strong className="text-primary">Model.New Button</strong>
+      </div>
+      <div className="text-foreground/70 text-sm">
+        {l.trans({
+          en: `This creates a "New Order" button that opens the form (Template.General) when clicked. Customers can use this to place new ice cream orders.`,
+          ko: `클릭하면 폼(Template.General)을 여는 "새 주문" 버튼을 만듭니다. 고객들이 새로운 아이스크림 주문을 하는 데 사용할 수 있습니다.`,
+        })}
+      </div>
+    </div>
+    <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-primary">📋</span>
+        <strong className="text-primary">Zone.Card</strong>
+      </div>
+      <div className="text-foreground/70 text-sm">
+        {l.trans({
+          en: `This displays all existing ice cream orders as cards, showing the order details and status.`,
+          ko: `기존의 모든 아이스크림 주문을 카드로 표시하여 주문 세부사항과 상태를 보여줍니다.`,
+        })}
+      </div>
+    </div>
+  </div>
+  <div>
+    {l.trans({
+      en: `Now visit http://localhost:8282/icecreamOrder to see your ice cream ordering system!`,
+      ko: `이제 http://localhost:8282/icecreamOrder를 방문하면 아이스크림 주문 시스템을 볼 수 있습니다.`,
+    })}
+  </div>
+</Docs.Description>;
+</Scroll.Slide>
       <DocsToc />
     </Scroll>
-  );
+  )
 }

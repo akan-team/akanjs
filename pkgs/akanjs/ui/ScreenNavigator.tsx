@@ -1,6 +1,6 @@
 "use client";
 import { useDrag } from "@use-gesture/react";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { animated } from "akanjs/ui";
 import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import { SpringValue, useSpringValue } from "react-spring";
@@ -109,7 +109,7 @@ const NavbarItem = ({ menu, children, className }: { menu: string; children: Rea
   const { onClickMenu, currentMenu } = useContext(ScreenNavigatorContext);
   return (
     <div
-      className={clsx(className, currentMenu === menu ? "opacity-100" : "opacity-40")}
+      className={cn(className, currentMenu === menu ? "opacity-100" : "opacity-40")}
       onClick={() => {
         onClickMenu(menu);
       }}

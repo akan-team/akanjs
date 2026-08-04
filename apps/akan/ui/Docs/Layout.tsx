@@ -1,6 +1,6 @@
 "use client";
 import { usePage } from "@apps/akan/client";
-import { clsx, getPathInfo, usePathCtx } from "akanjs/client";
+import { cn, getPathInfo, usePathCtx } from "akanjs/client";
 import { Link } from "akanjs/ui";
 import { useMemo } from "react";
 import { AiOutlineLeft, AiOutlineRight } from "react-icons/ai";
@@ -59,7 +59,7 @@ export const Layout = ({ children, menuMap }: LayoutProps) => {
                       <Link
                         key={subIdx}
                         href={subMenu.href}
-                        className={clsx(
+                        className={cn(
                           "mb-1 block rounded-xl px-3 py-2 text-sm transition-colors hover:text-primary",
                           isActive && "font-bold text-primary",
                         )}
@@ -101,7 +101,7 @@ export const Layout = ({ children, menuMap }: LayoutProps) => {
                         return (
                           <Link key={idx} href={subMenu.href} className="mb-1 block rounded-xl">
                             <div
-                              className={clsx(
+                              className={cn(
                                 "flex items-center gap-2 rounded-xl px-3 py-1 text-foreground/70 transition-colors hover:text-primary",
                                 isActive && "font-bold text-primary",
                               )}

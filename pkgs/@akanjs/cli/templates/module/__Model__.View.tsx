@@ -9,7 +9,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dic
   return {
     filename: `${dict.Model}.View.tsx`,
     content: `
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { cnst, usePage } from "@${scanInfo?.type ?? "apps"}/${dict.sysName}/client";
 
 interface GeneralProps {
@@ -19,7 +19,7 @@ interface GeneralProps {
 export const General = ({ className, ${dict.model} }: GeneralProps) => {
   const { l } = usePage();
   return (
-    <div className={clsx("w-full", className)}>
+    <div className={cn("w-full", className)}>
       <div>{l("${dict.model}.name")}: {${dict.model}.name}</div>
     </div>
   );

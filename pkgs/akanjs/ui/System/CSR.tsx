@@ -2,7 +2,7 @@
 
 import { getEnv } from "akanjs/base";
 import {
-  clsx,
+  cn,
   Device,
   debugFrame,
   getPathInfo,
@@ -169,11 +169,13 @@ const CSRWrapper = ({
       <ManifestLink manifest={manifest} />
       <CSRFrameRoot
         id="frameRoot"
-        className={clsx(className, "h-screen w-full overflow-hidden", {
-          "fixed inset-0": layoutStyle === "mobile",
-          "akan-mobile-frame": layoutStyle === "mobile",
-          "bg-muted": layoutStyle === "mobile",
-        })}
+        className={cn(
+          className,
+          "h-screen w-full overflow-hidden",
+          layoutStyle === "mobile" && "fixed inset-0",
+          layoutStyle === "mobile" && "akan-mobile-frame",
+          layoutStyle === "mobile" && "bg-muted",
+        )}
         rootRef={frameRootRef}
       >
         <PageLayerRoot />
@@ -184,36 +186,37 @@ const CSRWrapper = ({
           : null}
         <TopChromeLayer
           id="topSafeArea"
-          className={clsx("akan-frame-chrome fixed inset-x-0 top-0 max-w-screen bg-background", {})}
+          className={cn("akan-frame-chrome fixed inset-x-0 top-0 max-w-screen bg-background")}
           layerRef={topSafeAreaRef}
           style={topSafeArea?.containerStyle}
         />
         <TopChromeLayer
           id="topInsetContainer"
-          className={clsx("akan-frame-chrome fixed inset-x-0 isolate max-w-screen bg-background", {})}
+          className={cn("akan-frame-chrome fixed inset-x-0 isolate max-w-screen bg-background")}
           style={topInset?.containerStyle}
         >
           <CSRFrameSlotTargets slot="topInset" />
         </TopChromeLayer>
         <TopChromeLayer
           id="topLeftActionContainer"
-          className={clsx("akan-frame-chrome fixed top-0 isolate flex aspect-1 items-center justify-center", {})}
+          className={cn("akan-frame-chrome fixed top-0 isolate flex aspect-1 items-center justify-center")}
           style={topLeftAction?.containerStyle}
         >
           <CSRFrameSlotTargets slot="topLeftAction" />
         </TopChromeLayer>
         <BottomChromeLayer
           id="bottomInsetContainer"
-          className={clsx("akan-frame-chrome fixed inset-x-0 isolate max-w-screen overflow-hidden", {})}
+          className={cn("akan-frame-chrome fixed inset-x-0 isolate max-w-screen overflow-hidden")}
           style={bottomInset?.containerStyle}
         >
           <CSRFrameSlotTargets slot="bottomInset" />
         </BottomChromeLayer>
         <KeyboardLayer
           id="keyboardInsetContainer"
-          className={clsx("akan-frame-chrome fixed inset-x-0 isolate max-w-screen overflow-hidden", {
-            hidden: !frameLayout.keyboard.sticky,
-          })}
+          className={cn(
+            "akan-frame-chrome fixed inset-x-0 isolate max-w-screen overflow-hidden",
+            !frameLayout.keyboard.sticky && "hidden",
+          )}
           style={
             frameLayout.keyboard.visible
               ? {
@@ -358,17 +361,17 @@ const CSRFrameSlotTargets = ({ slot }: { slot: FrameSlotTarget }) => {
           <animated.div
             key={id}
             id={id}
-            className={clsx({
-              "absolute top-0 left-0 isolate size-full": slot === "topInset",
-              "absolute left-0 isolate flex h-full items-center justify-center": slot === "topLeftAction",
-              "absolute inset-x-0 bottom-0 isolate h-full": slot === "bottomInset" || slot === "keyboardInset",
-              hidden: !pageType || pageType === "cached",
-              "pointer-events-none":
-                (slot === "topInset" && pageType !== "current") ||
+            className={cn(
+              slot === "topInset" && "absolute top-0 left-0 isolate size-full",
+              slot === "topLeftAction" && "absolute left-0 isolate flex h-full items-center justify-center",
+              (slot === "bottomInset" || slot === "keyboardInset") && "absolute inset-x-0 bottom-0 isolate h-full",
+              (!pageType || pageType === "cached") && "hidden",
+              ((slot === "topInset" && pageType !== "current") ||
                 (slot === "topLeftAction" && pageType !== "current") ||
-                (pageType === "prev" && (slot === "bottomInset" || slot === "keyboardInset")),
-              "pointer-events-none absolute opacity-0": pageType === "pending",
-            })}
+                (pageType === "prev" && (slot === "bottomInset" || slot === "keyboardInset"))) &&
+                "pointer-events-none",
+              pageType === "pending" && "pointer-events-none absolute opacity-0",
+            )}
             style={
               {
                 ...getFrameCssVars(pathRoute.pageState),
@@ -497,22 +500,24 @@ const CSRPageContainer = ({ pathRoute, prefix, layoutStyle }: CSRPageContainerPr
               ? { opacity: 0, pointerEvents: "none", transform: "translate3d(100vw, 0, 0)", zIndex: -1 }
               : { zIndex }),
           }}
-          className={clsx("absolute top-0 left-0 isolate w-screen", {
-            absolute: pageType !== "current",
-            hidden: pageType === "cached",
-            "pointer-events-none": pageType === "prev" || pageType === "pending",
-          })}
+          className={cn(
+            "absolute top-0 left-0 isolate w-screen",
+            pageType !== "current" && "absolute",
+            pageType === "cached" && "hidden",
+            (pageType === "prev" || pageType === "pending") && "pointer-events-none",
+          )}
         >
           <ClientPathWrapper
             id="pageContent"
             wrapperRef={pageContentRef}
             bind={pageBind}
-            className={clsx("akan-page-content relative isolate w-full overflow-x-hidden bg-background shadow-inner", {
-              "relative isolate overflow-x-hidden bg-background shadow-inner": pageType === "current",
-              "pointer-events-none isolate h-screen w-screen overflow-hidden":
-                pageType === "prev" || pageType === "pending",
-              [pageClassName]: pathRoute.pageState.gesture,
-            })}
+            className={cn(
+              "akan-page-content relative isolate w-full overflow-x-hidden bg-background shadow-inner",
+              pageType === "current" && "relative isolate overflow-x-hidden bg-background shadow-inner",
+              (pageType === "prev" || pageType === "pending") &&
+                "pointer-events-none isolate h-screen w-screen overflow-hidden",
+              pathRoute.pageState.gesture && pageClassName,
+            )}
             style={page?.contentStyle}
             pageType={pageType}
             location={location}

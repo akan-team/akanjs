@@ -19,17 +19,17 @@ CSS And Styling
 
 Styling Foundation
 
-Akan uses Tailwind CSS and DaisyUI as the default styling foundation. Tailwind gives screens a fast utility language for layout, spacing, responsive behavior, and one-off composition. DaisyUI adds semantic component names and theme tokens, so app screens can say primary, base, warning, or error instead of hard-coding every color.
+Akan uses Tailwind CSS with a semantic design-token layer and the akanjs/ui primitives as the default styling foundation. Tailwind gives screens a fast utility language for layout, spacing, responsive behavior, and one-off composition. The token layer + primitives add semantic names, so app screens can say primary, background, warning, or destructive instead of hard-coding every color.
 
-Use Tailwind for structure and layout. Use DaisyUI for theme-aware component vocabulary and semantic colors.
+Use Tailwind for structure and layout. Use akanjs/ui primitives (Button, Badge, Input, Field …) and semantic tokens for theme-aware components and colors.
 
 How the layers work together
 
-Imports Tailwind, Akan UI styles, DaisyUI, and app theme tokens.
+Imports Tailwind, Akan UI styles, and the semantic design-token layer.
 
 Turns brand decisions into reusable names such as primary, base, warning, and error.
 
-Use those names through btn, input, card, alert, and Tailwind utility classes.
+Use those names through akanjs/ui primitives (Button, Input, Badge) and Tailwind utility classes.
 
 Assemble consistent business screens without repeating raw color and spacing rules.
 
@@ -41,15 +41,13 @@ Buttons, inputs, cards, forms, alerts, tabs, modals, and navigation should use s
 
 Business pages should assemble the design system instead of redefining colors and spacing.
 
-Imported modules feel consistent when they use the same Tailwind and DaisyUI tokens.
+Imported modules feel consistent when they use the same Tailwind and semantic design tokens.
 
 Theme System Declaration
 
-Theme and color are declared from the app style entry. The app imports Tailwind, Akan UI styles, enables DaisyUI, then declares one or more DaisyUI themes. Each theme maps semantic names to real colors.
+Theme and color are declared from the app style entry. The app imports Tailwind and Akan UI styles, defines raw CSS variables per theme under :root / [data-theme], then maps them to Tailwind color names with @theme inline. Switching themes is just toggling the data-theme attribute.
 
-DaisyUI supports multiple theme blocks, so one app can define light, dark, brand, admin, or demo themes with the same component classes.
-
-DaisyUI Theme Docs
+Because @theme inline references var(), the same class (bg-primary, text-foreground …) resolves to different colors per data-theme — so one app can define light, dark, brand, or admin themes without changing any component class.
 
 Font Declaration
 
@@ -60,42 +58,50 @@ Fonts are declared from the root layout. Export a fonts array with a font name, 
 ### Code
 
 ```typescript
-<div className="space-y-3 rounded-xl bg-base-100 p-4 text-base-content">
-  <button className="btn btn-primary">Save</button>
-  <input className="input input-bordered w-full" placeholder="Product name" />
-  <div className="card border border-base-300 bg-base-100 p-4">
+<div className="space-y-3 rounded-xl bg-background p-4 text-foreground">
+  <button className={buttonRecipe({ variant: "primary" })}>Save</button>
+  <input className="h-10 w-full rounded-field border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none" placeholder="Product name" />
+  <div className="rounded-box border border-border bg-card p-4">
     Product summary
   </div>
-  <div className="alert alert-info">Stock updated successfully.</div>
+  <div className="flex items-center gap-2 rounded-box border border-info/30 bg-info/10 p-4">Stock updated successfully.</div>
 </div>
 ```
 
-### apps/myapp/page/akanjs/styles.css
+### apps/myapp/page/styles.css
 
 ```ts
 @import "tailwindcss";
 @import "akanjs/ui/styles.css";
 
-@plugin "daisyui" {
-  logs: false;
-  exclude: properties;
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root,
+[data-theme="dark"] {
+  --background: #1a1a1a;
+  --foreground: #ffffff;
+  --primary: #ff493b;
+  --primary-foreground: #ffffff;
+  --muted: #2a2a2a;
+  --border: #3a3a3a;
 }
 
-@plugin "daisyui/theme" {
-  name: "light";
-  --color-primary: #c33c32;
-  --color-base-content: #2c3e50;
-  --color-base-100: #fafafa;
-  --color-base-200: #f5f5f5;
+[data-theme="light"] {
+  --background: #fafafa;
+  --foreground: #2c3e50;
+  --primary: #c33c32;
+  --primary-foreground: #ffffff;
+  --muted: #f5f5f5;
+  --border: #e5e5e5;
 }
 
-@plugin "daisyui/theme" {
-  name: "dark";
-  default: true;
-  --color-primary: #ff493b;
-  --color-base-content: #ffffff;
-  --color-base-100: #1a1a1a;
-  --color-base-200: #2a2a2a;
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
 }
 ```
 
@@ -120,7 +126,7 @@ export const fonts: Font[] = [
 ### Using font classes
 
 ```typescript
-<span className="font-pretendard text-base-content">
+<span className="font-pretendard text-foreground">
   Styled with Pretendard
 </span>
 

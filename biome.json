@@ -91,7 +91,7 @@
           "fix": "safe",
           "options": {
             "attributes": ["classList"],
-            "functions": ["clsx", "cn"]
+            "functions": ["cn"]
           }
         },
         "noUnnecessaryConditions": {

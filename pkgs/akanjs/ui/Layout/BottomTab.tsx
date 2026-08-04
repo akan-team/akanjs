@@ -1,5 +1,5 @@
 "use client";
-import { clsx, usePage } from "akanjs/client";
+import { cn, usePage } from "akanjs/client";
 import { useEffect, useState } from "react";
 
 import { Link } from "../Link";
@@ -47,7 +47,7 @@ export const BottomTab = ({ className, tabs, height = 64 }: BottomTabProps) => {
       frameSource="bottomTab"
     >
       <div
-        className={clsx(
+        className={cn(
           `flex size-full items-center justify-around rounded-t-xl border border-muted border-b-0 bg-background text-foreground`,
           className,
         )}

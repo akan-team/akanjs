@@ -1,5 +1,5 @@
 "use client";
-import { clsx, usePage } from "akanjs/client";
+import { cn, usePage } from "akanjs/client";
 import type { ReactNode } from "react";
 import { AiOutlineBlock } from "react-icons/ai";
 
@@ -17,7 +17,7 @@ export const DefaultUnauthorized = ({ className = "", description, children, min
   return (
     <div>
       <div
-        className={clsx(
+        className={cn(
           `min-h-[ w-full${minHeight}px] flex flex-col items-center justify-center gap-3 pt-6 pb-3 text-foreground/30`,
           className,
         )}

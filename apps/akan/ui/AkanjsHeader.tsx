@@ -1,7 +1,7 @@
 "use client";
 
 import { usePage } from "@apps/akan/client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { Link, System } from "akanjs/ui";
 import { useEffect, useState } from "react";
 import { FaBars, FaDiscord, FaGithub } from "react-icons/fa";
@@ -95,7 +95,7 @@ export const AkanjsHeader = ({
 
   return (
     <>
-      <div className={clsx("fixed top-0 z-50 w-full", className)}>
+      <div className={cn("fixed top-0 z-50 w-full", className)}>
         <div className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-primary/60 to-transparent" />
         <div className="relative z-10 grid h-16 w-full grid-cols-[auto_1fr_auto] items-center border-foreground/10 border-b bg-background/85 px-6 text-foreground shadow-foreground/5 shadow-lg backdrop-blur-xl md:h-20 lg:grid-cols-[1fr_auto_1fr]">
           <div className="block lg:hidden">
@@ -167,7 +167,7 @@ export const AkanjsHeader = ({
           </div>
         )}
         <div
-          className={clsx(
+          className={cn(
             "overflow-hidden border-foreground/10 border-b bg-background/85 px-3 shadow-sm backdrop-blur-xl transition-all duration-300 ease-out lg:hidden",
             collapseMobileSubMenuOnScroll
               ? isMobileSubMenuVisible

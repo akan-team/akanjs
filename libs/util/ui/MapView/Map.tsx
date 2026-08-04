@@ -1,6 +1,6 @@
 "use client";
 import { type cnst, st } from "@libs/util/client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 
 import Google from "./Google";
 
@@ -75,7 +75,7 @@ export default function Map({ className, children, onLoad, onClick, onRightClick
   return (
     <Google
       mapKey={mapKey}
-      className={clsx("w-full", className)}
+      className={cn("w-full", className)}
       options={{ styles: theme === "dark" ? darkStyle : lightStyle, gestureHandling: mapPanControl ? "auto" : "none" }}
       center={mapCenter}
       zoom={mapZoom}

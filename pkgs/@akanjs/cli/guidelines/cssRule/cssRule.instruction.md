@@ -8,7 +8,7 @@ Use TailwindCSS with Akan's semantic design-token layer and the `akanjs/ui` prim
 - Use Akan's semantic color tokens — never a raw Tailwind palette color (`bg-blue-500`) or a hex value:
   - Surfaces/text: `bg-background`, `text-foreground`, `bg-muted`, `text-muted-foreground`, `bg-card`, `bg-popover`, `border-border`, `border-input`, `ring-ring`.
   - Brand/status: `primary`, `secondary`, `accent`, `destructive`, `success`, `warning`, `info`, `neutral`, `open` — each with a `-foreground` pair for text on that surface (e.g. `bg-primary text-primary-foreground`).
-- Compose classes with `cn` from `akanjs/client` (clsx + tailwind-merge, token-aware) — not raw `clsx`.
+- Compose classes with `cn` from `akanjs/client` (token-aware tailwind-merge) — the only class-combining function. No object syntax: write `cond && "x"`.
 - Forward `className` last so callers can extend styles.
 
 ## Recipe Layer
@@ -64,6 +64,6 @@ Screen code is invariant — a plain `<Button variant="primary">` never changes.
 
 ## Review Checklist
 - All color goes through semantic tokens — no raw palette, no hex, no inline color.
-- Repeated/variant styling uses a recipe; class composition uses `cn`, not raw `clsx`.
+- Repeated/variant styling uses a recipe; class composition uses `cn` (never raw `twMerge`/`clsx` imports).
 - The instruction points to current docs pages and current Akan builder APIs.
 - The output contract tells the model which file paths to return.

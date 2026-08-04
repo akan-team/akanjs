@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { buttonRecipe } from "akanjs/ui";
 import type { NodeKey } from "lexical";
 import { type ReactNode, type PointerEvent as ReactPointerEvent, useRef } from "react";
@@ -77,15 +77,15 @@ export const MediaFrame = ({
     },
   });
 
-  const handleClassName = clsx(
+  const handleClassName = cn(
     "absolute top-1/2 z-40 h-12 w-1.5 -translate-y-1/2 cursor-ew-resize rounded-full border border-foreground/30 bg-background/90 shadow-lg",
     "opacity-0 transition-opacity hover:opacity-100 group-hover/media:opacity-70",
   );
 
   return (
-    <div className={clsx("my-2 flex w-full", ALIGN_TO_JUSTIFY[align])} contentEditable={false}>
+    <div className={cn("my-2 flex w-full", ALIGN_TO_JUSTIFY[align])} contentEditable={false}>
       <div
-        className={clsx(
+        className={cn(
           "group/media relative inline-block max-w-full rounded-md",
           isSelected && "ring-2 ring-primary ring-offset-2 ring-offset-background",
         )}
@@ -141,13 +141,13 @@ export const MediaFrame = ({
             <button
               type="button"
               aria-label="Resize from left"
-              className={clsx(handleClassName, "left-1")}
+              className={cn(handleClassName, "left-1")}
               {...createResizeHandlers("left")}
             />
             <button
               type="button"
               aria-label="Resize from right"
-              className={clsx(handleClassName, "right-1")}
+              className={cn(handleClassName, "right-1")}
               {...createResizeHandlers("right")}
             />
           </>

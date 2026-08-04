@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { ConstantRegistry } from "akanjs/constant";
 import type { ClientView, ServerView } from "akanjs/fetch";
 import { st } from "akanjs/store";
@@ -76,7 +76,7 @@ function Render<T extends string, Full extends { id: string }>({
   return noDiv && renderModel ? (
     <>{renderView(renderModel)}</>
   ) : renderModel ? (
-    <div className={clsx("w-full", className)}>{renderView(renderModel)}</div>
+    <div className={cn("w-full", className)}>{renderView(renderModel)}</div>
   ) : null;
 }
 

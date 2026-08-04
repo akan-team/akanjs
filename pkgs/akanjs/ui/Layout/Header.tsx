@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 export interface HeaderProps {
@@ -25,7 +25,7 @@ export const Header = ({ className, type, children, height = 40 }: HeaderProps) 
   }, []);
   return (
     <div
-      className={clsx(
+      className={cn(
         `fixed top-0 z-[9] flex duration-300 ${
           !visible ? "md:-translate-y-full" : ""
         } w-full bg-background shadow-sm backdrop-blur-lg`,

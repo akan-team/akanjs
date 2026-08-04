@@ -2,7 +2,7 @@
 
 import { type DragEndEvent, type DragOverEvent, useDndMonitor, useDroppable } from "@dnd-kit/core";
 import { arrayMove, rectSortingStrategy, SortableContext } from "@dnd-kit/sortable";
-import { clsx } from "clsx";
+import { cn } from "akanjs/client";
 import { type ReactNode, useContext, useEffect, useState } from "react";
 
 import DragEmpty from "./DragEmpty";
@@ -152,11 +152,9 @@ export default function DroppableColumn<T extends { id: string }[]>({
     <SortableContext id={id} items={items.map((i) => i.id)} strategy={rectSortingStrategy}>
       <div
         ref={setNodeRef}
-        className={clsx(
+        className={cn(
           "relative h-full rounded-md border-[0.5px] border-foreground p-2",
-          {
-            "border border-primary bg-primary/10 duration-300": isOver,
-          },
+          isOver && "border border-primary bg-primary/10 duration-300",
           className,
         )}
       >

@@ -48,9 +48,7 @@ For a real-time dashboard, the data needs to stay fresh. When a staff member cha
 
 Let's look at how to control the display with props and automatic refresh:
 
-The Unit component now accepts a showControls prop that determines whether to display action buttons. This simple flag allows the same card component to be used in both staff management views (with controls) and customer dashboard views (without controls).
-
-Now let's see how the Zone component manages automatic data refresh:
+View
 
 Let's understand the key features of this Zone component:
 
@@ -232,7 +230,7 @@ export const dictionary = modelDictionary(["en", "ko"])
 ### apps/koyo/page/dashboard.tsx
 
 ```ts
-import { Load } from "akanjs/ui";
+import { Load, buttonRecipe } from "akanjs/ui";
 import { fetch, IcecreamOrder, usePage } from "@apps/koyo/client";
 
 export default async function Page() {
@@ -350,7 +348,7 @@ export const dictionary = modelDictionary(["en", "ko"])
 ### apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx
 
 ```ts
-import { clsx, type ModelProps } from "akanjs/client"; // [!code collapse:4]
+import { cn, type ModelProps } from "akanjs/client"; // [!code collapse:4]
 import { Model } from "akanjs/ui";
 import { cnst, fetch, IcecreamOrder, usePage } from "@apps/koyo/client";
 
@@ -360,50 +358,22 @@ interface CardProps extends ModelProps<"icecreamOrder", cnst.LightIcecreamOrder>
 export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
   const { l } = usePage();
   return (
-    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-base-100 via-base-200 to-base-300 px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
+    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-muted to-border px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
       <div className="flex flex-col justify-center"> // [!code collapse:24]
         <div className="flex items-center gap-2 text-lg font-semibold text-primary">
-          <span className="inline-block rounded bg-base-200 px-2 py-1 text-xs font-bold tracking-wider uppercase">
+          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider uppercase">
             {l("icecreamOrder.id")}
           </span>
           <span className="ml-2 font-mono text-primary">#{icecreamOrder.id.slice(-4)}</span>
         </div>
         <div className="mt-4 flex items-center gap-2">
-          <span className="inline-block rounded border border-base-300 bg-base-100 px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded border border-border bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
             {l("icecreamOrder.status")}
           </span>
           <span
-            className={clsx("ml-2 rounded-full px-3 py-1 text-sm font-semibold", {
-              "border border-primary/40 bg-base-100 text-primary": icecreamOrder.status === "active",
-              "border border-warning/40 bg-base-100 text-warning": icecreamOrder.status === "processing",
-              "border border-info/40 bg-info text-info-content": icecreamOrder.status === "served",
-              "border border-accent/40 bg-base-100 text-accent": icecreamOrder.status === "finished",
-              "border border-base-300 bg-base-100 text-base-content/70": icecreamOrder.status === "canceled",
-            })}
+            className={cn("ml-2 rounded-full px-3 py-1 text-sm font-semibold", icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary", icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning", icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground", icecreamOrder.status === "finished" && "border border-accent/40 bg-background text-accent", icecreamOrder.status === "canceled" && "border border-border bg-background text-foreground/70")}
           >
-            {l(`icecreamOrderStatus.${icecreamOrder.status}`)}
-          </span>
-        </div>
-      </div>
-      {showControls ? ( // [!code ++]
-        <div className="bg-base-100 flex items-center justify-center gap-2 rounded-xl p-4">
-          <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
-            <button className="btn btn-primary">
-              <span>{l.trans({ en: "View", ko: "보기" })}</span>
-            </button>
-          </Model.ViewWrapper>
-          <IcecreamOrder.Util.Process icecreamOrderId={icecreamOrder.id} disabled={icecreamOrder.status !== "active"} />
-          <IcecreamOrder.Util.Serve
-            icecreamOrderId={icecreamOrder.id}
-            disabled={icecreamOrder.status !== "processing"}
-          />
-          <IcecreamOrder.Util.Finish icecreamOrderId={icecreamOrder.id} disabled={icecreamOrder.status !== "served"} />
-          <IcecreamOrder.Util.Cancel icecreamOrderId={icecreamOrder.id} disabled={icecreamOrder.status !== "active"} />
-        </div>
-      ) : null} // [!code ++]
-    </div>
-  );
-};
+            {l(
 ```
 
 ### apps/koyo/lib/icecreamOrder/IcecreamOrder.Zone.tsx

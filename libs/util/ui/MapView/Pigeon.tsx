@@ -1,6 +1,6 @@
 "use client";
 import { cnst } from "@libs/util";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { Map, type PigeonProps as PigeonLibProps, ZoomControl } from "pigeon-maps";
 import {
   type CSSProperties,
@@ -152,7 +152,7 @@ export function MouseTracker({
 
   return (
     <div
-      className={clsx("absolute inset-0", !mouseEvents && "pointer-events-none")}
+      className={cn("absolute inset-0", !mouseEvents && "pointer-events-none")}
       onMouseMove={handleDragMove}
       onClick={handleClick}
       ref={(ref) => {

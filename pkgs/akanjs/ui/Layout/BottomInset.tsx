@@ -1,6 +1,6 @@
 "use client";
 import { getEnv } from "akanjs/base";
-import { clsx, DEFAULT_BOTTOM_INSET, debugFrame, type FrameSlotRegistration, usePathCtx } from "akanjs/client";
+import { cn, DEFAULT_BOTTOM_INSET, debugFrame, type FrameSlotRegistration, usePathCtx } from "akanjs/client";
 import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 import { Portal } from "../Portal";
@@ -102,7 +102,7 @@ export const BottomInset = ({
         ref={contentRef}
         data-akan-frame-slot="bottomInset"
         data-akan-frame-role={frameRole}
-        className={clsx("pointer-events-auto w-full", className)}
+        className={cn("pointer-events-auto w-full", className)}
       >
         {children}
       </div>

@@ -21,7 +21,6 @@
     "@use-gesture/react": "^10.3.1",
     "chart.js": "^4.5.1",
     "chartjs-adapter-dayjs-4": "^1.0.4",
-    "clsx": "^2.1.1",
     "crypto-js": "^4.2.0",
     "discord.js": "^14.26.4",
     "firebase": "^12.13.0",

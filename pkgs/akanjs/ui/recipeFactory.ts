@@ -1,4 +1,4 @@
-import type { ClassValue } from "clsx";
+import type { ClassNameValue as ClassValue } from "tailwind-merge";
 import { createTV } from "tailwind-variants";
 import { colorTokens } from "../client/cn";
 

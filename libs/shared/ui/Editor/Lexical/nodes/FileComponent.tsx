@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { buttonRecipe } from "akanjs/ui";
 import type { NodeKey } from "lexical";
 import { AiOutlineDelete, AiOutlineDownload, AiOutlineFile } from "react-icons/ai";
@@ -21,7 +21,7 @@ export const FileComponent = ({ nodeKey, src, name, size, format }: FileComponen
   return (
     <div className="my-2 flex w-full" contentEditable={false}>
       <div
-        className={clsx(
+        className={cn(
           "group/media relative flex w-full max-w-md items-center gap-3 rounded-lg border border-foreground/15 bg-muted/60 p-3",
           isSelected && "ring-2 ring-primary ring-offset-2 ring-offset-background",
         )}

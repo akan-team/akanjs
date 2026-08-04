@@ -64,7 +64,7 @@ import { lazy } from "akanjs/webkit";
 
 const MapWidget = lazy(() => import("heavy-map-widget"), {
   ssr: false,
-  loading: () => <div className="skeleton h-64" />,
+  loading: () => <div className="h-64 animate-pulse rounded-box bg-muted" />,
 });
 
 interface ArticleMapProps {

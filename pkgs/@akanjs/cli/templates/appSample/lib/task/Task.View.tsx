@@ -4,7 +4,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { a
   return {
     filename: "Task.View.tsx",
     content: `import { type cnst, usePage } from "@apps/${dict.appName}/client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { badgeRecipe } from "akanjs/ui";
 
 // ===== Task.View.tsx =====
@@ -27,10 +27,10 @@ export const General = ({ className, task }: GeneralProps) => {
   }[task.status];
 
   return (
-    <div className={clsx("flex w-full flex-col gap-4", className)}>
+    <div className={cn("flex w-full flex-col gap-4", className)}>
       <div>
         <h1 className="font-bold text-2xl text-foreground">{task.title}</h1>
-        <div className={clsx("mt-1 font-medium text-sm", statusColor)}>{l(\`taskStatus.\${task.status}\`)}</div>
+        <div className={cn("mt-1 font-medium text-sm", statusColor)}>{l(\`taskStatus.\${task.status}\`)}</div>
       </div>
 
       {task.content && (
@@ -53,7 +53,7 @@ export const General = ({ className, task }: GeneralProps) => {
             {task.workHistory.map((entry, i) => (
               <li key={i} className="flex items-start gap-3 text-sm">
                 <span
-                  className={clsx(
+                  className={cn(
                     badgeRecipe({
                       variant:
                         entry.action === "started" ? "primary" : entry.action === "completed" ? "success" : "default",
@@ -79,7 +79,7 @@ export const General = ({ className, task }: GeneralProps) => {
 // ---- Expandable additional fields: ----
 // Compact: for narrow spaces like sidebars or modals
 // export const Compact = ({ className, task }: CompactProps) => (
-//   <div className={clsx("text-sm", className)}>
+//   <div className={cn("text-sm", className)}>
 //     <span className="font-medium">{task.title}</span>
 //     {task.due && <span className="text-foreground/50 ml-2">Due: {new Date(task.due).toLocaleDateString()}</span>}
 //   </div>

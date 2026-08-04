@@ -131,7 +131,6 @@
     "chalk": "^5.6.2",
     "chart.js": "^4.5.1",
     "chartjs-adapter-dayjs-4": "^1.0.4",
-    "clsx": "^2.1.1",
     "commander": "^14.0.3",
     "compare-versions": "^6.1.1",
     "cordova-plugin-purchase": "^13.16.0",

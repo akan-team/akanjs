@@ -1,5 +1,4 @@
-import { type ClassValue, clsx } from "clsx";
-import { extendTailwindMerge } from "tailwind-merge";
+import { type ClassNameValue, extendTailwindMerge } from "tailwind-merge";
 
 /**
  * Akan's semantic color tokens beyond tailwind-merge's built-in Tailwind palette.
@@ -47,6 +46,7 @@ const twMerge = extendTailwindMerge({
   },
 });
 
-/** Composes class names with clsx, then resolves Tailwind conflicts with a
- *  shared tailwind-merge instance that knows Akan's semantic color tokens. */
-export const cn = (...inputs: ClassValue[]) => twMerge(clsx(inputs));
+/** The one class-combining function: joins strings/arrays/conditional parts (`cond && "x"`) and
+ *  resolves Tailwind conflicts with a shared tailwind-merge instance that knows Akan's semantic
+ *  color tokens. clsx-style object syntax (`{ x: cond }`) is not supported — write `cond && "x"`. */
+export const cn = (...inputs: ClassNameValue[]) => twMerge(...inputs);

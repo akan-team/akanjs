@@ -13,7 +13,7 @@ hallucinated, re-derived inline, or duplicated across an app.
 
 ## Consuming Recipes
 - Import by **exact name** from the owning barrel: `import { <name> } from "@apps/<app>/ui"` (or `akanjs/ui` for framework),
-  then call `<name>(variants?, className?)` — the second arg is merged automatically; never wrap it in `cn()`.
+  then call `<name>(variants?, className?)` — the second arg is merged automatically; no extra `cn()` wrapper is needed.
 - **Do not guess** recipe names or import paths. The authoritative list is the `## UI Recipes` section of `AGENTS.md`
   (always loaded) and, when connected, the `list_recipes` MCP tool / `akan recipe list` CLI.
 - Variant options are typed (`Parameters<typeof <name>>[0]`), so a wrong variant is a compile error — let tsc validate

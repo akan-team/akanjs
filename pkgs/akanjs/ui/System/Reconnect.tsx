@@ -1,5 +1,5 @@
 "use client";
-import { clsx, fetch, usePage } from "akanjs/client";
+import { cn, fetch, usePage } from "akanjs/client";
 import { useInterval } from "akanjs/webkit";
 // import { client } from "akanjs/signal";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -139,7 +139,7 @@ export const Reconnect = () => {
         </div>
 
         <div
-          className={clsx(
+          className={cn(
             "mt-2 text-center text-muted-foreground text-sm leading-tight",
             connectStatus === "disconnected" || connectStatus === "connecting" ? "visible" : "invisible",
           )}

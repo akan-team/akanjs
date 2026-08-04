@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { Button, Loading } from "akanjs/ui";
 import type { MouseEvent, ReactNode } from "react";
 import { useState } from "react";
@@ -27,9 +27,9 @@ export const TryButton = ({
   const [loading, setLoading] = useState(false);
   const [completed, setCompleted] = useState(false);
   return (
-    <div className={clsx("flex flex-col gap-2", wrapperClassName)}>
+    <div className={cn("flex flex-col gap-2", wrapperClassName)}>
       <Button
-        className={clsx("w-full", className)}
+        className={cn("w-full", className)}
         disabled={disabled || loading || completed}
         onClick={async (e) => {
           setErrorMessage("");

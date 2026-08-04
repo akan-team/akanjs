@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -17,7 +17,7 @@ interface MarkdownProps {
  *  HTML is not rendered — no XSS surface. Use `Editor.RichContent` for stored rich-text documents instead. */
 export const Markdown = ({ className, children }: MarkdownProps) => {
   return (
-    <div className={clsx(markdownClass, className)}>
+    <div className={cn(markdownClass, className)}>
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
     </div>
   );

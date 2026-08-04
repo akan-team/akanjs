@@ -1,7 +1,7 @@
 "use client";
 import { useGesture } from "@use-gesture/react";
 import type { ReactDOMAttributes } from "@use-gesture/react/dist/declarations/src/types";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { animated } from "akanjs/ui";
 import { createContext, type ReactNode, useContext, useRef } from "react";
 import { SpringValue, useSpring } from "react-spring";
@@ -74,7 +74,7 @@ export const DragAction = ({ className, children, onClick, onLeft, onRight }: Dr
   );
   return (
     <DragActionContext.Provider value={{ bind, x, y, leftOpacity, leftWidth, rightOpacity, rightWidth, onClick }}>
-      <div ref={ref} className={clsx("relative overflow-x-hidden", className)}>
+      <div ref={ref} className={cn("relative overflow-x-hidden", className)}>
         {children}
       </div>
     </DragActionContext.Provider>

@@ -106,14 +106,6 @@ Now let's bring everything together in the UI. The customer-facing order form ne
 
 First, update the order template to check inventory before displaying options:
 
-Key features of the inventory-aware template:
-
-Called in useEffect to load inventory data when the component mounts. Shows a loading spinner until data is ready.
-
-Out of Stock Check
-
-If yogurt ice cream is completely out of stock, shows a friendly message instead of the form. No point ordering if we can't make it!
-
 Each size and topping option checks if sufficient stock exists. Disabled options are grayed out but still visible, so customers know what's normally available.
 
 Add the isInStock helper method to the Inventory constant:
@@ -122,7 +114,7 @@ Now let's create utility components for staff to refill inventory:
 
 Create a visual dashboard showing stock levels with color-coded status indicators:
 
-Add helper methods to the Stock scalar for status calculation:
+; Add; helper; methods; to; the; Stock; scalar; for status calculation :
 
 Create a Zone component for real-time inventory monitoring:
 
@@ -499,8 +491,8 @@ export class InventoryStore extends store(sig.inventory, () => ({
 
 ```ts
 "use client"; // [!code collapse:4]
-import { clsx } from "akanjs/client";
-import { Field, Layout } from "akanjs/ui";
+import { cn } from "akanjs/client";
+import { Field, Layout, buttonRecipe } from "akanjs/ui";
 import { cnst, st, usePage } from "@apps/koyo/client";
 import { Loading } from "akanjs/ui"; // [!code ++:2]
 import { useEffect } from "react";
@@ -521,9 +513,9 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
   else if (!todaysInventory.isInStock("yogurtIcecream"))
     return <div className="flex size-full items-center justify-center text-xl">{l("inventory.outOfStock")}</div>;
   return (
-    <Layout.Template className={clsx("w-full space-y-6", className)}>
+    <Layout.Template className={cn("w-full space-y-6", className)}>
       {showServeType ? ( // [!code collapse:15]
-        <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm">
+        <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
           <div className="space-y-6">
             <div className="flex items-center gap-3">
               <span className="text-3xl">🍦</span>
@@ -537,7 +529,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           </div>
         </div>
       ) : null}
-      <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm">
+      <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
         <div className="space-y-6">
           <div className="flex items-center gap-3"> // [!code collapse:4]
             <span className="text-3xl">📏</span>
@@ -545,48 +537,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           </div>
           <Field.ToggleSelect
             items={[50, 100, 200].map((size) => ({
-              label: `${size}cc`,
-              value: size,
-              disabled: !todaysInventory.isInStock("yogurtIcecream", size), // [!code highlight]
-            }))}
-            value={icecreamOrderForm.size}
-            onChange={st.do.setSizeOnIcecreamOrder}
-          />
-        </div>
-      </div>
-      <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm">
-        <div className="space-y-6">
-          <div className="flex items-center gap-3"> // [!code collapse:4]
-            <span className="text-3xl">🍓</span>
-            <h2 className="text-2xl font-semibold text-primary">{l("icecreamOrder.toppings")}</h2>
-          </div>
-          <Field.MultiToggleSelect
-            items={cnst.Topping.map((topping) => ({ // [!code highlight:5]
-              label: topping,
-              value: topping,
-              disabled: !todaysInventory.isInStock(topping),
-            }))}
-            value={icecreamOrderForm.toppings}
-            onChange={st.do.setToppingsOnIcecreamOrder}
-          />
-        </div>
-      </div>
-      <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm"> // [!code collapse:13]
-        <div className="space-y-6">
-          <div className="flex items-center gap-3">
-            <span className="text-3xl">📱</span>
-            <h2 className="text-2xl font-semibold text-primary">{l("icecreamOrder.phone")}</h2>
-          </div>
-          <Field.Phone
-            placeholder="010-0000-0000"
-            value={icecreamOrderForm.phone}
-            onChange={st.do.setPhoneOnIcecreamOrder}
-          />
-        </div>
-      </div>
-    </Layout.Template>
-  );
-};
+              label:
 ```
 
 ### apps/koyo/lib/inventory/inventory.constant.ts
@@ -623,8 +574,9 @@ export class InventoryInsight extends via(Inventory, (field) => ({})) {}
 
 ```ts
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { st, usePage } from "@apps/koyo/client";
+import { buttonRecipe } from "akanjs/ui";
 import { BiRefresh } from "react-icons/bi";
 
 interface RefillProps {
@@ -634,7 +586,7 @@ export const Refill = ({ className }: RefillProps) => {
   const { l } = usePage();
   return (
     <button
-      className={clsx("btn btn-primary", className)}
+      className={buttonRecipe({ variant: "primary" }, className)}
       onClick={() => {
         void st.do.refillTodaysInventory();
       }}
@@ -649,7 +601,7 @@ export const Refill = ({ className }: RefillProps) => {
 
 ```ts
 import { dayjs } from "akanjs/base";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { cnst, usePage } from "@apps/koyo/client";
 
 interface GeneralProps {
@@ -660,7 +612,7 @@ interface GeneralProps {
 export const General = ({ className, inventory }: GeneralProps) => {
   const { l } = usePage();
   return (
-    <div className={clsx("w-full space-y-2 rounded-xl border border-base-300 bg-base-100 p-4", className)}>
+    <div className={cn("w-full space-y-2 rounded-xl border border-border bg-background p-4", className)}>
       <div className="text-lg font-bold text-primary">{dayjs(inventory.at).format("YYYY-MM-DD")}</div>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {inventory.stocks.map((stock, index) => {
@@ -668,61 +620,7 @@ export const General = ({ className, inventory }: GeneralProps) => {
           const percentage = stock.getPercentage();
           return (
             <div
-              key={`${stock.type}-${index}`}
-              className={clsx("space-y-3 rounded-xl border bg-base-100 px-6 py-4 shadow-md", {
-                "border-base-300": status === "empty",
-                "border-warning/40": status === "low",
-                "border-success/40": status === "normal",
-              })}
-            >
-              <div className="flex items-center justify-between">
-                <div
-                  className={clsx("rounded px-2 py-1 text-xs font-bold", {
-                    "border border-base-300 bg-base-100 text-base-content/70": status === "empty",
-                    "border border-warning/40 bg-base-100 text-warning": status === "low",
-                    "border border-success/40 bg-base-100 text-success": status === "normal",
-                  })}
-                >
-                  {l(`stockType.${stock.type}`)}
-                </div>
-                <div
-                  className={clsx("text-2xl font-bold", {
-                    "text-primary": status === "empty",
-                    "text-warning": status === "low",
-                    "text-success": status === "normal",
-                  })}
-                >
-                  {stock.currentQty} / {stock.totalQty}
-                </div>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <div className="h-2 w-full overflow-hidden rounded-full bg-base-200">
-                  <div
-                    className={clsx("h-full", {
-                      "bg-base-300": status === "empty",
-                      "bg-warning": status === "low",
-                      "bg-success": status === "normal",
-                    })}
-                    style={{ width: `${Math.min(percentage, 100)}%` }}
-                  />
-                </div>
-                <div
-                  className={clsx("text-right text-xs font-bold", {
-                    "text-primary": status === "empty",
-                    "text-warning": status === "low",
-                    "text-success": status === "normal",
-                  })}
-                >
-                  {Math.round(percentage)}%
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
+              key={
 ```
 
 ### apps/koyo/lib/__scalar/stock/stock.constant.ts
@@ -823,7 +721,7 @@ export default async function Page() {
       <div className="flex items-center gap-4 text-5xl font-black"> // [!code collapse:16]
         <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
         <Model.New
-          className="btn btn-primary"
+          className={buttonRecipe({ variant: "primary" })}
           slice={fetch.slice.icecreamOrderInPublic}
           renderTitle="name"
           partial={icecreamOrderForm}

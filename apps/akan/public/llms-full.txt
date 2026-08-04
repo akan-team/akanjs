@@ -106,17 +106,17 @@ CSS And Styling
 
 Styling Foundation
 
-Akan uses Tailwind CSS and DaisyUI as the default styling foundation. Tailwind gives screens a fast utility language for layout, spacing, responsive behavior, and one-off composition. DaisyUI adds semantic component names and theme tokens, so app screens can say primary, base, warning, or error instead of hard-coding every color.
+Akan uses Tailwind CSS with a semantic design-token layer and the akanjs/ui primitives as the default styling foundation. Tailwind gives screens a fast utility language for layout, spacing, responsive behavior, and one-off composition. The token layer + primitives add semantic names, so app screens can say primary, background, warning, or destructive instead of hard-coding every color.
 
-Use Tailwind for structure and layout. Use DaisyUI for theme-aware component vocabulary and semantic colors.
+Use Tailwind for structure and layout. Use akanjs/ui primitives (Button, Badge, Input, Field …) and semantic tokens for theme-aware components and colors.
 
 How the layers work together
 
-Imports Tailwind, Akan UI styles, DaisyUI, and app theme tokens.
+Imports Tailwind, Akan UI styles, and the semantic design-token layer.
 
 Turns brand decisions into reusable names such as primary, base, warning, and error.
 
-Use those names through btn, input, card, alert, and Tailwind utility classes.
+Use those names through akanjs/ui primitives (Button, Input, Badge) and Tailwind utility classes.
 
 Assemble consistent business screens without repeating raw color and spacing rules.
 
@@ -128,15 +128,13 @@ Buttons, inputs, cards, forms, alerts, tabs, modals, and navigation should use s
 
 Business pages should assemble the design system instead of redefining colors and spacing.
 
-Imported modules feel consistent when they use the same Tailwind and DaisyUI tokens.
+Imported modules feel consistent when they use the same Tailwind and semantic design tokens.
 
 Theme System Declaration
 
-Theme and color are declared from the app style entry. The app imports Tailwind, Akan UI styles, enables DaisyUI, then declares one or more DaisyUI themes. Each theme maps semantic names to real colors.
+Theme and color are declared from the app style entry. The app imports Tailwind and Akan UI styles, defines raw CSS variables per theme under :root / [data-theme], then maps them to Tailwind color names with @theme inline. Switching themes is just toggling the data-theme attribute.
 
-DaisyUI supports multiple theme blocks, so one app can define light, dark, brand, admin, or demo themes with the same component classes.
-
-DaisyUI Theme Docs
+Because @theme inline references var(), the same class (bg-primary, text-foreground …) resolves to different colors per data-theme — so one app can define light, dark, brand, or admin themes without changing any component class.
 
 Font Declaration
 
@@ -1210,7 +1208,7 @@ akanjs/client
 
 Client navigation singleton that normalizes Akan language/base-path prefixes before delegating to the active router. Use it from pages, stores, templates, and utilities for push/replace/back/refresh.
 
-Re-export of `clsx` for composing class names across Akan UI code. Most view/unit/template components import it from `akanjs/client` to keep UI dependencies consistent.
+The one class-combining function: joins conditional parts (`cond && "x"`) and resolves Tailwind conflicts with Akan's semantic tokens registered. Every view/unit/template component imports it from `akanjs/client`.
 
 Common props for generated Unit, Zone, and list UI components. They carry model data, slice metadata, query/init settings, actions, columns, and click handlers.
 
@@ -2310,10 +2308,6 @@ Headings:
 - Model.View.tsx
 - View vs Unit
 - Standard View Shape
-- Full Model Detail Patterns
-- Using View In Pages
-- Load.View And Store Hydration
-- Practical Rules
 
 Model.View.tsx
 
@@ -2970,9 +2964,7 @@ Priority: P1
 Headings:
 - Kiosk for Customers
 - Add Schema
-- Kiosk Landing Page
 - Order Form Page
-- Page UX Best Practices
 
 UX with Pages
 
@@ -3199,7 +3191,6 @@ Headings:
 - Show Details
 - Add View/Edit Modal
 - Add View Button to Cards
-- Design Detail View
 - Test Your Implementation
 - Best Practices for Detail Views
 - What's Next?
@@ -4627,3 +4618,4 @@ Chat Flow
 - Querying: /llms/pages/cheatsheet/performance/query.md
 - Queueing: /llms/pages/cheatsheet/performance/queue.md
 - Realtime: /llms/pages/cheatsheet/performance/realtime.md
+- UI Recipe Layer: /llms/pages/docs/arch/ui-recipe.md

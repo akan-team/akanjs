@@ -1,6 +1,6 @@
 import "./styles.css";
 
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import type { BundledLanguage } from "shiki";
 
 import { CodeView } from "./CodeView";
@@ -30,7 +30,7 @@ export const Snippet = ({
   const lastCode = trimmedCode.slice(-10);
   return (
     <CodeView
-      className={clsx("my-3 w-fit", className)}
+      className={cn("my-3 w-fit", className)}
       key={`${title}-${lastCode}`}
       title={title}
       wrapperClassName={wrapperClassName}

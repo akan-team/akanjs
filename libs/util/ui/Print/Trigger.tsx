@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { useContext } from "react";
 import { useReactToPrint } from "react-to-print";
 
@@ -18,7 +18,7 @@ export const Trigger = ({ children, className, pageStyle }: TriggerProps) => {
   const print = useReactToPrint({ contentRef: ref, pageStyle });
   return (
     <div
-      className={clsx("cursor-pointer", className)}
+      className={cn("cursor-pointer", className)}
       onClick={() => {
         print();
       }}

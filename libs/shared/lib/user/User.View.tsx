@@ -1,7 +1,7 @@
 // styleguard-disable arbitrary-color — Discord 등 외부 서비스 로고 색은 브랜드 가이드 고정값이다. 명시적 예외.
 import { type cnst, User, usePage } from "@libs/shared/client";
 import { Icon } from "@libs/util/ui";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { Image } from "akanjs/ui";
 
 interface GeneralProps {
@@ -12,7 +12,7 @@ interface GeneralProps {
 export const General = ({ className, user, siteKey }: GeneralProps) => {
   const { l } = usePage();
   return (
-    <div className={clsx(`flex flex-col gap-2`, className)}>
+    <div className={cn(`flex flex-col gap-2`, className)}>
       {user.accountId?.length ? (
         <div>
           <div className="font-bold">{l("user.accountId")}</div>

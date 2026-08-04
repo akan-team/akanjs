@@ -1,6 +1,6 @@
 import type { cnst } from "@libs/shared/client";
 import { usePage } from "@libs/shared/client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { RecentTime } from "akanjs/ui";
 
 interface GeneralProps {
@@ -11,7 +11,7 @@ interface GeneralProps {
 export const General = ({ className, notification }: GeneralProps) => {
   const { l } = usePage();
   return (
-    <div className={clsx(className, ``)}>
+    <div className={cn(className, ``)}>
       <div className="mt-4 mb-0 flex justify-between border-border border-b p-2 text-2xl">
         <h3>
           {l("notification.id")}-{notification.id}

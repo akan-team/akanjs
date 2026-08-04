@@ -1,6 +1,6 @@
 "use client";
 import { cnst } from "@libs/util/client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { useContext } from "react";
 
 import { PigeonMapPropsContext } from "./context";
@@ -35,9 +35,7 @@ export default function PigeonCircle({ className, center, point, radius, onClick
   return (
     <PigeonMarker coordinate={center}>
       <div
-        className={clsx(className, "rounded-full border-2", {
-          "cursor-pointer": onClick !== undefined,
-        })}
+        className={cn(className, "rounded-full border-2", onClick !== undefined && "cursor-pointer")}
         style={{ width: radiusInPixel * 2, height: radiusInPixel * 2 }}
         onClick={onClick}
       >

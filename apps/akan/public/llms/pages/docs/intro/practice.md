@@ -166,12 +166,6 @@ Update unit file
 
 The Unit file shows how each order looks in a list or card view. Think of it as the "receipt" or "order summary" that displays the order information nicely.
 
-This creates a card design for each ice cream order. The card shows the order ID and status with different colors - green for "active", blue for "processing", and red for "served".
-
-The clsx function changes the card's appearance based on the order status, and l() displays the status text in the user's language.
-
-🚀 We have the form (Template) and the display card (Unit). Now let's put it all together on a webpage so customers can actually visit and use your ice cream ordering system!
-
 Expose to page
 
 Finally, let's create a page where customers can actually place their ice cream orders. This page connects everything together and makes it accessible through a web URL.
@@ -360,39 +354,27 @@ export const General = ({ className }: GeneralProps) => {
 ### apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx
 
 ```ts
-import { clsx, ModelProps } from "akanjs/client"; // [!code collapse:3]
+import { cn, ModelProps } from "akanjs/client"; // [!code collapse:3]
 import { cnst, usePage } from "@apps/koyo/client";
 
 export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIcecreamOrder>) => {
   const { l } = usePage();
   return (
-    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl border border-base-300 bg-base-100 px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
+    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl border border-border bg-background px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
       <div className="flex flex-col justify-center">
         <div className="flex items-center gap-2 text-lg font-semibold text-primary">
-          <span className="inline-block rounded border border-base-300 bg-base-200 px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded border border-border bg-muted px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
             {l("icecreamOrder.id")}
           </span>
         </div>
         <div className="mt-4 flex items-center gap-2">
-          <span className="inline-block rounded bg-base-200 px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
             {l("icecreamOrder.status")}
           </span>
           <span
-            className={clsx("ml-2 rounded-full border border-base-300 bg-base-100 px-3 py-1 text-sm font-semibold text-base-content/80", {
-              "bg-primary text-primary-content": icecreamOrder.status === "active",
-              "bg-warning text-warning-content": icecreamOrder.status === "processing",
-              "bg-secondary text-secondary-content": icecreamOrder.status === "served",
-              "bg-accent text-accent-content": icecreamOrder.status === "finished",
-              "bg-neutral text-neutral-content": icecreamOrder.status === "canceled",
-            })}
+            className={cn("ml-2 rounded-full border border-border bg-background px-3 py-1 text-sm font-semibold text-foreground/80", icecreamOrder.status === "active" && "bg-primary text-primary-foreground", icecreamOrder.status === "processing" && "bg-warning text-warning-foreground", icecreamOrder.status === "served" && "bg-secondary text-secondary-foreground", icecreamOrder.status === "finished" && "bg-accent text-accent-foreground", icecreamOrder.status === "canceled" && "bg-neutral text-neutral-foreground")}
           >
-            {l(`icecreamOrderStatus.${icecreamOrder.status}`)}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-};
+            {l(
 ```
 
 ### apps/koyo/page/_index.tsx
@@ -410,7 +392,7 @@ export default async function Page() {
       <div className="flex items-center gap-4 text-5xl font-black">
         <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
         <Model.New
-          className="btn btn-primary"
+          className={buttonRecipe({ variant: "primary" })}
           slice={fetch.slice.icecreamOrderInPublic}
           renderTitle="name"
           partial={icecreamOrderForm}

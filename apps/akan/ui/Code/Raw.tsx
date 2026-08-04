@@ -1,5 +1,5 @@
 import { transformerNotationDiff, transformerNotationHighlight } from "@shikijs/transformers";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import type { BundledLanguage, ShikiTransformer } from "shiki";
 import { createHighlighter } from "shiki";
 
@@ -102,5 +102,5 @@ export const Raw = ({ className, language = "typescript", code, showLineNumbers 
       ],
     }),
   );
-  return <Shiki_Client className={clsx("w-max", className)} htmlPromise={htmlPromise} focusLines={focusLines} />;
+  return <Shiki_Client className={cn("w-max", className)} htmlPromise={htmlPromise} focusLines={focusLines} />;
 };

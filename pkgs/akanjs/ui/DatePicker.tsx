@@ -1,6 +1,6 @@
 "use client";
 import { type Dayjs, dayjs } from "akanjs/base";
-import { clsx, msg } from "akanjs/client";
+import { cn, msg } from "akanjs/client";
 import { lazy } from "akanjs/webkit";
 import { type FocusEvent, useEffect, useRef } from "react";
 import { AiOutlineSwapRight } from "react-icons/ai";
@@ -58,7 +58,7 @@ const DefaultDatePicker = ({
 
   return (
     <ReactDatePicker
-      className={clsx("input text-center", className)}
+      className={cn("input text-center", className)}
       selected={value ? value.toDate() : new Date()}
       disabledKeyboardNavigation
       onFocus={(e: FocusEvent<HTMLInputElement>) => {
@@ -112,7 +112,7 @@ const DefaultRangePicker = ({
 
   const pickerClassName = "m-0 input focus:outline-hidden z-50 p-3 text-center h-full w-full ";
   return (
-    <div className={clsx("input flex h-full w-fit items-center gap-2 p-0", className)}>
+    <div className={cn("input flex h-full w-fit items-center gap-2 p-0", className)}>
       <ReactDatePicker
         className={pickerClassName}
         selected={value[0] ? value[0].toDate() : undefined}
@@ -174,7 +174,7 @@ const DefaultTimePicker = ({
   return (
     <ReactDatePicker
       wrapperClassName="inline-block"
-      className={clsx("inline-block w-auto", className)}
+      className={cn("inline-block w-auto", className)}
       selected={value ? value.toDate() : new Date()}
       onChange={handleDateChange}
       showTimeSelect

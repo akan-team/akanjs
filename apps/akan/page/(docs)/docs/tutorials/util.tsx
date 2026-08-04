@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -579,7 +579,7 @@ export class IcecreamOrderStore extends store(sig.icecreamOrder, () => ({
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Util.tsx"
             code={`
 "use client"; // [!code collapse:4]
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { st, usePage } from "@apps/koyo/client";
 import { buttonRecipe } from "akanjs/ui";
 
@@ -734,7 +734,7 @@ export const Cancel = ({ className, icecreamOrderId, disabled }: CancelProps) =>
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx"
             code={`
-import { clsx, type ModelProps } from "akanjs/client"; // [!code collapse:3]
+import { cn, type ModelProps } from "akanjs/client"; // [!code collapse:3]
 import { Model, buttonRecipe } from "akanjs/ui";
 import { cnst, fetch, usePage } from "@apps/koyo/client";
 import { IcecreamOrder } from "@apps/koyo/client"; // [!code ++]
@@ -755,19 +755,13 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
             {l("icecreamOrder.status")}
           </span>
           <span
-            className={clsx("ml-2 rounded-full px-3 py-1 text-sm font-semibold", {
-              "border border-primary/40 bg-background text-primary": icecreamOrder.status === "active",
-              "border border-warning/40 bg-background text-warning": icecreamOrder.status === "processing",
-              "border border-info/40 bg-info text-info-foreground": icecreamOrder.status === "served",
-              "border border-accent/40 bg-background text-accent": icecreamOrder.status === "finished",
-              "border border-border bg-background text-foreground/70": icecreamOrder.status === "canceled",
-            })}
+            className={cn("ml-2 rounded-full px-3 py-1 text-sm font-semibold", icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary", icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning", icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground", icecreamOrder.status === "finished" && "border border-accent/40 bg-background text-accent", icecreamOrder.status === "canceled" && "border border-border bg-background text-foreground/70")}
           >
-            {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
+            {l(`icecreamOrderStatus.${icecreamOrder.status}`)}
           </span>
         </div>
       </div>
-      <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4">
+      <div className="flex items-center justify-center gap-2 rounded-xl bg-background p-4">
         <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
           <button className={buttonRecipe({ variant: "primary" })}>
             <span>{l.trans({ en: "View", ko: "보기" })}</span>
@@ -780,19 +774,25 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
       </div>
     </div>
   );
-};`}
+}
+`}
           />
           <div>
             {l.trans({
-              en: `Now let's also add the buttons to the detailed view modal:`,
+              en: `;
+Now;
+let
+'s also add the buttons to the detailed view modal:`,
               ko: `이제 상세 뷰 모달에도 버튼을 추가해봅시다:`,
             })}
           </div>
           <Code.Snippet
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.View.tsx"
-            code={`
-import { clsx } from "akanjs/client"; // [!code collapse:2]
+            code=
+{
+  `
+import { cn } from "akanjs/client"; // [!code collapse:2]
 import { cnst, usePage } from "@apps/koyo/client";
 import { IcecreamOrder } from "@apps/koyo/client"; // [!code ++]
 // [!code collapse:5]
@@ -804,7 +804,7 @@ interface GeneralProps {
 export const General = ({ className, icecreamOrder }: GeneralProps) => {
   const { l } = usePage();
   return (
-    <div className={clsx(className, "mx-auto w-full space-y-6 rounded-xl p-8 shadow-lg")}>
+    <div className={cn(className, "mx-auto w-full space-y-6 rounded-xl p-8 shadow-lg")}>
       <div className="flex items-center gap-3 border-b pb-4"> // [!code collapse:42]
         <span className="text-3xl font-extrabold text-primary">🍦</span>
         <span className="text-2xl font-bold">{l("icecreamOrder.modelName")}</span>
@@ -823,7 +823,10 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
                 key={topping}
                 className="inline-block rounded-full bg-background px-2 py-1 text-xs font-medium text-primary"
               >
-                {l(\`topping.\${topping}\`)}
+                {l(`;
+  topping.$;
+  topping;
+  `)}
               </span>
             ))
           )}
@@ -831,15 +834,12 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
         <div className="text-foreground/50 font-semibold">{l("icecreamOrder.status")}</div>
         <div>
           <span
-            className={clsx("inline-block rounded-full px-2 py-1 text-xs font-semibold", {
-              "border border-primary/40 bg-background text-primary": icecreamOrder.status === "active",
-              "border border-warning/40 bg-background text-warning": icecreamOrder.status === "processing",
-              "border border-info/40 bg-info text-info-foreground": icecreamOrder.status === "served",
-              "border border-accent/40 bg-background text-accent": icecreamOrder.status === "finished",
-              "border border-border bg-background text-foreground/70": icecreamOrder.status === "canceled",
-            })}
+            className={cn("inline-block rounded-full px-2 py-1 text-xs font-semibold", icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary", icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning", icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground", icecreamOrder.status === "finished" && "border border-accent/40 bg-background text-accent", icecreamOrder.status === "canceled" && "border border-border bg-background text-foreground/70")}
           >
-            {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
+            {l(`;
+  icecreamOrderStatus.$;
+  icecreamOrder.status;
+  `)}
           </span>
         </div>
         <div className="text-foreground/50 font-semibold">{l("icecreamOrder.createdAt")}</div>
@@ -855,44 +855,73 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
       </div>
     </div>
   );
-};`}
-          />
-          <div>
-            {l.trans({
-              en: `Key features of this implementation:`,
-              ko: `이 구현의 주요 특징:`,
-            })}
-          </div>
+};`;
+}
+/><div>;
+{
+  l.trans({
+    en: `Key features of this implementation:`,
+    ko: `이 구현의 주요 특징:`,
+  });
+}
+</div>
           <div className="my-4 space-y-2">
             <div className="flex items-start gap-2">
               <span className="text-primary">⚡</span>
               <div>
-                <strong>{l.trans({ en: "Smart Disabling", ko: "스마트 비활성화" })}</strong>:{" "}
-                {l.trans({
-                  en: "Buttons are disabled when actions aren't allowed based on current status",
-                  ko: "현재 상태에 따라 작업이 허용되지 않을 때 버튼이 비활성화됩니다",
-                })}
-              </div>
+                <strong>
+{
+  l.trans({ en: "Smart Disabling", ko: "스마트 비활성화" });
+}
+</strong>:
+{
+  (" ");
+}
+{
+  l.trans({
+    en: "Buttons are disabled when actions aren't allowed based on current status",
+    ko: "현재 상태에 따라 작업이 허용되지 않을 때 버튼이 비활성화됩니다",
+  });
+}
+</div>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-primary">📱</span>
               <div>
-                <strong>{l.trans({ en: "Responsive Layout", ko: "반응형 레이아웃" })}</strong>:{" "}
-                {l.trans({
-                  en: "Buttons wrap gracefully on smaller screens with flex-wrap",
-                  ko: "버튼들이 flex-wrap으로 작은 화면에서 우아하게 줄바꿈됩니다",
-                })}
-              </div>
+                <strong>
+{
+  l.trans({ en: "Responsive Layout", ko: "반응형 레이아웃" });
+}
+</strong>:
+{
+  (" ");
+}
+{
+  l.trans({
+    en: "Buttons wrap gracefully on smaller screens with flex-wrap",
+    ko: "버튼들이 flex-wrap으로 작은 화면에서 우아하게 줄바꿈됩니다",
+  });
+}
+</div>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-primary">🎨</span>
               <div>
-                <strong>{l.trans({ en: "Visual Hierarchy", ko: "시각적 계층구조" })}</strong>:{" "}
-                {l.trans({
-                  en: "Different button styles indicate action priority and type",
-                  ko: "다른 버튼 스타일이 작업 우선순위와 유형을 나타냅니다",
-                })}
-              </div>
+                <strong>
+{
+  l.trans({ en: "Visual Hierarchy", ko: "시각적 계층구조" });
+}
+</strong>:
+{
+  (" ");
+}
+{
+  l.trans({
+    en: "Different button styles indicate action priority and type",
+    ko: "다른 버튼 스타일이 작업 우선순위와 유형을 나타냅니다",
+  });
+}
+</div>
             </div>
           </div>
         </Docs.Description>
@@ -900,210 +929,215 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
       <Divider />
       <Scroll.Slide
         id="test-implementation"
-        title={l.trans({ en: "Test Status Management", ko: "상태 관리 테스트하기" })}
-      >
-        <Docs.Title>{l.trans({ en: "Test Status Management", ko: "상태 관리 테스트하기" })}</Docs.Title>
-        <Docs.Description>
-          <div>
-            {l.trans({
-              en: `Let's test our status management implementation to ensure everything works correctly:`,
-              ko: `모든 것이 올바르게 작동하는지 확인하기 위해 상태 관리 구현을 테스트해봅시다:`,
-            })}
-          </div>
-          <div className={panelRecipe({ radius: "lg" }, "my-4")}>
-            <div className="mb-2 font-semibold text-primary">
-              {l.trans({ en: "Testing Steps:", ko: "테스트 단계:" })}
-            </div>
-            <ol className="list-decimal space-y-2 pl-5 text-foreground/70 text-sm">
-              <li>
-                {l.trans({
-                  en: "Navigate to http://localhost:8282/icecreamOrder",
-                  ko: "http://localhost:8282/icecreamOrder로 이동",
-                })}
-              </li>
-              <li>
-                {l.trans({
-                  en: "Create a new ice cream order (it will start as 'active')",
-                  ko: "새 아이스크림 주문 생성 ('활성' 상태로 시작됨)",
-                })}
-              </li>
-              <li>
-                {l.trans({
-                  en: "Notice that only 'Process' and 'Cancel' buttons are enabled",
-                  ko: "'작업시작'과 '주문취소' 버튼만 활성화된 것을 확인",
-                })}
-              </li>
-              <li>
-                {l.trans({
-                  en: "Click 'Process' - the status should change to 'processing'",
-                  ko: "'작업시작' 클릭 - 상태가 '처리중'으로 변경되어야 함",
-                })}
-              </li>
-              <li>
-                {l.trans({
-                  en: "Now only the 'Serve' button should be enabled",
-                  ko: "이제 '서빙완료' 버튼만 활성화되어야 함",
-                })}
-              </li>
-              <li>
-                {l.trans({
-                  en: "Click 'Serve' - the status should change to 'served'",
-                  ko: "'서빙완료' 클릭 - 상태가 '서빙완료'로 변경되어야 함",
-                })}
-              </li>
-              <li>
-                {l.trans({
-                  en: "All action buttons should now be disabled (final state)",
-                  ko: "모든 액션 버튼이 이제 비활성화되어야 함 (최종 상태)",
-                })}
-              </li>
-            </ol>
-          </div>
-          <div className={panelRecipe({ radius: "lg" }, "my-4")}>
-            <div className="mb-2 font-semibold text-primary">
-              {l.trans({ en: "Expected Behavior:", ko: "예상 동작:" })}
-            </div>
-            <ul className="list-disc space-y-1 pl-5 text-foreground/70 text-sm">
-              <li>
-                {l.trans({ en: "Status changes should be instant and visible", ko: "상태 변경이 즉시 표시되어야 함" })}
-              </li>
-              <li>
-                {l.trans({
-                  en: "Button states should update automatically",
-                  ko: "버튼 상태가 자동으로 업데이트되어야 함",
-                })}
-              </li>
-              <li>
-                {l.trans({ en: "Invalid actions should be prevented", ko: "유효하지 않은 작업이 방지되어야 함" })}
-              </li>
-              <li>
-                {l.trans({
-                  en: "Error messages should appear if business rules are violated",
-                  ko: "비즈니스 규칙이 위반되면 오류 메시지가 나타나야 함",
-                })}
-              </li>
-            </ul>
-          </div>
-        </Docs.Description>
-      </Scroll.Slide>
+        title=
+{
+  l.trans({ en: "Test Status Management", ko: "상태 관리 테스트하기" });
+}
+>
+        <Docs.Title>
+{
+  l.trans({ en: "Test Status Management", ko: "상태 관리 테스트하기" });
+}
+</Docs.Title>
+<Docs.Description>
+  <div>
+    {l.trans({
+      en: `Let's test our status management implementation to ensure everything works correctly:`,
+      ko: `모든 것이 올바르게 작동하는지 확인하기 위해 상태 관리 구현을 테스트해봅시다:`,
+    })}
+  </div>
+  <div className={panelRecipe({ radius: "lg" }, "my-4")}>
+    <div className="mb-2 font-semibold text-primary">{l.trans({ en: "Testing Steps:", ko: "테스트 단계:" })}</div>
+    <ol className="list-decimal space-y-2 pl-5 text-foreground/70 text-sm">
+      <li>
+        {l.trans({
+          en: "Navigate to http://localhost:8282/icecreamOrder",
+          ko: "http://localhost:8282/icecreamOrder로 이동",
+        })}
+      </li>
+      <li>
+        {l.trans({
+          en: "Create a new ice cream order (it will start as 'active')",
+          ko: "새 아이스크림 주문 생성 ('활성' 상태로 시작됨)",
+        })}
+      </li>
+      <li>
+        {l.trans({
+          en: "Notice that only 'Process' and 'Cancel' buttons are enabled",
+          ko: "'작업시작'과 '주문취소' 버튼만 활성화된 것을 확인",
+        })}
+      </li>
+      <li>
+        {l.trans({
+          en: "Click 'Process' - the status should change to 'processing'",
+          ko: "'작업시작' 클릭 - 상태가 '처리중'으로 변경되어야 함",
+        })}
+      </li>
+      <li>
+        {l.trans({
+          en: "Now only the 'Serve' button should be enabled",
+          ko: "이제 '서빙완료' 버튼만 활성화되어야 함",
+        })}
+      </li>
+      <li>
+        {l.trans({
+          en: "Click 'Serve' - the status should change to 'served'",
+          ko: "'서빙완료' 클릭 - 상태가 '서빙완료'로 변경되어야 함",
+        })}
+      </li>
+      <li>
+        {l.trans({
+          en: "All action buttons should now be disabled (final state)",
+          ko: "모든 액션 버튼이 이제 비활성화되어야 함 (최종 상태)",
+        })}
+      </li>
+    </ol>
+  </div>
+  <div className={panelRecipe({ radius: "lg" }, "my-4")}>
+    <div className="mb-2 font-semibold text-primary">{l.trans({ en: "Expected Behavior:", ko: "예상 동작:" })}</div>
+    <ul className="list-disc space-y-1 pl-5 text-foreground/70 text-sm">
+      <li>{l.trans({ en: "Status changes should be instant and visible", ko: "상태 변경이 즉시 표시되어야 함" })}</li>
+      <li>
+        {l.trans({
+          en: "Button states should update automatically",
+          ko: "버튼 상태가 자동으로 업데이트되어야 함",
+        })}
+      </li>
+      <li>{l.trans({ en: "Invalid actions should be prevented", ko: "유효하지 않은 작업이 방지되어야 함" })}</li>
+      <li>
+        {l.trans({
+          en: "Error messages should appear if business rules are violated",
+          ko: "비즈니스 규칙이 위반되면 오류 메시지가 나타나야 함",
+        })}
+      </li>
+    </ul>
+  </div>
+</Docs.Description>;
+</Scroll.Slide>
       <Divider />
       <Scroll.Slide
         id="best-practices"
-        title={l.trans({ en: "Status Management Best Practices", ko: "상태 관리 모범 사례" })}
-      >
-        <Docs.Title>{l.trans({ en: "Status Management Best Practices", ko: "상태 관리 모범 사례" })}</Docs.Title>
-        <Docs.Description>
-          <div>
-            {l.trans({
-              en: `Here are important best practices for implementing status management in Akan.js:`,
-              ko: `Akan.js에서 상태 관리를 구현할 때의 중요한 모범 사례들입니다:`,
-            })}
-          </div>
-          <div className="my-4 space-y-4">
-            <div className={panelRecipe({ radius: "lg" })}>
-              <div className="mb-2 flex items-center gap-2">
-                <span className="text-primary">🛡️</span>
-                <strong className="text-primary">
-                  {l.trans({ en: "Enforce Business Rules", ko: "비즈니스 규칙 강제" })}
-                </strong>
-              </div>
-              <div className="text-foreground/70 text-sm">
-                {l.trans({
-                  en: `Always validate state transitions at the document level using business methods. This ensures data integrity regardless of how the API is called.`,
-                  ko: `비즈니스 메서드를 사용하여 도큐먼트 레벨에서 항상 상태 전환을 검증하세요. 이렇게 하면 API가 어떻게 호출되든 데이터 무결성이 보장됩니다.`,
-                })}
-              </div>
-            </div>
-            <div className={panelRecipe({ radius: "lg" })}>
-              <div className="mb-2 flex items-center gap-2">
-                <span className="text-primary">💡</span>
-                <strong className="text-primary">{l.trans({ en: "Smart UI Controls", ko: "스마트 UI 제어" })}</strong>
-              </div>
-              <div className="text-foreground/70 text-sm">
-                {l.trans({
-                  en: `Disable buttons and hide actions that aren't valid for the current state. This provides immediate feedback to users about what actions are possible.`,
-                  ko: `현재 상태에 유효하지 않은 버튼을 비활성화하고 작업을 숨기세요. 이는 어떤 작업이 가능한지에 대한 즉각적인 피드백을 사용자에게 제공합니다.`,
-                })}
-              </div>
-            </div>
-            <div className={panelRecipe({ radius: "lg" })}>
-              <div className="mb-2 flex items-center gap-2">
-                <span className="text-primary">🔄</span>
-                <strong className="text-primary">{l.trans({ en: "Consistent Patterns", ko: "일관된 패턴" })}</strong>
-              </div>
-              <div className="text-foreground/70 text-sm">
-                {l.trans({
-                  en: `Follow the same pattern across all status operations: Document → Service → Signal → Store → Component. This makes your code predictable and maintainable.`,
-                  ko: `모든 상태 작업에서 동일한 패턴을 따르세요: Document → Service → Signal → Store → Component. 이렇게 하면 코드가 예측 가능하고 유지보수하기 쉬워집니다.`,
-                })}
-              </div>
-            </div>
-            <div className={panelRecipe({ radius: "lg" })}>
-              <div className="mb-2 flex items-center gap-2">
-                <span className="text-primary">📝</span>
-                <strong className="text-primary">
-                  {l.trans({ en: "Proper Error Handling", ko: "적절한 오류 처리" })}
-                </strong>
-              </div>
-              <div className="text-foreground/70 text-sm">
-                {l.trans({
-                  en: `Use dictionary-based error messages with Err exceptions. This ensures error messages are properly translated and user-friendly.`,
-                  ko: `Err 예외와 함께 dictionary 기반 오류 메시지를 사용하세요. 이렇게 하면 오류 메시지가 제대로 번역되고 사용자 친화적이 됩니다.`,
-                })}
-              </div>
-            </div>
-          </div>
-        </Docs.Description>
-      </Scroll.Slide>
+        title=
+{
+  l.trans({ en: "Status Management Best Practices", ko: "상태 관리 모범 사례" });
+}
+>
+        <Docs.Title>
+{
+  l.trans({ en: "Status Management Best Practices", ko: "상태 관리 모범 사례" });
+}
+</Docs.Title>
+<Docs.Description>
+  <div>
+    {l.trans({
+      en: `Here are important best practices for implementing status management in Akan.js:`,
+      ko: `Akan.js에서 상태 관리를 구현할 때의 중요한 모범 사례들입니다:`,
+    })}
+  </div>
+  <div className="my-4 space-y-4">
+    <div className={panelRecipe({ radius: "lg" })}>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-primary">🛡️</span>
+        <strong className="text-primary">{l.trans({ en: "Enforce Business Rules", ko: "비즈니스 규칙 강제" })}</strong>
+      </div>
+      <div className="text-foreground/70 text-sm">
+        {l.trans({
+          en: `Always validate state transitions at the document level using business methods. This ensures data integrity regardless of how the API is called.`,
+          ko: `비즈니스 메서드를 사용하여 도큐먼트 레벨에서 항상 상태 전환을 검증하세요. 이렇게 하면 API가 어떻게 호출되든 데이터 무결성이 보장됩니다.`,
+        })}
+      </div>
+    </div>
+    <div className={panelRecipe({ radius: "lg" })}>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-primary">💡</span>
+        <strong className="text-primary">{l.trans({ en: "Smart UI Controls", ko: "스마트 UI 제어" })}</strong>
+      </div>
+      <div className="text-foreground/70 text-sm">
+        {l.trans({
+          en: `Disable buttons and hide actions that aren't valid for the current state. This provides immediate feedback to users about what actions are possible.`,
+          ko: `현재 상태에 유효하지 않은 버튼을 비활성화하고 작업을 숨기세요. 이는 어떤 작업이 가능한지에 대한 즉각적인 피드백을 사용자에게 제공합니다.`,
+        })}
+      </div>
+    </div>
+    <div className={panelRecipe({ radius: "lg" })}>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-primary">🔄</span>
+        <strong className="text-primary">{l.trans({ en: "Consistent Patterns", ko: "일관된 패턴" })}</strong>
+      </div>
+      <div className="text-foreground/70 text-sm">
+        {l.trans({
+          en: `Follow the same pattern across all status operations: Document → Service → Signal → Store → Component. This makes your code predictable and maintainable.`,
+          ko: `모든 상태 작업에서 동일한 패턴을 따르세요: Document → Service → Signal → Store → Component. 이렇게 하면 코드가 예측 가능하고 유지보수하기 쉬워집니다.`,
+        })}
+      </div>
+    </div>
+    <div className={panelRecipe({ radius: "lg" })}>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-primary">📝</span>
+        <strong className="text-primary">{l.trans({ en: "Proper Error Handling", ko: "적절한 오류 처리" })}</strong>
+      </div>
+      <div className="text-foreground/70 text-sm">
+        {l.trans({
+          en: `Use dictionary-based error messages with Err exceptions. This ensures error messages are properly translated and user-friendly.`,
+          ko: `Err 예외와 함께 dictionary 기반 오류 메시지를 사용하세요. 이렇게 하면 오류 메시지가 제대로 번역되고 사용자 친화적이 됩니다.`,
+        })}
+      </div>
+    </div>
+  </div>
+</Docs.Description>;
+</Scroll.Slide>
       <Divider />
-      <Scroll.Slide id="next-steps" title={l.trans({ en: "What's Next?", ko: "다음은 무엇인가요?" })}>
-        <Docs.Title>{l.trans({ en: "What's Next?", ko: "다음은 무엇인가요?" })}</Docs.Title>
-        <Docs.Description>
-          <div>
-            {l.trans({
-              en: `Excellent work! You've successfully implemented a complete status management system for your ice cream orders. Shop staff can now efficiently manage the order lifecycle with proper business rule enforcement.`,
-              ko: `훌륭한 작업입니다! 아이스크림 주문을 위한 완전한 상태 관리 시스템을 성공적으로 구현했습니다. 이제 가게 직원이 적절한 비즈니스 규칙 강제와 함께 주문 생명주기를 효율적으로 관리할 수 있습니다.`,
-            })}
-          </div>
-          <div className="my-6 rounded-lg bg-linear-to-r from-background to-border p-6">
-            <div className="mb-3 font-bold text-lg text-primary">
-              {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
-            </div>
-            <ul className="space-y-2 text-foreground/70 text-sm">
-              <li>
-                ✓{" "}
-                {l.trans({ en: "Implemented business logic with validation", ko: "검증이 포함된 비즈니스 로직 구현" })}
-              </li>
-              <li>
-                ✓{" "}
-                {l.trans({
-                  en: "Created service layer for status operations",
-                  ko: "상태 작업을 위한 서비스 레이어 생성",
-                })}
-              </li>
-              <li>
-                ✓{" "}
-                {l.trans({
-                  en: "Built signal endpoints for status changes",
-                  ko: "상태 변경을 위한 시그널 엔드포인트 구축",
-                })}
-              </li>
-              <li>✓ {l.trans({ en: "Added frontend store actions", ko: "프론트엔드 스토어 액션 추가" })}</li>
-              <li>
-                ✓ {l.trans({ en: "Created reusable utility components", ko: "재사용 가능한 유틸리티 컴포넌트 생성" })}
-              </li>
-              <li>✓ {l.trans({ en: "Integrated smart UI controls", ko: "스마트 UI 제어 통합" })}</li>
-            </ul>
-          </div>
-          <div>
-            {l.trans({
-              en: `In the next tutorial, we'll learn how to edit existing data by implementing order modification functionality. This will allow customers to update their ice cream orders before they're processed, completing the full CRUD operations for our ice cream shop.`,
-              ko: `다음 튜토리얼에서는 주문 수정 기능을 구현하여 기존 데이터를 편집하는 방법을 배울 것입니다. 이를 통해 고객이 처리되기 전에 아이스크림 주문을 업데이트할 수 있게 되어 아이스크림 가게의 완전한 CRUD 작업이 완성될 것입니다.`,
-            })}
-          </div>
-        </Docs.Description>
-      </Scroll.Slide>
+      <Scroll.Slide id="next-steps" title=
+{
+  l.trans({ en: "What's Next?", ko: "다음은 무엇인가요?" });
+}
+>
+        <Docs.Title>
+{
+  l.trans({ en: "What's Next?", ko: "다음은 무엇인가요?" });
+}
+</Docs.Title>
+<Docs.Description>
+  <div>
+    {l.trans({
+      en: `Excellent work! You've successfully implemented a complete status management system for your ice cream orders. Shop staff can now efficiently manage the order lifecycle with proper business rule enforcement.`,
+      ko: `훌륭한 작업입니다! 아이스크림 주문을 위한 완전한 상태 관리 시스템을 성공적으로 구현했습니다. 이제 가게 직원이 적절한 비즈니스 규칙 강제와 함께 주문 생명주기를 효율적으로 관리할 수 있습니다.`,
+    })}
+  </div>
+  <div className="my-6 rounded-lg bg-linear-to-r from-background to-border p-6">
+    <div className="mb-3 font-bold text-lg text-primary">
+      {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
+    </div>
+    <ul className="space-y-2 text-foreground/70 text-sm">
+      <li>✓ {l.trans({ en: "Implemented business logic with validation", ko: "검증이 포함된 비즈니스 로직 구현" })}</li>
+      <li>
+        ✓{" "}
+        {l.trans({
+          en: "Created service layer for status operations",
+          ko: "상태 작업을 위한 서비스 레이어 생성",
+        })}
+      </li>
+      <li>
+        ✓{" "}
+        {l.trans({
+          en: "Built signal endpoints for status changes",
+          ko: "상태 변경을 위한 시그널 엔드포인트 구축",
+        })}
+      </li>
+      <li>✓ {l.trans({ en: "Added frontend store actions", ko: "프론트엔드 스토어 액션 추가" })}</li>
+      <li>✓ {l.trans({ en: "Created reusable utility components", ko: "재사용 가능한 유틸리티 컴포넌트 생성" })}</li>
+      <li>✓ {l.trans({ en: "Integrated smart UI controls", ko: "스마트 UI 제어 통합" })}</li>
+    </ul>
+  </div>
+  <div>
+    {l.trans({
+      en: `In the next tutorial, we'll learn how to edit existing data by implementing order modification functionality. This will allow customers to update their ice cream orders before they're processed, completing the full CRUD operations for our ice cream shop.`,
+      ko: `다음 튜토리얼에서는 주문 수정 기능을 구현하여 기존 데이터를 편집하는 방법을 배울 것입니다. 이를 통해 고객이 처리되기 전에 아이스크림 주문을 업데이트할 수 있게 되어 아이스크림 가게의 완전한 CRUD 작업이 완성될 것입니다.`,
+    })}
+  </div>
+</Docs.Description>;
+</Scroll.Slide>
       <DocsToc />
     </Scroll>
-  );
+  )
 }

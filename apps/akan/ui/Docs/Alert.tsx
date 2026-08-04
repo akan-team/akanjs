@@ -1,4 +1,4 @@
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import type { ReactNode } from "react";
 import { BiCheckCircle, BiErrorCircle, BiInfoCircle, BiStopCircle } from "react-icons/bi";
 
@@ -19,9 +19,9 @@ const alertStyles = {
 export const Alert = ({ children, type = "info", className, bodyClassName }: AlertProps) => {
   const { surface, icon, Icon } = alertStyles[type];
   return (
-    <div role="alert" className={clsx("my-4 flex items-start gap-3 rounded-lg border p-4", surface, className)}>
-      <Icon className={clsx("mt-0.5 shrink-0 text-xl", icon)} />
-      <div className={clsx("min-w-0 flex-1 text-foreground leading-relaxed", bodyClassName)}>{children}</div>
+    <div role="alert" className={cn("my-4 flex items-start gap-3 rounded-lg border p-4", surface, className)}>
+      <Icon className={cn("mt-0.5 shrink-0 text-xl", icon)} />
+      <div className={cn("min-w-0 flex-1 text-foreground leading-relaxed", bodyClassName)}>{children}</div>
     </div>
   );
 };

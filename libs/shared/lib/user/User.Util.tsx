@@ -6,7 +6,7 @@ import { pad } from "@libs/util/common";
 import { AreYouRobot, Icon } from "@libs/util/ui";
 import { usePushNotification } from "@libs/util/webkit";
 import { dayjs } from "akanjs/base";
-import { clsx, getCookie, router, setCookie } from "akanjs/client";
+import { cn, getCookie, router, setCookie } from "akanjs/client";
 import { isEmail, isPhoneNumber } from "akanjs/common";
 import { buttonRecipe, Input, Link, Loading, Modal, Switch } from "akanjs/ui";
 import { useInterval } from "akanjs/webkit";
@@ -376,7 +376,7 @@ export const SSOButtons = ({
   const mainSsoTypes = mainSsos.filter((ssoType) => !!mainSsoButtonMap[ssoType]);
   const subSsoTypes = subSsos.filter((ssoType) => !!subSsoButtonMap[ssoType]);
   return (
-    <div className={clsx("flex w-full flex-col justify-between gap-1.5 md:gap-3", className)}>
+    <div className={cn("flex w-full flex-col justify-between gap-1.5 md:gap-3", className)}>
       {mainSsoTypes.map((ssoType) => (
         <a
           key={ssoType}
@@ -465,7 +465,7 @@ interface ResendPhoneCodeForSigninProps {
 }
 export const ResendPhoneCodeForSignin = ({ className, userId, phone, hash }: ResendPhoneCodeForSigninProps) => {
   return (
-    <div className={clsx("mt-2 flex justify-center", className)}>
+    <div className={cn("mt-2 flex justify-center", className)}>
       <button
         className="cursor-pointer border-b border-dashed text-sm opacity-60 duration-300 hover:opacity-100"
         onClick={() => {
@@ -491,7 +491,7 @@ export const ResendPhoneCodeForSetPhoneInPrepareUser = ({
   hash = "dummy",
 }: ResendPhoneCodeForSetPhoneInPrepareUserProps) => {
   return (
-    <div className={clsx("mt-2 flex justify-center", className)}>
+    <div className={cn("mt-2 flex justify-center", className)}>
       <button
         className="cursor-pointer border-b border-dashed text-sm opacity-60 duration-300 hover:opacity-100"
         onClick={() => {

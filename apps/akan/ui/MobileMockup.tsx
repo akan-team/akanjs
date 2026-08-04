@@ -1,4 +1,4 @@
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import type { ReactNode } from "react";
 
 interface MobileMockupProps {
@@ -19,7 +19,7 @@ interface MobileMockupProps {
  */
 export const MobileMockup = ({ children, className, screenClassName }: MobileMockupProps) => {
   return (
-    <div className={clsx("relative w-48 shrink-0", className)}>
+    <div className={cn("relative w-48 shrink-0", className)}>
       {/* Side buttons — left: mute switch + volume up/down, right: power */}
       <div className="absolute top-[16%] -left-[2px] h-5 w-[3px] rounded-l-sm bg-black/40" />
       <div className="absolute top-[26%] -left-[2px] h-9 w-[3px] rounded-l-sm bg-black/40" />
@@ -33,7 +33,7 @@ export const MobileMockup = ({ children, className, screenClassName }: MobileMoc
           <div className="absolute top-2.5 left-1/2 z-10 h-5 w-16 -translate-x-1/2 rounded-full bg-black/80" />
           {/* Screen */}
           <div
-            className={clsx("flex aspect-[9/19] w-full items-center justify-center px-4 text-center", screenClassName)}
+            className={cn("flex aspect-[9/19] w-full items-center justify-center px-4 text-center", screenClassName)}
           >
             {children}
           </div>

@@ -1,7 +1,7 @@
 "use client";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { $findMatchingParent, mergeRegister } from "@lexical/utils";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { $getSelection, $isRangeSelection, COMMAND_PRIORITY_LOW, SELECTION_CHANGE_COMMAND } from "lexical";
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
@@ -85,7 +85,7 @@ export const CalloutPlugin = () => {
           type="button"
           title={swatch.title}
           aria-label={`Callout: ${swatch.title}`}
-          className={clsx(
+          className={cn(
             "h-4 w-4 rounded-full transition-transform hover:scale-110",
             swatch.className,
             state.variant === swatch.key && "ring-2 ring-foreground/50 ring-offset-1 ring-offset-background",

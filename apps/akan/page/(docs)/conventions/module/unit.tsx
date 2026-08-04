@@ -108,12 +108,12 @@ export default function UnitDocsPage() {
         <Code.Snippet
           className="w-full"
           title="Article.Unit.tsx"
-          code={`import { type ModelProps, clsx } from "akanjs/client";
+          code={`import { type ModelProps, cn } from "akanjs/client";
 import { Layout } from "akanjs/ui";
 
 export const Card = ({ article, className, href }: ModelProps<"article", cnst.LightArticle>) => {
   return (
-    <Layout.Unit className={clsx("rounded-lg border", className)} href={href}>
+    <Layout.Unit className={cn("rounded-lg border", className)} href={href}>
       <div className="font-bold">{article.title}</div>
       <div className="text-foreground/70">{article.summary}</div>
     </Layout.Unit>
@@ -145,7 +145,7 @@ export const Card = ({ article, className, href }: ModelProps<"article", cnst.Li
           code={`interface MiniProps extends ModelProps<"article", cnst.LightArticle> {}
 
 export const Mini = ({ article, className, href }: MiniProps) => (
-  <div className={clsx("flex items-center gap-2", className)}>
+  <div className={cn("flex items-center gap-2", className)}>
     <Link href={href}>{article.title}</Link>
     <Article.Util.Remove article={article} />
   </div>
@@ -283,8 +283,8 @@ export const Mini = ({ article, className, href }: MiniProps) => (
                 ko: "여러 layout이나 link에서 재사용될 수 있는 Unit은 className과 href를 받습니다.",
               }),
               l.trans({
-                en: "Use clsx to merge caller styling with the Unit's base styling.",
-                ko: "호출하는 쪽의 style과 Unit의 기본 style을 합칠 때 clsx를 사용합니다.",
+                en: "Use cn to merge caller styling with the Unit's base styling.",
+                ko: "호출하는 쪽의 style과 Unit의 기본 style을 합칠 때 cn을 사용합니다.",
               }),
               l.trans({
                 en: "Prefer Layout.Unit or Link for clickable card/list containers.",

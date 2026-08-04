@@ -5,7 +5,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { a
     filename: "QuantityControl.tsx",
     content: `"use client";
 
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { buttonRecipe } from "akanjs/ui";
 
 // ===== QuantityControl.tsx =====
@@ -29,7 +29,7 @@ export const QuantityControl = ({
   max = 99,
 }: QuantityControlProps) => {
   return (
-    <div className={clsx("inline-flex items-center gap-1", className)}>
+    <div className={cn("inline-flex items-center gap-1", className)}>
       <button
         className={buttonRecipe({ variant: "outline", size: "icon" }, "size-6 rounded-full")}
         disabled={value <= min}

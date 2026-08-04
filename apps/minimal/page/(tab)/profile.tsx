@@ -1,13 +1,13 @@
 import { appCard, appNavClass, iconTileRecipe, Screen } from "@apps/minimal/ui";
 import type { PageConfig } from "akanjs/client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { Layout, Link } from "akanjs/ui";
 import { AiOutlineCreditCard, AiOutlineFileText, AiOutlineRight, AiOutlineUser } from "react-icons/ai";
 
 export default function Page() {
   return (
     <Screen className="px-5 pb-28">
-      <Layout.TopInset className={clsx(appNavClass, "flex items-center px-5")} estimatedHeight={pageConfig.topInset}>
+      <Layout.TopInset className={cn(appNavClass, "flex items-center px-5")} estimatedHeight={pageConfig.topInset}>
         <div className="flex w-full items-center justify-between">
           <div>
             <p className="text-foreground/40 text-xs uppercase tracking-[0.24em]">Account</p>

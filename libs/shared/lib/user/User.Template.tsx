@@ -2,7 +2,7 @@
 import { st, usePage } from "@libs/shared/client";
 import { Field, Only } from "@libs/shared/ui";
 import { CodeInput, Upload } from "@libs/util/ui";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { formatPhone, isEmail, isPhoneNumber } from "akanjs/common";
 import type { ProtoFile } from "akanjs/constant";
 import { Button, buttonRecipe, Image, Input, Layout } from "akanjs/ui";
@@ -103,7 +103,7 @@ interface PhoneCodeProps {
 export const PhoneCode = ({ className, autoComplete = true }: PhoneCodeProps) => {
   const phoneCode = st.use.phoneCode();
   return (
-    <div className={clsx("w-full pb-4", className)}>
+    <div className={cn("w-full pb-4", className)}>
       <CodeInput
         autoComplete={autoComplete}
         unitStyle="underline"
@@ -247,7 +247,7 @@ export const PasswordWithConfirm = ({ className, userId, redirect }: PasswordWit
   const password = st.use.password();
   const passwordConfirm = st.use.passwordConfirm();
   return (
-    <div className={clsx("flex w-full flex-col gap-2", className)}>
+    <div className={cn("flex w-full flex-col gap-2", className)}>
       <Field.Password
         label={l("user.password")}
         desc={l("user.password.desc")}
@@ -396,9 +396,9 @@ export const AppliedImages = () => {
             }}
             renderEmpty={() => (
               <div
-                className={clsx(
+                className={cn(
                   "flex aspect-1 w-full items-center justify-center rounded-2xl bg-muted duration-300 hover:opacity-50",
-                  { "border-4 border-primary": i === 0 },
+                  i === 0 && "border-4 border-primary",
                 )}
               >
                 <AiOutlinePlus className="font-bold text-6xl text-primary opacity-60" />
@@ -408,11 +408,7 @@ export const AppliedImages = () => {
               </div>
             )}
             renderComplete={(file) => (
-              <div
-                className={clsx("aspect-1 w-full overflow-hidden rounded-2xl", {
-                  "border-4 border-primary": i === 0,
-                })}
-              >
+              <div className={cn("aspect-1 w-full overflow-hidden rounded-2xl", i === 0 && "border-4 border-primary")}>
                 <Image file={file} className="size-full object-cover" />
               </div>
             )}
@@ -486,7 +482,7 @@ export const SetAccountIdByAdmin = ({ className, accountId }: SetAccountIdByAdmi
   const [changeId, setChangeId] = useState(accountId ?? "empty");
   const [editState, setEditState] = useState<"edit" | "saving" | null>(null);
   return (
-    <div className={clsx("flex items-center gap-2", className)}>
+    <div className={cn("flex items-center gap-2", className)}>
       <label className="w-24">AccountId: </label>
       <input
         className="h-10 w-full rounded-field border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none"
@@ -545,7 +541,7 @@ export const SetPasswordByAdmin = ({ className }: SetPasswordByAdminProps) => {
   const [password, setPassword] = useState("********");
   const [editState, setEditState] = useState<"edit" | "saving" | null>(null);
   return (
-    <div className={clsx("flex items-center gap-2", className)}>
+    <div className={cn("flex items-center gap-2", className)}>
       <label className="w-24">Password: </label>
       <input
         className="h-10 w-full rounded-field border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none"
@@ -602,7 +598,7 @@ export const SetPhoneByAdmin = ({ className, phone }: SetPhoneByAdminProps) => {
   const [changePhone, setChangePhone] = useState(phone ?? "empty");
   const [editState, setEditState] = useState<"edit" | "saving" | null>(null);
   return (
-    <div className={clsx("flex items-center gap-2", className)}>
+    <div className={cn("flex items-center gap-2", className)}>
       <label className="w-24">Phone: </label>
       <input
         className="h-10 w-full rounded-field border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none"

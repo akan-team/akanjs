@@ -1,7 +1,7 @@
 "use client";
 import { cnst, Err, fetch, st } from "@libs/shared/client";
 import { MapView, Upload } from "@libs/util/ui";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { capitalize, pathGet } from "akanjs/common";
 import type { ProtoFile } from "akanjs/constant";
 import type { SliceMeta } from "akanjs/fetch";
@@ -51,7 +51,7 @@ const Rich = memo((props: RichProps) => {
     id?: string,
   ) => Promise<(cnst.File | ProtoFile)[]>;
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Editor.Rich
         value={hasValue ? value : pathGet(valuePath, st.get()[names.modelForm as "adminForm"])}
@@ -69,7 +69,7 @@ const Rich = memo((props: RichProps) => {
           onChange(val);
         }}
         disabled={disabled}
-        className={clsx("w-full", "")}
+        className={cn("w-full", "")}
         height={editorHeight}
       />
     </div>
@@ -101,7 +101,7 @@ export const Coordinate = ({
   onChange,
 }: CoordinateProps) => {
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <MapView.Google
         mapKey={mapKey}
@@ -170,7 +170,7 @@ export const Postcode = ({
   }, []);
   return (
     <>
-      <div className={clsx("flex flex-col", className)}>
+      <div className={cn("flex flex-col", className)}>
         {label ? <AkanField.Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
         <input
           value={address ?? ""}
@@ -248,7 +248,7 @@ export const Img = ({
     onChange(await fetch.file(value.id));
   }, 1000);
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Upload.Image
         className={uploadClassName}
@@ -311,7 +311,7 @@ export const Imgs = ({
     onChange(value.map((f) => newFiles.find((nf) => nf.id === f.id) ?? f));
   }, 1000);
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={!!minlength} label={label} desc={desc} /> : null}
       <Upload.Images
         multiple
@@ -371,7 +371,7 @@ export const File = ({
     onChange(await fetch.file(value.id));
   }, 1000);
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Upload.File
         render={render as unknown as (file: ProtoFile) => ReactNode}
@@ -433,7 +433,7 @@ export const Files = ({
     onChange(value.map((f) => newFiles.find((nf) => nf.id === f.id) ?? f));
   }, 1000);
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={!!minlength} label={label} desc={desc} /> : null}
       <Upload.FileList
         multiple

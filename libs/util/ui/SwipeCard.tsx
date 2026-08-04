@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import type React from "react";
 import { forwardRef, memo, useCallback, useImperativeHandle, useLayoutEffect, useRef } from "react";
 import type {
@@ -206,7 +206,7 @@ export const SwipeCard = memo(
       ]);
 
       return (
-        <div ref={element} className={clsx("absolute z-20", className)}>
+        <div ref={element} className={cn("absolute z-20", className)}>
           {children}
         </div>
       );

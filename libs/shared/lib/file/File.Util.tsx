@@ -1,6 +1,6 @@
 "use client";
 import { fetch, st } from "@libs/shared/client";
-import { clsx, getCookie } from "akanjs/client";
+import { cn, getCookie } from "akanjs/client";
 import { buttonRecipe, Image, Loading } from "akanjs/ui";
 import { lazy } from "akanjs/webkit";
 import { type ReactNode, useState } from "react";
@@ -75,10 +75,12 @@ export const Download = ({ className, onClick, url, filename, children }: Downlo
           setLoading(false);
         }, 1000); // Reset loading state after download initiates
       }}
-      className={clsx("flex items-center justify-start duration-500", className, {
-        "cursor-default opacity-80": loading === true,
-        "cursor-pointer": loading === false,
-      })}
+      className={cn(
+        "flex items-center justify-start duration-500",
+        className,
+        loading === true && "cursor-default opacity-80",
+        loading === false && "cursor-pointer",
+      )}
     >
       {children}
       <div

@@ -1,5 +1,5 @@
 "use client";
-import { clsx, usePage } from "akanjs/client";
+import { cn, usePage } from "akanjs/client";
 import type { ReactNode } from "react";
 import { AiOutlineMeh } from "react-icons/ai";
 
@@ -21,7 +21,7 @@ export const DefaultEmpty = ({ className = "", description, children, minHeight 
   return (
     <div>
       <div
-        className={clsx(
+        className={cn(
           `min-h-[${minHeight}px] flex flex-col items-center justify-center gap-3 pt-6 pb-3 text-foreground/30`,
           className,
         )}

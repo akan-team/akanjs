@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { Overlay } from "pigeon-maps";
 import { useContext } from "react";
 
@@ -35,9 +35,11 @@ export default function PigeonOverlay({ className, bounds, children, onClick }: 
   return (
     <Overlay {...contextProps} left={centerX} top={centerY}>
       <div
-        className={clsx(className, "itsme absolute -translate-x-1/2 -translate-y-1/2", {
-          "cursor-pointer": onClick !== undefined,
-        })}
+        className={cn(
+          className,
+          "itsme absolute -translate-x-1/2 -translate-y-1/2",
+          onClick !== undefined && "cursor-pointer",
+        )}
         style={{ width, height }}
         onClick={onClick}
       >
