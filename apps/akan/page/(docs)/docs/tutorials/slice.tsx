@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, panelRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -393,7 +393,7 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
   const { l } = usePage();
   return (
     <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-muted to-border px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
-      <div className="flex flex-col justify-center"> // [!code collapse:24]
+      <div className="flex flex-col justify-center"> // [!code collapse:25]
         <div className="flex items-center gap-2 text-lg font-semibold text-primary">
           <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider uppercase">
             {l("icecreamOrder.id")}
@@ -405,14 +405,21 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
             {l("icecreamOrder.status")}
           </span>
           <span
-            className={cn("ml-2 rounded-full px-3 py-1 text-sm font-semibold", icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary", icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning", icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground", icecreamOrder.status === "finished" && "border border-accent/40 bg-background text-accent", icecreamOrder.status === "canceled" && "border border-border bg-background text-foreground/70")}
+            className={cn(
+              "ml-2 rounded-full px-3 py-1 text-sm font-semibold",
+              icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
+              icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
+              icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
+              icecreamOrder.status === "finished" && "border border-accent/40 bg-background text-accent",
+              icecreamOrder.status === "canceled" && "border border-border bg-background text-foreground/70",
+            )}
           >
-            {l(`icecreamOrderStatus.${icecreamOrder.status}`)}
+            {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
           </span>
         </div>
       </div>
       {showControls ? ( // [!code ++]
-        <div className="flex items-center justify-center gap-2 rounded-xl bg-background p-4">
+        <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4">
           <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
             <button className={buttonRecipe({ variant: "primary" })}>
               <span>{l.trans({ en: "View", ko: "보기" })}</span>
@@ -429,90 +436,24 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
       ) : null} // [!code ++]
     </div>
   );
-}
-`}
+};`}
           />
           <div>
             {l.trans({
-              en: `;
-The;
-Unit;
-component;
-now;
-accepts;
-a;
-showControls;
-prop;
-that;
-determines;
-whether;
-to;
-display;
-action;
-buttons.This;
-simple;
-flag;
-allows;
-the;
-same;
-card;
-component;
-to;
-be;
-used in both;
-staff;
-management;
-views(with controls);
-and;
-customer;
-dashboard;
-views (without controls).`,
-              ko: `
-Unit;
-컴포넌트는;
-이제;
-액션;
-버튼;
-표시;
-여부를;
-결정하는;
-showControls;
-prop을;
-받습니다.이;
-간단한;
-플래그를;
-통해;
-같은;
-카드;
-컴포넌트를;
-직원;
-관리;
-뷰(컨트롤 포함)
-와;
-고객;
-대시보드;
-뷰(컨트롤 없음)
-모두에서;
-사용할;
-수;
-있습니다.`,
+              en: `The Unit component now accepts a showControls prop that determines whether to display action buttons. This simple flag allows the same card component to be used in both staff management views (with controls) and customer dashboard views (without controls).`,
+              ko: `Unit 컴포넌트는 이제 액션 버튼 표시 여부를 결정하는 showControls prop을 받습니다. 이 간단한 플래그를 통해 같은 카드 컴포넌트를 직원 관리 뷰(컨트롤 포함)와 고객 대시보드 뷰(컨트롤 없음) 모두에서 사용할 수 있습니다.`,
             })}
           </div>
           <div>
             {l.trans({
-              en: `
-Now;
-let
-'s see how the Zone component manages automatic data refresh:`,
+              en: `Now let's see how the Zone component manages automatic data refresh:`,
               ko: `이제 Zone 컴포넌트가 어떻게 자동 데이터 새로고침을 관리하는지 살펴봅시다:`,
             })}
           </div>
           <Code.Snippet
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Zone.tsx"
-            code=
-{
-  `
+            code={`
 "use client"; // [!code collapse:5]
 import type { ClientInit, ClientView, SliceMeta } from "akanjs/fetch";
 import { cnst, fetch, IcecreamOrder } from "@apps/koyo/client";
@@ -571,70 +512,50 @@ export const View = ({ view }: ViewProps) => {
       renderView={(icecreamOrder) => <IcecreamOrder.View.General icecreamOrder={icecreamOrder} />}
     />
   );
-};`;
-}
-/><div>;
-{
-  l.trans({
-    en: `Let's understand the key features of this Zone component:`,
-    ko: `이 Zone 컴포넌트의 주요 기능을 이해해봅시다:`,
-  });
-}
-</div>
+};`}
+          />
+          <div>
+            {l.trans({
+              en: `Let's understand the key features of this Zone component:`,
+              ko: `이 Zone 컴포넌트의 주요 기능을 이해해봅시다:`,
+            })}
+          </div>
           <div className="my-4 space-y-3">
-            <div className=
-{
-  panelRecipe({ radius: "lg", padding: "sm" });
-}
->
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">⏱️</span>
                 <strong className="text-primary">useInterval</strong>
               </div>
               <div className="text-foreground/70 text-sm">
-{
-  l.trans({
-    en: `The useInterval hook refreshes the slice data every 3 seconds. This ensures the dashboard stays current without manual user interaction - perfect for displays that need to show live order status.`,
-    ko: `useInterval 훅은 3초마다 슬라이스 데이터를 새로고침합니다. 이렇게 하면 사용자의 수동 상호작용 없이도 대시보드가 최신 상태를 유지합니다 - 실시간 주문 상태를 보여줘야 하는 디스플레이에 완벽합니다.`,
-  });
-}
-</div>
+                {l.trans({
+                  en: `The useInterval hook refreshes the slice data every 3 seconds. This ensures the dashboard stays current without manual user interaction - perfect for displays that need to show live order status.`,
+                  ko: `useInterval 훅은 3초마다 슬라이스 데이터를 새로고침합니다. 이렇게 하면 사용자의 수동 상호작용 없이도 대시보드가 최신 상태를 유지합니다 - 실시간 주문 상태를 보여줘야 하는 디스플레이에 완벽합니다.`,
+                })}
+              </div>
             </div>
-            <div className=
-{
-  panelRecipe({ radius: "lg", padding: "sm" });
-}
->
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔄</span>
                 <strong className="text-primary">refreshIcecreamOrder</strong>
               </div>
               <div className="text-foreground/70 text-sm">
-{
-  l.trans({
-    en: `The refresh function is automatically generated for each slice. It re-queries the data using the same conditions defined in the slice, ensuring consistent data fetching.`,
-    ko: `새로고침 함수는 각 슬라이스에 대해 자동으로 생성됩니다. 슬라이스에 정의된 동일한 조건을 사용하여 데이터를 다시 쿼리하므로 일관된 데이터 가져오기가 보장됩니다.`,
-  });
-}
-</div>
+                {l.trans({
+                  en: `The refresh function is automatically generated for each slice. It re-queries the data using the same conditions defined in the slice, ensuring consistent data fetching.`,
+                  ko: `새로고침 함수는 각 슬라이스에 대해 자동으로 생성됩니다. 슬라이스에 정의된 동일한 조건을 사용하여 데이터를 다시 쿼리하므로 일관된 데이터 가져오기가 보장됩니다.`,
+                })}
+              </div>
             </div>
-            <div className=
-{
-  panelRecipe({ radius: "lg", padding: "sm" });
-}
->
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📋</span>
                 <strong className="text-primary">Load.Units</strong>
               </div>
               <div className="text-foreground/70 text-sm">
-{
-  l.trans({
-    en: `Load.Units handles rendering a list of items with proper loading states. It automatically manages the mapping from slice data to individual Unit cards.`,
-    ko: `Load.Units는 적절한 로딩 상태와 함께 아이템 목록의 렌더링을 처리합니다. 슬라이스 데이터에서 개별 Unit 카드로의 매핑을 자동으로 관리합니다.`,
-  });
-}
-</div>
+                {l.trans({
+                  en: `Load.Units handles rendering a list of items with proper loading states. It automatically manages the mapping from slice data to individual Unit cards.`,
+                  ko: `Load.Units는 적절한 로딩 상태와 함께 아이템 목록의 렌더링을 처리합니다. 슬라이스 데이터에서 개별 Unit 카드로의 매핑을 자동으로 관리합니다.`,
+                })}
+              </div>
             </div>
           </div>
         </Docs.Description>
@@ -643,130 +564,127 @@ export const View = ({ view }: ViewProps) => {
 
       <Scroll.Slide
         id="slice-component-rules"
-        title=
-{
-  l.trans({ en: "Slice Component Rules", ko: "슬라이스 컴포넌트 규칙" });
-}
->
-        <Docs.Title>
-{
-  l.trans({ en: "Slice Component Rules", ko: "슬라이스 컴포넌트 규칙" });
-}
-</Docs.Title>
-<Docs.Description>
-  <div>
-    {l.trans({
-      en: `When working with slices and zones in Akan.js, following consistent patterns ensures your code remains maintainable and predictable. Think of these rules as the "house rules" of your ice cream shop - they keep everything running smoothly even as the shop grows.`,
-      ko: `Akan.js에서 슬라이스와 존을 사용할 때 일관된 패턴을 따르면 코드가 유지보수 가능하고 예측 가능하게 유지됩니다. 이러한 규칙을 아이스크림 가게의 "규정"이라고 생각해보세요 - 가게가 성장해도 모든 것이 원활하게 운영되도록 해줍니다.`,
-    })}
-  </div>
-  <div className="my-4 space-y-4">
-    <div className={panelRecipe({ radius: "lg" })}>
-      <div className="mb-2 flex items-center gap-2">
-        <span className="text-primary">1️⃣</span>
-        <strong className="text-primary">
-          {l.trans({ en: "One Slice, One Purpose", ko: "하나의 슬라이스, 하나의 목적" })}
-        </strong>
-      </div>
-      <div className="text-foreground/70 text-sm">
-        {l.trans({
-          en: `Each slice should have a clear, single purpose. inWaiting shows waiting orders, inPickup shows ready orders. Don't try to make a slice that does everything - create multiple focused slices instead.`,
-          ko: `각 슬라이스는 명확하고 단일한 목적을 가져야 합니다. inWaiting은 대기 중인 주문을, inPickup은 준비된 주문을 보여줍니다. 모든 것을 하는 슬라이스를 만들려고 하지 말고, 여러 개의 집중된 슬라이스를 만드세요.`,
-        })}
-      </div>
-    </div>
-    <div className={panelRecipe({ radius: "lg" })}>
-      <div className="mb-2 flex items-center gap-2">
-        <span className="text-primary">2️⃣</span>
-        <strong className="text-primary">{l.trans({ en: "Zone Matches Slice", ko: "존은 슬라이스와 매칭" })}</strong>
-      </div>
-      <div className="text-foreground/70 text-sm">
-        {l.trans({
-          en: `Always pass the correct slice to Zone components. The slice connects the Zone to its data source and ensures refresh actions target the right slice.`,
-          ko: `항상 Zone 컴포넌트에 올바른 slice를 전달하세요. slice는 Zone을 데이터 소스에 연결하고 새로고침 액션이 올바른 슬라이스를 대상으로 하도록 보장합니다.`,
-        })}
-      </div>
-    </div>
-    <div className={panelRecipe({ radius: "lg" })}>
-      <div className="mb-2 flex items-center gap-2">
-        <span className="text-primary">3️⃣</span>
-        <strong className="text-primary">{l.trans({ en: "Props Control Behavior", ko: "Props로 동작 제어" })}</strong>
-      </div>
-      <div className="text-foreground/70 text-sm">
-        {l.trans({
-          en: `Use props like showControls to adapt component behavior for different contexts. This allows reusing the same component across staff views and customer displays.`,
-          ko: `showControls 같은 props를 사용하여 다양한 컨텍스트에 맞게 컴포넌트 동작을 조정하세요. 이렇게 하면 직원 뷰와 고객 디스플레이에서 동일한 컴포넌트를 재사용할 수 있습니다.`,
-        })}
-      </div>
-    </div>
-    <div className={panelRecipe({ radius: "lg" })}>
-      <div className="mb-2 flex items-center gap-2">
-        <span className="text-primary">4️⃣</span>
-        <strong className="text-primary">
-          {l.trans({ en: "Dictionary for All Labels", ko: "모든 레이블에 Dictionary 사용" })}
-        </strong>
-      </div>
-      <div className="text-foreground/70 text-sm">
-        {l.trans({
-          en: `Always define slice names and related translations in the dictionary. This ensures consistent labeling across the application and enables proper internationalization.`,
-          ko: `항상 슬라이스 이름과 관련 번역을 dictionary에 정의하세요. 이렇게 하면 애플리케이션 전체에서 일관된 레이블링이 보장되고 적절한 국제화가 가능해집니다.`,
-        })}
-      </div>
-    </div>
-  </div>
-  <div className="my-6 rounded-lg bg-linear-to-r from-background to-border p-6">
-    <div className="mb-3 font-bold text-lg text-primary">
-      {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
-    </div>
-    <ul className="space-y-2 text-foreground/70 text-sm">
-      <li>
-        ✓{" "}
-        {l.trans({
-          en: "Created multiple slices for different data views",
-          ko: "다양한 데이터 뷰를 위한 여러 슬라이스 생성",
-        })}
-      </li>
-      <li>
-        ✓{" "}
-        {l.trans({
-          en: "Built a real-time customer dashboard",
-          ko: "실시간 고객 대시보드 구축",
-        })}
-      </li>
-      <li>
-        ✓{" "}
-        {l.trans({
-          en: "Connected slices to Zone components",
-          ko: "슬라이스를 Zone 컴포넌트에 연결",
-        })}
-      </li>
-      <li>
-        ✓{" "}
-        {l.trans({
-          en: "Implemented automatic data refresh",
-          ko: "자동 데이터 새로고침 구현",
-        })}
-      </li>
-      <li>
-        ✓{" "}
-        {l.trans({
-          en: "Learned slice component best practices",
-          ko: "슬라이스 컴포넌트 모범 사례 학습",
-        })}
-      </li>
-    </ul>
-  </div>
-  <div>
-    {l.trans({
-      en: `In the next tutorial, we'll explore how to create dynamic page navigation and user experiences using Pages in Akan.js. This will allow customers to navigate through multi-step ordering flows and interactive interfaces.`,
-      ko: `다음 튜토리얼에서는 Akan.js의 Pages를 사용하여 동적 페이지 네비게이션과 사용자 경험을 만드는 방법을 살펴볼 것입니다. 이를 통해 고객들이 다단계 주문 흐름과 인터랙티브한 인터페이스를 탐색할 수 있게 됩니다.`,
-    })}
-  </div>
-</Docs.Description>;
-</Scroll.Slide>
+        title={l.trans({ en: "Slice Component Rules", ko: "슬라이스 컴포넌트 규칙" })}
+      >
+        <Docs.Title>{l.trans({ en: "Slice Component Rules", ko: "슬라이스 컴포넌트 규칙" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: `When working with slices and zones in Akan.js, following consistent patterns ensures your code remains maintainable and predictable. Think of these rules as the "house rules" of your ice cream shop - they keep everything running smoothly even as the shop grows.`,
+              ko: `Akan.js에서 슬라이스와 존을 사용할 때 일관된 패턴을 따르면 코드가 유지보수 가능하고 예측 가능하게 유지됩니다. 이러한 규칙을 아이스크림 가게의 "규정"이라고 생각해보세요 - 가게가 성장해도 모든 것이 원활하게 운영되도록 해줍니다.`,
+            })}
+          </div>
+          <div className="my-4 space-y-4">
+            <div className={panelRecipe({ radius: "lg" })}>
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-primary">1️⃣</span>
+                <strong className="text-primary">
+                  {l.trans({ en: "One Slice, One Purpose", ko: "하나의 슬라이스, 하나의 목적" })}
+                </strong>
+              </div>
+              <div className="text-foreground/70 text-sm">
+                {l.trans({
+                  en: `Each slice should have a clear, single purpose. inWaiting shows waiting orders, inPickup shows ready orders. Don't try to make a slice that does everything - create multiple focused slices instead.`,
+                  ko: `각 슬라이스는 명확하고 단일한 목적을 가져야 합니다. inWaiting은 대기 중인 주문을, inPickup은 준비된 주문을 보여줍니다. 모든 것을 하는 슬라이스를 만들려고 하지 말고, 여러 개의 집중된 슬라이스를 만드세요.`,
+                })}
+              </div>
+            </div>
+            <div className={panelRecipe({ radius: "lg" })}>
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-primary">2️⃣</span>
+                <strong className="text-primary">
+                  {l.trans({ en: "Zone Matches Slice", ko: "존은 슬라이스와 매칭" })}
+                </strong>
+              </div>
+              <div className="text-foreground/70 text-sm">
+                {l.trans({
+                  en: `Always pass the correct slice to Zone components. The slice connects the Zone to its data source and ensures refresh actions target the right slice.`,
+                  ko: `항상 Zone 컴포넌트에 올바른 slice를 전달하세요. slice는 Zone을 데이터 소스에 연결하고 새로고침 액션이 올바른 슬라이스를 대상으로 하도록 보장합니다.`,
+                })}
+              </div>
+            </div>
+            <div className={panelRecipe({ radius: "lg" })}>
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-primary">3️⃣</span>
+                <strong className="text-primary">
+                  {l.trans({ en: "Props Control Behavior", ko: "Props로 동작 제어" })}
+                </strong>
+              </div>
+              <div className="text-foreground/70 text-sm">
+                {l.trans({
+                  en: `Use props like showControls to adapt component behavior for different contexts. This allows reusing the same component across staff views and customer displays.`,
+                  ko: `showControls 같은 props를 사용하여 다양한 컨텍스트에 맞게 컴포넌트 동작을 조정하세요. 이렇게 하면 직원 뷰와 고객 디스플레이에서 동일한 컴포넌트를 재사용할 수 있습니다.`,
+                })}
+              </div>
+            </div>
+            <div className={panelRecipe({ radius: "lg" })}>
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-primary">4️⃣</span>
+                <strong className="text-primary">
+                  {l.trans({ en: "Dictionary for All Labels", ko: "모든 레이블에 Dictionary 사용" })}
+                </strong>
+              </div>
+              <div className="text-foreground/70 text-sm">
+                {l.trans({
+                  en: `Always define slice names and related translations in the dictionary. This ensures consistent labeling across the application and enables proper internationalization.`,
+                  ko: `항상 슬라이스 이름과 관련 번역을 dictionary에 정의하세요. 이렇게 하면 애플리케이션 전체에서 일관된 레이블링이 보장되고 적절한 국제화가 가능해집니다.`,
+                })}
+              </div>
+            </div>
+          </div>
+          <div className="my-6 rounded-lg bg-linear-to-r from-background to-border p-6">
+            <div className="mb-3 font-bold text-lg text-primary">
+              {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
+            </div>
+            <ul className="space-y-2 text-foreground/70 text-sm">
+              <li>
+                ✓{" "}
+                {l.trans({
+                  en: "Created multiple slices for different data views",
+                  ko: "다양한 데이터 뷰를 위한 여러 슬라이스 생성",
+                })}
+              </li>
+              <li>
+                ✓{" "}
+                {l.trans({
+                  en: "Built a real-time customer dashboard",
+                  ko: "실시간 고객 대시보드 구축",
+                })}
+              </li>
+              <li>
+                ✓{" "}
+                {l.trans({
+                  en: "Connected slices to Zone components",
+                  ko: "슬라이스를 Zone 컴포넌트에 연결",
+                })}
+              </li>
+              <li>
+                ✓{" "}
+                {l.trans({
+                  en: "Implemented automatic data refresh",
+                  ko: "자동 데이터 새로고침 구현",
+                })}
+              </li>
+              <li>
+                ✓{" "}
+                {l.trans({
+                  en: "Learned slice component best practices",
+                  ko: "슬라이스 컴포넌트 모범 사례 학습",
+                })}
+              </li>
+            </ul>
+          </div>
+          <div>
+            {l.trans({
+              en: `In the next tutorial, we'll explore how to create dynamic page navigation and user experiences using Pages in Akan.js. This will allow customers to navigate through multi-step ordering flows and interactive interfaces.`,
+              ko: `다음 튜토리얼에서는 Akan.js의 Pages를 사용하여 동적 페이지 네비게이션과 사용자 경험을 만드는 방법을 살펴볼 것입니다. 이를 통해 고객들이 다단계 주문 흐름과 인터랙티브한 인터페이스를 탐색할 수 있게 됩니다.`,
+            })}
+          </div>
+        </Docs.Description>
+      </Scroll.Slide>
       <Divider />
 
       <DocsToc />
     </Scroll>
-  )
+  );
 }

@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, panelRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -722,7 +722,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           </div>
           <Field.ToggleSelect
             items={[50, 100, 200].map((size) => ({
-              label: `${size}cc`,
+              label: \`\${size}cc\`,
               value: size,
               disabled: !todaysInventory.isInStock("yogurtIcecream", size), // [!code highlight]
             }))}
@@ -735,7 +735,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
         <div className="space-y-6">
           <div className="flex items-center gap-3"> // [!code collapse:4]
             <span className="text-3xl">🍓</span>
-            <h2 className="font-semibold text-2xl text-primary">{l("icecreamOrder.toppings")}</h2>
+            <h2 className="text-2xl font-semibold text-primary">{l("icecreamOrder.toppings")}</h2>
           </div>
           <Field.MultiToggleSelect
             items={cnst.Topping.map((topping) => ({ // [!code highlight:5]
@@ -752,7 +752,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <span className="text-3xl">📱</span>
-            <h2 className="font-semibold text-2xl text-primary">{l("icecreamOrder.phone")}</h2>
+            <h2 className="text-2xl font-semibold text-primary">{l("icecreamOrder.phone")}</h2>
           </div>
           <Field.Phone
             placeholder="010-0000-0000"
@@ -908,17 +908,32 @@ export const General = ({ className, inventory }: GeneralProps) => {
           const percentage = stock.getPercentage();
           return (
             <div
-              key={`${stock.type}-${index}`}
-              className={cn("space-y-3 rounded-xl border bg-background px-6 py-4 shadow-md", status === "empty" && "border-border", status === "low" && "border-warning/40", status === "normal" && "border-success/40")}
+              key={\`\${stock.type}-\${index}\`}
+              className={cn(
+                "space-y-3 rounded-xl border bg-background px-6 py-4 shadow-md",
+                status === "empty" && "border-border",
+                status === "low" && "border-warning/40",
+                status === "normal" && "border-success/40",
+              )}
             >
               <div className="flex items-center justify-between">
                 <div
-                  className={cn("rounded px-2 py-1 font-bold text-xs", status === "empty" && "border border-border bg-background text-foreground/70", status === "low" && "border border-warning/40 bg-background text-warning", status === "normal" && "border border-success/40 bg-background text-success")}
+                  className={cn(
+                    "rounded px-2 py-1 text-xs font-bold",
+                    status === "empty" && "border border-border bg-background text-foreground/70",
+                    status === "low" && "border border-warning/40 bg-background text-warning",
+                    status === "normal" && "border border-success/40 bg-background text-success",
+                  )}
                 >
-                  {l(`stockType.${stock.type}`)}
+                  {l(\`stockType.\${stock.type}\`)}
                 </div>
                 <div
-                  className={cn("font-bold text-2xl", status === "empty" && "text-primary", status === "low" && "text-warning", status === "normal" && "text-success")}
+                  className={cn(
+                    "text-2xl font-bold",
+                    status === "empty" && "text-primary",
+                    status === "low" && "text-warning",
+                    status === "normal" && "text-success",
+                  )}
                 >
                   {stock.currentQty} / {stock.totalQty}
                 </div>
@@ -926,12 +941,22 @@ export const General = ({ className, inventory }: GeneralProps) => {
               <div className="flex items-center justify-between gap-4">
                 <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                   <div
-                    className={cn("h-full", status === "empty" && "bg-border", status === "low" && "bg-warning", status === "normal" && "bg-success")}
-                    style={{ width: `${Math.min(percentage, 100)}%` }}
+                    className={cn(
+                      "h-full",
+                      status === "empty" && "bg-border",
+                      status === "low" && "bg-warning",
+                      status === "normal" && "bg-success",
+                    )}
+                    style={{ width: \`\${Math.min(percentage, 100)}%\` }}
                   />
                 </div>
                 <div
-                  className={cn("text-right font-bold text-xs", status === "empty" && "text-primary", status === "low" && "text-warning", status === "normal" && "text-success")}
+                  className={cn(
+                    "text-right text-xs font-bold",
+                    status === "empty" && "text-primary",
+                    status === "low" && "text-warning",
+                    status === "normal" && "text-success",
+                  )}
                 >
                   {Math.round(percentage)}%
                 </div>
@@ -940,32 +965,20 @@ export const General = ({ className, inventory }: GeneralProps) => {
           );
         })}
       </div>
-  </div>
-  )
-}
-`}
+    </div>
+  );
+};`}
           />
           <div>
             {l.trans({
-              en: `;
-Add;
-helper;
-methods;
-to;
-the;
-Stock;
-scalar;
-for status calculation
-:`,
+              en: `Add helper methods to the Stock scalar for status calculation:`,
               ko: `상태 계산을 위한 헬퍼 메서드를 Stock 스칼라에 추가합니다:`,
             })}
           </div>
           <Code.Snippet
             className="w-full"
             title="apps/koyo/lib/__scalar/stock/stock.constant.ts"
-            code=
-{
-  `
+            code={`
 import { enumOf, Int } from "akanjs/base"; // [!code collapse:7]
 import { via } from "akanjs/constant";
 
@@ -988,22 +1001,18 @@ export class Stock extends via((field) => ({
     if (percentage < 30) return "low";
     return "normal";
   }
-}`;
-}
-/><div>;
-{
-  l.trans({
-    en: `Create a Zone component for real-time inventory monitoring:`,
-    ko: `실시간 재고 모니터링을 위한 Zone 컴포넌트를 만듭니다:`,
-  });
-}
-</div>
+}`}
+          />
+          <div>
+            {l.trans({
+              en: `Create a Zone component for real-time inventory monitoring:`,
+              ko: `실시간 재고 모니터링을 위한 Zone 컴포넌트를 만듭니다:`,
+            })}
+          </div>
           <Code.Snippet
             className="w-full"
             title="apps/koyo/lib/inventory/Inventory.Zone.tsx"
-            code=
-{
-  `
+            code={`
 "use client"; // [!code collapse:4]
 import type { ClientInit, ClientView } from "akanjs/fetch";
 import { Load } from "akanjs/ui";
@@ -1046,22 +1055,18 @@ export const Today = ({ className }: TodayProps) => {
   }, 1000);
   if (!todaysInventory) return <Loading.Area />;
   return <Inventory.View.General inventory={todaysInventory} />;
-};`;
-}
-/><div>;
-{
-  l.trans({
-    en: `Finally, put it all together in the main page with both inventory dashboard and order management:`,
-    ko: `마지막으로, 재고 대시보드와 주문 관리를 모두 포함한 메인 페이지에서 모든 것을 하나로 모읍니다:`,
-  });
-}
-</div>
+};`}
+          />
+          <div>
+            {l.trans({
+              en: `Finally, put it all together in the main page with both inventory dashboard and order management:`,
+              ko: `마지막으로, 재고 대시보드와 주문 관리를 모두 포함한 메인 페이지에서 모든 것을 하나로 모읍니다:`,
+            })}
+          </div>
           <Code.Snippet
             className="w-full"
             title="apps/koyo/page/_index.tsx"
-            code=
-{
-  `
+            code={`
 import { Load, Model } from "akanjs/ui"; // [!code collapse:2]
 import { cnst, fetch, IcecreamOrder, usePage } from "@apps/koyo/client";
 import { Inventory } from "@apps/koyo/client"; // [!code ++]
@@ -1096,102 +1101,68 @@ export default async function Page() {
       />
     </div>
   );
-}`;
-}
-/> < div;
-className =
-  "my-6 rounded-lg bg-linear-to-r from-background to-border p-6" >
-  (
-    <div className="mb-3 font-bold text-lg text-primary">
-      {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
-    </div>
-  ) <
-  ul;
-className =
-  "space-y-2 text-foreground/70 text-sm" >
-  (
-    <li>
-      ✓{" "}
-      {l.trans({
-        en: "Created a reusable Stock scalar for inventory items",
-        ko: "재고 아이템을 위한 재사용 가능한 Stock 스칼라 생성",
-      })}
-    </li>
-  )<li>;
-✓
-{
-  (" ");
-}
-{
-  l.trans({
-    en: "Built an Inventory module with daily records",
-    ko: "일일 기록이 있는 Inventory 모듈 구축",
-  });
-}
-</li>
+}`}
+          />
+          <div className="my-6 rounded-lg bg-linear-to-r from-background to-border p-6">
+            <div className="mb-3 font-bold text-lg text-primary">
+              {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
+            </div>
+            <ul className="space-y-2 text-foreground/70 text-sm">
               <li>
-                ✓
-{
-  (" ");
-}
-{
-  l.trans({
-    en: "Implemented stock usage and refill business logic",
-    ko: "재고 사용 및 보충 비즈니스 로직 구현",
-  });
-}
-</li>
+                ✓{" "}
+                {l.trans({
+                  en: "Created a reusable Stock scalar for inventory items",
+                  ko: "재고 아이템을 위한 재사용 가능한 Stock 스칼라 생성",
+                })}
+              </li>
               <li>
-                ✓
-{
-  (" ");
-}
-{
-  l.trans({
-    en: "Connected inventory to order creation flow",
-    ko: "재고를 주문 생성 흐름에 연결",
-  });
-}
-</li>
+                ✓{" "}
+                {l.trans({
+                  en: "Built an Inventory module with daily records",
+                  ko: "일일 기록이 있는 Inventory 모듈 구축",
+                })}
+              </li>
               <li>
-                ✓
-{
-  (" ");
-}
-{
-  l.trans({
-    en: "Created visual dashboard with real-time updates",
-    ko: "실시간 업데이트가 있는 시각적 대시보드 생성",
-  });
-}
-</li>
+                ✓{" "}
+                {l.trans({
+                  en: "Implemented stock usage and refill business logic",
+                  ko: "재고 사용 및 보충 비즈니스 로직 구현",
+                })}
+              </li>
               <li>
-                ✓
-{
-  (" ");
-}
-{
-  l.trans({
-    en: "Disabled out-of-stock options in customer UI",
-    ko: "고객 UI에서 품절 옵션 비활성화",
-  });
-}
-</li>
+                ✓{" "}
+                {l.trans({
+                  en: "Connected inventory to order creation flow",
+                  ko: "재고를 주문 생성 흐름에 연결",
+                })}
+              </li>
+              <li>
+                ✓{" "}
+                {l.trans({
+                  en: "Created visual dashboard with real-time updates",
+                  ko: "실시간 업데이트가 있는 시각적 대시보드 생성",
+                })}
+              </li>
+              <li>
+                ✓{" "}
+                {l.trans({
+                  en: "Disabled out-of-stock options in customer UI",
+                  ko: "고객 UI에서 품절 옵션 비활성화",
+                })}
+              </li>
             </ul>
           </div>
           <div>
-{
-  l.trans({
-    en: `In the next tutorial, we'll explore Insight - a powerful feature for aggregating and analyzing data across your models. This will allow you to create analytics dashboards and gain business intelligence from your ice cream shop data.`,
-    ko: `다음 튜토리얼에서는 모델 전체에서 데이터를 집계하고 분석하는 강력한 기능인 Insight를 살펴볼 것입니다. 이를 통해 분석 대시보드를 만들고 아이스크림 가게 데이터에서 비즈니스 인사이트를 얻을 수 있게 됩니다.`,
-  });
-}
-</div>
+            {l.trans({
+              en: `In the next tutorial, we'll explore Insight - a powerful feature for aggregating and analyzing data across your models. This will allow you to create analytics dashboards and gain business intelligence from your ice cream shop data.`,
+              ko: `다음 튜토리얼에서는 모델 전체에서 데이터를 집계하고 분석하는 강력한 기능인 Insight를 살펴볼 것입니다. 이를 통해 분석 대시보드를 만들고 아이스크림 가게 데이터에서 비즈니스 인사이트를 얻을 수 있게 됩니다.`,
+            })}
+          </div>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
 
       <DocsToc />
     </Scroll>
-  )
+  );
 }

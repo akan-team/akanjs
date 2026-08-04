@@ -16,8 +16,6 @@ export interface BaseEnv {
   databaseMode?: DatabaseMode;
 }
 export type BackendEnv = BaseEnv & {
-  tunnelUsername: string;
-  tunnelPassword: string;
   hostname?: string | null;
   port?: number;
   database?: {
@@ -87,8 +85,6 @@ export const getEnv = (): ClientEnv => {
   const environment = (process.env.AKAN_PUBLIC_ENV ?? "debug") as BaseEnv["environment"];
   const operationMode = (process.env.AKAN_PUBLIC_OPERATION_MODE ??
     (environment === "local" ? "local" : "cloud")) as BaseEnv["operationMode"];
-  const tunnelUsername = process.env.SSH_TUNNEL_USERNAME ?? "root";
-  const tunnelPassword = process.env.SSH_TUNNEL_PASSWORD ?? repoName;
   const baseEnv: BaseEnv = {
     repoName,
     serveDomain,

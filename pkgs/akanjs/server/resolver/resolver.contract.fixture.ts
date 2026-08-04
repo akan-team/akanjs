@@ -229,6 +229,4 @@ export const makeEnv = () => ({
   appName: "serverResolver",
   environment: "local",
   operationMode: "local",
-  tunnelUsername: "root",
-  tunnelPassword: "akan",
 });

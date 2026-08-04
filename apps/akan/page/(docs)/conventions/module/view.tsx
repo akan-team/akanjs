@@ -117,7 +117,7 @@ export const General = ({ className, ticket }: GeneralProps) => {
   return (
     <div className={cn("flex w-full flex-col gap-4", className)}>
       <h1>{ticket.title}</h1>
-      <div>{l("ticket.status")}: {l(`ticketStatus.${ticket.status}`)}</div>
+      <div>{l("ticket.status")}: {l(\`ticketStatus.\${ticket.status}\`)}</div>
     </div>
   );
 };`}
@@ -265,6 +265,6 @@ export const View = ({ view }: ViewProps) => {
       <Divider />
 
       <DocsToc />
-  </Scroll>
-  )
+    </Scroll>
+  );
 }

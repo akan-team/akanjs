@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, panelRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -294,25 +294,37 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
             {l("icecreamOrder.id")}
           </span>
           <span className="ml-2 font-mono text-primary">#{icecreamOrder.id.slice(-4)}</span>
-          <span // [!code ++:9]
-            className={cn("ml-2 rounded px-2 py-1 text-xs font-semibold uppercase", icecreamOrder.serveType === "forHere" && "border border-primary/40 bg-background text-primary", icecreamOrder.serveType === "takeOut" && "border border-warning/40 bg-background text-warning", icecreamOrder.serveType === "delivery" && "border border-info/40 bg-info text-info-foreground")}
+          <span // [!code ++:10]
+            className={cn(
+              "ml-2 rounded px-2 py-1 text-xs font-semibold uppercase",
+              icecreamOrder.serveType === "forHere" && "border border-primary/40 bg-background text-primary",
+              icecreamOrder.serveType === "takeOut" && "border border-warning/40 bg-background text-warning",
+              icecreamOrder.serveType === "delivery" && "border border-info/40 bg-info text-info-foreground",
+            )}
           >
-            {l(`serveType.${icecreamOrder.serveType}`)}
+            {l(\`serveType.\${icecreamOrder.serveType}\`)}
           </span>
         </div>
-        <div className="mt-4 flex items-center gap-2"> // [!code collapse:16]
-          <span className="inline-block rounded border border-border bg-background px-2 py-1 font-bold text-primary text-xs uppercase tracking-wider">
+        <div className="mt-4 flex items-center gap-2"> // [!code collapse:17]
+          <span className="inline-block rounded border border-border bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
             {l("icecreamOrder.status")}
           </span>
           <span
-            className={cn("ml-2 rounded-full px-3 py-1 font-semibold text-sm", icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary", icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning", icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground", icecreamOrder.status === "finished" && "border border-accent/40 bg-background text-accent", icecreamOrder.status === "canceled" && "border border-border bg-background text-foreground/70")}
+            className={cn(
+              "ml-2 rounded-full px-3 py-1 text-sm font-semibold",
+              icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
+              icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
+              icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
+              icecreamOrder.status === "finished" && "border border-accent/40 bg-background text-accent",
+              icecreamOrder.status === "canceled" && "border border-border bg-background text-foreground/70",
+            )}
           >
-            {l(`icecreamOrderStatus.${icecreamOrder.status}`)}
+            {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
           </span>
         </div>
       </div>
       {showControls ? ( // [!code collapse:16]
-        <div className="flex items-center justify-center gap-2 rounded-xl bg-background p-4">
+        <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4">
           <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
             <button className={buttonRecipe({ variant: "primary" })}>
               <span>{l.trans({ en: "View", ko: "보기" })}</span>
@@ -329,8 +341,7 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
       ) : null}
     </div>
   );
-}
-`}
+};`}
           />
         </Docs.Description>
       </Scroll.Slide>
@@ -341,89 +352,20 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
         <Docs.Description>
           <div>
             {l.trans({
-              en: `;
-The;
-first;
-thing;
-customers;
-see;
-when;
-they;
-approach;
-the;
-kiosk;
-is;
-the;
-landing;
-page.Think;
-of;
-it;
-like;
-the;
-welcome;
-screen;
-at;
-a;
-fast - food;
-restaurant;
-kiosk - it;
-should;
-be;
-inviting, easy;
-to;
-understand, and;
-guide;
-customers;
-to;
-their;
-first;
-choice: "For Here";
-or;
-"Take Out".`,
-              ko: `
-고객이;
-키오스크에;
-다가갈;
-때;
-가장;
-먼저;
-보는;
-것이;
-랜딩;
-페이지입니다.패스트푸드;
-레스토랑;
-키오스크의;
-환영;
-화면처럼;
-생각해보세요 - 친근하고;
-이해하기;
-쉬우며;
-고객을;
-첫;
-번째;
-선택인;
-("매장 식사");
-또는;
-("포장 주문");
-으로;
-안내해야;
-합니다.`,
+              en: `The first thing customers see when they approach the kiosk is the landing page. Think of it like the welcome screen at a fast-food restaurant kiosk - it should be inviting, easy to understand, and guide customers to their first choice: "For Here" or "Take Out".`,
+              ko: `고객이 키오스크에 다가갈 때 가장 먼저 보는 것이 랜딩 페이지입니다. 패스트푸드 레스토랑 키오스크의 환영 화면처럼 생각해보세요 - 친근하고 이해하기 쉬우며 고객을 첫 번째 선택인 "매장 식사" 또는 "포장 주문"으로 안내해야 합니다.`,
             })}
           </div>
           <div>
             {l.trans({
-              en: `
-Let;
-'s create an attractive landing page that makes ordering feel like a delightful experience:`,
+              en: `Let's create an attractive landing page that makes ordering feel like a delightful experience:`,
               ko: `주문하는 것이 즐거운 경험처럼 느껴지도록 매력적인 랜딩 페이지를 만들어봅시다:`,
             })}
           </div>
           <Code.Snippet
             className="w-full"
             title="apps/koyo/page/icecreamOrder.tsx"
-            code=
-{
-  `
+            code={`
 import { Link } from "akanjs/ui";
 import { usePage } from "@apps/koyo/client";
 
@@ -479,94 +421,62 @@ export default function Page() {
     </div>
   );
 }
-  `;
-}
-/><div>;
-{
-  l.trans({
-    en: `Let's break down the key features of this landing page:`,
-    ko: `이 랜딩 페이지의 주요 기능을 살펴봅시다:`,
-  });
-}
-</div>
+  `}
+          />
+          <div>
+            {l.trans({
+              en: `Let's break down the key features of this landing page:`,
+              ko: `이 랜딩 페이지의 주요 기능을 살펴봅시다:`,
+            })}
+          </div>
           <div className="my-4 space-y-3">
-            <div className=
-{
-  panelRecipe({ radius: "lg", padding: "sm" });
-}
->
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🌍</span>
                 <strong className="text-primary">Link.Lang</strong>
               </div>
               <div className="text-foreground/70 text-sm">
-{
-  l.trans({
-    en: `Language switcher buttons allow customers to choose their preferred language. This is essential for kiosks in tourist areas or multicultural neighborhoods.`,
-    ko: `언어 전환 버튼을 통해 고객이 원하는 언어를 선택할 수 있습니다. 이는 관광지나 다문화 지역의 키오스크에 필수적입니다.`,
-  });
-}
-</div>
+                {l.trans({
+                  en: `Language switcher buttons allow customers to choose their preferred language. This is essential for kiosks in tourist areas or multicultural neighborhoods.`,
+                  ko: `언어 전환 버튼을 통해 고객이 원하는 언어를 선택할 수 있습니다. 이는 관광지나 다문화 지역의 키오스크에 필수적입니다.`,
+                })}
+              </div>
             </div>
-            <div className=
-{
-  panelRecipe({ radius: "lg", padding: "sm" });
-}
->
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔗</span>
-                <strong className="text-primary">
-{
-  ("Link with Query Params");
-}
-</strong>
-</div>
+                <strong className="text-primary">{"Link with Query Params"}</strong>
+              </div>
               <div className="text-foreground/70 text-sm">
-{
-  l.trans({
-    en: `The "For Here" and "Take Out" buttons pass serveType as a query parameter to the next page. This pre-fills the order form with the customer's choice.`,
-    ko: `"매장 식사"와 "포장 주문" 버튼은 serveType을 쿼리 파라미터로 다음 페이지에 전달합니다. 이를 통해 주문 양식에 고객의 선택이 미리 채워집니다.`,
-  });
-}
-</div>
+                {l.trans({
+                  en: `The "For Here" and "Take Out" buttons pass serveType as a query parameter to the next page. This pre-fills the order form with the customer's choice.`,
+                  ko: `"매장 식사"와 "포장 주문" 버튼은 serveType을 쿼리 파라미터로 다음 페이지에 전달합니다. 이를 통해 주문 양식에 고객의 선택이 미리 채워집니다.`,
+                })}
+              </div>
             </div>
-            <div className=
-{
-  panelRecipe({ radius: "lg", padding: "sm" });
-}
->
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">✨</span>
-                <strong className="text-primary">
-{
-  l.trans({ en: "Visual Design", ko: "비주얼 디자인" });
-}
-</strong>
-</div>
+                <strong className="text-primary">{l.trans({ en: "Visual Design", ko: "비주얼 디자인" })}</strong>
+              </div>
               <div className="text-foreground/70 text-sm">
-{
-  l.trans({
-    en: `Large buttons with emojis make the interface touch-friendly and intuitive. Gradient backgrounds and hover effects create a modern, engaging experience.`,
-    ko: `이모지가 있는 큰 버튼은 인터페이스를 터치하기 쉽고 직관적으로 만듭니다. 그라데이션 배경과 호버 효과가 현대적이고 매력적인 경험을 만들어냅니다.`,
-  });
-}
-</div>
+                {l.trans({
+                  en: `Large buttons with emojis make the interface touch-friendly and intuitive. Gradient backgrounds and hover effects create a modern, engaging experience.`,
+                  ko: `이모지가 있는 큰 버튼은 인터페이스를 터치하기 쉽고 직관적으로 만듭니다. 그라데이션 배경과 호버 효과가 현대적이고 매력적인 경험을 만들어냅니다.`,
+                })}
+              </div>
             </div>
           </div>
           <div>
-{
-  l.trans({
-    en: `After customers complete their order, they need a confirmation page. Let's create a success page that reassures them:`,
-    ko: `고객이 주문을 완료하면 확인 페이지가 필요합니다. 고객을 안심시키는 성공 페이지를 만들어봅시다:`,
-  });
-}
-</div>
+            {l.trans({
+              en: `After customers complete their order, they need a confirmation page. Let's create a success page that reassures them:`,
+              ko: `고객이 주문을 완료하면 확인 페이지가 필요합니다. 고객을 안심시키는 성공 페이지를 만들어봅시다:`,
+            })}
+          </div>
           <Code.Snippet
             className="w-full"
             title="apps/koyo/page/icecreamOrder/success.tsx"
-            code=
-{
-  `
+            code={`
 import { Link } from "akanjs/ui";
 import { usePage } from "@apps/koyo/client";
 
@@ -613,66 +523,50 @@ export default function Page() {
       </div>
     </div>
   );
-}`;
-}
-/><div>;
-{
-  l.trans({
-    en: `The success page provides important feedback to customers:`,
-    ko: `성공 페이지는 고객에게 중요한 피드백을 제공합니다:`,
-  });
-}
-</div>
+}`}
+          />
+          <div>
+            {l.trans({
+              en: `The success page provides important feedback to customers:`,
+              ko: `성공 페이지는 고객에게 중요한 피드백을 제공합니다:`,
+            })}
+          </div>
           <div className="my-4 space-y-2">
             <div className="flex items-start gap-2">
               <span className="text-primary">✓</span>
               <div>
-{
-  l.trans({
-    en: "A large checkmark icon gives instant visual confirmation that the order was successful",
-    ko: "큰 체크 아이콘이 주문이 성공했음을 즉시 시각적으로 확인시켜줍니다",
-  });
-}
-</div>
+                {l.trans({
+                  en: "A large checkmark icon gives instant visual confirmation that the order was successful",
+                  ko: "큰 체크 아이콘이 주문이 성공했음을 즉시 시각적으로 확인시켜줍니다",
+                })}
+              </div>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-primary">📢</span>
               <div>
-{
-  l.trans({
-    en: "Clear instructions tell customers to wait for their order number to be called",
-    ko: "명확한 안내가 고객에게 주문 번호가 호출될 때까지 기다리라고 알려줍니다",
-  });
-}
-</div>
+                {l.trans({
+                  en: "Clear instructions tell customers to wait for their order number to be called",
+                  ko: "명확한 안내가 고객에게 주문 번호가 호출될 때까지 기다리라고 알려줍니다",
+                })}
+              </div>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-primary">🏠</span>
               <div>
-{
-  l.trans({
-    en: "A 'Place New Order' button allows the next customer to start fresh",
-    ko: "'새 주문하기' 버튼을 통해 다음 고객이 새로 시작할 수 있습니다",
-  });
-}
-</div>
+                {l.trans({
+                  en: "A 'Place New Order' button allows the next customer to start fresh",
+                  ko: "'새 주문하기' 버튼을 통해 다음 고객이 새로 시작할 수 있습니다",
+                })}
+              </div>
             </div>
           </div>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
 
-      <Scroll.Slide id="order-form-page" title=
-{
-  l.trans({ en: "Order Form Page", ko: "주문 양식 페이지" });
-}
->
-        <Docs.Title>
-{
-  l.trans({ en: "Order Form Page", ko: "주문 양식 페이지" });
-}
-</Docs.Title>
-<Docs.Description>
+      <Scroll.Slide id="order-form-page" title={l.trans({ en: "Order Form Page", ko: "주문 양식 페이지" })}>
+        <Docs.Title>{l.trans({ en: "Order Form Page", ko: "주문 양식 페이지" })}</Docs.Title>
+        <Docs.Description>
           <div>
             {l.trans({
               en: `The heart of the kiosk is the order form page. This is where customers actually customize their ice cream - choosing size, toppings, and entering their phone number for pickup notifications. Think of this page like the main ordering screen at a bubble tea shop where you select your drink size and add-ons.`,
@@ -822,65 +716,45 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
             <h2 className="text-2xl font-semibold text-primary">{l("icecreamOrder.size")}</h2>
           </div>
           <Field.ToggleSelect
-            items={[50, 100, 200].map((size) => ({ label: `${size}cc`, value: size }))}
+            items={[50, 100, 200].map((size) => ({ label: \`\${size}cc\`, value: size }))}
             value={icecreamOrderForm.size}
             onChange={st.do.setSizeOnIcecreamOrder}
           />
         </div>
-      </div> < div;
-className =
-  "rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm" >
-  (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <span className="text-3xl">🍓</span>
-        <h2 className="font-semibold text-2xl text-primary">{l("icecreamOrder.toppings")}</h2>
       </div>
-      <Field.MultiToggleSelect
-        items={cnst.Topping}
-        value={icecreamOrderForm.toppings}
-        onChange={st.do.setToppingsOnIcecreamOrder}
-      />
-    </div>
-  );
-</div>
+      <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
+        <div className="space-y-6">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">🍓</span>
+            <h2 className="text-2xl font-semibold text-primary">{l("icecreamOrder.toppings")}</h2>
+          </div>
+          <Field.MultiToggleSelect
+            items={cnst.Topping}
+            value={icecreamOrderForm.toppings}
+            onChange={st.do.setToppingsOnIcecreamOrder}
+          />
+        </div>
+      </div>
       <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <span className="text-3xl">📱</span>
-            <h2 className="text-2xl font-semibold text-primary">
-{
-  l("icecreamOrder.phone");
-}
-</h2>
-</div>
+            <h2 className="text-2xl font-semibold text-primary">{l("icecreamOrder.phone")}</h2>
+          </div>
           <Field.Phone
             placeholder="010-0000-0000"
-            value=
-{
-  icecreamOrderForm.phone;
-}
-onChange={st.do.setPhoneOnIcecreamOrder}
+            value={icecreamOrderForm.phone}
+            onChange={st.do.setPhoneOnIcecreamOrder}
           />
-</div>
+        </div>
       </div>
     </Layout.Template>
-  )
-}
-`}
+  );
+};`}
           />
           <div>
             {l.trans({
-              en: `;
-The;
-Template;
-component;
-uses;
-these;
-Field;
-components;
-for kiosk-friendly input
-:`,
+              en: `The Template component uses these Field components for kiosk-friendly input:`,
               ko: `Template 컴포넌트는 키오스크 친화적인 입력을 위해 다음 Field 컴포넌트들을 사용합니다:`,
             })}
           </div>
@@ -888,47 +762,32 @@ for kiosk-friendly input
             <div className="flex items-start gap-2">
               <span className="text-primary">📏</span>
               <div>
-                <strong>Field.ToggleSelect</strong>:
-{
-  (" ");
-}
-{
-  l.trans({
-    en: "Large, touch-friendly buttons for selecting a single option (size)",
-    ko: "단일 옵션(사이즈) 선택을 위한 크고 터치하기 쉬운 버튼",
-  });
-}
-</div>
+                <strong>Field.ToggleSelect</strong>:{" "}
+                {l.trans({
+                  en: "Large, touch-friendly buttons for selecting a single option (size)",
+                  ko: "단일 옵션(사이즈) 선택을 위한 크고 터치하기 쉬운 버튼",
+                })}
+              </div>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-primary">🍓</span>
               <div>
-                <strong>Field.MultiToggleSelect</strong>:
-{
-  (" ");
-}
-{
-  l.trans({
-    en: "Allows selecting multiple options (toppings) with visual feedback",
-    ko: "시각적 피드백과 함께 여러 옵션(토핑)을 선택할 수 있습니다",
-  });
-}
-</div>
+                <strong>Field.MultiToggleSelect</strong>:{" "}
+                {l.trans({
+                  en: "Allows selecting multiple options (toppings) with visual feedback",
+                  ko: "시각적 피드백과 함께 여러 옵션(토핑)을 선택할 수 있습니다",
+                })}
+              </div>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-primary">📱</span>
               <div>
-                <strong>Field.Phone</strong>:
-{
-  (" ");
-}
-{
-  l.trans({
-    en: "Phone number input with formatting and validation built-in",
-    ko: "형식 지정과 유효성 검사가 내장된 전화번호 입력",
-  });
-}
-</div>
+                <strong>Field.Phone</strong>:{" "}
+                {l.trans({
+                  en: "Phone number input with formatting and validation built-in",
+                  ko: "형식 지정과 유효성 검사가 내장된 전화번호 입력",
+                })}
+              </div>
             </div>
           </div>
         </Docs.Description>
@@ -937,130 +796,125 @@ for kiosk-friendly input
 
       <Scroll.Slide
         id="page-best-practices"
-        title=
-{
-  l.trans({ en: "Page UX Best Practices", ko: "페이지 UX 모범 사례" });
-}
->
-        <Docs.Title>
-{
-  l.trans({ en: "Page UX Best Practices", ko: "페이지 UX 모범 사례" });
-}
-</Docs.Title>
-<Docs.Description>
-  <div>
-    {l.trans({
-      en: `When building customer-facing pages like kiosks, following UX best practices ensures a smooth and enjoyable experience. Here are the key principles we applied:`,
-      ko: `키오스크와 같은 고객용 페이지를 구축할 때 UX 모범 사례를 따르면 부드럽고 즐거운 경험을 보장할 수 있습니다. 우리가 적용한 핵심 원칙들입니다:`,
-    })}
-  </div>
-  <div className="my-4 space-y-4">
-    <div className={panelRecipe({ radius: "lg" })}>
-      <div className="mb-2 flex items-center gap-2">
-        <span className="text-primary">1️⃣</span>
-        <strong className="text-primary">
-          {l.trans({ en: "Clear Navigation Flow", ko: "명확한 네비게이션 흐름" })}
-        </strong>
-      </div>
-      <div className="text-foreground/70 text-sm">
-        {l.trans({
-          en: `Guide customers through a linear flow: Landing → Order Form → Success. Each step has one clear purpose, reducing confusion.`,
-          ko: `고객을 선형 흐름으로 안내합니다: 랜딩 → 주문 양식 → 성공. 각 단계는 하나의 명확한 목적을 가져 혼란을 줄입니다.`,
-        })}
-      </div>
-    </div>
-    <div className={panelRecipe({ radius: "lg" })}>
-      <div className="mb-2 flex items-center gap-2">
-        <span className="text-primary">2️⃣</span>
-        <strong className="text-primary">{l.trans({ en: "Touch-Friendly Design", ko: "터치 친화적 디자인" })}</strong>
-      </div>
-      <div className="text-foreground/70 text-sm">
-        {l.trans({
-          en: `Large buttons (py-6), adequate spacing, and visual feedback on interaction make the interface easy to use on touchscreens.`,
-          ko: `큰 버튼(py-6), 적절한 간격, 상호작용 시 시각적 피드백이 터치스크린에서 인터페이스를 사용하기 쉽게 만듭니다.`,
-        })}
-      </div>
-    </div>
-    <div className={panelRecipe({ radius: "lg" })}>
-      <div className="mb-2 flex items-center gap-2">
-        <span className="text-primary">3️⃣</span>
-        <strong className="text-primary">
-          {l.trans({ en: "Visual Hierarchy with Icons", ko: "아이콘을 통한 시각적 계층" })}
-        </strong>
-      </div>
-      <div className="text-foreground/70 text-sm">
-        {l.trans({
-          en: `Emojis and icons provide instant visual cues that help customers understand each section without reading text carefully.`,
-          ko: `이모지와 아이콘은 고객이 텍스트를 자세히 읽지 않고도 각 섹션을 이해할 수 있도록 즉각적인 시각적 단서를 제공합니다.`,
-        })}
-      </div>
-    </div>
-    <div className={panelRecipe({ radius: "lg" })}>
-      <div className="mb-2 flex items-center gap-2">
-        <span className="text-primary">4️⃣</span>
-        <strong className="text-primary">{l.trans({ en: "State Preservation", ko: "상태 보존" })}</strong>
-      </div>
-      <div className="text-foreground/70 text-sm">
-        {l.trans({
-          en: `Using query parameters and Load.Edit ensures customer choices are preserved between pages, creating a seamless experience.`,
-          ko: `쿼리 파라미터와 Load.Edit를 사용하면 고객의 선택이 페이지 간에 보존되어 끊김 없는 경험을 만들어냅니다.`,
-        })}
-      </div>
-    </div>
-  </div>
-  <div className="my-6 rounded-lg bg-linear-to-r from-background to-border p-6">
-    <div className="mb-3 font-bold text-lg text-primary">
-      {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
-    </div>
-    <ul className="space-y-2 text-foreground/70 text-sm">
-      <li>
-        ✓{" "}
-        {l.trans({
-          en: "Extended schema with new fields for kiosk ordering",
-          ko: "키오스크 주문을 위한 새 필드로 스키마 확장",
-        })}
-      </li>
-      <li>
-        ✓{" "}
-        {l.trans({
-          en: "Built an attractive landing page with language switching",
-          ko: "언어 전환 기능이 있는 매력적인 랜딩 페이지 구축",
-        })}
-      </li>
-      <li>
-        ✓{" "}
-        {l.trans({
-          en: "Created a touch-friendly order form with Field components",
-          ko: "Field 컴포넌트로 터치 친화적인 주문 양식 생성",
-        })}
-      </li>
-      <li>
-        ✓{" "}
-        {l.trans({
-          en: "Implemented success page with clear customer feedback",
-          ko: "명확한 고객 피드백이 있는 성공 페이지 구현",
-        })}
-      </li>
-      <li>
-        ✓{" "}
-        {l.trans({
-          en: "Learned page UX best practices for kiosk applications",
-          ko: "키오스크 애플리케이션을 위한 페이지 UX 모범 사례 학습",
-        })}
-      </li>
-    </ul>
-  </div>
-  <div>
-    {l.trans({
-      en: `In the next tutorial, we'll explore how to use Scalar for computed values and aggregations. This will allow you to display dynamic information like order totals, wait times, and statistics in real-time.`,
-      ko: `다음 튜토리얼에서는 계산된 값과 집계를 위한 Scalar 사용법을 살펴볼 것입니다. 이를 통해 주문 합계, 대기 시간, 통계와 같은 동적 정보를 실시간으로 표시할 수 있게 됩니다.`,
-    })}
-  </div>
-</Docs.Description>;
-</Scroll.Slide>
+        title={l.trans({ en: "Page UX Best Practices", ko: "페이지 UX 모범 사례" })}
+      >
+        <Docs.Title>{l.trans({ en: "Page UX Best Practices", ko: "페이지 UX 모범 사례" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: `When building customer-facing pages like kiosks, following UX best practices ensures a smooth and enjoyable experience. Here are the key principles we applied:`,
+              ko: `키오스크와 같은 고객용 페이지를 구축할 때 UX 모범 사례를 따르면 부드럽고 즐거운 경험을 보장할 수 있습니다. 우리가 적용한 핵심 원칙들입니다:`,
+            })}
+          </div>
+          <div className="my-4 space-y-4">
+            <div className={panelRecipe({ radius: "lg" })}>
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-primary">1️⃣</span>
+                <strong className="text-primary">
+                  {l.trans({ en: "Clear Navigation Flow", ko: "명확한 네비게이션 흐름" })}
+                </strong>
+              </div>
+              <div className="text-foreground/70 text-sm">
+                {l.trans({
+                  en: `Guide customers through a linear flow: Landing → Order Form → Success. Each step has one clear purpose, reducing confusion.`,
+                  ko: `고객을 선형 흐름으로 안내합니다: 랜딩 → 주문 양식 → 성공. 각 단계는 하나의 명확한 목적을 가져 혼란을 줄입니다.`,
+                })}
+              </div>
+            </div>
+            <div className={panelRecipe({ radius: "lg" })}>
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-primary">2️⃣</span>
+                <strong className="text-primary">
+                  {l.trans({ en: "Touch-Friendly Design", ko: "터치 친화적 디자인" })}
+                </strong>
+              </div>
+              <div className="text-foreground/70 text-sm">
+                {l.trans({
+                  en: `Large buttons (py-6), adequate spacing, and visual feedback on interaction make the interface easy to use on touchscreens.`,
+                  ko: `큰 버튼(py-6), 적절한 간격, 상호작용 시 시각적 피드백이 터치스크린에서 인터페이스를 사용하기 쉽게 만듭니다.`,
+                })}
+              </div>
+            </div>
+            <div className={panelRecipe({ radius: "lg" })}>
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-primary">3️⃣</span>
+                <strong className="text-primary">
+                  {l.trans({ en: "Visual Hierarchy with Icons", ko: "아이콘을 통한 시각적 계층" })}
+                </strong>
+              </div>
+              <div className="text-foreground/70 text-sm">
+                {l.trans({
+                  en: `Emojis and icons provide instant visual cues that help customers understand each section without reading text carefully.`,
+                  ko: `이모지와 아이콘은 고객이 텍스트를 자세히 읽지 않고도 각 섹션을 이해할 수 있도록 즉각적인 시각적 단서를 제공합니다.`,
+                })}
+              </div>
+            </div>
+            <div className={panelRecipe({ radius: "lg" })}>
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-primary">4️⃣</span>
+                <strong className="text-primary">{l.trans({ en: "State Preservation", ko: "상태 보존" })}</strong>
+              </div>
+              <div className="text-foreground/70 text-sm">
+                {l.trans({
+                  en: `Using query parameters and Load.Edit ensures customer choices are preserved between pages, creating a seamless experience.`,
+                  ko: `쿼리 파라미터와 Load.Edit를 사용하면 고객의 선택이 페이지 간에 보존되어 끊김 없는 경험을 만들어냅니다.`,
+                })}
+              </div>
+            </div>
+          </div>
+          <div className="my-6 rounded-lg bg-linear-to-r from-background to-border p-6">
+            <div className="mb-3 font-bold text-lg text-primary">
+              {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
+            </div>
+            <ul className="space-y-2 text-foreground/70 text-sm">
+              <li>
+                ✓{" "}
+                {l.trans({
+                  en: "Extended schema with new fields for kiosk ordering",
+                  ko: "키오스크 주문을 위한 새 필드로 스키마 확장",
+                })}
+              </li>
+              <li>
+                ✓{" "}
+                {l.trans({
+                  en: "Built an attractive landing page with language switching",
+                  ko: "언어 전환 기능이 있는 매력적인 랜딩 페이지 구축",
+                })}
+              </li>
+              <li>
+                ✓{" "}
+                {l.trans({
+                  en: "Created a touch-friendly order form with Field components",
+                  ko: "Field 컴포넌트로 터치 친화적인 주문 양식 생성",
+                })}
+              </li>
+              <li>
+                ✓{" "}
+                {l.trans({
+                  en: "Implemented success page with clear customer feedback",
+                  ko: "명확한 고객 피드백이 있는 성공 페이지 구현",
+                })}
+              </li>
+              <li>
+                ✓{" "}
+                {l.trans({
+                  en: "Learned page UX best practices for kiosk applications",
+                  ko: "키오스크 애플리케이션을 위한 페이지 UX 모범 사례 학습",
+                })}
+              </li>
+            </ul>
+          </div>
+          <div>
+            {l.trans({
+              en: `In the next tutorial, we'll explore how to use Scalar for computed values and aggregations. This will allow you to display dynamic information like order totals, wait times, and statistics in real-time.`,
+              ko: `다음 튜토리얼에서는 계산된 값과 집계를 위한 Scalar 사용법을 살펴볼 것입니다. 이를 통해 주문 합계, 대기 시간, 통계와 같은 동적 정보를 실시간으로 표시할 수 있게 됩니다.`,
+            })}
+          </div>
+        </Docs.Description>
+      </Scroll.Slide>
       <Divider />
 
       <DocsToc />
     </Scroll>
-  )
+  );
 }

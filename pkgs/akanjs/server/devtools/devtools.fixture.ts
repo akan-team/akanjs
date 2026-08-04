@@ -34,8 +34,6 @@ export class DevtoolsFixture {
       appName: "devtools",
       environment: "local",
       operationMode: "local",
-      tunnelUsername: "root",
-      tunnelPassword: "akan",
       workspaceRoot,
       database: {
         sqlite: {

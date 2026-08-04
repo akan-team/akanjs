@@ -16,7 +16,7 @@ export const LeftSider = ({ className, children, open, width, onCancel }: LeftSi
     <div
       className={cn(
         "absolute top-0 border-muted border-r bg-background transition-all duration-150",
-        { "translate-x-0": open, "translate-x-[-100%]": !open },
+        open ? "translate-x-0" : "translate-x-[-100%]",
         className,
       )}
       style={{ width }}

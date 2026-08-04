@@ -105,7 +105,7 @@ export const DefaultPopconfirm = ({
             <div
               className={cn(
                 "popconfirm-deco absolute -top-2 size-4 rotate-45 rounded-sm border-border border-t border-l bg-background",
-                { "right-10": !decoClassName },
+                !decoClassName && "right-10",
                 decoClassName,
               )}
             ></div>

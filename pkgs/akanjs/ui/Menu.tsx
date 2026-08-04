@@ -144,10 +144,13 @@ export const DefaultMenu = ({
                 }}
                 id={item.key}
                 key={item.key}
-                className={cn("relative m-0 duration-200 hover:opacity-70", overflowClassName, liClassName, {
-                  "bg-border": activeStyle === "active" && checkIsActive(item.key),
-                  "border-background border-b-2": activeStyle === "bordered" && checkIsActive(item.key),
-                })}
+                className={cn(
+                  "relative m-0 duration-200 hover:opacity-70",
+                  overflowClassName,
+                  liClassName,
+                  activeStyle === "active" && checkIsActive(item.key) && "bg-border",
+                  activeStyle === "bordered" && checkIsActive(item.key) && "border-background border-b-2",
+                )}
                 onClick={() => {
                   if (!isOverflowItem) handleOnClick(item);
                 }}

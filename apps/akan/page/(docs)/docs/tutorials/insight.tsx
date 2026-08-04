@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, panelRecipe } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -672,7 +672,7 @@ export const dictionary = modelDictionary(["en", "ko"])
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.View.tsx"
             code={`
-import { cn } from "akanjs/client"; // [!code collapse:65]
+import { cn } from "akanjs/client"; // [!code collapse:66]
 import { cnst, usePage } from "@apps/koyo/client";
 import { IcecreamOrder } from "@apps/koyo/client";
 
@@ -703,22 +703,29 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
                 key={topping}
                 className="inline-block rounded-full bg-background px-2 py-1 text-xs font-medium text-primary"
               >
-                {l(`topping.${topping}`)}
+                {l(\`topping.\${topping}\`)}
               </span>
             ))
           )}
         </div>
-        <div className="font-semibold text-foreground/50">{l("icecreamOrder.status")}</div>
+        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.status")}</div>
         <div>
           <span
-            className={cn("inline-block rounded-full px-2 py-1 font-semibold text-xs", icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary", icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning", icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground", icecreamOrder.status === "finished" && "border border-accent/40 bg-background text-accent", icecreamOrder.status === "canceled" && "border border-border bg-background text-foreground/70")}
+            className={cn(
+              "inline-block rounded-full px-2 py-1 text-xs font-semibold",
+              icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
+              icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
+              icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
+              icecreamOrder.status === "finished" && "border border-accent/40 bg-background text-accent",
+              icecreamOrder.status === "canceled" && "border border-border bg-background text-foreground/70",
+            )}
           >
-            {l(`icecreamOrderStatus.${icecreamOrder.status}`)}
+            {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
           </span>
         </div>
-        <div className="font-semibold text-foreground/50">{l("icecreamOrder.createdAt")}</div>
+        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.createdAt")}</div>
         <div className="text-foreground/70">{icecreamOrder.createdAt.format("YYYY-MM-DD HH:mm:ss")}</div>
-        <div className="font-semibold text-foreground/50">{l("icecreamOrder.updatedAt")}</div>
+        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.updatedAt")}</div>
         <div className="text-foreground/70">{icecreamOrder.updatedAt.format("YYYY-MM-DD HH:mm:ss")}</div>
       </div>
       <div className="flex items-center justify-end gap-2">
@@ -729,7 +736,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
       </div>
     </div>
   );
-}
+};
 
 interface InsightProps {
   className?: string;
@@ -742,150 +749,71 @@ export const Insight = ({ className, icecreamOrderInsight }: InsightProps) => {
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         <div>
           <div className="text-xs">{l("icecreamOrder.insight.yogurtIcecreamQty")}</div>
-          <div className="font-bold text-2xl">{icecreamOrderInsight.yogurtIcecreamQty}</div>
+          <div className="text-2xl font-bold">{icecreamOrderInsight.yogurtIcecreamQty}</div>
         </div>
         <div>
           <div className="text-xs">{l("icecreamOrder.insight.fruitRingQty")}</div>
-          <div className="font-bold text-2xl">{icecreamOrderInsight.fruitRingQty}</div>
+          <div className="text-2xl font-bold">{icecreamOrderInsight.fruitRingQty}</div>
         </div>
         <div>
           <div className="text-xs">{l("icecreamOrder.insight.oreoQty")}</div>
-          <div className="font-bold text-2xl">{icecreamOrderInsight.oreoQty}</div>
+          <div className="text-2xl font-bold">{icecreamOrderInsight.oreoQty}</div>
         </div>
         <div>
           <div className="text-xs">{l("icecreamOrder.insight.strawberryQty")}</div>
-          <div className="font-bold text-2xl">{icecreamOrderInsight.strawberryQty}</div>
+          <div className="text-2xl font-bold">{icecreamOrderInsight.strawberryQty}</div>
         </div>
         <div>
           <div className="text-xs">{l("icecreamOrder.insight.mangoQty")}</div>
-          <div className="font-bold text-2xl">{icecreamOrderInsight.mangoQty}</div>
+          <div className="text-2xl font-bold">{icecreamOrderInsight.mangoQty}</div>
         </div>
         <div>
           <div className="text-xs">{l("icecreamOrder.insight.cheeseCubeQty")}</div>
-          <div className="font-bold text-2xl">{icecreamOrderInsight.cheeseCubeQty}</div>
+          <div className="text-2xl font-bold">{icecreamOrderInsight.cheeseCubeQty}</div>
         </div>
         <div>
           <div className="text-xs">{l("icecreamOrder.insight.cornQty")}</div>
-          <div className="font-bold text-2xl">{icecreamOrderInsight.cornQty}</div>
+          <div className="text-2xl font-bold">{icecreamOrderInsight.cornQty}</div>
         </div>
         <div>
           <div className="text-xs">{l("icecreamOrder.insight.granolaQty")}</div>
-          <div className="font-bold text-2xl">{icecreamOrderInsight.granolaQty}</div>
+          <div className="text-2xl font-bold">{icecreamOrderInsight.granolaQty}</div>
         </div>
         <div>
           <div className="text-xs">{l("icecreamOrder.insight.bananaQty")}</div>
-          <div className="font-bold text-2xl">{icecreamOrderInsight.bananaQty}</div>
+          <div className="text-2xl font-bold">{icecreamOrderInsight.bananaQty}</div>
         </div>
         <div>
           <div className="text-xs">{l("icecreamOrder.insight.figQty")}</div>
-          <div className="font-bold text-2xl">{icecreamOrderInsight.figQty}</div>
+          <div className="text-2xl font-bold">{icecreamOrderInsight.figQty}</div>
         </div>
       </div>
     </div>
   );
-};
-`}
+};`}
           />
           <div>
             {l.trans({
-              en: `;
-The;
-View;
-component;
-displays;
-each;
-insight;
-metric in a;
-responsive;
-grid.The;
-chef;
-can;
-quickly;
-see;
-how;
-much;
-yogurt;
-to;
-prepare;
-and;
-which;
-toppings;
-are;
-most;
-popular.`,
-              ko: `
-View;
-컴포넌트는;
-각;
-인사이트;
-메트릭을;
-반응형;
-그리드에;
-표시합니다.셰프는;
-얼마나;
-많은;
-요거트를;
-준비해야;
-하는지, 어떤;
-토핑이;
-가장;
-인기;
-있는지;
-빠르게;
-확인할;
-수;
-있습니다.`,
+              en: `The View component displays each insight metric in a responsive grid. The chef can quickly see how much yogurt to prepare and which toppings are most popular.`,
+              ko: `View 컴포넌트는 각 인사이트 메트릭을 반응형 그리드에 표시합니다. 셰프는 얼마나 많은 요거트를 준비해야 하는지, 어떤 토핑이 가장 인기 있는지 빠르게 확인할 수 있습니다.`,
             })}
           </div>
           <div>
             {l.trans({
-              en: `
-Now;
-create;
-a;
-Zone;
-component;
-that;
-connects;
-the;
-View;
-to;
-the;
-store.Zone;
-components;
-handle;
-data;
-fetching;
-and;
-state;
-management: `,
-              ko: `;
-이제;
-View를;
-스토어에;
-연결하는;
-Zone;
-컴포넌트를;
-만듭니다.Zone;
-컴포넌트는;
-데이터;
-페칭과;
-상태;
-관리를;
-처리합니다: `,
+              en: `Now create a Zone component that connects the View to the store. Zone components handle data fetching and state management:`,
+              ko: `이제 View를 스토어에 연결하는 Zone 컴포넌트를 만듭니다. Zone 컴포넌트는 데이터 페칭과 상태 관리를 처리합니다:`,
             })}
           </div>
           <Code.Snippet
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Zone.tsx"
-            code={`;
-("use client"); // [!code collapse:54]
-
-import { type cnst, fetch, IcecreamOrder, st } from "@apps/koyo/client";
-import type { DefaultOf } from "akanjs/constant";
-import type { ClientInit, SliceMeta } from "akanjs/fetch";
-import { Load, Model } from "akanjs/ui";
+            code={`
+"use client"; // [!code collapse:54]
+import { DefaultOf } from "akanjs/constant";
+import type { ClientInit, ClientView, SliceMeta } from "akanjs/fetch";
 import { useInterval } from "akanjs/webkit";
+import { Load, Model } from "akanjs/ui";
+import { cnst, fetch, IcecreamOrder, st } from "@apps/koyo/client";
 
 interface CardProps {
   className?: string;
@@ -949,33 +877,28 @@ export const Insight = ({ className, slice = fetch.slice.icecreamOrder }: Insigh
               ko: `Zone 컴포넌트의 주요 기능:`,
             })}
           </div>
-          <div
-  className =
-    "my-4 space-y-2" >
-    (
-      <div className="flex items-start gap-2">
-        <span className="text-primary">🔗</span>
-        <div>
-          <strong>st.slice[slice.sliceName].use.icecreamOrderInsight()</strong>:{" "}
-          {l.trans({
-            en: "Auto-generated hook that retrieves the aggregated insight data for the specified slice. The framework handles all the aggregation pipeline execution.",
-            ko: "지정된 슬라이스에 대한 집계된 인사이트 데이터를 가져오는 자동 생성된 훅입니다. 프레임워크가 모든 집계 파이프라인 실행을 처리합니다.",
-          })}
-        </div>
-      </div>
-    );
-  </div>
+          <div className="my-4 space-y-2">
+            <div className="flex items-start gap-2">
+              <span className="text-primary">🔗</span>
+              <div>
+                <strong>st.slice[slice.sliceName].use.icecreamOrderInsight()</strong>:{" "}
+                {l.trans({
+                  en: "Auto-generated hook that retrieves the aggregated insight data for the specified slice. The framework handles all the aggregation pipeline execution.",
+                  ko: "지정된 슬라이스에 대한 집계된 인사이트 데이터를 가져오는 자동 생성된 훅입니다. 프레임워크가 모든 집계 파이프라인 실행을 처리합니다.",
+                })}
+              </div>
+            </div>
+          </div>
           <div>
-  l.trans({
-    en: `Finally, add the Insight Zone to your page to display real-time aggregated statistics:`,
-    ko: `마지막으로, 실시간 집계 통계를 표시하기 위해 페이지에 Insight Zone을 추가합니다:`,
-  });
-  </div>
+            {l.trans({
+              en: `Finally, add the Insight Zone to your page to display real-time aggregated statistics:`,
+              ko: `마지막으로, 실시간 집계 통계를 표시하기 위해 페이지에 Insight Zone을 추가합니다:`,
+            })}
+          </div>
           <Code.Snippet
             className="w-full"
             title="apps/koyo/page/_index.tsx"
-            code=
-  `
+            code={`
 import { Load, Model } from "akanjs/ui"; // [!code collapse:21]
 import { cnst, fetch, IcecreamOrder, Inventory, usePage } from "@apps/koyo/client";
 
@@ -1012,71 +935,67 @@ export default async function Page() {
       </div> // [!code collapse:10]
     </div>
   );
-}`;
-  /><div>;
-  l.trans({
-    en: `Now when users filter orders by status, the insight dashboard automatically updates to show aggregated statistics for only those filtered orders. This is incredibly powerful for real-time operational decisions!`,
-    ko: `이제 사용자가 상태별로 주문을 필터링하면, 인사이트 대시보드가 자동으로 업데이트되어 필터링된 주문에 대한 집계 통계만 보여줍니다. 이는 실시간 운영 결정에 매우 강력합니다!`,
-  });
-  </div>
+}`}
+          />
+          <div>
+            {l.trans({
+              en: `Now when users filter orders by status, the insight dashboard automatically updates to show aggregated statistics for only those filtered orders. This is incredibly powerful for real-time operational decisions!`,
+              ko: `이제 사용자가 상태별로 주문을 필터링하면, 인사이트 대시보드가 자동으로 업데이트되어 필터링된 주문에 대한 집계 통계만 보여줍니다. 이는 실시간 운영 결정에 매우 강력합니다!`,
+            })}
+          </div>
           <div className="my-6 rounded-lg bg-linear-to-r from-background to-border p-6">
             <div className="mb-3 font-bold text-lg text-primary">
-  l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" });
-  </div>
+              {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
+            </div>
             <ul className="space-y-2 text-foreground/70 text-sm">
               <li>
-                ✓
-  (" ");
-  l.trans({
-    en: "Created dynamic Query Makers with searchable parameters",
-    ko: "검색 가능한 파라미터가 있는 동적 쿼리 메이커 생성",
-  });
-  </li>
+                ✓{" "}
+                {l.trans({
+                  en: "Created dynamic Query Makers with searchable parameters",
+                  ko: "검색 가능한 파라미터가 있는 동적 쿼리 메이커 생성",
+                })}
+              </li>
               <li>
-                ✓
-  (" ");
-  l.trans({
-    en: "Learned how to define Insight classes with Akan document query filters",
-    ko: "Akan 문서 쿼리 필터를 사용한 Insight 클래스 정의 방법 학습",
-  });
-  </li>
+                ✓{" "}
+                {l.trans({
+                  en: "Learned how to define Insight classes with Akan document query filters",
+                  ko: "Akan 문서 쿼리 필터를 사용한 Insight 클래스 정의 방법 학습",
+                })}
+              </li>
               <li>
-                ✓
-  (" ");
-  l.trans({
-    en: "Built View components to display aggregated statistics",
-    ko: "집계 통계를 표시하는 View 컴포넌트 구축",
-  });
-  </li>
+                ✓{" "}
+                {l.trans({
+                  en: "Built View components to display aggregated statistics",
+                  ko: "집계 통계를 표시하는 View 컴포넌트 구축",
+                })}
+              </li>
               <li>
-                ✓
-  (" ");
-  l.trans({
-    en: "Connected Zone components to auto-generated store hooks",
-    ko: "자동 생성된 스토어 훅에 Zone 컴포넌트 연결",
-  });
-  </li>
+                ✓{" "}
+                {l.trans({
+                  en: "Connected Zone components to auto-generated store hooks",
+                  ko: "자동 생성된 스토어 훅에 Zone 컴포넌트 연결",
+                })}
+              </li>
               <li>
-                ✓
-  (" ");
-  l.trans({
-    en: "Integrated insights with filtered queries for real-time analytics",
-    ko: "실시간 분석을 위해 필터링된 쿼리와 인사이트 통합",
-  });
-  </li>
+                ✓{" "}
+                {l.trans({
+                  en: "Integrated insights with filtered queries for real-time analytics",
+                  ko: "실시간 분석을 위해 필터링된 쿼리와 인사이트 통합",
+                })}
+              </li>
             </ul>
           </div>
           <div>
-  l.trans({
-    en: `In the next tutorial, we'll explore how to relate data between different models. This will allow you to create rich relationships like associating orders with customers, linking products to categories, and building complex data graphs.`,
-    ko: `다음 튜토리얼에서는 서로 다른 모델 간의 데이터 연결 방법을 살펴볼 것입니다. 이를 통해 주문과 고객 연결, 제품과 카테고리 연결, 복잡한 데이터 그래프 구축 같은 풍부한 관계를 만들 수 있게 됩니다.`,
-  });
-  </div>
+            {l.trans({
+              en: `In the next tutorial, we'll explore how to relate data between different models. This will allow you to create rich relationships like associating orders with customers, linking products to categories, and building complex data graphs.`,
+              ko: `다음 튜토리얼에서는 서로 다른 모델 간의 데이터 연결 방법을 살펴볼 것입니다. 이를 통해 주문과 고객 연결, 제품과 카테고리 연결, 복잡한 데이터 그래프 구축 같은 풍부한 관계를 만들 수 있게 됩니다.`,
+            })}
+          </div>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
 
       <DocsToc />
     </Scroll>
-  )
-};
+  );
+}

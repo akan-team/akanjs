@@ -283,7 +283,7 @@ export const FileList = ({
                         <td className="text-center align-middle text-xs md:text-sm">
                           <div className={badgeRecipe({ variant: "info" })}>
                             {file.status}
-                            <AiOutlineLoading3Quarters className={cn("animate-spin", { hidden: !isUploading })} />
+                            <AiOutlineLoading3Quarters className={cn("animate-spin", !isUploading && "hidden")} />
                           </div>
                         </td>
                         <td className="text-center align-middle text-sm">

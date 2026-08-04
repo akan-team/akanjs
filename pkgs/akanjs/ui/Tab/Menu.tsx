@@ -38,12 +38,13 @@ export const Menu = ({
   return (
     <Tooltip content={tooltip}>
       <div
-        className={cn(className, {
-          "cursor-pointer": menu !== currentMenu && !disabled,
-          "cursor-not-allowed": disabled,
-          [activeClassName]: menu === currentMenu,
-          [disabledClassName]: disabled,
-        })}
+        className={cn(
+          className,
+          menu !== currentMenu && !disabled && "cursor-pointer",
+          disabled && "cursor-not-allowed",
+          menu === currentMenu && activeClassName,
+          disabled && disabledClassName,
+        )}
         onClick={() => {
           if (disabled) return;
           setMenu(menu);

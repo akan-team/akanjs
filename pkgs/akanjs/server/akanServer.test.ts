@@ -11,8 +11,6 @@ const createEnv = (tmp: string) =>
     appName: "serverGet",
     environment: "local",
     operationMode: "local",
-    tunnelUsername: "root",
-    tunnelPassword: "akan",
     workspaceRoot: tmp,
     database: {
       sqlite: {

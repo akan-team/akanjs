@@ -172,7 +172,7 @@ const DefaultSelect = <
           "bg-background data-[open=true]:border-primary",
           disabled && "pointer-events-none opacity-50",
           selectClassName,
-          { "border-border": isOpen },
+          isOpen && "border-border",
         )}
         onClick={() => {
           if (disabled) return;
@@ -256,7 +256,7 @@ const DefaultSelect = <
           />
         ) : null}
         <BiChevronDown
-          className={cn("absolute top-1/2 right-2 -translate-y-1/2 text-lg duration-100", { "rotate-180": isOpen })}
+          className={cn("absolute top-1/2 right-2 -translate-y-1/2 text-lg duration-100", isOpen && "rotate-180")}
         />
       </div>
       <div
@@ -283,10 +283,8 @@ const DefaultSelect = <
                 <div
                   className={cn(
                     "relative m-2 cursor-pointer rounded-sm p-2 duration-100 last:border-b-0 hover:bg-border",
-                    {
-                      selectedClassName: !multiple && isSelected,
-                      "bg-success/70 text-success-foreground": isSelected,
-                    },
+                    !multiple && isSelected && selectedClassName,
+                    isSelected && "bg-success/70 text-success-foreground",
                   )}
                   onClick={() => {
                     onSelect(option.value, index);
@@ -295,12 +293,12 @@ const DefaultSelect = <
                 >
                   {/* {option.label} */}
                   {renderOption ? renderOption(option.value) : option.label}
-                  <div className={cn("absolute top-1/2 right-2 -translate-y-1/2 flex-wrap duration-200", {})}>
+                  <div className="absolute top-1/2 right-2 -translate-y-1/2 flex-wrap duration-200">
                     <div
-                      className={cn("duration-200", {
-                        "translate-y-0 opacity-100": isSelected,
-                        "-translate-y-full opacity-0": !isSelected,
-                      })}
+                      className={cn(
+                        "duration-200",
+                        isSelected ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0",
+                      )}
                     >
                       <BiCheck />
                     </div>

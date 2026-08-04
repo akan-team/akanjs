@@ -102,7 +102,7 @@ const DragList = <V,>({ className, mode = "vertical", children, onChange, onRemo
   });
 
   return (
-    <div className={cn(`isolate flex gap-0`, { "flex-col": mode === "vertical" }, className)}>
+    <div className={cn("isolate flex gap-0", mode === "vertical" && "flex-col", className)}>
       {springs.map(({ zIndex, shadow, movement, scale }, i) => (
         <animated.div
           ref={(el: HTMLDivElement | null) => {

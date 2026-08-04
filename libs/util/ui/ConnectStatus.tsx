@@ -36,10 +36,11 @@ export const ConnectStatus = ({
       />
       {conn !== "disconnected" ? (
         <AiOutlineLoading3Quarters
-          className={cn("absolute size-3 animate-spin", {
-            "text-success": conn === "healthy",
-            "text-warning": conn === "unhealthy",
-          })}
+          className={cn(
+            "absolute size-3 animate-spin",
+            conn === "healthy" && "text-success",
+            conn === "unhealthy" && "text-warning",
+          )}
         />
       ) : null}
     </div>
