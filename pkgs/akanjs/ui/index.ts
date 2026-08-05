@@ -35,8 +35,16 @@ export { Portal } from "./Portal";
 export { Radio } from "./Radio";
 export { RecentTime } from "./RecentTime";
 export { Refresh } from "./Refresh";
-export { type BadgeVariants, type ButtonVariants, badgeRecipe, buttonRecipe } from "./recipe";
-export { recipe, tv } from "./recipeFactory";
+export {
+  type BadgeVariants,
+  type ButtonVariants,
+  badgeRecipe,
+  buttonRecipe,
+  type InputSurfaceVariants,
+  inputRecipe,
+  recipe,
+  tv,
+} from "./recipe";
 export { ScreenNavigator } from "./ScreenNavigator";
 export { Select } from "./Select";
 export { Signal } from "./Signal";

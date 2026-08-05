@@ -105,8 +105,8 @@ export default function Page() {
           </div>
           <Docs.Alert type="info">
             {l.trans({
-              en: "Recipes live in their own module (akanjs/ui/recipe.ts) precisely so they are not client-only. If a recipe were exported from a 'use client' component file, calling it from a server component would throw 'client-only export'. The separate recipe layer removes that boundary.",
-              ko: "recipe를 별도 모듈(akanjs/ui/recipe.ts)에 두는 이유가 바로 client-only가 되지 않게 하기 위해서입니다. recipe를 'use client' 컴포넌트 파일에서 export하면 서버 컴포넌트에서 호출할 때 'client-only export' 에러가 납니다. recipe 레이어를 분리하면 그 경계가 사라집니다.",
+              en: "Recipes live in their own folder (akanjs/ui/recipe/, one recipe per file) precisely so they are not client-only. If a recipe were exported from a 'use client' component file, calling it from a server component would throw 'client-only export'. The separate recipe layer removes that boundary.",
+              ko: "recipe를 별도 폴더(akanjs/ui/recipe/, 파일당 recipe 하나)에 두는 이유가 바로 client-only가 되지 않게 하기 위해서입니다. recipe를 'use client' 컴포넌트 파일에서 export하면 서버 컴포넌트에서 호출할 때 'client-only export' 에러가 납니다. recipe 레이어를 분리하면 그 경계가 사라집니다.",
             })}
           </Docs.Alert>
         </Docs.Description>
@@ -118,13 +118,13 @@ export default function Page() {
         <Docs.Description>
           <div>
             {l.trans({
-              en: "When a surface repeats across your app — a gradient hero, an icon tile, a chat bubble — do not inline the same class string everywhere. Add a recipe to the app's ui/Recipe.ts (server-safe, PascalCase file name per the app ui convention) and import it from the ui barrel. This mirrors the framework's ui/recipe.ts at the app level.",
-              ko: "앱 전반에서 반복되는 표면(그라디언트 히어로, 아이콘 타일, 챗 버블)은 같은 클래스 문자열을 곳곳에 인라인하지 마세요. 앱의 ui/Recipe.ts(서버-안전, 앱 ui 규약상 PascalCase 파일명)에 recipe를 추가하고 ui 배럴에서 import합니다. 프레임워크의 ui/recipe.ts를 앱 레벨에서 미러링하는 구조입니다.",
+              en: "When a surface repeats across your app — a gradient hero, an icon tile, a chat bubble — do not inline the same class string everywhere. Add one file per recipe under the app's ui/Recipe/ (server-safe; the folder is PascalCase because the generated ui barrel exports PascalCase names only) and import it from the ui barrel. This mirrors the framework's ui/recipe/ at the app level, and the folder's index.ts also re-exports the framework recipes so one import path covers both.",
+              ko: "앱 전반에서 반복되는 표면(그라디언트 히어로, 아이콘 타일, 챗 버블)은 같은 클래스 문자열을 곳곳에 인라인하지 마세요. 앱의 ui/Recipe/ 아래에 recipe당 파일 하나를 추가하고(서버-안전, 생성되는 ui 배럴이 PascalCase 이름만 내보내므로 폴더명은 PascalCase) ui 배럴에서 import합니다. 프레임워크의 ui/recipe/를 앱 레벨에서 미러링하는 구조이고, 폴더의 index.ts가 프레임워크 recipe도 재수출하므로 import 경로 하나로 둘 다 씁니다.",
             })}
           </div>
           <Code.Snippet
             className="w-full"
-            title="apps/myapp/ui/Recipe.ts"
+            title="apps/myapp/ui/Recipe/chatBubble.ts"
             language="typescript"
             code={`import { recipe, tv } from "akanjs/ui";
 // No "use client" — recipes are server-safe.
@@ -165,8 +165,8 @@ export type ChatBubbleVariants = NonNullable<Parameters<typeof chatBubbleRecipe>
           />
           <Docs.Alert type="info">
             {l.trans({
-              en: "Convention: build each factory with recipe(tv({ base, variants })) (both re-exported from akanjs/ui), name it <name>Recipe, and keep the file free of 'use client'. Call it as xRecipe(variants, className?) — the second arg is merged internally, no cn() needed. App ui files are PascalCase, so the file is ui/Recipe.ts even though the framework's is the lowercase ui/recipe.ts.",
-              ko: "규약: 각 팩토리는 recipe(tv({ base, variants }))로 만들고(recipe·tv 모두 akanjs/ui에서 re-export), <name>Recipe로 이름 지으며, 파일에 'use client'를 넣지 않습니다. 호출은 xRecipe(변형, className?) — 두 번째 인자는 내부에서 병합되므로 cn()이 필요 없습니다. 앱 ui 파일은 PascalCase라서 프레임워크의 소문자 ui/recipe.ts와 달리 파일명은 ui/Recipe.ts입니다.",
+              en: "Convention: build each factory with recipe(tv({ base, variants })) (both re-exported from akanjs/ui), name it <name>Recipe, and keep the file free of 'use client'. Call it as xRecipe(variants, className?) — the second arg is merged internally, no cn() needed. App ui folders are PascalCase, so the folder is ui/Recipe/ even though the framework's is the lowercase ui/recipe/.",
+              ko: "규약: 각 팩토리는 recipe(tv({ base, variants }))로 만들고(recipe·tv 모두 akanjs/ui에서 re-export), <name>Recipe로 이름 지으며, 파일에 'use client'를 넣지 않습니다. 호출은 xRecipe(변형, className?) — 두 번째 인자는 내부에서 병합되므로 cn()이 필요 없습니다. 앱 ui 폴더는 PascalCase라서 프레임워크의 소문자 ui/recipe/와 달리 폴더명은 ui/Recipe/입니다.",
             })}
           </Docs.Alert>
         </Docs.Description>
@@ -226,7 +226,7 @@ export type ChatBubbleVariants = NonNullable<Parameters<typeof chatBubbleRecipe>
           </div>
           <Code.Snippet
             className="w-full"
-            title="apps/myapp/ui/Recipe.ts"
+            title="apps/myapp/ui/Recipe/neonButton.ts"
             language="typescript"
             code={`// buttonRecipe 와 같은 variant/size 표면을 유지해야 슬롯에 주입 가능.
 export const neonButtonRecipe = recipe(

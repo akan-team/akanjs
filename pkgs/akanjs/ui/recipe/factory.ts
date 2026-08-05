@@ -1,10 +1,11 @@
 import type { ClassNameValue as ClassValue } from "tailwind-merge";
 import { createTV } from "tailwind-variants";
-import { colorTokens } from "../client/cn";
+import { colorTokens } from "../../client/cn";
 
 /**
  * recipe 팩토리 모듈 — 변형 팩토리를 만드는 **인프라**. **서버-안전** (절대 `"use client"` 금지).
- * 실제 recipe 정의(buttonRecipe 등)는 여기 두지 않는다 — 프레임워크는 `./recipe`, 각 앱은 `ui/Recipe.ts`.
+ * 실제 recipe 정의는 이 폴더의 형제 파일 하나당 하나씩 둔다 — 프레임워크는 `./<name>Recipe.ts`,
+ * 각 앱은 `apps/<app>/ui/Recipe/<name>.ts`.
  */
 
 // akan 의 시맨틱 색 토큰을 tv 내장 tailwind-merge 에 주입 → `cn` 과 동일한 병합 동작(예: bg-primary→bg-open).

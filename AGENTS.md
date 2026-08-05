@@ -519,8 +519,9 @@ Available UI recipes (Tailwind-variant look factories). Consume by exact name �
 then `<name>(variants?, className?)`. Do not guess recipe names, import paths, or variant values; the list below carries
 the full contract (`*` marks the default, `key?` is a boolean flag), so there is no need to open the recipe file to
 consume one. tsc still reports variant mistakes. **Before inlining a repeated surface (card, box,
-tile, …): reuse a recipe below, or add one to `apps/<app>/ui/Recipe.ts` — never re-implement the same look inline in
-several places, and never author a near-duplicate.** Full authoring/consumption policy: the `recipeRule` guideline.
+tile, …): reuse a recipe below, or add one as `apps/<app>/ui/Recipe/<name>.ts` (one recipe per file, re-exported from
+that folder's `index.ts`) — never re-implement the same look inline in several places, and never author a
+near-duplicate.** Full authoring/consumption policy: the `recipeRule` guideline.
 
 Import from `akanjs/ui`:
 - `badgeRecipe`(variant: default*|primary|secondary|accent|success|warning|info|error|outline) — 뱃지 look — 시맨틱 variant. `<Badge>` 가 소비하며, recipes.badge 슬롯으로 교체 가능.

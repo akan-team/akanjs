@@ -1,7 +1,7 @@
 import { AkanContextAnalyzer } from "@akanjs/devkit/akanContext";
 import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { Prompter } from "@akanjs/devkit/prompter";
-import { type RecipeInfo, type RecipeSource, scanRecipes } from "@akanjs/devkit/recipeScanner";
+import { collectRecipeSources, type RecipeInfo, type RecipeSource, scanRecipes } from "@akanjs/devkit/recipeScanner";
 
 type AgentTarget = "cursor" | "agents-md" | "claude";
 
@@ -60,20 +60,19 @@ Keep a sample only while you are still learning its pattern; delete it once your
 `;
 };
 
-// The always-present recipe index. Recipes are Tailwind-variant look factories authored in each app/lib's
-// `ui/Recipe.ts`; consumers hallucinate their names/imports when those aren't in context. Listing them here (loaded
+// The always-present recipe index. Recipes are Tailwind-variant look factories authored one-per-file under each
+// app/lib's `ui/Recipe/`; consumers hallucinate their names/imports when those aren't in context. Listing them here (loaded
 // via CLAUDE.md → @AGENTS.md) grounds consumption with zero tool calls. Compact by design — names + import + one-line
 // doc, no variant surface (variants are typed, so tsc catches variant mistakes). Empty string when none exist.
 const renderRecipeIndex = async (workspace: Workspace, appNames: string[], libNames: string[]) => {
+  const root = workspace.workspaceRoot;
   const sources: RecipeSource[] = [];
-  const collect = async (path: string, importFrom: string) => {
-    if (!(await workspace.exists(path))) return;
-    const content = await workspace.readFile(path).catch(() => "");
-    if (content) sources.push({ path, content, importFrom });
+  const collect = async (uiDir: string, importFrom: string, basename?: string) => {
+    sources.push(...(await collectRecipeSources(`${root}/${uiDir}`, importFrom, basename)));
   };
-  await collect("pkgs/akanjs/ui/recipe.ts", "akanjs/ui");
-  for (const name of appNames) await collect(`apps/${name}/ui/Recipe.ts`, `@apps/${name}/ui`);
-  for (const name of libNames) await collect(`libs/${name}/ui/Recipe.ts`, `@libs/${name}/ui`);
+  await collect("pkgs/akanjs/ui", "akanjs/ui", "recipe");
+  for (const name of appNames) await collect(`apps/${name}/ui`, `@apps/${name}/ui`);
+  for (const name of libNames) await collect(`libs/${name}/ui`, `@libs/${name}/ui`);
 
   const recipes = scanRecipes(sources);
   if (recipes.length === 0) return "";
@@ -104,8 +103,9 @@ Available UI recipes (Tailwind-variant look factories). Consume by exact name �
 then \`<name>(variants?, className?)\`. Do not guess recipe names, import paths, or variant values; the list below carries
 the full contract (\`*\` marks the default, \`key?\` is a boolean flag), so there is no need to open the recipe file to
 consume one. tsc still reports variant mistakes. **Before inlining a repeated surface (card, box,
-tile, …): reuse a recipe below, or add one to \`apps/<app>/ui/Recipe.ts\` — never re-implement the same look inline in
-several places, and never author a near-duplicate.** Full authoring/consumption policy: the \`recipeRule\` guideline.
+tile, …): reuse a recipe below, or add one as \`apps/<app>/ui/Recipe/<name>.ts\` (one recipe per file, re-exported from
+that folder's \`index.ts\`) — never re-implement the same look inline in several places, and never author a
+near-duplicate.** Full authoring/consumption policy: the \`recipeRule\` guideline.
 
 ${blocks.join("\n\n")}
 

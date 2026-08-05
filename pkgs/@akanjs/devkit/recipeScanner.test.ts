@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { type RecipeInfo, scanRecipes } from "./recipeScanner";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { collectRecipeSources, type RecipeInfo, scanRecipes } from "./recipeScanner";
 
 const byName = (recipes: RecipeInfo[], name: string) => recipes.find((recipe) => recipe.name === name);
 
-// Mirrors pkgs/akanjs/ui/recipe.ts (framework) — two recipes in one file, variant + size surfaces.
+// Mirrors pkgs/akanjs/ui/recipe/ (framework) — two recipes in one source, variant + size surfaces.
+// The scanner is per-source, so a folder of one-recipe files and a legacy multi-recipe file both parse.
 const FRAMEWORK = `
 import { recipe, tv } from "./recipeFactory";
 export const buttonRecipe = recipe(
@@ -20,7 +24,7 @@ export type ButtonVariants = NonNullable<Parameters<typeof buttonRecipe>[0]>;
 export const badgeRecipe = recipe(tv({ base: "rounded-full", variants: { variant: { default: "bg-muted", info: "bg-info" } } }));
 `;
 
-// Mirrors apps/minimal/ui/Recipe.ts shapes — base-only (no variants) + single-variant, with per-export JSDoc.
+// Mirrors apps/minimal/ui/Recipe/ shapes — base-only (no variants) + single-variant, with per-export JSDoc.
 const APP = `
 import { recipe, tv } from "akanjs/ui";
 /** 전체 화면 배경/전경. 페이지 루트 컨테이너. */
@@ -90,5 +94,55 @@ describe("scanRecipes", () => {
       { path: "b.ts", content: `export const other = recipe(tv({ base: "c" }));`, importFrom: "@b" },
     ]);
     expect(recipes.map((r) => `${r.name}@${r.importFrom}`).sort()).toEqual(["other@@b", "shown@@a"]);
+  });
+});
+
+// Recipes moved from a flat `ui/Recipe.ts` to a `ui/Recipe/` folder. Three consumers (the AGENTS.md recipe
+// index, the recipeGate lint, the MCP module context) go through collectRecipeSources, and every one of them
+// degrades silently — empty list, no error — if it stops finding sources. These tests are that alarm.
+describe("collectRecipeSources", () => {
+  const seed = async (files: Record<string, string>) => {
+    const root = await mkdtemp(path.join(tmpdir(), "akan-recipe-"));
+    for (const [rel, content] of Object.entries(files)) {
+      const abs = path.join(root, rel);
+      await Bun.write(abs, content);
+    }
+    return root;
+  };
+  const recipeSrc = (name: string) => `export const ${name} = recipe(tv({ base: "a" }));`;
+
+  test("reads every recipe file in the folder, skipping index and tests", async () => {
+    const root = await seed({
+      "ui/Recipe/index.ts": `export * from "./appCard";`,
+      "ui/Recipe/appCard.ts": recipeSrc("appCard"),
+      "ui/Recipe/appBox.ts": recipeSrc("appBox"),
+      "ui/Recipe/appBox.test.ts": recipeSrc("shouldBeSkipped"),
+      "ui/Recipe/notes.md": "ignored",
+    });
+    const sources = await collectRecipeSources(path.join(root, "ui"), "@apps/x/ui");
+    expect(sources).toHaveLength(2);
+    expect(
+      scanRecipes(sources)
+        .map((r) => r.name)
+        .sort(),
+    ).toEqual(["appBox", "appCard"]);
+  });
+
+  test("still reads a flat Recipe.ts so an unmigrated app keeps working", async () => {
+    const root = await seed({ "ui/Recipe.ts": recipeSrc("legacy") });
+    const sources = await collectRecipeSources(path.join(root, "ui"), "@apps/x/ui");
+    expect(scanRecipes(sources).map((r) => r.name)).toEqual(["legacy"]);
+  });
+
+  test("honours the framework's lowercase basename", async () => {
+    const root = await seed({ "ui/recipe/buttonRecipe.ts": recipeSrc("buttonRecipe") });
+    const sources = await collectRecipeSources(path.join(root, "ui"), "akanjs/ui", "recipe");
+    expect(scanRecipes(sources).map((r) => r.name)).toEqual(["buttonRecipe"]);
+  });
+
+  test("returns nothing when neither shape exists, without throwing", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "akan-recipe-"));
+    await writeFile(path.join(root, "placeholder"), "");
+    expect(await collectRecipeSources(path.join(root, "ui"), "@apps/x/ui")).toEqual([]);
   });
 });

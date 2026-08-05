@@ -8,7 +8,7 @@ import {
   type StyleContractViolations,
 } from "@akanjs/devkit/frontendBuild/styleContract";
 import { ThemeValidator } from "@akanjs/devkit/frontendBuild/themeValidator";
-import { type RecipeSource, scanRecipes } from "@akanjs/devkit/recipeScanner";
+import { collectRecipeSources, type RecipeSource, scanRecipes } from "@akanjs/devkit/recipeScanner";
 import type { PackageJson } from "@akanjs/devkit/types";
 import { getLatestPackageVersion, getNpmRegistryUrl } from "../npmRegistry";
 
@@ -212,12 +212,11 @@ export class WorkspaceRunner extends runner("workspace") {
   async #enforceRecipeGate(exec: Exec) {
     const cwdPath = exec.cwdPath;
     if (!cwdPath) return;
-    const sources: RecipeSource[] = [];
-    for (const rel of ["ui/Recipe.ts", "ui/recipe.ts"]) {
-      const abs = path.join(cwdPath, rel);
-      if (await Bun.file(abs).exists())
-        sources.push({ path: abs, content: await Bun.file(abs).text(), importFrom: rel });
-    }
+    const uiDir = path.join(cwdPath, "ui");
+    const sources: RecipeSource[] = [
+      ...(await collectRecipeSources(uiDir, "ui/Recipe")),
+      ...(await collectRecipeSources(uiDir, "ui/recipe", "recipe")),
+    ];
     if (sources.length === 0) return;
     const offenders = scanRecipes(sources).filter(
       (recipe) =>

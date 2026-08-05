@@ -174,10 +174,10 @@ export const LabSurfaces = () => (
           </div>
         </div>
         <div className="flex gap-2 border-border border-t px-4 py-3">
-          <Button size="sm" variant="primary" onClick={async () => {}}>
+          <Button size="sm" variant="primary">
             구독
           </Button>
-          <Button size="sm" variant="ghost" onClick={async () => {}}>
+          <Button size="sm" variant="ghost">
             자세히
           </Button>
         </div>
@@ -204,14 +204,14 @@ export const LabSurfaces = () => (
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
           {SURFACE_BTN_VARIANTS.map((v) => (
-            <Button key={v} variant={v} onClick={async () => {}}>
+            <Button key={v} variant={v}>
               {v}
             </Button>
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {SURFACE_BTN_SIZES.map((sz) => (
-            <Button key={sz} variant="outline" size={sz} onClick={async () => {}}>
+            <Button key={sz} variant="outline" size={sz}>
               {sz}
             </Button>
           ))}
@@ -226,28 +226,71 @@ const BTN_VARIANTS = ["primary", "secondary", "outline", "ghost", "destructive",
 const BTN_SIZES = ["xs", "sm", "md", "lg"] as const;
 
 export const LabButtons = () => {
+  const [syncTaps, setSyncTaps] = useState(0);
   const [page, setPage] = useState(3);
   const [role, setRole] = useState<string>("member");
   const [tags, setTags] = useState<string[]>(["new"]);
   return (
     <LabShell title="Buttons">
-      <Section title="Button" note="variant × size · 기본값 primary/md · async 상태머신(로딩→성공) 내장">
+      <Section title="Button" note="variant × size · 기본값 primary/md · 아래 매트릭스는 핸들러 없는 순수 표시용">
         <div className="flex flex-col gap-3">
           {BTN_VARIANTS.map((v) => (
             <div key={v} className="flex flex-wrap items-center gap-2">
               <span className="w-20 shrink-0 font-mono text-foreground/50 text-xs">{v}</span>
               {BTN_SIZES.map((sz) => (
-                <Button key={sz} variant={v} size={sz} onClick={async () => {}}>
+                <Button key={sz} variant={v} size={sz}>
                   {v} {sz}
                 </Button>
               ))}
             </div>
           ))}
+        </div>
+      </Section>
+      <Section
+        title="동기 / 비동기 — 고르는 게 아니라 반환값으로 결정된다"
+        note="onClick 이 promise 를 반환하면 로딩→성공 상태머신이 켜지고, 아무것도 반환하지 않으면 평범한 버튼이다. async 플래그도, 별도 컴포넌트도 없다."
+      >
+        <div className="flex flex-col gap-4">
+          <div className={appBox({ tone: "muted" }, "font-mono text-xs leading-relaxed")}>
+            <div className="text-foreground/55">{`<Button onClick={close}>            // 반환 없음 → 평범한 버튼`}</div>
+            <div className="text-foreground/55">{`<Button onClick={() => save()}>     // promise 반환 → 로딩 → 성공`}</div>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="w-20 shrink-0 font-mono text-foreground/50 text-xs">async</span>
-            <Button variant="primary" onClick={async () => await new Promise((r) => setTimeout(r, 900))}>
-              눌러서 로딩→성공 확인
+            <span className="w-24 shrink-0 font-mono text-foreground/50 text-xs">동기</span>
+            <Button variant="outline" onClick={() => setSyncTaps(syncTaps + 1)}>
+              누른 횟수 {syncTaps}
             </Button>
+            <span className="text-foreground/45 text-xs">스피너 없음 · 누름 스케일 피드백만</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-24 shrink-0 font-mono text-foreground/50 text-xs">비동기</span>
+            <Button variant="primary" onClick={() => new Promise((r) => setTimeout(r, 900))}>
+              저장
+            </Button>
+            <span className="text-foreground/45 text-xs">스피너 → 체크 표시 · 처리 중 중복 클릭 차단</span>
+          </div>
+        </div>
+      </Section>
+      <Section
+        title="loadingMode — 두 모드 모두 버튼 크기가 변하지 않는다"
+        note="CSS 는 auto 너비를 애니메이션할 수 없어서, 크기가 바뀌는 버튼은 튀는 것 말고 방법이 없다. 그래서 두 모드 다 박스를 고정한다."
+      >
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-24 shrink-0 font-mono text-foreground/50 text-xs">hold (기본)</span>
+            <Button variant="primary" onClick={() => new Promise((r) => setTimeout(r, 1400))}>
+              변경사항 저장하기
+            </Button>
+            <span className="text-foreground/45 text-xs">자식 자리를 그대로 두고 스피너만 겹침 → 박스 = 라벨 크기</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-24 shrink-0 font-mono text-foreground/50 text-xs">replace</span>
+            <Button variant="secondary" loadingMode="replace" onClick={() => new Promise((r) => setTimeout(r, 1400))}>
+              변경사항 저장하기
+            </Button>
+            <span className="text-foreground/45 text-xs">
+              라벨까지 &quot;처리중...&quot; 으로 교차 페이드 → 박스 = 두 라벨 중 넓은 쪽(그래서 idle 에도 그만큼 넓다)
+            </span>
           </div>
         </div>
       </Section>
@@ -282,7 +325,7 @@ export const LabButtons = () => {
       <Section title="Copy / Clipboard" note="클릭 시 전역 성공 메시지 · 자체 아이콘 토글">
         <div className="flex items-center gap-3">
           <Copy text="https://akanjs.com">
-            <Button size="sm" variant="outline" onClick={async () => {}}>
+            <Button size="sm" variant="outline">
               링크 복사
             </Button>
           </Copy>
@@ -573,9 +616,7 @@ export const LabSkin = () => (
         {(["primary", "secondary", "destructive", "success", "outline", "ghost"] as const).map((v) => (
           <div key={v} className="flex flex-wrap items-center gap-2">
             <span className="w-24 shrink-0 font-mono text-foreground/50 text-xs">{v}</span>
-            <Button variant={v} onClick={() => {}}>
-              {v}
-            </Button>
+            <Button variant={v}>{v}</Button>
           </div>
         ))}
       </div>
@@ -587,7 +628,7 @@ export const LabSkin = () => (
     </Section>
     <Section
       title="대조: override 를 안 받는 raw recipe"
-      note="raw buttonRecipe 호출은 컴포넌트가 아니라 override 대상이 아님 — 같은 variant, 기본 스킨"
+      note="raw buttonRecipe 호출은 컴포넌트가 아니라 override 대상이 아님 — 같은 variant, 기본 스킨. 클라이언트 버튼은 <Button> 을 쓰고, raw 호출은 <Link>/서버 컴포넌트처럼 컴포넌트를 못 쓰는 자리에만 남긴다."
     >
       <button type="button" className={buttonRecipe({ variant: "primary" })}>
         raw buttonRecipe (기본 스킨)
@@ -636,10 +677,10 @@ export const LabEssentials = () => {
             </div>
           </div>
           <div className="flex gap-2 border-border border-t px-4 py-3">
-            <Button size="sm" variant="primary" onClick={async () => {}}>
+            <Button size="sm" variant="primary">
               구독
             </Button>
-            <Button size="sm" variant="ghost" onClick={async () => {}}>
+            <Button size="sm" variant="ghost">
               자세히
             </Button>
           </div>
@@ -666,13 +707,11 @@ export const LabEssentials = () => {
           <Button variant="primary" onClick={async () => await new Promise((r) => setTimeout(r, 800))}>
             저장
           </Button>
-          <Button variant="outline" onClick={async () => {}}>
-            취소
-          </Button>
-          <Button variant="ghost" size="sm" onClick={async () => {}}>
+          <Button variant="outline">취소</Button>
+          <Button variant="ghost" size="sm">
             더보기
           </Button>
-          <Button variant="destructive" size="sm" onClick={async () => {}}>
+          <Button variant="destructive" size="sm">
             삭제
           </Button>
         </div>

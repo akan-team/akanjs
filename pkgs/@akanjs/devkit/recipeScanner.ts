@@ -1,3 +1,4 @@
+import { readdir } from "node:fs/promises";
 import ts from "typescript";
 
 /**
@@ -20,6 +21,35 @@ export interface RecipeSource {
   content: string;
   importFrom: string;
 }
+
+/**
+ * Collects every recipe source under a `ui` folder. Recipes live one-per-file in a `Recipe/` folder
+ * (`recipe/` for the framework), so this reads the whole folder; the flat `Recipe.ts` is still read for
+ * apps that have not moved yet. Every consumer of `scanRecipes` must go through here — three call sites
+ * (AGENTS.md recipe index, `recipeGate` lint, MCP module context) hardcoded the flat path before, and each
+ * one fails silently (empty list, no error) when the file is absent.
+ */
+export const collectRecipeSources = async (
+  uiDirPath: string,
+  importFrom: string,
+  basename = "Recipe",
+): Promise<RecipeSource[]> => {
+  const read = async (filePath: string): Promise<RecipeSource | null> => {
+    const content = await Bun.file(filePath)
+      .text()
+      .catch(() => "");
+    return content ? { path: filePath, content, importFrom } : null;
+  };
+  const flat = await read(`${uiDirPath}/${basename}.ts`);
+  const dirEntries = await readdir(`${uiDirPath}/${basename}`).catch(() => [] as string[]);
+  const fromDir = await Promise.all(
+    dirEntries
+      .filter((entry) => entry.endsWith(".ts") && entry !== "index.ts" && !/\.(test|spec)\.ts$/.test(entry))
+      .sort()
+      .map((entry) => read(`${uiDirPath}/${basename}/${entry}`)),
+  );
+  return [flat, ...fromDir].filter((source): source is RecipeSource => !!source);
+};
 
 /**
  * Statically finds every `export const <name> = recipe(tv({ ... }))` across the given sources and extracts its

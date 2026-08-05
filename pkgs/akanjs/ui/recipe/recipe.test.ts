@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { badgeRecipe, buttonRecipe } from "./recipe";
-import { recipe, tv } from "./recipeFactory";
+import { badgeRecipe } from "./badgeRecipe";
+import { buttonRecipe } from "./buttonRecipe";
+import { recipe, tv } from "./factory";
 
 const tokens = (s: string) => s.split(/\s+/).filter(Boolean);
 

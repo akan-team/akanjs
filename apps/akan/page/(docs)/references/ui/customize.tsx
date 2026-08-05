@@ -65,7 +65,12 @@ export default override({ Modal: AdminModal, Table: AdminTable });`;
 import type { AkanUiOverrides } from "akanjs/ui";
 
 export const BrandButton: AkanUiOverrides["Button"] = ({ children, onClick, ...rest }) => (
-  <button className={buttonRecipe({ variant: "primary" })} onClick={(e) => onClick(e, { onError: () => {} })} {...rest}>
+  <button
+    type="button"
+    className={buttonRecipe({ variant: "primary" })}
+    onClick={(e) => onClick?.(e, { onError: () => {} })}
+    {...rest}
+  >
     {children}
   </button>
 );`;

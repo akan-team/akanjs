@@ -14,7 +14,7 @@
     {
       "type": "example",
       "description": "Existing recipe definitions",
-      "path": "{apps,libs}/*/ui/Recipe.ts",
+      "path": "{apps,libs}/*/ui/Recipe/*.ts",
       "sample": 4
     }
   ],

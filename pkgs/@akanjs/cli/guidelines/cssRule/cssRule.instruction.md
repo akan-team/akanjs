@@ -16,7 +16,7 @@ Use TailwindCSS with Akan's semantic design-token layer and the `akanjs/ui` prim
 - Framework primitives ship recipes: `buttonRecipe` and `badgeRecipe` from `akanjs/ui`. Call them as `buttonRecipe(variants, className?)` — the second argument is merged automatically, so you never wrap it in `cn()`:
   - `buttonRecipe({ variant: "primary", size: "lg" }, "w-full rounded-2xl")`
 - Prefer the `akanjs/ui` primitives (`Button`, `Badge`, `Input`, `Field`, `Table` …) over re-implementing a component's look with utility stacks. There is **no `Card`/`Box` primitive** — a card/box is a recipe surface (e.g. `appCard`), not an `akanjs/ui` component; do not `import { Card }`.
-- App-specific repeated surfaces go in `apps/<app>/ui/Recipe.ts` (server-safe, no `"use client"`) via `recipe(tv({ base, variants }))`, imported from `@apps/<app>/ui`. App recipes **extend** (surfaces the lib lacks — chat bubble, tile); they never re-define a lib component in parallel.
+- App-specific repeated surfaces go one-per-file in `apps/<app>/ui/Recipe/` (server-safe, no `"use client"`) via `recipe(tv({ base, variants }))`, imported from `@apps/<app>/ui`. App recipes **extend** (surfaces the lib lacks — chat bubble, tile); they never re-define a lib component in parallel.
 - Full recipe authoring/consumption policy: the `recipeRule` guideline. Never guess recipe names/imports — the authoritative list is `AGENTS.md` `## UI Recipes` plus the `list_recipes` tool.
 
 ## Customization Decision (where a design delta goes)

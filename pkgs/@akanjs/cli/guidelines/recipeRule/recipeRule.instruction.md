@@ -7,15 +7,20 @@ hallucinated, re-derived inline, or duplicated across an app.
 
 ## Ownership
 - A recipe owns a **look** (a composition of semantic-token utility classes), never behavior. Behavior lives in components.
-- App/lib recipes live in `apps/<app>/ui/Recipe.ts` and `libs/<lib>/ui/Recipe.ts`; framework recipes (`buttonRecipe`,
-  `badgeRecipe`) live in `akanjs/ui`.
+- **One recipe per file.** App/lib recipes live in `apps/<app>/ui/Recipe/<name>.ts` and `libs/<lib>/ui/Recipe/<name>.ts`,
+  re-exported from that folder's hand-written `index.ts`; framework recipes (`buttonRecipe`, `badgeRecipe`,
+  `inputRecipe`) mirror the same shape in `pkgs/akanjs/ui/recipe/<name>Recipe.ts`. Apps inherit the framework recipes by
+  re-exporting them from their own `Recipe/index.ts`, so a consumer imports every recipe from one barrel.
+- The folder must be `Recipe` (PascalCase) in an app/lib `ui/`: the generated `ui/index.ts` exports PascalCase names
+  only, so a flat `appCard.recipe.ts` is silently skipped and becomes unimportable. Inside the folder any camelCase
+  filename is fine — the barrel only scans one level.
 - Recipes use **semantic tokens only** in their `base`/`variants` (never raw palette or hex); they inherit the CSS token rules.
 
 ## Consuming Recipes
 - Import by **exact name** from the owning barrel: `import { <name> } from "@apps/<app>/ui"` (or `akanjs/ui` for framework),
   then call `<name>(variants?, className?)` — the second arg is merged automatically; no extra `cn()` wrapper is needed.
-- **Do not guess** recipe names or import paths. The authoritative list is the `## UI Recipes` section of `AGENTS.md`
-  (always loaded) and, when connected, the `list_recipes` MCP tool / `akan recipe list` CLI.
+- **Do not guess** recipe names or import paths. The authoritative list is the `## Recipes` section of `AGENTS.md`,
+  always loaded, carrying every recipe's variant surface and default — so consuming one never requires opening its file.
 - Variant options are typed (`Parameters<typeof <name>>[0]`), so a wrong variant is a compile error — let tsc validate
   options rather than memorizing strings.
 
@@ -35,10 +40,15 @@ The form of a shared look is decided by **counting**, not judgment (`akan lint` 
 ## Authoring Recipes
 - A **reusable or repeated surface** (card, box, tile, chat bubble, hero, …) belongs in a recipe, **not** inline. If the same
   token-class stack appears in more than one place, extract it into a recipe.
-- **Before authoring, check the existing recipe list** (AGENTS `## UI Recipes` / `list_recipes`) and **reuse** a matching
-  recipe instead of creating a near-duplicate — registry sprawl comes from re-inventing looks that already exist.
-- Add a new recipe as `export const <name>Recipe = recipe(tv({ base, variants }))` in the owning `ui/Recipe.ts`, with a
-  one-line JSDoc describing the surface. Name it `<name>Recipe`.
+- **Before authoring, check the existing recipe list** (AGENTS `## Recipes`) and **reuse** a matching recipe instead of
+  creating a near-duplicate — registry sprawl comes from re-inventing looks that already exist.
+- Add a new recipe as its own file, `ui/Recipe/<name>.ts` holding a single
+  `export const <name>Recipe = recipe(tv({ base, variants }))` plus a one-line JSDoc describing the surface, then
+  re-export it from `ui/Recipe/index.ts`. Name the export `<name>Recipe`; the filename drops the suffix.
+- Keep declaration and css in that one file. Splitting a recipe into a hand-written variant type plus a separate style
+  file inverts the dependency: the variant type is currently *inferred* from the `tv` config
+  (`Parameters<typeof <name>Recipe>[0]`), which makes type/css drift structurally impossible, and the AGENTS listing
+  already exposes the surface without reading the file. There is nothing left for the split to buy.
 - App recipes **extend** (surfaces the framework lacks); they never re-define a framework component's look in parallel.
 
 ## Codegen Rules
@@ -50,5 +60,6 @@ The form of a shared look is decided by **counting**, not judgment (`akan lint` 
 ## Review Checklist
 - Repeated/variant surfaces are recipes, not inline class stacks duplicated across files.
 - No two recipes describe the same look; consumers import by exact name from the correct barrel.
-- New recipes live in the owning `ui/Recipe.ts`, named `<name>Recipe`, token-only, with a one-line doc.
+- New recipes live one-per-file in the owning `ui/Recipe/`, exported as `<name>Recipe`, token-only, with a one-line doc,
+  and re-exported from that folder's `index.ts`.
 - The output contract tells the model which file paths to return.

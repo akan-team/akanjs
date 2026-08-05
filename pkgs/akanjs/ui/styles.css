@@ -363,6 +363,26 @@ body.akan-mobile-document {
   }
 }
 
+/*
+ * Confirmation mark entrance for <Button>'s success state. Deliberately NOT `pop`: overshooting to 1.5x from
+ * zero reads as cartoonish on a 16px glyph. A short fade plus a 6% overshoot is the amount of motion the eye
+ * registers as "it settled" rather than "it bounced".
+ */
+@keyframes checkIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 @keyframes shrink {
   0% {
     transform: scale(1, 1);
@@ -708,6 +728,7 @@ body.akan-mobile-document {
   --animate-spin: spin 1s linear infinite;
   --animate-backdrop-blur: backdrop-blur-sm 2s ease-in-out forwards;
   --animate-pop: pop 0.5s ease-in-out forwards;
+  --animate-checkIn: checkIn 0.34s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   --animate-shrink: shrink 0.15s ease-in-out forwards;
   --animate-menuOpen: menuOpen 0.3s ease-in-out forwards;
   --animate-menuClose: menuClose 0.3s ease-in-out forwards;

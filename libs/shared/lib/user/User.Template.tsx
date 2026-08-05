@@ -465,9 +465,7 @@ export const SubmitAppliedImages = ({ redirect }: SubmitAppliedImagesProps) => {
     <Button
       className="border-primary-light bg-primary-light"
       disabled={userForm.appliedImages.length < 2}
-      onClick={() => {
-        void st.do.setAppliedImagesOfSelf(userForm.appliedImages, { redirect });
-      }}
+      onClick={() => st.do.setAppliedImagesOfSelf(userForm.appliedImages, { redirect })}
     >
       가입하기
     </Button>
