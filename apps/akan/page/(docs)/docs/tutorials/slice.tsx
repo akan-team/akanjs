@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -20,7 +20,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="dashboard-slice" title={l.trans({ en: "Dashboard Slice", ko: "대시보드 슬라이스" })}>
         <Docs.Title>{l.trans({ en: "Dashboard Slice", ko: "대시보드 슬라이스" })}</Docs.Title>
@@ -32,6 +32,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.signal.ts"
             code={`
 import { ID } from "akanjs/base"; // [!code collapse:13]
@@ -92,6 +93,7 @@ export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query,
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.dictionary.ts"
             code={`
 import { modelDictionary } from "akanjs/dictionary"; // [!code collapse:5]
@@ -176,7 +178,7 @@ export const dictionary = modelDictionary(["en", "ko"])
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="connect-to-zone" title={l.trans({ en: "Connect to Zone", ko: "존과 연결하기" })}>
         <Docs.Title>{l.trans({ en: "Connect to Zone", ko: "존과 연결하기" })}</Docs.Title>
@@ -188,9 +190,10 @@ export const dictionary = modelDictionary(["en", "ko"])
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/page/dashboard.tsx"
             code={`
-import { Load } from "akanjs/ui";
+import { Load, buttonRecipe } from "akanjs/ui";
 import { fetch, IcecreamOrder, usePage } from "@apps/koyo/client";
 
 export default async function Page() {
@@ -231,6 +234,7 @@ export default async function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.dictionary.ts"
             code={`
 import { modelDictionary } from "akanjs/dictionary"; // [!code collapse:5]
@@ -318,36 +322,36 @@ export const dictionary = modelDictionary(["en", "ko"])
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📦</span>
                 <strong className="text-primary">Load.Page</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `The Load.Page component handles data loading before rendering. It fetches both waiting and pickup orders simultaneously using Promise.all for optimal performance.`,
                   ko: `Load.Page 컴포넌트는 렌더링 전에 데이터 로딩을 처리합니다. Promise.all을 사용하여 대기 중인 주문과 픽업 주문을 동시에 가져와 최적의 성능을 제공합니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🎯</span>
                 <strong className="text-primary">IcecreamOrder.Zone.Card</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Zone components connect slice data to UI rendering. By passing the init data and slice, the Zone automatically subscribes to real-time updates for that specific slice.`,
                   ko: `Zone 컴포넌트는 슬라이스 데이터를 UI 렌더링에 연결합니다. init 데이터와 slice를 전달하면 Zone이 자동으로 해당 슬라이스의 실시간 업데이트를 구독합니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🚫</span>
                 <strong className="text-primary">{"showControls={false}"}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `For the customer-facing dashboard, we hide the action controls. Customers should only see the status, not modify orders. This is a common pattern for read-only displays.`,
                   ko: `고객용 대시보드에서는 액션 컨트롤을 숨깁니다. 고객은 상태만 볼 수 있고 주문을 수정할 수 없어야 합니다. 이것은 읽기 전용 디스플레이의 일반적인 패턴입니다.`,
@@ -357,7 +361,7 @@ export const dictionary = modelDictionary(["en", "ko"])
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="zone-with-slice" title={l.trans({ en: "Zone with Slice", ko: "슬라이스를 사용한 Zone" })}>
         <Docs.Title>{l.trans({ en: "Zone with Slice", ko: "슬라이스를 사용한 Zone" })}</Docs.Title>
@@ -375,9 +379,10 @@ export const dictionary = modelDictionary(["en", "ko"])
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx"
             code={`
-import { clsx, type ModelProps } from "akanjs/client"; // [!code collapse:4]
+import { cn, type ModelProps } from "akanjs/client"; // [!code collapse:4]
 import { Model } from "akanjs/ui";
 import { cnst, fetch, IcecreamOrder, usePage } from "@apps/koyo/client";
 
@@ -387,35 +392,36 @@ interface CardProps extends ModelProps<"icecreamOrder", cnst.LightIcecreamOrder>
 export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
   const { l } = usePage();
   return (
-    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-base-100 via-base-200 to-base-300 px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
-      <div className="flex flex-col justify-center"> // [!code collapse:24]
+    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-muted to-border px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
+      <div className="flex flex-col justify-center"> // [!code collapse:25]
         <div className="flex items-center gap-2 text-lg font-semibold text-primary">
-          <span className="inline-block rounded bg-base-200 px-2 py-1 text-xs font-bold tracking-wider uppercase">
+          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider uppercase">
             {l("icecreamOrder.id")}
           </span>
           <span className="ml-2 font-mono text-primary">#{icecreamOrder.id.slice(-4)}</span>
         </div>
         <div className="mt-4 flex items-center gap-2">
-          <span className="inline-block rounded border border-base-300 bg-base-100 px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded border border-border bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
             {l("icecreamOrder.status")}
           </span>
           <span
-            className={clsx("ml-2 rounded-full px-3 py-1 text-sm font-semibold", {
-              "border border-primary/40 bg-base-100 text-primary": icecreamOrder.status === "active",
-              "border border-warning/40 bg-base-100 text-warning": icecreamOrder.status === "processing",
-              "border border-info/40 bg-info text-info-content": icecreamOrder.status === "served",
-              "border border-accent/40 bg-base-100 text-accent": icecreamOrder.status === "finished",
-              "border border-base-300 bg-base-100 text-base-content/70": icecreamOrder.status === "canceled",
-            })}
+            className={cn(
+              "ml-2 rounded-full px-3 py-1 text-sm font-semibold",
+              icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
+              icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
+              icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
+              icecreamOrder.status === "finished" && "border border-accent/40 bg-background text-accent",
+              icecreamOrder.status === "canceled" && "border border-border bg-background text-foreground/70",
+            )}
           >
             {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
           </span>
         </div>
       </div>
       {showControls ? ( // [!code ++]
-        <div className="bg-base-100 flex items-center justify-center gap-2 rounded-xl p-4">
+        <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4">
           <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
-            <button className="btn btn-primary">
+            <button className={buttonRecipe({ variant: "primary" })}>
               <span>{l.trans({ en: "View", ko: "보기" })}</span>
             </button>
           </Model.ViewWrapper>
@@ -445,6 +451,7 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Zone.tsx"
             code={`
 "use client"; // [!code collapse:5]
@@ -514,36 +521,36 @@ export const View = ({ view }: ViewProps) => {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">⏱️</span>
                 <strong className="text-primary">useInterval</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `The useInterval hook refreshes the slice data every 3 seconds. This ensures the dashboard stays current without manual user interaction - perfect for displays that need to show live order status.`,
                   ko: `useInterval 훅은 3초마다 슬라이스 데이터를 새로고침합니다. 이렇게 하면 사용자의 수동 상호작용 없이도 대시보드가 최신 상태를 유지합니다 - 실시간 주문 상태를 보여줘야 하는 디스플레이에 완벽합니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔄</span>
                 <strong className="text-primary">refreshIcecreamOrder</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `The refresh function is automatically generated for each slice. It re-queries the data using the same conditions defined in the slice, ensuring consistent data fetching.`,
                   ko: `새로고침 함수는 각 슬라이스에 대해 자동으로 생성됩니다. 슬라이스에 정의된 동일한 조건을 사용하여 데이터를 다시 쿼리하므로 일관된 데이터 가져오기가 보장됩니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📋</span>
                 <strong className="text-primary">Load.Units</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Load.Units handles rendering a list of items with proper loading states. It automatically manages the mapping from slice data to individual Unit cards.`,
                   ko: `Load.Units는 적절한 로딩 상태와 함께 아이템 목록의 렌더링을 처리합니다. 슬라이스 데이터에서 개별 Unit 카드로의 매핑을 자동으로 관리합니다.`,
@@ -553,7 +560,7 @@ export const View = ({ view }: ViewProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="slice-component-rules"
@@ -568,56 +575,56 @@ export const View = ({ view }: ViewProps) => {
             })}
           </div>
           <div className="my-4 space-y-4">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-4">
+            <div className={panelRecipe({ radius: "lg" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">1️⃣</span>
                 <strong className="text-primary">
                   {l.trans({ en: "One Slice, One Purpose", ko: "하나의 슬라이스, 하나의 목적" })}
                 </strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Each slice should have a clear, single purpose. inWaiting shows waiting orders, inPickup shows ready orders. Don't try to make a slice that does everything - create multiple focused slices instead.`,
                   ko: `각 슬라이스는 명확하고 단일한 목적을 가져야 합니다. inWaiting은 대기 중인 주문을, inPickup은 준비된 주문을 보여줍니다. 모든 것을 하는 슬라이스를 만들려고 하지 말고, 여러 개의 집중된 슬라이스를 만드세요.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-4">
+            <div className={panelRecipe({ radius: "lg" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">2️⃣</span>
                 <strong className="text-primary">
                   {l.trans({ en: "Zone Matches Slice", ko: "존은 슬라이스와 매칭" })}
                 </strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Always pass the correct slice to Zone components. The slice connects the Zone to its data source and ensures refresh actions target the right slice.`,
                   ko: `항상 Zone 컴포넌트에 올바른 slice를 전달하세요. slice는 Zone을 데이터 소스에 연결하고 새로고침 액션이 올바른 슬라이스를 대상으로 하도록 보장합니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-4">
+            <div className={panelRecipe({ radius: "lg" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">3️⃣</span>
                 <strong className="text-primary">
                   {l.trans({ en: "Props Control Behavior", ko: "Props로 동작 제어" })}
                 </strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Use props like showControls to adapt component behavior for different contexts. This allows reusing the same component across staff views and customer displays.`,
                   ko: `showControls 같은 props를 사용하여 다양한 컨텍스트에 맞게 컴포넌트 동작을 조정하세요. 이렇게 하면 직원 뷰와 고객 디스플레이에서 동일한 컴포넌트를 재사용할 수 있습니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-4">
+            <div className={panelRecipe({ radius: "lg" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">4️⃣</span>
                 <strong className="text-primary">
                   {l.trans({ en: "Dictionary for All Labels", ko: "모든 레이블에 Dictionary 사용" })}
                 </strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Always define slice names and related translations in the dictionary. This ensures consistent labeling across the application and enables proper internationalization.`,
                   ko: `항상 슬라이스 이름과 관련 번역을 dictionary에 정의하세요. 이렇게 하면 애플리케이션 전체에서 일관된 레이블링이 보장되고 적절한 국제화가 가능해집니다.`,
@@ -625,11 +632,11 @@ export const View = ({ view }: ViewProps) => {
               </div>
             </div>
           </div>
-          <div className="my-6 rounded-lg bg-linear-to-r from-base-100 to-base-300 p-6">
+          <div className="my-6 rounded-lg bg-linear-to-r from-background to-border p-6">
             <div className="mb-3 font-bold text-lg text-primary">
               {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
             </div>
-            <ul className="space-y-2 text-base-content/70 text-sm">
+            <ul className="space-y-2 text-foreground/70 text-sm">
               <li>
                 ✓{" "}
                 {l.trans({
@@ -675,9 +682,9 @@ export const View = ({ view }: ViewProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

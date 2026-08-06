@@ -74,14 +74,14 @@ function ComparisonBar(props: { label: string; valueMb: number; maxMb: number; i
     <div>
       <div className="mb-1 flex flex-wrap justify-between gap-2 text-sm">
         <span className={`font-medium ${props.isAkan ? "text-primary" : ""}`}>{props.label}</span>
-        <span className={`font-mono text-base-content/55 ${props.isAkan ? "text-primary/80" : ""}`}>
+        <span className={`font-mono text-foreground/55 ${props.isAkan ? "text-primary/80" : ""}`}>
           {props.valueMb.toFixed(1)}
           {unit}
         </span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-base-content/10">
+      <div className="h-2 overflow-hidden rounded-full bg-foreground/10">
         <div
-          className={`h-full rounded-full ${props.isAkan ? "bg-primary" : "bg-base-content/50"}`}
+          className={`h-full rounded-full ${props.isAkan ? "bg-primary" : "bg-foreground/50"}`}
           style={{ width: `${Math.max(4, ratio * 100)}%` }}
         />
       </div>
@@ -154,16 +154,16 @@ export default function Page() {
   const { l } = usePage();
 
   return (
-    <main className="min-h-screen bg-base-100 text-base-content">
+    <main className="min-h-screen bg-background text-foreground">
       <article className="mx-auto max-w-3xl px-6 py-10 lg:px-8">
         <header>
           <div className="mb-12 flex items-center justify-between gap-4">
-            <p className="font-semibold text-base-content/50 text-sm uppercase tracking-[0.2em]">
+            <p className="font-semibold text-foreground/50 text-sm uppercase tracking-[0.2em]">
               {l.trans({ en: "Production Stability", ko: "Production Stability" })}
             </p>
           </div>
 
-          <p className="mb-4 text-base-content/50 text-sm">
+          <p className="mb-4 text-foreground/50 text-sm">
             {l.trans({
               en: "Cold‑start · soak · cross‑framework comparison",
               ko: "Cold-start · soak · cross‑framework 비교",
@@ -175,7 +175,7 @@ export default function Page() {
               ko: "Akan.js는 빠르기만 한 게 아니라 프로덕션급입니다",
             })}
           </h1>
-          <p className="mt-6 text-base-content/70 text-lg leading-8">
+          <p className="mt-6 text-foreground/70 text-lg leading-8">
             {l.trans({
               en: "We ran Akan.js and five peer frameworks through a 30‑minute production‑style soak on Apple Silicon. The result: Akan.js matches the throughput of the fastest Bun‑native routers while staying stable, restart‑free, and memory‑safe for the entire run.",
               ko: "Apple Silicon에서 Akan.js와 다섯 개의 동급 프레임워크를 30분 production 스타일 soak로 테스트했습니다. 결과: Akan.js는 가장 빠른 Bun 네이티브 라우터와 동등한 처리량을 보이면서 전체 실행 동안 안정적이고, 재시작 없이, 메모리 안전하게 유지되었습니다.",
@@ -187,8 +187,8 @@ export default function Page() {
           <h2 className="font-bold text-2xl leading-tight tracking-tight">
             {l.trans({ en: "How we measured", ko: "측정 방법" })}
           </h2>
-          <div className="mt-6 rounded-3xl bg-base-200 p-6 md:p-8">
-            <div className="space-y-6 text-base-content/75 leading-7">
+          <div className="mt-6 rounded-3xl bg-muted p-6 md:p-8">
+            <div className="space-y-6 text-foreground/75 leading-7">
               <div>
                 <h3 className="font-semibold text-primary text-sm uppercase tracking-[0.2em]">
                   {l.trans({ en: "Workload", ko: "워크로드" })}
@@ -241,7 +241,7 @@ export default function Page() {
           <h2 className="font-bold text-2xl leading-tight tracking-tight">
             {l.trans({ en: "Throughput at the lightweight‑router ceiling", ko: "경량 라우터 상한선에서의 처리량" })}
           </h2>
-          <div className="mt-4 space-y-4 text-base-content/75 leading-7">
+          <div className="mt-4 space-y-4 text-foreground/75 leading-7">
             <p>
               {l.trans({
                 en: "Akan.js delivers 112K requests per second through its gateway‑to‑worker path — within 3% of raw Bun.serve and dead even with ElysiaJS. The entire top four Bun‑native frameworks clustered within 10% of each other, which means the runtime ceiling matters more than the framework choice for this workload.",
@@ -252,7 +252,7 @@ export default function Page() {
         </section>
 
         <section className="mt-10">
-          <h3 className="mb-4 font-semibold text-base-content/70 text-sm uppercase tracking-widest">
+          <h3 className="mb-4 font-semibold text-foreground/70 text-sm uppercase tracking-widest">
             {l.trans({ en: "Requests per second", ko: "초당 요청 수" })}
           </h3>
           <div className="space-y-2">
@@ -276,7 +276,7 @@ export default function Page() {
               unit=" RPS"
             />
           </div>
-          <p className="mt-4 text-base-content/45 text-xs">
+          <p className="mt-4 text-foreground/45 text-xs">
             {l.trans({
               en: "Bars are proportional to the highest RPS in the set. Fastify runs on Node — its number partly reflects the runtime, not just the framework.",
               ko: "막대는 세트 내 최고 RPS에 비례합니다. Fastify는 Node에서 실행되며, 그 수치는 프레임워크뿐 아니라 런타임 차이도 일부 반영합니다.",
@@ -288,7 +288,7 @@ export default function Page() {
           <h2 className="font-bold text-2xl leading-tight tracking-tight">
             {l.trans({ en: "Cold start and idle footprint", ko: "콜드 스타트와 idle 메모리" })}
           </h2>
-          <div className="mt-4 space-y-4 text-base-content/75 leading-7">
+          <div className="mt-4 space-y-4 text-foreground/75 leading-7">
             <p>
               {l.trans({
                 en: "Akan.js cold‑start p50 is ~204 ms — about 100 ms slower than single‑process peers. This is the one‑time cost of spawning a gateway plus a worker process. It does not affect per‑request latency and is comfortably inside our 1,500 ms SLO.",
@@ -300,40 +300,40 @@ export default function Page() {
           <div className="mt-8 overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-base-300 border-b">
-                  <th className="py-2 pr-4 font-semibold text-base-content/45">
+                <tr className="border-border border-b">
+                  <th className="py-2 pr-4 font-semibold text-foreground/45">
                     {l.trans({ en: "Target", ko: "타겟" })}
                   </th>
-                  <th className="px-4 py-2 text-right font-semibold text-base-content/45">
+                  <th className="px-4 py-2 text-right font-semibold text-foreground/45">
                     {l.trans({ en: "Cold p50", ko: "Cold p50" })}
                   </th>
-                  <th className="px-4 py-2 text-right font-semibold text-base-content/45">
+                  <th className="px-4 py-2 text-right font-semibold text-foreground/45">
                     {l.trans({ en: "Cold p95", ko: "Cold p95" })}
                   </th>
-                  <th className="py-2 pl-4 text-right font-semibold text-base-content/45">
+                  <th className="py-2 pl-4 text-right font-semibold text-foreground/45">
                     {l.trans({ en: "Idle RSS", ko: "Idle RSS" })}
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {comparisonData.map((d) => (
-                  <tr key={d.name} className={`border-base-200 border-b ${d.isAkan ? "bg-primary/5" : ""}`}>
+                  <tr key={d.name} className={`border-muted border-b ${d.isAkan ? "bg-primary/5" : ""}`}>
                     <td className={`py-2 pr-4 ${d.isAkan ? "font-semibold text-primary" : ""}`}>
                       {d.name}
-                      <span className="ml-1 text-base-content/35 text-xs">({d.runtime})</span>
+                      <span className="ml-1 text-foreground/35 text-xs">({d.runtime})</span>
                     </td>
                     <td
-                      className={`px-4 py-2 text-right font-mono ${d.isAkan ? "text-primary" : "text-base-content/70"}`}
+                      className={`px-4 py-2 text-right font-mono ${d.isAkan ? "text-primary" : "text-foreground/70"}`}
                     >
                       {d.coldP50} ms
                     </td>
                     <td
-                      className={`px-4 py-2 text-right font-mono ${d.isAkan ? "text-primary" : "text-base-content/70"}`}
+                      className={`px-4 py-2 text-right font-mono ${d.isAkan ? "text-primary" : "text-foreground/70"}`}
                     >
                       ~{Math.round(d.coldP50 + 5)} ms
                     </td>
                     <td
-                      className={`py-2 pl-4 text-right font-mono ${d.isAkan ? "text-primary" : "text-base-content/70"}`}
+                      className={`py-2 pl-4 text-right font-mono ${d.isAkan ? "text-primary" : "text-foreground/70"}`}
                     >
                       {d.idleRss} MB
                     </td>
@@ -342,7 +342,7 @@ export default function Page() {
               </tbody>
             </table>
           </div>
-          <p className="mt-4 text-base-content/45 text-xs">
+          <p className="mt-4 text-foreground/45 text-xs">
             {l.trans({
               en: "10 iterations per target, 60 s settle between runs. Akan.js cold‑start uses the /_akan/app/health ready‑child check; peers use HTTP ping.",
               ko: "타겟당 10회 반복, 실행 간 60초 settle. Akan.js 콜드 스타트는 /_akan/app/health ready‑child 체크를 사용하며, 동료 프레임워크는 HTTP ping을 사용합니다.",
@@ -357,7 +357,7 @@ export default function Page() {
               ko: "Soak 안정성: 프로덕션에서 중요한 지표",
             })}
           </h2>
-          <div className="mt-4 space-y-4 text-base-content/75 leading-7">
+          <div className="mt-4 space-y-4 text-foreground/75 leading-7">
             <p>
               {l.trans({
                 en: "A 30‑minute sustained load at 50 concurrent users. Zero errors, zero worker restarts, zero RSC recycles, and event‑loop lag stayed under 4 ms. All six frameworks passed, but Akan.js is the only one that can report these metrics natively through its built‑in /_akan/app/metrics endpoint.",
@@ -369,24 +369,24 @@ export default function Page() {
           <div className="mt-8 overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-base-300 border-b">
-                  <th className="py-2 pr-4 font-semibold text-base-content/45">
+                <tr className="border-border border-b">
+                  <th className="py-2 pr-4 font-semibold text-foreground/45">
                     {l.trans({ en: "Metric", ko: "지표" })}
                   </th>
-                  <th className="px-4 py-2 text-right font-semibold text-base-content/45">
+                  <th className="px-4 py-2 text-right font-semibold text-foreground/45">
                     {l.trans({ en: "Akan.js", ko: "Akan.js" })}
                   </th>
-                  <th className="py-2 pl-4 text-right font-semibold text-base-content/45">
+                  <th className="py-2 pl-4 text-right font-semibold text-foreground/45">
                     {l.trans({ en: "All frameworks", ko: "전체 프레임워크" })}
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {stabilityMetrics.map((row) => (
-                  <tr key={row.metric.en} className="border-base-200 border-b">
-                    <td className="py-2 pr-4 text-base-content/80">{l.trans(row.metric)}</td>
+                  <tr key={row.metric.en} className="border-muted border-b">
+                    <td className="py-2 pr-4 text-foreground/80">{l.trans(row.metric)}</td>
                     <td className="px-4 py-2 text-right font-mono text-primary">{row.value}</td>
-                    <td className="py-2 pl-4 text-right font-mono text-base-content/55">{row.all}</td>
+                    <td className="py-2 pl-4 text-right font-mono text-foreground/55">{row.all}</td>
                   </tr>
                 ))}
               </tbody>
@@ -405,7 +405,7 @@ export default function Page() {
             {architectureNotes.map((note) => (
               <div key={note.title.en}>
                 <h3 className="font-semibold text-lg">{l.trans(note.title)}</h3>
-                <p className="mt-3 text-base-content/75 leading-7">{l.trans(note.body)}</p>
+                <p className="mt-3 text-foreground/75 leading-7">{l.trans(note.body)}</p>
               </div>
             ))}
           </div>
@@ -413,7 +413,7 @@ export default function Page() {
 
         <section className="mt-12 border-primary border-l-4 pl-5">
           <h2 className="font-bold text-2xl">{l.trans({ en: "Bottom line", ko: "결론" })}</h2>
-          <p className="mt-4 text-base-content/75 leading-7">
+          <p className="mt-4 text-foreground/75 leading-7">
             {l.trans({
               en: "Akan.js is not the fastest HTTP framework on a synthetic ping benchmark — and it should not be. It runs a gateway‑and‑worker architecture, loads an entire full‑stack runtime, and still delivers throughput indistinguishable from the Bun‑native ceiling. After 30 minutes of sustained load: zero errors, zero restarts, flat memory. That is what production‑grade looks like.",
               ko: "Akan.js는 합성 ping 벤치마크에서 가장 빠른 HTTP 프레임워크가 아닙니다. 그래서도 안 됩니다. 게이트웨이-워커 아키텍처를 실행하고 전체 풀스택 런타임을 로드하면서도 Bun 네이티브 상한선과 구분할 수 없는 처리량을 제공합니다.",
@@ -421,8 +421,8 @@ export default function Page() {
           </p>
         </section>
 
-        <footer className="mt-16 border-base-200 border-t pt-8">
-          <p className="text-base-content/40 text-sm leading-7">
+        <footer className="mt-16 border-muted border-t pt-8">
+          <p className="text-foreground/40 text-sm leading-7">
             {l.trans({
               en: "Benchmark run ID: 2026-06-12T10-25-39-prod-compare. All targets used prebuilt production artifacts. Raw data and the open‑source harness are available in the benchmarks/api-benchmark directory of the Ieading-flight-guidance repository.",
               ko: "벤치마크 run ID: 2026-06-12T10-25-39-prod-compare. 모든 타겟은 사전 빌드된 production 아티팩트를 사용했습니다. 원시 데이터와 오픈소스 하네스는 Ieading-flight-guidance 저장소의 benchmarks/api-benchmark 디렉토리에서 확인할 수 있습니다.",

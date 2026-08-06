@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "Akan Kubernetes 배포는 하나의 app 컨테이너, Service, Ingress, sqlite 데이터를 위한 persistent storage를 중심으로 구성됩니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>{l.trans({ en: "Deployment runs the app image.", ko: "Deployment는 app image를 실행합니다." })}</li>
             <li>
               {l.trans({
@@ -36,10 +36,10 @@ export default function Page() {
                 ko: "PVC는 pod 재시작 후에도 sqlite 데이터를 유지합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="architecture" title={l.trans({ en: "Architecture", ko: "구조" })}>
         <Docs.Title>{l.trans({ en: "Architecture", ko: "구조" })}</Docs.Title>
@@ -52,6 +52,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Mental model", ko: "이해 모델" })}
           code={`Domain
   -> Ingress
@@ -60,7 +61,7 @@ export default function Page() {
   -> PVC /workspace/sqlite`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="console" title={l.trans({ en: "Open Console", ko: "Console 열기" })}>
         <Docs.Title>{l.trans({ en: "Open Console", ko: "Console 열기" })}</Docs.Title>
@@ -79,12 +80,13 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Pod exec", ko: "Pod exec" })}
           language="bash"
           code="kubectl exec -it -n prod pod/myapp-xxxxx -c myapp -- sh -lc 'AKAN_CONSOLE=1 bun console.js'"
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="values" title={l.trans({ en: "Values", ko: "Values" })}>
         <Docs.Title>{l.trans({ en: "Values", ko: "Values" })}</Docs.Title>
@@ -97,6 +99,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="values.yaml"
           language="yaml"
           code={`appName: myapp
@@ -117,7 +120,7 @@ main:
       storage: 5Gi`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="scale" title={l.trans({ en: "Scale", ko: "확장" })}>
         <Docs.Title>{l.trans({ en: "Scale", ko: "확장" })}</Docs.Title>
@@ -128,7 +131,7 @@ main:
               ko: "`app.replica`는 pod 안에서 `AKAN_REPLICA`가 됩니다. CPU, memory 값과 함께 사용해 작업을 안전하게 확장하세요.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "`1,0,0`: small service with one request child.",
@@ -147,15 +150,15 @@ main:
                 ko: "`0,0,1`: 단순 환경을 위한 all-purpose child 하나.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Start with conservative requests and watch metrics before raising limits.",
@@ -174,10 +177,10 @@ main:
                 ko: "Ingress rule을 예측 가능하게 유지하려면 domain과 subRoute 값을 명확히 적으세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

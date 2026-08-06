@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { BrowserMockup, Code, Divider, Docs, DocsToc, MobileMockup } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -35,7 +35,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="requirements" title={l.trans({ en: "Requirements", ko: "요구사항" })}>
         <Docs.Title>{l.trans({ en: "Requirements", ko: "요구사항" })}</Docs.Title>
@@ -48,15 +48,25 @@ export default function Page() {
           </div>
           <div className="flex flex-col gap-1 p-4 font-medium">
             <div>
-              <input className="checkbox" type="checkbox" checked readOnly />{" "}
+              <input className="size-4 rounded border border-input accent-primary" type="checkbox" checked readOnly />{" "}
               {l.trans({ en: "Bun 1.3.13 or higher", ko: "Bun 1.3.13 이상" })}
             </div>
             <div>
-              <input className="checkbox" type="checkbox" checked={false} readOnly />{" "}
+              <input
+                className="size-4 rounded border border-input accent-primary"
+                type="checkbox"
+                checked={false}
+                readOnly
+              />{" "}
               {l.trans({ en: "Docker for local database services", ko: "로컬 데이터 서비스 실행을 위한 Docker" })}
             </div>
             <div>
-              <input className="checkbox" type="checkbox" checked={false} readOnly />{" "}
+              <input
+                className="size-4 rounded border border-input accent-primary"
+                type="checkbox"
+                checked={false}
+                readOnly
+              />{" "}
               {l.trans({
                 en: "Android Studio or Xcode for native app builds",
                 ko: "네이티브 앱 빌드를 위한 Android Studio 또는 Xcode",
@@ -65,7 +75,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="create-workspace" title={l.trans({ en: "Create a Workspace", ko: "워크스페이스 생성" })}>
         <Docs.Title>{l.trans({ en: "Create a Workspace", ko: "워크스페이스 생성" })}</Docs.Title>
@@ -101,7 +111,7 @@ akan create-workspace myorg --app myapp
 cd myorg`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="run-app" title={l.trans({ en: "Run the App", ko: "앱 실행" })}>
         <Docs.Title>{l.trans({ en: "Run the App", ko: "앱 실행" })}</Docs.Title>
@@ -150,6 +160,7 @@ cd myorg`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/myapp/page/_index.tsx"
           code={`
 export default function Page() {
@@ -176,21 +187,11 @@ export default function Page() {
           </div>
         </Docs.Description>
         <div className="w-full justify-center gap-4 sm:flex">
-          <div className="mockup-browser w-full border-2 border-base-content/30 bg-base-100">
-            <div className="mockup-browser-toolbar">
-              <div className="input">http://localhost:8282</div>
-            </div>
-            <div className="flex h-80 place-content-center items-center justify-center text-2xl">Hello Akan.js! 🎉</div>
-          </div>
+          <BrowserMockup>Hello Akan.js! 🎉</BrowserMockup>
 
-          <div className="relative hidden h-96 w-80 sm:block">
-            <div className="mockup-phone absolute -translate-x-1/4 -translate-y-1/4 scale-50">
-              <div className="mockup-phone-camera"></div>
-              <div className="mockup-phone-display flex items-center justify-center bg-base-100 px-4 text-center text-4xl">
-                Hello Akan.js! 🎉
-              </div>
-            </div>
-          </div>
+          <MobileMockup className="hidden self-center sm:block">
+            <span className="text-lg">Hello Akan.js! 🎉</span>
+          </MobileMockup>
         </div>
 
         <div className="h-12" />
@@ -211,6 +212,7 @@ export default function Page() {
         </Docs.Description>
         <div className="flex flex-col gap-2">
           <Code.Snippet
+            className="w-full"
             title="apps/myapp/main.ts"
             code={`
 import { AkanApp } from "akanjs/server";
@@ -231,6 +233,7 @@ void run();
             </div>
           </Docs.Description>
           <Code.Snippet
+            className="w-full"
             language="bash"
             title="Terminal"
             showLineNumbers={false}
@@ -243,7 +246,7 @@ void run();
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="build" title={l.trans({ en: "Build", ko: "빌드" })}>
         <Docs.Title>{l.trans({ en: "Build", ko: "빌드" })}</Docs.Title>
@@ -263,7 +266,7 @@ void run();
           })}
         </div>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

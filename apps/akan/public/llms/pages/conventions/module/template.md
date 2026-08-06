@@ -98,7 +98,7 @@ Use Load.Edit for server pages with prepared edit data, Model.Edit for modal edi
 "use client";
 import { st, usePage } from "@apps/akan/client";
 import { Field } from "@libs/shared/ui";
-import { Layout } from "akanjs/ui";
+import { Layout, buttonRecipe } from "akanjs/ui";
 
 interface TicketEditProps {
   className?: string;
@@ -241,7 +241,7 @@ const { story, storyEdit } = await fetch.editStory(storyId);
 
 ```ts
 <Model.NewWrapper partial={{ devApp }} slice={fetch.slice.releaseInDevApp}>
-  <button className="btn btn-secondary">+ New</button>
+  <button className={buttonRecipe({ variant: "secondary" })}>+ New</button>
 </Model.NewWrapper>
 ```
 

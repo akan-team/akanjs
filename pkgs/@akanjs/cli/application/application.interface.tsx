@@ -1,7 +1,9 @@
 "use client";
 import type { ChildProcess } from "node:child_process";
 import type EventEmitter from "node:events";
-import { type App as AppType, MultiScrollList, useStdoutDimensions } from "@akanjs/devkit";
+import type { App as AppType } from "@akanjs/devkit/commandDecorators";
+import { MultiScrollList } from "@akanjs/devkit/ui";
+import { useStdoutDimensions } from "@akanjs/devkit/useStdoutDimensions";
 import { Box, render, Text, useApp } from "ink";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";

@@ -7,11 +7,11 @@ export default function Page() {
       <Scroll.Slide id="css-overview" title={"CSS Styling Guidelines"}>
         <Docs.Title>{"CSS Styling Guidelines"}</Docs.Title>
         <Docs.Description>
-          Comprehensive styling guidelines for Akan.js components using TailwindCSS and DaisyUI ensuring consistency,
-          maintainability and proper theming across applications.
+          Comprehensive styling guidelines for Akan.js components using TailwindCSS and akanjs/ui semantic tokens
+          ensuring consistency, maintainability and proper theming across applications.
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="core-principles" title={"Core Principles"}>
         <Docs.Title>{"Core Principles"}</Docs.Title>
@@ -22,7 +22,7 @@ export default function Page() {
             {
               name: "Utility-First",
               desc: "Use Tailwind's utility classes instead of custom CSS",
-              example: "className='p-4 bg-base-100'",
+              example: "className='p-4 bg-background'",
             },
             {
               name: "Component Composition",
@@ -31,8 +31,8 @@ export default function Page() {
             },
             {
               name: "Theme Consistency",
-              desc: "Use DaisyUI's semantic color system",
-              example: "bg-primary text-primary-content",
+              desc: "Use the semantic design-token color system",
+              example: "bg-primary text-primary-foreground",
             },
             {
               name: "Responsive Design",
@@ -47,7 +47,7 @@ export default function Page() {
           ]}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="class-management-clsx" title={"Class Management (clsx)"}>
         <Docs.Title>{"Class Management (clsx)"}</Docs.Title>
@@ -71,7 +71,7 @@ export default function Page() {
   {
     "bg-primary": isPrimary,
     "bg-secondary": isSecondary,
-    "bg-error": isError,
+    "bg-destructive": isError,
   },
   className
 )}>
@@ -79,7 +79,7 @@ export default function Page() {
 </div>`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="component-best-practices" title={"Component Best Practices"}>
         <Docs.Title>{"Component Best Practices"}</Docs.Title>
@@ -91,7 +91,7 @@ export default function Page() {
 }
 
 export const Card = ({ className }: CardProps) => (
-  <div className={clsx("card bg-base-100 shadow-md", className)}>
+  <div className={clsx("card bg-background shadow-md", className)}>
     {/* Content */}
   </div>
 );`}
@@ -105,21 +105,21 @@ export const Card = ({ className }: CardProps) => (
               type: "color",
               default: "theme-defined",
               desc: "Primary brand color",
-              example: "bg-primary text-primary-content",
+              example: "bg-primary text-primary-foreground",
             },
             {
               key: "secondary",
               type: "color",
               default: "theme-defined",
               desc: "Secondary brand color",
-              example: "bg-secondary text-secondary-content",
+              example: "bg-secondary text-secondary-foreground",
             },
             {
               key: "base-100",
               type: "color",
               default: "theme-defined",
               desc: "Base background color",
-              example: "bg-base-100 text-base-content",
+              example: "bg-background text-foreground",
             },
           ]}
         />
@@ -138,7 +138,7 @@ export const Card = ({ className }: CardProps) => (
           language="typescript"
           code={`<button className="
   bg-primary 
-  hover:bg-primary-focus 
+  hover:bg-primary 
   focus:ring-2 focus:ring-primary
   active:scale-95
   disabled:opacity-50
@@ -157,24 +157,33 @@ export const Card = ({ className }: CardProps) => (
 </div>`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="additional-resources" title={"Additional Resources"}>
         <Docs.Title>{"Additional Resources"}</Docs.Title>
         <Docs.Description>
           <ul className="list-disc space-y-2 pl-6">
             <li>
-              <a href="https://tailwindcss.com/docs" className="link link-primary">
+              <a
+                href="https://tailwindcss.com/docs"
+                className="text-primary underline underline-offset-4 hover:no-underline"
+              >
                 TailwindCSS Documentation
               </a>
             </li>
             <li>
-              <a href="https://daisyui.com/" className="link link-primary">
-                DaisyUI Documentation
+              <a
+                href="https://www.radix-ui.com/"
+                className="text-primary underline underline-offset-4 hover:no-underline"
+              >
+                Radix UI Documentation
               </a>
             </li>
             <li>
-              <a href="https://nerdcave.com/tailwind-cheat-sheet" className="link link-primary">
+              <a
+                href="https://nerdcave.com/tailwind-cheat-sheet"
+                className="text-primary underline underline-offset-4 hover:no-underline"
+              >
                 Tailwind CSS Cheat Sheet
               </a>
             </li>
@@ -182,7 +191,7 @@ export const Card = ({ className }: CardProps) => (
         </Docs.Description>
       </Scroll.Slide>
 
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>
   );

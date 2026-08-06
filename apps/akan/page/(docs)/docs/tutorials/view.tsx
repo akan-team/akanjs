@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -28,36 +28,36 @@ export default function Page() {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🎯</span>
                 <strong className="text-primary">ViewWrapper (Util.tsx)</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `A clickable wrapper that triggers the view modal when clicked. Think of it as the "View Details" button functionality.`,
                   ko: `클릭하면 뷰 모달을 트리거하는 클릭 가능한 래퍼입니다. "상세보기" 버튼 기능이라고 생각하면 됩니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🖼️</span>
                 <strong className="text-primary">ViewModal (Model component)</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `A modal popup that displays when customers want to see details. It handles opening, closing, and data loading automatically.`,
                   ko: `고객이 세부사항을 보고 싶을 때 표시되는 모달 팝업입니다. 열기, 닫기, 데이터 로딩을 자동으로 처리합니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📋</span>
                 <strong className="text-primary">Detail View (View.tsx)</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `The actual content inside the modal that displays all the order information in a beautiful, organized layout.`,
                   ko: `모달 안의 실제 내용으로, 모든 주문 정보를 아름답고 체계적인 레이아웃으로 표시합니다.`,
@@ -73,7 +73,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       <Scroll.Slide id="view-wrapper" title={l.trans({ en: "Add View/Edit Modal", ko: "보기/수정 모달 추가하기" })}>
         <Docs.Title>{l.trans({ en: "Add View/Edit Modal", ko: "보기/수정 모달 추가하기" })}</Docs.Title>
         <Docs.Description>
@@ -84,13 +84,14 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Zone.tsx"
             code={`
 "use client"; // [!code collapse:3]
 import type { ClientInit, ClientView, SliceMeta } from "akanjs/fetch";
 import { cnst, fetch, IcecreamOrder } from "@apps/koyo/client";
 import { DefaultOf } from "akanjs/constant";
-import { Load, Model } from "akanjs/ui";
+import { Load, Model, buttonRecipe } from "akanjs/ui";
 
 interface CardProps {
   className?: string;
@@ -171,7 +172,7 @@ export const View = ({ view }: ViewProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       <Scroll.Slide
         id="button-on-unit"
         title={l.trans({ en: "Add View Button to Cards", ko: "카드에 뷰 버튼 추가하기" })}
@@ -185,43 +186,45 @@ export const View = ({ view }: ViewProps) => {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx"
             code={`
-import { clsx, type ModelProps } from "akanjs/client"; // [!code collapse:2]
+import { cn, type ModelProps } from "akanjs/client"; // [!code collapse:2]
 import { cnst, fetch, usePage } from "@apps/koyo/client";
 import { Model } from "akanjs/ui"; // [!code ++]
 
 export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIcecreamOrder>) => {
   const { l } = usePage();
   return (
-    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-base-100 via-base-200 to-base-300 px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
+    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-muted to-border px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
       <div className="flex flex-col justify-center">
         <div className="flex items-center gap-2 text-lg font-semibold text-primary">
-          <span className="inline-block rounded bg-base-200 px-2 py-1 text-xs font-bold tracking-wider uppercase">
+          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider uppercase">
             {l("icecreamOrder.id")}
           </span>
           <span className="ml-2 font-mono text-primary">#{icecreamOrder.id.slice(-4)}</span> // [!code ++]
         </div>
-        <div className="mt-4 flex items-center gap-2"> // [!code collapse:16]
-          <span className="inline-block rounded border border-base-300 bg-base-100 px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+        <div className="mt-4 flex items-center gap-2"> // [!code collapse:17]
+          <span className="inline-block rounded border border-border bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
             {l("icecreamOrder.status")}
           </span>
           <span
-            className={clsx("ml-2 rounded-full px-3 py-1 text-sm font-semibold", {
-              "border border-primary/40 bg-base-100 text-primary": icecreamOrder.status === "active",
-              "border border-warning/40 bg-base-100 text-warning": icecreamOrder.status === "processing",
-              "border border-info/40 bg-info text-info-content": icecreamOrder.status === "served",
-              "border border-accent/40 bg-base-100 text-accent": icecreamOrder.status === "finished",
-              "border border-base-300 bg-base-100 text-base-content/70": icecreamOrder.status === "canceled",
-            })}
+            className={cn(
+              "ml-2 rounded-full px-3 py-1 text-sm font-semibold",
+              icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
+              icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
+              icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
+              icecreamOrder.status === "finished" && "border border-accent/40 bg-background text-accent",
+              icecreamOrder.status === "canceled" && "border border-border bg-background text-foreground/70",
+            )}
           >
             {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
           </span>
         </div>
       </div>
-      <div className="bg-base-100 flex items-center justify-center gap-2 rounded-xl p-4"> // [!code ++:7]
+      <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4"> // [!code ++:7]
         <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
-          <button className="btn btn-primary">
+          <button className={buttonRecipe({ variant: "primary" })}>
             <span>{l.trans({ en: "View", ko: "보기" })}</span>
           </button>
         </Model.ViewWrapper>
@@ -262,15 +265,15 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
               <div>
                 <strong>Button styling</strong>:{" "}
                 {l.trans({
-                  en: "The button uses btn-primary and btn-xl classes for consistent styling across the app",
-                  ko: "버튼은 앱 전체에서 일관된 스타일링을 위해 btn-primary와 btn-xl 클래스를 사용합니다",
+                  en: "The button uses the buttonRecipe primary variant and lg size for consistent styling across the app",
+                  ko: "버튼은 앱 전체에서 일관된 스타일링을 위해 buttonRecipe의 primary variant와 lg size를 사용합니다",
                 })}
               </div>
             </div>
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       <Scroll.Slide id="design-detail-view" title={l.trans({ en: "Design Detail View", ko: "상세 뷰 디자인하기" })}>
         <Docs.Title>{l.trans({ en: "Design Detail View", ko: "상세 뷰 디자인하기" })}</Docs.Title>
         <Docs.Description>
@@ -281,9 +284,10 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.View.tsx"
             code={`
-import { clsx } from "akanjs/client"; // [!code collapse:8]
+import { cn } from "akanjs/client"; // [!code collapse:8]
 import { cnst, usePage } from "@apps/koyo/client";
 
 interface GeneralProps {
@@ -294,50 +298,51 @@ interface GeneralProps {
 export const General = ({ className, icecreamOrder }: GeneralProps) => {
   const { l } = usePage();
   return (
-    <div className={clsx(className, "mx-auto w-full space-y-6 rounded-xl p-8 shadow-lg")}>
+    <div className={cn(className, "mx-auto w-full space-y-6 rounded-xl p-8 shadow-lg")}>
       <div className="flex items-center gap-3 border-b pb-4">
         <span className="text-3xl font-extrabold text-primary">🍦</span>
         <span className="text-2xl font-bold">{l("icecreamOrder.modelName")}</span>
-        <span className="ml-auto text-xs text-base-content/50">#{icecreamOrder.id}</span>
+        <span className="ml-auto text-xs text-foreground/50">#{icecreamOrder.id}</span>
       </div>
       <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-        <div className="font-semibold text-base-content/50">{l("icecreamOrder.size")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.size")}</div>
         <div>{icecreamOrder.size} cc</div>
-        <div className="font-semibold text-base-content/50">{l("icecreamOrder.toppings")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.toppings")}</div>
         <div className="flex flex-wrap gap-2">
           {icecreamOrder.toppings.length === 0 ? (
-            <span className="italic text-base-content/70">
+            <span className="italic text-foreground/70">
               {l.trans({ en: "No toppings", ko: "토핑 없음" })}
             </span>
           ) : (
             icecreamOrder.toppings.map((topping) => (
               <span
                 key={topping}
-                className="inline-block rounded-full bg-base-100 px-2 py-1 text-xs font-medium text-primary"
+                className="inline-block rounded-full bg-background px-2 py-1 text-xs font-medium text-primary"
               >
                 {l(\`topping.\${topping}\`)}
               </span>
             ))
           )}
         </div>
-        <div className="font-semibold text-base-content/50">{l("icecreamOrder.status")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.status")}</div>
         <div>
           <span
-            className={clsx("inline-block rounded-full px-2 py-1 text-xs font-semibold", {
-              "border border-primary/40 bg-base-100 text-primary": icecreamOrder.status === "active",
-              "border border-warning/40 bg-base-100 text-warning": icecreamOrder.status === "processing",
-              "border border-info/40 bg-info text-info-content": icecreamOrder.status === "served",
-              "border border-accent/40 bg-base-100 text-accent": icecreamOrder.status === "finished",
-              "border border-base-300 bg-base-100 text-base-content/70": icecreamOrder.status === "canceled",
-            })}
+            className={cn(
+              "inline-block rounded-full px-2 py-1 text-xs font-semibold",
+              icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
+              icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
+              icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
+              icecreamOrder.status === "finished" && "border border-accent/40 bg-background text-accent",
+              icecreamOrder.status === "canceled" && "border border-border bg-background text-foreground/70",
+            )}
           >
             {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
           </span>
         </div>
-        <div className="font-semibold text-base-content/50">{l("icecreamOrder.createdAt")}</div>
-        <div className="text-base-content/70">{icecreamOrder.createdAt.format("YYYY-MM-DD HH:mm:ss")}</div>
-        <div className="font-semibold text-base-content/50">{l("icecreamOrder.updatedAt")}</div>
-        <div className="text-base-content/70">{icecreamOrder.updatedAt.format("YYYY-MM-DD HH:mm:ss")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.createdAt")}</div>
+        <div className="text-foreground/70">{icecreamOrder.createdAt.format("YYYY-MM-DD HH:mm:ss")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.updatedAt")}</div>
+        <div className="text-foreground/70">{icecreamOrder.updatedAt.format("YYYY-MM-DD HH:mm:ss")}</div>
       </div>
     </div>
   );
@@ -350,36 +355,36 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🎨</span>
                 <strong className="text-primary">{l.trans({ en: "Header Section", ko: "헤더 섹션" })}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Shows an ice cream emoji, the order title from dictionary, and the order ID number for reference`,
                   ko: `아이스크림 이모지, dictionary의 주문 제목, 참조용 주문 ID 번호를 보여줍니다`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📊</span>
                 <strong className="text-primary">{l.trans({ en: "Grid Layout", ko: "그리드 레이아웃" })}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Uses a 2-column grid to organize field labels and values in a clean, scannable format`,
                   ko: `2열 그리드를 사용하여 필드 레이블과 값을 깔끔하고 읽기 쉬운 형식으로 구성합니다`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🏷️</span>
                 <strong className="text-primary">{l.trans({ en: "Visual Elements", ko: "시각적 요소" })}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Toppings display as colored badges, status shows with conditional styling, and timestamps are formatted for readability`,
                   ko: `토핑은 색상 배지로 표시되고, 상태는 조건부 스타일링으로 표시되며, 타임스탬프는 가독성을 위해 형식화됩니다`,
@@ -389,7 +394,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       <Scroll.Slide id="test-implementation" title={l.trans({ en: "Test Your Implementation", ko: "구현 테스트하기" })}>
         <Docs.Title>{l.trans({ en: "Test Your Implementation", ko: "구현 테스트하기" })}</Docs.Title>
         <Docs.Description>
@@ -399,11 +404,11 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
               ko: `상세 뷰 구현을 테스트해봅시다. 아이스크림 주문 페이지로 이동해서 주문 카드의 "보기" 버튼을 클릭하여 시스템이 올바르게 작동하는지 확인하세요.`,
             })}
           </div>
-          <div className="my-4 rounded-lg border border-base-300 bg-base-100 p-4">
+          <div className={panelRecipe({ radius: "lg" }, "my-4")}>
             <div className="mb-2 font-semibold text-primary">
               {l.trans({ en: "Testing Steps:", ko: "테스트 단계:" })}
             </div>
-            <ol className="list-decimal space-y-2 pl-5 text-base-content/70 text-sm">
+            <ol className="list-decimal space-y-2 pl-5 text-foreground/70 text-sm">
               <li>
                 {l.trans({
                   en: "Navigate to http://localhost:8282/icecreamOrder",
@@ -444,7 +449,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       <Scroll.Slide
         id="best-practices"
         title={l.trans({ en: "Best Practices for Detail Views", ko: "상세 뷰 모범 사례" })}
@@ -458,54 +463,54 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             })}
           </div>
           <div className="my-4 space-y-4">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-4">
+            <div className={panelRecipe({ radius: "lg" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">✅</span>
                 <strong className="text-primary">
                   {l.trans({ en: "Use Dictionary Translations", ko: "Dictionary 번역 사용" })}
                 </strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Always use l() for displaying field names and values. This ensures consistency and proper multilingual support.`,
                   ko: `필드 이름과 값을 표시할 때는 항상 l()을 사용하세요. 이렇게 하면 일관성과 적절한 다국어 지원이 보장됩니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-4">
+            <div className={panelRecipe({ radius: "lg" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🎨</span>
                 <strong className="text-primary">
                   {l.trans({ en: "Consistent Visual Hierarchy", ko: "일관된 시각적 계층구조" })}
                 </strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Use grid layouts, consistent spacing, and clear visual separation between different pieces of information.`,
                   ko: `그리드 레이아웃, 일관된 간격, 다른 정보 간의 명확한 시각적 분리를 사용하세요.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-4">
+            <div className={panelRecipe({ radius: "lg" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔧</span>
                 <strong className="text-primary">
                   {l.trans({ en: "Reusable Components", ko: "재사용 가능한 컴포넌트" })}
                 </strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Separate the ViewWrapper logic from the actual view content. This allows the wrapper to be reused across different display contexts.`,
                   ko: `ViewWrapper 로직을 실제 뷰 내용과 분리하세요. 이렇게 하면 래퍼를 다른 표시 맥락에서 재사용할 수 있습니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-4">
+            <div className={panelRecipe({ radius: "lg" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">⚡</span>
                 <strong className="text-primary">{l.trans({ en: "Handle Empty States", ko: "빈 상태 처리" })}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Always provide fallback displays for empty or null values, like showing "No toppings" when the toppings array is empty.`,
                   ko: `토핑 배열이 비어있을 때 "토핑 없음"을 표시하는 것처럼 빈 값이나 null 값에 대한 대체 표시를 항상 제공하세요.`,
@@ -515,7 +520,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       <Scroll.Slide id="next-steps" title={l.trans({ en: "What's Next?", ko: "다음은 무엇인가요?" })}>
         <Docs.Title>{l.trans({ en: "What's Next?", ko: "다음은 무엇인가요?" })}</Docs.Title>
         <Docs.Description>
@@ -525,11 +530,11 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
               ko: `아이스크림 주문에 대한 상세 뷰를 성공적으로 구현했습니다. 이제 고객들이 주문을 클릭해서 체계적인 형식으로 모든 세부사항을 볼 수 있습니다. 모달 시스템은 주문 정보를 보기 위한 깔끔한 인터페이스를 제공합니다.`,
             })}
           </div>
-          <div className="my-6 rounded-lg bg-linear-to-r from-base-100 to-base-300 p-6">
+          <div className="my-6 rounded-lg bg-linear-to-r from-background to-border p-6">
             <div className="mb-3 font-bold text-lg text-primary">
               {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
             </div>
-            <ul className="space-y-2 text-base-content/70 text-sm">
+            <ul className="space-y-2 text-foreground/70 text-sm">
               <li>
                 ✓{" "}
                 {l.trans({
@@ -551,7 +556,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

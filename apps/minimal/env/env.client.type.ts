@@ -15,6 +15,6 @@ export type AppClientEnv = ClientEnv & {
     messagingSenderId: string;
     appId: string;
     measurementId?: string;
-    vapidKey: string;
+    vapidKey?: string;
   };
 };

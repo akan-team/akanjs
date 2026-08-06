@@ -7,7 +7,13 @@ import {
   type PrimitiveScalar,
 } from "akanjs/base";
 import { capitalize } from "akanjs/common";
-import { type ConstantCls, type ConstantField, type ConstantModel, ConstantRegistry } from "akanjs/constant";
+import {
+  type ConstantCls,
+  type ConstantField,
+  type ConstantModel,
+  ConstantRegistry,
+  type TextFieldRole,
+} from "akanjs/constant";
 
 export const databaseModelVariants = ["input", "object", "full", "light", "insight"] as const;
 export type DatabaseModelVariant = (typeof databaseModelVariants)[number];
@@ -93,7 +99,7 @@ export interface FieldSchema {
   defaultLabel?: string;
   exampleLabel?: string;
   constraints: string[];
-  text?: "search" | "filter";
+  text?: TextFieldRole;
   meta: Record<string, unknown>;
   raw: ConstantField;
 }

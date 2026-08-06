@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import type { ReactNode } from "react";
 
 export interface ContentProps {
@@ -7,5 +7,5 @@ export interface ContentProps {
   children?: ReactNode;
 }
 export const Content = ({ className, children }: ContentProps) => {
-  return <div className={clsx("block w-full", className)}>{children}</div>;
+  return <div className={cn("block w-full", className)}>{children}</div>;
 };

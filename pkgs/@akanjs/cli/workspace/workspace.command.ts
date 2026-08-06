@@ -1,5 +1,5 @@
-import { command, Exec, GlobalConfig, Workspace } from "@akanjs/devkit";
-
+import { GlobalConfig } from "@akanjs/devkit/cloud";
+import { command, Exec, Workspace } from "@akanjs/devkit/commandDecorators";
 import { WorkspaceScript } from "./workspace.script";
 
 export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({ public: target }) => ({
@@ -36,7 +36,16 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
       default: process.env.GITHUB_OWNER,
       nullable: true,
     })
-    .exec(async function (workspaceName, app, dir, libs, init, registry, owner) {
+    .option("mcpInstall", Boolean, {
+      desc: "Install the Akan MCP server config for Cursor, Claude Code, and Codex? (Recommended)",
+      default: true,
+    })
+    .option("agentInstall", Boolean, {
+      flag: "A",
+      desc: "Install Akan agent rules (AGENTS.md, CLAUDE.md, Cursor)? (Recommended)",
+      default: true,
+    })
+    .exec(async function (workspaceName, app, dir, libs, init, registry, owner, mcpInstall, agentInstall) {
       const appName = app || "app";
       await this.workspaceScript.createWorkspace(
         workspaceName.toLowerCase().replace(/ /g, "-"),
@@ -46,6 +55,8 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
           installLibs: libs,
           init,
           owner,
+          mcpInstall,
+          agentInstall,
           ...(registry ? { registryUrl: registry } : {}),
         },
       );

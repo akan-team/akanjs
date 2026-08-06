@@ -2,6 +2,7 @@
 import type { ReactNode } from "react";
 
 import { Dialog } from "./Dialog";
+import { createOverridable } from "./UiOverride";
 
 export interface ModalProps {
   /** Additional classes for the modal surface. */
@@ -21,7 +22,11 @@ export interface ModalProps {
   confirmClose?: boolean;
 }
 
-export const Modal = ({
+/**
+ * Default akanjs modal skin. Kept as the fallback implementation; apps replace
+ * it per-route through a `page/**\/_overrides.tsx` manifest.
+ */
+export const DefaultModal = ({
   className,
   title,
   action,
@@ -41,3 +46,10 @@ export const Modal = ({
     </Dialog>
   );
 };
+
+/**
+ * Public Modal. Resolves to a route-scoped override when a `_overrides.tsx` in
+ * the route's ancestry declares one, otherwise renders {@link DefaultModal}.
+ * The proxy is transparent to every existing `<Modal … />` call site.
+ */
+export const Modal = createOverridable("Modal", DefaultModal);

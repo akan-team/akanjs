@@ -1,7 +1,8 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { type ReactNode, useContext, useEffect } from "react";
 
+import { Tooltip } from "../Tooltip";
 import { TabContext } from "./context";
 
 export interface MenuProps {
@@ -35,22 +36,23 @@ export const Menu = ({
   }, [disabled]);
 
   return (
-    <div
-      data-tip={tooltip}
-      className={clsx(className, {
-        "cursor-pointer": menu !== currentMenu && !disabled,
-        "cursor-not-allowed": disabled,
-        tooltip: !!tooltip,
-        [activeClassName]: menu === currentMenu,
-        [disabledClassName]: disabled,
-      })}
-      onClick={() => {
-        if (disabled) return;
-        setMenu(menu);
-        if (scrollToTop) window.scrollTo({ top: 0, behavior: "smooth" });
-      }}
-    >
-      {children}
-    </div>
+    <Tooltip content={tooltip}>
+      <div
+        className={cn(
+          className,
+          menu !== currentMenu && !disabled && "cursor-pointer",
+          disabled && "cursor-not-allowed",
+          menu === currentMenu && activeClassName,
+          disabled && disabledClassName,
+        )}
+        onClick={() => {
+          if (disabled) return;
+          setMenu(menu);
+          if (scrollToTop) window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
+      >
+        {children}
+      </div>
+    </Tooltip>
   );
 };

@@ -1,4 +1,5 @@
-import { formatQualityScanResult, script, type Workspace } from "@akanjs/devkit";
+import { script, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { formatQualityScanResult } from "@akanjs/devkit/qualityScanner";
 import { Logger } from "akanjs/common";
 
 import { QualityRunner } from "./quality.runner";

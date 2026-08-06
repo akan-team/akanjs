@@ -1,10 +1,5 @@
-import {
-  createWorkflowStepRegistry,
-  script,
-  type WorkflowFormat,
-  type WorkflowPlanInputs,
-  type Workspace,
-} from "@akanjs/devkit";
+import { script, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { createWorkflowStepRegistry, type WorkflowFormat, type WorkflowPlanInputs } from "@akanjs/devkit/workflow";
 import { Logger } from "akanjs/common";
 import { ModuleScript } from "../module/module.script";
 import { PrimitiveScript } from "../primitive/primitive.script";

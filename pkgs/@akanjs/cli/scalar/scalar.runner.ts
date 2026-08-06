@@ -1,4 +1,5 @@
-import { AiSession, runner, type Sys } from "@akanjs/devkit";
+import { AiSession } from "@akanjs/devkit/aiEditor";
+import { runner, type Sys } from "@akanjs/devkit/commandDecorators";
 import { pluralizeName } from "../pluralizeName";
 
 import { ScalarPrompt } from "./scalar.prompt";

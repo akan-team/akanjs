@@ -42,6 +42,13 @@ export interface RscTraceMetadata {
   patchHeadSafe?: boolean;
   patchHeadSnapshot?: string;
   routeState?: string;
+  /**
+   * Resolved from the matched route's `pageConfig.ssr === "block"`. Rides the
+   * trace so the host (which never resolves pageConfig itself) can decide
+   * whether the full-document SSR pass buffers until every Suspense boundary
+   * resolves. Absent/`false` means stream the shell first.
+   */
+  ssrBlocking?: boolean;
 }
 
 export interface SsrFromRscInput {
@@ -73,4 +80,11 @@ export interface SsrFromRscInput {
   injectThemeInitScript?: boolean;
   lateControl?: Promise<SsrLateRedirect | null>;
   onCancel?: (reason?: unknown) => void;
+  /**
+   * When true, buffer the whole document until every Suspense boundary resolves
+   * (`stream.allReady`) before emitting a byte, matching `pageConfig.ssr:
+   * "block"`. Defaults to shell-first streaming so `Loading` fallbacks surface.
+   * The `AKAN_SSR_WAIT_FOR_ALL_READY=1` env var forces blocking globally.
+   */
+  waitForAllReady?: boolean;
 }

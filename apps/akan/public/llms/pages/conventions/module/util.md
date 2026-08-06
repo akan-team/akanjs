@@ -60,7 +60,7 @@ Split big toolboxes or workflow modals into named exports instead of hiding too 
 ```ts
 export const Toolbox = ({ projectId, name, role }: ToolboxProps) => {
   return (
-    <ul className="dropdown-content menu">
+    <ul className="flex flex-col gap-1 rounded-box border border-border bg-popover p-2 shadow-lg">
       <li>
         <Model.Edit renderTitle="name" slice={fetch.slice.projectInOrg} modelId={projectId}>
           <Project.Template.General />
@@ -97,7 +97,7 @@ export const SetOrg = ({ bizLicenseId }: SetOrgProps) => {
   return (
     <Dialog>
       <Dialog.Trigger>
-        <button className="btn">Set Org</button>
+        <button className={buttonRecipe()}>Set Org</button>
       </Dialog.Trigger>
       <Dialog.Modal>
         <Field.ParentId value={orgId} onChange={setOrgId} slice={fetch.slice.orgInSelf} />

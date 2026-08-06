@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Docs, type UiComponentReference, UiComponentSlide } from "@apps/akan/ui";
+import { Divider, Docs, DocsToc, type UiComponentReference, UiComponentSlide } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -167,14 +167,17 @@ export const StatusSelect = ({ status, setStatus }) => (
     {
       name: "Button",
       desc: l.trans({
-        en: "Async-aware button with built-in loading, success, and error state. It is useful for actions that return promises and should prevent duplicate clicks while processing.",
-        ko: "loading, success, error state가 내장된 async-aware button입니다. promise를 반환하고 처리 중 중복 클릭을 막아야 하는 action에 유용합니다.",
+        en: "The one button primitive. A synchronous handler renders a plain button; returning a promise is what opts the same button into loading, success, and error state and blocks duplicate clicks while processing. There is no separate async button to choose.",
+        ko: "버튼 primitive는 하나입니다. 동기 handler면 평범한 button으로 렌더되고, promise를 반환하면 같은 button이 loading·success·error state로 들어가며 처리 중 중복 click을 막습니다. 별도의 async button을 고를 필요가 없습니다.",
       }),
       props: [
         {
           name: "onClick",
           type: "(event, { onError }) => Promise<Result> | Result",
-          desc: l.trans({ en: "Async-aware click handler.", ko: "async-aware click handler입니다." }),
+          desc: l.trans({
+            en: "Optional. Returning a promise enables the async states; returning nothing keeps it a plain button.",
+            ko: "optional입니다. promise를 반환하면 async state가 켜지고, 아무것도 반환하지 않으면 평범한 button입니다.",
+          }),
         },
         {
           name: "onSuccess",
@@ -182,6 +185,22 @@ export const StatusSelect = ({ status, setStatus }) => (
           desc: l.trans({
             en: "Called after the success state is shown briefly.",
             ko: "success state가 짧게 표시된 뒤 호출됩니다.",
+          }),
+        },
+        {
+          name: "loadingMode",
+          type: `"hold" | "replace"`,
+          desc: l.trans({
+            en: "Both modes keep the box fixed — CSS cannot animate an auto width, so a resizing button can only snap. hold (default) fades a bare indicator over the children, sizing the box to the label. replace cross-fades to a labelled indicator, keeping both labels stacked so the box is the wider of the two from the start.",
+            ko: "두 mode 모두 box를 고정합니다 — CSS는 auto 너비를 animation할 수 없어서, 크기가 바뀌는 button은 튀는 것 말고 방법이 없습니다. hold(기본)는 children 위에 indicator만 겹쳐 box를 label 크기로 유지합니다. replace는 label까지 교차 fade하며, 두 label을 겹쳐 두어 box가 처음부터 둘 중 넓은 쪽으로 고정됩니다.",
+          }),
+        },
+        {
+          name: "showError",
+          type: "boolean",
+          desc: l.trans({
+            en: "Whether a failure renders its message under the button. Off leaves it to the framework toast, keeping the layout fixed.",
+            ko: "실패 message를 button 아래에 렌더할지 여부입니다. 끄면 framework toast에만 맡겨 layout이 고정됩니다.",
           }),
         },
         {
@@ -195,9 +214,12 @@ export const StatusSelect = ({ status, setStatus }) => (
       ],
       code: `import { Button } from "akanjs/ui";
 
+// 동기 handler — spinner 없이 평범한 button.
+export const CloseButton = ({ close }) => <Button variant="ghost" onClick={close}>Close</Button>;
+
+// promise 를 반환 — 같은 component 가 loading → success 로 동작한다.
 export const SaveButton = ({ save }) => (
   <Button
-    className="btn-primary"
     onClick={async (_event, { onError }) => {
       const result = await save();
       if (!result.ok) onError("base.error");
@@ -217,17 +239,17 @@ export const SaveButton = ({ save }) => (
         <Docs.Description>
           <div>
             {l.trans({
-              en: "Form components range from high-level `Field.*` controls used in module templates to lower-level `Input`, `Select`, and async `Button` primitives.",
-              ko: "Form component는 module template에서 쓰는 high-level `Field.*` control부터 low-level `Input`, `Select`, async `Button` primitive까지 포함합니다.",
+              en: "Form components range from high-level `Field.*` controls used in module templates to lower-level `Input`, `Select`, and `Button` primitives.",
+              ko: "Form component는 module template에서 쓰는 high-level `Field.*` control부터 low-level `Input`, `Select`, `Button` primitive까지 포함합니다.",
             })}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       {components.map((component) => (
         <UiComponentSlide key={component.name} component={component} />
       ))}
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Docs } from "@apps/akan/ui";
+import { cardGridRecipe, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 import { Link } from "akanjs/ui";
 
@@ -51,6 +51,15 @@ export default function Page() {
         ko: "application shell helper, CSR guard, admin signal tool, tab state, animation wrapper입니다.",
       }),
     },
+    {
+      title: l.trans({ en: "Customization", ko: "커스터마이즈" }),
+      href: "/references/ui/customize",
+      components: "_overrides.tsx, override()",
+      desc: l.trans({
+        en: "Re-skin any framework component per route with a `page/**/_overrides.tsx` manifest — drop-in replacements, no call-site changes.",
+        ko: "`page/**/_overrides.tsx` manifest로 framework 컴포넌트를 route 단위로 re-skin합니다 — drop-in 교체, call-site 변경 없음.",
+      }),
+    },
   ];
 
   return (
@@ -72,7 +81,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="page-map" title={l.trans({ en: "Page Map", ko: "페이지 맵" })}>
         <Docs.Title>{l.trans({ en: "Page Map", ko: "페이지 맵" })}</Docs.Title>
@@ -84,23 +93,19 @@ export default function Page() {
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           {pages.map(({ title, href, components, desc }) => (
-            <Link
-              key={title}
-              href={href}
-              className="rounded-xl border border-base-300 bg-base-100 p-4 hover:border-primary"
-            >
-              <div className="font-bold text-base-content">{title}</div>
-              <div className="mt-1 font-mono text-base-content/70">{components}</div>
-              <div className="mt-2 text-base-content/70">{desc}</div>
+            <Link key={title} href={href} className={panelRecipe({}, "hover:border-primary")}>
+              <div className="font-bold text-foreground">{title}</div>
+              <div className="mt-1 font-mono text-foreground/70">{components}</div>
+              <div className="mt-2 text-foreground/70">{desc}</div>
             </Link>
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

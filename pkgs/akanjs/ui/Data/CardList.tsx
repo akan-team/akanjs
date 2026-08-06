@@ -1,6 +1,6 @@
 "use client";
 import type { DataList } from "akanjs/base";
-import { clsx, type DataAction, type DataColumn } from "akanjs/client";
+import { cn, type DataAction, type DataColumn } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import type { FilterInstance } from "akanjs/document";
 import type { FetchInitForm, SliceMeta } from "akanjs/fetch";
@@ -86,14 +86,14 @@ export default function CardList<
   return (
     <div className={className}>
       {modelListLoading ? (
-        <div className={clsx("grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5", cardListClassName)}>
+        <div className={cn("grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5", cardListClassName)}>
           {new Array(limitOfModel || 20)
             .fill(0)
             .map((_, idx) => `skeleton-${idx}`)
             .map((key) => (renderLoading ? renderLoading() : <Loading.Skeleton key={key} active />))}
         </div>
       ) : (
-        <div className={clsx("grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5", cardListClassName)}>
+        <div className={cn("grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5", cardListClassName)}>
           {modelList.map((model, idx) => {
             return (
               <DataItem

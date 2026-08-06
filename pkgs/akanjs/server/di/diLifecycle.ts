@@ -59,8 +59,27 @@ export class DiLifecycle {
   readonly #adaptor = new Map<string, AdaptorCls>();
   readonly #middleware = new Map<string, MiddlewareCls>();
   readonly webProxies: WebProxyRegistration[] = [];
+  /** refName → why the module was dropped at construction time. Kept for introspection, not control flow. */
+  readonly disabledModules = new Map<string, string>();
   readonly #predefinedAdaptor;
   readonly #predefinedAdaptorRole = predefinedAdaptorRole;
+
+  /** Read-only view of the resolved module maps, for tooling that needs to describe the container. */
+  get modules(): {
+    database: ReadonlyMap<string, DatabaseModule>;
+    service: ReadonlyMap<string, ServiceModule>;
+    scalar: ReadonlyMap<string, ScalarModule>;
+    adaptor: ReadonlyMap<string, AdaptorCls>;
+    middleware: ReadonlyMap<string, MiddlewareCls>;
+  } {
+    return {
+      database: this.#database,
+      service: this.#service,
+      scalar: this.#scalar,
+      adaptor: this.#adaptor,
+      middleware: this.#middleware,
+    };
+  }
 
   constructor(env: BaseEnv, serverMode: "federation" | "batch" | "all", ...libs: AkanLib[]) {
     this.#env = env;
@@ -143,6 +162,7 @@ export class DiLifecycle {
     }
 
     disabledReasons.forEach((reason, refName) => {
+      this.disabledModules.set(refName, reason);
       this.logger.verbose(`Skipping disabled module "${refName}": ${reason}`);
     });
     return new Set(disabledReasons.keys());
@@ -440,7 +460,14 @@ export class DiLifecycle {
             if (serviceCls.type === "database") {
               const databaseModule = this.#database.get(serviceCls.refName);
               if (!databaseModule) throw new Error(`Database "${serviceCls.refName}" is not registered`);
-              ServiceResolver.resolveDatabaseService(databaseModule.constant, databaseModule.database, serviceCls);
+              ServiceResolver.resolveDatabaseService(
+                databaseModule.constant,
+                databaseModule.database,
+                serviceCls,
+                // Deliberately lazy. Resolving a cascade target eagerly would add an init-order edge between two
+                // services that have no dependency at boot, and a cascade cycle would then fail the whole boot.
+                (refName) => this.getService(refName),
+              );
             }
             const service = new serviceCls();
             await InjectInfo.resolveInjection(service, serviceCls, this.registry, this.#env);

@@ -1,11 +1,12 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { st } from "akanjs/store";
 import { animated } from "akanjs/ui";
 import { type ReactNode, useEffect, useState } from "react";
 import { AiOutlineMenu } from "react-icons/ai";
 import { BiX } from "react-icons/bi";
 import { useSpring } from "react-spring";
+import { buttonRecipe } from "../Button";
 
 export interface SiderProps {
   className?: string;
@@ -32,7 +33,7 @@ export const Sider = ({ className, bgClassName, children }: SiderProps) => {
   return (
     <>
       <button
-        className="btn btn-ghost"
+        className={buttonRecipe({ variant: "ghost" })}
         onClick={() => {
           setIsOpen(true);
         }}
@@ -43,7 +44,7 @@ export const Sider = ({ className, bgClassName, children }: SiderProps) => {
       {isOpen ? (
         <animated.div
           style={overlayAnimation}
-          className={clsx("fixed inset-0 z-40 h-screen w-screen", bgClassName)}
+          className={cn("fixed inset-0 z-40 h-screen w-screen", bgClassName)}
           onClick={() => {
             setIsOpen(false);
           }}
@@ -52,7 +53,7 @@ export const Sider = ({ className, bgClassName, children }: SiderProps) => {
 
       <animated.div
         style={siderAnimation}
-        className={clsx("fixed top-0 left-0 z-50 h-full w-3/4 bg-base-200 p-4 text-base-content md:w-80", className)}
+        className={cn("fixed top-0 left-0 z-50 h-full w-3/4 bg-muted p-4 text-foreground md:w-80", className)}
       >
         <button
           className="absolute top-4 left-4 text-lg"

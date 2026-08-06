@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs, type IntroItem } from "@apps/akan/ui";
+import { Code, cardGridRecipe, Divider, Docs, DocsToc, type IntroItem, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -103,7 +103,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="class-structure" title={l.trans({ en: "Store Class Structure", ko: "Store class 구조" })}>
         <Docs.Title>{l.trans({ en: "Store Class Structure", ko: "Store class 구조" })}</Docs.Title>
@@ -116,6 +116,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="ticket.store.ts"
           code={`import { msg } from "@apps/akan/client";
 import { store } from "akanjs/store";
@@ -135,13 +136,14 @@ export class TicketStore extends store(sig.ticket, () => ({
 }`}
         />
         <Code.Snippet
+          className="w-full"
           title="service-only store"
           code={`export class MyappStore extends store("myapp" as const, () => ({
   menuOpen: false,
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="generated-extension"
@@ -157,6 +159,7 @@ export class TicketStore extends store(sig.ticket, () => ({
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="user.store.ts"
           code={`import { user } from "../__lib/lib.store";
 
@@ -174,7 +177,7 @@ export class UserStore extends store(
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="writable-derived-state"
@@ -190,6 +193,7 @@ export class UserStore extends store(
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="store state builders"
           code={`export class TicketStore extends store(
   sig.ticket,
@@ -234,14 +238,14 @@ export class UserStore extends store(
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
-              <div className="font-bold text-base-content">{title}</div>
-              <div className="mt-2 text-base-content/70">{desc}</div>
+            <div key={title} className={panelRecipe()}>
+              <div className="font-bold text-foreground">{title}</div>
+              <div className="mt-2 text-foreground/70">{desc}</div>
             </div>
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="state-management" title={l.trans({ en: "State Interaction", ko: "State 상호작용" })}>
         <Docs.Title>{l.trans({ en: "State Interaction", ko: "State 상호작용" })}</Docs.Title>
@@ -261,7 +265,7 @@ export class UserStore extends store(
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="standard-api" title={l.trans({ en: "Standard Model API", ko: "표준 model API" })}>
         <Docs.Title>{l.trans({ en: "Standard Model API", ko: "표준 model API" })}</Docs.Title>
@@ -279,7 +283,7 @@ export class UserStore extends store(
         <Docs.SubTitle>Base Actions</Docs.SubTitle>
         <Docs.IntroTable type="method" items={baseMethods} />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="slice-features"
@@ -295,6 +299,7 @@ export class UserStore extends store(
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="ticket.signal.ts"
           code={`export class TicketSlice extends slice(srv.ticket, { guards: { root: User } }, (init) => ({
   inProject: init()
@@ -310,7 +315,7 @@ export class UserStore extends store(
         <Docs.SubTitle>Generated Slice Actions</Docs.SubTitle>
         <Docs.IntroTable type="method" items={sliceMethods} />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="usage-patterns" title={l.trans({ en: "Usage Patterns", ko: "사용 패턴" })}>
         <Docs.Title>{l.trans({ en: "Usage Patterns", ko: "사용 패턴" })}</Docs.Title>
@@ -322,8 +327,9 @@ export class UserStore extends store(
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
+            className="w-full"
             title="Inside store"
             code={`async archiveTicketMany() {
   const { ticketList } = this.get();
@@ -332,6 +338,7 @@ export class UserStore extends store(
 }`}
           />
           <Code.Snippet
+            className="w-full"
             title="Inside component"
             code={`const ticket = st.use.ticket();
 
@@ -342,12 +349,13 @@ export class UserStore extends store(
         </div>
         <Docs.SubTitle>{l.trans({ en: "Auto-Generated Setters", ko: "자동 생성 setter" })}</Docs.SubTitle>
         <Code.Snippet
+          className="w-full"
           title="setter examples"
           code={`st.do.setTicketModal(null);
 st.set({ ticketModal: null });`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="rootstore-access"
@@ -363,6 +371,7 @@ st.set({ ticketModal: null });`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="user.store.ts"
           code={`import type { RootStore } from "../st";
 
@@ -373,7 +382,7 @@ async applyUserProfile() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -405,16 +414,16 @@ async applyUserProfile() {
                 ko: "cross-store coordination에는 RootStore casting을 필요한 만큼만 사용합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
+              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {rule}
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

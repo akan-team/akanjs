@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="basic-wrapper" title={l.trans({ en: "Basic Wrapper", ko: "기본 wrapper" })}>
         <Docs.Title>{l.trans({ en: "Basic Wrapper", ko: "기본 wrapper" })}</Docs.Title>
@@ -37,6 +37,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="price.document.ts"
           code={`import { by } from "akanjs/document";
 
@@ -45,7 +46,7 @@ import * as cnst from "./price.constant";
 export class Price extends by(cnst.Price) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="helper-example" title={l.trans({ en: "Small Helper Example", ko: "작은 helper 예시" })}>
         <Docs.Title>{l.trans({ en: "Small Helper Example", ko: "작은 helper 예시" })}</Docs.Title>
@@ -58,6 +59,7 @@ export class Price extends by(cnst.Price) {}`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="price.document.ts"
           code={`import { by } from "akanjs/document";
 
@@ -70,7 +72,7 @@ export class Price extends by(cnst.Price) {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="when-to-use" title={l.trans({ en: "When To Use It", ko: "사용하는 경우" })}>
         <Docs.Title>{l.trans({ en: "When To Use It", ko: "사용하는 경우" })}</Docs.Title>
@@ -81,7 +83,7 @@ export class Price extends by(cnst.Price) {
               ko: "같은 표시나 계산이 여러 곳에 반복된다면 scalar document method를 사용합니다. 예를 들어 `Price.getLabel()`은 product card, order summary, invoice에서 재사용할 수 있습니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Good: formatting a price label from `amount` and `currency`.",
@@ -100,12 +102,12 @@ export class Price extends by(cnst.Price) {
                 ko: "피하기: scalar method에서 다른 record를 load하거나 backend service를 호출.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

@@ -3,6 +3,7 @@ import path from "node:path";
 import { capitalize } from "akanjs/common";
 import { AppExecutor, LibExecutor, type SysExecutor, type WorkspaceExecutor } from "./executors";
 import { FileSys } from "./fileSys";
+import { collectRecipeSources, findInlineRecipeDuplicates, scanRecipes } from "./recipeScanner";
 import type { PackageJson } from "./types";
 import {
   type GeneratedSyncState,
@@ -313,6 +314,9 @@ const constantFieldNames = (content: string) =>
   [...content.matchAll(/\b([A-Za-z_$][\w$]*)\s*:\s*field\(/g)].map((match) => match[1]).filter(Boolean);
 
 const appRootAllowFiles = new Set([
+  // 스코프 에이전트 가이드 — scan(write) 이 유지 (agentsIndex.ts); scanInfo.ts 의 appRootAllowedFiles 와 동기
+  "AGENTS.md",
+  "CLAUDE.md",
   "akan.app.json",
   "akan.config.ts",
   "capacitor.config.ts",
@@ -750,6 +754,124 @@ export class AkanContextAnalyzer {
           }
         }
       }
+    }
+
+    // Recipe SSOT advisory (항상 warning — 차단하지 않음): recipe 지문이 인라인 className 으로 재작성된
+    // 곳의 추이를 보이게 한다. 유입이 실제로 재발하면 그때 lint 승격을 검토한다 — 증거 기반 에스컬레이션.
+    for (const sys of [...context.apps, ...context.libs]) {
+      const sources = await collectRecipeSources(path.join(workspace.workspaceRoot, sys.path, "ui"), "ui");
+      if (sources.length === 0) continue;
+      const recipes = scanRecipes(sources);
+      const files: { path: string; content: string }[] = [];
+      const glob = new Bun.Glob("**/*.tsx");
+      for await (const abs of glob.scan({ cwd: path.join(workspace.workspaceRoot, sys.path), absolute: true })) {
+        if (/[\\/](node_modules|\.akan|dist)[\\/]|[\\/]v1[\\/]/.test(abs) || /\.(test|spec)\.tsx$/.test(abs)) continue;
+        files.push({
+          path: abs,
+          content: await Bun.file(abs)
+            .text()
+            .catch(() => ""),
+        });
+      }
+      const duplicates = findInlineRecipeDuplicates(recipes, files);
+      if (duplicates.length === 0) continue;
+      const preview = duplicates
+        .slice(0, 3)
+        .map((duplicate) => `${path.relative(workspace.workspaceRoot, duplicate.path)}:${duplicate.line}`)
+        .join(", ");
+      diagnostics.push({
+        severity: "warning",
+        code: "recipe-inline-duplicate",
+        path: path.join(sys.path, "ui/Recipe"),
+        message: `${sys.name}: ${duplicates.length} inline className(s) re-author a recipe fingerprint (${preview}${duplicates.length > 3 ? ", …" : ""}) — consume the recipe instead.`,
+      });
+    }
+
+    // Recipe index freshness. The recipe indexes are generated and read as authoritative — a recipe missing
+    // from its index gets re-invented inline, and a name lingering in it gets imported and fails. The index is
+    // split by ownership: the root AGENTS.md `## Recipes` lists framework recipes only, and every app/lib lists
+    // what it may additionally import in its own AGENTS.md `## Recipes In Scope`. Doctor never writes, so this
+    // is the check that catches a *committed* stale index (lint/sync self-heal the working tree instead).
+    const scanNames = async (uiDirPath: string, basename?: string) =>
+      new Set(scanRecipes(await collectRecipeSources(uiDirPath, "ui", basename)).map((info) => info.name));
+    const declaredByImport = new Map<string, Set<string>>();
+    declaredByImport.set("akanjs/ui", await scanNames(path.join(workspace.workspaceRoot, "pkgs/akanjs/ui"), "recipe"));
+    for (const sys of [...context.apps, ...context.libs])
+      declaredByImport.set(`@${sys.path}/ui`, await scanNames(path.join(workspace.workspaceRoot, sys.path, "ui")));
+    // Section slice anchors the heading to a full line — the same string appears back-ticked in prose.
+    const sectionOf = (content: string, heading: string) => {
+      const match = new RegExp(`^${heading}$`, "m").exec(content);
+      if (!match) return "";
+      const section = content.slice(match.index);
+      const sectionEnd = section.indexOf("\n## ", 1);
+      return sectionEnd === -1 ? section : section.slice(0, sectionEnd);
+    };
+    // `Import from \`<path>\`:` groups with their `- \`name\`` items, so each name checks against its owner.
+    const listedByImport = (body: string) => {
+      const groups = new Map<string, Set<string>>();
+      let current: Set<string> | null = null;
+      for (const line of body.split("\n")) {
+        const group = /^Import from `([^`]+)`:/.exec(line);
+        if (group) {
+          current = groups.get(group[1]) ?? new Set();
+          groups.set(group[1], current);
+          continue;
+        }
+        const item = /^- `([A-Za-z0-9_$]+)`/.exec(line);
+        if (item && current) current.add(item[1]);
+        else if (!item) current = null;
+      }
+      return groups;
+    };
+    const pushIndexDiagnostic = (indexPath: string, missing: string[], stale: string[], repairCommand: string) => {
+      if (missing.length === 0 && stale.length === 0) return;
+      const action = repairAction(
+        "generated",
+        repairCommand,
+        "Regenerate the recipe index from the scanned recipes.",
+        true,
+      );
+      const parts = [
+        missing.length > 0 ? `${missing.length} declared but unlisted (${missing.slice(0, 5).join(", ")})` : "",
+        stale.length > 0 ? `${stale.length} listed but gone (${stale.slice(0, 5).join(", ")})` : "",
+      ].filter(Boolean);
+      diagnostics.push({
+        severity: "error",
+        code: "recipe-index-stale",
+        path: indexPath,
+        message: `${indexPath} recipe index is out of date — ${parts.join("; ")}. Agents read this list as authoritative.`,
+        repairActions: [action],
+      });
+      repairActions.push(action);
+    };
+    const frameworkDeclared = declaredByImport.get("akanjs/ui") ?? new Set<string>();
+    if (frameworkDeclared.size > 0) {
+      const agentsMd = await Bun.file(path.join(workspace.workspaceRoot, "AGENTS.md"))
+        .text()
+        .catch(() => "");
+      const listed = listedByImport(sectionOf(agentsMd, "## Recipes")).get("akanjs/ui") ?? new Set<string>();
+      pushIndexDiagnostic(
+        "AGENTS.md",
+        [...frameworkDeclared].filter((name) => !listed.has(name)).sort(),
+        [...listed].filter((name) => !frameworkDeclared.has(name)).sort(),
+        "akan agent install agents-md",
+      );
+    }
+    for (const sys of [...context.apps, ...context.libs]) {
+      const own = declaredByImport.get(`@${sys.path}/ui`) ?? new Set<string>();
+      const scopeMd = await Bun.file(path.join(workspace.workspaceRoot, sys.path, "AGENTS.md"))
+        .text()
+        .catch(() => "");
+      const groups = listedByImport(sectionOf(scopeMd, "## Recipes In Scope"));
+      const ownListed = groups.get(`@${sys.path}/ui`) ?? new Set<string>();
+      const missing = [...own].filter((name) => !ownListed.has(name)).sort();
+      // Every listed name — the scope's own and its dependency libs' — must still exist at its owner.
+      const stale = [...groups.entries()]
+        .flatMap(([importFrom, names]) =>
+          [...names].filter((name) => !(declaredByImport.get(importFrom) ?? new Set()).has(name)),
+        )
+        .sort();
+      pushIndexDiagnostic(`${sys.path}/AGENTS.md`, missing, stale, `akan sync ${sys.name}`);
     }
 
     const scopedDiagnostics = diagnostics.map((diagnostic) => ({

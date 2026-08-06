@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, ConstantDocsDemo, ConstantDocsPrintDemo, Docs } from "@apps/akan/ui";
+import { Code, ConstantDocsDemo, ConstantDocsPrintDemo, Divider, Docs, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -18,6 +18,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Developer schema page", ko: "개발자 스키마 page" })}
           code={`import "@apps/myapp/lib/cnst";
 import { Constant } from "akanjs/ui";
@@ -27,6 +28,7 @@ export default function SchemaDocsPage() {
 }`}
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Printable schema definition", ko: "출력용 스키마 정의서" })}
           code={`import "@apps/myapp/lib/cnst";
 import { Constant } from "akanjs/ui";
@@ -36,12 +38,12 @@ export default function PrintableSchemaDocsPage() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="schema-doc" title={l.trans({ en: "Generated Schema", ko: "생성된 스키마" })}>
         <ConstantDocsDemo />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="print-schema-doc" title={l.trans({ en: "Printable Definition", ko: "출력용 정의서" })}>
         <Docs.Title>{l.trans({ en: "Printable Definition", ko: "출력용 정의서" })}</Docs.Title>
@@ -55,7 +57,7 @@ export default function PrintableSchemaDocsPage() {
         </Docs.Description>
         <ConstantDocsPrintDemo />
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

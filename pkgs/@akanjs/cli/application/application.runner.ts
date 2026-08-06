@@ -1,32 +1,26 @@
-import {
-  AkanAppHost,
-  type App,
-  AppExecutor,
-  ApplicationBuildRunner,
-  ApplicationReleasePackager,
-  type BuildProgressReporter,
-  type BuildResult,
-  CapacitorApp,
-  type DatabaseMode,
-  type Exec,
-  LibExecutor,
-  type MobileEnv,
-  type ReleaseSourceOptions,
-  type ResolvedMobileTarget,
-  resolveMobileTargets,
-  resolveSignalTestPreloadPath,
-  runner,
-  type TypecheckOptions,
-  type Workspace,
-} from "@akanjs/devkit";
-import { confirm, input, select } from "@inquirer/prompts";
-import { StringOutputParser } from "@langchain/core/output_parsers";
-import { PromptTemplate } from "@langchain/core/prompts";
-import { RunnableSequence } from "@langchain/core/runnables";
-import { ChatOpenAI } from "@langchain/openai";
+import type { AbstractCompactOptions } from "@akanjs/devkit/abstractCompactor";
+import { AkanAppHost } from "@akanjs/devkit/akanApp";
+import type { DatabaseMode, MobileEnv } from "@akanjs/devkit/akanConfig";
+import type { BuildProgressReporter, BuildResult, TypecheckOptions } from "@akanjs/devkit/applicationBuildRunner";
+import type { ReleaseSourceOptions } from "@akanjs/devkit/applicationReleasePackager";
+import { resolveSignalTestPreloadPath } from "@akanjs/devkit/applicationTestPreload";
+import { type App, type Exec, runner, type Sys, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { AppExecutor, LibExecutor } from "@akanjs/devkit/executors";
+import { type ResolvedMobileTarget, resolveMobileTargets } from "@akanjs/devkit/mobile";
 import { Logger } from "akanjs/common";
 import ora from "ora";
 import { openBrowser } from "../openBrowser";
+
+// `akan start` is the hot path and must not pay for the build, mobile, release and AI stacks:
+// `applicationBuildRunner` pulls tailwind + fonteditor + typescript (~140MB), `capacitorApp` pulls
+// @trapezedev/project (~76MB), the @langchain set ~57MB and @inquirer ~24MB. Import them inside the
+// methods that use them so only those commands pay.
+const loadBuildRunner = async () => (await import("@akanjs/devkit/applicationBuildRunner")).ApplicationBuildRunner;
+const loadReleasePackager = async () =>
+  (await import("@akanjs/devkit/applicationReleasePackager")).ApplicationReleasePackager;
+const loadCapacitorApp = async () => (await import("@akanjs/devkit/capacitorApp")).CapacitorApp;
+const loadAbstractCompactor = async () => (await import("@akanjs/devkit/abstractCompactor")).AbstractCompactor;
+const loadPrompts = async () => await import("@inquirer/prompts");
 
 export class ApplicationRunner extends runner("application") {
   async createApplication(appName: string, workspace: Workspace, libs: string[] = []) {
@@ -51,7 +45,7 @@ export class ApplicationRunner extends runner("application") {
       throw new Error(`No script files found. make a script file in apps/${app.name}/script folder`);
     }
     const scriptFiles = (await app.readdir("script")).filter((file) => file.endsWith(".ts"));
-    const scriptFile = await select({
+    const scriptFile = await (await loadPrompts()).select({
       message: "Select script to run",
       choices: scriptFiles.map((file) => ({ name: file, value: file.replace(".ts", "") })),
     });
@@ -100,7 +94,11 @@ try {
     });
   }
   async typecheck(app: App, options: TypecheckOptions = {}) {
-    await new ApplicationBuildRunner(app).typecheck(options);
+    await new (await loadBuildRunner())(app).typecheck(options);
+  }
+  async compact(sys: Sys, { module, minLines, interactive }: AbstractCompactOptions = {}) {
+    const compactor = new (await loadAbstractCompactor())(sys, { minLines, interactive });
+    return await compactor.compactAll({ module });
   }
   async test(exec: Exec) {
     const isSignalTarget = exec instanceof AppExecutor || exec instanceof LibExecutor;
@@ -127,7 +125,7 @@ try {
       spinner = false,
     }: { fast?: boolean; reporter?: BuildProgressReporter; spinner?: boolean } = {},
   ): Promise<BuildResult> {
-    return new ApplicationBuildRunner(app, { fast, reporter }).build({ spinner });
+    return new (await loadBuildRunner())(app, { fast, reporter }).build({ spinner });
   }
   async start(
     app: App,
@@ -148,7 +146,7 @@ try {
     const targets = await resolveMobileTargets(app, target);
     await this.#buildMobileCsr(app, env);
     await this.#runMobileTargets(targets, async (mobileTarget) => {
-      await new CapacitorApp(app, mobileTarget.config).buildIos({ env, regenerate });
+      await new (await loadCapacitorApp())(app, mobileTarget.config).buildIos({ env, regenerate });
     });
   }
   async startIos(
@@ -158,6 +156,7 @@ try {
       operation = "local",
       env = "local",
       target,
+      device,
       regenerate = false,
       noAllowProvisioningUpdates = false,
     }: {
@@ -165,6 +164,7 @@ try {
       operation?: "local" | "release";
       env?: MobileEnv;
       target?: string;
+      device?: string;
       regenerate?: boolean;
       noAllowProvisioningUpdates?: boolean;
     } = {},
@@ -173,8 +173,8 @@ try {
     if (operation === "release") await this.#buildMobileCsr(app, env);
     // else await this.start(app);
     await this.#runMobileTargets(targets, async (mobileTarget) => {
-      const capacitorApp = new CapacitorApp(app, mobileTarget.config);
-      await capacitorApp.runIos({ operation, env, regenerate, noAllowProvisioningUpdates });
+      const capacitorApp = new (await loadCapacitorApp())(app, mobileTarget.config);
+      await capacitorApp.runIos({ operation, env, regenerate, noAllowProvisioningUpdates, iosDeviceId: device });
       if (open) await capacitorApp.openIos();
     });
   }
@@ -185,7 +185,7 @@ try {
     const targets = await resolveMobileTargets(app, target);
     await this.#buildMobileCsr(app, env);
     for (const mobileTarget of targets) {
-      await new CapacitorApp(app, mobileTarget.config).buildIos({ env, regenerate });
+      await new (await loadCapacitorApp())(app, mobileTarget.config).buildIos({ env, regenerate });
     }
   }
 
@@ -196,7 +196,7 @@ try {
     const targets = await resolveMobileTargets(app, target);
     await this.#buildMobileCsr(app, env);
     await this.#runMobileTargets(targets, async (mobileTarget) => {
-      await new CapacitorApp(app, mobileTarget.config).buildAndroid("apk", { env, regenerate });
+      await new (await loadCapacitorApp())(app, mobileTarget.config).buildAndroid("apk", { env, regenerate });
     });
   }
 
@@ -220,7 +220,7 @@ try {
     if (operation === "release") await this.#buildMobileCsr(app, env);
     // else await this.start(app);
     await this.#runMobileTargets(targets, async (mobileTarget) => {
-      const capacitorApp = new CapacitorApp(app, mobileTarget.config);
+      const capacitorApp = new (await loadCapacitorApp())(app, mobileTarget.config);
       await capacitorApp.runAndroid({ operation, env, regenerate });
       if (open) await capacitorApp.openAndroid();
     });
@@ -234,7 +234,7 @@ try {
     const targets = await resolveMobileTargets(app, target);
     await this.#buildMobileCsr(app, env);
     for (const mobileTarget of targets) {
-      await new CapacitorApp(app, mobileTarget.config).buildAndroid(assembleType, { env, regenerate });
+      await new (await loadCapacitorApp())(app, mobileTarget.config).buildAndroid(assembleType, { env, regenerate });
       app.log(`Release Android ${app.name}/${mobileTarget.name} ${assembleType} Completed.`);
       app.log(`Path : ${app.cwdPath}/android/app/build/outputs/${assembleType === "apk" ? "apk" : "bundle"}/release`);
     }
@@ -252,7 +252,7 @@ try {
       APP_OPERATION_MODE: "release",
     });
     try {
-      await new ApplicationBuildRunner(app).build({ spinner: true });
+      await new (await loadBuildRunner())(app).build({ spinner: true });
     } finally {
       for (const [key, value] of Object.entries(prevEnv)) {
         if (value === undefined) delete process.env[key];
@@ -282,7 +282,7 @@ try {
   async codepush(app: App, os: "ios" | "android") {
     const [target] = await resolveMobileTargets(app, undefined);
     if (!target) throw new Error(`No mobile target configured for ${app.name}`);
-    const capacitorApp = new CapacitorApp(app, target.config);
+    const capacitorApp = new (await loadCapacitorApp())(app, target.config);
     await capacitorApp.init();
 
     // await this.release;
@@ -339,12 +339,15 @@ try {
   async configureApp(app: App) {
     const [target] = await resolveMobileTargets(app, undefined);
     if (!target) throw new Error(`No mobile target configured for ${app.name}`);
-    const capacitorApp = new CapacitorApp(app, target.config);
+    const capacitorApp = new (await loadCapacitorApp())(app, target.config);
     await capacitorApp.init();
     // TODO: 이미 있으면 패스하는 로직 추가 필요
-    if (await confirm({ message: "want to add camera permission?" })) await capacitorApp.addCamera();
-    if (await confirm({ message: "want to add contact permission?" })) await capacitorApp.addContact();
-    if (await confirm({ message: "want to add location permission?" })) await capacitorApp.addLocation();
+    if (await (await loadPrompts()).confirm({ message: "want to add camera permission?" }))
+      await capacitorApp.addCamera();
+    if (await (await loadPrompts()).confirm({ message: "want to add contact permission?" }))
+      await capacitorApp.addContact();
+    if (await (await loadPrompts()).confirm({ message: "want to add location permission?" }))
+      await capacitorApp.addLocation();
     await capacitorApp.save();
   }
 
@@ -352,7 +355,7 @@ try {
     app: App,
     { rebuild, buildNum = 0, environment = "debug", local = true }: ReleaseSourceOptions = {},
   ) {
-    await new ApplicationReleasePackager(app, { build: () => this.build(app).then(() => undefined) }).releaseSource({
+    await new (await loadReleasePackager())(app, { build: () => this.build(app).then(() => undefined) }).releaseSource({
       rebuild,
       buildNum,
       environment,
@@ -369,7 +372,7 @@ try {
     app: App,
     { rebuild, buildNum = 0, environment = "debug", local = true }: ReleaseSourceOptions = {},
   ) {
-    await new ApplicationReleasePackager(app, {
+    await new (await loadReleasePackager())(app, {
       build: () => this.build(app).then(() => undefined),
     }).compressProjectFiles({
       rebuild,
@@ -383,129 +386,24 @@ try {
   async generateApplicationTemplate(app: App) {
     const openAIApiKey = process.env.OPENAI_API_KEY;
     if (!openAIApiKey) throw new Error("OPENAI_API_KEY is not set");
+    const [{ StringOutputParser }, { PromptTemplate }, { RunnableSequence }, { ChatOpenAI }, prompts] =
+      await Promise.all([
+        import("@langchain/core/output_parsers"),
+        import("@langchain/core/prompts"),
+        import("@langchain/core/runnables"),
+        import("@langchain/openai"),
+        loadPrompts(),
+      ]);
     const chatModel = new ChatOpenAI({ modelName: "gpt-4o", openAIApiKey });
-    const projectName = await input({ message: "please enter project name." });
-    const projectDesc = await input({ message: "please enter project description. (40 ~ 60 characters)" });
+    const projectName = await prompts.input({ message: "please enter project name." });
+    const projectDesc = await prompts.input({
+      message: "please enter project description. (40 ~ 60 characters)",
+    });
     const spinner = ora("Gerating project files...");
 
     const mainPrompt = PromptTemplate.fromTemplate(`prompt.requestApplication()`);
     const chain = RunnableSequence.from([mainPrompt, chatModel, new StringOutputParser()]);
     await chain.invoke({ projectName, projectDesc });
     spinner.succeed("Loading complete!");
-
-    // const dict = {
-    //   appName: projectConfig.en.projectName,
-    //   AppName: projectConfig.en.projectName.charAt(0).toUpperCase() + projectConfig.en.projectName.slice(1),
-    //   template: "",
-    // };
-
-    //! add path in tsconfig.json
-    // addText(tree, "tsconfig.json", {
-    //   type: "after",
-    //   signal: `"paths": {`,
-    //   text: `    "@${projectConfig.en.projectName}/*": ["apps/${projectConfig.en.projectName}/*"],`,
-    // });
-    // addText(tree, `apps/${projectConfig.en.projectName}/tailwind.config.js`, {
-    //   type: "after",
-    //   signal: `withBase(__dirname`,
-    //   text: `, {
-    //       themes: {
-    //           light:
-    //             ${JSON.stringify(projectConfig.light)}
-    //             ,
-    //           dark:
-    //             ${JSON.stringify(projectConfig.dark)}
-    //           ,
-    //         }
-    //     }
-    //       `,
-    // });
-    // addText(tree, `pkgs/codebase/generators/serviceTest/schema.json`, {
-    //   type: "before",
-    //   signal: `  {
-    //           "value": "libs/shared",`,
-    //   text: `{
-    //       "value": "apps/${projectConfig.en.projectName}",
-    //       "label": "${projectConfig.en.projectName}"
-    //         },`,
-    // });
-    // addText(tree, `tsconfig.json`, {
-    //   type: "after",
-    //   signal: `"references": [`,
-    //   text: `{
-    //             "path": "./apps/${projectConfig.en.projectName}/tsconfig.json"
-    //           },`,
-    // });
-    // addText(tree, `apps/${projectConfig.en.projectName}/page/(${projectConfig.en.projectName})/(public)/_index.tsx`, {
-    //   type: "after",
-    //   signal: `   `,
-    //   text: `
-    //   ${indexPage}
-    //   `,
-    //   //logo image 하나 만들기.
-    // });
-
-    // ! add image
-    // // const imagePrompt = `I want to create a my project logo.
-    // //     A high-quality, and professional logo is essential for any business.
-
-    // //     my project name is ${projectName}.
-    // //     my project description is ${projectDesc}.
-
-    // //     image is a simple, clean, and modern design.
-    // //     and not too many colors, just 2 or 3 colors.
-    // //     and I want to use a sans-serif font.
-    // //     logo is a based projectName text-based logo.
-    // // It should be a text-based logo featuring the project name, using a sans-serif font
-    // //     `;
-    // const imagePrompt = `Create a minimalist, modern logo for a project named '${projectName}'. The logo should primarily consist of the project name in a clean, sans-serif font, accompanied by a simple, elegant symbol that subtly reflects the project's theme. Use 2 to 3 neutral colors. The overall design should be clean, professional, and easily recognizable.`;
-
-    // const response = await axios.post(
-    //   "https://api.openai.com/v1/images/generations",
-    //   {
-    //     model: "dall-e-3",
-    //     prompt: imagePrompt,
-    //     n: 1,
-    //     size: "1024x1024",
-    //   },
-    //   {
-    //     headers: {
-    //       Authorization: `Bearer ${openAIApiKey}`,
-    //       "Content-Type": "application/json",
-    //     },
-    //   }
-    // );
-    // const logoUrl = response.data.data[0].url as string;
-    // //download image
-    // const urlResponse = await axios.get(logoUrl, {
-    //   responseType: "arraybuffer",
-    // });
-    // const buffer = Buffer.from(urlResponse.data as string, "binary");
-    // tree.write(`apps/${projectConfig.en.projectName}/public/assets/logo_1024*1024.png`, buffer);
-
-    // // addText(tree, `apps/${projectConfig.en.projectName}/page/(${projectConfig.en.projectName})/(public)/_index.tsx`, {
-    // //   type: "after",
-    // //   signal: `   `,
-    // //   text: `
-    // //   <img src="./logo_1024*1024.png" alt="logo" />
-    // //   `,
-    // // });
-    // // console.log(projectConfig.light);
-  }
-
-  async testApplication(app: App) {
-    // await app.workspace.spawn(
-    //   "node",
-    //   ["node_modules/jest/bin/jest.js", `apps/${app.name}`, "-c", `apps/${app.name}/jest.config.ts`],
-    //   {
-    //     env: {
-    //       ...this.#getEnv(app, "backend"),
-    //       AKAN_PUBLIC_ENV: "testing",
-    //       AKAN_PUBLIC_OPERATION_MODE: "local",
-    //       AKAN_PUBLIC_APP_NAME: app.name,
-    //       NODE_TLS_REJECT_UNAUTHORIZED: "0",
-    //     },
-    //   }
-    // );
   }
 }

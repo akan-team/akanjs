@@ -7,6 +7,8 @@ import type { ReactNode } from "react";
 import { AiOutlineEdit, AiOutlineSave } from "react-icons/ai";
 import { BiDotsVertical, BiTrash } from "react-icons/bi";
 
+import { buttonRecipe } from "../Button";
+import { Dropdown } from "../Dropdown";
 import { Modal } from "../Modal";
 import Remove from "./Remove";
 import View from "./View";
@@ -70,33 +72,30 @@ export default function ViewEditModal({
       title={
         <div className="flex w-full items-center justify-between">
           <Title />
-          <div className="dropdown dropdown-end">
-            <label tabIndex={0} className="btn btn-square m-1">
-              <BiDotsVertical />
-            </label>
-            <ul tabIndex={0} className="dropdown-content menu z-[1] rounded-box bg-base-100 p-2 shadow-sm">
-              {model ? (
+          <Dropdown
+            buttonClassName="m-1 size-10 px-0"
+            value={<BiDotsVertical />}
+            content={
+              model ? (
                 <li>
-                  <a>
-                    <Remove
-                      className="flex items-center gap-2 text-error"
-                      slice={slice}
-                      modelId={model.id}
-                      modal={null}
-                    >
-                      <BiTrash /> {l("base.remove")}
-                    </Remove>
-                  </a>
+                  <Remove
+                    className="flex items-center gap-2 text-destructive"
+                    slice={slice}
+                    modelId={model.id}
+                    modal={null}
+                  >
+                    <BiTrash /> {l("base.remove")}
+                  </Remove>
                 </li>
-              ) : null}
-            </ul>
-          </div>
+              ) : null
+            }
+          />
         </div>
       }
       action={
         modelModal === "view" ? (
           <button
-            className="btn btn-primary w-full"
+            className={buttonRecipe({ variant: "primary" }, "w-full")}
             onClick={() => {
               if (model) storeDo[names.editModel](model.id);
             }}
@@ -105,7 +104,7 @@ export default function ViewEditModal({
           </button>
         ) : (
           <button
-            className="btn btn-primary w-full"
+            className={buttonRecipe({ variant: "primary" }, "w-full")}
             onClick={() => {
               storeDo[names.submitModel]({ sliceName, modal: "view" });
             }}

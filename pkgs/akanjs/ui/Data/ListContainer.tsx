@@ -1,7 +1,7 @@
 "use client";
 import type { DataList } from "akanjs/base";
 import {
-  clsx,
+  cn,
   type DataAction,
   type DataColumn,
   type DataTool,
@@ -23,6 +23,7 @@ import {
   AiOutlineRedo,
 } from "react-icons/ai";
 
+import { buttonRecipe } from "../Button";
 import { Dropdown } from "../Dropdown";
 import { Loading } from "../Loading";
 import { Model } from "../Model";
@@ -191,7 +192,7 @@ export default function ListContainer<
             key: "export-csv",
             render: () => (
               <div
-                className="btn btn-sm btn-ghost flex flex-nowrap justify-start gap-2"
+                className={buttonRecipe({ variant: "ghost", size: "sm" }, "flex flex-nowrap justify-start gap-2")}
                 onClick={() => {
                   const header = columns
                     .map((column) => {
@@ -225,7 +226,7 @@ export default function ListContainer<
           {
             render: () => (
               <div
-                className="btn btn-sm btn-ghost flex flex-nowrap justify-start gap-2"
+                className={buttonRecipe({ variant: "ghost", size: "sm" }, "flex flex-nowrap justify-start gap-2")}
                 onClick={() => {
                   const json = JSON.stringify(deepObjectify([...modelList], { serializable: true }));
                   const blob = new Blob([json], { type: "application/json" });
@@ -240,7 +241,10 @@ export default function ListContainer<
         ];
     return (
       <Dropdown
-        buttonClassName={`btn btn-primary btn-sm ${renderTemplate && create ? "rounded-l-none" : ""}`}
+        buttonClassName={buttonRecipe(
+          { variant: "primary", size: "sm" },
+          renderTemplate && create ? "rounded-l-none" : "",
+        )}
         value={<AiOutlineEllipsis />}
         content={toolList.map((tool) => <tool.render key={tool.key} />)}
       />
@@ -261,7 +265,7 @@ export default function ListContainer<
     );
   };
   return (
-    <div className={clsx("m-4", className)}>
+    <div className={cn("m-4", className)}>
       <div className="mb-3 flex flex-wrap justify-between">
         <div className="flex pb-1">
           <p className="prose text-lg">
@@ -271,7 +275,7 @@ export default function ListContainer<
             {renderTemplate && create ? (
               <button
                 onClick={() => void storeDo[namesOfSlice.newModel]()}
-                className={`btn btn-sm btn-primary mr-[0.5px] rounded-r-none`}
+                className={buttonRecipe({ variant: "primary", size: "sm" }, "mr-[0.5px] rounded-r-none")}
               >
                 <AiOutlinePlus /> {l("base.new")}
               </button>
@@ -281,7 +285,7 @@ export default function ListContainer<
         </div>
         <div className="flex">
           <button
-            className="btn btn-primary btn-sm btn-square mx-1"
+            className={buttonRecipe({ variant: "primary", size: "icon" }, "mx-1 size-8")}
             onClick={() => void storeDo[namesOfSlice.refreshModel]()}
           >
             <AiOutlineRedo className="mx-2" />

@@ -7,12 +7,12 @@ import {
   type LayoutModule,
   type PageConfig,
   type PathRoute,
-  readCssSafeAreaInsets,
-  resolvePageState,
   type Route,
   type RouteGuide,
   type RouteModule,
   type RouteRender,
+  readCssSafeAreaInsets,
+  resolvePageState,
   storage,
   validatePageConfig,
 } from "akanjs/client";
@@ -115,7 +115,8 @@ export const bootCsr = async (context: Record<string, CsrRouteModuleEntry>) => {
       validateRouteModuleExports(key, pageContent);
       validatePageConfig(key, (pageContent as RouteModuleWithConfig).pageConfig);
       asyncDefaultMap[key] = entry.isAsyncDefault;
-      if (pageContent.default) pages[key] = pageContent;
+      // `_overrides.tsx` has no default export but must still be kept so its slot bindings can be mounted.
+      if (pageContent.default || parsed.kind === "overrides") pages[key] = pageContent;
     }),
   );
   const cssSafeArea = readCssSafeAreaInsets();
@@ -140,6 +141,18 @@ export const bootCsr = async (context: Record<string, CsrRouteModuleEntry>) => {
     if (!targetPath) continue;
     const page = pages[filePath];
     if (!page) continue;
+    if (parsed.kind === "overrides") {
+      // `page` is the generated `"use client"` override wrapper; its default mounts the provider around children.
+      const overridesRender: RouteRender = {
+        render: page.default as never,
+        isAsync: asyncDefaultMap[filePath] || page.default?.constructor.name === "AsyncFunction",
+      };
+      targetRouteMap.set(targetPath, {
+        ...(targetRouteMap.get(targetPath) ?? { path: targetPath, children: new Map<string, Route>() }),
+        renderOverrides: overridesRender,
+      } as Route);
+      continue;
+    }
     const layoutPage = parsed.kind === "layout" ? (page as LayoutModule) : null;
     const routeRender: RouteRender = {
       render: page.default as never,
@@ -182,15 +195,21 @@ export const bootCsr = async (context: Record<string, CsrRouteModuleEntry>) => {
     const currentRootLayout = isRoot && route.renderLayout ? route.renderLayout : null;
     const currentLayout = !isRoot && route.renderLayout ? route.renderLayout : null;
     const currentLayoutConfig = route.renderLayout && route.layoutPageConfig ? route.layoutPageConfig : null;
+    // See RouteTreeBuilder#getPathRoutes: overrides ride the layout stream just outside this node's own layout,
+    // so nested `_overrides.tsx` merge into nested providers and the closest declaration wins.
+    const currentOverrideRenders = route.renderOverrides ? [route.renderOverrides] : [];
     const renderRootLayouts = [...parentRootLayouts, ...(currentRootLayout ? [currentRootLayout] : [])];
-    const renderLayouts = [...parentLayouts, ...(currentLayout ? [currentLayout] : [])];
+    const renderLayouts = [...parentLayouts, ...currentOverrideRenders, ...(currentLayout ? [currentLayout] : [])];
     const pageConfigChain = [
       ...parentPageConfigChain,
       ...(currentRootLayout || currentLayout ? (currentLayoutConfig ? [currentLayoutConfig] : []) : []),
     ];
     const pageRenderRootLayouts =
       route.pageIncludesOwnLayout === false && currentRootLayout ? parentRootLayouts : renderRootLayouts;
-    const pageRenderLayouts = route.pageIncludesOwnLayout === false && currentLayout ? parentLayouts : renderLayouts;
+    const pageRenderLayouts =
+      route.pageIncludesOwnLayout === false && currentLayout
+        ? [...parentLayouts, ...currentOverrideRenders]
+        : renderLayouts;
     const pageRenderConfigChain =
       route.pageIncludesOwnLayout === false && (currentRootLayout || currentLayout)
         ? parentPageConfigChain
@@ -283,6 +302,11 @@ function initializeMobileTargetFromSearch() {
 
 function validateRouteModuleExports(key: string, mod: RouteModule) {
   const parsed = parseRouteModuleKey(key);
+  if (parsed.kind === "overrides") {
+    // The bundled module is the generated `"use client"` override wrapper, whose default mounts the provider.
+    if (!mod.default) throw new Error(`[route-convention] ${key} generated override wrapper has no default export`);
+    return;
+  }
   const allowed =
     parsed.kind === "page"
       ? new Set(["default", "pageConfig", "head", "metadata", "generateHead", "generateMetadata", "Loading"])

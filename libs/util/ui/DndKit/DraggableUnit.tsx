@@ -2,7 +2,7 @@
 
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import clsx from "clsx";
+import { cn } from "akanjs/client";
 import { type MouseEvent, type ReactNode, useRef, useState } from "react";
 
 export interface DraggableUnitProps {
@@ -63,7 +63,7 @@ export default function DraggableUnit({ id, onClick, children, className }: Drag
         }}
         {...attributes}
         {...listeners}
-        className={clsx("min-w-full", className, {})}
+        className={cn("min-w-full", className)}
         style={{
           transform: CSS.Transform.toString(transform),
         }}

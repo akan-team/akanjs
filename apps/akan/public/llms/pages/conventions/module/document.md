@@ -11,6 +11,7 @@
 - model.document.ts (#document-overview)
 - Standard Document Shape (#standard-document-shape)
 - Query, Sort, And Generated Methods (#query-sort-methods)
+- Text Search Query (#text-search-query)
 - Document Instance Behavior (#document-by)
 - Model-Level Helpers (#model-into)
 - Extending Generated Documents (#generated-extension)
@@ -46,7 +47,27 @@ Required input for the query. Required args must come before optional args.
 
 Optional input. Build the query conditionally when the value exists.
 
-Use helpers like all, any, not, oneOf, notOneOf, between, gte, lte, contains, exists, and empty.
+Use helpers like all, any, not, oneOf, notOneOf, between, gte, lte, contains, exists, empty, and search.
+
+Text Search Query
+
+q.search() matches against the full-text index built from fields that declared a text role in constant.ts. It is an ordinary query node, so it composes with normal conditions and produces the same generated methods: listBySearch, countBySearch, queryBySearch, insightBySearch.
+
+A filter alone is enough to search from a service. Adding a slice publishes it to clients, so only do that when the model is safe to enumerate.
+
+Treats the last word as a prefix, which is what an as-you-type box needs.
+
+Limits the match to some of title, desc, tag, and filter. Example: { columns: ["title"] }.
+
+Overrides the bm25 weights. Four finite numbers, in the order title, desc, tag, filter.
+
+q.search() must sit at an AND position. Nesting it under q.any() or q.not() throws, because it compiles to a join rather than a where condition.
+
+It is rejected in updateOneByQuery and updateManyByQuery. A query-level write takes no join, so honouring only the remaining conditions would widen the write.
+
+Blank input matches nothing, not everything. That keeps an empty search box from turning into a full listing.
+
+Sort by "relevance" for best-match-first. Any other sort key wins over the score.
 
 Document Instance Behavior
 
@@ -69,6 +90,8 @@ Declare loaders for lookup shapes that are used often and should stay consistent
 Schema Hooks And Indexes
 
 Use _onSchema when the storage schema needs indexes or lightweight save hooks. Keep heavy business workflows in service or model methods, and keep schema hooks focused on persistence concerns.
+
+schema.index() only builds ordinary lookup indexes. It has nothing to do with text search — declare a text role on the field in constant.ts for that. The value "text" is accepted here as an alias for a normal index, which is a leftover name and not a search feature.
 
 Practical Rules
 
@@ -155,6 +178,29 @@ const ticketInsight = await this.insightInProject(projectId);
 ### ticket.document.ts
 
 ```ts
+export class TicketFilter extends from(cnst.Ticket, (filter) => ({
+  query: {
+    bySearch: filter()
+      .arg("text", String)
+      .opt("statuses", [cnst.TicketStatus])
+      .query((text, statuses, q) =>
+        q.all(q.search(text, { prefix: true }), statuses?.length ? { status: q.oneOf(statuses) } : {}),
+      ),
+  },
+  sort: {},
+})) {}
+```
+
+### ticket.service.ts
+
+```ts
+const tickets = await this.listBySearch(text, statuses, { sort: "relevance" });
+const count = await this.countBySearch(text, statuses);
+```
+
+### ticket.document.ts
+
+```ts
 export class Ticket extends by(cnst.Ticket) {
   open() {
     this.status = "opened";
@@ -226,7 +272,7 @@ export class OrderModel extends into(Order, OrderFilter, cnst.order, ({ byQuery 
 ```ts
 export class StoryModel extends into(Story, StoryFilter, cnst.story, () => ({})) {
   static override _onSchema(schema: SchemaOf) {
-    schema.index({ title: "text" });
+    schema.index({ author: 1, createdAt: -1 });
   }
 }
 ```

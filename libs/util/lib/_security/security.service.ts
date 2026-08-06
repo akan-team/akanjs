@@ -10,12 +10,6 @@ import {
 import { type Dayjs, dayjs, getEnv } from "akanjs/base";
 import { serve } from "akanjs/service";
 
-export interface AuthTokenPair {
-  jwt: string;
-  refreshToken: string;
-  expiresAt: Dayjs;
-}
-
 export class SecurityService extends serve("security" as const, ({ use }) => ({
   jwtSecret: use<string>(),
   aeskey: use<string>(),

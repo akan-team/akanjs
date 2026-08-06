@@ -1,54 +1,17 @@
 @import "tailwindcss";
 @import "akanjs/ui/styles.css";
 
-@plugin "daisyui" {
-  logs: false;
-  exclude: properties;
-  themes: false;
-}
+/* 테마 시스템(브랜드-중립 기본 팔레트 · @theme inline 매핑 · dark 변형 · 런타임 data-theme 전환)은
+   akanjs/ui/styles.css(프레임워크)가 전부 제공한다. 이 앱은 import 만으로 즉시 동작한다.
 
-@plugin "daisyui/theme" {
-  name: "light";
-  --color-primary: #c33c32;
-  --color-secondary: #2b2e33;
-  --color-accent: #e67e22;
-  --color-accent-content: #ffffff;
-  --color-base-content: #2c3e50;
-  --color-base-100: #fafafa;
-  --color-base-200: #f5f5f5;
-  --color-info: #f1fdff;
-  --color-info-content: #2c3e50;
-  --color-neutral: #292c32;
-  --color-neutral-content: #fafafa;
-  --color-success: #2ecc71;
-  --color-success-content: #fafafa;
-  --color-warning: #f39c12;
-  --color-warning-content: #fafafa;
-  --color-error: #e74c3c;
-  --color-error-content: #fafafa;
-  --color-open: #27ae60;
-  --color-open-content: #fafafa;
-}
+   이 앱만의 브랜드 색을 쓰려면 아래처럼 토큰만 override 하면 된다:
 
-@plugin "daisyui/theme" {
-  name: "dark";
-  default: true;
-  --color-primary: #ff493b;
-  --color-secondary: #2b2e33;
-  --color-accent: #d1a23b;
-  --color-accent-content: #ffffff;
-  --color-base-content: #ffffff;
-  --color-base-100: #1a1a1a;
-  --color-base-200: #2a2a2a;
-  --color-info: #173b78;
-  --color-info-content: #ffffff;
-  --color-neutral: #3ed13b;
-  --color-neutral-content: #ffffff;
-  --color-success: #255fc3;
-  --color-success-content: #ffffff;
-  --color-warning: #ffcc00;
-  --color-warning-content: #ffffff;
-  --color-error: #f02020;
-  --color-error-content: #ffffff;
-  --color-open: #10fc00;
-}
+   :root,
+   [data-theme="dark"] {
+     --primary: #xxxxxx;
+     --primary-foreground: #ffffff;
+   }
+   [data-theme="light"] {
+     --primary: #xxxxxx;
+   }
+*/

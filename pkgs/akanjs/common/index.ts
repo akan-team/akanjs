@@ -15,6 +15,7 @@ export { isDayjs } from "./isDayjs";
 export { isEmail } from "./isEmail";
 export { isPhoneNumber } from "./isPhoneNumber";
 export { isQueryEqual } from "./isQueryEqual";
+export { isThenable } from "./isThenable";
 export { isValidDate } from "./isValidDate";
 export { decodeJwtPayload } from "./jwtDecode";
 export { Logger, type LoggerSink, type LoggerSinkEntry, type LogLevel } from "./Logger";
@@ -52,5 +53,10 @@ export {
 } from "./routeConvention";
 export { sleep } from "./sleep";
 export { splitVersion } from "./splitVersion";
-export { getBasePathFromPathname, parseBasePaths } from "./subRoute";
+export { getBasePathFromPathname, parseBasePaths, parseSubRouteHosts, resolveSubRouteHosts } from "./subRoute";
 export type * from "./types";
+export {
+  type WebsocketAuthAckData,
+  type WebsocketAuthRequest,
+  websocketAuthContract,
+} from "./websocketAuth";

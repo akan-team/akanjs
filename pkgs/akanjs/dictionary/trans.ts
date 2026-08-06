@@ -1,6 +1,7 @@
 import type { GetStateObject, ObjectAssign, Prettify } from "akanjs/base";
 import { pathGet } from "akanjs/common";
 
+import { DictionaryRegistry } from "./dictionaryRegistry";
 import type { DictModule } from "./locale";
 
 type TranslationSingle = readonly [string, string] | readonly [string, string, string, string];
@@ -106,6 +107,7 @@ export const makeTrans = <
   Object.entries(transMap).forEach(([refName, trans]) => {
     trans.dict._registerToRoot(refName, rootDictionary);
   });
+  DictionaryRegistry.register(rootDictionary, transMap);
   class Err extends Error {
     readonly error: string;
     readonly statusCode: number;

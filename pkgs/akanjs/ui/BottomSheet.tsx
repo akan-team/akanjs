@@ -1,6 +1,6 @@
 "use client";
 import { useDrag } from "@use-gesture/react";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { st } from "akanjs/store";
 import { animated } from "akanjs/ui";
 import { forwardRef, type ReactNode, useEffect, useImperativeHandle, useRef } from "react";
@@ -66,23 +66,21 @@ export const BottomSheet = forwardRef<BottomSheetRef, BottomSheetProps>(
             opacity,
           }}
           onClick={() => void closeModal()}
-          className={clsx("fixed top-0 left-0 size-full bg-gray-500/50", {
-            "z-50": open,
-            "-z-[1]": !open,
-          })}
+          className={cn("fixed top-0 left-0 size-full bg-muted-foreground/50", open && "z-50", !open && "-z-[1]")}
         />
         <animated.div
           ref={ref}
           style={{ y, paddingTop: type === "full" ? pageState.topSafeArea : 0 }}
-          className={clsx("fixed bottom-0 left-0 z-[101] w-full bg-base-100", {
-            "h-[90%] rounded-t-3xl": type === "half",
-            "h-[100vh]": type === "full",
-          })}
+          className={cn(
+            "fixed bottom-0 left-0 z-[101] w-full bg-background",
+            type === "half" && "h-[90%] rounded-t-3xl",
+            type === "full" && "h-[100vh]",
+          )}
         >
           <div className="flex h-8 w-full items-start justify-center pt-2">
             {type === "half" ? (
               <animated.div {...bind()} className="flex h-8 w-full items-start justify-center pt-2">
-                <div className="h-2 w-32 rounded-full bg-gray-300"></div>
+                <div className="h-2 w-32 rounded-full bg-muted"></div>
               </animated.div>
             ) : (
               <button

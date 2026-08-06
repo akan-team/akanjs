@@ -1,6 +1,6 @@
 {
   "name": "akanjs",
-  "version": "2.3.11-rc.7",
+  "version": "2.4.2-rc.3",
   "sourceType": "module",
   "type": "module",
   "publishConfig": {
@@ -109,18 +109,30 @@
       "import": "./server/rscWorker.tsx",
       "types": "./server/rscWorker.tsx",
       "default": "./server/rscWorker.tsx"
+    },
+    "./server/memoryLimit": {
+      "import": "./server/memoryLimit.ts",
+      "types": "./server/memoryLimit.ts",
+      "default": "./server/memoryLimit.ts"
+    },
+    "./server/lifecycle/portInUse": {
+      "import": "./server/lifecycle/portInUse.ts",
+      "types": "./server/lifecycle/portInUse.ts",
+      "default": "./server/lifecycle/portInUse.ts"
     }
   },
   "dependencies": {
-    "clsx": "^2.1.1",
     "dayjs": "^1.11.20",
     "immer": "^11.1.8",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "tailwind-merge": "^3.3.1",
+    "tailwind-variants": "^3.3.0"
   },
   "peerDependencies": {
     "@capacitor-community/contacts": "^7.2.0",
-    "@capacitor-community/fcm": "^8.1.0",
+    "@capacitor/android": "^8.3.4",
     "@capacitor/app": "^8.1.0",
+    "@capacitor/assets": "^3.0.5",
     "@capacitor/browser": "^8.0.3",
     "@capacitor/camera": "^8.2.0",
     "@capacitor/cli": "^8.3.4",
@@ -128,6 +140,8 @@
     "@capacitor/device": "^8.0.2",
     "@capacitor/geolocation": "^8.2.0",
     "@capacitor/haptics": "^8.0.2",
+    "@capacitor/inappbrowser": "^4.0.1",
+    "@capacitor/ios": "^8.3.4",
     "@capacitor/keyboard": "^8.0.3",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/push-notifications": "^8.1.1",
@@ -141,7 +155,6 @@
     "chance": "^1.1.13",
     "cordova-plugin-purchase": "^13.16.0",
     "croner": "^10.0.1",
-    "daisyui": "5.5.23",
     "firebase": "^12.13.0",
     "ioredis": "^5.10.1",
     "mermaid": "^11.15.0",
@@ -164,10 +177,13 @@
     "@capacitor-community/contacts": {
       "optional": true
     },
-    "@capacitor-community/fcm": {
+    "@capacitor/android": {
       "optional": true
     },
     "@capacitor/app": {
+      "optional": true
+    },
+    "@capacitor/assets": {
       "optional": true
     },
     "@capacitor/browser": {
@@ -189,6 +205,12 @@
       "optional": true
     },
     "@capacitor/haptics": {
+      "optional": true
+    },
+    "@capacitor/inappbrowser": {
+      "optional": true
+    },
+    "@capacitor/ios": {
       "optional": true
     },
     "@capacitor/keyboard": {
@@ -228,9 +250,6 @@
       "optional": true
     },
     "croner": {
-      "optional": true
-    },
-    "daisyui": {
       "optional": true
     },
     "firebase": {

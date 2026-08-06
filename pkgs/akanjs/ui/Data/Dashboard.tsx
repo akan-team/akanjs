@@ -1,9 +1,10 @@
 "use client";
-import { clsx, usePage } from "akanjs/client";
+import { cn, usePage } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
 
+import { buttonRecipe } from "../Button";
 import { Link } from "../Link";
 
 export interface DashboardProps<T extends string, State> {
@@ -33,21 +34,26 @@ export default function Dashboard<T extends string, State>({
   const formatSummaryValue = (value: unknown) =>
     typeof value === "number" || typeof value === "string" ? value.toLocaleString() : "";
   return (
-    <div className={clsx("stats my-2 flex w-full flex-wrap justify-center py-0 shadow-sm", className)}>
-      <div className="stats">
+    <div className={cn("my-2 flex w-full flex-wrap justify-center py-0 shadow-sm", className)}>
+      <div className="flex flex-wrap">
         {columns?.map(
           (column) =>
             summary[column] !== undefined &&
             queryMap[column] !== undefined && (
               <button
                 key={column}
-                className={`btn btn-ghost mx-1 h-32 w-48 rounded-none pt-3 hover:border ${
-                  filter === column ? "border" : "border-0"
-                }`}
+                className={buttonRecipe({ variant: "ghost" }, [
+                  "mx-1 h-32 w-48 rounded-none pt-3 hover:border",
+                  filter === column ? "border" : "border-0",
+                ])}
               >
-                <Link key={column} className="stat" href={`/admin?topMenu=data&subMenu=${modelName}&filter=${column}`}>
-                  <div className="stat-title">{l(`summary.${column}` as "base.new")}</div>
-                  <div className="stat-value text-primary">{formatSummaryValue(summary[column])}</div>
+                <Link
+                  key={column}
+                  className="flex flex-col gap-1"
+                  href={`/admin?topMenu=data&subMenu=${modelName}&filter=${column}`}
+                >
+                  <div className="text-foreground/60 text-xs">{l(`summary.${column}` as "base.new")}</div>
+                  <div className="font-semibold text-2xl text-primary">{formatSummaryValue(summary[column])}</div>
                 </Link>
               </button>
             ),
@@ -57,10 +63,13 @@ export default function Dashboard<T extends string, State>({
               (column) =>
                 summary[column] !== undefined &&
                 queryMap[column] !== undefined && (
-                  <button key={column} className={`btn btn-ghost mx-1 h-32 w-48 rounded-none border-none pt-3`}>
-                    <div className="stat">
-                      <div className="stat-title">{l(`summary.${column}` as "base.new")}</div>
-                      <div className="stat-value text-primary">{formatSummaryValue(summary[column])}</div>
+                  <button
+                    key={column}
+                    className={buttonRecipe({ variant: "ghost" }, "mx-1 h-32 w-48 rounded-none border-none pt-3")}
+                  >
+                    <div className="flex flex-col gap-1">
+                      <div className="text-foreground/60 text-xs">{l(`summary.${column}` as "base.new")}</div>
+                      <div className="font-semibold text-2xl text-primary">{formatSummaryValue(summary[column])}</div>
                     </div>
                   </button>
                 ),

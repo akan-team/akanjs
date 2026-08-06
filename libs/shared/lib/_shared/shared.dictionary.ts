@@ -3,7 +3,35 @@ import { serviceDictionary } from "akanjs/dictionary";
 import type { SharedEndpoint } from "./shared.signal";
 
 export const dictionary = serviceDictionary(["en", "ko"])
-  .endpoint<typeof SharedEndpoint>((fn) => ({}))
+  .endpoint<SharedEndpoint>((fn) => ({}))
+  .error({
+    noAuthenticationAccount: ["No authentication account", "인증 계정이 없습니다"],
+    noAuthenticationWithRoles: [
+      "[{key}] No authentication with roles: {roles}, your roles are {yourRoles}",
+      "[{key}] 필요한 권한이 없습니다: {roles}, 현재 권한: {yourRoles}",
+    ],
+    invalidRefreshToken: ["Invalid refresh token", "유효하지 않은 리프레시 토큰입니다"],
+    revokedRefreshToken: ["Revoked refresh token", "취소된 리프레시 토큰입니다"],
+    expiredRefreshToken: ["Expired refresh token", "만료된 리프레시 토큰입니다"],
+    refreshTokenReuseDetected: ["Refresh token reuse detected", "리프레시 토큰 재사용이 감지되었습니다"],
+    ssoNotConfigured: ["{type} SSO not configured", "{type} SSO가 설정되지 않았습니다"],
+    invalidSsoCallbackMissingCode: ["Invalid SSO callback: missing code", "잘못된 SSO 콜백입니다: 코드 누락"],
+    invalidSsoCallbackMissingOrigin: ["Invalid SSO callback: missing origin", "잘못된 SSO 콜백입니다: origin 누락"],
+    failedToGetAccessToken: ["Failed to get access token from {type}", "{type}에서 액세스 토큰을 가져오지 못했습니다"],
+    noAppleIdToken: ["No id_token found in Apple's response", "Apple 응답에서 id_token을 찾을 수 없습니다"],
+    fileUploadNotConfigured: ["File upload is not configured.", "파일 업로드가 설정되지 않았습니다."],
+    excalidrawUploadNotConfigured: [
+      "Excalidraw image upload is not configured.",
+      "Excalidraw 이미지 업로드가 설정되지 않았습니다.",
+    ],
+    tooManyFiles: ["You can attach up to {maxFiles} files.", "최대 {maxFiles}개의 파일을 첨부할 수 있습니다."],
+    fileTooLarge: [
+      "File is too large. Maximum size is {maxSize}MB.",
+      "파일이 너무 큽니다. 최대 크기는 {maxSize}MB입니다.",
+    ],
+    fileTypeNotAllowed: ["File type is not allowed: {fileType}", "허용되지 않는 파일 형식입니다: {fileType}"],
+    addressNotFound: ["Address not found.", "주소를 찾을 수 없습니다."],
+  })
   .translate({
     logout: ["Logout", "로그아웃"],
     newest: ["Newest", "최신순"],

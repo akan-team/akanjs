@@ -1,7 +1,71 @@
 @import "tailwindcss";
 @import "akanjs/ui/styles.css";
 
-@plugin "daisyui" {
-  logs: false;
-  exclude: properties;
+/* akanjs 기본 팔레트는 브랜드-중립(pkgs/akanjs/ui/styles.css). dark 변형·런타임 전환도 프레임워크 소유.
+   이 앱은 자신의 레드 팔레트로 토큰만 override 한다. base-200/300 은 제거됐고
+   그 값은 muted(#2a2a2a/#f5f5f5)·border(#3a3a3a/#e5e5e5)가 그대로 이어받는다. */
+   
+:root,
+[data-theme="dark"] {
+  --background: #1a1a1a;
+  --foreground: #ffffff;
+  --primary: #ff493b;
+  --primary-foreground: #ffffff;
+  --secondary: #2b2e33;
+  --secondary-foreground: #ffffff;
+  --accent: #d1a23b;
+  --accent-foreground: #1a1a1a;
+  --neutral: #3ed13b;
+  --neutral-foreground: #ffffff;
+  --info: #173b78;
+  --info-foreground: #ffffff;
+  --success: #255fc3;
+  --success-foreground: #ffffff;
+  --warning: #ffcc00;
+  --warning-foreground: #1a1a1a;
+  --destructive: #f02020;
+  --destructive-foreground: #ffffff;
+  --open: #10fc00;
+  --open-foreground: #1a1a1a;
+  --muted: #2a2a2a;
+  --muted-foreground: #a0a0a0;
+  --card: #212121;
+  --card-foreground: #ffffff;
+  --popover: #262626;
+  --popover-foreground: #ffffff;
+  --border: #3a3a3a;
+  --input: #3a3a3a;
+  --ring: #ff493b;
+}
+
+[data-theme="light"] {
+  --background: #fafafa;
+  --foreground: #2c3e50;
+  --primary: #c33c32;
+  --primary-foreground: #ffffff;
+  --secondary: #2b2e33;
+  --secondary-foreground: #ffffff;
+  --accent: #e67e22;
+  --accent-foreground: #1f2937;
+  --neutral: #292c32;
+  --neutral-foreground: #fafafa;
+  --info: #f1fdff;
+  --info-foreground: #2c3e50;
+  --success: #22a05a;
+  --success-foreground: #fafafa;
+  --warning: #f39c12;
+  --warning-foreground: #2c3e50;
+  --destructive: #e74c3c;
+  --destructive-foreground: #fafafa;
+  --open: #229a55;
+  --open-foreground: #fafafa;
+  --muted: #f5f5f5;
+  --muted-foreground: #6b7280;
+  --card: #ffffff;
+  --card-foreground: #2c3e50;
+  --popover: #ffffff;
+  --popover-foreground: #2c3e50;
+  --border: #e5e5e5;
+  --input: #e5e5e5;
+  --ring: #c33c32;
 }

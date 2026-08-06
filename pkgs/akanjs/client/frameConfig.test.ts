@@ -133,4 +133,35 @@ describe("frameConfig", () => {
       "pageConfig.topInset in bad.tsx must be a boolean or non-negative px number.",
     );
   });
+
+  test("resolves the ssr render mode, defaulting to stream", () => {
+    expect(
+      resolvePageState({
+        path: "/detail",
+        platform: "web",
+        deviceSafeArea: { top: 0, bottom: 0 },
+      }).ssr,
+    ).toBe("stream");
+    expect(
+      resolvePageState({
+        path: "/detail",
+        platform: "web",
+        deviceSafeArea: { top: 0, bottom: 0 },
+        configChain: [{ ssr: "block" }],
+      }).ssr,
+    ).toBe("block");
+  });
+
+  test("rejects unsupported pageConfig.ssr values", () => {
+    expect(() => validatePageConfig("bad.tsx", { ssr: "wait" as never })).toThrow('unsupported pageConfig.ssr "wait"');
+    expect(() => validatePageConfig("ok.tsx", { ssr: "block" })).not.toThrow();
+  });
+
+  test("accepts pageConfig.devOnly but never merges it into page state", () => {
+    expect(() => validatePageConfig("ok.tsx", { devOnly: true })).not.toThrow();
+    expect(() => validatePageConfig("bad.tsx", { devOnly: "yes" as never })).toThrow(
+      "pageConfig.devOnly in bad.tsx must be a boolean.",
+    );
+    expect(mergePageConfigs([{ devOnly: true }, { cache: true }])).toEqual({ cache: true });
+  });
 });

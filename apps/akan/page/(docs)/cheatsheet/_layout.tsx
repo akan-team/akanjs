@@ -12,6 +12,7 @@ export default function Layout({ children }: LayoutProps) {
       subMenus: [
         { name: l.trans({ en: "Authorization", ko: "인증" }), href: "/cheatsheet/general/auth" },
         { name: l.trans({ en: "Schema Design", ko: "스키마 설계" }), href: "/cheatsheet/general/schema" },
+        { name: l.trans({ en: "Text Search", ko: "텍스트 검색" }), href: "/cheatsheet/general/search" },
         { name: l.trans({ en: "Edge Computing", ko: "엣지 컴퓨팅" }), href: "/cheatsheet/general/edge" },
         { name: l.trans({ en: "File Management", ko: "파일 관리" }), href: "/cheatsheet/general/file" },
         { name: l.trans({ en: "Single Sign-On", ko: "Single Sign-On" }), href: "/cheatsheet/general/sso" },

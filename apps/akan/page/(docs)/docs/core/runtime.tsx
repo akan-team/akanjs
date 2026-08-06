@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,6 +16,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/myapp/main.ts"
             code={`import { AkanApp } from "akanjs/server";
 
@@ -115,7 +116,7 @@ void run();`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       <Scroll.Slide id="dev-prod" title={l.trans({ en: "Root-level Env Variables", ko: "루트 환경변수" })}>
         <Docs.Title>{l.trans({ en: "Root-level Env Variables", ko: "루트 환경변수" })}</Docs.Title>
         <Docs.Description>
@@ -126,13 +127,16 @@ void run();`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title=".env"
             language="bash"
             code={`AKAN_PUBLIC_REPO_NAME=myorg
 AKAN_PUBLIC_SERVE_DOMAIN="mydomain.com"
 AKAN_PUBLIC_ENV=local
 AKAN_PUBLIC_OPERATION_MODE=local
-AKAN_PUBLIC_LOG_LEVEL=debug`}
+AKAN_PUBLIC_LOG_LEVEL=debug
+AKAN_SEARCH_ENABLED=1
+AKAN_SEARCH_TOKENIZER="unicode61 remove_diacritics 2"`}
           />
           <Docs.Alert type="warning">
             {l.trans({
@@ -188,6 +192,24 @@ AKAN_PUBLIC_LOG_LEVEL=debug`}
                 "trace | debug | info | warn | error",
               ],
               [
+                "AKAN_SEARCH_ENABLED",
+                l.trans({ en: "Text search index", ko: "텍스트 검색 색인" }),
+                l.trans({
+                  en: "Unset means on. Set 0 to switch the full-text index off; indexed data is kept and re-enabling reconciles every model. Give every process in a deployment the same value, because a process cannot clean up triggers for models it does not mount.",
+                  ko: "값을 주지 않으면 켜져 있습니다. 0으로 두면 전문 검색 색인을 끄며, 색인된 데이터는 유지되고 다시 켜면 모든 모델을 재정합합니다. 프로세스는 자신이 마운트하지 않은 모델의 trigger를 정리할 수 없으므로 한 배포의 모든 프로세스에 같은 값을 주세요.",
+                }),
+                "0 | 1",
+              ],
+              [
+                "AKAN_SEARCH_TOKENIZER",
+                l.trans({ en: "Search tokenizer", ko: "검색 토크나이저" }),
+                l.trans({
+                  en: "The fts5 tokenizer the index is built with. Defaults to unicode61 remove_diacritics 2. Changing it rebuilds the index from the mirror on the next boot, so no data is re-read from the model tables. The rebuild takes no cross-process claim, so a fleet restarted at once repeats it in every process; stagger the restart when the mirror is large. database.search.tokenizer in the app config takes precedence. A value this SQLite build cannot provide fails the boot and names the fix, rather than starting a server whose every search would raise. That boot failure leaves writes alone: the index is dropped but nothing else is, so the models on that database keep accepting writes and the next healthy boot recovers the index in full.",
+                  ko: "색인을 만들 때 쓰는 fts5 토크나이저입니다. 기본값은 unicode61 remove_diacritics 2입니다. 값을 바꾸면 다음 부팅에서 미러로부터 색인을 다시 만들며, 모델 테이블을 다시 읽지는 않습니다. 이 재생성에는 프로세스 간 클레임이 없어서, 한 번에 재시작한 여러 프로세스가 각자 다시 만듭니다. 미러가 크다면 재시작을 나눠서 하세요. 앱 설정의 database.search.tokenizer가 우선합니다. 이 SQLite 빌드가 제공할 수 없는 값이면, 모든 검색이 에러를 내는 서버를 띄우는 대신 부팅을 실패시키고 고칠 방법을 알려줍니다. 이때 쓰기는 그대로 살아 있습니다. 색인만 없어지고 다른 것은 건드리지 않으므로 해당 데이터베이스의 모델은 계속 쓰기를 받고, 다음 정상 부팅이 색인을 온전히 복구합니다.",
+                }),
+                "unicode61 remove_diacritics 2 | trigram | porter unicode61",
+              ],
+              [
                 "AKAN_LOG_FILE_LEVEL",
                 l.trans({ en: "File log detail", ko: "파일 로그 상세도" }),
                 l.trans({
@@ -233,18 +255,18 @@ AKAN_PUBLIC_LOG_LEVEL=debug`}
                 "100",
               ],
             ].map(([name, label, desc, values]) => (
-              <div key={name} className="rounded-xl border border-primary/10 bg-base-100 p-3">
+              <div key={name} className="rounded-xl border border-primary/10 bg-background p-3">
                 <div className="break-all font-mono font-semibold text-primary text-sm">{name}</div>
-                <div className="mt-1 font-bold text-base-content">{label}</div>
-                <div className="mt-2 text-base-content/70 text-sm leading-relaxed">{desc}</div>
-                <div className="mt-3 break-all rounded bg-base-200 px-2 py-1 font-mono text-base-content/80 text-xs">
+                <div className="mt-1 font-bold text-foreground">{label}</div>
+                <div className="mt-2 text-foreground/70 text-sm leading-relaxed">{desc}</div>
+                <div className="mt-3 break-all rounded bg-muted px-2 py-1 font-mono text-foreground/80 text-xs">
                   ex) {values}
                 </div>
               </div>
             ))}
           </div>
           <div className="space-y-1">
-            <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+            <div className={panelRecipe()}>
               <div className="font-bold">{l.trans({ en: "AKAN_PUBLIC_ENV modes", ko: "AKAN_PUBLIC_ENV 모드" })}</div>
               <div className="mt-3 space-y-1">
                 {[
@@ -256,14 +278,14 @@ AKAN_PUBLIC_LOG_LEVEL=debug`}
                   ["develop", l.trans({ en: "Team integration checks.", ko: "팀 통합 상태 확인" })],
                   ["main", l.trans({ en: "Production-like behavior.", ko: "운영에 가까운 동작 확인" })],
                 ].map(([mode, desc]) => (
-                  <div key={mode} className="rounded-lg bg-base-200 p-3">
+                  <div key={mode} className="rounded-lg bg-muted p-3">
                     <div className="font-mono font-semibold text-sm">{mode}</div>
-                    <div className="mt-1 text-base-content/70 text-sm">{desc}</div>
+                    <div className="mt-1 text-foreground/70 text-sm">{desc}</div>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+            <div className={panelRecipe()}>
               <div className="font-bold">
                 {l.trans({ en: "AKAN_PUBLIC_OPERATION_MODE modes", ko: "AKAN_PUBLIC_OPERATION_MODE 모드" })}
               </div>
@@ -276,9 +298,9 @@ AKAN_PUBLIC_LOG_LEVEL=debug`}
                   ],
                   ["edge", l.trans({ en: "Client uses edge-facing paths.", ko: "클라이언트가 엣지 경로 사용" })],
                 ].map(([mode, desc]) => (
-                  <div key={mode} className="rounded-lg bg-base-200 p-3">
+                  <div key={mode} className="rounded-lg bg-muted p-3">
                     <div className="font-mono font-semibold text-sm">{mode}</div>
-                    <div className="mt-1 text-base-content/70 text-sm">{desc}</div>
+                    <div className="mt-1 text-foreground/70 text-sm">{desc}</div>
                   </div>
                 ))}
               </div>
@@ -329,7 +351,7 @@ AKAN_PUBLIC_LOG_LEVEL=info`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       <Scroll.Slide id="get-env" title={l.trans({ en: "getEnv()", ko: "getEnv()" })}>
         <Docs.Title>{l.trans({ en: "getEnv()", ko: "getEnv()" })}</Docs.Title>
         <Docs.Description>
@@ -340,6 +362,7 @@ AKAN_PUBLIC_LOG_LEVEL=info`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Using getEnv()"
             code={`import { getEnv } from "akanjs/base";
 
@@ -350,9 +373,9 @@ env.serverHttpUri; // API URL
 env.serverWsUri;   // WebSocket URL`}
           />
           <div className="space-y-1">
-            <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+            <div className={panelRecipe()}>
               <div className="font-bold">{l.trans({ en: "Local mode", ko: "로컬 모드" })}</div>
-              <div className="mt-2 text-base-content/70 text-sm leading-relaxed">
+              <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
                   en: "When OPERATION_MODE is local, getEnv() points the browser and API client to your local Akan runtime, usually localhost:8282.",
                   ko: "OPERATION_MODE가 local이면 getEnv()는 브라우저와 API 클라이언트가 내 로컬 Akan 런타임을 바라보도록 합니다. 보통 localhost:8282를 사용합니다.",
@@ -368,9 +391,9 @@ serverHttpUri=http://localhost:8282/api
 serverWsUri=ws://localhost:8282`}
               />
             </div>
-            <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+            <div className={panelRecipe()}>
               <div className="font-bold">{l.trans({ en: "Cloud / edge mode", ko: "클라우드 / 엣지 모드" })}</div>
-              <div className="mt-2 text-base-content/70 text-sm leading-relaxed">
+              <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
                   en: "When OPERATION_MODE is cloud or edge, getEnv() builds service URLs from the app name, environment, and serve domain.",
                   ko: "OPERATION_MODE가 cloud 또는 edge이면 getEnv()는 앱 이름, 환경, 서비스 도메인을 조합해 서비스 URL을 만듭니다.",
@@ -397,7 +420,7 @@ serverWsUri=wss://myapp-main.mydomain.com`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       <Scroll.Slide id="openapi-json" title={l.trans({ en: "OpenAPI JSON", ko: "OpenAPI JSON" })}>
         <Docs.Title>{l.trans({ en: "OpenAPI JSON", ko: "OpenAPI JSON" })}</Docs.Title>
         <Docs.Description>
@@ -408,6 +431,7 @@ serverWsUri=wss://myapp-main.mydomain.com`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/myapp/main.ts"
             code={`import { AkanApp } from "akanjs/server";
 
@@ -423,6 +447,7 @@ void run();`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Read the OpenAPI document"
             language="bash"
             code={`curl http://localhost:8282/openapi.json`}
@@ -454,10 +479,10 @@ void run();`}
                 value: `new AkanServer("myapp", env, "all", lib, { openapi: true })`,
               },
             ].map(({ title, desc, value }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
-                <div className="font-bold text-base-content">{title}</div>
-                <div className="mt-2 text-base-content/70 text-sm leading-relaxed">{desc}</div>
-                <div className="mt-3 break-all rounded bg-base-200 px-2 py-1 font-mono text-base-content/80 text-xs">
+              <div key={title} className={panelRecipe()}>
+                <div className="font-bold text-foreground">{title}</div>
+                <div className="mt-2 text-foreground/70 text-sm leading-relaxed">{desc}</div>
+                <div className="mt-3 break-all rounded bg-muted px-2 py-1 font-mono text-foreground/80 text-xs">
                   {value}
                 </div>
               </div>
@@ -471,7 +496,7 @@ void run();`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       <Scroll.Slide
         id="health-metrics-logs"
         title={l.trans({ en: "Health, Metrics, Logs", ko: "상태 확인, 메트릭, 로그" })}
@@ -485,9 +510,9 @@ void run();`}
             })}
           </div>
           <div className="space-y-1">
-            <div className="rounded-xl border border-base-300 bg-base-100 px-4">
+            <div className={panelRecipe({ padding: "row" })}>
               <div className="font-bold">{l.trans({ en: "Health", ko: "상태 확인" })}</div>
-              <div className="mt-2 text-base-content/70 text-sm leading-relaxed">
+              <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
                   en: "Use this to check whether the gateway and server processes are running and ready.",
                   ko: "게이트웨이와 서버 프로세스가 실행 중이고 준비되었는지 확인할 때 사용합니다.",
@@ -500,9 +525,9 @@ void run();`}
                 code={`curl http://localhost:8282/_akan/app/health`}
               />
             </div>
-            <div className="rounded-xl border border-base-300 bg-base-100 px-4">
+            <div className={panelRecipe({ padding: "row" })}>
               <div className="font-bold">{l.trans({ en: "Metrics", ko: "메트릭" })}</div>
-              <div className="mt-2 text-base-content/70 text-sm leading-relaxed">
+              <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
                   en: "Use this to see runtime counts such as active requests, WebSocket connections, rooms, and process metrics.",
                   ko: "활성 요청, 웹소켓 연결, room, 프로세스 지표 같은 런타임 수치를 확인할 때 사용합니다.",
@@ -515,9 +540,9 @@ void run();`}
                 code={`curl http://localhost:8282/_akan/app/metrics`}
               />
             </div>
-            <div className="rounded-xl border border-base-300 bg-base-100 px-4">
+            <div className={panelRecipe({ padding: "row" })}>
               <div className="font-bold">{l.trans({ en: "Logs", ko: "로그" })}</div>
-              <div className="mt-2 text-base-content/70 text-sm leading-relaxed">
+              <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
                   en: "Use AKAN_PUBLIC_LOG_LEVEL to choose how much detail appears in the terminal. AkanApp also stores gateway and child process output in runtime/logs by default, using AKAN_LOG_FILE_LEVEL for structured Logger output and rotating files by date and size.",
                   ko: "터미널에 어느 정도 자세한 로그를 볼지는 AKAN_PUBLIC_LOG_LEVEL로 조절합니다. AkanApp은 기본적으로 gateway와 child process 출력을 runtime/logs에 저장하며, structured Logger 출력은 AKAN_LOG_FILE_LEVEL 기준으로 저장하고 날짜와 크기 기준으로 파일을 회전합니다.",
@@ -533,7 +558,7 @@ AKAN_MEMORY_LOG=1
 AKAN_LOG_MAX_SIZE_MB=50
 AKAN_LOG_MAX_FILES=100`}
               />
-              <div className="mt-2 text-base-content/70 text-sm leading-relaxed">
+              <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
                   en: "File names include app name, environment, operation mode, local date, process key, and sequence. Direct console.log calls from child servers are captured through stdout/stderr pipes; direct gateway console.log calls are not part of Logger sink capture.",
                   ko: "파일명에는 app name, environment, operation mode, 로컬 날짜, process key, sequence가 포함됩니다. child server의 직접 console.log 호출은 stdout/stderr pipe를 통해 저장되지만, gateway process의 직접 console.log 호출은 Logger sink 캡처 대상이 아닙니다.",
@@ -560,7 +585,7 @@ AKAN_LOG_MAX_FILES=100`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

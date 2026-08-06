@@ -26,8 +26,6 @@ const makeTestServer = async () => {
     appName: "shared",
     environment: "testing",
     operationMode: "local",
-    tunnelUsername: "root",
-    tunnelPassword: "akan",
     database: {
       sqlite: {
         filePath: joinPath(tmp, "shared.db"),

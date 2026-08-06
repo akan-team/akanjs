@@ -45,7 +45,7 @@ Map       // Key-value mapping`}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="scalar-table"
@@ -62,7 +62,7 @@ Map       // Key-value mapping`}
           <div className="my-6 overflow-x-auto">
             <table className="table-zebra table w-full text-sm">
               <thead>
-                <tr className="bg-base-300">
+                <tr className="bg-border">
                   <th>{l.trans({ en: "Type", ko: "타입" })}</th>
                   <th>{l.trans({ en: "GraphQL", ko: "GraphQL" })}</th>
                   <th>{l.trans({ en: "MongoDB", ko: "MongoDB" })}</th>
@@ -197,7 +197,7 @@ Map       // Key-value mapping`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="usage-constant" title={l.trans({ en: "constant.ts Scalars", ko: "constant.ts 스칼라" })}>
         <Docs.Title>{l.trans({ en: "constant.ts Scalars", ko: "constant.ts 스칼라" })}</Docs.Title>
@@ -337,7 +337,7 @@ export class ArticleInput extends via((field) => ({
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="complete-example" title={l.trans({ en: "Complete Model Example", ko: "전체 모델 예제" })}>
         <Docs.Title>{l.trans({ en: "Complete Model Example", ko: "전체 모델 예제" })}</Docs.Title>
@@ -443,7 +443,7 @@ export class Article extends via(ArticleObject, LightArticle, (resolve) => ({}))
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="best-practices" title={l.trans({ en: "Scalar Best Practices", ko: "스칼라 모범 사례" })}>
         <Docs.Title>{l.trans({ en: "Scalar Best Practices", ko: "스칼라 모범 사례" })}</Docs.Title>
@@ -543,7 +543,7 @@ export class Article extends via(ArticleObject, LightArticle, (resolve) => ({}))
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

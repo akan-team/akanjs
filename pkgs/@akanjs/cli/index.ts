@@ -1,38 +1,12 @@
 #!/usr/bin/env bun
 
-import { runCommands } from "@akanjs/devkit";
-import { AgentCommand } from "./agent/agent.command";
-import { ApplicationCommand } from "./application/application.command";
-import { CloudCommand } from "./cloud/cloud.command";
-import { ContextCommand } from "./context/context.command";
-import { GuidelineCommand } from "./guideline/guideline.command";
-import { LibraryCommand } from "./library/library.command";
-import { LocalRegistryCommand } from "./localRegistry/localRegistry.command";
-import { ModuleCommand } from "./module/module.command";
-import { PackageCommand } from "./package/package.command";
-import { PageCommand } from "./page/page.command";
-import { PrimitiveCommand } from "./primitive/primitive.command";
-import { QualityCommand } from "./quality/quality.command";
-import { RepairCommand } from "./repair/repair.command";
-import { ScalarCommand } from "./scalar/scalar.command";
-import { WorkflowCommand } from "./workflow/workflow.command";
-import { WorkspaceCommand } from "./workspace/workspace.command";
+import { runCommands } from "@akanjs/devkit/commandDecorators";
+import { CommandManifest } from "./commandManifest";
+import { type CommandModuleId, commandModuleIds, commandModules } from "./commandModules";
 
-void runCommands(
-  WorkspaceCommand,
-  AgentCommand,
-  ApplicationCommand,
-  LibraryCommand,
-  LocalRegistryCommand,
-  PackageCommand,
-  ModuleCommand,
-  PageCommand,
-  ContextCommand,
-  CloudCommand,
-  GuidelineCommand,
-  ScalarCommand,
-  PrimitiveCommand,
-  QualityCommand,
-  RepairCommand,
-  WorkflowCommand,
-);
+// Only the module that owns `argv[2]` is imported: every command module carries its own heavy stack,
+// and `akan start` holds the process for the whole dev session. See `commandManifest.ts`.
+const ids: CommandModuleId[] = CommandManifest.resolve(await CommandManifest.read(), process.argv) ?? commandModuleIds;
+const commands = await Promise.all(ids.map(async (id) => await commandModules[id]()));
+
+void runCommands(...commands);

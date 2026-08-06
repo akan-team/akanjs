@@ -1,4 +1,5 @@
-import { command, type PrimitiveFormat, renderPrimitiveReport, type UiSurface, Workspace } from "@akanjs/devkit";
+import { command, Workspace } from "@akanjs/devkit/commandDecorators";
+import { type PrimitiveFormat, renderPrimitiveReport, type UiSurface } from "@akanjs/devkit/workflow";
 import { Logger } from "akanjs/common";
 import { PrimitiveScript } from "./primitive.script";
 

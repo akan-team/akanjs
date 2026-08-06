@@ -1,6 +1,6 @@
 "use client";
 import type { cnst } from "@libs/util/client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { Overlay as PigeonMarker, type PigeonProps } from "pigeon-maps";
 import { useContext, useRef } from "react";
 
@@ -32,9 +32,10 @@ export default function Marker({ className, children, coordinate, onClick, onDra
       top={c[1] - (offset ? offset[1] : 0)}
     >
       <div
-        className={clsx("relative grid -translate-x-1/2 -translate-y-1/2 place-items-center", {
-          "cursor-pointer": onClick !== undefined,
-        })}
+        className={cn(
+          "relative grid -translate-x-1/2 -translate-y-1/2 place-items-center",
+          onClick !== undefined && "cursor-pointer",
+        )}
         onMouseDown={(e) => {
           mouseDownPosition.current = [e.clientX, e.clientY];
         }}

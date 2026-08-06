@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { CommandContainer } from "@akanjs/devkit";
+import { CommandContainer } from "@akanjs/devkit/commandDecorators";
 import {
   cleanupCliTempWorkspace,
   createCallRecorder,
@@ -171,12 +171,10 @@ describe("PackageRunner", () => {
       description: "tool",
       exports: {},
       peerDependencies: {
-        daisyui: "5.5.20",
         "react-icons": "5.0.0",
         "tailwind-scrollbar": "4.0.0",
       },
       peerDependenciesMeta: {
-        daisyui: { optional: true },
         "react-icons": { optional: true },
         "tailwind-scrollbar": { optional: true },
       },
@@ -204,12 +202,10 @@ describe("PackageRunner", () => {
     expect(distPackageJson.dependencies).toEqual({ lodash: "4.0.0" });
     expect(distPackageJson.devDependencies).toEqual({ "@biomejs/biome": "2.3.5", "@types/bun": "1.3.14" });
     expect(distPackageJson.peerDependencies).toEqual({
-      daisyui: "5.5.20",
       "react-icons": "5.0.0",
       "tailwind-scrollbar": "4.0.0",
     });
     expect(distPackageJson.peerDependenciesMeta).toEqual({
-      daisyui: { optional: true },
       "react-icons": { optional: true },
       "tailwind-scrollbar": { optional: true },
     });
@@ -262,5 +258,63 @@ describe("PackageRunner", () => {
     await expect(new PackageRunner().verifyDistPackage(pkg)).rejects.toThrow(
       "dist bin entries must not point at TypeScript sources",
     );
+  });
+
+  /**
+   * Writes a dist tree that imports its own subpaths, the way `@akanjs/devkit` does. `exports` targets
+   * are matched exactly by Bun, so a wildcard of `"./*": "./*"` reaches neither `executors.ts` nor
+   * `frontendBuild/index.ts` — invisible in the monorepo, where tsconfig `paths` probes both.
+   */
+  const writeSelfImportingDist = async (exports: Record<string, unknown>) => {
+    const { root, pkg } = await createTempPackage("@sample/tool");
+    tempRoots.push(root);
+    const dist = `${root}/dist/pkgs/@sample/tool`;
+    await writeJson(`${dist}/package.json`, {
+      name: "@sample/tool",
+      version: "1.2.3",
+      publishConfig: { access: "public" },
+      exports,
+    });
+    await writeText(`${dist}/README.md`, "# Tool\n");
+    await writeText(`${dist}/README.ko.md`, "# Tool KO\n");
+    await writeText(`${dist}/executors.ts`, "export const run = () => 1;\n");
+    await writeText(`${dist}/frontendBuild/index.ts`, "export const build = () => 1;\n");
+    await writeText(
+      `${dist}/proc.ts`,
+      [
+        '// Import values from the owning facet: import { Gone } from "@sample/tool/goneFacet";',
+        'import { run } from "@sample/tool/executors";',
+        'import { build } from "@sample/tool/frontendBuild";',
+        "export const proc = () => run() + build();",
+        "",
+      ].join("\n"),
+    );
+    await writeText(`${dist}/proc.test.ts`, 'export const fixture = "@sample/tool/neverResolves";\n');
+    pkg.workspace.spawn = (async () => JSON.stringify([{ files: [{ path: "package.json" }], size: 1 }])) as never;
+    return pkg;
+  };
+
+  test("rejects a dist package whose exports map cannot reach an imported subpath", async () => {
+    const pkg = await writeSelfImportingDist({ ".": "./index.ts", "./*": "./*" });
+
+    const verify = new PackageRunner().verifyDistPackage(pkg);
+
+    await expect(verify).rejects.toThrow("@sample/tool dist imports 2 subpath(s) no consumer can resolve");
+    await expect(verify).rejects.toThrow("@sample/tool/executors — its exports map yields ./executors");
+    // The directory facet is the trap `existsSync` misses: `./frontendBuild` is a real directory.
+    await expect(verify).rejects.toThrow("@sample/tool/frontendBuild — its exports map yields ./frontendBuild");
+  });
+
+  test("accepts an exports map covering file facets, directory facets, and explicit extensions", async () => {
+    const pkg = await writeSelfImportingDist({
+      ".": "./index.ts",
+      "./frontendBuild": "./frontendBuild/index.ts",
+      "./*.ts": "./*.ts",
+      "./*": "./*.ts",
+    });
+
+    // Passing means the comment and the `.test.ts` fixture above were both ignored: each names a
+    // subpath that resolves to nothing, and neither is an import a consumer would ever run.
+    await expect(new PackageRunner().verifyDistPackage(pkg)).resolves.toMatchObject({ name: "@sample/tool" });
   });
 });

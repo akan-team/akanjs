@@ -5,6 +5,7 @@ export * from "./logging.adaptor";
 export * from "./queue.adaptor";
 export * from "./role.adaptor";
 export * from "./schedule.adaptor";
+export * from "./searchIndex";
 export * from "./solidCache.adaptor";
 export * from "./solidPubsub.adaptor";
 export * from "./solidQueue.adaptor";

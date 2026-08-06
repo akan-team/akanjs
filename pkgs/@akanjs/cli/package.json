@@ -1,6 +1,6 @@
 {
   "name": "@akanjs/cli",
-  "version": "2.3.11-rc.7",
+  "version": "2.4.2-rc.3",
   "sourceType": "module",
   "type": "module",
   "publishConfig": {
@@ -35,10 +35,9 @@
     "@langchain/openai": "^1.4.6",
     "@tailwindcss/node": "^4.3.0",
     "@trapezedev/project": "^7.1.4",
-    "akanjs": "2.3.11-rc.7",
+    "akanjs": "2.4.2-rc.3",
     "chalk": "^5.6.2",
     "commander": "^14.0.3",
-    "daisyui": "5.5.23",
     "dayjs": "^1.11.20",
     "fontaine": "^0.8.0",
     "fonteditor-core": "^2.6.3",

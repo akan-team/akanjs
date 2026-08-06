@@ -8,6 +8,7 @@ import {
   getBasePathFromPathname,
   Logger,
   parseAkanI18nEnv,
+  resolveSubRouteHosts,
 } from "akanjs/common";
 import { type AkanRequestStore, createRequestStore, parseCookieHeader } from "akanjs/fetch";
 import type { AkanMetricsReport } from "akanjs/service";
@@ -286,12 +287,15 @@ export class WebRouter {
   #logger = new Logger("WebRouter");
   #artifactDir = WebRouter.#resolveArtifactDir();
   #artifact: BaseBuildArtifact;
+  #subRoutes: Record<string, string[]>;
   #rsc: RscWorker;
   #hub: HmrWsHub | null = null;
   #prodMode = process.env.NODE_ENV === "production";
   #builderRpc: BuilderRpc | null;
   #routeCache: RouteClientCache;
   #devHmr: DevHmrController | null = null;
+  #csrArmed = false;
+  #csrOnDemandBuild: Promise<unknown> | null = null;
   readonly #requestStats = {
     fullSsr: 0,
     rscNavigation: 0,
@@ -310,6 +314,16 @@ export class WebRouter {
   constructor({ artifact, cssBytesByUrl, rsc, seedIndex, upgradeHmrWs }: WebRouterOptions) {
     this.#logger.verbose(`[SSR] loaded ${Object.keys(cssBytesByUrl).length} CSS assets`);
     this.#artifact = artifact;
+    const { subRoutes, ignoredBasePaths } = resolveSubRouteHosts({
+      subRoutes: artifact.subRoutes,
+      basePaths: artifact.basePaths,
+      env: process.env.AKAN_SUB_ROUTE_HOSTS,
+    });
+    this.#subRoutes = subRoutes;
+    if (ignoredBasePaths.length)
+      this.#logger.warn(
+        `AKAN_SUB_ROUTE_HOSTS names basePaths this build does not serve, ignoring: ${ignoredBasePaths.join(", ")}`,
+      );
     this.#rsc = rsc;
     this.renderState = {
       buildId: 0,
@@ -359,7 +373,7 @@ export class WebRouter {
     const renderEnvRoutes: HttpRoutes = {
       "/__csr": async () => {
         this.#requestStats.csr += 1;
-        const csrHtml = WebRouter.#resolveCsrHtmlPath(csrOutputDir, "/", this.#artifact);
+        const csrHtml = await this.#resolveCsrHtml(csrOutputDir, "/");
         const csrFile = csrHtml ? Bun.file(csrHtml) : null;
         const htmlText =
           csrFile && (await csrFile.exists())
@@ -441,8 +455,7 @@ export class WebRouter {
           const clientOrigin = WebRouter.#clientFacingOrigin(req);
           const target = reqUrl.searchParams.get("url");
           const rawTargetUrl = target ? new URL(target, clientOrigin) : reqUrl;
-          const requestBasePath =
-            req.headers.get("x-base-path") ?? WebRouter.#basePathForRequestHost(req, this.#artifact.subRoutes);
+          const requestBasePath = this.#requestBasePath(req);
           const normalizedTarget = normalizeRscTargetUrlForHostBasePath(rawTargetUrl, {
             basePath: requestBasePath,
             basePaths: this.#artifact.basePaths,
@@ -505,8 +518,8 @@ export class WebRouter {
         const isCsr = url.searchParams.get("csr") === "true";
         if (isCsr) {
           this.#requestStats.csr += 1;
-          const csrHtml = WebRouter.#resolveCsrHtmlPath(csrOutputDir, url.pathname, this.#artifact);
-          if (!csrHtml) return new Response("Not Found", { status: 404 });
+          const csrHtml = await this.#resolveCsrHtml(csrOutputDir, url.pathname);
+          if (!csrHtml) return this.#csrUnavailableResponse(url.pathname);
           const html = await Bun.file(csrHtml).text();
           return new Response(this.#withCsrHmr(html), {
             headers: { "Content-Type": "text/html; charset=utf-8" },
@@ -544,11 +557,7 @@ export class WebRouter {
           });
         }
 
-        const sitemapBasePath = getSitemapBasePath(
-          url.pathname,
-          this.#artifact.basePaths,
-          req.headers.get("x-base-path") ?? WebRouter.#basePathForRequestHost(req, this.#artifact.subRoutes),
-        );
+        const sitemapBasePath = getSitemapBasePath(url.pathname, this.#artifact.basePaths, this.#requestBasePath(req));
         if (sitemapBasePath !== undefined) {
           return new Response(
             createDefaultSitemapXml({
@@ -607,6 +616,7 @@ export class WebRouter {
             importmap: this.#artifact.vendorMap,
             theme: themeCookieExists ? undefined : (rscResult.theme ?? "system"),
             lateControl: rscResult.lateControl,
+            waitForAllReady: rscResult.trace?.ssrBlocking ?? false,
             onCancel: (reason: unknown) => {
               rscResult.cancel(reason);
             },
@@ -737,6 +747,17 @@ export class WebRouter {
    */
   static #clientFacingOrigin(req: Request): string {
     return getClientFacingOrigin(req);
+  }
+
+  /**
+   * `x-base-path` is set by `HostBasePathWebProxy`, but it reaches here from the wire too, so it is checked against
+   * the basePaths this build serves — the same check `getBasePathFromPathname` already applies to it. An unknown
+   * value falls through to host matching instead of routing the request into a basePath that resolves to nothing.
+   */
+  #requestBasePath(req: Request): string | null {
+    const headerBasePath = req.headers.get("x-base-path");
+    if (headerBasePath && this.#artifact.basePaths.includes(headerBasePath)) return headerBasePath;
+    return WebRouter.#basePathForRequestHost(req, this.#subRoutes);
   }
 
   static #basePathForRequestHost(req: Request, subRoutes: Record<string, string[]>): string | null {
@@ -883,8 +904,7 @@ export class WebRouter {
       pathname,
       i18n: this.#artifact.i18n,
       basePaths: this.#artifact.basePaths,
-      headerBasePath:
-        req.headers.get("x-base-path") ?? WebRouter.#basePathForRequestHost(req, this.#artifact.subRoutes),
+      headerBasePath: this.#requestBasePath(req),
     });
   }
 
@@ -892,8 +912,7 @@ export class WebRouter {
     const basePath = getBasePathFromPathname(pathname, {
       basePaths: Object.keys(this.renderState.cssAssets),
       i18n: this.#artifact.i18n,
-      headerBasePath:
-        req.headers.get("x-base-path") ?? WebRouter.#basePathForRequestHost(req, this.#artifact.subRoutes),
+      headerBasePath: this.#requestBasePath(req),
     });
     return this.renderState.cssAssets[basePath ?? ""]?.cssUrl ?? null;
   }
@@ -911,6 +930,42 @@ export class WebRouter {
   #withCsrHmr(html: string): string {
     if (this.#prodMode) return html;
     return WebRouter.#injectBeforeBodyEnd(html, `<script>${HMR_CLIENT_SCRIPT}</script>`);
+  }
+  /**
+   * Resolve a CSR html file, asking the builder to build the artifact first if it is not there yet.
+   * Dev CSR is only reachable through `/__csr` and `?csr=true`, so the builder skips it until one of
+   * them is requested; the first request pays for the build and every save keeps it in sync after.
+   */
+  async #resolveCsrHtml(csrOutputDir: string, pathname: string): Promise<string | null> {
+    const resolved = WebRouter.#resolveCsrHtmlPath(csrOutputDir, pathname, this.#artifact);
+    if (resolved) return resolved;
+    await this.#armCsrArtifact(pathname);
+    return WebRouter.#resolveCsrHtmlPath(csrOutputDir, pathname, this.#artifact);
+  }
+  #armCsrArtifact(reason: string): Promise<unknown> {
+    const rpc = this.#builderRpc;
+    // Arm once per process: after a successful build the builder rebuilds CSR on every save, so a
+    // still-missing html file means the basePath does not exist rather than that CSR is unbuilt.
+    if (this.#csrArmed || !rpc) return Promise.resolve();
+    this.#csrOnDemandBuild ??= rpc
+      .buildCsr(reason)
+      .then(() => {
+        this.#csrArmed = true;
+        this.#logger.info(`[csr] dev CSR artifact built on demand (${reason})`);
+      })
+      .catch((err: unknown) => {
+        this.#logger.error(`[csr] on-demand build failed: ${err instanceof Error ? err.message : String(err)}`);
+      })
+      .finally(() => {
+        this.#csrOnDemandBuild = null;
+      });
+    return this.#csrOnDemandBuild;
+  }
+  #csrUnavailableResponse(pathname: string): Response {
+    if (this.#prodMode) return new Response("Not Found", { status: 404 });
+    const message = `No CSR artifact for ${pathname}. Dev CSR is built on demand; check the dev server log for a csr-build failure and verify the basePath in the URL.`;
+    this.#logger.warn(`[csr] ${message}`);
+    return new Response(message, { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
   }
   static #injectBeforeBodyEnd(html: string, snippet: string): string {
     const matches = [...html.matchAll(/<\/body\s*>/gi)];

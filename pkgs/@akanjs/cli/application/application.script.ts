@@ -1,19 +1,10 @@
-import {
-  type AkanAppConfig,
-  type App,
-  ApplicationBuildReporter,
-  type DatabaseMode,
-  type Exec,
-  type Lib,
-  LibExecutor,
-  type MobileEnv,
-  PkgExecutor,
-  type ReleaseSourceOptions,
-  type Sys,
-  script,
-  type TypecheckOptions,
-  type Workspace,
-} from "@akanjs/devkit";
+import type { AbstractCompactOptions } from "@akanjs/devkit/abstractCompactor";
+import type { AkanAppConfig, DatabaseMode, MobileEnv } from "@akanjs/devkit/akanConfig";
+import { ApplicationBuildReporter } from "@akanjs/devkit/applicationBuildReporter";
+import type { TypecheckOptions } from "@akanjs/devkit/applicationBuildRunner";
+import type { ReleaseSourceOptions } from "@akanjs/devkit/applicationReleasePackager";
+import { type App, type Exec, type Lib, type Sys, script, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { LibExecutor, PkgExecutor } from "@akanjs/devkit/executors";
 import { confirm } from "@inquirer/prompts";
 import { Logger } from "akanjs/common";
 import { LibraryScript } from "../library/library.script";
@@ -60,6 +51,57 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       throw error;
     }
   }
+  async confirmMobileDependencyInstall(installSpecs: string[]) {
+    return await confirm({
+      message: [`Mobile builds require missing dependencies: ${installSpecs.join(", ")}.`, "Install them now?"].join(
+        " ",
+      ),
+      default: true,
+    });
+  }
+  async syncMobileDependencies(app: App, akanConfig: AkanAppConfig) {
+    const installSpecs = akanConfig.getMissingMobileDependencySpecs();
+    if (installSpecs.length === 0) return;
+
+    const shouldInstall = await this.confirmMobileDependencyInstall(installSpecs);
+    if (!shouldInstall) throw new Error(`Mobile builds require missing dependencies: ${installSpecs.join(", ")}.`);
+
+    const spinner = app.workspace.spinning("Installing mobile dependencies...");
+    try {
+      await app.workspace.spawn("bun", ["add", ...installSpecs], {
+        stdio: "inherit",
+      });
+      await app.workspace.getPackageJson({ refresh: true });
+      spinner.succeed("Installed mobile dependencies");
+    } catch (error) {
+      spinner.fail("Failed to install mobile dependencies");
+      throw error;
+    }
+  }
+  // `npx cap sync` discovers plugins from the app directory's package.json, so the default Capacitor
+  // plugins must be declared there (not just installed at the workspace root) before a mobile target
+  // is built. Declaring the missing ones with a "*" range lets bun resolve them to the version
+  // already hoisted at the workspace root.
+  async syncMobileAppCapacitorPlugins(app: App, akanConfig: AkanAppConfig) {
+    const plugins = akanConfig.getMobileAppCapacitorPlugins();
+    if (plugins.length === 0) return;
+    const packageJson = await app.getPackageJson({ refresh: true });
+    const dependencies = packageJson.dependencies ?? {};
+    const missing = plugins.filter((plugin) => !dependencies[plugin]);
+    if (missing.length === 0) return;
+
+    const spinner = app.workspace.spinning(`Adding default Capacitor plugins to ${app.name}...`);
+    try {
+      packageJson.dependencies = { ...dependencies, ...Object.fromEntries(missing.map((plugin) => [plugin, "*"])) };
+      await app.setPackageJson(packageJson);
+      await app.workspace.spawn("bun", ["install"], { stdio: "inherit" });
+      await app.getPackageJson({ refresh: true });
+      spinner.succeed(`Added default Capacitor plugins to ${app.name}: ${missing.join(", ")}`);
+    } catch (error) {
+      spinner.fail(`Failed to add default Capacitor plugins to ${app.name}`);
+      throw error;
+    }
+  }
   async createApplication(
     appName: string,
     workspace: Workspace,
@@ -79,6 +121,18 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
   async sync(sys: Sys) {
     if (sys.type === "app") await (sys as App).scanSync();
     else await this.libraryScript.syncLibrary(sys as Lib);
+  }
+
+  async compact(sys: Sys, { module = null, minLines, interactive = false }: AbstractCompactOptions = {}) {
+    const { scanned, reports } = await this.applicationRunner.compact(sys, { module, minLines, interactive });
+    if (!reports.length) {
+      Logger.rawLog(`No abstract file long enough to compact in ${sys.name} (${scanned} scanned)`);
+      return;
+    }
+    for (const report of reports)
+      Logger.rawLog(`${report.status}: ${report.path} (${report.beforeLines} -> ${report.afterLines} lines)`);
+    const compactedNum = reports.filter((report) => report.status === "compacted").length;
+    Logger.rawLog(`Compacted ${compactedNum}/${reports.length} abstract files in ${sys.name}`);
   }
 
   async script(app: App, filename: string | null) {
@@ -198,6 +252,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       env = "local",
       write = true,
       target,
+      device,
       regenerate = false,
       noAllowProvisioningUpdates = false,
     }: {
@@ -206,16 +261,21 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       open?: boolean;
       write?: boolean;
       target?: string;
+      device?: string;
       regenerate?: boolean;
       noAllowProvisioningUpdates?: boolean;
     } = {},
   ) {
     await app.scanSync({ write });
+    const akanConfig = await app.getConfig();
+    await this.syncMobileDependencies(app, akanConfig);
+    await this.syncMobileAppCapacitorPlugins(app, akanConfig);
     await this.applicationRunner.startIos(app, {
       open,
       operation,
       env,
       target,
+      device,
       regenerate,
       noAllowProvisioningUpdates,
     });
@@ -254,6 +314,9 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     } = {},
   ) {
     await app.scanSync({ write });
+    const akanConfig = await app.getConfig();
+    await this.syncMobileDependencies(app, akanConfig);
+    await this.syncMobileAppCapacitorPlugins(app, akanConfig);
     await this.applicationRunner.startAndroid(app, {
       open,
       operation,
@@ -306,7 +369,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
   }
   async testApplication(app: App) {
     const spinner = app.spinning("Testing application...");
-    await this.applicationRunner.testApplication(app);
+    await this.applicationRunner.test(app);
     spinner.succeed(`Application ${app.name} (apps/${app.name}) test is successful`);
   }
 }

@@ -1,4 +1,5 @@
-import { PkgExecutor, script, type Workspace } from "@akanjs/devkit";
+import { script, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { PkgExecutor } from "@akanjs/devkit/executors";
 import { ApplicationScript } from "../application/application.script";
 import { CloudRunner } from "../cloud/cloud.runner";
 import { PackageScript } from "../package/package.script";

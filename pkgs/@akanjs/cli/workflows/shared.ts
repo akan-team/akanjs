@@ -1,5 +1,4 @@
-import type { WorkflowInputSpec, WorkflowValidation } from "@akanjs/devkit";
-
+import type { WorkflowInputSpec, WorkflowValidation } from "@akanjs/devkit/workflow";
 export const sysInputs = {
   app: {
     type: "string",

@@ -1,9 +1,13 @@
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-const BARREL_FACETS = new Set(["common", "srvkit", "ui", "webkit"]);
+const BARREL_FACETS = new Set(["common", "srvkit", "ui", "webkit", "plugin"]);
 const FACET_SOURCE_FILE_RE = /\.(ts|tsx)$/;
 const FACET_EXCLUDED_FILE_RE = /(^index\.tsx?$|\.d\.ts$|\.(test|spec)\.(ts|tsx)$|\.css$|\.scss$|\.sass$)/;
+// `ui` exports PascalCase names only; `common`/`srvkit`/`webkit` export camelCase names only. Names with
+// dots, underscores, or hyphens (e.g. `foo.helper`, `Globe_Dynamic`, `kebab-case`) match neither and are skipped.
+const FACET_PASCAL_CASE_RE = /^[A-Z][A-Za-z0-9]*$/;
+const FACET_CAMEL_CASE_RE = /^[a-z][A-Za-z0-9]*$/;
 const MODULE_UI_TYPES = ["Template", "Unit", "Util", "View", "Zone"] as const;
 const SERVICE_UI_TYPES = ["Util", "Zone"] as const;
 const SCALAR_UI_TYPES = ["Template", "Unit"] as const;
@@ -109,15 +113,17 @@ export class DevGeneratedIndexSync {
   }
 
   async #facetContent(dir: string): Promise<string | null> {
+    const nameCasePattern = path.basename(dir) === "ui" ? FACET_PASCAL_CASE_RE : FACET_CAMEL_CASE_RE;
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
     const exportNames = entries
       .flatMap((entry) => {
         const name = entry.name;
         if (name.startsWith(".")) return [];
-        if (entry.isDirectory()) return [name];
+        if (entry.isDirectory()) return nameCasePattern.test(name) ? [name] : [];
         if (!entry.isFile()) return [];
         if (!FACET_SOURCE_FILE_RE.test(name) || FACET_EXCLUDED_FILE_RE.test(name)) return [];
-        return [name.replace(FACET_SOURCE_FILE_RE, "")];
+        const exportName = name.replace(FACET_SOURCE_FILE_RE, "");
+        return nameCasePattern.test(exportName) ? [exportName] : [];
       })
       .sort();
     if (exportNames.length === 0) return null;

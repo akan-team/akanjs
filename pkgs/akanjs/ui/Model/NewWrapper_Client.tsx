@@ -1,6 +1,6 @@
 "use client";
 import type { GetStateObject } from "akanjs/base";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import { ConstantRegistry } from "akanjs/constant";
 import type { SliceMeta } from "akanjs/fetch";
@@ -39,7 +39,7 @@ export const NewWrapper_Client = <Full,>({
   const disabled = modelModal === "edit";
   return (
     <div
-      className={clsx({ "cursor-pointer": !disabled, "pointer-events-none": disabled }, className)}
+      className={cn(!disabled && "cursor-pointer", disabled && "pointer-events-none", className)}
       onClick={(e) => {
         e.stopPropagation();
         if (disabled) return;

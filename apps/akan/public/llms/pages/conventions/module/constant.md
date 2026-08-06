@@ -12,6 +12,8 @@
 - Model Layering Pattern (#model-layering)
 - Fields And enumOf (#fields-enums)
 - field.hidden And field.secret (#hidden-secret-fields)
+- Text Search Fields (#text-search-fields)
+- Cascade Remove Fields (#cascade-fields)
 - Extending Generated Models (#generated-extension)
 - Light And Full Model Helpers (#model-helpers)
 - Resolved Fields (#resolve-fields)
@@ -52,6 +54,38 @@ field.hidden() and field.secret() are helper forms for fields that should not be
 Use it for internal state that may exist on the document but should not be treated as a normal visible field.
 
 Use it for sensitive values such as password, phone, token, account id, wallet, or notification settings that should not be selected by default.
+
+Text Search Fields
+
+A field joins the full-text index by declaring a text role. There is no separate index file and no per-model switch: the role on the field is the whole configuration.
+
+Choose the role by what the value is, because the roles are weighted differently when results are ranked.
+
+The one line a human scans for. Weighted highest.
+
+A keyword list. Weighted above prose, below the title.
+
+Prose. Weighted lowest of the matchable roles.
+
+A scoping value such as status, role, or owner. Matchable but weighted zero, so it never outranks a real title hit.
+
+Mirrored so a hit can be rendered, but never indexed. Do not expect it to match.
+
+Relations and arrays
+
+A role works on a File reference and on an array field. An array of objects is indexed by leaf key, including a leaf that is itself an array. A field inside a Map is not indexed, because there is no fixed path to read it from.
+
+A secret, hidden, or resolved field with a text role throws while the class is being built, not at query time. The same throw covers a role declared underneath one of them: field.secret(Noti) is rejected when Noti carries a role of its own, because the stored document holds that subtree in plaintext too. The search mirror stores plaintext, so indexing a secret would leak it through search. Treat the error as the rule working, not as something to route around.
+
+Cascade Remove Fields
+
+A relation field can take its target down with it. cascade: "remove" is the whole declaration, and it works on an array field too.
+
+The removal runs through the target's service, so the target's own _postRemove runs with it. That is how a File cascade also deletes the stored object.
+
+Only a relation accepts it. A String, an ID, or a scalar field throws while the class is being built, because none of them names a document the framework could remove.
+
+Nothing checks for other references to the same target. Declaring cascade asserts that this field owns its target exclusively, and query-level removal fires no hooks and therefore no cascade.
 
 Extending Generated Models
 
@@ -161,6 +195,28 @@ export class UserObject extends via(UserInput, (field) => ({
   password: field.secret(String).optional(),
   phone: field.secret(String).optional(),
   adminMemo: field.hidden(String).optional(),
+})) {}
+```
+
+### user.constant.ts
+
+```ts
+export class UserInput extends via((field) => ({
+  nickname: field(String, { default: "", text: "title" }),
+  bio: field(String, { default: "", text: "desc" }),
+  playing: field([String], { text: "tag" }),
+  image: field(File, { text: "thumb" }).optional(),
+  status: field(UserStatus, { default: "prepare", text: "filter" }),
+})) {}
+```
+
+### user.constant.ts
+
+```ts
+export class UserInput extends via((field) => ({
+  nickname: field(String, { default: "", text: "title" }),
+  image: field(File, { text: "thumb", cascade: "remove" }).optional(),
+  images: field([File], { cascade: "remove" }),
 })) {}
 ```
 

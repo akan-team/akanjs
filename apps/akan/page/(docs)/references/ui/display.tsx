@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Docs, type UiComponentReference, UiComponentSlide } from "@apps/akan/ui";
+import { Divider, Docs, DocsToc, type UiComponentReference, UiComponentSlide } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -37,7 +37,7 @@ export default function Page() {
           }),
         },
       ],
-      code: `import { Data } from "akanjs/ui";
+      code: `import { Data, buttonRecipe } from "akanjs/ui";
 
 export const ProductZone = ({ slice }) => (
   <Data.ListContainer
@@ -83,7 +83,7 @@ export const ProductZone = ({ slice }) => (
       code: `import { RecentTime } from "akanjs/ui";
 
 export const StoryMeta = ({ story }) => (
-  <div className="text-sm text-base-content/60">
+  <div className="text-sm text-foreground/60">
     <RecentTime date={story.createdAt} breakUnit="second" format="full" />
   </div>
 );`,
@@ -167,7 +167,7 @@ export const SummaryPanel = ({ loading, children }) => (
 
 export const EmptyProducts = () => (
   <Empty description="No products yet">
-    <Link href="/products/new" className="btn btn-primary">Create product</Link>
+    <Link href="/products/new" className={buttonRecipe({ variant: "primary" })}>Create product</Link>
   </Empty>
 );`,
     },
@@ -272,11 +272,11 @@ export const EmptyProducts = () => (
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       {components.map((component) => (
         <UiComponentSlide key={component.name} component={component} />
       ))}
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

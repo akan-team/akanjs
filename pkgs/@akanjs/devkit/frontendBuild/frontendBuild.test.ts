@@ -113,7 +113,9 @@ describe("PagesBundleBuilder", () => {
     await write(entry, ['import "./styles.css";', "export const marker = 1;", ""].join("\n"));
     await write(
       css,
-      ['@plugin "daisyui" {', "  themes: false;", "}", "@theme {", "  --color-primary: red;", "}", ""].join("\n"),
+      ['@plugin "tailwind-scrollbar" {', "  themes: false;", "}", "@theme {", "  --color-primary: red;", "}", ""].join(
+        "\n",
+      ),
     );
 
     const result = await Bun.build({
@@ -417,6 +419,9 @@ describe("CssCompiler", () => {
 
     const compiler = new CssCompiler({
       workspace: { workspaceRoot: root },
+      // The candidate cache lands under `<cwdPath>/.akan/cache`, so point it at this test's temp root
+      // rather than wherever the suite happens to run from.
+      cwdPath: root,
       getTsConfig: async () => ({ compilerOptions: { paths: {} } }),
     } as never);
     const css = await compiler.compileCss([cssPath], []);

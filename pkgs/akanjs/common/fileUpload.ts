@@ -10,7 +10,7 @@ interface FileUploadSerializedSignal {
 /** Framework-owned file-upload contract shared by client-safe packages. */
 export const fileUploadContract = {
   fields: { files: "files", metas: "metas", type: "type", parentId: "parentId" },
-  buildMetas: (fileList: FileList) =>
+  buildMetas: (fileList: FileList | File[]) =>
     Array.from(fileList).map((f) => ({ lastModifiedAt: new Date(f.lastModified).toISOString(), size: f.size })),
 } as const;
 

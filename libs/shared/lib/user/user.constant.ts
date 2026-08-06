@@ -7,9 +7,6 @@ import { NotiInfo } from "../__scalar/notiInfo/notiInfo.constant";
 import { RestrictInfo } from "../__scalar/restrictInfo/restrictInfo.constant";
 import { File } from "../file/file.constant";
 
-export const MASTER_PHONES = process.env.MASTER_PHONES?.split(",") ?? [];
-export const MASTER_PHONECODE = process.env.MASTER_PHONECODE;
-
 export class SsoType extends enumOf("ssoType", ["naver", "kakao", "github", "google", "apple", "facebook"] as const) {}
 
 export class Verify extends enumOf("verify", [...SsoType.values, "wallet", "password", "phone", "email"] as const) {}
@@ -30,10 +27,10 @@ export class ProfileStatus extends enumOf("profileStatus", [
 export class UserStatus extends enumOf("userStatus", ["prepare", "active", "dormant", "restricted"] as const) {}
 
 export class UserInput extends via((field) => ({
-  nickname: field(String, { default: "", maxlength: 12 }),
-  image: field(File).optional(),
-  images: field([File]),
-  appliedImages: field([File]),
+  nickname: field(String, { default: "", maxlength: 12, text: "title" }),
+  image: field(File, { text: "thumb", cascade: "remove" }).optional(),
+  images: field([File], { cascade: "remove" }),
+  appliedImages: field([File], { cascade: "remove" }),
 })) {}
 
 export class UserObject extends via(UserInput, (field) => ({
@@ -49,14 +46,14 @@ export class UserObject extends via(UserInput, (field) => ({
   restrictInfo: field.secret(RestrictInfo).optional(),
   leaveInfo: field.secret(LeaveInfo).optional(),
   verifies: field([Verify]),
-  roles: field([UserRole], { default: ["user"] }),
-  playing: field([String]),
+  roles: field([UserRole], { default: ["user"], text: "filter" }),
+  playing: field([String], { text: "tag" }),
   isOnline: field(Boolean, { default: true }),
   lastLoginAt: field(Date, { default: () => dayjs() }),
   joinAt: field(Date).optional(),
   profileStatus: field(ProfileStatus, { default: "prepare" }),
   badgeCount: field(Int, { default: 0 }),
-  status: field(UserStatus, { default: "prepare" }),
+  status: field(UserStatus, { default: "prepare", text: "filter" }),
 })) {}
 
 export class LightUser extends via(

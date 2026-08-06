@@ -45,6 +45,25 @@ See `docs/GENERATED.md` for the generated file list.
 - Server-oriented surfaces include pages, `*.Unit.tsx`, `*.View.tsx`, `lib/`, `srvkit/`, and server entrypoints.
 - Treat `AKAN_PUBLIC_*` values as public.
 
+## House Style
+
+`AGENTS.md` holds the full style guide. The rules agents break most often:
+
+- **Never hand-order Tailwind classes** — the linter sorts them, including inside `clsx()`, and its output looks
+  unnatural on purpose.
+- **Never `throw new Error`** — throw `new Err("<module>.error.<key>")` with an `[en, ko]` entry in the module
+  dictionary. `common/` cannot import `Err`, so keep throwing code out of it.
+- **Never import a third-party package** from a page, a barrel, or a module file. Re-export it through a one-line
+  shim in `base/`, `webkit/`, or `ui/` first.
+- `#private` is lint-banned in `*.constant.ts`, `*.document.ts`, `*.service.ts`, and `*.store.ts` only; it stays
+  the house style under `srvkit/`.
+- Components are `export const X = ({ … }: XProps) => { … }` with `interface XProps` directly above and
+  `className?: string` first. No `React.FC`, no non-null assertions, no `as any`.
+- `cond ? <X/> : null`, never `{cond && <X/>}` — the latter renders the string `"false"` in a className context.
+- Put display and predicate logic on the `Light<Model>` constant class; keep document chain methods
+  validate → mutate → `return this` without `save()`; keep services to load → chain → save.
+- Do not narrate code in comments. Do document vendor quirks, infrastructure constraints, and security reasoning.
+
 ## Abstract Documents
 
 Update `*.abstract.md` when business invariants, workflows, user-visible behavior, cross-module relationships, or

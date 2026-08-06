@@ -47,10 +47,10 @@ const BooleanState = via((f) => ({
 ConstantRegistry.buildScalar("constantTestBooleanState", BooleanState, { BooleanState });
 
 const UserInput = via((f) => ({
-  name: f(String),
+  name: f(String, { text: "title" }),
   age: f(Int, { default: 20 }),
-  role: f(String, { default: "user" }),
-  tags: f([String]),
+  role: f(String, { default: "user", text: "filter" }),
+  tags: f([String], { text: "tag" }),
   metadata: f(Map, { of: String }),
   password: f.secret(String),
 }));
@@ -58,17 +58,17 @@ const UserObject = via(UserInput, (f) => ({
   note: f(String).optional(),
 }));
 const UserLight = via(UserObject, ["name", "role"] as const, (r) => ({
-  profileText: r(String, { text: "search" }),
+  profileText: r(String),
 }));
 class MethodUserLight extends via(UserObject, ["name", "role"] as const, (r) => ({
-  profileText: r(String, { text: "search" }),
+  profileText: r(String),
 })) {
   hello() {
     return "hello" as const;
   }
 }
 const UserFull = via(UserObject, UserLight, (r) => ({
-  addressLabel: r(String, { text: "filter" }),
+  addressLabel: r(String),
 }));
 const UserInsight = via(UserFull, (f) => ({
   activeCount: f(Int, { default: 0, accumulate: { role: "admin" } }),
@@ -215,8 +215,9 @@ describe("via and ConstantField", () => {
       addressLabel: "",
       password: null,
     });
-    expect(UserFull.text.search.has("profileText")).toBe(true);
-    expect(UserFull.text.filter.has("addressLabel")).toBe(true);
+    expect(UserFull.text.title.has("name")).toBe(true);
+    expect(UserFull.text.tag.has("tags")).toBe(true);
+    expect(UserFull.text.filter.has("role")).toBe(true);
   });
 
   test("crystalizes constructor input into typed runtime values", () => {

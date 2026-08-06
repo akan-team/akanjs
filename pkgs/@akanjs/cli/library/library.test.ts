@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import { CommandContainer } from "@akanjs/devkit";
+import { CommandContainer } from "@akanjs/devkit/commandDecorators";
 import {
   cleanupCliTempWorkspace,
   createCallRecorder,

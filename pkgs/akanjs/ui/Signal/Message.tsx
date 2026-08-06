@@ -10,7 +10,9 @@ import type { SerializedEndpoint } from "akanjs/signal";
 import { useEffect, useMemo, useState } from "react";
 import { AiOutlineDisconnect, AiOutlineFileWord, AiOutlineSend, AiOutlineSwap } from "react-icons/ai";
 import { BiSolidNetworkChart } from "react-icons/bi";
+import { buttonRecipe } from "../Button";
 import Arg from "./Arg";
+import { SignalCollapse } from "./Collapse";
 import Listener from "./Listener";
 import { makeRequestExample } from "./makeExample";
 import UiObject from "./Object";
@@ -31,21 +33,23 @@ const MessageEndpoint = ({ refName, endpointKey, endpoint, open }: MessageEndpoi
   const { l } = usePage();
   const [viewStatus, setViewStatus] = useState<"doc" | "test">("doc");
   return (
-    <div className={signalUi.endpointCard}>
-      <input type="checkbox" defaultChecked={open} />
-      <div className="collapse-title">
+    <SignalCollapse
+      open={open}
+      contentClassName="bg-background/60"
+      summary={
         <div className="flex flex-wrap items-center gap-2">
           <div className={getEndpointBadgeClassName(endpoint.type)}>{endpoint.type}</div>
           <div className="font-bold text-lg">{endpointKey}</div>
-          <div className="text-base-content/70 text-sm">{l._(`${refName}.signal.${endpointKey}`)}</div>
+          <div className="text-foreground/70 text-sm">{l._(`${refName}.signal.${endpointKey}`)}</div>
         </div>
-      </div>
-      <div className={signalUi.endpointContent}>
-        <div className="rounded-xl bg-base-100 p-3">
+      }
+    >
+      <div>
+        <div className="rounded-xl bg-background p-3">
           <div className={signalUi.sectionTitle}>Description</div>
           {endpoint.guards?.some((guard) => guard !== "None") ? (
             <div className="mt-2 flex flex-wrap items-center gap-2 font-normal text-sm">
-              <span className="text-base-content/70">Guards</span>
+              <span className="text-foreground/70">Guards</span>
               {endpoint.guards.map((guard) => (
                 <span className={getGuardBadgeClassName(guard)} key={guard}>
                   {guard}
@@ -53,16 +57,19 @@ const MessageEndpoint = ({ refName, endpointKey, endpoint, open }: MessageEndpoi
               ))}
             </div>
           ) : null}
-          <div className="mt-2 font-normal text-base-content/70 text-sm">
+          <div className="mt-2 font-normal text-foreground/70 text-sm">
             {l._(`${refName}.signal.${endpointKey}.desc`)}
           </div>
         </div>
-        <div className="join w-fit">
+        <div className="inline-flex w-fit overflow-hidden rounded-field">
           <button
             onClick={() => {
               setViewStatus("doc");
             }}
-            className={`btn join-item btn-sm ${viewStatus === "doc" ? "btn-primary" : "btn-outline"}`}
+            className={buttonRecipe(
+              { variant: viewStatus === "doc" ? "primary" : "outline", size: "sm" },
+              "rounded-none",
+            )}
           >
             <AiOutlineFileWord className="text-xl" /> View Doc
           </button>
@@ -70,7 +77,10 @@ const MessageEndpoint = ({ refName, endpointKey, endpoint, open }: MessageEndpoi
             onClick={() => {
               setViewStatus("test");
             }}
-            className={`btn join-item btn-sm ${viewStatus === "test" ? "btn-primary" : "btn-outline"}`}
+            className={buttonRecipe(
+              { variant: viewStatus === "test" ? "primary" : "outline", size: "sm" },
+              "rounded-none",
+            )}
           >
             <BiSolidNetworkChart className="text-xl" /> Message
           </button>
@@ -81,7 +91,7 @@ const MessageEndpoint = ({ refName, endpointKey, endpoint, open }: MessageEndpoi
           <MessageTry endpointKey={endpointKey} endpoint={endpoint} />
         )}
       </div>
-    </div>
+    </SignalCollapse>
   );
 };
 Message.Endpoint = MessageEndpoint;
@@ -118,7 +128,7 @@ const MessageInterface = ({ refName, endpointKey, endpoint }: MessageInterfacePr
         <div className="flex w-full flex-col gap-2 rounded-md font-normal md:flex-row">
           <div className="w-full md:w-1/2">
             <div className={signalUi.sectionTitle}>Response Type</div>
-            <div className="max-h-[500px] overflow-auto rounded-xl bg-base-100 p-4 md:h-[500px]">
+            <div className="max-h-[500px] overflow-auto rounded-xl bg-background p-4 md:h-[500px]">
               Returns: <UiObject.Type objRef={returnRef} arrDepth={endpoint.returns.arrDepth ?? 0} />
               {isReturnModelType ? <UiObject.Detail objRef={returnRef as ConstantCls} /> : null}
             </div>
@@ -217,19 +227,23 @@ const MessageTry = ({ endpointKey, endpoint }: MessageTryProps) => {
           <div className="flex w-full flex-col gap-2">
             <button
               disabled={!!stopListen}
-              className="btn btn-primary w-full"
+              className={buttonRecipe({ variant: "primary" }, "w-full")}
               onClick={() => {
                 onListen();
               }}
             >
               <AiOutlineSwap className="" /> Listen Message
             </button>
-            <button disabled={!stopListen} className="btn btn-secondary w-full" onClick={() => void onSend()}>
+            <button
+              disabled={!stopListen}
+              className={buttonRecipe({ variant: "secondary" }, "w-full")}
+              onClick={() => void onSend()}
+            >
               <AiOutlineSend className="" /> Send Message
             </button>
             <button
               disabled={!stopListen}
-              className="btn btn-outline w-full"
+              className={buttonRecipe({ variant: "outline" }, "w-full")}
               onClick={() => {
                 onStopListen();
               }}

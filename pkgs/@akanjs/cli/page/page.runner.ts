@@ -1,5 +1,4 @@
-import { type App, type Module, runner } from "@akanjs/devkit";
-
+import { type App, type Module, runner } from "@akanjs/devkit/commandDecorators";
 export class PageRunner extends runner("page") {
   async createCrudPage(
     module: Module,

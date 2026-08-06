@@ -20,7 +20,7 @@ export default async function Page() {
     <>
       <div className="animate-fadeIn flex items-center gap-4 px-4 pt-4">
         <div className="text-lg font-bold md:text-4xl">{l("${dict.model}.modelName")}</div>
-        <Model.New className="btn btn-ghost" slice={fetch.slice["${dict.model}InPublic"]} renderTitle="id">
+        <Model.New className="inline-flex items-center gap-2 rounded-field px-3 py-1.5 text-sm transition-colors hover:bg-muted" slice={fetch.slice["${dict.model}InPublic"]} renderTitle="id">
           <${dict.Model}.Template.General />
         </Model.New>
       </div>

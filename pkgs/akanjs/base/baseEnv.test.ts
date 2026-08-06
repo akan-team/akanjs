@@ -58,8 +58,6 @@ describe("getEnv", () => {
       appName: "minimal",
       environment: "main",
       operationMode: "cloud",
-      tunnelUsername: "root",
-      tunnelPassword: "akan",
       side: "server",
       renderMode: "csr",
       websocket: true,
@@ -95,7 +93,7 @@ describe("getEnv", () => {
     expect(ssrModule.getEnv().clientPort).toBe(8282);
   });
 
-  test("honors explicit host, port, protocol, network, and tunnel overrides", async () => {
+  test("honors explicit host, port, protocol, and network overrides without exposing tunnel credentials", async () => {
     resetEnv();
     Object.assign(process.env, {
       AKAN_PUBLIC_ENV: "develop",
@@ -115,8 +113,8 @@ describe("getEnv", () => {
 
     expect(env.environment).toBe("develop");
     expect(env.operationMode).toBe("edge");
-    expect(env.tunnelUsername).toBe("admin");
-    expect(env.tunnelPassword).toBe("secret");
+    expect("tunnelUsername" in env).toBe(false);
+    expect("tunnelPassword" in env).toBe(false);
     expect(env.clientHost).toBe("client.example.com");
     expect(env.clientPort).toBe(3000);
     expect(env.clientHttpUri).toBe("https://client.example.com:3000");

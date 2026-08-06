@@ -2,14 +2,14 @@ import type {
   Head,
   LayoutErrorRender,
   LayoutFallbackRoute,
-  PageConfig,
   LayoutNotFoundRender,
+  PageConfig,
   PathRoute,
   ResolvedHead,
   RouteRender,
 } from "akanjs/client";
-import { getExplicitPageConfigKeys, resolvePageState } from "../client/frameConfig";
 import { Children, cloneElement, isValidElement, type ReactElement, type ReactNode, Suspense } from "react";
+import { getExplicitPageConfigKeys, resolvePageState } from "../client/frameConfig";
 import { resolveHeadResult } from "./metadata";
 import { type AkanRouteSegmentState, createAkanRouteSegments, createAkanSegmentOutletKey } from "./routeState";
 import { isAkanRscPartialCommitEnabled } from "./rscPartialCommit";
@@ -61,16 +61,19 @@ export class RouteElementComposer {
     pathRoute,
     params,
     searchParams,
+    navKey,
   }: {
     pathRoute: PathRoute;
     params: Record<string, string>;
     searchParams: Record<string, string | string[]>;
+    navKey?: string;
   }): ReactNode {
     return RouteElementComposer.composeRenders({
       renders: RouteElementComposer.#getRenderStack(pathRoute),
       segments: isAkanRscPartialCommitEnabled() ? createAkanRouteSegments(pathRoute) : undefined,
       params,
       searchParams,
+      navKey,
     });
   }
 
@@ -79,11 +82,13 @@ export class RouteElementComposer {
     params,
     searchParams,
     patchStartIndex,
+    navKey,
   }: {
     pathRoute: PathRoute;
     params: Record<string, string>;
     searchParams: Record<string, string | string[]>;
     patchStartIndex: number;
+    navKey?: string;
   }): ReactNode | null {
     const renders = RouteElementComposer.#getRenderStack(pathRoute);
     if (!Number.isInteger(patchStartIndex) || patchStartIndex < 0 || patchStartIndex >= renders.length) return null;
@@ -91,7 +96,20 @@ export class RouteElementComposer {
       renders: renders.slice(patchStartIndex),
       params,
       searchParams,
+      navKey,
     });
+  }
+
+  // The suffix (patch) compose path never runs `resolveHead`, which is what
+  // otherwise populates `routeRender.Loading` as a side effect. Load the modules
+  // for the patched render stack explicitly so `#composeLoadingFallback` has a
+  // real fallback to emit for client navigation.
+  static async resolveSuffixLoadings(pathRoute: PathRoute, patchStartIndex: number): Promise<void> {
+    const renders = RouteElementComposer.#getRenderStack(pathRoute).slice(Math.max(patchStartIndex, 0));
+    // A failed Loading load must degrade to an empty fallback, never abort the navigation.
+    await Promise.all(
+      renders.map((routeRender) => Promise.resolve(routeRender?.resolveLoading?.()).catch(() => undefined)),
+    );
   }
 
   static async resolveHead({
@@ -170,18 +188,23 @@ export class RouteElementComposer {
     segments,
     params,
     searchParams,
+    navKey,
   }: {
     renders: RouteRender[];
     segments?: AkanRouteSegmentState[];
     params: Record<string, string>;
     searchParams: Record<string, string | string[]>;
+    navKey?: string;
   }): ReactNode {
     let element: ReactNode = null;
     for (let i = renders.length - 1; i >= 0; i--) {
       const routeRender = renders[i];
       if (!routeRender) continue;
+      const loadingFallback = RouteElementComposer.#composeLoadingFallback(renders.slice(i), params);
+      const suspenseKey =
+        navKey && loadingFallback != null && i === renders.length - 1 ? `akan-loading:${navKey}` : undefined;
       element = (
-        <Suspense fallback={RouteElementComposer.#composeLoadingFallback(renders.slice(i), params)}>
+        <Suspense key={suspenseKey} fallback={loadingFallback}>
           <RouteElementComposer.AsyncRender routeRender={routeRender} params={params} searchParams={searchParams}>
             {element}
           </RouteElementComposer.AsyncRender>

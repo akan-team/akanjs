@@ -16,6 +16,38 @@ async function appHasStModule(appCwdPath: string): Promise<boolean> {
 
 const IMPLICIT_LAYOUT_DIR = path.join(".akan", "generated", "root-layouts");
 const IMPLICIT_DICT_DIR = path.join(".akan", "generated", "dict");
+const IMPLICIT_OVERRIDES_DIR = path.join(".akan", "generated", "overrides");
+const OVERRIDES_KEY_RE = /^\.\/(.+\/)?_overrides\.(tsx|ts|jsx|js)$/;
+
+/**
+ * A `_overrides.tsx` manifest is a plain, server-safe module (`export default override({ Modal: BrandModal })`)
+ * with no `"use client"` directive. The `UiOverrideProvider` that consumes it is a client component, so the
+ * build emits a `"use client"` wrapper layout that reads the manifest's default map and mounts the provider
+ * around the subtree. As a normal `"use client"` module the wrapper participates in client-entry discovery and
+ * the RSC client manifest, so the server (as a client reference) and the client (as the real component) both
+ * resolve it — and the author never writes `"use client"`.
+ */
+async function writeGeneratedOverridesLayoutFile(opts: {
+  appCwdPath: string;
+  key: string;
+  userAbsPath: string;
+}): Promise<string> {
+  const filename = `${opts.key.replace(/^\.\//, "").replace(/[^a-zA-Z0-9]+/g, "_")}.tsx`;
+  const absPath = path.join(path.resolve(opts.appCwdPath), IMPLICIT_OVERRIDES_DIR, filename);
+  const userRel = path.relative(path.dirname(absPath), opts.userAbsPath).split(path.sep).join("/");
+  const userSpecifier = userRel.startsWith(".") ? userRel : `./${userRel}`;
+  const source = `"use client";
+import { UiOverrideProvider } from "akanjs/ui";
+import { createElement, type ReactNode } from "react";
+import value from ${JSON.stringify(userSpecifier)};
+
+export default function AkanUiOverridesLayout({ children }: { children?: ReactNode }) {
+  return createElement(UiOverrideProvider, { value }, children);
+}
+`;
+  await Bun.write(absPath, source);
+  return absPath;
+}
 
 interface RootBoundary {
   sourceKey: string | null;
@@ -261,12 +293,25 @@ export async function resolveSsrPageEntries(opts: {
       return segments !== null && isRootBoundarySegments(segments, basePaths);
     }),
   );
-  const base = opts.pageKeys
-    .filter((key) => !rootLayoutKeys.has(key))
-    .map((key) => ({
-      key,
-      moduleAbsPath: path.resolve(absPageDir, key),
-    }));
+  const base = await Promise.all(
+    opts.pageKeys
+      .filter((key) => !rootLayoutKeys.has(key))
+      .map(async (key) => {
+        const userAbsPath = path.resolve(absPageDir, key);
+        // `_overrides.tsx` is served through a generated `"use client"` wrapper layout that mounts the provider,
+        // so the author writes no directive; the raw manifest becomes a build seed so its slot components (and
+        // the manifest itself) enter the client graph / RSC client manifest.
+        if (OVERRIDES_KEY_RE.test(key)) {
+          const moduleAbsPath = await writeGeneratedOverridesLayoutFile({
+            appCwdPath: opts.appCwdPath,
+            key,
+            userAbsPath,
+          });
+          return { key, moduleAbsPath, seedAbsPaths: [userAbsPath] };
+        }
+        return { key, moduleAbsPath: userAbsPath };
+      }),
+  );
   const generated = await Promise.all(
     rootBoundaries.map(async (boundary) => ({
       key: implicitRootLayoutKey(boundary.segments),

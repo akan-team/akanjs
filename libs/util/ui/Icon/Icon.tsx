@@ -1,15 +1,13 @@
-import { clsx } from "akanjs/client";
+// styleguard-disable arbitrary-color — 외부 서비스 로고 색(Kakao·Naver·Google·Discord 등)은 브랜드
+// 가이드가 강제하는 고정값이라 테마 토큰으로 대체할 수 없다. 브랜드 준수 목적의 명시적 예외.
+import { cn } from "akanjs/client";
+import type { IconProps } from "./type";
 
-export interface IconProps {
-  className?: string;
-  viewBox?: string;
-  width?: string | number;
-}
 // https://github.com/oAuth-Buttons/logo-providers/tree/master/svg
 export const Github = ({ className, viewBox = "0 0 24 24", width = "40" }: IconProps) => {
   return (
     <svg
-      className={clsx("fill-black", className)}
+      className={cn("fill-black", className)}
       xmlns="http://www.w3.org/2000/svg"
       viewBox={viewBox}
       width={width}
@@ -23,7 +21,7 @@ export const Github = ({ className, viewBox = "0 0 24 24", width = "40" }: IconP
 export const Kakao = ({ className = "bg-[#FEE500]", viewBox = "-75 -90 350 350", width = "40" }: IconProps) => {
   return (
     <svg
-      className={clsx("fill-[#3c1e1e]", className)}
+      className={cn("fill-[#3c1e1e]", className)}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       viewBox={viewBox}
@@ -39,7 +37,7 @@ export const Kakao = ({ className = "bg-[#FEE500]", viewBox = "-75 -90 350 350",
 export const Naver = ({ className, viewBox = "0 0 200 200", width = "40" }: IconProps) => {
   return (
     <svg
-      className={clsx("fill-[#1ec800]", className)}
+      className={cn("fill-[#1ec800]", className)}
       xmlns="http://www.w3.org/2000/svg"
       viewBox={viewBox}
       width={width}
@@ -52,7 +50,7 @@ export const Naver = ({ className, viewBox = "0 0 200 200", width = "40" }: Icon
 export const Google = ({ className, viewBox = "5 5 25 25", width = "40" }: IconProps) => {
   return (
     <svg
-      className={clsx("", className)}
+      className={cn("", className)}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       viewBox={viewBox}
@@ -82,7 +80,7 @@ export const Google = ({ className, viewBox = "5 5 25 25", width = "40" }: IconP
 export const Facebook = ({ className = "fill-white", viewBox = "5 5 38 38", width = "40" }: IconProps) => {
   return (
     <svg
-      className={clsx("rounded-full", className)}
+      className={cn("rounded-full", className)}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       viewBox={viewBox}
@@ -101,7 +99,7 @@ export const Facebook = ({ className = "fill-white", viewBox = "5 5 38 38", widt
 export const Discord = ({ className, viewBox = "0 -28.5 256 256", width = "800" }: IconProps) => {
   return (
     <svg
-      className={clsx("fill-[#7289DA]", className)}
+      className={cn("fill-[#7289DA]", className)}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       viewBox={viewBox}
@@ -118,7 +116,7 @@ export const Discord = ({ className, viewBox = "0 -28.5 256 256", width = "800" 
 export const Instagram = ({ className, viewBox = "0 0 512 512", width = "40" }: IconProps) => {
   return (
     <svg
-      className={clsx("fill-[#e53c5c]", className)}
+      className={cn("fill-[#e53c5c]", className)}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       viewBox={viewBox}
@@ -141,7 +139,7 @@ export const Instagram = ({ className, viewBox = "0 0 512 512", width = "40" }: 
 export const Apple = ({ className, viewBox = "-5 -5 40 40", width = "40" }: IconProps) => {
   return (
     <svg
-      className={clsx("fill-white", className)}
+      className={cn("fill-white", className)}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       viewBox={viewBox}

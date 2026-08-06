@@ -27,7 +27,7 @@ export const addAndWaitActiveFiles = async (
 ) => {
   const fetch = await getFetch();
   // 1. 파일 업로드
-  const files = await fetch.addFilesRestApi(fileList, JSON.stringify(metas), type, parentId ?? null);
+  const files = await fetch.addFiles(fileList, JSON.stringify(metas), type, parentId ?? null);
 
   // 2. 파일 업로드 완료 대기
   const MAX_TRY_NUM = 5;

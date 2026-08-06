@@ -1,4 +1,4 @@
-import type { PageConfig, PageSafeAreaConfig, PageState, TransitionType } from "./csrTypes";
+import type { PageConfig, PageSafeAreaConfig, PageState, SsrRenderMode, TransitionType } from "./csrTypes";
 
 export type DevicePlatform = "ios" | "android" | "web" | (string & {});
 export type SafeAreaInsets = { top: number; bottom: number };
@@ -19,11 +19,16 @@ const pageConfigKeys = new Set<keyof PageConfig>([
   "bottomInset",
   "gesture",
   "cache",
+  "ssr",
   "rscPatchHeadSafe",
   "topSafeAreaColor",
   "bottomSafeAreaColor",
 ]);
+//* Read by the build off the source file, never merged into a page's runtime state — keep it out of
+//* `pageConfigKeys` so `mergePageConfigs` cannot leak it down the layout chain.
+const buildPageConfigKeys = new Set<keyof PageConfig>(["devOnly"]);
 const transitionTypes = new Set<TransitionType>(["none", "fade", "bottomUp", "stack", "scaleOut"]);
+const ssrRenderModes = new Set<SsrRenderMode>(["stream", "block"]);
 const DEFAULT_BOOLEAN_INSET = 48;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -36,12 +41,18 @@ export function validatePageConfig(routeKey: string, config?: PageConfig) {
   if (!isRecord(config)) throw new Error(`[route-convention] pageConfig in ${routeKey} must be an object.`);
   const pageConfig = config as PageConfig;
   for (const key of Object.keys(pageConfig)) {
-    if (!pageConfigKeys.has(key as keyof PageConfig)) {
+    if (!pageConfigKeys.has(key as keyof PageConfig) && !buildPageConfigKeys.has(key as keyof PageConfig)) {
       throw new Error(`[route-convention] unsupported pageConfig option "${key}" in ${routeKey}`);
     }
   }
+  if (pageConfig.devOnly !== undefined && typeof pageConfig.devOnly !== "boolean") {
+    throw new Error(`[route-convention] pageConfig.devOnly in ${routeKey} must be a boolean.`);
+  }
   if (pageConfig.transition !== undefined && !transitionTypes.has(pageConfig.transition)) {
     throw new Error(`[route-convention] unsupported pageConfig.transition "${pageConfig.transition}" in ${routeKey}`);
+  }
+  if (pageConfig.ssr !== undefined && !ssrRenderModes.has(pageConfig.ssr)) {
+    throw new Error(`[route-convention] unsupported pageConfig.ssr "${pageConfig.ssr}" in ${routeKey}`);
   }
   if (pageConfig.topInset !== undefined && !isValidInsetValue(pageConfig.topInset)) {
     throw new Error(
@@ -141,8 +152,9 @@ export function resolvePageState({
         ? false
         : (config.gesture ?? false),
     cache: config.cache ?? false,
-    topSafeAreaColor: config.topSafeAreaColor ?? "var(--color-base-100, Canvas)",
-    bottomSafeAreaColor: config.bottomSafeAreaColor ?? "var(--color-base-100, Canvas)",
+    ssr: config.ssr ?? "stream",
+    topSafeAreaColor: config.topSafeAreaColor ?? "var(color-background, Canvas)",
+    bottomSafeAreaColor: config.bottomSafeAreaColor ?? "var(color-background, Canvas)",
   };
 }
 

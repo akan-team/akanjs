@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { type ReactNode, useEffect, useState } from "react";
 
 import { DialogContext } from "./context";
@@ -22,7 +22,7 @@ export const Provider = ({ className, defaultOpen = false, open = defaultOpen, c
   }, [open]);
   return (
     <DialogContext.Provider value={{ open: openState, setOpen: setOpenState, title, setTitle, action, setAction }}>
-      <div data-open={openState} className={clsx("group/dialog", className)}>
+      <div data-open={openState} className={cn("group/dialog", className)}>
         {children}
       </div>
     </DialogContext.Provider>

@@ -62,7 +62,7 @@ Shared
 
 Can be used from both server and client. Keep it pure and environment-safe.
 
-Put pages here when a user can visit them by URL. Examples: home, sign in, product detail, admin dashboard.
+Put pages here when a user can visit them by URL. Examples: home, sign in, product detail, admin dashboard. A library can hold one too, and apps that opt in with syncPageLibs serve its routes.
 
 Put business concepts here. Examples: user, product, order, invoice, payment, notification.
 
@@ -164,6 +164,7 @@ apps/myapp/
 libs/shared/
 ├── akan.config.ts
 ├── lib/
+├── page/
 ├── ui/
 ├── env/
 ├── public/

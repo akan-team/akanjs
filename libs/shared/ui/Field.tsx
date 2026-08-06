@@ -1,7 +1,7 @@
 "use client";
-import { cnst, fetch, st } from "@libs/shared/client";
+import { cnst, Err, fetch, st } from "@libs/shared/client";
 import { MapView, Upload } from "@libs/util/ui";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { capitalize, pathGet } from "akanjs/common";
 import type { ProtoFile } from "akanjs/constant";
 import type { SliceMeta } from "akanjs/fetch";
@@ -11,35 +11,11 @@ import { memo, type ReactNode, useCallback, useState } from "react";
 import { AiTwotoneEnvironment } from "react-icons/ai";
 
 import { Editor } from "./Editor";
-import type { YooptaUploadPolicy } from "./Editor/Yoopta/Upload";
+import type { RichProps } from "./field.type";
 
 const DaumPostcode = lazy(() => import("react-daum-postcode"), { ssr: false });
 
-interface RichTextProps {
-  label?: string;
-  desc?: string;
-  labelClassName?: string;
-  className?: string;
-  slice: SliceMeta;
-  valuePath: string;
-  value?: unknown;
-  onChange: (value: unknown) => void;
-  addFile: (file: cnst.File | cnst.File[], options?: { idx?: number; limit?: number }) => void;
-  addFilesGql?: (fileList: FileList, id?: string) => Promise<(cnst.File | ProtoFile)[]>;
-  attachments?: cnst.File[];
-  onAttachmentsChange?: (files: cnst.File[]) => void;
-  onUploadError?: (error: Error) => void;
-  uploadPolicy?: YooptaUploadPolicy;
-  toolbar?: boolean;
-  blockActions?: boolean;
-  slashMenu?: boolean;
-  placeholder?: string;
-  nullable?: boolean;
-  disabled?: boolean;
-  onPressEnter?: () => void;
-  editorHeight?: string;
-}
-const Yoopta = memo((props: RichTextProps) => {
+const Rich = memo((props: RichProps) => {
   const hasValue = Object.hasOwn(props, "value");
   const {
     label,
@@ -69,14 +45,15 @@ const Yoopta = memo((props: RichTextProps) => {
     modelForm: `${sliceName}Form`,
     addModelFiles: `add${capitalize(sliceName)}Files`,
   };
-  const addModelFiles = (addFilesGql ?? (fetch as any)[names.addModelFiles]) as (
+  const addModelFiles = (addFilesGql ??
+    (fetch as unknown as Record<string, (...args: unknown[]) => unknown>)[names.addModelFiles]) as (
     fileList: FileList,
     id?: string,
   ) => Promise<(cnst.File | ProtoFile)[]>;
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
-      <Editor.Yoopta
+      <Editor.Rich
         value={hasValue ? value : pathGet(valuePath, st.get()[names.modelForm as "adminForm"])}
         placeholder={placeholder}
         addFilesGql={addModelFiles}
@@ -92,14 +69,12 @@ const Yoopta = memo((props: RichTextProps) => {
           onChange(val);
         }}
         disabled={disabled}
-        className={clsx("w-full", "")}
+        className={cn("w-full", "")}
         height={editorHeight}
       />
     </div>
   );
 });
-
-const Slate = Yoopta;
 
 interface CoordinateProps {
   className?: string;
@@ -113,7 +88,7 @@ interface CoordinateProps {
   mapKey: string;
   onChange: (coordinate: cnst.util.Coordinate) => void;
 }
-const Coordinate = ({
+export const Coordinate = ({
   className,
   labelClassName,
   mapClassName,
@@ -126,7 +101,7 @@ const Coordinate = ({
   onChange,
 }: CoordinateProps) => {
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <MapView.Google
         mapKey={mapKey}
@@ -167,7 +142,16 @@ interface PostcodeProps {
     coordinate: cnst.util.Coordinate;
   }) => void;
 }
-const Postcode = ({ className, labelClassName, nullable, kakaoKey, label, desc, address, onChange }: PostcodeProps) => {
+export const Postcode = ({
+  className,
+  labelClassName,
+  nullable,
+  kakaoKey,
+  label,
+  desc,
+  address,
+  onChange,
+}: PostcodeProps) => {
   const [postModalOpen, setPostModalOpen] = useState(false);
   const getCoordinate = useCallback(async (address: string): Promise<cnst.util.Coordinate> => {
     const kakaoResp = (await (
@@ -177,7 +161,7 @@ const Postcode = ({ className, labelClassName, nullable, kakaoKey, label, desc, 
         },
       })
     ).json()) as { documents?: { x: string; y: string }[] };
-    if (!kakaoResp.documents?.[0]) throw new Error("주소를 찾을 수 없습니다.");
+    if (!kakaoResp.documents?.[0]) throw new Err("shared.error.addressNotFound");
     return new cnst.util.Coordinate({
       type: "Point",
       coordinates: [parseFloat(kakaoResp.documents[0].x), parseFloat(kakaoResp.documents[0].y)],
@@ -186,11 +170,11 @@ const Postcode = ({ className, labelClassName, nullable, kakaoKey, label, desc, 
   }, []);
   return (
     <>
-      <div className={clsx("flex flex-col", className)}>
+      <div className={cn("flex flex-col", className)}>
         {label ? <AkanField.Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
         <input
           value={address ?? ""}
-          className="input w-96"
+          className="h-10 w-96 rounded-field border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none"
           onClick={() => {
             setPostModalOpen(true);
           }}
@@ -221,7 +205,7 @@ const Postcode = ({ className, labelClassName, nullable, kakaoKey, label, desc, 
   );
 };
 
-interface ImageProps {
+interface ImgProps {
   label?: string;
   desc?: string;
   styleType?: "circle" | "square";
@@ -236,7 +220,7 @@ interface ImageProps {
   disabled?: boolean;
   aspectRatio?: number[];
 }
-const Img = ({
+export const Img = ({
   label,
   desc,
   styleType = "circle",
@@ -250,12 +234,12 @@ const Img = ({
   onChange,
   disabled,
   aspectRatio,
-}: ImageProps) => {
+}: ImgProps) => {
   const { sliceName } = slice;
   const names = {
     addModelFiles: `add${capitalize(sliceName)}Files`,
   };
-  const addFiles = (fetch as any)[names.addModelFiles] as (
+  const addFiles = (fetch as unknown as Record<string, (...args: unknown[]) => unknown>)[names.addModelFiles] as (
     fileList: FileList | File[],
     id?: string,
   ) => Promise<cnst.File[]>;
@@ -264,7 +248,7 @@ const Img = ({
     onChange(await fetch.file(value.id));
   }, 1000);
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Upload.Image
         className={uploadClassName}
@@ -284,7 +268,7 @@ const Img = ({
   );
 };
 
-interface ImagesProps {
+interface ImgsProps {
   label?: string;
   desc?: string;
   labelClassName?: string;
@@ -298,7 +282,7 @@ interface ImagesProps {
   maxlength?: number;
 }
 
-const Imgs = ({
+export const Imgs = ({
   className,
   label,
   desc,
@@ -310,12 +294,12 @@ const Imgs = ({
   minlength = 1,
   maxlength = 30,
   disabled,
-}: ImagesProps) => {
+}: ImgsProps) => {
   const { sliceName } = slice;
   const names = {
     addModelFiles: `add${capitalize(sliceName)}Files`,
   };
-  const addFiles = (fetch as any)[names.addModelFiles] as (
+  const addFiles = (fetch as unknown as Record<string, (...args: unknown[]) => unknown>)[names.addModelFiles] as (
     fileList: FileList | File[],
     id?: string,
   ) => Promise<cnst.File[]>;
@@ -327,13 +311,13 @@ const Imgs = ({
     onChange(value.map((f) => newFiles.find((nf) => nf.id === f.id) ?? f));
   }, 1000);
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={!!minlength} label={label} desc={desc} /> : null}
       <Upload.Images
         multiple
         fileList={value}
         disabled={disabled}
-        render={render as any}
+        render={render as unknown as (file: ProtoFile) => ReactNode}
         styleType="square"
         onRemove={(file: File | FileList) => {
           onChange(value.filter((f) => f.id !== (file as unknown as cnst.File).id));
@@ -361,7 +345,7 @@ interface FileProps {
   onChange: (file: cnst.File | null) => void;
   disabled?: boolean;
 }
-const File = ({
+export const File = ({
   label,
   desc,
   labelClassName,
@@ -378,7 +362,7 @@ const File = ({
   const names = {
     addModelFiles: `add${capitalize(sliceName)}Files`,
   };
-  const addFiles = (fetch as any)[names.addModelFiles] as (
+  const addFiles = (fetch as unknown as Record<string, (...args: unknown[]) => unknown>)[names.addModelFiles] as (
     fileList: FileList | File[],
     id?: string,
   ) => Promise<cnst.File[]>;
@@ -387,10 +371,10 @@ const File = ({
     onChange(await fetch.file(value.id));
   }, 1000);
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Upload.File
-        render={render as any}
+        render={render as unknown as (file: ProtoFile) => ReactNode}
         uploadClassName={uploadClassName}
         disabled={disabled}
         file={value}
@@ -420,7 +404,7 @@ interface FilesProps {
   maxlength?: number;
 }
 
-const Files = ({
+export const Files = ({
   className,
   label,
   desc,
@@ -437,7 +421,7 @@ const Files = ({
   const names = {
     addModelFiles: `add${capitalize(sliceName)}Files`,
   };
-  const addFiles = (fetch as any)[names.addModelFiles] as (
+  const addFiles = (fetch as unknown as Record<string, (...args: unknown[]) => unknown>)[names.addModelFiles] as (
     fileList: FileList | File[],
     id?: string,
   ) => Promise<cnst.File[]>;
@@ -449,12 +433,12 @@ const Files = ({
     onChange(value.map((f) => newFiles.find((nf) => nf.id === f.id) ?? f));
   }, 1000);
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={!!minlength} label={label} desc={desc} /> : null}
       <Upload.FileList
         multiple
         disabled={disabled}
-        render={render as any}
+        render={render as unknown as (file: ProtoFile) => ReactNode}
         fileList={value}
         onRemove={(file: cnst.File) => {
           onChange(value.filter((f) => f.id !== file.id));
@@ -471,4 +455,4 @@ const Files = ({
   );
 };
 
-export const Field = Object.assign(AkanField, { Slate, Yoopta, Coordinate, Postcode, Img, Imgs, File, Files });
+export const Field = Object.assign(AkanField, { Rich, Coordinate, Postcode, Img, Imgs, File, Files });

@@ -13,13 +13,13 @@ import {
   getSsoCode,
   getSsoOrigin,
   type KakaoResponse,
-  Me,
   makeAccessTokenResponse,
   makeOAuthRedirectResponse,
   makeSignoutResponse,
   makeSsoRedirectResponse,
   type NaverResponse,
   Self,
+  SelfOrAdmin,
   type SerAccount,
   SSO,
   type SsoCookie,
@@ -29,19 +29,24 @@ import { Any, ID } from "akanjs/base";
 import { endpoint, internal, Public, Req, slice } from "akanjs/signal";
 
 import * as cnst from "../cnst";
+import { Err } from "../dict";
 import * as srv from "../srv";
 
 export class UserInternal extends internal(srv.user, () => ({})) {}
 
-export class UserSlice extends slice(srv.user, { guards: { root: Admin, get: Public, cru: Every } }, () => ({})) {}
+export class UserSlice extends slice(
+  srv.user,
+  { guards: { root: Admin, get: Public, cru: SelfOrAdmin, create: Admin } },
+  () => ({}),
+) {}
 
 export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ query, mutation }) => ({
-  addBadgeCount: mutation(cnst.User)
+  addBadgeCount: mutation(cnst.User, { guards: [SelfOrAdmin] })
     .param("userId", ID)
     .exec(async function (userId) {
       return await this.userService.addBadgeCount(userId);
     }),
-  subBadgeCount: mutation(cnst.User)
+  subBadgeCount: mutation(cnst.User, { guards: [SelfOrAdmin] })
     .param("userId", ID)
     .exec(async function (userId) {
       return await this.userService.subBadgeCount(userId);
@@ -73,14 +78,6 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .with(Account)
     .exec(async function (userId, account) {
       return makeAccessTokenResponse(await this.userService.activateUser(userId, account)) as never;
-    }),
-  removeUser: mutation(cnst.User)
-    .param("userId", ID)
-    .with(Me, { nullable: true })
-    .with(Self, { nullable: true })
-    .exec(async function (userId, me, self) {
-      if (!me && self?.id !== userId) throw new Error("Unauthorized");
-      return await this.userService.removeUser(userId);
     }),
   generatePrepareUser: mutation(cnst.User)
     .body("userId", ID, { nullable: true })
@@ -273,7 +270,7 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
       await this.userService.releaseUser(userId);
       return true;
     }),
-  getRestrictInfo: query(cnst.RestrictInfo, { nullable: true })
+  getRestrictInfo: query(cnst.RestrictInfo, { guards: [SelfOrAdmin], nullable: true })
     .param("userId", ID)
     .exec(async function (userId) {
       return await this.userService.getRestrictInfo(userId);
@@ -365,7 +362,7 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
       await this.userService.setDiscordOfPrepareUser(userId, discord);
       return true;
     }),
-  setNotiSettingOfUser: mutation(Boolean)
+  setNotiSettingOfUser: mutation(Boolean, { guards: [SelfOrAdmin] })
     .body("userId", ID)
     .body("notiSetting", cnst.NotiSetting)
     .exec(async function (userId, notiSetting) {
@@ -490,7 +487,7 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .with(Req)
     .exec(async function (refreshToken, account, request) {
       const token = refreshToken ?? (request as Bun.BunRequest).cookies.get("userRefreshToken");
-      if (!token) throw new Error("No refresh token");
+      if (!token) throw new Err("user.error.noRefreshToken");
       const accessToken = await this.userService.refreshUserToken(token, account);
       return new Response(JSON.stringify(accessToken), {
         headers: {

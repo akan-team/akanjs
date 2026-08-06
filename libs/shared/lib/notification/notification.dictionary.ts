@@ -15,13 +15,14 @@ export const dictionary = modelDictionary(["en", "ko"])
     token: t(["Token", "토큰"]).desc(["Token of the notification", "알림의 토큰"]),
     title: t(["Title", "제목"]).desc(["Title of the notification", "알림의 제목"]),
     content: t(["Content", "내용"]).desc(["Content of the notification", "알림의 내용"]),
+    url: t(["URL", "URL"]).desc(["URL of the notification", "알림의 URL"]),
     field: t(["Field", "필드"]).desc(["Field of the notification", "알림의 필드"]),
     image: t(["Image", "이미지"]).desc(["Image of the notification", "알림의 이미지"]),
     level: t(["Level", "레벨"]).desc(["Level of the notification", "알림의 레벨"]),
     type: t(["Type", "타입"]).desc(["Type of the notification", "알림의 타입"]),
   }))
   .insight<NotificationInsight>((t) => ({}))
-  .query<typeof NotificationFilter>((fn) => ({}))
+  .query<NotificationFilter>((fn) => ({}))
   .enum<NotiLevel>("notiLevel", (t) => ({
     actionRequired: t(["Action Required", "필요한 조치"]).desc(["Action required notification", "필요한 조치 알림"]),
     notice: t(["Notice", "공지"]).desc(["Notice notification", "공지 알림"]),
@@ -33,8 +34,8 @@ export const dictionary = modelDictionary(["en", "ko"])
     topic: t(["Topic", "토픽"]).desc(["Topic notification", "토픽 알림"]),
     token: t(["Token", "토큰"]).desc(["Token notification", "토큰 알림"]),
   }))
-  .slice<typeof NotificationSlice>((fn) => ({}))
-  .endpoint<typeof NotificationEndpoint>((fn) => ({
+  .slice<NotificationSlice>((fn) => ({}))
+  .endpoint<NotificationEndpoint>((fn) => ({
     subscribeToMegaphone: fn(["Subscribe to all users", "전체 사용자 구독"])
       .desc(["Subscribe to all users", "전체 사용자 구독"])
       .arg((t) => ({

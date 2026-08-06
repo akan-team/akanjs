@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="query-first" title={l.trans({ en: "Start From The Screen", ko: "화면에서 시작하기" })}>
         <Docs.Title>{l.trans({ en: "Start From The Screen", ko: "화면에서 시작하기" })}</Docs.Title>
@@ -35,7 +35,7 @@ export default function Page() {
               ko: "field를 추가하기 전에 목록 화면, 상세 화면, 입력 form을 먼저 떠올려보세요. schema는 자주 읽는 화면을 쉽게 만들기 위한 모양이어야 합니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "List page: what small fields should every row show?",
@@ -54,9 +54,10 @@ export default function Page() {
                 ko: "하위 목록: 댓글이나 로그처럼 계속 늘어날 수 있는 데이터는 무엇인가요?",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Small list shape", ko: "작은 목록 모양" })}
           code={`export class LightPost extends via(
   PostObject,
@@ -65,7 +66,7 @@ export default function Page() {
 ) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="relationship-size" title={l.trans({ en: "Relationship Size", ko: "관계 크기" })}>
         <Docs.Title>{l.trans({ en: "Relationship Size", ko: "관계 크기" })}</Docs.Title>
@@ -76,7 +77,7 @@ export default function Page() {
               ko: "어떤 데이터가 여러 하위 데이터를 가질 때는 먼저 몇 개까지 늘어날지 생각하세요. 개수에 따라 schema가 달라집니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "One to few: embed it. Example: a user's two or three links, a post's small settings.",
@@ -95,9 +96,10 @@ export default function Page() {
                 ko: "One to squillions: child model로 분리합니다. 예: 댓글, 로그, 이벤트, 장비 상태 기록.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Growing child model", ko: "계속 늘어나는 child model" })}
           code={`export class CommentInput extends via((field) => ({
   post: field(ID, { ref: "post" }),
@@ -105,7 +107,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="denormalize" title={l.trans({ en: "Copy Small Snapshots", ko: "작은 스냅샷 복사하기" })}>
         <Docs.Title>{l.trans({ en: "Copy Small Snapshots", ko: "작은 스냅샷 복사하기" })}</Docs.Title>
@@ -116,7 +118,7 @@ export default function Page() {
               ko: "작은 데이터를 복사해두면 화면이 훨씬 단순해질 때가 있습니다. 예를 들어 게시글이 작성자 light snapshot을 가지고 있으면 목록 화면에서 추가 요청이 필요 없습니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Good to copy: name, thumbnail, small status text.",
@@ -129,9 +131,10 @@ export default function Page() {
                 ko: "조심할 것: 매초 바뀌거나 항상 완벽히 최신이어야 하는 값.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Light snapshot", ko: "Light snapshot" })}
           code={`export class PostInput extends via((field) => ({
   author: field(LightUser),
@@ -140,12 +143,12 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="layers" title={l.trans({ en: "Akan Model Layers", ko: "Akan Model Layer" })}>
         <Docs.Title>{l.trans({ en: "Akan Model Layers", ko: "Akan Model Layer" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "`Input`: fields a user can submit.",
@@ -171,9 +174,10 @@ export default function Page() {
                 ko: "`Insight`: dashboard에 쓰는 요약 데이터입니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Common shape", ko: "기본 모양" })}
           code={`export class PostInput extends via((field) => ({
   title: field(String),
@@ -187,12 +191,12 @@ export class LightPost extends via(PostObject, ["title", "status"] as const, (re
 export class Post extends via(PostObject, LightPost, (resolve) => ({})) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Design for the read path people use every day, not for a perfect database diagram.",
@@ -211,10 +215,10 @@ export class Post extends via(PostObject, LightPost, (resolve) => ({})) {}`}
                 ko: "`Light<Model>`은 작게 유지하세요. 상세 페이지가 아니라 목록 row처럼 느껴져야 합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

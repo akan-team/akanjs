@@ -1,9 +1,11 @@
 "use client";
 import { type Dayjs, dayjs } from "akanjs/base";
-import { clsx, msg } from "akanjs/client";
+import { cn, msg } from "akanjs/client";
 import { lazy } from "akanjs/webkit";
 import { type FocusEvent, useEffect, useRef } from "react";
 import { AiOutlineSwapRight } from "react-icons/ai";
+
+import { createOverridable } from "./UiOverride";
 
 const reactDatePickerPackage = "react-datepicker";
 const reactDatePickerStylePath = "react-datepicker/dist/react-datepicker.css";
@@ -15,7 +17,7 @@ const ReactDatePicker = lazy(
   },
   { ssr: false },
 );
-interface DatePickerProps {
+export interface DatePickerProps {
   value?: Dayjs | null;
   onChange: (value: Dayjs | null) => void;
   showTime?: boolean;
@@ -27,7 +29,7 @@ interface DatePickerProps {
   defaultValue?: Dayjs;
 }
 
-export const DatePicker = ({
+const DefaultDatePicker = ({
   value,
   onChange,
   showTime,
@@ -56,7 +58,7 @@ export const DatePicker = ({
 
   return (
     <ReactDatePicker
-      className={clsx("input text-center", className)}
+      className={cn("input text-center", className)}
       selected={value ? value.toDate() : new Date()}
       disabledKeyboardNavigation
       onFocus={(e: FocusEvent<HTMLInputElement>) => {
@@ -74,7 +76,7 @@ export const DatePicker = ({
   );
 };
 
-interface RangePickerProps {
+export interface RangePickerProps {
   value: [Dayjs | null, Dayjs | null];
   onChange: (value: [Dayjs | null, Dayjs | null]) => void;
   format?: string;
@@ -84,7 +86,7 @@ interface RangePickerProps {
   className?: string;
 }
 
-const RangePicker = ({
+const DefaultRangePicker = ({
   value,
   onChange,
   format = "yyyy-MM-dd",
@@ -110,7 +112,7 @@ const RangePicker = ({
 
   const pickerClassName = "m-0 input focus:outline-hidden z-50 p-3 text-center h-full w-full ";
   return (
-    <div className={clsx("input flex h-full w-fit items-center gap-2 p-0", className)}>
+    <div className={cn("input flex h-full w-fit items-center gap-2 p-0", className)}>
       <ReactDatePicker
         className={pickerClassName}
         selected={value[0] ? value[0].toDate() : undefined}
@@ -123,7 +125,7 @@ const RangePicker = ({
         filterDate={(date: Date) => (!disabledDate?.(dayjs(date)) ? true : false)}
         dateFormat={format}
       />
-      <AiOutlineSwapRight className="text-3xl text-gray-400" />
+      <AiOutlineSwapRight className="text-3xl text-muted-foreground" />
       <ReactDatePicker
         className={pickerClassName}
         selected={value[1] ? value[1].toDate() : undefined}
@@ -143,9 +145,7 @@ const RangePicker = ({
   );
 };
 
-DatePicker.RangePicker = RangePicker;
-
-interface TimePickerProps {
+export interface TimePickerProps {
   value: Dayjs | null;
   onChange: (value: Dayjs) => void;
   format?: string;
@@ -155,7 +155,7 @@ interface TimePickerProps {
   disabled?: boolean;
 }
 
-const TimePicker = ({
+const DefaultTimePicker = ({
   disabled,
   className,
   value,
@@ -174,7 +174,7 @@ const TimePicker = ({
   return (
     <ReactDatePicker
       wrapperClassName="inline-block"
-      className={clsx("inline-block w-auto", className)}
+      className={cn("inline-block w-auto", className)}
       selected={value ? value.toDate() : new Date()}
       onChange={handleDateChange}
       showTimeSelect
@@ -187,7 +187,17 @@ const TimePicker = ({
   );
 };
 
-DatePicker.TimePicker = TimePicker;
+const DatePickerBase = createOverridable("DatePicker", DefaultDatePicker);
+
+/**
+ * Date picker. `DatePicker`, `DatePicker.RangePicker`, and `DatePicker.TimePicker` each resolve to a
+ * route-scoped override when a `page/**\/_overrides.tsx` in the route's ancestry declares one (slots
+ * `DatePicker`, `DatePickerRangePicker`, `DatePickerTimePicker`).
+ */
+export const DatePicker = Object.assign(DatePickerBase, {
+  RangePicker: createOverridable("DatePickerRangePicker", DefaultRangePicker),
+  TimePicker: createOverridable("DatePickerTimePicker", DefaultTimePicker),
+});
 
 // interface MonthPickerProps {
 //   className?: string;

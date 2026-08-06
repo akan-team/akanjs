@@ -1,4 +1,4 @@
-import { command, Workspace } from "@akanjs/devkit";
+import { command, Workspace } from "@akanjs/devkit/commandDecorators";
 import { RepairScript } from "./repair.script";
 
 export class RepairCommand extends command("repair", [RepairScript], ({ public: target }) => ({

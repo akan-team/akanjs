@@ -26,7 +26,7 @@ const TestItemLight = via(TestItemObject, ["title"] as const, (f) => ({
   label: f(String),
 }));
 const TestItemFull = via(TestItemObject, TestItemLight, (f) => ({
-  searchable: f(String, { text: "search" }),
+  searchable: f(String),
 }));
 const TestItemInsight = via(TestItemFull, (f) => ({
   count: f(Int, { default: 0, accumulate: {} }),

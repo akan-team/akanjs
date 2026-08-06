@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
@@ -23,7 +23,7 @@ export default function ViewWrapper({ children, slice, modelId, className, modal
   const storeDo = st.do as unknown as { [key: string]: (...args: any[]) => Promise<void> };
   return (
     <div
-      className={clsx("cursor-pointer", className)}
+      className={cn("cursor-pointer", className)}
       onClick={(e) => {
         e.stopPropagation();
         void storeDo[names.viewModel](modelId, { modal });

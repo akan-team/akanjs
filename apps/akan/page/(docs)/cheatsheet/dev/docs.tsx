@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs, PingTester } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc, PingTester } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "Akan은 생성된 fetch 객체에서 signal 문서를 렌더링할 수 있습니다. 단순한 목록이 아니라 argument, guard, REST 호출, realtime endpoint를 확인할 수 있습니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Use `Signal.Doc.Zone` for one signal namespace.",
@@ -35,10 +35,10 @@ export default function Page() {
                 ko: "REST와 WebSocket 테스트 화면을 함께 볼 수 있습니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="zone" title={l.trans({ en: "Render A Zone", ko: "Zone 렌더링" })}>
         <Docs.Title>{l.trans({ en: "Render A Zone", ko: "Zone 렌더링" })}</Docs.Title>
@@ -51,6 +51,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Developer API page", ko: "개발자 API page" })}
           code={`"use client";
 import { fetch } from "@apps/myapp/client";
@@ -61,7 +62,7 @@ export default function ApiDocsPage() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="try-api" title={l.trans({ en: "Try An Endpoint", ko: "Endpoint 실습" })}>
         <Docs.Title>{l.trans({ en: "Try An Endpoint", ko: "Endpoint 실습" })}</Docs.Title>
@@ -75,7 +76,7 @@ export default function ApiDocsPage() {
         </Docs.Description>
         <PingTester />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="auth" title={l.trans({ en: "Auth And Roles", ko: "Auth와 role" })}>
         <Docs.Title>{l.trans({ en: "Auth And Roles", ko: "Auth와 role" })}</Docs.Title>
@@ -86,7 +87,7 @@ export default function ApiDocsPage() {
               ko: "Guard가 있는 endpoint는 auth modal을 열고 JWT를 붙여넣으세요. Decode된 account를 보면 어떤 role로 테스트하는지 확인할 수 있습니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "BaseURL tells you which server the document is calling.",
@@ -105,15 +106,15 @@ export default function ApiDocsPage() {
                 ko: "JWT는 이 UI에서 개발자 테스트용으로만 사용하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Expose API docs only to developers or admins.",
@@ -132,10 +133,10 @@ export default function ApiDocsPage() {
                 ko: "문서 UI는 빠른 수동 점검에 사용하고, 자동 테스트의 대체물로 보지는 마세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

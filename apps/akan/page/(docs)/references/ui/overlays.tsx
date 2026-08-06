@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Docs, type UiComponentReference, UiComponentSlide } from "@apps/akan/ui";
+import { Divider, Docs, DocsToc, type UiComponentReference, UiComponentSlide } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -41,7 +41,7 @@ export default function Page() {
           desc: l.trans({ en: "Ask for confirmation before closing.", ko: "닫기 전에 confirmation을 요청합니다." }),
         },
       ],
-      code: `import { Modal } from "akanjs/ui";
+      code: `import { Modal, buttonRecipe } from "akanjs/ui";
 
 export const ProductModal = ({ open, close, product }) => (
   <Modal open={open} onCancel={close} title="Product">
@@ -87,12 +87,12 @@ export const ProductModal = ({ open, close, product }) => (
 
 <Dialog defaultOpen={false}>
   <Dialog.Trigger>
-    <button className="btn">Open</button>
+    <button className={buttonRecipe()}>Open</button>
   </Dialog.Trigger>
   <Dialog.Modal>
     <Dialog.Title>Custom dialog</Dialog.Title>
     <Dialog.Content>Body content</Dialog.Content>
-    <Dialog.Action><button className="btn">Save</button></Dialog.Action>
+    <Dialog.Action><button className={buttonRecipe()}>Save</button></Dialog.Action>
   </Dialog.Modal>
 </Dialog>;`,
     },
@@ -127,7 +127,7 @@ export const ProductModal = ({ open, close, product }) => (
       code: `import { Popconfirm } from "akanjs/ui";
 
 <Popconfirm title="Remove product?" onConfirm={() => remove(product.id)}>
-  <button className="btn btn-error btn-sm">Remove</button>
+  <button className={buttonRecipe({ variant: "destructive", size: "sm" })}>Remove</button>
 </Popconfirm>;`,
     },
     {
@@ -196,7 +196,7 @@ export const ProductModal = ({ open, close, product }) => (
       code: `import { Copy } from "akanjs/ui";
 
 <Copy text={shareUrl}>
-  <button className="btn btn-sm">Copy link</button>
+  <button className={buttonRecipe({ size: "sm" })}>Copy link</button>
 </Copy>;`,
     },
   ];
@@ -214,11 +214,11 @@ export const ProductModal = ({ open, close, product }) => (
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       {components.map((component) => (
         <UiComponentSlide key={component.name} component={component} />
       ))}
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

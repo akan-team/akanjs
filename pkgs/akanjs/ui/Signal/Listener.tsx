@@ -30,17 +30,17 @@ const ListenerResult = ({ status, data }: ListenerResultProps) => {
         onChange={() => true}
       />
 
-      <div className="absolute top-4 right-4 flex items-center justify-center gap-2 rounded-lg bg-base-200/80 px-2 py-1 font-bold">
+      <div className="absolute top-4 right-4 flex items-center justify-center gap-2 rounded-lg bg-muted/80 px-2 py-1 font-bold">
         <span className={getStatusBadgeClassName(status)}>{capitalize(status)}</span>
         <div
           className={`size-[10px] rounded-full ${
             status === "error"
-              ? "bg-error"
+              ? "bg-destructive"
               : status === "listening"
                 ? "animate-pop-300 bg-primary"
                 : status === "loading"
                   ? "animate-ping bg-secondary"
-                  : "bg-base-300"
+                  : "bg-border"
           }`}
         ></div>
       </div>

@@ -89,6 +89,8 @@ When you are not sure where to put code, start with the business question. The d
 
 What fields does it have?
 
+Which fields are text searchable?
+
 How is it stored or searched?
 
 What business rule should run?

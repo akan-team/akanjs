@@ -7,7 +7,7 @@ export default function Page() {
   return (
     <Scroll>
       <Scroll.Slide id="quickstart" title={l.trans({ en: "Quick Start", ko: "시작하기" })}>
-        <div className="mb-8 border-base-content">
+        <div className="mb-8 border-foreground">
           <h1 className="font-extrabold text-2xl lg:text-4xl">{l.trans({ en: "Quick Start", ko: "시작하기" })}</h1>
         </div>
         <Docs.Description>
@@ -31,7 +31,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="installation" title={l.trans({ en: "Installation", ko: "설치하기" })}>
         <Docs.Title>{l.trans({ en: "Installation", ko: "설치하기" })}</Docs.Title>
         <Docs.Description>
@@ -45,26 +45,36 @@ export default function Page() {
             <div className="">{l.trans({ en: "System Requirements:", ko: "시스템 요구사항" })}</div>
             <div className="flex flex-col gap-1 p-4 font-medium">
               <div>
-                <input className="checkbox" type="checkbox" checked readOnly />{" "}
+                <input className="size-4 rounded border border-input accent-primary" type="checkbox" checked readOnly />{" "}
                 {l.trans({ en: "Node.js 20.x or higher", ko: "Node.js 20.x 이상" })}
               </div>
               <div>
-                <input className="checkbox" type="checkbox" checked readOnly />{" "}
+                <input className="size-4 rounded border border-input accent-primary" type="checkbox" checked readOnly />{" "}
                 {l.trans({ en: "pnpm 10.x or higher", ko: "pnpm 10.x 이상" })}
               </div>
               <div>
-                <input className="checkbox" type="checkbox" checked readOnly />{" "}
+                <input className="size-4 rounded border border-input accent-primary" type="checkbox" checked readOnly />{" "}
                 {l.trans({ en: "Docker", ko: "Docker" })}
               </div>
               <div>
-                <input className="checkbox" type="checkbox" checked={false} readOnly />{" "}
+                <input
+                  className="size-4 rounded border border-input accent-primary"
+                  type="checkbox"
+                  checked={false}
+                  readOnly
+                />{" "}
                 {l.trans({
                   en: "Android Studio (if you want to use Android)",
                   ko: "Android Studio (Android 사용 시)",
                 })}
               </div>
               <div>
-                <input className="checkbox" type="checkbox" checked={false} readOnly />{" "}
+                <input
+                  className="size-4 rounded border border-input accent-primary"
+                  type="checkbox"
+                  checked={false}
+                  readOnly
+                />{" "}
                 {l.trans({ en: "Xcode (if you want to use iOS)", ko: "Xcode (iOS 사용 시)" })}
               </div>
             </div>
@@ -105,7 +115,7 @@ Do you want to install shared and util libraries? (admin, user file, etc.): # No
         />
       </Scroll.Slide>
 
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="execution" title={l.trans({ en: "Execution", ko: "실행하기" })}>
         <Docs.Title>{l.trans({ en: "Execution", ko: "실행하기" })}</Docs.Title>
         <Docs.Description>
@@ -163,17 +173,19 @@ export default function Page() {
           </div>
         </Docs.Description>
         <div className="w-full justify-center gap-4 sm:flex">
-          <div className="mockup-browser w-full border-2 border-base-content/30 bg-base-100">
-            <div className="mockup-browser-toolbar">
-              <div className="input">http://localhost:4200</div>
+          <div className="w-full overflow-hidden rounded-box border-2 border-foreground/30 bg-background">
+            <div className="flex items-center gap-2 border-foreground/10 border-b p-3">
+              <div className="h-10 w-full rounded-field border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none">
+                http://localhost:4200
+              </div>
             </div>
             <div className="flex h-80 place-content-center items-center justify-center text-2xl">Hello Akan.js! 🎉</div>
           </div>
 
           <div className="relative hidden h-96 w-80 sm:block">
-            <div className="mockup-phone absolute -translate-x-1/4 -translate-y-1/4 scale-50">
-              <div className="mockup-phone-camera"></div>
-              <div className="mockup-phone-display flex items-center justify-center bg-base-100 text-4xl">
+            <div className="absolute w-72 -translate-x-1/4 -translate-y-1/4 scale-50 overflow-hidden rounded-[2.5rem] border-[10px] border-foreground/80 bg-foreground/80 pb-4 shadow-xl">
+              <div className="mx-auto mt-2 mb-4 h-4 w-28 rounded-full bg-foreground/40"></div>
+              <div className="flex h-80 items-center justify-center rounded-[1.8rem] bg-background text-4xl">
                 Hello Akan.js! 🎉
               </div>
             </div>

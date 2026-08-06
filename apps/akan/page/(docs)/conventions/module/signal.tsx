@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs, type IntroItem } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, type IntroItem, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -231,13 +231,14 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4">
-                <div className="font-bold text-base-content">{title}</div>
-                <div className="text-base-content/70">{desc}</div>
+              <div key={title} className={panelRecipe({ padding: "row" })}>
+                <div className="font-bold text-foreground">{title}</div>
+                <div className="text-foreground/70">{desc}</div>
               </div>
             ))}
           </div>
           <Code.Snippet
+            className="w-full"
             title="story.signal.ts"
             code={`export class StoryInternal extends internal(srv.story, () => ({})) {}
 
@@ -251,7 +252,7 @@ export class StoryEndpoint extends endpoint(srv.story, ({ query }) => ({
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="signal-extension"
@@ -267,6 +268,7 @@ export class StoryEndpoint extends endpoint(srv.story, ({ query }) => ({
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="user.signal.ts"
           code={`export class UserInternal extends internal(srv.user, () => ({}), ...user.internals) {}
 
@@ -283,7 +285,7 @@ export class UserEndpoint extends endpoint(
 ) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="internal-signal" title={l.trans({ en: "Defining Internal Tasks", ko: "Internal 작업 정의" })}>
         <Docs.Title>{l.trans({ en: "Defining Internal Tasks", ko: "Internal 작업 정의" })}</Docs.Title>
@@ -297,6 +299,7 @@ export class UserEndpoint extends endpoint(
         </Docs.Description>
         <Docs.IntroTable type="method" items={internalTypes} />
         <Code.Snippet
+          className="w-full"
           title="story.signal.ts"
           code={`export class StoryInternal extends internal(srv.story.with(srv.actionLog), ({ resolveField, cron }) => ({
   like: resolveField(Int)
@@ -311,7 +314,7 @@ export class UserEndpoint extends endpoint(
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="endpoint-signal" title={l.trans({ en: "Defining Public APIs", ko: "Public API 정의" })}>
         <Docs.Title>{l.trans({ en: "Defining Public APIs", ko: "Public API 정의" })}</Docs.Title>
@@ -338,6 +341,7 @@ export class UserEndpoint extends endpoint(
 
         <Docs.SubTitle>Endpoint Example</Docs.SubTitle>
         <Code.Snippet
+          className="w-full"
           title="story.signal.ts"
           code={`export class StoryEndpoint extends endpoint(srv.story, ({ query, mutation }) => ({
   story: query(cnst.Story)
@@ -355,6 +359,7 @@ export class UserEndpoint extends endpoint(
 
         <Docs.SubTitle>Realtime Example</Docs.SubTitle>
         <Code.Snippet
+          className="w-full"
           title="chatRoom.signal.ts"
           code={`export class ChatRoomEndpoint extends endpoint(srv.chatRoom, ({ message, pubsub }) => ({
   readChat: message(Boolean).msg("root", ID).exec(async function (root) {
@@ -372,6 +377,7 @@ export class UserEndpoint extends endpoint(
           })}
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="site.signal.ts"
           code={`export class SiteEndpoint extends endpoint(srv.site, ({ query }) => ({
   sitemapXml: query(Any, { path: "sitemap.xml", prefix: false }).exec(async function () {
@@ -388,6 +394,7 @@ export class UserEndpoint extends endpoint(
           })}
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="page.tsx"
           code={`const story = await fetch.story(storyId);
 const created = await fetch.createStory(data);
@@ -398,7 +405,7 @@ const unsubscribe = fetch.subscribeChatAdded(rootId, (chat) => {
 });`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="standard-signal" title={l.trans({ en: "Standard Model APIs", ko: "표준 Model API" })}>
         <Docs.Title>{l.trans({ en: "Standard Model APIs", ko: "표준 Model API" })}</Docs.Title>
@@ -412,7 +419,7 @@ const unsubscribe = fetch.subscribeChatAdded(rootId, (chat) => {
         </Docs.Description>
         <Docs.IntroTable type="method" items={moduleAutoMethods} />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="slice-signal" title={l.trans({ en: "Defining Slices And Stores", ko: "Slice와 Store 정의" })}>
         <Docs.Title>{l.trans({ en: "Defining Slices And Stores", ko: "Slice와 Store 정의" })}</Docs.Title>
@@ -433,6 +440,7 @@ const unsubscribe = fetch.subscribeChatAdded(rootId, (chat) => {
 
         <Docs.SubTitle>Server Definition</Docs.SubTitle>
         <Code.Snippet
+          className="w-full"
           title="story.signal.ts"
           code={`export class StorySlice extends slice(srv.story, {}, (init) => ({
   inRoot: init().param("root", ID).exec(function (root) {
@@ -451,9 +459,9 @@ const unsubscribe = fetch.subscribeChatAdded(rootId, (chat) => {
         <Docs.IntroTable type="method" items={sliceAutoMethods} />
 
         <Docs.SubTitle>Client Usage</Docs.SubTitle>
-        <Code.Snippet title="page.tsx" code="const data = await fetch.initStoryInRoot(rootId);" />
+        <Code.Snippet className="w-full" title="page.tsx" code="const data = await fetch.initStoryInRoot(rootId);" />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="builder-types" title={l.trans({ en: "Builder Function Types", ko: "Builder 함수 타입" })}>
         <Docs.Title>{l.trans({ en: "Builder Function Types", ko: "Builder 함수 타입" })}</Docs.Title>
@@ -480,14 +488,14 @@ const unsubscribe = fetch.subscribeChatAdded(rootId, (chat) => {
               desc: "resolveField(Return), interval(ms), cron(expr), timeout(ms), initialize(), destroy(), process(Return)",
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4">
-              <div className="font-bold text-base-content">{title}</div>
-              <div className="text-base-content/70">{desc}</div>
+            <div key={title} className={panelRecipe({ padding: "row" })}>
+              <div className="font-bold text-foreground">{title}</div>
+              <div className="text-foreground/70">{desc}</div>
             </div>
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -519,16 +527,16 @@ const unsubscribe = fetch.subscribeChatAdded(rootId, (chat) => {
                 ko: "required argument가 nullable argument 뒤에 올 수 없으므로 nullable argument는 뒤쪽에 둡니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
+              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {rule}
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

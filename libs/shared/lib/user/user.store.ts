@@ -207,7 +207,7 @@ export class UserStore extends store(sig.user, () => ({
       await this.getSelf(accessToken);
       if (replace) router.replace(redirect);
       else router.push(redirect);
-    } catch (error) {
+    } catch (_error) {
       (this as unknown as RootStore).showMessage({ content: "Invalid account or password" });
     }
   }

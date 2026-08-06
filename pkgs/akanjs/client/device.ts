@@ -1,12 +1,12 @@
 "use client";
 import type { RefObject } from "react";
-import { debugFrame } from "./frameDebug";
 import type {
   CapacitorDeviceInfo,
   CapacitorHapticsModule,
   CapacitorKeyboardInfo,
   CapacitorKeyboardModule,
 } from "./capacitor";
+import { debugFrame } from "./frameDebug";
 
 type DeviceInfo = CapacitorDeviceInfo;
 type Keyboard = CapacitorKeyboardModule["Keyboard"];

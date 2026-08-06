@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -15,8 +15,8 @@ export default function Page() {
               ko: "Akan은 파일 기반 라우팅을 사용합니다. page/ 아래에 파일을 만들면 폴더 구조가 페이지 URL이 됩니다. 대부분의 페이지에는 언어 파라미터가 자동으로 붙어서 하나의 파일이 다국어 URL을 처리할 수 있습니다.",
             })}
           </div>
-          <div className="rounded-2xl border border-base-300 bg-base-100 p-5">
-            <div className="mb-4 font-bold text-base-content">
+          <div className={panelRecipe({ radius: "2xl", padding: "lg" })}>
+            <div className="mb-4 font-bold text-foreground">
               {l.trans({ en: "How files become routes", ko: "파일이 라우트가 되는 방식" })}
             </div>
             <div className="grid gap-3 lg:grid-cols-3">
@@ -49,16 +49,16 @@ export default function Page() {
                   }),
                 },
               ].map(({ label, file, result, desc }) => (
-                <div key={label} className="rounded-xl border border-base-300 bg-base-200 p-4">
-                  <div className="text-base-content/60 text-xs">{label}</div>
+                <div key={label} className="rounded-xl border border-border bg-muted p-4">
+                  <div className="text-foreground/60 text-xs">{label}</div>
                   <div className="mt-2 break-all font-mono text-primary text-sm">{file}</div>
-                  <div className="my-3 flex items-center gap-2 text-base-content/40 text-xs">
-                    <div className="h-px flex-1 bg-base-300" />
+                  <div className="my-3 flex items-center gap-2 text-foreground/40 text-xs">
+                    <div className="h-px flex-1 bg-border" />
                     <span>to</span>
-                    <div className="h-px flex-1 bg-base-300" />
+                    <div className="h-px flex-1 bg-border" />
                   </div>
-                  <div className="font-mono text-base-content text-sm">{result}</div>
-                  <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+                  <div className="font-mono text-foreground text-sm">{result}</div>
+                  <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
                 </div>
               ))}
             </div>
@@ -87,16 +87,16 @@ export default function Page() {
                 }),
               ],
             ].map(([title, desc]) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
-                <span className="font-bold text-base-content">{title}: </span>
+              <div key={title} className={panelRecipe({ padding: "row" })}>
+                <span className="font-bold text-foreground">{title}: </span>
 
-                <span className="text-base-content/70 text-sm">{desc}</span>
+                <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="file-convention" title={l.trans({ en: "File Convention", ko: "파일 컨벤션" })}>
         <Docs.Title>{l.trans({ en: "File Convention", ko: "파일 컨벤션" })}</Docs.Title>
@@ -109,6 +109,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="page/"
           language="bash"
           code={`page/
@@ -125,45 +126,45 @@ export default function Page() {
 └── robots.txt.tsx`}
         />
         <div className="space-y-1">
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+          <div className={panelRecipe()}>
             <div className="font-mono font-semibold text-primary">_index.tsx</div>
-            <div className="mt-2 text-base-content/70 text-sm">
+            <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
                 en: "Page for the folder it lives in.",
                 ko: "파일이 위치한 폴더 자체의 페이지입니다.",
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+          <div className={panelRecipe()}>
             <div className="font-mono font-semibold text-primary">_layout.tsx</div>
-            <div className="mt-2 text-base-content/70 text-sm">
+            <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
                 en: "Layout that wraps child pages below it.",
                 ko: "아래에 있는 자식 페이지를 감싸는 레이아웃입니다.",
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+          <div className={panelRecipe()}>
             <div className="font-mono font-semibold text-primary">(group)</div>
-            <div className="mt-2 text-base-content/70 text-sm">
+            <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
                 en: "Organizes files without adding a URL segment.",
                 ko: "URL 세그먼트를 추가하지 않고 파일을 정리합니다.",
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+          <div className={panelRecipe()}>
             <div className="font-mono font-semibold text-primary">&lt;path&gt;.tsx</div>
-            <div className="mt-2 text-base-content/70 text-sm">
+            <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
                 en: "Single-file page for a path segment. project.tsx becomes /:lang/project.",
                 ko: "경로 세그먼트를 파일 하나로 선언하는 페이지입니다. project.tsx는 /:lang/project가 됩니다.",
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+          <div className={panelRecipe()}>
             <div className="font-mono font-semibold text-primary">[&lt;param&gt;].tsx</div>
-            <div className="mt-2 text-base-content/70 text-sm">
+            <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
                 en: "Single-file dynamic page. [projectId].tsx becomes /:lang/:projectId.",
                 ko: "동적 경로를 파일 하나로 선언하는 페이지입니다. [projectId].tsx는 /:lang/:projectId가 됩니다.",
@@ -172,7 +173,7 @@ export default function Page() {
           </div>
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="page-module" title={l.trans({ en: "Page File Shape", ko: "페이지 파일 구성" })}>
         <Docs.Title>{l.trans({ en: "Page File Shape", ko: "페이지 파일 구성" })}</Docs.Title>
@@ -185,6 +186,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="page/(user)/project/[projectId]/_index.tsx"
           code={`import type { GenerateMetadata, PageConfig } from "akanjs/client";
 
@@ -209,6 +211,7 @@ export function Loading() {
 }`}
         />
         <Code.Snippet
+          className="w-full"
           title="Static metadata example"
           code={`import type { AkanMetadata } from "akanjs/client";
 
@@ -271,9 +274,9 @@ export const metadata = {
               }),
             },
           ].map(({ name, desc }) => (
-            <div key={name} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+            <div key={name} className={panelRecipe({ padding: "row" })}>
               <div className="font-mono font-semibold text-primary">{name}</div>
-              <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+              <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>
           ))}
         </div>
@@ -284,7 +287,7 @@ export const metadata = {
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="layout-module" title={l.trans({ en: "Layout File Shape", ko: "레이아웃 파일 구성" })}>
         <Docs.Title>{l.trans({ en: "Layout File Shape", ko: "레이아웃 파일 구성" })}</Docs.Title>
@@ -297,6 +300,7 @@ export const metadata = {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="page/(user)/project/[projectId]/_layout.tsx"
           code={`interface LayoutProps {
   children: React.ReactNode;
@@ -347,9 +351,9 @@ export function Error({ error }: { error?: unknown }) {
               }),
             },
           ].map(({ name, desc }) => (
-            <div key={name} className="rounded-xl border border-base-300 bg-base-100 px-4 py-3">
+            <div key={name} className={panelRecipe({ padding: "none" }, "px-4 py-3")}>
               <div className="font-mono font-semibold text-primary">{name}</div>
-              <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+              <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>
           ))}
         </div>
@@ -360,7 +364,7 @@ export function Error({ error }: { error?: unknown }) {
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="base-paths" title={l.trans({ en: "Base Paths", ko: "Base Path" })}>
         <Docs.Title>{l.trans({ en: "Base Paths", ko: "Base Path" })}</Docs.Title>
@@ -373,6 +377,7 @@ export function Error({ error }: { error?: unknown }) {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/myapp/akan.config.ts"
           code={`const config = {
   routes: [
@@ -382,6 +387,7 @@ export function Error({ error }: { error?: unknown }) {
 };`}
         />
         <Code.Snippet
+          className="w-full"
           title="page/"
           language="bash"
           code={`page/
@@ -394,6 +400,75 @@ export function Error({ error }: { error?: unknown }) {
           {l.trans({
             en: "If base paths are configured, putting a page directly under page/ is invalid. Move it under page/<basePath>/ so Akan can tell which route group owns it.",
             ko: "base path가 설정된 앱에서는 page/ 바로 아래에 페이지를 두면 올바르지 않습니다. Akan이 어떤 라우트 묶음에 속하는지 알 수 있도록 page/<basePath>/ 아래로 옮겨야 합니다.",
+          })}
+        </Docs.Alert>
+      </Scroll.Slide>
+      <Divider />
+
+      <Scroll.Slide id="library-pages" title={l.trans({ en: "Library Pages", ko: "라이브러리 페이지" })}>
+        <Docs.Title>{l.trans({ en: "Library Pages", ko: "라이브러리 페이지" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "A library can ship routes from its own page folder. An app opts in with syncPageLibs, and sync links those routes into page/(libs)/(<lib>). Both folder names are route groups, so a library route keeps its own path.",
+              ko: "라이브러리도 자체 page 폴더에 라우트를 담을 수 있습니다. 앱이 syncPageLibs로 사용을 선언하면 sync가 해당 라우트를 page/(libs)/(<lib>)로 링크합니다. 두 폴더 이름 모두 route group이라 라이브러리 라우트는 자기 경로를 그대로 사용합니다.",
+            })}
+          </div>
+        </Docs.Description>
+        <Code.Snippet
+          title="apps/myapp/akan.config.ts"
+          code={`const config = {
+  // true: every lib dependency that has a page folder
+  // ["shared"]: only the libs listed
+  // false (default): nothing is synced
+  syncPageLibs: ["shared"],
+};`}
+        />
+        <Code.Snippet
+          title="library route mapping"
+          language="bash"
+          code={`# Source in a library
+libs/shared/page/login/_index.tsx
+
+# Linked into an app by \`akan sync\` (generated, gitignored)
+apps/myapp/page/(libs)/(shared)/login/_index.tsx
+
+# Browser request
+/login`}
+        />
+        <Docs.Alert type="info">
+          {l.trans({
+            en: "Edit the library file, never the linked copy. Apps with base paths get the library routes under every base path, and two synced routes that resolve to the same path are reported as an error.",
+            ko: "링크된 쪽이 아니라 라이브러리 파일을 수정해야 합니다. base path가 있는 앱은 모든 base path 아래에 라이브러리 라우트를 받고, 같은 경로로 겹치는 라우트가 두 개면 에러로 알려줍니다.",
+          })}
+        </Docs.Alert>
+      </Scroll.Slide>
+      <div className="divider" />
+
+      <Scroll.Slide id="dev-only-routes" title={l.trans({ en: "Dev Only Routes", ko: "개발 전용 라우트" })}>
+        <Docs.Title>{l.trans({ en: "Dev Only Routes", ko: "개발 전용 라우트" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "pageConfig.devOnly keeps a route out of akan build. It still serves under akan start and is still typechecked, but nothing about it reaches production: no bundle, no route manifest entry, no URL.",
+              ko: "pageConfig.devOnly를 켜면 해당 라우트가 akan build에서 제외됩니다. akan start에서는 그대로 동작하고 타입 검사도 계속 받지만, 번들에도 라우트 매니페스트에도 들어가지 않아 프로덕션에서는 존재하지 않습니다.",
+            })}
+          </div>
+        </Docs.Description>
+        <Code.Snippet
+          title="page/(dev)/playground/_index.tsx"
+          code={`import type { PageConfig } from "akanjs/client";
+
+export const pageConfig = { devOnly: true } satisfies PageConfig;
+
+export default function Page() {
+  return <div>Component playground</div>;
+}`}
+        />
+        <Docs.Alert type="info">
+          {l.trans({
+            en: "On a _layout file, devOnly removes every route under that directory too, so a whole dev-only section can be marked once. Write it as a literal true or false — the build reads it from the source without running the module.",
+            ko: "_layout 파일에 지정하면 그 디렉토리 아래 라우트가 모두 함께 제외되므로 개발 전용 구역 전체를 한 번에 표시할 수 있습니다. 빌드는 모듈을 실행하지 않고 소스에서 값을 읽으므로 반드시 리터럴 true 또는 false로 작성해야 합니다.",
           })}
         </Docs.Alert>
       </Scroll.Slide>
@@ -410,6 +485,7 @@ export function Error({ error }: { error?: unknown }) {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="page/_layout.tsx"
           code={`import type { Font, LayoutProps, WebAppManifest } from "akanjs/client";
 
@@ -497,9 +573,9 @@ export default function Layout({ children }: LayoutProps) {
               }),
             },
           ].map(({ name, desc }) => (
-            <div key={name} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+            <div key={name} className={panelRecipe({ padding: "row" })}>
               <div className="font-mono font-semibold text-primary">{name}</div>
-              <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+              <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>
           ))}
         </div>
@@ -510,7 +586,7 @@ export default function Layout({ children }: LayoutProps) {
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

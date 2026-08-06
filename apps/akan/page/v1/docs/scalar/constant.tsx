@@ -155,7 +155,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="file-structure"
@@ -188,7 +188,7 @@ export default function Page() {
           <Docs.IntroTable type="field" items={fileStructureItems} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="basic-syntax"
@@ -239,7 +239,7 @@ export class RestrictInfo extends via((field) => ({
           <Docs.IntroTable type="method" items={viaPatternPoints} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="field-types"
@@ -325,7 +325,7 @@ export class FileMeta extends via((field) => ({
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="enum-definition"
@@ -389,7 +389,7 @@ export class Order extends via((field) => ({
           <Docs.IntroTable type="field" items={enumPoints} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="field-options"
@@ -480,7 +480,7 @@ export class OrderInfo extends via((field) => ({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="instance-methods"
@@ -539,7 +539,7 @@ export class Stock extends via((field) => ({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="common-mistakes"
@@ -574,7 +574,7 @@ export class Stock extends via((field) => ({
                 <tr className="hover">
                   <td>{l.trans({ en: "Enum case", ko: "Enum 케이스" })}</td>
                   <td>
-                    <code className="text-error">{"enumOf('status', ['ACTIVE'])"}</code>
+                    <code className="text-destructive">{"enumOf('status', ['ACTIVE'])"}</code>
                   </td>
                   <td>
                     <code className="text-success">{"enumOf('status', ['active'])"}</code>
@@ -583,7 +583,7 @@ export class Stock extends via((field) => ({
                 <tr className="hover">
                   <td>{l.trans({ en: "Array syntax", ko: "배열 문법" })}</td>
                   <td>
-                    <code className="text-error">{"field(Array<Int>)"}</code>
+                    <code className="text-destructive">{"field(Array<Int>)"}</code>
                   </td>
                   <td>
                     <code className="text-success">{"field([Int])"}</code>
@@ -592,7 +592,7 @@ export class Stock extends via((field) => ({
                 <tr className="hover">
                   <td>{l.trans({ en: "Dynamic default", ko: "동적 기본값" })}</td>
                   <td>
-                    <code className="text-error">{"{ default: dayjs() }"}</code>
+                    <code className="text-destructive">{"{ default: dayjs() }"}</code>
                   </td>
                   <td>
                     <code className="text-success">{"{ default: () => dayjs() }"}</code>
@@ -601,7 +601,7 @@ export class Stock extends via((field) => ({
                 <tr className="hover">
                   <td>{l.trans({ en: "Missing export", ko: "누락된 export" })}</td>
                   <td>
-                    <code className="text-error">{"class Status extends enumOf(...)"}</code>
+                    <code className="text-destructive">{"class Status extends enumOf(...)"}</code>
                   </td>
                   <td>
                     <code className="text-success">{"export class Status extends enumOf(...)"}</code>
@@ -610,7 +610,7 @@ export class Stock extends via((field) => ({
                 <tr className="hover">
                   <td>{l.trans({ en: "Optional field", ko: "선택적 필드" })}</td>
                   <td>
-                    <code className="text-error">{"field(ID, { nullable: true })"}</code>
+                    <code className="text-destructive">{"field(ID, { nullable: true })"}</code>
                   </td>
                   <td>
                     <code className="text-success">{"field(ID).optional()"}</code>
@@ -619,7 +619,7 @@ export class Stock extends via((field) => ({
               </tbody>
             </table>
           </div>
-          <div className="alert alert-warning mt-4">
+          <div className="mt-4 flex items-center gap-2 rounded-box border border-warning/30 bg-warning/10 p-4">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="h-6 w-6 shrink-0 stroke-current"
@@ -642,7 +642,7 @@ export class Stock extends via((field) => ({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="checklist"
@@ -658,7 +658,7 @@ export class Stock extends via((field) => ({
           })}
         </Docs.Title>
         <Docs.Description>
-          <div className="rounded-lg bg-base-200 p-4">
+          <div className="rounded-lg bg-muted p-4">
             <ul className="space-y-2">
               {[
                 l.trans({
@@ -679,7 +679,11 @@ export class Stock extends via((field) => ({
                 l.trans({ en: "Add 'as const' for large enum value arrays", ko: "큰 enum 값 배열에 'as const' 추가" }),
               ].map((item, index) => (
                 <li key={index} className="flex items-start">
-                  <input type="checkbox" className="checkbox checkbox-primary mt-1 mr-2" readOnly />
+                  <input
+                    type="checkbox"
+                    className="mt-1 mr-2 size-4 rounded border border-input accent-primary"
+                    readOnly
+                  />
                   <span>{item}</span>
                 </li>
               ))}
@@ -722,7 +726,7 @@ export class Stock extends via((field) => ({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

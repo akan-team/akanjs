@@ -160,7 +160,7 @@ type AppliedBaseSliceFetchType<
 } & {
   // TODO: migrate this to shared
   [K in `add${_CapitalizedRefName}Files`]: (
-    fileList: FileList,
+    fileList: FileList | File[],
     parentId?: string,
     option?: FetchPolicy,
   ) => Promise<ProtoFile[]>;

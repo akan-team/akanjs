@@ -13,6 +13,7 @@ import { applyMixins } from "akanjs/common";
 import { immerable } from "immer";
 
 import { crystalize, getDefault } from ".";
+import { CascadePaths } from "./cascadePaths";
 import { ConstantRegistry } from "./constantRegistry";
 import {
   ConstantField,
@@ -26,6 +27,7 @@ import {
   resolve,
 } from "./fieldInfo";
 import { makePurify, type PurifiedModel, type PurifyFunc } from "./purify";
+import { TextFieldPaths } from "./textFieldPaths";
 import type { BaseInsight, BaseObject, ConstantType, DefaultOf, DefaultOfSchema, NonFunctionalKeys } from "./types";
 
 type BaseFields = "id" | "createdAt" | "updatedAt" | "removedAt";
@@ -191,8 +193,8 @@ const getBaseConstantClass = (field: FieldObject, modelType: ConstantType = "sca
   class BaseConstant {
     static readonly [FIELD_META]: FieldObject = field;
     static modelType: ConstantType = modelType;
-    static text: { search: Set<string>; filter: Set<string>; children: { search: Set<string>; filter: Set<string> } } =
-      { search: new Set(), filter: new Set(), children: { search: new Set(), filter: new Set() } };
+    static text: TextFieldPaths = new TextFieldPaths();
+    static cascade: CascadePaths = new CascadePaths();
     static children: Set<ConstantModelRef> = new Set();
     static relations: Set<ConstantModelRef> = new Set();
     static enums: Set<EnumInstance> = new Set();
@@ -268,7 +270,8 @@ export interface ConstantStatics<
   children: Set<ConstantModelRef>;
   relations: Set<ConstantModelRef>;
   enums: Set<EnumInstance>;
-  text: { search: Set<string>; filter: Set<string>; children: { search: Set<string>; filter: Set<string> } };
+  text: TextFieldPaths;
+  cascade: CascadePaths;
   _OptionalKey: OptionalKey;
   _RelationKey: RelationKey;
   _PrimitiveKey: PrimitiveKey;
@@ -295,7 +298,8 @@ export interface DatabaseConstantStatics<Schema = any, FieldObj extends FieldObj
   children: Set<ConstantModelRef>;
   relations: Set<ConstantModelRef>;
   enums: Set<EnumInstance>;
-  text: { search: Set<string>; filter: Set<string>; children: { search: Set<string>; filter: Set<string> } };
+  text: TextFieldPaths;
+  cascade: CascadePaths;
   _DatabaseSchema: {
     [K in keyof Schema]: K extends keyof FieldObj
       ? FieldObj[K]["fieldType"] extends "hidden"
@@ -317,7 +321,8 @@ export type ConstantModelRef<
     children: Set<ConstantModelRef>;
     relations: Set<ConstantModelRef>;
     enums: Set<EnumInstance>;
-    text: { search: Set<string>; filter: Set<string>; children: { search: Set<string>; filter: Set<string> } };
+    text: TextFieldPaths;
+    cascade: CascadePaths;
   }
 >;
 
@@ -430,31 +435,17 @@ const applyConstantStatics = <Model>(model: ConstantCls<Model>, fieldMap: FieldO
     purify: makePurify(model),
     getDefault: () => ({ ...defaultValue }),
   });
-  Object.entries(fieldMap).forEach(([key, field]) => {
+  Object.entries(fieldMap).forEach(([, field]) => {
     if (field.enum) model.enums.add(field.enum);
-    if (field.text === "search") model.text.search.add(key);
-    else if (field.text === "filter") model.text.filter.add(key);
-    else if (field.isClass) {
-      if (field.isScalar) model.children.add(field.modelRef);
-      else model.relations.add(field.modelRef);
-      for (const child of field.modelRef.children) model.children.add(child);
-      for (const childEnum of field.modelRef.enums) model.enums.add(childEnum);
-      for (const relation of field.modelRef.relations) model.relations.add(relation);
-      for (const relationEnum of field.modelRef.enums) model.enums.add(relationEnum);
-      field.modelRef.text.search.forEach((subKey) => {
-        model.text.children.search.add(`${key}.${subKey}`);
-      });
-      field.modelRef.text.filter.forEach((subKey) => {
-        model.text.children.filter.add(`${key}.${subKey}`);
-      });
-      field.modelRef.text.children.search.forEach((subKey) => {
-        model.text.children.search.add(`${key}.${subKey}`);
-      });
-      field.modelRef.text.children.filter.forEach((subKey) => {
-        model.text.children.filter.add(`${key}.${subKey}`);
-      });
-    }
+    if (!field.isClass) return;
+    if (field.isScalar) model.children.add(field.modelRef);
+    else model.relations.add(field.modelRef);
+    for (const child of field.modelRef.children) model.children.add(child);
+    for (const childEnum of field.modelRef.enums) model.enums.add(childEnum);
+    for (const relation of field.modelRef.relations) model.relations.add(relation);
   });
+  model.text.collect(fieldMap);
+  model.cascade.collect(fieldMap);
   return model as unknown as ConstantCls<Model>;
 };
 

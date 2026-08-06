@@ -16,11 +16,11 @@ akanjs/client
 
 Client navigation singleton that normalizes Akan language/base-path prefixes before delegating to the active router. Use it from pages, stores, templates, and utilities for push/replace/back/refresh.
 
-Re-export of `clsx` for composing class names across Akan UI code. Most view/unit/template components import it from `akanjs/client` to keep UI dependencies consistent.
+The one class-combining function: joins conditional parts (`cond && "x"`) and resolves Tailwind conflicts with Akan's semantic tokens registered. Every view/unit/template component imports it from `akanjs/client`.
 
 Common props for generated Unit, Zone, and list UI components. They carry model data, slice metadata, query/init settings, actions, columns, and click handlers.
 
-Route module types for page/layout files. `PageConfig` controls transition, safe area, gesture, and cache behavior, while `LayoutProps` describes layout children and route params.
+Route module types for page/layout files. `PageConfig` controls transition, safe area, gesture, and cache behavior, plus `devOnly` to keep the route out of `akan build`, while `LayoutProps` describes layout children and route params.
 
 Font declaration types and client-side font factory shims. Layout modules use `Font` data so the server build can optimize local font assets while CSR code receives safe no-op shims.
 

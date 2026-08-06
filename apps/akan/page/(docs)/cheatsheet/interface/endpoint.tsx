@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="flow" title={l.trans({ en: "The Flow", ko: "흐름 이해하기" })}>
         <Docs.Title>{l.trans({ en: "The Flow", ko: "흐름 이해하기" })}</Docs.Title>
@@ -52,6 +52,7 @@ export default function Page() {
           </ol>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Button to service", ko: "버튼에서 service까지" })}
           code={`Post.Util.PublishButton
   -> st.do.publishPost(postId)
@@ -59,7 +60,7 @@ export default function Page() {
   -> postService.publishPost(postId)`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="endpoint" title={l.trans({ en: "Declare Endpoint", ko: "Endpoint 선언" })}>
         <Docs.Title>{l.trans({ en: "Declare Endpoint", ko: "Endpoint 선언" })}</Docs.Title>
@@ -72,6 +73,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Publish endpoint", ko: "발행 endpoint" })}
           code={`export class PostEndpoint extends endpoint(srv.post, ({ mutation }) => ({
   publishPost: mutation(cnst.Post)
@@ -82,7 +84,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="service" title={l.trans({ en: "Put Rules In Service", ko: "규칙은 service에 두기" })}>
         <Docs.Title>{l.trans({ en: "Put Rules In Service", ko: "규칙은 service에 두기" })}</Docs.Title>
@@ -95,6 +97,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Service method", ko: "Service method" })}
           code={`export class PostService extends serve(db.post, () => ({})) {
   async publishPost(postId: string) {
@@ -105,7 +108,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="store" title={l.trans({ en: "Call It From Store", ko: "Store에서 호출하기" })}>
         <Docs.Title>{l.trans({ en: "Call It From Store", ko: "Store에서 호출하기" })}</Docs.Title>
@@ -118,6 +121,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Store action", ko: "Store action" })}
           code={`export class PostStore extends store(sig.post, () => ({})) {
   async publishPost(postId: string) {
@@ -128,7 +132,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="util" title={l.trans({ en: "Make One Util", ko: "Util 하나로 만들기" })}>
         <Docs.Title>{l.trans({ en: "Make One Util", ko: "Util 하나로 만들기" })}</Docs.Title>
@@ -141,6 +145,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Publish button", ko: "발행 버튼" })}
           code={`"use client";
 interface PublishProps {
@@ -151,19 +156,19 @@ interface PublishProps {
 export const Publish = ({ postId }: PublishProps) => {
   const { l } = usePage();
   return (
-    <button className={clsx("btn btn-primary", className)} onClick={() => st.do.publishPost(postId)}>
+    <button className={buttonRecipe({ variant: "primary" }, className)} onClick={() => st.do.publishPost(postId)}>
       {l("post.signal.publishPost")}
     </button>
   );
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Use endpoint names as verbs: `publishPost`, `approveTicket`, `archiveProject`.",
@@ -182,10 +187,10 @@ export const Publish = ({ postId }: PublishProps) => {
                 ko: "같은 action이 두 번 보이면 버튼을 복사하기 전에 Util component로 만드세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

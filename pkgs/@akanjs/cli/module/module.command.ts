@@ -1,4 +1,5 @@
-import { command, Module, type PrimitiveFormat, renderPrimitiveReport, Sys } from "@akanjs/devkit";
+import { command, Module, Sys } from "@akanjs/devkit/commandDecorators";
+import { type PrimitiveFormat, renderPrimitiveReport } from "@akanjs/devkit/workflow";
 import { Logger, lowerlize } from "akanjs/common";
 
 import { ModuleScript } from "./module.script";

@@ -3,12 +3,13 @@ import type { LocalFile } from "akanjs/server";
 import { serve } from "akanjs/service";
 
 import * as db from "../db";
+import { Err } from "../dict";
 
 export class PrivFileService extends serve(db.privFile, ({ use }) => ({
-  storageApi: use<StorageApi>(),
+  privStorageApi: use<StorageApi>(),
 })) {
   override async _postRemove(privFile: db.PrivFile) {
-    if (privFile.privatePath) await this.storageApi.deleteDataByPath(privFile.privatePath);
+    if (privFile.privatePath) await this.privStorageApi.deleteDataByPath(privFile.privatePath);
     return privFile;
   }
 
@@ -30,7 +31,7 @@ export class PrivFileService extends serve(db.privFile, ({ use }) => ({
       status: "uploading",
     });
     const privatePath = this._getPrivatePath(privFile, purpose, group);
-    await this.storageApi.uploadDataFromLocal({
+    await this.privStorageApi.uploadDataFromLocal({
       path: privatePath,
       localPath: localFile.localPath,
       access: "private",
@@ -39,14 +40,42 @@ export class PrivFileService extends serve(db.privFile, ({ use }) => ({
     return privFile.set({ privatePath, progress: 100, status: "active" });
   }
 
+  async addPrivFileFromStream(
+    body: ReadableStream<Uint8Array>,
+    file: { filename: string; mimetype: string; encoding: string },
+    purpose: string,
+    group = "default",
+    { alias = file.filename }: { alias?: string } = {},
+  ): Promise<db.PrivFile> {
+    const privFile = await this.privFileModel.generatePrivFile({
+      alias,
+      filename: file.filename,
+      mimetype: file.mimetype,
+      encoding: file.encoding,
+      privatePath: "",
+      size: 0,
+      progress: 0,
+      status: "uploading",
+    });
+    const privatePath = this._getPrivatePath(privFile, purpose, group);
+    const uploaded = await this.privStorageApi.uploadDataFromReadableStream({
+      path: privatePath,
+      body,
+      mimetype: file.mimetype,
+      access: "private",
+    });
+    await this.privFileModel.finishUpload(privFile.id, privatePath, { size: uploaded.size });
+    return privFile.set({ privatePath, size: uploaded.size, progress: 100, status: "active" });
+  }
+
   async readPrivFile(privFileOrId: db.PrivFile | string) {
     const privFile = typeof privFileOrId === "string" ? await this.getPrivFile(privFileOrId) : privFileOrId;
     return await this.readData(privFile);
   }
 
   async readData(privFile: db.PrivFile) {
-    if (!privFile.privatePath) throw new Error("Private file path is empty");
-    return await this.storageApi.readData(privFile.privatePath);
+    if (!privFile.privatePath) throw new Err("privFile.error.privateFilePathEmpty");
+    return await this.privStorageApi.readData(privFile.privatePath);
   }
 
   async readText(privFileOrId: db.PrivFile | string) {
@@ -63,8 +92,8 @@ export class PrivFileService extends serve(db.privFile, ({ use }) => ({
 
   async saveToLocal(privFileOrId: db.PrivFile | string, localPath: string) {
     const privFile = typeof privFileOrId === "string" ? await this.getPrivFile(privFileOrId) : privFileOrId;
-    if (!privFile.privatePath) throw new Error("Private file path is empty");
-    return await this.storageApi.saveData({ path: privFile.privatePath, localPath });
+    if (!privFile.privatePath) throw new Err("privFile.error.privateFilePathEmpty");
+    return await this.privStorageApi.saveData({ path: privFile.privatePath, localPath });
   }
 
   async deletePrivFile(privFileOrId: db.PrivFile | string) {

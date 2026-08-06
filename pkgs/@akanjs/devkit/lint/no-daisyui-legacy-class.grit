@@ -1,0 +1,20 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// daisyUI was removed from the UI system; its component classes (`btn-primary`, `card-body`,
+// `mockup-code`, ...) no longer have any CSS behind them and silently render unstyled. Grit
+// port of styleGuard's `daisyui-legacy` rule (frontendBuild/styleGuard.ts) — keep in sync.
+// Only high-signal compound names are matched; bare ambiguous words that collide with
+// Tailwind or app classes (`card`, `input`, `badge`, `btn`) are deliberately not flagged.
+or {
+  JsxString() as $s,
+  JsStringLiteralExpression() as $s,
+  JsTemplateChunkElement() as $s
+} where {
+  $s <: r"[\s\S]*(?:^|[\s\"'`{(\[:!])(?:btn-(?:primary|secondary|accent|neutral|info|success|warning|error|ghost|link|outline|square|circle|wide|block|xs|sm|md|lg)|badge-(?:primary|secondary|accent|neutral|info|success|warning|error|ghost|outline)|alert-(?:info|success|warning|error)|input-(?:bordered|primary|secondary|accent|ghost|error)|select-(?:bordered|primary|ghost)|textarea-(?:bordered|primary|ghost)|checkbox-(?:primary|secondary|accent)|toggle-(?:primary|secondary|accent)|loading-(?:spinner|dots|ring|ball|bars|infinity)|card-(?:body|title|actions)|modal-(?:box|action|backdrop)|collapse-(?:title|content|arrow|plus)|dropdown-(?:content|end|start|hover)|stat-(?:title|value|desc)|tabs-(?:boxed|lifted|bordered)|tab-active|menu-(?:title|dropdown)|steps-(?:horizontal|vertical)|join-item|mockup-(?:code|phone|browser|window)|drawer-(?:side|content|toggle))(?:[\s\"'`})\]:/!,]|$)[\s\S]*",
+  register_diagnostic(
+    span = $s,
+    message = "daisyUI legacy class - daisyUI was removed, so this renders unstyled. Use akanjs/ui components and recipes (Button, buttonRecipe, badgeRecipe, ...) with semantic tokens instead.",
+    severity = "error"
+  )
+}

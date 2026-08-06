@@ -3,6 +3,7 @@ import type { QueryOf } from "akanjs/constant";
 import { by, documentQueryHelper, from, into, type Mdl } from "akanjs/document";
 import * as cnst from "../cnst";
 import type * as db from "../db";
+
 export class SummaryFilter extends from(cnst.Summary, (filter) => ({
   query: {
     byStatuses: filter()
@@ -73,8 +74,10 @@ export class SummaryModel extends into(Summary, SummaryFilter, cnst.summary, () 
     const { modifiedCount } = await this.Summary.updateOne({ status: "active" }, { [field]: value });
     return !!modifiedCount;
   }
-  async countWithQuery(modelName: string, query: QueryOf<any>) {
-    const model = (this.Summary as any).db.model(modelName) as Mdl<any, any>;
+  async countWithQuery(modelName: string, query: QueryOf<unknown>) {
+    const model = (this.Summary as unknown as { db: { model: (name: string) => Mdl<unknown, unknown> } }).db.model(
+      modelName,
+    );
     const count = await model.countDocuments(query);
     return count;
   }

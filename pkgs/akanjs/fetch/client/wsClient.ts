@@ -1,5 +1,6 @@
-import { Logger } from "akanjs/common";
+import { Logger, websocketAuthContract } from "akanjs/common";
 import type {
+  WebsocketAuthAck,
   WebsocketMessageData,
   WebsocketPublishData,
   WebsocketReqData,
@@ -39,6 +40,7 @@ export class WsClient {
   #roomSubscribeMap = new Map<string, SubscribeOption>();
   #listenerMap = new Map<string, Set<Listener>>();
   #destroyed = false;
+  #jwt: string | null = null;
   connected = false;
 
   constructor(
@@ -50,6 +52,21 @@ export class WsClient {
 
   setErrorConstructor(ErrorCls?: ErrorConstructor) {
     this.ErrorCls = ErrorCls;
+  }
+
+  /**
+   * The handshake only carries a same-origin cookie, so clients that hold the token in memory
+   * (native, cross-origin) authenticate with this frame instead. Signing out sends `null`, which
+   * drops the handshake cookie server-side and revokes the rooms it had authorized.
+   */
+  setJwt(jwt: string | null) {
+    if (this.#jwt === jwt) return;
+    this.#jwt = jwt;
+    if (this.#ws?.readyState === WebSocket.OPEN) this.#sendAuth();
+  }
+
+  #sendAuth() {
+    this.#ws?.send(JSON.stringify(websocketAuthContract.makeRequest(this.#jwt)));
   }
 
   connect() {
@@ -68,6 +85,9 @@ export class WsClient {
       this.#reconnectAttempts = 0;
       this.connected = true;
       this.logger.debug(`WebSocket connected`);
+      // Ordered before the resubscribes: the server applies the credential synchronously, so every
+      // room below is authorized against this token rather than the bare handshake.
+      if (this.#jwt) this.#sendAuth();
       this.#roomSubscribeMap.forEach((option) => {
         const data: WebsocketReqData = { key: option.key, data: option.data, subscribe: true };
         this.#ws?.send(JSON.stringify(data));
@@ -95,6 +115,14 @@ export class WsClient {
           case "pub": {
             const publishData = parsed as WebsocketPublishData;
             this.#handlePubsub(publishData.roomId, publishData.data);
+            break;
+          }
+          case "auth": {
+            const ack = parsed as WebsocketAuthAck;
+            for (const roomId of ack.revokedRooms) {
+              this.#roomSubscribeMap.delete(roomId);
+              this.logger.warn(`Websocket room ${roomId} is no longer authorized`);
+            }
             break;
           }
           default:

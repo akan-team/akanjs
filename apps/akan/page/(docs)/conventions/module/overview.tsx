@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, cardGridRecipe, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 import { Link } from "akanjs/ui";
 
@@ -266,7 +266,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="module-file-map" title={l.trans({ en: "Module File Map", ko: "Module file map" })}>
         <Docs.Title>{l.trans({ en: "Module File Map", ko: "Module file map" })}</Docs.Title>
@@ -279,34 +279,26 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Docs.SubTitle>{l.trans({ en: "Data And Server Files", ko: "Data와 server 파일" })}</Docs.SubTitle>
-        <div className="grid gap-3 xl:grid-cols-3">
+        <div className={cardGridRecipe({ cols: "three" })}>
           {coreFiles.map(({ name, route, role }) => (
-            <Link
-              key={name}
-              href={route}
-              className="rounded-xl border border-base-300 bg-base-100 p-4 hover:border-primary"
-            >
-              <div className="font-bold text-base-content">{name}</div>
-              <div className="mt-2 text-base-content/70">{role}</div>
+            <Link key={name} href={route} className={panelRecipe({}, "hover:border-primary")}>
+              <div className="font-bold text-foreground">{name}</div>
+              <div className="mt-2 text-foreground/70">{role}</div>
             </Link>
           ))}
         </div>
         <div className="mb-8" />
         <Docs.SubTitle>{l.trans({ en: "UI And Client Files", ko: "UI와 client 파일" })}</Docs.SubTitle>
-        <div className="grid gap-3 xl:grid-cols-3">
+        <div className={cardGridRecipe({ cols: "three" })}>
           {uiFiles.map(({ name, route, role }) => (
-            <Link
-              key={name}
-              href={route}
-              className="rounded-xl border border-base-300 bg-base-100 p-4 hover:border-primary"
-            >
-              <div className="font-bold text-base-content">{name}</div>
-              <div className="mt-2 text-base-content/70">{role}</div>
+            <Link key={name} href={route} className={panelRecipe({}, "hover:border-primary")}>
+              <div className="font-bold text-foreground">{name}</div>
+              <div className="mt-2 text-foreground/70">{role}</div>
             </Link>
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="server-client-flow"
@@ -323,13 +315,14 @@ export default function Page() {
         </Docs.Description>
         <div className="grid xl:grid-cols-7">
           {flowSteps.map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-1">
-              <div className="font-bold text-base-content">{title}</div>
-              <div className="mt-2 text-base-content/70">{desc}</div>
+            <div key={title} className={panelRecipe({ padding: "none" }, "p-1")}>
+              <div className="font-bold text-foreground">{title}</div>
+              <div className="mt-2 text-foreground/70">{desc}</div>
             </div>
           ))}
         </div>
         <Code.Snippet
+          className="w-full"
           title="module flow"
           code={`constant -> dictionary -> document -> service -> signal -> store -> UI files
 
@@ -341,7 +334,7 @@ Util -> small controls
 Zone -> page section composition`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="role-boundaries" title={l.trans({ en: "Role Boundaries", ko: "역할 경계" })}>
         <Docs.Title>{l.trans({ en: "Role Boundaries", ko: "역할 경계" })}</Docs.Title>
@@ -353,16 +346,16 @@ Zone -> page section composition`}
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-3">
+        <div className={cardGridRecipe({ cols: "three" })}>
           {boundaries.map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
-              <div className="font-bold text-base-content">{title}</div>
-              <div className="mt-2 text-base-content/70">{desc}</div>
+            <div key={title} className={panelRecipe()}>
+              <div className="font-bold text-foreground">{title}</div>
+              <div className="mt-2 text-foreground/70">{desc}</div>
             </div>
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="reading-paths" title={l.trans({ en: "Recommended Reading Paths", ko: "추천 읽기 순서" })}>
         <Docs.Title>{l.trans({ en: "Recommended Reading Paths", ko: "추천 읽기 순서" })}</Docs.Title>
@@ -374,17 +367,17 @@ Zone -> page section composition`}
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           {readingPaths.map(({ title, steps, desc }) => (
-            <div key={steps} className="rounded-xl border border-base-300 bg-base-100 p-4">
-              <div className="font-bold text-base-content">{title}</div>
-              <div className="mt-2 font-mono text-base-content">{steps}</div>
-              <div className="mt-2 text-base-content/70">{desc}</div>
+            <div key={steps} className={panelRecipe()}>
+              <div className="font-bold text-foreground">{title}</div>
+              <div className="mt-2 font-mono text-foreground">{steps}</div>
+              <div className="mt-2 text-foreground/70">{desc}</div>
             </div>
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -412,16 +405,16 @@ Zone -> page section composition`}
                 ko: "section이 커지면 Zone을 키우기 전에 display는 Unit/View로, control은 Util로 옮깁니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
+              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {rule}
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

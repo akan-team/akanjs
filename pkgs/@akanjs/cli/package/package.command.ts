@@ -1,5 +1,4 @@
-import { command, Pkg, Workspace } from "@akanjs/devkit";
-
+import { command, Pkg, Workspace } from "@akanjs/devkit/commandDecorators";
 import { PackageScript } from "./package.script";
 
 export class PackageCommand extends command("package", [PackageScript], ({ public: target }) => ({

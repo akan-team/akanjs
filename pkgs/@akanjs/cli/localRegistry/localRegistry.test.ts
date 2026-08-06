@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit";
+import { CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
 import { createCallRecorder, createFakeExecutor } from "../testHelpers";
 import { LocalRegistryCommand } from "./localRegistry.command";
 import { LocalRegistryRunner } from "./localRegistry.runner";

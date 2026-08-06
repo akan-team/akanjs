@@ -1,5 +1,4 @@
-import { type Lib, script, type Workspace } from "@akanjs/devkit";
-
+import { type Lib, script, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { LibraryRunner } from "./library.runner";
 
 export class LibraryScript extends script("library", [LibraryRunner]) {

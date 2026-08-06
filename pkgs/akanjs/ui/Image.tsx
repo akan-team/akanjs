@@ -1,5 +1,5 @@
 import { getEnv } from "akanjs/base";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import type { ProtoFile } from "akanjs/constant";
 import type { ImgHTMLAttributes } from "react";
 import { preload as preloadResource } from "react-dom";
@@ -119,7 +119,7 @@ export const Image = ({
       // fill={props.fill ?? (!width && !height)}
       width={width}
       height={height}
-      className={clsx("object-cover", className)}
+      className={cn("object-cover", className)}
       alt={alt ?? "image"}
       loading={props.loading ?? (isPriority ? "eager" : "lazy")}
       decoding={props.decoding ?? "async"}

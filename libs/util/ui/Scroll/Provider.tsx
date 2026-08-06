@@ -1,5 +1,6 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { Err } from "@libs/util/client";
+import { cn } from "akanjs/client";
 import React, { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ScrollContext } from "./context";
@@ -26,7 +27,7 @@ export const Provider = ({ className, children }: ProviderProps) => {
         .filter((slide) => !!slide.id && !!slide.title) as { id: string; title: ReactNode }[],
     [childArray],
   );
-  if (slideIds.length === 0) throw new Error("SlideProvider requires at least one Slide component");
+  if (slideIds.length === 0) throw new Err("util.error.slideProviderRequiresSlide");
   const [slide, setSlide] = useState<string>(slideIds[0]);
   const setActiveSlide = useCallback(
     (value: string) => {
@@ -91,7 +92,7 @@ export const Provider = ({ className, children }: ProviderProps) => {
 
   return (
     <ScrollContext.Provider value={{ slide, setSlide: setActiveSlide, registerSlideElement, slideIds, slides }}>
-      <div data-slide={slide} className={clsx(className, "group/slide")}>
+      <div data-slide={slide} className={cn(className, "group/slide")}>
         {children}
       </div>
     </ScrollContext.Provider>

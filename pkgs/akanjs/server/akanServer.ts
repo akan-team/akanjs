@@ -14,13 +14,16 @@ import { createOpenApiDocument } from "../signal/openapi";
 import { FetchSerializer } from "../signal/serializer";
 import type { AkanLib, AkanLibProps } from "./akanLib";
 import type { BuilderRpc } from "./artifact";
+import { DevtoolsRouter } from "./devtools";
 import { DiLifecycle } from "./di/diLifecycle";
 import type { HmrWsData, HmrWsHub } from "./hmr/wsHub";
+import { isPortInUseError } from "./lifecycle/portInUse";
 import { ShutdownManager } from "./lifecycle/shutdownManager";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
 import { WebProxyRunner } from "./proxy";
 import { SignalResolver } from "./resolver";
 import { ApiRouter } from "./routing/apiRouter";
+import type { AppWsData } from "./routing/appWsData";
 import type { HttpRoutes, SignalRoutes, WebsocketRoutes } from "./types";
 import type { WebRouter } from "./webRouter";
 
@@ -64,8 +67,8 @@ export class AkanServer {
   status: "stopped" | "initializing" | "initialized" | "starting" | "running" | "stopping" = "stopped";
   // Union the app-signal data shape with the HMR channel's data shape so
   // `server.upgrade(...)` type-checks for both.
-  #server: Bun.Server<{ createdAt: number } | HmrWsData> | null = null;
-  #wsServer: Bun.Server<{ createdAt: number } | HmrWsData> | null = null;
+  #server: Bun.Server<AppWsData | HmrWsData> | null = null;
+  #wsServer: Bun.Server<AppWsData | HmrWsData> | null = null;
   #prepared: AkanAppPrepared | null = null;
   readonly logger: Logger;
   readonly name: string;
@@ -75,7 +78,7 @@ export class AkanServer {
   websocketPrefix = "/ws";
   openapi = AkanServer.#isOpenApiEnvEnabled();
   serverMode: "federation" | "batch" | "all";
-  shutdownTimeoutMs = 30_000;
+  shutdownTimeoutMs = AkanServer.#defaultShutdownTimeoutMs();
 
   #di: DiLifecycle;
   #localPublish: ((roomId: string, data: object | object[]) => void) | null = null;
@@ -240,7 +243,7 @@ export class AkanServer {
       }),
       // `data` is typed by the upgrade call site; the runtime default is unused.
       data: {},
-    } as Bun.WebSocketHandler<{ createdAt: number } | HmrWsData>;
+    } as Bun.WebSocketHandler<AppWsData | HmrWsData>;
     // `builderRpc` lives in `#prepared` only so `stop()` can dispose it.
     this.#server = Bun.serve({
       idleTimeout: 0,
@@ -258,10 +261,10 @@ export class AkanServer {
       websocket: websocketHandlers,
     } as Parameters<typeof Bun.serve>[0]);
     if (unix && process.env.AKAN_CHILD_WS_PORT) {
-      const wsPort = Number(process.env.AKAN_CHILD_WS_PORT);
-      this.#wsServer = Bun.serve({
+      const preferredWsPort = Number(process.env.AKAN_CHILD_WS_PORT);
+      const wsServeOptions = (port: number) => ({
         idleTimeout: 0,
-        port: wsPort,
+        port,
         routes: ApiRouter.buildRoutes({
           prefix: this.prefix,
           websocketPrefix: this.websocketPrefix,
@@ -269,12 +272,21 @@ export class AkanServer {
           builtinRoutes,
           routeOptions,
           renderEnvRoutes,
-          upgradeAppWs: (req, data) => this.#wsServer?.upgrade(req, { data }) ?? false,
+          upgradeAppWs: (req: Request, data: AppWsData) => this.#wsServer?.upgrade(req, { data }) ?? false,
           webProxyRunner,
         }),
         websocket: websocketHandlers,
       });
-      this.logger.verbose(`${this.name} websocket fallback is serving on port ${wsPort}`);
+      try {
+        this.#wsServer = Bun.serve(wsServeOptions(preferredWsPort));
+      } catch (error) {
+        if (!isPortInUseError(error)) throw error;
+        // A stale replica from a killed run may still hold the preferred port; an ephemeral port keeps
+        // this child bootable and the gateway routes via the actual port reported in the ready message.
+        this.logger.warn(`ws port ${preferredWsPort} is in use; falling back to an ephemeral port`);
+        this.#wsServer = Bun.serve(wsServeOptions(0));
+      }
+      this.logger.verbose(`${this.name} websocket fallback is serving on port ${this.#wsServer.port}`);
     }
 
     const server = this.#server;
@@ -301,12 +313,14 @@ export class AkanServer {
     this.#startMetricsReporting();
     this.#di.registerSchedule(this.serverMode);
     this.logger.verbose(`🚀 ${this.name} is running on ${unix ? `unix://${unix}` : `port ${port}`}`);
+    const wsPort = this.#wsServer?.port;
     process.send?.({
       type: "ready",
       pid: process.pid,
       replicaIdx: Number(process.env.AKAN_REPLICA_IDX ?? 0),
       role: this.serverMode,
       upstream: unix ? { type: "unix", socketPath: unix } : { type: "tcp", host: "127.0.0.1", port: Number(port) },
+      wsUpstream: typeof wsPort === "number" ? { type: "tcp", host: "127.0.0.1", port: wsPort } : undefined,
       healthPath: "/_akan/app/child-health",
     } satisfies AkanIpcMessage);
     await this.#di.runSchedulerInit();
@@ -325,7 +339,7 @@ export class AkanServer {
       if (!isNoListenCommand) {
         this.#startMetricsReporting();
         this.#di.registerSchedule(this.serverMode);
-        process.on("message", (message) => this.#handleIpcMessage(message as AkanIpcMessage));
+        this.#registerParentIpc();
         process.send?.({
           type: "ready",
           pid: process.pid,
@@ -337,7 +351,7 @@ export class AkanServer {
       }
       return this;
     }
-    process.on("message", (message) => this.#handleIpcMessage(message as AkanIpcMessage));
+    this.#registerParentIpc();
     return this.listen();
   }
   async stop() {
@@ -367,6 +381,23 @@ export class AkanServer {
       this.status = "stopped";
       throw error;
     }
+  }
+
+  #registerParentIpc() {
+    process.on("message", (message) => this.#handleIpcMessage(message as AkanIpcMessage));
+    process.on("disconnect", () => this.#handleParentDisconnect());
+  }
+
+  /**
+   * The IPC channel closes when the parent gateway dies (including SIGKILL). Exiting here keeps a
+   * killed dev/gateway run from stranding replicas that would hold ports and break the next boot.
+   */
+  #handleParentDisconnect() {
+    this.logger.warn("Parent IPC channel closed; shutting down to avoid an orphaned replica");
+    setTimeout(() => process.exit(1), this.shutdownTimeoutMs + 1_000);
+    void this.stop()
+      .then(() => process.exit(0))
+      .catch(() => process.exit(1));
   }
 
   #handleIpcMessage(message: AkanIpcMessage) {
@@ -422,19 +453,33 @@ export class AkanServer {
   }
 
   #createBuiltinRoutes(): HttpRoutes {
-    if (!this.openapi) return {};
-    return {
-      "/openapi.json": {
-        GET: () =>
-          Response.json(
-            createOpenApiDocument(FetchSerializer.serializeRegistry(this.#di.live).signal, {
-              title: `${this.env.appName} API`,
-              version: "0.0.0",
-              servers: this.#getOpenApiServers(),
-            }),
-          ),
-      },
-    };
+    const openapiRoutes: HttpRoutes = this.openapi
+      ? {
+          "/openapi.json": {
+            GET: () =>
+              Response.json(
+                createOpenApiDocument(FetchSerializer.serializeRegistry(this.#di.live).signal, {
+                  title: `${this.env.appName} API`,
+                  version: "0.0.0",
+                  servers: this.#getOpenApiServers(),
+                }),
+              ),
+          },
+        }
+      : {};
+    // Registered only when the gate passes, so outside `local` the paths do not exist at all and fall
+    // through to the SSR catch-all as a natural 404 rather than a handler that answers "forbidden".
+    const devtoolsRoutes = new DevtoolsRouter({
+      di: this.#di,
+      env: this.env,
+      name: this.name,
+      serverMode: this.serverMode,
+      prefix: this.prefix,
+      websocketPrefix: this.websocketPrefix,
+      openapi: this.openapi,
+      getStatus: () => this.status,
+    }).createRoutes();
+    return { ...openapiRoutes, ...devtoolsRoutes };
   }
 
   #getOpenApiServers() {
@@ -460,6 +505,16 @@ export class AkanServer {
     return [process.env.AKAN_OPENAPI, process.env.AKAN_PUBLIC_OPENAPI].some(
       (value) => value === "true" || value === "1",
     );
+  }
+
+  /**
+   * Shutdown must finish inside the gateway's child-wait budget or the layer above SIGKILLs this
+   * process and strands its resources; dev (`akan start`) keeps it short so edit-restarts stay snappy.
+   */
+  static #defaultShutdownTimeoutMs() {
+    const configured = Number(process.env.AKAN_SHUTDOWN_TIMEOUT_MS);
+    if (Number.isFinite(configured) && configured > 0) return configured;
+    return process.env.AKAN_COMMAND_TYPE === "start" ? 3_000 : 30_000;
   }
 
   async #withShutdownTimeout<T>(promise: Promise<T>) {

@@ -1,6 +1,6 @@
 "use client";
 import { type DataList, type Dayjs, dayjs, type EnumInstance, isEnum } from "akanjs/base";
-import { clsx, usePage } from "akanjs/client";
+import { cn, usePage } from "akanjs/client";
 import { capitalize, formatPhone, isPhoneNumber, lowerlize } from "akanjs/common";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
@@ -9,10 +9,14 @@ import { AiOutlinePlus } from "react-icons/ai";
 import { BiHelpCircle, BiTrash, BiX } from "react-icons/bi";
 import { MdDragIndicator } from "react-icons/md";
 
+import { badgeRecipe } from "./Badge";
+import { buttonRecipe } from "./Button";
 import { DraggableList } from "./DraggableList";
 import { Input } from "./Input";
 import { Select } from "./Select";
+import { Switch as UiSwitch } from "./Switch";
 import { ToggleSelect as UtilToggleSelect } from "./ToggleSelect";
+import { Tooltip } from "./Tooltip";
 
 interface LabelProps {
   className?: string;
@@ -24,16 +28,18 @@ interface LabelProps {
 }
 const Label = ({ className, label, desc, unit, nullable, mode = "edit" }: LabelProps) => {
   return (
-    <span className={clsx("flex shrink-0 items-center gap-1", className)}>
+    <span className={cn("flex shrink-0 items-center gap-1", className)}>
       {/* {!nullable && mode === "edit" ? <span>* </span> : null} */}
       {capitalize(label)}
       {unit ? <span className="animate-fadeIn"> ({unit})</span> : null}
       {desc ? (
-        <span className="tooltip tooltip-info tooltip-right" data-tip={desc}>
-          <BiHelpCircle />
-        </span>
+        <Tooltip content={desc} variant="info" side="right">
+          <span>
+            <BiHelpCircle />
+          </span>
+        </Tooltip>
       ) : null}
-      {nullable ? <span className="text-gray-400 text-sm">{"(optional)"}</span> : null}
+      {nullable ? <span className="text-muted-foreground text-sm">{"(optional)"}</span> : null}
     </span>
   );
 };
@@ -64,9 +70,9 @@ export const Field = ({
   children,
 }: FieldProps) => {
   return (
-    <div className={clsx("w-full", className)}>
+    <div className={cn("w-full", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
-      <div className={clsx("mt-2 flex w-full flex-col gap-4 px-4", containerClassName)}>{children}</div>
+      <div className={cn("mt-2 flex w-full flex-col gap-4 px-4", containerClassName)}>{children}</div>
     </div>
   );
 };
@@ -96,16 +102,19 @@ const List = <Item,>({
 }: ListProps<Item>) => {
   const { l } = usePage();
   return (
-    <div className={clsx("flex w-full flex-col", className)}>
+    <div className={cn("flex w-full flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
-      <div className="mb-2 flex w-full flex-col gap-2 rounded-md border border-gray-300 p-2">
+      <div className="mb-2 flex w-full flex-col gap-2 rounded-md border border-border p-2">
         {value.map((item, idx) => (
           <>
             <div key={idx} className="flex h-full w-full items-center justify-between gap-2">
               {renderItem(item, idx)}
-              <div className="flex gap-2 border-gray-300 border-l pl-2">
+              <div className="flex gap-2 border-border border-l pl-2">
                 <button
-                  className="btn btn-xs btn-error btn-square btn-outline"
+                  className={buttonRecipe(
+                    { variant: "outline", size: "icon" },
+                    "size-6 border-destructive p-0 text-destructive hover:bg-destructive hover:text-destructive-foreground",
+                  )}
                   onClick={() => {
                     onChange(value.filter((_, i) => i !== idx));
                   }}
@@ -114,11 +123,11 @@ const List = <Item,>({
                 </button>
               </div>
             </div>
-            <div className="h-[0.5px] w-full bg-gray-300 px-2 last:h-0" />
+            <div className="h-[0.5px] w-full bg-muted px-2 last:h-0" />
           </>
         ))}
         <button
-          className="btn btn-outline"
+          className={buttonRecipe({ variant: "outline" })}
           onClick={() => {
             onAdd();
           }}
@@ -171,7 +180,7 @@ const Text = ({
 }: TextProps) => {
   const { l } = usePage();
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Input
         cacheKey={cache ? `${label}-${desc}-text` : undefined}
@@ -183,8 +192,8 @@ const Text = ({
           onChange(transform(value));
         }}
         disabled={disabled}
-        className={clsx("w-full", "")}
-        inputClassName={clsx("w-full focus:border-primary", inputClassName)}
+        className={cn("w-full", "")}
+        inputClassName={cn("w-full focus:border-primary", inputClassName)}
         validate={(text: string) => {
           if (text.length < minlength) return l("base.textTooShortError", { minlength });
           else if (text.length > maxlength) return l("base.textTooLongError", { maxlength });
@@ -236,7 +245,7 @@ const Price = ({
 }: PriceProps) => {
   const { l } = usePage();
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Input
         inputStyleType={inputStyleType}
@@ -248,8 +257,8 @@ const Price = ({
           onChange(transform(withoutComma));
         }}
         disabled={disabled}
-        className={clsx("w-full", "")}
-        inputClassName={clsx("w-full focus:border-primary", inputClassName)}
+        className={cn("w-full", "")}
+        inputClassName={cn("w-full focus:border-primary", inputClassName)}
         validate={(text: string) => {
           if (text.length < minlength) return l("base.textTooShortError", { minlength });
           else if (text.length > maxlength) return l("base.textTooLongError", { maxlength });
@@ -302,7 +311,7 @@ const TextArea = ({
 }: TextAreaProps) => {
   const { l } = usePage();
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Input.TextArea
         value={value ?? ""}
@@ -314,8 +323,8 @@ const TextArea = ({
         }}
         disabled={disabled}
         rows={rows}
-        className={clsx("h-full w-full")}
-        inputClassName={clsx("w-full focus:border-primary", inputClassName)}
+        className={cn("h-full w-full")}
+        inputClassName={cn("w-full focus:border-primary", inputClassName)}
         validate={(text: string) => {
           if (text.length < minlength) return l("base.textTooShortError", { minlength });
           else if (text.length > maxlength) return l("base.textTooLongError", { maxlength });
@@ -353,16 +362,16 @@ const Switch = ({
   offDesc,
 }: SwitchProps) => {
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable label={label} desc={desc} /> : null}
       <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
+        <UiSwitch
+          variant="accent"
           disabled={disabled}
-          className={clsx("toggle toggle-accent", inputClassName)}
+          className={inputClassName}
           checked={value}
-          onChange={(e) => {
-            onChange(e.target.checked);
+          onChange={(checked) => {
+            onChange(checked);
           }}
         />
         {(onDesc ?? offDesc) ? <div className="text-info text-sm">{value ? onDesc : offDesc}</div> : null}
@@ -403,7 +412,7 @@ const ToggleSelect = <I extends string | number | boolean | null>({
   const { l } = usePage();
   const isEnumValue = isEnum(items as EnumInstance<string, I>);
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <UtilToggleSelect
         className="mt-2"
@@ -460,7 +469,7 @@ const MultiToggleSelect = <I extends string | number | boolean>({
   const { l } = usePage();
   const isEnumValue = isEnum(items as EnumInstance<string, I>);
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={!!minlength} label={label} desc={desc} /> : null}
       <UtilToggleSelect.Multi
         nullable={!minlength}
@@ -526,9 +535,9 @@ const TextList = ({
 }: TextListProps) => {
   const { l } = usePage();
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={!minlength} label={label} desc={desc} /> : null}
-      <div className="mb-5 h-full gap-2 rounded-md border border-gray-300 p-2">
+      <div className="mb-5 h-full gap-2 rounded-md border border-border p-2">
         <DraggableList
           className="h-full gap-2"
           onChange={onChange}
@@ -556,13 +565,16 @@ const TextList = ({
                       else if (text.length > maxlength) return l("base.textTooLongError", { maxlength: maxTextlength });
                       else return validate?.(text) ?? true;
                     }}
-                    className={clsx("w-full", inputClassName)}
-                    inputClassName="w-full input-sm"
+                    className={cn("w-full", inputClassName)}
+                    inputClassName="h-8 w-full"
                     placeholder={placeholder}
                     disabled={disabled}
                   />
                   <button
-                    className="btn btn-xs btn-error btn-square btn-outline"
+                    className={buttonRecipe(
+                      { variant: "outline", size: "icon" },
+                      "size-6 border-destructive p-0 text-destructive hover:bg-destructive hover:text-destructive-foreground",
+                    )}
                     onClick={() => {
                       onChange(value.filter((_, i) => i !== idx));
                     }}
@@ -574,10 +586,10 @@ const TextList = ({
             </DraggableList.Item>
           ))}
         </DraggableList>
-        <div className="my-5 h-[0.5px] bg-base-content/20" />
+        <div className="my-5 h-[0.5px] bg-foreground/20" />
         {value.length <= maxTextlength ? (
           <button
-            className="btn btn-outline w-full"
+            className={buttonRecipe({ variant: "outline" }, "w-full")}
             onClick={() => {
               onChange([...value, ""]);
             }}
@@ -637,11 +649,11 @@ const Tags = ({
   };
 
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={!minlength} label={label} desc={desc} /> : null}
-      <div className="flex w-full flex-wrap items-center gap-1 rounded-md border border-base-content/20 p-2">
+      <div className="flex w-full flex-wrap items-center gap-1 rounded-md border border-foreground/20 p-2">
         {value.map((val, idx) => (
-          <span className="badge badge-outline items-center rounded-full text-xs" key={idx}>
+          <span className={badgeRecipe({ variant: "outline" }, "items-center")} key={idx}>
             <div className="text-xs italic">#</div>
             {val}
             <BiX
@@ -678,7 +690,7 @@ const Tags = ({
           />
         ) : !disabled ? (
           <div
-            className="flex items-center gap-2 rounded-full bg-success px-2 py-1 text-success-content text-xs duration-200 hover:cursor-pointer hover:opacity-80"
+            className="flex items-center gap-2 rounded-full bg-success px-2 py-1 text-success-foreground text-xs duration-200 hover:cursor-pointer hover:opacity-80"
             onClick={() => {
               setInputVisible(true);
             }}
@@ -720,12 +732,12 @@ const Date = <Nullable extends boolean>({
   dateClassName,
 }: DateProps<Nullable>) => {
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       {/* //! daysi UI datetime-local 컴포넌트에 max 값 넣으면 오른쪽 끝 짤리는 버그 있음.*/}
       <input
         type={showTime ? "datetime-local" : "date"}
-        className={clsx(
+        className={cn(
           "input validator text-xs outline-none duration-200 focus-within:outline-none focus:outline-none",
           dateClassName,
         )}
@@ -772,12 +784,12 @@ const DateRange = <Nullable extends boolean>({
   showTime,
 }: DateRangeProps<Nullable>) => {
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
 
       <div className="relative flex w-full flex-col items-start gap-2 pt-2 text-center md:flex-row md:items-center">
         <div className="relative flex w-full flex-col items-start justify-start">
-          <div className="absolute -top-2 left-2 z-10 bg-base-100 px-2 font-light text-xs">From</div>
+          <div className="absolute -top-2 left-2 z-10 bg-background px-2 font-light text-xs">From</div>
           <Date
             className="w-full"
             dateClassName="w-full"
@@ -791,7 +803,7 @@ const DateRange = <Nullable extends boolean>({
           />
         </div>
         <div className="relative flex w-full flex-col items-start gap-2 text-center md:flex-row md:items-center">
-          <div className="absolute -top-2 left-2 z-10 bg-base-100 px-2 font-light text-xs">To</div>
+          <div className="absolute -top-2 left-2 z-10 bg-background px-2 font-light text-xs">To</div>
           <Date
             className="w-full"
             dateClassName="w-full"
@@ -854,7 +866,7 @@ const Number = ({
 }: NumberProps) => {
   const { l } = usePage();
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} unit={unit} /> : null}
       <Input.Number
         min={min}
@@ -869,8 +881,8 @@ const Number = ({
           onChange(transform(value ?? 0));
         }}
         disabled={disabled}
-        className={clsx("w-full", "")}
-        inputClassName={clsx("w-full", inputClassName)}
+        className={cn("w-full", "")}
+        inputClassName={cn("w-full", inputClassName)}
         validate={(value) => {
           //수정여지
           if (min !== undefined && (value as number) < min) return l("base.numberTooSmallError", { min });
@@ -924,7 +936,7 @@ const DoubleNumber = ({
 }: DoubleNumberProps) => {
   const { l } = usePage();
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <div className="flex items-center gap-2">
         <Input.Number
@@ -937,8 +949,8 @@ const DoubleNumber = ({
             onChange([transform(num), value ? value[1] : 0]);
           }}
           disabled={disabled}
-          className={clsx("w-full", "")}
-          inputClassName={clsx("w-full focus:border-primary", inputClassName)}
+          className={cn("w-full", "")}
+          inputClassName={cn("w-full focus:border-primary", inputClassName)}
           validate={(value) => {
             if (min && (value as number) < min[0]) return l("base.numberTooSmallError", { min: min[0] });
             else if (max && (value as number) > max[0]) return l("base.numberTooBigError", { max: max[0] });
@@ -956,8 +968,8 @@ const DoubleNumber = ({
             onChange([value ? value[0] : 0, transform(num ?? 0)]);
           }}
           disabled={disabled}
-          className={clsx("w-full", "")}
-          inputClassName={clsx("w-full focus:border-primary", inputClassName)}
+          className={cn("w-full", "")}
+          inputClassName={cn("w-full focus:border-primary", inputClassName)}
           validate={(value) => {
             if (min && (value as number) < min[1]) return l("base.numberTooSmallError", { min: min[1] });
             else if (max && (value as number) > max[1]) return l("base.numberTooBigError", { max: max[1] });
@@ -1011,7 +1023,7 @@ const Email = ({
 }: EmailProps) => {
   const { l } = usePage();
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Input.Email
         value={value ?? ""}
@@ -1022,8 +1034,8 @@ const Email = ({
           onChange(transform(value));
         }}
         disabled={disabled}
-        className={clsx("w-full", "")}
-        inputClassName={clsx("w-full focus:border-primary", inputClassName)}
+        className={cn("w-full", "")}
+        inputClassName={cn("w-full focus:border-primary", inputClassName)}
         inputStyleType={inputStyleType}
         validate={(text: string) => {
           if (text.length < minlength) return l("base.textTooShortError", { minlength });
@@ -1075,7 +1087,7 @@ const Phone = ({
   const { l } = usePage();
 
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Input
         value={value ?? ""}
@@ -1087,8 +1099,8 @@ const Phone = ({
         }}
         disabled={disabled}
         maxLength={maxlength}
-        className={clsx("w-full", "")}
-        inputClassName={clsx("w-full focus:border-primary", inputClassName)}
+        className={cn("w-full", "")}
+        inputClassName={cn("w-full focus:border-primary", inputClassName)}
         validate={(text: string) => {
           if (!isPhoneNumber(text)) return l("base.phoneInvalidError");
           else return validate?.(text) ?? true;
@@ -1144,7 +1156,7 @@ const Password = ({
 }: PasswordProps) => {
   const { l } = usePage();
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <div className="flex flex-col gap-2">
         <Input.Password
@@ -1156,8 +1168,8 @@ const Password = ({
             onChange(transform(value));
           }}
           disabled={disabled}
-          className={clsx("w-full", "")}
-          inputClassName={clsx("w-full focus:border-primary", inputClassName)}
+          className={cn("w-full", "")}
+          inputClassName={cn("w-full focus:border-primary", inputClassName)}
           validate={(text: string) => {
             if (text.length < minlength) return l("base.textTooShortError", { minlength });
             else if (text.length > maxlength) return l("base.textTooLongError", { maxlength });
@@ -1172,8 +1184,8 @@ const Password = ({
             placeholder={l("base.passwordConfirm")}
             onChange={(value) => onChangeConfirm?.(transform(value))}
             disabled={disabled}
-            className={clsx("w-full", "")}
-            inputClassName={clsx("w-full focus:border-primary", inputClassName)}
+            className={cn("w-full", "")}
+            inputClassName={cn("w-full focus:border-primary", inputClassName)}
             validate={(text: string) => {
               if (value && text !== value) return l("base.passwordNotMatchError");
               else return true;
@@ -1243,7 +1255,7 @@ const Parent = <T extends string, State, Input, Full extends { id: string }, Lig
   const modelListLoading = storeUse[namesOfSlice.modelListLoading]() as string | boolean;
 
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Select<string | null, false, true>
         label={label}
@@ -1337,7 +1349,7 @@ const ParentId = <T extends string, State, Input, Full extends { id: string }, L
   const modelListLoading = storeUse[namesOfSlice.modelListLoading]() as string | boolean;
 
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Select<string | null, false, true>
         searchable
@@ -1428,7 +1440,7 @@ const Children = <T extends string, State, Input, Full extends { id: string }, L
   const modelListLoading = storeUse[namesOfSlice.modelListLoading]() as string | boolean;
 
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Select
         searchable
@@ -1518,7 +1530,7 @@ const ChildrenId = <T extends string, State, Input, Full extends { id: string },
   const modelListLoading = storeUse[namesOfSlice.modelListLoading]() as string | boolean;
 
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Select
         searchable

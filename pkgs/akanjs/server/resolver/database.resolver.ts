@@ -49,11 +49,13 @@ const timedQuery = async <T>(fn: () => Promise<T>): Promise<T> => {
 export class DatabaseResolver {
   static resolveDatabase(constant: ConstantModel, database: DatabaseModel): AdaptorCls<DatabaseInstance> {
     const [modelName, className]: [string, string] = [database.refName, capitalize(database.refName)];
+    // `sort` stays null when the caller named none, so the store can pick relevance order for a text search and
+    // its own default otherwise. Defaulting to "latest" here would make every search look explicitly sorted.
+    const resolveSort = (sortKey?: string | null) =>
+      sortKey ? (getFilterSortByKey(database.filter, sortKey) as { [key: string]: 1 | -1 }) : null;
     const getListQuery = (query?: QueryOf<any>, queryOption?: ListQueryOption) => {
       const find = query ?? {};
-      const sort = getFilterSortByKey(database.filter, queryOption?.sort ?? "latest") as {
-        [key: string]: 1 | -1;
-      };
+      const sort = resolveSort(queryOption?.sort);
       const skip = Number(queryOption?.skip ?? 0);
       const limit = queryOption?.limit === null ? DEFAULT_PAGE_SIZE : Number(queryOption?.limit ?? 0);
       const select = queryOption?.select;
@@ -62,9 +64,7 @@ export class DatabaseResolver {
     };
     const getFindQuery = (query?: QueryOf<any>, queryOption?: FindQueryOption) => {
       const find = query ?? {};
-      const sort = getFilterSortByKey(database.filter, queryOption?.sort ?? "latest") as {
-        [key: string]: 1 | -1;
-      };
+      const sort = resolveSort(queryOption?.sort);
       const skip = Number(queryOption?.skip ?? 0);
       const select = queryOption?.select;
       const sample = queryOption?.sample ?? false;

@@ -1,6 +1,6 @@
 import { getEnv } from "akanjs/base";
 import {
-  clsx,
+  cn,
   defaultPageState,
   getPathInfo,
   type PageState,
@@ -11,7 +11,7 @@ import {
   type WebAppManifest,
 } from "akanjs/client";
 import { getRequestFrameState, setRequestTheme } from "akanjs/fetch";
-import { Children, Fragment, type CSSProperties, type ReactNode, Suspense } from "react";
+import { Children, type CSSProperties, Fragment, type ReactNode, Suspense } from "react";
 import { FontCss } from "../fontCss";
 import { Load } from "../Load";
 import { createServerPortalStore, ServerPortalOutlet, setActiveServerPortalStore } from "../ServerPortal";
@@ -192,81 +192,85 @@ const SSRWrapper = ({
           initialHash={hash}
           initialPageState={pageState}
         >
-            <div
-              key="top-safe-area"
-              id="topSafeArea"
-              className={clsx("fixed inset-x-0 top-0 bg-base-100")}
-              style={topSafeAreaStyle}
-            />
-            <div key="page-containers" id="pageContainers" className={clsx("isolate")}>
-              <div id="pageContainer">
-                <div
-                  id="pageContent"
-                  style={pageContentStyle}
-                  className={clsx("relative isolate", {
-                    "w-full": layoutStyle === "web",
-                    "left-1/2 h-screen w-[600px] -translate-x-1/2": layoutStyle === "mobile",
-                  })}
-                >
-                  {Children.toArray(children)}
-                </div>
+          <div
+            key="top-safe-area"
+            id="topSafeArea"
+            className={cn("fixed inset-x-0 top-0 bg-background")}
+            style={topSafeAreaStyle}
+          />
+          <div key="page-containers" id="pageContainers" className={cn("isolate")}>
+            <div id="pageContainer">
+              <div
+                id="pageContent"
+                style={pageContentStyle}
+                className={cn(
+                  "relative isolate",
+                  layoutStyle === "web" && "w-full",
+                  layoutStyle === "mobile" && "left-1/2 h-screen w-[600px] -translate-x-1/2",
+                )}
+              >
+                {Children.toArray(children)}
               </div>
             </div>
-            <div
-              key="top-inset"
-              id="topInsetContainer"
-              className={clsx("fixed inset-x-0 top-0 isolate bg-base-100", {
-                "left-1/2 w-[600px] -translate-x-1/2": layoutStyle === "mobile",
-                "w-full": layoutStyle === "web",
-              })}
-              style={topInsetStyle}
-            >
-              <div id="topInsetContent" className={clsx("relative isolate size-full")}>
-                <ServerPortalOutlet id="topInsetContent" />
-              </div>
+          </div>
+          <div
+            key="top-inset"
+            id="topInsetContainer"
+            className={cn(
+              "fixed inset-x-0 top-0 isolate bg-background",
+              layoutStyle === "mobile" && "left-1/2 w-[600px] -translate-x-1/2",
+              layoutStyle === "web" && "w-full",
+            )}
+            style={topInsetStyle}
+          >
+            <div id="topInsetContent" className={cn("relative isolate size-full")}>
+              <ServerPortalOutlet id="topInsetContent" />
             </div>
-            <div
-              key="top-left-action"
-              id="topLeftActionContainer"
-              className="absolute top-0 left-0 isolate flex aspect-1 items-center justify-center"
-              style={topInsetStyle}
-            >
-              <div id="topLeftActionContent" className="isolate flex size-full items-center justify-center">
-                <ServerPortalOutlet id="topLeftActionContent" />
-              </div>
+          </div>
+          <div
+            key="top-left-action"
+            id="topLeftActionContainer"
+            className="absolute top-0 left-0 isolate flex aspect-1 items-center justify-center"
+            style={topInsetStyle}
+          >
+            <div id="topLeftActionContent" className="isolate flex size-full items-center justify-center">
+              <ServerPortalOutlet id="topLeftActionContent" />
             </div>
-            <div
-              key="bottom-inset"
-              id="bottomInsetContainer"
-              className={clsx("pointer-events-none fixed inset-x-0 bottom-0 isolate overflow-hidden", {
-                "left-1/2 w-[600px] -translate-x-1/2": layoutStyle === "mobile",
-                "w-full": layoutStyle === "web",
-              })}
-              style={bottomInsetStyle}
-            >
-              <div id="bottomInsetContent" className="pointer-events-none isolate size-full">
-                <ServerPortalOutlet id="bottomInsetContent" />
-              </div>
+          </div>
+          <div
+            key="bottom-inset"
+            id="bottomInsetContainer"
+            className={cn(
+              "pointer-events-none fixed inset-x-0 bottom-0 isolate overflow-hidden",
+              layoutStyle === "mobile" && "left-1/2 w-[600px] -translate-x-1/2",
+              layoutStyle === "web" && "w-full",
+            )}
+            style={bottomInsetStyle}
+          >
+            <div id="bottomInsetContent" className="pointer-events-none isolate size-full">
+              <ServerPortalOutlet id="bottomInsetContent" />
             </div>
-            <div
-              key="keyboard-inset"
-              id="keyboardInsetContainer"
-              className={clsx("pointer-events-none fixed inset-x-0 bottom-0 isolate overflow-hidden", {
-                "left-1/2 w-[600px] -translate-x-1/2": layoutStyle === "mobile",
-                "w-full": layoutStyle === "web",
-              })}
-              style={bottomInsetStyle}
-            >
-              <div id="keyboardInsetContent" className="pointer-events-none isolate size-full">
-                <ServerPortalOutlet id="keyboardInsetContent" />
-              </div>
+          </div>
+          <div
+            key="keyboard-inset"
+            id="keyboardInsetContainer"
+            className={cn(
+              "pointer-events-none fixed inset-x-0 bottom-0 isolate overflow-hidden",
+              layoutStyle === "mobile" && "left-1/2 w-[600px] -translate-x-1/2",
+              layoutStyle === "web" && "w-full",
+            )}
+            style={bottomInsetStyle}
+          >
+            <div id="keyboardInsetContent" className="pointer-events-none isolate size-full">
+              <ServerPortalOutlet id="keyboardInsetContent" />
             </div>
-            <div
-              key="bottom-safe-area"
-              id="bottomSafeArea"
-              className="fixed inset-x-0 bg-base-100"
-              style={bottomSafeAreaStyle}
-            />
+          </div>
+          <div
+            key="bottom-safe-area"
+            id="bottomSafeArea"
+            className="fixed inset-x-0 bg-background"
+            style={bottomSafeAreaStyle}
+          />
         </ClientPathWrapper>
       </div>
     </>

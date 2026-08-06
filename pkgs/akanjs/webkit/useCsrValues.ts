@@ -4,8 +4,9 @@ import { useDrag } from "@use-gesture/react";
 import {
   type CsrContextType,
   type CsrTransitionStyles,
-  debugFrame,
+  router as clientRouter,
   Device,
+  debugFrame,
   defaultPageState,
   getPathInfo,
   type LocationState,
@@ -17,12 +18,11 @@ import {
   type RouteOptions,
   type RouterInstance,
   type RouteState,
-  router as clientRouter,
   type TransitionType,
   type UseCsrTransition,
 } from "akanjs/client";
-import { parseAkanI18nEnv, parseBasePaths } from "akanjs/common";
 import { loadCapacitorApp } from "akanjs/client/capacitor";
+import { parseAkanI18nEnv, parseBasePaths } from "akanjs/common";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   createFrameSnapshot,
@@ -31,13 +31,13 @@ import {
   getFramePlatformProfile,
   getFrameSlotsForSnapshot,
   hasBottomAnchoredKeyboardSlot,
-  resolveKeyboardAccessoryHeight,
-  resolveKeyboardLayout,
   hasKeyboardStickySlot,
   isPendingFrameReady,
-  prepareForFrameTransition,
   PENDING_FRAME_READY_TIMEOUT_MS,
+  prepareForFrameTransition,
   resolveFramePageStateMap,
+  resolveKeyboardAccessoryHeight,
+  resolveKeyboardLayout,
   resolveLocationWithFrameState,
   resolvePathRoutesWithFrameState,
   useFrameRuntimeResync,
@@ -73,7 +73,12 @@ const getVelocityAwareDuration = (distance: number, velocity: number, fallback: 
   return clamp(Math.round(Math.abs(distance) / absVelocity), STACK_SETTLE_MIN_DURATION, STACK_SETTLE_MAX_DURATION);
 };
 
-const getSyncRouteHref = (location: { pathname: string; search: string; hash: string; params?: { [key: string]: string } }) => {
+const getSyncRouteHref = (location: {
+  pathname: string;
+  search: string;
+  hash: string;
+  params?: { [key: string]: string };
+}) => {
   const segments = location.pathname.split("/").filter(Boolean);
   const lang = location.params?.lang ?? parseAkanI18nEnv().locales.find((locale) => locale === segments[0]) ?? "";
   const configuredBasePaths = new Set(parseBasePaths(process.env.AKAN_PUBLIC_BASE_PATHS));
@@ -92,7 +97,9 @@ const getKeyboardAwarePageHeight = ({ frameLayout }: RouteState) => frameLayout.
 const getKeyboardAwareBottomPadding = ({ frameLayout }: RouteState, pageState: PathRoute["pageState"]) =>
   Math.max(
     pageState.bottomSafeArea,
-    pageState.bottomInset + pageState.bottomSafeArea - (frameLayout.keyboard.sticky ? frameLayout.keyboardAccessory.height : 0),
+    pageState.bottomInset +
+      pageState.bottomSafeArea -
+      (frameLayout.keyboard.sticky ? frameLayout.keyboardAccessory.height : 0),
   );
 
 const useNoneTrans = (routeState: RouteState): UseCsrTransition => {
@@ -826,7 +833,14 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
         ],
         basePageStateMap: basePageStateMap.current,
       }),
-    [pathRoutes, frameSlots, pendingFrameSlots, pendingLocation?.pathRoute.path, location.pathRoute.path, prevLocation?.pathRoute.path],
+    [
+      pathRoutes,
+      frameSlots,
+      pendingFrameSlots,
+      pendingLocation?.pathRoute.path,
+      location.pathRoute.path,
+      prevLocation?.pathRoute.path,
+    ],
   );
   useEffect(() => {
     if (!transitionPageStateSnapshot) pageStateByPathRef.current = pageStateByPath;
@@ -1093,18 +1107,21 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
         if (kind === "push") window.history.pushState({}, "", href);
         else window.history.replaceState({}, "", href);
         debugFrame("navigation.commit", { id: intent.id, kind, to: href });
-        window.setTimeout(() => {
-          setTransitionPageStateSnapshot(null);
-          setLocationState((current) => ({
-            ...current,
-            pendingLocation: null,
-            navigationIntent: null,
-            phase: "idle",
-          }));
-          navigationLocked.current = false;
-          clearPendingSlots();
-          debugFrame("transition.actionEnd", { id: plan.id, phase: "idle" });
-        }, Math.max(360, plan.duration));
+        window.setTimeout(
+          () => {
+            setTransitionPageStateSnapshot(null);
+            setLocationState((current) => ({
+              ...current,
+              pendingLocation: null,
+              navigationIntent: null,
+              phase: "idle",
+            }));
+            navigationLocked.current = false;
+            clearPendingSlots();
+            debugFrame("transition.actionEnd", { id: plan.id, phase: "idle" });
+          },
+          Math.max(360, plan.duration),
+        );
       };
 
       const waitUntilReady = () => {
@@ -1272,8 +1289,17 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
     if (lastBroadcastSyncHref.current === syncHref) return;
     lastBroadcastSyncHref.current = syncHref;
     if (applyingSyncNavigation.current || globalThis.__AKAN_DEV_SYNC_NAVIGATION_APPLYING__) return;
-    broadcastSyncNavigation(history.current.type === "back" ? "back" : history.current.type === "forward" ? "push" : "pop", syncHref);
-  }, [resolvedLocation.pathRoute.path, resolvedLocation.search, resolvedLocation.hash, broadcastSyncNavigation, history]);
+    broadcastSyncNavigation(
+      history.current.type === "back" ? "back" : history.current.type === "forward" ? "push" : "pop",
+      syncHref,
+    );
+  }, [
+    resolvedLocation.pathRoute.path,
+    resolvedLocation.search,
+    resolvedLocation.hash,
+    broadcastSyncNavigation,
+    history,
+  ]);
   useEffect(() => {
     const resetSyncNavigation = () => {
       window.setTimeout(() => {
@@ -1282,15 +1308,16 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
       }, 1000);
     };
     const handleSyncNavigation = (event: Event) => {
-      const { href, kind = "push" } = (event as CustomEvent<{ href?: string; kind?: "push" | "replace" | "back" | "pop" }>)
-        .detail ?? {};
+      const { href, kind = "push" } =
+        (event as CustomEvent<{ href?: string; kind?: "push" | "replace" | "back" | "pop" }>).detail ?? {};
       if (!href) return;
       const target = new URL(href, window.location.origin);
       const targetHref = `${target.pathname}${target.search}${target.hash}`;
       if (targetHref === getSyncRouteHref(getCurrentLocation())) return;
       applyingSyncNavigation.current = true;
       globalThis.__AKAN_DEV_SYNC_NAVIGATION_APPLYING__ = true;
-      if (kind === "replace" || kind === "back" || kind === "pop") clientRouter.replace(targetHref, { scrollToTop: false });
+      if (kind === "replace" || kind === "back" || kind === "pop")
+        clientRouter.replace(targetHref, { scrollToTop: false });
       else clientRouter.push(targetHref, { scrollToTop: false });
       resetSyncNavigation();
     };
@@ -1384,7 +1411,11 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
       const now = Date.now();
       const lastHandled = handledDeepLinkRef.current;
       const shouldResetStack = resetStack || (!lastHandled && now - mountedAt < 5000);
-      if (lastHandled?.href === href && now - lastHandled.handledAt < 1000 && (!shouldResetStack || lastHandled.resetStack))
+      if (
+        lastHandled?.href === href &&
+        now - lastHandled.handledAt < 1000 &&
+        (!shouldResetStack || lastHandled.resetStack)
+      )
         return;
       handledDeepLinkRef.current = { href, handledAt: now, resetStack: shouldResetStack };
       debugFrame("native.deepLink", {

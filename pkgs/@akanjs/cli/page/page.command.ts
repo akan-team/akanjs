@@ -1,5 +1,4 @@
-import { App, command, Module } from "@akanjs/devkit";
-
+import { App, command, Module } from "@akanjs/devkit/commandDecorators";
 import { PageScript } from "./page.script";
 
 export class PageCommand extends command("page", [PageScript], ({ public: target }) => ({

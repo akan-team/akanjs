@@ -37,7 +37,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     status: t(["Status", "상태"]).desc(["Status of the file", "파일의 상태"]),
   }))
   .insight<FileInsight>((t) => ({}))
-  .query<typeof FileFilter>((fn) => ({
+  .query<FileFilter>((fn) => ({
     byFilename: fn(["By Filename", "파일명별 조회"]).arg((t) => ({
       filename: t(["Filename", "파일명"]).desc(["Filename to search", "파일명으로 조회"]),
     })),
@@ -55,10 +55,21 @@ export const dictionary = modelDictionary(["en", "ko"])
       "파일이 업로드중이며 아직 생성되지 않았습니다",
     ]),
   }))
-  .slice<typeof FileSlice>((fn) => ({}))
-  .endpoint<typeof FileEndpoint>((fn) => ({
+  .slice<FileSlice>((fn) => ({}))
+  .endpoint<FileEndpoint>((fn) => ({
     addFiles: fn(["Add Files", "파일 추가"])
       .desc(["Add files to the database", "데이터베이스에 파일 추가"])
+      .arg((t) => ({
+        files: t(["File Streams", "파일 스트림"]).desc(["File streams to be uploaded", "업로드할 파일 스트림"]),
+        metas: t(["File Metas", "파일 메타"]).desc(["File metas to be uploaded", "업로드할 파일 메타"]),
+        type: t(["Parent Type", "상위 타입"]).desc([
+          "Parent type of file in database",
+          "데이터베이스에 저장될 파일의 상위 타입",
+        ]),
+        parentId: t(["Parent Id", "상위 Id"]).desc(["Parent id to be uploaded", "상위 Id"]),
+      })),
+    addFilesRestApi: fn(["Add Files (for RESTful API", "파일 추가 (RESTful API)"])
+      .desc(["Add files to the database (for RESTful API)", "데이터베이스에 파일 추가 (RESTful API)"])
       .arg((t) => ({
         files: t(["File Streams", "파일 스트림"]).desc(["File streams to be uploaded", "업로드할 파일 스트림"]),
         metas: t(["File Metas", "파일 메타"]).desc(["File metas to be uploaded", "업로드할 파일 메타"]),
@@ -73,4 +84,11 @@ export const dictionary = modelDictionary(["en", "ko"])
       .arg((t) => ({
         url: t(["Url", "Url"]).desc(["Url to export", "내보낼 Url"]),
       })),
-  }));
+  }))
+  .error({
+    fileStreamsAndMetasMismatch: [
+      "File streams and file metas are not matched",
+      "파일 스트림과 파일 메타의 수가 일치하지 않습니다",
+    ],
+    cloudPathNotFound: ["Cloud path is not found", "클라우드 경로를 찾을 수 없습니다"],
+  });

@@ -1,4 +1,4 @@
-import type { WorkflowSpec } from "@akanjs/devkit";
+import type { WorkflowSpec } from "@akanjs/devkit/workflow";
 import { addEnumFieldWorkflowSpec } from "./addEnumField";
 import { addFieldWorkflowSpec } from "./addField";
 import { addMutationWorkflowSpec } from "./addMutation";

@@ -4,7 +4,7 @@ import { saveAs } from "file-saver";
 
 interface DownloadDataProps {
   type: "json" | "csv";
-  data: any;
+  data: unknown;
   filename: string;
 }
 export const downloadData = ({ type, data, filename }: DownloadDataProps) => {

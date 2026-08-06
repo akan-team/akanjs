@@ -1,4 +1,5 @@
-import { type Lib, LibExecutor, runner, type Workspace } from "@akanjs/devkit";
+import { type Lib, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { LibExecutor } from "@akanjs/devkit/executors";
 import { compareSemver } from "../semver";
 
 export class LibraryRunner extends runner("library") {

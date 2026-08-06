@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { AkanContextAnalyzer } from "@akanjs/devkit/akanContext";
+import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import {
-  AkanContextAnalyzer,
   compactWorkflowInputs,
   createDryRunWorkflowApplyReport,
   createWorkflowApplyReport,
@@ -18,7 +19,6 @@ import {
   renderWorkflowPlan,
   renderWorkflowRunArtifact,
   renderWorkflowValidation,
-  runner,
   type WorkflowApplyCommand,
   type WorkflowApplyReport,
   type WorkflowDiagnostic,
@@ -33,11 +33,10 @@ import {
   type WorkflowValidationCommandExecutor,
   type WorkflowValidationKind,
   type WorkflowValidationRunReport,
-  type Workspace,
   workflowCommandsForPlan,
   workflowPlanApproval,
   writeWorkflowRunArtifact,
-} from "@akanjs/devkit";
+} from "@akanjs/devkit/workflow";
 import { capitalize } from "akanjs/common";
 import { workflowSpecs } from "../workflows";
 

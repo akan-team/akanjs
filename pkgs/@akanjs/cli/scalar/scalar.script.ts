@@ -1,12 +1,10 @@
+import { type Sys, script } from "@akanjs/devkit/commandDecorators";
 import {
   createPassedPrimitiveReport,
   generatedFilesForSync,
   type PrimitiveWriteReport,
-  type Sys,
   scalarChangedFiles,
-  script,
-} from "@akanjs/devkit";
-
+} from "@akanjs/devkit/workflow";
 import { ScalarRunner } from "./scalar.runner";
 
 export class ScalarScript extends script("scalar", [ScalarRunner]) {

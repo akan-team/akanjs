@@ -5,6 +5,7 @@ export * from "./akanServer";
 export * from "./artifact";
 export * from "./console";
 export * from "./decorators";
+export * from "./devtools";
 export type { ChangeBatch, ChangeKind } from "./hmr/changeBatch";
 export * from "./processMetricsCollector";
 export * from "./proxy";

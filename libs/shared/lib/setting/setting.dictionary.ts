@@ -18,12 +18,16 @@ export const dictionary = modelDictionary(["en", "ko"])
     ]),
   }))
   .insight<SettingInsight>((t) => ({}))
-  .query<typeof SettingFilter>((fn) => ({}))
-  .slice<typeof SettingSlice>((fn) => ({}))
-  .endpoint<typeof SettingEndpoint>((fn) => ({
+  .query<SettingFilter>((fn) => ({}))
+  .slice<SettingSlice>((fn) => ({}))
+  .endpoint<SettingEndpoint>((fn) => ({
     getActiveSetting: fn(["Get Active Setting", "활성 설정 가져오기"]).desc([
       "Get the active setting from the API",
       "API에서 활성 설정 가져오기",
+    ]),
+    helloAkanJs: fn(["Hello Akan js!", "안녕하세요 Akan js!"]).desc([
+      "request to hello Akan js!",
+      "Akan js에게 인사를 요청합니다.",
     ]),
   }))
   .translate({

@@ -14,4 +14,30 @@ alwaysApply: false
 - Dynamic segments use `[id]`; route groups use directories like `(user)`, `(public)`, `(tab)`, or `(detail)`.
 - Page modules should usually export `default`, `pageConfig`, `head`, `generateHead`, or `Loading`.
 - Prefer `export default function Page` or `export default async function Page` for page components.
-- Before changing route behavior, check `pkgs/akanjs/server/src/routeTree.tsx` and nearby routes for the expected pattern.
+- Before changing route behavior, check nearby routes for the expected pattern.
+
+## Page Body Shape
+
+```tsx
+interface PageProps {
+  params: { taskId: string };
+}
+
+export default async function Page({ params }: PageProps) {
+  const { l } = usePage();
+  getSelf({ unauthorize: "/signin" });
+  const { taskId } = params;
+  const [{ task }] = await Promise.all([fetch.viewTask(taskId)]);
+  return <Task.View.General task={task} />;
+}
+
+export const pageConfig = { transition: "stack" } satisfies PageConfig;
+```
+
+- There is no `loader=` / `render=` page prop. Pages are `export default async function Page`.
+- Declare `interface PageProps { params: {...}; searchParams?: {...} }` immediately above the default export.
+- Body order: `usePage()`, auth, destructure params, fetch, return.
+- Run independent fetches through `Promise.all`, even when there is only one.
+- Gate auth at `_layout.tsx`; repeating `getSelf({ unauthorize: "/signin" })` in the page is fine and common.
+- Keep `async` even when nothing is awaited — it marks a real server page.
+- No `useState`, no `useEffect`, and no comments in page files.

@@ -1,6 +1,6 @@
 import type { Dayjs } from "dayjs";
-import { GlobalConfig } from "..";
 import type { SupportedLlmModel } from "../aiEditor";
+import { GlobalConfig } from "./globalConfig";
 
 export const basePath = `${Bun.env.HOME ?? Bun.env.USERPROFILE}/.akan`;
 export const configPath = `${basePath}/config.json`;

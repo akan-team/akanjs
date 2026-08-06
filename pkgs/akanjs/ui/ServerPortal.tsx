@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
 import { getRequestStore } from "akanjs/fetch";
+import type { ReactNode } from "react";
 
 interface ServerPortalStore {
   capture: (id: string, children: ReactNode) => void;

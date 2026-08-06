@@ -6,9 +6,12 @@ import { st } from "akanjs/store";
 import { type ReactNode, useEffect, useState } from "react";
 import { AiOutlineApi, AiOutlineCopy } from "react-icons/ai";
 import { BiLock } from "react-icons/bi";
+import { badgeRecipe } from "../Badge";
+import { buttonRecipe } from "../Button";
 import { Copy } from "../Copy";
 import { Input } from "../Input";
 import { Modal } from "../Modal";
+import { SignalCollapse } from "./Collapse";
 import RestApi from "./RestApi";
 import { signalUi } from "./style";
 import WebSocket from "./WebSocket";
@@ -38,20 +41,20 @@ const DocSetting = ({
     .filter(([key, roleType]) => !!tryAccount[key as keyof typeof tryAccount])
     .map(([key, roleType]) => roleType);
   return (
-    <div className="flex w-full flex-wrap items-center justify-between gap-3 rounded-xl bg-base-200 p-3">
+    <div className="flex w-full flex-wrap items-center justify-between gap-3 rounded-xl bg-muted p-3">
       <div className="flex flex-1 flex-wrap items-center gap-2">
-        <span className="font-semibold text-base-content/70 text-sm">BaseURL</span>
+        <span className="font-semibold text-foreground/70 text-sm">BaseURL</span>
         <Copy text={baseUrl}>
-          <button className="btn btn-outline btn-sm">
+          <button className={buttonRecipe({ variant: "outline", size: "sm" })}>
             {baseUrl}
             <AiOutlineCopy />
           </button>
         </Copy>
       </div>
       <div className="flex items-center gap-2">
-        <span className="font-semibold text-base-content/70 text-sm">Mode</span>
+        <span className="font-semibold text-foreground/70 text-sm">Mode</span>
         <button
-          className="btn btn-primary btn-sm"
+          className={buttonRecipe({ variant: "primary", size: "sm" })}
           onClick={() => {
             st.do.setTrySignalType("restapi");
           }}
@@ -61,9 +64,9 @@ const DocSetting = ({
         </button>
       </div>
       <div className="flex flex-wrap items-center gap-1">
-        <span className="font-semibold text-base-content/70 text-sm">For</span>
+        <span className="font-semibold text-foreground/70 text-sm">For</span>
         <button
-          className={`btn btn-secondary btn-sm ${tryRoleForAll ? "" : "btn-outline"}`}
+          className={buttonRecipe({ variant: tryRoleForAll ? "secondary" : "outline", size: "sm" })}
           onClick={() => {
             if (!tryRoleForAll) st.do.setTryRoles([...roleTypes]);
           }}
@@ -73,7 +76,10 @@ const DocSetting = ({
         {roleTypes.map((roleType) => (
           <button
             key={roleType}
-            className={`btn btn-secondary btn-sm ${!tryRoleForAll && tryRoles.includes(roleType) ? "" : "btn-outline"}`}
+            className={buttonRecipe({
+              variant: !tryRoleForAll && tryRoles.includes(roleType) ? "secondary" : "outline",
+              size: "sm",
+            })}
             onClick={() => {
               if (tryRoleForAll) st.do.setTryRoles([roleType]);
               else if (!tryRoles.includes(roleType)) st.do.setTryRoles([...tryRoles, roleType]);
@@ -85,9 +91,9 @@ const DocSetting = ({
         ))}
       </div>
       <div className="flex items-center gap-2">
-        <span className="font-semibold text-base-content/70 text-sm">Auth</span>
+        <span className="font-semibold text-foreground/70 text-sm">Auth</span>
         <DocAuthModal>
-          <button className={`btn btn-sm ${currentRoles.length > 0 ? "btn-primary" : "btn-outline"} `}>
+          <button className={buttonRecipe({ variant: currentRoles.length > 0 ? "primary" : "outline", size: "sm" })}>
             <BiLock /> {currentRoles.length > 0 ? currentRoles.join(", ") : "Public"}
           </button>
         </DocAuthModal>
@@ -125,7 +131,7 @@ const DocAuthModal = ({ children }: DocAuthModalProps) => {
         title="Set JWT for Authorization"
         action={
           <button
-            className="btn btn-primary w-full"
+            className={buttonRecipe({ variant: "primary" }, "w-full")}
             onClick={() => {
               st.set(
                 decodedAccount
@@ -156,7 +162,7 @@ const DocAuthModal = ({ children }: DocAuthModalProps) => {
             {decodedAccount ? (
               <div className="absolute top-4 right-4">
                 <Copy text={accountStr}>
-                  <button className="btn btn-sm">
+                  <button className={buttonRecipe({ variant: "secondary", size: "sm" })}>
                     <AiOutlineCopy /> Copy
                   </button>
                 </Copy>
@@ -197,18 +203,17 @@ interface DocSignalProps {
 }
 const DocSignal = ({ refName, fetch }: DocSignalProps) => {
   return (
-    <div className="collapse-arrow collapse bg-base-200">
-      <input type="checkbox" />
-      <div className="collapse-title">
+    <SignalCollapse
+      contentClassName="gap-3"
+      summary={
         <div className="flex flex-wrap items-center gap-2">
           <div className="font-bold text-xl">{refName}</div>
-          <div className="badge badge-primary">Signal</div>
+          <div className={badgeRecipe({ variant: "primary" })}>Signal</div>
         </div>
-      </div>
-      <div className="collapse-content flex flex-col gap-3">
-        <RestApi.Endpoints refName={refName} fetch={fetch} />
-      </div>
-    </div>
+      }
+    >
+      <RestApi.Endpoints refName={refName} fetch={fetch} />
+    </SignalCollapse>
   );
 };
 Doc.DocSignal = DocSignal;
@@ -224,7 +229,7 @@ const Zone = ({ refName, fetch, openAll }: ZoneProps) => {
     <div className="flex break-after-page flex-col gap-4">
       <div>
         <div className="font-bold text-3xl">{refName}</div>
-        <div className="text-base-content/70">{l._(`${refName}.modelDesc`)}</div>
+        <div className="text-foreground/70">{l._(`${refName}.modelDesc`)}</div>
       </div>
       <DocSetting />
       <div className="font-bold text-2xl">APIs</div>

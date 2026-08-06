@@ -69,7 +69,7 @@ Use Light models for lists and repeated Unit rendering.
 
 Accept className and href when the Unit may be reused in different layouts or links.
 
-Use clsx to merge caller styling with the Unit's base styling.
+Use cn to merge caller styling with the Unit's base styling.
 
 Prefer Layout.Unit or Link for clickable card/list containers.
 
@@ -82,14 +82,14 @@ Export variants by display purpose instead of adding many flags to one Card.
 ### Article.Unit.tsx
 
 ```ts
-import { type ModelProps, clsx } from "akanjs/client";
+import { type ModelProps, cn } from "akanjs/client";
 import { Layout } from "akanjs/ui";
 
 export const Card = ({ article, className, href }: ModelProps<"article", cnst.LightArticle>) => {
   return (
-    <Layout.Unit className={clsx("rounded-lg border", className)} href={href}>
+    <Layout.Unit className={cn("rounded-lg border", className)} href={href}>
       <div className="font-bold">{article.title}</div>
-      <div className="text-base-content/70">{article.summary}</div>
+      <div className="text-foreground/70">{article.summary}</div>
     </Layout.Unit>
   );
 };
@@ -101,7 +101,7 @@ export const Card = ({ article, className, href }: ModelProps<"article", cnst.Li
 interface MiniProps extends ModelProps<"article", cnst.LightArticle> {}
 
 export const Mini = ({ article, className, href }: MiniProps) => (
-  <div className={clsx("flex items-center gap-2", className)}>
+  <div className={cn("flex items-center gap-2", className)}>
     <Link href={href}>{article.title}</Link>
     <Article.Util.Remove article={article} />
   </div>

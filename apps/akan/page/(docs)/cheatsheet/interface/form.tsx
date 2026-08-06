@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "모델 schema가 설계되면 form은 그 모양 위에 얇게 올리는 UI가 됩니다. 가장 쉬운 패턴은 wrapper에서 데이터를 준비하고, Template에서는 field만 그리는 것입니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Server page prepares create defaults or parent ids.",
@@ -35,10 +35,10 @@ export default function Page() {
                 ko: "Modal wrapper는 빠른 클라이언트 수정 흐름을 처리합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="template" title={l.trans({ en: "Keep Template Simple", ko: "Template은 단순하게" })}>
         <Docs.Title>{l.trans({ en: "Keep Template Simple", ko: "Template은 단순하게" })}</Docs.Title>
@@ -51,6 +51,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Article template", ko: "Article template" })}
           code={`"use client";
 
@@ -81,7 +82,7 @@ export const General = () => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="create-page" title={l.trans({ en: "Create With SSR", ko: "SSR로 생성 form 만들기" })}>
         <Docs.Title>{l.trans({ en: "Create With SSR", ko: "SSR로 생성 form 만들기" })}</Docs.Title>
@@ -94,6 +95,7 @@ export const General = () => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "New article page", ko: "새 article page" })}
           code={`export default async function Page({ params }: PageProps) {
   const { boardId } = params;
@@ -117,7 +119,7 @@ export const General = () => {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="update-page" title={l.trans({ en: "Update Page", ko: "수정 page" })}>
         <Docs.Title>{l.trans({ en: "Update Page", ko: "수정 page" })}</Docs.Title>
@@ -130,6 +132,7 @@ export const General = () => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Edit article page", ko: "Article 수정 page" })}
           code={`export default async function Page({ params }: PageProps) {
   const articleEdit = await fetch.editArticle(params.articleId);
@@ -147,7 +150,7 @@ export const General = () => {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="client-modal" title={l.trans({ en: "Client Modal Edit", ko: "클라이언트 modal 수정" })}>
         <Docs.Title>{l.trans({ en: "Client Modal Edit", ko: "클라이언트 modal 수정" })}</Docs.Title>
@@ -160,12 +163,14 @@ export const General = () => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Edit current item", ko: "현재 항목 수정" })}
           code={`<Model.EditModal id={article.id} type="form" slice={fetch.slice.articleInBoard}>
   <Article.Template.General />
 </Model.EditModal>`}
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "View and edit modal", ko: "보기와 수정 modal" })}
           code={`<Model.ViewEditModal
   slice={fetch.slice.articleInPublic}
@@ -174,12 +179,12 @@ export const General = () => {
 />`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Reuse one Template for create, update page, and edit modal.",
@@ -204,10 +209,10 @@ export const General = () => {
                 ko: "Field 로직이 커지면 작은 field group으로 나누되, form의 주인은 Template으로 유지하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

@@ -1,11 +1,6 @@
-import {
-  type AkanMcpInstallTarget,
-  type AkanMcpMode,
-  akanMcpInstallTargets,
-  jsonText,
-  script,
-  type Workspace,
-} from "@akanjs/devkit";
+import { type AkanMcpInstallTarget, type AkanMcpMode, akanMcpInstallTargets } from "@akanjs/devkit/akanContext";
+import { script, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { jsonText } from "@akanjs/devkit/workflow";
 import { Logger } from "akanjs/common";
 import { ContextRunner } from "./context.runner";
 
@@ -29,14 +24,14 @@ export class ContextScript extends script("context", [ContextRunner]) {
     Logger.rawLog(await this.contextRunner.getContext(workspace, options));
   }
 
-  async doctor(workspace: Workspace, options: { format?: "text" | "json"; strict?: boolean } = {}) {
+  async doctor(workspace: Workspace, options: { format?: "text" | "json"; strict?: boolean; ios?: boolean } = {}) {
     Logger.rawLog(await this.contextRunner.doctor(workspace, options));
   }
 
   async mcpInstall(
     workspace: Workspace,
     target: string | null,
-    { force = false, mode = "readonly" }: { force?: boolean; mode?: AkanMcpMode } = {},
+    { force = false, mode = "apply" }: { force?: boolean; mode?: AkanMcpMode } = {},
   ) {
     const targets = resolveMcpInstallTargets(target);
     const written: string[] = [];
@@ -47,7 +42,7 @@ export class ContextScript extends script("context", [ContextRunner]) {
     Logger.rawLog(`Akan MCP server installed (${mode} mode):\n${written.map((line) => `- ${line}`).join("\n")}`);
   }
 
-  async mcp(workspace: Workspace, { mode = "readonly" }: { mode?: AkanMcpMode } = {}) {
+  async mcp(workspace: Workspace, { mode = "apply" }: { mode?: AkanMcpMode } = {}) {
     await this.contextRunner.runMcp(workspace, { mode });
   }
 

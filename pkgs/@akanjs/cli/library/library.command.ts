@@ -1,5 +1,4 @@
-import { command, Lib, Workspace } from "@akanjs/devkit";
-
+import { command, Lib, Workspace } from "@akanjs/devkit/commandDecorators";
 import { LibraryScript } from "./library.script";
 
 export class LibraryCommand extends command("library", [LibraryScript], ({ public: target }) => ({

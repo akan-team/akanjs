@@ -184,6 +184,8 @@ export class SsrBaseArtifactBuilder {
   }> {
     const cssCompiler = new CssCompiler(this.#app);
     const cssByBasePath = await cssCompiler.getCssByBasePath();
+    // 스타일 계약(어휘 폐쇄 + WCAG)은 빌드가 아니라 lint 가 강제한다: 어휘 폐쇄는 biome grit 플러그인
+    // (devkit/lint/no-raw-palette-class.grit 외 3종), 콘트라스트는 `akan lint` 의 themeValidator.
     const optimizedFonts = await new FontOptimizer(this.#app, this.#command).optimize();
     const cssAssets = Object.fromEntries(
       await Promise.all(

@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, cardGridRecipe, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -23,7 +23,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="model-layering" title={l.trans({ en: "Model Layering Pattern", ko: "Model 계층 패턴" })}>
         <Docs.Title>{l.trans({ en: "Model Layering Pattern", ko: "Model 계층 패턴" })}</Docs.Title>
@@ -73,13 +73,14 @@ export default function Page() {
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
-              <div className="font-bold text-base-content">{title}</div>
-              <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+            <div key={title} className={panelRecipe()}>
+              <div className="font-bold text-foreground">{title}</div>
+              <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>
           ))}
         </div>
         <Code.Snippet
+          className="w-full"
           title="ticket.constant.ts"
           code={`import { dayjs, enumOf, Int } from "akanjs/base";
 import { via } from "akanjs/constant";
@@ -111,7 +112,7 @@ export class TicketInsight extends via(Ticket, (field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="fields-enums" title={l.trans({ en: "Fields And enumOf", ko: "Field와 enumOf" })}>
         <Docs.Title>{l.trans({ en: "Fields And enumOf", ko: "Field와 enumOf" })}</Docs.Title>
@@ -123,8 +124,9 @@ export class TicketInsight extends via(Ticket, (field) => ({
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
+            className="w-full"
             title="status enum"
             code={`import { enumOf } from "akanjs/base";
 
@@ -137,6 +139,7 @@ export class TicketStatus extends enumOf("ticketStatus", [
 type TicketStatusValue = TicketStatus["value"];`}
           />
           <Code.Snippet
+            className="w-full"
             title="practical field options"
             code={`export class TicketInput extends via((field) => ({
   title: field(String, { example: "Fix payment bug" }),
@@ -149,7 +152,7 @@ type TicketStatusValue = TicketStatus["value"];`}
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="hidden-secret-fields"
@@ -164,19 +167,19 @@ type TicketStatusValue = TicketStatus["value"];`}
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-            <div className="font-bold text-base-content">field.hidden()</div>
-            <div className="mt-2 text-base-content/70">
+        <div className={cardGridRecipe()}>
+          <div className={panelRecipe()}>
+            <div className="font-bold text-foreground">field.hidden()</div>
+            <div className="mt-2 text-foreground/70">
               {l.trans({
                 en: "Use it for internal state that may exist on the document but should not be treated as a normal visible field.",
                 ko: "document에는 존재할 수 있지만 일반적으로 보이는 field처럼 다루면 안 되는 내부 상태에 사용합니다.",
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-            <div className="font-bold text-base-content">field.secret()</div>
-            <div className="mt-2 text-base-content/70">
+          <div className={panelRecipe()}>
+            <div className="font-bold text-foreground">field.secret()</div>
+            <div className="mt-2 text-foreground/70">
               {l.trans({
                 en: "Use it for sensitive values such as password, phone, token, account id, wallet, or notification settings that should not be selected by default.",
                 ko: "password, phone, token, account id, wallet, notification 설정처럼 기본 조회에서 빠져야 하는 민감 값에 사용합니다.",
@@ -185,12 +188,142 @@ type TicketStatusValue = TicketStatus["value"];`}
           </div>
         </div>
         <Code.Snippet
+          className="w-full"
           title="user.constant.ts"
           code={`export class UserObject extends via(UserInput, (field) => ({
   accountId: field.secret(String).optional(),
   password: field.secret(String).optional(),
   phone: field.secret(String).optional(),
   adminMemo: field.hidden(String).optional(),
+})) {}`}
+        />
+      </Scroll.Slide>
+      <Divider />
+
+      <Scroll.Slide id="text-search-fields" title={l.trans({ en: "Text Search Fields", ko: "텍스트 검색 field" })}>
+        <Docs.Title>{l.trans({ en: "Text Search Fields", ko: "텍스트 검색 field" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "A field joins the full-text index by declaring a text role. There is no separate index file and no per-model switch: the role on the field is the whole configuration.",
+              ko: "field에 text 역할을 선언하면 전문 검색 index에 포함됩니다. 별도의 index 파일도, 모델 단위 스위치도 없습니다. field의 역할 선언이 설정의 전부입니다.",
+            })}
+          </div>
+          <div>
+            {l.trans({
+              en: "Choose the role by what the value is, because the roles are weighted differently when results are ranked.",
+              ko: "결과 순위를 매길 때 역할마다 가중치가 다르므로, 값의 성격에 맞는 역할을 고르세요.",
+            })}
+          </div>
+        </Docs.Description>
+        <div className="grid gap-3 xl:grid-cols-2">
+          {[
+            {
+              title: 'text: "title"',
+              desc: l.trans({
+                en: "The one line a human scans for. Weighted highest.",
+                ko: "사람이 눈으로 훑는 그 한 줄입니다. 가중치가 가장 높습니다.",
+              }),
+            },
+            {
+              title: 'text: "tag"',
+              desc: l.trans({
+                en: "A keyword list. Weighted above prose, below the title.",
+                ko: "키워드 목록입니다. 본문보다 높고 제목보다 낮은 가중치입니다.",
+              }),
+            },
+            {
+              title: 'text: "desc"',
+              desc: l.trans({
+                en: "Prose. Weighted lowest of the matchable roles.",
+                ko: "본문입니다. 검색 대상 역할 중 가중치가 가장 낮습니다.",
+              }),
+            },
+            {
+              title: 'text: "filter"',
+              desc: l.trans({
+                en: "A scoping value such as status, role, or owner. Matchable but weighted zero, so it never outranks a real title hit.",
+                ko: "status, role, owner처럼 범위를 좁히는 값입니다. 검색은 되지만 가중치가 0이라 실제 제목 매치를 이기지 못합니다.",
+              }),
+            },
+            {
+              title: 'text: "thumb"',
+              desc: l.trans({
+                en: "Mirrored so a hit can be rendered, but never indexed. Do not expect it to match.",
+                ko: "결과를 그릴 수 있도록 함께 저장되지만 색인되지는 않습니다. 매치를 기대하면 안 됩니다.",
+              }),
+            },
+            {
+              title: l.trans({ en: "Relations and arrays", ko: "관계와 배열" }),
+              desc: l.trans({
+                en: "A role works on a File reference and on an array field. An array of objects is indexed by leaf key, including a leaf that is itself an array. A field inside a Map is not indexed, because there is no fixed path to read it from.",
+                ko: "File 참조와 배열 field에도 역할을 붙일 수 있습니다. 객체 배열은 leaf key 기준으로 색인되며, leaf 자체가 배열이어도 됩니다. Map 안의 field는 읽어올 고정 경로가 없어 색인되지 않습니다.",
+              }),
+            },
+          ].map(({ title, desc }) => (
+            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
+              <div className="font-bold text-base-content">{title}</div>
+              <div className="mt-2 text-base-content/70">{desc}</div>
+            </div>
+          ))}
+        </div>
+        <Code.Snippet
+          title="user.constant.ts"
+          code={`export class UserInput extends via((field) => ({
+  nickname: field(String, { default: "", text: "title" }),
+  bio: field(String, { default: "", text: "desc" }),
+  playing: field([String], { text: "tag" }),
+  image: field(File, { text: "thumb" }).optional(),
+  status: field(UserStatus, { default: "prepare", text: "filter" }),
+})) {}`}
+        />
+        <Docs.Description>
+          <div className="rounded-xl border border-error/30 bg-error/5 p-4">
+            {l.trans({
+              en: "A secret, hidden, or resolved field with a text role throws while the class is being built, not at query time. The same throw covers a role declared underneath one of them: field.secret(Noti) is rejected when Noti carries a role of its own, because the stored document holds that subtree in plaintext too. The search mirror stores plaintext, so indexing a secret would leak it through search. Treat the error as the rule working, not as something to route around.",
+              ko: "secret, hidden, resolve field에 text 역할을 붙이면 query 시점이 아니라 class를 만드는 시점에 에러가 납니다. 그 아래에 선언된 역할도 같이 막습니다. Noti 자체가 역할을 들고 있으면 field.secret(Noti)도 거부되는데, 저장된 document는 그 하위 트리도 평문으로 담기 때문입니다. 검색 미러는 평문을 저장하므로 secret을 색인하면 검색을 통해 새어나갑니다. 우회할 대상이 아니라 규칙이 동작하는 것으로 보세요.",
+            })}
+          </div>
+        </Docs.Description>
+      </Scroll.Slide>
+      <div className="divider" />
+
+      <Scroll.Slide id="cascade-fields" title={l.trans({ en: "Cascade Remove Fields", ko: "캐스케이드 삭제 field" })}>
+        <Docs.Title>{l.trans({ en: "Cascade Remove Fields", ko: "캐스케이드 삭제 field" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: 'A relation field can take its target down with it. cascade: "remove" is the whole declaration, and it works on an array field too.',
+              ko: '관계 field는 자신이 삭제될 때 대상까지 함께 삭제할 수 있습니다. 선언은 cascade: "remove" 하나가 전부이고, 배열 field에도 동작합니다.',
+            })}
+          </div>
+          <ul className="list-disc space-y-2 pl-5">
+            <li>
+              {l.trans({
+                en: "The removal runs through the target's service, so the target's own _postRemove runs with it. That is how a File cascade also deletes the stored object.",
+                ko: "삭제는 대상의 service를 거쳐 실행되므로 대상의 _postRemove도 함께 실행됩니다. File 캐스케이드가 저장된 객체까지 삭제하는 것이 이 때문입니다.",
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: "Only a relation accepts it. A String, an ID, or a scalar field throws while the class is being built, because none of them names a document the framework could remove.",
+                ko: "관계 field에만 붙일 수 있습니다. String·ID·scalar field는 클래스 빌드 중에 throw합니다. 셋 다 프레임워크가 삭제할 수 있는 문서를 가리키지 않기 때문입니다.",
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: "Nothing checks for other references to the same target. Declaring cascade asserts that this field owns its target exclusively, and query-level removal fires no hooks and therefore no cascade.",
+                ko: "같은 대상을 참조하는 다른 문서가 있는지는 검사하지 않습니다. cascade 선언은 이 field가 대상을 단독으로 소유한다는 뜻이며, 쿼리 단위 삭제는 훅을 태우지 않으므로 캐스케이드도 돌지 않습니다.",
+              })}
+            </li>
+          </ul>
+        </Docs.Description>
+        <Code.Snippet
+          title="user.constant.ts"
+          code={`export class UserInput extends via((field) => ({
+  nickname: field(String, { default: "", text: "title" }),
+  image: field(File, { text: "thumb", cascade: "remove" }).optional(),
+  images: field([File], { cascade: "remove" }),
 })) {}`}
         />
       </Scroll.Slide>
@@ -210,6 +343,7 @@ type TicketStatusValue = TicketStatus["value"];`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="user.constant.ts"
           code={`import { via } from "akanjs/constant";
 import { user } from "../__lib/lib.constant";
@@ -231,7 +365,7 @@ export class User extends via(UserObject, LightUser, (resolve) => ({}), ...user.
 export class UserInsight extends via(User, (field) => ({}), ...user.insights) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="model-helpers"
@@ -246,8 +380,9 @@ export class UserInsight extends via(User, (field) => ({}), ...user.insights) {}
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
+            className="w-full"
             title="LightBoard helper"
             code={`export class LightBoard extends via(
   BoardObject,
@@ -264,6 +399,7 @@ export class UserInsight extends via(User, (field) => ({}), ...user.insights) {}
 }`}
           />
           <Code.Snippet
+            className="w-full"
             title="Board static helper"
             code={`export class Board extends via(BoardObject, LightBoard, (resolve) => ({})) {
   static getBoard(boardList: LightBoard[], boardId: string) {
@@ -273,7 +409,7 @@ export class UserInsight extends via(User, (field) => ({}), ...user.insights) {}
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="resolve-fields" title={l.trans({ en: "Resolved Fields", ko: "Resolve field" })}>
         <Docs.Title>{l.trans({ en: "Resolved Fields", ko: "Resolve field" })}</Docs.Title>
@@ -291,8 +427,9 @@ export class UserInsight extends via(User, (field) => ({}), ...user.insights) {}
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
+            className="w-full"
             title="story.constant.ts"
             code={`export class LightStory extends via(
   StoryObject,
@@ -311,6 +448,7 @@ export class UserInsight extends via(User, (field) => ({}), ...user.insights) {}
 }`}
           />
           <Code.Snippet
+            className="w-full"
             title="story.signal.ts"
             code={`export class StoryInternal extends internal(srv.story.with(srv.actionLog), ({ resolveField }) => ({
   view: resolveField(Int)
@@ -331,7 +469,7 @@ export class UserInsight extends via(User, (field) => ({}), ...user.insights) {}
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="scalar-static-utilities"
@@ -349,6 +487,7 @@ export class UserInsight extends via(User, (field) => ({}), ...user.insights) {}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="coordinate.constant.ts"
           code={`import { enumOf, Float } from "akanjs/base";
 import { via } from "akanjs/constant";
@@ -374,7 +513,7 @@ export class Coordinate extends via((field) => ({
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="insight-constants" title={l.trans({ en: "Insight Constants", ko: "Insight constant" })}>
         <Docs.Title>{l.trans({ en: "Insight Constants", ko: "Insight constant" })}</Docs.Title>
@@ -387,6 +526,7 @@ export class Coordinate extends via((field) => ({
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="ticket.constant.ts"
           code={`import { Int } from "akanjs/base";
 
@@ -396,7 +536,7 @@ export class TicketInsight extends via(Ticket, (field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -432,16 +572,16 @@ export class TicketInsight extends via(Ticket, (field) => ({
                 ko: "순환 barrel reference를 피하기 위해 다른 constant는 직접 파일 경로에서 import합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
+              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {rule}
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

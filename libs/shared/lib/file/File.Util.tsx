@@ -1,17 +1,17 @@
 "use client";
 import { fetch, st } from "@libs/shared/client";
-import { clsx, getCookie } from "akanjs/client";
-import { Image, Loading } from "akanjs/ui";
+import { cn, getCookie } from "akanjs/client";
+import { buttonRecipe, Image, Loading } from "akanjs/ui";
 import { lazy } from "akanjs/webkit";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { AiOutlineCheckCircle } from "react-icons/ai";
 
 const ImageViewer = lazy(() => import("react-simple-image-viewer"), { ssr: false });
 
-interface FileZoneImageGalleryProps {
+interface ImageGalleryProps {
   srcs: string[];
 }
-export const ImageGallery = ({ srcs }: FileZoneImageGalleryProps) => {
+export const ImageGallery = ({ srcs }: ImageGalleryProps) => {
   const fileModal = st.use.fileModal();
   const [imgIdx, setImgIdx] = useState(0);
   return (
@@ -49,14 +49,14 @@ export const ImageGallery = ({ srcs }: FileZoneImageGalleryProps) => {
   );
 };
 
-interface Download {
+interface DownloadProps {
   className?: string;
   url: string;
   filename: string;
   onClick?: () => void;
-  children?: any;
+  children?: ReactNode;
 }
-export const Download = ({ className, onClick, url, filename, children }: Download) => {
+export const Download = ({ className, onClick, url, filename, children }: DownloadProps) => {
   const [loading, setLoading] = useState<boolean | null>(false);
 
   return (
@@ -75,10 +75,12 @@ export const Download = ({ className, onClick, url, filename, children }: Downlo
           setLoading(false);
         }, 1000); // Reset loading state after download initiates
       }}
-      className={clsx("flex items-center justify-start duration-500", className, {
-        "cursor-default opacity-80": loading === true,
-        "cursor-pointer": loading === false,
-      })}
+      className={cn(
+        "flex items-center justify-start duration-500",
+        className,
+        loading === true && "cursor-default opacity-80",
+        loading === false && "cursor-pointer",
+      )}
     >
       {children}
       <div
@@ -119,20 +121,19 @@ export const ExportPDF = () => {
         // 메모리 정리
         URL.revokeObjectURL(url);
       }}
-      className={clsx("btn btn-primary", {
-        "bg-primary/80": loading === true,
-      })}
+      className={buttonRecipe(
+        { variant: "primary" },
+        {
+          "bg-primary/80": loading === true,
+        },
+      )}
       disabled={loading === true}
     >
       <div className="w-3">
         {loading === true ? (
-          <>
-            <span className="loading loading-spinner loading-xs" />
-          </>
+          <span className="inline-block size-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
         ) : loading === false ? (
-          <>
-            <AiOutlineCheckCircle className="animate-pop-300" />
-          </>
+          <AiOutlineCheckCircle className="animate-pop-300" />
         ) : null}
       </div>
       Export PDF

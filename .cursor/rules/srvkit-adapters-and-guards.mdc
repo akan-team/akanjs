@@ -1,0 +1,50 @@
+---
+description: srvkit adapter (adapt/plug), guard, and error-handling conventions
+globs: apps/**/srvkit/**/*.ts,libs/**/srvkit/**/*.ts
+alwaysApply: false
+---
+
+# Adapters — `adapt()` And `plug()`
+
+An injected singleton is an `adapt()` class in `srvkit/`. Write new adapters this way.
+
+```ts
+export class AdminNoti extends adapt("adminNoti" as const, ({ use, env, plug, memory }) => ({
+  discordApi: use<DiscordApi>(),
+  workspaceRoot: env(() => `~/build/${getEnv().environment}`),
+  masterHost: plug(MasterHost),
+  tokenMap: memory(Map, { of: String }),
+})) {}
+```
+
+- Inject it with `plug(TheClass)` from a service or from another adapter. Destructure only the injectors you use, and write the registration key `as const`.
+- **Do not register an `adapt()` class in `lib/option.ts`.** It self-registers, and `plug(Class)` uses the class itself as the token. `option.ts` is now only for legacy constructor-style adapters and for widening the options type.
+- `this.logger` is provided; never construct a `Logger` inside an `adapt()` class. Lifecycle work goes in `override async onInit()`.
+- `#private` is the house style here — the `#private` lint ban covers only `*.constant.ts`, `*.document.ts`, `*.service.ts`, and `*.store.ts`.
+- **`adapt()` is for singletons only.** A per-use value object stays a plain class you `new` at the call site. Ask whether there is exactly one per process that a service needs injected; if not, it is a plain class.
+- **Legacy shape — recognise it, do not copy it.** Plain classes with `constructor(options: XOptions)`, registered in `lib/option.ts` as `options.x ? new XApi(options.x) : null` and injected with `use<T>()`, still work. Migrate one to `adapt()` only when you are already changing it.
+- Preference order inside a service: `service<srv.XService>()` for another module's service · `plug(AdapterClass)` or `plug(StorageAdaptorRole)` for an adapter · `use<T>()` only to reach an `option.ts`-registered legacy singleton · `env(...)` for config.
+
+Conventions that hold for both shapes:
+
+- Route every remote call through one private `#api<T>(path, init?)` with `signal: AbortSignal.timeout(20_000)`.
+- Paginate with `for (let page = 1; ; page += 1)` broken by `if (pageItems.length < 100) break;`.
+- Resolve secrets as `process.env.X ?? options.x ?? deterministicGenerator(...)` **inside a function**, never at module scope.
+- Extend a function by appending an optional trailing parameter with a default, never by changing arity.
+- Parameters: up to three required primitives positional; optional flags in a trailing `{ … } = {}`; four or more parameters, or any two same-typed strings, in one named destructured object.
+- Release locks in `finally`. Load heavy optional dependencies through a module-level memoized promise (`sharpLoad ??= import("sharp")`).
+
+# Guards (`srvkit/guards.ts`)
+
+- Resource guards are `Can<Verb><Model>` classes that `implements Guard` with an `async canPass(context)`.
+- They **fail closed**: no resource named ⇒ `false`; a load that throws ⇒ `logger.warn` then `false`. Admin bypass goes first.
+- Keep `static name = "User";` on guard classes. `fetch` serializes guard names and the API explorer filters on them; it looks like dead code, and deleting it breaks the UI. Comment it so the next reader knows.
+- Guards ship with the library that owns the model and are imported by its own signals through the package path, so a mounting app inherits authorization and cannot forget it.
+- Services re-check ownership even when a guard already gated the call — two independent gates.
+- This file earns real comments: explain what would leak without each guard.
+
+# Error Placement
+
+- State-machine preconditions throw in `document.ts`; cross-document rules throw in `service.ts`; request-level policy belongs in signal guards.
+- Best-effort code returns a sentinel (`null`, `undefined`, `[0, 0]`, `{}`). There are no Result/Either wrappers.
+- `try/catch` is rare and always converts an exception into a decision, never swallows one. Guards catch → `logger.warn` → `return false`; adapters catch → `logger.error` → `return null`; UI uses `try/finally` to reset a spinner. A bodyless `catch {}` is acceptable only with a one-line reason.

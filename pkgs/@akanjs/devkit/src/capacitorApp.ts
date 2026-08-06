@@ -1,4 +1,5 @@
-import { type AppExecutor, FileSys } from "@akanjs/devkit";
+import type { AppExecutor } from "@akanjs/devkit/executors";
+import { FileSys } from "@akanjs/devkit/fileSys";
 import type { CapacitorConfig } from "@capacitor/cli";
 import { MobileProject } from "@trapezedev/project";
 import type { AndroidProject } from "@trapezedev/project/dist/android/project";

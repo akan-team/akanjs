@@ -1,3 +1,4 @@
+import { Every } from "@libs/shared/srvkit";
 import { Any, dayjs, ID, Upload } from "akanjs/base";
 import { endpoint, internal, None, Public, slice } from "akanjs/signal";
 
@@ -22,7 +23,7 @@ export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
       }));
       return await this.fileService.addFiles(files, parsedMetas, type, parentId);
     }),
-  generatePdf: mutation(Any)
+  generatePdf: mutation(Any, { guards: [Every] })
     .body("url", String)
     .exec(async function (url) {
       return await this.fileService.generatePdf(url);

@@ -1,5 +1,5 @@
 "use client";
-import { clsx, usePage } from "akanjs/client";
+import { cn, usePage } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
@@ -32,7 +32,7 @@ export default function RemoveWrapper({ children, slice, name, modelId, classNam
         void storeDo[names.removeModel](modelId, { modal });
       }}
     >
-      <div className={clsx("cursor-pointer", className)}>{children}</div>
+      <div className={cn("cursor-pointer", className)}>{children}</div>
     </Popconfirm>
   );
 }

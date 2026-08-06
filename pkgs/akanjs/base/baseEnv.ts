@@ -13,8 +13,6 @@ export interface BaseEnv {
   appName: string;
   environment: Environment;
   operationMode: "local" | "edge" | "cloud" | "module";
-  tunnelUsername: string;
-  tunnelPassword: string;
   databaseMode?: DatabaseMode;
 }
 export type BackendEnv = BaseEnv & {
@@ -87,16 +85,12 @@ export const getEnv = (): ClientEnv => {
   const environment = (process.env.AKAN_PUBLIC_ENV ?? "debug") as BaseEnv["environment"];
   const operationMode = (process.env.AKAN_PUBLIC_OPERATION_MODE ??
     (environment === "local" ? "local" : "cloud")) as BaseEnv["operationMode"];
-  const tunnelUsername = process.env.SSH_TUNNEL_USERNAME ?? "root";
-  const tunnelPassword = process.env.SSH_TUNNEL_PASSWORD ?? repoName;
   const baseEnv: BaseEnv = {
     repoName,
     serveDomain,
     appName,
     environment,
     operationMode,
-    tunnelUsername,
-    tunnelPassword,
     databaseMode: process.env.AKAN_DATABASE_MODE as DatabaseMode | undefined,
   } as const;
   const side = typeof window === "undefined" ? "server" : "client";
@@ -104,7 +98,11 @@ export const getEnv = (): ClientEnv => {
   const clientHost =
     process.env.AKAN_PUBLIC_CLIENT_HOST ??
     (operationMode === "local" || side === "server" ? "localhost" : window.location.hostname);
-  const clientPort = parseInt(process.env.AKAN_PUBLIC_CLIENT_PORT ?? (operationMode === "local" ? "8282" : "443"));
+  const clientPort =
+    side === "server"
+      ? parseInt(process.env.AKAN_PUBLIC_CLIENT_PORT ?? (operationMode === "local" ? "8282" : "443"))
+      : parseInt(window.location.port || (window.location.protocol === "https:" ? "443" : "80"));
+
   const clientHttpProtocol =
     side === "client"
       ? (window.location.protocol as "http:" | "https:")
@@ -124,9 +122,11 @@ export const getEnv = (): ClientEnv => {
           ? (window.location.host.split(":")[0] ?? "unknown")
           : "localhost");
 
-  const serverPort = parseInt(
-    process.env.AKAN_PUBLIC_SERVER_PORT ?? (operationMode === "local" || side === "server" ? "8282" : "443"),
-  );
+  const serverPort =
+    side === "server"
+      ? parseInt(process.env.AKAN_PUBLIC_SERVER_PORT ?? "8282")
+      : parseInt(window.location.port || (window.location.protocol === "https:" ? "443" : "80"));
+
   const serverHttpProtocol: "http:" | "https:" =
     (process.env.SERVER_HTTP_PROTOCOL as "http:" | "https:" | undefined) ??
     (operationMode === "local"

@@ -6,8 +6,10 @@ import type { SerializedArg } from "akanjs/signal";
 import { st } from "akanjs/store";
 import type { ChangeEvent } from "react";
 import { AiOutlineDelete } from "react-icons/ai";
+import { buttonRecipe } from "../Button";
 import { DatePicker } from "../DatePicker";
 import { Input } from "../Input";
+import { Tooltip } from "../Tooltip";
 import UiObject from "./Object";
 import { signalUi } from "./style";
 
@@ -54,7 +56,7 @@ const ArgTable = ({ refName, endpointKey, args }: ArgTableProps) => {
     });
   };
   return (
-    <table className="table">
+    <table className={signalUi.tableClass}>
       <thead>
         <tr>
           <th>Arg Key</th>
@@ -81,16 +83,17 @@ const ArgTable = ({ refName, endpointKey, args }: ArgTableProps) => {
                   <div className="flex flex-col gap-2">
                     {argEnum.map((opt, idx) => (
                       <div key={idx}>
-                        <button
-                          key={idx}
-                          data-tip={l._(`${arg.enum}.${opt}`)}
-                          onClick={() => {
-                            onCopy(opt.toString());
-                          }}
-                          className="tooltip tooltip-primary btn btn-outline btn-xs"
-                        >
-                          {opt}
-                        </button>
+                        <Tooltip content={l._(`${arg.enum}.${opt}`)} variant="primary">
+                          <button
+                            key={idx}
+                            onClick={() => {
+                              onCopy(opt.toString());
+                            }}
+                            className={buttonRecipe({ variant: "outline", size: "xs" })}
+                          >
+                            {opt}
+                          </button>
+                        </Tooltip>
                       </div>
                     ))}
                   </div>
@@ -98,10 +101,10 @@ const ArgTable = ({ refName, endpointKey, args }: ArgTableProps) => {
                   "-"
                 )}
               </td>
-              <td className="text-center text-base-content/70">
+              <td className="text-center text-foreground/70">
                 {l._(`${refName}.signal.${endpointKey}.arg.${arg.name}`)}
               </td>
-              <td className="text-center text-base-content/70">
+              <td className="text-center text-foreground/70">
                 {l._(`${refName}.signal.${endpointKey}.arg.${arg.name}.desc`)}
               </td>
             </tr>
@@ -163,7 +166,7 @@ const ArgQuery = ({ endpointKey, arg, value, onChange }: ArgQueryProps) => {
                   }}
                 />
                 <button
-                  className="btn btn-outline btn-sm btn-square"
+                  className={buttonRecipe({ variant: "outline", size: "icon" }, "size-8")}
                   onClick={() => {
                     onChange([...(value.slice(0, idx) as string[]), ...(value.slice(idx + 1) as string[])]);
                   }}
@@ -173,7 +176,7 @@ const ArgQuery = ({ endpointKey, arg, value, onChange }: ArgQueryProps) => {
               </div>
             ))}
             <button
-              className="btn btn-outline btn-sm"
+              className={buttonRecipe({ variant: "outline", size: "sm" })}
               onClick={() => {
                 onChange([...(value as string[]), arg.example]);
               }}
@@ -327,7 +330,7 @@ const ArgJson = ({ value, onChange }: ArgJsonProps) => {
     <Input.TextArea
       validate={(e) => true}
       className="w-full"
-      inputClassName="w-full min-h-[300px] rounded-xl border border-base-300 bg-base-100"
+      inputClassName="w-full min-h-[300px] rounded-xl border border-border bg-background"
       value={value}
       onPressEnter={(value) => {
         onChange(value);
@@ -349,9 +352,9 @@ const ArgUpload = ({ value, onChange }: ArgUploadProps) => {
     <input
       type="file"
       multiple
-      className="file-input file-input-bordered w-full max-w-xs"
+      className="w-full max-w-xs rounded-field border border-input text-sm file:mr-3 file:border-0 file:bg-muted file:px-3 file:py-2 file:text-foreground"
       onChange={(e: ChangeEvent<HTMLInputElement>) => {
-        onChange(new Array(e.target.files?.length).fill(0).map((_, idx) => e.target.files?.[idx]) as any as FileList);
+        onChange(e.target.files);
       }}
     />
   );

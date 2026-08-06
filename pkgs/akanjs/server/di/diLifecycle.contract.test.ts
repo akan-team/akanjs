@@ -43,8 +43,6 @@ describe("DiLifecycle declaration-to-runtime contract", () => {
       appName: "serverLifecycle",
       environment: "local",
       operationMode: "local",
-      tunnelUsername: "root",
-      tunnelPassword: "akan",
     } satisfies BackendEnv;
     const lib = new AkanLib("serverLifecycleTest", {
       databases: [],
@@ -75,8 +73,6 @@ describe("DiLifecycle declaration-to-runtime contract", () => {
       appName: "serverLifecycle",
       environment: "local",
       operationMode: "local",
-      tunnelUsername: "root",
-      tunnelPassword: "akan",
       workspaceRoot: tmp,
       database: {
         sqlite: {
@@ -199,8 +195,6 @@ describe("DiLifecycle declaration-to-runtime contract", () => {
       appName: "serverLifecycle",
       environment: "local",
       operationMode: "local",
-      tunnelUsername: "root",
-      tunnelPassword: "akan",
     } satisfies BackendEnv;
     const lib = new AkanLib("serverLifecycleTest", {
       databases: [],
@@ -245,8 +239,6 @@ describe("DiLifecycle declaration-to-runtime contract", () => {
       appName: "serverLifecycle",
       environment: "local",
       operationMode: "local",
-      tunnelUsername: "root",
-      tunnelPassword: "akan",
       workspaceRoot: tmp,
       database: {
         sqlite: {

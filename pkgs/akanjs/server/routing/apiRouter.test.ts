@@ -153,3 +153,90 @@ describe("ApiRouter.buildWebsocketHandlers", () => {
     expect(sent).toHaveLength(1);
   });
 });
+
+describe("ApiRouter websocket authentication", () => {
+  test("hands the handshake credential to the upgrade instead of dropping it", async () => {
+    process.env.AKAN_PUBLIC_APP_NAME = "test";
+    const { ApiRouter } = await import("./apiRouter");
+    const { AppWsData } = await import("./appWsData");
+    let upgradeData: InstanceType<typeof AppWsData> | null = null;
+    const routes = ApiRouter.buildRoutes({
+      prefix: "/api",
+      websocketPrefix: "/ws",
+      routes: {} as HttpRoutes,
+      renderEnvRoutes: {},
+      upgradeAppWs: (_req, data) => {
+        upgradeData = data;
+        return true;
+      },
+    });
+
+    const upgrade = routes["/api/ws"] as (req: Request) => Response | undefined;
+    const response = upgrade(
+      new Request("http://localhost/api/ws", {
+        headers: { authorization: "Bearer handshake-token", cookie: "jwt=cookie-token" },
+      }),
+    );
+
+    expect(response).toBeUndefined();
+    expect(upgradeData?.headers.get("authorization")).toBe("Bearer handshake-token");
+    expect(upgradeData?.cookies.get("jwt")).toBe("cookie-token");
+  });
+
+  test("applies an auth frame before the frames queued behind it and acks the revoked rooms", async () => {
+    process.env.AKAN_PUBLIC_APP_NAME = "test";
+    const { ApiRouter } = await import("./apiRouter");
+    const { AppWsData } = await import("./appWsData");
+    const { websocketAuthContract } = await import("akanjs/common");
+    const sent: string[] = [];
+    const seenCredentials: (string | null)[] = [];
+    const ws = {
+      data: AppWsData.fromRequest(new Request("http://localhost/api/ws")),
+      send: (message: string) => sent.push(message),
+    } as unknown as Bun.ServerWebSocket<unknown>;
+    const handlers = ApiRouter.buildWebsocketHandlers({
+      wsRoutes: {
+        room: (socket: Bun.ServerWebSocket<unknown>) => {
+          seenCredentials.push(AppWsData.of(socket).headers.get("authorization"));
+          return { ok: true };
+        },
+      } as unknown as WebsocketRoutes,
+      registry: getDefaultInjectRegistry(),
+      hmrHub: null,
+      hmrState: null,
+      logger: { error: () => undefined } as never,
+    });
+
+    const auth = handlers.message?.(ws, JSON.stringify(websocketAuthContract.makeRequest("signed-in-token")));
+    const subscribe = handlers.message?.(ws, JSON.stringify({ key: "room", data: [], subscribe: true }));
+    await Promise.all([auth, subscribe]);
+
+    expect(seenCredentials).toEqual(["Bearer signed-in-token"]);
+    expect(JSON.parse(sent[0] ?? "{}")).toEqual({ type: "auth", revokedRooms: [] });
+    expect(AppWsData.of(ws).account).toBeUndefined();
+  });
+
+  test("signing out over the socket clears the credential it was upgraded with", async () => {
+    process.env.AKAN_PUBLIC_APP_NAME = "test";
+    const { ApiRouter } = await import("./apiRouter");
+    const { AppWsData } = await import("./appWsData");
+    const { websocketAuthContract } = await import("akanjs/common");
+    const ws = {
+      data: AppWsData.fromRequest(new Request("http://localhost/api/ws", { headers: { cookie: "jwt=cookie-token" } })),
+      send: () => undefined,
+    } as unknown as Bun.ServerWebSocket<unknown>;
+    AppWsData.of(ws).account = { role: "user" };
+    const handlers = ApiRouter.buildWebsocketHandlers({
+      wsRoutes: {} as WebsocketRoutes,
+      registry: getDefaultInjectRegistry(),
+      hmrHub: null,
+      hmrState: null,
+      logger: { error: () => undefined } as never,
+    });
+
+    await handlers.message?.(ws, JSON.stringify(websocketAuthContract.makeRequest(null)));
+
+    expect(AppWsData.of(ws).cookies.has("jwt")).toBe(false);
+    expect(AppWsData.of(ws).account).toBeUndefined();
+  });
+});

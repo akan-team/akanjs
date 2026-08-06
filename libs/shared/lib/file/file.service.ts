@@ -4,6 +4,7 @@ import type { LocalFile } from "akanjs/server";
 import { serve } from "akanjs/service";
 
 import * as db from "../db";
+import { Err } from "../dict";
 
 export class FileService extends serve(db.file, ({ use, plug }) => ({
   storageApi: use<StorageApi>(),
@@ -37,7 +38,7 @@ export class FileService extends serve(db.file, ({ use, plug }) => ({
     purpose: string,
     group = "default",
   ): Promise<db.File[]> {
-    if (fileStreams.length !== fileMetas.length) throw new Error("File Streams and File Metas are not matched");
+    if (fileStreams.length !== fileMetas.length) throw new Err("file.error.fileStreamsAndMetasMismatch");
     const files = await Promise.all(
       fileStreams.map(
         async (fileStream, idx) =>
@@ -57,18 +58,18 @@ export class FileService extends serve(db.file, ({ use, plug }) => ({
       if (file) return file;
       const localFile = await this.saveImageFromUri(uri, { header });
       return await this.addFileFromLocal(localFile, purpose, group, { origin: uri });
-    } catch (err) {
+    } catch (_err) {
       this.logger.warn(`Failed to add file from URI - ${uri}`);
       return null;
     }
   }
-  async getJsonFromUri<T = any>(uri: string): Promise<T | undefined> {
+  async getJsonFromUri<T = unknown>(uri: string): Promise<T | undefined> {
     try {
       if (uri.includes("data:application/json;base64,"))
         return JSON.parse(Buffer.from(uri.replace("data:application/json;base64,", ""), "base64").toString()) as T;
       const response = (await fetch(this.ipfsApi.getHttpsUri(uri))).json();
       return response as T;
-    } catch (err) {
+    } catch (_err) {
       this.logger.warn(`Failed to get json from URI - ${uri}`);
       return undefined;
     }
@@ -157,7 +158,7 @@ export class FileService extends serve(db.file, ({ use, plug }) => ({
     const localFile = await this.saveImageFromUri(file.url);
     await sleep(100);
     const cloudPath = file.url.split("/").slice(3).join("/").split("?")[0];
-    if (!cloudPath) throw new Error("Cloud path is not found");
+    if (!cloudPath) throw new Err("file.error.cloudPathNotFound");
     const path = root ? cloudPath.replace(`${root}/`, "") : cloudPath;
     const url = await this.storageApi.uploadDataFromLocal({
       path,

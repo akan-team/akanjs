@@ -11,3 +11,6 @@ alwaysApply: false
 - Use `akanjs/*` for framework facets, `@apps/*` for apps, `@libs/*` for shared libs, and `@contract/*` for contract code.
 - Respect existing client/server entrypoints such as `@libs/shared/client`, `@libs/shared/server`, `@apps/akasys/client`, and `@apps/akasys/server`.
 - Let Biome organize imports instead of manually reshuffling unrelated imports.
+- Namespace the generated barrels in backend `.ts` files: `import * as cnst from "../cnst"`, `* as db`, `* as srv`. Use `import type * as srv` in services so the runtime graph stays lazy, and a value import in signals.
+- In `.tsx` files use one flat named import from the package client path (`import { cnst, fetch, st, Ticket, usePage } from "@apps/<app>/client"`) — never a relative `../` import.
+- Never import a third-party package from a page, a barrel, or a module file; re-export it through a one-line shim in `base/`, `webkit/`, or `ui/` first.

@@ -1,7 +1,13 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import type { FC, ReactNode } from "react";
 import { BiChevronLeft, BiChevronRight, BiDotsHorizontalRounded } from "react-icons/bi";
+
+import { buttonRecipe } from "./Button";
+import { createOverridable } from "./UiOverride";
+
+/** Square ghost button style shared by every pager control (canonical buttonRecipe). */
+const pageBtn = buttonRecipe({ variant: "ghost", size: "icon" });
 
 export interface PaginationProps {
   /** Current 1-based page number. */
@@ -22,7 +28,7 @@ export interface PaginationProps {
   };
 }
 
-export const Pagination: FC<PaginationProps> = ({
+export const DefaultPagination: FC<PaginationProps> = ({
   currentPage,
   total,
   onPageSelect,
@@ -64,8 +70,9 @@ export const Pagination: FC<PaginationProps> = ({
       {total > 0 && (
         <>
           <button
-            className={clsx(
-              "btn btn-ghost btn-square duration-200",
+            className={cn(
+              pageBtn,
+              "duration-200",
               currentPage > 1 ? "opacity-100" : "opacity-0 hover:cursor-default hover:opacity-0",
             )}
             onClick={handleLeftClick}
@@ -76,17 +83,14 @@ export const Pagination: FC<PaginationProps> = ({
           {displayNumbers.map((pageNum, index) => {
             if (pageNum === "...") {
               return (
-                <button key={index} className="btn btn-ghost btn-square text-primary/40">
+                <button key={index} className={cn(pageBtn, "text-primary/40")}>
                   <BiDotsHorizontalRounded />
                 </button>
               );
             }
             if (Number(pageNum) === currentPage) {
               return (
-                <button
-                  key={index}
-                  className={clsx("btn btn-ghost btn-square text-primary", classNames?.activePageNumClassName)}
-                >
+                <button key={index} className={cn(pageBtn, "text-primary", classNames?.activePageNumClassName)}>
                   {pageNum}
                 </button>
               );
@@ -94,7 +98,7 @@ export const Pagination: FC<PaginationProps> = ({
             return (
               <button
                 key={index}
-                className={clsx("btn btn-ghost btn-square text-primary/40", classNames?.pageNumClassName)}
+                className={cn(pageBtn, "text-primary/40", classNames?.pageNumClassName)}
                 onClick={() => {
                   onPageSelect(Number(pageNum));
                 }}
@@ -105,8 +109,9 @@ export const Pagination: FC<PaginationProps> = ({
           })}
 
           <button
-            className={clsx(
-              "btn btn-ghost btn-square duration-200",
+            className={cn(
+              pageBtn,
+              "duration-200",
               currentPage < totalPages ? "opacity-100" : "opacity-0 hover:cursor-default hover:opacity-0",
             )}
             onClick={handleRightClick}
@@ -118,3 +123,9 @@ export const Pagination: FC<PaginationProps> = ({
     </div>
   );
 };
+
+/**
+ * Pager. Resolves to a route-scoped override when a `page/**\/_overrides.tsx` in
+ * the route's ancestry declares one, otherwise renders {@link DefaultPagination}.
+ */
+export const Pagination = createOverridable("Pagination", DefaultPagination);

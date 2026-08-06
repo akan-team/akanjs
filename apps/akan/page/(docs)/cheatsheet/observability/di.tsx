@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "의존성 주입은 service가 필요한 것을 직접 만들지 않고 받아서 쓰는 방식입니다. 이렇게 하면 비즈니스 코드는 작아지고, 외부 시스템도 쉽게 교체할 수 있습니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "`use` receives values registered in app or library options.",
@@ -41,10 +41,10 @@ export default function Page() {
                 ko: "`env`는 런타임 설정을 모든 함수에 넘기지 않고 읽게 해줍니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="use" title={l.trans({ en: "Register With use", ko: "use로 등록하기" })}>
         <Docs.Title>{l.trans({ en: "Register With use", ko: "use로 등록하기" })}</Docs.Title>
@@ -57,6 +57,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Option registers values", ko: "Option에서 값 등록" })}
           code={`export const option = new AkanOption<AppEnv>().use((env) => ({
   mailApi: env.mail ? new MailApi(env.mail) : null,
@@ -65,6 +66,7 @@ export default function Page() {
 }));`}
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Service receives values", ko: "Service에서 값 받기" })}
           code={`export class ArticleService extends serve(db.article, ({ use }) => ({
   mailApi: use<MailApi>(),
@@ -77,7 +79,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="adaptor" title={l.trans({ en: "Adapt And Plug", ko: "adapt와 plug" })}>
         <Docs.Title>{l.trans({ en: "Adapt And Plug", ko: "adapt와 plug" })}</Docs.Title>
@@ -90,6 +92,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Declare adaptor", ko: "Adaptor 선언" })}
           code={`export class ImageStorage extends adapt("imageStorage", ({ env }) => ({
   bucket: env((env: AppEnv) => env.imageBucket),
@@ -100,6 +103,7 @@ export default function Page() {
 }`}
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Plug adaptor into service", ko: "Service에 plug하기" })}
           code={`export class ArticleService extends serve(db.article, ({ plug }) => ({
   imageStorage: plug(ImageStorage),
@@ -111,7 +115,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="service" title={l.trans({ en: "Inject Services", ko: "Service 주입" })}>
         <Docs.Title>{l.trans({ en: "Inject Services", ko: "Service 주입" })}</Docs.Title>
@@ -124,6 +128,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Service to service", ko: "Service끼리 연결" })}
           code={`export class ArticleService extends serve(db.article, ({ service }) => ({
   fileService: service<srv.FileService>(),
@@ -137,7 +142,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="env" title={l.trans({ en: "Read Environment", ko: "환경값 읽기" })}>
         <Docs.Title>{l.trans({ en: "Read Environment", ko: "환경값 읽기" })}</Docs.Title>
@@ -150,6 +155,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Environment value", ko: "환경값 사용" })}
           code={`export class ArticleService extends serve(db.article, ({ env }) => ({
   publicUrl: env((env: AppEnv) =>
@@ -162,12 +168,12 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Do not create external clients inside every method. Register them once with `use` or `adapt`.",
@@ -192,10 +198,10 @@ export default function Page() {
                 ko: "여러 service가 공유하는 값은 보통 `AkanOption.use()`에 두는 것이 가장 깔끔합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

@@ -47,6 +47,7 @@ declare global {
     | undefined;
   var __AKAN_RSC_REFRESH__: ((options?: { buildId?: number }) => Promise<void>) | undefined;
   var __AKAN_RSC_CLEAR_CACHE__: (() => void) | undefined;
+  var __AKAN_RSC_IS_FROM_CACHE__: (() => boolean) | undefined;
   var __AKAN_DEV_SYNC_NAVIGATION__: ((href: string, kind: "push" | "replace" | "back" | "pop") => void) | undefined;
   var __AKAN_DEV_SYNC_NAVIGATION_APPLYING__: boolean | undefined;
   var __AKAN_GET_SYNC_ROUTE_HREF__: ((href: string) => string) | undefined;
@@ -299,7 +300,12 @@ let currentRouterState: AkanRouterStateV1 | null = initialRouterState;
 let currentSegmentTree: RscSegmentCacheNode | null = createAkanSegmentCacheTree(initialNode);
 let currentFullNode: RscCacheNode = initialNode;
 let currentCommitKind: "full" | "patch" = "full";
+let currentCommitFromCache = false;
 let navigationSeq = 0;
+
+// Lets hydrating client code (see `akanjs/client`'s `isRscNavigationFromCache`) tell a replayed payload
+// apart from a freshly fetched one, so data that must be current can refetch instead of trusting it.
+globalThis.__AKAN_RSC_IS_FROM_CACHE__ = () => currentCommitFromCache;
 
 function rememberCommittedRouteState(node: RscCacheNode): void {
   rscPatchCache.clear();
@@ -379,6 +385,7 @@ function Root(): ReactNode {
         maxEntries: MAX_RSC_CACHE_ENTRIES,
         startTransition,
         commitThenable: (node) => {
+          currentCommitFromCache = false;
           resetAkanSegmentOutletPatches();
           setThenable(node.thenable);
         },
@@ -398,6 +405,7 @@ function Root(): ReactNode {
     const scrollToTop = options.scrollToTop ?? true;
     try {
       let nextNode = rscCache.get(target);
+      const servedFromCache = !!nextNode;
       if (!nextNode) {
         const cachedPatch = rscPatchCache.get(target);
         if (cachedPatch) {
@@ -426,6 +434,7 @@ function Root(): ReactNode {
                 bumpScrollToTop: () => setScrollToTopTick((tick) => tick + 1),
               })
             ) {
+              currentCommitFromCache = true;
               rememberPatchedRouteState(patchResult.tree, patchResult.patchedNode);
               rememberRscPatchCacheNode(rscPatchCache, cachedPatch, MAX_RSC_CACHE_ENTRIES);
               return;
@@ -450,6 +459,7 @@ function Root(): ReactNode {
               bumpScrollToTop: () => setScrollToTopTick((tick) => tick + 1),
             })
           ) {
+            currentCommitFromCache = false;
             rememberPatchedRouteState(fetched.tree, fetched.patchedNode);
             const patchCacheNode = createRscPatchNavigationCacheNode({
               href: target,
@@ -495,6 +505,7 @@ function Root(): ReactNode {
         maxEntries: MAX_RSC_CACHE_ENTRIES,
         startTransition,
         commitThenable: (node) => {
+          currentCommitFromCache = servedFromCache;
           resetAkanSegmentOutletPatches();
           setThenable(node.thenable);
         },

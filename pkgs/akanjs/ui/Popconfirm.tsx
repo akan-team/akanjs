@@ -1,11 +1,12 @@
 "use client";
 import { useSpring } from "@react-spring/web";
 // TODO: 디자인 수정, 테마 적용 안됨
-import { clsx, usePage } from "akanjs/client";
+import { cn, usePage } from "akanjs/client";
 import { type ButtonHTMLAttributes, type ReactNode, useEffect, useState } from "react";
 import { BiMessageRoundedError } from "react-icons/bi";
-
 import { animated } from "./animated";
+import { buttonRecipe } from "./Button";
+import { createOverridable } from "./UiOverride";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   loading?: boolean;
@@ -34,7 +35,7 @@ export interface PopconfirmProps {
   decoClassName?: string;
 }
 
-export const Popconfirm = ({
+export const DefaultPopconfirm = ({
   title,
   description,
   onConfirm,
@@ -62,10 +63,12 @@ export const Popconfirm = ({
     const popconfirmRect = popconfirm?.getBoundingClientRect();
     const popconfirmDeco = document.querySelector(".popconfirm-deco");
 
-    // popconfirmRect.x 가 좌측 화면 밖으로 나가는 경우
+    // popconfirmRect.x 가 좌측 화면 밖으로 나가는 경우: 박스를 좌측 정렬로 뒤집고, 화살표도 좌측으로 옮긴다
+    // (기존 right-10 을 제거해야 화살표가 트리거 아래로 정렬됨 — 안 그러면 right/left 클래스가 충돌).
     if (popconfirmRect && popconfirmRect.x < 0) {
       popconfirm?.classList.add("left-0", "right-auto");
-      popconfirmDeco?.classList.add("left-10", "left-auto");
+      popconfirmDeco?.classList.add("left-10");
+      popconfirmDeco?.classList.remove("right-10");
     }
     // popconfirmRect.x 가 우측 화면 밖으로 나가는 경우
     if (popconfirmRect && popconfirmRect.x + popconfirmRect.width > window.innerWidth) {
@@ -86,7 +89,7 @@ export const Popconfirm = ({
     <>
       <div className="relative inline-block">
         <div
-          className={clsx("trigger", triggerClassName)}
+          className={cn("trigger", triggerClassName)}
           onClick={(e) => {
             e.stopPropagation();
             setIsConfirming(true);
@@ -96,28 +99,36 @@ export const Popconfirm = ({
         </div>
         {isConfirming && (
           <animated.div
-            className="popconfirm absolute -right-2 bottom-0 z-10 translate-y-[106%] rounded-lg border border-base-300 bg-base-100 p-4 shadow-xl"
+            className="popconfirm absolute -right-2 bottom-0 z-10 translate-y-[106%] rounded-lg border border-border bg-background p-4 shadow-xl"
             style={popconfirmProps}
           >
             <div
-              className={clsx(
-                "popconfirm-deco absolute -top-2 size-4 rotate-45 rounded-sm border-base-300 border-t border-l bg-base-100",
-                { "right-10": !decoClassName },
+              className={cn(
+                "popconfirm-deco absolute -top-2 size-4 rotate-45 rounded-sm border-border border-t border-l bg-background",
+                !decoClassName && "right-10",
                 decoClassName,
               )}
             ></div>
             <div className="flex gap-1">
-              <BiMessageRoundedError className="text-orange-500" />
+              <BiMessageRoundedError className="text-warning" />
               <div>
                 <p className="mb-2 whitespace-nowrap font-bold">{title}</p>
                 <div className="mb-2 whitespace-nowrap">{description}</div>
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <button className="btn btn-xs btn-outline" onClick={handleCancel} {...cancelButtonProps}>
+              <button
+                className={buttonRecipe({ variant: "outline", size: "xs" })}
+                onClick={handleCancel}
+                {...cancelButtonProps}
+              >
                 {cancelText ?? l("base.cancel")}
               </button>
-              <button className="btn btn-xs" onClick={handleConfirm} {...okButtonProps}>
+              <button
+                className={buttonRecipe({ variant: "primary", size: "xs" })}
+                onClick={handleConfirm}
+                {...okButtonProps}
+              >
                 {okText ?? l("base.ok")}
               </button>
             </div>
@@ -135,3 +146,10 @@ export const Popconfirm = ({
     </>
   );
 };
+
+/**
+ * Confirmation popover. Resolves to a route-scoped override when a
+ * `page/**\/_overrides.tsx` in the route's ancestry declares one, otherwise
+ * renders {@link DefaultPopconfirm}.
+ */
+export const Popconfirm = createOverridable("Popconfirm", DefaultPopconfirm);

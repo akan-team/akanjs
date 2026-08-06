@@ -4,13 +4,14 @@ interface Dict {
   Model: string;
   model: string;
   sysName: string;
+  sysType: string;
 }
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict) {
   return {
     filename: `${dict.Model}.View.tsx`,
     content: `
-import { clsx } from "akanjs/client";
-import { cnst, usePage } from "@${scanInfo?.type ?? "apps"}/${dict.sysName}/client";
+import { cn } from "akanjs/client";
+import { cnst, usePage } from "@${dict.sysType}s/${dict.sysName}/client";
 
 interface GeneralProps {
   className?: string;
@@ -19,7 +20,7 @@ interface GeneralProps {
 export const General = ({ className, ${dict.model} }: GeneralProps) => {
   const { l } = usePage();
   return (
-    <div className={clsx("w-full", className)}>
+    <div className={cn("w-full", className)}>
       <div>{l("${dict.model}.name")}: {${dict.model}.name}</div>
     </div>
   );

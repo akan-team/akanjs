@@ -99,6 +99,11 @@ export class SignalContext<
     }
     return instance as T;
   }
+  getService<T>(refName: string): T {
+    const service = this.#live.service.get(refName);
+    if (!service) throw new Exception.Error(`Service "${refName}" not found in live registry`);
+    return service as T;
+  }
   async init() {
     if (this.trace) {
       const start = performance.now();
@@ -112,11 +117,45 @@ export class SignalContext<
   async #checkGuards() {
     const guards = this.endpointInfo.signalOption.guards ?? [];
     if (guards.length === 0) return;
-    for (const GuardCls of guards) {
-      const guard = new GuardCls();
-      const canPass = guard.canPass(this);
-      if (!canPass) throw new Exception.Forbidden(`Access denied by guard: ${GuardCls.name}`);
+    await Promise.all(
+      guards.map(async (GuardCls) => {
+        const guard = new GuardCls();
+        const canPass = await guard.canPass(this);
+        if (!canPass) throw new Exception.Forbidden(`Access denied by guard: ${GuardCls.name}`);
+      }),
+    );
+  }
+  /**
+   * Re-checks this context's guards outside of a request, for a websocket room that is already
+   * subscribed. Only global middlewares run: they carry the account resolution this depends on,
+   * while endpoint middlewares (cache/timeout/retry) would observe a call that never executes.
+   */
+  async authorize(): Promise<boolean> {
+    try {
+      await this.#withMiddleware(async () => await this.#checkGuards(), { endpointMiddlewares: false })();
+      return true;
+    } catch {
+      return false;
     }
+  }
+  #withMiddleware(
+    coreExec: () => Promise<unknown>,
+    { endpointMiddlewares = true }: { endpointMiddlewares?: boolean } = {},
+  ): () => Promise<unknown> {
+    const middlewares = [
+      ...this.#middleware.values(),
+      ...(endpointMiddlewares ? (this.endpointInfo.signalOption.middlewares ?? []) : []),
+    ];
+    if (middlewares.length === 0) return coreExec;
+    let next = coreExec;
+    for (let i = middlewares.length - 1; i >= 0; i--) {
+      const MiddlewareCls = middlewares[i];
+      if (!MiddlewareCls) continue;
+      const middleware = new MiddlewareCls();
+      const currentNext = next;
+      next = async () => await (await middleware.use(this.getEnv()))(this, currentNext);
+    }
+    return next;
   }
   async exec() {
     if (!this.trace) return await this.#exec();
@@ -130,7 +169,6 @@ export class SignalContext<
   }
   async #exec() {
     if (!this.endpointInfo.execFn) throw new Exception.Error("Exec function is not set");
-    const endpointMiddlewares = this.endpointInfo.signalOption.middlewares ?? [];
     const coreExec = async () => {
       if (!this.endpointInfo.execFn) throw new Exception.Error("Exec function is not set");
       if (this.trace) await traceSpan("guards", () => this.#checkGuards());
@@ -151,17 +189,7 @@ export class SignalContext<
         async () => await this.endpointInfo.execFn?.call(this.adaptor, ...this.args, ...this.internalArgs),
       );
     };
-    let next = coreExec;
-    if (this.#middleware.size > 0 || endpointMiddlewares.length > 0) {
-      const middlewares = [...this.#middleware.values(), ...endpointMiddlewares];
-      for (let i = middlewares.length - 1; i >= 0; i--) {
-        const MiddlewareCls = middlewares[i];
-        if (!MiddlewareCls) continue;
-        const middleware = new MiddlewareCls();
-        const currentNext = next;
-        next = async () => await (await middleware.use(this.getEnv()))(this, currentNext);
-      }
-    }
+    const next = this.#withMiddleware(coreExec);
     const result = this.trace ? await traceSpan("execChain", () => next()) : await next();
     if (this.endpointInfo.type === "pubsub") return;
     if (result instanceof Response) return result;
@@ -333,6 +361,10 @@ export class SignalContext<
     if (this.transport !== "websocket") throw new Error("Transport is not websocket");
     return this.ctx as WebSocketExecutionContext<Appended>;
   }
+  get<T = unknown>(key: string): T | null {
+    if (this.transport === "http") return this.getHttpContext<{ [key: string]: T }>().req[key] ?? null;
+    return this.getWebSocketContext<{ [key: string]: T }>().ws.data[key] ?? null;
+  }
   getRoomId(key: string) {
     if (this.transport !== "websocket") throw new Error("Transport is not websocket");
     else if (this.endpointInfo.type !== "pubsub") throw new Error("Endpoint is not pubsub");
@@ -340,6 +372,11 @@ export class SignalContext<
   }
   getEnv() {
     return this.#env;
+  }
+  getArg<T = unknown>(argName: string): T | undefined {
+    const index = this.endpointInfo.args.findIndex((arg) => arg.name === argName);
+    if (index === -1) return undefined;
+    return this.args[index] as T;
   }
 }
 

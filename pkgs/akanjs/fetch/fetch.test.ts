@@ -384,6 +384,26 @@ describe("HttpClient", () => {
     const formData = HttpClient.makeBody([], [arg("upload", "file", { refName: "Upload" })], new Map([["file", blob]]));
     expect(formData).toBeInstanceOf(FormData);
     expect((formData as FormData).get("file")).toBeInstanceOf(Blob);
+
+    // FileList is browser-only — Bun has no global for it, so stand one up to cover the array-like path.
+    const files = [new File(["a"], "a.txt"), new File(["b"], "b.txt")];
+    class FakeFileList {
+      0 = files[0];
+      1 = files[1];
+      length = 2;
+    }
+    const globalWithFileList = globalThis as { FileList?: unknown };
+    globalWithFileList.FileList = FakeFileList;
+    const uploadArg = [arg("upload", "files", { refName: "Upload", arrDepth: 1 })];
+    try {
+      for (const value of [files, new FakeFileList()]) {
+        const uploaded = HttpClient.makeBody([], uploadArg, new Map([["files", value]])) as FormData;
+        expect(uploaded.getAll("files")).toHaveLength(2);
+        expect(uploaded.getAll("files").every((file) => file instanceof File)).toBe(true);
+      }
+    } finally {
+      delete globalWithFileList.FileList;
+    }
   });
 
   test("calls fetch with expected methods, headers, and bodies", async () => {
@@ -743,14 +763,14 @@ describe("FetchClient HTTP generation", () => {
 
     // trailing slash on the override host must be normalized away
     const queried = await client.handler.getThing("1234567890abcdef12345678", [], null, {
-      origin: "https://akasys-debug.akamir.com/",
+      origin: "https://akan-debug.akanjs.com/",
     });
-    const created = await client.handler.createThing("Created", 2, { origin: "https://akasys-debug.akamir.com" });
+    const created = await client.handler.createThing("Created", 2, { origin: "https://akan-debug.akanjs.com" });
 
     expect(queried).toBe("pong");
     expect(created).toBeInstanceOf(FetchTestFull);
-    expect(fetchCalls[0]?.url).toBe("https://akasys-debug.akamir.com/custom/1234567890abcdef12345678");
-    expect(fetchCalls[1]?.url).toBe("https://akasys-debug.akamir.com/createThing");
+    expect(fetchCalls[0]?.url).toBe("https://akan-debug.akanjs.com/custom/1234567890abcdef12345678");
+    expect(fetchCalls[1]?.url).toBe("https://akan-debug.akanjs.com/createThing");
   });
 
   test("uses FetchPolicy.origin verbatim, including the global api prefix supplied by the caller", async () => {
@@ -780,10 +800,10 @@ describe("FetchClient HTTP generation", () => {
       const cachedA = await client.handler.getThing("1234567890abcdef12345678", [], null);
       const cachedB = await client.handler.getThing("1234567890abcdef12345678", [], null);
       const overrideA = await client.handler.getThing("1234567890abcdef12345678", [], null, {
-        origin: "https://akasys-debug.akamir.com",
+        origin: "https://akan-debug.akanjs.com",
       });
       const overrideB = await client.handler.getThing("1234567890abcdef12345678", [], null, {
-        origin: "https://akasys-debug.akamir.com",
+        origin: "https://akan-debug.akanjs.com",
       });
       return { cachedA, cachedB, overrideA, overrideB };
     });
@@ -796,8 +816,8 @@ describe("FetchClient HTTP generation", () => {
     expect(result.overrideB).toBe("override-2");
     expect(fetchCalls.map((call) => call.url)).toEqual([
       "https://api.example/custom/1234567890abcdef12345678",
-      "https://akasys-debug.akamir.com/custom/1234567890abcdef12345678",
-      "https://akasys-debug.akamir.com/custom/1234567890abcdef12345678",
+      "https://akan-debug.akanjs.com/custom/1234567890abcdef12345678",
+      "https://akan-debug.akanjs.com/custom/1234567890abcdef12345678",
     ]);
   });
 

@@ -93,7 +93,7 @@
           "fix": "safe",
           "options": {
             "attributes": ["classList"],
-            "functions": ["clsx", "cva"]
+            "functions": ["clsx", "cn"]
           }
         }
       },
@@ -132,6 +132,21 @@
     }
   },
   "overrides": [
+    {
+      "includes": [
+        "apps/**/*.ts",
+        "apps/**/*.tsx",
+        "libs/**/*.ts",
+        "libs/**/*.tsx",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.spec.ts",
+        "!**/*.spec.tsx",
+        "!**/*.constant.ts",
+        "!**/common/**"
+      ],
+      "plugins": ["./node_modules/@akanjs/devkit/lint/no-throw-raw-error.grit"]
+    },
     {
       "includes": ["**/page/**/*.ts", "**/page/**/*.tsx", "**/*.Unit.tsx", "**/*.View.tsx"],
       "plugins": [

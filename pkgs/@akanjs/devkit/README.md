@@ -45,6 +45,12 @@ await runner.build();
 - AI prompt, guideline, and code-generation support utilities.
 - Capacitor and mobile release helpers.
 
+## Dev Server Sizing
+
+The dev server bounds its own memory by recycling the processes that grow, and every threshold it uses
+can be set from the environment. [`DEV_RUNTIME_KNOBS.md`](./DEV_RUNTIME_KNOBS.md) lists them with their
+defaults, the shares they derive from `AKAN_MEMORY_LIMIT`, and what a small container should expect.
+
 ## Package Boundary
 
 - Runtime code should import from `akanjs`, including shared config types such as `AppConfig`, `LibConfig`,

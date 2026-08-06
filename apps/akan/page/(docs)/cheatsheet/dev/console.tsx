@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "Akan server console은 초기화된 app runtime을 대상으로 interactive 점검과 작은 운영 명령을 실행할 때 사용합니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "`akan console` is the local development entry.",
@@ -35,10 +35,10 @@ export default function Page() {
                 ko: "실행 중인 container나 pod 안에서 console 파일을 직접 만들지 마세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="local" title={l.trans({ en: "Local Console", ko: "Local console" })}>
         <Docs.Title>{l.trans({ en: "Local Console", ko: "Local console" })}</Docs.Title>
@@ -51,12 +51,13 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Run locally", ko: "Local 실행" })}
           language="bash"
           code="akan console myapp"
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="container" title={l.trans({ en: "Container Console", ko: "Container console" })}>
         <Docs.Title>{l.trans({ en: "Container Console", ko: "Container console" })}</Docs.Title>
@@ -75,22 +76,24 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Docker", ko: "Docker" })}
           language="bash"
           code="docker exec -it myapp sh -lc 'AKAN_CONSOLE=1 bun console.js'"
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Kubernetes", ko: "Kubernetes" })}
           language="bash"
           code="kubectl exec -it -n prod pod/myapp-xxxxx -c myapp -- sh -lc 'AKAN_CONSOLE=1 bun console.js'"
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="lifecycle" title={l.trans({ en: "Lifecycle", ko: "Lifecycle" })}>
         <Docs.Title>{l.trans({ en: "Lifecycle", ko: "Lifecycle" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Container console mode starts a separate no-listen server process inside the same container or pod.",
@@ -115,10 +118,10 @@ export default function Page() {
                 ko: "Console mode는 두 번째 process이므로 scheduler와 cron 작업이 실행되지 않게 유지해야 합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="globals" title={l.trans({ en: "Globals", ko: "Globals" })}>
         <Docs.Title>{l.trans({ en: "Globals", ko: "Globals" })}</Docs.Title>
@@ -129,7 +132,7 @@ export default function Page() {
               ko: "Console은 작은 명령을 짧게 유지할 수 있도록 runtime helper와 generated app export를 제공합니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "`server`, `env`: current server instance and environment.",
@@ -154,9 +157,10 @@ export default function Page() {
                 ko: "`srv`, `sig`, `db`, `cnst`: generated app export입니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Examples", ko: "예시" })}
           code={`process.env.AKAN_PUBLIC_ENV
 env
@@ -166,12 +170,12 @@ await service("user").__count()
 await get(srv.UserService).__count()`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="safety" title={l.trans({ en: "Safety", ko: "Safety" })}>
         <Docs.Title>{l.trans({ en: "Safety", ko: "Safety" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Print and check the target environment before changing data.",
@@ -196,10 +200,10 @@ await get(srv.UserService).__count()`}
                 ko: "`AKAN_CONSOLE=1`은 영구 deployment configuration에 넣지 마세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

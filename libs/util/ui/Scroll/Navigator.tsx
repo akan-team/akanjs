@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { Link } from "akanjs/ui";
 import { useContext } from "react";
 
@@ -12,7 +12,7 @@ export const Navigator = ({ className }: NavigatorProps) => {
   const { slide, slideIds } = useContext(ScrollContext);
   return (
     <div
-      className={clsx(
+      className={cn(
         "fixed inset-x-0 bottom-3 z-20 m-auto flex size-fit flex-row gap-2 md:inset-y-0 md:right-auto md:left-4 md:flex-col",
         className,
       )}
@@ -21,10 +21,11 @@ export const Navigator = ({ className }: NavigatorProps) => {
         <Link
           key={slideId}
           href={`#${slideId}`}
-          className={clsx("mb-2 size-3 cursor-pointer rounded-full hover:text-primary", {
-            "bg-primary": slide === slideId,
-            "bg-slate-400": slide !== slideId,
-          })}
+          className={cn(
+            "mb-2 size-3 cursor-pointer rounded-full hover:text-primary",
+            slide === slideId && "bg-primary",
+            slide !== slideId && "bg-muted-foreground",
+          )}
         />
       ))}
     </div>

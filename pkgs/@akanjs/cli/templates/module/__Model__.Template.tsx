@@ -4,6 +4,7 @@ interface Dict {
   Model: string;
   model: string;
   sysName: string;
+  sysType: string;
 }
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict) {
   return {
@@ -11,7 +12,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dic
     content: `
 "use client";
 import { Field, Layout } from "akanjs/ui";
-import { st, usePage } from "@${scanInfo?.type ?? "apps"}/${dict.sysName}/client";
+import { st, usePage } from "@${dict.sysType}s/${dict.sysName}/client";
 
 interface GeneralProps {
   className?: string;

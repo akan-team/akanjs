@@ -9,6 +9,6 @@ alwaysApply: false
 - Use `"use client";` at the top of client component files.
 - Be careful when importing client-only code from page or layout modules.
 - Keep page props serializable unless the existing route pattern clearly allows otherwise.
-- In domain UI, `Template`, `Zone`, and `Util` components are usually client components; `Unit` and `View` components are usually server components.
+- In domain UI the boundary is mechanical, not a judgment call: `Template`, `Zone`, and `Util` are always client components with `"use client"` on line 1; `Unit` and `View` are always server components and never carry the directive. `usePage()` is still legal in server files.
 - Preserve established domain file roles such as `.document.ts`, `.service.ts`, `.store.ts`, `.constant.ts`, and `.client.ts`.
 - When unsure, inspect nearby files in the same app or package before introducing a new boundary pattern.

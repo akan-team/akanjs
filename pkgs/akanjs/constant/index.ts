@@ -1,3 +1,4 @@
+export * from "./cascadePaths";
 export * from "./constantRegistry";
 export * from "./crystalize";
 export * from "./deserialize";
@@ -6,5 +7,7 @@ export * from "./getDefault";
 export * from "./immerify";
 export * from "./purify";
 export * from "./serialize";
+export * from "./textFieldPathSet";
+export * from "./textFieldPaths";
 export * from "./types";
 export * from "./via";

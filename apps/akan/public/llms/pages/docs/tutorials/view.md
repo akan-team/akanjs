@@ -11,7 +11,6 @@
 - Show Details (#show-details)
 - Add View/Edit Modal (#view-wrapper)
 - Add View Button to Cards (#button-on-unit)
-- Design Detail View (#design-detail-view)
 - Test Your Implementation (#test-implementation)
 - Best Practices for Detail Views (#best-practices)
 - What's Next? (#next-steps)
@@ -22,7 +21,7 @@ Show Details
 
 Imagine walking into an ice cream shop and placing an order. You'd want to see exactly what you ordered, right? Maybe check if you remembered to add those strawberries, or confirm the size you picked. That's exactly what detailed views do in our application - they give customers a complete, beautiful summary of their order that they can access anytime with just a click.
 
-Think of it like the difference between an order ticket and a detailed receipt. The summary card is like a stub - it shows the basics so you can identify the order. But the detailed view is like the full receipt that shows everything: every topping you chose, when you placed the order, and whether it's ready to pick up. It's the complete story of your ice cream order!
+Here's a simpler way to think about it. The summary card is like seeing "Vanilla Cone" in your order list — just enough to know which order is yours. The detailed view is what you see when you tap on it: the exact size you picked, every topping you added, when you placed the order, and whether it's ready. It's the difference between a one-line note and the full story of your ice cream order!
 
 In Akan.js, showing detailed views follows a clean architecture pattern. We use three main components that work together:
 
@@ -54,17 +53,7 @@ Add View Button to Cards
 
 Now let's add a "View" button to each order card. This button provides a clear interface element that customers can click to access detailed order information. The button will be positioned and styled to integrate with the existing card design.
 
-The key addition here is the ViewWrapper around the button:
-
-This wraps our button and handles the click functionality to show the detailed view
-
-We pass the slice and modelId so the modal knows which order to display details for
-
-The button uses btn-primary and btn-xl classes for consistent styling across the app
-
-Design Detail View
-
-Now let's create the detailed view component in View.tsx that displays all the ice cream order information in a structured layout. This component will organize and present the order data in a readable format when the modal opens.
+View
 
 This detailed view component creates a comprehensive display of the ice cream order:
 
@@ -145,7 +134,7 @@ In the next tutorial, we'll add status management functionality that allows shop
 import type { ClientInit, ClientView, SliceMeta } from "akanjs/fetch";
 import { cnst, fetch, IcecreamOrder } from "@apps/koyo/client";
 import { DefaultOf } from "akanjs/constant";
-import { Load, Model } from "akanjs/ui";
+import { Load, Model, buttonRecipe } from "akanjs/ui";
 
 interface CardProps {
   className?: string;
@@ -193,54 +182,35 @@ export const View = ({ view }: ViewProps) => {
 ### apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx
 
 ```ts
-import { clsx, type ModelProps } from "akanjs/client"; // [!code collapse:2]
+import { cn, type ModelProps } from "akanjs/client"; // [!code collapse:2]
 import { cnst, fetch, usePage } from "@apps/koyo/client";
 import { Model } from "akanjs/ui"; // [!code ++]
 
 export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIcecreamOrder>) => {
   const { l } = usePage();
   return (
-    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-base-100 via-base-200 to-base-300 px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
+    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-muted to-border px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
       <div className="flex flex-col justify-center">
         <div className="flex items-center gap-2 text-lg font-semibold text-primary">
-          <span className="inline-block rounded bg-base-200 px-2 py-1 text-xs font-bold tracking-wider uppercase">
+          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider uppercase">
             {l("icecreamOrder.id")}
           </span>
           <span className="ml-2 font-mono text-primary">#{icecreamOrder.id.slice(-4)}</span> // [!code ++]
         </div>
         <div className="mt-4 flex items-center gap-2"> // [!code collapse:16]
-          <span className="inline-block rounded border border-base-300 bg-base-100 px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded border border-border bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
             {l("icecreamOrder.status")}
           </span>
           <span
-            className={clsx("ml-2 rounded-full px-3 py-1 text-sm font-semibold", {
-              "border border-base-300 bg-primary text-primary-content": icecreamOrder.status === "active",
-              "border border-base-300 bg-warning text-warning-content": icecreamOrder.status === "processing",
-              "border border-base-300 bg-secondary text-secondary-content": icecreamOrder.status === "served",
-              "border border-base-300 bg-accent text-accent-content": icecreamOrder.status === "finished",
-              "border border-base-300 bg-neutral text-neutral-content": icecreamOrder.status === "canceled",
-            })}
+            className={cn("ml-2 rounded-full px-3 py-1 text-sm font-semibold", icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary", icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning", icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground", icecreamOrder.status === "finished" && "border border-accent/40 bg-background text-accent", icecreamOrder.status === "canceled" && "border border-border bg-background text-foreground/70")}
           >
-            {l(`icecreamOrderStatus.${icecreamOrder.status}`)}
-          </span>
-        </div>
-      </div>
-      <div className="bg-base-100 flex items-center justify-center gap-2 rounded-xl p-4"> // [!code ++:7]
-        <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
-          <button className="btn btn-primary">
-            <span>{l.trans({ en: "View", ko: "보기" })}</span>
-          </button>
-        </Model.ViewWrapper>
-      </div>
-    </div>
-  );
-};
+            {l(
 ```
 
 ### apps/koyo/lib/icecreamOrder/IcecreamOrder.View.tsx
 
 ```ts
-import { clsx } from "akanjs/client"; // [!code collapse:8]
+import { cn } from "akanjs/client"; // [!code collapse:8]
 import { cnst, usePage } from "@apps/koyo/client";
 
 interface GeneralProps {
@@ -251,54 +221,28 @@ interface GeneralProps {
 export const General = ({ className, icecreamOrder }: GeneralProps) => {
   const { l } = usePage();
   return (
-    <div className={clsx(className, "mx-auto w-full space-y-6 rounded-xl p-8 shadow-lg")}>
+    <div className={cn(className, "mx-auto w-full space-y-6 rounded-xl p-8 shadow-lg")}>
       <div className="flex items-center gap-3 border-b pb-4">
         <span className="text-3xl font-extrabold text-primary">🍦</span>
         <span className="text-2xl font-bold">{l("icecreamOrder.modelName")}</span>
-        <span className="ml-auto text-xs text-base-content/50">#{icecreamOrder.id}</span>
+        <span className="ml-auto text-xs text-foreground/50">#{icecreamOrder.id}</span>
       </div>
       <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-        <div className="font-semibold text-base-content/50">{l("icecreamOrder.size")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.size")}</div>
         <div>{icecreamOrder.size} cc</div>
-        <div className="font-semibold text-base-content/50">{l("icecreamOrder.toppings")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.toppings")}</div>
         <div className="flex flex-wrap gap-2">
           {icecreamOrder.toppings.length === 0 ? (
-            <span className="italic text-base-content/70">
+            <span className="italic text-foreground/70">
               {l.trans({ en: "No toppings", ko: "토핑 없음" })}
             </span>
           ) : (
             icecreamOrder.toppings.map((topping) => (
               <span
                 key={topping}
-                className="inline-block rounded-full bg-base-100 px-2 py-1 text-xs font-medium text-primary"
+                className="inline-block rounded-full bg-background px-2 py-1 text-xs font-medium text-primary"
               >
-                {l(`topping.${topping}`)}
-              </span>
-            ))
-          )}
-        </div>
-        <div className="font-semibold text-base-content/50">{l("icecreamOrder.status")}</div>
-        <div>
-          <span
-            className={clsx("inline-block rounded-full px-2 py-1 text-xs font-semibold", {
-              "border border-base-300 bg-primary text-primary-content": icecreamOrder.status === "active",
-              "border border-base-300 bg-warning text-warning-content": icecreamOrder.status === "processing",
-              "border border-base-300 bg-secondary text-secondary-content": icecreamOrder.status === "served",
-              "border border-base-300 bg-accent text-accent-content": icecreamOrder.status === "finished",
-              "border border-base-300 bg-neutral text-neutral-content": icecreamOrder.status === "canceled",
-            })}
-          >
-            {l(`icecreamOrderStatus.${icecreamOrder.status}`)}
-          </span>
-        </div>
-        <div className="font-semibold text-base-content/50">{l("icecreamOrder.createdAt")}</div>
-        <div className="text-base-content/70">{icecreamOrder.createdAt.format("YYYY-MM-DD HH:mm:ss")}</div>
-        <div className="font-semibold text-base-content/50">{l("icecreamOrder.updatedAt")}</div>
-        <div className="text-base-content/70">{icecreamOrder.updatedAt.format("YYYY-MM-DD HH:mm:ss")}</div>
-      </div>
-    </div>
-  );
-};
+                {l(
 ```
 
 ## Agent Notes

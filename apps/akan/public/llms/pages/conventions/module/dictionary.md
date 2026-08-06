@@ -32,7 +32,7 @@ Labels fields from the constant model. Base fields such as id, createdAt, update
 
 Labels reporting fields. The base count insight is added automatically.
 
-Labels document filter options. Base query and sort labels such as any, latest, and oldest are included.
+Labels document filter options. Base query and sort labels such as any, latest, oldest, and relevance are included.
 
 Using Dictionaries
 

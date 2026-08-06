@@ -58,6 +58,7 @@ export default function Layout({ children }: LayoutProps) {
         { name: l.trans({ en: "Business Service", ko: "비즈니스 서비스" }), href: "/docs/arch/backend" },
         { name: l.trans({ en: "Mobile App Architecture", ko: "모바일 앱 아키텍처" }), href: "/docs/arch/mobile" },
         { name: l.trans({ en: "CSS And Styling", ko: "CSS와 스타일링" }), href: "/docs/arch/css" },
+        { name: l.trans({ en: "UI Recipe Layer", ko: "UI 레시피 레이어" }), href: "/docs/arch/ui-recipe" },
       ],
     },
   ];

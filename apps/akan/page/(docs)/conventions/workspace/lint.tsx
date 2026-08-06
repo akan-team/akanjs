@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -46,15 +46,15 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
-                <div className="font-bold text-base-content">{title}</div>
-                <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+              <div key={title} className={panelRecipe()}>
+                <div className="font-bold text-foreground">{title}</div>
+                <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="fix-errors"
@@ -287,15 +287,15 @@ export class OrderService extends serve(db.order, () => ({
               ],
             },
           ].map(({ id, title, desc, before, after }) => (
-            <div key={id} className="rounded-2xl border border-base-300 bg-base-100 p-4">
-              <div className="font-bold text-base-content">{title}</div>
-              <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+            <div key={id} className={panelRecipe({ radius: "2xl" })}>
+              <div className="font-bold text-foreground">{title}</div>
+              <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               <div className="mt-4 grid gap-3 xl:grid-cols-2">
-                <div className="rounded-xl border border-error/30 bg-error/5 p-3">
-                  <div className="mb-3 font-bold text-error">❌ Before</div>
+                <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+                  <div className="mb-3 font-bold text-destructive">❌ Before</div>
                   <div className="space-y-3">
                     {before.map(({ title: snippetTitle, code }) => (
-                      <Code.Snippet key={snippetTitle} title={snippetTitle} code={code} />
+                      <Code.Snippet className="w-full" key={snippetTitle} title={snippetTitle} code={code} />
                     ))}
                   </div>
                 </div>
@@ -303,7 +303,7 @@ export class OrderService extends serve(db.order, () => ({
                   <div className="mb-3 font-bold text-success">✅ After</div>
                   <div className="space-y-3">
                     {after.map(({ title: snippetTitle, code }) => (
-                      <Code.Snippet key={snippetTitle} title={snippetTitle} code={code} />
+                      <Code.Snippet className="w-full" key={snippetTitle} title={snippetTitle} code={code} />
                     ))}
                   </div>
                 </div>
@@ -324,7 +324,7 @@ export class OrderService extends serve(db.order, () => ({
           </Docs.Alert>
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="commands" title={l.trans({ en: "Commands", ko: "명령어" })}>
         <Docs.Title>{l.trans({ en: "Commands", ko: "명령어" })}</Docs.Title>
@@ -337,6 +337,7 @@ export class OrderService extends serve(db.order, () => ({
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Lint commands"
           language="bash"
           code={`akan lint apps/myapp
@@ -344,9 +345,9 @@ akan lintAll
 bunx biome check "apps/myapp/page/akanjs/(docs)/conventions/workspace/lint.tsx"`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

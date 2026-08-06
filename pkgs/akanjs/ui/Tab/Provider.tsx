@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { type ReactNode, useRef, useState } from "react";
 
 import { TabContext } from "./context";
@@ -17,7 +17,7 @@ export const Provider = ({ className, defaultMenu = null, children }: ProviderPr
   const [menu, setMenu] = useState<string | null>(defaultMenu);
   return (
     <TabContext.Provider value={{ defaultMenu, menu, setMenu, menuSet }}>
-      <div data-menu={menu} className={clsx(className, "group/tab")}>
+      <div data-menu={menu} className={cn(className, "group/tab")}>
         {children}
       </div>
     </TabContext.Provider>

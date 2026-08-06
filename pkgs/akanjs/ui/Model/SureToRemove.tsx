@@ -1,11 +1,12 @@
 "use client";
-import { clsx, msg, router, usePage } from "akanjs/client";
+import { cn, msg, router, usePage } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import { useMemo, useState } from "react";
 import { AiOutlineDelete } from "react-icons/ai";
 
+import { buttonRecipe } from "../Button";
 import { Modal } from "../Modal";
 
 interface SureToRemoveProps {
@@ -46,8 +47,8 @@ export default function SureToRemove({
       }}
     >
       <div
-        className={clsx(
-          "flex size-full cursor-pointer flex-nowrap items-center justify-center gap-2 whitespace-nowrap text-error",
+        className={cn(
+          "flex size-full cursor-pointer flex-nowrap items-center justify-center gap-2 whitespace-nowrap text-destructive",
           className,
         )}
       >
@@ -59,14 +60,14 @@ export default function SureToRemove({
           setModalOpen(false);
         }}
         title={
-          <div className="font-bold text-error text-lg">
+          <div className="font-bold text-destructive text-lg">
             {l("base.removeModel", { model: l(`${modelName}.modelName` as "base.new") })}
           </div>
         }
-        bodyClassName="border-error"
+        bodyClassName="border-destructive"
         action={
           <button
-            className="btn btn-error w-full"
+            className={buttonRecipe({ variant: "destructive" }, "w-full")}
             disabled={typeNameToRemove && repeatName !== name}
             onClick={async () => {
               await storeDo[names.removeModel](modelId);

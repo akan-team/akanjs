@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "작은 edge server에서는 Akan app 컨테이너 하나로 시작하세요.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Expose the app on port 8282. Route to service port 80.",
@@ -35,10 +35,10 @@ export default function Page() {
                 ko: "컨테이너 수명과 상관없이 문제를 볼 수 있도록 log를 mount합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="compose" title={l.trans({ en: "Minimal Compose", ko: "최소 compose" })}>
         <Docs.Title>{l.trans({ en: "Minimal Compose", ko: "최소 compose" })}</Docs.Title>
@@ -51,6 +51,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="docker-compose.yaml"
           code={`version: "3.8"
 
@@ -74,7 +75,7 @@ services:
       - ./logs:/workspace/logs`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="console" title={l.trans({ en: "Open Console", ko: "Console 열기" })}>
         <Docs.Title>{l.trans({ en: "Open Console", ko: "Console 열기" })}</Docs.Title>
@@ -93,17 +94,18 @@ services:
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Docker exec", ko: "Docker exec" })}
           language="bash"
           code="docker exec -it myapp sh -lc 'AKAN_CONSOLE=1 bun console.js'"
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="env" title={l.trans({ en: "Important Env", ko: "중요 env" })}>
         <Docs.Title>{l.trans({ en: "Important Env", ko: "중요 env" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "`AKAN_PUBLIC_OPERATION_MODE=edge`: tells the app it is running as an edge deployment.",
@@ -128,10 +130,10 @@ services:
                 ko: "`AKAN_REPLICA`: 확장을 위한 child process 역할을 조절합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="replica" title={l.trans({ en: "Scale With AKAN_REPLICA", ko: "AKAN_REPLICA로 확장" })}>
         <Docs.Title>{l.trans({ en: "Scale With AKAN_REPLICA", ko: "AKAN_REPLICA로 확장" })}</Docs.Title>
@@ -144,18 +146,19 @@ services:
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Replica examples", ko: "Replica 예시" })}
           code={`AKAN_REPLICA="1,0,0"  # one request-serving child
 AKAN_REPLICA="2,1,0"  # two request children and one batch child
 AKAN_REPLICA="0,0,1"  # one all-purpose child`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Keep the first compose file boring. Add extra services only when the app really needs them.",
@@ -174,10 +177,10 @@ AKAN_REPLICA="0,0,1"  # one all-purpose child`}
                 ko: "컨테이너가 반복 재시작되면 mount된 log 폴더를 확인하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

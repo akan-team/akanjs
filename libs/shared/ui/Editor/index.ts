@@ -1,8 +1,8 @@
-import { Slate, SlateContent, Yoopta, YooptaContent } from "./index_";
+import { Rich, RichContent } from "./index_";
 
 export const Editor = {
-  Slate,
-  SlateContent,
-  Yoopta,
-  YooptaContent,
+  Rich,
+  RichContent,
 };
+
+export type { EditorPlugin, EditorSlashGroup, EditorSlashOption } from "./Lexical/plugin";

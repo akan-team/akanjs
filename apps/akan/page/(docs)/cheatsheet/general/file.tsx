@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "최소 파일 기능의 핵심은 단순합니다. 실제 파일은 저장소에 두고, DB에는 파일을 찾기 위한 기록만 저장합니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "A File model saves filename, url, size, status, and progress.",
@@ -41,10 +41,10 @@ export default function Page() {
                 ko: "로컬 개발에서는 작은 endpoint가 파일을 stream으로 다시 제공할 수 있습니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="minimal-model" title={l.trans({ en: "Minimal File Model", ko: "최소 File 모델" })}>
         <Docs.Title>{l.trans({ en: "Minimal File Model", ko: "최소 File 모델" })}</Docs.Title>
@@ -57,6 +57,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="file.constant.ts"
           code={`import { enumOf, Int } from "akanjs/base";
 import { via } from "akanjs/constant";
@@ -79,7 +80,7 @@ export class LightFile extends via(FileObject, ["filename", "url", "size", "stat
 export class File extends via(FileObject, LightFile, (resolve) => ({})) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="upload-endpoint" title={l.trans({ en: "Upload Endpoint", ko: "Upload Endpoint" })}>
         <Docs.Title>{l.trans({ en: "Upload Endpoint", ko: "Upload Endpoint" })}</Docs.Title>
@@ -92,6 +93,7 @@ export class File extends via(FileObject, LightFile, (resolve) => ({})) {}`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="file.signal.ts"
           code={`import { Upload } from "akanjs/base";
 import { endpoint } from "akanjs/signal";
@@ -106,7 +108,7 @@ export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="file-service" title={l.trans({ en: "File Service", ko: "File Service" })}>
         <Docs.Title>{l.trans({ en: "File Service", ko: "File Service" })}</Docs.Title>
@@ -136,6 +138,7 @@ export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
           </ol>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="file.service.ts"
           code={`export class FileService extends serve(db.file, ({ use }) => ({
   storageApi: use<StorageApi>(),
@@ -173,7 +176,7 @@ export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="use-in-ui" title={l.trans({ en: "Use In UI", ko: "UI에서 사용하기" })}>
         <Docs.Title>{l.trans({ en: "Use In UI", ko: "UI에서 사용하기" })}</Docs.Title>
@@ -186,6 +189,7 @@ export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Call fetch.uploadFiles"
           code={`const onChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
   const files = [...(event.target.files ?? [])];
@@ -195,6 +199,7 @@ export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
 };`}
         />
         <Code.Snippet
+          className="w-full"
           title="Preview or download"
           code={`const [file] = await fetch.uploadFiles([selectedFile], "profile");
 
@@ -208,7 +213,7 @@ return (
 );`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="auto-field" title={l.trans({ en: "Auto-attach To A Model Field", ko: "모델 필드 자동 연결" })}>
         <Docs.Title>{l.trans({ en: "Auto-attach To A Model Field", ko: "모델 필드 자동 연결" })}</Docs.Title>
@@ -219,7 +224,7 @@ return (
               ko: "업로드 mutation 하나에 `{ fileUpload: true }`를 달면, 프레임워크가 `add{Model}Files` fetch 헬퍼와 폼 필드 업로드 액션(`add{Field}FilesOn{Model}`)을 자동 생성합니다. `Field`/`Upload` 컴포넌트가 이를 사용해 모델의 파일 field가 자동으로 업로드·연결됩니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Mark exactly one REST upload mutation; the marker rides the serialized signal to the client.",
@@ -232,9 +237,10 @@ return (
                 ko: "멀티파트 폼은 고정 필드 `files`, `metas`, `type`, `parentId`를 사용합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="file.signal.ts"
           code={`export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
   addFiles: mutation([cnst.File], { fileUpload: true })
@@ -249,6 +255,62 @@ return (
 })) {}`}
         />
       </Scroll.Slide>
+      <Divider />
+
+      <Scroll.Slide id="cascade" title={l.trans({ en: "Remove The File With Its Owner", ko: "소유 모델과 함께 삭제" })}>
+        <Docs.Title>{l.trans({ en: "Remove The File With Its Owner", ko: "소유 모델과 함께 삭제" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: 'Add `cascade: "remove"` to a File relation and removing the owner removes the file too. The cascade calls the File service, not the File model, so `FileService._postRemove` runs and the stored object is deleted from blob or object storage. Nothing else is needed — the storage call already lives in that hook.',
+              ko: 'File 관계 필드에 `cascade: "remove"`를 달면 소유 모델을 지울 때 파일도 함께 지워집니다. 캐스케이드는 File 모델이 아니라 File 서비스를 호출하므로 `FileService._postRemove`가 실행되고, blob/object storage의 객체까지 삭제됩니다. 그 훅에 이미 스토리지 호출이 들어 있어서 따로 배선할 것이 없습니다.',
+            })}
+          </div>
+          <ul className="list-disc space-y-2 pl-5">
+            <li>
+              {l.trans({
+                en: "Works on an array field too, and only on a relation. A String, an ID, or a scalar fails the class build: none of them names a document to remove.",
+                ko: "배열 필드에도 동작하며, 관계 필드에만 붙일 수 있습니다. String·ID·scalar는 클래스 빌드에서 실패합니다. 셋 다 삭제할 문서를 가리키지 않기 때문입니다.",
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: "Nothing checks whether another document still points at the same file. Files are deduped by origin, so declaring cascade asserts that this field owns its file exclusively.",
+                ko: "다른 문서가 같은 파일을 아직 참조하는지는 검사하지 않습니다. 파일은 origin 기준으로 중복 제거되므로, cascade를 선언한다는 것은 이 필드가 그 파일을 단독으로 소유한다는 선언입니다.",
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: "The document removal is soft, but deleting the stored object is not. A cascade cannot be undone.",
+                ko: "문서 삭제는 soft remove지만 저장된 객체 삭제는 되돌릴 수 없습니다. 캐스케이드는 복구되지 않습니다.",
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: "Query-level removal fires no hooks and therefore no cascade. removeManyByQuery stamps removedAt in one atomic update; remove documents one at a time when they cascade.",
+                ko: "쿼리 단위 삭제는 훅을 태우지 않으므로 캐스케이드도 돌지 않습니다. removeManyByQuery는 removedAt을 원자적 업데이트 한 번으로 찍습니다. 캐스케이드가 걸린 모델은 문서 단위로 지우세요.",
+              })}
+            </li>
+          </ul>
+        </Docs.Description>
+        <Code.Snippet
+          title="user.constant.ts"
+          code={`export class UserInput extends via((field) => ({
+  nickname: field(String, { default: "" }),
+  image: field(File, { cascade: "remove" }).optional(),
+  images: field([File], { cascade: "remove" }),
+})) {}`}
+        />
+        <Code.Snippet
+          title="file.service.ts — where the storage call already lives"
+          code={`export class FileService extends serve(db.file, ({ use }) => ({ storageApi: use<StorageApi>() })) {
+  override async _postRemove(file: db.File) {
+    await this.storageApi.deleteData(file.url);
+    return file;
+  }
+}`}
+        />
+      </Scroll.Slide>
       <div className="divider" />
 
       <Scroll.Slide id="grow-later" title={l.trans({ en: "Grow Later", ko: "나중에 확장하기" })}>
@@ -260,7 +322,7 @@ return (
               ko: "처음에는 local storage로 시작하세요. 기능이 잘 동작하면 모든 업로드 API를 고치지 말고 storage adapter만 바꿔 S3, R2, MinIO 같은 저장소로 옮기면 됩니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Local: easy to debug and good for development.",
@@ -279,15 +341,15 @@ return (
                 ko: "Same service: 업로드 로직은 `storageApi` 뒤에 숨겨둡니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Keep the database record and the real file separate. The DB stores how to find the file.",
@@ -312,10 +374,10 @@ return (
                 ko: "파일을 삭제할 때는 File record와 storage object를 함께 정리하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

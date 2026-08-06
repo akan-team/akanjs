@@ -1,5 +1,7 @@
 import { Logger } from "akanjs/common";
 import type {
+  BuilderCsrReq,
+  BuilderCsrRes,
   BuilderEvent,
   BuilderMessage,
   BuilderReq,
@@ -45,7 +47,7 @@ export class BuilderRpc {
   readonly #pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   readonly #offMessage: () => void;
   readonly #proc = process;
-  readonly #send: (msg: BuilderReq) => void;
+  readonly #send: (msg: BuilderReq | BuilderCsrReq) => void;
   #nextId = 1;
   #disposed = false;
 
@@ -55,13 +57,13 @@ export class BuilderRpc {
     this.#send = this.#proc.send.bind(this.#proc);
     this.#offMessage = this.#listen((msg) => {
       // Responses: look up the pending promise by id and settle.
-      if (msg.type === "build-route-res") {
-        const res = msg as BuilderRes;
+      if (msg.type === "build-route-res" || msg.type === "build-csr-res") {
+        const res = msg as BuilderRes | BuilderCsrRes;
         const waiter = this.#pending.get(res.id);
         if (!waiter) return;
         this.#pending.delete(res.id);
-        if (res.ok) waiter.resolve(res.data);
-        else waiter.reject(new Error(`[builder] ${res.type} failed: ${res.error}`));
+        if (!res.ok) waiter.reject(new Error(`[builder] ${res.type} failed: ${res.error}`));
+        else waiter.resolve(res.type === "build-route-res" ? res.data : undefined);
         return;
       }
       // Broadcast events: dispatch to subscriber hooks.
@@ -94,10 +96,9 @@ export class BuilderRpc {
   ): Promise<BuildRouteClientResult> {
     if (this.#disposed) throw new Error("[builder] rpc is disposed");
     const id = this.#nextId++;
-    const payload = await new Promise<BuildRouteResultPayload>((resolve, reject) => {
-      this.#pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
-      this.#send({ type: "build-route", id, routeId, seeds, knownEntries: [...knownEntries], generation });
-    });
+    const payload = await this.#request<BuildRouteResultPayload>(id, `build-route ${routeId}`, () =>
+      this.#send({ type: "build-route", id, routeId, seeds, knownEntries: [...knownEntries], generation }),
+    );
     return {
       manifestDelta: payload.manifestDelta,
       ssrManifestDelta: { moduleLoading: null, moduleMap: payload.ssrManifestDelta },
@@ -106,6 +107,65 @@ export class BuilderRpc {
       clientDeps: payload.clientDeps,
       clientDepsByEntry: payload.clientDepsByEntry,
     };
+  }
+
+  /**
+   * Ask the builder to build the dev CSR artifact and keep it in sync from now on. The builder skips
+   * CSR by default (a full minified browser-target build of every page, ~350 MB per save), so the
+   * first `/__csr` or `?csr=true` request has nothing to serve until this resolves.
+   */
+  async buildCsr(reason: string): Promise<void> {
+    if (this.#disposed) throw new Error("[builder] rpc is disposed");
+    const id = this.#nextId++;
+    await this.#request<void>(id, `build-csr (${reason})`, () => this.#send({ type: "build-csr", id, reason }));
+  }
+
+  /**
+   * How long to wait for the builder before failing a request. `AKAN_BUILDER_RPC_TIMEOUT_MS` overrides.
+   *
+   * Generous, because a cold CSR build of every page legitimately takes tens of seconds; the point is not
+   * to be tight but to be finite.
+   */
+  static #timeoutMs(): number {
+    const configured = Number(process.env.AKAN_BUILDER_RPC_TIMEOUT_MS);
+    if (Number.isFinite(configured) && configured > 0) return configured;
+    return 120_000;
+  }
+
+  /**
+   * One builder request, which fails rather than waiting forever.
+   *
+   * Nothing answers a request whose builder exits after receiving it: the dev host replies `ok:false` only
+   * when the *send* fails, and it does not track in-flight ids. The builder exits routinely — it is recycled
+   * every few builds once its RSS passes the ceiling — so a page request that happens to be mid route-build
+   * left this promise pending forever, and the browser tab span with no error, no log and nothing to retry.
+   * Observed from the other side as a `fetch` that sat for 225s against a 60s budget.
+   */
+  async #request<T>(id: number, label: string, send: () => void): Promise<T> {
+    const timeoutMs = BuilderRpc.#timeoutMs();
+    return await new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.#pending.delete(id);
+        reject(
+          new Error(
+            `[builder] ${label} got no answer in ${timeoutMs}ms; the builder was likely recycled or restarted mid-request — reload to retry`,
+          ),
+        );
+      }, timeoutMs);
+      // `unref` so a pending request cannot by itself keep the process alive during shutdown.
+      timer.unref?.();
+      this.#pending.set(id, {
+        resolve: (value) => {
+          clearTimeout(timer);
+          resolve(value as T);
+        },
+        reject: (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      });
+      send();
+    });
   }
 
   dispose(): void {

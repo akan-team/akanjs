@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 import { Link } from "akanjs/ui";
 
@@ -12,25 +12,26 @@ export default function Page() {
         <Docs.Description>
           <div>
             {l.trans({
-              en: "Akan uses Tailwind CSS and DaisyUI as the default styling foundation. Tailwind gives screens a fast utility language for layout, spacing, responsive behavior, and one-off composition. DaisyUI adds semantic component names and theme tokens, so app screens can say primary, base, warning, or error instead of hard-coding every color.",
-              ko: "Akan은 Tailwind CSS와 DaisyUI를 기본 스타일링 기반으로 사용합니다. Tailwind는 레이아웃, 간격, 반응형 동작, 일회성 조합을 빠르게 작성할 수 있는 유틸리티 언어를 제공합니다. DaisyUI는 의미 기반 컴포넌트 이름과 테마 토큰을 더해, 앱 화면이 모든 색상을 하드코딩하지 않고 primary, base, warning, error 같은 의도를 표현할 수 있게 합니다.",
+              en: "Akan uses Tailwind CSS with a semantic design-token layer and the akanjs/ui primitives as the default styling foundation. Tailwind gives screens a fast utility language for layout, spacing, responsive behavior, and one-off composition. The token layer + primitives add semantic names, so app screens can say primary, background, warning, or destructive instead of hard-coding every color.",
+              ko: "Akan은 Tailwind CSS와 시맨틱 디자인 토큰 계층, 그리고 akanjs/ui 프리미티브를 기본 스타일링 기반으로 사용합니다. Tailwind는 레이아웃, 간격, 반응형 동작, 일회성 조합을 빠르게 작성할 수 있는 유틸리티 언어를 제공합니다. 토큰 계층 + 프리미티브는 의미 기반 이름을 더해, 앱 화면이 모든 색상을 하드코딩하지 않고 primary, background, warning, destructive 같은 의도를 표현할 수 있게 합니다.",
             })}
           </div>
           <Docs.Alert type="info">
             {l.trans({
-              en: "Use Tailwind for structure and layout. Use DaisyUI for theme-aware component vocabulary and semantic colors.",
-              ko: "구조와 레이아웃에는 Tailwind를 사용하고, 테마를 인식하는 컴포넌트 표현과 의미 기반 색상에는 DaisyUI를 사용하세요.",
+              en: "Use Tailwind for structure and layout. Use akanjs/ui primitives (Button, Badge, Input, Field …) and semantic tokens for theme-aware components and colors.",
+              ko: "구조와 레이아웃에는 Tailwind를 사용하고, 테마를 인식하는 컴포넌트와 색상에는 akanjs/ui 프리미티브(Button, Badge, Input, Field …)와 시맨틱 토큰을 사용하세요.",
             })}{" "}
-            <Link href="https://tailwindcss.com/docs" className="link link-primary" target="_blank" rel="noreferrer">
+            <Link
+              href="https://tailwindcss.com/docs"
+              className="text-primary underline underline-offset-4 hover:no-underline"
+              target="_blank"
+              rel="noreferrer"
+            >
               Tailwind CSS
-            </Link>{" "}
-            /{" "}
-            <Link href="https://daisyui.com/docs/intro/" className="link link-primary" target="_blank" rel="noreferrer">
-              DaisyUI
             </Link>
           </Docs.Alert>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-            <div className="mb-2 font-bold text-base-content">
+          <div className={panelRecipe()}>
+            <div className="mb-2 font-bold text-foreground">
               {l.trans({ en: "How the layers work together", ko: "레이어가 함께 동작하는 방식" })}
             </div>
             <div className="space-y-1">
@@ -38,8 +39,8 @@ export default function Page() {
                 {
                   title: "styles.css",
                   desc: l.trans({
-                    en: "Imports Tailwind, Akan UI styles, DaisyUI, and app theme tokens.",
-                    ko: "Tailwind, Akan UI style, DaisyUI, 앱 테마 토큰을 import합니다.",
+                    en: "Imports Tailwind, Akan UI styles, and the semantic design-token layer.",
+                    ko: "Tailwind, Akan UI style, 시맨틱 디자인 토큰 계층을 import합니다.",
                   }),
                 },
                 {
@@ -52,8 +53,8 @@ export default function Page() {
                 {
                   title: "Components",
                   desc: l.trans({
-                    en: "Use those names through btn, input, card, alert, and Tailwind utility classes.",
-                    ko: "btn, input, card, alert, Tailwind utility class를 통해 그 이름들을 사용합니다.",
+                    en: "Use those names through akanjs/ui primitives (Button, Input, Badge) and Tailwind utility classes.",
+                    ko: "akanjs/ui 프리미티브(Button, Input, Badge)와 Tailwind utility class를 통해 그 이름들을 사용합니다.",
                   }),
                 },
                 {
@@ -64,10 +65,10 @@ export default function Page() {
                   }),
                 },
               ].map(({ title, desc }, idx) => (
-                <div key={idx} className="flex gap-3 rounded-lg bg-base-200 px-4 py-2">
+                <div key={idx} className="flex gap-3 rounded-lg bg-muted px-4 py-2">
                   <div>
                     <span className="font-mono font-semibold text-primary">{title}: </span>
-                    <span className="text-base-content/70 text-sm">{desc}</span>
+                    <span className="text-foreground/70 text-sm">{desc}</span>
                   </div>
                 </div>
               ))}
@@ -75,7 +76,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="design-system-first"
@@ -100,86 +101,85 @@ export default function Page() {
                 ko: "비즈니스 페이지는 색상과 간격을 다시 정의하기보다 디자인 시스템을 조립해야 합니다.",
               }),
               l.trans({
-                en: "Imported modules feel consistent when they use the same Tailwind and DaisyUI tokens.",
-                ko: "가져온 모듈도 같은 Tailwind와 DaisyUI 토큰을 사용하면 일관되게 보입니다.",
+                en: "Imported modules feel consistent when they use the same Tailwind and semantic design tokens.",
+                ko: "가져온 모듈도 같은 Tailwind와 시맨틱 디자인 토큰을 사용하면 일관되게 보입니다.",
               }),
             ].map((desc) => (
-              <div
-                key={desc}
-                className="rounded-xl border border-base-300 bg-base-100 px-4 py-2 text-base-content/70 text-sm"
-              >
+              <div key={desc} className={panelRecipe({ padding: "none" }, "px-4 py-2 text-foreground/70 text-sm")}>
                 {desc}
               </div>
             ))}
           </div>
           <Code.Snippet
+            className="w-full"
             language="typescript"
-            code={`<div className="space-y-3 rounded-xl bg-base-100 p-4 text-base-content">
-  <button className="btn btn-primary">Save</button>
-  <input className="input input-bordered w-full" placeholder="Product name" />
-  <div className="card border border-base-300 bg-base-100 p-4">
+            code={`<div className="space-y-3 rounded-xl bg-background p-4 text-foreground">
+  <button className={buttonRecipe({ variant: "primary" })}>Save</button>
+  <input className="h-10 w-full rounded-field border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none" placeholder="Product name" />
+  <div className="rounded-box border border-border bg-card p-4">
     Product summary
   </div>
-  <div className="alert alert-info">Stock updated successfully.</div>
+  <div className="flex items-center gap-2 rounded-box border border-info/30 bg-info/10 p-4">Stock updated successfully.</div>
 </div>`}
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="theme-system" title={l.trans({ en: "Theme System Declaration", ko: "테마 시스템 선언 방식" })}>
         <Docs.Title>{l.trans({ en: "Theme System Declaration", ko: "테마 시스템 선언 방식" })}</Docs.Title>
         <Docs.Description>
           <div>
             {l.trans({
-              en: "Theme and color are declared from the app style entry. The app imports Tailwind, Akan UI styles, enables DaisyUI, then declares one or more DaisyUI themes. Each theme maps semantic names to real colors.",
-              ko: "테마와 색상은 앱 스타일 진입점에서 선언합니다. 앱은 Tailwind와 Akan UI 스타일을 import하고 DaisyUI를 활성화한 뒤, 하나 이상의 DaisyUI theme을 선언합니다. 각 theme은 의미 기반 이름을 실제 색상에 매핑합니다.",
+              en: "Theme and color are declared from the app style entry. The app imports Tailwind and Akan UI styles, defines raw CSS variables per theme under :root / [data-theme], then maps them to Tailwind color names with @theme inline. Switching themes is just toggling the data-theme attribute.",
+              ko: "테마와 색상은 앱 스타일 진입점에서 선언합니다. Tailwind와 Akan UI 스타일을 import하고, :root / [data-theme] 아래에 테마별 원시 CSS 변수를 정의한 뒤 @theme inline으로 Tailwind 색상 이름에 매핑합니다. 테마 전환은 data-theme 속성만 바꾸면 됩니다.",
             })}
           </div>
           <Code.Snippet
-            title="apps/myapp/page/akanjs/styles.css"
+            className="w-full"
+            title="apps/myapp/page/styles.css"
             code={`@import "tailwindcss";
 @import "akanjs/ui/styles.css";
 
-@plugin "daisyui" {
-  logs: false;
-  exclude: properties;
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root,
+[data-theme="dark"] {
+  --background: #1a1a1a;
+  --foreground: #ffffff;
+  --primary: #ff493b;
+  --primary-foreground: #ffffff;
+  --muted: #2a2a2a;
+  --border: #3a3a3a;
 }
 
-@plugin "daisyui/theme" {
-  name: "light";
-  --color-primary: #c33c32;
-  --color-base-content: #2c3e50;
-  --color-base-100: #fafafa;
-  --color-base-200: #f5f5f5;
+[data-theme="light"] {
+  --background: #fafafa;
+  --foreground: #2c3e50;
+  --primary: #c33c32;
+  --primary-foreground: #ffffff;
+  --muted: #f5f5f5;
+  --border: #e5e5e5;
 }
 
-@plugin "daisyui/theme" {
-  name: "dark";
-  default: true;
-  --color-primary: #ff493b;
-  --color-base-content: #ffffff;
-  --color-base-100: #1a1a1a;
-  --color-base-200: #2a2a2a;
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
 }`}
           />
           <Docs.Alert type="info">
             {l.trans({
-              en: "DaisyUI supports multiple theme blocks, so one app can define light, dark, brand, admin, or demo themes with the same component classes.",
-              ko: "DaisyUI는 여러 theme block을 지원하므로, 하나의 앱에서도 같은 컴포넌트 클래스를 유지한 채 light, dark, brand, admin, demo 테마를 선언할 수 있습니다.",
-            })}{" "}
-            <Link
-              href="https://daisyui.com/docs/themes/"
-              className="link link-primary"
-              target="_blank"
-              rel="noreferrer"
-            >
-              {l.trans({ en: "DaisyUI Theme Docs", ko: "DaisyUI 테마 문서" })}
-            </Link>
+              en: "Because @theme inline references var(), the same class (bg-primary, text-foreground …) resolves to different colors per data-theme — so one app can define light, dark, brand, or admin themes without changing any component class.",
+              ko: "@theme inline이 var()를 참조하므로, 같은 클래스(bg-primary, text-foreground …)가 data-theme에 따라 다른 색으로 해석됩니다. 컴포넌트 클래스를 바꾸지 않고도 light, dark, brand, admin 테마를 정의할 수 있습니다.",
+            })}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="font-declaration" title={l.trans({ en: "Font Declaration", ko: "폰트 선언 방식" })}>
         <Docs.Title>{l.trans({ en: "Font Declaration", ko: "폰트 선언 방식" })}</Docs.Title>
@@ -191,6 +191,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/myapp/page/akanjs/_layout.tsx"
             language="typescript"
             code={`import type { Font } from "akanjs/client";
@@ -208,9 +209,10 @@ export const fonts: Font[] = [
 ];`}
           />
           <Code.Snippet
+            className="w-full"
             title="Using font classes"
             language="typescript"
-            code={`<span className="font-pretendard text-base-content">
+            code={`<span className="font-pretendard text-foreground">
   Styled with Pretendard
 </span>
 
@@ -220,9 +222,9 @@ export const fonts: Font[] = [
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

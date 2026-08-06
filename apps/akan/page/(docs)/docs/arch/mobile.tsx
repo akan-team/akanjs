@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 import { Link } from "akanjs/ui";
 
@@ -51,15 +51,15 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
-                <span className="font-bold text-base-content">{title}: </span>
-                <span className="text-base-content/70 text-sm">{desc}</span>
+              <div key={title} className={panelRecipe({ padding: "row" })}>
+                <span className="font-bold text-foreground">{title}: </span>
+                <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="mobile-targets" title={l.trans({ en: "Mobile Targets", ko: "모바일 Target" })}>
         <Docs.Title>{l.trans({ en: "Mobile Targets", ko: "모바일 Target" })}</Docs.Title>
@@ -71,6 +71,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/myapp/akan.config.ts"
             code={`import type { AppConfig } from "akanjs";
 
@@ -101,7 +102,7 @@ export default config;`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="csr-runtime" title={l.trans({ en: "CSR Runtime", ko: "CSR 런타임" })}>
         <Docs.Title>{l.trans({ en: "CSR Runtime", ko: "CSR 런타임" })}</Docs.Title>
@@ -113,6 +114,7 @@ export default config;`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="page/store/product/[productId].tsx"
             code={`import type { PageConfig } from "akanjs/client";
 import { Layout } from "akanjs/ui";
@@ -161,15 +163,15 @@ export const pageConfig = {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-mono font-semibold text-primary">{title}: </span>
-                <span className="text-base-content/70 text-sm">{desc}</span>
+                <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="native-bridge" title={l.trans({ en: "Native Bridge", ko: "네이티브 브리지" })}>
         <Docs.Title>{l.trans({ en: "Native Bridge", ko: "네이티브 브리지" })}</Docs.Title>
@@ -211,9 +213,9 @@ export const pageConfig = {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-mono font-semibold text-primary">{title}: </span>
-                <span className="text-base-content/70 text-sm">{desc}</span>
+                <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
@@ -224,7 +226,10 @@ export const pageConfig = {
                 ko: "구체적인 설정 절차는 ",
               })}
             </span>
-            <Link href="/cheatsheet/dev/mobile" className="link link-primary">
+            <Link
+              href="/cheatsheet/dev/mobile"
+              className="text-primary underline underline-offset-4 hover:no-underline"
+            >
               {l.trans({ en: "Cheatsheet > Development > Mobile", ko: "Cheatsheet > 개발 > 모바일" })}
             </Link>
             <span>

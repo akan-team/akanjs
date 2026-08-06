@@ -2,7 +2,8 @@
 
 import type { SerializedEndpoint } from "akanjs/signal";
 import { useMemo } from "react";
-import { AiOutlineCopy } from "react-icons/ai";
+import { AiOutlineCopy, AiOutlineLoading } from "react-icons/ai";
+import { buttonRecipe } from "../Button";
 import { Copy } from "../Copy";
 import { makeResponseExample } from "./makeExample";
 import { getStatusBadgeClassName, getStatusTextareaClassName, signalUi } from "./style";
@@ -21,7 +22,7 @@ const ResponseExample = ({ endpoint }: ResponseExampleProps) => {
       <textarea className={`${signalUi.codePanel} min-h-72 text-base`} value={example} onChange={() => true} />
       <div className="absolute top-4 right-4">
         <Copy text={example}>
-          <button className="btn btn-outline btn-sm">
+          <button className={buttonRecipe({ variant: "outline", size: "sm" })}>
             <AiOutlineCopy /> Copy
           </button>
         </Copy>
@@ -46,7 +47,7 @@ const ResponseResult = ({ status, data }: ResponseResultProps) => {
       />
       {status === "loading" ? (
         <div className="absolute inset-0 flex animate-fadeIn items-center justify-center backdrop-blur-sm">
-          <span className="loading loading-dots loading-lg"></span>
+          <AiOutlineLoading className="animate-spin text-2xl text-primary/60" />
         </div>
       ) : status === "idle" ? (
         <></>
@@ -54,7 +55,7 @@ const ResponseResult = ({ status, data }: ResponseResultProps) => {
         <div className="absolute top-4 right-4 flex items-center gap-2">
           <span className={getStatusBadgeClassName(status)}>{status}</span>
           <Copy text={dataStr}>
-            <button className="btn btn-outline btn-sm">
+            <button className={buttonRecipe({ variant: "outline", size: "sm" })}>
               <AiOutlineCopy /> Copy
             </button>
           </Copy>

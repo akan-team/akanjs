@@ -1,6 +1,9 @@
 "use client";
-import { clsx } from "akanjs/client";
-import { type ReactNode, useState } from "react";
+import { cn } from "akanjs/client";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+
+import { buttonRecipe } from "./Button";
+import { createOverridable } from "./UiOverride";
 
 export interface DropdownProps {
   /** Button/trigger content. */
@@ -15,37 +18,49 @@ export interface DropdownProps {
   dropdownClassName?: string;
 }
 
-export const Dropdown = ({ value, content, className, buttonClassName, dropdownClassName }: DropdownProps) => {
+export const DefaultDropdown = ({ value, content, className, buttonClassName, dropdownClassName }: DropdownProps) => {
   const [opened, setOpened] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!opened) return;
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpened(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+    };
+  }, [opened]);
   return (
-    <div
-      onClick={() => {
-        setOpened(true);
-      }}
-      className={clsx("dropdown dropdown-end", className)}
-    >
-      <label
-        tabIndex={0}
-        className={clsx("btn flex", buttonClassName)}
+    <div ref={ref} className={cn("relative inline-block", className)}>
+      <button
+        type="button"
+        className={buttonRecipe({ variant: "ghost" }, ["flex", buttonClassName])}
         onClick={() => {
-          setOpened(true);
+          setOpened((o) => !o);
         }}
       >
         {value}
-      </label>
-      <ul
-        tabIndex={0}
-        onClick={() => {
-          if (opened) setOpened(false);
-        }}
-        className={clsx(
-          "md:scrollbar-thin md:scrollbar-thumb-rounded-md md:scrollbar-thumb-gray-300 md:scrollbar-track-transparent z-[100] grid max-h-52 gap-2 overflow-auto whitespace-nowrap rounded-md bg-base-100 pr-3 shadow-sm",
-          opened ? "dropdown-content size-fit p-1" : "size-0 overflow-hidden",
-          dropdownClassName,
-        )}
-      >
-        {content}
-      </ul>
+      </button>
+      {opened ? (
+        <ul
+          onClick={() => {
+            setOpened(false);
+          }}
+          className={cn(
+            "absolute right-0 z-[100] mt-1 grid max-h-52 gap-2 overflow-auto whitespace-nowrap rounded-md bg-popover p-1 pr-3 text-popover-foreground shadow-md",
+            dropdownClassName,
+          )}
+        >
+          {content}
+        </ul>
+      ) : null}
     </div>
   );
 };
+
+/**
+ * Dropdown. Resolves to a route-scoped override when a `page/**\/_overrides.tsx`
+ * in the route's ancestry declares one, otherwise renders {@link DefaultDropdown}.
+ */
+export const Dropdown = createOverridable("Dropdown", DefaultDropdown);

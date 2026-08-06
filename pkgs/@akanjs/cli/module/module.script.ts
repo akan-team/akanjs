@@ -1,19 +1,15 @@
+import { AiSession } from "@akanjs/devkit/aiEditor";
+import { type App, type Module, type Sys, script, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { ModuleExecutor } from "@akanjs/devkit/executors";
+import { FileSys } from "@akanjs/devkit/fileSys";
+import { getRelatedCnsts } from "@akanjs/devkit/getRelatedCnsts";
 import {
-  AiSession,
-  type App,
   createPassedPrimitiveReport,
-  FileSys,
   generatedFilesForSync,
-  getRelatedCnsts,
-  type Module,
-  ModuleExecutor,
   moduleSourcePaths,
   type PrimitiveWriteReport,
-  type Sys,
-  script,
   sourceFile,
-  type Workspace,
-} from "@akanjs/devkit";
+} from "@akanjs/devkit/workflow";
 import { input } from "@inquirer/prompts";
 import { capitalize, randomPicks } from "akanjs/common";
 

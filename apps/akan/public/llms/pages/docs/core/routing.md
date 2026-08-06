@@ -13,6 +13,8 @@
 - Page File Shape (#page-module)
 - Layout File Shape (#layout-module)
 - Base Paths (#base-paths)
+- Library Pages (#library-pages)
+- Dev Only Routes (#dev-only-routes)
 - Root Layout Exports (#root-layout-exports)
 
 ## Content
@@ -67,21 +69,23 @@ A page file must export a default component. It can also export optional helpers
 
 The page component. This is required.
 
-Client page options such as transition or mobile safe-area behavior.
+Optional override for client frame behavior. If omitted, Akan applies platform defaults and frame components such as Navbar or BottomInset register their own insets.
 
-Static metadata for the page.
+Declarative static metadata for title, description, robots, Open Graph, Twitter, canonical, and language alternates.
 
-Dynamic metadata that can use route params.
+Dynamic declarative metadata that can use route params and search params.
+
+Escape hatch for custom JSX head elements when declarative metadata is not enough.
 
 Fallback UI shown while the page is loading.
 
-Use either head or generateHead, not both. Use head for fixed metadata and generateHead when the title or tags depend on params.
+Use one metadata API per route module: metadata or generateMetadata. Do not mix metadata/generateMetadata with head/generateHead. Metadata is not merged across layouts and pages; the nearest route module wins.
 
 Layout File Shape
 
 A layout file wraps child pages. Use it for shared headers, tabs, sidebars, guards, or page-level shells.
 
-Layouts support default, head, generateHead, Loading, NotFound, and Error. Layout's head is used for child pages without head declaration, and the nearest layout fallback renders when a child route is missing or fails.
+Layouts support default, metadata, generateMetadata, head, generateHead, Loading, NotFound, and Error. Layout metadata is used for child pages without their own metadata/head declaration, and the nearest layout fallback renders when a child route is missing or fails.
 
 Layout-scoped 404 UI. It renders under the layout when a child route is missing or router.notFound() is called below it.
 
@@ -94,6 +98,18 @@ Base Paths
 When an app defines base paths in akan.config.ts, page files must live under one of those base path folders. This keeps multi-service or multi-domain apps explicit.
 
 If base paths are configured, putting a page directly under page/ is invalid. Move it under page/<basePath>/ so Akan can tell which route group owns it.
+
+Library Pages
+
+A library can ship routes from its own page folder. An app opts in with syncPageLibs, and sync links those routes into page/(libs)/(<lib>). Both folder names are route groups, so a library route keeps its own path.
+
+Edit the library file, never the linked copy. Apps with base paths get the library routes under every base path, and two synced routes that resolve to the same path are reported as an error.
+
+Dev Only Routes
+
+pageConfig.devOnly keeps a route out of akan build. It still serves under akan start and is still typechecked, but nothing about it reaches production: no bundle, no route manifest entry, no URL.
+
+On a _layout file, devOnly removes every route under that directory too, so a whole dev-only section can be marked once. Write it as a literal true or false — the build reads it from the source without running the module.
 
 Root Layout Exports
 
@@ -111,9 +127,11 @@ Controls whether the browser connects the client WebSocket runtime after load. T
 
 Switches the outer page container style. Use mobile for app-like mobile shells.
 
+Optional layout-level frame override inherited by child pages. Page-level pageConfig still wins for explicitly declared fields.
+
 Adds Google Analytics tracking for the app.
 
-These extra exports are for root layouts only. Normal nested layouts should stay focused on default, head, generateHead, and Loading.
+Most extra exports are for root layouts only. Nested layouts may also export pageConfig when they need a shared mobile frame override for their child pages.
 
 ## Code Examples
 
@@ -137,7 +155,7 @@ page/
 ### page/(user)/project/[projectId]/_index.tsx
 
 ```ts
-import type { PageConfig } from "akanjs/client";
+import type { GenerateMetadata, PageConfig } from "akanjs/client";
 
 interface PageProps {
   params: { lang: string; projectId: string };
@@ -150,22 +168,34 @@ export default function Page({ params }: PageProps) {
 
 export const pageConfig = { transition: "stack" } satisfies PageConfig;
 
-export function generateHead({ params }: PageProps) {
-  return { title: `Project ${params.projectId}` };
-}
+export const generateMetadata = (({ params }) => ({
+  title: `Project ${params.projectId}`,
+  description: "Project workspace",
+})) satisfies GenerateMetadata;
 
 export function Loading() {
   return <div>Loading...</div>;
 }
 ```
 
-### Static head example
+### Static metadata example
 
 ```ts
-export const head = {
+import type { AkanMetadata } from "akanjs/client";
+
+export const metadata = {
   title: "Projects",
   description: "Browse your projects",
-};
+  openGraph: { title: "Projects", images: ["/og/projects.png"] },
+  twitter: { card: "summary_large_image", images: ["/og/projects.png"] },
+  alternates: {
+    canonical: "https://example.com/projects",
+    languages: {
+      ko: "https://example.com/ko/projects",
+      en: "https://example.com/en/projects",
+    },
+  },
+} satisfies AkanMetadata;
 ```
 
 ### page/(user)/project/[projectId]/_layout.tsx
@@ -217,6 +247,42 @@ page/
 │   └── _index.tsx
 └── admin/
     └── _index.tsx
+```
+
+### apps/myapp/akan.config.ts
+
+```ts
+const config = {
+  // true: every lib dependency that has a page folder
+  // ["shared"]: only the libs listed
+  // false (default): nothing is synced
+  syncPageLibs: ["shared"],
+};
+```
+
+### library route mapping
+
+```bash
+# Source in a library
+libs/shared/page/login/_index.tsx
+
+# Linked into an app by `akan sync` (generated, gitignored)
+apps/myapp/page/(libs)/(shared)/login/_index.tsx
+
+# Browser request
+/login
+```
+
+### page/(dev)/playground/_index.tsx
+
+```ts
+import type { PageConfig } from "akanjs/client";
+
+export const pageConfig = { devOnly: true } satisfies PageConfig;
+
+export default function Page() {
+  return <div>Component playground</div>;
+}
 ```
 
 ### page/_layout.tsx

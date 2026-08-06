@@ -332,7 +332,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="class-structure" title={l.trans({ en: "Service Class Structure", ko: "Service 클래스 구조" })}>
         <Docs.Title>{l.trans({ en: "Service Class Structure", ko: "Service 클래스 구조" })}</Docs.Title>
@@ -363,7 +363,7 @@ export class ProductService extends serve(db.product, ({ service }) => ({
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="predefined-methods" title={l.trans({ en: "Methods & Variables", ko: "메서드 및 변수" })}>
         <Docs.Title>{l.trans({ en: "Methods & Variables", ko: "메서드 및 변수" })}</Docs.Title>
@@ -395,7 +395,7 @@ export class ProductService extends serve(db.product, ({ service }) => ({
         </Docs.Description>
         <Docs.IntroTable type="method" items={queryBasedMethods} />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="middleware-methods" title={l.trans({ en: "Middleware Methods", ko: "미들웨어 메서드" })}>
         <Docs.Title>{l.trans({ en: "Middleware Methods", ko: "미들웨어 메서드" })}</Docs.Title>
@@ -409,7 +409,7 @@ export class ProductService extends serve(db.product, ({ service }) => ({
         </Docs.Description>
         <Docs.IntroTable type="method" items={middlewareMethods} />
         <div className="mb-4" />
-        <div className="rounded-lg bg-base-200 p-3 lg:p-4">
+        <div className="rounded-lg bg-muted p-3 lg:p-4">
           <div className="mb-2">
             <span className="font-bold font-mono text-primary text-sm">Example: _preCreate</span>
           </div>
@@ -424,7 +424,7 @@ Promise<DataInputOf<db.ProductInput, db.Product>> {
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="injections" title={l.trans({ en: "Dependency Injection", ko: "의존성 주입" })}>
         <Docs.Title>{l.trans({ en: "Dependency Injection", ko: "의존성 주입" })}</Docs.Title>
@@ -443,7 +443,7 @@ Promise<DataInputOf<db.ProductInput, db.Product>> {
         <div className="mb-8" />
 
         <Docs.SubTitle>3.2. Examples</Docs.SubTitle>
-        <div className="mb-6 rounded-lg bg-base-200 p-3 lg:p-4">
+        <div className="mb-6 rounded-lg bg-muted p-3 lg:p-4">
           <Code.Snippet
             title="Injecting Services & Envs"
             language="typescript"
@@ -487,7 +487,7 @@ export class ProductService extends serve(db.product, ({ service, env }) => ({
           </div>
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="best-practices" title={l.trans({ en: "Service Best Practices", ko: "Service 모범 사례" })}>
         <Docs.Title>{l.trans({ en: "Service Best Practices", ko: "Service 모범 사례" })}</Docs.Title>
@@ -524,7 +524,7 @@ export class ProductService extends serve(db.product, ({ service, env }) => ({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

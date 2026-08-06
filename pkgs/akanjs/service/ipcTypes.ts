@@ -1,6 +1,6 @@
 export type AkanChildRole = "all" | "federation" | "batch";
 
-export type AkanChildStatus = "starting" | "ready" | "healthy" | "draining" | "unhealthy" | "exited";
+export type AkanChildStatus = "starting" | "ready" | "healthy" | "draining" | "unhealthy" | "exited" | "crashed";
 
 export type AkanUpstream = { type: "unix"; socketPath: string } | { type: "tcp"; host: string; port: number };
 
@@ -110,6 +110,8 @@ export type AkanIpcMessage =
       replicaIdx: number;
       role: AkanChildRole;
       upstream?: AkanUpstream;
+      /** Actual websocket upstream the child bound; may differ from the preferred port when it was in use. */
+      wsUpstream?: Extract<AkanUpstream, { type: "tcp" }>;
       healthPath?: string;
     }
   | { type: "backend-ready"; pid: number }

@@ -22,15 +22,15 @@ export class FileModel extends into(File, FileFilter, cnst.file, () => ({})) {
     schema.index({ filename: "text" });
   }
   async progressUpload(id: string, loadSize: number | undefined, totalSize: number) {
-    await this.File.updateOne({ id: id }, { progress: Math.floor(((loadSize ?? 0) / (totalSize || 1)) * 100) });
+    await this.File.updateOne({ id }, { progress: Math.floor(((loadSize ?? 0) / (totalSize || 1)) * 100) });
   }
   async finishUpload(id: string, url: string, data: Partial<db.FileInput>) {
-    return this.File.updateOne({ id: id }, { ...data, url, progress: 100, status: "active" });
+    return this.File.updateOne({ id }, { ...data, url, progress: 100, status: "active" });
   }
   async generateFile(data: Partial<db.File>): Promise<db.File> {
     if (data.id) {
       const existingFile = await this.File.findById(data.id);
-      const doc = existingFile?.set(data) ?? new this.File({ id: data.id, ...data } as any);
+      const doc = existingFile?.set(data) ?? new this.File({ id: data.id, ...data } as unknown as db.FileInput);
       return await doc.save();
     } else {
       return await new this.File(data).save();

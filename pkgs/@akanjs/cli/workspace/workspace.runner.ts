@@ -1,5 +1,16 @@
 import path from "node:path";
-import { type Exec, FileSys, type PackageJson, runner, type Workspace, WorkspaceExecutor } from "@akanjs/devkit";
+import { collectScopeRecipeSources, extractAgentBlock, renderScopeAgentBlock } from "@akanjs/devkit/agentsIndex";
+import { type Exec, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { SysExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
+import { FileSys } from "@akanjs/devkit/fileSys";
+import {
+  countBlocking,
+  formatStyleContract,
+  type StyleContractViolations,
+} from "@akanjs/devkit/frontendBuild/styleContract";
+import { ThemeValidator } from "@akanjs/devkit/frontendBuild/themeValidator";
+import { collectRecipeSources, type RecipeSource, scanRecipes } from "@akanjs/devkit/recipeScanner";
+import type { PackageJson } from "@akanjs/devkit/types";
 import { getLatestPackageVersion, getNpmRegistryUrl } from "../npmRegistry";
 
 const defaultWorkspacePeerDependencies = new Set([
@@ -7,7 +18,6 @@ const defaultWorkspacePeerDependencies = new Set([
   "@use-gesture/react",
   "chance",
   "croner",
-  "daisyui",
   "react",
   "react-dom",
   "react-icons",
@@ -191,6 +201,82 @@ export class WorkspaceRunner extends runner("workspace") {
       "--no-errors-on-unmatched",
       exec.cwdPath,
     ]);
+    await this.#enforceStyleContract(exec);
+    await this.#enforceRecipeGate(exec);
+    await this.#enforceAgentsIndex(exec);
+  }
+
+  /**
+   * 스코프 에이전트 색인 신선도: 소스 재스캔 결과와 apps|libs/<name>/AGENTS.md 의 managed block 이
+   * 다르면 실패시킨다. 색인이 소스와 어긋난 채 커밋되면 에이전트가 색인을 믿고 틀리므로("추가했는데
+   * 목록에 없어 안 씀"), 조용한 어긋남을 CI 에서 시끄러운 진단으로 바꾸는 것이 이 게이트의 존재 이유다.
+   */
+  async #enforceAgentsIndex(exec: Exec) {
+    if (!(exec instanceof SysExecutor)) return;
+    const scope = { type: exec.type, name: exec.name };
+    const scanInfo = await exec.scan({ write: false });
+    const sources = await collectScopeRecipeSources(
+      exec.workspace.workspaceRoot,
+      scope,
+      scanInfo.getScanResult().libDeps,
+    );
+    const expected = renderScopeAgentBlock(scope, scanRecipes(sources));
+    const existing = (await exec.exists("AGENTS.md")) ? await exec.readFile("AGENTS.md") : null;
+    const actual = existing ? extractAgentBlock(existing) : null;
+    if (actual === expected.trim()) return;
+    throw new Error(
+      `[agentsIndex] ${scope.type}s/${scope.name}/AGENTS.md 의 recipe 색인이 소스와 다릅니다(stale). ` +
+        `\`akan sync ${scope.name}\` 을 실행해 재생성하세요.`,
+    );
+  }
+
+  /**
+   * recipe 자격 게이트: 고를 옵션(값 2개 이상인 variant 축, 또는 불리언 플래그)이 없는 look 은 recipe 가
+   * 아니다 — 함수로 감쌀 이유가 없어 간접층만 늘고, 컴포넌트/상수와의 경계가 무너진다(docsList 사례).
+   * 자기 마크업이 있으면 컴포넌트로, 남의 컴포넌트 className 에 주입하면 공유 클래스 상수로 승격시킨다.
+   */
+  async #enforceRecipeGate(exec: Exec) {
+    const cwdPath = exec.cwdPath;
+    if (!cwdPath) return;
+    const uiDir = path.join(cwdPath, "ui");
+    const sources: RecipeSource[] = [
+      ...(await collectRecipeSources(uiDir, "ui/Recipe")),
+      ...(await collectRecipeSources(uiDir, "ui/recipe", "recipe")),
+    ];
+    if (sources.length === 0) return;
+    const offenders = scanRecipes(sources).filter(
+      (recipe) =>
+        !Object.values(recipe.variants).some(
+          (values) => values.length >= 2 || (values.length === 1 && values[0] === "true"),
+        ),
+    );
+    if (offenders.length === 0) return;
+    throw new Error(
+      `[recipeGate] variant-less recipe(s): ${offenders.map((recipe) => recipe.name).join(", ")}\n` +
+        "고를 옵션 없는 look 은 recipe 로 두지 마세요 — 자기 마크업이 있으면 컴포넌트로 승격하고, " +
+        "다른 컴포넌트의 className 에 주입하는 스킨이면 공유 클래스 상수로 두세요.",
+    );
+  }
+
+  /**
+   * CI=error: WCAG 콘트라스트(themeValidator) 계약을 lint 에서 강제한다. 어휘 폐쇄(구 styleGuard)는
+   * 위의 biome 실행이 grit 플러그인(devkit/lint/no-raw-palette-class.grit 외 3종)으로 잡으므로 여기서
+   * 다시 스캔하지 않는다 — 콘트라스트는 토큰 값 계산이라 lint 규칙로 표현할 수 없어 이곳이 유일한 집이다.
+   */
+  async #enforceStyleContract(exec: Exec) {
+    const cwdPath = exec.cwdPath;
+    if (!cwdPath) return;
+    const stylesCssPath = path.join(cwdPath, "page", "styles.css");
+    const theme = (await Bun.file(stylesCssPath).exists())
+      ? new ThemeValidator().validate(await Bun.file(stylesCssPath).text())
+      : [];
+    const violations: StyleContractViolations = { style: [], theme };
+    const blocking = countBlocking(violations);
+    if (blocking === 0) return;
+    throw new Error(
+      `[themeValidator] ${blocking} blocking contrast violation(s):\n${formatStyleContract(violations)}\n\n` +
+        "테마 토큰 값의 전경/배경 콘트라스트를 WCAG 기준 이상으로 조정하세요.",
+    );
   }
   async writeTopLevelEnv(workspace: Workspace, devProjectId: string) {
     await workspace.writeFile(

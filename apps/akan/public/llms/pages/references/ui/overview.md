@@ -35,6 +35,10 @@ System
 
 Application shell helpers, CSR guards, admin signal tools, tab state, and animation wrappers.
 
+Customization
+
+Re-skin any framework component per route with a `page/**/_overrides.tsx` manifest — drop-in replacements, no call-site changes.
+
 akanjs/ui
 
 `akanjs/ui` is the shared UI facet for Akan apps. It provides route-aware links, data loading wrappers, model UI shells, form controls, display helpers, overlays, and system-level app chrome.

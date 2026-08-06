@@ -93,8 +93,6 @@ export const setupSignalTestTarget = async <Fetch = FetchProxy>(
       appName: name,
       environment: "testing",
       operationMode: "local",
-      tunnelUsername: process.env.SSH_TUNNEL_USERNAME ?? "username",
-      tunnelPassword: process.env.SSH_TUNNEL_PASSWORD ?? process.env.AKAN_PUBLIC_REPO_NAME ?? "password",
     };
     TestServer.applyProcessEnv(env, resolvedOptions);
 

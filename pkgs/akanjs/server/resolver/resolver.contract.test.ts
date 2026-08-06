@@ -1,11 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { ENDPOINT_META } from "akanjs/base";
+import { rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { type Dayjs, dayjs, ENDPOINT_META, ID } from "akanjs/base";
 import type { SchemaOf } from "akanjs/document";
 import {
+  type AkanJob,
   adapt,
   getDefaultInjectRegistry,
   getDefaultLiveRegistry,
+  getSolidConfig,
   SolidPubSub,
+  SolidQueue,
   type WebsocketAdaptor,
 } from "akanjs/service";
 import { internal } from "../../signal/internal";
@@ -211,7 +217,7 @@ describe("DatabaseResolver declaration contracts", () => {
       method: "findOne",
       args: [
         { kind: "all", queries: [{ category: "news" }, { removedAt: { kind: "op", op: "empty" } }] },
-        { sort: { createdAt: -1 }, skip: 0, sample: false, select: { secret: true } },
+        { sort: null, skip: 0, sample: false, select: { secret: true } },
       ],
     });
     await instance.pickInCategory("news", false, { select: { secret: true } });
@@ -219,7 +225,7 @@ describe("DatabaseResolver declaration contracts", () => {
       method: "pickOne",
       args: [
         { kind: "all", queries: [{ category: "news" }, { removedAt: { kind: "op", op: "empty" } }] },
-        { sort: { createdAt: -1 }, skip: 0, sample: false, select: { secret: true } },
+        { sort: null, skip: 0, sample: false, select: { secret: true } },
       ],
     });
     const bulkLoaded = await instance.serverResolverTestItemLoader.loadMany(["doc-2", "missing", "doc-1"]);
@@ -254,12 +260,108 @@ describe("DatabaseResolver declaration contracts", () => {
   });
 });
 
+describe("ServiceResolver cascade", () => {
+  const cascadeConstant = {
+    full: { cascade: { remove: new Map([["cover", serverResolverTestConstant.full]]) } },
+  } as unknown as typeof serverResolverTestConstant;
+
+  const buildCascadingService = (targetRemove: (id: string) => Promise<unknown>) => {
+    class CascadeService extends ServerResolverTestService {}
+    const target = {
+      __remove: targetRemove,
+      __databaseModel: {
+        __remove: async () => {
+          throw new Error("cascade reached the target model directly");
+        },
+      },
+    };
+    const ServiceRef = ServiceResolver.resolveDatabaseService(
+      cascadeConstant,
+      serverResolverTestDatabase,
+      CascadeService as never,
+      () => target as never,
+    );
+    const service = new ServiceRef() as InstanceType<typeof ServiceRef> & {
+      __databaseModel: Record<string, (...args: unknown[]) => Promise<unknown>>;
+      __remove: (id: string) => Promise<Record<string, unknown>>;
+    };
+    return { service, target };
+  };
+
+  test("removes each referenced document through the target's service, not its model", async () => {
+    const removed: string[] = [];
+    // Through the service is the whole point: `__remove` is what runs the target's `_postRemove`, and that is
+    // where a module puts the side effect the removal has to carry — deleting the stored file, say. Reaching the
+    // model instead still empties the row, so nothing looks wrong until the storage bill arrives.
+    const { service } = buildCascadingService(async (id) => {
+      removed.push(id);
+      return { id };
+    });
+    service.__databaseModel = {
+      __remove: async (id) => ({ id, cover: "file-1" }),
+    } as never;
+
+    await service.__remove("parent-1");
+
+    expect(removed).toEqual(["file-1"]);
+  });
+
+  test("removes every id of an array field and skips an empty one", async () => {
+    const removed: string[] = [];
+    const { service } = buildCascadingService(async (id) => {
+      removed.push(id);
+      return { id };
+    });
+    service.__databaseModel = {
+      __remove: async (id) => ({ id, cover: ["file-1", "file-2"] }),
+    } as never;
+    await service.__remove("parent-1");
+    expect(removed).toEqual(["file-1", "file-2"]);
+
+    removed.length = 0;
+    service.__databaseModel = { __remove: async (id) => ({ id, cover: null }) } as never;
+    await service.__remove("parent-2");
+    expect(removed).toEqual([]);
+  });
+
+  test("resolves the target service before removing the parent", async () => {
+    const parentRemovals: string[] = [];
+    class MissingTargetService extends ServerResolverTestService {}
+    const ServiceRef = ServiceResolver.resolveDatabaseService(
+      cascadeConstant,
+      serverResolverTestDatabase,
+      MissingTargetService as never,
+      (refName) => {
+        throw new Error(`Service "${refName}" is not registered`);
+      },
+    );
+    const service = new ServiceRef() as InstanceType<typeof ServiceRef> & {
+      __databaseModel: Record<string, (...args: unknown[]) => Promise<unknown>>;
+      __remove: (id: string) => Promise<unknown>;
+    };
+    service.__databaseModel = {
+      __remove: async (id: string) => {
+        parentRemovals.push(id as string);
+        return { id };
+      },
+    } as never;
+
+    await expect(service.__remove("parent-1")).rejects.toThrow("is not registered");
+    // Cascading into a module the app never mounted is a misconfiguration; failing after the parent is gone
+    // would leave it half-removed with nothing to retry from.
+    expect(parentRemovals).toEqual([]);
+  });
+});
+
 describe("ServiceResolver declaration contracts", () => {
   test("patches database services with CRUD, filter, and hook-chain implementations", async () => {
     const ServiceRef = ServiceResolver.resolveDatabaseService(
       serverResolverTestConstant,
       serverResolverTestDatabase,
       ServerResolverTestService,
+      (refName) => {
+        throw new Error(`unexpected cascade lookup: ${refName}`);
+      },
     );
     const service = new ServiceRef() as InstanceType<typeof ServiceRef> & {
       __databaseModel: Record<string, (...args: unknown[]) => Promise<unknown>>;
@@ -383,6 +485,43 @@ describe("SignalResolver declaration contracts", () => {
 
     const message = await resolved.wsRoutes?.echoMessage?.(ws, ["hello"], "message");
     expect(message).toEqual({ type: "msg", key: "echoMessage", data: "echo:hello" });
+  });
+
+  test("guards a pubsub subscribe and revokes the room once the socket loses access", async () => {
+    resetResolverOrder();
+    const registry = getDefaultInjectRegistry();
+    const live = getDefaultLiveRegistry();
+    const endpointInstance = new ServerResolverTestEndpoint() as InstanceType<typeof ServerResolverTestEndpoint> & {
+      serverResolverTestItemService: InstanceType<typeof ServerResolverTestService>;
+    };
+    endpointInstance.serverResolverTestItemService = new ServerResolverTestService();
+    const websocket = makeFakeWebsocket();
+    registry.adaptor.set(SolidPubSub, websocket.instance);
+    const resolved = SignalResolver.resolveEndpoint(ServerResolverTestEndpoint, endpointInstance, {
+      registry,
+      env: makeEnv(),
+      live,
+      middleware: new Map(),
+    });
+    const roomId = `guardedRoomFeed-${validId}`;
+
+    const anonymous = makeWs();
+    await expect(resolved.wsRoutes?.guardedRoomFeed?.(anonymous, [validId], "subscribe")).rejects.toThrow(
+      "Access denied by guard: ServerResolverTestRoomGuard",
+    );
+
+    const member = makeWs();
+    member.data.account = { role: "member" };
+    const ack = await resolved.wsRoutes?.guardedRoomFeed?.(member, [validId], "subscribe");
+    expect(ack).toEqual({ type: "sub", roomId, subscribe: true });
+    expect(member.subscribed).toEqual([roomId]);
+    expect(await SignalResolver.revalidateWsRooms(member, registry)).toEqual([]);
+
+    member.data.account = { role: "guest" };
+    expect(await SignalResolver.revalidateWsRooms(member, registry)).toEqual([roomId]);
+    expect(member.unsubscribed).toEqual([roomId]);
+    expect(websocket.instance.calls).toContainEqual({ method: "leaveRoom", args: [member, roomId] });
+    expect(await SignalResolver.revalidateWsRooms(member, registry)).toEqual([]);
   });
 
   test("turns slice declarations into CRUD/list/insight endpoint declarations", async () => {
@@ -525,7 +664,8 @@ describe("SignalResolver declaration contracts", () => {
       intervalFederation: builder.interval(1000, { serverMode: "federation", lock: false }).exec(() => {
         resolverOrder.push("intervalFederation");
       }),
-      processAll: builder.process(Boolean, { enabled: true }).exec(() => true),
+      processAll: builder.process(Boolean).exec(() => true),
+      processDisabled: builder.process(Boolean, { enabled: false }).exec(() => true),
     })) {}
     const internalInstance = Object.assign(new ScheduleInternal(), {
       schedule: makeFakeSchedule(),
@@ -535,11 +675,96 @@ describe("SignalResolver declaration contracts", () => {
     SignalResolver.resolveSchedule(ScheduleInternal, internalInstance, "federation");
 
     expect(internalInstance.schedule.calls.map((call) => call.method)).toEqual(["registerInit", "registerInterval"]);
+    // `process` defaults to enabled: placement is governed by serverMode/operationMode, not an extra opt-in flag.
     expect(internalInstance.queue.calls.map((call) => call.method)).toEqual(["registerProcessWorker"]);
+    expect(internalInstance.queue.calls[0]?.args[0]).toBe("processAll");
     expect(internalInstance.schedule.calls[1]).toMatchObject({
       method: "registerInterval",
       args: ["intervalFederation", 1000, expect.any(Function), { lock: false }],
     });
+  });
+
+  test("calls process workers with the declared msg args, then the job", async () => {
+    resetResolverOrder();
+    const execArgs: unknown[][] = [];
+    class ProcessInternal extends internal(serverResolverTestServiceModel, (builder) => ({
+      handleItem: builder
+        .process(Boolean)
+        .msg("itemId", ID)
+        .msg("at", Date)
+        .exec(((...args: unknown[]) => {
+          execArgs.push(args);
+          return true;
+        }) as never),
+    })) {}
+    const internalInstance = Object.assign(new ProcessInternal(), {
+      schedule: makeFakeSchedule(),
+      queue: makeFakeQueue(),
+    });
+
+    SignalResolver.resolveSchedule(ProcessInternal, internalInstance, "all");
+
+    const handler = internalInstance.queue.calls[0]?.args[1] as (job: AkanJob) => Promise<void>;
+    const job: AkanJob = {
+      id: "job-1",
+      name: "handleItem",
+      // a queue round-trips the payload through JSON, so the declared Date arrives as a string
+      data: [validId, "2026-07-26T00:00:00.000Z"],
+      attemptsMade: 1,
+    };
+    await handler(job);
+
+    expect(execArgs).toHaveLength(1);
+    const [itemId, at, passedJob] = execArgs[0] as [string, Dayjs, AkanJob];
+    expect(itemId).toBe(validId);
+    // deserialized against the declared arg type, so `Date` lands as dayjs rather than the raw JSON string
+    expect(dayjs.isDayjs(at)).toBe(true);
+    expect(at.toISOString()).toBe("2026-07-26T00:00:00.000Z");
+    expect(passedJob).toBe(job);
+  });
+
+  test("runs an enqueued job end-to-end through the solid queue", async () => {
+    resetResolverOrder();
+    const filePath = path.join(tmpdir(), `solid-queue-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
+    const queue = Object.assign(new SolidQueue(), {
+      config: getSolidConfig({ appName: "test", environment: "test", solid: { filePath, queuePollIntervalMs: 20 } }),
+      queueName: "queue-test",
+      workerId: "worker-test",
+    });
+    await queue.onInit();
+
+    const ran: unknown[][] = [];
+    class QueuedInternal extends internal(serverResolverTestServiceModel, (builder) => ({
+      archiveItem: builder
+        .process(Boolean)
+        .msg("itemId", ID)
+        .exec(((...args: unknown[]) => {
+          ran.push(args);
+          return true;
+        }) as never),
+    })) {}
+    const internalInstance = Object.assign(new QueuedInternal(), { schedule: makeFakeSchedule(), queue });
+
+    // the worker side: `process` needs no `enabled` flag to be registered
+    SignalResolver.resolveSchedule(QueuedInternal, internalInstance, "all");
+    // the producer side: exactly what resolveServerSignal's generated method calls
+    await queue.registerProcessQueue("archiveItem", [validId]);
+
+    const startedAt = Date.now();
+    while (!ran.length && Date.now() - startedAt < 2000) await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(ran).toHaveLength(1);
+    expect(ran[0]?.[0]).toBe(validId);
+    expect((ran[0]?.[1] as AkanJob).name).toBe("archiveItem");
+
+    await queue.onDestroy();
+    for (const suffix of ["", "-wal", "-shm"]) {
+      try {
+        rmSync(`${filePath}${suffix}`);
+      } catch {
+        // ignore missing files
+      }
+    }
   });
 });
 
@@ -574,6 +799,7 @@ const makeFakeWebsocket = () => {
 
 const makeWs = () =>
   ({
+    data: {} as Record<string, unknown>,
     subscribed: [] as string[],
     unsubscribed: [] as string[],
     subscribe(roomId: string) {
@@ -582,7 +808,11 @@ const makeWs = () =>
     unsubscribe(roomId: string) {
       this.unsubscribed.push(roomId);
     },
-  }) as unknown as Bun.ServerWebSocket<unknown> & { subscribed: string[]; unsubscribed: string[] };
+  }) as unknown as Bun.ServerWebSocket<unknown> & {
+    data: Record<string, unknown>;
+    subscribed: string[];
+    unsubscribed: string[];
+  };
 
 const makeFakeSchedule = () => ({
   calls: [] as { method: string; args: unknown[] }[],

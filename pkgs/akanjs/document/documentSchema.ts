@@ -7,15 +7,16 @@ export type DocumentHookName = `before${Capitalize<SaveEventType>}` | `after${Ca
 
 export interface DocumentIndexDescriptor {
   name?: string;
+  // `"text"` is a Mongo-era alias that compiles to the same plain index as `1`; full-text search is declared with
+  // `field(String, { text: … })` instead. Do not rewrite existing `"text"` call sites — the descriptor hash stored in
+  // `_akan_meta` would change and `ensure()` throws `Index descriptor mismatch` on every live database.
   fields: Record<string, 1 | -1 | "text" | boolean>;
   unique?: boolean;
-  text?: boolean;
   where?: DocumentQuery;
 }
 
 export interface DocumentIndexBuilder<Schema> {
   path(path: string, order?: 1 | -1): DocumentIndexBuilder<Schema>;
-  text(path: string): DocumentIndexBuilder<Schema>;
   unique(): DocumentIndexBuilder<Schema>;
   where(where: DocumentQuery | ((q: DocumentQueryHelper) => DocumentQuery)): DocumentIndexBuilder<Schema>;
   done(): Schema;
@@ -58,25 +59,12 @@ export class DocumentSchema<Doc = unknown> {
     return this;
   }
 
-  text(...fields: string[]) {
-    this.indexes.push({
-      text: true,
-      fields: Object.fromEntries(fields.map((field) => [field, "text" as const])),
-    });
-    return this;
-  }
-
   createIndex(name: string): DocumentIndexBuilder<this> {
     const schema = this;
     const descriptor: DocumentIndexDescriptor = { name, fields: {} };
     const api = {
       path(path: string, order: 1 | -1 = 1) {
         descriptor.fields[path] = order;
-        return api;
-      },
-      text(path: string) {
-        descriptor.fields[path] = "text";
-        descriptor.text = true;
         return api;
       },
       unique() {

@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Docs } from "@apps/akan/ui";
+import { Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -49,16 +49,16 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
-                <span className="font-bold text-base-content">{title}: </span>
+              <div key={title} className={panelRecipe({ padding: "row" })}>
+                <span className="font-bold text-foreground">{title}: </span>
 
-                <span className="text-base-content/70 text-sm">{desc}</span>
+                <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="request-to-business-action"
@@ -72,12 +72,12 @@ export default function Page() {
               ko: "가장 흔한 비즈니스 서비스 경로는 UI 액션에서 시작합니다. 생성된 클라이언트 헬퍼가 signal endpoint를 호출하고, endpoint는 비즈니스 판단을 service에 맡기며, 결과는 저장 데이터를 바꾸거나 화면에 필요한 응답으로 돌아갑니다.",
             })}
           </div>
-          <div className="rounded-2xl border border-base-300 bg-base-100 p-5">
+          <div className={panelRecipe({ radius: "2xl", padding: "lg" })}>
             <div className="mb-4">
-              <div className="font-bold text-base-content">
+              <div className="font-bold text-foreground">
                 {l.trans({ en: "Example: Article Server Module", ko: "예시: Article 서버 모듈" })}
               </div>
-              <div className="mt-1 text-base-content/70 text-sm">
+              <div className="mt-1 text-foreground/70 text-sm">
                 {l.trans({
                   en: "A business service module can be read from right to left: traffic reaches the API port, signal exposes callable endpoints and auth boundaries, service makes the business decision, and document handles storage details.",
                   ko: "비즈니스 서비스 모듈은 오른쪽에서 왼쪽으로 읽으면 이해하기 쉽습니다. 트래픽이 API 포트에 도달하고, signal이 호출 가능한 endpoint와 auth 경계를 노출하고, service가 비즈니스 판단을 하며, document가 저장 세부사항을 처리합니다.",
@@ -85,39 +85,39 @@ export default function Page() {
               </div>
             </div>
             <div className="grid items-stretch gap-3 xl:grid-cols-[1.4fr_auto_1fr_auto_1fr]">
-              <div className="rounded-xl border border-base-300 bg-base-200 p-4">
-                <div className="font-mono font-semibold text-base-content">Article.document.ts</div>
-                <div className="mt-2 text-base-content/70 text-sm">
+              <div className="rounded-xl border border-border bg-muted p-4">
+                <div className="font-mono font-semibold text-foreground">Article.document.ts</div>
+                <div className="mt-2 text-foreground/70 text-sm">
                   {l.trans({
                     en: "Defines the archive rulebook: schema, query filters, sort options, and document-level helpers.",
                     ko: "문서고의 처리 규칙을 정의합니다. schema, query filter, sort option, document-level helper를 담당합니다.",
                   })}
                 </div>
-                <div className="mt-3 rounded-lg border border-base-300 bg-base-100 p-3">
-                  <div className="text-base-content/60 text-xs">schema from Article.constant.ts</div>
-                  <div className="mt-2 rounded-lg border border-base-300 bg-base-200 p-3 font-mono text-base-content/70 text-xs">
+                <div className={panelRecipe({ radius: "lg", padding: "sm" }, "mt-3")}>
+                  <div className="text-foreground/60 text-xs">schema from Article.constant.ts</div>
+                  <div className="mt-2 rounded-lg border border-border bg-muted p-3 font-mono text-foreground/70 text-xs">
                     title
                     <br />
                     authors
                   </div>
                 </div>
                 <div className="mt-3 space-y-1">
-                  <div className="rounded-lg border border-base-300 bg-base-100 p-3">
-                    <div className="font-mono text-base-content text-xs">methods</div>
-                    <div className="mt-1 text-base-content/70 text-xs">addAuthor</div>
+                  <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
+                    <div className="font-mono text-foreground text-xs">methods</div>
+                    <div className="mt-1 text-foreground/70 text-xs">addAuthor</div>
                   </div>
-                  <div className="rounded-lg border border-base-300 bg-base-100 p-3">
-                    <div className="font-mono text-base-content text-xs">statics</div>
-                    <div className="mt-1 text-base-content/70 text-xs">findAllByAuthorName</div>
+                  <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
+                    <div className="font-mono text-foreground text-xs">statics</div>
+                    <div className="mt-1 text-foreground/70 text-xs">findAllByAuthorName</div>
                   </div>
                 </div>
               </div>
               <div className="hidden items-center justify-center text-primary xl:flex">
                 <div className="h-px w-10 bg-primary/40" />
               </div>
-              <div className="rounded-xl border border-base-300 bg-base-200 p-4">
-                <div className="font-mono font-semibold text-base-content">Article.service.ts</div>
-                <div className="mt-2 text-base-content/70 text-sm">
+              <div className="rounded-xl border border-border bg-muted p-4">
+                <div className="font-mono font-semibold text-foreground">Article.service.ts</div>
+                <div className="mt-2 text-foreground/70 text-sm">
                   {l.trans({
                     en: "Owns business logic: who can change an article, how authors are added, and which document methods to call.",
                     ko: "게시글을 누가 바꿀 수 있는지, 작성자를 어떻게 추가할지, 어떤 document method를 호출할지 같은 비즈니스 로직을 가집니다.",
@@ -129,13 +129,13 @@ export default function Page() {
               </div>
               <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
                 <div className="font-mono font-semibold text-primary">Article.signal.ts</div>
-                <div className="mt-2 text-base-content/70 text-sm">
+                <div className="mt-2 text-foreground/70 text-sm">
                   {l.trans({
                     en: "Exposes callable endpoints through 8282/api and applies auth boundaries before delegating to service logic.",
                     ko: "8282/api를 통해 호출 가능한 endpoint를 노출하고, service 로직에 위임하기 전에 auth 경계를 적용합니다.",
                   })}
                 </div>
-                <div className="mt-3 rounded-lg border border-primary/20 bg-base-100 p-3 font-mono text-base-content/70 text-xs">
+                <div className="mt-3 rounded-lg border border-primary/20 bg-background p-3 font-mono text-foreground/70 text-xs">
                   endpoint
                   <br />
                   slice
@@ -144,17 +144,22 @@ export default function Page() {
                 </div>
               </div>
             </div>
-            <div className="mt-4 flex flex-col gap-2 rounded-xl border border-base-300 bg-base-200 p-4 md:flex-row md:items-center md:justify-between">
+            <div className="mt-4 flex flex-col gap-2 rounded-xl border border-border bg-muted p-4 md:flex-row md:items-center md:justify-between">
               <div>
-                <div className="font-mono font-semibold text-base-content">API endpoint port</div>
-                <div className="mt-1 text-base-content/70 text-sm">
+                <div className="font-mono font-semibold text-foreground">API endpoint port</div>
+                <div className="mt-1 text-foreground/70 text-sm">
                   {l.trans({
                     en: "Signal endpoints are exposed through the API port, so generated clients can call business actions through the same surface.",
                     ko: "Signal endpoint는 API 포트를 통해 노출되므로, 생성된 client는 같은 surface로 비즈니스 액션을 호출할 수 있습니다.",
                   })}
                 </div>
               </div>
-              <div className="rounded-lg border border-base-300 bg-base-100 px-4 py-2 font-mono text-base-content/70 text-sm">
+              <div
+                className={panelRecipe(
+                  { radius: "lg", padding: "none" },
+                  "px-4 py-2 font-mono text-foreground/70 text-sm",
+                )}
+              >
                 8282/api
               </div>
             </div>
@@ -182,17 +187,17 @@ export default function Page() {
                   }),
                 },
               ].map(({ title, desc }) => (
-                <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
-                  <span className="font-bold text-base-content">{title}: </span>
+                <div key={title} className={panelRecipe({ padding: "row" })}>
+                  <span className="font-bold text-foreground">{title}: </span>
 
-                  <span className="text-base-content/70 text-sm">{desc}</span>
+                  <span className="text-foreground/70 text-sm">{desc}</span>
                 </div>
               ))}
             </div>
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="service-layer" title={l.trans({ en: "Service Layer", ko: "서비스 계층" })}>
         <Docs.Title>{l.trans({ en: "Service Layer", ko: "서비스 계층" })}</Docs.Title>
@@ -234,9 +239,9 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="space-x-2 rounded-xl border border-base-300 bg-base-100">
-                <span className="font-bold text-base-content">{title}: </span>
-                <span className="text-base-content/70">{desc}</span>
+              <div key={title} className={panelRecipe({ padding: "none" }, "space-x-2")}>
+                <span className="font-bold text-foreground">{title}: </span>
+                <span className="text-foreground/70">{desc}</span>
               </div>
             ))}
           </div>
@@ -246,11 +251,11 @@ export default function Page() {
               ko: "간단한 기준은 이렇습니다. 코드가 비즈니스 질문에 답한다면 service 로직에 두고, 화면을 그리거나 임시 UI 상태만 다룬다면 UI 쪽에 둡니다.",
             })}
           </Docs.Alert>
-          <div className="rounded-2xl border border-base-300 bg-base-100 p-5">
-            <div className="font-bold text-base-content">
+          <div className={panelRecipe({ radius: "2xl", padding: "lg" })}>
+            <div className="font-bold text-foreground">
               {l.trans({ en: "Dependency Injection", ko: "의존성 주입" })}
             </div>
-            <div className="mt-1 text-base-content/70 text-sm">
+            <div className="mt-1 text-foreground/70 text-sm">
               {l.trans({
                 en: "A service can receive the tools it needs instead of creating them by hand. This is how one business owner asks another domain owner, shared API, signal, or runtime adaptor for help.",
                 ko: "service는 필요한 도구를 직접 만들지 않고 주입받을 수 있습니다. 이는 한 업무 담당자가 다른 도메인 담당자, 공유 API, signal, 런타임 adaptor에게 도움을 요청하는 방식입니다.",
@@ -301,17 +306,17 @@ export default function Page() {
                   }),
                 },
               ].map(({ title, desc }) => (
-                <div key={title} className="rounded-xl border border-base-300 bg-base-200 px-4 py-0">
+                <div key={title} className="rounded-xl border border-border bg-muted px-4 py-0">
                   <span className="font-mono font-semibold text-primary">{title}: </span>
 
-                  <span className="text-base-content/70 text-sm">{desc}</span>
+                  <span className="text-foreground/70 text-sm">{desc}</span>
                 </div>
               ))}
             </div>
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="signal-surface" title={l.trans({ en: "Signal Surface", ko: "Signal 표면" })}>
         <Docs.Title>{l.trans({ en: "Signal Surface", ko: "Signal 표면" })}</Docs.Title>
@@ -346,30 +351,28 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
-                <span className="text-base-content/70 text-sm">{desc}</span>
+                <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
           <div className="space-y-1">
-            <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-              <div className="font-bold text-base-content">
+            <div className={panelRecipe()}>
+              <div className="font-bold text-foreground">
                 {l.trans({ en: "Endpoint transport", ko: "Endpoint 전송 방식" })}
               </div>
-              <div className="mt-2 text-base-content/70 text-sm">
+              <div className="mt-2 text-foreground/70 text-sm">
                 {l.trans({
                   en: "Use query/mutation for request-response API work. Use message/pubsub when the screen needs WebSocket behavior, realtime messages, or room-based publish/subscribe.",
                   ko: "요청-응답 API 작업에는 query/mutation을 사용합니다. 화면에 WebSocket 동작, 실시간 메시지, room 기반 publish/subscribe가 필요하면 message/pubsub를 사용합니다.",
                 })}
               </div>
             </div>
-            <div className="rounded-xl border border-base-300 bg-base-100 p-4">
-              <div className="font-bold text-base-content">
-                {l.trans({ en: "Operation controls", ko: "운영 제어" })}
-              </div>
-              <div className="mt-2 text-base-content/70 text-sm">
+            <div className={panelRecipe()}>
+              <div className="font-bold text-foreground">{l.trans({ en: "Operation controls", ko: "운영 제어" })}</div>
+              <div className="mt-2 text-foreground/70 text-sm">
                 {l.trans({
                   en: "Signal is also where request guards, parameters, search inputs, message inputs, cache hints, and throttling-style operational boundaries are described.",
                   ko: "signal은 request guard, parameter, search input, message input, cache hint, throttling 성격의 운영 경계를 설명하는 위치이기도 합니다.",
@@ -377,11 +380,11 @@ export default function Page() {
               </div>
             </div>
           </div>
-          <div className="rounded-2xl border border-base-300 bg-base-100 p-5">
-            <div className="font-bold text-base-content">
+          <div className={panelRecipe({ radius: "2xl", padding: "lg" })}>
+            <div className="font-bold text-foreground">
               {l.trans({ en: "How To Choose A Signal Shape", ko: "Signal 형태 선택하기" })}
             </div>
-            <div className="mt-1 text-base-content/70 text-sm">
+            <div className="mt-1 text-foreground/70 text-sm">
               {l.trans({
                 en: "Start from the product behavior. Does the user need an answer now, a live conversation, a broadcast to many screens, or a background job that finishes later?",
                 ko: "제품 동작에서 시작하세요. 사용자가 지금 답을 받아야 하는지, 열린 연결로 대화해야 하는지, 여러 화면에 알림을 보내야 하는지, 나중에 끝나는 백그라운드 작업인지에 따라 선택합니다.",
@@ -400,59 +403,65 @@ export default function Page() {
   later --> internal["Use process or schedule"]`}
             />
             <div className="mt-4 space-y-1">
-              <div className="rounded-xl border border-base-300 bg-base-200 p-4">
-                <div className="font-semibold text-base-content">
-                  {l.trans({ en: "Answer now", ko: "지금 답하기" })}
-                </div>
-                <div className="text-base-content/70 text-sm">
+              <div className="rounded-xl border border-border bg-muted p-4">
+                <div className="font-semibold text-foreground">{l.trans({ en: "Answer now", ko: "지금 답하기" })}</div>
+                <div className="text-foreground/70 text-sm">
                   {l.trans({
                     en: "Use query or mutation when the screen asks once and expects one result. Good for loading a list, saving a form, approving a request, or adding stock.",
                     ko: "화면이 한 번 요청하고 한 번의 결과를 기대한다면 query 또는 mutation을 사용합니다. 목록 불러오기, 폼 저장, 요청 승인, 재고 추가에 적합합니다.",
                   })}
                 </div>
-                <div className="mt-3 rounded-lg border border-base-300 bg-base-100 p-3 font-mono text-base-content/70 text-xs">
+                <div
+                  className={panelRecipe({ radius: "lg", padding: "sm" }, "mt-3 font-mono text-foreground/70 text-xs")}
+                >
                   screen calls 8282/api, business service returns result
                 </div>
               </div>
-              <div className="rounded-xl border border-base-300 bg-base-200 p-4">
-                <div className="font-semibold text-base-content">
+              <div className="rounded-xl border border-border bg-muted p-4">
+                <div className="font-semibold text-foreground">
                   {l.trans({ en: "Keep talking", ko: "연결을 유지하며 대화" })}
                 </div>
-                <div className="text-base-content/70 text-sm">
+                <div className="text-foreground/70 text-sm">
                   {l.trans({
                     en: "Use message when an open screen needs a WebSocket-style conversation with the server, such as device control, live operation panels, or guided workflows.",
                     ko: "열려 있는 화면이 서버와 WebSocket 방식으로 대화해야 한다면 message를 사용합니다. 장비 제어, 실시간 운영 패널, 단계형 작업 흐름에 적합합니다.",
                   })}
                 </div>
-                <div className="mt-3 rounded-lg border border-base-300 bg-base-100 p-3 font-mono text-base-content/70 text-xs">
+                <div
+                  className={panelRecipe({ radius: "lg", padding: "sm" }, "mt-3 font-mono text-foreground/70 text-xs")}
+                >
                   open connection, send message, receive reply
                 </div>
               </div>
-              <div className="rounded-xl border border-base-300 bg-base-200 p-4">
-                <div className="font-semibold text-base-content">
+              <div className="rounded-xl border border-border bg-muted p-4">
+                <div className="font-semibold text-foreground">
                   {l.trans({ en: "Notify many screens", ko: "여러 화면에 알림" })}
                 </div>
-                <div className="text-base-content/70 text-sm">
+                <div className="text-foreground/70 text-sm">
                   {l.trans({
                     en: "Use pubsub when one business change should be pushed to multiple open screens, dashboards, devices, or users.",
                     ko: "하나의 비즈니스 변경을 여러 열린 화면, 대시보드, 장비, 사용자에게 밀어줘야 한다면 pubsub를 사용합니다.",
                   })}
                 </div>
-                <div className="mt-3 rounded-lg border border-base-300 bg-base-100 p-3 font-mono text-base-content/70 text-xs">
+                <div
+                  className={panelRecipe({ radius: "lg", padding: "sm" }, "mt-3 font-mono text-foreground/70 text-xs")}
+                >
                   service changes data, publish, subscribers update
                 </div>
               </div>
-              <div className="rounded-xl border border-base-300 bg-base-200 p-4">
-                <div className="font-semibold text-base-content">
+              <div className="rounded-xl border border-border bg-muted p-4">
+                <div className="font-semibold text-foreground">
                   {l.trans({ en: "Finish later", ko: "나중에 끝내기" })}
                 </div>
-                <div className="text-base-content/70 text-sm">
+                <div className="text-foreground/70 text-sm">
                   {l.trans({
                     en: "Use process, cron, interval, timeout, initialize, or destroy when work is queued, scheduled, repeated, or tied to server lifecycle.",
                     ko: "작업이 queue에 들어가거나, 예약되거나, 반복되거나, 서버 생명주기와 연결된다면 process, cron, interval, timeout, initialize, destroy를 사용합니다.",
                   })}
                 </div>
-                <div className="mt-3 rounded-lg border border-base-300 bg-base-100 p-3 font-mono text-base-content/70 text-xs">
+                <div
+                  className={panelRecipe({ radius: "lg", padding: "sm" }, "mt-3 font-mono text-foreground/70 text-xs")}
+                >
                   request or schedule, worker, save or publish result
                 </div>
               </div>
@@ -460,7 +469,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="business-service-scenarios"
@@ -626,22 +635,22 @@ export class ChatRoomService extends serve(db.chatRoom, ({ signal }) => ({
 }`,
               },
             ].map(({ title, desc, shape, config, code }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
-                <div className="font-bold text-base-content">{title}</div>
-                <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
-                <div className="mt-3 rounded-lg border border-base-300 bg-base-200 p-3 font-mono text-base-content/70 text-xs">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
+                <div className="font-bold text-foreground">{title}</div>
+                <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
+                <div className="mt-3 rounded-lg border border-border bg-muted p-3 font-mono text-foreground/70 text-xs">
                   {shape}
                 </div>
-                <div className="mt-3 text-base-content/70 text-sm">{config}</div>
+                <div className="mt-3 text-foreground/70 text-sm">{config}</div>
                 <Docs.CodeSnippet className="mt-3 w-full" code={code} title={title} />
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

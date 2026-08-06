@@ -31,6 +31,8 @@
   "dependencies": {},
   "devDependencies": {},
   "patchedDependencies": {
-    "react-dom@19.2.7": "patches/react-dom@19.2.7.patch"
+    "react-dom@19.2.7": "patches/react-dom@19.2.7.patch",
+    "zod@3.25.76": "patches/zod@3.25.76.patch",
+    "zod@4.4.3": "patches/zod@4.4.3.patch"
   }
 }

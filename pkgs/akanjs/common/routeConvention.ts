@@ -1,11 +1,13 @@
 const ROUTE_SOURCE_RE = /^\.\/(.+)\.(tsx|ts|jsx|js)$/;
 const SOURCE_EXT_RE = /\.(tsx|ts|jsx|js)$/;
-const RESERVED_ROUTE_FILES = new Set(["_layout", "_index"]);
+const RESERVED_ROUTE_FILES = new Set(["_layout", "_index", "_overrides"]);
 const INTERNAL_ROOT_LAYOUT_LEAF = "__root_layout";
 const IMPLICIT_LOCALE_SEGMENT = "[lang]";
 const SPECIAL_ROUTE_LEAVES = new Set(["robots.txt"]);
+// Leaves that attach to their own directory node instead of creating a child route segment.
+const DIRECTORY_SCOPED_LEAVES = new Set(["_layout", "_index", "_overrides"]);
 
-export type RouteModuleKind = "page" | "layout";
+export type RouteModuleKind = "page" | "layout" | "overrides";
 
 export interface ParsedRouteModuleKey {
   key: string;
@@ -51,7 +53,7 @@ export function validatePageSourceFile(filePath: string, options: ValidatePageSo
   if (ext !== "tsx") throw new Error(`[route-convention] route source files under page/ must use .tsx: ${displayPath}`);
   if (leaf.startsWith("_") && !RESERVED_ROUTE_FILES.has(leaf) && leaf !== INTERNAL_ROOT_LAYOUT_LEAF)
     throw new Error(
-      `[route-convention] only _index.tsx and _layout.tsx are allowed as reserved route files under page/: ${displayPath}`,
+      `[route-convention] only _index.tsx, _layout.tsx and _overrides.tsx are allowed as reserved route files under page/: ${displayPath}`,
     );
   if (/^[A-Z]/.test(leaf))
     throw new Error(`[route-convention] route page filenames must not start with an uppercase letter: ${displayPath}`);
@@ -97,13 +99,14 @@ export function parseRouteModuleKey(key: string): ParsedRouteModuleKey {
   }
 
   const isInternalRootLayout = leaf === INTERNAL_ROOT_LAYOUT_LEAF;
-  const kind: RouteModuleKind = leaf === "_layout" || isInternalRootLayout ? "layout" : "page";
+  const kind: RouteModuleKind =
+    leaf === "_layout" || isInternalRootLayout ? "layout" : leaf === "_overrides" ? "overrides" : "page";
   if (leaf.startsWith("_") && !RESERVED_ROUTE_FILES.has(leaf) && !isInternalRootLayout) {
     throw new Error(`[route-convention] unsupported reserved route file "${leaf}" in ${key}`);
   }
 
   const sourceRouteSegments =
-    leaf === "_layout" || leaf === "_index" || isInternalRootLayout ? moduleSegments.slice(0, -1) : moduleSegments;
+    DIRECTORY_SCOPED_LEAVES.has(leaf) || isInternalRootLayout ? moduleSegments.slice(0, -1) : moduleSegments;
   const isSpecialRoute = kind === "page" && SPECIAL_ROUTE_LEAVES.has(leaf);
   const routeSegments = isSpecialRoute ? sourceRouteSegments : [IMPLICIT_LOCALE_SEGMENT, ...sourceRouteSegments];
   for (const segment of routeSegments) validateRouteSegment(segment, key);

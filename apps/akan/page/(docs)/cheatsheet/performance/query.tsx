@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -133,7 +133,7 @@ export default function Page() {
               ko: "Akan에서 데이터베이스 쿼리는 보통 `document.ts`의 filter에 둡니다. Page와 service는 같은 조건을 매번 만들지 않고 이름 붙은 filter를 호출합니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Use `filter().arg()` for required inputs.",
@@ -152,10 +152,10 @@ export default function Page() {
                 ko: "읽기 쉬운 조건을 위해 `q` helper를 사용합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="basic" title={l.trans({ en: "Basic Filter", ko: "기본 filter" })}>
         <Docs.Title>{l.trans({ en: "Basic Filter", ko: "기본 filter" })}</Docs.Title>
@@ -168,6 +168,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Tasks in project", ko: "Project의 task" })}
           code={`export class TaskFilter extends from(cnst.Task, (filter) => ({
   query: {
@@ -184,7 +185,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="optional" title={l.trans({ en: "Optional Conditions", ko: "선택 조건" })}>
         <Docs.Title>{l.trans({ en: "Optional Conditions", ko: "선택 조건" })}</Docs.Title>
@@ -197,6 +198,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Filter by assignees", ko: "담당자 조건" })}
           code={`inProjectWithAssignees: filter()
   .arg("projectId", ID)
@@ -211,7 +213,7 @@ export default function Page() {
   ),`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="range" title={l.trans({ en: "Range And OR", ko: "범위와 OR" })}>
         <Docs.Title>{l.trans({ en: "Range And OR", ko: "범위와 OR" })}</Docs.Title>
@@ -224,6 +226,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Dashboard period", ko: "Dashboard 기간" })}
           code={`inPeriod: filter()
   .arg("projectId", ID)
@@ -238,7 +241,7 @@ export default function Page() {
   ),`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="raw" title={l.trans({ en: "Raw Query", ko: "Raw query" })}>
         <Docs.Title>{l.trans({ en: "Raw Query", ko: "Raw query" })}</Docs.Title>
@@ -251,6 +254,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Score threshold", ko: "점수 조건" })}
           code={`popular: filter()
   .arg("minScore", Number)
@@ -262,7 +266,7 @@ export default function Page() {
   ),`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="sql" title={l.trans({ en: "How It Becomes SQL", ko: "SQL로 바뀌는 방식" })}>
         <Docs.Title>{l.trans({ en: "How It Becomes SQL", ko: "SQL로 바뀌는 방식" })}</Docs.Title>
@@ -290,12 +294,12 @@ export default function Page() {
                     <code>{example.helper}</code>
                   </td>
                   <td className="align-top">
-                    <pre className="whitespace-pre-wrap rounded bg-base-200 p-2 text-xs">
+                    <pre className="whitespace-pre-wrap rounded bg-muted p-2 text-xs">
                       <code>{example.query}</code>
                     </pre>
                   </td>
                   <td className="align-top">
-                    <pre className="whitespace-pre-wrap rounded bg-base-200 p-2 text-xs">
+                    <pre className="whitespace-pre-wrap rounded bg-muted p-2 text-xs">
                       <code>{example.sql}</code>
                     </pre>
                   </td>
@@ -320,7 +324,7 @@ export default function Page() {
                 ko: "Akan은 왜 대부분의 model 데이터를 JSON document 형태로 저장하나요?",
               })}
             </div>
-            <ul className="list-disc space-y-2 pl-5">
+            <DocsList>
               <li>
                 {l.trans({
                   en: "Schema changes are lighter. Adding a small field usually does not require a table migration, so product code can move faster.",
@@ -345,16 +349,16 @@ export default function Page() {
                   ko: "목록/상세 화면에 맞춰 의도적으로 denormalize하고, 트래픽이 많아진 경로에만 index를 추가할 수 있습니다.",
                 })}
               </li>
-            </ul>
+            </DocsList>
           </div>
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Name filters after screens or use cases: `inProject`, `inPeriod`, `forDashboard`.",
@@ -379,10 +383,10 @@ export default function Page() {
                 ko: "중요 트래픽 경로가 된 filter에는 index를 추가하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

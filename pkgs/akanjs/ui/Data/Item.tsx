@@ -1,12 +1,14 @@
 "use client";
 import type { Dayjs } from "akanjs/base";
-import { clsx, type DataAction, type DataColumn, usePage } from "akanjs/client";
+import { cn, type DataAction, type DataColumn, usePage } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import type { BaseObject } from "akanjs/constant";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import type { ReactNode } from "react";
 import { AiOutlineDelete, AiOutlineEdit, AiOutlineEye, AiOutlineMore } from "react-icons/ai";
+import { badgeRecipe } from "../Badge";
+import { buttonRecipe } from "../Button";
 import { Dropdown } from "../Dropdown";
 import { ObjectId } from "../ObjectId";
 import { Popconfirm } from "../Popconfirm";
@@ -129,7 +131,7 @@ export default function Item<T extends string, Full extends { id: string }, Ligh
     });
 
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {children ? (
         <div className="flex justify-center">
           <div className="relative size-full" onClick={onClick}>
@@ -143,16 +145,14 @@ export default function Item<T extends string, Full extends { id: string }, Ligh
       ) : null}
       <div className="mt-2 h-full rounded-lg bg-primary/5 p-2">
         <div className="mb-2 flex justify-between">
-          <div className="[&_.badge]:badge-xs [&_.badge]:p-2">
-            {columns.find((c) => c === "id") && <ObjectId id={model.id} />}
-          </div>
+          <div>{columns.find((c) => c === "id") && <ObjectId id={model.id} />}</div>
 
           <div className="flex items-end justify-center gap-2">
             {columns.find((c) => c === "createdAt") && (
               <RecentTime date={(model as unknown as BaseObject).createdAt} className="text-xs opacity-60" />
             )}
             {columns.find((c) => c === "status") && (
-              <StatusTag status={(model as unknown as { status: string }).status} className="badge-xs mr-0 p-2" />
+              <StatusTag status={(model as unknown as { status: string }).status} className="mr-0 p-2" />
             )}
           </div>
         </div>
@@ -165,7 +165,7 @@ export default function Item<T extends string, Full extends { id: string }, Ligh
           ))}
           {customActions.length ? (
             <Dropdown
-              buttonClassName="m-1 text-center btn btn-square btn-ghost btn-sm "
+              buttonClassName={buttonRecipe({ variant: "ghost", size: "icon" }, "m-1 size-8 text-center")}
               value={<AiOutlineMore />}
               content={customActions.map((action) => <div key={action.key}>{action.label}</div>)}
             />
@@ -205,14 +205,20 @@ export const Action = <T extends string, M extends { id: string }, L extends { i
   };
   return action === "edit" ? (
     <button
-      className={`btn btn-square btn-ghost btn-sm m-1 text-center ${outline && "btn-outline border-dashed"}`}
+      className={buttonRecipe({ variant: outline ? "outline" : "ghost", size: "icon" }, [
+        "m-1 size-8 text-center",
+        outline && "border-dashed",
+      ])}
       onClick={() => void storeDo[namesOfSlice.editModel](model.id)}
     >
       <AiOutlineEdit key={action} />
     </button>
   ) : action === "view" ? (
     <button
-      className={`btn btn-square btn-ghost btn-sm m-1 text-center ${outline && "btn-outline border-dashed"}`}
+      className={buttonRecipe({ variant: outline ? "outline" : "ghost", size: "icon" }, [
+        "m-1 size-8 text-center",
+        outline && "border-dashed",
+      ])}
       onClick={() => void storeDo[namesOfSlice.viewModel](model.id)}
     >
       <AiOutlineEye key={action} />
@@ -223,7 +229,12 @@ export const Action = <T extends string, M extends { id: string }, L extends { i
       title={l("base.removeMsg")}
       onConfirm={() => void storeDo[namesOfSlice.removeModel](model.id)}
     >
-      <button className={`btn btn-square btn-ghost btn-sm m-1 text-center ${outline && "btn-outline border-dashed"}`}>
+      <button
+        className={buttonRecipe({ variant: outline ? "outline" : "ghost", size: "icon" }, [
+          "m-1 size-8 text-center",
+          outline && "border-dashed",
+        ])}
+      >
         <AiOutlineDelete />
       </button>
     </Popconfirm>
@@ -232,29 +243,31 @@ export const Action = <T extends string, M extends { id: string }, L extends { i
   );
 };
 
+// daisyui badge-* 매핑 → 시맨틱 토큰 색 오버라이드(badgeRecipe outline 위에 얹음). "-outline"류는 색 테두리+텍스트만.
 const statusColors = {
-  active: "badge-info badge-outline",
-  applied: "badge-warning",
-  approved: "badge-success",
-  denied: "badge-error badge-outline",
-  failed: "badge-error badge-outline",
-  restricted: "badge-error",
-  paused: "badge-outline",
-  running: "badge-warning badge-outline",
-  break: "badge-accent badge-outline",
-  rejected: "badge-error badge-outline",
-  hidden: "badge-outline",
-  inProgress: "badge-accent",
-  resolved: "badge-success badge-outline",
-  finished: "badge-secondary",
+  active: "border-info text-info",
+  applied: "border-transparent bg-warning text-warning-foreground",
+  approved: "border-transparent bg-success text-success-foreground",
+  denied: "border-destructive text-destructive",
+  failed: "border-destructive text-destructive",
+  restricted: "border-transparent bg-destructive text-destructive-foreground",
+  paused: "",
+  running: "border-warning text-warning",
+  break: "border-accent text-accent",
+  rejected: "border-destructive text-destructive",
+  hidden: "",
+  inProgress: "border-transparent bg-accent text-accent-foreground",
+  resolved: "border-success text-success",
+  finished: "border-transparent bg-secondary text-secondary-foreground",
 };
 const StatusTag = ({ status, className }: { status: string; className?: string }) => {
   return (
     <div
-      className={clsx(
-        `badge mr-1 p-3 ${statusColors[status as keyof typeof statusColors] ?? "badge-outline"}`,
+      className={badgeRecipe({ variant: "outline" }, [
+        "mr-1 p-3",
+        statusColors[status as keyof typeof statusColors] ?? "",
         className,
-      )}
+      ])}
     >
       {status}
     </div>
@@ -263,21 +276,24 @@ const StatusTag = ({ status, className }: { status: string; className?: string }
 Item.StatusTag = StatusTag;
 
 const roleColors = {
-  user: "badge-success",
-  business: "badge-warning",
-  admin: "badge-error badge-outline",
-  superAdmin: "badge-error",
-  root: "badge-primary",
+  user: "border-transparent bg-success text-success-foreground",
+  business: "border-transparent bg-warning text-warning-foreground",
+  admin: "border-destructive text-destructive",
+  superAdmin: "border-transparent bg-destructive text-destructive-foreground",
+  root: "border-transparent bg-primary text-primary-foreground",
 };
 const RoleTags = ({ role }: { role: string | string[] }) => {
   return Array.isArray(role) ? (
     role.map((role) => (
-      <div className={`badge mr-1 ${roleColors[role as keyof typeof roleColors]}`} key={role}>
+      <div
+        className={badgeRecipe({ variant: "outline" }, ["mr-1", roleColors[role as keyof typeof roleColors]])}
+        key={role}
+      >
         {role}
       </div>
     ))
   ) : (
-    <div className="badge mr-1" style={{ backgroundColor: roleColors[role as keyof typeof roleColors] as string }}>
+    <div className={badgeRecipe({ variant: "outline" }, ["mr-1", roleColors[role as keyof typeof roleColors]])}>
       {role}
     </div>
   );

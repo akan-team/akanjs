@@ -3,6 +3,8 @@ import { dayjs } from "akanjs/base";
 import { Id } from "akanjs/document";
 import type { LocalFile } from "akanjs/server";
 
+import { Err } from "../lib/dict";
+
 export class FileManager {
   static async getFileStat(localFile: string | LocalFile) {
     const localPath = typeof localFile === "string" ? localFile : localFile.localPath;
@@ -19,7 +21,7 @@ export class FileManager {
   }
   static async readUrlAsStream(url: string, init?: RequestInit): Promise<ReadableStream> {
     const response = await fetch(url, init);
-    if (!response.body) throw new Error("No response body");
+    if (!response.body) throw new Err("util.error.noResponseBody");
     return response.body;
   }
   static async writeStreamToFile(
@@ -29,7 +31,7 @@ export class FileManager {
   ): Promise<LocalFile> {
     const filename = rename ?? localPath.split("/").pop();
     const dirname = localPath.split("/").slice(0, -1).join("/");
-    if (!filename) throw new Error(`Filename is required for local path: ${localPath}`);
+    if (!filename) throw new Err("util.error.filenameRequired", { localPath });
     if (cache && (await Bun.file(localPath).exists())) {
       const stat = await Bun.file(localPath).stat();
       const fileMeta = { size: stat.size, lastModifiedAt: dayjs(stat.mtime) };

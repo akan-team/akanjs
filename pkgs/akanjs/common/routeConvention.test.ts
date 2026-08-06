@@ -45,6 +45,23 @@ describe("route convention", () => {
     });
   });
 
+  test("parses _overrides.tsx as an override module attached to its directory node", () => {
+    expect(parseRouteModuleKey("./_overrides.tsx")).toMatchObject({
+      kind: "overrides",
+      routeSegments: ["[lang]"],
+      sourceRouteSegments: [],
+      pattern: "/:lang",
+    });
+    expect(parseRouteModuleKey("./(admin)/dashboard/_overrides.tsx")).toMatchObject({
+      kind: "overrides",
+      routeSegments: ["[lang]", "(admin)", "dashboard"],
+      sourceRouteSegments: ["(admin)", "dashboard"],
+      pattern: "/:lang/dashboard",
+    });
+    expect(isRouteSourceFile("(admin)/dashboard/_overrides.tsx")).toBe(true);
+    expect(validatePageSourceFile("(admin)/dashboard/_overrides.tsx")).toBe(true);
+  });
+
   test("rejects unsupported reserved and catch-all route files", () => {
     expect(() => parseRouteModuleKey("./_helper.ts")).toThrow("unsupported reserved route file");
     expect(() => parseRouteModuleKey("./[lang]/foo.tsx")).toThrow("Akan.js injects `[lang]` automatically");

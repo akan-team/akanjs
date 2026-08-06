@@ -1,5 +1,12 @@
 import { usePage } from "@apps/akan/client";
-import { type CommandReferenceItem, CommandReferenceSlide, Docs, type ReferenceRow } from "@apps/akan/ui";
+import {
+  type CommandReferenceItem,
+  CommandReferenceSlide,
+  Divider,
+  Docs,
+  DocsToc,
+  type ReferenceRow,
+} from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 const writeOption: ReferenceRow = {
@@ -90,7 +97,7 @@ akan create-application blog --start true`,
     {
       name: "sync",
       signature: "akan sync <system>",
-      desc: "Synchronize dependency and configuration surfaces for a selected app or library.\nRun it after structural changes, package changes, or generated configuration changes that need to be reflected in the target system.",
+      desc: "Synchronize dependency and configuration surfaces for a selected app or library.\nRun it after structural changes, package changes, or generated configuration changes that need to be reflected in the target system.\nIt also links library assets into public/libs and private/libs, and library routes into page/(libs) for apps that declare syncPageLibs.",
       examples: `akan sync myapp
 akan sync util`,
     },
@@ -348,11 +355,11 @@ akan dbup --mode cluster`,
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       {commands.map((command) => (
         <CommandReferenceSlide key={command.name} command={command} />
       ))}
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

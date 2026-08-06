@@ -1,4 +1,4 @@
-import type { WorkflowSpec } from "@akanjs/devkit";
+import type { WorkflowSpec } from "@akanjs/devkit/workflow";
 import { baseValidation, sysInputs } from "./shared";
 
 export const createScalarWorkflowSpec: WorkflowSpec = {

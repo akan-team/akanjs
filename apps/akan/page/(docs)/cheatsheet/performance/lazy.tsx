@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "Lazy loading은 첫 화면에서 모든 무거운 component를 바로 받지 않는 방식입니다. 사용자가 실제로 볼 때 비싼 UI를 불러오세요.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Good for maps, charts, editors, 3D viewers, and wallet widgets.",
@@ -35,10 +35,10 @@ export default function Page() {
                 ko: "작은 버튼이나 첫 화면 핵심 content에는 별로 도움이 되지 않습니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="external" title={l.trans({ en: "External Libraries", ko: "외부 라이브러리" })}>
         <Docs.Title>{l.trans({ en: "External Libraries", ko: "외부 라이브러리" })}</Docs.Title>
@@ -51,13 +51,14 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Map widget", ko: "지도 widget" })}
           code={`"use client";
 import { lazy } from "akanjs/webkit";
 
 const MapWidget = lazy(() => import("heavy-map-widget"), {
   ssr: false,
-  loading: () => <div className="skeleton h-64" />,
+  loading: () => <div className="h-64 animate-pulse rounded-box bg-muted" />,
 });
 
 interface ArticleMapProps {
@@ -68,7 +69,7 @@ export const ArticleMap = ({ center }: ArticleMapProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="internal" title={l.trans({ en: "Large Components", ko: "큰 component" })}>
         <Docs.Title>{l.trans({ en: "Large Components", ko: "큰 component" })}</Docs.Title>
@@ -81,6 +82,7 @@ export const ArticleMap = ({ center }: ArticleMapProps) => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Lazy editor", ko: "Lazy editor" })}
           code={`import { lazy } from "akanjs/webkit";
 
@@ -97,12 +99,12 @@ export const EditPanel = ({ open }: EditPanelProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="ssr" title={l.trans({ en: "SSR Or Client Only", ko: "SSR 또는 client only" })}>
         <Docs.Title>{l.trans({ en: "SSR Or Client Only", ko: "SSR 또는 client only" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Use default lazy when the component can render on the server.",
@@ -121,15 +123,15 @@ export const EditPanel = ({ open }: EditPanelProps) => {
                 ko: "빈 공간이 어색하다면 항상 loading fallback을 제공하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Split by user intent: editor, map, chart, modal, viewer.",
@@ -148,10 +150,10 @@ export const EditPanel = ({ open }: EditPanelProps) => {
                 ko: "많은 페이지가 같은 component를 즉시 사용한다면 lazy가 오히려 지연을 만들 수 있습니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

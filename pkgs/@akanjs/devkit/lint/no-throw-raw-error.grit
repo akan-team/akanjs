@@ -1,0 +1,40 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Domain code in apps/ and libs/ must not throw a raw `Error`. Throw the typed
+// `Err` instead, which is generated per app/lib by `makeTrans`
+// (pkgs/akanjs/dictionary/trans.ts) and imported via `import { Err } from "../dict"`
+// (or the app/lib client entrypoint). `Err` carries a translatable error key,
+// a status code, and structured payload, so raw `Error` throws lose i18n and
+// HTTP-status handling.
+//
+// The `$msg` metavariable in the argument position leniently matches any arity,
+// so `throw new Error()`, `throw new Error("x")`, and
+// `throw new Error("x", { cause })` are all caught, as is the `new`-less
+// `throw Error(...)` call form. Only real throw statements match — a
+// `new Error(...)` inside a string literal or one that is not thrown is ignored.
+//
+// No autofix: `Err`'s first argument must be a typed dictionary error key
+// (e.g. throw new Err('model.errorKey')), so a mechanical rewrite of an
+// arbitrary message string would not typecheck. Each site must be migrated to a
+// real error key by hand.
+//
+// NOTE: the diagnostic messages below use single quotes in the example on
+// purpose. Escaped double quotes (\") inside a GritQL string trigger a
+// double-unescape bug in Biome 2.4.4 that corrupts the rendered message.
+or {
+  `throw new Error($msg)` as $throw where {
+    register_diagnostic(
+      span = $throw,
+      message = "Do not throw a raw `Error`. Throw the typed `Err` instead (import { Err } from the app/lib dict), e.g. throw new Err('model.errorKey').",
+      severity = "error"
+    )
+  },
+  `throw Error($msg)` as $throw where {
+    register_diagnostic(
+      span = $throw,
+      message = "Do not throw a raw `Error`. Throw the typed `Err` instead (import { Err } from the app/lib dict), e.g. throw new Err('model.errorKey').",
+      severity = "error"
+    )
+  }
+}

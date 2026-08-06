@@ -1,5 +1,5 @@
 "use client";
-import clsx from "clsx";
+import { cn } from "akanjs/client";
 import { type ReactNode, useCallback, useContext } from "react";
 
 import { ScrollContext } from "./context";
@@ -25,7 +25,7 @@ export const Slide = ({ id, title, children, className, preClassName, postClassN
   return (
     <Render
       id={id}
-      className={clsx("", className)}
+      className={cn("", className)}
       preClassName={preClassName}
       postClassName={postClassName}
       elementRef={setSlideElement}

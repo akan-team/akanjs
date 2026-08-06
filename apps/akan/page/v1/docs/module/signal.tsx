@@ -220,7 +220,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       {/* Internal Definition */}
       <Scroll.Slide id="internal-signal" title={l.trans({ en: "Defining Internal Tasks", ko: "내부 작업 정의하기" })}>
@@ -235,7 +235,7 @@ export default function Page() {
         </Docs.Description>
         <Docs.IntroTable type="method" items={internalTypes} />
         <div className="mb-4" />
-        <div className="rounded-lg bg-base-200 p-3 lg:p-4">
+        <div className="rounded-lg bg-muted p-3 lg:p-4">
           <Code.Snippet
             title="product.signal.ts"
             language="typescript"
@@ -251,7 +251,7 @@ export class ProductInternal extends internal(srv.product, ({ interval }) => ({
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       {/* Endpoint Definition */}
       <Scroll.Slide id="endpoint-signal" title={l.trans({ en: "Defining Public APIs", ko: "공개 API 정의하기" })}>
@@ -281,7 +281,7 @@ export class ProductInternal extends internal(srv.product, ({ interval }) => ({
 
         <div className="mb-6" />
 
-        <div className="rounded-lg bg-base-200 p-3 lg:p-4">
+        <div className="rounded-lg bg-muted p-3 lg:p-4">
           <Code.Snippet
             title="Chat Example"
             language="typescript"
@@ -354,7 +354,7 @@ unsubscribe();
 `}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       {/* Standard Signal Definition */}
       <Scroll.Slide id="standard-signal" title={l.trans({ en: "Standard Model APIs", ko: "표준 모델 API" })}>
@@ -369,7 +369,7 @@ unsubscribe();
         </Docs.Description>
         <Docs.IntroTable type="method" items={moduleAutoMethods} />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       {/* Slice Definition */}
       <Scroll.Slide
@@ -447,7 +447,7 @@ const { ticketInitInProject } = await fetch.initTicketInProject(projectId);
 />`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       {/* Guard Definition */}
       <Scroll.Slide id="guards-usage" title={l.trans({ en: "Using & Defining Guards", ko: "Guard 사용 및 정의" })}>
@@ -466,7 +466,7 @@ const { ticketInitInProject } = await fetch.initTicketInProject(projectId);
 
         <div className="mb-4" />
 
-        <div className="rounded-lg bg-base-200 p-3 lg:p-4">
+        <div className="rounded-lg bg-muted p-3 lg:p-4">
           <Code.Snippet
             title="libs/shared/nest/authGuards.ts"
             language="typescript"
@@ -497,7 +497,7 @@ slice(srv.ticket, { guards: { root: Admin } }, ...)
 mutation(Ticket, { guards: [Admin] })...`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

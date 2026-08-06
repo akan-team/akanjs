@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { capitalize, lowerlize } from "akanjs/common";
 import type { BaseInsight } from "akanjs/constant";
 import type { ClientInit, ServerInit } from "akanjs/fetch";
@@ -64,7 +64,7 @@ function Render<RefName extends string, Light>({ className, init, scrollToTop }:
   if (!loaded.current) loaded.current = true;
 
   return (
-    <div className={clsx("mt-4 flex flex-wrap justify-center", className)}>
+    <div className={cn("mt-4 flex flex-wrap justify-center", className)}>
       {insight.count > limit && (
         <Pagn
           currentPage={page}

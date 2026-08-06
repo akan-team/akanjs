@@ -1,12 +1,12 @@
 "use client";
 import {
+  Device,
   debugFrame,
   defaultPageState,
-  Device,
   type FrameLayoutState,
   type FramePlatformProfile,
-  type FrameSnapshot,
   type FrameSlotRegistration,
+  type FrameSnapshot,
   type KeyboardAccessoryFrameState,
   type KeyboardFrameState,
   type Location,
@@ -124,34 +124,37 @@ export function useFrameSlots() {
   });
   const frameSlotId = useRef(0);
 
-  const registerFrameSlot = useCallback((path: string, slot: FrameSlotRegistration, bucket: FrameSlotBucket = "active") => {
-    const id = `${slot.source ?? slot.type}-${frameSlotId.current++}`;
-    debugFrame("frameSlot.register", { path, id, bucket, slot });
-    setFrameSlotsByBucket((prev) => ({
-      ...prev,
-      [bucket]: {
-        ...prev[bucket],
-        [path]: {
-          ...(prev[bucket][path] ?? {}),
-          [id]: slot,
+  const registerFrameSlot = useCallback(
+    (path: string, slot: FrameSlotRegistration, bucket: FrameSlotBucket = "active") => {
+      const id = `${slot.source ?? slot.type}-${frameSlotId.current++}`;
+      debugFrame("frameSlot.register", { path, id, bucket, slot });
+      setFrameSlotsByBucket((prev) => ({
+        ...prev,
+        [bucket]: {
+          ...prev[bucket],
+          [path]: {
+            ...(prev[bucket][path] ?? {}),
+            [id]: slot,
+          },
         },
-      },
-    }));
-    return () => {
-      debugFrame("frameSlot.unregister", { path, id, bucket, type: slot.type, source: slot.source, role: slot.role });
-      setFrameSlotsByBucket((prev) => {
-        const pathSlots = prev[bucket][path];
-        if (!pathSlots?.[id]) return prev;
-        const nextPathSlots = { ...pathSlots };
-        delete nextPathSlots[id];
-        const nextBucket = { ...prev[bucket] };
-        if (Object.keys(nextPathSlots).length > 0) nextBucket[path] = nextPathSlots;
-        else delete nextBucket[path];
-        const next = { ...prev, [bucket]: nextBucket };
-        return next;
-      });
-    };
-  }, []);
+      }));
+      return () => {
+        debugFrame("frameSlot.unregister", { path, id, bucket, type: slot.type, source: slot.source, role: slot.role });
+        setFrameSlotsByBucket((prev) => {
+          const pathSlots = prev[bucket][path];
+          if (!pathSlots?.[id]) return prev;
+          const nextPathSlots = { ...pathSlots };
+          delete nextPathSlots[id];
+          const nextBucket = { ...prev[bucket] };
+          if (Object.keys(nextPathSlots).length > 0) nextBucket[path] = nextPathSlots;
+          else delete nextBucket[path];
+          const next = { ...prev, [bucket]: nextBucket };
+          return next;
+        });
+      };
+    },
+    [],
+  );
 
   const promotePendingSlots = useCallback(() => {
     setFrameSlotsByBucket((prev) => ({
@@ -193,9 +196,7 @@ export function getFramePlatformProfile(): FramePlatformProfile {
     (window.matchMedia?.("(display-mode: standalone)")?.matches ||
       (navigator as Navigator & { standalone?: boolean }).standalone === true);
   const hasCssSafeArea =
-    typeof document !== "undefined" &&
-    typeof CSS !== "undefined" &&
-    CSS.supports("top: env(safe-area-inset-top)");
+    typeof document !== "undefined" && typeof CSS !== "undefined" && CSS.supports("top: env(safe-area-inset-top)");
   return isStandalone || hasCssSafeArea ? "mobileWeb" : "web";
 }
 
@@ -288,7 +289,8 @@ export function resolveKeyboardFrame({
   freeze?: boolean;
 }): KeyboardFrameState {
   const useVisualViewportHeight = platformProfile === "android" && visualViewportKeyboardHeight > 0;
-  const visualFallbackHeight = keyboardHeight <= 0 && visualViewportKeyboardHeight > 0 ? visualViewportKeyboardHeight : 0;
+  const visualFallbackHeight =
+    keyboardHeight <= 0 && visualViewportKeyboardHeight > 0 ? visualViewportKeyboardHeight : 0;
   const effectiveKeyboardHeight = useVisualViewportHeight
     ? visualViewportKeyboardHeight
     : keyboardHeight > 0

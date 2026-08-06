@@ -1,0 +1,18 @@
+---
+description: Lint rules that break the build, including several whose correct output looks wrong
+alwaysApply: true
+---
+
+# Lint-Enforced Rules (These Break The Build)
+
+Enforced by `biome.json` and the Akan grit plugins registered in `biome.json`. Several of them produce output that looks wrong; do not "fix" it back.
+
+- **Never hand-order Tailwind classes.** `nursery/useSortedClasses` is an error and also sorts the string arguments to `clsx()` and `cva()`. Sorter output such as `font-bold text-2xl text-base-content` or `border-base-content/5 border-t` is correct. Write the classes in any order, run the formatter, leave the result.
+- **Never `throw new Error`.** Throw `new Err("<module>.error.<key>")` and register the key as `[en, ko]` in that module's dictionary `.error({})`. Import `Err` from `"../dict"` on the server and from `"@libs/<lib>/client"` or `"@apps/<app>/client"` in UI. `no-throw-raw-error.grit` exempts `*.test.ts`, `*.spec.ts`, `*.constant.ts`, and `common/**` — `common/` has no legal `Err` import path, so keep throwing code out of it.
+- **Never import a third-party package** from `page/**`, from any barrel, or from any `*.{constant,dictionary,document,service,signal,store}.ts` / `*.{Template,Unit,Util,View,Zone}.tsx` (`no-import-external-library.grit`). Re-export the symbol through a lib first. One-line re-export shims such as `libs/<lib>/base/<pkg>.ts` and `libs/<lib>/webkit/<hook>.ts` exist for exactly this reason — they are load-bearing, not cruft. Do not delete them.
+- **`#private` is banned in exactly four file suffixes:** `*.constant.ts`, `*.document.ts`, `*.service.ts`, and `*.store.ts` (`no-js-private-class-method.grit`). The rule is scoped by file path, not by class shape, so `#private` remains the house style everywhere under `srvkit/`, including `adapt()` adapter classes.
+- **No `console.log` / `console.debug`.** Only `assert`, `error`, `info`, and `warn` are allowed. Server code uses the injected `this.logger.*` or `new Logger("ClassName")`.
+- **Never redeclare a generated CRUD endpoint name** in `*.signal.ts` (`no-redeclare-predefined-endpoint.grit`).
+- **No deep imports past a barrel** (`no-deep-internal-import.grit`). Cross-module constant references such as `../map/map.constant` are the sanctioned exception.
+- **Server-component discipline** is enforced on `page/**`, `*.Unit.tsx`, and `*.View.tsx` (`no-import-client-functions.grit`, `no-use-client-in-server.grit`, `non-scalar-props-restricted.grit`).
+- `noArrayIndexKey` and `useExhaustiveDependencies` are **off** on purpose: `key={idx}` for embedded scalars and short dependency arrays are intentional, not oversights.

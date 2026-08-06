@@ -16,7 +16,9 @@ import {
   type SingleValue,
   type UnCls,
 } from "akanjs/base";
+import type { CascadeAction } from "./cascadePaths";
 import { ConstantRegistry } from "./constantRegistry";
+import type { TextFieldRole } from "./textFieldPaths";
 import type { BaseObject } from "./types";
 import type { ConstantModelRef } from "./via";
 
@@ -103,7 +105,8 @@ export interface ConstantFieldProps<
   example?: FieldValue;
   of?: MapValue; // for Map type fields
   validate?: (value: FieldValue, model: any) => boolean;
-  text?: "search" | "filter";
+  text?: TextFieldRole;
+  cascade?: CascadeAction;
   meta?: Metadata;
 }
 export const fieldPresets = ["email", "password", "url"] as const;
@@ -193,7 +196,8 @@ interface ConstantFieldBuildProps<
   example?: FieldValue;
   of?: MapValue; // for Map type fields
   validate?: (value: FieldValue, model: any) => boolean;
-  text?: "search" | "filter";
+  text?: TextFieldRole;
+  cascade?: CascadeAction;
   modelRef: ConstantModelRef;
   arrDepth: number;
   optArrDepth: number;
@@ -316,7 +320,8 @@ export class ConstantField<
   readonly example?: FieldValue;
   readonly of?: MapValue; // for Map type fields
   readonly validate?: (value: FieldValue, model: any) => boolean;
-  readonly text?: "search" | "filter";
+  readonly text?: TextFieldRole;
+  readonly cascade?: CascadeAction;
   readonly modelRef: ConstantModelRef;
   readonly arrDepth: number;
   readonly optArrDepth: number;
@@ -348,6 +353,7 @@ export class ConstantField<
     this.of = props.of;
     this.validate = props.validate;
     this.text = props.text;
+    this.cascade = props.cascade;
     this.modelRef = props.modelRef;
     this.arrDepth = props.arrDepth;
     this.optArrDepth = props.optArrDepth;
@@ -426,6 +432,7 @@ export class ConstantField<
       of: option.of,
       validate: option.validate,
       text: option.text,
+      cascade: option.cascade,
       modelRef,
       arrDepth: arrDepth,
       optArrDepth: optArrDepth,
@@ -465,6 +472,7 @@ export class ConstantField<
       of: this.of,
       validate: this.validate,
       text: this.text,
+      cascade: this.cascade,
       modelRef: this.modelRef,
       arrDepth: this.arrDepth,
       optArrDepth: this.optArrDepth,

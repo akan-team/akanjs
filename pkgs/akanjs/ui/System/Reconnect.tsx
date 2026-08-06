@@ -1,5 +1,5 @@
 "use client";
-import { clsx, fetch, usePage } from "akanjs/client";
+import { cn, fetch, usePage } from "akanjs/client";
 import { useInterval } from "akanjs/webkit";
 // import { client } from "akanjs/signal";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -83,8 +83,8 @@ export const Reconnect = () => {
   if (process.env.AKAN_PUBLIC_ENV !== "local") return null;
   if (connectStatus === "initial" || connectStatus === "normal") return null;
   return (
-    <div className="fixed top-0 left-0 flex h-screen w-screen animate-fadeIn flex-col items-center justify-center bg-base-100/50">
-      <div className="flex w-4/5 flex-col items-center justify-center rounded-md bg-base-300 p-5 md:w-1/3">
+    <div className="fixed top-0 left-0 flex h-screen w-screen animate-fadeIn flex-col items-center justify-center bg-background/50">
+      <div className="flex w-4/5 flex-col items-center justify-center rounded-md bg-border p-5 md:w-1/3">
         <div className="whitespace-nowrap font-bold text-3xl">
           {connectStatus === "disconnected"
             ? l("base.somethingWrong")
@@ -95,11 +95,11 @@ export const Reconnect = () => {
         <div className="flex flex-col items-center justify-center">
           <div className="py-5">
             {connectStatus === "disconnected" ? (
-              <div className="text-[150px] text-gray-500">
+              <div className="text-[150px] text-muted-foreground">
                 <TbPlugConnectedX />
               </div>
             ) : connectStatus === "connecting" ? (
-              <div className="animate-pulse py-5 text-[150px] text-gray-500">
+              <div className="animate-pulse py-5 text-[150px] text-muted-foreground">
                 <TbPlugConnectedX />
               </div>
             ) : (
@@ -139,8 +139,8 @@ export const Reconnect = () => {
         </div>
 
         <div
-          className={clsx(
-            "mt-2 text-center text-gray-500 text-sm leading-tight",
+          className={cn(
+            "mt-2 text-center text-muted-foreground text-sm leading-tight",
             connectStatus === "disconnected" || connectStatus === "connecting" ? "visible" : "invisible",
           )}
         >

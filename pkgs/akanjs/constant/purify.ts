@@ -10,7 +10,6 @@ import {
   ID,
   PrimitiveRegistry,
   type PrimitiveScalar,
-  type Upload,
 } from "akanjs/base";
 import { Logger } from "akanjs/common";
 
@@ -37,15 +36,17 @@ type PurifiedWithObjectToId<T, StateKeys extends keyof GetStateObject<T> = keyof
 } & {
   [K in StateKeys as null extends T[K] ? K : never]?: Purified<T[K]> | undefined;
 };
-export type PurifiedModel<T> = T extends Upload[]
-  ? FileList
-  : T extends (infer S)[]
-    ? PurifiedModel<S>[]
-    : T extends string | number | boolean | Dayjs | File
-      ? T
-      : T extends Map<infer K, infer V>
-        ? Map<K, PurifiedModel<V>>
-        : PurifiedWithObjectToId<T>;
+export type PurifiedModel<T> = T extends (infer S)[]
+  ? PurifiedModel<S>[]
+  : T extends string | number | boolean | Dayjs | File
+    ? T
+    : T extends Map<infer K, infer V>
+      ? Map<K, PurifiedModel<V>>
+      : PurifiedWithObjectToId<T>;
+
+// An `[Upload]` body purifies to `File[]`, but the browser only ever hands you a `FileList`
+// (`input.files`, `dataTransfer.files`). `HttpClient.makeBody` spreads both, so declare both.
+export type UploadableClientArg<T> = [T] extends [File[]] ? File[] | FileList : T;
 
 export type PurifyFunc<Input, _DefaultInput = DefaultOf<Input>, _PurifiedInput = PurifiedModel<Input>> = (
   self: _DefaultInput,

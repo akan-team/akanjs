@@ -169,6 +169,10 @@ export class ModelDictInfo<
   } = {
     latest: FieldTranslation.translate(["Latest", "최신순"]).desc(["Latest", "최신순"]),
     oldest: FieldTranslation.translate(["Oldest", "오래된순"]).desc(["Oldest", "오래된순"]),
+    relevance: FieldTranslation.translate(["Relevance", "관련도순"]).desc([
+      "Best text-search match first",
+      "검색어와 가장 관련있는 순",
+    ]),
   };
   static getBaseSignalDictionary<T extends string>(refName: T): BaseModelCrudGetSignalTranslation<T, [string, string]> {
     const capRefName = capitalize(refName);

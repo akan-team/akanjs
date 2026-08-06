@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, cardGridRecipe, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -15,7 +15,7 @@ export default function Page() {
               ko: "ui 폴더는 앱이나 라이브러리에서 재사용하는 인터페이스 컴포넌트를 담습니다. 앱 UI 폴더는 보통 @apps/myapp/ui처럼 얕게 유지하고, 라이브러리는 @libs/shared/ui처럼 공유 컴포넌트를 제공합니다.",
             })}
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className={cardGridRecipe({ cols: "mdTwo" })}>
             {[
               {
                 title: l.trans({ en: "App UI", ko: "App UI" }),
@@ -32,15 +32,15 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
-                <div className="font-bold text-base-content">{title}</div>
-                <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+              <div key={title} className={panelRecipe()}>
+                <div className="font-bold text-foreground">{title}</div>
+                <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="recommended-shape" title={l.trans({ en: "Recommended Shape", ko: "권장 구조" })}>
         <Docs.Title>{l.trans({ en: "Recommended Shape", ko: "권장 구조" })}</Docs.Title>
@@ -53,6 +53,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/myapp/ui"
           language="bash"
           code={`apps/myapp/ui/
@@ -60,6 +61,7 @@ export default function Page() {
   HomeHeader.tsx`}
         />
         <Code.Snippet
+          className="w-full"
           title="AutoClose.tsx"
           code={`"use client";
 
@@ -78,7 +80,7 @@ export const AutoClose = ({ timeout = 0 }: AutoCloseProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="barrel-optimization"
@@ -100,6 +102,7 @@ export const AutoClose = ({ timeout = 0 }: AutoCloseProps) => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="index.ts"
           code={`export { AutoClose } from "./AutoClose";
 export { HomeHeader } from "./HomeHeader";
@@ -107,6 +110,7 @@ export { Metrics } from "./Metrics";
 export { StepBox } from "./StepBox";`}
         />
         <Code.Snippet
+          className="w-full"
           title="page.tsx"
           code={`import { AutoClose } from "@apps/myapp/ui";
 
@@ -115,7 +119,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="composite-components" title={l.trans({ en: "Composite Components", ko: "Composite 컴포넌트" })}>
         <Docs.Title>{l.trans({ en: "Composite Components", ko: "Composite 컴포넌트" })}</Docs.Title>
@@ -127,8 +131,9 @@ export default function Page() {
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
+            className="w-full"
             title="Only/Web.tsx"
             code={`"use client";
 
@@ -145,6 +150,7 @@ export const Web = ({ children }: WebProps) => {
 };`}
           />
           <Code.Snippet
+            className="w-full"
             title="Only/index.tsx"
             code={`import { Admin } from "./Admin";
 import { Dev } from "./Dev";
@@ -162,8 +168,9 @@ export const Only = {
   Dev,
 };`}
           />
-          <Code.Snippet title="libs/shared/ui/index.ts" code={`export { Only } from "./Only";`} />
+          <Code.Snippet className="w-full" title="libs/shared/ui/index.ts" code={`export { Only } from "./Only";`} />
           <Code.Snippet
+            className="w-full"
             title="page.tsx"
             code={`import { Only } from "@libs/shared/ui";
 
@@ -173,7 +180,7 @@ export default function Page() {
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -197,16 +204,16 @@ export default function Page() {
                 ko: "Only.Web 또는 Only.Admin처럼 namespace로 읽히는 API에는 composite folder를 사용합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
+              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {rule}
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

@@ -1,5 +1,5 @@
 "use client";
-import { clsx, msg, usePage } from "akanjs/client";
+import { cn, msg, usePage } from "akanjs/client";
 import { st } from "akanjs/store";
 import { type ReactNode, useEffect, useState } from "react";
 import {
@@ -73,11 +73,11 @@ const Message = ({ content, type = "info" as MessageType, duration, keyForMessag
   const iconClassName = type === "loading" ? "text-info" : `text-${type}`;
   const getIcon = (type: MessageType) => {
     const icons: { [key in MessageType]: ReactNode } = {
-      info: <AiOutlineInfoCircle className={clsx("text-2xl", iconClassName)} />,
-      success: <AiOutlineCheckCircle className={clsx("text-2xl", iconClassName)} />,
-      error: <BsExclamationCircleFill className={clsx("text-2xl", iconClassName)} />,
-      warning: <AiOutlineQuestionCircle className={clsx("text-2xl", iconClassName)} />,
-      loading: <AiOutlineLoading3Quarters className={clsx("animate-spin text-2xl", iconClassName)} />,
+      info: <AiOutlineInfoCircle className={cn("text-2xl", iconClassName)} />,
+      success: <AiOutlineCheckCircle className={cn("text-2xl", iconClassName)} />,
+      error: <BsExclamationCircleFill className={cn("text-2xl", iconClassName)} />,
+      warning: <AiOutlineQuestionCircle className={cn("text-2xl", iconClassName)} />,
+      loading: <AiOutlineLoading3Quarters className={cn("animate-spin text-2xl", iconClassName)} />,
     };
     return icons[type];
   };
@@ -91,18 +91,16 @@ const Message = ({ content, type = "info" as MessageType, duration, keyForMessag
       }}
     >
       <div
-        className={clsx(
-          "typo-body1 flex w-full items-center gap-2 rounded-[4px] border px-4 py-2 text-base-content drop-shadow-lg",
-          {
-            "border-[#EEEEEE] bg-primary-content stroke-base-content": type === "loading" || type === "info",
-            "border-success-border bg-success/80 stroke-success": type === "success",
-            "border-error-border bg-error/80 stroke-error": type === "error",
-            "border-warning-border bg-warning/80 stroke-warning": type === "warning",
-          },
+        className={cn(
+          "typo-body1 flex w-full items-center gap-2 rounded-[4px] border px-4 py-2 text-foreground drop-shadow-lg",
+          (type === "loading" || type === "info") && "border-border bg-primary-foreground stroke-foreground",
+          type === "success" && "border-success-border bg-success/80 stroke-success",
+          type === "error" && "border-destructive-border bg-destructive/80 stroke-destructive",
+          type === "warning" && "border-warning-border bg-warning/80 stroke-warning",
         )}
       >
-        <div className="flex size-6 items-center justify-center rounded-full bg-base-100">{getIcon(type)}</div>
-        <span className="truncate whitespace-nowrap text-base-100">{content}</span>
+        <div className="flex size-6 items-center justify-center rounded-full bg-background">{getIcon(type)}</div>
+        <span className="truncate whitespace-nowrap text-background">{content}</span>
       </div>
     </div>
   );

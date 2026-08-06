@@ -16,6 +16,8 @@ export interface CachedRscResult {
   routeId?: string;
   tags?: string[];
   theme?: string;
+  /** Whether the matched route opted into blocking SSR (`pageConfig.ssr: "block"`). */
+  ssrBlocking?: boolean;
   cacheState: RouteCacheRenderState;
   patch?: CachedRscPatchMetadata;
 }

@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import type { Responsive } from "akanjs/constant";
 import { st } from "akanjs/store";
 import type React from "react";
@@ -8,6 +8,7 @@ import { AiOutlineLoading3Quarters } from "react-icons/ai";
 
 import { Empty } from "./Empty";
 import { Pagination, type PaginationProps } from "./Pagination";
+import { createOverridable } from "./UiOverride";
 
 export interface Column {
   /** Stable column key. Defaults to index when omitted. */
@@ -45,7 +46,7 @@ export interface TableProps {
   rowKey?: (model: any) => string;
 }
 
-export const Table = ({
+export const DefaultTable = ({
   columns,
   dataSource,
   loading,
@@ -57,15 +58,18 @@ export const Table = ({
   rowClassName,
   rowKey,
 }: TableProps) => {
-  const sizeClassName = size === "small" ? "table-compact" : "";
+  const sizeClassName = size === "small" ? "[&_td]:py-1 [&_th]:py-1" : "";
   const loadingClassName = loading ? "opacity-30" : "";
-  const borderedClassName = bordered ? "border border-gray-200 rounded-xl" : "";
+  const borderedClassName = bordered ? "border border-border rounded-xl" : "";
   const responsive = st.use.responsive();
   const renderedColumns = useMemo(() => {
     return columns
       .filter((c) => !c.responsive || c.responsive.includes(responsive))
       .map((column, idx) => (
-        <th key={idx} className="whitespace-nowrap">
+        <th
+          key={idx}
+          className="whitespace-nowrap border-border border-b px-3 py-2 text-left font-medium text-muted-foreground"
+        >
           {column.title}
         </th>
       ));
@@ -78,8 +82,8 @@ export const Table = ({
         .map((column, idx) => (
           <td
             key={idx}
-            className={clsx(
-              "whitespace-nowrap",
+            className={cn(
+              "whitespace-nowrap border-border border-b px-3 py-2 align-middle",
               rowClassName ? (typeof rowClassName === "string" ? rowClassName : rowClassName(rowData, rowIndex)) : "",
             )}
             {...onRow?.(rowData, rowIndex)}
@@ -97,13 +101,13 @@ export const Table = ({
   }, [columns, dataSource, responsive]);
 
   return (
-    <div className={clsx("relative w-full", loadingClassName, borderedClassName)}>
+    <div className={cn("relative w-full", loadingClassName, borderedClassName)}>
       {loading && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
           <AiOutlineLoading3Quarters className="animate-spin text-3xl" />
         </div>
       )}
-      <table className={clsx("table w-full", sizeClassName)}>
+      <table className={cn("w-full border-collapse text-left text-sm", sizeClassName)}>
         {showHeader === true || (Array.isArray(showHeader) && showHeader.includes(responsive)) ? (
           <thead className="normal-case">
             <tr>{renderedColumns}</tr>
@@ -129,3 +133,9 @@ export const Table = ({
     </div>
   );
 };
+
+/**
+ * Data table. Resolves to a route-scoped override when a `page/**\/_overrides.tsx`
+ * in the route's ancestry declares one, otherwise renders {@link DefaultTable}.
+ */
+export const Table = createOverridable("Table", DefaultTable);

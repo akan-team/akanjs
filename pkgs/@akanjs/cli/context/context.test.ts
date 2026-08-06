@@ -1,13 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   AkanContextAnalyzer,
-  AppExecutor,
-  CommandContainer,
   createAkanClaudeMcpServer,
   createAkanCodexMcpServerBlock,
   createAkanCursorMcpServer,
-  ModuleExecutor,
-} from "@akanjs/devkit";
+} from "@akanjs/devkit/akanContext";
+import { CommandContainer } from "@akanjs/devkit/commandDecorators";
+import { AppExecutor, ModuleExecutor } from "@akanjs/devkit/executors";
 import { AgentRunner } from "../agent/agent.runner";
 import { ModuleRunner } from "../module/module.runner";
 import { cleanupCliTempWorkspace, createTempApp, createTempModule, writeJson, writeText } from "../testHelpers";

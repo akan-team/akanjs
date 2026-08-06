@@ -1,6 +1,15 @@
-import { clsx, usePage } from "akanjs/client";
+"use client";
+import { cn, usePage } from "akanjs/client";
+import { type ComponentType, createElement } from "react";
 
-interface ToggleSelectProps<I extends string | number | boolean | null> {
+import { buttonRecipe } from "./Button";
+import { createOverridable, useUiOverride } from "./UiOverride";
+
+/** Toggle-select cell: outline button, filled success when selected. */
+const toggleBtn = buttonRecipe({ variant: "outline", size: "sm" });
+const selectedCls = "border-transparent bg-success/70 text-success-foreground hover:bg-success/70";
+
+export interface ToggleSelectProps<I extends string | number | boolean | null> {
   className?: string;
   btnClassName?: string;
   items: string[] | number[] | { label: string; value: I; disabled?: boolean }[];
@@ -10,7 +19,7 @@ interface ToggleSelectProps<I extends string | number | boolean | null> {
   onChange: (value: I, idx: number) => void;
   disabled?: boolean;
 }
-export const ToggleSelect = <I extends string | number | boolean | null>({
+const DefaultToggleSelect = <I extends string | number | boolean | null>({
   className,
   btnClassName,
   items,
@@ -40,8 +49,8 @@ export const ToggleSelect = <I extends string | number | boolean | null>({
   );
   return (
     <div
-      className={clsx(
-        "relative flex w-full flex-wrap items-center gap-1 rounded-md border border-base-content/20 p-2",
+      className={cn(
+        "relative flex w-full flex-wrap items-center gap-1 rounded-md border border-foreground/20 p-2",
         className,
       )}
     >
@@ -52,15 +61,7 @@ export const ToggleSelect = <I extends string | number | boolean | null>({
           <button
             key={idx}
             disabled={isDisabled}
-            className={clsx(
-              "btn btn-sm",
-              { "bg-success/70 text-success-content": isSelected, "btn-disabled cursor-not-allowed": isDisabled },
-              // {
-              //   "btn-error": status === "error",
-              //   "btn-warning": status === "warning",
-              // },
-              btnClassName,
-            )}
+            className={cn(toggleBtn, isSelected && selectedCls, isDisabled && "cursor-not-allowed", btnClassName)}
             onClick={() => {
               onChange(option.value, idx);
             }}
@@ -70,13 +71,13 @@ export const ToggleSelect = <I extends string | number | boolean | null>({
         );
       })}
       {invalidMessage ? (
-        <div className="absolute -bottom-4 animate-fadeIn text-error text-xs">{invalidMessage}</div>
+        <div className="absolute -bottom-4 animate-fadeIn text-destructive text-xs">{invalidMessage}</div>
       ) : null}
     </div>
   );
 };
 
-interface MultiProps {
+export interface MultiProps {
   className?: string;
   btnClassName?: string;
   items: string[] | number[] | { label: string; value: string | number; disabled?: boolean }[];
@@ -86,7 +87,16 @@ interface MultiProps {
   onChange: (value: string[] | number[]) => void;
   disabled?: boolean;
 }
-const Multi = ({ className, btnClassName, items, nullable, validate, value, onChange, disabled }: MultiProps) => {
+const DefaultMulti = ({
+  className,
+  btnClassName,
+  items,
+  nullable,
+  validate,
+  value,
+  onChange,
+  disabled,
+}: MultiProps) => {
   const { l } = usePage();
   const validateResult = validate(value);
   // const status: "error" | "warning" | "success" =
@@ -107,8 +117,8 @@ const Multi = ({ className, btnClassName, items, nullable, validate, value, onCh
   );
   return (
     <div
-      className={clsx(
-        "relative flex w-full flex-wrap items-center gap-1 rounded-md border border-base-content/20 p-2",
+      className={cn(
+        "relative flex w-full flex-wrap items-center gap-1 rounded-md border border-foreground/20 p-2",
         className,
       )}
     >
@@ -119,11 +129,7 @@ const Multi = ({ className, btnClassName, items, nullable, validate, value, onCh
           <button
             key={idx}
             disabled={isDisabled}
-            className={clsx(
-              "btn btn-sm",
-              { "bg-success/70 text-success-content": isSelected, "cursor-not-allowed": isDisabled },
-              btnClassName,
-            )}
+            className={cn(toggleBtn, isSelected && selectedCls, isDisabled && "cursor-not-allowed", btnClassName)}
             onClick={() => {
               onChange(
                 isSelected
@@ -141,9 +147,22 @@ const Multi = ({ className, btnClassName, items, nullable, validate, value, onCh
         );
       })}
       {invalidMessage ? (
-        <div className="absolute -bottom-4 animate-fadeIn text-error text-xs">{invalidMessage}</div>
+        <div className="absolute -bottom-4 animate-fadeIn text-destructive text-xs">{invalidMessage}</div>
       ) : null}
     </div>
   );
 };
-ToggleSelect.Multi = Multi;
+const ToggleSelectBase = <I extends string | number | boolean | null>(props: ToggleSelectProps<I>) => {
+  const Override = useUiOverride("ToggleSelect");
+  const Impl = (Override ?? DefaultToggleSelect) as unknown as ComponentType<ToggleSelectProps<I>>;
+  return createElement(Impl, props);
+};
+
+/**
+ * Toggle-select. `ToggleSelect` keeps its generic signature (so `<ToggleSelect<Status> …/>` still
+ * infers), and both it and `ToggleSelect.Multi` resolve to a route-scoped override when a
+ * `page/**\/_overrides.tsx` in the route's ancestry declares one (slots `ToggleSelect`, `ToggleSelectMulti`).
+ */
+export const ToggleSelect = Object.assign(ToggleSelectBase, {
+  Multi: createOverridable("ToggleSelectMulti", DefaultMulti),
+});

@@ -50,7 +50,9 @@ export function computeRouteSeedIndex(pageEntries: PageEntry[]): RouteSeedIndex 
   for (const { key, moduleAbsPath, seedAbsPaths } of pageEntries) {
     const parsed = parseRouteModuleKey(key);
     const files = [path.resolve(moduleAbsPath), ...(seedAbsPaths ?? []).map((seed) => path.resolve(seed))];
-    if (parsed.kind === "layout") {
+    if (parsed.kind === "layout" || parsed.kind === "overrides") {
+      // Overrides seed the client graph like layouts: every route under the prefix must pull the generated
+      // `"use client"` override wrapper (and its slot components) into the client bundle / RSC client manifest.
       const prefix = parsed.routeSegments.join("/");
       const prev = layoutsByPrefix.get(prefix) ?? [];
       layoutsByPrefix.set(prefix, [...prev, ...files]);

@@ -6,6 +6,7 @@ import type { AkanTheme } from "akanjs/fetch";
 import type { AkanMetricsReport } from "akanjs/service";
 import type { ClientManifest } from "./artifact";
 import type { RouteCacheInvalidation, RouteCacheRenderState } from "./cachePolicy";
+import { MemoryLimit } from "./memoryLimit";
 import type { RscTraceMetadata, SsrLateRedirect } from "./ssrTypes";
 import type { BaseBuildArtifact, CssAsset } from "./types";
 
@@ -312,6 +313,8 @@ export interface RscWorkerOptions {
 type WorkerStatus = "starting" | "ready" | "restarting" | "stopped";
 
 export class RscWorker {
+  static readonly #devMaxReloads = 10;
+  static readonly #devMaxRssBytes = 768 * 1024 * 1024;
   readonly ready: Promise<void>;
   #logger = new Logger("RscWorker");
 
@@ -337,6 +340,8 @@ export class RscWorker {
   #restartAttempts = 0;
   #restartCount = 0;
   #recycleCount = 0;
+  #reloadsSinceSpawn = 0;
+  #lastRecycleAtMono: number | null = null;
   #lastRecycleReason: string | undefined;
   #lastWorkerMetrics: AkanMetricsReport = {};
   #hostPendingChunkOverflowCount = 0;
@@ -508,6 +513,7 @@ export class RscWorker {
     }
     this.#lastRecycleReason = reason;
     this.#recycleCount += 1;
+    this.#lastRecycleAtMono = performance.now();
     const oldPid = this.#proc.pid;
     this.#logger.info(`[rsc] rolling recycle worker reason=${reason} oldPid=${oldPid}`);
     this.#status = "restarting";
@@ -550,6 +556,15 @@ export class RscWorker {
     // to its first `hello`, so callers don't need to wait on an explicit
     // `reloaded` ack.
     if (this.#status !== "ready") return Promise.resolve();
+    // Every in-place reload re-imports the pages bundle under a fresh `?v=<buildId>` token, and Bun's
+    // ESM registry never evicts the previous version — so reloads ratchet RSS upward for the life of
+    // the worker (~37MB per save on a 27MB bundle). Recycle once enough have piled up: the recycle is
+    // rolling, so the old worker keeps serving until the replacement reports ready. Recycling on
+    // *every* reload would instead throw away every lazily-warmed route module, hence a threshold.
+    if (this.#shouldRecycleForReloadAccumulation() && this.restartWhenIdle("pages-reload-accumulation")) {
+      return Promise.resolve();
+    }
+    this.#reloadsSinceSpawn += 1;
     return new Promise<void>((resolve, reject) => {
       // If a previous reload was still in flight, supersede it — the latest
       // build strictly implies the earlier one completed from the caller's
@@ -573,6 +588,7 @@ export class RscWorker {
 
   #spawn(): Bun.Subprocess<"ignore", "inherit", "inherit"> {
     this.#status = "starting";
+    this.#reloadsSinceSpawn = 0;
     const workerPath = this.#resolveWorkerPath();
     let proc!: Bun.Subprocess<"ignore", "inherit", "inherit">;
     const earlyMessages: RscInMsg[] = [];
@@ -812,6 +828,16 @@ export class RscWorker {
     }, delay);
   }
 
+  #shouldRecycleForReloadAccumulation(): boolean {
+    const maxReloads = RscWorker.#getRscMaxReloads();
+    if (!maxReloads || this.#reloadsSinceSpawn < maxReloads) return false;
+    // Save-on-keystroke produces reload bursts. Reload in place through a burst and recycle on the
+    // first reload after it settles — the counter stays over the threshold, so nothing is skipped.
+    const sinceLastRecycleMs = this.#lastRecycleAtMono === null ? null : performance.now() - this.#lastRecycleAtMono;
+    if (sinceLastRecycleMs !== null && sinceLastRecycleMs < RscWorker.#getRscMinRecycleIntervalMs()) return false;
+    return true;
+  }
+
   #maybeRecycleFromMetrics(metrics: AkanMetricsReport): void {
     if (this.#pending.size > 0) return;
     const maxRssBytes = RscWorker.#getRscMaxRssBytes();
@@ -819,7 +845,7 @@ export class RscWorker {
       this.restartWhenIdle(`rss>${Math.round(maxRssBytes / 1024 / 1024)}MiB`);
       return;
     }
-    const maxRenderCount = RscWorker.#parsePositiveIntEnv("AKAN_RSC_WORKER_MAX_RENDER_COUNT");
+    const maxRenderCount = MemoryLimit.parsePositiveIntEnv("AKAN_RSC_WORKER_MAX_RENDER_COUNT");
     if (maxRenderCount && (metrics.rscRenderCount ?? 0) >= maxRenderCount) {
       this.restartWhenIdle(`renderCount>${maxRenderCount}`);
       return;
@@ -830,62 +856,41 @@ export class RscWorker {
     }
   }
 
-  static #parsePositiveIntEnv(name: string): number | null {
-    const parsed = Number.parseInt(process.env[name] ?? "", 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-  }
-
   static #isProductionRuntime(): boolean {
     return process.env.NODE_ENV === "production";
   }
 
-  static #parseBytesEnv(name: string): number | null {
-    const value = process.env[name];
-    if (!value) return null;
-    const match = /^(\d+)(b|kb|kib|mb|mib|gb|gib)?$/i.exec(value.trim());
-    if (!match) return null;
-    const amount = Number.parseInt(match[1] ?? "", 10);
-    const unit = (match[2] ?? "b").toLowerCase();
-    if (!Number.isFinite(amount) || amount <= 0) return null;
-    if (unit === "gb" || unit === "gib") return amount * 1024 * 1024 * 1024;
-    if (unit === "mb" || unit === "mib") return amount * 1024 * 1024;
-    if (unit === "kb" || unit === "kib") return amount * 1024;
-    return amount;
-  }
-
-  static #readCgroupMemoryLimitBytes(): number | null {
-    for (const filePath of ["/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"]) {
-      try {
-        if (!fs.existsSync(filePath)) continue;
-        const raw = fs.readFileSync(filePath, "utf8").trim();
-        if (!raw || raw === "max") continue;
-        const parsed = Number.parseInt(raw, 10);
-        // Ignore host-level sentinel values that are effectively unlimited.
-        if (Number.isFinite(parsed) && parsed > 0 && parsed < 1024 ** 5) return parsed;
-      } catch {
-        // cgroup files are best-effort; explicit env thresholds still work.
-      }
-    }
-    return null;
-  }
-
   static #getRscRecycleGraceMs(): number {
-    return RscWorker.#parsePositiveIntEnv("AKAN_RSC_WORKER_RECYCLE_GRACE_MS") ?? 5_000;
+    return MemoryLimit.parsePositiveIntEnv("AKAN_RSC_WORKER_RECYCLE_GRACE_MS") ?? 5_000;
+  }
+
+  /**
+   * Reloads tolerated before the worker is recycled instead of reloaded in place. Production imports
+   * the pages bundle once at boot and never reloads, so the threshold only applies to dev.
+   */
+  static #getRscMaxReloads(): number | null {
+    if (process.env.AKAN_RSC_WORKER_MAX_RELOADS !== undefined)
+      return MemoryLimit.parsePositiveIntEnv("AKAN_RSC_WORKER_MAX_RELOADS");
+    return RscWorker.#isProductionRuntime() ? null : RscWorker.#devMaxReloads;
+  }
+
+  static #getRscMinRecycleIntervalMs(): number {
+    return MemoryLimit.parsePositiveIntEnv("AKAN_RSC_WORKER_MIN_RECYCLE_INTERVAL_MS") ?? 1_000;
   }
 
   static #getRscMaxRssBytes(): number | null {
-    const explicitMb = RscWorker.#parsePositiveIntEnv("AKAN_RSC_WORKER_MAX_RSS_MB");
-    if (explicitMb) return explicitMb * 1024 * 1024;
-
-    const explicitBytes = RscWorker.#parseBytesEnv("AKAN_RSC_WORKER_MAX_RSS");
-    if (explicitBytes) return explicitBytes;
-
-    if (!RscWorker.#isProductionRuntime()) return null;
-    const memoryLimitBytes = RscWorker.#parseBytesEnv("AKAN_MEMORY_LIMIT") ?? RscWorker.#readCgroupMemoryLimitBytes();
-    return memoryLimitBytes ? Math.floor(memoryLimitBytes * 0.55) : null;
+    return MemoryLimit.resolveMaxRssBytes({
+      megabytesEnv: "AKAN_RSC_WORKER_MAX_RSS_MB",
+      bytesEnv: "AKAN_RSC_WORKER_MAX_RSS",
+      limitFraction: 0.55,
+      // Dev has no memory limit to derive from, but bounding the worker is the point of this ceiling: a
+      // dev sandbox should recycle rather than grow until the host starts swapping. Well above the
+      // ~142MB post-boot baseline so ordinary route warm-up never trips it.
+      fallbackBytes: RscWorker.#isProductionRuntime() ? null : RscWorker.#devMaxRssBytes,
+    });
   }
 
   static #getRscMaxRouteModules(): number | null {
-    return RscWorker.#parsePositiveIntEnv("AKAN_RSC_WORKER_MAX_ROUTE_MODULES");
+    return MemoryLimit.parsePositiveIntEnv("AKAN_RSC_WORKER_MAX_ROUTE_MODULES");
   }
 }

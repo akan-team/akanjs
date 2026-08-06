@@ -137,6 +137,15 @@
       }
     },
     {
+      "identity" : "osinappbrowserlib-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/OutSystems/OSInAppBrowserLib-iOS.git",
+      "state" : {
+        "revision" : "dba78d3eb49df762896aaa527f2a2581f9066c8f",
+        "version" : "2.3.2"
+      }
+    },
+    {
       "identity" : "promises",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/google/promises.git",

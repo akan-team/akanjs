@@ -33,7 +33,13 @@ beforeAll(() => {
         warn() {}
         error() {}
       },
-      { log: () => undefined, verbose: () => undefined, info: () => undefined, warn: () => undefined, error: () => undefined },
+      {
+        log: () => undefined,
+        verbose: () => undefined,
+        info: () => undefined,
+        warn: () => undefined,
+        error: () => undefined,
+      },
     ),
     parseAkanI18nEnv: () => ({ locales: ["en", "ko"], defaultLocale: "en" }),
     parseBasePaths: (value?: string) => (value ? value.split(",").filter(Boolean) : []),

@@ -1,5 +1,5 @@
 "use client";
-import { clsx, isMobileDevice } from "akanjs/client";
+import { cn, isMobileDevice } from "akanjs/client";
 import { useEffect, useState } from "react";
 import { InfiniteScroll } from "./InfiniteScroll";
 import { Pagination } from "./Pagination";
@@ -52,7 +52,7 @@ export const More = ({
   return (
     <>
       {children}
-      <div className={clsx("mt-4 flex w-full flex-wrap justify-center", className)}>
+      <div className={cn("mt-4 flex w-full flex-wrap justify-center", className)}>
         <Pagination currentPage={currentPage} total={total} itemsPerPage={itemsPerPage} onPageSelect={onPageSelect} />
       </div>
     </>

@@ -105,3 +105,50 @@ AKAN_RSC_WORKER_RECYCLE_GRACE_MS=5000
 ```
 
 Validate that recycle happens only when `rscPendingRenderCount` is `0`, and that the new `rscWorkerPid` becomes ready before traffic continues.
+
+## Dev Builder Recycle
+
+The dev builder has the same problem for a different reason: `Bun.build` retains native bundler arenas
+that no GC reclaims, so the process only returns that memory by exiting. `AkanAppHost` therefore
+recycles it — gracefully, after its queues drain and once it has stayed quiet — past a ceiling:
+
+```sh
+AKAN_BUILDER_MAX_RSS_MB=1200   # 0 leaves the builder unbounded; default is 1200 in dev
+AKAN_BUILDER_MAX_RSS=1200mb    # same ceiling with a unit suffix
+```
+
+Both resolve through `MemoryLimit.resolveMaxRssBytes`, so `AKAN_MEMORY_LIMIT` or a cgroup limit also
+applies (the builder takes 35% of it, the RSC worker 55%). Look for `recycling builder pid=…` followed
+by `exiting for recycle` and `announced boot state after recycle`; the last line is what re-points a
+running backend at the replacement's artifact.
+
+**How much of that RSS is actually unreclaimable is platform-specific.** Measured on Bun 1.3.14: macOS
+returns none of the bundler arenas (0% after 60s idle) while Linux purges them after ~10-15s of quiet,
+46-59% of the builder's peak. Since the builder reports its RSS only when its queues drain, that sample
+is its *peak* — so before committing, the host waits 20s and re-reads the builder's RSS from the OS,
+and skips the recycle if the allocator gave the memory back by itself:
+
+```
+[builder-recycle] holding 20s to see whether the allocator returns it (rss=522MiB>=400MiB after 6 build(s))
+[builder-recycle] skipped: the builder fell to 214MiB (ceiling 400MiB) on its own, …
+```
+
+A builder more than 1.5× over the ceiling skips the wait, since no purge would rescue it. On macOS the
+re-read returns the same value, so the only cost there is the delay.
+
+## Dev Idle Suspend
+
+A dev server that nobody is editing still pays for a builder. After five minutes with no build
+activity and no route request, `AkanAppHost` releases the builder entirely and watches for edits with
+a plain `fs.watch` instead. The backend stays up, so the preview URL keeps serving; only build
+capacity goes away. The next edit — or the first request that needs a build — brings it back, paying
+one cold boot build (~3.5s on `apps/akan`, ~0.3s on a single-route app).
+
+```sh
+AKAN_DEV_IDLE_SUSPEND_MS=300000   # default; 0 keeps the builder resident for the whole session
+```
+
+Requests that arrive mid-wake are held and replayed against the new builder rather than answered with
+`builder is stopped`. A suspend is skipped while a build is red, while any restart or recovery is
+pending, or within 30s of a previous wake. Look for `[idle-suspend] … released the builder`, then
+`[idle-suspend] waking (…)` and `[idle-suspend] awake in …ms`.

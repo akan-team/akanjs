@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import type { BaseInsight } from "akanjs/constant";
 import type { SliceMeta } from "akanjs/fetch";
@@ -39,7 +39,7 @@ export default function Pagination<T extends string>({ className, slice }: Pagin
   const lastPageOfModel = storeUse[namesOfSlice.lastPageOfModel]() as number;
   const pageOfModel = storeUse[namesOfSlice.pageOfModel]() as number;
   return (
-    <div className={clsx("mt-4 flex flex-wrap justify-center", className)}>
+    <div className={cn("mt-4 flex flex-wrap justify-center", className)}>
       <Pagn
         currentPage={pageOfModel}
         // showQuickJumper={lastPageOfModel > 10}

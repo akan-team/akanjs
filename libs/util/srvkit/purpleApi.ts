@@ -1,12 +1,11 @@
 import { dayjs } from "akanjs/base";
 import { Logger } from "akanjs/common";
 
-export interface PurpleOptions {
+export interface PurpleApiOptions {
   phone: string;
   apiKey: string;
   apiSecret: string;
 }
-
 export class PurpleApi {
   private static solapiLoad: Promise<{
     SolapiMessageService: new (
@@ -23,9 +22,9 @@ export class PurpleApi {
   }
 
   readonly #logger = new Logger("PurpleApi");
-  readonly #options: PurpleOptions;
+  readonly #options: PurpleApiOptions;
   #message: InstanceType<Awaited<ReturnType<typeof PurpleApi.loadSolapi>>["SolapiMessageService"]> | null = null;
-  constructor(options: PurpleOptions) {
+  constructor(options: PurpleApiOptions) {
     this.#options = options;
   }
   async #getMessage() {

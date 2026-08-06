@@ -1,10 +1,6 @@
 import type { BaseInsight } from "akanjs/constant";
 import type { FetchInitForm, SliceMeta } from "akanjs/fetch";
-import { type ClassValue, clsx as clsxLib } from "clsx";
 import type { ReactElement, ReactNode } from "react";
-
-/** Composes class names with the shared clsx implementation. */
-export const clsx = (...args: ClassValue[]) => clsxLib(...args);
 
 export type ReactFontStyle = "normal" | "italic" | "oblique";
 export type ReactFontDisplay = "auto" | "block" | "swap" | "fallback" | "optional";

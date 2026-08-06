@@ -1,4 +1,5 @@
-import { CommandContainer, createWorkflowStepRegistry, type Workspace } from "@akanjs/devkit";
+import { CommandContainer, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { createWorkflowStepRegistry } from "@akanjs/devkit/workflow";
 import { ModuleScript } from "../module/module.script";
 import { PrimitiveScript } from "../primitive/primitive.script";
 import { ScalarScript } from "../scalar/scalar.script";

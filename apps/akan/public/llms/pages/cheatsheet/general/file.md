@@ -12,9 +12,9 @@
 - Minimal File Model (#minimal-model)
 - Upload Endpoint (#upload-endpoint)
 - File Service (#file-service)
-- Local File Serving (#local-serving)
 - Use In UI (#use-in-ui)
 - Auto-attach To A Model Field (#auto-field)
+- Remove The File With Its Owner (#cascade)
 - Grow Later (#grow-later)
 - Tips (#tips)
 
@@ -52,10 +52,6 @@ Use the record id in the storage path to avoid filename collisions.
 
 When upload finishes, save the returned URL and set status to `active`.
 
-Local File Serving
-
-If your local storage returns URLs like `/api/localFile/getBlob/...`, add a tiny endpoint that reads the file stream and returns it as a response.
-
 Use In UI
 
 After upload, the UI usually uses the returned File record. For images, show `file.url`. For documents, use it as a download link.
@@ -67,6 +63,18 @@ Mark one upload mutation with `{ fileUpload: true }`. The framework then auto-ge
 Mark exactly one REST upload mutation; the marker rides the serialized signal to the client.
 
 The multipart form uses the fixed fields `files`, `metas`, `type`, `parentId`.
+
+Remove The File With Its Owner
+
+Add `cascade: "remove"` to a File relation and removing the owner removes the file too. The cascade calls the File service, not the File model, so `FileService._postRemove` runs and the stored object is deleted from blob or object storage. Nothing else is needed — the storage call already lives in that hook.
+
+Works on an array field too, and only on a relation. A String, an ID, or a scalar fails the class build: none of them names a document to remove.
+
+Nothing checks whether another document still points at the same file. Files are deduped by origin, so declaring cascade asserts that this field owns its file exclusively.
+
+The document removal is soft, but deleting the stored object is not. A cascade cannot be undone.
+
+Query-level removal fires no hooks and therefore no cascade. removeManyByQuery stamps removedAt in one atomic update; remove documents one at a time when they cascade.
 
 Grow Later
 
@@ -169,20 +177,6 @@ export class FileService extends serve(db.file, ({ use }) => ({
 }
 ```
 
-### localFile.signal.ts
-
-```ts
-export class LocalFileEndpoint extends endpoint(srv.localFile, ({ query }) => ({
-  getBlob: query(Any, { path: "localFile/getBlob/*" })
-    .with(Req)
-    .exec(async function (req) {
-      const path = req.url.split("/localFile/getBlob/").at(1) ?? "";
-      const stream = await this.localFileService.readLocalFile(path);
-      return new Response(stream);
-    }),
-})) {}
-```
-
 ### Call fetch.uploadFiles
 
 ```ts
@@ -223,6 +217,27 @@ export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
       return await this.fileService.addFiles(files, parsedMetas, type, parentId);
     }),
 })) {}
+```
+
+### user.constant.ts
+
+```ts
+export class UserInput extends via((field) => ({
+  nickname: field(String, { default: "" }),
+  image: field(File, { cascade: "remove" }).optional(),
+  images: field([File], { cascade: "remove" }),
+})) {}
+```
+
+### file.service.ts — where the storage call already lives
+
+```ts
+export class FileService extends serve(db.file, ({ use }) => ({ storageApi: use<StorageApi>() })) {
+  override async _postRemove(file: db.File) {
+    await this.storageApi.deleteData(file.url);
+    return file;
+  }
+}
 ```
 
 ## Agent Notes

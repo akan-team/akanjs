@@ -1,13 +1,14 @@
-import type { Self } from "@libs/shared/base";
+import type { Self } from "@libs/shared/common";
+import { MASTER_PHONECODE, MASTER_PHONES } from "@libs/shared/common";
 import type { AuthTokenMeta, SsoCookie } from "@libs/shared/srvkit";
 import { randomCode, randomString } from "@libs/util/common";
 import type { EmailApi, PurpleApi } from "@libs/util/srvkit";
 import type { Dayjs } from "akanjs/base";
 import type { Account } from "akanjs/fetch";
 import { serve } from "akanjs/service";
-
-import * as cnst from "../cnst";
+import type * as cnst from "../cnst";
 import * as db from "../db";
+import { Err } from "../dict";
 import type * as srv from "../srv";
 
 export class UserService extends serve(db.user, ({ use, service }) => ({
@@ -168,7 +169,7 @@ export class UserService extends serve(db.user, ({ use, service }) => ({
   }
   async signinWithPassword(accountId: string, password: string, account: Account): Promise<db.util.AccessToken> {
     const user = await this.userModel.getUserByPassword(accountId, password);
-    if (user.status !== "active") throw new Error("Not activated yet");
+    if (user.status !== "active") throw new Err("user.error.userNotActivated");
     return await this._issueUserToken(user, account);
   }
   async signoutUser(account: Account<{ self?: Self; sid?: string }>) {
@@ -189,19 +190,19 @@ export class UserService extends serve(db.user, ({ use, service }) => ({
   async getSignTokenForSetPassword(userId: string, phone: string, phoneCode: string) {
     const user = await this.userModel.getUser(userId);
     const isValid = await this.userModel.isPhoneCodeValid(user.id, phone, "setPasswordWithSignToken", phoneCode);
-    if (!isValid) throw new Error("Invalid phone code");
+    if (!isValid) throw new Err("user.error.invalidPhoneCode");
     const signToken = await this.userModel.setSignToken(user.id);
     return signToken;
   }
   async setPasswordWithSignToken(userId: string, password: string, signToken: string) {
     const isVerified = await this.userModel.verifySignToken(userId, signToken);
-    if (!isVerified) throw new Error("Sign token is invalid");
+    if (!isVerified) throw new Err("user.error.invalidSignToken");
     await this.userModel.setPasswordInActiveUser(userId, password);
     await this.userModel.revokeRefreshSessions(userId);
   }
   async resetPassword(accountId: string): Promise<boolean> {
     const isResetable = await this.userModel.isResetable(accountId);
-    if (!isResetable) throw new Error(`Retry after 3 minutes`);
+    if (!isResetable) throw new Err("user.error.resetRetryLater");
     const user = await this.userModel.pickByAccountId(accountId, ["active"]);
     const password = randomString();
     await this.userModel.setPasswordInActiveUser(user.id, password);
@@ -227,7 +228,7 @@ export class UserService extends serve(db.user, ({ use, service }) => ({
   async verifyPhoneInPrepareUser(userId: string, phone: string, phoneCode: string) {
     const user = await this.getPrepareUser(userId);
     const isValid = await this.userModel.isPhoneCodeValid(userId, phone, "setPhoneInPrepareUser", phoneCode);
-    if (!isValid) throw new Error("Invalid phone code");
+    if (!isValid) throw new Err("user.error.invalidPhoneCode");
     return await this.userModel.verifyPhoneInPrepareUser(user.id, phone);
   }
   async setPhoneInActiveUser(userId: string, phone: string, phoneCode: string) {
@@ -241,7 +242,7 @@ export class UserService extends serve(db.user, ({ use, service }) => ({
   async getSignTokenForSignin(userId: string, phone: string, phoneCode: string) {
     const user = await this.userModel.getUser(userId);
     const isValid = await this.userModel.isPhoneCodeValid(user.id, phone, "signinWithSignToken", phoneCode);
-    if (!isValid) throw new Error("Invalid phone code");
+    if (!isValid) throw new Err("user.error.invalidPhoneCode");
     const signToken = await this.userModel.setSignToken(user.id);
     return signToken;
   }
@@ -252,15 +253,15 @@ export class UserService extends serve(db.user, ({ use, service }) => ({
   //*====================== SignToken Signing Area =======================*//
   private async _registerPhoneCode(userId: string, phone: string, purpose: string, hash: string) {
     const user = await this.userModel.getUser(userId);
-    const dryrun = cnst.MASTER_PHONES.includes(phone);
-    const phoneCode = dryrun && cnst.MASTER_PHONECODE ? cnst.MASTER_PHONECODE : randomCode(6);
+    const dryrun = MASTER_PHONES.includes(phone);
+    const phoneCode = dryrun && MASTER_PHONECODE ? MASTER_PHONECODE : randomCode(6);
     await this.userModel.registerPhoneCode(user.id, phone, purpose, phoneCode);
     if (!dryrun) await this.purpleApi.sendPhoneCode(phone, phoneCode, hash);
   }
   async signinWithSignToken(userId: string, signToken: string, account?: Account) {
     const user = await this.userModel.getUser(userId);
     const isVerified = await this.userModel.verifySignToken(user.id, signToken);
-    if (!isVerified) throw new Error("Invalid sign token");
+    if (!isVerified) throw new Err("user.error.invalidSignToken");
     return await this._issueUserToken(user, account);
   }
   //*====================== SignToken Signing Area =======================*//

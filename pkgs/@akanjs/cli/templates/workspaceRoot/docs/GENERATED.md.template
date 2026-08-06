@@ -28,7 +28,7 @@ sync or build can overwrite local changes.
 
 | File | Purpose |
 | --- | --- |
-| `*/ui/index.ts` | Re-exports UI component files. |
+| `*/ui/index.ts` | Re-exports 1-depth UI component files and folders. Only this layer-root barrel is generated — a nested `ui/<Folder>/index.tsx` that builds a namespace is hand-written source. |
 | `*/webkit/index.ts` | Re-exports webkit/browser helper files. |
 | `*/srvkit/index.ts` | Re-exports server-kit helper files. |
 | `*/common/index.ts` | Re-exports common helper files. |

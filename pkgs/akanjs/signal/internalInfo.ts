@@ -255,6 +255,7 @@ export const buildInternal = {
     signalOption?: SignalOption<Returns, Nullable>,
   ) =>
     new InternalInfo("process", returnRef, {
+      enabled: true,
       serverMode: "all",
       ...signalOption,
     }),
