@@ -354,7 +354,7 @@ const ArgUpload = ({ value, onChange }: ArgUploadProps) => {
       multiple
       className="w-full max-w-xs rounded-field border border-input text-sm file:mr-3 file:border-0 file:bg-muted file:px-3 file:py-2 file:text-foreground"
       onChange={(e: ChangeEvent<HTMLInputElement>) => {
-        onChange(new Array(e.target.files?.length).fill(0).map((_, idx) => e.target.files?.[idx]) as any as FileList);
+        onChange(e.target.files);
       }}
     />
   );

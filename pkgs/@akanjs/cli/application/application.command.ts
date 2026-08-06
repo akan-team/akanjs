@@ -1,3 +1,4 @@
+import { AbstractDoc } from "@akanjs/devkit/abstractDoc";
 import { App, command, Exec, Sys, Workspace } from "@akanjs/devkit/commandDecorators";
 import { getMobileTargetChoices } from "@akanjs/devkit/mobile";
 import { select } from "@inquirer/prompts";
@@ -28,6 +29,18 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .with(Sys)
     .exec(async function (sys) {
       await this.applicationScript.sync(sys);
+    }),
+  compact: target({ desc: "Compact the *.abstract.md files of an app or library with the AI editor" })
+    .with(Sys)
+    .option("module", String, { desc: "single module to compact", nullable: true })
+    .option("minLines", Number, {
+      flag: "n",
+      desc: "only compact abstracts longer than this",
+      default: AbstractDoc.compactMinLines,
+    })
+    .option("interactive", Boolean, { desc: "confirm or refine each rewrite", default: false })
+    .exec(async function (sys, module, minLines, interactive) {
+      await this.applicationScript.compact(sys, { module, minLines, interactive });
     }),
   script: target({ desc: "Run a custom script in the application" })
     .with(App)

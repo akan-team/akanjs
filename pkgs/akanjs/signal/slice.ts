@@ -112,7 +112,7 @@ export function slice<
             _Filter,
             SrvMap<SrvModule>,
             ["query"],
-            [_Query],
+            [query?: _Query | null],
             [],
             [_Query]
           >;

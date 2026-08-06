@@ -260,12 +260,108 @@ describe("DatabaseResolver declaration contracts", () => {
   });
 });
 
+describe("ServiceResolver cascade", () => {
+  const cascadeConstant = {
+    full: { cascade: { remove: new Map([["cover", serverResolverTestConstant.full]]) } },
+  } as unknown as typeof serverResolverTestConstant;
+
+  const buildCascadingService = (targetRemove: (id: string) => Promise<unknown>) => {
+    class CascadeService extends ServerResolverTestService {}
+    const target = {
+      __remove: targetRemove,
+      __databaseModel: {
+        __remove: async () => {
+          throw new Error("cascade reached the target model directly");
+        },
+      },
+    };
+    const ServiceRef = ServiceResolver.resolveDatabaseService(
+      cascadeConstant,
+      serverResolverTestDatabase,
+      CascadeService as never,
+      () => target as never,
+    );
+    const service = new ServiceRef() as InstanceType<typeof ServiceRef> & {
+      __databaseModel: Record<string, (...args: unknown[]) => Promise<unknown>>;
+      __remove: (id: string) => Promise<Record<string, unknown>>;
+    };
+    return { service, target };
+  };
+
+  test("removes each referenced document through the target's service, not its model", async () => {
+    const removed: string[] = [];
+    // Through the service is the whole point: `__remove` is what runs the target's `_postRemove`, and that is
+    // where a module puts the side effect the removal has to carry — deleting the stored file, say. Reaching the
+    // model instead still empties the row, so nothing looks wrong until the storage bill arrives.
+    const { service } = buildCascadingService(async (id) => {
+      removed.push(id);
+      return { id };
+    });
+    service.__databaseModel = {
+      __remove: async (id) => ({ id, cover: "file-1" }),
+    } as never;
+
+    await service.__remove("parent-1");
+
+    expect(removed).toEqual(["file-1"]);
+  });
+
+  test("removes every id of an array field and skips an empty one", async () => {
+    const removed: string[] = [];
+    const { service } = buildCascadingService(async (id) => {
+      removed.push(id);
+      return { id };
+    });
+    service.__databaseModel = {
+      __remove: async (id) => ({ id, cover: ["file-1", "file-2"] }),
+    } as never;
+    await service.__remove("parent-1");
+    expect(removed).toEqual(["file-1", "file-2"]);
+
+    removed.length = 0;
+    service.__databaseModel = { __remove: async (id) => ({ id, cover: null }) } as never;
+    await service.__remove("parent-2");
+    expect(removed).toEqual([]);
+  });
+
+  test("resolves the target service before removing the parent", async () => {
+    const parentRemovals: string[] = [];
+    class MissingTargetService extends ServerResolverTestService {}
+    const ServiceRef = ServiceResolver.resolveDatabaseService(
+      cascadeConstant,
+      serverResolverTestDatabase,
+      MissingTargetService as never,
+      (refName) => {
+        throw new Error(`Service "${refName}" is not registered`);
+      },
+    );
+    const service = new ServiceRef() as InstanceType<typeof ServiceRef> & {
+      __databaseModel: Record<string, (...args: unknown[]) => Promise<unknown>>;
+      __remove: (id: string) => Promise<unknown>;
+    };
+    service.__databaseModel = {
+      __remove: async (id: string) => {
+        parentRemovals.push(id as string);
+        return { id };
+      },
+    } as never;
+
+    await expect(service.__remove("parent-1")).rejects.toThrow("is not registered");
+    // Cascading into a module the app never mounted is a misconfiguration; failing after the parent is gone
+    // would leave it half-removed with nothing to retry from.
+    expect(parentRemovals).toEqual([]);
+  });
+});
+
 describe("ServiceResolver declaration contracts", () => {
   test("patches database services with CRUD, filter, and hook-chain implementations", async () => {
     const ServiceRef = ServiceResolver.resolveDatabaseService(
       serverResolverTestConstant,
       serverResolverTestDatabase,
       ServerResolverTestService,
+      (refName) => {
+        throw new Error(`unexpected cascade lookup: ${refName}`);
+      },
     );
     const service = new ServiceRef() as InstanceType<typeof ServiceRef> & {
       __databaseModel: Record<string, (...args: unknown[]) => Promise<unknown>>;

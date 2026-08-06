@@ -1,12 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getEnv } from "akanjs/base";
+import { Logger, resolveSubRouteHosts } from "akanjs/common";
 import type { BaseBuildArtifact } from "../types";
 import { AkanResponse } from "./akanResponse";
 import type { WebProxy } from "./types";
 
 export class HostBasePathWebProxy implements WebProxy {
   static readonly refName = "HostBasePathWebProxy";
+  #logger = new Logger("HostBasePathWebProxy");
   #domainMap: Map<string, string> | null = null;
 
   use(request: Bun.BunRequest) {
@@ -49,7 +51,16 @@ export class HostBasePathWebProxy implements WebProxy {
 
   #getDomainMap(): Map<string, string> {
     if (this.#domainMap) return this.#domainMap;
-    const subRoutes = loadWebRouteMetadata();
+    const metadata = loadWebRouteMetadata();
+    const { subRoutes, ignoredBasePaths } = resolveSubRouteHosts({
+      subRoutes: metadata.subRoutes,
+      basePaths: metadata.basePaths,
+      env: process.env.AKAN_SUB_ROUTE_HOSTS,
+    });
+    if (ignoredBasePaths.length)
+      this.#logger.warn(
+        `AKAN_SUB_ROUTE_HOSTS names basePaths this build does not serve, ignoring: ${ignoredBasePaths.join(", ")}`,
+      );
     const map = new Map<string, string>();
     for (const [basePath, domains] of Object.entries(subRoutes)) {
       for (const domain of domains) map.set(normalizeHost(domain), basePath);
@@ -59,14 +70,14 @@ export class HostBasePathWebProxy implements WebProxy {
   }
 }
 
-function loadWebRouteMetadata() {
+function loadWebRouteMetadata(): Pick<BaseBuildArtifact, "subRoutes" | "basePaths"> {
   const artifactPath = path.join(resolveArtifactDir(), "base-artifact.json");
-  if (!fs.existsSync(artifactPath)) return { routes: [] };
+  if (!fs.existsSync(artifactPath)) return { subRoutes: {}, basePaths: [] };
   try {
     const parsed = JSON.parse(fs.readFileSync(artifactPath, "utf8")) as Partial<BaseBuildArtifact>;
-    return parsed.subRoutes ?? {};
+    return { subRoutes: parsed.subRoutes ?? {}, basePaths: parsed.basePaths ?? [] };
   } catch {
-    return { routes: [] };
+    return { subRoutes: {}, basePaths: [] };
   }
 }
 

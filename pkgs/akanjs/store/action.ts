@@ -224,7 +224,7 @@ type FormSetter<
       ? K extends string
         ? SetterKey<"upload", K, RefName, _CapitalizedRefName>
         : never
-      : never]: (fileList: FileList, idx?: number) => Promise<void>;
+      : never]: (fileList: FileList | File[], idx?: number) => Promise<void>;
   } & {
     [K in `writeOn${_CapitalizedRefName}`]: (path: string | (string | number)[], value: any) => void;
   };
@@ -376,7 +376,11 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
         : {}),
       ...(field.isClass && !!fileUploadRefName && ConstantRegistry.getRefName(field.modelRef) === fileUploadRefName
         ? {
-            [namesOfField.uploadFieldOnModel]: async function (this: SetGet, fileList: FileList, index?: number) {
+            [namesOfField.uploadFieldOnModel]: async function (
+              this: SetGet,
+              fileList: FileList | File[],
+              index?: number,
+            ) {
               const form = (this.get() as { [key: string]: any })[names.modelForm] as { [key: string]: any };
               if (!fileList.length) return;
               const files = await (fetch[names.addModelFiles] as (...args: any) => Promise<ProtoFile[]>)(
@@ -476,6 +480,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     initModel: `init${className}`,
     modelInitList: `${fieldName}InitList`,
     modelInitAt: `${fieldName}InitAt`,
+    modelStaleAt: `${fieldName}StaleAt`,
     refreshModel: `refresh${className}`,
     selectModel: `select${className}`,
     setPageOfModel: `setPageOf${className}`,
@@ -488,6 +493,14 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     limitOfModel: `limitOf${className}`,
     queryArgsOfModel: `queryArgsOf${className}`,
     sortOfModel: `sortOf${className}`,
+  };
+  const staleAtOfOtherSlices = (createdSliceName: string) => {
+    const staleAt = new Date();
+    return Object.fromEntries(
+      slices
+        .filter(({ sliceName }) => sliceName !== createdSliceName)
+        .map(({ sliceName }) => [sliceName.replace(names.model, names.modelStaleAt), staleAt]),
+    );
   };
   const baseAction = {
     [names.createModelInForm]: async function (
@@ -527,6 +540,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         [namesOfSlice.modelInsight]: newModelInsight,
         [names.modelViewAt]: new Date(),
         [names.modelModal]: modal ?? null,
+        ...staleAtOfOtherSlices(sliceName),
         ...(typeof path === "string" && path ? { [path]: model } : {}),
       });
       await onSuccess?.(model);
@@ -609,6 +623,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         [namesOfSlice.modelInsight]: newModelInsight,
         [names.modelViewAt]: new Date(),
         [names.modelModal]: modal ?? null,
+        ...staleAtOfOtherSlices(sliceName),
         ...(typeof path === "string" && path ? { [path]: model } : {}),
       });
       await onSuccess?.(model);
@@ -847,6 +862,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       initModel: SliceName.replace(names.Model, names.initModel),
       modelInitList: SliceName.replace(names.Model, names.modelInitList),
       modelInitAt: SliceName.replace(names.Model, names.modelInitAt),
+      modelStaleAt: SliceName.replace(names.Model, names.modelStaleAt),
       refreshModel: SliceName.replace(names.Model, names.refreshModel),
       selectModel: SliceName.replace(names.Model, names.selectModel),
       setPageOfModel: SliceName.replace(names.Model, names.setPageOfModel),

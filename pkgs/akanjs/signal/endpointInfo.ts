@@ -15,6 +15,7 @@ import type {
   ParamFieldType,
   PlainTypeToFieldType,
   PurifiedModel,
+  UploadableClientArg,
 } from "akanjs/constant";
 import type { ServiceModel } from "akanjs/service";
 import type { InternalArgCls } from "./internalArg";
@@ -135,7 +136,7 @@ export class EndpointInfo<
     Arg extends ConstantFieldTypeInput = PlainTypeToFieldType<ExplicitType>,
     Optional extends boolean = false,
     _ArgType = unknown extends ExplicitType ? FieldToValue<Arg> : ExplicitType,
-    _ClientArg = PurifiedModel<_ArgType>,
+    _ClientArg = UploadableClientArg<PurifiedModel<_ArgType>>,
     _ServerArg = DocumentModel<_ArgType>,
   >(name: ArgName, arg: Arg, option?: EndpointArgProps<Optional>) {
     if (this.execFn) throw new Error("Query function is already set");

@@ -3,6 +3,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import ignore from "ignore";
 import ts from "typescript";
+import { AbstractDoc } from "./abstractDoc";
 
 type QualitySeverity = "warning";
 type QualityScope = "global" | "file" | "convention" | "layout";
@@ -30,6 +31,11 @@ interface SourceFileInfo {
   absolutePath: string;
   content: string;
   sourceFile: ts.SourceFile;
+}
+
+interface TextFileInfo {
+  file: string;
+  content: string;
 }
 
 interface ExportedFunctionLike {
@@ -142,6 +148,8 @@ const RULE_FIXES: Record<string, string> = {
   "akan.file.recommended-max-lines":
     "Split the file by responsibility — move Zones, Utils, or subcomponents into sibling files.",
   "akan.file.max-lines": "Break the file into smaller focused modules; keep one primary responsibility per file.",
+  "akan.file.abstract-max-lines":
+    "Run `akan compact <app-or-lib>` to rewrite the abstract with the AI editor, keeping only the invariants and workflows the source files cannot show.",
   "akan.file.placeholder-export":
     "Remove the placeholder export; generated indexes should only re-export real modules.",
   "akan.file.dictionary-stale-text": "Replace the scaffold text with real localized copy for this dictionary entry.",
@@ -172,18 +180,28 @@ function getRuleFix(rule: string): string | undefined {
 export class AkanQualityScanner {
   async scan(workspaceRoot: string): Promise<QualityScanResult> {
     const targetFiles = await this.#collectTargetFiles(workspaceRoot);
-    const sourceFiles = await Promise.all(targetFiles.map((file) => this.#readSourceFile(workspaceRoot, file)));
+    const sourceFiles = await Promise.all(
+      targetFiles
+        .filter((file) => !AbstractDoc.isAbstractPath(file))
+        .map((file) => this.#readSourceFile(workspaceRoot, file)),
+    );
+    const abstractFiles = await Promise.all(
+      targetFiles
+        .filter((file) => AbstractDoc.isAbstractPath(file))
+        .map((file) => this.#readTextFile(workspaceRoot, file)),
+    );
     const warnings = [
       ...this.#scanGlobalQuality(sourceFiles),
       ...sourceFiles.flatMap((sourceFile) => this.#scanSingleFileQuality(sourceFile)),
       ...sourceFiles.flatMap((sourceFile) => this.#scanComponentQuality(sourceFile)),
       ...sourceFiles.flatMap((sourceFile) => this.#scanConventionQuality(sourceFile)),
       ...sourceFiles.flatMap((sourceFile) => this.#scanLayoutQuality(sourceFile)),
+      ...abstractFiles.flatMap((abstractFile) => this.#scanAbstractQuality(abstractFile)),
     ];
 
     return {
       workspaceRoot,
-      scannedFiles: sourceFiles.length,
+      scannedFiles: sourceFiles.length + abstractFiles.length,
       warnings: warnings
         .map((warning) => ({ ...warning, fix: warning.fix ?? getRuleFix(warning.rule) }))
         .sort(compareWarnings),
@@ -226,6 +244,8 @@ export class AkanQualityScanner {
       }
       if ((relativePath.endsWith(".ts") || relativePath.endsWith(".tsx")) && !relativePath.endsWith(".d.ts")) {
         files.push(relativePath);
+      } else if (AbstractDoc.isAbstractPath(relativePath)) {
+        files.push(relativePath);
       }
     }
   }
@@ -239,6 +259,10 @@ export class AkanQualityScanner {
       content,
       sourceFile: ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true, getScriptKind(file)),
     };
+  }
+
+  async #readTextFile(workspaceRoot: string, file: string): Promise<TextFileInfo> {
+    return { file, content: await readFile(path.join(workspaceRoot, file), "utf8") };
   }
 
   #scanGlobalQuality(sourceFiles: SourceFileInfo[]): QualityWarning[] {
@@ -389,6 +413,20 @@ export class AkanQualityScanner {
       });
     }
     return warnings;
+  }
+
+  #scanAbstractQuality({ file, content }: TextFileInfo): QualityWarning[] {
+    const lineCount = AbstractDoc.lineCountOf(content);
+    if (lineCount <= AbstractDoc.maxLines) return [];
+    return [
+      {
+        rule: "akan.file.abstract-max-lines",
+        scope: "file",
+        severity: "warning",
+        file,
+        message: `Abstract has ${lineCount} lines. Keep abstracts under ${AbstractDoc.maxLines} lines and compact them periodically.`,
+      },
+    ];
   }
 
   #scanLayoutQuality(sourceFile: SourceFileInfo): QualityWarning[] {

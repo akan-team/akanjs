@@ -1,3 +1,4 @@
+import type { AbstractCompactOptions } from "@akanjs/devkit/abstractCompactor";
 import type { AkanAppConfig, DatabaseMode, MobileEnv } from "@akanjs/devkit/akanConfig";
 import { ApplicationBuildReporter } from "@akanjs/devkit/applicationBuildReporter";
 import type { TypecheckOptions } from "@akanjs/devkit/applicationBuildRunner";
@@ -120,6 +121,18 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
   async sync(sys: Sys) {
     if (sys.type === "app") await (sys as App).scanSync();
     else await this.libraryScript.syncLibrary(sys as Lib);
+  }
+
+  async compact(sys: Sys, { module = null, minLines, interactive = false }: AbstractCompactOptions = {}) {
+    const { scanned, reports } = await this.applicationRunner.compact(sys, { module, minLines, interactive });
+    if (!reports.length) {
+      Logger.rawLog(`No abstract file long enough to compact in ${sys.name} (${scanned} scanned)`);
+      return;
+    }
+    for (const report of reports)
+      Logger.rawLog(`${report.status}: ${report.path} (${report.beforeLines} -> ${report.afterLines} lines)`);
+    const compactedNum = reports.filter((report) => report.status === "compacted").length;
+    Logger.rawLog(`Compacted ${compactedNum}/${reports.length} abstract files in ${sys.name}`);
   }
 
   async script(app: App, filename: string | null) {
@@ -356,7 +369,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
   }
   async testApplication(app: App) {
     const spinner = app.spinning("Testing application...");
-    await this.applicationRunner.testApplication(app);
+    await this.applicationRunner.test(app);
     spinner.succeed(`Application ${app.name} (apps/${app.name}) test is successful`);
   }
 }

@@ -257,6 +257,62 @@ return (
       </Scroll.Slide>
       <Divider />
 
+      <Scroll.Slide id="cascade" title={l.trans({ en: "Remove The File With Its Owner", ko: "소유 모델과 함께 삭제" })}>
+        <Docs.Title>{l.trans({ en: "Remove The File With Its Owner", ko: "소유 모델과 함께 삭제" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: 'Add `cascade: "remove"` to a File relation and removing the owner removes the file too. The cascade calls the File service, not the File model, so `FileService._postRemove` runs and the stored object is deleted from blob or object storage. Nothing else is needed — the storage call already lives in that hook.',
+              ko: 'File 관계 필드에 `cascade: "remove"`를 달면 소유 모델을 지울 때 파일도 함께 지워집니다. 캐스케이드는 File 모델이 아니라 File 서비스를 호출하므로 `FileService._postRemove`가 실행되고, blob/object storage의 객체까지 삭제됩니다. 그 훅에 이미 스토리지 호출이 들어 있어서 따로 배선할 것이 없습니다.',
+            })}
+          </div>
+          <ul className="list-disc space-y-2 pl-5">
+            <li>
+              {l.trans({
+                en: "Works on an array field too, and only on a relation. A String, an ID, or a scalar fails the class build: none of them names a document to remove.",
+                ko: "배열 필드에도 동작하며, 관계 필드에만 붙일 수 있습니다. String·ID·scalar는 클래스 빌드에서 실패합니다. 셋 다 삭제할 문서를 가리키지 않기 때문입니다.",
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: "Nothing checks whether another document still points at the same file. Files are deduped by origin, so declaring cascade asserts that this field owns its file exclusively.",
+                ko: "다른 문서가 같은 파일을 아직 참조하는지는 검사하지 않습니다. 파일은 origin 기준으로 중복 제거되므로, cascade를 선언한다는 것은 이 필드가 그 파일을 단독으로 소유한다는 선언입니다.",
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: "The document removal is soft, but deleting the stored object is not. A cascade cannot be undone.",
+                ko: "문서 삭제는 soft remove지만 저장된 객체 삭제는 되돌릴 수 없습니다. 캐스케이드는 복구되지 않습니다.",
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: "Query-level removal fires no hooks and therefore no cascade. removeManyByQuery stamps removedAt in one atomic update; remove documents one at a time when they cascade.",
+                ko: "쿼리 단위 삭제는 훅을 태우지 않으므로 캐스케이드도 돌지 않습니다. removeManyByQuery는 removedAt을 원자적 업데이트 한 번으로 찍습니다. 캐스케이드가 걸린 모델은 문서 단위로 지우세요.",
+              })}
+            </li>
+          </ul>
+        </Docs.Description>
+        <Code.Snippet
+          title="user.constant.ts"
+          code={`export class UserInput extends via((field) => ({
+  nickname: field(String, { default: "" }),
+  image: field(File, { cascade: "remove" }).optional(),
+  images: field([File], { cascade: "remove" }),
+})) {}`}
+        />
+        <Code.Snippet
+          title="file.service.ts — where the storage call already lives"
+          code={`export class FileService extends serve(db.file, ({ use }) => ({ storageApi: use<StorageApi>() })) {
+  override async _postRemove(file: db.File) {
+    await this.storageApi.deleteData(file.url);
+    return file;
+  }
+}`}
+        />
+      </Scroll.Slide>
+      <div className="divider" />
+
       <Scroll.Slide id="grow-later" title={l.trans({ en: "Grow Later", ko: "나중에 확장하기" })}>
         <Docs.Title>{l.trans({ en: "Grow Later", ko: "나중에 확장하기" })}</Docs.Title>
         <Docs.Description>

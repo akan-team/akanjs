@@ -28,6 +28,8 @@ interface DefaultProps<L extends { id: string }> {
   renderList?: (list: DataList<L>) => ReactNode;
   reverse?: boolean;
   pagination?: boolean;
+  /** Max age in ms of the cached slice data before the client refetches on mount; `0` always refetches. */
+  staleTime?: number;
 }
 
 interface UnitsProps<RefName extends string, Light extends { id: string }> extends DefaultProps<Light> {
@@ -60,6 +62,7 @@ function Render<RefName extends string, Light extends { id: string }>({
   sort = (a, b) => 1,
   reverse,
   pagination,
+  staleTime,
 }: RenderProps<RefName, Light>) {
   const loaded = useRef(false);
   const storeUse = st.use as { [key: string]: () => unknown };
@@ -75,6 +78,7 @@ function Render<RefName extends string, Light extends { id: string }>({
     modelInsight: `${modelName}Insight`,
     modelInitList: `${modelName}InitList`,
     modelInitAt: `${modelName}InitAt`,
+    modelStaleAt: `${modelName}StaleAt`,
     modelObjList: `${modelName}ObjList`,
     modelObjInsight: `${modelName}ObjInsight`,
     pageOfModel: `pageOf${ModelName}`,
@@ -84,12 +88,14 @@ function Render<RefName extends string, Light extends { id: string }>({
     sortOfModel: `sortOf${ModelName}`,
     setPageOfModel: `setPageOf${ModelName}`,
     addPageOfModel: `addPageOf${ModelName}`,
+    refreshModel: `refresh${ModelName}`,
   };
   const namesOfSlice = {
     modelList: sliceName.replace(names.model, names.modelList),
     modelListLoading: sliceName.replace(names.model, names.modelListLoading),
     modelInitList: sliceName.replace(names.model, names.modelInitList),
     modelInitAt: sliceName.replace(names.model, names.modelInitAt),
+    modelStaleAt: sliceName.replace(names.model, names.modelStaleAt),
     modelInsight: sliceName.replace(names.model, names.modelInsight),
     pageOfModel: sliceName.replace(names.model, names.pageOfModel),
     lastPageOfModel: sliceName.replace(names.model, names.lastPageOfModel),
@@ -98,6 +104,7 @@ function Render<RefName extends string, Light extends { id: string }>({
     sortOfModel: sliceName.replace(names.model, names.sortOfModel),
     setPageOfModel: sliceName.replace(names.model, names.setPageOfModel),
     addPageOfModel: sliceName.replace(names.model, names.addPageOfModel),
+    refreshModel: sliceName.replace(names.model, names.refreshModel),
   };
   const modelList = storeUse[namesOfSlice.modelList]() as DataList<Light>;
   const modelListLoading = storeUse[namesOfSlice.modelListLoading]() as string | boolean;
@@ -106,6 +113,7 @@ function Render<RefName extends string, Light extends { id: string }>({
   const initModelObjInsight = (init as any)[names.modelObjInsight] as BaseInsight;
   const initLimitOfModel = (init as any)[names.limitOfModel] as number;
   const initPageOfModel = (init as any)[names.pageOfModel] as number;
+  const modelStaleAt = storeUse[namesOfSlice.modelStaleAt]() as Date;
 
   const useCache =
     !modelListLoading &&
@@ -142,6 +150,13 @@ function Render<RefName extends string, Light extends { id: string }>({
     });
     loaded.current = true;
   }, []);
+
+  useEffect(() => {
+    const staleThreshold = Math.max(modelStaleAt.getTime(), staleTime === undefined ? 0 : Date.now() - staleTime);
+    if (storeGet<Date>()[namesOfSlice.modelInitAt].getTime() >= staleThreshold) return;
+    if (storeGet<boolean>()[namesOfSlice.modelListLoading]) return;
+    void storeDo[namesOfSlice.refreshModel]({ invalidate: true });
+  }, [modelStaleAt]);
 
   const modelInsight = storeUse[namesOfSlice.modelInsight]() as BaseInsight;
   const limitOfModel = storeUse[namesOfSlice.limitOfModel]() as number;
@@ -236,6 +251,7 @@ export default function Units<RefName extends string, Light extends { id: string
   reverse,
   style,
   pagination = true,
+  staleTime,
 }: UnitsProps<RefName, Light>) {
   const props: UnitsProps<RefName, Light> = {
     containerRef,
@@ -253,6 +269,7 @@ export default function Units<RefName extends string, Light extends { id: string
     sort,
     reverse,
     pagination,
+    staleTime,
   };
 
   const { fulfilled, value: promiseInit } = useFetch(init);

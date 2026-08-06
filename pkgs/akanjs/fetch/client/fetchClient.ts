@@ -496,7 +496,7 @@ export class FetchClient {
     this.#setHandlerFactory(
       names.addModelFiles,
       () =>
-        (async (fileList: FileList, parentId?: string, option?: FetchPolicy) => {
+        (async (fileList: FileList | File[], parentId?: string, option?: FetchPolicy) => {
           const cap = resolveFileUploadCapability(this.serializedSignal);
           const endpoint = cap ? this.serializedSignal[cap.refName]?.endpoint[cap.endpointKey] : undefined;
           if (!cap || !endpoint)

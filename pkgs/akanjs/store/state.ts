@@ -23,6 +23,7 @@ export type SliceStateKey =
   | "modelListLoading"
   | "modelInitList"
   | "modelInitAt"
+  | "modelStaleAt"
   | "modelSelection"
   | "lastPageOfModel"
   | "pageOfModel"
@@ -79,6 +80,8 @@ export type SliceState<
 } & {
   [K in `${RefName}InitAt${_CapitalizedSuffix}`]: Date;
 } & {
+  [K in `${RefName}StaleAt${_CapitalizedSuffix}`]: Date;
+} & {
   [K in `${RefName}Selection${_CapitalizedSuffix}`]: DataList<Light>;
 } & {
   [K in `${RefName}Insight${_CapitalizedSuffix}`]: Insight;
@@ -112,7 +115,9 @@ type DefaultSliceStateFields<
     | `${_RefName}InitList${StoreSliceSuffixCap<SlceCls, Suffix>}`
     | `${_RefName}Selection${StoreSliceSuffixCap<SlceCls, Suffix>}`]: DataList<_Light>;
 } & {
-  [Suffix in _Suffixes as `${_RefName}InitAt${StoreSliceSuffixCap<SlceCls, Suffix>}`]: Date;
+  [Suffix in _Suffixes as
+    | `${_RefName}InitAt${StoreSliceSuffixCap<SlceCls, Suffix>}`
+    | `${_RefName}StaleAt${StoreSliceSuffixCap<SlceCls, Suffix>}`]: Date;
 } & {
   [Suffix in _Suffixes as `${_RefName}ListLoading${StoreSliceSuffixCap<SlceCls, Suffix>}`]: boolean;
 } & {
@@ -182,6 +187,7 @@ export const createSliceState = (refName: string, slice: { [key: string]: Serial
     modelListLoading: `${fieldName}ListLoading`,
     modelInitList: `${fieldName}InitList`,
     modelInitAt: `${fieldName}InitAt`,
+    modelStaleAt: `${fieldName}StaleAt`,
     modelSelection: `${fieldName}Selection`,
     modelInsight: `${fieldName}Insight`,
     lastPageOfModel: `lastPageOf${className}`,
@@ -200,6 +206,7 @@ export const createSliceState = (refName: string, slice: { [key: string]: Serial
       modelListLoading: sliceName.replace(names.model, names.modelListLoading),
       modelInitList: sliceName.replace(names.model, names.modelInitList),
       modelInitAt: sliceName.replace(names.model, names.modelInitAt),
+      modelStaleAt: sliceName.replace(names.model, names.modelStaleAt),
       modelSelection: sliceName.replace(names.model, names.modelSelection),
       modelInsight: sliceName.replace(names.model, names.modelInsight),
       lastPageOfModel: SliceName.replace(names.Model, names.lastPageOfModel),
@@ -214,6 +221,7 @@ export const createSliceState = (refName: string, slice: { [key: string]: Serial
       [namesOfSlice.modelListLoading]: true,
       [namesOfSlice.modelInitList]: new DataList(),
       [namesOfSlice.modelInitAt]: new Date(0),
+      [namesOfSlice.modelStaleAt]: new Date(0),
       [namesOfSlice.modelSelection]: new DataList(),
       [namesOfSlice.modelInsight]: new cnst.insight(),
       [namesOfSlice.lastPageOfModel]: 1,

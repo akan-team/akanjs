@@ -236,6 +236,14 @@ export default function Page() {
       }),
       example: `override async _postRemove(doc) { return doc; }`,
     },
+    {
+      name: "cascade remove",
+      desc: l.trans({
+        en: "A relation field declared with cascade: \"remove\" removes its target through the target's service, so the target's _postRemove runs too.",
+        ko: 'cascade: "remove"로 선언한 관계 field는 대상의 service를 거쳐 삭제하므로 대상의 _postRemove도 함께 실행됩니다.',
+      }),
+      example: `image: field(File, { cascade: "remove" }).optional()`,
+    },
   ];
 
   return (

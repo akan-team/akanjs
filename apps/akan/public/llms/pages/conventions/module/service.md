@@ -79,6 +79,8 @@ Runs before remove.
 
 Runs after remove. Return the document to continue.
 
+A relation field declared with cascade: "remove" removes its target through the target's service, so the target's _postRemove runs too.
+
 A service file is where business workflows run. It coordinates documents, other services, signals, external APIs, environment options, and service lifecycle hooks.
 
 Use service methods for operations that need more than one model, external runtime objects, background jobs, or server-only logic. Keep simple state changes on the document when possible.

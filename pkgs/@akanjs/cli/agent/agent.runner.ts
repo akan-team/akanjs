@@ -111,6 +111,7 @@ ${sampleCleanup}## Akan Module Abstracts
 - Update the abstract when business invariants, workflows, or public behavior change.
 - Do not update the abstract for formatting-only, import-only, or style-only changes.
 - Service modules live in \`lib/_<service>\`, but their abstract file is \`<service>.abstract.md\`.
+- Keep an abstract short. Run \`akan compact <app-or-lib>\` to rewrite bloated abstracts down to the invariants the code cannot show; \`akan quality scan\` warns past 300 lines.
 
 ## Generated Files
 

@@ -1,6 +1,6 @@
 import type { PromiseOrObject } from "akanjs/base";
 import { capitalize } from "akanjs/common";
-import type { ConstantModel, QueryOf } from "akanjs/constant";
+import { type ConstantModel, ConstantRegistry, type QueryOf } from "akanjs/constant";
 import {
   type CRUDEventType,
   type DatabaseModel,
@@ -17,7 +17,11 @@ import {
 import type { DatabaseService, ServiceCls } from "akanjs/service";
 
 export class ServiceResolver {
-  static #getDefaultDbServiceMethods(className: string) {
+  static #getDefaultDbServiceMethods(
+    className: string,
+    cascades: [string, string][],
+    getService: (refName: string) => DatabaseService,
+  ) {
     const dbServiceMethods = {
       async __get(this: DatabaseService, id: string) {
         return await this.__databaseModel.__get(id);
@@ -95,9 +99,20 @@ export class ServiceResolver {
         return this.__update(id, data);
       },
       async __remove(this: DatabaseService, id: string): Promise<Doc> {
+        // Resolved before anything is mutated: a model cascading into a module the app never mounted is a
+        // misconfiguration, and failing after the parent is already gone would leave it half-removed.
+        const targets = cascades.map(([key, refName]) => [key, getService(refName)] as const);
         await this.__libsPreRemove(id);
         const doc = await this.__databaseModel.__remove(id);
-        return await this.__libsPostRemove(doc);
+        const removed = await this.__libsPostRemove(doc);
+        for (const [key, target] of targets) {
+          const value = (removed as Record<string, unknown>)[key];
+          const ids = (Array.isArray(value) ? value : [value]).filter((v): v is string => typeof v === "string");
+          // Through the target's own service, never its model: that is what runs its `_postRemove`, which is where
+          // a module puts the side effect that has to accompany the removal — deleting the stored object, say.
+          for (const targetId of ids) await target.__remove(targetId);
+        }
+        return removed;
       },
       async [`remove${className}`](this: DatabaseService, id: string): Promise<Doc> {
         return this.__remove(id);
@@ -105,9 +120,19 @@ export class ServiceResolver {
     };
     return dbServiceMethods;
   }
-  static resolveDatabaseService(constant: ConstantModel, database: DatabaseModel, srvRef: ServiceCls): ServiceCls {
+  static resolveDatabaseService(
+    constant: ConstantModel,
+    database: DatabaseModel,
+    srvRef: ServiceCls,
+    getService: (refName: string) => DatabaseService,
+  ): ServiceCls {
     const className = capitalize(database.refName);
-    Object.assign(srvRef.prototype, ServiceResolver.#getDefaultDbServiceMethods(className));
+    // Resolved here rather than in the constant: a target model is registered after the class that references it,
+    // so its refName is not knowable at the point the field is declared.
+    const cascades = [...constant.full.cascade.remove].map(
+      ([key, modelRef]) => [key, ConstantRegistry.getRefName(modelRef)] as [string, string],
+    );
+    Object.assign(srvRef.prototype, ServiceResolver.#getDefaultDbServiceMethods(className, cascades, getService));
     const getQueryDataFromKey = (queryKey: string, args: any): { query: any; queryOption: any } => {
       const lastArg = args.at(-1);
       const hasQueryOption =

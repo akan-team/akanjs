@@ -13,6 +13,7 @@ import { applyMixins } from "akanjs/common";
 import { immerable } from "immer";
 
 import { crystalize, getDefault } from ".";
+import { CascadePaths } from "./cascadePaths";
 import { ConstantRegistry } from "./constantRegistry";
 import {
   ConstantField,
@@ -193,6 +194,7 @@ const getBaseConstantClass = (field: FieldObject, modelType: ConstantType = "sca
     static readonly [FIELD_META]: FieldObject = field;
     static modelType: ConstantType = modelType;
     static text: TextFieldPaths = new TextFieldPaths();
+    static cascade: CascadePaths = new CascadePaths();
     static children: Set<ConstantModelRef> = new Set();
     static relations: Set<ConstantModelRef> = new Set();
     static enums: Set<EnumInstance> = new Set();
@@ -269,6 +271,7 @@ export interface ConstantStatics<
   relations: Set<ConstantModelRef>;
   enums: Set<EnumInstance>;
   text: TextFieldPaths;
+  cascade: CascadePaths;
   _OptionalKey: OptionalKey;
   _RelationKey: RelationKey;
   _PrimitiveKey: PrimitiveKey;
@@ -296,6 +299,7 @@ export interface DatabaseConstantStatics<Schema = any, FieldObj extends FieldObj
   relations: Set<ConstantModelRef>;
   enums: Set<EnumInstance>;
   text: TextFieldPaths;
+  cascade: CascadePaths;
   _DatabaseSchema: {
     [K in keyof Schema]: K extends keyof FieldObj
       ? FieldObj[K]["fieldType"] extends "hidden"
@@ -318,6 +322,7 @@ export type ConstantModelRef<
     relations: Set<ConstantModelRef>;
     enums: Set<EnumInstance>;
     text: TextFieldPaths;
+    cascade: CascadePaths;
   }
 >;
 
@@ -440,6 +445,7 @@ const applyConstantStatics = <Model>(model: ConstantCls<Model>, fieldMap: FieldO
     for (const relation of field.modelRef.relations) model.relations.add(relation);
   });
   model.text.collect(fieldMap);
+  model.cascade.collect(fieldMap);
   return model as unknown as ConstantCls<Model>;
 };
 

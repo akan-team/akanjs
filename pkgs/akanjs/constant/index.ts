@@ -1,3 +1,4 @@
+export * from "./cascadePaths";
 export * from "./constantRegistry";
 export * from "./crystalize";
 export * from "./deserialize";

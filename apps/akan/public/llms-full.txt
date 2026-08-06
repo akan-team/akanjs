@@ -1909,6 +1909,7 @@ Headings:
 - Fields And enumOf
 - field.hidden And field.secret
 - Text Search Fields
+- Cascade Remove Fields
 - Extending Generated Models
 - Light And Full Model Helpers
 - Resolved Fields
@@ -3912,6 +3913,7 @@ Headings:
 - File Service
 - Use In UI
 - Auto-attach To A Model Field
+- Remove The File With Its Owner
 - Grow Later
 - Tips
 

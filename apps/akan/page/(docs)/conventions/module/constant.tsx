@@ -288,6 +288,47 @@ type TicketStatusValue = TicketStatus["value"];`}
       </Scroll.Slide>
       <div className="divider" />
 
+      <Scroll.Slide id="cascade-fields" title={l.trans({ en: "Cascade Remove Fields", ko: "캐스케이드 삭제 field" })}>
+        <Docs.Title>{l.trans({ en: "Cascade Remove Fields", ko: "캐스케이드 삭제 field" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: 'A relation field can take its target down with it. cascade: "remove" is the whole declaration, and it works on an array field too.',
+              ko: '관계 field는 자신이 삭제될 때 대상까지 함께 삭제할 수 있습니다. 선언은 cascade: "remove" 하나가 전부이고, 배열 field에도 동작합니다.',
+            })}
+          </div>
+          <ul className="list-disc space-y-2 pl-5">
+            <li>
+              {l.trans({
+                en: "The removal runs through the target's service, so the target's own _postRemove runs with it. That is how a File cascade also deletes the stored object.",
+                ko: "삭제는 대상의 service를 거쳐 실행되므로 대상의 _postRemove도 함께 실행됩니다. File 캐스케이드가 저장된 객체까지 삭제하는 것이 이 때문입니다.",
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: "Only a relation accepts it. A String, an ID, or a scalar field throws while the class is being built, because none of them names a document the framework could remove.",
+                ko: "관계 field에만 붙일 수 있습니다. String·ID·scalar field는 클래스 빌드 중에 throw합니다. 셋 다 프레임워크가 삭제할 수 있는 문서를 가리키지 않기 때문입니다.",
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: "Nothing checks for other references to the same target. Declaring cascade asserts that this field owns its target exclusively, and query-level removal fires no hooks and therefore no cascade.",
+                ko: "같은 대상을 참조하는 다른 문서가 있는지는 검사하지 않습니다. cascade 선언은 이 field가 대상을 단독으로 소유한다는 뜻이며, 쿼리 단위 삭제는 훅을 태우지 않으므로 캐스케이드도 돌지 않습니다.",
+              })}
+            </li>
+          </ul>
+        </Docs.Description>
+        <Code.Snippet
+          title="user.constant.ts"
+          code={`export class UserInput extends via((field) => ({
+  nickname: field(String, { default: "", text: "title" }),
+  image: field(File, { text: "thumb", cascade: "remove" }).optional(),
+  images: field([File], { cascade: "remove" }),
+})) {}`}
+        />
+      </Scroll.Slide>
+      <div className="divider" />
+
       <Scroll.Slide
         id="generated-extension"
         title={l.trans({ en: "Extending Generated Models", ko: "Generated model 확장" })}

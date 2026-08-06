@@ -79,7 +79,7 @@ export class ModuleRunner extends runner("module") {
     await module.sys.applyTemplate({
       basePath: `./lib/${module.name}`,
       template: `module/__Model__.${capitalize(type)}.tsx`,
-      dict: { model: module.name, appName: module.sys.name },
+      dict: { model: module.name, sysName: module.sys.name, sysType: module.sys.type },
     });
     return {
       component: {
@@ -121,6 +121,7 @@ export class ModuleRunner extends runner("module") {
         model: module.name,
         models: names,
         sysName: module.sys.name,
+        sysType: module.sys.type,
         modelLabelEn: modelLabel.en,
         modelLabelKo: modelLabel.ko,
         modelDescEn: modelDescription.en,
