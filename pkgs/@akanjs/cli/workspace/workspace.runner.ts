@@ -1,7 +1,7 @@
 import path from "node:path";
 import { collectScopeRecipeSources, extractAgentBlock, renderScopeAgentBlock } from "@akanjs/devkit/agentsIndex";
 import { type Exec, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
-import { AppExecutor, SysExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
+import { SysExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
 import { FileSys } from "@akanjs/devkit/fileSys";
 import {
   countBlocking,
@@ -266,11 +266,6 @@ export class WorkspaceRunner extends runner("workspace") {
   async #enforceStyleContract(exec: Exec) {
     const cwdPath = exec.cwdPath;
     if (!cwdPath) return;
-    // 앱 단위 opt-out: 어휘 폐쇄 미도입 앱(daisyUI 존치 등)은 skip. lib/pkg 는 공유 코드라 항상 강제.
-    if (exec instanceof AppExecutor) {
-      const config = await exec.getConfig();
-      if (!config.vocabularyClosure) return;
-    }
     const stylesCssPath = path.join(cwdPath, "page", "styles.css");
     const theme = (await Bun.file(stylesCssPath).exists())
       ? new ThemeValidator().validate(await Bun.file(stylesCssPath).text())

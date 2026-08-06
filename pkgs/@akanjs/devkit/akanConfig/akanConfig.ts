@@ -182,8 +182,6 @@ export class AkanAppConfig implements AppConfigResult {
   /** True only when the app's akan.config.ts explicitly declares a `mobile` section (vs. the synthesized default). */
   hasMobileConfig: boolean;
   secrets: string[];
-  /** Whether this app is under the closed color vocabulary (styleGuard enforced). Default true. */
-  vocabularyClosure: boolean;
   /** Raw setting; resolved against the app's lib deps at sync time (see `AppExecutor.syncPages`). */
   syncPageLibs: string[] | boolean;
   baseDevEnv: BaseDevEnv;
@@ -223,7 +221,6 @@ export class AkanAppConfig implements AppConfigResult {
     process.env.AKAN_PUBLIC_LOCALES = this.i18n.locales.join(",");
     this.publicEnv = (config?.publicEnv as string[] | undefined) ?? ([] as string[]);
     this.secrets = (config?.secrets as string[] | undefined) ?? ([] as string[]);
-    this.vocabularyClosure = config?.vocabularyClosure ?? true;
     this.syncPageLibs = (config?.syncPageLibs as string[] | boolean | undefined) ?? false;
     this.hasMobileConfig = Boolean(config.mobile);
     this.mobile = this.#resolveMobileConfig(config.mobile);
