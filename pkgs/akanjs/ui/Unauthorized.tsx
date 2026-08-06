@@ -16,11 +16,11 @@ export const DefaultUnauthorized = ({ className = "", description, children, min
   const { l } = usePage();
   return (
     <div>
+      {/* minHeight is a runtime number, so it has to be a style prop — see Empty.tsx. The interpolated form
+          also had `w-full` typo'd inside the brackets, which broke that class too. */}
       <div
-        className={cn(
-          `min-h-[ w-full${minHeight}px] flex flex-col items-center justify-center gap-3 pt-6 pb-3 text-foreground/30`,
-          className,
-        )}
+        style={{ minHeight }}
+        className={cn("flex w-full flex-col items-center justify-center gap-3 pt-6 pb-3 text-foreground/30", className)}
       >
         <AiOutlineBlock className="scale-150 text-4xl" />
         <p>{description ?? l("base.unauthorized")}</p>

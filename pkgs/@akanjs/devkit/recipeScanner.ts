@@ -146,10 +146,25 @@ export interface RecipeDuplicate {
 }
 
 /**
+ * Fraction of a recipe's base tokens an inline className must reproduce to count as a duplicate.
+ *
+ * Requiring *every* token (the original rule) only caught a verbatim copy of the whole base, which is the one
+ * form of duplication that essentially never happens: someone re-authoring a look reproduces the gist, not all
+ * eight tokens. So the check passed on exactly the near-duplicates it existed to find, and silently — it is an
+ * advisory, so nothing went red. A ratio catches those; false positives are cheap here for the same reason.
+ */
+const DUPLICATE_TOKEN_RATIO = 0.7;
+
+/** Minimum base tokens for a recipe to be worth fingerprinting at all. */
+const MIN_FINGERPRINT_TOKENS = 3;
+
+/**
  * SSOT advisory: finds JSX `className` string values that hand-rewrite a recipe's base fingerprint instead of
  * consuming the recipe. Only recipes whose base has 3+ distinctive tokens are checked — shorter fingerprints
- * (`grid gap-3` …) are generic utilities and would flood the report with false positives. AST-scoped to real
- * `className` attributes, so class strings inside doc-example template literals never match.
+ * (`grid gap-3` …) are generic utilities and would flood the report with false positives. A className counts as
+ * a duplicate once it reproduces {@link DUPLICATE_TOKEN_RATIO} of those tokens, so a near-copy that drops or
+ * swaps one still reports. AST-scoped to real `className` attributes, so class strings inside doc-example
+ * template literals never match.
  */
 export const findInlineRecipeDuplicates = (
   recipes: RecipeInfo[],
@@ -157,7 +172,9 @@ export const findInlineRecipeDuplicates = (
 ): RecipeDuplicate[] => {
   const fingerprints = recipes
     .map((recipe) => ({ recipe: recipe.name, tokens: (recipe.base ?? "").split(/\s+/).filter(Boolean) }))
-    .filter((fingerprint) => fingerprint.tokens.length >= 3);
+    .filter((fingerprint) => fingerprint.tokens.length >= MIN_FINGERPRINT_TOKENS)
+    // Ceil so the threshold never rounds below the minimum: a 3-token base still needs 3 of 3.
+    .map((fingerprint) => ({ ...fingerprint, needed: Math.ceil(fingerprint.tokens.length * DUPLICATE_TOKEN_RATIO) }));
   if (fingerprints.length === 0) return [];
   const duplicates: RecipeDuplicate[] = [];
   for (const file of files) {
@@ -167,7 +184,8 @@ export const findInlineRecipeDuplicates = (
         for (const value of stringValuesIn(node.initializer)) {
           const classSet = new Set(value.split(/\s+/));
           for (const fingerprint of fingerprints) {
-            if (fingerprint.tokens.every((token) => classSet.has(token))) {
+            const matched = fingerprint.tokens.filter((token) => classSet.has(token)).length;
+            if (matched >= fingerprint.needed) {
               const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
               duplicates.push({ recipe: fingerprint.recipe, path: file.path, line: line + 1, className: value });
             }

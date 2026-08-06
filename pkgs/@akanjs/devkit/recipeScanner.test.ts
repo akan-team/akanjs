@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { collectRecipeSources, type RecipeInfo, scanRecipes } from "./recipeScanner";
+import { collectRecipeSources, findInlineRecipeDuplicates, type RecipeInfo, scanRecipes } from "./recipeScanner";
 
 const byName = (recipes: RecipeInfo[], name: string) => recipes.find((recipe) => recipe.name === name);
 
@@ -100,6 +100,41 @@ describe("scanRecipes", () => {
 // Recipes moved from a flat `ui/Recipe.ts` to a `ui/Recipe/` folder. Three consumers (the AGENTS.md recipe
 // index, the recipeGate lint, the MCP module context) go through collectRecipeSources, and every one of them
 // degrades silently — empty list, no error — if it stops finding sources. These tests are that alarm.
+// The advisory exists to catch a look being re-authored inline. Requiring every base token only matched a
+// verbatim copy of the whole base — the one shape that never occurs in practice — so it reported nothing on
+// the near-copies it was built for, and silently, being advisory. These tests pin the ratio behaviour.
+describe("findInlineRecipeDuplicates", () => {
+  // 8 tokens → ceil(8 * 0.7) = 6 must be reproduced.
+  const EIGHT = `export const cardRecipe = recipe(tv({ base: "flex rounded-box border border-border bg-card p-4 text-card-foreground shadow-sm" }));`;
+  const THREE = `export const gridRecipe = recipe(tv({ base: "grid gap-3 xl:grid-cols-2" }));`;
+  const recipesOf = (src: string) => scanRecipes([{ path: "Recipe.ts", content: src, importFrom: "@apps/x/ui" }]);
+  const hits = (src: string, jsx: string) =>
+    findInlineRecipeDuplicates(recipesOf(src), [{ path: "Page.tsx", content: jsx }]).map((d) => d.recipe);
+
+  test("flags a verbatim re-author of the whole base", () => {
+    const jsx = `<div className="flex rounded-box border border-border bg-card p-4 text-card-foreground shadow-sm" />`;
+    expect(hits(EIGHT, jsx)).toEqual(["cardRecipe"]);
+  });
+
+  test("flags a near-copy that drops two tokens — the case the exact-match rule missed", () => {
+    const jsx = `<div className="flex rounded-box border border-border bg-card p-4" />`;
+    expect(hits(EIGHT, jsx)).toEqual(["cardRecipe"]);
+  });
+
+  test("ignores a className that merely shares a few generic utilities", () => {
+    expect(hits(EIGHT, `<div className="flex border p-4" />`)).toEqual([]);
+  });
+
+  test("still requires every token of a minimum-length fingerprint", () => {
+    expect(hits(THREE, `<div className="grid gap-3 xl:grid-cols-2" />`)).toEqual(["gridRecipe"]);
+    expect(hits(THREE, `<div className="grid gap-3" />`)).toEqual([]);
+  });
+
+  test("does not flag a className that consumes the recipe", () => {
+    expect(hits(EIGHT, `<div className={cardRecipe({}, "w-full")} />`)).toEqual([]);
+  });
+});
+
 describe("collectRecipeSources", () => {
   const seed = async (files: Record<string, string>) => {
     const root = await mkdtemp(path.join(tmpdir(), "akan-recipe-"));

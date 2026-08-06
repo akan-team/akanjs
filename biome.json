@@ -233,7 +233,8 @@
         "./pkgs/@akanjs/devkit/lint/no-raw-palette-class.grit",
         "./pkgs/@akanjs/devkit/lint/no-arbitrary-color.grit",
         "./pkgs/@akanjs/devkit/lint/no-daisyui-legacy-class.grit",
-        "./pkgs/@akanjs/devkit/lint/no-inline-color.grit"
+        "./pkgs/@akanjs/devkit/lint/no-inline-color.grit",
+        "./pkgs/@akanjs/devkit/lint/no-interpolated-arbitrary-class.grit"
       ]
     }
   ]

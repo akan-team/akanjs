@@ -6,7 +6,8 @@ alwaysApply: false
 
 # Akan Sync Conventions
 
-- `apps/<appName>` root may only contain these files: `akan.app.json`, `akan.config.ts`, `capacitor.config.ts`, `client.ts`, `main.ts`, `package.json`, `server.ts`, `tsconfig.json`.
+- `apps/<appName>` root may only contain these files: `AGENTS.md`, `CLAUDE.md`, `akan.app.json`, `akan.config.ts`, `capacitor.config.ts`, `client.ts`, `main.ts`, `package.json`, `server.ts`, `tsconfig.json`.
+- `akan sync` maintains a scoped agent guide per app/lib (`apps/<app>/AGENTS.md` / `libs/<lib>/AGENTS.md`); the `akan:agent` block in it is generated, content outside the markers is hand-editable, and `akan lint` fails when the block is stale.
 - `apps/<appName>` root may only contain these folders: `.akan`, `android`, `common`, `env`, `ios`, `lib`, `page`, `plugin`, `private`, `public`, `script`, `srvkit`, `ui`, `webkit`.
 - The `plugin/` facet holds Akan plugin declarations; files use the `<name>.plugin.ts` convention (e.g. `pushNotification.plugin.ts`) and are re-exported from the generated `plugin/index.ts` barrel.
 - Do not add `apps/*/base`; place shared app utilities under `apps/*/common`.

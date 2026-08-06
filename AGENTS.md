@@ -431,8 +431,11 @@ export const pageConfig = { transition: "stack" } satisfies PageConfig;
 
 ## Akan Sync Conventions (`apps/**`, `libs/**`)
 
-- `apps/<appName>` root may only contain these files: `akan.app.json`, `akan.config.ts`, `capacitor.config.ts`, `client.ts`, `main.ts`, `package.json`, `server.ts`, `tsconfig.json`.
+- `apps/<appName>` root may only contain these files: `AGENTS.md`, `CLAUDE.md`, `akan.app.json`, `akan.config.ts`, `capacitor.config.ts`, `client.ts`, `main.ts`, `package.json`, `server.ts`, `tsconfig.json`.
 - `apps/<appName>` root may only contain these folders: `.akan`, `android`, `common`, `env`, `ios`, `lib`, `page`, `plugin`, `private`, `public`, `script`, `srvkit`, `ui`, `webkit`.
+- `akan sync` maintains a scoped agent guide per app/lib: `apps/<app>/AGENTS.md` / `libs/<lib>/AGENTS.md`. The
+  section between the `akan:agent` markers (the `## Recipes In Scope` index) is generated — do not hand-edit it;
+  content outside the markers is yours. `akan lint` fails when the generated section is stale.
 - The `plugin/` facet holds Akan plugin declarations; files use the `<name>.plugin.ts` convention (e.g. `pushNotification.plugin.ts`) and are re-exported from the generated `plugin/index.ts` barrel.
 - Do not add `apps/*/base`; place shared app utilities under `apps/*/common`.
 - `apps/*/lib` and `libs/*/lib` root files are limited to generated/support files: `cnst.ts`, `db.ts`, `dict.ts`, `option.ts`, `sig.ts`, `srv.ts`, `st.ts`, `useClient.ts`, `useServer.ts`.
@@ -497,7 +500,7 @@ cd dist/apps/akan && USE_AKANJS_PKGS=true AKAN_PUBLIC_REPO_NAME=akanjs AKAN_PUBL
 ## Workspace
 
 - Repo: akanjs
-- Apps: minimal, akan
+- Apps: uidemotest, akan, minimal
 - Libraries: util, shared
 - Packages: akanjs, create-akan-workspace, @akanjs/cli, @akanjs/devkit
 
@@ -515,11 +518,13 @@ If generated output is stale or broken, update the owning source file and run `a
 
 ## Recipes
 
-Available UI recipes (Tailwind-variant look factories). Consume by exact name — `import { <name> } from "<import path>"`,
-then `<name>(variants?, className?)`. Do not guess recipe names, import paths, or variant values; the list below carries
+Framework UI recipes (Tailwind-variant look factories), importable from every app and lib. Consume by exact name —
+`import { <name> } from "akanjs/ui"`, then `<name>(variants?, className?)`. The second arg merges internally and
+takes **an array too**, so never wrap it in `cn()`: `<name>({}, ["h-full", isWide && "w-full", className])`.
+Do not guess recipe names, import paths, or variant values; the list below carries
 the full contract (`*` marks the default, `key?` is a boolean flag), so there is no need to open the recipe file to
 consume one. tsc still reports variant mistakes. **Before inlining a repeated surface (card, box,
-tile, …): reuse a recipe below, or add one as `apps/<app>/ui/Recipe/<name>.ts` (one recipe per file, re-exported from
+tile, …): reuse a recipe, or add one as `apps/<app>/ui/Recipe/<name>.ts` (one recipe per file, re-exported from
 that folder's `index.ts`) — never re-implement the same look inline in several places, and never author a
 near-duplicate.** Full authoring/consumption policy: the `recipeRule` guideline.
 
@@ -528,17 +533,9 @@ Import from `akanjs/ui`:
 - `buttonRecipe`(variant: primary*|secondary|accent|outline|ghost|destructive|success|warning|info|link · size: xs|sm|md*|lg|icon) — 버튼 look — 시맨틱 variant × size. `<Button>` 이 소비하며, `_overrides.tsx` 의 recipes.button 슬롯으로 교체 가능.
 - `inputRecipe`(kind: field*|area) — 입력 표면 look — Input/TextArea 가 공유하는 필드 셸. kind 로 한 줄 필드(field)/멀티라인(area)을 고른다.
 
-Import from `@apps/minimal/ui`:
-- `appBox`(tone: default|muted*|primary|success|warning|info|outline · padding: none|sm|md*|lg) — 유틸리티 패널/콜아웃 표면 — rounded-box + border 위 시맨틱 tone(default/muted/primary/success/warning/info/outline) × padding(none/sm/md/lg). 카드가 콘텐츠 표면이면 박스는 톤으로 강조하는 그룹/콜아웃 컨테이너.
-- `appCard`(tone: muted*|card|glass) — 카드 표면 — 은은한 경계선 위 표면. `tone` 으로 채움을 고른다(muted 기본/card/glass).
-- `chatBubbleRecipe`(side: incoming*|outgoing) — 챗 버블 — 수신(incoming)/발신(outgoing) 방향에 따라 정렬·모서리·색을 바꾼다.
-- `gradientSurfaceRecipe`(tone: brand*|duo|warm) — 브랜드 그라디언트 표면. radius/padding/shadow 는 호출부에서 조합한다.
-- `iconTileRecipe`(size: sm|md*|lg|xl) — 아이콘 타일 — 토큰 배경 위 아이콘. size 로 사각 크기와 글자 스케일을 함께 잡는다.
-- `neonButtonRecipe`(variant: primary*|secondary|accent|outline|ghost|destructive|success|warning|info|link · size: xs|sm|md*|lg|icon) — 네온/사이버펑크 버튼 스킨 — 프레임워크 buttonRecipe 의 **look 교체용**.
-
-Import from `@apps/akan/ui`:
-- `cardGridRecipe`(cols: two*|three|mdTwo) — 카드/셀 그리드 — `grid gap-3` 위에 cols 브레이크포인트를 얹는다.
-- `panelRecipe`(tone: solid*|glass · radius: none|lg|xl*|2xl · padding: none|sm|md*|lg|xl|row · shadow?) — 콘텐츠 표면 패널 — `rounded-* border bg-background p-*` 계열 통합. row 는 리스트/행 표면(px만).
+App and lib recipes are **not** listed here. Each app/lib carries its own generated index —
+`apps/<app>/AGENTS.md` / `libs/<lib>/AGENTS.md` (`## Recipes In Scope`) — regenerated by `akan sync` and
+verified by `akan lint`. When working inside an app or lib, consult that file before consuming or authoring a look.
 
 ## MCP Workflow Policy
 

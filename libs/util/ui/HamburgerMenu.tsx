@@ -12,7 +12,6 @@ export const HamburgerMenu = ({ isOpen, setIsOpen, className, color }: Hamburger
   const toggleMenu = () => {
     setIsOpen(!isOpen);
   };
-  const bgColor = color ? `bg-[${color}]` : "bg-black";
 
   return (
     <button

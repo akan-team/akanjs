@@ -12,7 +12,12 @@
  * akanjs 런타임을 import 하지 않는다 — node 표준 라이브러리만 사용.
  */
 
-export type StyleGuardRule = "raw-palette" | "arbitrary-color" | "inline-color" | "daisyui-legacy";
+export type StyleGuardRule =
+  | "raw-palette"
+  | "arbitrary-color"
+  | "inline-color"
+  | "daisyui-legacy"
+  | "interpolated-arbitrary";
 export type StyleGuardSeverity = "error" | "warn";
 
 export interface StyleGuardViolation {
@@ -52,6 +57,12 @@ const RAW_PALETTE_RE = new RegExp(`${LEAD}((?:${PREFIX})-)${PALETTE}-\\d{2,3}${T
 // 임의값 대괄호 안의 색 리터럴. `[--var]` 같은 변수 참조는 매치되지 않는다(의도).
 const ARBITRARY_COLOR_RE = /\[(#[0-9a-fA-F]{3,8}|(?:rgb|rgba|hsl|hsla|oklch|oklab|lab|lch|hwb|color)\([^\]]*\))\]/g;
 
+// 런타임 값으로 조립한 임의값(`min-h-[${n}px]`, `bg-[${color}]`). Tailwind 는 소스 **텍스트**에서
+// 임의값을 추출하므로 CSS 가 아예 생성되지 않는다 — 클래스는 DOM 에 있고 prop 은 연결된 듯 보이지만
+// 아무것도 적용되지 않는 무증상 실패다. 같은 모양의 리터럴이 코드베이스 어딘가에 있으면 기본값만
+// 우연히 동작하고 override 만 조용히 죽어 더 찾기 어려워진다.
+const INTERPOLATED_ARBITRARY_RE = new RegExp(`${LEAD}[a-z][a-z0-9-]*-\\[[^\\]\`]*\\$\\{`, "g");
+
 // style 객체 / <style> 블록. 색 리터럴이 이 안에 있으면 클래스 스캐너를 우회한 것.
 const STYLE_OBJECT_RE = /style=\{\{([\s\S]*?)\}\}/g;
 const STYLE_TAG_RE = /<style[^>]*>([\s\S]*?)<\/style>/g;
@@ -79,7 +90,13 @@ const DAISYUI_LEGACY_RE = new RegExp(
   "g",
 );
 
-const ALL_RULES: StyleGuardRule[] = ["raw-palette", "arbitrary-color", "inline-color", "daisyui-legacy"];
+const ALL_RULES: StyleGuardRule[] = [
+  "raw-palette",
+  "arbitrary-color",
+  "inline-color",
+  "daisyui-legacy",
+  "interpolated-arbitrary",
+];
 
 /**
  * 위반 억제 지시어(escape hatch). 정당한 팔레트 요청(에디터 신택스 하이라이트, 데이터-viz, 의도적 브랜드
@@ -227,6 +244,16 @@ export class StyleGuard {
           severity: "error",
           suggestion:
             "daisyUI 클래스는 제거됐습니다. akanjs/ui 프리미티브(Button/Badge 등)나 buttonRecipe()/badgeRecipe() + 시맨틱 토큰으로 교체하세요.",
+        }),
+      );
+    }
+    for (const m of scan.matchAll(INTERPOLATED_ARBITRARY_RE)) {
+      out.push(
+        this.#violation(file, m.index ?? 0, {
+          rule: "interpolated-arbitrary",
+          severity: "error",
+          suggestion:
+            "런타임 값으로 임의값 클래스를 조립하면 CSS 가 생성되지 않습니다(스캐너는 소스 텍스트를 읽습니다). 크기/위치는 style prop 으로 넘기세요 — style={{ minHeight }}. 값이 enum 이면 리터럴 클래스 맵으로 두세요.",
         }),
       );
     }

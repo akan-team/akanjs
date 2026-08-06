@@ -1,6 +1,7 @@
 import path from "node:path";
+import { collectScopeRecipeSources, extractAgentBlock, renderScopeAgentBlock } from "@akanjs/devkit/agentsIndex";
 import { type Exec, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
-import { AppExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
+import { AppExecutor, SysExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
 import { FileSys } from "@akanjs/devkit/fileSys";
 import {
   countBlocking,
@@ -202,6 +203,31 @@ export class WorkspaceRunner extends runner("workspace") {
     ]);
     await this.#enforceStyleContract(exec);
     await this.#enforceRecipeGate(exec);
+    await this.#enforceAgentsIndex(exec);
+  }
+
+  /**
+   * 스코프 에이전트 색인 신선도: 소스 재스캔 결과와 apps|libs/<name>/AGENTS.md 의 managed block 이
+   * 다르면 실패시킨다. 색인이 소스와 어긋난 채 커밋되면 에이전트가 색인을 믿고 틀리므로("추가했는데
+   * 목록에 없어 안 씀"), 조용한 어긋남을 CI 에서 시끄러운 진단으로 바꾸는 것이 이 게이트의 존재 이유다.
+   */
+  async #enforceAgentsIndex(exec: Exec) {
+    if (!(exec instanceof SysExecutor)) return;
+    const scope = { type: exec.type, name: exec.name };
+    const scanInfo = await exec.scan({ write: false });
+    const sources = await collectScopeRecipeSources(
+      exec.workspace.workspaceRoot,
+      scope,
+      scanInfo.getScanResult().libDeps,
+    );
+    const expected = renderScopeAgentBlock(scope, scanRecipes(sources));
+    const existing = (await exec.exists("AGENTS.md")) ? await exec.readFile("AGENTS.md") : null;
+    const actual = existing ? extractAgentBlock(existing) : null;
+    if (actual === expected.trim()) return;
+    throw new Error(
+      `[agentsIndex] ${scope.type}s/${scope.name}/AGENTS.md 의 recipe 색인이 소스와 다릅니다(stale). ` +
+        `\`akan sync ${scope.name}\` 을 실행해 재생성하세요.`,
+    );
   }
 
   /**

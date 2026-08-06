@@ -31,6 +31,13 @@ import {
 } from "akanjs/common";
 import { $ } from "bun";
 import chalk from "chalk";
+import {
+  renderScopeAgentBlock,
+  renderScopeAgentsMd,
+  renderScopeClaudeMd,
+  scanScopeRecipes,
+  upsertAgentBlock,
+} from "./agentsIndex";
 import { AkanAppConfig, AkanLibConfig, decreaseBuildNum, increaseBuildNum } from "./akanConfig";
 import { FileSys } from "./fileSys";
 import { getDirname } from "./getDirname";
@@ -1080,9 +1087,28 @@ export class SysExecutor extends Executor {
         await this.#updateDependencies(scanInfo);
         await Promise.all(libInfos.flatMap((libInfo) => libInfo.exec.#getScanTemplateTasks(libInfo)));
       }
+      await this.syncAgentsIndex(scanInfo);
     }
     this.#scanInfo = scanInfo;
     return scanInfo;
+  }
+  /**
+   * 스코프 에이전트 색인(apps|libs/<name>/AGENTS.md) 재생성 — own + 의존 lib 레시피만 싣는다(프레임워크
+   * 레시피는 루트 AGENTS.md 소관). scan(write) 경로에 물려 있어 sync/build/start 어디를 지나도 갱신되고,
+   * `akan lint` 가 같은 렌더 결과와 비교해 신선도를 강제한다. 마커 밖 내용은 사용자 소유라 보존한다.
+   */
+  async syncAgentsIndex(scanInfo?: AppInfo | LibInfo) {
+    const info = scanInfo ?? (await this.scan({ write: false }));
+    const scope = { type: this.type, name: this.name };
+    const recipes = await scanScopeRecipes(this.workspace.workspaceRoot, scope, info.getScanResult().libDeps);
+    const block = renderScopeAgentBlock(scope, recipes);
+    const existing = (await this.exists("AGENTS.md")) ? await this.readFile("AGENTS.md") : null;
+    await this.writeFile(
+      "AGENTS.md",
+      existing?.trim() ? upsertAgentBlock(existing, block) : renderScopeAgentsMd(scope, block),
+    );
+    // CLAUDE.md 는 얇은 포인터라 최초 1회만 깔아준다 — 사용자가 지우거나 고친 것을 되살리지 않는다.
+    if (!(await this.exists("CLAUDE.md"))) await this.writeFile("CLAUDE.md", renderScopeClaudeMd(scope));
   }
   async #updateDependencies(scanInfo: AppInfo | LibInfo) {
     const rootPackageJson = await this.workspace.getPackageJson();

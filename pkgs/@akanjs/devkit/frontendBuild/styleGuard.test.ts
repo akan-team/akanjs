@@ -69,6 +69,35 @@ describe("StyleGuard daisyui-legacy", () => {
   });
 });
 
+// The fixtures below must contain a literal `${`. Writing it inside a plain string trips biome's
+// noTemplateCurlyInString, so the placeholder is assembled from `D` — that keeps the rule on for real code
+// instead of scattering suppressions through the fixtures.
+const D = "$";
+const INTERPOLATED = {
+  size: `<div className={\`min-h-[${D}{minHeight}px] flex\`} />`,
+  color: `<div className={\`bg-[${D}{color}] w-full\`} />`,
+  brokenBracket: `<div className={\`min-h-[ w-full${D}{minHeight}px] flex\`} />`,
+  outsideBrackets: `<div className={\`flex gap-2 ${D}{isOpen ? "opacity-50" : ""}\`} />`,
+  styleProp: `<div style={{ minHeight }} className={\`flex ${D}{extra}\`} />`,
+};
+
+describe("StyleGuard interpolated-arbitrary", () => {
+  test("flags an arbitrary value assembled from a runtime expression", () => {
+    expect(rules(INTERPOLATED.size)).toEqual(["interpolated-arbitrary"]);
+    expect(rules(INTERPOLATED.color)).toEqual(["interpolated-arbitrary"]);
+  });
+
+  test("flags the broken-bracket typo that swallows the next class", () => {
+    expect(rules(INTERPOLATED.brokenBracket)).toEqual(["interpolated-arbitrary"]);
+  });
+
+  test("allows a literal arbitrary value, and interpolation outside brackets", () => {
+    expect(scan('<div className="min-h-[300px] flex" />')).toHaveLength(0);
+    expect(scan(INTERPOLATED.outsideBrackets)).toHaveLength(0);
+    expect(scan(INTERPOLATED.styleProp)).toHaveLength(0);
+  });
+});
+
 describe("StyleGuard violation shape", () => {
   test("reports 1-based line and trimmed snippet with a suggestion", () => {
     const content = ['<div className="ok" />', '  <div className="bg-blue-500" />'].join("\n");

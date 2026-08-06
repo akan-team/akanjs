@@ -20,11 +20,11 @@ export const DefaultEmpty = ({ className = "", description, children, minHeight 
   const { l } = usePage();
   return (
     <div>
+      {/* minHeight is a runtime number, so it has to be a style prop: Tailwind extracts arbitrary values
+          from source text, so `min-h-[${minHeight}px]` compiles to no CSS and the prop is silently ignored. */}
       <div
-        className={cn(
-          `min-h-[${minHeight}px] flex flex-col items-center justify-center gap-3 pt-6 pb-3 text-foreground/30`,
-          className,
-        )}
+        style={{ minHeight }}
+        className={cn("flex flex-col items-center justify-center gap-3 pt-6 pb-3 text-foreground/30", className)}
       >
         <AiOutlineMeh className="scale-150 text-4xl" />
         <p>{description ?? l("base.noData")}</p>

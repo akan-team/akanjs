@@ -6,8 +6,9 @@
  * `apps/<app>/ui/Recipe/` 에서 계승한다.
  *
  * 호출 규격: `xRecipe(변형객체, 커스텀클래스?)`. 두 번째 인자 className 은 recipe 안에서 tailwind-merge 로
- * 자동 병합되므로 호출부에서 `cn(...)` 으로 감쌀 필요가 없다:
+ * 자동 병합되므로 호출부에서 `cn(...)` 으로 감쌀 필요가 없다. 문자열 하나만이 아니라 배열도 받는다:
  *   buttonRecipe({ variant: "primary" }, "w-full rounded-2xl")   // ✅ cn 불필요
+ *   buttonRecipe({ variant: "primary" }, ["h-full", className])  // ✅ 배열 — 여기서도 cn 불필요
  *
  * 레이어: styles.css(토큰) → recipe(변형) → 컴포넌트(동작).
  */

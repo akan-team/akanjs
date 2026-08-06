@@ -17,7 +17,15 @@ export const tv = createTV({ twMergeConfig: { extend: { theme: { color: colorTok
  * 정확히 보존된다. 반환은 순수 className 문자열이라 서버-안전.
  *
  *   export const xRecipe = recipe(tv({ base, variants }));
- *   xRecipe({ variant: "primary" }, "w-full")   // cn 불필요
+ *   xRecipe({ variant: "primary" }, "w-full")            // cn 불필요
+ *
+ * 2번째 인자는 `ClassNameValue` — 문자열 하나만이 아니라 **배열·중첩 배열·falsy 값**을 그대로 받는다.
+ * 여러 클래스를 합칠 때 `cn(...)` 으로 감쌀 이유가 없다(모르면 감싸게 되는데, cn 을 몰아내려고 만든
+ * 2-인자 계약이 거기서 새어나간다):
+ *
+ *   xRecipe({}, ["h-full", className])                   // ✅ cn 불필요
+ *   xRecipe({}, ["h-full", isWide && "w-full"])          // ✅ falsy 는 무시됨
+ *   xRecipe({}, cn("h-full", className))                 // ❌ 불필요한 래핑
  */
 export const recipe =
   <P extends object>(styles: (props?: P) => string) =>

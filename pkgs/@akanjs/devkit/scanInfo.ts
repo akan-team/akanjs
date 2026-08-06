@@ -44,6 +44,9 @@ type DatabaseFileType = (typeof databaseFileTypes)[number];
 type ModuleKind = "database" | "service" | "scalar";
 
 const appRootAllowedFiles = new Set([
+  // 스코프 에이전트 가이드 — scan(write) 이 유지하는 색인 + 마커 밖 hand-written 내용 (agentsIndex.ts)
+  "AGENTS.md",
+  "CLAUDE.md",
   "akan.app.json",
   "akan.config.ts",
   "capacitor.config.ts",
