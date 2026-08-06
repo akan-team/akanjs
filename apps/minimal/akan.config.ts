@@ -1,6 +1,8 @@
 import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
+  secrets: ["secrets/**"],
+
   mobile: {
     appName: "minimal",
     appId: "com.minimal.dev.app",
