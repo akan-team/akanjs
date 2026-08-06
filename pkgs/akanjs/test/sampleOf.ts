@@ -10,7 +10,7 @@ import {
   Upload,
 } from "akanjs/base";
 import { randomPick } from "akanjs/common";
-import type { BaseObject, ConstantCls, ConstantField, DocumentModel, FieldPreset } from "akanjs/constant";
+import type { BaseObject, ConstantCls, ConstantField, DocumentModel, FieldObject, FieldPreset } from "akanjs/constant";
 
 import { sample } from "./sample";
 
@@ -57,8 +57,8 @@ const makeSample = (field: ConstantField): any => {
 export type SampleOf<Model> = DocumentModel<{
   [K in keyof Model as Model[K] extends BaseObject ? never : K]: NonNullable<Model[K]>;
 }>;
-export const sampleOf = <Model>(
-  modelRef: ConstantCls<Model>,
+export const sampleOf = <Model, FieldObj extends FieldObject>(
+  modelRef: ConstantCls<Model, FieldObj>,
 ): DocumentModel<{ [K in keyof Model as Model[K] extends BaseObject ? never : K]: NonNullable<Model[K]> }> => {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-return
   return Object.fromEntries(

@@ -126,6 +126,13 @@ export class HttpClient {
     });
     return `${paramedPath}${searchPath}`;
   }
+  // `<input type="file">.files` is a FileList, not an array: appending it as one value would send
+  // the literal "[object FileList]" instead of the files.
+  static #toUploadValues(argValue: unknown): (Blob | string)[] {
+    if (Array.isArray(argValue)) return argValue as (Blob | string)[];
+    if (typeof FileList !== "undefined" && argValue instanceof FileList) return Array.from(argValue);
+    return [argValue as Blob | string];
+  }
   static makeBody(bodyArgs: SerializedArg[], uploadArgs: SerializedArg[], argMap: Map<string, unknown>) {
     if (uploadArgs.length > 0) {
       const formData = new FormData();
@@ -134,11 +141,9 @@ export class HttpClient {
         if (arg.nullable && (argValue === null || argValue === undefined)) return;
         if (!arg.nullable && (argValue === null || argValue === undefined))
           throw new Error(`Argument ${arg.name} is required`);
-        if (Array.isArray(argValue)) {
-          argValue.forEach((value) => {
-            formData.append(arg.name, value as Blob | string);
-          });
-        } else formData.append(arg.name, argValue as Blob | string);
+        HttpClient.#toUploadValues(argValue).forEach((value) => {
+          formData.append(arg.name, value);
+        });
       });
       bodyArgs.forEach((arg) => {
         const argValue = argMap.get(arg.name);

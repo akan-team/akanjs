@@ -14,6 +14,7 @@
 - File Service (#file-service)
 - Use In UI (#use-in-ui)
 - Auto-attach To A Model Field (#auto-field)
+- Remove The File With Its Owner (#cascade)
 - Grow Later (#grow-later)
 - Tips (#tips)
 
@@ -62,6 +63,18 @@ Mark one upload mutation with `{ fileUpload: true }`. The framework then auto-ge
 Mark exactly one REST upload mutation; the marker rides the serialized signal to the client.
 
 The multipart form uses the fixed fields `files`, `metas`, `type`, `parentId`.
+
+Remove The File With Its Owner
+
+Add `cascade: "remove"` to a File relation and removing the owner removes the file too. The cascade calls the File service, not the File model, so `FileService._postRemove` runs and the stored object is deleted from blob or object storage. Nothing else is needed — the storage call already lives in that hook.
+
+Works on an array field too, and only on a relation. A String, an ID, or a scalar fails the class build: none of them names a document to remove.
+
+Nothing checks whether another document still points at the same file. Files are deduped by origin, so declaring cascade asserts that this field owns its file exclusively.
+
+The document removal is soft, but deleting the stored object is not. A cascade cannot be undone.
+
+Query-level removal fires no hooks and therefore no cascade. removeManyByQuery stamps removedAt in one atomic update; remove documents one at a time when they cascade.
 
 Grow Later
 
@@ -204,6 +217,27 @@ export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
       return await this.fileService.addFiles(files, parsedMetas, type, parentId);
     }),
 })) {}
+```
+
+### user.constant.ts
+
+```ts
+export class UserInput extends via((field) => ({
+  nickname: field(String, { default: "" }),
+  image: field(File, { cascade: "remove" }).optional(),
+  images: field([File], { cascade: "remove" }),
+})) {}
+```
+
+### file.service.ts — where the storage call already lives
+
+```ts
+export class FileService extends serve(db.file, ({ use }) => ({ storageApi: use<StorageApi>() })) {
+  override async _postRemove(file: db.File) {
+    await this.storageApi.deleteData(file.url);
+    return file;
+  }
+}
 ```
 
 ## Agent Notes

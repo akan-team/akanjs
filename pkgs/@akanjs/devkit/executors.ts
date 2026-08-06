@@ -1451,7 +1451,7 @@ export class AppExecutor extends SysExecutor {
     if (!devOnlyKeys.size) return pageKeys;
     const isDevOnly = (key: string) => devOnlyKeys.has(key) || devOnlyDirs.some((dir) => key.startsWith(dir));
     const dropped = pageKeys.filter(isDevOnly);
-    this.log(`[route] excluded ${dropped.length} dev-only route file(s) from the build: ${dropped.join(", ")}`);
+    this.verbose(`[route] excluded ${dropped.length} dev-only route file(s) from the build: ${dropped.join(", ")}`);
     return pageKeys.filter((key) => !isDevOnly(key));
   }
   /**

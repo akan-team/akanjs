@@ -4,6 +4,7 @@ interface Dict {
   Model: string;
   model: string;
   sysName: string;
+  sysType: string;
 }
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict) {
   return {
@@ -13,7 +14,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dic
 import { Load } from "akanjs/ui";
 // Alias the domain namespace so the Card/View exports below never collide with the model name
 // (a model literally named "card" or "view" would otherwise shadow this import).
-import { type cnst, ${dict.Model} as ${dict.Model}Domain } from "@${scanInfo?.type ?? "apps"}/${dict.sysName}/client";
+import { type cnst, ${dict.Model} as ${dict.Model}Domain } from "@${dict.sysType}s/${dict.sysName}/client";
 import type { ClientInit, ClientView, SliceMeta } from "akanjs/fetch";
 
 interface CardProps {

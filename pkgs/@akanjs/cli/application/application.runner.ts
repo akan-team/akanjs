@@ -1,9 +1,10 @@
+import type { AbstractCompactOptions } from "@akanjs/devkit/abstractCompactor";
 import { AkanAppHost } from "@akanjs/devkit/akanApp";
 import type { DatabaseMode, MobileEnv } from "@akanjs/devkit/akanConfig";
 import type { BuildProgressReporter, BuildResult, TypecheckOptions } from "@akanjs/devkit/applicationBuildRunner";
 import type { ReleaseSourceOptions } from "@akanjs/devkit/applicationReleasePackager";
 import { resolveSignalTestPreloadPath } from "@akanjs/devkit/applicationTestPreload";
-import { type App, type Exec, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { type App, type Exec, runner, type Sys, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor } from "@akanjs/devkit/executors";
 import { type ResolvedMobileTarget, resolveMobileTargets } from "@akanjs/devkit/mobile";
 import { Logger } from "akanjs/common";
@@ -18,6 +19,7 @@ const loadBuildRunner = async () => (await import("@akanjs/devkit/applicationBui
 const loadReleasePackager = async () =>
   (await import("@akanjs/devkit/applicationReleasePackager")).ApplicationReleasePackager;
 const loadCapacitorApp = async () => (await import("@akanjs/devkit/capacitorApp")).CapacitorApp;
+const loadAbstractCompactor = async () => (await import("@akanjs/devkit/abstractCompactor")).AbstractCompactor;
 const loadPrompts = async () => await import("@inquirer/prompts");
 
 export class ApplicationRunner extends runner("application") {
@@ -93,6 +95,10 @@ try {
   }
   async typecheck(app: App, options: TypecheckOptions = {}) {
     await new (await loadBuildRunner())(app).typecheck(options);
+  }
+  async compact(sys: Sys, { module, minLines, interactive }: AbstractCompactOptions = {}) {
+    const compactor = new (await loadAbstractCompactor())(sys, { minLines, interactive });
+    return await compactor.compactAll({ module });
   }
   async test(exec: Exec) {
     const isSignalTarget = exec instanceof AppExecutor || exec instanceof LibExecutor;
@@ -399,120 +405,5 @@ try {
     const chain = RunnableSequence.from([mainPrompt, chatModel, new StringOutputParser()]);
     await chain.invoke({ projectName, projectDesc });
     spinner.succeed("Loading complete!");
-
-    // const dict = {
-    //   appName: projectConfig.en.projectName,
-    //   AppName: projectConfig.en.projectName.charAt(0).toUpperCase() + projectConfig.en.projectName.slice(1),
-    //   template: "",
-    // };
-
-    //! add path in tsconfig.json
-    // addText(tree, "tsconfig.json", {
-    //   type: "after",
-    //   signal: `"paths": {`,
-    //   text: `    "@${projectConfig.en.projectName}/*": ["apps/${projectConfig.en.projectName}/*"],`,
-    // });
-    // addText(tree, `apps/${projectConfig.en.projectName}/tailwind.config.js`, {
-    //   type: "after",
-    //   signal: `withBase(__dirname`,
-    //   text: `, {
-    //       themes: {
-    //           light:
-    //             ${JSON.stringify(projectConfig.light)}
-    //             ,
-    //           dark:
-    //             ${JSON.stringify(projectConfig.dark)}
-    //           ,
-    //         }
-    //     }
-    //       `,
-    // });
-    // addText(tree, `pkgs/codebase/generators/serviceTest/schema.json`, {
-    //   type: "before",
-    //   signal: `  {
-    //           "value": "libs/shared",`,
-    //   text: `{
-    //       "value": "apps/${projectConfig.en.projectName}",
-    //       "label": "${projectConfig.en.projectName}"
-    //         },`,
-    // });
-    // addText(tree, `tsconfig.json`, {
-    //   type: "after",
-    //   signal: `"references": [`,
-    //   text: `{
-    //             "path": "./apps/${projectConfig.en.projectName}/tsconfig.json"
-    //           },`,
-    // });
-    // addText(tree, `apps/${projectConfig.en.projectName}/page/(${projectConfig.en.projectName})/(public)/_index.tsx`, {
-    //   type: "after",
-    //   signal: `   `,
-    //   text: `
-    //   ${indexPage}
-    //   `,
-    //   //logo image 하나 만들기.
-    // });
-
-    // ! add image
-    // // const imagePrompt = `I want to create a my project logo.
-    // //     A high-quality, and professional logo is essential for any business.
-
-    // //     my project name is ${projectName}.
-    // //     my project description is ${projectDesc}.
-
-    // //     image is a simple, clean, and modern design.
-    // //     and not too many colors, just 2 or 3 colors.
-    // //     and I want to use a sans-serif font.
-    // //     logo is a based projectName text-based logo.
-    // // It should be a text-based logo featuring the project name, using a sans-serif font
-    // //     `;
-    // const imagePrompt = `Create a minimalist, modern logo for a project named '${projectName}'. The logo should primarily consist of the project name in a clean, sans-serif font, accompanied by a simple, elegant symbol that subtly reflects the project's theme. Use 2 to 3 neutral colors. The overall design should be clean, professional, and easily recognizable.`;
-
-    // const response = await axios.post(
-    //   "https://api.openai.com/v1/images/generations",
-    //   {
-    //     model: "dall-e-3",
-    //     prompt: imagePrompt,
-    //     n: 1,
-    //     size: "1024x1024",
-    //   },
-    //   {
-    //     headers: {
-    //       Authorization: `Bearer ${openAIApiKey}`,
-    //       "Content-Type": "application/json",
-    //     },
-    //   }
-    // );
-    // const logoUrl = response.data.data[0].url as string;
-    // //download image
-    // const urlResponse = await axios.get(logoUrl, {
-    //   responseType: "arraybuffer",
-    // });
-    // const buffer = Buffer.from(urlResponse.data as string, "binary");
-    // tree.write(`apps/${projectConfig.en.projectName}/public/assets/logo_1024*1024.png`, buffer);
-
-    // // addText(tree, `apps/${projectConfig.en.projectName}/page/(${projectConfig.en.projectName})/(public)/_index.tsx`, {
-    // //   type: "after",
-    // //   signal: `   `,
-    // //   text: `
-    // //   <img src="./logo_1024*1024.png" alt="logo" />
-    // //   `,
-    // // });
-    // // console.log(projectConfig.light);
-  }
-
-  async testApplication(app: App) {
-    // await app.workspace.spawn(
-    //   "node",
-    //   ["node_modules/jest/bin/jest.js", `apps/${app.name}`, "-c", `apps/${app.name}/jest.config.ts`],
-    //   {
-    //     env: {
-    //       ...this.#getEnv(app, "backend"),
-    //       AKAN_PUBLIC_ENV: "testing",
-    //       AKAN_PUBLIC_OPERATION_MODE: "local",
-    //       AKAN_PUBLIC_APP_NAME: app.name,
-    //       NODE_TLS_REJECT_UNAUTHORIZED: "0",
-    //     },
-    //   }
-    // );
   }
 }

@@ -239,6 +239,59 @@ describe("WebRouter RSC target normalization", () => {
   });
 });
 
+describe("WebRouter sub route host resolution", () => {
+  const artifactWithSubRoutes = (): BaseBuildArtifact => ({
+    ...createTestArtifact(),
+    subRoutes: { soft: ["soft.example.test"] },
+    basePaths: ["soft"],
+  });
+
+  async function rscBasePathFor(
+    headers: Record<string, string>,
+    { env }: { env?: string } = {},
+  ): Promise<string | null> {
+    const previous = process.env.AKAN_SUB_ROUTE_HOSTS;
+    if (env === undefined) delete process.env.AKAN_SUB_ROUTE_HOSTS;
+    else process.env.AKAN_SUB_ROUTE_HOSTS = env;
+    try {
+      return await withFullSsrCacheHarness(
+        async ({ renderEnvRoutes, fakeWorker }) => {
+          await renderEnvRoutes["/__rsc"](new Request("http://internal/__rsc?url=%2Fen%2Fhome", { headers }));
+          return fakeWorker.renderCalls[0]?.headers.get("x-base-path") ?? null;
+        },
+        { artifact: artifactWithSubRoutes() },
+      );
+    } finally {
+      if (previous === undefined) delete process.env.AKAN_SUB_ROUTE_HOSTS;
+      else process.env.AKAN_SUB_ROUTE_HOSTS = previous;
+    }
+  }
+
+  test("falls back to a host injected through AKAN_SUB_ROUTE_HOSTS", async () => {
+    await expect(rscBasePathFor({ host: "soft-angelo.try.example.test" })).resolves.toBeNull();
+    await expect(
+      rscBasePathFor({ host: "soft-angelo.try.example.test" }, { env: "soft=soft-angelo.try.example.test" }),
+    ).resolves.toBe("soft");
+  });
+
+  test("keeps matching the hosts baked into the artifact", async () => {
+    await expect(
+      rscBasePathFor({ host: "soft.example.test" }, { env: "soft=soft-angelo.try.example.test" }),
+    ).resolves.toBe("soft");
+  });
+
+  test("ignores an env basePath this build does not serve", async () => {
+    await expect(
+      rscBasePathFor({ host: "nope.try.example.test" }, { env: "nope=nope.try.example.test" }),
+    ).resolves.toBeNull();
+  });
+
+  test("ignores an x-base-path header naming an unknown basePath", async () => {
+    await expect(rscBasePathFor({ host: "soft.example.test", "x-base-path": "nonsense" })).resolves.toBe("soft");
+    await expect(rscBasePathFor({ host: "akanjs.example.test", "x-base-path": "soft" })).resolves.toBe("soft");
+  });
+});
+
 describe("WebRouter deep link associations", () => {
   const artifactWithDeepLinks = (): BaseBuildArtifact => ({
     ...createTestArtifact(),

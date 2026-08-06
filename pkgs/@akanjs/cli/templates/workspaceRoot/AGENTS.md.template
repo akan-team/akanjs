@@ -529,7 +529,8 @@ export class TaskService extends serve(db.task, ({ plug }) => ({
 For a custom adapter class (not a predefined role), pass the class itself, e.g. `ipfsApi: plug(IpfsApi)`
 (see `libs/shared/lib/file/file.service.ts`). Injecting a file/image field is usually simpler than calling
 storage directly: declare `image: field(File).optional()` (or `images: field([File])`) on the model and let the
-store's generated `upload<Field>On<Model>(fileList)` action handle the upload.
+store's generated `upload<Field>On<Model>(fileList)` action handle the upload. Add `{ cascade: "remove" }` to that
+field when the file belongs to the model alone, and removing the model removes the file and its stored object.
 
 ---
 
@@ -746,6 +747,12 @@ A short list of things the type system does not always catch:
   `secret` / `hidden` / `resolve()` fields with `text` throw at class-build time — the mirror is plaintext. Search
   runs on sqlite/libsql only; `q.search()` against Postgres throws. `thumb` is mirrored for rendering and is not
   indexed.
+- **`cascade: "remove"` takes a relation's target down with its owner.** Declare it on the relation itself —
+  `image: field(File, { cascade: "remove" })`, arrays included. The removal runs through the **target's service**,
+  so the target's own `_postRemove` runs too; that is how removing a model also deletes the file's stored object.
+  Only a relation accepts it: a `String`, an `ID`, or a scalar throws while the class is being built. Nothing
+  checks for other references to the same target, so declaring it asserts exclusive ownership. Document removal is
+  soft but the storage delete is not, and query-level removal fires no hooks and therefore no cascade.
 - **`q.search()` is a filter node, not a slice requirement.** Prefer
   `bySearch: filter().arg("text", String).query((text, q) => q.search(text, { prefix: true }))` — the generated
   `listBySearch` / `countBySearch` / `queryBySearch` / `insightBySearch` come for free. Only add a search slice when

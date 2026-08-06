@@ -28,9 +28,9 @@ export class UserStatus extends enumOf("userStatus", ["prepare", "active", "dorm
 
 export class UserInput extends via((field) => ({
   nickname: field(String, { default: "", maxlength: 12, text: "title" }),
-  image: field(File, { text: "thumb" }).optional(),
-  images: field([File]),
-  appliedImages: field([File]),
+  image: field(File, { text: "thumb", cascade: "remove" }).optional(),
+  images: field([File], { cascade: "remove" }),
+  appliedImages: field([File], { cascade: "remove" }),
 })) {}
 
 export class UserObject extends via(UserInput, (field) => ({

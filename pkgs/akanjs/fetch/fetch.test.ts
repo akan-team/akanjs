@@ -384,6 +384,26 @@ describe("HttpClient", () => {
     const formData = HttpClient.makeBody([], [arg("upload", "file", { refName: "Upload" })], new Map([["file", blob]]));
     expect(formData).toBeInstanceOf(FormData);
     expect((formData as FormData).get("file")).toBeInstanceOf(Blob);
+
+    // FileList is browser-only — Bun has no global for it, so stand one up to cover the array-like path.
+    const files = [new File(["a"], "a.txt"), new File(["b"], "b.txt")];
+    class FakeFileList {
+      0 = files[0];
+      1 = files[1];
+      length = 2;
+    }
+    const globalWithFileList = globalThis as { FileList?: unknown };
+    globalWithFileList.FileList = FakeFileList;
+    const uploadArg = [arg("upload", "files", { refName: "Upload", arrDepth: 1 })];
+    try {
+      for (const value of [files, new FakeFileList()]) {
+        const uploaded = HttpClient.makeBody([], uploadArg, new Map([["files", value]])) as FormData;
+        expect(uploaded.getAll("files")).toHaveLength(2);
+        expect(uploaded.getAll("files").every((file) => file instanceof File)).toBe(true);
+      }
+    } finally {
+      delete globalWithFileList.FileList;
+    }
   });
 
   test("calls fetch with expected methods, headers, and bodies", async () => {

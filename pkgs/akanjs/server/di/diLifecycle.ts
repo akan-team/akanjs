@@ -460,7 +460,14 @@ export class DiLifecycle {
             if (serviceCls.type === "database") {
               const databaseModule = this.#database.get(serviceCls.refName);
               if (!databaseModule) throw new Error(`Database "${serviceCls.refName}" is not registered`);
-              ServiceResolver.resolveDatabaseService(databaseModule.constant, databaseModule.database, serviceCls);
+              ServiceResolver.resolveDatabaseService(
+                databaseModule.constant,
+                databaseModule.database,
+                serviceCls,
+                // Deliberately lazy. Resolving a cascade target eagerly would add an init-order edge between two
+                // services that have no dependency at boot, and a cascade cycle would then fail the whole boot.
+                (refName) => this.getService(refName),
+              );
             }
             const service = new serviceCls();
             await InjectInfo.resolveInjection(service, serviceCls, this.registry, this.#env);

@@ -11,7 +11,7 @@ export class BannerInput extends via((field) => ({
   category: field(String).optional(),
   title: field(String).optional(),
   content: field(String).optional(),
-  image: field(File).optional(),
+  image: field(File, { cascade: "remove" }).optional(),
   href: field(String),
   target: field(BannerTarget, { default: "_self" }),
   from: field(Date, { default: dayjs() }),

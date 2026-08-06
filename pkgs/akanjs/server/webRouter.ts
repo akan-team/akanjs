@@ -7,6 +7,7 @@ import {
   getBasePathFromPathname,
   Logger,
   parseAkanI18nEnv,
+  resolveSubRouteHosts,
 } from "akanjs/common";
 import { type AkanRequestStore, createRequestStore, parseCookieHeader } from "akanjs/fetch";
 import type { AkanMetricsReport } from "akanjs/service";
@@ -273,6 +274,7 @@ export class WebRouter {
   #logger = new Logger("WebRouter");
   #artifactDir = WebRouter.#resolveArtifactDir();
   #artifact: BaseBuildArtifact;
+  #subRoutes: Record<string, string[]>;
   #rsc: RscWorker;
   #hub: HmrWsHub | null = null;
   #prodMode = process.env.NODE_ENV === "production";
@@ -299,6 +301,16 @@ export class WebRouter {
   constructor({ artifact, cssBytesByUrl, rsc, seedIndex, upgradeHmrWs }: WebRouterOptions) {
     this.#logger.verbose(`[SSR] loaded ${Object.keys(cssBytesByUrl).length} CSS assets`);
     this.#artifact = artifact;
+    const { subRoutes, ignoredBasePaths } = resolveSubRouteHosts({
+      subRoutes: artifact.subRoutes,
+      basePaths: artifact.basePaths,
+      env: process.env.AKAN_SUB_ROUTE_HOSTS,
+    });
+    this.#subRoutes = subRoutes;
+    if (ignoredBasePaths.length)
+      this.#logger.warn(
+        `AKAN_SUB_ROUTE_HOSTS names basePaths this build does not serve, ignoring: ${ignoredBasePaths.join(", ")}`,
+      );
     this.#rsc = rsc;
     this.renderState = {
       buildId: 0,
@@ -430,8 +442,7 @@ export class WebRouter {
           const clientOrigin = WebRouter.#clientFacingOrigin(req);
           const target = reqUrl.searchParams.get("url");
           const rawTargetUrl = target ? new URL(target, clientOrigin) : reqUrl;
-          const requestBasePath =
-            req.headers.get("x-base-path") ?? WebRouter.#basePathForRequestHost(req, this.#artifact.subRoutes);
+          const requestBasePath = this.#requestBasePath(req);
           const normalizedTarget = normalizeRscTargetUrlForHostBasePath(rawTargetUrl, {
             basePath: requestBasePath,
             basePaths: this.#artifact.basePaths,
@@ -523,11 +534,7 @@ export class WebRouter {
           });
         }
 
-        const sitemapBasePath = getSitemapBasePath(
-          url.pathname,
-          this.#artifact.basePaths,
-          req.headers.get("x-base-path") ?? WebRouter.#basePathForRequestHost(req, this.#artifact.subRoutes),
-        );
+        const sitemapBasePath = getSitemapBasePath(url.pathname, this.#artifact.basePaths, this.#requestBasePath(req));
         if (sitemapBasePath !== undefined) {
           return new Response(
             createDefaultSitemapXml({
@@ -719,6 +726,17 @@ export class WebRouter {
     return getClientFacingOrigin(req);
   }
 
+  /**
+   * `x-base-path` is set by `HostBasePathWebProxy`, but it reaches here from the wire too, so it is checked against
+   * the basePaths this build serves — the same check `getBasePathFromPathname` already applies to it. An unknown
+   * value falls through to host matching instead of routing the request into a basePath that resolves to nothing.
+   */
+  #requestBasePath(req: Request): string | null {
+    const headerBasePath = req.headers.get("x-base-path");
+    if (headerBasePath && this.#artifact.basePaths.includes(headerBasePath)) return headerBasePath;
+    return WebRouter.#basePathForRequestHost(req, this.#subRoutes);
+  }
+
   static #basePathForRequestHost(req: Request, subRoutes: Record<string, string[]>): string | null {
     const host = (req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "")
       .toLowerCase()
@@ -863,8 +881,7 @@ export class WebRouter {
       pathname,
       i18n: this.#artifact.i18n,
       basePaths: this.#artifact.basePaths,
-      headerBasePath:
-        req.headers.get("x-base-path") ?? WebRouter.#basePathForRequestHost(req, this.#artifact.subRoutes),
+      headerBasePath: this.#requestBasePath(req),
     });
   }
 
@@ -872,8 +889,7 @@ export class WebRouter {
     const basePath = getBasePathFromPathname(pathname, {
       basePaths: Object.keys(this.renderState.cssAssets),
       i18n: this.#artifact.i18n,
-      headerBasePath:
-        req.headers.get("x-base-path") ?? WebRouter.#basePathForRequestHost(req, this.#artifact.subRoutes),
+      headerBasePath: this.#requestBasePath(req),
     });
     return this.renderState.cssAssets[basePath ?? ""]?.cssUrl ?? null;
   }

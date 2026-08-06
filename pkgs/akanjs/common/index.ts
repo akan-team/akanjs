@@ -52,7 +52,7 @@ export {
 } from "./routeConvention";
 export { sleep } from "./sleep";
 export { splitVersion } from "./splitVersion";
-export { getBasePathFromPathname, parseBasePaths } from "./subRoute";
+export { getBasePathFromPathname, parseBasePaths, parseSubRouteHosts, resolveSubRouteHosts } from "./subRoute";
 export type * from "./types";
 export {
   type WebsocketAuthAckData,

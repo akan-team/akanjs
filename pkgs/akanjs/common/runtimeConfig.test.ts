@@ -7,9 +7,11 @@ import {
   isAkanHmrApplying,
   parseAkanI18nEnv,
   parseBasePaths,
+  parseSubRouteHosts,
   randomPick,
   randomPicks,
   resolveAkanI18nConfig,
+  resolveSubRouteHosts,
 } from ".";
 
 describe("runtime config helpers", () => {
@@ -48,6 +50,71 @@ describe("runtime config helpers", () => {
     expect(getBasePathFromPathname("/ko/unknown/home", options)).toBeNull();
     expect(getBasePathFromPathname("/unknown/home", { ...options, headerBasePath: "akanjs" })).toBe("akanjs");
     expect(getBasePathFromPathname("/unknown/home", { ...options, headerBasePath: "unknown" })).toBeNull();
+  });
+
+  test("parses sub route hosts from an env value", () => {
+    expect(parseSubRouteHosts("soft=a.com,b.com;office=c.com")).toEqual({
+      soft: ["a.com", "b.com"],
+      office: ["c.com"],
+    });
+    expect(parseSubRouteHosts(" soft = A.COM:443 , a.com ")).toEqual({ soft: ["a.com"] });
+    expect(parseSubRouteHosts("/soft/=a.com")).toEqual({ soft: ["a.com"] });
+    expect(parseSubRouteHosts("soft=a.com;soft=b.com")).toEqual({ soft: ["a.com", "b.com"] });
+  });
+
+  test("survives malformed sub route host values without throwing", () => {
+    expect(parseSubRouteHosts("=;;=x")).toEqual({});
+    expect(parseSubRouteHosts("soft")).toEqual({});
+    expect(parseSubRouteHosts("soft=")).toEqual({});
+    expect(parseSubRouteHosts("soft=,,")).toEqual({});
+    expect(parseSubRouteHosts("soft=a b.com,ok.com")).toEqual({ soft: ["ok.com"] });
+    expect(parseSubRouteHosts("")).toEqual({});
+    expect(parseSubRouteHosts(undefined)).toEqual({});
+    expect(parseSubRouteHosts(null)).toEqual({});
+  });
+
+  test("merges env sub route hosts on top of the built artifact mapping", () => {
+    const subRoutes = { soft: ["soft.akanjs.com"] };
+    const basePaths = ["soft", "office"];
+
+    expect(
+      resolveSubRouteHosts({
+        subRoutes,
+        basePaths,
+        env: "soft=soft-abc.try.akanjs.com;office=office-abc.try.akanjs.com",
+      }),
+    ).toEqual({
+      subRoutes: {
+        soft: ["soft.akanjs.com", "soft-abc.try.akanjs.com"],
+        office: ["office-abc.try.akanjs.com"],
+      },
+      ignoredBasePaths: [],
+    });
+
+    expect(resolveSubRouteHosts({ subRoutes, basePaths, env: "soft=SOFT.AKANJS.COM:443" }).subRoutes).toEqual({
+      soft: ["soft.akanjs.com"],
+    });
+  });
+
+  test("drops env sub route hosts for basePaths the build does not serve", () => {
+    const resolved = resolveSubRouteHosts({
+      subRoutes: { soft: ["soft.akanjs.com"] },
+      basePaths: ["soft"],
+      env: "nope=x.com;soft=soft-abc.try.akanjs.com",
+    });
+
+    expect(resolved.ignoredBasePaths).toEqual(["nope"]);
+    expect(resolved.subRoutes).toEqual({ soft: ["soft.akanjs.com", "soft-abc.try.akanjs.com"] });
+  });
+
+  test("returns the artifact mapping untouched when no env value is set", () => {
+    const subRoutes = { soft: ["soft.akanjs.com"] };
+
+    for (const env of [undefined, null, "", "   ", "=;;=x"]) {
+      const resolved = resolveSubRouteHosts({ subRoutes, basePaths: ["soft"], env });
+      expect(resolved.subRoutes).toBe(subRoutes);
+      expect(resolved.ignoredBasePaths).toEqual([]);
+    }
   });
 
   test("reads Akan HMR phase from globalThis", () => {

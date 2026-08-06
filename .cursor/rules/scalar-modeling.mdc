@@ -56,3 +56,23 @@ alwaysApply: false
 - Declare an image/file field as a relation to `File`: `image: field(File).optional()` for one, `images: field([File])` for many (see `libs/shared/lib/user/user.constant.ts`, `libs/shared/lib/banner/banner.constant.ts`).
 - The store then auto-generates an `upload<Field>On<Model>(fileList)` action that calls the framework upload mutation and polls file status until it leaves `"uploading"` (`pkgs/akanjs/store/action.ts`).
 - Storage is wired through the `StorageAdaptor` DI role (default `BlobStorage`, `pkgs/akanjs/service/predefinedAdaptor/storage.adaptor.ts`); the reference implementation is the `file` lib (`libs/shared/lib/file/*`). Do not hand-roll data-URL fallbacks.
+
+### Cascade Remove — the `cascade` option
+
+- A relation field removes what it points at with `field(File, { cascade: "remove" })`. It works on an array too
+  (`images: field([File], { cascade: "remove" })`), and only on a relation: a primitive, an `ID`, and a scalar each
+  fail the class build, because none of them names a document the framework could remove.
+- **The cascade goes through the target's service, never its model.** That is what runs the target's `_postRemove`,
+  which is where a module puts the side effect the removal has to carry — `FileService._postRemove` deletes the
+  stored blob/object there. Reaching the model instead still empties the row, so nothing looks broken until the
+  storage bill arrives.
+- Target services resolve **lazily, at removal time**, so a cascade adds no boot-order edge between two services and
+  a cascade cycle cannot fail the boot. They resolve *before* the parent is touched, so a model cascading into a
+  module the app never mounted fails with nothing half-removed.
+- **Nothing checks whether another document still references the same target.** `File` in particular is deduped by
+  `origin`, so two parents can share one row; declaring `cascade` says the field owns its target exclusively, and
+  that judgement is the declaring model's to make.
+- Removal is soft (`removedAt`) but the storage delete a `_postRemove` performs is not — a cascade is not
+  restorable. Weigh that before adding it to a model users can undelete.
+- **Query-level removes fire no hooks and therefore no cascade.** `deleteManyByQuery` / `updateManyByQuery` stamp
+  `removedAt` in one atomic UPDATE, so nothing downstream runs. Remove one document at a time when it cascades.

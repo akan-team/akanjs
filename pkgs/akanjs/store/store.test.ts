@@ -393,6 +393,41 @@ describe("signal generated store contract", () => {
       sortOfStoreTestItemByTitle: "titleAsc",
     });
   });
+
+  test("stamps every sibling slice stale on create and clears it on refresh", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class StaleStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(StaleStore);
+    const instance = new StoreInstance(makeRoot("staleRoot", StaleStore));
+
+    const staleAtKeys = ["storeTestItemStaleAt", "storeTestItemStaleAtByTitle", "storeTestItemStaleAtByTags"];
+    staleAtKeys.forEach((key) => {
+      expect((instance.get()[key] as Date).getTime()).toBe(0);
+    });
+
+    const before = Date.now();
+    await instance.do.createStoreTestItem(
+      { title: "created", count: 0, tags: [] },
+      { sliceName: "storeTestItemByTitle" },
+    );
+    // The issuing slice got the optimistic splice, so only its siblings are marked stale.
+    expect((instance.get().storeTestItemStaleAtByTitle as Date).getTime()).toBe(0);
+    expect((instance.get().storeTestItemStaleAt as Date).getTime()).toBeGreaterThanOrEqual(before);
+    expect((instance.get().storeTestItemStaleAtByTags as Date).getTime()).toBeGreaterThanOrEqual(before);
+
+    // A refresh restamps initAt past staleAt, which is what Load.Units reads to stop refetching.
+    await instance.do.refreshStoreTestItem({ invalidate: true });
+    expect((instance.get().storeTestItemInitAt as Date).getTime()).toBeGreaterThanOrEqual(
+      (instance.get().storeTestItemStaleAt as Date).getTime(),
+    );
+
+    const staleAtByTags = instance.get().storeTestItemStaleAtByTags as Date;
+    await instance.do.newStoreTestItem({ title: "formed", tags: [] });
+    await instance.do.createStoreTestItemInForm({ sliceName: "storeTestItemByTags" });
+    expect(instance.get().storeTestItemStaleAtByTags).toBe(staleAtByTags);
+    expect((instance.get().storeTestItemStaleAtByTitle as Date).getTime()).toBeGreaterThanOrEqual(before);
+  });
 });
 
 describe("StoreRegistry and root assembly", () => {
