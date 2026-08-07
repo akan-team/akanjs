@@ -210,6 +210,25 @@
         "**/*.Zone.tsx"
       ],
       "plugins": ["./node_modules/@akanjs/devkit/lint/no-import-external-library.grit"]
+    },
+    {
+      "includes": [
+        "apps/**/*.ts",
+        "apps/**/*.tsx",
+        "libs/**/*.ts",
+        "libs/**/*.tsx",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.spec.ts",
+        "!**/*.spec.tsx"
+      ],
+      "plugins": [
+        "./node_modules/@akanjs/devkit/lint/no-raw-palette-class.grit",
+        "./node_modules/@akanjs/devkit/lint/no-arbitrary-color.grit",
+        "./node_modules/@akanjs/devkit/lint/no-daisyui-legacy-class.grit",
+        "./node_modules/@akanjs/devkit/lint/no-inline-color.grit",
+        "./node_modules/@akanjs/devkit/lint/no-interpolated-arbitrary-class.grit"
+      ]
     }
   ]
 }

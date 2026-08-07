@@ -49,8 +49,11 @@ See `docs/GENERATED.md` for the generated file list.
 
 `AGENTS.md` holds the full style guide. The rules agents break most often:
 
-- **Never hand-order Tailwind classes** — the linter sorts them, including inside `clsx()`, and its output looks
+- **Never hand-order Tailwind classes** — the linter sorts them, including inside `cn()`, and its output looks
   unnatural on purpose.
+- **Never use a colour outside the semantic vocabulary** — `bg-red-500`, `bg-[#3b82f6]` and `text-base-content`
+  compile to no CSS at all, so the element renders unstyled with no error. Use `bg-primary`, `text-foreground/70`
+  and the other tokens defined in `page/*/styles.css`.
 - **Never `throw new Error`** — throw `new Err("<module>.error.<key>")` with an `[en, ko]` entry in the module
   dictionary. `common/` cannot import `Err`, so keep throwing code out of it.
 - **Never import a third-party package** from a page, a barrel, or a module file. Re-export it through a one-line

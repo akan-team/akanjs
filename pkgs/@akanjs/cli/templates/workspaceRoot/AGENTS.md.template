@@ -254,7 +254,8 @@ final fallback when no CLI command covers the change.
 | Use JS `#private` in `*.constant.ts`, `*.document.ts`, `*.service.ts`, or `*.store.ts` | `no-js-private-class-method.grit` bans `#private` in exactly those four file suffixes. The rule is scoped by file path, not class shape — `#private` stays the house style under `srvkit/`, including `adapt()` classes. | `private _methodName()` in those four files; `#methodName()` in `srvkit/` |
 | Use `console.log()` | Biome lint forbids `console.log`. Only `console.error`, `console.info`, `console.warn` are allowed. | Use one of the three allowed console methods, or `this.logger.*` / `new Logger("ClassName")` on the server |
 | `throw new Error("...")` | `no-throw-raw-error.grit` bans raw errors outside tests, `*.constant.ts`, and `common/`. Raw errors carry no dictionary key, so they cannot be localized or toasted. | `throw new Err("task.error.<key>")` plus an `[en, ko]` entry in the module dictionary's `.error({})` |
-| Hand-order Tailwind classes, or reorder them to "fix" a diff | `useSortedClasses` is an error and also sorts the string arguments to `clsx()` and `cva()`. Sorter output like `font-bold text-2xl` looks wrong but is correct. | Write classes in any order and let `akan lint` sort them |
+| Hand-order Tailwind classes, or reorder them to "fix" a diff | `useSortedClasses` is an error and also sorts the string arguments to `cn()`. Sorter output like `font-bold text-2xl` looks wrong but is correct. | Write classes in any order and let `akan lint` sort them |
+| A colour outside the semantic vocabulary — `bg-red-500`, `bg-[#3b82f6]`, `btn-primary`, `text-base-content`, `style={{ color: "#fff" }}` | The theme closes the vocabulary, so these produce **no CSS at all** — the element renders unstyled, and without the lint rules there is no error and no warning either. Raw-palette, arbitrary-colour, daisyUI-legacy and inline-colour rules all catch this. | Semantic tokens: `bg-primary`, `text-foreground/70`, `border-border`. A genuinely fixed colour takes a `// biome-ignore lint/plugin: <reason>` |
 | `import` a third-party package inside a page, a barrel, or a module file | `no-import-external-library.grit` covers `page/**`, all barrels, and every `*.{constant,dictionary,document,service,signal,store}.ts` and `*.{Template,Unit,Util,View,Zone}.tsx`. | Re-export the symbol from a one-line shim in `base/`, `webkit/`, or `ui/` first, then import that |
 | Import server APIs (`fs`, `Bun`, `process.env`) in `ui/`, `webkit/`, or `common/` | Server-only imports in client code cause build failures. | Keep server dependencies in `lib/`, `srvkit/`, or `private/` only |
 | Skip running `akan sync` after deleting a file | Deleted files remain referenced in barrel exports, causing import errors everywhere. | Run `akan sync <name>` after every file add, remove, or rename |
@@ -299,11 +300,14 @@ is convention that keeps hand-written code reading like generated code.
   `.Template.tsx` files contain zero `useState`: forms are store-driven with `Field.*`, `value={taskForm.x}`, and
   `onChange={st.do.setXOnTask}` passed by reference.
 - Read with `st.use.*` and write with `st.do.*`. Client components do not call `fetch.*`.
-- Static class strings stay plain strings. Use `clsx` only for a conditional or to merge an incoming `className`,
-  and merge the caller last: `clsx("base", conditional, className)`. `clsx` comes from `akanjs/client`. No
-  `twMerge`, no `cn()`.
-- Use daisyUI semantic tokens with opacity modifiers (`text-base-content/60`, `bg-base-100/70`). Never `dark:` —
-  theming is the daisyUI theme block in `page/*/styles.css`.
+- Reach for a recipe before writing a look by hand: `buttonRecipe`, `badgeRecipe` and `inputRecipe` from
+  `akanjs/ui` carry the button, badge and field surfaces. Call them as `buttonRecipe(variants?, className?)` —
+  the second argument merges internally and takes an array, so never wrap it in `cn()`.
+- Static class strings stay plain strings. Reach for `cn` only for a conditional or to merge an incoming
+  `className`, and merge the caller last: `cn("base", conditional, className)`. `cn` comes from `akanjs/client`
+  and is the only class-combining function — no `clsx`, no raw `twMerge`.
+- Use semantic tokens with opacity modifiers (`text-foreground/60`, `bg-background/70`, `border-border`). Never
+  `dark:` — theming is the token block in `page/*/styles.css`, where each token has a `-foreground` pair.
 - Hoist enum→class lookups to a module-scope `as const` map typed `{ [key in cnst.TaskStatus["value"]]: string }`,
   not `Record<...>`.
 
