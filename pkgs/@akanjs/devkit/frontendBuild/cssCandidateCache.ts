@@ -1,7 +1,12 @@
 import { stat } from "node:fs/promises";
 
-/** Every identifier-ish token in a source file is a potential tailwind class. */
-const CANDIDATE_RE = /-?[\w@][\w:/.-]*(?:\[[^\]]+\][\w:/.-]*)*/g;
+/**
+ * Every identifier-ish token in a source file is a potential tailwind class. The leading alternation
+ * matters: an arbitrary variant starts with `[` (`[&_td]:px-3`, `[&>*]:gap-2`), and a pattern anchored
+ * on a word character tears it into `_td` plus `px-3` instead — both meaningless, so the rule compiles
+ * to nothing and the element silently renders unstyled.
+ */
+const CANDIDATE_RE = /-?(?:[\w@]|\[[^\]]+\])[\w:/.-]*(?:\[[^\]]+\][\w:/.-]*)*/g;
 
 interface CachedFile {
   mtimeMs: number;
@@ -27,7 +32,7 @@ interface CacheFile {
  */
 export class CssCandidateCache {
   /** Bump when the token regex or the entry shape changes, so stale extractions are not reused. */
-  static readonly #version = 1;
+  static readonly #version = 2;
   readonly #path: string;
   readonly #entries = new Map<string, CachedFile>();
   #dirty = false;
