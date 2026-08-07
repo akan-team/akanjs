@@ -239,7 +239,7 @@ const EnumList = ({ enums = getConstantSchemaDoc().enums }: EnumProps) => {
   const { l } = usePage();
   return (
     <div className="overflow-x-auto rounded-xl bg-muted p-3">
-      <table className="table">
+      <table className={tableClass}>
         <thead>
           <tr>
             <th>Key</th>

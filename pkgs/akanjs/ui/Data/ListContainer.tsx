@@ -268,7 +268,7 @@ export default function ListContainer<
     <div className={cn("m-4", className)}>
       <div className="mb-3 flex flex-wrap justify-between">
         <div className="flex pb-1">
-          <p className="prose text-lg">
+          <p className="text-lg">
             {title ?? l._(`${sliceName}.modelName`)}({modelInsight.count})
           </p>
           <div className="ml-3 flex items-center">

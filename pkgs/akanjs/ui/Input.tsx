@@ -635,7 +635,9 @@ const DefaultCheckbox = ({ checked, onChange, className, ...rest }: CheckboxProp
       {...rest}
       type="checkbox"
       checked={checked}
-      className={cn("checkbox", className)}
+      // Native rendering with `accent-color` rather than an appearance-none rebuild: the browser keeps
+      // the focus ring, keyboard toggle and indeterminate state, and only the fill needs theming.
+      className={cn("size-5 accent-primary", className)}
       onChange={(e) => {
         onChange(e.target.checked, e);
       }}

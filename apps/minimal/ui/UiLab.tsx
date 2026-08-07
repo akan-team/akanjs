@@ -357,6 +357,9 @@ export const LabStatus = () => (
           <Loading.Area />
         </div>
       </div>
+      <div className="mt-4 w-64">
+        <Loading.ProgressBar value={62} max={100} />
+      </div>
     </Section>
     <Section title="Tooltip" note="CSS hover/focus · variant default/primary/info">
       <div className="flex flex-wrap gap-4">
