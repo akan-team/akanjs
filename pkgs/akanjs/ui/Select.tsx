@@ -217,7 +217,7 @@ const DefaultSelect = <
           {searchable ? (
             <input
               type="text"
-              className="input w-full flex-1 border-none bg-transparent shadow-none outline-none focus:border-none focus:shadow-none focus:outline-none"
+              className="w-full flex-1 border-none bg-transparent shadow-none outline-none focus:border-none focus:shadow-none focus:outline-none"
               placeholder={selectedValues.length > 0 ? "" : placeholder}
               value={searchText}
               onChange={(e) => {

@@ -194,6 +194,25 @@ describe("UiOverride", () => {
     expect(html).not.toContain("bg-primary");
   });
 
+  test("recipe slot: input swap reaches the shared field shell resolution line", async () => {
+    const { inputRecipe } = await import("../recipe");
+    const brandInput: AkanUiRecipes["input"] = (variants, className) =>
+      ["brand-input", variants?.kind ?? "field", className].filter(Boolean).join(" ");
+    // Mirrors the shipped Input/TextArea resolution line: (useUiRecipe("input") ?? inputRecipe)(...).
+    const FieldShell = () => {
+      const inputBase = (useUiRecipe("input") ?? inputRecipe)({ kind: "area" });
+      return <textarea data-cls={inputBase} />;
+    };
+    const html = await renderToText(
+      <UiOverrideProvider value={{ recipes: { input: brandInput } }}>
+        <FieldShell />
+      </UiOverrideProvider>,
+    );
+    expect(html).toContain("brand-input area");
+    const fallback = await renderToText(<FieldShell />);
+    expect(fallback).toContain("p-3");
+  });
+
   test("recipe slots merge per-slot down the tree (child button swap keeps parent badge swap)", async () => {
     const parentBadge: AkanUiRecipes["badge"] = () => "parent-badge";
     const childButton: AkanUiRecipes["button"] = () => "child-button";

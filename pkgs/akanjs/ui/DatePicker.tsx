@@ -5,6 +5,7 @@ import { lazy } from "akanjs/webkit";
 import { type FocusEvent, useEffect, useRef } from "react";
 import { AiOutlineSwapRight } from "react-icons/ai";
 
+import { inputRecipe } from "./recipe";
 import { createOverridable } from "./UiOverride";
 
 const reactDatePickerPackage = "react-datepicker";
@@ -58,7 +59,7 @@ const DefaultDatePicker = ({
 
   return (
     <ReactDatePicker
-      className={cn("input text-center", className)}
+      className={inputRecipe({}, ["text-center", className])}
       selected={value ? value.toDate() : new Date()}
       disabledKeyboardNavigation
       onFocus={(e: FocusEvent<HTMLInputElement>) => {
@@ -110,9 +111,11 @@ const DefaultRangePicker = ({
     onChange([value[0] ?? dayjs(), dayjs(date)]);
   };
 
-  const pickerClassName = "m-0 input focus:outline-hidden z-50 p-3 text-center h-full w-full ";
+  // The wrapper is the field shell; the two pickers sit inside it, so they carry no shell of their own —
+  // `p-0` on the wrapper puts their edges on top of its border and a second border would double the line.
+  const pickerClassName = "m-0 h-full w-full border-none bg-transparent p-3 text-center focus:outline-hidden z-50";
   return (
-    <div className={cn("input flex h-full w-fit items-center gap-2 p-0", className)}>
+    <div className={inputRecipe({}, ["flex h-full w-fit items-center gap-2 p-0", className])}>
       <ReactDatePicker
         className={pickerClassName}
         selected={value[0] ? value[0].toDate() : undefined}

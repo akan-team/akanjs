@@ -8,6 +8,7 @@ import { AiOutlineDelete } from "react-icons/ai";
 
 import { buttonRecipe } from "../Button";
 import { Modal } from "../Modal";
+import { inputRecipe } from "../recipe";
 
 interface SureToRemoveProps {
   className?: string;
@@ -95,7 +96,7 @@ export default function SureToRemove({
         </div>
         {typeNameToRemove ? (
           <input
-            className="input w-full text-center"
+            className={inputRecipe({}, "text-center")}
             placeholder={`${l(`${modelName}.modelName` as "base.new")} name`}
             value={repeatName}
             onChange={(e) => {

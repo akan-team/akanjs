@@ -4,10 +4,7 @@ import type { FC, ReactNode } from "react";
 import { BiChevronLeft, BiChevronRight, BiDotsHorizontalRounded } from "react-icons/bi";
 
 import { buttonRecipe } from "./Button";
-import { createOverridable } from "./UiOverride";
-
-/** Square ghost button style shared by every pager control (canonical buttonRecipe). */
-const pageBtn = buttonRecipe({ variant: "ghost", size: "icon" });
+import { createOverridable, useUiRecipe } from "./UiOverride";
 
 export interface PaginationProps {
   /** Current 1-based page number. */
@@ -36,6 +33,8 @@ export const DefaultPagination: FC<PaginationProps> = ({
   renderEmpty,
   classNames,
 }) => {
+  // Square ghost button style shared by every pager control (recipe slot, canonical buttonRecipe fallback).
+  const pageBtn = (useUiRecipe("button") ?? buttonRecipe)({ variant: "ghost", size: "icon" });
   const totalPages = Math.ceil(total / (itemsPerPage || 1));
   const handleLeftClick = () => {
     if (currentPage <= 1) return;

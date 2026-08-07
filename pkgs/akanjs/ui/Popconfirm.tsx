@@ -6,7 +6,7 @@ import { type ButtonHTMLAttributes, type ReactNode, useEffect, useState } from "
 import { BiMessageRoundedError } from "react-icons/bi";
 import { animated } from "./animated";
 import { buttonRecipe } from "./Button";
-import { createOverridable } from "./UiOverride";
+import { createOverridable, useUiRecipe } from "./UiOverride";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   loading?: boolean;
@@ -48,6 +48,8 @@ export const DefaultPopconfirm = ({
   decoClassName,
 }: PopconfirmProps) => {
   const { l } = usePage();
+  // Route-scoped look swap (recipe slot); confirm/cancel render from the same button vocabulary as <Button>.
+  const recipe = useUiRecipe("button") ?? buttonRecipe;
   const [isConfirming, setIsConfirming] = useState(false);
 
   const popconfirmProps = useSpring({
@@ -118,17 +120,13 @@ export const DefaultPopconfirm = ({
             </div>
             <div className="flex justify-end gap-2">
               <button
-                className={buttonRecipe({ variant: "outline", size: "xs" })}
+                className={recipe({ variant: "outline", size: "xs" })}
                 onClick={handleCancel}
                 {...cancelButtonProps}
               >
                 {cancelText ?? l("base.cancel")}
               </button>
-              <button
-                className={buttonRecipe({ variant: "primary", size: "xs" })}
-                onClick={handleConfirm}
-                {...okButtonProps}
-              >
+              <button className={recipe({ variant: "primary", size: "xs" })} onClick={handleConfirm} {...okButtonProps}>
                 {okText ?? l("base.ok")}
               </button>
             </div>

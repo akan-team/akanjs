@@ -7,6 +7,7 @@ import { createContext, type ReactElement, type ReactNode, useContext, useRef } 
 import { BiTrash } from "react-icons/bi";
 import { MdDragIndicator } from "react-icons/md";
 import { buttonRecipe } from "./Button";
+import { useUiRecipe } from "./UiOverride";
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
@@ -170,6 +171,7 @@ const Item = ({
   removeClassName,
 }: ItemProps) => {
   const { onRemove } = useDragList();
+  const recipe = useUiRecipe("button") ?? buttonRecipe;
   return (
     <div className={cn("flex w-full items-center gap-2", className)}>
       {cursor ? (
@@ -180,7 +182,7 @@ const Item = ({
       {children}
       {removable && (
         <button
-          className={buttonRecipe({ variant: "outline", size: "xs" }, [
+          className={recipe({ variant: "outline", size: "xs" }, [
             "size-6 border-destructive p-0 text-destructive hover:bg-destructive hover:text-destructive-foreground",
             removeClassName,
           ])}

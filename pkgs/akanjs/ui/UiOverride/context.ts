@@ -17,7 +17,7 @@ import type { ModalProps } from "../Modal";
 import type { PaginationProps } from "../Pagination";
 import type { PopconfirmProps } from "../Popconfirm";
 import type { ItemProps as RadioItemProps, RadioProps } from "../Radio";
-import type { BadgeVariants, ButtonVariants } from "../recipe";
+import type { BadgeVariants, ButtonVariants, InputSurfaceVariants } from "../recipe";
 import type { SelectProps } from "../Select";
 import type { TableProps } from "../Table";
 import type { MultiProps as ToggleSelectMultiProps, ToggleSelectProps } from "../ToggleSelect";
@@ -94,11 +94,21 @@ export type AkanModalComponent = AkanUiOverrides["Modal"];
  * manifest: `override({ recipes: { button: neonButtonRecipe } })`. A recipe swap changes
  * only the className factory — the component's structure/behavior (async states, focus,
  * a11y) is untouched. Each replacement must accept the framework recipe's full variant
- * contract, so every call site keeps working.
+ * contract, so every call site keeps working (a replacement with *extra* optional axes is
+ * assignable — contravariance — but those axes are only reachable from code that knows the
+ * replacement's own type).
+ *
+ * Scope: a recipe slot is a **client-side, route-scoped restyle**. It reaches framework
+ * client components, which resolve through `useUiRecipe(...)`. It never reaches a raw
+ * `xRecipe(...)` call in app JSX (statically imported — no context), nor server components
+ * (`Unit`/`View`), which intentionally render the canonical framework recipe. Extending the
+ * *vocabulary* is not this slot's job: add the axis to the framework recipe, or author an
+ * app recipe in `apps/<app>/ui/Recipe/`.
  */
 export interface AkanUiRecipes {
   button: (variants?: ButtonVariants, className?: ClassValue) => string;
   badge: (variants?: BadgeVariants, className?: ClassValue) => string;
+  input: (variants?: InputSurfaceVariants, className?: ClassValue) => string;
 }
 
 /** Shape of an `_overrides.tsx` manifest: component slots plus an optional recipe-slot map. */

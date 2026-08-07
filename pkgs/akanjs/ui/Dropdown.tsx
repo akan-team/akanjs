@@ -3,7 +3,7 @@ import { cn } from "akanjs/client";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { buttonRecipe } from "./Button";
-import { createOverridable } from "./UiOverride";
+import { createOverridable, useUiRecipe } from "./UiOverride";
 
 export interface DropdownProps {
   /** Button/trigger content. */
@@ -21,6 +21,8 @@ export interface DropdownProps {
 export const DefaultDropdown = ({ value, content, className, buttonClassName, dropdownClassName }: DropdownProps) => {
   const [opened, setOpened] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  // Route-scoped look swap (recipe slot) — the trigger renders from the same button vocabulary as <Button>.
+  const recipe = useUiRecipe("button") ?? buttonRecipe;
   useEffect(() => {
     if (!opened) return;
     const onClick = (e: MouseEvent) => {
@@ -35,7 +37,7 @@ export const DefaultDropdown = ({ value, content, className, buttonClassName, dr
     <div ref={ref} className={cn("relative inline-block", className)}>
       <button
         type="button"
-        className={buttonRecipe({ variant: "ghost" }, ["flex", buttonClassName])}
+        className={recipe({ variant: "ghost" }, ["flex", buttonClassName])}
         onClick={() => {
           setOpened((o) => !o);
         }}

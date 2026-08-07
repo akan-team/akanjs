@@ -4,6 +4,7 @@ import { AiOutlineCheck, AiOutlineCopy } from "react-icons/ai";
 
 import { buttonRecipe } from "./Button";
 import { Tooltip } from "./Tooltip";
+import { useUiRecipe } from "./UiOverride";
 
 interface ObjectIdProps {
   id: string;
@@ -11,6 +12,7 @@ interface ObjectIdProps {
 
 export const ObjectId = ({ id }: ObjectIdProps) => {
   const [isCopied, setIsCopied] = useState(false);
+  const recipe = useUiRecipe("button") ?? buttonRecipe;
   const shortenedId = `${id.substring(0, 4)}...${id.substring(id.length - 5)}`;
   const handleCopyClick = () => {
     void navigator.clipboard.writeText(id);
@@ -24,10 +26,7 @@ export const ObjectId = ({ id }: ObjectIdProps) => {
       <Tooltip content={id} variant="primary">
         <div className="font-semibold text-xs">{shortenedId}</div>
       </Tooltip>
-      <button
-        className={buttonRecipe({ variant: "ghost", size: "icon" }, "size-6 rounded-full")}
-        onClick={handleCopyClick}
-      >
+      <button className={recipe({ variant: "ghost", size: "icon" }, "size-6 rounded-full")} onClick={handleCopyClick}>
         {isCopied ? <AiOutlineCheck /> : <AiOutlineCopy />}
       </button>
     </div>

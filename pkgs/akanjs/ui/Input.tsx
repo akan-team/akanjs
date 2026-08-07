@@ -14,11 +14,10 @@ import React, {
 import { AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 
 import { inputRecipe } from "./recipe";
-import { createOverridable } from "./UiOverride";
+import { createOverridable, useUiRecipe } from "./UiOverride";
 
 // 입력 표면은 서버-안전 recipe 레이어(./recipe)의 inputRecipe 가 단일 소스다 — 여기서 클래스를 재작성하지 않는다.
-const inputBase = inputRecipe();
-const textareaBase = inputRecipe({ kind: "area" });
+// 각 컴포넌트는 recipes.input 슬롯을 먼저 조회하고 canonical inputRecipe 로 폴백한다 (Button 과 동일한 해석 라인).
 
 export type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange"> & {
   /** Visual input style. */
@@ -65,6 +64,7 @@ const DefaultInput = ({
   const { l } = usePage();
   const [firstFocus, setFirstFocus] = useState(true);
   const validateResult = validate ? validate(value) : undefined;
+  const inputBase = (useUiRecipe("input") ?? inputRecipe)();
   const status: "error" | "warning" | "success" | null =
     !nullable && !value ? null : !value.length ? "warning" : validateResult === true ? "success" : "error";
   const invalidMessage =
@@ -171,6 +171,7 @@ const DefaultTextArea = ({
   const { l } = usePage();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const validateResult = validate(value);
+  const textareaBase = (useUiRecipe("input") ?? inputRecipe)({ kind: "area" });
   const [firstFocus, setFirstFocus] = useState(true);
   const status: "error" | "warning" | "success" =
     !nullable && !value.length ? "warning" : validateResult === true ? "success" : "error";
@@ -265,6 +266,7 @@ const DefaultPassword = ({
   const validateResult = validate(value);
   const [firstFocus, setFirstFocus] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
+  const inputBase = (useUiRecipe("input") ?? inputRecipe)();
   const status: "error" | "warning" | "success" =
     !nullable && !value.length ? "warning" : validateResult === true ? "success" : "error";
   const invalidMessage =
@@ -375,6 +377,7 @@ const DefaultEmail = ({
   const { l } = usePage();
   const inputRef = useRef<HTMLInputElement>(null);
   const isValidEmail = isEmail(value);
+  const inputBase = (useUiRecipe("input") ?? inputRecipe)();
   const [firstFocus, setFirstFocus] = useState(true);
   const validateResult = !isValidEmail ? l("base.emailInvalidError") : validate(value);
   const status: "error" | "warning" | "success" =
@@ -486,6 +489,7 @@ const DefaultNumber = ({
   const { l } = usePage();
   const inputRef = useRef<HTMLInputElement>(null);
   const validateResult = validate ? validate(value) : undefined;
+  const inputBase = (useUiRecipe("input") ?? inputRecipe)();
   const generateFormat = () => {
     return isNaN(value ?? 0) ? "" : formatter ? formatter(value?.toString() ?? "") : (value?.toString() ?? "");
   };

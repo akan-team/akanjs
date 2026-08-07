@@ -13,10 +13,12 @@ import { badgeRecipe } from "./Badge";
 import { buttonRecipe } from "./Button";
 import { DraggableList } from "./DraggableList";
 import { Input } from "./Input";
+import { inputRecipe } from "./recipe";
 import { Select } from "./Select";
 import { Switch as UiSwitch } from "./Switch";
 import { ToggleSelect as UtilToggleSelect } from "./ToggleSelect";
 import { Tooltip } from "./Tooltip";
+import { useUiRecipe } from "./UiOverride";
 
 interface LabelProps {
   className?: string;
@@ -101,6 +103,7 @@ const List = <Item,>({
   renderItem,
 }: ListProps<Item>) => {
   const { l } = usePage();
+  const recipe = useUiRecipe("button") ?? buttonRecipe;
   return (
     <div className={cn("flex w-full flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
@@ -111,7 +114,7 @@ const List = <Item,>({
               {renderItem(item, idx)}
               <div className="flex gap-2 border-border border-l pl-2">
                 <button
-                  className={buttonRecipe(
+                  className={recipe(
                     { variant: "outline", size: "icon" },
                     "size-6 border-destructive p-0 text-destructive hover:bg-destructive hover:text-destructive-foreground",
                   )}
@@ -127,7 +130,7 @@ const List = <Item,>({
           </>
         ))}
         <button
-          className={buttonRecipe({ variant: "outline" })}
+          className={recipe({ variant: "outline" })}
           onClick={() => {
             onAdd();
           }}
@@ -534,6 +537,7 @@ const TextList = ({
   inputClassName,
 }: TextListProps) => {
   const { l } = usePage();
+  const recipe = useUiRecipe("button") ?? buttonRecipe;
   return (
     <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={!minlength} label={label} desc={desc} /> : null}
@@ -571,7 +575,7 @@ const TextList = ({
                     disabled={disabled}
                   />
                   <button
-                    className={buttonRecipe(
+                    className={recipe(
                       { variant: "outline", size: "icon" },
                       "size-6 border-destructive p-0 text-destructive hover:bg-destructive hover:text-destructive-foreground",
                     )}
@@ -589,7 +593,7 @@ const TextList = ({
         <div className="my-5 h-[0.5px] bg-foreground/20" />
         {value.length <= maxTextlength ? (
           <button
-            className={buttonRecipe({ variant: "outline" }, "w-full")}
+            className={recipe({ variant: "outline" }, "w-full")}
             onClick={() => {
               onChange([...value, ""]);
             }}
@@ -639,6 +643,7 @@ const Tags = ({
   inputClassName,
 }: TagsProps) => {
   const { l } = usePage();
+  const badge = useUiRecipe("badge") ?? badgeRecipe;
   const [inputVisible, setInputVisible] = useState(false);
   const [tag, setTag] = useState("");
   const addTag = () => {
@@ -653,7 +658,7 @@ const Tags = ({
       {label ? <Label className={labelClassName} nullable={!minlength} label={label} desc={desc} /> : null}
       <div className="flex w-full flex-wrap items-center gap-1 rounded-md border border-foreground/20 p-2">
         {value.map((val, idx) => (
-          <span className={badgeRecipe({ variant: "outline" }, "items-center")} key={idx}>
+          <span className={badge({ variant: "outline" }, "items-center")} key={idx}>
             <div className="text-xs italic">#</div>
             {val}
             <BiX
@@ -734,13 +739,17 @@ const Date = <Nullable extends boolean>({
   return (
     <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
-      {/* //! daysi UI datetime-local 컴포넌트에 max 값 넣으면 오른쪽 끝 짤리는 버그 있음.*/}
+      {/* //! datetime-local 에 max 를 주면 오른쪽 끝이 잘리는 렌더 이슈가 있어 max 를 넘기지 않는다.
+          원래 daisyUI 버그로 기록돼 있었으나 daisyUI 는 제거됐다 — 브라우저 네이티브 동작일 수 있어
+          회피책은 유지한다. 실제 렌더 확인 후에만 걷어낼 것. */}
       <input
         type={showTime ? "datetime-local" : "date"}
-        className={cn(
-          "input validator text-xs outline-none duration-200 focus-within:outline-none focus:outline-none",
+        className={inputRecipe({}, [
+          // `user-invalid` replaces daisyUI's `.validator`, which coloured the border off the same
+          // pseudo-class. The native date input reports its own min/max violations through it.
+          "user-invalid:border-destructive text-xs outline-none duration-200 focus-within:outline-none focus:outline-none",
           dateClassName,
-        )}
+        ])}
         min={min ? (showTime ? dayjs(min).format("YYYY-MM-DDTHH:mm") : dayjs(min).format("YYYY-MM-DD")) : undefined}
         max={max ? (showTime ? dayjs(max).format("YYYY-MM-DDTHH:mm") : dayjs(max).format("YYYY-MM-DD")) : undefined}
         value={value ? (showTime ? dayjs(value).format("YYYY-MM-DDTHH:mm") : dayjs(value).format("YYYY-MM-DD")) : ""}

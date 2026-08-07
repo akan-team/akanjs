@@ -5,7 +5,7 @@ import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useSta
 import { AiFillCaretDown, AiOutlineEllipsis } from "react-icons/ai";
 import { buttonRecipe } from "./Button";
 
-import { createOverridable } from "./UiOverride";
+import { createOverridable, useUiRecipe } from "./UiOverride";
 
 export interface MenuItem {
   label: ReactNode;
@@ -62,13 +62,11 @@ export const DefaultMenu = ({
       ? `fixed bottom-0 flex translate-y-[98%] flex-col rounded-xs border-0 bg-background shadow-lg hover:bg-background`
       : "flex flex-col gap-0 p-0 bg-primary/10 hover:bg-primary/10 overflow-hidden";
 
+  const recipe = useUiRecipe("button") ?? buttonRecipe;
   const subMenuItemClassName =
     mode === "inline"
-      ? buttonRecipe({ variant: "ghost" }, "m-0 h-full w-full px-2 font-normal text-primary hover:bg-primary/20")
-      : buttonRecipe(
-          { variant: "ghost" },
-          "w-full whitespace-nowrap text-center font-normal text-primary duration-300",
-        );
+      ? recipe({ variant: "ghost" }, "m-0 h-full w-full px-2 font-normal text-primary hover:bg-primary/20")
+      : recipe({ variant: "ghost" }, "w-full whitespace-nowrap text-center font-normal text-primary duration-300");
 
   const [overflowMenuItems, setOverflowMenuItems] = useState<MenuItem[]>([]);
 
@@ -224,6 +222,7 @@ interface OverflowMenuProps {
 const OverflowMenu = ({ overflowItems, onClick }: OverflowMenuProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [expandedKey, setExpandedKey] = useState<string>(); // 서브메뉴
+  const recipe = useUiRecipe("button") ?? buttonRecipe;
   const handleMouseEnter = () => {
     setIsOpen(true);
   };
@@ -241,7 +240,7 @@ const OverflowMenu = ({ overflowItems, onClick }: OverflowMenuProps) => {
             <div
               key={item.key}
               onClick={() => onClick?.(item)}
-              className={buttonRecipe({ variant: "ghost" }, "relative whitespace-nowrap font-normal text-primary")}
+              className={recipe({ variant: "ghost" }, "relative whitespace-nowrap font-normal text-primary")}
               onMouseEnter={() => {
                 if (item.children && expandedKey !== item.key) setExpandedKey(item.key);
               }}
@@ -260,7 +259,7 @@ const OverflowMenu = ({ overflowItems, onClick }: OverflowMenuProps) => {
                         setExpandedKey(undefined);
                       }}
                       key={child.key}
-                      className={buttonRecipe(
+                      className={recipe(
                         { variant: "ghost" },
                         "flex items-center justify-center text-center font-normal text-primary",
                       )}

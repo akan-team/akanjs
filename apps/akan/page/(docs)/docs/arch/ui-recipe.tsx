@@ -220,8 +220,8 @@ export type ChatBubbleVariants = NonNullable<Parameters<typeof chatBubbleRecipe>
         <Docs.Description>
           <div>
             {l.trans({
-              en: "A route's _overrides.tsx can swap a recipe slot. Every framework component that consumes that recipe (Button, Badge …) re-skins across the whole route subtree — while its behavior (async states, focus trap, a11y) stays exactly as the framework ships it. Only the className factory changes.",
-              ko: "라우트의 _overrides.tsx 는 recipe 슬롯을 교체할 수 있습니다. 그 recipe 를 소비하는 프레임워크 컴포넌트(Button, Badge …)가 라우트 서브트리 전체에서 리스킨되지만, 동작(async 상태, 포커스 트랩, a11y)은 프레임워크 그대로입니다. 바뀌는 건 className 팩토리뿐입니다.",
+              en: "A route's _overrides.tsx can swap a recipe slot (button, badge, input). Every framework client component that consumes that recipe (Button, Badge, Input, Dropdown, Pagination …) re-skins across the whole route subtree — while its behavior (async states, focus trap, a11y) stays exactly as the framework ships it. Only the className factory changes. Server components (Unit/View) and raw xRecipe(...) calls in your own JSX keep the canonical recipe.",
+              ko: "라우트의 _overrides.tsx 는 recipe 슬롯(button, badge, input)을 교체할 수 있습니다. 그 recipe 를 소비하는 프레임워크 클라이언트 컴포넌트(Button, Badge, Input, Dropdown, Pagination …)가 라우트 서브트리 전체에서 리스킨되지만, 동작(async 상태, 포커스 트랩, a11y)은 프레임워크 그대로입니다. 바뀌는 건 className 팩토리뿐입니다. 서버 컴포넌트(Unit/View)와 직접 호출하는 xRecipe(...) 는 canonical recipe 를 유지합니다.",
             })}
           </div>
           <Code.Snippet
