@@ -13,6 +13,7 @@ import {
   type NavigationIntent,
   normalizeDeepLinkHref,
   type PageState,
+  type PageTransition,
   type PathRoute,
   type RouteGuide,
   type RouteOptions,
@@ -1365,6 +1366,23 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
     bottomUp: useBottomUpTransition,
     scaleOut: useScaleOutTransition,
   };
+  // Keyboard-driven height/padding changes animate instead of snapping. It belongs to the current page's
+  // contentStyle, so it is merged here rather than in CSR: CSR renders one container per path route and
+  // would rebuild this object for every one of them on every render.
+  const contentResizeStyle = useMemo(() => {
+    if (!shouldAnchorContentBottom || !keyboardFrame.sticky) return null;
+    const duration = keyboardFrame.animationDuration ?? 420;
+    const easing = keyboardFrame.animationEasing ?? "cubic-bezier(0.16, 1, 0.3, 1)";
+    return {
+      transition: `height ${duration}ms ${easing}, padding-bottom ${duration}ms ${easing}`,
+      willChange: "height, padding-bottom",
+    };
+  }, [shouldAnchorContentBottom, keyboardFrame.sticky, keyboardFrame.animationDuration, keyboardFrame.animationEasing]);
+  const csrTransition = useCsrTransitionMap[resolvedLocation.pathRoute.pageState.transition];
+  const page: PageTransition | null =
+    contentResizeStyle && csrTransition.page
+      ? { ...csrTransition.page, contentStyle: { ...csrTransition.page.contentStyle, ...contentResizeStyle } }
+      : csrTransition.page;
   const nativeBackStateRef = useRef({
     path: resolvedLocation.pathRoute.path,
     keyboardHeight: keyboardFrame.height,
@@ -1512,6 +1530,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
 
   return {
     ...routeState,
-    ...useCsrTransitionMap[resolvedLocation.pathRoute.pageState.transition],
+    ...csrTransition,
+    page,
   } satisfies CsrContextType;
 };

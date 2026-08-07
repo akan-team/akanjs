@@ -56,6 +56,7 @@ export const Provider = ({ className, children }: ProviderProps) => {
 
     setSlide((prevSlide) => (prevSlide === nextSlide ? prevSlide : nextSlide));
   }, [slideIds]);
+
   const scheduleActiveSlideUpdate = useCallback(() => {
     if (animationFrameRef.current !== null) return;
     animationFrameRef.current = window.requestAnimationFrame(() => {
