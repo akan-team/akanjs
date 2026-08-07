@@ -65,6 +65,8 @@ const DefaultButton = <Result = unknown>({
   className,
   variant,
   size,
+  shape,
+  outline,
   type = "button",
   loadingMode = "hold",
   showError = true,
@@ -90,7 +92,7 @@ const DefaultButton = <Result = unknown>({
       <button
         type={type}
         className={recipe(
-          { variant, size },
+          { variant, size, shape, outline },
           // `relative` is the hold overlay's containing block — the component's need, so it is not baked into
           // the recipe, where it would also land on every raw `buttonRecipe()` call site.
           //

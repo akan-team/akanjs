@@ -1,6 +1,6 @@
 import type { ClassNameValue as ClassValue } from "tailwind-merge";
 import { createTV } from "tailwind-variants";
-import { colorTokens } from "../../client/cn";
+import { colorTokens, radiusTokens } from "../../client/cn";
 
 /**
  * recipe 팩토리 모듈 — 변형 팩토리를 만드는 **인프라**. **서버-안전** (절대 `"use client"` 금지).
@@ -8,8 +8,9 @@ import { colorTokens } from "../../client/cn";
  * 각 앱은 `apps/<app>/ui/Recipe/<name>.ts`.
  */
 
-// akan 의 시맨틱 색 토큰을 tv 내장 tailwind-merge 에 주입 → `cn` 과 동일한 병합 동작(예: bg-primary→bg-open).
-export const tv = createTV({ twMergeConfig: { extend: { theme: { color: colorTokens } } } });
+// akan 의 시맨틱 색/radius 토큰을 tv 내장 tailwind-merge 에 주입 → `cn` 과 동일한 병합 동작
+// (예: bg-primary→bg-open, rounded-field→rounded-full).
+export const tv = createTV({ twMergeConfig: { extend: { theme: { color: colorTokens, radius: radiusTokens } } } });
 
 /**
  * recipe 팩토리 — `tv({...})` 인스턴스를 받아 겉을 `(변형, className?)` 2-인자로 노출하고,

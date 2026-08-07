@@ -38,10 +38,17 @@ export const colorTokens = [
   "ring",
 ];
 
+/**
+ * Akan's semantic radius tokens (`--radius-box` / `--radius-field` in ui/styles.css). Without them
+ * `cn("rounded-field", "rounded-full")` keeps both classes and stylesheet order decides the winner.
+ */
+export const radiusTokens = ["box", "field"];
+
 const twMerge = extendTailwindMerge({
   extend: {
     theme: {
       color: colorTokens,
+      radius: radiusTokens,
     },
   },
 });
