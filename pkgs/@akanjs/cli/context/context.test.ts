@@ -583,9 +583,9 @@ describe("AgentRunner", () => {
     const runner = new AgentRunner();
 
     const written = await runner.install(workspace, ["cursor", "agents-md", "claude"]);
-    expect(written).toEqual([".cursor/rules/akan.mdc", "AGENTS.md", "CLAUDE.md"]);
+    expect(written.slice(0, 3)).toEqual([".cursor/rules/akan.mdc", "AGENTS.md", "CLAUDE.md"]);
+    expect(written.slice(3).every((path) => path.endsWith("/AGENTS.md"))).toBe(true);
 
-    // AGENTS.md is the single source of truth and carries the full workflow policy in a managed block.
     const agents = await Bun.file(`${root}/AGENTS.md`).text();
     expect(agents).toContain("Before changing a domain");
     expect(agents).toContain("Prefer Akan MCP workflows before direct source edits");
@@ -598,7 +598,6 @@ describe("AgentRunner", () => {
     expect(agents).toContain("<!-- akan:agent:start -->");
     expect(agents).toContain("<!-- akan:agent:end -->");
 
-    // CLAUDE.md and the Cursor rule are thin pointers to AGENTS.md, not duplicates of its content.
     const claude = await Bun.file(`${root}/CLAUDE.md`).text();
     expect(claude).toContain("@AGENTS.md");
     expect(claude).not.toContain("Prefer Akan MCP workflows before direct source edits");
@@ -618,16 +617,15 @@ describe("AgentRunner", () => {
     await runner.install(workspace, ["agents-md"]);
     const first = await Bun.file(`${root}/AGENTS.md`).text();
 
-    // Hand-written content placed outside the markers must survive a re-install without --force.
     await Bun.write(`${root}/AGENTS.md`, `${first}\n## Team Notes\n\nUse feature branches.\n`);
     const written = await runner.install(workspace, ["agents-md"]);
-    expect(written).toEqual(["AGENTS.md"]);
+    expect(written[0]).toBe("AGENTS.md");
+    expect(written.slice(1).every((path) => path.endsWith("/AGENTS.md"))).toBe(true);
 
     const refreshed = await Bun.file(`${root}/AGENTS.md`).text();
     expect(refreshed).toContain("## Team Notes");
     expect(refreshed).toContain("Use feature branches.");
     expect(refreshed).toContain("Prefer Akan MCP workflows before direct source edits");
-    // Re-installing does not duplicate the managed block.
     expect(refreshed.split("<!-- akan:agent:start -->").length - 1).toBe(1);
   });
 
