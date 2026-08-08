@@ -16,7 +16,9 @@ ${databaseModules.map((module) => `import * as ${module}Db from "./${module}/${m
 ${libs.map((lib) => `export { db as ${lib} } from "@libs/${lib}/server";`).join("\n")}
 
 ${databaseModules.map((module) => `class ${capitalize(module)}Input extends by(cnst.${capitalize(module)}Input) {}`).join("\n")}
+${databaseModules.map((module) => `class ${capitalize(module)}Insight extends by(cnst.${capitalize(module)}Insight) {}`).join("\n")}
 ${databaseModules.length ? `export type { ${databaseModules.map((module) => `${capitalize(module)}Input`).join(", ")} };` : ""}
+${databaseModules.length ? `export type { ${databaseModules.map((module) => `${capitalize(module)}Insight`).join(", ")} };` : ""}
 
 ${scalarModules.map((module) => `export type * from "./__scalar/${module}/${module}.document";`).join("\n")}
 ${databaseModules.map((module) => `export type * from "./${module}/${module}.document";`).join("\n")}
@@ -24,7 +26,7 @@ ${databaseModules.map((module) => `export type * from "./${module}/${module}.doc
 ${databaseModules
   .map((module) => {
     const names = { Module: module.charAt(0).toUpperCase() + module.slice(1) };
-    return `export const ${module} = DatabaseRegistry.buildModel("${module}" as const, ${names.Module}Input, ${module}Db.${names.Module}, ${module}Db.${names.Module}Model, cnst.${names.Module}, cnst.${names.Module}Insight, ${module}Db.${names.Module}Filter);`;
+    return `export const ${module} = DatabaseRegistry.buildModel("${module}" as const, ${names.Module}Input, ${module}Db.${names.Module}, ${module}Db.${names.Module}Model, cnst.${names.Module}, ${names.Module}Insight, ${module}Db.${names.Module}Filter);`;
   })
   .join("\n")}
 ${scalarModules.map((module) => `export const ${module} = DatabaseRegistry.buildScalar("${module}" as const, ${capitalize(module)});`).join("\n")}

@@ -14,6 +14,7 @@ import {
   workflowRunArtifactPath,
   workflowSyncDir,
 } from "./workflow";
+import { appRootAllowedDirs, appRootAllowedFiles, isScannedAppRootEntry } from "./workspaceLayout";
 
 export type AkanContextFormat = "json" | "markdown";
 export type AkanModuleKind = "domain" | "service" | "scalar";
@@ -312,36 +313,6 @@ const moduleShapeFiles = (module: AkanModuleContext) => {
 
 const constantFieldNames = (content: string) =>
   [...content.matchAll(/\b([A-Za-z_$][\w$]*)\s*:\s*field\(/g)].map((match) => match[1]).filter(Boolean);
-
-const appRootAllowFiles = new Set([
-  // 스코프 에이전트 가이드 — scan(write) 이 유지 (agentsIndex.ts); scanInfo.ts 의 appRootAllowedFiles 와 동기
-  "AGENTS.md",
-  "CLAUDE.md",
-  "akan.app.json",
-  "akan.config.ts",
-  "capacitor.config.ts",
-  "client.ts",
-  "main.ts",
-  "package.json",
-  "server.ts",
-  "tsconfig.json",
-]);
-
-const appRootAllowDirs = new Set([
-  ".akan",
-  "android",
-  "common",
-  "env",
-  "ios",
-  "lib",
-  "page",
-  "private",
-  "public",
-  "script",
-  "srvkit",
-  "ui",
-  "webkit",
-]);
 
 const safeReadDir = async (dirPath: string) => {
   try {
@@ -671,7 +642,8 @@ export class AkanContextAnalyzer {
     for (const app of context.apps) {
       const appPath = path.join(workspace.workspaceRoot, app.path);
       for (const entry of await safeReadDir(appPath)) {
-        const allowed = entry.isDirectory() ? appRootAllowDirs.has(entry.name) : appRootAllowFiles.has(entry.name);
+        if (!isScannedAppRootEntry(entry.name)) continue;
+        const allowed = entry.isDirectory() ? appRootAllowedDirs.has(entry.name) : appRootAllowedFiles.has(entry.name);
         if (!allowed) {
           const action = repairAction(
             "module-shape",

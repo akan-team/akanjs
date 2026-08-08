@@ -54,7 +54,7 @@ However, how can we query only the served icecream orders? To do this, let's cre
 
 Now, let's apply the query to the document.
 
-By declaring the byStatuses query in IcecreamOrderFilter, you can use list, find, count, sample functions according to the given query conditions. For example, you can use listByStatuses, countByStatuses functions.
+By declaring the byStatuses query in IcecreamOrderFilter, you can use list, find, count, insight, sample functions according to the given query conditions. For example, you can use listByStatuses, countByStatuses, and insightByStatuses functions. countByStatuses returns a number, and insightByStatuses returns db.IcecreamOrderInsight.
 
 Why do we receive an array of statuses instead of a single status? This is useful when we need to query multiple statuses at once. If we think there is a possibility of querying multiple statuses, it is better to receive them as an array and process them.
 

@@ -262,8 +262,8 @@ return (
         <Docs.Description>
           <div>
             {l.trans({
-              en: 'Add `cascade: "remove"` to a File relation and removing the owner removes the file too. The cascade calls the File service, not the File model, so `FileService._postRemove` runs and the stored object is deleted from blob or object storage. Nothing else is needed — the storage call already lives in that hook.',
-              ko: 'File 관계 필드에 `cascade: "remove"`를 달면 소유 모델을 지울 때 파일도 함께 지워집니다. 캐스케이드는 File 모델이 아니라 File 서비스를 호출하므로 `FileService._postRemove`가 실행되고, blob/object storage의 객체까지 삭제됩니다. 그 훅에 이미 스토리지 호출이 들어 있어서 따로 배선할 것이 없습니다.',
+              en: 'Add `cascade: "removeRef"` to a File relation and removing the owner removes the file too. The cascade calls the File service, not the File model, so `FileService._postRemove` runs and the stored object is deleted from blob or object storage. Nothing else is needed — the storage call already lives in that hook.',
+              ko: 'File 관계 필드에 `cascade: "removeRef"`를 달면 소유 모델을 지울 때 파일도 함께 지워집니다. 캐스케이드는 File 모델이 아니라 File 서비스를 호출하므로 `FileService._postRemove`가 실행되고, blob/object storage의 객체까지 삭제됩니다. 그 훅에 이미 스토리지 호출이 들어 있어서 따로 배선할 것이 없습니다.',
             })}
           </div>
           <ul className="list-disc space-y-2 pl-5">
@@ -275,8 +275,8 @@ return (
             </li>
             <li>
               {l.trans({
-                en: "Nothing checks whether another document still points at the same file. Files are deduped by origin, so declaring cascade asserts that this field owns its file exclusively.",
-                ko: "다른 문서가 같은 파일을 아직 참조하는지는 검사하지 않습니다. 파일은 origin 기준으로 중복 제거되므로, cascade를 선언한다는 것은 이 필드가 그 파일을 단독으로 소유한다는 선언입니다.",
+                en: "Nothing checks whether another document still points at the same file. Files are deduped by origin, so declaring removeRef asserts that this field owns its file exclusively.",
+                ko: "다른 문서가 같은 파일을 아직 참조하는지는 검사하지 않습니다. 파일은 origin 기준으로 중복 제거되므로, removeRef를 선언한다는 것은 이 필드가 그 파일을 단독으로 소유한다는 선언입니다.",
               })}
             </li>
             <li>
@@ -297,8 +297,8 @@ return (
           title="user.constant.ts"
           code={`export class UserInput extends via((field) => ({
   nickname: field(String, { default: "" }),
-  image: field(File, { cascade: "remove" }).optional(),
-  images: field([File], { cascade: "remove" }),
+  image: field(File, { cascade: "removeRef" }).optional(),
+  images: field([File], { cascade: "removeRef" }),
 })) {}`}
         />
         <Code.Snippet

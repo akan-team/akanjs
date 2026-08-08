@@ -3,6 +3,7 @@ export const SLICE_META = Symbol.for("akan.slice");
 export const FILTER_META = Symbol.for("akan.filter");
 export const LOADER_META = Symbol.for("akan.loader");
 export const INJECT_META = Symbol.for("akan.inject");
+export const LIBS_REMOVE_HOOK = Symbol.for("akan.service.libsRemoveHook");
 export const ENDPOINT_META = Symbol.for("akan.endpoint");
 export const ENDPOINT_DICT_SHAPE: unique symbol = Symbol.for("akan.endpoint.dictShape") as never;
 export const SLICE_DICT_SHAPE: unique symbol = Symbol.for("akan.slice.dictShape") as never;

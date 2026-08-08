@@ -101,6 +101,86 @@ export const EditPanel = ({ open }: EditPanelProps) => {
       </Scroll.Slide>
       <Divider />
 
+      <Scroll.Slide id="server" title={l.trans({ en: "Server Adapters", ko: "서버 어댑터" })}>
+        <Docs.Title>{l.trans({ en: "Server Adapters", ko: "서버 어댑터" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "The same idea applies on the server, where the cost is memory instead of bundle size. A `srvkit` barrel re-exports every adapter, so importing one helper loads every SDK the folder touches — and each one stays resident in every replica and every batch worker.",
+              ko: "서버에도 같은 원리가 적용되는데, 여기서는 비용이 번들 크기가 아니라 메모리입니다. `srvkit` barrel은 모든 adapter를 re-export하므로, helper 하나만 import해도 그 폴더가 쓰는 SDK가 전부 로드되고, 각각이 모든 replica와 batch worker에 상주합니다.",
+            })}
+          </div>
+          <DocsList>
+            <li>
+              {l.trans({
+                en: "Measured in this workspace: puppeteer 19MB, discord.js 23MB, nodemailer 16MB, firebase-admin 2MB — about 61MB resident before a single request arrives.",
+                ko: "이 workspace 실측: puppeteer 19MB, discord.js 23MB, nodemailer 16MB, firebase-admin 2MB로, 요청이 하나도 오기 전에 약 61MB가 상주합니다.",
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: "Gating construction is not enough. `options.discord ? new DiscordApi(...) : null` still runs the import at module scope.",
+                ko: "생성만 막는 것으로는 부족합니다. `options.discord ? new DiscordApi(...) : null`이어도 import는 module scope에서 실행됩니다.",
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: "Worth it for a heavy SDK an app may never configure: mail, push, Discord, a headless browser, an image encoder.",
+                ko: "앱이 설정하지 않을 수도 있는 무거운 SDK에 적합합니다. 메일, 푸시, Discord, headless browser, 이미지 인코더가 그렇습니다.",
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: "Not worth it for small pure helpers such as jwt or aes — they cost nothing and are used on every request.",
+                ko: "jwt나 aes 같은 작은 순수 helper에는 불필요합니다. 비용이 없고 매 요청마다 쓰입니다.",
+              })}
+            </li>
+          </DocsList>
+        </Docs.Description>
+        <Code.Snippet
+          className="w-full"
+          title={l.trans({ en: "Memoized module import", ko: "메모이즈된 module import" })}
+          code={`import { adapt } from "akanjs/service";
+
+// Memoized at module scope, resolved on first use: the SDK is absent from a process that never sends a message.
+let discordLoad: Promise<typeof import("discord.js")> | null = null;
+const loadDiscord = () => {
+  discordLoad ??= import("discord.js");
+  return discordLoad;
+};
+
+export class DiscordApi extends adapt("discordApi" as const, ({ env }) => ({
+  token: env(() => process.env.DISCORD_TOKEN ?? ""),
+})) {
+  #client: import("discord.js").Client | null = null;
+
+  async #getClient() {
+    if (this.#client) return this.#client;
+    const { Client, GatewayIntentBits } = await loadDiscord();
+    this.#client = new Client({ intents: [GatewayIntentBits.Guilds] });
+    await this.#client.login(this.token);
+    return this.#client;
+  }
+
+  async send(channelId: string, content: string) {
+    const client = await this.#getClient();
+    const channel = await client.channels.fetch(channelId);
+    if (!channel?.isTextBased()) return null;
+    return await channel.send(content);
+  }
+}`}
+        />
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "Check what a process actually pays with `AKAN_MEMORY_LOG=1`, which reports RSS per replica on an interval.",
+              ko: "프로세스가 실제로 쓰는 비용은 `AKAN_MEMORY_LOG=1`로 확인하세요. replica별 RSS를 주기적으로 보고합니다.",
+            })}
+          </div>
+        </Docs.Description>
+      </Scroll.Slide>
+      <Divider />
+
       <Scroll.Slide id="ssr" title={l.trans({ en: "SSR Or Client Only", ko: "SSR 또는 client only" })}>
         <Docs.Title>{l.trans({ en: "SSR Or Client Only", ko: "SSR 또는 client only" })}</Docs.Title>
         <Docs.Description>

@@ -2020,7 +2020,7 @@ Define frequently used list and lookup conditions once, then use the generated m
 
 The framework already provides all-document and latest/oldest ordering behavior, so only add business-specific search and sort rules.
 
-Required input for the query. Required args must come before optional args.
+count and insight are separate accessors over the same query: count returns a plain number, and insight returns the accumulated db.<Model>Insight. Both are generated on the Model and on the Service, so the same call reads identically from either side.
 
 ## Overview
 
@@ -2309,6 +2309,10 @@ Headings:
 - Model.View.tsx
 - View vs Unit
 - Standard View Shape
+- Full Model Detail Patterns
+- Using View In Pages
+- Load.View And Store Hydration
+- Practical Rules
 
 Model.View.tsx
 
@@ -2965,7 +2969,9 @@ Priority: P1
 Headings:
 - Kiosk for Customers
 - Add Schema
+- Kiosk Landing Page
 - Order Form Page
+- Page UX Best Practices
 
 UX with Pages
 
@@ -3192,6 +3198,7 @@ Headings:
 - Show Details
 - Add View/Edit Modal
 - Add View Button to Cards
+- Design Detail View
 - Test Your Implementation
 - Best Practices for Detail Views
 - What's Next?
@@ -4456,7 +4463,7 @@ Akan has two ways to change stored data. Use document methods when you edit one 
 
 Document methods (`.set().save()`, `Model.update`, `Model.remove`) load a document, run save/update/remove hooks, then persist it.
 
-Query updates (`updateOne`, `updateMany`, `deleteMany`, `bulkWrite`) compile to a single atomic SQL statement and do not load documents.
+Query updates (`updateOne`, `updateMany`, `removeOne`, `removeMany`, `bulkWrite`) compile to a single atomic SQL statement and do not load documents.
 
 Use the `u` update helper for operators, the same way `q` is used for query conditions.
 

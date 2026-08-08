@@ -106,6 +106,14 @@ Now let's bring everything together in the UI. The customer-facing order form ne
 
 First, update the order template to check inventory before displaying options:
 
+Key features of the inventory-aware template:
+
+Called in useEffect to load inventory data when the component mounts. Shows a loading spinner until data is ready.
+
+Out of Stock Check
+
+If yogurt ice cream is completely out of stock, shows a friendly message instead of the form. No point ordering if we can't make it!
+
 Each size and topping option checks if sufficient stock exists. Disabled options are grayed out but still visible, so customers know what's normally available.
 
 Add the isInStock helper method to the Inventory constant:
@@ -114,7 +122,7 @@ Now let's create utility components for staff to refill inventory:
 
 Create a visual dashboard showing stock levels with color-coded status indicators:
 
-; Add; helper; methods; to; the; Stock; scalar; for status calculation :
+Add helper methods to the Stock scalar for status calculation:
 
 Create a Zone component for real-time inventory monitoring:
 
@@ -537,7 +545,48 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           </div>
           <Field.ToggleSelect
             items={[50, 100, 200].map((size) => ({
-              label:
+              label: `${size}cc`,
+              value: size,
+              disabled: !todaysInventory.isInStock("yogurtIcecream", size), // [!code highlight]
+            }))}
+            value={icecreamOrderForm.size}
+            onChange={st.do.setSizeOnIcecreamOrder}
+          />
+        </div>
+      </div>
+      <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
+        <div className="space-y-6">
+          <div className="flex items-center gap-3"> // [!code collapse:4]
+            <span className="text-3xl">🍓</span>
+            <h2 className="text-2xl font-semibold text-primary">{l("icecreamOrder.toppings")}</h2>
+          </div>
+          <Field.MultiToggleSelect
+            items={cnst.Topping.map((topping) => ({ // [!code highlight:5]
+              label: topping,
+              value: topping,
+              disabled: !todaysInventory.isInStock(topping),
+            }))}
+            value={icecreamOrderForm.toppings}
+            onChange={st.do.setToppingsOnIcecreamOrder}
+          />
+        </div>
+      </div>
+      <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm"> // [!code collapse:13]
+        <div className="space-y-6">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">📱</span>
+            <h2 className="text-2xl font-semibold text-primary">{l("icecreamOrder.phone")}</h2>
+          </div>
+          <Field.Phone
+            placeholder="010-0000-0000"
+            value={icecreamOrderForm.phone}
+            onChange={st.do.setPhoneOnIcecreamOrder}
+          />
+        </div>
+      </div>
+    </Layout.Template>
+  );
+};
 ```
 
 ### apps/koyo/lib/inventory/inventory.constant.ts
@@ -620,7 +669,66 @@ export const General = ({ className, inventory }: GeneralProps) => {
           const percentage = stock.getPercentage();
           return (
             <div
-              key={
+              key={`${stock.type}-${index}`}
+              className={cn(
+                "space-y-3 rounded-xl border bg-background px-6 py-4 shadow-md",
+                status === "empty" && "border-border",
+                status === "low" && "border-warning/40",
+                status === "normal" && "border-success/40",
+              )}
+            >
+              <div className="flex items-center justify-between">
+                <div
+                  className={cn(
+                    "rounded px-2 py-1 text-xs font-bold",
+                    status === "empty" && "border border-border bg-background text-foreground/70",
+                    status === "low" && "border border-warning/40 bg-background text-warning",
+                    status === "normal" && "border border-success/40 bg-background text-success",
+                  )}
+                >
+                  {l(`stockType.${stock.type}`)}
+                </div>
+                <div
+                  className={cn(
+                    "text-2xl font-bold",
+                    status === "empty" && "text-primary",
+                    status === "low" && "text-warning",
+                    status === "normal" && "text-success",
+                  )}
+                >
+                  {stock.currentQty} / {stock.totalQty}
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={cn(
+                      "h-full",
+                      status === "empty" && "bg-border",
+                      status === "low" && "bg-warning",
+                      status === "normal" && "bg-success",
+                    )}
+                    style={{ width: `${Math.min(percentage, 100)}%` }}
+                  />
+                </div>
+                <div
+                  className={cn(
+                    "text-right text-xs font-bold",
+                    status === "empty" && "text-primary",
+                    status === "low" && "text-warning",
+                    status === "normal" && "text-success",
+                  )}
+                >
+                  {Math.round(percentage)}%
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 ```
 
 ### apps/koyo/lib/__scalar/stock/stock.constant.ts

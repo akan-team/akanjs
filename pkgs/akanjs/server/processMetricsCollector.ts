@@ -138,6 +138,11 @@ export class ProcessMetricsCollector {
       ...(metrics.jscHeapSizeBytes !== undefined
         ? [`jscHeap=${ProcessMetricsCollector.formatBytes(metrics.jscHeapSizeBytes)}`]
         : []),
+      // A replica owns an RSC worker whose RSS is a separate process; without this the log line
+      // shows only half of what the replica actually costs the pod.
+      ...(metrics.rscWorkerRssBytes !== undefined
+        ? [`rscWorkerRss=${ProcessMetricsCollector.formatBytes(metrics.rscWorkerRssBytes)}`]
+        : []),
       ...(metrics.eventLoopLagMeanMs !== undefined
         ? [`elLag=${metrics.eventLoopLagMeanMs}/${metrics.eventLoopLagP99Ms ?? 0}/${metrics.eventLoopLagMaxMs ?? 0}ms`]
         : []),

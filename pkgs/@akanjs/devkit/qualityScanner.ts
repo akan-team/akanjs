@@ -4,9 +4,11 @@ import path from "node:path";
 import ignore from "ignore";
 import ts from "typescript";
 import { AbstractDoc } from "./abstractDoc";
+import { formatSsrBalance, type SsrBalanceEntry, SsrScanner } from "./ssrScanner";
+import { appRootAllowedFiles, libFacetRootAllowedFiles } from "./workspaceLayout";
 
 type QualitySeverity = "warning";
-type QualityScope = "global" | "file" | "convention" | "layout";
+type QualityScope = "global" | "file" | "convention" | "layout" | "ssr";
 
 export interface QualityWarning {
   rule: string;
@@ -23,10 +25,11 @@ export interface QualityScanResult {
   workspaceRoot: string;
   scannedFiles: number;
   warnings: QualityWarning[];
+  ssrBalance: SsrBalanceEntry[];
   suggestedRules: string[];
 }
 
-interface SourceFileInfo {
+export interface SourceFileInfo {
   file: string;
   absolutePath: string;
   content: string;
@@ -88,29 +91,6 @@ const SUGGESTED_RULES = [
   "Avoid large mixed-purpose class files; class export files should import helpers from neighboring utility files instead of declaring them inline.",
 ];
 
-const APP_ROOT_FILES = new Set([
-  "akan.app.json",
-  "akan.config.ts",
-  "capacitor.config.ts",
-  "client.ts",
-  "main.ts",
-  "package.json",
-  "server.ts",
-  "tsconfig.json",
-]);
-
-const LIB_ROOT_FILES = new Set([
-  "cnst.ts",
-  "db.ts",
-  "dict.ts",
-  "option.ts",
-  "sig.ts",
-  "srv.ts",
-  "st.ts",
-  "useClient.ts",
-  "useServer.ts",
-]);
-
 const CONVENTION_SUFFIXES = [
   ".constant.ts",
   ".dictionary.ts",
@@ -169,6 +149,18 @@ const RULE_FIXES: Record<string, string> = {
     "Move the file into a domain module folder under lib/; keep lib root limited to generated support facets.",
   "akan.layout.module-ui-file":
     "Rename the file to an allowed module UI name, or move it to ui/ if it is not a module component.",
+  "akan.ssr.unnecessary-use-client":
+    'Delete the "use client" directive so the file renders on the server. If it exists only to wrap one client child, drop the wrapper and use the child directly.',
+  "akan.ssr.client-static-component":
+    "Move the component to a server file — a <Model>.Unit.tsx / <Model>.View.tsx for a module, or a ui/ file with no directive — and reference it from the client file.",
+  "akan.ssr.client-static-markup":
+    "Keep the interactive element in the client component and hoist the static subtree into a server component, then accept it as `children` or render it through a Unit/View reference.",
+  "akan.ssr.client-mount-load":
+    "Load the data in the route with `fetch.initX(...)` / `fetch.viewX(...)` and pass the init/view object down as a prop; the client store hydrates from it and the effect goes away.",
+  "akan.ssr.module-missing-server-view":
+    "Add a <Model>.Unit.tsx for list/card rendering and a <Model>.View.tsx for the detail surface, then have the Zone delegate to them.",
+  "akan.ssr.template-client-state":
+    "Bind the field to the store instead: `value={xForm.field}` with `onChange={st.do.setFieldOnX}`.",
 };
 
 function getRuleFix(rule: string): string | undefined {
@@ -190,6 +182,7 @@ export class AkanQualityScanner {
         .filter((file) => AbstractDoc.isAbstractPath(file))
         .map((file) => this.#readTextFile(workspaceRoot, file)),
     );
+    const ssr = new SsrScanner().scan(sourceFiles);
     const warnings = [
       ...this.#scanGlobalQuality(sourceFiles),
       ...sourceFiles.flatMap((sourceFile) => this.#scanSingleFileQuality(sourceFile)),
@@ -197,6 +190,7 @@ export class AkanQualityScanner {
       ...sourceFiles.flatMap((sourceFile) => this.#scanConventionQuality(sourceFile)),
       ...sourceFiles.flatMap((sourceFile) => this.#scanLayoutQuality(sourceFile)),
       ...abstractFiles.flatMap((abstractFile) => this.#scanAbstractQuality(abstractFile)),
+      ...ssr.warnings,
     ];
 
     return {
@@ -205,6 +199,7 @@ export class AkanQualityScanner {
       warnings: warnings
         .map((warning) => ({ ...warning, fix: warning.fix ?? getRuleFix(warning.rule) }))
         .sort(compareWarnings),
+      ssrBalance: ssr.balance,
       suggestedRules: SUGGESTED_RULES,
     };
   }
@@ -432,7 +427,7 @@ export class AkanQualityScanner {
   #scanLayoutQuality(sourceFile: SourceFileInfo): QualityWarning[] {
     const segments = sourceFile.file.split("/");
     const warnings: QualityWarning[] = [];
-    if (segments[0] === "apps" && segments.length === 3 && !APP_ROOT_FILES.has(segments[2])) {
+    if (segments[0] === "apps" && segments.length === 3 && !appRootAllowedFiles.has(segments[2])) {
       warnings.push({
         rule: "akan.layout.app-root-file",
         scope: "layout",
@@ -443,7 +438,7 @@ export class AkanQualityScanner {
     }
 
     const libRootFile = getLibRootFile(sourceFile.file);
-    if (libRootFile && !LIB_ROOT_FILES.has(libRootFile)) {
+    if (libRootFile && !libFacetRootAllowedFiles.has(libRootFile)) {
       warnings.push({
         rule: "akan.layout.lib-root-file",
         scope: "layout",
@@ -470,9 +465,31 @@ export function formatQualityScanResult(result: QualityScanResult) {
     "",
     ...formatQualityWarnings(result.warnings),
     "",
+    "SSR balance (component files, JSX elements rendered per side):",
+    "",
+    ...formatSsrBalance(result.ssrBalance),
+    "",
     "Suggested quality rules:",
     "",
     ...result.suggestedRules.map((rule) => `  - ${rule}`),
+  ];
+  return sections.join("\n");
+}
+
+export function formatSsrScanResult(result: QualityScanResult) {
+  const sections = [
+    "Akan SSR Balance Scan",
+    `workspace: ${result.workspaceRoot}`,
+    `scanned files: ${result.scannedFiles}`,
+    `ssr warnings: ${result.warnings.length}`,
+    "",
+    "Server render share (component files, JSX elements rendered per side):",
+    "",
+    ...formatSsrBalance(result.ssrBalance),
+    "",
+    "Warnings:",
+    "",
+    ...formatQualityWarnings(result.warnings),
   ];
   return sections.join("\n");
 }

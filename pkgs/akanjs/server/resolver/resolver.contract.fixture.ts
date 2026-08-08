@@ -92,13 +92,15 @@ class ServerResolverTestModel extends into(
   ServerResolverTestModelMixin as unknown as ModelCls,
 ) {}
 
+class ServerResolverTestInsightDoc extends by(ServerResolverTestInsight) {}
+
 export const serverResolverTestDatabase = DatabaseRegistry.buildModel(
   "serverResolverTestItem",
   ServerResolverTestInput as unknown as DatabaseCls<InstanceType<typeof ServerResolverTestInput>>,
   ServerResolverTestDoc,
   ServerResolverTestModel,
   ServerResolverTestObject,
-  ServerResolverTestInsight,
+  ServerResolverTestInsightDoc,
   ServerResolverTestFilter,
 );
 

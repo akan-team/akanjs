@@ -8,6 +8,7 @@ import type { AkanChildRole, AkanChildStatus, AkanIpcMessage, AkanMetricsReport,
 import { isTraceEnabled } from "akanjs/signal";
 import { makeAkanChildProxyHeaders } from "./akanAppHeaders";
 import type { BuilderCsrReq, BuilderCsrRes, BuilderMessage, BuilderReq, BuilderRes } from "./artifact";
+import { resolveEncodedSidecar } from "./assetEncoding";
 import { isPortInUseError } from "./lifecycle/portInUse";
 import { RotatingLogWriter } from "./logging/rotatingLogWriter";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
@@ -815,39 +816,15 @@ export class AkanApp {
     const headers = new Headers({ "Content-Type": options.contentType });
     if (options.cacheControl) headers.set("Cache-Control", options.cacheControl);
 
-    const gzipPath = `${filePath}.gz`;
-    if (this.#acceptsGzip(req) && this.#isCompressible(options.contentType)) {
-      const gzipFile = Bun.file(gzipPath);
-      if (await gzipFile.exists()) {
-        const gzipBytes = await gzipFile.bytes();
-        headers.set("Content-Encoding", "gzip");
-        headers.set("Content-Length", String(gzipBytes.byteLength));
-        headers.set("Vary", "Accept-Encoding");
-        return new Response(this.#toArrayBuffer(gzipBytes), { headers });
-      }
+    const sidecar = await resolveEncodedSidecar(req, filePath, options.contentType);
+    if (sidecar) {
+      headers.set("Content-Encoding", sidecar.encoding);
+      headers.set("Content-Length", String(sidecar.bytes.byteLength));
+      headers.set("Vary", "Accept-Encoding");
+      return new Response(sidecar.bytes, { headers });
     }
 
     return new Response(Bun.file(filePath).stream(), { headers });
-  }
-
-  #acceptsGzip(req: Request): boolean {
-    const acceptEncoding = req.headers.get("accept-encoding") ?? "";
-    return /\bgzip\b/.test(acceptEncoding);
-  }
-
-  #isCompressible(contentType: string): boolean {
-    const type = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
-    return (
-      type.startsWith("text/") ||
-      type === "application/javascript" ||
-      type === "application/json" ||
-      type === "application/manifest+json" ||
-      type === "image/svg+xml"
-    );
-  }
-
-  #toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
   }
 
   #safeResolve(baseDir: string, urlPath: string): string | null {

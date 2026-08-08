@@ -3,7 +3,8 @@ import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { type Dayjs, dayjs, ENDPOINT_META, ID } from "akanjs/base";
-import type { SchemaOf } from "akanjs/document";
+import { ConstantRegistry, via } from "akanjs/constant";
+import { assertFilterFitsCrud, DocumentSchema, type SchemaOf } from "akanjs/document";
 import {
   type AkanJob,
   adapt,
@@ -15,6 +16,7 @@ import {
   type WebsocketAdaptor,
 } from "akanjs/service";
 import { internal } from "../../signal/internal";
+import { CascadeRunner } from "./CascadeRunner";
 import { DatabaseResolver } from "./database.resolver";
 import {
   makeEnv,
@@ -150,8 +152,8 @@ const makeFakeStore = () => {
       calls.push({ method: "updateManyByQuery", args: [query, update] });
       return { acknowledged: true, matchedCount: 1, modifiedCount: 1 };
     },
-    async deleteManyByQuery(query: unknown) {
-      calls.push({ method: "deleteManyByQuery", args: [query] });
+    async removeManyByQuery(query: unknown) {
+      calls.push({ method: "removeManyByQuery", args: [query] });
       return { acknowledged: true, matchedCount: 1, modifiedCount: 1 };
     },
     async bulkWrite(operations: unknown) {
@@ -163,7 +165,10 @@ const makeFakeStore = () => {
 
 describe("DatabaseResolver declaration contracts", () => {
   test("turns document declarations into initialized model adaptors", async () => {
-    const DatabaseAdaptor = DatabaseResolver.resolveDatabase(serverResolverTestConstant, serverResolverTestDatabase);
+    const { adaptor: DatabaseAdaptor } = DatabaseResolver.resolveDatabase(
+      serverResolverTestConstant,
+      serverResolverTestDatabase,
+    );
     const fakeDatabase = new FakeSqliteDatabase();
     const instance = new DatabaseAdaptor() as InstanceType<typeof DatabaseAdaptor> & {
       __database: FakeSqliteDatabase;
@@ -258,110 +263,228 @@ describe("DatabaseResolver declaration contracts", () => {
       queries: [{}, { kind: "any", queries: [{ ownerId: "owner-1", category: "news" }] }],
     });
   });
+
+  test("indexes the column a removeWith child is found by", () => {
+    const constantWith = (path: Record<string, unknown>) =>
+      ({
+        full: { cascade: { removeRef: new Map(), removeWith: new Map([[path.key as string, path]]) } },
+      }) as unknown as typeof serverResolverTestConstant;
+    // Without the index the owner's removal scans the whole child table: every non-base field is inside `_doc`.
+    const single = DatabaseResolver.resolveDatabase(
+      constantWith({ key: "agentSession", modelRef: null, refName: "agentSession", typeKey: null, typeValues: [] }),
+      serverResolverTestDatabase,
+    );
+    expect(single.schema.indexes).toContainEqual({ fields: { removedAt: 1, agentSession: 1 } });
+
+    const polymorphic = DatabaseResolver.resolveDatabase(
+      constantWith({ key: "parent", modelRef: null, refName: null, typeKey: "parentType", typeValues: ["a"] }),
+      serverResolverTestDatabase,
+    );
+    expect(polymorphic.schema.indexes).toContainEqual({ fields: { removedAt: 1, parentType: 1, parent: 1 } });
+  });
 });
 
-describe("ServiceResolver cascade", () => {
-  const cascadeConstant = {
-    full: { cascade: { remove: new Map([["cover", serverResolverTestConstant.full]]) } },
-  } as unknown as typeof serverResolverTestConstant;
+const cascadeChildInput = via((f) => ({ label: f(String) }));
+const cascadeChildObject = via(cascadeChildInput, () => ({}));
+const cascadeChildLight = via(cascadeChildObject, ["label"] as const, () => ({}));
+const cascadeChildFull = via(cascadeChildObject, cascadeChildLight, () => ({}));
+const cascadeChildInsight = via(cascadeChildFull, () => ({}));
+const cascadeChildConstant = ConstantRegistry.buildModel(
+  "cascadeChild",
+  cascadeChildInput,
+  cascadeChildObject,
+  cascadeChildFull,
+  cascadeChildLight,
+  cascadeChildInsight,
+  { cascadeChildInput, cascadeChildObject, cascadeChildFull, cascadeChildLight, cascadeChildInsight },
+) as unknown as typeof serverResolverTestConstant;
 
-  const buildCascadingService = (targetRemove: (id: string) => Promise<unknown>) => {
-    class CascadeService extends ServerResolverTestService {}
-    const target = {
-      __remove: targetRemove,
-      __databaseModel: {
-        __remove: async () => {
-          throw new Error("cascade reached the target model directly");
+describe("ServiceResolver cascade", () => {
+  const parentRef = serverResolverTestDatabase.refName;
+
+  const constantOf = (
+    refName: string,
+    cascade: { removeRef?: Map<string, unknown>; removeWith?: Map<string, unknown> },
+  ) =>
+    ({
+      refName,
+      full: { cascade: { removeRef: new Map(), removeWith: new Map(), ...cascade } },
+    }) as unknown as typeof serverResolverTestConstant;
+
+  const childTarget = (hasHook = false) => {
+    const calls: { method: string; arg: unknown }[] = [];
+    const ids = ["child-1", "child-2"];
+    class ChildService {
+      async _postRemove(doc: unknown) {
+        return doc;
+      }
+    }
+    class PlainChildService {}
+    return {
+      calls,
+      srvRef: (hasHook ? ChildService : PlainChildService) as never,
+      service: {
+        __remove: async (id: string) => {
+          calls.push({ method: "__remove", arg: id });
+          const idx = ids.indexOf(id);
+          if (idx >= 0) ids.splice(idx, 1);
+          return { id };
+        },
+        __removeMany: async (query: unknown) => {
+          calls.push({ method: "__removeMany", arg: query });
+          ids.length = 0;
+          return { acknowledged: true, matchedCount: 2, modifiedCount: 2 };
+        },
+        __listIds: async () => [...ids],
+        __databaseModel: {
+          __remove: async () => {
+            throw new Error("cascade reached the target model directly");
+          },
         },
       },
     };
+  };
+
+  const buildCascade = (
+    parentConstant: typeof serverResolverTestConstant,
+    child: ReturnType<typeof childTarget> | null,
+    childConstant?: typeof serverResolverTestConstant,
+  ) => {
+    class CascadeService extends ServerResolverTestService {}
+    const cascade = new CascadeRunner();
+    cascade.register(parentConstant, new DocumentSchema(), CascadeService as never);
+    if (child) cascade.register(childConstant ?? constantOf("cascadeChild", {}), new DocumentSchema(), child.srvRef);
+    cascade.seal(() => child?.service as never);
     const ServiceRef = ServiceResolver.resolveDatabaseService(
-      cascadeConstant,
       serverResolverTestDatabase,
       CascadeService as never,
-      () => target as never,
+      cascade,
     );
     const service = new ServiceRef() as InstanceType<typeof ServiceRef> & {
       __databaseModel: Record<string, (...args: unknown[]) => Promise<unknown>>;
       __remove: (id: string) => Promise<Record<string, unknown>>;
     };
-    return { service, target };
+    return { service, cascade };
   };
 
   test("removes each referenced document through the target's service, not its model", async () => {
-    const removed: string[] = [];
     // Through the service is the whole point: `__remove` is what runs the target's `_postRemove`, and that is
     // where a module puts the side effect the removal has to carry — deleting the stored file, say. Reaching the
     // model instead still empties the row, so nothing looks wrong until the storage bill arrives.
-    const { service } = buildCascadingService(async (id) => {
-      removed.push(id);
-      return { id };
-    });
-    service.__databaseModel = {
-      __remove: async (id) => ({ id, cover: "file-1" }),
-    } as never;
+    const child = childTarget(true);
+    const { service } = buildCascade(
+      constantOf(parentRef, { removeRef: new Map([["cover", cascadeChildFull]]) }),
+      child,
+      cascadeChildConstant,
+    );
+    service.__databaseModel = { __remove: async (id: string) => ({ id, cover: "file-1" }) } as never;
 
     await service.__remove("parent-1");
 
-    expect(removed).toEqual(["file-1"]);
+    expect(child.calls).toEqual([{ method: "__remove", arg: "file-1" }]);
   });
 
   test("removes every id of an array field and skips an empty one", async () => {
-    const removed: string[] = [];
-    const { service } = buildCascadingService(async (id) => {
-      removed.push(id);
-      return { id };
-    });
-    service.__databaseModel = {
-      __remove: async (id) => ({ id, cover: ["file-1", "file-2"] }),
-    } as never;
+    const child = childTarget(true);
+    const { service } = buildCascade(
+      constantOf(parentRef, { removeRef: new Map([["cover", cascadeChildFull]]) }),
+      child,
+      cascadeChildConstant,
+    );
+    service.__databaseModel = { __remove: async (id: string) => ({ id, cover: ["file-1", "file-2"] }) } as never;
     await service.__remove("parent-1");
-    expect(removed).toEqual(["file-1", "file-2"]);
+    expect(child.calls.map((call) => call.arg)).toEqual(["file-1", "file-2"]);
 
-    removed.length = 0;
-    service.__databaseModel = { __remove: async (id) => ({ id, cover: null }) } as never;
+    child.calls.length = 0;
+    service.__databaseModel = { __remove: async (id: string) => ({ id, cover: null }) } as never;
     await service.__remove("parent-2");
-    expect(removed).toEqual([]);
+    expect(child.calls).toEqual([]);
   });
 
-  test("resolves the target service before removing the parent", async () => {
-    const parentRemovals: string[] = [];
-    class MissingTargetService extends ServerResolverTestService {}
-    const ServiceRef = ServiceResolver.resolveDatabaseService(
-      cascadeConstant,
-      serverResolverTestDatabase,
-      MissingTargetService as never,
-      (refName) => {
-        throw new Error(`Service "${refName}" is not registered`);
-      },
+  test("fails to seal when a cascade target is not mounted", () => {
+    const cascade = new CascadeRunner();
+    cascade.register(
+      constantOf(parentRef, { removeRef: new Map([["cover", cascadeChildFull]]) }),
+      new DocumentSchema(),
+      ServerResolverTestService as never,
     );
-    const service = new ServiceRef() as InstanceType<typeof ServiceRef> & {
-      __databaseModel: Record<string, (...args: unknown[]) => Promise<unknown>>;
-      __remove: (id: string) => Promise<unknown>;
-    };
-    service.__databaseModel = {
-      __remove: async (id: string) => {
-        parentRemovals.push(id as string);
-        return { id };
-      },
-    } as never;
+    // Cascading into a module the app never mounted is a misconfiguration. Every service is live by the time the
+    // plan is sealed, so saying so at boot beats discovering it half-way through the first removal.
+    expect(() => cascade.seal(() => null as never)).toThrow('removes "cascadeChild", which this app does not mount');
+  });
 
-    await expect(service.__remove("parent-1")).rejects.toThrow("is not registered");
-    // Cascading into a module the app never mounted is a misconfiguration; failing after the parent is gone
-    // would leave it half-removed with nothing to retry from.
-    expect(parentRemovals).toEqual([]);
+  test("removes the children that name the removed document as their owner", async () => {
+    const child = childTarget(true);
+    const { service } = buildCascade(
+      constantOf(parentRef, {}),
+      child,
+      constantOf("cascadeChild", {
+        removeWith: new Map([
+          ["parent", { key: "parent", modelRef: null, refName: parentRef, typeKey: null, typeValues: [] }],
+        ]),
+      }),
+    );
+    service.__databaseModel = { __remove: async (id: string) => ({ id }) } as never;
+
+    await service.__remove("parent-1");
+
+    expect(child.calls).toEqual([
+      { method: "__remove", arg: "child-1" },
+      { method: "__remove", arg: "child-2" },
+    ]);
+  });
+
+  test("removes children in one query when the target carries no removal side effect", async () => {
+    const child = childTarget();
+    const { service } = buildCascade(
+      constantOf(parentRef, {}),
+      child,
+      constantOf("cascadeChild", {
+        removeWith: new Map([
+          ["parent", { key: "parent", modelRef: null, refName: parentRef, typeKey: null, typeValues: [] }],
+        ]),
+      }),
+    );
+    service.__databaseModel = { __remove: async (id: string) => ({ id }) } as never;
+
+    await service.__remove("parent-1");
+
+    expect(child.calls).toEqual([{ method: "__removeMany", arg: { parent: "parent-1" } }]);
+  });
+
+  test("keeps the owner type in the query of a polymorphic child", async () => {
+    const child = childTarget();
+    const { service } = buildCascade(
+      constantOf(parentRef, {}),
+      child,
+      constantOf("cascadeChild", {
+        removeWith: new Map([
+          [
+            "owner",
+            { key: "owner", modelRef: null, refName: null, typeKey: "ownerType", typeValues: [parentRef, "unmounted"] },
+          ],
+        ]),
+      }),
+    );
+    service.__databaseModel = { __remove: async (id: string) => ({ id }) } as never;
+
+    await service.__remove("parent-1");
+
+    expect(child.calls).toEqual([{ method: "__removeMany", arg: { owner: "parent-1", ownerType: parentRef } }]);
   });
 });
 
 describe("ServiceResolver declaration contracts", () => {
   test("patches database services with CRUD, filter, and hook-chain implementations", async () => {
+    const cascade = new CascadeRunner();
+    cascade.register(serverResolverTestConstant, new DocumentSchema(), ServerResolverTestService);
+    cascade.seal((refName) => {
+      throw new Error(`unexpected cascade lookup: ${refName}`);
+    });
     const ServiceRef = ServiceResolver.resolveDatabaseService(
-      serverResolverTestConstant,
       serverResolverTestDatabase,
       ServerResolverTestService,
-      (refName) => {
-        throw new Error(`unexpected cascade lookup: ${refName}`);
-      },
+      cascade,
     );
     const service = new ServiceRef() as InstanceType<typeof ServiceRef> & {
       __databaseModel: Record<string, (...args: unknown[]) => Promise<unknown>>;
@@ -371,6 +494,10 @@ describe("ServiceResolver declaration contracts", () => {
       existsInCategory: (...args: unknown[]) => Promise<unknown>;
       queryInCategory: (...args: unknown[]) => unknown;
       getServerResolverTestItem: (id: string) => Promise<unknown>;
+      removeInCategory: (...args: unknown[]) => Promise<unknown>;
+      removeOneInCategory: (...args: unknown[]) => Promise<unknown>;
+      updateInCategory: (...args: unknown[]) => { set: (update: unknown) => Promise<unknown> };
+      updateOneInCategory: (...args: unknown[]) => { set: (update: unknown) => Promise<unknown> };
     };
     const databaseCalls: { method: string; args: unknown[] }[] = [];
     service.__databaseModel = new Proxy(
@@ -415,6 +542,61 @@ describe("ServiceResolver declaration contracts", () => {
       queries: [{ category: "news" }, { removedAt: { kind: "op", op: "empty" } }],
     });
     expect(await service.getServerResolverTestItem(validId)).toEqual({ id: validId, title: "loaded" });
+  });
+
+  test("generates a query-level write per filter, with the patch on a terminal set()", async () => {
+    const cascade = new CascadeRunner();
+    cascade.register(serverResolverTestConstant, new DocumentSchema(), ServerResolverTestService);
+    cascade.seal(() => null as never);
+    const ServiceRef = ServiceResolver.resolveDatabaseService(
+      serverResolverTestDatabase,
+      ServerResolverTestService,
+      cascade,
+    );
+    const service = new ServiceRef() as InstanceType<typeof ServiceRef> & {
+      __databaseModel: Record<string, (...args: unknown[]) => Promise<unknown>>;
+      removeInCategory: (...args: unknown[]) => Promise<unknown>;
+      removeOneInCategory: (...args: unknown[]) => Promise<unknown>;
+      updateInCategory: (...args: unknown[]) => { set: (update: unknown) => Promise<unknown> };
+      updateOneInCategory: (...args: unknown[]) => { set: (update: unknown) => Promise<unknown> };
+    };
+    const calls: { method: string; args: unknown[] }[] = [];
+    service.__databaseModel = new Proxy(
+      {},
+      {
+        get:
+          (_target, prop: string) =>
+          async (...args: unknown[]) => {
+            calls.push({ method: prop, args });
+            return { acknowledged: true, matchedCount: 1, modifiedCount: 1 };
+          },
+      },
+    );
+    const query = { kind: "all", queries: [{ category: "news" }, { removedAt: { kind: "op", op: "empty" } }] };
+
+    await service.removeInCategory("news");
+    expect(calls.at(-1)).toEqual({ method: "__removeMany", args: [query] });
+    await service.removeOneInCategory("news");
+    expect(calls.at(-1)).toEqual({ method: "__removeOne", args: [query] });
+    // The patch lands on `set()`, so it can never be mistaken for an omitted trailing filter arg.
+    await service.updateInCategory("news").set({ title: "Beta" });
+    expect(calls.at(-1)).toEqual({ method: "__updateMany", args: [query, { title: "Beta" }] });
+    await service.updateOneInCategory("news").set({ title: "Beta" });
+    expect(calls.at(-1)).toEqual({ method: "__updateOne", args: [query, { title: "Beta" }] });
+    // Building the chain touches nothing until `set()` runs.
+    const pending = service.updateInCategory("news");
+    expect(calls.at(-1)?.method).toBe("__updateOne");
+    await pending.set({ title: "Gamma" });
+    expect(calls.at(-1)).toEqual({ method: "__updateMany", args: [query, { title: "Gamma" }] });
+  });
+
+  test("refuses a filter keyed after its own model", () => {
+    // Filter methods are assigned after CRUD, so this collision would silently swap the single-document
+    // remove/update for a query-level one that fires no hooks — and therefore no cascade.
+    expect(() => assertFilterFitsCrud("chat", "chat", "Chat")).toThrow(
+      'Filter "chat" on "chat" generates removeChat/updateChat',
+    );
+    expect(() => assertFilterFitsCrud("chat", "inRoom", "Chat")).not.toThrow();
   });
 });
 

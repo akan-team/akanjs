@@ -54,6 +54,10 @@ that looks wrong; do not "fix" it back.
   `#private` remains the house style everywhere under `srvkit/`, including `adapt()` adapter classes.
 - **No `console.log` / `console.debug`.** Only `assert`, `error`, `info`, and `warn` are allowed. Server code uses
   the injected `this.logger.*` or `new Logger("ClassName")`.
+- **Never write a `//!` marker in browser-reachable code** — `ui/`, `webkit/`, `common/`, `page/**/*.tsx`,
+  `*.constant.ts`, `*.store.ts`, and the five module component suffixes (`no-bang-comment-in-client.grit`). Bun
+  classifies `//!` and `/*!` as legal comments and keeps them through minification, so the note ships to every
+  visitor. Use `// FIXME:` there; `//!` stays legal in server, `srvkit/`, and CLI files.
 - **Never redeclare a generated CRUD endpoint name** in `*.signal.ts` (`no-redeclare-predefined-endpoint.grit`).
 - **No deep imports past a barrel** (`no-deep-internal-import.grit`). Cross-module constant references such as
   `../map/map.constant` are the sanctioned exception.
@@ -115,7 +119,9 @@ Do not narrate code. Do document the thing the code cannot say. Both halves are 
   1. `TODO` — unfinished work that must be tracked in-code
   2. `FIXME` — known broken or incorrect behavior that must be fixed
   3. `XXX` — dangerous / surprising hazard that a reader must not miss
-  4. `//!` — disabled or must-fix code
+  4. `//!` — disabled or must-fix code. **Server, `srvkit/`, and CLI files only.** Bun's bundler treats `//!`
+     (and `/*!`) as a legal comment and keeps it through minification, so in browser-reachable code the note
+     ships verbatim to every visitor. Use `// FIXME:` there instead; `no-bang-comment-in-client.grit` enforces it.
   5. `//?` — an explanatory aside
   6. `//*` — a design note
   7. Deletion caution — warn why removing a line or block would break something non-obvious
@@ -149,6 +155,96 @@ Do not narrate code. Do document the thing the code cannot say. Both halves are 
 - In domain UI the boundary is mechanical, not a judgment call: `Template`, `Zone`, and `Util` are always client components with `"use client"` on line 1; `Unit` and `View` are always server components and never carry the directive.
 - Preserve established domain file roles such as `.document.ts`, `.service.ts`, `.store.ts`, `.constant.ts`, and `.client.ts`.
 - When unsure, inspect nearby files in the same app or package before introducing a new boundary pattern.
+
+## SSR First — Server Rendering Is The Default
+
+Akan is SSR-first. Every JSX element that renders on the server ships as HTML and costs nothing to hydrate;
+every element behind `"use client"` ships twice — as markup and as bundled JS that must re-run in the browser.
+The boundary is not about which file *may* be client, it is about **how little** ends up on the client side.
+
+**The default is server. `"use client"` is a cost you justify per component, not a habit.** A component earns the
+directive only by using a client-only capability: a React hook, a JSX event handler, the store (`st.use.*` /
+`st.do.*`), a browser global, or a client-only third-party package. Rendering markup, reading a param, calling
+`l()`, and mapping over data are all server work.
+
+Measure before and after with `akan quality ssr` (`--format json` for tooling). It prints the server render share
+per app and lib — server-rendered JSX elements over total — and the SSR warnings below. Treat **50% server share
+as the floor** for an app or lib and a **falling share as a regression**: if a change moves markup to the client,
+say why in the PR or move it back.
+
+### What `akan quality ssr` Flags
+
+| Rule | Means |
+|---|---|
+| `akan.ssr.unnecessary-use-client` | The directive is there but nothing in the file needs it. Delete it. |
+| `akan.ssr.client-static-component` | A component in a client file renders real markup with zero client-only capability — pure server work sitting in the bundle. |
+| `akan.ssr.client-static-markup` | A large subtree wraps one or two interactive touches. Split it: interaction stays client, markup goes server. |
+| `akan.ssr.client-mount-load` | A `useEffect(…, [])` loads server data. The route can fetch it before the first byte. |
+| `akan.ssr.module-missing-server-view` | A module renders only from `Template`/`Zone`/`Util` and has no `Unit`/`View` at all. |
+| `akan.ssr.template-client-state` | A `Template` holds form state in `useState` instead of the store. |
+
+A third-party client package or an `index_.tsx` `lazy()` boundary is a legitimate reason for the directive and is
+not flagged. Interaction-driven `fetch.*` (a lookup inside `onClick`) is not flagged either — only mount-time loads
+are, because those are the ones the server could have done.
+
+### Server-Side Implementation Playbook
+
+**① Wrap the interaction, not the UI.** The smallest useful client component is a shell that adds one behaviour and
+renders `children` untouched. The children stay server components, so the markup inside them never reaches the
+bundle. `libs/shared/ui/Only/User.tsx` is the shape: it reads auth state on the client and returns `{children}`.
+
+```tsx
+"use client";
+export const ClickWrapper = ({ children, onPick }: ClickWrapperProps) => (
+  <div onClick={onPick}>{children}</div>
+);
+```
+
+**② Split compound components so panels stay on the server.** A tab, accordion, or disclosure needs client state
+only for *which* part is visible — never for what the parts contain. Split into a context provider plus menu and
+panel pieces, and take panel content as `children`. `Tab` / `Tab.Menus` / `Tab.Menu` / `Tab.Panel` in `akanjs/ui`
+is exactly this: only the provider and the menu hold state, and `<Tab.Panel>` renders its children as-is, so a
+server `Unit`/`View` passed in stays server-rendered. Never reach for one `"use client"` file with a mode
+`useState` and every panel body inlined.
+
+**③ Sync state instead of fetching it.** A server component cannot hold state, so render the initial data on the
+server and hand it across the boundary as a serializable object. That is what `init` / `view` props are: the route
+calls `fetch.initXInY(...)` / `fetch.viewX(...)`, passes the result into a `Zone`, and `Load.Units` / `Load.View`
+hydrate the store from it. Never replace that with a `useEffect(…, [])` that fetches on mount — it renders an empty
+shell, hydrates, then round-trips for data the server already had.
+
+**④ Push the boundary down to the leaf that needs it.** When a `Zone` reads the store, it should hold *zero*
+markup and delegate to a server `View`. `User.Zone.Self` is one line — `st.use.self()` into
+`<User.View.General user={self} />` — so the whole detail surface renders server-side wherever a route uses the
+`View` directly.
+
+**⑤ Hand the promise across, not the awaited value.** `ClientInit` / `ClientView` are `PromiseOrObject<T>`, so a
+route may pass an unawaited `fetch.initX(...)`; `Load.*` renders a skeleton and resolves it. `await` in the route
+blocks the shell for data the page needs immediately; passing the promise streams the rest. Independent fetches
+still go through one `Promise.all`.
+
+**⑥ Use named `ReactNode` slots, not just `children`.** A client shell can take several server-rendered subtrees:
+`Layout.Navbar` accepts `title`, `back`, `left`, `right`, and `children`, so a client navbar composes server
+content in five places instead of absorbing it.
+
+**⑦ Let the server do the derived work.** Display and predicate logic belongs on `Light<Model>` (`isNew()`,
+`canWrite(user?)`, `formatTimes()`), and enum→class lookups belong in a module-scope `as const` map. Both sides
+call the same method, so the server can render the result — a client component that exists only to compute a label
+is markup in the wrong place.
+
+**⑧ Gate auth on the server.** `getSelf({ unauthorize: "/signin" })` in `_layout.tsx` redirects before any HTML is
+sent. A client-side auth check costs a hydration round-trip and flashes the wrong UI first.
+
+**⑨ Prefer CSS over client state for pure visibility.** Toggling with a `data-*` attribute plus `group-data-[…]`
+variants (see `libs/util/ui/Grid/*`) or with `<details>`/`<summary>` keeps both branches server-rendered. Reach for
+`useState` when the state is real, not when a variant would do.
+
+**⑩ Keep the heavy island out of the first load.** A large client-only widget goes behind the
+`ui/<Folder>/index_.tsx` + `lazy()` pair so the server renders the page around it. `usePage()` and `l()` work in
+server components, so translation never forces a boundary.
+
+Full version with code, the `Tab` composition example, and a review checklist: `get_guideline` with `ssrRule`, or
+`akan guideline show ssrRule`.
 
 ## React Components And Styling (`**/*.tsx`)
 
@@ -199,7 +295,12 @@ meaning is not obvious a short trailing comment.
 with `sort: {}` always present. Chain methods validate → mutate → `return this`, and never `save()`; the caller saves,
 so chains compose (`org.removeUser(id).removeInvite(id).save()`). Put a one-line comment above each stating the
 transition. Atomic counters live on the Model class with the updater-callback form, returning `!!modifiedCount`.
-Indexes and derived totals go in `static override _onSchema`, not in the service.
+Indexes and derived totals go in `static override _onSchema`, not in the service. **Removal is always soft** — the
+model facade's `removeMany(query)` and the store's `removeManyByQuery` stamp `removedAt` like `remove(id)` does; the
+framework has no hard delete for a model table, and `delete` is deliberately left unused so it can mean one later.
+The facade keeps `Many`/`One` spelled out on its writes (`updateOne` / `updateMany` / `removeOne` / `removeMany`):
+a bare `update`/`remove` would read like the document-path `update(id)` / `doc.remove()` while hitting every match.
+Only the count was shortened — `count(query)`, with `countDocuments` kept as `@deprecated`.
 
 **`<model>.service.ts`** — keep methods to a few lines: load → chain → `return await ….save()`. Write `return await`
 explicitly in tail position; do not "optimize" it away. Side effects belong in `override async _preUpdate` /
@@ -271,6 +372,20 @@ workflow changes.
 - Apply ordering/paging via the store `init` fetch option instead: `initX(..., { sort, page, limit })` (`pkgs/akanjs/fetch/fetchType/sliceFetch.type.ts`).
 - Generated list accessors like `listBy(...)` return `Promise<Doc[]>`. For a chainable builder (`.sort().skip().limit().select()`) use the model facade's `findMany`/`findOne` (`FindManyChain`, `pkgs/akanjs/document/into.ts`).
 - **Hydrated vs raw:** server queries return hydrated `cnst.<Model>` instances (with `set`/`save`/`refresh`); client fetch results are raw `GetStateObject` plain data (functions stripped, `pkgs/akanjs/base/types.ts`).
+- Every filter generates fourteen methods: `list` · `listIds` · `find` · `findId` · `pick` · `pickId` · `exists` ·
+  `count` · `insight` · `query` · **`remove`** · **`removeOne`** · **`update`** · **`updateOne`**. The last four are
+  query-level writes — one atomic UPDATE, **no hooks**, and therefore no `_postRemove` and no cascade. Use them on a
+  model that carries no removal side effect; otherwise remove documents one at a time.
+- **`update<Filter>` / `updateOne<Filter>` are chains, not calls:** `await updateInRoot(rootId).set({ status:
+  "archived" })`. The patch cannot trail the filter args — a filter's own args may be optional and no tuple type
+  puts a required element after those — so it lands on a terminal `.set()`, mirroring the `UPDATE … SET …` it
+  compiles to. Building the chain touches nothing; only `.set()` runs a query.
+- `removeOne` / `updateOne` hit the **newest** match — the subquery they compile to is ordered `createdAt` descending
+  and there is no way to change that. They also report only counts, never which row they touched, so they are for
+  "there is at most one of these", not for claiming the next item off a queue. Pass a query that matches one row.
+- **A filter may not be keyed after its own model.** Filter methods are assigned after CRUD, so a filter `chat` on
+  model `chat` would silently swap the single-document `removeChat`/`updateChat` for a hookless query-level one. It
+  throws at boot instead (`assertFilterFitsCrud`).
 
 ### Text Search In A Filter — `q.search()`
 
@@ -388,23 +503,44 @@ Conventions that hold for both shapes:
 
 ### Cascade Remove — the `cascade` option
 
-- A relation field removes what it points at with `field(File, { cascade: "remove" })`. It works on an array too
-  (`images: field([File], { cascade: "remove" })`), and only on a relation: a primitive, an `ID`, and a scalar each
-  fail the class build, because none of them names a document the framework could remove.
-- **The cascade goes through the target's service, never its model.** That is what runs the target's `_postRemove`,
-  which is where a module puts the side effect the removal has to carry — `FileService._postRemove` deletes the
-  stored blob/object there. Reaching the model instead still empties the row, so nothing looks broken until the
-  storage bill arrives.
-- Target services resolve **lazily, at removal time**, so a cascade adds no boot-order edge between two services and
-  a cascade cycle cannot fail the boot. They resolve *before* the parent is touched, so a model cascading into a
-  module the app never mounted fails with nothing half-removed.
+**The value names the direction, and getting it wrong is a data loss.** The two actions can sit on the same field
+shape, so `cascade` never means "related" — it means one of exactly these:
+
+- `removeRef` — *when I am removed, remove what this field points at.* Declared on the relation the owner holds:
+  `image: field(File, { cascade: "removeRef" })`, arrays included. Only a relation accepts it; a primitive, a bare
+  `ID`, and a scalar each fail the class build, because none of them names a document to remove.
+- `removeWith` — *when what this field points at is removed, remove me.* Declared on the child's own reference to
+  its owner, so the owner never learns about its children and a lib model can be extended by an app's. Three forms:
+  a relation (`agentSession: field(AgentSession, { cascade: "removeWith" })`), an id with `ref`
+  (`field(ID, { ref: "agentSession", cascade: "removeWith" })`), or a polymorphic id with `refPath`
+  (`field(ID, { refPath: "parentType", cascade: "removeWith" })`). An array, a Map, `ref` together with `refPath`,
+  and a field naming no owner each fail the class build.
+- **A `refPath` must name an `enumOf` field.** A free-form owner type is unknowable at build time, so every model's
+  removal would have to sweep the polymorphic table on the chance it is the owner. The enum names the candidates and
+  the reverse index reaches only them.
+- **A cascade goes through the target's service, never its model** — unless it provably makes no difference. The
+  service path is what runs the target's `_postRemove`, which is where a module puts the side effect the removal has
+  to carry (`FileService._postRemove` deletes the stored blob there).
+- **Bulk is decided at boot, per target model, for both directions.** When the target has no `remove` schema hook, no
+  `_pre`/`_postRemove` (its own or a lib's), no cascade of its own, and no children, one `removeManyByQuery` leaves
+  exactly the rows the loop would, so the framework takes it. Adding a `_postRemove` to that model silently flips it
+  back to one document at a time — the boot log (`info` summary, `verbose` per edge) is the only place that shows.
+- **The plan is sealed after every service is live**, so a `listenPost("remove")` registered in `onInit` still counts
+  and a `removeRef` target the app never mounted fails the boot rather than the first removal. An unmounted
+  `removeWith` owner fails the boot too; an unmounted `refPath` candidate only warns, since that list spans optional
+  modules by design.
 - **Nothing checks whether another document still references the same target.** `File` in particular is deduped by
-  `origin`, so two parents can share one row; declaring `cascade` says the field owns its target exclusively, and
+  `origin`, so two parents can share one row; declaring `removeRef` says the field owns its target exclusively, and
   that judgement is the declaring model's to make.
 - Removal is soft (`removedAt`) but the storage delete a `_postRemove` performs is not — a cascade is not
-  restorable. Weigh that before adding it to a model users can undelete.
-- **Query-level removes fire no hooks and therefore no cascade.** `deleteManyByQuery` / `updateManyByQuery` stamp
+  restorable, and reviving the owner does not revive what went with it.
+- A `removeWith` declaration **auto-creates its index** (`{ removedAt, fk }`, or `{ removedAt, typeKey, fk }` when
+  polymorphic). Every non-base field lives in the `_doc` JSON column, so the lookup would otherwise scan the table
+  on every owner removal.
+- **Query-level removes fire no hooks and therefore no cascade.** `removeManyByQuery` / `updateManyByQuery` and the generated `remove<Filter>` / `update<Filter>` stamp
   `removedAt` in one atomic UPDATE, so nothing downstream runs. Remove one document at a time when it cascades.
+- Cascades are **idempotent**: `removedAt IS NULL` is ANDed into every query-level write, so a retry after a partial
+  failure re-stamps nothing. Cycles are cut by a visited set carried down the whole chain, with a depth cap of 16.
 
 ## Akan Page Routing (`apps/**/page/**`)
 
@@ -452,7 +588,10 @@ export const pageConfig = { transition: "stack" } satisfies PageConfig;
 ## Akan Sync Conventions (`apps/**`, `libs/**`)
 
 - `apps/<appName>` root may only contain these files: `AGENTS.md`, `CLAUDE.md`, `akan.app.json`, `akan.config.ts`, `capacitor.config.ts`, `client.ts`, `main.ts`, `package.json`, `server.ts`, `tsconfig.json`.
-- `apps/<appName>` root may only contain these folders: `.akan`, `android`, `common`, `env`, `ios`, `lib`, `page`, `plugin`, `private`, `public`, `script`, `srvkit`, `ui`, `webkit`.
+- `apps/<appName>` root may only contain these folders: `.akan`, `android`, `common`, `env`, `ios`, `lib`, `mobile`, `page`, `plugin`, `private`, `public`, `script`, `secrets`, `srvkit`, `ui`, `webkit`.
+- That allowlist has one source — `pkgs/@akanjs/devkit/workspaceLayout.ts`. `akan sync` (error), `akan doctor`
+  (diagnostic), and `akan quality scan` (warning) all read it, so add a new root entry there and mirror it into this
+  list, never into one of the three call sites.
 - `akan sync` maintains a scoped agent guide per app/lib: `apps/<app>/AGENTS.md` / `libs/<lib>/AGENTS.md`. The
   section between the `akan:agent` markers (the `## Recipes In Scope` index) is generated — do not hand-edit it;
   content outside the markers is yours. `akan lint` fails when the generated section is stale.
@@ -578,6 +717,8 @@ verified by `akan lint`. When working inside an app or lib, consult that file be
 - `akan test <app-or-lib-or-pkg>`
 - `akan build <app-name>`
 - `akan doctor --strict --format json`
+- `akan quality scan [--format json]`
+- `akan quality ssr [--format json]`
 
 ## Framework Guide
 
@@ -623,6 +764,8 @@ When a request implies a distinct look and feel, do not stop at colors — custo
 1. `bun run akan lint <appName>` — Tailwind class order, `Err`, `console`, `#private` scope, unused imports.
 2. `bun run akan typecheck <appName>` — server/client boundary violations.
 3. `bun run akan sync <appName>` if you added, renamed, or deleted any file.
-4. Re-read the file you wrote against its section above.
-5. Did you add a comment? Delete it unless it documents an external constraint or a security decision.
-6. Did behavior or an invariant change? Update the module's `*.abstract.md`.
+4. Did you write or change a `.tsx` file? `bun run akan quality ssr` — did the server share hold, and did you add
+   a `"use client"` you cannot justify?
+5. Re-read the file you wrote against its section above.
+6. Did you add a comment? Delete it unless it documents an external constraint or a security decision.
+7. Did behavior or an invariant change? Update the module's `*.abstract.md`.

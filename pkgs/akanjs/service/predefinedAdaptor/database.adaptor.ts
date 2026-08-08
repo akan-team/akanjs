@@ -95,9 +95,12 @@ export interface DocumentStore {
     query: DocumentQuery,
     update: DocumentUpdateInput,
   ): Promise<{ acknowledged: boolean; matchedCount: number; modifiedCount: number }>;
-  deleteManyByQuery(
+  removeManyByQuery(
     query: DocumentQuery,
   ): Promise<{ acknowledged: boolean; matchedCount: number; modifiedCount: number }>;
+  removeOneByQuery(
+    query: DocumentQuery,
+  ): Promise<{ acknowledged: boolean; matchedCount: number; modifiedCount: number; upsertedId: string | null }>;
   bulkWrite(
     operations: { updateOne: { filter: DocumentQuery; update: DocumentUpdateInput; upsert?: boolean } }[],
   ): Promise<{ acknowledged: boolean; matchedCount: number; modifiedCount: number; upsertedId: string | null }>;
@@ -116,7 +119,7 @@ export interface DocumentStore {
   exists(query?: DocumentQuery): Promise<string | null>;
   count(query?: DocumentQuery): Promise<number>;
   insight(query?: DocumentQuery): Promise<any>;
-  hydrate(data: DocumentRecord, originalData?: DocumentRecord): any;
+  hydrate(data: DocumentRecord, originalData?: DocumentRecord, options?: { track?: boolean }): any;
 }
 
 export interface SqlResultRows<Row = Record<string, unknown>> {
@@ -977,6 +980,17 @@ class UpdateCompiler {
   }
 }
 
+/**
+ * Per-document modification state, attached only when a document is hydrated for writing.
+ * Non-enumerable so `{ ...doc }` in `toRow` and `Object.entries` in `sanitizeJson` never see it.
+ */
+const MODIFICATION_STATE = Symbol("akan.document.modificationState");
+
+interface ModificationState {
+  isNew: boolean;
+  original: Record<string, unknown>;
+}
+
 export class SqlDocumentStore {
   readonly schema: DocumentSchema;
   readonly table: string;
@@ -984,6 +998,7 @@ export class SqlDocumentStore {
   readonly updateCompiler: UpdateCompiler;
   #insertStmt: AkanSqlStatement | null = null;
   #readStmtCache = new Map<string, AkanSqlStatement>();
+  #docPrototype: object | null = null;
 
   constructor(
     private readonly owner: DocumentDatabaseOwner,
@@ -1105,9 +1120,16 @@ export class SqlDocumentStore {
     return { acknowledged: true, matchedCount: changes, modifiedCount: changes };
   }
 
-  async deleteManyByQuery(query: DocumentQuery) {
-    // Query-level soft delete is a single atomic UPDATE stamping `removedAt` (bare value = set); it fires no hooks.
+  async removeManyByQuery(query: DocumentQuery) {
+    // Query-level remove is a single atomic UPDATE stamping `removedAt` (bare value = set); it fires no hooks.
+    // "remove", not "delete": the row survives, and `delete` stays free to mean an actual DELETE some day.
     return this.updateManyByQuery(query, { removedAt: dayjs() });
+  }
+
+  async removeOneByQuery(query: DocumentQuery) {
+    // "One" is the newest match: `updateOneByQuery` orders its subquery `createdAt` descending. The caller cannot
+    // pick, and the result carries counts rather than an id, so this is for "at most one of these" — not a queue.
+    return this.updateOneByQuery(query, { removedAt: dayjs() });
   }
 
   // Prepends the mandatory `updatedAt = now` stamp to the compiled assignments so every atomic write bumps it.
@@ -1150,7 +1172,7 @@ export class SqlDocumentStore {
       const rows = await this.prepareReadStmt(
         `SELECT ${this.projectionSql(projection)} FROM ${quoteIdent(this.table)}${join} WHERE ${where} ${order}${limit}${offset}`,
       ).all<ProjectedSqliteDocumentRow>(...args);
-      return rows.map((row) => this.hydrate(this.fromProjectedRow(row, projection)));
+      return rows.map((row) => this.hydrate(this.fromProjectedRow(row, projection), undefined, { track: false }));
     }
     // A bare `*` would also drag the join subquery's `rid`/`score` into the row, so the star is qualified once a
     // join is present.
@@ -1158,7 +1180,7 @@ export class SqlDocumentStore {
     const rows = await this.prepareReadStmt(
       `SELECT ${star} FROM ${quoteIdent(this.table)}${join} WHERE ${where} ${order}${limit}${offset}`,
     ).all<SqliteDocumentRow>(...args);
-    return rows.map((row) => this.hydrate(this.fromRow(row)));
+    return rows.map((row) => this.hydrate(this.fromRow(row), undefined, { track: false }));
   }
 
   async findIds(
@@ -1615,49 +1637,87 @@ export class SqlDocumentStore {
     return result;
   }
 
-  hydrate(data: DocumentRecord, originalData: DocumentRecord = data) {
-    const store = this;
-    const original = JSON.parse(JSON.stringify(sanitizeJson(originalData) ?? {})) as Record<string, unknown>;
+  /**
+   * `track` buys `isModified()` and costs a deep clone of the row, so it is decided per call site rather than
+   * paid everywhere. Only the read paths (`find`, and the projected read behind it) opt out — that clone was 42%
+   * of a list query, and a listed document is never the one a save hook runs on. Everything else keeps it, so an
+   * external caller of `hydrate` sees no change.
+   */
+  hydrate(data: DocumentRecord, originalData: DocumentRecord = data, { track = true }: { track?: boolean } = {}) {
     const isNew = !originalData.id;
     const hydratedData = isNew ? this.prepareDocument(data) : data;
-    const doc = Object.assign(Object.create(this.database.doc.prototype), hydratedData);
-    Object.defineProperties(doc, {
+    const doc = Object.assign(Object.create(this.#documentPrototype()), hydratedData);
+    if (!track) return doc;
+    Object.defineProperty(doc, MODIFICATION_STATE, {
+      value: {
+        isNew,
+        // Cloned rather than referenced: `doc` shares every nested object with `hydratedData`, so an in-place
+        // `doc.tags.push(...)` would otherwise mutate the thing it is being compared against.
+        original: JSON.parse(JSON.stringify(sanitizeJson(originalData) ?? {})) as Record<string, unknown>,
+      } satisfies ModificationState,
+    });
+    return doc;
+  }
+
+  /**
+   * One prototype per store instead of six closures per document. It extends the model's own document prototype,
+   * so declared chain methods and `instanceof` are unaffected, and every method here is non-enumerable exactly as
+   * the previous per-document `defineProperties` made them.
+   */
+  #documentPrototype() {
+    if (this.#docPrototype) return this.#docPrototype;
+    const store = this;
+    this.#docPrototype = Object.create(this.database.doc.prototype, {
       set: {
-        value(patch: DocumentRecord) {
+        value(this: DocumentRecord, patch: DocumentRecord) {
           Object.assign(this, patch);
           return this;
         },
       },
       save: {
-        async value() {
-          return this.id ? store.update(this.id, this) : store.create(this);
+        async value(this: DocumentRecord) {
+          return this.id ? store.update(this.id as string, this) : store.create(this);
         },
       },
       refresh: {
-        async value() {
-          Object.assign(this, await store.pickById(this.id));
+        async value(this: DocumentRecord) {
+          Object.assign(this, await store.pickById(this.id as string));
           return this;
         },
       },
       isModified: {
-        value(field?: string) {
-          if (isNew) return true;
-          if (!field) return JSON.stringify(sanitizeJson(this)) !== JSON.stringify(original);
-          return JSON.stringify(sanitizeJson(this[field])) !== JSON.stringify(original[field]);
+        value(this: DocumentRecord & { [MODIFICATION_STATE]?: ModificationState }, field?: string) {
+          const state = this[MODIFICATION_STATE];
+          if (!state) throw new Error(SqlDocumentStore.#untrackedModificationMessage(store.table));
+          if (state.isNew) return true;
+          if (!field) return JSON.stringify(sanitizeJson(this)) !== JSON.stringify(state.original);
+          return JSON.stringify(sanitizeJson(this[field])) !== JSON.stringify(state.original[field]);
         },
       },
       toJSON: {
-        value() {
+        value(this: DocumentRecord) {
           return sanitizeJson(this);
         },
       },
       toObject: {
-        value() {
+        value(this: DocumentRecord) {
           return sanitizeJson(this);
         },
       },
-    });
-    return doc;
+    }) as object;
+    return this.#docPrototype;
+  }
+
+  // Thrown rather than answered with a guess: both answers are wrong in a way that is silent. `false` skips work
+  // that was needed, `true` redoes work that was not — `admin.document.ts` hashes an already-hashed password on
+  // that branch. A save hook always runs on a written document, which is tracked, so this only fires on a
+  // document that came straight out of a read.
+  static #untrackedModificationMessage(table: string) {
+    return (
+      `isModified() is unavailable on this ${table} document: it was loaded through a read query, which does not ` +
+      `snapshot the row. Call it inside a save hook, or re-load the document through the write path (\`save()\`, ` +
+      `\`update()\`) before comparing.`
+    );
   }
 
   private async runHooks(

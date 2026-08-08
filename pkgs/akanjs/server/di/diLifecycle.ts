@@ -21,7 +21,7 @@ import { SignalRegistry } from "../../signal/signalRegistry";
 import type { AkanLib, DatabaseModule, ScalarModule, ServiceModule } from "../akanLib";
 import { createDefaultAkanOption } from "../akanOption";
 import type { WebProxyRegistration } from "../proxy";
-import { DatabaseResolver, ServiceResolver, SignalResolver } from "../resolver";
+import { CascadeRunner, DatabaseResolver, ServiceResolver, SignalResolver } from "../resolver";
 import type { SignalRoutes, WebsocketRoutes } from "../types";
 import { getPredefinedAdaptor, predefinedAdaptorRole } from "./predefinedAdaptor";
 import { collectAdaptors, resolveAdaptorHierarchy } from "./resolveAdaptorHierarchy";
@@ -63,6 +63,7 @@ export class DiLifecycle {
   readonly disabledModules = new Map<string, string>();
   readonly #predefinedAdaptor;
   readonly #predefinedAdaptorRole = predefinedAdaptorRole;
+  readonly #cascade = new CascadeRunner();
 
   /** Read-only view of the resolved module maps, for tooling that needs to describe the container. */
   get modules(): {
@@ -122,8 +123,9 @@ export class DiLifecycle {
       this.#service.set(refName, module as ServiceModule);
     });
     this.#database.forEach((mod) => {
-      const databaseAdaptor = DatabaseResolver.resolveDatabase(mod.constant, mod.database);
-      this.#adaptor.set(databaseAdaptor.refName, databaseAdaptor);
+      const { adaptor, schema } = DatabaseResolver.resolveDatabase(mod.constant, mod.database);
+      this.#adaptor.set(adaptor.refName, adaptor);
+      this.#cascade.register(mod.constant, schema, mod.service.srv);
     });
     const services = [
       ...[...this.#service.values()].map((mod) => mod.service.srv),
@@ -460,14 +462,7 @@ export class DiLifecycle {
             if (serviceCls.type === "database") {
               const databaseModule = this.#database.get(serviceCls.refName);
               if (!databaseModule) throw new Error(`Database "${serviceCls.refName}" is not registered`);
-              ServiceResolver.resolveDatabaseService(
-                databaseModule.constant,
-                databaseModule.database,
-                serviceCls,
-                // Deliberately lazy. Resolving a cascade target eagerly would add an init-order edge between two
-                // services that have no dependency at boot, and a cascade cycle would then fail the whole boot.
-                (refName) => this.getService(refName),
-              );
+              ServiceResolver.resolveDatabaseService(databaseModule.database, serviceCls, this.#cascade);
             }
             const service = new serviceCls();
             await InjectInfo.resolveInjection(service, serviceCls, this.registry, this.#env);
@@ -480,6 +475,9 @@ export class DiLifecycle {
         })),
       );
     }
+    // Sealed only now: a service that registered a `remove` listener in `onInit` still counts against a bulk
+    // cascade, and every target service is live, so an unmounted one fails here instead of mid-removal.
+    this.#cascade.seal((refName: string) => this.getService(refName));
   }
 
   async #initializeInternal() {

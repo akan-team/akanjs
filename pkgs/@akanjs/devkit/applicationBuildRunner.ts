@@ -112,7 +112,7 @@ export class ApplicationBuildRunner {
       () => precompressArtifacts(this.#app),
       (result) =>
         result.files > 0
-          ? `${result.files} files, ${ApplicationBuildRunner.formatBytes(result.inputBytes)} -> ${ApplicationBuildRunner.formatBytes(result.outputBytes)}`
+          ? `${result.files} files, ${ApplicationBuildRunner.formatBytes(result.inputBytes)} -> gzip ${ApplicationBuildRunner.formatBytes(result.outputBytes)} / br ${ApplicationBuildRunner.formatBytes(result.brotliBytes)}`
           : "no files",
       phaseOptions,
     );

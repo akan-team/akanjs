@@ -209,7 +209,7 @@ const Text = ({
 };
 Field.Text = memo(Text);
 
-//! 삭제
+// FIXME: 삭제
 interface PriceProps {
   label?: string;
   desc?: string;
@@ -739,9 +739,7 @@ const Date = <Nullable extends boolean>({
   return (
     <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
-      {/* //! datetime-local 에 max 를 주면 오른쪽 끝이 잘리는 렌더 이슈가 있어 max 를 넘기지 않는다.
-          원래 daisyUI 버그로 기록돼 있었으나 daisyUI 는 제거됐다 — 브라우저 네이티브 동작일 수 있어
-          회피책은 유지한다. 실제 렌더 확인 후에만 걷어낼 것. */}
+      {/* FIXME: daysi UI datetime-local 컴포넌트에 max 값 넣으면 오른쪽 끝 짤리는 버그 있음.*/}
       <input
         type={showTime ? "datetime-local" : "date"}
         className={inputRecipe({}, [

@@ -11,6 +11,7 @@
 - Show Details (#show-details)
 - Add View/Edit Modal (#view-wrapper)
 - Add View Button to Cards (#button-on-unit)
+- Design Detail View (#design-detail-view)
 - Test Your Implementation (#test-implementation)
 - Best Practices for Detail Views (#best-practices)
 - What's Next? (#next-steps)
@@ -53,7 +54,17 @@ Add View Button to Cards
 
 Now let's add a "View" button to each order card. This button provides a clear interface element that customers can click to access detailed order information. The button will be positioned and styled to integrate with the existing card design.
 
-View
+The key addition here is the ViewWrapper around the button:
+
+This wraps our button and handles the click functionality to show the detailed view
+
+We pass the slice and modelId so the modal knows which order to display details for
+
+The button uses the buttonRecipe primary variant and lg size for consistent styling across the app
+
+Design Detail View
+
+Now let's create the detailed view component in View.tsx that displays all the ice cream order information in a structured layout. This component will organize and present the order data in a readable format when the modal opens.
 
 This detailed view component creates a comprehensive display of the ice cream order:
 
@@ -197,14 +208,34 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
           </span>
           <span className="ml-2 font-mono text-primary">#{icecreamOrder.id.slice(-4)}</span> // [!code ++]
         </div>
-        <div className="mt-4 flex items-center gap-2"> // [!code collapse:16]
+        <div className="mt-4 flex items-center gap-2"> // [!code collapse:17]
           <span className="inline-block rounded border border-border bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
             {l("icecreamOrder.status")}
           </span>
           <span
-            className={cn("ml-2 rounded-full px-3 py-1 text-sm font-semibold", icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary", icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning", icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground", icecreamOrder.status === "finished" && "border border-accent/40 bg-background text-accent", icecreamOrder.status === "canceled" && "border border-border bg-background text-foreground/70")}
+            className={cn(
+              "ml-2 rounded-full px-3 py-1 text-sm font-semibold",
+              icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
+              icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
+              icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
+              icecreamOrder.status === "finished" && "border border-accent/40 bg-background text-accent",
+              icecreamOrder.status === "canceled" && "border border-border bg-background text-foreground/70",
+            )}
           >
-            {l(
+            {l(`icecreamOrderStatus.${icecreamOrder.status}`)}
+          </span>
+        </div>
+      </div>
+      <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4"> // [!code ++:7]
+        <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
+          <button className={buttonRecipe({ variant: "primary" })}>
+            <span>{l.trans({ en: "View", ko: "보기" })}</span>
+          </button>
+        </Model.ViewWrapper>
+      </div>
+    </div>
+  );
+};
 ```
 
 ### apps/koyo/lib/icecreamOrder/IcecreamOrder.View.tsx
@@ -242,7 +273,34 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
                 key={topping}
                 className="inline-block rounded-full bg-background px-2 py-1 text-xs font-medium text-primary"
               >
-                {l(
+                {l(`topping.${topping}`)}
+              </span>
+            ))
+          )}
+        </div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.status")}</div>
+        <div>
+          <span
+            className={cn(
+              "inline-block rounded-full px-2 py-1 text-xs font-semibold",
+              icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
+              icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
+              icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
+              icecreamOrder.status === "finished" && "border border-accent/40 bg-background text-accent",
+              icecreamOrder.status === "canceled" && "border border-border bg-background text-foreground/70",
+            )}
+          >
+            {l(`icecreamOrderStatus.${icecreamOrder.status}`)}
+          </span>
+        </div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.createdAt")}</div>
+        <div className="text-foreground/70">{icecreamOrder.createdAt.format("YYYY-MM-DD HH:mm:ss")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.updatedAt")}</div>
+        <div className="text-foreground/70">{icecreamOrder.updatedAt.format("YYYY-MM-DD HH:mm:ss")}</div>
+      </div>
+    </div>
+  );
+};
 ```
 
 ## Agent Notes

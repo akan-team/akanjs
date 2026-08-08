@@ -440,10 +440,17 @@ export class SignalResolver {
     return trimmed ? `/${trimmed}` : "";
   }
 
+  // Rebuilt per slice list request before this cache: the projection is a pure function of the Light class, and
+  // every `${refName}List${Key}` endpoint asks for it on the way to `__list`.
+  static #selectCache = new WeakMap<Cls, Record<string, true>>();
   static #selectForConstant(constant: Cls): Record<string, true> | undefined {
+    const cached = SignalResolver.#selectCache.get(constant);
+    if (cached) return cached;
     const fields = (constant as { [FIELD_META]?: Record<string, unknown> })[FIELD_META];
     if (!fields) return undefined;
-    return Object.fromEntries(Object.keys(fields).map((field) => [field, true]));
+    const select = Object.fromEntries(Object.keys(fields).map((field) => [field, true] as const));
+    SignalResolver.#selectCache.set(constant, select);
+    return select;
   }
 
   static #canUsePrimitiveQueryFastPath(endpointInfo: EndpointInfo, middleware: Map<string, MiddlewareCls>) {

@@ -22,6 +22,8 @@ type MobileReleaseOptions = MobileCommandOptions & {
 };
 
 export class ApplicationScript extends script("application", [ApplicationRunner, LibraryScript]) {
+  /** Long enough for `docker compose down` on a healthy daemon, short enough that a wedged one still exits. */
+  static dbShutdownTimeoutMs = 20_000;
   async confirmDatabaseModeDependencyInstall(databaseMode: DatabaseMode, installSpecs: string[]) {
     return await confirm({
       message: [
@@ -223,11 +225,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     await this.syncDatabaseModeDependencies(app, akanConfig, databaseMode);
     if (app.getEnv() === "local" && dbup && databaseMode !== "single") {
       const wasDbAlreadyUp = await this.dbup(app.workspace, databaseMode);
-      if (!wasDbAlreadyUp)
-        process.on("SIGINT", async () => {
-          await this.dbdown(app.workspace);
-          process.exit(0);
-        });
+      if (!wasDbAlreadyUp) this.#stopDatabaseOnInterrupt(app.workspace);
     }
     const spinner = app.spinning("Preparing backend...");
     const akanAppHost = await this.applicationRunner.start(app, {
@@ -360,8 +358,43 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
   }
   async dbdown(workspace: Workspace) {
     const spinner = workspace.spinning("Stopping local database...");
-    await this.applicationRunner.dbdown(workspace);
+    try {
+      await this.applicationRunner.dbdown(workspace);
+    } catch (error) {
+      spinner.fail("Local database failed to stop");
+      throw error;
+    }
     spinner.succeed("Local database (/local/docker-compose.yaml) is down");
+  }
+  /**
+   * Registering any SIGINT listener replaces the kernel's "terminate now" with this callback, so from
+   * here on it is the only thing that can end `akan start` — Ctrl+C does nothing at all until it
+   * returns. `docker compose down` takes tens of seconds on a healthy daemon and never returns on a
+   * wedged one, so the teardown is bounded and the exit runs even when it fails, and a second Ctrl+C
+   * abandons it rather than queueing behind the first.
+   */
+  #stopDatabaseOnInterrupt(workspace: Workspace) {
+    let stopping = false;
+    process.on("SIGINT", () => {
+      if (stopping) {
+        Logger.rawLog("Abandoning the local database teardown; containers are left running.", undefined, "warn");
+        process.exit(130);
+      }
+      stopping = true;
+      void this.#stopDatabase(workspace).finally(() => process.exit(0));
+    });
+  }
+  async #stopDatabase(workspace: Workspace) {
+    const timeout = new Promise<"timeout">((resolve) =>
+      setTimeout(() => resolve("timeout"), ApplicationScript.dbShutdownTimeoutMs),
+    );
+    const result = await Promise.race([this.dbdown(workspace).catch(() => undefined), timeout]);
+    if (result !== "timeout") return;
+    Logger.rawLog(
+      `Local database did not stop within ${ApplicationScript.dbShutdownTimeoutMs}ms; run \`akan dbdown\` once Docker responds.`,
+      undefined,
+      "warn",
+    );
   }
   async testSys(sys: Sys) {
     if (sys.type === "app") await this.testApplication(sys as App);

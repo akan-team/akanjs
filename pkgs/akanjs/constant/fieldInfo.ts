@@ -451,7 +451,17 @@ export class ConstantField<
   get isMap() {
     return (this.modelRef as Cls) === Map;
   }
+  // Built once and shared: a field's props are a pure function of the field, and the read paths ask for them per
+  // field per row (`decodeDocumentPayload`, `crystalize`, `purify`), which made this the single largest source of
+  // garbage on a list query. Frozen so the sharing stays true — no caller mutates the result today, and one that
+  // starts to has to say so by cloning. Built lazily rather than in the constructor because `isScalar` reads
+  // `modelRef.modelType`, which `via()` assigns while the model classes are still being wired up.
+  #props: FieldProps | null = null;
   getProps(): FieldProps {
+    this.#props ??= Object.freeze(this.#buildProps());
+    return this.#props;
+  }
+  #buildProps(): FieldProps {
     return {
       nullable: this.nullable as unknown as boolean,
       ref: this.ref,

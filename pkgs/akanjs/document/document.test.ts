@@ -117,6 +117,7 @@ const DocumentTestModelMixinRef = DocumentTestModelMixin as unknown as ModelCls<
 const DocumentTestItemInputRef = DocumentTestItemInput as unknown as DatabaseCls<
   InstanceType<typeof DocumentTestItemInput>
 >;
+class DocumentTestItemInsightDoc extends by(DocumentTestItemInsight) {}
 
 class LibFilter extends from(DocumentTestItemFull, (makeFilter) => ({
   query: {
@@ -265,6 +266,8 @@ const documentAppClassUserModelInfo = ConstantRegistry.buildModel(
     DocumentAppClassUserInsight,
   },
 );
+// `by` resolves the refName from ConstantRegistry, so an insight doc class cannot precede its buildModel call.
+class DocumentAppClassUserInsightDoc extends by(DocumentAppClassUserInsight) {}
 class DocumentAppClassUserDoc extends by(DocumentAppClassUser) {
   setEducation(education: string | undefined) {
     this.set({ education });
@@ -284,7 +287,7 @@ const documentAppClassUserDatabase = DatabaseRegistry.buildModel(
   DocumentAppClassUserDoc,
   DocumentAppClassUserModel,
   DocumentAppClassUserObject,
-  DocumentAppClassUserInsight,
+  DocumentAppClassUserInsightDoc,
   DocumentAppClassUserFilter,
 );
 const DocumentNoActionDocRef = class DocumentNoActionDoc {} as unknown as DatabaseCls<Record<string, never>>;
@@ -469,6 +472,20 @@ describe("by, from, into, and DatabaseRegistry", () => {
     expect(insightFields.taggedCount.getProps().accumulate).toEqual({ tags: { oneOf: ["featured", "urgent"] } });
   });
 
+  test("exposes typed insight and count query methods on an into model", () => {
+    const assertModelQueryMethods = async (model: DocumentTestModel) => {
+      const countByTitle: number = await model.countByTitle("Alpha", false);
+      const insightByOwner: DocumentModel<InstanceType<typeof DocumentTestItemInsight>> =
+        await model.insightByOwner("1234567890abcdef12345678");
+      const insight = await model.insightByTitle("Alpha", false);
+      // Arithmetic, not a computation: it fails to compile the moment the insight falls back to `unknown`.
+      const accumulated: number = insight.count + insight.highScoreCount + insight.taggedCount;
+      return { countByTitle, insightByOwner, accumulated };
+    };
+
+    expect(assertModelQueryMethods).toBeFunction();
+  });
+
   test("exposes typed database query methods for filter keys", () => {
     type DocumentTestDatabase = DatabaseInstance<
       "documentTestItem",
@@ -552,7 +569,7 @@ describe("by, from, into, and DatabaseRegistry", () => {
       DocumentTestDoc,
       DocumentTestModel,
       DocumentTestItemObject,
-      DocumentTestItemInsight,
+      DocumentTestItemInsightDoc,
       DocumentTestFilter,
     );
     const scalar = DatabaseRegistry.buildScalar("documentTestScalar", DocumentTestScalar);

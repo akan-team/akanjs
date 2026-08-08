@@ -1,4 +1,4 @@
-import { type Cls, INJECT_META } from "akanjs/base";
+import { type Cls, INJECT_META, LIBS_REMOVE_HOOK } from "akanjs/base";
 import { applyMixins, capitalize, Logger, lowerlize } from "akanjs/common";
 import type { DatabaseModel } from "akanjs/document";
 
@@ -150,6 +150,11 @@ export function serve(
     const postUpdateFns = extSrvs.map((srv) => srv.prototype._postUpdate);
     const preRemoveFns = extSrvs.map((srv) => srv.prototype._preRemove);
     const postRemoveFns = extSrvs.map((srv) => srv.prototype._postRemove);
+    // `avoidKeys` keeps a lib's remove hooks off the prototype, so nothing downstream can see them by inspection.
+    // The cascade planner has to: a bulk removal skips these hooks, and may only do so when there are none.
+    Object.assign(srvRef, {
+      [LIBS_REMOVE_HOOK]: preRemoveFns.some(Boolean) || postRemoveFns.some(Boolean),
+    });
     Object.assign(srvRef.prototype, {
       async __libsPreCreate(this: DatabaseService, data: DatabaseServiceData) {
         let result = data;

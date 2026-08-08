@@ -169,6 +169,28 @@
     },
     {
       "includes": [
+        "**/ui/**/*.ts",
+        "**/ui/**/*.tsx",
+        "**/webkit/**/*.ts",
+        "**/webkit/**/*.tsx",
+        "**/common/**/*.ts",
+        "**/page/**/*.tsx",
+        "**/*.constant.ts",
+        "**/*.store.ts",
+        "**/*.Template.tsx",
+        "**/*.Unit.tsx",
+        "**/*.Util.tsx",
+        "**/*.View.tsx",
+        "**/*.Zone.tsx",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.spec.ts",
+        "!**/*.spec.tsx"
+      ],
+      "plugins": ["./pkgs/@akanjs/devkit/lint/no-bang-comment-in-client.grit"]
+    },
+    {
+      "includes": [
         "**/*.constant.ts",
         "**/*.dictionary.ts",
         "**/*.document.ts",

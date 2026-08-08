@@ -1,0 +1,59 @@
+---
+description: SSR-first rendering rules — keep JSX on the server and justify every "use client"
+globs: apps/**/*.tsx,libs/**/*.tsx
+alwaysApply: false
+---
+
+# SSR First — Server Rendering Is The Default
+
+Akan is SSR-first. A JSX element rendered on the server ships as HTML and costs nothing to hydrate; an element
+behind `"use client"` ships twice — as markup and as bundled JS that re-runs in the browser. The boundary question
+is not which file *may* be client, it is **how little** ends up on the client side.
+
+- **The default is server. `"use client"` is a cost you justify per component, not a habit.** A component earns the
+  directive only by using a client-only capability: a React hook, a JSX event handler, the store (`st.use.*` /
+  `st.do.*`), a browser global, or a client-only third-party package. Rendering markup, mapping over data, reading a
+  route param, and calling `l()` are server work — `usePage()` and `l()` never force a boundary.
+- The file role decides *where* the boundary sits (`Template`/`Zone`/`Util` are client, `Unit`/`View` are server);
+  it does not decide how much markup sits behind it. A `Zone` that hoards markup is still an SSR regression.
+- Measure with `akan quality ssr` (`--format json` for tooling). It reports the server render share per app and lib.
+  Treat **50% server share as the floor** and a falling share as a regression to justify or revert.
+
+## What `akan quality ssr` Flags
+
+- `akan.ssr.unnecessary-use-client` — the directive is there but nothing in the file needs it. Delete it.
+- `akan.ssr.client-static-component` — a component in a client file renders real markup with zero client-only
+  capability: pure server work sitting in the bundle.
+- `akan.ssr.client-static-markup` — a large subtree wraps one or two interactive touches. Split it.
+- `akan.ssr.client-mount-load` — a `useEffect(…, [])` loads server data the page could fetch first.
+- `akan.ssr.module-missing-server-view` — a module renders only from `Template`/`Zone`/`Util`, with no `Unit`/`View`.
+- `akan.ssr.template-client-state` — a `Template` holds form state in `useState` instead of the store.
+
+A third-party client package and the `ui/<Folder>/index_.tsx` + `lazy()` boundary both justify the directive and are
+not flagged. Interaction-driven `fetch.*` inside an `onClick` is not flagged either — only mount-time loads are.
+
+## Server-Side Implementation Playbook
+
+1. **Wrap the interaction, not the UI.** The smallest useful client component adds one behaviour and renders
+   `children` untouched, so the markup inside never reaches the bundle:
+   `export const ClickWrapper = ({ children, onPick }: ClickWrapperProps) => <div onClick={onPick}>{children}</div>;`
+2. **Split compound components so panels stay on the server.** A tab or accordion needs client state only for
+   *which* part is visible. `Tab` / `Tab.Menus` / `Tab.Menu` / `Tab.Panel` from `akanjs/ui` is the shape: only the
+   provider and menu hold state, and `<Tab.Panel>` renders children as-is, so a server `Unit`/`View` passed in stays
+   server-rendered. Never one client file with a mode `useState` and every panel body inlined.
+3. **Sync state instead of fetching it.** The page calls `fetch.initTaskInTodo()` / `fetch.viewTask(id)` and passes
+   the serializable result into a `Zone`; `Load.Units` / `Load.View` hydrate the store from it. Never a
+   `useEffect(…, [])` that fetches on mount.
+4. **Push the boundary down to the leaf that needs it.** A store-reading `Zone` holds zero markup and delegates to a
+   server `View`: `export const Self = () => <Task.View.General task={st.use.task()} />;`
+5. **Hand the promise across, not the awaited value.** `ClientInit` / `ClientView` are `PromiseOrObject<T>`, so a
+   page may pass an unawaited `fetch.initTaskInTodo()` and `Load.*` resolves it behind a skeleton.
+6. **Use named `ReactNode` slots, not just `children`.** `Layout.Navbar` takes `title`, `back`, `left`, `right`, and
+   `children`, so a client shell composes server content in five places.
+7. **Let the server do the derived work.** Display and predicate logic lives on `LightTask` (`isNew()`,
+   `canWrite(user?)`); enum→class lookups live in a module-scope `as const` map.
+8. **Gate auth on the server.** Check the session in `_layout.tsx` and redirect there, before any HTML is sent.
+9. **Prefer CSS over client state for pure visibility.** A `data-*` attribute plus `group-data-[…]` variants, or
+   `<details>`/`<summary>`, keeps both branches server-rendered.
+10. **Keep the heavy island out of the first load.** Put a large client-only widget behind the
+    `ui/<Folder>/index_.tsx` + `lazy()` pair.

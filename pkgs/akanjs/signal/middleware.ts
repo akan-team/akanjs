@@ -1,4 +1,5 @@
 import type { BaseEnv, Cls, PromiseOrObject } from "akanjs/base";
+import { Logger } from "akanjs/common";
 import { type CacheAdaptor, CacheAdaptorRole } from "akanjs/service";
 import dayjs from "dayjs";
 import type { SignalContext } from "./signalContext";
@@ -25,11 +26,16 @@ export class Logging extends middleware("logging") {
   override async use() {
     return async (context: SignalContext, next: () => Promise<unknown>) => {
       const start = Date.now();
-      context.adaptor.logger.debug(`Before ${context.endpointInfo.type}-${context.key} / ${start}`);
+      // This middleware is registered by default, so its two messages are built on every request the server
+      // serves — and discarded unbuilt at the default `log` level. The level is re-read per call because
+      // `Logger.setLevel` can move it at runtime.
+      const debug = Logger.shouldLog("debug");
+      if (debug) context.adaptor.logger.debug(`Before ${context.endpointInfo.type}-${context.key} / ${start}`);
       try {
         const result = await next();
-        const duration = Date.now() - start;
-        context.adaptor.logger.debug(`After ${context.endpointInfo.type}-${context.key} / ${duration}ms`);
+        if (debug) {
+          context.adaptor.logger.debug(`After ${context.endpointInfo.type}-${context.key} / ${Date.now() - start}ms`);
+        }
         return result;
       } catch (error) {
         const duration = Date.now() - start;

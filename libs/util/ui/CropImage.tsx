@@ -52,7 +52,7 @@ export const CropImage = forwardRef<CropRef, CropImageProps>(
       if (!croppedAreaPixels) return;
       const image = await createImage(src);
       // if (!image) return null;
-      //! TODO:회전 처리인데 IOS에서 4096 넘어가는 것 때매 안됨
+      // FIXME: 회전 처리인데 IOS에서 4096 넘어가는 것 때매 안됨
 
       // const canvas = document.createElement("canvas");
       // const ctx = canvas.getContext("2d");

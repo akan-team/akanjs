@@ -1,11 +1,13 @@
 import type { PromiseOrObject } from "akanjs/base";
 import { capitalize } from "akanjs/common";
-import { type ConstantModel, ConstantRegistry, type QueryOf } from "akanjs/constant";
+import type { QueryOf } from "akanjs/constant";
 import {
+  assertFilterFitsCrud,
   type CRUDEventType,
   type DatabaseModel,
   type DataInputOf,
   type Doc,
+  type DocumentUpdateInput,
   documentQueryHelper,
   type FindQueryOption,
   fillMissingFilterArgs,
@@ -13,15 +15,13 @@ import {
   getFilterMeta,
   type ListQueryOption,
   type SaveEventType,
+  type UpdateChain,
 } from "akanjs/document";
 import type { DatabaseService, ServiceCls } from "akanjs/service";
+import type { CascadeRunner } from "./CascadeRunner";
 
 export class ServiceResolver {
-  static #getDefaultDbServiceMethods(
-    className: string,
-    cascades: [string, string][],
-    getService: (refName: string) => DatabaseService,
-  ) {
+  static #getDefaultDbServiceMethods(refName: string, className: string, cascade: CascadeRunner) {
     const dbServiceMethods = {
       async __get(this: DatabaseService, id: string) {
         return await this.__databaseModel.__get(id);
@@ -99,40 +99,33 @@ export class ServiceResolver {
         return this.__update(id, data);
       },
       async __remove(this: DatabaseService, id: string): Promise<Doc> {
-        // Resolved before anything is mutated: a model cascading into a module the app never mounted is a
-        // misconfiguration, and failing after the parent is already gone would leave it half-removed.
-        const targets = cascades.map(([key, refName]) => [key, getService(refName)] as const);
         await this.__libsPreRemove(id);
         const doc = await this.__databaseModel.__remove(id);
         const removed = await this.__libsPostRemove(doc);
-        for (const [key, target] of targets) {
-          const value = (removed as Record<string, unknown>)[key];
-          const ids = (Array.isArray(value) ? value : [value]).filter((v): v is string => typeof v === "string");
-          // Through the target's own service, never its model: that is what runs its `_postRemove`, which is where
-          // a module puts the side effect that has to accompany the removal — deleting the stored object, say.
-          for (const targetId of ids) await target.__remove(targetId);
-        }
+        await cascade.run(refName, removed as Record<string, unknown>);
         return removed;
       },
       async [`remove${className}`](this: DatabaseService, id: string): Promise<Doc> {
         return this.__remove(id);
       },
+      async __removeMany(this: DatabaseService, query: QueryOf<any>) {
+        return await this.__databaseModel.__removeMany(query);
+      },
+      async __removeOne(this: DatabaseService, query: QueryOf<any>) {
+        return await this.__databaseModel.__removeOne(query);
+      },
+      async __updateMany(this: DatabaseService, query: QueryOf<any>, update: DocumentUpdateInput) {
+        return await this.__databaseModel.__updateMany(query, update);
+      },
+      async __updateOne(this: DatabaseService, query: QueryOf<any>, update: DocumentUpdateInput) {
+        return await this.__databaseModel.__updateOne(query, update);
+      },
     };
     return dbServiceMethods;
   }
-  static resolveDatabaseService(
-    constant: ConstantModel,
-    database: DatabaseModel,
-    srvRef: ServiceCls,
-    getService: (refName: string) => DatabaseService,
-  ): ServiceCls {
+  static resolveDatabaseService(database: DatabaseModel, srvRef: ServiceCls, cascade: CascadeRunner): ServiceCls {
     const className = capitalize(database.refName);
-    // Resolved here rather than in the constant: a target model is registered after the class that references it,
-    // so its refName is not knowable at the point the field is declared.
-    const cascades = [...constant.full.cascade.remove].map(
-      ([key, modelRef]) => [key, ConstantRegistry.getRefName(modelRef)] as [string, string],
-    );
-    Object.assign(srvRef.prototype, ServiceResolver.#getDefaultDbServiceMethods(className, cascades, getService));
+    Object.assign(srvRef.prototype, ServiceResolver.#getDefaultDbServiceMethods(database.refName, className, cascade));
     const getQueryDataFromKey = (queryKey: string, args: any): { query: any; queryOption: any } => {
       const lastArg = args.at(-1);
       const hasQueryOption =
@@ -157,6 +150,7 @@ export class ServiceResolver {
       const queryFn = filterInfo.queryFn;
       if (!queryFn) throw new Error(`No query function for key: ${queryKey}`);
       const capitalizedQueryKey = capitalize(queryKey);
+      assertFilterFitsCrud(database.refName, queryKey, className);
       Object.assign(srvRef.prototype, {
         [`list${capitalizedQueryKey}`]: async function (this: DatabaseService, ...args: any) {
           const { query, queryOption } = getQueryDataFromKey(queryKey, args);
@@ -196,6 +190,22 @@ export class ServiceResolver {
         },
         [`query${capitalize(queryKey)}`]: function (this: DatabaseService, ...args: any) {
           return queryFn(...fillMissingFilterArgs(filterInfo, args), documentQueryHelper);
+        },
+        [`remove${capitalizedQueryKey}`]: async function (this: DatabaseService, ...args: any) {
+          const { query } = getQueryDataFromKey(queryKey, args);
+          return this.__removeMany(query);
+        },
+        [`removeOne${capitalizedQueryKey}`]: async function (this: DatabaseService, ...args: any) {
+          const { query } = getQueryDataFromKey(queryKey, args);
+          return this.__removeOne(query);
+        },
+        [`update${capitalizedQueryKey}`]: function (this: DatabaseService, ...args: any): UpdateChain {
+          const { query } = getQueryDataFromKey(queryKey, args);
+          return { set: (update) => this.__updateMany(query, update) };
+        },
+        [`updateOne${capitalizedQueryKey}`]: function (this: DatabaseService, ...args: any): UpdateChain {
+          const { query } = getQueryDataFromKey(queryKey, args);
+          return { set: (update) => this.__updateOne(query, update) };
         },
       });
     });

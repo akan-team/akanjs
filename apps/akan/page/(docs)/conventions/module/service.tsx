@@ -185,6 +185,38 @@ export default function Page() {
       }),
       example: `const query = this.queryInRoot(root);`,
     },
+    {
+      name: "remove<Query>(...args)",
+      desc: l.trans({
+        en: "Soft-remove every matching document in one atomic update. Fires no hooks, so no _postRemove and no cascade run.",
+        ko: "일치하는 document를 원자적 업데이트 한 번으로 soft remove합니다. 훅을 태우지 않으므로 _postRemove도 cascade도 돌지 않습니다.",
+      }),
+      example: `await this.removeInRoot(root);`,
+    },
+    {
+      name: "removeOne<Query>(...args)",
+      desc: l.trans({
+        en: "Soft-remove the newest match — the subquery is ordered createdAt descending and the caller cannot pick. Use it for at-most-one queries, not to claim the next item off a queue.",
+        ko: "가장 최근 문서 하나를 soft remove합니다. subquery가 createdAt 내림차순으로 고정이라 호출자가 대상을 고를 수 없습니다. 한 건만 일치하는 query에 쓰고, 큐에서 다음 항목을 집는 용도로는 쓰지 마세요.",
+      }),
+      example: `await this.removeOneInRoot(root);`,
+    },
+    {
+      name: "update<Query>(...args).set(patch)",
+      desc: l.trans({
+        en: "Update every matching document in one atomic update. The patch lands on set(), because a filter's trailing args may be optional and nothing can follow those. Building the chain runs no query.",
+        ko: "일치하는 document를 원자적 업데이트 한 번으로 수정합니다. filter의 뒤쪽 인자가 optional일 수 있어 그 뒤에는 무엇도 놓을 수 없으므로 patch는 set()에 넘깁니다. chain을 만드는 것만으로는 query가 실행되지 않습니다.",
+      }),
+      example: `await this.updateInRoot(root).set({ status: "archived" });`,
+    },
+    {
+      name: "updateOne<Query>(...args).set(patch)",
+      desc: l.trans({
+        en: "Update the newest match, ordered createdAt descending. The result carries counts, never which row was touched.",
+        ko: "createdAt 내림차순 기준 가장 최근 문서 하나를 수정합니다. 결과에는 개수만 담기고 어떤 문서가 수정됐는지는 알 수 없습니다.",
+      }),
+      example: `await this.updateOneInRoot(root).set({ status: "archived" });`,
+    },
   ];
 
   const middlewareMethods: IntroItem[] = [
@@ -239,10 +271,10 @@ export default function Page() {
     {
       name: "cascade remove",
       desc: l.trans({
-        en: "A relation field declared with cascade: \"remove\" removes its target through the target's service, so the target's _postRemove runs too.",
-        ko: 'cascade: "remove"로 선언한 관계 field는 대상의 service를 거쳐 삭제하므로 대상의 _postRemove도 함께 실행됩니다.',
+        en: 'A field declared with cascade: "removeRef" or "removeWith" removes through the target\'s service, so the target\'s _postRemove runs too. Declaring a _postRemove here is also what keeps that cascade one document at a time instead of one query.',
+        ko: 'cascade: "removeRef" 또는 "removeWith"로 선언한 field는 대상의 service를 거쳐 삭제하므로 대상의 _postRemove도 함께 실행됩니다. 여기에 _postRemove를 선언하는 것이 곧 그 캐스케이드를 한 번의 쿼리가 아니라 문서 단위로 유지하는 조건이기도 합니다.',
       }),
-      example: `image: field(File, { cascade: "remove" }).optional()`,
+      example: `image: field(File, { cascade: "removeRef" }).optional()`,
     },
   ];
 

@@ -28,7 +28,8 @@
     "buildAkan": "bun pkgs/@akanjs/cli/build.ts",
     "runAkan": "bun dist/pkgs/@akanjs/cli/index.js",
     "create-akan-workspace": "bun pkgs/create-akan-workspace/build.ts && bun dist/pkgs/create-akan-workspace/index.js",
-    "pr": "gh pr create --repo akan-team/akanjs --base main --fill"
+    "pr": "gh pr create --repo akan-team/akanjs --base main --fill",
+    "pr:v3": "gh pr create --repo akan-team/akanjs --base v3 --fill"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.4",

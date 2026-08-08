@@ -10,7 +10,9 @@
 
 - Kiosk for Customers (#kiosk-for-customers)
 - Add Schema (#add-schema)
+- Kiosk Landing Page (#kiosk-landing-page)
 - Order Form Page (#order-form-page)
+- Page UX Best Practices (#page-best-practices)
 
 ## Content
 
@@ -38,7 +40,11 @@ Next, let's add serveType and phone selection to the order form template.
 
 Finally, let's display serveType on the order card to clearly show whether the customer's order is for here or take out, etc.
 
-View
+Kiosk Landing Page
+
+The first thing customers see when they approach the kiosk is the landing page. Think of it like the welcome screen at a fast-food restaurant kiosk - it should be inviting, easy to understand, and guide customers to their first choice: "For Here" or "Take Out".
+
+Let's create an attractive landing page that makes ordering feel like a delightful experience:
 
 Let's break down the key features of this landing page:
 
@@ -75,6 +81,48 @@ The Load.Edit component handles form state management, validation, and submissio
 Setting onCancel to "back" enables the cancel button to navigate back to the previous page. This provides an easy way for customers to change their mind.
 
 Now let's style the Template component for a beautiful kiosk experience. Each section is wrapped in a card with icons:
+
+The Template component uses these Field components for kiosk-friendly input:
+
+Large, touch-friendly buttons for selecting a single option (size)
+
+Allows selecting multiple options (toppings) with visual feedback
+
+Phone number input with formatting and validation built-in
+
+Page UX Best Practices
+
+When building customer-facing pages like kiosks, following UX best practices ensures a smooth and enjoyable experience. Here are the key principles we applied:
+
+Clear Navigation Flow
+
+Guide customers through a linear flow: Landing → Order Form → Success. Each step has one clear purpose, reducing confusion.
+
+Touch-Friendly Design
+
+Large buttons (py-6), adequate spacing, and visual feedback on interaction make the interface easy to use on touchscreens.
+
+Visual Hierarchy with Icons
+
+Emojis and icons provide instant visual cues that help customers understand each section without reading text carefully.
+
+State Preservation
+
+Using query parameters and Load.Edit ensures customer choices are preserved between pages, creating a seamless experience.
+
+🎉 What You've Accomplished:
+
+Extended schema with new fields for kiosk ordering
+
+Built an attractive landing page with language switching
+
+Created a touch-friendly order form with Field components
+
+Implemented success page with clear customer feedback
+
+Learned page UX best practices for kiosk applications
+
+In the next tutorial, we'll explore how to use Scalar for computed values and aggregations. This will allow you to display dynamic information like order totals, wait times, and statistics in real-time.
 
 ## Code Examples
 
@@ -287,10 +335,54 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
             {l("icecreamOrder.id")}
           </span>
           <span className="ml-2 font-mono text-primary">#{icecreamOrder.id.slice(-4)}</span>
-          <span // [!code ++:9]
-            className={cn("ml-2 rounded px-2 py-1 text-xs font-semibold uppercase", icecreamOrder.serveType === "forHere" && "border border-primary/40 bg-background text-primary", icecreamOrder.serveType === "takeOut" && "border border-warning/40 bg-background text-warning", icecreamOrder.serveType === "delivery" && "border border-info/40 bg-info text-info-foreground")}
+          <span // [!code ++:10]
+            className={cn(
+              "ml-2 rounded px-2 py-1 text-xs font-semibold uppercase",
+              icecreamOrder.serveType === "forHere" && "border border-primary/40 bg-background text-primary",
+              icecreamOrder.serveType === "takeOut" && "border border-warning/40 bg-background text-warning",
+              icecreamOrder.serveType === "delivery" && "border border-info/40 bg-info text-info-foreground",
+            )}
           >
-            {l(
+            {l(`serveType.${icecreamOrder.serveType}`)}
+          </span>
+        </div>
+        <div className="mt-4 flex items-center gap-2"> // [!code collapse:17]
+          <span className="inline-block rounded border border-border bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+            {l("icecreamOrder.status")}
+          </span>
+          <span
+            className={cn(
+              "ml-2 rounded-full px-3 py-1 text-sm font-semibold",
+              icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
+              icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
+              icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
+              icecreamOrder.status === "finished" && "border border-accent/40 bg-background text-accent",
+              icecreamOrder.status === "canceled" && "border border-border bg-background text-foreground/70",
+            )}
+          >
+            {l(`icecreamOrderStatus.${icecreamOrder.status}`)}
+          </span>
+        </div>
+      </div>
+      {showControls ? ( // [!code collapse:16]
+        <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4">
+          <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
+            <button className={buttonRecipe({ variant: "primary" })}>
+              <span>{l.trans({ en: "View", ko: "보기" })}</span>
+            </button>
+          </Model.ViewWrapper>
+          <IcecreamOrder.Util.Process icecreamOrderId={icecreamOrder.id} disabled={icecreamOrder.status !== "active"} />
+          <IcecreamOrder.Util.Serve
+            icecreamOrderId={icecreamOrder.id}
+            disabled={icecreamOrder.status !== "processing"}
+          />
+          <IcecreamOrder.Util.Finish icecreamOrderId={icecreamOrder.id} disabled={icecreamOrder.status !== "served"} />
+          <IcecreamOrder.Util.Cancel icecreamOrderId={icecreamOrder.id} disabled={icecreamOrder.status !== "active"} />
+        </div>
+      ) : null}
+    </div>
+  );
+};
 ```
 
 ### apps/koyo/page/icecreamOrder.tsx
@@ -491,7 +583,41 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
             <h2 className="text-2xl font-semibold text-primary">{l("icecreamOrder.size")}</h2>
           </div>
           <Field.ToggleSelect
-            items={[50, 100, 200].map((size) => ({ label:
+            items={[50, 100, 200].map((size) => ({ label: `${size}cc`, value: size }))}
+            value={icecreamOrderForm.size}
+            onChange={st.do.setSizeOnIcecreamOrder}
+          />
+        </div>
+      </div>
+      <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
+        <div className="space-y-6">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">🍓</span>
+            <h2 className="text-2xl font-semibold text-primary">{l("icecreamOrder.toppings")}</h2>
+          </div>
+          <Field.MultiToggleSelect
+            items={cnst.Topping}
+            value={icecreamOrderForm.toppings}
+            onChange={st.do.setToppingsOnIcecreamOrder}
+          />
+        </div>
+      </div>
+      <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
+        <div className="space-y-6">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">📱</span>
+            <h2 className="text-2xl font-semibold text-primary">{l("icecreamOrder.phone")}</h2>
+          </div>
+          <Field.Phone
+            placeholder="010-0000-0000"
+            value={icecreamOrderForm.phone}
+            onChange={st.do.setPhoneOnIcecreamOrder}
+          />
+        </div>
+      </div>
+    </Layout.Template>
+  );
+};
 ```
 
 ## Agent Notes

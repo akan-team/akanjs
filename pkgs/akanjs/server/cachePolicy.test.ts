@@ -307,6 +307,119 @@ describe("route cache policy helpers", () => {
     expect(cache.get("delete-me")).toBeNull();
   });
 
+  test("tracks payload bytes across every path that adds or drops an entry", async () => {
+    const cache = new LruTtlCache<string>(2, { sizeOf: (value) => value.length });
+    expect(cache.byteSize).toBe(0);
+
+    cache.set("a", "1234", 30);
+    cache.set("b", "12345", 30);
+    expect(cache.byteSize).toBe(9);
+
+    cache.set("a", "1", 30);
+    expect(cache.byteSize).toBe(6);
+
+    cache.set("c", "123", 30);
+    expect(cache.size).toBe(2);
+    expect(cache.byteSize).toBe(4);
+
+    cache.delete("c");
+    expect(cache.byteSize).toBe(1);
+
+    cache.set("short", "1234567", 0.001);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(cache.get("short")).toBeNull();
+    expect(cache.byteSize).toBe(1);
+
+    cache.clear();
+    expect(cache.byteSize).toBe(0);
+  });
+
+  test("subtracts bytes for entries dropped by invalidate", () => {
+    const cache = new LruTtlCache<{ routeId: string; html: string }>(5, { sizeOf: (value) => value.html.length });
+    cache.set("a", { routeId: "/docs", html: "1234" }, 30);
+    cache.set("b", { routeId: "/blog", html: "12345" }, 30);
+    expect(cache.byteSize).toBe(9);
+
+    expect(cache.invalidate((_key, value) => value.routeId === "/docs")).toBe(1);
+    expect(cache.byteSize).toBe(5);
+  });
+
+  test("never lets a measurement failure skew the total or fail the write", () => {
+    const cache = new LruTtlCache<string>(4, {
+      sizeOf: (value) => {
+        if (value === "throws") throw new Error("boom");
+        return value === "nan" ? Number.NaN : value.length;
+      },
+    });
+    cache.set("a", "throws", 30);
+    cache.set("b", "nan", 30);
+    cache.set("c", "1234", 30);
+    expect(cache.get("a")).toBe("throws");
+    expect(cache.get("b")).toBe("nan");
+    expect(cache.byteSize).toBe(4);
+
+    cache.clear();
+    expect(cache.byteSize).toBe(0);
+  });
+
+  test("sweeps expired entries so an idle cache shrinks without being read", async () => {
+    const cache = new LruTtlCache<string>(10, { sizeOf: (value) => value.length });
+    cache.set("live", "1234", 30);
+    cache.set("dying", "12345", 0.001);
+    expect(cache.byteSize).toBe(9);
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    // No `get` of the expired key, which is the only thing that used to reclaim it.
+    expect(cache.sweepExpired()).toBe(1);
+    expect(cache.size).toBe(1);
+    expect(cache.byteSize).toBe(4);
+    expect(cache.get("live")).toBe("1234");
+  });
+
+  test("sweeps entries whose expiry does not follow map order", async () => {
+    // `get` reinserts, and TTLs differ per entry, so the oldest map entry can outlive a newer one.
+    // A sweep that stopped at the first live entry would leave the expired one behind.
+    const cache = new LruTtlCache<string>(10);
+    cache.set("long", "L", 30);
+    cache.set("short", "S", 0.001);
+    cache.get("long");
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(cache.sweepExpired()).toBe(1);
+    expect(cache.get("short")).toBeNull();
+    expect(cache.get("long")).toBe("L");
+  });
+
+  test("enforces a total byte ceiling by evicting least recently used entries", () => {
+    const cache = new LruTtlCache<string>(100, { sizeOf: (value) => value.length, maxBytes: 10 });
+    cache.set("a", "1234", 30);
+    cache.set("b", "1234", 30);
+    expect(cache.byteSize).toBe(8);
+
+    cache.set("c", "1234", 30);
+    expect(cache.size).toBe(2);
+    expect(cache.byteSize).toBe(8);
+    expect(cache.get("a")).toBeNull();
+    expect(cache.get("c")).toBe("1234");
+  });
+
+  test("rejects an oversized entry instead of evicting everything else to fit it", () => {
+    const cache = new LruTtlCache<string>(100, { sizeOf: (value) => value.length, maxEntryBytes: 5 });
+    expect(cache.set("small", "1234", 30)).toBe(true);
+    expect(cache.set("huge", "1234567890", 30)).toBe(false);
+    expect(cache.size).toBe(1);
+    expect(cache.byteSize).toBe(4);
+    expect(cache.get("small")).toBe("1234");
+    expect(cache.get("huge")).toBeNull();
+  });
+
+  test("parses byte ceilings from env strings", () => {
+    expect(LruTtlCache.parseByteCeiling("1048576")).toBe(1048576);
+    expect(LruTtlCache.parseByteCeiling(undefined)).toBe(0);
+    expect(LruTtlCache.parseByteCeiling("0")).toBe(0);
+    expect(LruTtlCache.parseByteCeiling("nope", 42)).toBe(42);
+  });
+
   test("invalidates matching entries with a predicate", () => {
     const cache = new LruTtlCache<{ routeId: string }>(5);
     cache.set("route:/docs", { routeId: "/docs" }, 30);

@@ -1,0 +1,20 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Bun's bundler classifies `//!` and `/*!` as legal comments (the `@license` / `@preserve` class) and keeps
+// them through `minify: true`, so a `//!` marker in browser-reachable code ships verbatim to every visitor.
+// `legalComments` is not a Bun.build option, so the source is the only place to stop it.
+// The two alternatives anchor the marker to line start or to whitespace after code, which keeps a literal
+// like `'https://host//!path'` from tripping the rule. A marker on the file's very first line is trivia that
+// Biome does not expose to the pattern, so it is the one case this rule cannot see.
+JsModule() as $mod where {
+  or {
+    $mod <: r"(?m)(?s).*^[ \t]*//!.*",
+    $mod <: r"(?s).*[^\s/][ \t]+//!.*"
+  },
+  register_diagnostic(
+    span = $mod,
+    message = "The `//!` marker survives minification (Bun keeps it as a legal comment) and ships to the browser. Use `// FIXME:` or `// TODO:` in client-reachable code; keep `//!` for server, srvkit, and CLI files.",
+    severity = "error"
+  )
+}

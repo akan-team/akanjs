@@ -11,6 +11,7 @@ import type {
 } from "./akanConfig";
 
 import { AppExecutor, LibExecutor, PkgExecutor, WorkspaceExecutor } from "./executors";
+import { appRootAllowedDirs, appRootAllowedFiles, libFacetRootAllowedFiles } from "./workspaceLayout";
 
 const scalarFileTypes = ["constant", "dictionary", "document", "template", "unit", "util", "view", "zone"] as const;
 type ScalarFileType = (typeof scalarFileTypes)[number];
@@ -43,49 +44,7 @@ type DatabaseFileType = (typeof databaseFileTypes)[number];
 
 type ModuleKind = "database" | "service" | "scalar";
 
-const appRootAllowedFiles = new Set([
-  // 스코프 에이전트 가이드 — scan(write) 이 유지하는 색인 + 마커 밖 hand-written 내용 (agentsIndex.ts)
-  "AGENTS.md",
-  "CLAUDE.md",
-  "akan.app.json",
-  "akan.config.ts",
-  "capacitor.config.ts",
-  "client.ts",
-  "main.ts",
-  "package.json",
-  "server.ts",
-  "tsconfig.json",
-  "tsconfig.tsbuildinfo",
-]);
 const generatedRootCapacitorConfigFiles = ["capacitor.config.js", "capacitor.config.json"] as const;
-const appRootAllowedDirs = new Set([
-  ".akan",
-  "android",
-  "env",
-  "ios",
-  "lib",
-  "mobile",
-  "page",
-  "private",
-  "public",
-  "script",
-  "ui",
-  "srvkit",
-  "webkit",
-  "common",
-  "secrets",
-]);
-const libRootAllowedFiles = new Set([
-  "cnst.ts",
-  "db.ts",
-  "dict.ts",
-  "option.ts",
-  "sig.ts",
-  "srv.ts",
-  "st.ts",
-  "useClient.ts",
-  "useServer.ts",
-]);
 const internalLibDirs = new Set(["__lib", "__scalar"]);
 const moduleNonUiFileTypes = {
   database: new Set(["constant", "dictionary", "document", "service", "signal", "store"]),
@@ -107,7 +66,7 @@ const createDependencyScanner = async (exec: AppExecutor | LibExecutor | PkgExec
 
 const isAllowedTestFile = (filename: string) => testFilePattern.test(filename);
 const isAllowedLibRootFile = (filename: string) =>
-  libRootAllowedFiles.has(filename) || rootSignalTestFilePattern.test(filename);
+  libFacetRootAllowedFiles.has(filename) || rootSignalTestFilePattern.test(filename);
 const getScanPath = (exec: AppExecutor | LibExecutor, relativePath: string) =>
   path.posix.join(`${exec.type}s`, exec.name, relativePath.split(path.sep).join("/"));
 async function clearGeneratedRootCapacitorConfigs(exec: AppExecutor | LibExecutor) {

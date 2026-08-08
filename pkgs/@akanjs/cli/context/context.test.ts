@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   AkanContextAnalyzer,
   createAkanClaudeMcpServer,
@@ -563,6 +563,20 @@ describe("ContextRunner", () => {
 });
 
 describe("AgentRunner", () => {
+  const previousEnv: Record<string, string | undefined> = {};
+  beforeEach(() => {
+    for (const key of ["AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"]) {
+      previousEnv[key] = process.env[key];
+      delete process.env[key];
+    }
+  });
+  afterEach(() => {
+    for (const key of ["AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"]) {
+      if (previousEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = previousEnv[key];
+    }
+  });
+
   test("installs a single AGENTS.md source with thin Claude and Cursor references", async () => {
     const { root, workspace } = await createTempApp("demo");
     tempRoots.push(root);

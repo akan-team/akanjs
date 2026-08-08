@@ -420,9 +420,9 @@ describe("solid sqlite utilities", () => {
       await store.remove(created.id);
       expect(calls).toEqual(["pre:remove", "post:remove"]);
 
-      // deleteMany query: atomic soft delete fires NO document hooks
+      // removeMany query: atomic soft delete fires NO document hooks
       calls.length = 0;
-      await store.deleteManyByQuery({ id: "upsert-1" });
+      await store.removeManyByQuery({ id: "upsert-1" });
       expect(calls).toEqual([]);
     } finally {
       await client.close();
@@ -494,8 +494,8 @@ describe("solid sqlite utilities", () => {
       expect(up.score).toBe(3);
       expect(up.status).toBe("fresh");
 
-      // deleteMany soft-deletes atomically and hides the row from later reads
-      const rDel = await store.deleteManyByQuery({ status: "failed" });
+      // removeMany soft-deletes atomically and hides the row from later reads
+      const rDel = await store.removeManyByQuery({ status: "failed" });
       expect(rDel).toEqual({ acknowledged: true, matchedCount: 1, modifiedCount: 1 });
       expect(await store.findId({ id: b.id })).toBeNull();
       expect(await store.count()).toBe(2);

@@ -8,7 +8,8 @@ alwaysApply: false
 
 - `apps/<appName>` root may only contain these files: `AGENTS.md`, `CLAUDE.md`, `akan.app.json`, `akan.config.ts`, `capacitor.config.ts`, `client.ts`, `main.ts`, `package.json`, `server.ts`, `tsconfig.json`.
 - `akan sync` maintains a scoped agent guide per app/lib (`apps/<app>/AGENTS.md` / `libs/<lib>/AGENTS.md`); the `akan:agent` block in it is generated, content outside the markers is hand-editable, and `akan lint` fails when the block is stale.
-- `apps/<appName>` root may only contain these folders: `.akan`, `android`, `common`, `env`, `ios`, `lib`, `page`, `plugin`, `private`, `public`, `script`, `srvkit`, `ui`, `webkit`.
+- `apps/<appName>` root may only contain these folders: `.akan`, `android`, `common`, `env`, `ios`, `lib`, `mobile`, `page`, `plugin`, `private`, `public`, `script`, `secrets`, `srvkit`, `ui`, `webkit`.
+- Both allowlists have one source — `pkgs/@akanjs/devkit/workspaceLayout.ts`, read by `akan sync`, `akan doctor`, and `akan quality scan`; add a new root entry there and mirror it into this list.
 - The `plugin/` facet holds Akan plugin declarations; files use the `<name>.plugin.ts` convention (e.g. `pushNotification.plugin.ts`) and are re-exported from the generated `plugin/index.ts` barrel.
 - Do not add `apps/*/base`; place shared app utilities under `apps/*/common`.
 - `apps/*/lib` and `libs/*/lib` root files are limited to generated/support files: `cnst.ts`, `db.ts`, `dict.ts`, `option.ts`, `sig.ts`, `srv.ts`, `st.ts`, `useClient.ts`, `useServer.ts`.

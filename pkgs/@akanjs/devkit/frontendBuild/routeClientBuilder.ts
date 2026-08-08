@@ -33,6 +33,15 @@ export interface BuildRouteClientOptions {
   routeId?: string;
   command?: "build" | "start";
   discovery?: ClientEntryDiscovery;
+  /**
+   * Client entries resolved by the caller, which skips discovery and bundles exactly this list.
+   *
+   * `AllRoutesBuilder` passes every route's entries at once so they share one `Bun.build`. Chunk
+   * splitting is scoped to a single invocation, so a dependency reachable from entries spread across
+   * several invocations is emitted once per invocation — mermaid landed in `apps/akan` four times that
+   * way. Dev keeps one build per route and leaves this unset.
+   */
+  entries?: string[];
 }
 
 export interface BuildRouteClientResult {
@@ -61,6 +70,7 @@ export class RouteClientBuilder {
   #knownEntries: Set<string>;
   #command: "build" | "start";
   #discovery?: ClientEntryDiscovery;
+  #entries?: string[];
 
   constructor(options: BuildRouteClientOptions) {
     this.#app = options.app;
@@ -68,11 +78,13 @@ export class RouteClientBuilder {
     this.#knownEntries = options.knownEntries ?? new Set<string>();
     this.#command = options.command ?? "start";
     this.#discovery = options.discovery;
+    this.#entries = options.entries;
   }
 
   async build(): Promise<BuildRouteClientResult> {
-    const discovery = this.#discovery ?? (await GraphClientEntryDiscovery.create(this.#app));
-    const discovered = await discovery.discover(this.#seeds);
+    const discovered =
+      this.#entries ??
+      (await (this.#discovery ?? (await GraphClientEntryDiscovery.create(this.#app))).discover(this.#seeds));
     const entries = discovered.filter((e) => !this.#knownEntries.has(e));
     if (entries.length === 0) return this.#emptyResult(discovered);
 

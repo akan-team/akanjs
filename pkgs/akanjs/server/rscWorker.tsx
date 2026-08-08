@@ -24,6 +24,7 @@ import { renderToReadableStream } from "react-server-dom-webpack/server.node";
 import type { ClientManifest } from "./artifact";
 import {
   LruTtlCache,
+  type LruTtlCacheOptions,
   parsePositiveInt,
   type RouteCacheEntry,
   type RouteCacheInvalidation,
@@ -122,6 +123,9 @@ interface FlightRenderResult {
   cancelled: boolean;
 }
 
+/** Well above any sensible TTL: this reclaims a cache nobody is reading, not tracks expiry closely. */
+const RESULT_CACHE_SWEEP_INTERVAL_MS = 60_000;
+
 function hashRscTraceCacheKey(cacheKey: string): string {
   let hash = 5381;
   for (let index = 0; index < cacheKey.length; index += 1) hash = (hash * 33) ^ cacheKey.charCodeAt(index);
@@ -197,11 +201,16 @@ export class RscRenderer {
     pagesBundleBuildId: 0,
   };
   readonly #routeStats = new Map<string, RouteRenderStats>();
+  // Both caches hold whole Flight payloads, which have no natural size limit — unlike the html
+  // cache, which has had a per-body cap from the start. Without these ceilings a handful of heavy
+  // routes can fill 100 entries with arbitrarily many MB each.
   #resultCache = new LruTtlCache<CachedRscResult>(
     parsePositiveInt(process.env.AKAN_RSC_RESULT_CACHE_MAX_ENTRIES) ?? 100,
+    RscRenderer.#resultCacheOptions(),
   );
   #patchResultCache = new LruTtlCache<CachedRscResult>(
     parsePositiveInt(process.env.AKAN_RSC_RESULT_CACHE_MAX_ENTRIES) ?? 100,
+    RscRenderer.#resultCacheOptions(),
   );
   readonly #activeRenderReaders = new Map<string, ReadableStreamDefaultReader<Uint8Array>>();
   readonly #cancelledRenderRequests = new Set<string>();
@@ -821,7 +830,12 @@ export class RscRenderer {
       rscLoadedRouteModuleKeys: routeStats.loadedModuleKeys,
       rscTopRoutesByRenderCount: this.#topRoutes((route) => route.count),
       rscTopRoutesByFlightBytes: this.#topRoutes((route) => route.flightBytes),
-      rscResultCacheEntries: this.#resultCache.size + this.#patchResultCache.size,
+      // Reported separately: the full and patch caches fill on different request shapes, so a
+      // combined number cannot tell which one is holding the bytes.
+      rscResultCacheEntries: this.#resultCache.size,
+      rscResultCacheBytes: this.#resultCache.byteSize,
+      rscPatchResultCacheEntries: this.#patchResultCache.size,
+      rscPatchResultCacheBytes: this.#patchResultCache.byteSize,
       rscResultCacheHits: this.#resultCacheHits,
       rscResultCacheMisses: this.#resultCacheMisses,
       rscResultCacheBypass: this.#resultCacheBypass,
@@ -904,7 +918,7 @@ export class RscRenderer {
       });
     };
     try {
-      while (true) {
+      for (;;) {
         if (options.requestId && this.#cancelledRenderRequests.has(options.requestId)) {
           await reader.cancel();
           return { chunks, bytes, chunksCount, control: null, lateControlSent, cancelled: true };
@@ -1130,6 +1144,15 @@ export class RscRenderer {
     return decision;
   }
 
+  static #resultCacheOptions(): LruTtlCacheOptions<CachedRscResult> {
+    return {
+      sizeOf: (result) => result.bytes,
+      maxBytes: LruTtlCache.parseByteCeiling(process.env.AKAN_RSC_RESULT_CACHE_MAX_BYTES),
+      maxEntryBytes: LruTtlCache.parseByteCeiling(process.env.AKAN_RSC_RESULT_CACHE_MAX_BODY_BYTES),
+      sweepIntervalMs: RESULT_CACHE_SWEEP_INTERVAL_MS,
+    };
+  }
+
   #getCachedResult(cacheKey: string): CachedRscResult | null {
     const cached = this.#resultCache.get(cacheKey);
     if (!cached) {
@@ -1151,11 +1174,19 @@ export class RscRenderer {
   }
 
   #setCachedResult(cacheKey: string, result: CachedRscResult, ttl: number): void {
-    this.#resultCache.set(cacheKey, result, ttl);
+    this.#logRejectedStore("full", result, this.#resultCache.set(cacheKey, result, ttl));
   }
 
   #setCachedPatchResult(cacheKey: string, result: CachedRscResult, ttl: number): void {
-    this.#patchResultCache.set(cacheKey, result, ttl);
+    this.#logRejectedStore("patch", result, this.#patchResultCache.set(cacheKey, result, ttl));
+  }
+
+  /** A silently dropped store looks identical to a cache miss; say which route is too big to cache. */
+  #logRejectedStore(kind: string, result: CachedRscResult, stored: boolean): void {
+    if (stored) return;
+    this.#logger.verbose(
+      `${kind} result cache store skipped pathname=${result.pathname} bytes=${result.bytes} reason=body-too-large`,
+    );
   }
 
   #runWithRequest<T>(request: Request, fn: () => Promise<T>): Promise<T> {

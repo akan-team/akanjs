@@ -276,6 +276,7 @@ export const SSOButtons = ({
       <button
         className={buttonRecipe(
           undefined,
+          // biome-ignore lint/plugin: Kakao brand yellow is fixed by Kakao's login button guidelines
           "relative flex w-full items-center border-none bg-[#FEE500] text-[#3c1e1e] shadow-sm hover:bg-[#FEE500] hover:opacity-50",
         )}
       >
@@ -287,6 +288,7 @@ export const SSOButtons = ({
       <button
         className={buttonRecipe(
           undefined,
+          // biome-ignore lint/plugin: Naver brand green is fixed by Naver's login button guidelines
           "relative flex w-full items-center border-none bg-[#1ec800] text-white shadow-sm hover:bg-[#1ec800] hover:opacity-50",
         )}
       >
@@ -320,6 +322,7 @@ export const SSOButtons = ({
       <button
         className={buttonRecipe(
           undefined,
+          // biome-ignore lint/plugin: Google brand blue is fixed by Google's sign-in branding guidelines
           "relative flex w-full items-center border-none bg-[#039be5] text-white shadow-sm",
         )}
       >
@@ -341,11 +344,13 @@ export const SSOButtons = ({
   };
   const subSsoButtonMap: { [key in cnst.SsoType["value"]]: ReactNode } = {
     kakao: (
+      // biome-ignore lint/plugin: Kakao brand yellow is fixed by Kakao's login button guidelines
       <button className="relative flex size-14 items-center justify-center rounded-full bg-[#FEE500] hover:bg-[#FEE500] hover:opacity-50">
         <Icon.Kakao className="" />
       </button>
     ),
     naver: (
+      // biome-ignore lint/plugin: Naver brand green is fixed by Naver's login button guidelines
       <button className="relative flex size-14 items-center justify-center rounded-full bg-[#1ec800] hover:bg-[#1ec800] hover:opacity-50">
         <Icon.Naver className="fill-white" />
       </button>
@@ -363,6 +368,7 @@ export const SSOButtons = ({
       </button>
     ),
     facebook: (
+      // biome-ignore lint/plugin: Facebook brand blue is fixed by Meta's login button guidelines
       <button className="relative flex size-14 items-center justify-center rounded-full bg-[#1778F2]">
         <Icon.Facebook className="mr-[0.5px] mb-1 fill-transparent" />
       </button>
@@ -618,7 +624,7 @@ export const PushNotificationSwitch = ({ className }: PushNotificationSwitchProp
   const self = st.use.self();
   const pushNotification = usePushNotification();
   const deviceToken = st.use.deviceToken();
-  //! TODO: 추후 수정필요
+  // FIXME: 추후 수정필요
   // const checked = self.notiDeviceTokens?.includes(deviceToken) ?? false;
   const checked = false as boolean;
   useEffect(() => {

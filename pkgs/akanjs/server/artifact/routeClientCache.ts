@@ -48,10 +48,20 @@ export class RouteClientCache {
   };
   readonly #buildRoute: RouteBuildFn;
   readonly #onMerge?: OnMergeFn;
+  #revision = 0;
 
   constructor({ buildRoute, onMerge }: RouteClientCacheOptions) {
     this.#buildRoute = buildRoute;
     this.#onMerge = onMerge;
+  }
+
+  /**
+   * Bumped on every mutation of `merged`, including a delta merge that leaves `generation` where it was. It lets a
+   * consumer memoize work derived from the manifest — merging the runtime manifest over it, say — without having to
+   * copy the manifest to find out whether anything changed. In production nothing after `seed` moves it at all.
+   */
+  get revision(): number {
+    return this.#revision;
   }
 
   #getEmptyDelta(): BuildRouteClientResult {
@@ -75,6 +85,7 @@ export class RouteClientCache {
     Object.assign(this.merged.ssrManifest.moduleMap, manifest.ssrManifest.moduleMap);
     for (const abs of manifest.knownEntries) this.merged.knownEntries.add(abs);
     for (const routeId of manifest.routeIds) this.#built.set(routeId, this.#getEmptyDelta());
+    this.#revision += 1;
   }
 
   async ensure(routeId: string, seeds: string[]): Promise<MergedManifest> {
@@ -125,6 +136,7 @@ export class RouteClientCache {
     for (const [url, byName] of Object.entries(delta.ssrManifestDelta.moduleMap))
       this.merged.ssrManifest.moduleMap[url] = byName;
     for (const entry of delta.newEntries) this.merged.knownEntries.add(entry);
+    this.#revision += 1;
     this.#built.set(routeId, delta);
     this.#logger.verbose(
       `[route-cache] build done routeId=${routeId} generation=${generation} entries=+${delta.newEntries.length} deps=${delta.clientDeps.length} in ${Date.now() - started}ms`,
@@ -176,6 +188,7 @@ export class RouteClientCache {
     }
     const nextGeneration = this.merged.generation + 1;
     this.merged = this.#getEmptyMerged(nextGeneration);
+    this.#revision += 1;
     this.#building.clear();
     this.#logger.verbose(`[route-cache] cleared generation=${nextGeneration} dropped=${dropped.length}`);
     return dropped;
@@ -209,6 +222,7 @@ export class RouteClientCache {
       ),
     };
     this.merged = next;
+    this.#revision += 1;
   }
 
   static #normalizePath(filePath: string): string {

@@ -55,6 +55,27 @@ export interface AkanMetricsReport {
   rscWorkerRestartCount?: number;
   rscWorkerRecycleCount?: number;
   rscWorkerLastRecycleReason?: string;
+  // The RSC worker samples its own process the same way its host replica does. These carry that
+  // sample under a prefix so it cannot overwrite the replica's own — see `RscWorker.getMetrics`.
+  rscWorkerReportedAt?: number;
+  rscWorkerRssBytes?: number;
+  rscWorkerHeapTotalBytes?: number;
+  rscWorkerHeapUsedBytes?: number;
+  rscWorkerExternalBytes?: number;
+  rscWorkerArrayBuffersBytes?: number;
+  rscWorkerCpuUserMicros?: number;
+  rscWorkerCpuSystemMicros?: number;
+  rscWorkerMaxRssKb?: number;
+  rscWorkerJscHeapSizeBytes?: number;
+  rscWorkerJscHeapCapacityBytes?: number;
+  /** Off-heap bytes JSC attributes to JS objects — typed-array backing stores, i.e. cached Flight chunks. */
+  rscWorkerJscExtraMemorySizeBytes?: number;
+  rscWorkerJscObjectCount?: number;
+  rscWorkerJscProtectedObjectCount?: number;
+  rscWorkerEventLoopLagMeanMs?: number;
+  rscWorkerEventLoopLagP99Ms?: number;
+  rscWorkerEventLoopLagMaxMs?: number;
+  rscWorkerGcDurationMs?: number;
   rscPendingRenderCount?: number;
   rscQueuedSendCount?: number;
   rscHostPendingChunkOverflowCount?: number;
@@ -80,9 +101,13 @@ export interface AkanMetricsReport {
   rscLastRenderLoadedModuleDelta?: number;
   rscLastRenderLoadedModules?: string[];
   rscResultCacheEntries?: number;
+  rscResultCacheBytes?: number;
+  rscPatchResultCacheEntries?: number;
+  rscPatchResultCacheBytes?: number;
   rscResultCacheHits?: number;
   rscResultCacheMisses?: number;
   rscResultCacheBypass?: number;
+  /** Keys the SSR chunk registry tracks — NOT a memory bound; the modules stay in Bun's ESM registry. */
   ssrChunkRegistrySize?: number;
   ssrChunkLoadCount?: number;
   ssrChunkCacheHitCount?: number;
@@ -93,6 +118,7 @@ export interface AkanMetricsReport {
   httpCsrCount?: number;
   httpImageCount?: number;
   httpHtmlCacheEntries?: number;
+  httpHtmlCacheBytes?: number;
   httpHtmlCacheHits?: number;
   httpHtmlCacheMisses?: number;
   httpHtmlCacheBypass?: number;

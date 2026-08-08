@@ -280,8 +280,8 @@ export class IcecreamOrderModel extends into(IcecreamOrder, IcecreamOrderFilter,
           />
           <div>
             {l.trans({
-              en: `By declaring the byStatuses query in IcecreamOrderFilter, you can use list, find, count, sample functions according to the given query conditions. For example, you can use listByStatuses, countByStatuses functions.`,
-              ko: `IcecreamOrderFilter에서 byStatuses 쿼리를 선언하면, 주어진 조건의 쿼리에 맞게 list, find, count, sample 등의 기능을 사용할 수 있습니다. 예를 들면, listByStatuses, countByStatuses 등의 기능을 사용할 수 있습니다.`,
+              en: `By declaring the byStatuses query in IcecreamOrderFilter, you can use list, find, count, insight, sample functions according to the given query conditions. For example, you can use listByStatuses, countByStatuses, and insightByStatuses functions. countByStatuses returns a number, and insightByStatuses returns db.IcecreamOrderInsight.`,
+              ko: `IcecreamOrderFilter에서 byStatuses 쿼리를 선언하면, 주어진 조건의 쿼리에 맞게 list, find, count, insight, sample 등의 기능을 사용할 수 있습니다. 예를 들면, listByStatuses, countByStatuses, insightByStatuses 등의 기능을 사용할 수 있습니다. countByStatuses는 number를, insightByStatuses는 db.IcecreamOrderInsight를 반환합니다.`,
             })}
           </div>
           <Docs.Alert>

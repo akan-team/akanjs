@@ -117,6 +117,12 @@ export class TicketModel extends into(Ticket, TicketFilter, cnst.ticket, () => (
               ko: "전체 document 조회와 latest/oldest 정렬은 framework가 이미 제공하므로, 비즈니스에 필요한 검색과 정렬 규칙만 추가합니다.",
             })}
           </div>
+          <div>
+            {l.trans({
+              en: "count and insight are separate accessors over the same query: count returns a plain number, and insight returns the accumulated db.<Model>Insight. Both are generated on the Model and on the Service, so the same call reads identically from either side.",
+              ko: "count와 insight는 같은 query 위의 별개 accessor입니다. count는 number를 반환하고, insight는 누적된 db.<Model>Insight를 반환합니다. 둘 다 Model과 Service에 모두 생성되므로 어느 쪽에서 호출해도 동일하게 읽힙니다.",
+            })}
+          </div>
         </Docs.Description>
         <Code.Snippet
           className="w-full"
@@ -172,7 +178,8 @@ export class TicketModel extends into(Ticket, TicketFilter, cnst.ticket, () => (
           <div className={panelRecipe()}>
             <div className="font-bold text-foreground">Query helpers</div>
             <div className="mt-2 text-foreground/70">
-              list, listIds, find, findId, pick, pickId, exists, count, insight, query
+              list, listIds, find, findId, pick, pickId, exists, count, insight, query, remove, removeOne, update,
+              updateOne
             </div>
           </div>
         </div>
@@ -194,9 +201,9 @@ await this.removeTicket(ticketId);`}
 const ticket = await this.findInProject(projectId);
 const ticket = await this.pickInProject(projectId);
 
-const count = await this.countInProject(projectId);
+const count: number = await this.countInProject(projectId);
 const exists = await this.existsInProject(projectId);
-const ticketInsight = await this.insightInProject(projectId);`}
+const ticketInsight: db.TicketInsight = await this.insightInProject(projectId);`}
         />
       </Scroll.Slide>
       <Divider />

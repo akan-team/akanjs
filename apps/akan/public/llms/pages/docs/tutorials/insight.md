@@ -60,6 +60,32 @@ Add dictionary entries for the insight fields to enable proper labeling in the U
 
 Now let's create a View component to display the aggregated insights in a beautiful dashboard layout:
 
+The View component displays each insight metric in a responsive grid. The chef can quickly see how much yogurt to prepare and which toppings are most popular.
+
+Now create a Zone component that connects the View to the store. Zone components handle data fetching and state management:
+
+Key feature of the Zone component:
+
+Auto-generated hook that retrieves the aggregated insight data for the specified slice. The framework handles all the aggregation pipeline execution.
+
+Finally, add the Insight Zone to your page to display real-time aggregated statistics:
+
+Now when users filter orders by status, the insight dashboard automatically updates to show aggregated statistics for only those filtered orders. This is incredibly powerful for real-time operational decisions!
+
+🎉 What You've Accomplished:
+
+Created dynamic Query Makers with searchable parameters
+
+Learned how to define Insight classes with Akan document query filters
+
+Built View components to display aggregated statistics
+
+Connected Zone components to auto-generated store hooks
+
+Integrated insights with filtered queries for real-time analytics
+
+In the next tutorial, we'll explore how to relate data between different models. This will allow you to create rich relationships like associating orders with customers, linking products to categories, and building complex data graphs.
+
 ## Code Examples
 
 ### apps/koyo/lib/icecreamOrder/icecreamOrder.signal.ts
@@ -553,7 +579,7 @@ export const dictionary = modelDictionary(["en", "ko"])
 ### apps/koyo/lib/icecreamOrder/IcecreamOrder.View.tsx
 
 ```ts
-import { cn } from "akanjs/client"; // [!code collapse:65]
+import { cn } from "akanjs/client"; // [!code collapse:66]
 import { cnst, usePage } from "@apps/koyo/client";
 import { IcecreamOrder } from "@apps/koyo/client";
 
@@ -584,7 +610,203 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
                 key={topping}
                 className="inline-block rounded-full bg-background px-2 py-1 text-xs font-medium text-primary"
               >
-                {l(
+                {l(`topping.${topping}`)}
+              </span>
+            ))
+          )}
+        </div>
+        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.status")}</div>
+        <div>
+          <span
+            className={cn(
+              "inline-block rounded-full px-2 py-1 text-xs font-semibold",
+              icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
+              icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
+              icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
+              icecreamOrder.status === "finished" && "border border-accent/40 bg-background text-accent",
+              icecreamOrder.status === "canceled" && "border border-border bg-background text-foreground/70",
+            )}
+          >
+            {l(`icecreamOrderStatus.${icecreamOrder.status}`)}
+          </span>
+        </div>
+        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.createdAt")}</div>
+        <div className="text-foreground/70">{icecreamOrder.createdAt.format("YYYY-MM-DD HH:mm:ss")}</div>
+        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.updatedAt")}</div>
+        <div className="text-foreground/70">{icecreamOrder.updatedAt.format("YYYY-MM-DD HH:mm:ss")}</div>
+      </div>
+      <div className="flex items-center justify-end gap-2">
+        <IcecreamOrder.Util.Process icecreamOrderId={icecreamOrder.id} disabled={icecreamOrder.status !== "active"} />
+        <IcecreamOrder.Util.Serve icecreamOrderId={icecreamOrder.id} disabled={icecreamOrder.status !== "processing"} />
+        <IcecreamOrder.Util.Finish icecreamOrderId={icecreamOrder.id} disabled={icecreamOrder.status !== "served"} />
+        <IcecreamOrder.Util.Cancel icecreamOrderId={icecreamOrder.id} disabled={icecreamOrder.status !== "active"} />
+      </div>
+    </div>
+  );
+};
+
+interface InsightProps {
+  className?: string;
+  icecreamOrderInsight: cnst.IcecreamOrderInsight;
+}
+export const Insight = ({ className, icecreamOrderInsight }: InsightProps) => {
+  const { l } = usePage();
+  return (
+    <div className={cn("w-full space-y-2 rounded p-4", className)}>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <div>
+          <div className="text-xs">{l("icecreamOrder.insight.yogurtIcecreamQty")}</div>
+          <div className="text-2xl font-bold">{icecreamOrderInsight.yogurtIcecreamQty}</div>
+        </div>
+        <div>
+          <div className="text-xs">{l("icecreamOrder.insight.fruitRingQty")}</div>
+          <div className="text-2xl font-bold">{icecreamOrderInsight.fruitRingQty}</div>
+        </div>
+        <div>
+          <div className="text-xs">{l("icecreamOrder.insight.oreoQty")}</div>
+          <div className="text-2xl font-bold">{icecreamOrderInsight.oreoQty}</div>
+        </div>
+        <div>
+          <div className="text-xs">{l("icecreamOrder.insight.strawberryQty")}</div>
+          <div className="text-2xl font-bold">{icecreamOrderInsight.strawberryQty}</div>
+        </div>
+        <div>
+          <div className="text-xs">{l("icecreamOrder.insight.mangoQty")}</div>
+          <div className="text-2xl font-bold">{icecreamOrderInsight.mangoQty}</div>
+        </div>
+        <div>
+          <div className="text-xs">{l("icecreamOrder.insight.cheeseCubeQty")}</div>
+          <div className="text-2xl font-bold">{icecreamOrderInsight.cheeseCubeQty}</div>
+        </div>
+        <div>
+          <div className="text-xs">{l("icecreamOrder.insight.cornQty")}</div>
+          <div className="text-2xl font-bold">{icecreamOrderInsight.cornQty}</div>
+        </div>
+        <div>
+          <div className="text-xs">{l("icecreamOrder.insight.granolaQty")}</div>
+          <div className="text-2xl font-bold">{icecreamOrderInsight.granolaQty}</div>
+        </div>
+        <div>
+          <div className="text-xs">{l("icecreamOrder.insight.bananaQty")}</div>
+          <div className="text-2xl font-bold">{icecreamOrderInsight.bananaQty}</div>
+        </div>
+        <div>
+          <div className="text-xs">{l("icecreamOrder.insight.figQty")}</div>
+          <div className="text-2xl font-bold">{icecreamOrderInsight.figQty}</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+```
+
+### apps/koyo/lib/icecreamOrder/IcecreamOrder.Zone.tsx
+
+```ts
+"use client"; // [!code collapse:54]
+import { DefaultOf } from "akanjs/constant";
+import type { ClientInit, ClientView, SliceMeta } from "akanjs/fetch";
+import { useInterval } from "akanjs/webkit";
+import { Load, Model } from "akanjs/ui";
+import { cnst, fetch, IcecreamOrder, st } from "@apps/koyo/client";
+
+interface CardProps {
+  className?: string;
+  init: ClientInit<"icecreamOrder", cnst.LightIcecreamOrder>;
+  slice?: SliceMeta;
+  showControls?: boolean;
+}
+export const Card = ({ className, init, slice = fetch.slice.icecreamOrder, showControls = true }: CardProps) => {
+  useInterval(() => {
+    void st.slice[slice.sliceName as "icecreamOrder"].do.refreshIcecreamOrder();
+  }, 3000);
+  return (
+    <>
+      <Load.Units
+        className={className}
+        init={init}
+        renderItem={(icecreamOrder: cnst.LightIcecreamOrder) => (
+          <IcecreamOrder.Unit.Card key={icecreamOrder.id} icecreamOrder={icecreamOrder} showControls={showControls} />
+        )}
+      />
+      {showControls ? (
+        <Model.ViewEditModal
+          slice={slice}
+          renderTitle={(icecreamOrder: DefaultOf<cnst.IcecreamOrder>) =>
+            `IcecreamOrder - ${icecreamOrder.id ? icecreamOrder.id : "New"}`
+          }
+          renderView={(icecreamOrder: cnst.IcecreamOrder) => (
+            <IcecreamOrder.View.General className="w-full" icecreamOrder={icecreamOrder} />
+          )}
+          renderTemplate={() => <IcecreamOrder.Template.General />}
+        />
+      ) : null}
+    </>
+  );
+};
+interface ViewProps {
+  className?: string;
+  view: ClientView<"icecreamOrder", cnst.IcecreamOrder>;
+}
+export const View = ({ view }: ViewProps) => {
+  return (
+    <Load.View
+      view={view}
+      renderView={(icecreamOrder) => <IcecreamOrder.View.General icecreamOrder={icecreamOrder} />}
+    />
+  );
+};
+
+interface InsightProps {
+  className?: string;
+  slice?: SliceMeta;
+}
+export const Insight = ({ className, slice = fetch.slice.icecreamOrder }: InsightProps) => {
+  const icecreamOrderInsight = st.slice[slice.sliceName as "icecreamOrder"].use.icecreamOrderInsight();
+  return <IcecreamOrder.View.Insight className={className} icecreamOrderInsight={icecreamOrderInsight} />;
+};
+```
+
+### apps/koyo/page/_index.tsx
+
+```ts
+import { Load, Model } from "akanjs/ui"; // [!code collapse:21]
+import { cnst, fetch, IcecreamOrder, Inventory, usePage } from "@apps/koyo/client";
+
+export default async function Page() {
+  const { l } = usePage();
+  const { icecreamOrderInitInPublic } = await fetch.initIcecreamOrderInPublic();
+  const icecreamOrderForm: Partial<cnst.IcecreamOrderInput> = {};
+  return (
+    <div className="space-y-4">
+      <div className="space-y-4">
+        <div className="flex items-center gap-4 text-5xl font-black">
+          <div className="text-5xl font-black">{l("inventory.modelName")}</div>
+          <Inventory.Util.Refill className="absolute top-2 right-2" />
+        </div>
+        <Inventory.Zone.Today />
+        <div className="flex items-center gap-4 text-5xl font-black">
+          <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div> // [!code collapse:10]
+          <IcecreamOrder.Util.PublicQueryMaker />
+          <Model.New
+            className={buttonRecipe({ variant: "primary" })}
+            slice={fetch.slice.icecreamOrderInPublic}
+            renderTitle="name"
+            partial={icecreamOrderForm}
+          >
+            <IcecreamOrder.Template.General />
+          </Model.New>
+        </div>
+        <IcecreamOrder.Zone.Insight slice={fetch.slice.icecreamOrderInPublic} /> // [!code ++]
+        <IcecreamOrder.Zone.Card
+          className="space-y-2"
+          init={icecreamOrderInitInPublic}
+          slice={fetch.slice.icecreamOrderInPublic}
+        />
+      </div> // [!code collapse:10]
+    </div>
+  );
+}
 ```
 
 ## Agent Notes

@@ -166,6 +166,12 @@ Update unit file
 
 The Unit file shows how each order looks in a list or card view. Think of it as the "receipt" or "order summary" that displays the order information nicely.
 
+This creates a card design for each ice cream order. The card shows the order ID and status with different colors - green for "active", blue for "processing", and red for "served".
+
+The cn function changes the card's appearance based on the order status, and l() displays the status text in the user's language.
+
+🚀 We have the form (Template) and the display card (Unit). Now let's put it all together on a webpage so customers can actually visit and use your ice cream ordering system!
+
 Expose to page
 
 Finally, let's create a page where customers can actually place their ice cream orders. This page connects everything together and makes it accessible through a web URL.
@@ -372,9 +378,22 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
             {l("icecreamOrder.status")}
           </span>
           <span
-            className={cn("ml-2 rounded-full border border-border bg-background px-3 py-1 text-sm font-semibold text-foreground/80", icecreamOrder.status === "active" && "bg-primary text-primary-foreground", icecreamOrder.status === "processing" && "bg-warning text-warning-foreground", icecreamOrder.status === "served" && "bg-secondary text-secondary-foreground", icecreamOrder.status === "finished" && "bg-accent text-accent-foreground", icecreamOrder.status === "canceled" && "bg-neutral text-neutral-foreground")}
+            className={cn(
+              "ml-2 rounded-full border border-border bg-background px-3 py-1 text-sm font-semibold text-foreground/80",
+              icecreamOrder.status === "active" && "bg-primary text-primary-foreground",
+              icecreamOrder.status === "processing" && "bg-warning text-warning-foreground",
+              icecreamOrder.status === "served" && "bg-secondary text-secondary-foreground",
+              icecreamOrder.status === "finished" && "bg-accent text-accent-foreground",
+              icecreamOrder.status === "canceled" && "bg-neutral text-neutral-foreground",
+            )}
           >
-            {l(
+            {l(`icecreamOrderStatus.${icecreamOrder.status}`)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
 ```
 
 ### apps/koyo/page/_index.tsx

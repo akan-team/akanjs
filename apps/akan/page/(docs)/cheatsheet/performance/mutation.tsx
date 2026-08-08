@@ -92,8 +92,8 @@ export default function Page() {
             </li>
             <li>
               {l.trans({
-                en: "Query updates (`updateOne`, `updateMany`, `deleteMany`, `bulkWrite`) compile to a single atomic SQL statement and do not load documents.",
-                ko: "Query update(`updateOne`, `updateMany`, `deleteMany`, `bulkWrite`)는 하나의 원자적 SQL 문으로 컴파일되며 document를 로드하지 않습니다.",
+                en: "Query updates (`updateOne`, `updateMany`, `removeOne`, `removeMany`, `bulkWrite`) compile to a single atomic SQL statement and do not load documents.",
+                ko: "Query update(`updateOne`, `updateMany`, `removeOne`, `removeMany`, `bulkWrite`)는 하나의 원자적 SQL 문으로 컴파일되며 document를 로드하지 않습니다.",
               })}
             </li>
             <li>
@@ -253,8 +253,8 @@ await this.Post.updateOne({ id }, ({ pull }) => ({ tags: pull("featured") }));`}
             <DocsList>
               <li>
                 {l.trans({
-                  en: "`updateOne`, `updateMany`, `deleteMany`, and `bulkWrite` write directly in the database and do not fire save/update/remove hooks.",
-                  ko: "`updateOne`, `updateMany`, `deleteMany`, `bulkWrite`는 데이터베이스에 직접 쓰며 save/update/remove hook을 발화하지 않습니다.",
+                  en: "`updateOne`, `updateMany`, `removeOne`, `removeMany`, and `bulkWrite` write directly in the database and do not fire save/update/remove hooks.",
+                  ko: "`updateOne`, `updateMany`, `removeOne`, `removeMany`, `bulkWrite`는 데이터베이스에 직접 쓰며 save/update/remove hook을 발화하지 않습니다.",
                 })}
               </li>
               <li>

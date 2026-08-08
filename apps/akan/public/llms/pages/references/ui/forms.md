@@ -50,17 +50,21 @@ Show search input and optionally call onSearch.
 
 Custom display renderers.
 
-Async-aware button with built-in loading, success, and error state. It is useful for actions that return promises and should prevent duplicate clicks while processing.
+The one button primitive. A synchronous handler renders a plain button; returning a promise is what opts the same button into loading, success, and error state and blocks duplicate clicks while processing. There is no separate async button to choose.
 
-Async-aware click handler.
+Optional. Returning a promise enables the async states; returning nothing keeps it a plain button.
 
 Called after the success state is shown briefly.
+
+Both modes keep the box fixed — CSS cannot animate an auto width, so a resizing button can only snap. hold (default) fades a bare indicator over the children, sizing the box to the label. replace cross-fades to a labelled indicator, keeping both labels stacked so the box is the wider of the two from the start.
+
+Whether a failure renders its message under the button. Off leaves it to the framework toast, keeping the layout fixed.
 
 Inherited native button prop; also disabled while loading/success.
 
 Forms UI
 
-Form components range from high-level `Field.*` controls used in module templates to lower-level `Input`, `Select`, and async `Button` primitives.
+Form components range from high-level `Field.*` controls used in module templates to lower-level `Input`, `Select`, and `Button` primitives.
 
 ## Code Examples
 

@@ -67,6 +67,14 @@ Load aggregated insight for matching documents.
 
 Return the raw query object for a document filter.
 
+Soft-remove every matching document in one atomic update. Fires no hooks, so no _postRemove and no cascade run.
+
+Soft-remove the newest match — the subquery is ordered createdAt descending and the caller cannot pick. Use it for at-most-one queries, not to claim the next item off a queue.
+
+Update every matching document in one atomic update. The patch lands on set(), because a filter's trailing args may be optional and nothing can follow those. Building the chain runs no query.
+
+Update the newest match, ordered createdAt descending. The result carries counts, never which row was touched.
+
 Runs before create. Return the input data to continue.
 
 Runs after create. Return the document to continue.
@@ -79,7 +87,7 @@ Runs before remove.
 
 Runs after remove. Return the document to continue.
 
-A relation field declared with cascade: "remove" removes its target through the target's service, so the target's _postRemove runs too.
+A field declared with cascade: "removeRef" or "removeWith" removes through the target's service, so the target's _postRemove runs too. Declaring a _postRemove here is also what keeps that cascade one document at a time instead of one query.
 
 A service file is where business workflows run. It coordinates documents, other services, signals, external APIs, environment options, and service lifecycle hooks.
 

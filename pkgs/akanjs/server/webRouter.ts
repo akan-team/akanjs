@@ -21,6 +21,7 @@ import {
   RouteSeedIndexStore,
   RoutesManifestStore,
 } from "./artifact";
+import { resolveEncodedSidecar } from "./assetEncoding";
 import {
   getClientFacingOrigin,
   hasRouteCacheInvalidationScope,
@@ -57,6 +58,8 @@ import type { BaseBuildArtifact, HttpRoutes, RenderState } from "./types";
 
 const CLIENT_CLOSED_REQUEST_STATUS = 499;
 export const DEFAULT_HTML_RESULT_CACHE_MAX_BODY_BYTES = 2 * 1024 * 1024;
+/** Well above any sensible TTL: this only has to reclaim a cache nobody is reading, not track expiry closely. */
+const ROUTE_CACHE_SWEEP_INTERVAL_MS = 60_000;
 const APPLE_APP_SITE_ASSOCIATION_PATH = "/.well-known/apple-app-site-association";
 const ANDROID_ASSET_LINKS_PATH = "/.well-known/assetlinks.json";
 const FIREBASE_MESSAGING_SW_PATH = "/firebase-messaging-sw.js";
@@ -305,10 +308,16 @@ export class WebRouter {
   };
   readonly #htmlCache = new LruTtlCache<CachedHtmlResult>(
     parsePositiveInt(process.env.AKAN_HTML_RESULT_CACHE_MAX_ENTRIES) ?? 100,
+    {
+      sizeOf: (result) => result.html.length,
+      maxBytes: LruTtlCache.parseByteCeiling(process.env.AKAN_HTML_RESULT_CACHE_MAX_BYTES),
+      sweepIntervalMs: ROUTE_CACHE_SWEEP_INTERVAL_MS,
+    },
   );
   #htmlCacheHits = 0;
   #htmlCacheMisses = 0;
   #htmlCacheBypass = 0;
+  #runtimeManifest: { revision: number; manifest: MergedManifest } | null = null;
   renderState: RenderState;
   #seedIndex: RouteSeedIndex;
   constructor({ artifact, cssBytesByUrl, rsc, seedIndex, upgradeHmrWs }: WebRouterOptions) {
@@ -352,7 +361,7 @@ export class WebRouter {
     if (prebuilt) {
       this.#routeCache.seed(prebuilt);
       await this.#rsc.reload({
-        clientManifest: this.#mergeRuntimeManifest(this.#routeCache.merged).clientManifest,
+        clientManifest: this.#mergeRuntimeManifest().clientManifest,
         cssAssets: this.renderState.cssAssets,
         buildId: this.renderState.buildId,
       });
@@ -698,6 +707,7 @@ export class WebRouter {
     this.#devHmr?.dispose();
     this.#devHmr = null;
     this.#builderRpc = null;
+    this.#htmlCache.dispose();
     this.#rsc.kill();
     this.#hub = null;
   }
@@ -715,6 +725,7 @@ export class WebRouter {
       httpCsrCount: this.#requestStats.csr,
       httpImageCount: this.#requestStats.image,
       httpHtmlCacheEntries: this.#htmlCache.size,
+      httpHtmlCacheBytes: this.#htmlCache.byteSize,
       httpHtmlCacheHits: this.#htmlCacheHits,
       httpHtmlCacheMisses: this.#htmlCacheMisses,
       httpHtmlCacheBypass: this.#htmlCacheBypass,
@@ -833,15 +844,27 @@ export class WebRouter {
     this.#logger.verbose(
       `[route-cache] ensure pathname=${url.pathname} routeId=${matched?.entry.routeId ?? "(none)"} in ${Date.now() - started}ms`,
     );
-    return this.#mergeRuntimeManifest(this.#routeCache.snapshot());
+    return this.#mergeRuntimeManifest();
   }
 
-  #mergeRuntimeManifest(manifest: MergedManifest): MergedManifest {
-    return {
-      ...manifest,
-      clientManifest: WebRouter.#mergeClientManifest(this.#artifact.rscRuntimeClientManifest, manifest.clientManifest),
-      ssrManifest: WebRouter.#mergeSsrManifest(this.#artifact.rscRuntimeSsrManifest, manifest.ssrManifest),
+  /**
+   * Memoized on the route cache's revision. Both the snapshot and the runtime merge copy the whole client manifest
+   * and SSR module map, which is a few hundred KB of structure for a small app — and this ran on every request. In
+   * production the revision never moves after `seed`, so the manifest is built once; in dev a rebuild bumps it and
+   * the next request pays for one fresh copy. The cached object is still a copy, so an in-flight request keeps
+   * consuming a stable manifest across an invalidate exactly as the per-request snapshot made it.
+   */
+  #mergeRuntimeManifest(): MergedManifest {
+    const revision = this.#routeCache.revision;
+    if (this.#runtimeManifest?.revision === revision) return this.#runtimeManifest.manifest;
+    const snapshot = this.#routeCache.snapshot();
+    const manifest: MergedManifest = {
+      ...snapshot,
+      clientManifest: WebRouter.#mergeClientManifest(this.#artifact.rscRuntimeClientManifest, snapshot.clientManifest),
+      ssrManifest: WebRouter.#mergeSsrManifest(this.#artifact.rscRuntimeSsrManifest, snapshot.ssrManifest),
     };
+    this.#runtimeManifest = { revision, manifest };
+    return manifest;
   }
   #renderSystemNotFoundFallbackResponse(req: Request, url: URL): Promise<Response> {
     return createSystemPageResponse({
@@ -1195,16 +1218,12 @@ self.addEventListener("notificationclick", (event) => {
     headers.set("Last-Modified", new Date(lastModifiedMs).toUTCString());
     if (WebRouter.#isNotModified(req, etag, lastModifiedMs)) return new Response(null, { status: 304, headers });
 
-    const gzipPath = `${filePath}.gz`;
-    if (WebRouter.#acceptsGzip(req) && WebRouter.#isCompressible(options.contentType)) {
-      const gzipFile = Bun.file(gzipPath);
-      if (await gzipFile.exists()) {
-        const gzipBytes = await gzipFile.bytes();
-        headers.set("Content-Encoding", "gzip");
-        headers.set("Content-Length", String(gzipBytes.byteLength));
-        headers.set("Vary", "Accept-Encoding");
-        return new Response(WebRouter.#toArrayBuffer(gzipBytes), { headers });
-      }
+    const sidecar = await resolveEncodedSidecar(req, filePath, options.contentType);
+    if (sidecar) {
+      headers.set("Content-Encoding", sidecar.encoding);
+      headers.set("Content-Length", String(sidecar.bytes.byteLength));
+      headers.set("Vary", "Accept-Encoding");
+      return new Response(sidecar.bytes, { headers });
     }
 
     return new Response(file.stream(), { headers });
@@ -1289,22 +1308,6 @@ self.addEventListener("notificationclick", (event) => {
     if (!ifModifiedSince) return false;
     const sinceMs = Date.parse(ifModifiedSince);
     return Number.isFinite(sinceMs) && sinceMs >= lastModifiedMs;
-  }
-
-  static #acceptsGzip(req: Request): boolean {
-    const acceptEncoding = req.headers.get("accept-encoding") ?? "";
-    return /\bgzip\b/.test(acceptEncoding);
-  }
-
-  static #isCompressible(contentType: string): boolean {
-    const type = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
-    return (
-      type.startsWith("text/") ||
-      type === "application/javascript" ||
-      type === "application/json" ||
-      type === "application/manifest+json" ||
-      type === "image/svg+xml"
-    );
   }
 
   static #safeResolve(baseDir: string, urlPath: string): string | null {

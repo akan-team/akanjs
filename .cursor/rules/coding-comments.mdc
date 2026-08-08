@@ -16,7 +16,9 @@ Do not narrate code. Do document the thing the code cannot say. Both halves are 
   1. `TODO` — unfinished work that must be tracked in-code
   2. `FIXME` — known broken or incorrect behavior that must be fixed
   3. `XXX` — dangerous / surprising hazard that a reader must not miss
-  4. `//!` — disabled or must-fix code
+  4. `//!` — disabled or must-fix code. **Server, `srvkit/`, and CLI files only.** Bun's bundler treats `//!`
+     (and `/*!`) as a legal comment and keeps it through minification, so in browser-reachable code the note
+     ships verbatim to every visitor. Use `// FIXME:` there instead; `no-bang-comment-in-client.grit` enforces it.
   5. `//?` — an explanatory aside
   6. `//*` — a design note
   7. Deletion caution — warn why removing a line or block would break something non-obvious

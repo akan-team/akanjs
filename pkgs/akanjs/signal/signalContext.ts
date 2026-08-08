@@ -18,6 +18,7 @@ import type { Adaptor, AdaptorCls, DatabaseService, InjectRegistry, LiveRegistry
 import type { Internal, InternalCls, InternalInfo, MiddlewareCls } from ".";
 import type { EndpointInfo } from "./endpointInfo";
 import { Exception } from "./exception";
+import type { Guard, GuardCls } from "./guard";
 import { isTraceEnabled, runWithTrace, SignalTrace, traceSpan } from "./trace";
 
 export type SignalTransportType = "http" | "websocket";
@@ -28,6 +29,7 @@ interface WebSocketRequest {
   eventType: WebSocketEventType;
 }
 type RuntimeRecord = Record<string, unknown>;
+type MiddlewareHandler = (context: SignalContext, next: () => Promise<unknown>) => PromiseOrObject<unknown>;
 
 interface ExceptionLike {
   statusCode: number;
@@ -114,13 +116,25 @@ export class SignalContext<
     }
     return this;
   }
+  /**
+   * Guards read everything from the context they are handed and are already required to be side-effect free and
+   * safe to re-run — `SignalResolver.revalidateWsRooms` re-runs them outside of any request — so one instance per
+   * class serves every call instead of one per guard per request.
+   */
+  static #guards = new WeakMap<GuardCls, Guard>();
+  static #getGuard(GuardCls: GuardCls): Guard {
+    const cached = SignalContext.#guards.get(GuardCls);
+    if (cached) return cached;
+    const guard = new GuardCls();
+    SignalContext.#guards.set(GuardCls, guard);
+    return guard;
+  }
   async #checkGuards() {
     const guards = this.endpointInfo.signalOption.guards ?? [];
     if (guards.length === 0) return;
     await Promise.all(
       guards.map(async (GuardCls) => {
-        const guard = new GuardCls();
-        const canPass = await guard.canPass(this);
+        const canPass = await SignalContext.#getGuard(GuardCls).canPass(this);
         if (!canPass) throw new Exception.Forbidden(`Access denied by guard: ${GuardCls.name}`);
       }),
     );
@@ -151,11 +165,34 @@ export class SignalContext<
     for (let i = middlewares.length - 1; i >= 0; i--) {
       const MiddlewareCls = middlewares[i];
       if (!MiddlewareCls) continue;
-      const middleware = new MiddlewareCls();
       const currentNext = next;
-      next = async () => await (await middleware.use(this.getEnv()))(this, currentNext);
+      next = async () =>
+        await (await SignalContext.#getMiddlewareHandler(MiddlewareCls, this.getEnv()))(this, currentNext);
     }
     return next;
+  }
+  /**
+   * `use(env)` takes no context, so the instance and the handler it returns are a function of `(class, env)` and
+   * hold for the life of the process. Building both per request cost an instance, a handler and a closure on every
+   * call for every registered middleware — and `Logging` is registered by default.
+   */
+  static #middlewareHandlers = new WeakMap<MiddlewareCls, WeakMap<object, Promise<MiddlewareHandler>>>();
+  static #getMiddlewareHandler(MiddlewareCls: MiddlewareCls, env: BaseEnv): Promise<MiddlewareHandler> {
+    const byEnv =
+      SignalContext.#middlewareHandlers.get(MiddlewareCls) ?? new WeakMap<object, Promise<MiddlewareHandler>>();
+    SignalContext.#middlewareHandlers.set(MiddlewareCls, byEnv);
+    const cached = byEnv.get(env);
+    if (cached) return cached;
+    // A rejected setup is evicted rather than cached: a middleware that failed to initialize once should get
+    // another chance on the next request instead of poisoning the endpoint for the life of the process.
+    const handler = Promise.resolve(new MiddlewareCls().use(env) as PromiseOrObject<MiddlewareHandler>).catch(
+      (error: unknown) => {
+        byEnv.delete(env);
+        throw error;
+      },
+    );
+    byEnv.set(env, handler);
+    return handler;
   }
   async exec() {
     if (!this.trace) return await this.#exec();

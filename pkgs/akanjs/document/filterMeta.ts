@@ -98,6 +98,13 @@ export const fillMissingFilterArgs = (filterInfo: FilterInfo, args: unknown[]) =
   return [...args, ...Array(filterInfo.args.length - args.length).fill(undefined)];
 };
 
+export const assertFilterFitsCrud = (refName: string, queryKey: string, className: string) => {
+  if (queryKey.toLowerCase() !== refName.toLowerCase()) return;
+  throw new Error(
+    `Filter "${queryKey}" on "${refName}" generates remove${className}/update${className}, which are the generated CRUD methods; rename the filter`,
+  );
+};
+
 export type BaseFilterSortKey = "latest" | "oldest" | "relevance";
 export type BaseFilterQueryKey = "any";
 export type BaseFilterKey = BaseFilterSortKey | BaseFilterQueryKey;

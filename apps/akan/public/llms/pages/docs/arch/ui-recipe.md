@@ -43,15 +43,15 @@ badgeRecipe variants: default, primary, secondary, accent, success, warning, inf
 
 Every variant class is a semantic token (bg-primary, text-success-foreground …), so it stays theme-aware automatically.
 
-Recipes live in their own module (akanjs/ui/recipe.ts) precisely so they are not client-only. If a recipe were exported from a 'use client' component file, calling it from a server component would throw 'client-only export'. The separate recipe layer removes that boundary.
+Recipes live in their own folder (akanjs/ui/recipe/, one recipe per file) precisely so they are not client-only. If a recipe were exported from a 'use client' component file, calling it from a server component would throw 'client-only export'. The separate recipe layer removes that boundary.
 
 App-Level Recipes
 
-When a surface repeats across your app — a gradient hero, an icon tile, a chat bubble — do not inline the same class string everywhere. Add a recipe to the app's ui/Recipe.ts (server-safe, PascalCase file name per the app ui convention) and import it from the ui barrel. This mirrors the framework's ui/recipe.ts at the app level.
+When a surface repeats across your app — a gradient hero, an icon tile, a chat bubble — do not inline the same class string everywhere. Add one file per recipe under the app's ui/Recipe/ (server-safe; the folder is PascalCase because the generated ui barrel exports PascalCase names only) and import it from the ui barrel. This mirrors the framework's ui/recipe/ at the app level, and the folder's index.ts also re-exports the framework recipes so one import path covers both.
 
 The page then stops repeating class strings and reads its variant from data:
 
-Convention: build each factory with recipe(tv({ base, variants })) (both re-exported from akanjs/ui), name it <name>Recipe, and keep the file free of 'use client'. Call it as xRecipe(variants, className?) — the second arg is merged internally, no cn() needed. App ui files are PascalCase, so the file is ui/Recipe.ts even though the framework's is the lowercase ui/recipe.ts.
+Convention: build each factory with recipe(tv({ base, variants })) (both re-exported from akanjs/ui), name it <name>Recipe, and keep the file free of 'use client'. Call it as xRecipe(variants, className?) — the second arg is merged internally, no cn() needed. App ui folders are PascalCase, so the folder is ui/Recipe/ even though the framework's is the lowercase ui/recipe/.
 
 When To Reach For A Recipe
 
@@ -104,7 +104,7 @@ import { buttonRecipe, badgeRecipe, Link } from "akanjs/ui";
 <button className={buttonRecipe({ variant: "outline" }, "w-full rounded-2xl")} />;
 ```
 
-### apps/myapp/ui/Recipe.ts
+### apps/myapp/ui/Recipe/chatBubble.ts
 
 ```typescript
 import { recipe, tv } from "akanjs/ui";
@@ -139,7 +139,7 @@ import { chatBubbleRecipe } from "@apps/myapp/ui";
 ))}
 ```
 
-### apps/myapp/ui/Recipe.ts
+### apps/myapp/ui/Recipe/neonButton.ts
 
 ```typescript
 // buttonRecipe 와 같은 variant/size 표면을 유지해야 슬롯에 주입 가능.

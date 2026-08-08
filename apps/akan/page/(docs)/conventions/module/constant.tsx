@@ -293,27 +293,39 @@ type TicketStatusValue = TicketStatus["value"];`}
         <Docs.Description>
           <div>
             {l.trans({
-              en: 'A relation field can take its target down with it. cascade: "remove" is the whole declaration, and it works on an array field too.',
-              ko: '관계 field는 자신이 삭제될 때 대상까지 함께 삭제할 수 있습니다. 선언은 cascade: "remove" 하나가 전부이고, 배열 field에도 동작합니다.',
+              en: "The value names the direction, because both actions can sit on the same field shape. removeRef removes what the field points at when this document goes; removeWith removes this document when what the field points at goes.",
+              ko: "값이 방향을 말합니다. 두 동작이 같은 모양의 field에 붙을 수 있기 때문입니다. removeRef는 이 문서가 삭제될 때 field가 가리키는 대상을 삭제하고, removeWith는 field가 가리키는 대상이 삭제될 때 이 문서를 삭제합니다.",
             })}
           </div>
           <ul className="list-disc space-y-2 pl-5">
             <li>
               {l.trans({
-                en: "The removal runs through the target's service, so the target's own _postRemove runs with it. That is how a File cascade also deletes the stored object.",
-                ko: "삭제는 대상의 service를 거쳐 실행되므로 대상의 _postRemove도 함께 실행됩니다. File 캐스케이드가 저장된 객체까지 삭제하는 것이 이 때문입니다.",
+                en: "removeRef goes on the relation an owner holds, arrays included. Only a relation accepts it: a String, an ID, or a scalar throws while the class is being built, because none of them names a document to remove.",
+                ko: "removeRef는 소유 모델이 들고 있는 관계 field에 붙이며 배열도 됩니다. 관계 field에만 붙일 수 있습니다. String·ID·scalar는 클래스 빌드 중에 throw합니다. 셋 다 삭제할 문서를 가리키지 않기 때문입니다.",
               })}
             </li>
             <li>
               {l.trans({
-                en: "Only a relation accepts it. A String, an ID, or a scalar field throws while the class is being built, because none of them names a document the framework could remove.",
-                ko: "관계 field에만 붙일 수 있습니다. String·ID·scalar field는 클래스 빌드 중에 throw합니다. 셋 다 프레임워크가 삭제할 수 있는 문서를 가리키지 않기 때문입니다.",
+                en: "removeWith goes on the child's own reference to its owner, so the owner never learns its children exist and a lib model can be extended by an app's. It takes a relation, an ID with ref, or an ID with refPath for a polymorphic owner.",
+                ko: "removeWith는 자식이 자기 소유자를 가리키는 field에 붙습니다. 소유자는 자식의 존재를 몰라도 되고, lib 모델을 앱 모델이 확장할 수 있습니다. 관계 field, ref를 단 ID, 다형 소유자를 위한 refPath를 단 ID 세 가지를 받습니다.",
               })}
             </li>
             <li>
               {l.trans({
-                en: "Nothing checks for other references to the same target. Declaring cascade asserts that this field owns its target exclusively, and query-level removal fires no hooks and therefore no cascade.",
-                ko: "같은 대상을 참조하는 다른 문서가 있는지는 검사하지 않습니다. cascade 선언은 이 field가 대상을 단독으로 소유한다는 뜻이며, 쿼리 단위 삭제는 훅을 태우지 않으므로 캐스케이드도 돌지 않습니다.",
+                en: "A refPath must name an enumOf field. A free-form owner type is unknowable at build time, so every model's removal would have to sweep the polymorphic table on the chance it is the owner.",
+                ko: "refPath가 가리키는 field는 enumOf여야 합니다. 자유 문자열이면 어떤 모델이 소유자가 될 수 있는지 빌드 시점에 알 수 없어, 모든 모델의 삭제가 다형 테이블을 훑어야 합니다.",
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: "The removal runs through the target's service, so the target's own _postRemove runs with it — that is how a File cascade also deletes the stored object. When the target provably has no removal side effect, the boot-time plan collapses it into one query instead.",
+                ko: "삭제는 대상의 service를 거치므로 대상의 _postRemove도 함께 실행됩니다. File 캐스케이드가 저장된 객체까지 삭제하는 것이 이 때문입니다. 대상에 삭제 부수효과가 없다는 것이 증명되면 부팅 시점 계획이 한 번의 쿼리로 접습니다.",
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: "Nothing checks for other references to the same target. Declaring removeRef asserts that this field owns its target exclusively, and query-level removal fires no hooks and therefore no cascade.",
+                ko: "같은 대상을 참조하는 다른 문서가 있는지는 검사하지 않습니다. removeRef 선언은 이 field가 대상을 단독으로 소유한다는 뜻이며, 쿼리 단위 삭제는 훅을 태우지 않으므로 캐스케이드도 돌지 않습니다.",
               })}
             </li>
           </ul>
@@ -322,8 +334,15 @@ type TicketStatusValue = TicketStatus["value"];`}
           title="user.constant.ts"
           code={`export class UserInput extends via((field) => ({
   nickname: field(String, { default: "", text: "title" }),
-  image: field(File, { text: "thumb", cascade: "remove" }).optional(),
-  images: field([File], { cascade: "remove" }),
+  image: field(File, { text: "thumb", cascade: "removeRef" }).optional(),
+  images: field([File], { cascade: "removeRef" }),
+})) {}`}
+        />
+        <Code.Snippet
+          title="sessionChat.constant.ts"
+          code={`export class SessionChatInput extends via((field) => ({
+  agentSession: field(ID, { ref: "agentSession", cascade: "removeWith" }),
+  content: field(String, { default: "", text: "desc" }),
 })) {}`}
         />
       </Scroll.Slide>

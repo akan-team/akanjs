@@ -48,7 +48,9 @@ For a real-time dashboard, the data needs to stay fresh. When a staff member cha
 
 Let's look at how to control the display with props and automatic refresh:
 
-View
+The Unit component now accepts a showControls prop that determines whether to display action buttons. This simple flag allows the same card component to be used in both staff management views (with controls) and customer dashboard views (without controls).
+
+Now let's see how the Zone component manages automatic data refresh:
 
 Let's understand the key features of this Zone component:
 
@@ -359,7 +361,7 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
   const { l } = usePage();
   return (
     <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-muted to-border px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
-      <div className="flex flex-col justify-center"> // [!code collapse:24]
+      <div className="flex flex-col justify-center"> // [!code collapse:25]
         <div className="flex items-center gap-2 text-lg font-semibold text-primary">
           <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider uppercase">
             {l("icecreamOrder.id")}
@@ -371,9 +373,38 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
             {l("icecreamOrder.status")}
           </span>
           <span
-            className={cn("ml-2 rounded-full px-3 py-1 text-sm font-semibold", icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary", icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning", icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground", icecreamOrder.status === "finished" && "border border-accent/40 bg-background text-accent", icecreamOrder.status === "canceled" && "border border-border bg-background text-foreground/70")}
+            className={cn(
+              "ml-2 rounded-full px-3 py-1 text-sm font-semibold",
+              icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
+              icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
+              icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
+              icecreamOrder.status === "finished" && "border border-accent/40 bg-background text-accent",
+              icecreamOrder.status === "canceled" && "border border-border bg-background text-foreground/70",
+            )}
           >
-            {l(
+            {l(`icecreamOrderStatus.${icecreamOrder.status}`)}
+          </span>
+        </div>
+      </div>
+      {showControls ? ( // [!code ++]
+        <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4">
+          <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
+            <button className={buttonRecipe({ variant: "primary" })}>
+              <span>{l.trans({ en: "View", ko: "보기" })}</span>
+            </button>
+          </Model.ViewWrapper>
+          <IcecreamOrder.Util.Process icecreamOrderId={icecreamOrder.id} disabled={icecreamOrder.status !== "active"} />
+          <IcecreamOrder.Util.Serve
+            icecreamOrderId={icecreamOrder.id}
+            disabled={icecreamOrder.status !== "processing"}
+          />
+          <IcecreamOrder.Util.Finish icecreamOrderId={icecreamOrder.id} disabled={icecreamOrder.status !== "served"} />
+          <IcecreamOrder.Util.Cancel icecreamOrderId={icecreamOrder.id} disabled={icecreamOrder.status !== "active"} />
+        </div>
+      ) : null} // [!code ++]
+    </div>
+  );
+};
 ```
 
 ### apps/koyo/lib/icecreamOrder/IcecreamOrder.Zone.tsx

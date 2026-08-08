@@ -9,6 +9,7 @@ import type {
   FindQueryOption,
   ListQueryOption,
   SaveEventType,
+  UpdateChain,
 } from "akanjs/document";
 import type { ServiceCls } from "./serve";
 import type { DatabaseService } from "./types";
@@ -209,6 +210,22 @@ export class ServiceModel<
       },
       [`query${capitalizedQueryKey}`]: function (this: DatabaseService, ...args: any) {
         return queryFn(...args);
+      },
+      [`remove${capitalizedQueryKey}`]: async function (this: DatabaseService, ...args: any) {
+        const { query } = getQueryDataFromKey(queryKey, args);
+        return this.__removeMany(query);
+      },
+      [`removeOne${capitalizedQueryKey}`]: async function (this: DatabaseService, ...args: any) {
+        const { query } = getQueryDataFromKey(queryKey, args);
+        return this.__removeOne(query);
+      },
+      [`update${capitalizedQueryKey}`]: function (this: DatabaseService, ...args: any): UpdateChain {
+        const { query } = getQueryDataFromKey(queryKey, args);
+        return { set: (update) => this.__updateMany(query, update) };
+      },
+      [`updateOne${capitalizedQueryKey}`]: function (this: DatabaseService, ...args: any): UpdateChain {
+        const { query } = getQueryDataFromKey(queryKey, args);
+        return { set: (update) => this.__updateOne(query, update) };
       },
     };
     return filterServiceMethods;
