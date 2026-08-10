@@ -456,9 +456,12 @@ export const LabOverlays = () => {
   const [open, setOpen] = useState(false);
   const [sheet, setSheet] = useState(false);
   const [menuKey, setMenuKey] = useState("home");
+  const [menuModal, setMenuModal] = useState(false);
+  const [menuNotify, setMenuNotify] = useState(true);
+  const [nestedModal, setNestedModal] = useState(false);
   return (
     <LabShell title="Overlays">
-      <Section title="Modal" note="controlled open/onCancel · 드래그·ESC 닫힘 내장">
+      <Section title="Modal" note="controlled open/onCancel · 드래그·ESC 닫힘 내장 · 본문 안 Dropdown 은 평소대로 닫힘">
         <Button variant="primary" onClick={() => setOpen(true)}>
           Modal 열기
         </Button>
@@ -472,7 +475,45 @@ export const LabOverlays = () => {
             </Button>
           }
         >
-          <p className="text-foreground/70 text-sm">controlled Modal 본문입니다.</p>
+          <div className="flex w-full items-center justify-between gap-4">
+            <p className="text-foreground/70 text-sm">controlled Modal 본문입니다.</p>
+            <Dropdown
+              value="⋮"
+              content={
+                <>
+                  <li>
+                    <button
+                      type="button"
+                      className="w-full rounded px-3 py-1.5 text-left hover:bg-muted"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setNestedModal(true);
+                      }}
+                    >
+                      이름 변경
+                    </button>
+                    <Modal
+                      open={nestedModal}
+                      onCancel={() => setNestedModal(false)}
+                      title="모달 안 메뉴에서 연 모달"
+                      action={
+                        <Button size="sm" onClick={() => setNestedModal(false)}>
+                          닫기
+                        </Button>
+                      }
+                    >
+                      <p className="text-foreground/70 text-sm">아래 모달은 그대로 열려 있어야 합니다.</p>
+                    </Modal>
+                  </li>
+                  <li>
+                    <button type="button" className="w-full rounded px-3 py-1.5 text-left hover:bg-muted">
+                      보관
+                    </button>
+                  </li>
+                </>
+              }
+            />
+          </div>
         </Modal>
       </Section>
       <Section title="Dialog" note="headless 컴파운드(Trigger/Modal/Title/Content/Action) · 자체 상태">
@@ -489,15 +530,44 @@ export const LabOverlays = () => {
           </Dialog.Modal>
         </Dialog>
       </Section>
-      <Section title="Dropdown" note="외부 클릭 닫힘 · content 는 <li> 리스트">
+      <Section
+        title="Dropdown"
+        note="외부 클릭 닫힘 · 메뉴에서 연 모달은 살아남음 · data-dropdown-keep-open 항목은 메뉴를 닫지 않음"
+      >
         <Dropdown
-          value={<span className={buttonRecipe({ variant: "outline", size: "sm" })}>Actions ▾</span>}
+          value="Actions ▾"
+          buttonClassName="border border-input"
           content={
             <>
               <li>
-                <button type="button" className="w-full rounded px-3 py-1.5 text-left hover:bg-muted">
+                <button
+                  type="button"
+                  className="w-full rounded px-3 py-1.5 text-left hover:bg-muted"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuModal(true);
+                  }}
+                >
                   편집
                 </button>
+                <Modal
+                  open={menuModal}
+                  onCancel={() => setMenuModal(false)}
+                  title="메뉴에서 연 모달"
+                  action={
+                    <Button size="sm" onClick={() => setMenuModal(false)}>
+                      닫기
+                    </Button>
+                  }
+                >
+                  <p className="text-foreground/70 text-sm">
+                    본문을 아무 데나 클릭해도 닫히지 않고, 배경을 누르면 정상적으로 닫힙니다.
+                  </p>
+                </Modal>
+              </li>
+              <li data-dropdown-keep-open="" className="flex items-center gap-2 px-3 py-1.5">
+                <Switch checked={menuNotify} onChange={(checked) => setMenuNotify(checked)} />
+                <span className="text-sm">알림</span>
               </li>
               <li>
                 <button type="button" className="w-full rounded px-3 py-1.5 text-left hover:bg-muted">
@@ -606,9 +676,21 @@ export const LabData = () => {
   );
 };
 
+const SkinInputs = () => {
+  const [query, setQuery] = useState("select * from ships");
+  const [status, setStatus] = useState<string>("ready");
+  return (
+    <div className="flex max-w-sm flex-col gap-3">
+      <Input value={query} onChange={setQuery} placeholder="쿼리" />
+      <Select label="상태" value={status} options={["ready", "running", "done"]} onChange={(v) => setStatus(v)} />
+      <span className="font-mono text-foreground/45 text-xs">value: {query || "(빈 값)"}</span>
+    </div>
+  );
+};
+
 // ── /lab/skin (recipe override PoC) ─────────────────────────
-// 이 라우트 서브트리엔 page/(home)/lab/skin/_overrides.tsx 가 recipes.button 을 neonButtonRecipe 로 교체.
-// 아래 <Button> 들은 코드 변경 없이 네온 스킨으로 렌더되고, 로딩/성공 상태머신은 프레임워크 그대로 동작한다.
+// 이 라우트 서브트리엔 page/(home)/lab/skin/_overrides.tsx 가 recipe 세 슬롯(button/badge/input)을 네온 스킨으로 교체.
+// 아래 컴포넌트들은 코드 변경 없이 네온으로 렌더되고, 동작(로딩/성공, controlled value)은 프레임워크 그대로다.
 export const LabSkin = () => (
   <LabShell title="Recipe Override">
     <Section
@@ -623,6 +705,24 @@ export const LabSkin = () => (
           </div>
         ))}
       </div>
+    </Section>
+    <Section
+      title="badge 슬롯도 같이"
+      note="recipes.badge → neonBadgeRecipe. 같은 <Badge variant> 호출이 채움 대신 각진 외곽선 + 글로우로 렌더된다."
+    >
+      <div className="flex flex-wrap gap-2">
+        {(["default", "primary", "success", "warning", "error", "outline"] as const).map((v) => (
+          <Badge key={v} variant={v}>
+            {v}
+          </Badge>
+        ))}
+      </div>
+    </Section>
+    <Section
+      title="input 슬롯도 같이"
+      note="recipes.input → neonInputRecipe. Input/TextArea/Select 가 같은 셸을 쓰므로 세 컨트롤이 한 번에 바뀐다."
+    >
+      <SkinInputs />
     </Section>
     <Section title="동작은 그대로 (loading → success)" note="스킨만 바뀌고 async 상태머신은 프레임워크 코드 그대로">
       <Button variant="primary" onClick={() => new Promise((resolve) => setTimeout(resolve, 900))}>

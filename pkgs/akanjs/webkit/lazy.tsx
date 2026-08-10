@@ -12,7 +12,18 @@ import { forwardRef, lazy as reactLazy } from "react";
 
 const isServer = typeof window === "undefined";
 
-type LazyOption = { ssr?: boolean; loading?: () => ReactNode };
+/**
+ * `suspense` puts a Suspense boundary around the lazy component, so a chunk that resolves *after* the
+ * page is painted — a modal body, a dropdown menu — suspends only itself. Without one the suspension
+ * travels up to the nearest boundary, which is the route (`server/routeElementComposer.tsx`), and the
+ * whole page repaints as its loading fallback on the first open.
+ *
+ * It is opt-in rather than the default because a boundary also changes server rendering: under the
+ * default `renderMode: "stream"` the boundary's subtree leaves the shell as `loading` and arrives later
+ * in the stream. That is fine for an interaction shell and wrong for a page body, which SEO snapshots,
+ * prerendering and pre-hydration E2E read out of the shell.
+ */
+type LazyOption = { ssr?: boolean; suspense?: boolean; loading?: () => ReactNode };
 type LazyProps = Record<string, unknown>;
 type LoadedOf<Loaded> = Loaded extends { default: infer T } ? T : Loaded;
 type LazyModule = { default: ComponentType<LazyProps> };
@@ -34,7 +45,18 @@ export const lazy = <Loaded,>(loader: () => Promise<Loaded>, option?: LazyOption
   const LazyInner = reactLazy(async () => normalizeLazyModule(await loader()));
 
   if (!ssrFalse) {
-    const Wrapper = forwardRef<unknown, LazyProps>((props, ref) => <LazyInner {...props} ref={ref as never} />);
+    // `React.Suspense` for the same reason the namespace import exists at all: the lookup happens only
+    // when a flagged component renders, so a constrained `react` (the react-server build, a test double)
+    // never has to carry the export for an unflagged call site.
+    const Wrapper = forwardRef<unknown, LazyProps>((props, ref) =>
+      option?.suspense ? (
+        <React.Suspense fallback={renderFallback()}>
+          <LazyInner {...props} ref={ref as never} />
+        </React.Suspense>
+      ) : (
+        <LazyInner {...props} ref={ref as never} />
+      ),
+    );
     Wrapper.displayName = "LazyWrapper";
     return Wrapper as unknown as LoadedOf<Loaded>;
   }

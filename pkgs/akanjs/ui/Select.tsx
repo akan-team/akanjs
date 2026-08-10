@@ -262,8 +262,10 @@ const DefaultSelect = <
       <div
         data-open={isOpen}
         className={cn(
-          "scrollbar-thin scrollbar-thumb-foreground/20 scrollbar-track scrollbar-track-foreground/40 absolute z-20 mt-0.5 w-full overflow-y-scroll rounded-md border-border bg-muted shadow-lg transition-all",
-          "origin-center duration-200 data-[open=false]:h-0 data-[open=true]:h-[270px] data-[open=true]:border data-[open=false]:border-none",
+          "scrollbar-thin scrollbar-thumb-foreground/20 scrollbar-track scrollbar-track-foreground/40 absolute z-20 mt-0.5 w-full overflow-y-auto rounded-md border-border bg-muted shadow-lg transition-all",
+          // Animated through max-height, not height: `height` cannot ease to `auto`, so a fixed open
+          // height was the only way to animate — and it left a short list padded out with dead space.
+          "origin-center duration-200 data-[open=false]:max-h-0 data-[open=true]:max-h-[270px] data-[open=true]:border data-[open=false]:border-none",
           selectorClassName,
         )}
       >

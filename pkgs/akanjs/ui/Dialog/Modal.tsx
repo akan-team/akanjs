@@ -2,11 +2,13 @@
 import { useDrag } from "@use-gesture/react";
 import { cn, usePage } from "akanjs/client";
 import { animated } from "akanjs/ui";
+import { useEscapeKey } from "akanjs/webkit";
 import { type ReactNode, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BiX } from "react-icons/bi";
 import { config, useSpring } from "react-spring";
 import { buttonRecipe } from "../Button";
+import { useOverlayLayerProps } from "../overlayLayer";
 
 import { DialogContext } from "./context";
 
@@ -35,6 +37,8 @@ export const Modal = ({ className, bodyClassName, confirmClose, children, onCanc
   const focusedElementRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const contentId = useId();
+  // Read through the portal-to-be: whichever dismissable scope rendered this modal owns it.
+  const overlayLayerProps = useOverlayLayerProps();
   const [{ translate }, api] = useSpring(() => ({ translate: 1 }));
   const [portalElement, setPortalElement] = useState<HTMLElement | null>(null);
   const [isMounted, setIsMounted] = useState(open);
@@ -160,20 +164,7 @@ export const Modal = ({ className, bodyClassName, confirmClose, children, onCanc
     };
   }, [isMounted, portalElement]);
 
-  useEffect(() => {
-    if (!isMounted) return;
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      requestClose();
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [isMounted, requestClose]);
+  useEscapeKey(isMounted, requestClose);
 
   useEffect(() => {
     return () => {
@@ -186,17 +177,25 @@ export const Modal = ({ className, bodyClassName, confirmClose, children, onCanc
   return createPortal(
     <>
       <div
+        {...overlayLayerProps}
         className={cn("fixed inset-0 z-10", showBackground && "animate-fadeIn bg-black/50 backdrop-blur-md")}
         onClick={(event) => {
           if (event.target !== event.currentTarget) return;
           requestClose();
         }}
       />
-      <div className="fixed top-1/2 left-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center">
+      <div
+        {...overlayLayerProps}
+        className="fixed top-1/2 left-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center"
+      >
         <div className="z-10">
           <animated.div
             ref={ref}
             style={{ translateY, opacity }}
+            // Focus moves here on open so the tab order starts inside the dialog, but this container is
+            // not a control — drawing a keyboard ring around the whole surface only reads as a glitch.
+            // Controls inside keep their own rings, which is where the focus indicator belongs.
+            className="outline-none"
             role="dialog"
             aria-modal="true"
             aria-labelledby={title ? titleId : undefined}

@@ -2,6 +2,7 @@
 import { useSpring } from "@react-spring/web";
 // TODO: 디자인 수정, 테마 적용 안됨
 import { cn, usePage } from "akanjs/client";
+import { useEscapeKey } from "akanjs/webkit";
 import { type ButtonHTMLAttributes, type ReactNode, useEffect, useState } from "react";
 import { BiMessageRoundedError } from "react-icons/bi";
 import { animated } from "./animated";
@@ -86,6 +87,8 @@ export const DefaultPopconfirm = ({
   const handleCancel = () => {
     setIsConfirming(false);
   };
+
+  useEscapeKey(isConfirming, handleCancel);
 
   return (
     <>

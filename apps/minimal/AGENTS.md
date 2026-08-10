@@ -20,5 +20,7 @@ Import from `@apps/minimal/ui`:
 - `chatBubbleRecipe`(side: incoming*|outgoing) — 챗 버블 — 수신(incoming)/발신(outgoing) 방향에 따라 정렬·모서리·색을 바꾼다.
 - `gradientSurfaceRecipe`(tone: brand*|duo|warm) — 브랜드 그라디언트 표면. radius/padding/shadow 는 호출부에서 조합한다.
 - `iconTileRecipe`(size: sm|md*|lg|xl) — 아이콘 타일 — 토큰 배경 위 아이콘. size 로 사각 크기와 글자 스케일을 함께 잡는다.
+- `neonBadgeRecipe`(variant: default*|primary|secondary|accent|neutral|success|warning|info|error|outline · size: xs|sm|md*|lg · outline?) — 네온 뱃지 스킨 — 프레임워크 badgeRecipe 의 **look 교체용**.
 - `neonButtonRecipe`(variant: default|primary*|secondary|accent|neutral|outline|ghost|destructive|success|warning|info|link · size: xs|sm|md*|lg|icon · shape: default*|square|circle · outline?) — 네온/사이버펑크 버튼 스킨 — 프레임워크 buttonRecipe 의 **look 교체용**.
+- `neonInputRecipe`(kind: field*|area · size: xs|sm|md*|lg|xl · tone: default*|primary|error) — 네온 입력 표면 스킨 — 프레임워크 inputRecipe 의 **look 교체용**.
 <!-- akan:agent:end -->
