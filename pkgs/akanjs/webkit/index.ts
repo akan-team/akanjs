@@ -8,6 +8,7 @@ export { useCodepush } from "./useCodepush";
 export { useContact } from "./useContact";
 export { useCsrValues } from "./useCsrValues";
 export { useDebounce } from "./useDebounce";
+export { useEscapeKey } from "./useEscapeKey";
 export { useFetch, useFetchFn } from "./useFetch";
 export { useGeoLocation } from "./useGeoLocation";
 export { useHistory } from "./useHistory";

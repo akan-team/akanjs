@@ -3,6 +3,7 @@ import { useDrag } from "@use-gesture/react";
 import { cn } from "akanjs/client";
 import { st } from "akanjs/store";
 import { animated } from "akanjs/ui";
+import { useEscapeKey } from "akanjs/webkit";
 import { forwardRef, type ReactNode, useEffect, useImperativeHandle, useRef } from "react";
 import { BiX } from "react-icons/bi";
 import { config, useSpring } from "react-spring";
@@ -53,6 +54,10 @@ export const BottomSheet = forwardRef<BottomSheetRef, BottomSheetProps>(
       open: openModal,
       close: closeModal,
     }));
+
+    useEscapeKey(open, () => {
+      void closeModal();
+    });
 
     useEffect(() => {
       if (open) void openModal();

@@ -5,13 +5,19 @@ import { ConstantRegistry, immerify } from "akanjs/constant";
 import type { ClientEdit, ServerEdit, SliceMeta } from "akanjs/fetch";
 import { type CreateOption, type Submit, st } from "akanjs/store";
 import { useDebounce } from "akanjs/webkit";
-import { type ReactNode, type Usable, use, useCallback, useEffect, useMemo } from "react";
+import { type ReactNode, type Usable, use, useCallback, useEffect, useMemo, useRef } from "react";
 import { AiOutlinePlus, AiOutlineSave } from "react-icons/ai";
 
 import { Button } from "../Button";
 import { Modal } from "../Modal";
 
 const EDIT_PAYLOAD_MAX_AGE_MS = 60_000;
+
+// Editors that unmounted while open, waiting one microtask for a remount of the same editor to claim
+// the modal back before the store gets reset. Keyed so a re-keyed list row cancels its own predecessor.
+const pendingModalResets = new Map<string, { cancel: () => void }>();
+const modalResetKey = (modelName: string, modalName: string, modalId?: string) =>
+  `${modelName}|${modalName}|${modalId ?? ""}`;
 
 interface EditModelProps<Full> {
   /** Rendering mode for the edit shell. */
@@ -203,10 +209,43 @@ export default function EditModal<Full extends { id: string }>({
       const crystal = new modelRef().set(modelEdit as Full) as unknown as Full;
       void storeDo[names.newModel](crystal, { modal, setDefault: true, sliceName });
     }
-    return () => {
-      // st.do[names.resetModel]();
-    };
   }, [modelEdit, isEditPayloadStale]);
+
+  const ownershipRef = useRef({ wasOpen: false, modalName: modal ?? "edit", modalId });
+  useEffect(() => {
+    ownershipRef.current = {
+      wasOpen: ownershipRef.current.wasOpen || isModalOpen,
+      modalName: modal ?? "edit",
+      modalId,
+    };
+  }, [isModalOpen, modal, modalId]);
+  useEffect(() => {
+    pendingModalResets.get(modalResetKey(modelName, modal ?? "edit", modalId))?.cancel();
+    return () => {
+      // Openness lives in the store, not in local state, so an editor torn down while open (a parent
+      // closing, a route change) never runs handleCancel and leaves `<model>Modal === "edit"` behind —
+      // which re-opens this editor by itself the next time it mounts. Only reset what this editor owns,
+      // and only once a remount in the same commit has had its chance to claim the modal back.
+      const { wasOpen, modalName, modalId } = ownershipRef.current;
+      if (!wasOpen) return;
+      const key = modalResetKey(modelName, modalName, modalId);
+      let cancelled = false;
+      pendingModalResets.set(key, {
+        cancel: () => {
+          cancelled = true;
+        },
+      });
+      queueMicrotask(() => {
+        pendingModalResets.delete(key);
+        if (cancelled) return;
+        const state = st.get() as unknown as { [key: string]: unknown };
+        if (state[names.modelModal] !== modalName) return;
+        const formId = (state[names.modelForm] as { id: string | null } | undefined)?.id ?? null;
+        if (formId !== (modalId ?? null)) return;
+        void storeDo[names.setModelModal](null);
+      });
+    };
+  }, []);
 
   const handleCancel = useCallback(() => {
     const modelForm = (st.get() as any)[names.modelForm] as Full;

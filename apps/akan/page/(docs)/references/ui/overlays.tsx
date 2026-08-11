@@ -133,8 +133,8 @@ export const ProductModal = ({ open, close, product }) => (
     {
       name: "Dropdown",
       desc: l.trans({
-        en: "Compact dropdown menu wrapper. It is commonly used for row actions, comment/story menus, and context actions in list UIs.",
-        ko: "compact dropdown menu wrapper입니다. list UI의 row action, comment/story menu, context action에 자주 사용됩니다.",
+        en: "Compact dropdown menu wrapper. It is commonly used for row actions, comment/story menus, and context actions in list UIs. A menu item may open a Modal: the menu stays mounted while it is closed, so the overlay survives, and clicks inside an overlay this menu opened do not count as outside clicks. An overlay it did not open still dismisses it.",
+        ko: "compact dropdown menu wrapper입니다. list UI의 row action, comment/story menu, context action에 자주 사용됩니다. menu item이 Modal을 열어도 됩니다. 메뉴는 닫힐 때 unmount되지 않고 숨겨지므로 overlay가 그대로 유지되며, 이 메뉴가 연 overlay 내부 클릭은 외부 클릭으로 처리되지 않습니다. 이 메뉴가 열지 않은 overlay는 평소대로 메뉴를 닫습니다.",
       }),
       props: [
         {
@@ -157,6 +157,14 @@ export const ProductModal = ({ open, close, product }) => (
           type: "string",
           desc: l.trans({ en: "Classes for the menu panel.", ko: "menu panel에 적용할 class입니다." }),
         },
+        {
+          name: "data-dropdown-keep-open",
+          type: "attribute",
+          desc: l.trans({
+            en: "Put it on a menu item that runs its own interaction (a switch, a copy button) so clicking it does not close the menu.",
+            ko: "자체 상호작용을 가진 menu item(switch, copy button 등)에 붙이면 클릭해도 메뉴가 닫히지 않습니다.",
+          }),
+        },
       ],
       code: `import { Dropdown } from "akanjs/ui";
 
@@ -165,6 +173,9 @@ export const ProductModal = ({ open, close, product }) => (
   content={
     <>
       <li><button>Edit</button></li>
+      <li data-dropdown-keep-open="">
+        <Switch checked={notify} onChange={setNotify} />
+      </li>
       <li><button>Remove</button></li>
     </>
   }

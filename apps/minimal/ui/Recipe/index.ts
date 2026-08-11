@@ -25,4 +25,6 @@ export { appNavClass } from "./appNav";
 export { type ChatBubbleVariants, chatBubbleRecipe } from "./chatBubble";
 export { type GradientSurfaceVariants, gradientSurfaceRecipe } from "./gradientSurface";
 export { type IconTileVariants, iconTileRecipe } from "./iconTile";
+export { type NeonBadgeVariants, neonBadgeRecipe } from "./neonBadge";
 export { neonButtonRecipe } from "./neonButton";
+export { type NeonInputVariants, neonInputRecipe } from "./neonInput";

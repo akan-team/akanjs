@@ -209,34 +209,37 @@ export function useFrameViewport() {
     visualOffsetTop: window.visualViewport?.offsetTop ?? 0,
   }));
 
-  const updateViewport = useCallback((reason = "viewport.change") => {
-    const visualViewport = window.visualViewport;
-    const platform = getCurrentPlatform();
-    const usesAkanKeyboardResize = platform === "ios" || platform === "android";
-    const width = Math.round(visualViewport?.width ?? window.innerWidth);
-    const currentHeight = Math.round(window.innerHeight);
-    const stableHeight =
-      usesAkanKeyboardResize && width === viewport.width ? Math.max(viewport.height, currentHeight) : currentHeight;
-    const nextViewport = {
-      width,
-      height: usesAkanKeyboardResize ? stableHeight : Math.round(visualViewport?.height ?? window.innerHeight),
-      visualWidth: Math.round(visualViewport?.width ?? window.innerWidth),
-      visualHeight: Math.round(visualViewport?.height ?? window.innerHeight),
-      visualOffsetTop: Math.round(visualViewport?.offsetTop ?? 0),
-    };
-    setViewport((prev) => {
-      if (
-        prev.width === nextViewport.width &&
-        prev.height === nextViewport.height &&
-        prev.visualWidth === nextViewport.visualWidth &&
-        prev.visualHeight === nextViewport.visualHeight &&
-        prev.visualOffsetTop === nextViewport.visualOffsetTop
-      )
-        return prev;
-      debugFrame(reason, { from: prev, to: nextViewport, platform });
-      return nextViewport;
-    });
-  }, [viewport.height]);
+  const updateViewport = useCallback(
+    (reason = "viewport.change") => {
+      const visualViewport = window.visualViewport;
+      const platform = getCurrentPlatform();
+      const usesAkanKeyboardResize = platform === "ios" || platform === "android";
+      const width = Math.round(visualViewport?.width ?? window.innerWidth);
+      const currentHeight = Math.round(window.innerHeight);
+      const stableHeight =
+        usesAkanKeyboardResize && width === viewport.width ? Math.max(viewport.height, currentHeight) : currentHeight;
+      const nextViewport = {
+        width,
+        height: usesAkanKeyboardResize ? stableHeight : Math.round(visualViewport?.height ?? window.innerHeight),
+        visualWidth: Math.round(visualViewport?.width ?? window.innerWidth),
+        visualHeight: Math.round(visualViewport?.height ?? window.innerHeight),
+        visualOffsetTop: Math.round(visualViewport?.offsetTop ?? 0),
+      };
+      setViewport((prev) => {
+        if (
+          prev.width === nextViewport.width &&
+          prev.height === nextViewport.height &&
+          prev.visualWidth === nextViewport.visualWidth &&
+          prev.visualHeight === nextViewport.visualHeight &&
+          prev.visualOffsetTop === nextViewport.visualOffsetTop
+        )
+          return prev;
+        debugFrame(reason, { from: prev, to: nextViewport, platform });
+        return nextViewport;
+      });
+    },
+    [viewport.height],
+  );
 
   useEffect(() => {
     updateViewport("viewport.init");

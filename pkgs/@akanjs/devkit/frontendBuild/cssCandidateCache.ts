@@ -5,8 +5,15 @@ import { stat } from "node:fs/promises";
  * matters: an arbitrary variant starts with `[` (`[&_td]:px-3`, `[&>*]:gap-2`), and a pattern anchored
  * on a word character tears it into `_td` plus `px-3` instead — both meaningless, so the rule compiles
  * to nothing and the element silently renders unstyled.
+ *
+ * Brackets must hold no whitespace. Tailwind spells a space in an arbitrary value `_`, so a bracket
+ * group containing one is never a class — but it is exactly the shape of a labelled tuple type
+ * (`[key: string, make: () => unknown]`). Scanned as a candidate, that compiles to an arbitrary
+ * *property* rule carrying TypeScript as its declaration, which the lightningcss pass in `optimize()`
+ * cannot parse; its error recovery then drops a whole span of the stylesheet — in practice every
+ * variant rule in the build, leaving hover, focus, responsive and dark styles silently absent.
  */
-const CANDIDATE_RE = /-?(?:[\w@]|\[[^\]]+\])[\w:/.-]*(?:\[[^\]]+\][\w:/.-]*)*/g;
+const CANDIDATE_RE = /-?(?:[\w@]|\[[^\]\s]+\])[\w:/.-]*(?:\[[^\]\s]+\][\w:/.-]*)*/g;
 
 interface CachedFile {
   mtimeMs: number;
@@ -32,7 +39,7 @@ interface CacheFile {
  */
 export class CssCandidateCache {
   /** Bump when the token regex or the entry shape changes, so stale extractions are not reused. */
-  static readonly #version = 2;
+  static readonly #version = 3;
   readonly #path: string;
   readonly #entries = new Map<string, CachedFile>();
   #dirty = false;

@@ -12,7 +12,7 @@ export { DatePicker } from "./DatePicker";
 export { Dialog } from "./Dialog";
 export { DragAction } from "./DragAction";
 export { DraggableList } from "./DraggableList";
-export { Dropdown } from "./Dropdown";
+export { DROPDOWN_KEEP_OPEN_ATTR, Dropdown } from "./Dropdown";
 export { Empty } from "./Empty";
 export { Field } from "./Field";
 export { FontFace } from "./FontFace";
@@ -29,6 +29,13 @@ export { Modal } from "./Modal";
 export { Model } from "./Model";
 export { More } from "./More";
 export { ObjectId } from "./ObjectId";
+export {
+  isOwnOverlayClick,
+  OVERLAY_LAYER_ATTR,
+  OverlayOwnerProvider,
+  useOverlayLayerProps,
+  useOverlayScope,
+} from "./overlayLayer";
 export { Pagination } from "./Pagination";
 export { Popconfirm } from "./Popconfirm";
 export { Portal } from "./Portal";

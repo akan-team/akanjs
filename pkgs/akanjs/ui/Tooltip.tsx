@@ -35,7 +35,9 @@ const sideClass = {
 const DefaultTooltip = ({ content, children, side = "top", className, variant = "default" }: TooltipProps) => {
   if (content === undefined || content === null || content === "") return <>{children}</>;
   return (
-    <span className="group/tooltip relative inline-flex">
+    // `w-fit` because `inline-flex` alone still stretches when the trigger is an item of a column
+    // flex container, and the bubble's `left-1/2` would then centre on that full width, far from it.
+    <span className="group/tooltip relative inline-flex w-fit">
       {children}
       <span
         role="tooltip"
