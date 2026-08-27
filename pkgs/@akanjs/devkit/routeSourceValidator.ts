@@ -36,6 +36,7 @@ export class RouteSourceValidator {
     "manifest",
     "theme",
     "reconnect",
+    "wsConnect",
     "layoutStyle",
     "gaTrackingId",
     "Loading",
