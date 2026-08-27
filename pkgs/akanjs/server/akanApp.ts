@@ -44,17 +44,13 @@ type GatewayUpstream = {
 };
 
 /**
- * Maps a received WebSocket close code to one that is legal to SEND.
- *
- * A close code may be received but not echoed: 1004, 1005, 1006 and 1015 are
- * reserved (RFC 6455 section 7.4.1), and bun >= 1.4 enforces this by throwing
- * InvalidAccessError from close(). The gateway relays codes in both directions
- * (upstream close -> client, client close -> upstream), so relaying a peer's
- * 1006 - the code reported whenever a peer disappears without a close frame -
- * threw inside an event listener and killed the gateway process. 1001 "going
- * away" is the honest mapping for a peer that vanished.
+ * Received-only close codes cannot be sent in a close frame. The gateway deliberately normalizes
+ * every unsendable code, including semantically distinct 1005 and 1006 events, to 1001 in both
+ * relay directions. In particular, Bun's global client `WebSocket.close()` throws an
+ * InvalidAccessError for these codes at the client-to-upstream relay; normalization at the
+ * upstream-to-client `Bun.ServerWebSocket.close()` relay is defensive and keeps behavior symmetric.
  */
-export const relayableCloseCode = (code: number): number => {
+const relayableCloseCode = (code: number): number => {
   if (code >= 3000 && code <= 4999) return code;
   if (code >= 1000 && code <= 1014 && code !== 1004 && code !== 1005 && code !== 1006) return code;
   return 1001;
