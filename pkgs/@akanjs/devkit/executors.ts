@@ -32,6 +32,7 @@ import {
 import { $ } from "bun";
 import chalk from "chalk";
 import { AkanAppConfig, AkanLibConfig, decreaseBuildNum, increaseBuildNum } from "./akanConfig";
+import { getRootBoundarySegments, isRootBoundarySegments } from "./artifact/implicitRootLayout";
 import { FileSys } from "./fileSys";
 import { getDirname } from "./getDirname";
 import { Linter } from "./linter";
@@ -1425,7 +1426,8 @@ export class AppExecutor extends SysExecutor {
           );
         }
         if (!owner) owners.set(routeId, { absPath, fromLib });
-        const isRootLayout = parsed.kind === "layout" && parsed.moduleSegments.at(-1) === "_layout";
+        const layoutSegments = getRootBoundarySegments(key);
+        const isRootLayout = layoutSegments !== null && isRootBoundarySegments(layoutSegments, akanConfig.basePaths);
         const routeSource = await Bun.file(absPath).text();
         const validator = await AppExecutor.#getRouteSourceValidator();
         if (parsed.kind === "overrides") validator.validateOverridesSourceExports(routeSource, absPath);

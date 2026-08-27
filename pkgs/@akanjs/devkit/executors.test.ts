@@ -620,6 +620,64 @@ describe("Workspace and app executor environment contracts", () => {
     });
   });
 
+  describe("root layout source validation during page key discovery", () => {
+    const makeRouteValidationApp = async (appName: string, config: string, files: Record<string, string>) => {
+      const root = await makeTempRoot();
+      process.env.AKAN_PUBLIC_REPO_NAME = "repo";
+      process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
+      process.env.AKAN_PUBLIC_ENV = "local";
+      await writeJson(path.join(root, "package.json"), rootPackageJson());
+      await mkdir(path.join(root, "apps", appName), { recursive: true });
+      await writeFile(path.join(root, `apps/${appName}/akan.config.ts`), config);
+      for (const [file, source] of Object.entries(files)) {
+        const filePath = path.join(root, `apps/${appName}/page`, file);
+        await mkdir(path.dirname(filePath), { recursive: true });
+        await writeFile(filePath, source);
+      }
+      const workspace = new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" });
+      return AppExecutor.from(workspace, appName);
+    };
+    const wsConnectLayout = [
+      "export const wsConnect = false;",
+      "export default function Layout({ children }) { return children; }",
+      "",
+    ].join("\n");
+
+    test("accepts wsConnect on a configured base-path root layout", async () => {
+      process.env.AKAN_PUBLIC_BASE_PATHS = "web,admin";
+      const app = await makeRouteValidationApp(
+        "base-path-root-ws",
+        [
+          "export default {",
+          '  routes: [{ basePath: "web", domains: {} }, { basePath: "admin", domains: {} }],',
+          "};",
+          "",
+        ].join("\n"),
+        { "admin/_layout.tsx": wsConnectLayout },
+      );
+
+      await expect(app.getPageKeys({ refresh: true })).resolves.toEqual(["./admin/_layout.tsx"]);
+    });
+
+    test("rejects wsConnect on a nested layout", async () => {
+      const app = await makeRouteValidationApp(
+        "nested-layout-ws",
+        'export default { routes: [{ basePath: "admin", domains: {} }] };\n',
+        { "admin/users/_layout.tsx": wsConnectLayout },
+      );
+
+      await expect(app.getPageKeys({ refresh: true })).rejects.toThrow(/unsupported export "wsConnect"/);
+    });
+
+    test("accepts wsConnect on a grouped root layout", async () => {
+      const app = await makeRouteValidationApp("grouped-root-ws", "export default {};\n", {
+        "(docs)/_layout.tsx": wsConnectLayout,
+      });
+
+      await expect(app.getPageKeys({ refresh: true })).resolves.toEqual(["./(docs)/_layout.tsx"]);
+    });
+  });
+
   test("accepts metadata route exports during page key discovery", async () => {
     const root = await makeTempRoot();
     process.env.AKAN_PUBLIC_REPO_NAME = "repo";

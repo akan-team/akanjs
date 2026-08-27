@@ -55,7 +55,7 @@ interface RootBoundary {
   segments: string[];
 }
 
-function getRootBoundarySegments(key: string): string[] | null {
+export function getRootBoundarySegments(key: string): string[] | null {
   const match = LAYOUT_KEY_RE.exec(key);
   if (!match) return null;
   const prefix = match[1]?.replace(/\/$/, "");
@@ -76,7 +76,7 @@ function implicitDictionaryMacroAbsPath(appCwdPath: string): string {
   return path.join(path.resolve(appCwdPath), IMPLICIT_DICT_DIR, "useDict.ts");
 }
 
-function isRootBoundarySegments(segments: string[], basePaths: Iterable<string>): boolean {
+export function isRootBoundarySegments(segments: string[], basePaths: Iterable<string>): boolean {
   const firstVisibleIndex = segments.findIndex((segment) => !/^\(.+\)$/.test(segment));
   if (firstVisibleIndex === -1) return segments.length <= 1;
   if (segments.slice(firstVisibleIndex + 1).some((segment) => /^\(.+\)$/.test(segment))) return false;

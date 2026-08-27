@@ -48,24 +48,6 @@ export interface RouteModuleCacheStats {
   loadedModuleKeys: string[];
 }
 
-
-/**
- * True for a user-authored layout that the implicit-root-layout generator promotes
- * to a base-path root layout (`page/<basePath>/_layout.tsx`). The generator reads
- * root props (wsConnect, theme, fonts, ...) from that file, so the validator must
- * accept the root export set for it - otherwise the documented root-layout options
- * are undeclarable in a multi-basePath app.
- */
-export const isBasePathRootLayout = (key: string): boolean => {
-  const basePaths = (process.env.AKAN_PUBLIC_BASE_PATHS ?? "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  if (basePaths.length === 0) return false;
-  const match = /\/page\/([^/]+)\/_layout\.tsx$/.exec(key.split("\\").join("/"));
-  return match !== null && basePaths.includes(match[1]);
-};
-
 export class RouteTreeBuilder {
   static readonly #pageRouteExports = new Set([
     "default",
@@ -332,7 +314,7 @@ export class RouteTreeBuilder {
     const allowed =
       kind === "page"
         ? RouteTreeBuilder.#pageRouteExports
-        : parsed.isInternalRootLayout || isBasePathRootLayout(key)
+        : parsed.isInternalRootLayout
           ? RouteTreeBuilder.#rootLayoutExports
           : RouteTreeBuilder.#layoutRouteExports;
     for (const exportName of Object.keys(mod)) {
