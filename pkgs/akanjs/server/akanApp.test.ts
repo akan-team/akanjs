@@ -721,6 +721,7 @@ describe("AkanApp", () => {
     const serverPath = path.join(root, "server.ts");
     const observedPath = path.join(root, "observed.txt");
     const runtimeDir = path.join(root, "runtime");
+    // AkanApp does not expose the OS-assigned port, so the test must select a gateway port.
     const port = 24_000 + Math.floor(Math.random() * 10_000);
     await writeWebSocketRelayChild(serverPath, observedPath);
 
@@ -749,7 +750,7 @@ describe("AkanApp", () => {
       await expect(fetch(`http://127.0.0.1:${port}/`).then((res) => res.text())).resolves.toBe("ok");
     } finally {
       await app.stop();
-      await Promise.race([running, wait(1_000)]);
+      await withTimeout(running, "timed out waiting for AkanApp to stop", 1_000);
     }
   }, 20_000);
 
@@ -759,6 +760,7 @@ describe("AkanApp", () => {
     const serverPath = path.join(root, "server.ts");
     const observedPath = path.join(root, "observed.txt");
     const runtimeDir = path.join(root, "runtime");
+    // AkanApp does not expose the OS-assigned port, so the test must select a gateway port.
     const port = 24_000 + Math.floor(Math.random() * 10_000);
     await writeWebSocketRelayChild(serverPath, observedPath);
 
@@ -785,13 +787,18 @@ describe("AkanApp", () => {
       ).toBe("1001");
       await expect(fetch(`http://127.0.0.1:${port}/`).then((res) => res.text())).resolves.toBe("ok");
 
-      const legal = new WebSocket(`ws://127.0.0.1:${port}/api/ws`);
-      expect(await observeNextRelayEvent(observedPath, () => waitForSocketOpen(legal))).toBe("open");
-      expect(await observeNextRelayEvent(observedPath, () => legal.close(4000))).toBe("4000");
+      let legal: WebSocket | undefined;
+      expect(
+        await observeNextRelayEvent(observedPath, async () => {
+          legal = new WebSocket(`ws://127.0.0.1:${port}/api/ws`);
+          await waitForSocketOpen(legal);
+        }),
+      ).toBe("open");
+      expect(await observeNextRelayEvent(observedPath, () => legal?.close(4000))).toBe("4000");
       await expect(fetch(`http://127.0.0.1:${port}/`).then((res) => res.text())).resolves.toBe("ok");
     } finally {
       await app.stop();
-      await Promise.race([running, wait(1_000)]);
+      await withTimeout(running, "timed out waiting for AkanApp to stop", 1_000);
     }
   }, 20_000);
 });
