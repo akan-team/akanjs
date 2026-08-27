@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { AkanApp } from "./akanApp";
+import { AkanApp, relayableCloseCode } from "./akanApp";
 import { makeAkanChildProxyHeaders } from "./akanAppHeaders";
 
 const tempRoots: string[] = [];
@@ -502,4 +502,21 @@ describe("AkanApp", () => {
       await Promise.race([running, wait(1_000)]);
     }
   }, 20_000);
+});
+
+describe("relayableCloseCode", () => {
+  test("maps codes that are illegal to send to 1001", () => {
+    // RFC 6455 reserves 1004, 1005, 1006 and 1015, and bun >= 1.4 throws
+    // InvalidAccessError when close() receives them - which killed the gateway
+    // whenever a peer disappeared without a close frame (reported as 1006).
+    for (const code of [1004, 1005, 1006, 1015, 0, 999, 2999, 5000, -1]) {
+      expect(relayableCloseCode(code)).toBe(1001);
+    }
+  });
+
+  test("passes through every sendable code unchanged", () => {
+    for (const code of [1000, 1001, 1002, 1003, 1007, 1008, 1009, 1010, 1011, 1012, 1013, 1014, 3000, 4000, 4999]) {
+      expect(relayableCloseCode(code)).toBe(code);
+    }
+  });
 });

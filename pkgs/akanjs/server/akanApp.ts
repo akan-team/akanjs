@@ -43,6 +43,23 @@ type GatewayUpstream = {
   ws?: Extract<AkanUpstream, { type: "tcp" }>;
 };
 
+/**
+ * Maps a received WebSocket close code to one that is legal to SEND.
+ *
+ * A close code may be received but not echoed: 1004, 1005, 1006 and 1015 are
+ * reserved (RFC 6455 section 7.4.1), and bun >= 1.4 enforces this by throwing
+ * InvalidAccessError from close(). The gateway relays codes in both directions
+ * (upstream close -> client, client close -> upstream), so relaying a peer's
+ * 1006 - the code reported whenever a peer disappears without a close frame -
+ * threw inside an event listener and killed the gateway process. 1001 "going
+ * away" is the honest mapping for a peer that vanished.
+ */
+export const relayableCloseCode = (code: number): number => {
+  if (code >= 3000 && code <= 4999) return code;
+  if (code >= 1000 && code <= 1014 && code !== 1004 && code !== 1005 && code !== 1006) return code;
+  return 1001;
+};
+
 /** Options for the Akan gateway that launches child server replicas and listens for traffic. */
 export interface AkanAppOptions {
   replica?: number | string;
@@ -587,7 +604,7 @@ export class AkanApp {
       const result = ws.send(event.data as string | ArrayBuffer);
       if (result === 0) upstream.close();
     });
-    upstream.addEventListener("close", (event) => ws.close(event.code, event.reason));
+    upstream.addEventListener("close", (event) => ws.close(relayableCloseCode(event.code), event.reason));
     upstream.addEventListener("error", () => ws.close(1011, "upstream websocket error"));
     Object.assign(ws.data, { pending });
   }
@@ -608,7 +625,7 @@ export class AkanApp {
   }
 
   #handleWsClose(ws: Bun.ServerWebSocket<GatewayWsData>, code: number, reason: string) {
-    ws.data.upstream.close(code, reason);
+    ws.data.upstream.close(relayableCloseCode(code), reason);
     const child = this.#children.get(ws.data.childIdx);
     if (child) child.metrics.activeWebSockets = Math.max(0, (child.metrics.activeWebSockets ?? 1) - 1);
   }
