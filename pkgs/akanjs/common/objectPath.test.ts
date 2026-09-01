@@ -45,6 +45,17 @@ describe("object and path helpers", () => {
     });
   });
 
+  test("sets map entries instead of stray properties", () => {
+    const obj = { prompts: new Map([["photo", "a cinematic still"]]) };
+
+    pathSet(obj, "prompts.photo", "a wide shot");
+    pathSet(obj, ["prompts", "video"], "a slow pan");
+
+    expect(obj.prompts.get("photo")).toBe("a wide shot");
+    expect(obj.prompts.get("video")).toBe("a slow pan");
+    expect(Object.keys(obj.prompts)).toEqual([]);
+  });
+
   test("objectifies own data fields and skips functions", () => {
     const source = {
       id: "1",
@@ -81,6 +92,26 @@ describe("object and path helpers", () => {
       modelLike: { __ModelType__: "User", id: "u1" },
     });
     expect(deepObjectify(date, { convertDate: "number" })).toBe(date.getTime());
+  });
+
+  test("deep objectifies maps and sets into clones, and into plain data when serializable", () => {
+    const prompts = new Map([["photo", { text: "a cinematic still" }]]);
+    const tags = new Set(["hero", "landing"]);
+    const source = { prompts, tags };
+
+    const cloned = deepObjectify(source);
+
+    expect(cloned.prompts).toBeInstanceOf(Map);
+    expect(cloned.prompts).not.toBe(prompts);
+    expect(cloned.prompts.get("photo")).toEqual({ text: "a cinematic still" });
+    expect(cloned.prompts.get("photo")).not.toBe(prompts.get("photo"));
+    expect(cloned.tags).toBeInstanceOf(Set);
+    expect([...cloned.tags]).toEqual(["hero", "landing"]);
+
+    expect(deepObjectify(source, { serializable: true })).toEqual({
+      prompts: { photo: { text: "a cinematic still" } },
+      tags: ["hero", "landing"],
+    } as never);
   });
 
   test("compares query values deeply including dates", () => {

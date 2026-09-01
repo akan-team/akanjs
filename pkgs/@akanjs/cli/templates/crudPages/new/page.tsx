@@ -25,7 +25,7 @@ export default function Page() {
       </div>
       <Load.Edit
         className="flex flex-col items-center"
-        slice={fetch.slice["${dict.model}InPublic"]}
+        slice={fetch.slice.${dict.model}InPublic}
         edit={${dict.model}Form}
         type="form"
         onCancel="back"

@@ -1,11 +1,9 @@
-// import { makeResponseExample, SerializedEndpoint } from "akanjs/signal";
-
 import type { SerializedEndpoint } from "akanjs/signal";
 import { useMemo } from "react";
-import { AiOutlineCopy } from "react-icons/ai";
-import { Copy } from "../Copy";
+import { AiOutlineLoading } from "react-icons/ai";
+import { Code } from "../Reference";
 import { makeResponseExample } from "./makeExample";
-import { getStatusBadgeClassName, getStatusTextareaClassName, signalUi } from "./style";
+import { getStatusBadgeClassName, getStatusTone } from "./style";
 
 export default function Response() {
   return <div></div>;
@@ -16,18 +14,7 @@ interface ResponseExampleProps {
 }
 const ResponseExample = ({ endpoint }: ResponseExampleProps) => {
   const example = useMemo(() => JSON.stringify(makeResponseExample(endpoint), null, 2), []);
-  return (
-    <div className="relative">
-      <textarea className={`${signalUi.codePanel} min-h-72 text-base`} value={example} onChange={() => true} />
-      <div className="absolute top-4 right-4">
-        <Copy text={example}>
-          <button className="btn btn-outline btn-sm">
-            <AiOutlineCopy /> Copy
-          </button>
-        </Copy>
-      </div>
-    </div>
-  );
+  return <Code code={example} label="Example" />;
 };
 Response.Example = ResponseExample;
 
@@ -35,32 +22,20 @@ interface ResponseResultProps {
   status: "idle" | "loading" | "success" | "error";
   data: unknown;
 }
-const ResponseResult = ({ status, data }: ResponseResultProps) => {
-  const dataStr = data ? JSON.stringify(data, null, 2) : "";
-  return (
-    <div className="relative">
-      <textarea
-        className={`${signalUi.codePanel} ${getStatusTextareaClassName(status)}`}
-        value={dataStr}
-        onChange={() => true}
-      />
-      {status === "loading" ? (
-        <div className="absolute inset-0 flex animate-fadeIn items-center justify-center backdrop-blur-sm">
-          <span className="loading loading-dots loading-lg"></span>
+const ResponseResult = ({ status, data }: ResponseResultProps) => (
+  <Code
+    code={data ? JSON.stringify(data, null, 2) : ""}
+    label="Response"
+    meta={status === "idle" ? null : <span className={getStatusBadgeClassName(status)}>{status}</span>}
+    placeholder="Send the request to see the response."
+    overlay={
+      status === "loading" ? (
+        <div className="absolute inset-0 flex animate-fadeIn items-center justify-center bg-background/60 backdrop-blur-sm">
+          <AiOutlineLoading className="animate-spin text-2xl text-foreground/40" />
         </div>
-      ) : status === "idle" ? (
-        <></>
-      ) : (
-        <div className="absolute top-4 right-4 flex items-center gap-2">
-          <span className={getStatusBadgeClassName(status)}>{status}</span>
-          <Copy text={dataStr}>
-            <button className="btn btn-outline btn-sm">
-              <AiOutlineCopy /> Copy
-            </button>
-          </Copy>
-        </div>
-      )}
-    </div>
-  );
-};
+      ) : null
+    }
+    tone={getStatusTone(status)}
+  />
+);
 Response.Result = ResponseResult;

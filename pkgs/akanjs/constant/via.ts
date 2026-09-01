@@ -1,4 +1,5 @@
 import {
+  Binary,
   CLIENT_VALUE,
   type Cls,
   DEFAULT_VALUE,
@@ -430,12 +431,19 @@ declare global {
 }
 
 const applyConstantStatics = <Model>(model: ConstantCls<Model>, fieldMap: FieldObject): ConstantCls<Model> => {
-  const defaultValue = getDefault(model[FIELD_META]);
+  // Built on first call, not at class declaration: a `default: () => getEnv()...` thunk needs runtime env, and
+  // `akan build` only imports the module, where that env is not injected yet.
+  let defaultValue: DefaultOf<Model> | undefined;
   Object.assign(model, {
     purify: makePurify(model),
-    getDefault: () => ({ ...defaultValue }),
+    getDefault: () => {
+      defaultValue ??= getDefault<Model>(model[FIELD_META]);
+      return { ...defaultValue };
+    },
   });
-  Object.entries(fieldMap).forEach(([, field]) => {
+  Object.entries(fieldMap).forEach(([key, field]) => {
+    if ((field.modelRef as unknown) === Binary || (field.of as unknown) === Binary)
+      throw new Error(`Field "${key}" is Binary, which is not storable. Reference the File model instead.`);
     if (field.enum) model.enums.add(field.enum);
     if (!field.isClass) return;
     if (field.isScalar) model.children.add(field.modelRef);

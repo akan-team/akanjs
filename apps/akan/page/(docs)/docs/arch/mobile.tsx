@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 import { Link } from "akanjs/ui";
 
@@ -51,15 +51,15 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
-                <span className="font-bold text-base-content">{title}: </span>
-                <span className="text-base-content/70 text-sm">{desc}</span>
+              <div key={title} className={panelRecipe({ padding: "row" })}>
+                <span className="font-bold text-foreground">{title}: </span>
+                <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="mobile-targets" title={l.trans({ en: "Mobile Targets", ko: "모바일 Target" })}>
         <Docs.Title>{l.trans({ en: "Mobile Targets", ko: "모바일 Target" })}</Docs.Title>
@@ -71,6 +71,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/myapp/akan.config.ts"
             code={`import type { AppConfig } from "akanjs";
 
@@ -101,7 +102,7 @@ export default config;`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="csr-runtime" title={l.trans({ en: "CSR Runtime", ko: "CSR 런타임" })}>
         <Docs.Title>{l.trans({ en: "CSR Runtime", ko: "CSR 런타임" })}</Docs.Title>
@@ -113,6 +114,7 @@ export default config;`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="page/store/product/[productId].tsx"
             code={`import type { PageConfig } from "akanjs/client";
 import { Layout } from "akanjs/ui";
@@ -153,16 +155,23 @@ export const pageConfig = {
                   ko: "navbar, tab, fixed action, keyboard accessory 같은 앱 chrome을 page content와 분리합니다.",
                 }),
               },
+              {
+                title: "keyboard accessory anchoring",
+                desc: l.trans({
+                  en: 'A BottomInset with keyboardSticky can also opt into contentAnchor="bottom" so scrollable content resizes with the keyboard while preserving the content bottom edge.',
+                  ko: 'keyboardSticky를 쓰는 BottomInset은 contentAnchor="bottom"을 선택해, 키보드와 함께 scrollable content 크기를 줄이고 content의 하단 기준을 보존할 수 있습니다.',
+                }),
+              },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-mono font-semibold text-primary">{title}: </span>
-                <span className="text-base-content/70 text-sm">{desc}</span>
+                <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="native-bridge" title={l.trans({ en: "Native Bridge", ko: "네이티브 브리지" })}>
         <Docs.Title>{l.trans({ en: "Native Bridge", ko: "네이티브 브리지" })}</Docs.Title>
@@ -204,9 +213,9 @@ export const pageConfig = {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-mono font-semibold text-primary">{title}: </span>
-                <span className="text-base-content/70 text-sm">{desc}</span>
+                <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
@@ -217,7 +226,10 @@ export const pageConfig = {
                 ko: "구체적인 설정 절차는 ",
               })}
             </span>
-            <Link href="/cheatsheet/dev/mobile" className="link link-primary">
+            <Link
+              href="/cheatsheet/dev/mobile"
+              className="text-primary underline underline-offset-4 hover:no-underline"
+            >
               {l.trans({ en: "Cheatsheet > Development > Mobile", ko: "Cheatsheet > 개발 > 모바일" })}
             </Link>
             <span>

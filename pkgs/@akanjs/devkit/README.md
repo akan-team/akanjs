@@ -60,7 +60,7 @@ defaults, the shares they derive from `AKAN_MEMORY_LIMIT`, and what a small cont
 
 ## Requirements
 
-- [Bun](https://bun.sh) `>=1.3.13`
+- [Bun](https://bun.sh) `>=1.4.0`
 - TypeScript
 - Optional peers are only needed for the features that use them, such as Capacitor integration.
 

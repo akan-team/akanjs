@@ -100,23 +100,24 @@ Headings:
 - Styling Foundation
 - Design System First
 - Theme System Declaration
+- Lib-Owned Tokens
 - Font Declaration
 
 CSS And Styling
 
 Styling Foundation
 
-Akan uses Tailwind CSS and DaisyUI as the default styling foundation. Tailwind gives screens a fast utility language for layout, spacing, responsive behavior, and one-off composition. DaisyUI adds semantic component names and theme tokens, so app screens can say primary, base, warning, or error instead of hard-coding every color.
+Akan uses Tailwind CSS with a semantic design-token layer and the akanjs/ui primitives as the default styling foundation. Tailwind gives screens a fast utility language for layout, spacing, responsive behavior, and one-off composition. The token layer + primitives add semantic names, so app screens can say primary, background, warning, or destructive instead of hard-coding every color.
 
-Use Tailwind for structure and layout. Use DaisyUI for theme-aware component vocabulary and semantic colors.
+Use Tailwind for structure and layout. Use akanjs/ui primitives (Button, Badge, Input, Field …) and semantic tokens for theme-aware components and colors.
 
 How the layers work together
 
-Imports Tailwind, Akan UI styles, DaisyUI, and app theme tokens.
+Imports Tailwind, Akan UI styles, and the semantic design-token layer.
 
 Turns brand decisions into reusable names such as primary, base, warning, and error.
 
-Use those names through btn, input, card, alert, and Tailwind utility classes.
+Use those names through akanjs/ui primitives (Button, Input, Badge) and Tailwind utility classes.
 
 Assemble consistent business screens without repeating raw color and spacing rules.
 
@@ -128,15 +129,19 @@ Buttons, inputs, cards, forms, alerts, tabs, modals, and navigation should use s
 
 Business pages should assemble the design system instead of redefining colors and spacing.
 
-Imported modules feel consistent when they use the same Tailwind and DaisyUI tokens.
+Imported modules feel consistent when they use the same Tailwind and semantic design tokens.
 
 Theme System Declaration
 
-Theme and color are declared from the app style entry. The app imports Tailwind, Akan UI styles, enables DaisyUI, then declares one or more DaisyUI themes. Each theme maps semantic names to real colors.
+Theme and color are declared from the app style entry. The app imports Tailwind and Akan UI styles, defines raw CSS variables per theme under :root / [data-theme], then maps them to Tailwind color names with @theme inline. Switching themes is just toggling the data-theme attribute.
 
-DaisyUI supports multiple theme blocks, so one app can define light, dark, brand, admin, or demo themes with the same component classes.
+Because @theme inline references var(), the same class (bg-primary, text-foreground …) resolves to different colors per data-theme — so one app can define light, dark, brand, or admin themes without changing any component class.
 
-DaisyUI Theme Docs
+Lib-Owned Tokens
+
+A lib whose components need fixed colors — a vendor sign-in button, a brand mark — declares them once in libs/<lib>/ui/tokens.css. Every app whose pages reach that lib compiles the file automatically, ahead of its own stylesheets, so the app stays the last word on any variable both declare. Nothing is imported by hand, and adding an app cannot forget it.
+
+These are plain custom properties, not a Tailwind @theme extension: the color vocabulary is closed per stylesheet, so bg-kakao would generate no CSS. Reference them as bg-[var(--kakao)], which the color lint rules allow by design. An @import the pipeline cannot resolve fails the build rather than compiling to nothing.
 
 Font Declaration
 
@@ -336,6 +341,8 @@ Handles OS system areas such as notches, home indicators, and Android system bar
 
 Separates app chrome such as navbars, tabs, fixed actions, and keyboard accessories from page content.
 
+A BottomInset with keyboardSticky can also opt into contentAnchor="bottom" so scrollable content resizes with the keyboard while preserving the content bottom edge.
+
 Native Bridge
 
 Device capabilities are accessed through Capacitor plugins. Akan keeps the app-level API small: declare the needed native capability, sync/build the native project, then call the matching client hook or plugin wrapper from the CSR app.
@@ -437,6 +444,7 @@ Headings:
 - App Config
 - Config Shape
 - Application Env
+- Server Option
 - Routes and Domains
 - Mobile Metadata
 - Images And Public Env
@@ -500,9 +508,9 @@ Client env and publicEnv are different. env.client.* stores app values for each 
 
 Server env can also include options from shared libraries through env.server.type.ts. This lets an app keep one final server env object while reusing library-level defaults.
 
-Routes and Domains
+Server Option
 
-routes is where you list the public domains for the app. If your app has several clients, each route can also name the client with basePath. The multi-client page explains that structure in detail; here we focus on the config fields.
+lib/option.ts is where the app configures its server. env/ holds the values, akan.config.ts holds the build, and this file wires them into the runtime: use objects, signal middleware, adaptor overrides, web proxies, the MCP server, the agent relay's access policy, and the LLM that relay speaks to. Every library the app depends on brings its own option.ts, read in mount order with the app's last — so an app tightens what a library declared without restating it.
 
 ## Data Layer
 
@@ -886,6 +894,7 @@ Headings:
 - Root-level Env Variables
 - getEnv()
 - OpenAPI JSON
+- Selective Module Boot
 - Health, Metrics, Logs
 
 Akan Runtime
@@ -911,6 +920,8 @@ batch: runs background work such as queues, timers, and scheduled jobs.
 all: runs both federation and batch behavior in one server process. This is the simple local default.
 
 A single Akan App has built-in clustering. You can run multiple server replicas and let Akan App distribute traffic, without setting up separate local load-balancing tools such as nginx, docker compose, or pm2.
+
+With one traffic replica there is nothing to balance, so Akan App runs that server in its own process instead of spawning it and proxying to it. The container then holds one process rather than two, and every request skips a proxy hop. Two or more replicas, or a batch-only replica that never listens, bring the gateway back. Set AKAN_SOLO=false to keep the gateway for a single replica; akan start always runs it, because the gateway is also the dev server's build relay and error overlay.
 
 Root-level Env Variables
 
@@ -945,8 +956,6 @@ Unset means on. Set 0 to switch the full-text index off; indexed data is kept an
 Search tokenizer
 
 The fts5 tokenizer the index is built with. Defaults to unicode61 remove_diacritics 2. Changing it rebuilds the index from the mirror on the next boot, so no data is re-read from the model tables. The rebuild takes no cross-process claim, so a fleet restarted at once repeats it in every process; stagger the restart when the mirror is large. database.search.tokenizer in the app config takes precedence. A value this SQLite build cannot provide fails the boot and names the fix, rather than starting a server whose every search would raise. That boot failure leaves writes alone: the index is dropped but nothing else is, so the models on that database keep accepting writes and the next healthy boot recovers the index in full.
-
-File log detail
 
 ## Fundamentals
 
@@ -1122,7 +1131,7 @@ Requirements
 
 For the first run, Bun is the only required dependency. Docker and native IDEs become useful when you add local services or mobile builds.
 
-Bun 1.3.13 or higher
+Bun 1.4.0 or higher
 
 Docker for local database services
 
@@ -1185,6 +1194,8 @@ Finite number primitive scalar for decimal values such as coordinates, rates, ba
 
 Loose object scalar for payloads whose shape is intentionally open. Prefer explicit scalar/model fields when the shape is stable; use Any for integration blobs or flexible metadata.
 
+Raw bytes for a signal argument or return, never a model field. It is a Uint8Array on both sides and base64 on a JSON wire; a pubsub whose whole return is Binary sends its own websocket frame instead. Store a blob as a File model.
+
 Akan re-exports the configured dayjs function and Dayjs type from base. Apps and libs use it for document dates, store state dates, service calculations, and UI formatting.
 
 Creates a typed enum scalar class from a literal value list. The generated enum exposes values, has, indexOf, find, filter, map, and forEach helpers used by constants and UI labels.
@@ -1210,7 +1221,7 @@ akanjs/client
 
 Client navigation singleton that normalizes Akan language/base-path prefixes before delegating to the active router. Use it from pages, stores, templates, and utilities for push/replace/back/refresh.
 
-Re-export of `clsx` for composing class names across Akan UI code. Most view/unit/template components import it from `akanjs/client` to keep UI dependencies consistent.
+The one class-combining function: joins conditional parts (`cond && "x"`) and resolves Tailwind conflicts with Akan's semantic tokens registered. Every view/unit/template component imports it from `akanjs/client`.
 
 Common props for generated Unit, Zone, and list UI components. They carry model data, slice metadata, query/init settings, actions, columns, and click handlers.
 
@@ -1330,9 +1341,11 @@ akanjs/server
 
 Gateway/orchestrator used by app `main.ts` files. It starts child server replicas, proxies HTTP and WebSocket traffic, reports metrics, and handles shutdown for local and production runs.
 
-Constructor option type for `AkanApp`. It configures replica layout, server path, runtime directory, HTTP port, and WebSocket base port for the gateway process.
+Constructor option type for `AkanApp`. It configures replica layout, server path, runtime directory, HTTP port, and WebSocket base port for the gateway process, plus `openapi` and `modules`. `modules` boots only the named modules and the ones they depend on, in every child; omitted or empty mounts every enabled module.
 
-App/library option builder used by `lib/option.ts`. It registers env-derived use objects, signal middleware, and web proxies consumed by the server runtime.
+`server.setWeb(true | false | { csr })` and the `AKAN_SSR` / `AKAN_CSR` env narrow what a process serves beyond its API: SSR is the RSC renderer and its RSC worker process, CSR is the mobile SPA bundle at `/__csr`. They only narrow — a surface `akan.config.ts` left out of the build cannot be switched back on — and `AKAN_SSR=false` takes CSR with it, because the CSR bundle inlines the stylesheet the SSR build compiles. The boot log names the resolved answer.
+
+App/library option builder used by `lib/option.ts`. It registers env-derived use objects, signal middleware, adaptor overrides, and web proxies, and carries the settings an app owns: `setMcp` for the MCP server, `setAgentAccess` for the guards a caller must pass to spend the LLM key through the agent relay, and `setLlm` for the model that relay speaks to. Every lib's option is read in mount order with the app's last.
 
 Response helper for web proxy code. `next` continues the request, `rewrite` proxies to a different URL while preserving proxy metadata, and `redirect` returns a normal redirect response.
 
@@ -1357,7 +1370,11 @@ Headings:
 
 akanjs/signal
 
-Guard classes decide whether a request can pass before endpoint or slice execution. `Public` always passes, `None` blocks, and `guard(name)` creates a named guard base class for app-specific rules. Guards run on every transport, so read the caller with `context.get("account")` instead of branching on http/websocket. Slice `guards` cover only the generated query/mutation endpoints — declare `guards` on each `pubsub`/`message` endpoint to protect a socket.
+Guard classes decide whether a request can pass before endpoint or slice execution. `Public` always passes, `None` blocks, and `guard(name)` creates a named guard base class for app-specific rules. Guards run on every transport, so read the caller with `context.get("account")` instead of branching on http/websocket. Slice `guards` cover only the generated query/mutation endpoints — declare `guards` on each `pubsub`/`message` endpoint to protect a socket. Every guard declares `static scope: GuardScope`, and it is required: `"account"` when the verdict depends only on the caller, `"resource"` when it needs the arguments of the call. Only `account` guards are evaluated when filtering an MCP catalogue, and since exposure follows the guards, a wrong mark would list an endpoint to callers who cannot use it.
+
+`prompt()` is the fifth endpoint kind and the one a *user* invokes by name — an MCP client renders it as a slash command — rather than one the model chooses. `exec` returns `PromptMessage[]`, or a bare string that is wrapped into a single user message. Build messages with `Msg.user`, `Msg.assistant`, `Msg.link`, `Msg.resource`, `Msg.image`, `Msg.audio`, and `Msg.imageOf`. A prompt takes `.param()` and `.search()` only, because `prompts/get` carries a flat string map. An embedded payload is masked by the model you name — `Msg.resource(uri, task, { model: cnst.Task })`, or `Msg.mask(cnst.Task, task)` for one piece of an assembly — and an undeclared value whose secret fields are populated is refused rather than sent.
+
+Reports progress for a long-running MCP tool call. Reached through `AsyncLocalStorage`, so an endpoint reports from wherever the work happens — a service, an adapter, a loop several frames down — without threading a channel through every signature. Outside a streamed call it is a no-op, so the same code runs unchanged over plain HTTP, a websocket, and in tests. The server switches to an SSE response only once the first report arrives, and only when the client asked with both `Accept: text/event-stream` and a `_meta.progressToken`.
 
 Internal argument providers for advanced endpoints. `Req` gives the Bun request, `Res` gives the mutable response context, and `Ws` gives websocket subscription state and event hooks.
 
@@ -1728,6 +1745,7 @@ Headings:
 - routes
 - mobile
 - defaultDatabaseMode
+- web
 - images
 - i18n
 - publicEnv
@@ -2022,7 +2040,7 @@ Define frequently used list and lookup conditions once, then use the generated m
 
 The framework already provides all-document and latest/oldest ordering behavior, so only add business-specific search and sort rules.
 
-Required input for the query. Required args must come before optional args.
+count and insight are separate accessors over the same query: count returns a plain number, and insight returns the accumulated db.<Model>Insight. Both are generated on the Model and on the Service, so the same call reads identically from either side.
 
 ## Overview
 
@@ -2138,11 +2156,11 @@ Write API. Use it for create, update, delete, or business actions.
 
 WebSocket message handler. Use msg(...) for incoming payload fields.
 
-Realtime subscription channel. Use room(...) to describe the subscription room.
+Realtime subscription channel. Use room(...) to describe the subscription room. A Binary return sends raw bytes in a websocket binary frame and coalesces under backpressure; name backpressure: "queue" when every frame has to arrive.
+
+Prompt an MCP client renders as a slash command. exec returns PromptMessage[] or a bare string. Takes .param(...) and .search(...) only.
 
 Required path-style argument. Common in query, mutation, and slice list methods.
-
-Optional search/query argument. It is nullable by default.
 
 ## model.store.ts
 
@@ -3327,11 +3345,11 @@ Unit where relative display stops and date formatting begins.
 
 Automatic compact format or full date-time format.
 
+Relative phrasing. `"fromNow"` (default) is dayjs locale strings. `"always"` / `"auto"` use Intl (`1 day ago` vs `yesterday`). A function replaces the relative label.
+
 Namespace of loading indicators for async UI: full-area overlays, buttons, inputs, progress bars, skeletons, and spinners.
 
 Absolute overlay for blocking a local area.
-
-Skeleton placeholder for pending content.
 
 ## Forms
 
@@ -3377,7 +3395,7 @@ Headings:
 
 Overlays
 
-Controlled modal wrapper built on Akan's headless `Dialog` state. Use it for common app overlays where you want title/content/action slots without composing the full dialog namespace.
+Controlled modal wrapper built on Akan's headless `Dialog` state. Use it for common app overlays where you want title/content/action slots without composing the full dialog namespace. The surface is deliberately plain — no transition, no gesture — so it never animates content the user is reading. `LegacyModal` keeps the previous animated skin.
 
 Controlled open state.
 
@@ -3397,7 +3415,7 @@ Opens the dialog from custom trigger content.
 
 Modal surface and close behavior.
 
-Named modal slots.
+Previous surface: spring open/close and drag-to-dismiss on touch.
 
 ## Overview
 
@@ -3540,6 +3558,7 @@ Headings:
 - Minimal Compose
 - Open Console
 - Important Env
+- Trim The Web Surface
 - Scale With AKAN_REPLICA
 - Tips
 
@@ -3577,7 +3596,7 @@ Headings:
 - API Documentation
 - Render A Zone
 - Try An Endpoint
-- Auth And Roles
+- Auth And Guards
 - Tips
 
 Documentation
@@ -3588,7 +3607,7 @@ Akan can render signal documentation from the generated fetch object. It is not 
 
 Use `Signal.Doc.Zone` for one signal namespace.
 
-Use `Doc.Setting` to choose BaseURL, role, and JWT.
+Use `Doc.Setting` to choose BaseURL, guards, and JWT.
 
 REST and WebSocket test surfaces are shown together.
 
@@ -3602,7 +3621,7 @@ Try An Endpoint
 
 Open the `base` document, find `ping`, and run it from the REST panel. It should return a simple string response.
 
-Auth And Roles
+Auth And Guards
 
 ## Kubernetes
 
@@ -4180,6 +4199,176 @@ Use `Load.Edit` on a server-rendered page when the page already knows default va
 
 New article page
 
+## MCP Server
+
+Source: /cheatsheet/interface/mcp
+Mirror: /llms/pages/cheatsheet/interface/mcp.md
+Priority: P2
+
+Headings:
+- MCP Server
+- 1. Turn The Server On
+- 2. Write An Endpoint
+- 3. Slices And CRUD
+- 4. Write A Prompt
+- 5. Report Progress
+- Authorization
+- Tips
+
+MCP Server
+
+Every signal you already wrote is served to AI agents at POST /mcp. There is no second API and nothing to write in a signal file: the same endpoint runs through the same guards, middleware, and service. The in-page chat is a different surface.
+
+In-Page Agent
+
+Become tools. A generated read also gets a resource URI.
+
+A slash command the user invokes, not the model.
+
+Never exposed — their arguments read a socket MCP does not have.
+
+Exposure follows the guards. A real guard publishes; no guards at all is refused; a mutation whose only guard is [Public] is refused. A Public read publishes. A refused endpoint answers the same unknown tool as one that does not exist.
+
+1. Turn The Server On
+
+/mcp is mounted by default. Configure it in lib/option.ts — not main.ts — so the process that mounts the route actually receives the settings. Every lib's option is read in mount order with the app's last. A value written in code wins over the env of the same name.
+
+What this app is for and which tool to reach for first. Handed to the model with the tool list.
+
+Drops every mutation whatever it declared. A deployment valve, not the exposure switch.
+
+Mount path defaults to /mcp. Catalogue language is en, built once at boot. pageSize is entries per listing page.
+
+## Deep Links
+
+Source: /cheatsheet/mobile/links
+Mirror: /llms/pages/cheatsheet/mobile/links.md
+Priority: P2
+
+Headings:
+- Deep Link Setup
+
+Deep Links
+
+Deep Link Setup
+
+Deep links open a CSR route from outside the app. Use schemes for app-only URLs and domains for verified HTTPS links. Push notification clicks use the same routing path through data.url.
+
+Think of deep link as the feature, and schemes/domains as the two common ways to implement it. Scheme links such as shop://orders/1 are easy to test and app-only. Domain links such as https://shop.example.com/orders/1 require iOS/Android verification, but they behave like normal web links and are better for sharing, emails, and push notification URLs.
+
+Custom app-only URLs such as shop://orders/1. Easy to test, but not domain-verified.
+
+Verified HTTPS links such as https://shop.example.com/orders/1. iOS uses apple-app-site-association; Android uses assetlinks.json.
+
+Apple Developer Team ID used for universal link association files.
+
+Signing certificate fingerprints used by Android app links. Debug builds and release builds usually have different fingerprints.
+
+## Push Notifications
+
+Source: /cheatsheet/mobile/push
+Mirror: /llms/pages/cheatsheet/mobile/push.md
+Priority: P2
+
+Headings:
+- Push Setup
+
+Push Notifications
+
+Push Setup
+
+Push setup has three separate surfaces: web push, Android push, and iOS push. Akan gives one client API, usePushNotification(), but the platform setup is still different.
+
+Akan automates
+
+Serving /firebase-messaging-sw.js for web push.
+
+Android POST_NOTIFICATIONS permission when target.permissions includes push.
+
+iOS aps-environment, remote-notification background mode, and Capacitor AppDelegate bridge.
+
+You provide
+
+App package dependencies for Capacitor push and FCM.
+
+Firebase web config, google-services.json, and GoogleService-Info.plist.
+
+Firebase Console app registration and APNs credentials.
+
+Web push
+
+## Setup
+
+Source: /cheatsheet/mobile/setup
+Mirror: /llms/pages/cheatsheet/mobile/setup.md
+Priority: P2
+
+Headings:
+- Mobile Setup Flow
+- Mobile Config
+- Capacitor Plugins
+- Android Setup
+- iOS Setup
+- Verify Setup
+
+Setup
+
+Mobile Setup Flow
+
+Akan mobile apps reuse the CSR web app inside a Capacitor Android/iOS shell. The web app owns pages and business logic. The native shell owns package identity, device permissions, plugin linking, native files, signing, and store builds.
+
+Start with the mobile identity, declare only the Capacitor plugins the app actually uses, then prepare Android and iOS builds. Push notifications and deep links are optional features; configure them only when the app needs them.
+
+App name, package id, version, target basePath, permissions, native files.
+
+List the native plugins used by this app in apps/myapp/package.json.
+
+Prepare platform toolchains, app IDs, signing, and sync/build commands.
+
+Mobile Config
+
+The mobile block in akan.config.ts describes the native package. These values become Android application metadata, iOS bundle metadata, target entry paths, native permission hints, and native file copy rules.
+
+Native display name. Users see it on the launcher/home screen unless the platform or store overrides it.
+
+Stable native package identity. Android uses it as applicationId/package name; iOS uses it as bundle id. Any platform console registration must match it exactly.
+
+version is the user-facing version. buildNum is the store build number and must increase for every native store submission.
+
+## UI & Keyboard
+
+Source: /cheatsheet/mobile/ui
+Mirror: /llms/pages/cheatsheet/mobile/ui.md
+Priority: P2
+
+Headings:
+- Gesture & Page Transitions
+- Keyboard Accessory Layout
+
+UI & Keyboard
+
+Gesture & Page Transitions
+
+Mobile pages can opt into native-feeling CSR transitions with pageConfig.transition. Stack pages support the iOS-style back swipe by default on iOS, while Android defaults to a scale-out transition and disables edge gestures unless a page opts in.
+
+/csr/stack_en.mp4
+
+Pushes a detail page over the current page. Use it for drill-down navigation such as detail, edit, or settings pages.
+
+/csr/bottomup_en.mp4
+
+Opens a focused surface from the bottom. Use it for compose, picker, camera, or modal-like flows.
+
+/csr/fade_en.mp4
+
+Changes context without implying a deeper navigation stack.
+
+/csr/scale_en.mp4
+
+Uses a compact scale motion. This is the default Android-style transition for deeper routes.
+
+Controls edge-swipe navigation for page transitions. Leave it to the platform default unless the page needs to explicitly enable or disable gesture handling.
+
 ## Dependency Injection
 
 Source: /cheatsheet/observability/di
@@ -4192,6 +4381,7 @@ Headings:
 - Adapt And Plug
 - Inject Services
 - Read Environment
+- One Key, One Owner
 - Tips
 
 Dependency Injection
@@ -4418,6 +4608,7 @@ Headings:
 - Lazy Loading
 - External Libraries
 - Large Components
+- Server Adapters
 - SSR Or Client Only
 - Tips
 
@@ -4443,7 +4634,7 @@ You can also split your own components. This is useful when a page has a heavy e
 
 Lazy editor
 
-SSR Or Client Only
+Server Adapters
 
 ## Mutating
 
@@ -4465,7 +4656,7 @@ Akan has two ways to change stored data. Use document methods when you edit one 
 
 Document methods (`.set().save()`, `Model.update`, `Model.remove`) load a document, run save/update/remove hooks, then persist it.
 
-Query updates (`updateOne`, `updateMany`, `deleteMany`, `bulkWrite`) compile to a single atomic SQL statement and do not load documents.
+Query updates (`updateOne`, `updateMany`, `removeOne`, `removeMany`, `bulkWrite`) compile to a single atomic SQL statement and do not load documents.
 
 Use the `u` update helper for operators, the same way `q` is used for query conditions.
 
@@ -4618,6 +4809,11 @@ Chat Flow
 - CRUD: /llms/pages/cheatsheet/interface/crud.md
 - Endpoint: /llms/pages/cheatsheet/interface/endpoint.md
 - Form: /llms/pages/cheatsheet/interface/form.md
+- MCP Server: /llms/pages/cheatsheet/interface/mcp.md
+- Deep Links: /llms/pages/cheatsheet/mobile/links.md
+- Push Notifications: /llms/pages/cheatsheet/mobile/push.md
+- Setup: /llms/pages/cheatsheet/mobile/setup.md
+- UI & Keyboard: /llms/pages/cheatsheet/mobile/ui.md
 - Dependency Injection: /llms/pages/cheatsheet/observability/di.md
 - Error Handling: /llms/pages/cheatsheet/observability/error.md
 - Logging: /llms/pages/cheatsheet/observability/logging.md
@@ -4629,3 +4825,5 @@ Chat Flow
 - Querying: /llms/pages/cheatsheet/performance/query.md
 - Queueing: /llms/pages/cheatsheet/performance/queue.md
 - Realtime: /llms/pages/cheatsheet/performance/realtime.md
+- In-Page Agent: /llms/pages/docs/arch/agentic.md
+- UI Recipe Layer: /llms/pages/docs/arch/ui-recipe.md

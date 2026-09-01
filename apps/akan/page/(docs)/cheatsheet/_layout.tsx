@@ -24,6 +24,7 @@ export default function Layout({ children }: LayoutProps) {
       subMenus: [
         { name: l.trans({ en: "CRUD", ko: "CRUD" }), href: "/cheatsheet/interface/crud" },
         { name: l.trans({ en: "Endpoint", ko: "Endpoint" }), href: "/cheatsheet/interface/endpoint" },
+        { name: l.trans({ en: "MCP Server", ko: "MCP 서버" }), href: "/cheatsheet/interface/mcp" },
         { name: l.trans({ en: "Form", ko: "Form" }), href: "/cheatsheet/interface/form" },
       ],
     },
@@ -49,6 +50,15 @@ export default function Layout({ children }: LayoutProps) {
         { name: l.trans({ en: "Mutating", ko: "변경" }), href: "/cheatsheet/performance/mutation" },
         { name: l.trans({ en: "Queueing", ko: "큐" }), href: "/cheatsheet/performance/queue" },
         { name: l.trans({ en: "Realtime", ko: "실시간" }), href: "/cheatsheet/performance/realtime" },
+      ],
+    },
+    {
+      name: l.trans({ en: "Mobile", ko: "모바일" }),
+      subMenus: [
+        { name: l.trans({ en: "Setup", ko: "설정" }), href: "/cheatsheet/mobile/setup" },
+        { name: l.trans({ en: "Push Notifications", ko: "Push Notifications" }), href: "/cheatsheet/mobile/push" },
+        { name: l.trans({ en: "Deep Links", ko: "Deep Links" }), href: "/cheatsheet/mobile/links" },
+        { name: l.trans({ en: "UI & Keyboard", ko: "UI & Keyboard" }), href: "/cheatsheet/mobile/ui" },
       ],
     },
     {

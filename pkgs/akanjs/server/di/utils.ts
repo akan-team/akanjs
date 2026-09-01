@@ -1,5 +1,6 @@
 import { INJECT_META } from "akanjs/base";
 import { lowerlize } from "akanjs/common";
+import { ConstantRegistry } from "akanjs/constant";
 import type { InjectInfo } from "akanjs/service";
 import type { DatabaseModule, ServiceModule } from "../akanLib";
 
@@ -65,6 +66,45 @@ export const getModuleDependencyRefNames = (mod: DatabaseModule | ServiceModule)
     }
   }
   return dependencies;
+};
+
+/**
+ * The modules a cascade edge forces this one to be mounted with: a `removeRef` target and a monomorphic
+ * `removeWith` owner both fail `CascadeRunner.seal` when they are absent, so they are boot dependencies the
+ * inject graph cannot see. A polymorphic owner list is exempt — it spans optional modules by design.
+ */
+export const getModuleCascadeRefNames = (mod: DatabaseModule | ServiceModule) => {
+  const dependencies = new Set<string>();
+  if (!("constant" in mod)) return dependencies;
+  const { cascade } = mod.constant.full;
+  for (const modelRef of cascade.removeRef.values()) dependencies.add(ConstantRegistry.getRefName(modelRef));
+  for (const path of cascade.removeWith.values()) {
+    if (path.typeValues.length) continue;
+    dependencies.add(path.refName ?? ConstantRegistry.getRefName(path.modelRef as never));
+  }
+  return dependencies;
+};
+
+export interface Registration {
+  key: string;
+  /** What claimed the key, phrased for a boot error: `predefined adaptor "storage"`, `lib "shared"`. */
+  owner: string;
+}
+
+/**
+ * A key registered twice is silently last-write-wins everywhere downstream — an app that meant to add a second
+ * adaptor gets one, and the other's `onInit` never runs. Refuse the boot instead, naming both claimants.
+ */
+export const assertUniqueRegistrations = (kind: string, registrations: Registration[]) => {
+  const claimed = new Map<string, string>();
+  const clashes: string[] = [];
+  for (const { key, owner } of registrations) {
+    const previous = claimed.get(key);
+    if (previous) clashes.push(`  • "${key}" is registered by ${previous} and by ${owner}`);
+    else claimed.set(key, owner);
+  }
+  if (!clashes.length) return;
+  throw new Error(`[DI:${kind}] ${clashes.length} duplicate registration(s):\n${clashes.join("\n")}`);
 };
 
 /**

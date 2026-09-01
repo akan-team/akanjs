@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   AkanContextAnalyzer,
   createAkanClaudeMcpServer,
@@ -563,15 +563,29 @@ describe("ContextRunner", () => {
 });
 
 describe("AgentRunner", () => {
+  const previousEnv: Record<string, string | undefined> = {};
+  beforeEach(() => {
+    for (const key of ["AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"]) {
+      previousEnv[key] = process.env[key];
+      delete process.env[key];
+    }
+  });
+  afterEach(() => {
+    for (const key of ["AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"]) {
+      if (previousEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = previousEnv[key];
+    }
+  });
+
   test("installs a single AGENTS.md source with thin Claude and Cursor references", async () => {
     const { root, workspace } = await createTempApp("demo");
     tempRoots.push(root);
     const runner = new AgentRunner();
 
     const written = await runner.install(workspace, ["cursor", "agents-md", "claude"]);
-    expect(written).toEqual([".cursor/rules/akan.mdc", "AGENTS.md", "CLAUDE.md"]);
+    expect(written.slice(0, 3)).toEqual([".cursor/rules/akan.mdc", "AGENTS.md", "CLAUDE.md"]);
+    expect(written.slice(3).every((path) => path.endsWith("/AGENTS.md"))).toBe(true);
 
-    // AGENTS.md is the single source of truth and carries the full workflow policy in a managed block.
     const agents = await Bun.file(`${root}/AGENTS.md`).text();
     expect(agents).toContain("Before changing a domain");
     expect(agents).toContain("Prefer Akan MCP workflows before direct source edits");
@@ -583,11 +597,19 @@ describe("AgentRunner", () => {
     expect(agents).toContain("akan repair generated");
     expect(agents).toContain("<!-- akan:agent:start -->");
     expect(agents).toContain("<!-- akan:agent:end -->");
+    // The conventions and onboarding guides ship in the package, so the block carries both, stamped with the
+    // release that rendered it. A workspace outside the framework monorepo gets onboarding too.
+    expect(agents).toContain("Never hand-order Tailwind classes");
+    expect(agents).toContain("Quick Decision Matrix");
+    expect(agents).toMatch(/<!-- akan:agent:version \S+ -->/);
+    expect(agents).not.toContain("<%= appName %>");
+    expect(agents).toContain("akan start demo");
 
-    // CLAUDE.md and the Cursor rule are thin pointers to AGENTS.md, not duplicates of its content.
     const claude = await Bun.file(`${root}/CLAUDE.md`).text();
     expect(claude).toContain("@AGENTS.md");
     expect(claude).not.toContain("Prefer Akan MCP workflows before direct source edits");
+    // The comment rule is the one thing CLAUDE.md restates instead of leaving to the guide.
+    expect(claude).toContain("## Comments — Overrides Your Default");
     const cursor = await Bun.file(`${root}/.cursor/rules/akan.mdc`).text();
     expect(cursor).toContain("@AGENTS.md");
     expect(cursor).not.toContain("Prefer Akan MCP workflows before direct source edits");
@@ -604,16 +626,15 @@ describe("AgentRunner", () => {
     await runner.install(workspace, ["agents-md"]);
     const first = await Bun.file(`${root}/AGENTS.md`).text();
 
-    // Hand-written content placed outside the markers must survive a re-install without --force.
     await Bun.write(`${root}/AGENTS.md`, `${first}\n## Team Notes\n\nUse feature branches.\n`);
     const written = await runner.install(workspace, ["agents-md"]);
-    expect(written).toEqual(["AGENTS.md"]);
+    expect(written[0]).toBe("AGENTS.md");
+    expect(written.slice(1).every((path) => path.endsWith("/AGENTS.md"))).toBe(true);
 
     const refreshed = await Bun.file(`${root}/AGENTS.md`).text();
     expect(refreshed).toContain("## Team Notes");
     expect(refreshed).toContain("Use feature branches.");
     expect(refreshed).toContain("Prefer Akan MCP workflows before direct source edits");
-    // Re-installing does not duplicate the managed block.
     expect(refreshed.split("<!-- akan:agent:start -->").length - 1).toBe(1);
   });
 

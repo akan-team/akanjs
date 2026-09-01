@@ -4,7 +4,7 @@
 Use this for shared UI rules across module, scalar, app UI, and docs components.
 
 ## Ownership
-- Accept `className?: string` for reusable components and forward it through `clsx`.
+- Accept `className?: string` for reusable components and forward it through `cn` (from `akanjs/client`), or as the second argument of a recipe (`buttonRecipe(variants, className)`).
 - Use semantic HTML and accessible labels for interactive elements.
 - Use `akanjs/ui` and project UI libraries before adding new primitives.
 - Keep presentation components small; move page composition to Zone and actions to Util or store.
@@ -26,7 +26,7 @@ Use this for shared UI rules across module, scalar, app UI, and docs components.
 ## Codegen Rules
 - Do not put business workflow decisions in render code.
 - Do not use undocumented UI components or props.
-- Do not use hardcoded colors when DaisyUI semantic classes work.
+- Do not use hardcoded colors when semantic token classes (`bg-primary`, `text-foreground`, …) work.
 - Do not create broad component abstractions before repeated patterns exist.
 
 ## Review Checklist

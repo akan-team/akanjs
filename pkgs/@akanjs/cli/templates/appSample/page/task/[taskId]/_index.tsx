@@ -6,7 +6,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { a
     content: `
 import { fetch, usePage } from "@apps/${dict.appName}/client";
 import { Task } from "@apps/${dict.appName}/lib/task";
-import { Link } from "akanjs/ui";
+import { Link, buttonRecipe } from "akanjs/ui";
 
 // ===== page/task/[taskId]/_index.tsx =====
 // Convention: Akan.js file-based routing with dynamic segments.
@@ -22,10 +22,10 @@ export default async function Page({ params: { taskId } }: PageProps) {
   return (
     <main className="mx-auto max-w-4xl px-6 py-8">
       <div className="mb-6 flex items-center justify-between">
-        <a href="/task" className="btn btn-ghost btn-sm">
+        <a href="/task" className={buttonRecipe({ variant: "ghost", size: "sm" })}>
           {l("task.taskBackToTasks")}
         </a>
-        <Link href={\`/task/\${taskId}/edit\`} className="btn btn-primary btn-sm">
+        <Link href={\`/task/\${taskId}/edit\`} className={buttonRecipe({ variant: "primary", size: "sm" })}>
           {l("task.taskEdit")}
         </Link>
       </div>

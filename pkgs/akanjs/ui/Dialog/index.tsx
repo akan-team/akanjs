@@ -1,5 +1,6 @@
 import { Action } from "./Action";
 import { Content } from "./Content";
+import { LegacyModal } from "./LegacyModal";
 import { Modal } from "./Modal";
 import { Provider, type ProviderProps } from "./Provider";
 import { Title } from "./Title";
@@ -9,6 +10,7 @@ export const Dialog = ({ children, ...props }: ProviderProps) => {
   return <Provider {...props}>{children}</Provider>;
 };
 Dialog.Modal = Modal;
+Dialog.LegacyModal = LegacyModal;
 Dialog.Title = Title;
 Dialog.Action = Action;
 Dialog.Trigger = Trigger;

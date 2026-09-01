@@ -1,5 +1,5 @@
 import type { Dayjs } from "akanjs/base";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import type { ReactNode } from "react";
 
 interface ChatBubbleProps {
@@ -33,16 +33,14 @@ export const ChatBubble = ({
     : `${hasPrev ? "rounded-tr-sm" : ""} ${hasNext ? "rounded-br-sm" : ""}`;
 
   return (
-    <div className={clsx("flex w-full gap-2", isMe ? "justify-end" : "justify-start", wrapperClassName)}>
+    <div className={cn("flex w-full gap-2", isMe ? "justify-end" : "justify-start", wrapperClassName)}>
       {avatar && !isMe ? avatar : null}
       <div className={bodyClassName}>
         <div className={`flex w-full text-xs ${!isMe ? "justify-start" : "justify-end"}`}>
           {name ? <p className="text-sm">{name}</p> : null}
         </div>
-        <div className={clsx("flex items-end gap-1", isMe ? "flex-row-reverse" : "flex-row")}>
-          <div className={clsx("w-full rounded-2xl bg-base-200 px-3 py-2", roundingClassName, className)}>
-            {children}
-          </div>
+        <div className={cn("flex items-end gap-1", isMe ? "flex-row-reverse" : "flex-row")}>
+          <div className={cn("w-full rounded-2xl bg-muted px-3 py-2", roundingClassName, className)}>{children}</div>
           {at ? (
             <div className={`mt-1 flex text-xs`}>
               {/* <RecentTime date={at} format="full"  /> */}

@@ -25,7 +25,6 @@ export const newIndex = <T extends { id: string }[]>({
   overItems,
   delta,
 }: NewIndexProps<T>) => {
-  const activeIndex = activeItems.findIndex((i) => i.id === activeId);
   const overIndex = overItems.findIndex((i) => i.id === overId);
 
   const putOnBelowLastItem = overIndex === overItems.length - 1 && delta.y > 0;
@@ -41,7 +40,6 @@ export const mergeOverItems = <T extends { id: string }[]>({
   delta,
 }: MergeOverItemsProps<T>): T => {
   const activeIndex = activeItems.findIndex((i) => i.id === activeId);
-  const overIndex = overItems.findIndex((i) => i.id === overId);
   const idx = newIndex({ activeId, overId, activeItems, overItems, delta });
   const newItems = [
     ...overItems.slice(0, idx),

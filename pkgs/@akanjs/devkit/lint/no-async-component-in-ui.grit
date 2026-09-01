@@ -1,0 +1,35 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// React has no async client component: an async body is a server-only shape, so a `ui/` component that
+// awaits stops rendering the moment any client parent imports it — and `ui/` is written to be reachable
+// from both sides. It also moves the load below the route, where the framework can no longer start it
+// before the first byte. Awaiting belongs to `page/**`, which passes the resolved data down as props.
+//
+// Component-ness is a PascalCase regex on the binding, the same test `no-model-type-in-util-zone.grit`
+// uses. The declarator regex anchors `async` to the initializer position (`[^=]*` cannot cross an `=`),
+// so an async handler declared inside a synchronous component is not read as the component's own body;
+// `not within JsFunctionBody()` drops every nested declaration for the same reason. Out of scope by
+// construction, since neither is a named binding at statement level: an inline `onClick={async () => …}`
+// and an async member of an object literal.
+JsIdentifierBinding() as $name where {
+  $name <: r"[A-Z][A-Za-z0-9_$]*",
+  not $name <: within JsFunctionBody(),
+  not $name <: within JsFormalParameter(),
+  or {
+    $name <: within JsVariableDeclarator() as $decl where {
+      $decl <: r"[A-Z][A-Za-z0-9_$]*\s*(?::[^=]*)?=\s*async[\s\S]*"
+    },
+    $name <: within JsFunctionDeclaration() as $fn where {
+      $fn <: r"(?:export\s+)?(?:default\s+)?async\s+function[\s\S]*"
+    },
+    $name <: within JsFunctionExportDefaultDeclaration() as $default where {
+      $default <: r"(?:export\s+)?(?:default\s+)?async\s+function[\s\S]*"
+    }
+  },
+  register_diagnostic(
+    span = $name,
+    message = "An async component belongs in page/. React has no async client component, so a ui/ component that awaits breaks as soon as a client parent renders it, and the route can no longer start the load before the first byte. Await in the page — or hand an unawaited fetch.* to a Zone as an init / view prop — and take the resolved data as a prop.",
+    severity = "error"
+  )
+}

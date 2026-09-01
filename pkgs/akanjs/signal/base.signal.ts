@@ -1,5 +1,6 @@
 import { FetchClient } from "akanjs/fetch";
 import { srv } from "akanjs/service";
+import { agent } from "./agent.signal";
 import { endpoint } from "./endpoint";
 import { internal } from "./internal";
 import { serverSignal } from "./serverSignal";
@@ -29,7 +30,8 @@ export class BaseEndpoint extends endpoint(srv.base, ({ query, mutation, message
 export class Base extends serverSignal(BaseEndpoint, BaseInternal) {}
 export const base = SignalRegistry.registerService("base" as const, BaseInternal, BaseEndpoint, Base);
 
-const createBaseFetch = () => FetchClient.from(base);
+// The agent relay rides the same root fetch every lib chain starts from, so `fetch.runAgentTurn` reaches every app.
+const createBaseFetch = () => FetchClient.from(base, agent);
 type BaseFetch = ReturnType<typeof createBaseFetch>;
 
 let fetchCache: BaseFetch | undefined;

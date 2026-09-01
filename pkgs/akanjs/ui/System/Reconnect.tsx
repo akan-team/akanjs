@@ -1,5 +1,5 @@
 "use client";
-import { clsx, fetch, usePage } from "akanjs/client";
+import { cn, fetch, usePage } from "akanjs/client";
 import { useInterval } from "akanjs/webkit";
 // import { client } from "akanjs/signal";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -83,73 +83,39 @@ export const Reconnect = () => {
   if (process.env.AKAN_PUBLIC_ENV !== "local") return null;
   if (connectStatus === "initial" || connectStatus === "normal") return null;
   return (
-    <div className="fixed top-0 left-0 flex h-screen w-screen animate-fadeIn flex-col items-center justify-center bg-base-100/50">
-      <div className="flex w-4/5 flex-col items-center justify-center rounded-md bg-base-300 p-5 md:w-1/3">
-        <div className="whitespace-nowrap font-bold text-3xl">
+    <div className="fixed inset-0 z-[200] flex animate-fadeIn flex-col items-center justify-center bg-background/80 backdrop-blur-sm">
+      <div className="flex w-[min(90vw,26rem)] flex-col items-center gap-4 rounded-box border border-border bg-card p-8 text-center text-card-foreground shadow-2xl">
+        <div
+          className={cn(
+            "flex size-20 items-center justify-center rounded-full text-4xl",
+            connectStatus === "connected" ? "bg-success/15 text-success" : "bg-muted text-foreground/40",
+            connectStatus === "connecting" && "animate-pulse",
+          )}
+        >
+          {connectStatus === "connected" ? <TbPlugConnected /> : <TbPlugConnectedX />}
+        </div>
+        <div className="font-bold text-2xl leading-snug">
           {connectStatus === "disconnected"
             ? l("base.somethingWrong")
             : connectStatus === "connecting"
               ? l("base.connecting")
               : l("base.connected")}
         </div>
-        <div className="flex flex-col items-center justify-center">
-          <div className="py-5">
-            {connectStatus === "disconnected" ? (
-              <div className="text-[150px] text-gray-500">
-                <TbPlugConnectedX />
-              </div>
-            ) : connectStatus === "connecting" ? (
-              <div className="animate-pulse py-5 text-[150px] text-gray-500">
-                <TbPlugConnectedX />
-              </div>
-            ) : (
-              <div className="animate-pop text-[150px] text-white">
-                <TbPlugConnected />
-              </div>
-            )}
-          </div>
-
+        <div className="text-foreground/70 text-sm">
           {connectStatus === "connected" ? (
-            <>
-              <div className="animate-pop"></div>
-              <span>
-                <span className="text-lg">{l("base.refreshing")}</span>
-              </span>
-            </>
+            l("base.refreshing")
           ) : connectStatus === "connecting" ? (
-            <div className="flex items-center justify-center">
-              <div className="text-lg">{l("base.tryReconnecting")}</div>
-              <div className="flex items-center">
-                {Array.from({ length: DOTS_LENGTH }).map((_, index) =>
-                  dots >= index ? (
-                    <div key={index} className="visible">
-                      .
-                    </div>
-                  ) : (
-                    <div key={index} className="invisible">
-                      .
-                    </div>
-                  ),
-                )}
-              </div>
-            </div>
+            <span>
+              {l("base.tryReconnecting")}
+              {".".repeat(dots + 1)}
+            </span>
           ) : (
-            <div className="text-lg">{l("base.serverDisconnected")}</div>
+            l("base.serverDisconnected")
           )}
         </div>
-
-        <div
-          className={clsx(
-            "mt-2 text-center text-gray-500 text-sm leading-tight",
-            connectStatus === "disconnected" || connectStatus === "connecting" ? "visible" : "invisible",
-          )}
-        >
-          <div className="flex items-center justify-center gap-2">
-            <div className="flex flex-col items-center justify-center">
-              <div>{l("base.serverHasProblem")}</div>
-              <div className="font-bold">{l("base.checkServerStatus")}</div>
-            </div>
-          </div>
+        <div className={cn("text-muted-foreground text-sm leading-snug", connectStatus === "connected" && "invisible")}>
+          <div>{l("base.serverHasProblem")}</div>
+          <div className="font-bold">{l("base.checkServerStatus")}</div>
         </div>
       </div>
     </div>

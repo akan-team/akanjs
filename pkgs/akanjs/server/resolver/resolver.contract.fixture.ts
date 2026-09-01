@@ -1,4 +1,4 @@
-import { ID, Int } from "akanjs/base";
+import { Binary, ID, Int } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import { by, type DatabaseCls, DatabaseRegistry, from, into, type ModelCls, type SchemaOf } from "akanjs/document";
 import { ServiceModel, serve } from "akanjs/service";
@@ -92,13 +92,15 @@ class ServerResolverTestModel extends into(
   ServerResolverTestModelMixin as unknown as ModelCls,
 ) {}
 
+class ServerResolverTestInsightDoc extends by(ServerResolverTestInsight) {}
+
 export const serverResolverTestDatabase = DatabaseRegistry.buildModel(
   "serverResolverTestItem",
   ServerResolverTestInput as unknown as DatabaseCls<InstanceType<typeof ServerResolverTestInput>>,
   ServerResolverTestDoc,
   ServerResolverTestModel,
   ServerResolverTestObject,
-  ServerResolverTestInsight,
+  ServerResolverTestInsightDoc,
   ServerResolverTestFilter,
 );
 
@@ -183,6 +185,14 @@ export class ServerResolverTestEndpoint extends endpoint(serverResolverTestServi
     .exec(() => {
       resolverOrder.push("pubsub-subscribe");
     }),
+  roomStream: builder
+    .pubsub(Binary)
+    .room("channel", String)
+    .exec(() => undefined),
+  roomQueuedStream: builder
+    .pubsub(Binary, { backpressure: "queue" })
+    .room("channel", String)
+    .exec(() => undefined),
   guardedRoomFeed: builder
     .pubsub(ServerResolverTestLight, { guards: [ServerResolverTestRoomGuard] })
     .room("roomId", ID)
@@ -223,12 +233,4 @@ export class ServerResolverTestServerSignal extends serverSignal(
   ServerResolverTestInternal,
 ) {}
 
-export const makeEnv = () => ({
-  repoName: "akan",
-  serveDomain: "example.com",
-  appName: "serverResolver",
-  environment: "local",
-  operationMode: "local",
-  tunnelUsername: "root",
-  tunnelPassword: "akan",
-});
+export const makeEnv = () => ({});

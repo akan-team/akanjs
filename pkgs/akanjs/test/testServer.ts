@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { BackendEnv } from "akanjs/base";
+import type { BackendEnv, BaseEnv } from "akanjs/base";
 import { Logger, sleep } from "akanjs/common";
 import { type AkanLib, AkanServer } from "akanjs/server";
 
@@ -11,6 +11,9 @@ const MIN_ACTIVATION_TIME = 0;
 const MAX_ACTIVATION_TIME = 30000;
 
 type TestDatabaseMode = "memory" | "tempFile";
+
+/** `BackendEnv` carries server options only, so a harness that also stamps `process.env` needs the identity beside it. */
+export type TestEnv = BaseEnv & BackendEnv;
 
 export interface TestServerOptions {
   workerId?: number;
@@ -44,7 +47,7 @@ const resolveWorkerId = (workerId?: number) => {
 export class TestServer {
   readonly #logger = new Logger("TestServer");
   readonly #libs: AkanLib[];
-  readonly #env: BackendEnv;
+  readonly #env: TestEnv;
   readonly #databaseMode: TestDatabaseMode;
   readonly #serverMode: "federation" | "batch" | "all";
   readonly #listen: boolean;
@@ -55,7 +58,7 @@ export class TestServer {
   #startAt = Date.now();
   #server?: AkanServer;
   #tempDir?: string;
-  static initClient(env: BackendEnv, workerId?: number) {
+  static initClient(env: BaseEnv, workerId?: number) {
     TestServer.applyProcessEnv(env, {
       workerId,
       port: TEST_LISTEN_PORT_BASE + resolveWorkerId(workerId),
@@ -63,7 +66,7 @@ export class TestServer {
     });
   }
   static applyProcessEnv(
-    env: BackendEnv,
+    env: BaseEnv,
     {
       workerId,
       port,
@@ -82,7 +85,7 @@ export class TestServer {
     process.env.AKAN_PUBLIC_SERVER_PORT = String(resolvedPort);
     process.env.SERVER_HTTP_PROTOCOL = "http:";
   }
-  constructor(env: BackendEnv, libs: AkanLib | AkanLib[], options: TestServerOptions = {}) {
+  constructor(env: TestEnv, libs: AkanLib | AkanLib[], options: TestServerOptions = {}) {
     this.workerId = resolveWorkerId(options.workerId);
     this.#port = options.port ?? TEST_LISTEN_PORT_BASE + this.workerId;
     this.#env = { ...env };

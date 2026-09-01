@@ -17,6 +17,12 @@ interface CssDiscovery {
   sourcePaths: string[];
 }
 
+/** One `@import` target and the custom properties it declares, which is what proves it arrived downstream. */
+export interface ImportedStylesheet {
+  cssPath: string;
+  declaredNames: string[];
+}
+
 export class CssCompiler {
   #logger = new Logger("CssCompiler");
   #transpiler = new Bun.Transpiler({ loader: "tsx" });
@@ -46,6 +52,13 @@ export class CssCompiler {
   #fileExistsCache = new Map<string, Promise<boolean>>();
   #resolvedFileCache = new Map<string, Promise<string | null>>();
   #resolvedSpecifierCache = new Map<string, Promise<string | null>>();
+  /** Every stylesheet this compile reached, entry points and `@import` targets alike. */
+  #discoveredCssPaths = new Set<string>();
+  /**
+   * `@import` targets per base path, so whoever writes the asset can check the file it actually wrote — the
+   * compiled text and the written artifact are two different places a declaration can go missing.
+   */
+  importedStylesheetsByBasePath: Record<string, ImportedStylesheet[]> = {};
 
   #fileExists(absPath: string): Promise<boolean> {
     let cached = this.#fileExistsCache.get(absPath);
@@ -76,13 +89,20 @@ export class CssCompiler {
   }
   async getCss({ refresh }: { refresh?: boolean } = {}) {
     if (this.#cssText !== null && !refresh) return this.#cssText;
+    this.#discoveredCssPaths.clear();
+    this.importedStylesheetsByBasePath = {};
     const { cssPaths, sourcePaths } = await this.discoverCssAndSources({ refresh });
-    this.#cssText = await this.compileCss(cssPaths, sourcePaths);
+    const { css, imported } = await this.#compileWithImports(cssPaths, sourcePaths);
+    this.#cssText = css;
+    this.importedStylesheetsByBasePath = { "": imported };
+    await this.#warnUnreachableStylesheets();
     return this.#cssText;
   }
 
   async getCssByBasePath({ refresh }: { refresh?: boolean } = {}): Promise<Record<string, string>> {
     if (this.#cssTextByBasePath !== null && !refresh) return this.#cssTextByBasePath;
+    this.#discoveredCssPaths.clear();
+    this.importedStylesheetsByBasePath = {};
     const akanConfig = await this.#app.getConfig({ refresh });
     const pageKeys = await this.#app.getPageKeys({ refresh });
     const basePaths = [...akanConfig.basePaths];
@@ -92,7 +112,8 @@ export class CssCompiler {
         if (rootPageKeys.length === 0) return ["", ""] as const;
         const started = Date.now();
         const { cssPaths, sourcePaths } = await this.discoverCssAndSources({ refresh, pageKeys: rootPageKeys });
-        const css = await this.compileCss(cssPaths, sourcePaths);
+        const { css, imported } = await this.#compileWithImports(cssPaths, sourcePaths);
+        this.importedStylesheetsByBasePath[""] = imported;
         this.#logger.verbose(
           `css base=root paths=${cssPaths.length} sources=${sourcePaths.length} in ${Date.now() - started}ms`,
         );
@@ -103,7 +124,8 @@ export class CssCompiler {
         if (basePathPageKeys.length === 0) return [basePath, ""] as const;
         const started = Date.now();
         const { cssPaths, sourcePaths } = await this.discoverCssAndSources({ refresh, pageKeys: basePathPageKeys });
-        const css = await this.compileCss(cssPaths, sourcePaths);
+        const { css, imported } = await this.#compileWithImports(cssPaths, sourcePaths);
+        this.importedStylesheetsByBasePath[basePath] = imported;
         this.#logger.verbose(
           `css base=${basePath} paths=${cssPaths.length} sources=${sourcePaths.length} in ${Date.now() - started}ms`,
         );
@@ -111,7 +133,24 @@ export class CssCompiler {
       }),
     ]);
     this.#cssTextByBasePath = Object.fromEntries(cssEntries);
+    await this.#warnUnreachableStylesheets();
     return this.#cssTextByBasePath;
+  }
+
+  /**
+   * A stylesheet under `page/` reaches the build only by being imported from a route source. One that nothing
+   * imports compiles to nothing and reports success, which is indistinguishable from an empty theme — so say it
+   * out loud once per compile rather than leaving it to be noticed as unstyled elements in the browser.
+   */
+  async #warnUnreachableStylesheets() {
+    const pageDir = path.join(this.#app.cwdPath, "page");
+    const glob = new Bun.Glob("**/*.css");
+    for await (const cssPath of glob.scan({ cwd: pageDir, absolute: true })) {
+      // `(libs)` is a link farm: the same file is discovered under its real path in `libs/`, never this one.
+      if (cssPath.includes(`${path.sep}(libs)${path.sep}`)) continue;
+      if (this.#discoveredCssPaths.has(cssPath)) continue;
+      this.#logger.warn(`css ${path.relative(this.#app.cwdPath, cssPath)} is imported by no route and never compiled`);
+    }
   }
 
   async discoverCss({ refresh }: { refresh?: boolean } = {}): Promise<string[]> {
@@ -180,22 +219,61 @@ export class CssCompiler {
       }
     }
 
-    return { cssPaths: [...cssFiles], sourcePaths: [...sourceFiles] };
+    const tokenPaths = await this.#libTokenStylesheets(sourceFiles);
+    const cssPaths = [...new Set([...tokenPaths, ...cssFiles])];
+    for (const cssPath of cssPaths) this.#discoveredCssPaths.add(cssPath);
+    return { cssPaths, sourcePaths: [...sourceFiles] };
+  }
+
+  /**
+   * `libs/<lib>/ui/tokens.css` of every lib the page graph reached, so a lib can own the fixed colours its own
+   * components need instead of each consuming app re-declaring them. Ordered ahead of the app's stylesheets:
+   * the app is the last word on any variable both declare.
+   */
+  async #libTokenStylesheets(sourceFiles: Set<string>): Promise<string[]> {
+    const libsRoot = path.join(this.#app.workspace.workspaceRoot, "libs");
+    const libNames = new Set<string>();
+    for (const filePath of sourceFiles) {
+      const relPath = path.relative(libsRoot, filePath);
+      if (relPath.startsWith("..") || path.isAbsolute(relPath)) continue;
+      const [libName] = relPath.split(path.sep);
+      if (libName) libNames.add(libName);
+    }
+    const tokenPaths = await Promise.all(
+      [...libNames].sort().map(async (libName) => {
+        const tokensPath = path.join(libsRoot, libName, "ui/tokens.css");
+        return (await this.#fileExists(tokensPath)) ? tokensPath : null;
+      }),
+    );
+    return tokenPaths.filter((tokensPath): tokensPath is string => !!tokensPath);
   }
   async compileCss(cssPaths: string[], sourcePaths: string[]): Promise<string> {
-    if (cssPaths.length === 0) return "";
+    const { css } = await this.#compileWithImports(cssPaths, sourcePaths);
+    return css;
+  }
+
+  /**
+   * The collector is per compile rather than per compiler instance: `getCssByBasePath` compiles every base path
+   * concurrently, so instance state would mix one base path's imports into another's check.
+   */
+  async #compileWithImports(
+    cssPaths: string[],
+    sourcePaths: string[],
+  ): Promise<{ css: string; imported: ImportedStylesheet[] }> {
+    if (cssPaths.length === 0) return { css: "", imported: [] };
 
     const compileStarted = Date.now();
     const compilers = await Promise.all(
       cssPaths.map(async (cssPath) => {
         const css = await Bun.file(cssPath).text();
         const base = path.dirname(cssPath);
+        const imported = new Map<string, string>();
         const compiler = await compile(css, {
           base,
-          loadStylesheet: (id, fromBase) => this.#loadStylesheet(id, fromBase),
+          loadStylesheet: (id, fromBase) => this.#loadStylesheet(id, fromBase, imported),
           loadModule: (id, fromBase) => this.#loadModule(id, fromBase),
         });
-        return { cssPath, compiler };
+        return { cssPath, compiler, imported };
       }),
     );
 
@@ -210,24 +288,46 @@ export class CssCompiler {
       `css candidates scanned count=${candidates.length} sources=${sourcePaths.length} dirs=${sourceDirs.size} in ${Date.now() - scanStarted}ms`,
     );
     const parts: string[] = [];
+    const imported: ImportedStylesheet[] = [];
     for (const entry of compilers) {
       if (!entry) continue;
-      parts.push(entry.compiler.build(candidates));
+      const part = entry.compiler.build(candidates);
+      parts.push(part);
+      for (const [cssPath, content] of entry.imported) {
+        const declaredNames = declaredCustomProperties(content);
+        imported.push({ cssPath, declaredNames });
+        if (declaredNames.length === 0 || declaredNames.some((name) => part.includes(`${name}:`))) continue;
+        this.#logger.warn(
+          `css @import ${cssPath} was loaded by ${entry.cssPath} but none of its ${declaredNames.length} declaration(s) reached the compiled CSS`,
+        );
+      }
     }
     this.#logger.verbose(
       `css compiled paths=${cssPaths.length} candidates=${candidates.length} in ${Date.now() - compileStarted}ms`,
     );
-    return parts.join("\n");
+    return { css: parts.join("\n"), imported };
   }
 
-  async #loadStylesheet(id: string, fromBase: string) {
+  async #loadStylesheet(id: string, fromBase: string, imported?: Map<string, string>) {
     const p = await this.#resolveCssImport(id, fromBase);
+    this.#discoveredCssPaths.add(p);
     const content = await Bun.file(p).text();
+    imported?.set(p, content);
+    this.#logger.verbose(`css import "${id}" from ${fromBase} -> ${p} (${content.length} bytes)`);
     return { path: p, base: path.dirname(p), content };
   }
 
+  /**
+   * Every specifier is verified here, path-shaped ones included. An `@import` the pipeline cannot resolve is
+   * a build error and never a no-op: the vocabulary closure means a component whose token declaration failed
+   * to load renders unstyled, which nothing downstream can distinguish from a design choice.
+   */
   async #resolveCssImport(id: string, fromBase: string): Promise<string> {
-    if (id.startsWith(".") || id.startsWith("/")) return path.resolve(fromBase, id);
+    if (id.startsWith(".") || id.startsWith("/")) {
+      const filePath = path.resolve(fromBase, id);
+      if (await this.#fileExists(filePath)) return filePath;
+      throw new Error(`[css] failed to resolve stylesheet import "${id}" from ${fromBase} (no file at ${filePath})`);
+    }
     const resolver = await this.#getCssImportResolver();
     const resolved = await resolver.resolve(id, fromBase);
     if (resolved) return resolved;
@@ -328,6 +428,17 @@ function isSourceFile(filePath: string) {
 
 export function isIgnoredNodeModuleSource(filePath: string): boolean {
   return NODE_MODULES_RE.test(filePath) && !AKANJS_NODE_MODULE_RE.test(filePath);
+}
+
+/**
+ * `@theme` blocks are stripped first: those variables are emitted only when a utility uses one, so their
+ * absence from a build says nothing about whether the stylesheet arrived.
+ */
+export function declaredCustomProperties(css: string): string[] {
+  const withoutThemeBlocks = css.replace(/@theme[^{]*\{[^}]*\}/g, "");
+  return [...new Set([...withoutThemeBlocks.matchAll(/(?:^|[\s;{])(--[\w-]+)\s*:/g)].map(([, name]) => name))].filter(
+    (name): name is string => !!name,
+  );
 }
 
 function getPageKeyBasePath(pageKey: string, basePaths: string[]): string | null {

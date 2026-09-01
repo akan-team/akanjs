@@ -79,13 +79,17 @@ A secret, hidden, or resolved field with a text role throws while the class is b
 
 Cascade Remove Fields
 
-A relation field can take its target down with it. cascade: "remove" is the whole declaration, and it works on an array field too.
+The value names the direction, because both actions can sit on the same field shape. removeRef removes what the field points at when this document goes; removeWith removes this document when what the field points at goes.
 
-The removal runs through the target's service, so the target's own _postRemove runs with it. That is how a File cascade also deletes the stored object.
+removeRef goes on the relation an owner holds, arrays included. Only a relation accepts it: a String, an ID, or a scalar throws while the class is being built, because none of them names a document to remove.
 
-Only a relation accepts it. A String, an ID, or a scalar field throws while the class is being built, because none of them names a document the framework could remove.
+removeWith goes on the child's own reference to its owner, so the owner never learns its children exist and a lib model can be extended by an app's. It takes a relation, an ID with ref, or an ID with refPath for a polymorphic owner.
 
-Nothing checks for other references to the same target. Declaring cascade asserts that this field owns its target exclusively, and query-level removal fires no hooks and therefore no cascade.
+A refPath must name an enumOf field. A free-form owner type is unknowable at build time, so every model's removal would have to sweep the polymorphic table on the chance it is the owner.
+
+The removal runs through the target's service, so the target's own _postRemove runs with it — that is how a File cascade also deletes the stored object. When the target provably has no removal side effect, the boot-time plan collapses it into one query instead.
+
+Nothing checks for other references to the same target. Declaring removeRef asserts that this field owns its target exclusively, and query-level removal fires no hooks and therefore no cascade.
 
 Extending Generated Models
 
@@ -215,8 +219,17 @@ export class UserInput extends via((field) => ({
 ```ts
 export class UserInput extends via((field) => ({
   nickname: field(String, { default: "", text: "title" }),
-  image: field(File, { text: "thumb", cascade: "remove" }).optional(),
-  images: field([File], { cascade: "remove" }),
+  image: field(File, { text: "thumb", cascade: "removeRef" }).optional(),
+  images: field([File], { cascade: "removeRef" }),
+})) {}
+```
+
+### sessionChat.constant.ts
+
+```ts
+export class SessionChatInput extends via((field) => ({
+  agentSession: field(ID, { ref: "agentSession", cascade: "removeWith" }),
+  content: field(String, { default: "", text: "desc" }),
 })) {}
 ```
 

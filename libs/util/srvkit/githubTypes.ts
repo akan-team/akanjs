@@ -16,6 +16,14 @@ export type GithubRepositoryDto = {
 export type GithubContentDto = {
   name: string;
   type: "file" | "dir" | "symlink" | "submodule";
+  /** Present only for `type: "file"`, and only under the contents API's size limit. */
+  content?: string;
+  encoding?: string;
+};
+export type GithubWebhookDto = {
+  id: number;
+  active?: boolean;
+  config?: { url?: string };
 };
 export type GithubRepository = {
   id: number;

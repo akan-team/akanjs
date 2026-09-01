@@ -1,4 +1,4 @@
-import { clsx, usePage } from "akanjs/client";
+import { cn, usePage } from "akanjs/client";
 import type { SliceMeta } from "akanjs/fetch";
 import type { ReactNode } from "react";
 import { AiOutlineEdit } from "react-icons/ai";
@@ -29,9 +29,9 @@ export default function Edit({
 }: EditProps) {
   const { l } = usePage();
   return (
-    <div className={clsx("inline", wrapperClassName)}>
+    <div className={cn("inline", wrapperClassName)}>
       <EditWrapper
-        className={clsx("flex w-full items-center justify-center gap-2", className)}
+        className={cn("flex w-full items-center justify-center gap-2", className)}
         slice={slice}
         modelId={modelId}
         modal={modal}

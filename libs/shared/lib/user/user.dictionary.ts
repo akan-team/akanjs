@@ -51,10 +51,6 @@ export const dictionary = modelDictionary(["en", "ko"])
     byStatuses: fn(["By Statuses", "상태별 조회"]).arg((t) => ({
       statuses: t(["Statuses", "상태들"]).desc(["Statuses to search", "상태들로 조회"]),
     })),
-    bySearch: fn(["By Search", "검색어별 조회"]).arg((t) => ({
-      text: t(["Search Text", "검색어"]).desc(["Text to search for", "검색할 문자열"]),
-      statuses: t(["Statuses", "상태들"]).desc(["Statuses to narrow the search", "검색 범위를 좁힐 상태들"]),
-    })),
     byNickname: fn(["By Nickname", "닉네임별 조회"]).arg((t) => ({
       nickname: t(["Nickname", "닉네임"]).desc(["Nickname to search", "닉네임으로 조회"]),
       status: t(["Status", "상태"]).desc(["Status to search", "상태로 조회"]),
@@ -438,6 +434,14 @@ export const dictionary = modelDictionary(["en", "ko"])
     unauthorized: ["Unauthorized", "권한이 없습니다"],
   })
   .translate({
+    removeAppliedImageConfirm: ["Remove this photo?", "이 사진을 삭제할까요?"],
+    mainAppliedImage: ["Main photo", "대표 사진"],
+    setAccountIdByAdminInvalid: [
+      "Use at least four characters, and keep the email form when the account signs in with one.",
+      "4자 이상이어야 하고, 이메일로 로그인하는 계정이면 이메일 형식을 유지해야 한다.",
+    ],
+    setPasswordByAdminInvalid: ["Use 8 to 20 characters.", "8자 이상 20자 이내로 입력해야 한다."],
+    setPhoneByAdminInvalid: ["Enter a phone number.", "휴대폰 번호를 입력해야 한다."],
     prevPassword: ["Password", "기존 비밀번호"],
     newPassword: ["New Password", "새 비밀번호"],
     passwordConfirm: ["Confirm Password", "비밀번호 확인"],

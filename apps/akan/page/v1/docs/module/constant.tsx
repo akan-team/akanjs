@@ -532,7 +532,7 @@ export class ProductInput extends via((field) => ({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="class-hierarchy" title={l.trans({ en: "Class Hierarchy Pattern", ko: "클래스 계층구조 패턴" })}>
         <Docs.Title>{l.trans({ en: "Class Hierarchy Pattern", ko: "클래스 계층구조 패턴" })}</Docs.Title>
@@ -617,7 +617,7 @@ export class ProductInput extends via((field) => ({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="enum-definition"
@@ -651,7 +651,7 @@ export class ProductStatus extends enumOf("productStatus", [
           <Docs.IntroTable type="field" items={enumPoints} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="input-class"
@@ -702,7 +702,7 @@ export class ProductInput extends via((field) => ({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="object-class" title={l.trans({ en: "Object Class", ko: "Object 클래스" })}>
         <Docs.Title>{l.trans({ en: "Object Class", ko: "Object 클래스" })}</Docs.Title>
@@ -741,7 +741,7 @@ export class ProductObject extends via(ProductInput, (field) => ({
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="light-class"
@@ -771,7 +771,7 @@ export class LightProduct extends via(
           <Docs.IntroTable type="field" items={lightClassPoints} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="full-model"
@@ -800,7 +800,7 @@ export class Product extends via(ProductObject, LightProduct, (resolve) => ({}))
           <Docs.IntroTable type="method" items={fullModelPoints} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="insight-class" title={l.trans({ en: "Insight Class", ko: "Insight 클래스" })}>
         <Docs.Title>{l.trans({ en: "Insight Class", ko: "Insight 클래스" })}</Docs.Title>
@@ -853,7 +853,7 @@ const productInsight = st.use.productInsight();
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="scalar-embedding"
@@ -901,7 +901,7 @@ export class BizContractInput extends via((field) => ({
           <Docs.IntroTable type="field" items={scalarPoints} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="relation-patterns" title={l.trans({ en: "Relation Patterns", ko: "관계 패턴" })}>
         <Docs.Title>{l.trans({ en: "Relation Patterns", ko: "관계 패턴" })}</Docs.Title>
@@ -930,7 +930,7 @@ import { LightUser } from "../user/user.constant";`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="field-options" title={l.trans({ en: "Field Options Reference", ko: "필드 옵션 참조" })}>
         <Docs.Title>{l.trans({ en: "Field Options Reference", ko: "필드 옵션 참조" })}</Docs.Title>
@@ -973,7 +973,7 @@ import { LightUser } from "../user/user.constant";`}
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="best-practices" title={l.trans({ en: "Constant Best Practices", ko: "Constant 모범 사례" })}>
         <Docs.Title>{l.trans({ en: "Constant Best Practices", ko: "Constant 모범 사례" })}</Docs.Title>
@@ -981,7 +981,7 @@ import { LightUser } from "../user/user.constant";`}
           <Docs.IntroTable type="field" items={bestPracticePoints} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

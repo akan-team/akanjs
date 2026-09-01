@@ -1,8 +1,8 @@
 import { CodeHighlightNode, CodeNode } from "@lexical/code";
+import { HorizontalRuleNode } from "@lexical/extension";
 import { AutoLinkNode, LinkNode } from "@lexical/link";
 import { ListItemNode, ListNode } from "@lexical/list";
 import type { InitialConfigType } from "@lexical/react/LexicalComposer";
-import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode";
 import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { TableCellNode, TableNode, TableRowNode } from "@lexical/table";
 import type { Klass, LexicalEditor, LexicalNode } from "lexical";
@@ -13,6 +13,8 @@ import { EmbedNode } from "./nodes/EmbedNode";
 import { ExcalidrawNode } from "./nodes/ExcalidrawNode";
 import { FileNode } from "./nodes/FileNode";
 import { ImageNode } from "./nodes/ImageNode";
+import { MentionNode } from "./nodes/MentionNode";
+import { MermaidNode } from "./nodes/MermaidNode";
 import { VideoNode } from "./nodes/VideoNode";
 import { isSerializedEditorState } from "./softGuard";
 import { akanEditorTheme } from "./theme";
@@ -25,8 +27,16 @@ export { isSerializedEditorState } from "./softGuard";
  * Phase 0 registers the standard rich-text node set so serialization round-trips
  * cover headings/lists/quotes/code/links even before their edit UIs land. Phase 3
  * appends the custom decorator/element media nodes (Image, Video, File, Embed,
- * Callout); Phase 3b adds Table, the collapsible/accordion trio, and Excalidraw.
- * This array is the single registration point for the whole editor.
+ * Callout); Phase 3b adds Table, the collapsible/accordion trio, Excalidraw, and
+ * Mermaid. This array is the single registration point for the whole editor.
+ *
+ * `HorizontalRuleNode` comes from `@lexical/extension`, not the deprecated
+ * `@lexical/react` subclass; the local `HorizontalRulePlugin` supplies the
+ * insert command and click-selection that subclass used to carry.
+ *
+ * `MentionNode` is registered here rather than injected through `plugins` so that
+ * read-only renders — mounted from server components that cannot pass node classes
+ * — reconstruct mention chips instead of dropping them.
  */
 export const AKAN_EDITOR_NODES: readonly Klass<LexicalNode>[] = [
   HeadingNode,
@@ -50,6 +60,8 @@ export const AKAN_EDITOR_NODES: readonly Klass<LexicalNode>[] = [
   CollapsibleTitleNode,
   CollapsibleContentNode,
   ExcalidrawNode,
+  MermaidNode,
+  MentionNode,
 ];
 
 const EDITOR_NAMESPACE = "akan";

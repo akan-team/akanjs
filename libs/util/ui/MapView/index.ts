@@ -7,6 +7,7 @@ import {
   Pigeon,
   PigeonArc,
   PigeonCircle,
+  PigeonFixedOverlay,
   PigeonMap,
   PigeonMarker,
   PigeonOverlay,
@@ -23,6 +24,7 @@ export const MapView = {
   AimCenter,
   Pigeon,
   Focus,
+  PigeonFixedOverlay,
   PigeonMap,
   PigeonMarker,
   PigeonOverlay,
@@ -32,4 +34,5 @@ export const MapView = {
   PigeonArc,
 };
 
+export type { GoogleProps } from "./Google";
 export type { PigeonMapProps } from "./PigeonMap";

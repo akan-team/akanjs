@@ -4,7 +4,7 @@ import type { BaseBuildArtifact, ClientManifest, SsrManifest } from "akanjs/serv
 import type { App } from "../commandDecorators";
 import { createBarrelImportsPlugin } from "../transforms/barrelImportsPlugin";
 import { toClientReferencePath } from "../transforms/rscUseClientTransform";
-import type { ClientEntryDiscovery } from "./clientBuildTypes";
+import type { ClientBundleTarget, ClientEntryDiscovery } from "./clientBuildTypes";
 import { ClientEntriesBundler } from "./clientEntriesBundler";
 import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
 import { VENDOR_SPECIFIERS } from "./vendorSpecifiers";
@@ -33,6 +33,15 @@ export interface BuildRouteClientOptions {
   routeId?: string;
   command?: "build" | "start";
   discovery?: ClientEntryDiscovery;
+  /**
+   * Client entries resolved by the caller, which skips discovery and bundles exactly this list.
+   *
+   * `AllRoutesBuilder` passes every route's entries at once so they share one `Bun.build`. Chunk
+   * splitting is scoped to a single invocation, so a dependency reachable from entries spread across
+   * several invocations is emitted once per invocation — mermaid landed in `apps/akan` four times that
+   * way. Dev keeps one build per route and leaves this unset.
+   */
+  entries?: string[];
 }
 
 export interface BuildRouteClientResult {
@@ -61,6 +70,7 @@ export class RouteClientBuilder {
   #knownEntries: Set<string>;
   #command: "build" | "start";
   #discovery?: ClientEntryDiscovery;
+  #entries?: string[];
 
   constructor(options: BuildRouteClientOptions) {
     this.#app = options.app;
@@ -68,11 +78,13 @@ export class RouteClientBuilder {
     this.#knownEntries = options.knownEntries ?? new Set<string>();
     this.#command = options.command ?? "start";
     this.#discovery = options.discovery;
+    this.#entries = options.entries;
   }
 
   async build(): Promise<BuildRouteClientResult> {
-    const discovery = this.#discovery ?? (await GraphClientEntryDiscovery.create(this.#app));
-    const discovered = await discovery.discover(this.#seeds);
+    const discovered =
+      this.#entries ??
+      (await (this.#discovery ?? (await GraphClientEntryDiscovery.create(this.#app))).discover(this.#seeds));
     const entries = discovered.filter((e) => !this.#knownEntries.has(e));
     if (entries.length === 0) return this.#emptyResult(discovered);
 
@@ -151,12 +163,11 @@ export class RouteClientBuilder {
   }
 
   async #buildSsrBundle(bootstrapEntries: BootstrapEntries) {
-    const externalOptions = RouteClientBuilder.resolveSsrClientExternalOptions(this.#command);
     return new ClientEntriesBundler({
       app: this.#app,
       entries: bootstrapEntries.buildEntries,
       plugins: [await createBarrelImportsPlugin(this.#app)],
-      ...externalOptions,
+      ...RouteClientBuilder.resolveSsrClientBundleOptions(this.#command),
       outputSubdir: "client-ssr",
       command: this.#command,
     }).bundle();
@@ -227,20 +238,28 @@ export class RouteClientBuilder {
     return { [Bun.resolveSync("akanjs/fetch", serverEntry)]: "akanjs/fetch" };
   }
 
-  static resolveSsrClientExternalOptions(command: "build" | "start"): {
+  /**
+   * `target: "bun"` is load-bearing: these chunks are `await import()`-ed by the SSR renderer, so a dependency
+   * resolved through its `browser` export condition can touch `document` at module scope and throw mid-render,
+   * degrading the whole document to client rendering. Bun's `conditions` only adds to the target's defaults —
+   * `browser` still wins — so the target itself has to say server.
+   */
+  static resolveSsrClientBundleOptions(command: "build" | "start"): {
+    target: ClientBundleTarget;
     external: readonly string[];
     externalSubpaths?: readonly string[];
     externalAliases?: Record<string, string>;
   } {
     if (command === "start") {
       return {
+        target: "bun",
         external: SSR_CLIENT_EXTERNALS,
         externalSubpaths: ["akanjs/fetch"],
         externalAliases: RouteClientBuilder.resolveSsrClientRuntimeAliases(),
       };
     }
 
-    return { external: SSR_CLIENT_ALIAS_EXTERNALS };
+    return { target: "bun", external: SSR_CLIENT_ALIAS_EXTERNALS };
   }
 
   static resolveAkanServerEntry(): string {

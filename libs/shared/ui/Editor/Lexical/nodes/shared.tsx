@@ -1,5 +1,6 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { buttonRecipe } from "@libs/util/ui";
+import { cn } from "akanjs/client";
 import type { NodeKey } from "lexical";
 import { type ReactNode, type PointerEvent as ReactPointerEvent, useRef } from "react";
 import {
@@ -76,23 +77,23 @@ export const MediaFrame = ({
     },
   });
 
-  const handleClassName = clsx(
-    "absolute top-1/2 z-40 h-12 w-1.5 -translate-y-1/2 cursor-ew-resize rounded-full border border-base-content/30 bg-base-100/90 shadow-lg",
+  const handleClassName = cn(
+    "absolute top-1/2 z-40 h-12 w-1.5 -translate-y-1/2 cursor-ew-resize rounded-full border border-foreground/30 bg-background/90 shadow-lg",
     "opacity-0 transition-opacity hover:opacity-100 group-hover/media:opacity-70",
   );
 
   return (
-    <div className={clsx("my-2 flex w-full", ALIGN_TO_JUSTIFY[align])} contentEditable={false}>
+    <div className={cn("my-2 flex w-full", ALIGN_TO_JUSTIFY[align])} contentEditable={false}>
       <div
-        className={clsx(
+        className={cn(
           "group/media relative inline-block max-w-full rounded-md",
-          isSelected && "ring-2 ring-primary ring-offset-2 ring-offset-base-100",
+          isSelected && "ring-2 ring-primary ring-offset-2 ring-offset-background",
         )}
       >
         {children}
         {editable && isSelected ? (
           <div
-            className="absolute top-2 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-base-content/15 bg-base-100 p-1 text-base-content shadow-xl"
+            className="absolute top-2 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-foreground/15 bg-background p-1 text-foreground shadow-xl"
             onMouseDown={(event) => event.preventDefault()}
           >
             <MediaMenuButton active={align === "left"} title="Align left" onClick={() => onSetAlign("left")}>
@@ -106,13 +107,13 @@ export const MediaFrame = ({
             </MediaMenuButton>
             {extraActions ? (
               <>
-                <span className="mx-0.5 h-5 w-px bg-base-content/15" />
+                <span className="mx-0.5 h-5 w-px bg-foreground/15" />
                 {extraActions}
               </>
             ) : null}
             {fit && onSetFit ? (
               <>
-                <span className="mx-0.5 h-5 w-px bg-base-content/15" />
+                <span className="mx-0.5 h-5 w-px bg-foreground/15" />
                 <MediaMenuButton active={fit === "contain"} title="Fit" onClick={() => onSetFit("contain")}>
                   Fit
                 </MediaMenuButton>
@@ -123,15 +124,15 @@ export const MediaFrame = ({
             ) : null}
             {onReset ? (
               <>
-                <span className="mx-0.5 h-5 w-px bg-base-content/15" />
+                <span className="mx-0.5 h-5 w-px bg-foreground/15" />
                 <MediaMenuButton title="Reset size" onClick={onReset}>
                   <AiOutlineExpand />
                 </MediaMenuButton>
               </>
             ) : null}
-            <span className="mx-0.5 h-5 w-px bg-base-content/15" />
+            <span className="mx-0.5 h-5 w-px bg-foreground/15" />
             <MediaMenuButton title="Delete" onClick={removeNode}>
-              <AiOutlineDelete className="text-error" />
+              <AiOutlineDelete className="text-destructive" />
             </MediaMenuButton>
           </div>
         ) : null}
@@ -140,13 +141,13 @@ export const MediaFrame = ({
             <button
               type="button"
               aria-label="Resize from left"
-              className={clsx(handleClassName, "left-1")}
+              className={cn(handleClassName, "left-1")}
               {...createResizeHandlers("left")}
             />
             <button
               type="button"
               aria-label="Resize from right"
-              className={clsx(handleClassName, "right-1")}
+              className={cn(handleClassName, "right-1")}
               {...createResizeHandlers("right")}
             />
           </>
@@ -167,7 +168,10 @@ export const MediaMenuButton = ({ children, title, active, onClick }: MediaMenuB
   <button
     type="button"
     title={title}
-    className={clsx("btn btn-xs btn-ghost min-h-7 gap-1 px-2", { "btn-active": active })}
+    className={buttonRecipe({ size: "xs", variant: "ghost" }, [
+      "min-h-7 gap-1 px-2",
+      active && "bg-muted text-foreground",
+    ])}
     onClick={onClick}
   >
     {children}

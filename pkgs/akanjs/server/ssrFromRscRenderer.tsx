@@ -412,7 +412,7 @@ export function interleaveRscScriptsWithHtml(
       const pumpRscScripts = async () => {
         rscReader = rscClientStream.getReader();
         try {
-          while (true) {
+          for (;;) {
             const { value, done } = await rscReader.read();
             if (done || errored) break;
             await waitForRscQueueDrain();
@@ -447,7 +447,7 @@ export function interleaveRscScriptsWithHtml(
 
         htmlReader = htmlStream.getReader();
         try {
-          while (true) {
+          for (;;) {
             const { value, done } = await htmlReader.read();
             if (done || errored) break;
             controller.enqueue(value);
@@ -661,6 +661,12 @@ export class SsrFromRscRenderer {
     // specifier, which bypasses Bun's module cache naturally. The
     // `?v=<digits>` stripping below is defensive for any caller that still
     // appends a version query to keep the pre-existing registry keys stable.
+    //
+    // XXX This registry bounds KEY TRACKING, not memory. Evicting an entry does not unload the
+    // module — Bun's ESM registry keeps it for the life of the process — so lowering
+    // `AKAN_SSR_CHUNK_REGISTRY_MAX_ENTRIES` only forces a re-`import()` of something still
+    // resident, and `ssrChunkRegistrySize` must not be read as bytes held. The only reclaim path
+    // for SSR chunk memory is recycling this process.
     const registry = new SsrChunkRegistry<Record<string, unknown>>(SsrFromRscRenderer.#getSsrChunkRegistryMaxEntries());
     g.__webpack_chunk_load__ = async (chunkId: string) => {
       if (registry.get(chunkId)) {

@@ -19,7 +19,7 @@ export interface DatabaseModel<
   model: ModelCls<Model>;
   filter: FilterCls<Filter>;
   obj: ConstantCls<Obj>;
-  insight: ConstantCls<Insight>;
+  insight: DatabaseCls<Insight>;
   _Input: Input;
   _Doc: Doc;
   _Model: Model;
@@ -100,7 +100,7 @@ export class DatabaseRegistry {
     doc: DatabaseCls<Doc>,
     model: ModelCls<Model>,
     obj: ConstantCls<Obj>,
-    insight: ConstantCls<Insight>,
+    insight: DatabaseCls<Insight>,
     filter: FilterCls<Filter>,
   ): DatabaseModel<T, Input, Doc, Model, Obj, Insight, Filter, _Query, _Sort> {
     const dbInfo = {

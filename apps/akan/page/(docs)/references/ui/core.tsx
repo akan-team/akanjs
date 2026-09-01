@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Docs, type UiComponentReference, UiComponentSlide } from "@apps/akan/ui";
+import { Divider, Docs, DocsToc, type UiComponentReference, UiComponentSlide } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -281,11 +281,11 @@ export const ProductEdit = ({ productEdit, slice }) => (
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       {components.map((component) => (
         <UiComponentSlide key={component.name} component={component} />
       ))}
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

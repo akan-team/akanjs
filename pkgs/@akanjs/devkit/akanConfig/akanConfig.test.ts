@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { AppExecutor, WorkspaceExecutor } from "../executors";
 import type { PackageJson } from "../types";
 import { AkanAppConfig, AkanLibConfig, deriveDefaultAppId } from "./akanConfig";
 import type { DeepPartial, LibConfigResult } from "./types";
@@ -19,7 +20,6 @@ const packageJson: PackageJson = {
     react: "19.0.0",
     "react-dom": "19.0.0",
     "react-server-dom-webpack": "19.0.0",
-    sharp: "1.0.0",
     "@external/runtime": "2.0.0",
   },
 };
@@ -64,7 +64,7 @@ describe("AkanAppConfig", () => {
     expect(config.barrelImports).toEqual(
       expect.arrayContaining(["@apps/portal/ui", "@libs/shared/server", "akanjs/common", "akanjs/server"]),
     );
-    expect(config.docker.content).toContain("ENV AKAN_PUBLIC_APP_NAME=portal");
+    expect(config.dockerfile).toContain("ENV AKAN_PUBLIC_APP_NAME=portal");
     expect(process.env.AKAN_PUBLIC_DEFAULT_LOCALE).toBe("en");
   });
 
@@ -128,9 +128,67 @@ describe("AkanAppConfig", () => {
     });
     expect(config.publicEnv).toEqual(["AKAN_PUBLIC_FEATURE"]);
     expect(config.optimizeImports).toContain("custom-icons");
-    expect(config.docker.content).toContain('CMD ["bun","server.js"]');
-    expect(config.docker.content).toContain("FROM oven/bun:amd64 AS amd64");
-    expect(config.docker.content).toContain('RUN if [ "$TARGETARCH" = "arm64"');
+    expect(config.dockerfile).toContain('CMD ["bun","server.js"]');
+    expect(config.dockerfile).toContain("FROM oven/bun:amd64 AS amd64");
+    expect(config.dockerfile).toContain('RUN if [ "$TARGETARCH" = "arm64"');
+  });
+
+  test("defaults both web surfaces on and keeps the image free of web env overrides", () => {
+    const config = new AkanAppConfig(app, [], packageJson, {}, baseDevEnv);
+
+    expect(config.web).toEqual({ ssr: true, csr: true });
+    expect(config.dockerfile).not.toContain("AKAN_SSR");
+    expect(config.dockerfile).not.toContain("AKAN_CSR");
+  });
+
+  test("bakes the disabled surface into the image env so the default matches what was built", () => {
+    const ssrOnly = new AkanAppConfig(app, [], packageJson, { web: { csr: false } }, baseDevEnv);
+    expect(ssrOnly.web).toEqual({ ssr: true, csr: false });
+    expect(ssrOnly.dockerfile).toContain("ENV AKAN_CSR=false");
+    expect(ssrOnly.dockerfile).not.toContain("ENV AKAN_SSR=false");
+
+    const apiOnly = new AkanAppConfig(app, [], packageJson, { web: false }, baseDevEnv);
+    expect(apiOnly.web).toEqual({ ssr: false, csr: false });
+    expect(apiOnly.dockerfile).toContain("ENV AKAN_SSR=false");
+    expect(apiOnly.dockerfile).toContain("ENV AKAN_CSR=false");
+
+    expect(new AkanAppConfig(app, [], packageJson, { web: true }, baseDevEnv).web).toEqual({ ssr: true, csr: true });
+  });
+
+  test("refuses a csr-less build that ships a mobile app", () => {
+    expect(
+      () => new AkanAppConfig(app, [], packageJson, { web: { csr: false }, mobile: { appName: "portal" } }, baseDevEnv),
+    ).toThrow("the Capacitor build ships that bundle");
+  });
+
+  test("installs only ca-certificates and tzdata in the default image", () => {
+    const config = new AkanAppConfig(app, [], packageJson, {}, baseDevEnv);
+
+    expect(config.dockerfile).toContain(
+      "RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates tzdata && rm -rf /var/lib/apt/lists/*",
+    );
+    // The Chromium/ffmpeg toolchain moved to per-app `preRuns`; keeping it here paid for it in every image.
+    for (const dropped of ["libnss3", "ffmpeg", "build-essential", "redis", "xdg-utils"])
+      expect(config.dockerfile).not.toContain(dropped);
+  });
+
+  test("keeps a declared Dockerfile string verbatim", () => {
+    const dockerfile = 'FROM oven/bun:1-slim\nCOPY . .\nCMD ["bun","main.js"]';
+    const config = new AkanAppConfig(app, [], packageJson, { docker: dockerfile }, baseDevEnv);
+
+    expect(config.docker).toBe(dockerfile);
+    expect(config.dockerfile).toBe(dockerfile);
+  });
+
+  test("resolves the image parts, defaulting the base image and the command", () => {
+    const config = new AkanAppConfig(app, [], packageJson, { docker: { preRuns: ["echo hi"] } }, baseDevEnv);
+
+    expect(config.docker).toEqual({
+      image: "oven/bun:1-slim",
+      preRuns: ["echo hi"],
+      postRuns: [],
+      command: ["bun", "main.js"],
+    });
   });
 
   test("creates production package json and reports missing external versions", () => {
@@ -144,8 +202,6 @@ describe("AkanAppConfig", () => {
         react: "19.0.0",
         "react-dom": "19.0.0",
         "react-server-dom-webpack": "19.0.0",
-        croner: akanPackageJson.peerDependencies?.croner,
-        sharp: "1.0.0",
         "@external/runtime": "2.0.0",
       },
     });
@@ -184,8 +240,6 @@ describe("AkanAppConfig", () => {
       react: runtimeDependencies.react,
       "react-dom": runtimeDependencies["react-dom"],
       "react-server-dom-webpack": runtimeDependencies["react-server-dom-webpack"],
-      croner: runtimeDependencies.croner,
-      sharp: runtimeDependencies.sharp,
     });
   });
 
@@ -198,9 +252,6 @@ describe("AkanAppConfig", () => {
     const multipleConfig = new AkanAppConfig(app, [], packageJson, { defaultDatabaseMode: "multiple" }, baseDevEnv);
     const clusterConfig = new AkanAppConfig(app, [], packageJson, { defaultDatabaseMode: "cluster" }, baseDevEnv);
 
-    expect(singleConfig.getProductionPackageJson().dependencies).toMatchObject({
-      croner: runtimeDependencies.croner,
-    });
     expect(singleConfig.getProductionPackageJson().dependencies).not.toHaveProperty("ioredis");
     expect(singleConfig.getProductionPackageJson().dependencies).not.toHaveProperty("bullmq");
     expect(singleConfig.getProductionPackageJson().dependencies).not.toHaveProperty("@libsql/client");
@@ -210,7 +261,6 @@ describe("AkanAppConfig", () => {
     expect(multipleConfig.getProductionPackageJson().dependencies).toMatchObject({
       "@libsql/client": runtimeDependencies["@libsql/client"],
       bullmq: runtimeDependencies.bullmq,
-      croner: runtimeDependencies.croner,
       ioredis: runtimeDependencies.ioredis,
       protobufjs: runtimeDependencies.protobufjs,
     });
@@ -218,7 +268,6 @@ describe("AkanAppConfig", () => {
 
     expect(clusterConfig.getProductionPackageJson().dependencies).toMatchObject({
       bullmq: runtimeDependencies.bullmq,
-      croner: runtimeDependencies.croner,
       ioredis: runtimeDependencies.ioredis,
       postgres: runtimeDependencies.postgres,
       protobufjs: runtimeDependencies.protobufjs,
@@ -392,6 +441,115 @@ describe("deriveDefaultAppId", () => {
   });
 });
 
+describe("AkanAppConfig lib externalLibs", () => {
+  test("merges lib-declared external libs into the app's own, deduped", () => {
+    const libAwarePackageJson: PackageJson = {
+      ...packageJson,
+      dependencies: { ...packageJson.dependencies, puppeteer: "24.0.0" },
+    };
+    const config = new AkanAppConfig(
+      app,
+      ["shared"],
+      libAwarePackageJson,
+      { externalLibs: ["@external/runtime"] },
+      baseDevEnv,
+      [],
+      { externalLibs: ["@external/runtime", "puppeteer"], docker: { preRuns: [], postRuns: [] } },
+    );
+
+    expect(config.externalLibs).toEqual(["@external/runtime", "puppeteer"]);
+    expect(config.getProductionPackageJson().dependencies).toMatchObject({
+      "@external/runtime": "2.0.0",
+      puppeteer: "24.0.0",
+    });
+  });
+
+  test("reads them off every workspace lib config on load", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "akan-config-libext-"));
+    try {
+      fs.mkdirSync(path.join(root, "apps/extapp"), { recursive: true });
+      fs.mkdirSync(path.join(root, "libs/extlib"), { recursive: true });
+      fs.writeFileSync(path.join(root, "apps/extapp/akan.config.ts"), "export default { externalLibs: ['shiki'] };\n");
+      fs.writeFileSync(
+        path.join(root, "libs/extlib/akan.config.ts"),
+        "export default { externalLibs: ['puppeteer'] };\n",
+      );
+      fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "extrepo", version: "1.0.0" }));
+      fs.writeFileSync(path.join(root, ".env"), "AKAN_PUBLIC_REPO_NAME=extrepo\nAKAN_PUBLIC_SERVE_DOMAIN=ext.test\n");
+
+      const workspace = WorkspaceExecutor.fromRoot({ workspaceRoot: root, repoName: "extrepo" });
+      const config = await AppExecutor.from(workspace, "extapp").getConfig();
+
+      expect(config.externalLibs).toEqual(["shiki", "puppeteer"]);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("AkanAppConfig lib docker runs", () => {
+  const libDocker = (preRuns: string[], postRuns: string[] = []) => ({
+    externalLibs: [],
+    docker: { preRuns, postRuns },
+  });
+
+  test("runs lib steps before the app's own, deduped", () => {
+    const config = new AkanAppConfig(
+      app,
+      ["shared"],
+      packageJson,
+      { docker: { preRuns: ["apt-get install -y ffmpeg", "echo app"], postRuns: ["echo app-post"] } },
+      baseDevEnv,
+      [],
+      libDocker(["apt-get install -y ffmpeg", "echo lib"], ["echo lib-post"]),
+    );
+
+    expect(config.docker).toMatchObject({
+      preRuns: ["apt-get install -y ffmpeg", "echo lib", "echo app"],
+      postRuns: ["echo lib-post", "echo app-post"],
+    });
+    expect(config.dockerfile).toContain("RUN echo lib\nRUN echo app\n");
+    expect(config.dockerfile.match(/RUN apt-get install -y ffmpeg/g)).toHaveLength(1);
+  });
+
+  test("drops them when the app hands over a whole Dockerfile", () => {
+    const config = new AkanAppConfig(
+      app,
+      ["shared"],
+      packageJson,
+      { docker: "FROM scratch" },
+      baseDevEnv,
+      [],
+      libDocker(["echo lib"]),
+    );
+
+    expect(config.dockerfile).toBe("FROM scratch");
+  });
+
+  test("reads them off every workspace lib config on load", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "akan-config-libdocker-"));
+    try {
+      fs.mkdirSync(path.join(root, "apps/extapp"), { recursive: true });
+      fs.mkdirSync(path.join(root, "libs/extlib"), { recursive: true });
+      fs.writeFileSync(path.join(root, "apps/extapp/akan.config.ts"), "export default {};\n");
+      fs.writeFileSync(
+        path.join(root, "libs/extlib/akan.config.ts"),
+        "export default { docker: { preRuns: ['echo from-lib'], postRuns: [{ arm64: 'echo arm-only' }] } };\n",
+      );
+      fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "extrepo", version: "1.0.0" }));
+      fs.writeFileSync(path.join(root, ".env"), "AKAN_PUBLIC_REPO_NAME=extrepo\nAKAN_PUBLIC_SERVE_DOMAIN=ext.test\n");
+
+      const workspace = WorkspaceExecutor.fromRoot({ workspaceRoot: root, repoName: "extrepo" });
+      const config = await AppExecutor.from(workspace, "extapp").getConfig();
+
+      expect(config.dockerfile).toContain("RUN echo from-lib");
+      expect(config.dockerfile).toContain('RUN if [ "$TARGETARCH" = "arm64"');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("AkanLibConfig", () => {
   test("uses empty external libs by default and preserves explicit libs", () => {
     const lib = { name: "shared" } as never;
@@ -401,6 +559,15 @@ describe("AkanLibConfig", () => {
       externalLibs: ["firebase-admin"],
     };
     expect(new AkanLibConfig(lib, config).externalLibs).toEqual(["firebase-admin"]);
+  });
+
+  test("defaults docker runs to empty lists and preserves declared ones", () => {
+    const lib = { name: "shared" } as never;
+    expect(new AkanLibConfig(lib, {}).docker).toEqual({ preRuns: [], postRuns: [] });
+    expect(new AkanLibConfig(lib, { docker: { preRuns: ["echo lib"] } }).docker).toEqual({
+      preRuns: ["echo lib"],
+      postRuns: [],
+    });
   });
 });
 

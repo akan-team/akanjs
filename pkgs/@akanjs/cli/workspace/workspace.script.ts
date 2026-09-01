@@ -11,6 +11,11 @@ import { LibraryScript } from "../library/library.script";
 import { PackageScript } from "../package/package.script";
 import { WorkspaceRunner } from "./workspace.runner";
 
+interface LintOptions {
+  fix?: boolean;
+  maxDiagnostics?: number;
+}
+
 export class WorkspaceScript extends script("workspace", [
   WorkspaceRunner,
   ApplicationScript,
@@ -81,30 +86,36 @@ export class WorkspaceScript extends script("workspace", [
   ) {
     const spinner = workspace.spinning("Generating agent rules...");
     const files = await this.workspaceRunner.generateAgentRules(workspace, { overwrite, cursorRules });
+    // The template writes only the hand-editable preamble around an empty `akan:agent` block — the conventions,
+    // recipe index, and framework guide inside it are rendered from the installed package. Filling it is skipped
+    // when the template left an existing AGENTS.md alone, so `overwrite: false` still means "touch nothing".
+    if (files.some((file) => file.filePath.endsWith("AGENTS.md")))
+      await this.agentScript.agent(workspace, "install", "agents-md", { force: overwrite });
     spinner.succeed(`Agent rules ready (${files.length} file${files.length === 1 ? "" : "s"})`);
   }
-  async lint(exec: Exec, workspace: Workspace, { fix = true }: { fix?: boolean } = {}) {
+  async lint(exec: Exec, workspace: Workspace, { fix = true, maxDiagnostics }: LintOptions = {}) {
     if (exec instanceof AppExecutor) await this.applicationScript.sync(exec);
     else if (exec instanceof LibExecutor) await this.libraryScript.syncLibrary(exec);
     const spinner = workspace.spinning(`Linting${fix ? " with fix" : ""}...`);
     try {
-      await this.workspaceRunner.lint(exec, workspace, { fix });
+      await this.workspaceRunner.lint(exec, workspace, { fix, maxDiagnostics });
       spinner.succeed("Lint completed with no errors");
     } catch (error) {
       spinner.fail("Lint failed with errors");
       throw error;
     }
   }
-  async lintAll(workspace: Workspace, { fix = true }: { fix?: boolean } = {}) {
+  async lintAll(workspace: Workspace, { fix = true, maxDiagnostics }: LintOptions = {}) {
     const [appNames, libNames, pkgNames] = await workspace.getExecs();
+    const options = { fix, maxDiagnostics };
     await Promise.all(appNames.map((appName) => this.applicationScript.sync(AppExecutor.from(workspace, appName))));
     await Promise.all(libNames.map((libName) => this.libraryScript.syncLibrary(LibExecutor.from(workspace, libName))));
     await Promise.all([
-      ...appNames.map((appName) => this.workspaceRunner.lint(AppExecutor.from(workspace, appName), workspace, { fix })),
-      ...libNames.map((libName) => this.workspaceRunner.lint(LibExecutor.from(workspace, libName), workspace, { fix })),
+      ...appNames.map((appName) => this.workspaceRunner.lint(AppExecutor.from(workspace, appName), workspace, options)),
+      ...libNames.map((libName) => this.workspaceRunner.lint(LibExecutor.from(workspace, libName), workspace, options)),
       ...pkgNames
         .filter((pkgName) => pkgName !== "contract") // ! contract는 우선 무시
-        .map((pkgName) => this.workspaceRunner.lint(PkgExecutor.from(workspace, pkgName), workspace, { fix })),
+        .map((pkgName) => this.workspaceRunner.lint(PkgExecutor.from(workspace, pkgName), workspace, options)),
     ]);
   }
   async syncAll(workspace: Workspace) {

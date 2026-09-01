@@ -1,10 +1,11 @@
 "use client";
 import { fetch, st } from "@libs/shared/client";
-import { clsx, getCookie } from "akanjs/client";
+import { buttonRecipe } from "@libs/util/ui";
+import { cn, getCookie } from "akanjs/client";
 import { Image, Loading } from "akanjs/ui";
 import { lazy } from "akanjs/webkit";
 import { type ReactNode, useState } from "react";
-import { AiOutlineCheckCircle } from "react-icons/ai";
+import { AiOutlineCheckCircle, AiOutlineLoading } from "react-icons/ai";
 
 const ImageViewer = lazy(() => import("react-simple-image-viewer"), { ssr: false });
 
@@ -75,10 +76,12 @@ export const Download = ({ className, onClick, url, filename, children }: Downlo
           setLoading(false);
         }, 1000); // Reset loading state after download initiates
       }}
-      className={clsx("flex items-center justify-start duration-500", className, {
-        "cursor-default opacity-80": loading === true,
-        "cursor-pointer": loading === false,
-      })}
+      className={cn(
+        "flex items-center justify-start duration-500",
+        className,
+        loading === true && "cursor-default opacity-80",
+        loading === false && "cursor-pointer",
+      )}
     >
       {children}
       <div
@@ -94,39 +97,37 @@ export const Download = ({ className, onClick, url, filename, children }: Downlo
 export const ExportPDF = () => {
   const [loading, setLoading] = useState<boolean | null>(null);
   const jwt = getCookie("jwt");
+  const exportPdf = async () => {
+    if (loading) return;
+    setLoading(true);
+    const fullPath =
+      window.location.href +
+      (window.location.href.includes("jwt") ? "" : window.location.href.includes("?") ? `&jwt=${jwt}` : `?jwt=${jwt}`);
+
+    const file = await fetch.generatePdf(fullPath);
+    const arrayBuffer = new Uint8Array(file as unknown as ArrayBuffer);
+    const blob = new Blob([arrayBuffer], { type: "application/pdf" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "example.pdf";
+    link.click();
+    setLoading(false);
+    // 메모리 정리
+    URL.revokeObjectURL(url);
+  };
+  st.tool("exportPdf", { settle: false, guard: () => (loading === true ? "The PDF is already being made." : true) })
+    .desc("Render the page on screen to a PDF and save it.")
+    .exec(exportPdf);
   return (
     <button
-      onClick={async () => {
-        if (loading) return;
-        setLoading(true);
-        const fullPath =
-          window.location.href +
-          (window.location.href.includes("jwt")
-            ? ""
-            : window.location.href.includes("?")
-              ? `&jwt=${jwt}`
-              : `?jwt=${jwt}`);
-
-        const file = await fetch.generatePdf(fullPath);
-        const arrayBuffer = new Uint8Array(file as unknown as ArrayBuffer);
-        const blob = new Blob([arrayBuffer], { type: "application/pdf" });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = "example.pdf";
-        link.click();
-        setLoading(false);
-        // 메모리 정리
-        URL.revokeObjectURL(url);
-      }}
-      className={clsx("btn btn-primary", {
-        "bg-primary/80": loading === true,
-      })}
+      onClick={() => void exportPdf()}
+      className={cn(buttonRecipe({ variant: "primary" }), loading === true && "bg-primary/80")}
       disabled={loading === true}
     >
       <div className="w-3">
         {loading === true ? (
-          <span className="loading loading-spinner loading-xs" />
+          <AiOutlineLoading className="animate-spin text-xs" />
         ) : loading === false ? (
           <AiOutlineCheckCircle className="animate-pop-300" />
         ) : null}

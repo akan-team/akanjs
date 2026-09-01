@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { type ReactElement, useEffect, useState } from "react";
 import { FaCheck } from "react-icons/fa";
 import { MdContentCopy } from "react-icons/md";
@@ -30,19 +30,16 @@ export const Clipboard = ({ text, className }: ClipboardProps): ReactElement => 
       onClick={async () => {
         await handleCopy();
       }}
-      className={clsx(
-        "flex h-6 w-6 items-center justify-center rounded-md bg-white/30 text-white transition-all duration-300 hover:bg-white/20",
+      className={cn(
+        "flex size-6 items-center justify-center rounded-field bg-foreground/10 text-foreground transition-colors hover:bg-foreground/20",
         className,
       )}
     >
-      {/* 체크 아이콘 */}
       <FaCheck
-        className={`absolute h-4 w-4 transition-opacity duration-300 ${isCopied ? "opacity-100" : "opacity-0"}`}
+        className={cn("absolute size-4 transition-opacity duration-300", isCopied ? "opacity-100" : "opacity-0")}
       />
-
-      {/* 복사 아이콘 */}
       <MdContentCopy
-        className={`absolute h-4 w-4 transition-opacity duration-300 ${isCopied ? "opacity-0" : "opacity-100"}`}
+        className={cn("absolute size-4 transition-opacity duration-300", isCopied ? "opacity-0" : "opacity-100")}
       />
     </button>
   );

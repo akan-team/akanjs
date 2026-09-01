@@ -1,5 +1,6 @@
 import { GlobalConfig } from "@akanjs/devkit/cloud";
 import { command, Exec, Workspace } from "@akanjs/devkit/commandDecorators";
+import { defaultMaxDiagnostics } from "./workspace.runner";
 import { WorkspaceScript } from "./workspace.script";
 
 export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({ public: target }) => ({
@@ -73,15 +74,23 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
   lint: target({ desc: "Lint and fix code in a specific app/lib/pkg" })
     .with(Exec)
     .option("fix", Boolean, { default: true })
+    .option("maxDiagnostics", Number, {
+      desc: "How many diagnostics Biome prints before truncating (0 for no limit)",
+      default: defaultMaxDiagnostics,
+    })
     .with(Workspace)
-    .exec(async function (exec, fix, workspace) {
-      await this.workspaceScript.lint(exec, workspace, { fix });
+    .exec(async function (exec, fix, maxDiagnostics, workspace) {
+      await this.workspaceScript.lint(exec, workspace, { fix, maxDiagnostics });
     }),
   lintAll: target({ desc: "Lint and fix code in all apps and libraries" })
     .option("fix", Boolean, { default: true })
+    .option("maxDiagnostics", Number, {
+      desc: "How many diagnostics Biome prints before truncating (0 for no limit)",
+      default: defaultMaxDiagnostics,
+    })
     .with(Workspace)
-    .exec(async function (fix, workspace) {
-      await this.workspaceScript.lintAll(workspace, { fix });
+    .exec(async function (fix, maxDiagnostics, workspace) {
+      await this.workspaceScript.lintAll(workspace, { fix, maxDiagnostics });
     }),
   syncAll: target({ desc: "Sync dependencies and configuration for all apps and libraries" })
     .with(Workspace)

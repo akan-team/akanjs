@@ -10,8 +10,11 @@ import {
   ConsoleLogger,
   type DatabaseAdaptor,
   DatabaseAdaptorRole,
+  DeepseekLlm,
   JsonCompressor,
   LibsqlDatabase,
+  type LlmAdaptor,
+  LlmAdaptorRole,
   type LoggingAdaptor,
   LoggingAdaptorRole,
   PostgresDatabase,
@@ -41,6 +44,7 @@ export interface PredefinedAdaptor {
   logging: AdaptorCls<LoggingAdaptor>;
   websocket: AdaptorCls<WebsocketAdaptor>;
   compress: AdaptorCls<CompressAdaptor>;
+  llm: AdaptorCls<LlmAdaptor>;
 }
 
 export const predefinedAdaptorRole = {
@@ -52,6 +56,7 @@ export const predefinedAdaptorRole = {
   logging: LoggingAdaptorRole,
   websocket: WebsocketAdaptorRole,
   compress: CompressAdaptorRole,
+  llm: LlmAdaptorRole,
 } satisfies PredefinedAdaptor;
 
 export const predefinedAdaptor = {
@@ -63,6 +68,7 @@ export const predefinedAdaptor = {
   logging: ConsoleLogger,
   websocket: SolidPubSub,
   compress: JsonCompressor,
+  llm: DeepseekLlm,
 };
 
 export const getPredefinedAdaptor = (mode: DatabaseMode = "single"): PredefinedAdaptor => {

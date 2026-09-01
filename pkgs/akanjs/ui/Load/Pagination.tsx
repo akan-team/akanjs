@@ -1,10 +1,10 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { capitalize, lowerlize } from "akanjs/common";
 import type { BaseInsight } from "akanjs/constant";
 import type { ClientInit, ServerInit } from "akanjs/fetch";
 import { st } from "akanjs/store";
-import { useFetch } from "akanjs/webkit";
+import { useFetch, usePageTool } from "akanjs/webkit";
 import { type Usable, use, useRef } from "react";
 
 import { Empty } from "../Empty";
@@ -62,21 +62,28 @@ function Render<RefName extends string, Light>({ className, init, scrollToTop }:
   const limit = loaded.current ? limitOfModel : initLimitOfModel;
 
   if (!loaded.current) loaded.current = true;
+  const selectPage = usePageTool({
+    name: insight.count > limit ? namesOfSlice.setPageOfModel : null,
+    model: modelName,
+    page,
+    lastPage: Math.ceil(insight.count / (limit || insight.count || 1)),
+    total: insight.count,
+    onSelect: (page) => {
+      void storeDo[namesOfSlice.setPageOfModel](page);
+      if (!scrollToTop) return;
+      window.parent.postMessage({ type: "pathChange", page }, "*");
+      window.scrollTo({ top: 0, behavior: "instant" });
+    },
+  });
 
   return (
-    <div className={clsx("mt-4 flex flex-wrap justify-center", className)}>
+    <div className={cn("mt-4 flex flex-wrap justify-center", className)}>
       {insight.count > limit && (
         <Pagn
           currentPage={page}
           total={insight.count}
           itemsPerPage={limit || insight.count}
-          onPageSelect={(page) => {
-            void storeDo[namesOfSlice.setPageOfModel](page);
-            if (scrollToTop) {
-              window.parent.postMessage({ type: "pathChange", page }, "*");
-              window.scrollTo({ top: 0, behavior: "instant" });
-            }
-          }}
+          onPageSelect={selectPage}
         />
       )}
     </div>

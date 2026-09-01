@@ -5,8 +5,14 @@ import { memo, useContext, useMemo } from "react";
 
 import { MapView } from ".";
 import { PigeonMapPropsContext } from "./context";
-import type { PigeonPolylineProps } from "./type";
 
+interface PigeonPolylineProps {
+  className?: string;
+  coordinates: cnst.Coordinate[];
+  style?: React.CSSProperties;
+  showArrows?: boolean;
+  arrowPixelDistance?: number; // 화살표 간 거리 (픽셀 단위)
+}
 export default memo(
   ({ className, coordinates, style, showArrows = false, arrowPixelDistance = 40 }: PigeonPolylineProps) => {
     const contextProps = useContext(PigeonMapPropsContext);
@@ -68,7 +74,7 @@ export default memo(
           {...contextProps}
           data={polyline}
           styleCallback={(feature: typeof polyline) => {
-            return { strokeWidth: style?.strokeWidth ?? "1", stroke: style?.stroke ?? "black" };
+            return { ...style, strokeWidth: style?.strokeWidth ?? "1", stroke: style?.stroke ?? "black" };
           }}
         />
         {/* 화살표 마커들 */}

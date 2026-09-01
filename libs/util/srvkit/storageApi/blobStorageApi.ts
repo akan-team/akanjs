@@ -14,6 +14,7 @@ import type {
   UploadRequest,
   UploadResult,
 } from "./type";
+import { writeReadableStreamToFile } from "./writeReadableStreamToFile";
 
 export class BlobStorageApi implements StorageApi {
   readonly logger = new Logger("BlobStorageApi");
@@ -67,8 +68,8 @@ export class BlobStorageApi implements StorageApi {
   }: UploadFromStreamRequest) {
     const filePath = access === "private" ? `${this.privateRoot}/${path}` : `${this.root}/${path}`;
     try {
-      await Bun.write(filePath, new Response(body));
-      uploadSuccess(this.#localPathToUrl(path));
+      await writeReadableStreamToFile(filePath, body);
+      await uploadSuccess(this.#localPathToUrl(path));
     } catch (error) {
       this.logger.error(error instanceof Error ? error.message : String(error));
     }
@@ -88,12 +89,12 @@ export class BlobStorageApi implements StorageApi {
         },
       }),
     );
-    await Bun.write(filePath, new Response(countedBody));
+    await writeReadableStreamToFile(filePath, countedBody);
     return { url: this.#localPathToUrl(path), size };
   }
   async saveData({ path, localPath, renamePath }: DownloadRequest): Promise<LocalFilePath> {
     const data = await this.readData(path);
-    await Bun.write(localPath, new Response(data));
+    await writeReadableStreamToFile(localPath, data);
     if (renamePath) await rename(localPath, renamePath);
     return { localPath: renamePath ?? localPath };
   }

@@ -106,14 +106,15 @@ export class CssImportResolver {
       const pkg = await Bun.file(pkgPath).json();
       const subpath = id === pkgName ? "." : `.${id.slice(pkgName.length)}`;
       const exportValue = pkg.exports?.[subpath];
-      const styleEntry =
-        (typeof exportValue === "string"
+      const exportedEntry =
+        typeof exportValue === "string"
           ? exportValue
-          : exportValue?.style || exportValue?.import || exportValue?.default) ||
-        pkg.exports?.["."]?.style ||
-        pkg.style ||
-        "index.css";
-      return await this.#firstExisting(path.resolve(pkgDir, styleEntry));
+          : exportValue?.style || exportValue?.import || exportValue?.default;
+      if (exportedEntry) return await this.#firstExisting(path.resolve(pkgDir, exportedEntry));
+      //* A subpath names a file inside the package, so it resolves literally. Falling back to the package's own
+      //* style entry here would load a different stylesheet than the author asked for and report success.
+      if (subpath !== ".") return await this.#firstExisting(path.resolve(pkgDir, subpath));
+      return await this.#firstExisting(path.resolve(pkgDir, pkg.exports?.["."]?.style || pkg.style || "index.css"));
     } catch {
       return null;
     }

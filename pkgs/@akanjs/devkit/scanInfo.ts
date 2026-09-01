@@ -9,8 +9,9 @@ import type {
   PkgScanResult,
   ScanResult,
 } from "./akanConfig";
-
+import { AkanAppConfig } from "./akanConfig";
 import { AppExecutor, LibExecutor, PkgExecutor, WorkspaceExecutor } from "./executors";
+import { isAllowedLibFacetRootFile, rootAllowedDirs, rootAllowedFiles } from "./workspaceLayout";
 
 const scalarFileTypes = ["constant", "dictionary", "document", "template", "unit", "util", "view", "zone"] as const;
 type ScalarFileType = (typeof scalarFileTypes)[number];
@@ -43,46 +44,7 @@ type DatabaseFileType = (typeof databaseFileTypes)[number];
 
 type ModuleKind = "database" | "service" | "scalar";
 
-const appRootAllowedFiles = new Set([
-  "akan.app.json",
-  "akan.config.ts",
-  "capacitor.config.ts",
-  "client.ts",
-  "main.ts",
-  "package.json",
-  "server.ts",
-  "tsconfig.json",
-  "tsconfig.tsbuildinfo",
-]);
 const generatedRootCapacitorConfigFiles = ["capacitor.config.js", "capacitor.config.json"] as const;
-const appRootAllowedDirs = new Set([
-  ".akan",
-  "android",
-  "env",
-  "ios",
-  "lib",
-  "mobile",
-  "page",
-  "private",
-  "public",
-  "script",
-  "ui",
-  "srvkit",
-  "webkit",
-  "common",
-  "secrets",
-]);
-const libRootAllowedFiles = new Set([
-  "cnst.ts",
-  "db.ts",
-  "dict.ts",
-  "option.ts",
-  "sig.ts",
-  "srv.ts",
-  "st.ts",
-  "useClient.ts",
-  "useServer.ts",
-]);
 const internalLibDirs = new Set(["__lib", "__scalar"]);
 const moduleNonUiFileTypes = {
   database: new Set(["constant", "dictionary", "document", "service", "signal", "store"]),
@@ -95,7 +57,6 @@ const moduleUiFileTypes = {
   scalar: new Set(["Template", "Unit"]),
 } satisfies Record<ModuleKind, Set<string>>;
 const testFilePattern = /\.(test|spec)\.(ts|tsx)$/;
-const rootSignalTestFilePattern = /^[A-Za-z][A-Za-z0-9_-]*\.signal\.(test|spec)\.(ts|tsx)$/;
 
 // The dependency scanner needs `typescript` (~65MB resident). Only the scan/sync commands run it, so
 // load it on demand rather than through the module graph of every process that imports scan info.
@@ -103,8 +64,6 @@ const createDependencyScanner = async (exec: AppExecutor | LibExecutor | PkgExec
   (await import("./dependencyScanner")).TypeScriptDependencyScanner.from(exec);
 
 const isAllowedTestFile = (filename: string) => testFilePattern.test(filename);
-const isAllowedLibRootFile = (filename: string) =>
-  libRootAllowedFiles.has(filename) || rootSignalTestFilePattern.test(filename);
 const getScanPath = (exec: AppExecutor | LibExecutor, relativePath: string) =>
   path.posix.join(`${exec.type}s`, exec.name, relativePath.split(path.sep).join("/"));
 async function clearGeneratedRootCapacitorConfigs(exec: AppExecutor | LibExecutor) {
@@ -123,24 +82,29 @@ async function assertScanConvention(exec: AppExecutor | LibExecutor, libRoot: { 
     violations.push(`${getScanPath(exec, relativePath)}: ${reason}`);
   };
 
-  if (exec.type === "app") {
-    const { files, dirs } = await exec.getFilesAndDirs(".");
-    files
-      .filter((filename) => !appRootAllowedFiles.has(filename))
-      .forEach((filename) => {
-        addViolation(filename, "unsupported app root file");
-      });
-    dirs
-      .filter((dirname) => !appRootAllowedDirs.has(dirname))
-      .forEach((dirname) => {
-        addViolation(dirname, "unsupported app root folder");
-      });
-  }
+  const allowedRootFiles: ReadonlySet<string> = rootAllowedFiles[exec.type];
+  const allowedRootDirs: ReadonlySet<string> = rootAllowedDirs[exec.type];
+  const { files, dirs } = await exec.getFilesAndDirs(".");
+  files
+    .filter((filename) => !allowedRootFiles.has(filename))
+    .forEach((filename) => {
+      addViolation(filename, `unsupported ${exec.type} root file`);
+    });
+  dirs
+    .filter((dirname) => !allowedRootDirs.has(dirname))
+    .forEach((dirname) => {
+      addViolation(dirname, `unsupported ${exec.type} root folder`);
+    });
+
+  //* An app validates its page tree in `getPageKeys`, which a lib has no equivalent of — so a lib's own
+  //* routes went unchecked until whichever app opted into them with `syncPageLibs` blew up on the sync.
+  if (exec.type === "lib")
+    for (const { relativePath, reason } of await exec.getPageConventionViolations()) addViolation(relativePath, reason);
 
   libRoot.files
-    .filter((filename) => !isAllowedLibRootFile(filename))
+    .filter((filename) => !isAllowedLibFacetRootFile(filename))
     .forEach((filename) => {
-      addViolation(path.join("lib", filename), "unsupported lib root file");
+      addViolation(path.join("lib", filename), "unsupported lib facet root file");
     });
 
   libRoot.dirs
@@ -322,12 +286,11 @@ class ScanInfo {
       }),
     ]);
     const routes = exec.type === "lib" ? [] : await (exec as AppExecutor).getPageKeys();
-    const scanResult: AppScanResult | LibScanResult = {
+    const common = {
       name: exec.name,
       type: exec.type,
       repoName: exec.workspace.repoName,
       serveDomain: WorkspaceExecutor.getBaseDevEnv(path.join(exec.workspace.workspaceRoot, ".env")).serveDomain,
-      akanConfig,
       files,
       libDeps,
       pkgDeps,
@@ -335,6 +298,11 @@ class ScanInfo {
       devDependencies: npmDevDeps.filter((dep) => !isAkanFrameworkDependency(dep)),
       routes,
     };
+    //? `exec.type` and the resolved config class are correlated, which the union alone cannot express.
+    const scanResult: AppScanResult | LibScanResult =
+      akanConfig instanceof AkanAppConfig
+        ? ({ ...common, akanConfig } satisfies AppScanResult)
+        : ({ ...common, akanConfig } satisfies LibScanResult);
     return scanResult;
   }
 
@@ -499,7 +467,7 @@ export class LibInfo extends ScanInfo {
           LibInfo.libInfos.set(libName, await LibInfo.fromExecutor(libExecutor));
         }),
     );
-    const libInfo = new LibInfo(exec, scanResult);
+    const libInfo = new LibInfo(exec, scanResult as LibScanResult);
     LibInfo.libInfos.set(exec.name, libInfo);
     LibInfo.#sortedLibIndices = null;
     return libInfo;

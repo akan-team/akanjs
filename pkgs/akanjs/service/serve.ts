@@ -1,4 +1,4 @@
-import { type Cls, INJECT_META } from "akanjs/base";
+import { type Cls, INJECT_META, LIBS_REMOVE_HOOK } from "akanjs/base";
 import { applyMixins, capitalize, Logger, lowerlize } from "akanjs/common";
 import type { DatabaseModel } from "akanjs/document";
 
@@ -12,7 +12,7 @@ import {
 import type { DatabaseService, DatabaseServiceForModel } from "./types";
 
 interface ServiceOptions {
-  enabled?: boolean;
+  enabled?: boolean | (() => boolean);
   serverMode?: "batch" | "federation";
 }
 export type ServiceType = "database" | "plain";
@@ -43,9 +43,9 @@ const avoidKeys = new Set([
 export interface Service {
   readonly logger: Logger;
   // readonly connection: Connection;
-  onInit(): Promise<void>;
+  onInit(): Promise<void> | void;
   _libsOnInit(): Promise<void>;
-  onDestroy(): Promise<void>;
+  onDestroy(): Promise<void> | void;
   _libsOnDestroy(): Promise<void>;
 }
 
@@ -104,9 +104,10 @@ export function serve(
     ...(typeof optionOrInjectBuilder === "function" && injectBuilderOrExtendSrv ? [injectBuilderOrExtendSrv] : []),
     ...extendSrvs,
   ] as ServiceCls[];
-  const isEnabled =
+  const enabledOption =
     option.enabled ??
     (!option.serverMode || process.env.SERVER_MODE === option.serverMode || process.env.SERVER_MODE === "all");
+  let enabledCache: boolean | undefined;
   const serviceType = typeof refNameOrDb === "string" ? "plain" : "database";
   const injectInfoMap = injectBuilder(injectionBuilder(refName));
   if (serviceType === "database")
@@ -117,16 +118,21 @@ export function serve(
   const srvRef = class Service {
     static readonly type = serviceType;
     static readonly refName = refName;
-    static enabled = isEnabled;
+    static get enabled() {
+      // A thunk resolves on first read instead of at module load, so it may consult config the boot fills in later.
+      if (enabledCache === undefined)
+        enabledCache = typeof enabledOption === "function" ? enabledOption() : enabledOption;
+      return enabledCache;
+    }
     static get name() {
       return `${capitalize(refName)}Service`;
     }
     static [INJECT_META] = {};
     readonly logger = new Logger(this.constructor.name);
-    async onInit() {
+    onInit(): Promise<void> | void {
       //
     }
-    async onDestroy() {
+    onDestroy(): Promise<void> | void {
       //
     }
   };
@@ -136,10 +142,11 @@ export function serve(
   const onDestroyFns = extSrvs.map((srv) => srv.prototype.onDestroy);
   Object.assign(srvRef.prototype, {
     async _libsOnInit(this: Service) {
-      await Promise.all([...onInitFns.map((onInit) => onInit?.call(this)), this.onInit()]);
+      // Wrapped so a sync hook's throw rejects instead of stranding the promises earlier hooks already started.
+      await Promise.all([...onInitFns, this.onInit].map(async (onInit) => await onInit?.call(this)));
     },
     async _libsOnDestroy(this: Service) {
-      await Promise.all([...onDestroyFns.map((onDestroy) => onDestroy?.call(this)), this.onDestroy()]);
+      await Promise.all([...onDestroyFns, this.onDestroy].map(async (onDestroy) => await onDestroy?.call(this)));
     },
   });
 
@@ -150,6 +157,11 @@ export function serve(
     const postUpdateFns = extSrvs.map((srv) => srv.prototype._postUpdate);
     const preRemoveFns = extSrvs.map((srv) => srv.prototype._preRemove);
     const postRemoveFns = extSrvs.map((srv) => srv.prototype._postRemove);
+    // `avoidKeys` keeps a lib's remove hooks off the prototype, so nothing downstream can see them by inspection.
+    // The cascade planner has to: a bulk removal skips these hooks, and may only do so when there are none.
+    Object.assign(srvRef, {
+      [LIBS_REMOVE_HOOK]: preRemoveFns.some(Boolean) || postRemoveFns.some(Boolean),
+    });
     Object.assign(srvRef.prototype, {
       async __libsPreCreate(this: DatabaseService, data: DatabaseServiceData) {
         let result = data;

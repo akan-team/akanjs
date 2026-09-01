@@ -1,4 +1,5 @@
 import { createPrivateKey } from "node:crypto";
+import { Logger } from "akanjs/common";
 import { importPKCS8, SignJWT } from "jose";
 import { Err } from "../lib/dict";
 import {
@@ -29,9 +30,11 @@ import type {
   GithubRepository,
   GithubRepositoryDto,
   GithubUserInstallationsDto,
+  GithubWebhookDto,
 } from "./githubTypes";
 
 export class GithubApp {
+  readonly #logger = new Logger("GithubApp");
   readonly #baseUrl = "https://api.github.com";
   readonly #headers = { Accept: "application/json" };
   readonly #options: GithubOptions;
@@ -245,9 +248,95 @@ export class GithubApp {
       },
     );
     if (!Array.isArray(contents)) {
-      throw new Err("util.error.githubRepositoryAppsListFailed", { reason: this.#formatApiError(contents) });
+      const reason = this.#formatApiError(contents);
+      this.#logger.error(
+        `[GithubApp] listRepositoryAppNames failed owner=${owner} repo=${repo} ref=${ref ?? "(default)"} reason=${reason} body=${JSON.stringify(contents)}`,
+      );
+      throw new Err("util.error.githubRepositoryAppsListFailed", { reason });
     }
     return contents.filter((item) => item.type === "dir").map((item) => item.name);
+  }
+
+  /**
+   * `apps/*` folders that actually are Akan applications. `listRepositoryAppNames` accepts any directory,
+   * which is fine at build time (the folder set is already known-good) but lets a non-Akan repository be
+   * imported as a project that can never build.
+   */
+  async listRepositoryAkanAppNames({
+    owner,
+    repo,
+    accessToken,
+    ref,
+  }: {
+    owner: string;
+    repo: string;
+    accessToken: string;
+    ref?: string;
+  }) {
+    const appNames = await this.listRepositoryAppNames({ owner, repo, accessToken, ref });
+    const checked = await Promise.all(
+      appNames.map(async (appName) => ({
+        appName,
+        isAkanApp: await this.hasRepositoryFile({
+          owner,
+          repo,
+          accessToken,
+          ref,
+          path: `apps/${appName}/akan.config.ts`,
+        }),
+      })),
+    );
+    return checked.filter((item) => item.isAkanApp).map((item) => item.appName);
+  }
+
+  async hasRepositoryFile({
+    owner,
+    repo,
+    accessToken,
+    path,
+    ref,
+  }: {
+    owner: string;
+    repo: string;
+    accessToken: string;
+    path: string;
+    ref?: string;
+  }) {
+    const query = ref ? `?ref=${encodeURIComponent(ref)}` : "";
+    const content = await this.#api<GithubContentDto | GithubApiError>(
+      `/repos/${owner}/${repo}/contents/${path}${query}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    return (content as GithubContentDto).type === "file";
+  }
+
+  /**
+   * Text of one repository file, or null when it is absent, is not a file, or is too large for the contents
+   * API to inline (it then answers with no `content`). Never throws for a missing path: callers read optional
+   * configuration with this, where absent and unreadable lead to the same fallback.
+   */
+  async getRepositoryFileText({
+    owner,
+    repo,
+    accessToken,
+    path,
+    ref,
+  }: {
+    owner: string;
+    repo: string;
+    accessToken: string;
+    path: string;
+    ref?: string;
+  }): Promise<string | null> {
+    const query = ref ? `?ref=${encodeURIComponent(ref)}` : "";
+    const content = await this.#api<GithubContentDto | GithubApiError>(
+      `/repos/${owner}/${repo}/contents/${path}${query}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    const file = content as GithubContentDto;
+    if (file.type !== "file" || !file.content) return null;
+    if (file.encoding && file.encoding !== "base64") return null;
+    return Buffer.from(file.content, "base64").toString("utf8");
   }
 
   async registerWebhook({
@@ -263,7 +352,7 @@ export class GithubApp {
     webhookUrl: string;
     webhookSecret?: string;
   }) {
-    return await this.#api<{ id: number }>(`/repos/${owner}/${repo}/hooks`, {
+    const hook = await this.#api<GithubWebhookDto | GithubApiError>(`/repos/${owner}/${repo}/hooks`, {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -273,6 +362,61 @@ export class GithubApp {
         config: { url: webhookUrl, content_type: "json", secret: webhookSecret },
       }),
     });
+    // #api resolves the error body instead of throwing, so an unvalidated return reported a failed
+    // registration as a success.
+    if (typeof (hook as GithubWebhookDto).id !== "number")
+      throw new Err("util.error.githubWebhookRegisterFailed", { reason: this.#formatApiError(hook) });
+    return hook as GithubWebhookDto;
+  }
+
+  async listWebhooks({ owner, repo, accessToken }: { owner: string; repo: string; accessToken: string }) {
+    const hooks = await this.#api<GithubWebhookDto[] | GithubApiError>(`/repos/${owner}/${repo}/hooks`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!Array.isArray(hooks))
+      throw new Err("util.error.githubWebhookListFailed", { reason: this.#formatApiError(hooks) });
+    return hooks;
+  }
+
+  /**
+   * Register the push webhook only when the repository does not already carry one for this URL.
+   * Re-importing a repository used to POST a second identical hook, which made GitHub deliver every push
+   * twice — two builds racing on the same scheduler key.
+   */
+  async ensureWebhook({
+    owner,
+    repo,
+    accessToken,
+    webhookUrl,
+    webhookSecret,
+  }: {
+    owner: string;
+    repo: string;
+    accessToken: string;
+    webhookUrl: string;
+    webhookSecret?: string;
+  }): Promise<{ id: number; created: boolean }> {
+    const existing = (await this.listWebhooks({ owner, repo, accessToken })).find(
+      (hook) => hook.config?.url === webhookUrl,
+    );
+    if (existing) return { id: existing.id, created: false };
+    const created = await this.registerWebhook({ owner, repo, accessToken, webhookUrl, webhookSecret });
+    return { id: created.id, created: true };
+  }
+
+  async hasWebhook({
+    owner,
+    repo,
+    accessToken,
+    webhookUrl,
+  }: {
+    owner: string;
+    repo: string;
+    accessToken: string;
+    webhookUrl: string;
+  }) {
+    const hooks = await this.listWebhooks({ owner, repo, accessToken });
+    return hooks.some((hook) => hook.config?.url === webhookUrl);
   }
 
   async publishWorkspace({
@@ -313,6 +457,11 @@ export class GithubApp {
     });
   }
   async getInstallationToken(owner: string, accessToken: string, { installationId }: { installationId?: string } = {}) {
+    const installId = (await this.listUserInstallations(accessToken)).find(
+      (item) => item.accountLogin.toLowerCase() === owner.toLowerCase(),
+    )?.id;
+    if (installId) return await this.createInstallationAccessToken(installId);
+
     if (installationId) {
       try {
         return await this.createInstallationAccessToken(installationId);
@@ -321,10 +470,7 @@ export class GithubApp {
       }
     }
 
-    const installId = (await this.listUserInstallations(accessToken)).find(
-      (item) => item.accountLogin.toLowerCase() === owner.toLowerCase(),
-    )?.id;
-    return installId ? await this.createInstallationAccessToken(installId) : undefined;
+    return undefined;
   }
 
   async #hasStagedChanges(projectPathArg: string) {

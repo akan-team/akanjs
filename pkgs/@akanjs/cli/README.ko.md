@@ -64,7 +64,7 @@ metadata를 검증합니다.
 
 ## 요구사항
 
-- [Bun](https://bun.sh) `>=1.3.13`
+- [Bun](https://bun.sh) `>=1.4.0`
 - TypeScript 기반 Akan 워크스페이스
 
 ## 라이선스

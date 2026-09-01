@@ -5,12 +5,14 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [
   const libs = scanInfo.getLibs();
   return {
     filename: "env.server.type.ts",
-    content: `
-${libs.length ? libs.map((lib) => `import { env as ${lib}Option } from "@libs/${lib}/server";`).join("\n") : 'import { getEnv } from "akanjs/base";'}
+    content: libs.length
+      ? `
+${libs.map((lib) => `import { env as ${lib}Option } from "@libs/${lib}/server";`).join("\n")}
 
 export const libEnv = {
-${libs.length ? libs.map((lib) => `  ...${lib}Option,`).join("\n") : "  ...getEnv(),"}
-};
-`,
+${libs.map((lib) => `  ...${lib}Option,`).join("\n")}
+};`
+      : `
+export const libEnv = {};`,
   };
 }

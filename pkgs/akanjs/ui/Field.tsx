@@ -1,18 +1,24 @@
 "use client";
 import { type DataList, type Dayjs, dayjs, type EnumInstance, isEnum } from "akanjs/base";
-import { clsx, usePage } from "akanjs/client";
+import { cn, usePage } from "akanjs/client";
 import { capitalize, formatPhone, isPhoneNumber, lowerlize } from "akanjs/common";
 import type { SliceMeta } from "akanjs/fetch";
-import { st } from "akanjs/store";
+import { actionTagOf, st, tagAction, useFieldTool, useRelationFieldTool } from "akanjs/store";
 import { memo, type ReactNode, useState } from "react";
 import { AiOutlinePlus } from "react-icons/ai";
 import { BiHelpCircle, BiTrash, BiX } from "react-icons/bi";
 import { MdDragIndicator } from "react-icons/md";
-
+import { agentAttrs } from "./agentAttrs";
+import { badgeRecipe } from "./Badge";
+import { buttonRecipe } from "./Button";
 import { DraggableList } from "./DraggableList";
 import { Input } from "./Input";
+import { inputRecipe } from "./recipe";
 import { Select } from "./Select";
+import { Switch as UiSwitch } from "./Switch";
 import { ToggleSelect as UtilToggleSelect } from "./ToggleSelect";
+import { Tooltip } from "./Tooltip";
+import { useUiRecipe } from "./UiOverride";
 
 interface LabelProps {
   className?: string;
@@ -24,16 +30,18 @@ interface LabelProps {
 }
 const Label = ({ className, label, desc, unit, nullable, mode = "edit" }: LabelProps) => {
   return (
-    <span className={clsx("flex shrink-0 items-center gap-1", className)}>
+    <span className={cn("flex shrink-0 items-center gap-1", className)}>
       {/* {!nullable && mode === "edit" ? <span>* </span> : null} */}
       {capitalize(label)}
       {unit ? <span className="animate-fadeIn"> ({unit})</span> : null}
       {desc ? (
-        <span className="tooltip tooltip-info tooltip-right" data-tip={desc}>
-          <BiHelpCircle />
-        </span>
+        <Tooltip content={desc} variant="info" side="right">
+          <span>
+            <BiHelpCircle />
+          </span>
+        </Tooltip>
       ) : null}
-      {nullable ? <span className="text-gray-400 text-sm">{"(optional)"}</span> : null}
+      {nullable ? <span className="text-muted-foreground text-sm">{"(optional)"}</span> : null}
     </span>
   );
 };
@@ -64,9 +72,9 @@ export const Field = ({
   children,
 }: FieldProps) => {
   return (
-    <div className={clsx("w-full", className)}>
+    <div className={cn("w-full", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
-      <div className={clsx("mt-2 flex w-full flex-col gap-4 px-4", containerClassName)}>{children}</div>
+      <div className={cn("mt-2 flex w-full flex-col gap-4 px-4", containerClassName)}>{children}</div>
     </div>
   );
 };
@@ -78,7 +86,7 @@ interface ListProps<Item> {
   label?: string;
   desc?: string;
   nullable?: boolean;
-  value: Item[];
+  value: Item[] | null;
   onChange: (value: Item[]) => void;
   onAdd: () => void;
   renderItem: (item: Item, idx: number) => ReactNode;
@@ -95,30 +103,36 @@ const List = <Item,>({
   renderItem,
 }: ListProps<Item>) => {
   const { l } = usePage();
+  const recipe = useUiRecipe("button") ?? buttonRecipe;
+  useFieldTool(onChange);
+  const items = value ?? [];
   return (
-    <div className={clsx("flex w-full flex-col", className)}>
+    <div {...agentAttrs(onChange)} className={cn("flex w-full flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
-      <div className="mb-2 flex w-full flex-col gap-2 rounded-md border border-gray-300 p-2">
-        {value.map((item, idx) => (
+      <div className="mb-2 flex w-full flex-col gap-2 rounded-box border border-border p-2">
+        {items.map((item, idx) => (
           <>
             <div key={idx} className="flex h-full w-full items-center justify-between gap-2">
               {renderItem(item, idx)}
-              <div className="flex gap-2 border-gray-300 border-l pl-2">
+              <div className="flex gap-2 border-border border-l pl-2">
                 <button
-                  className="btn btn-xs btn-error btn-square btn-outline"
+                  className={recipe(
+                    { variant: "outline", size: "icon" },
+                    "size-6 border-destructive p-0 text-destructive hover:bg-destructive hover:text-destructive-foreground",
+                  )}
                   onClick={() => {
-                    onChange(value.filter((_, i) => i !== idx));
+                    onChange(items.filter((_, i) => i !== idx));
                   }}
                 >
                   <BiTrash />
                 </button>
               </div>
             </div>
-            <div className="h-[0.5px] w-full bg-gray-300 px-2 last:h-0" />
+            <div className="h-[0.5px] w-full bg-muted px-2 last:h-0" />
           </>
         ))}
         <button
-          className="btn btn-outline"
+          className={recipe({ variant: "outline" })}
           onClick={() => {
             onAdd();
           }}
@@ -169,11 +183,13 @@ const Text = ({
   inputClassName,
   inputStyleType = "bordered",
 }: TextProps) => {
+  useFieldTool(onChange, { transform, disabled });
   const { l } = usePage();
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Input
+        {...agentAttrs(onChange)}
         cacheKey={cache ? `${label}-${desc}-text` : undefined}
         inputStyleType={inputStyleType}
         value={value ?? ""}
@@ -183,8 +199,8 @@ const Text = ({
           onChange(transform(value));
         }}
         disabled={disabled}
-        className={clsx("w-full", "")}
-        inputClassName={clsx("w-full focus:border-primary", inputClassName)}
+        className={cn("w-full", "")}
+        inputClassName={cn("w-full focus:border-primary", inputClassName)}
         validate={(text: string) => {
           if (text.length < minlength) return l("base.textTooShortError", { minlength });
           else if (text.length > maxlength) return l("base.textTooLongError", { maxlength });
@@ -197,7 +213,7 @@ const Text = ({
 };
 Field.Text = memo(Text);
 
-//! 삭제
+// FIXME: 삭제
 interface PriceProps {
   label?: string;
   desc?: string;
@@ -234,11 +250,13 @@ const Price = ({
   inputClassName,
   inputStyleType = "bordered",
 }: PriceProps) => {
+  useFieldTool(onChange, { transform, disabled });
   const { l } = usePage();
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Input
+        {...agentAttrs(onChange)}
         inputStyleType={inputStyleType}
         value={value ?? ""}
         nullable={nullable}
@@ -248,8 +266,8 @@ const Price = ({
           onChange(transform(withoutComma));
         }}
         disabled={disabled}
-        className={clsx("w-full", "")}
-        inputClassName={clsx("w-full focus:border-primary", inputClassName)}
+        className={cn("w-full", "")}
+        inputClassName={cn("w-full focus:border-primary", inputClassName)}
         validate={(text: string) => {
           if (text.length < minlength) return l("base.textTooShortError", { minlength });
           else if (text.length > maxlength) return l("base.textTooLongError", { maxlength });
@@ -300,11 +318,13 @@ const TextArea = ({
   cache,
   inputClassName,
 }: TextAreaProps) => {
+  useFieldTool(onChange, { transform, disabled });
   const { l } = usePage();
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Input.TextArea
+        {...agentAttrs(onChange)}
         value={value ?? ""}
         cacheKey={cache ? `${label}-${desc}-textArea` : undefined}
         nullable={nullable}
@@ -314,8 +334,8 @@ const TextArea = ({
         }}
         disabled={disabled}
         rows={rows}
-        className={clsx("h-full w-full")}
-        inputClassName={clsx("w-full focus:border-primary", inputClassName)}
+        className={cn("h-full w-full")}
+        inputClassName={cn("w-full focus:border-primary", inputClassName)}
         validate={(text: string) => {
           if (text.length < minlength) return l("base.textTooShortError", { minlength });
           else if (text.length > maxlength) return l("base.textTooLongError", { maxlength });
@@ -333,7 +353,7 @@ interface SwitchProps {
   desc?: string;
   labelClassName?: string;
   className?: string;
-  value: boolean;
+  value: boolean | null;
   onChange: (value: boolean) => void;
   inputClassName?: string;
   onDesc?: string;
@@ -352,17 +372,18 @@ const Switch = ({
   onDesc,
   offDesc,
 }: SwitchProps) => {
+  useFieldTool(onChange, { disabled });
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div {...agentAttrs(onChange)} className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable label={label} desc={desc} /> : null}
       <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
+        <UiSwitch
+          variant="accent"
           disabled={disabled}
-          className={clsx("toggle toggle-accent", inputClassName)}
-          checked={value}
-          onChange={(e) => {
-            onChange(e.target.checked);
+          className={inputClassName}
+          checked={value ?? false}
+          onChange={(checked) => {
+            onChange(checked);
           }}
         />
         {(onDesc ?? offDesc) ? <div className="text-info text-sm">{value ? onDesc : offDesc}</div> : null}
@@ -372,7 +393,7 @@ const Switch = ({
 };
 Field.Switch = Switch;
 
-interface ToggleSelectProps<I> {
+interface ToggleSelectProps<I, Nullable extends boolean> {
   className?: string;
   labelClassName?: string;
   label?: string;
@@ -380,14 +401,14 @@ interface ToggleSelectProps<I> {
   model?: string;
   field?: string;
   items: { label: string; value: I; disabled?: boolean }[] | readonly I[] | I[] | EnumInstance<string, I>;
-  value: I;
-  nullable?: boolean;
+  value: I | null;
+  nullable?: Nullable;
   disabled?: boolean;
   validate?: (value: I) => boolean | string;
-  onChange: (value: I) => void;
+  onChange: (value: Nullable extends true ? I | null : I) => void;
   btnClassName?: string;
 }
-const ToggleSelect = <I extends string | number | boolean | null>({
+const ToggleSelect = <I extends string | number | boolean | null, Nullable extends boolean = false>({
   className,
   labelClassName,
   label,
@@ -399,13 +420,15 @@ const ToggleSelect = <I extends string | number | boolean | null>({
   nullable,
   disabled,
   btnClassName,
-}: ToggleSelectProps<I>) => {
+}: ToggleSelectProps<I, Nullable>) => {
+  useFieldTool(onChange, { disabled });
   const { l } = usePage();
   const isEnumValue = isEnum(items as EnumInstance<string, I>);
+  const change = onChange as (value: I | null) => void;
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div {...agentAttrs(onChange)} className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
-      <UtilToggleSelect
+      <UtilToggleSelect<I | null>
         className="mt-2"
         nullable={!!nullable}
         btnClassName={btnClassName}
@@ -418,12 +441,15 @@ const ToggleSelect = <I extends string | number | boolean | null>({
             : (items as { label: string; value: I; disabled?: boolean }[])
         }
         value={value}
-        onChange={(value: I, idx) => {
-          onChange(value);
+        onChange={(selected) => {
+          change(selected);
+        }}
+        onClear={() => {
+          change(null);
         }}
         disabled={disabled}
-        validate={(value: I) => {
-          return validate?.(value) ?? true;
+        validate={(selected) => {
+          return selected === null ? true : (validate?.(selected) ?? true);
         }}
       />
     </div>
@@ -437,7 +463,7 @@ interface MultiToggleSelectProps<I extends string | number | boolean> {
   label?: string;
   desc?: string;
   items: EnumInstance<string, I> | { label: string; value: I; disabled?: boolean }[] | readonly I[] | I[];
-  value: I[];
+  value: I[] | null;
   disabled?: boolean;
   minlength?: number;
   maxlength?: number;
@@ -457,11 +483,12 @@ const MultiToggleSelect = <I extends string | number | boolean>({
   onChange,
   disabled,
 }: MultiToggleSelectProps<I>) => {
+  useFieldTool(onChange, { disabled });
   const { l } = usePage();
   const isEnumValue = isEnum(items as EnumInstance<string, I>);
   return (
-    <div className={clsx("flex flex-col", className)}>
-      {label ? <Label className={labelClassName} nullable={!!minlength} label={label} desc={desc} /> : null}
+    <div {...agentAttrs(onChange)} className={cn("flex flex-col", className)}>
+      {label ? <Label className={labelClassName} nullable={!minlength} label={label} desc={desc} /> : null}
       <UtilToggleSelect.Multi
         nullable={!minlength}
         items={
@@ -472,7 +499,7 @@ const MultiToggleSelect = <I extends string | number | boolean>({
               })) as { label: string; value: string; disabled?: boolean }[])
             : (items as { label: string; value: string; disabled?: boolean }[])
         }
-        value={value as string[]}
+        value={(value ?? []) as string[]}
         onChange={(values) => {
           onChange(values as I[]);
         }}
@@ -493,7 +520,7 @@ interface TextListProps {
   desc?: string;
   labelClassName?: string;
   className?: string;
-  value: string[];
+  value: string[] | null;
   onChange: (value: string[]) => void;
   inputClassName?: string;
   placeholder?: string;
@@ -524,19 +551,26 @@ const TextList = ({
   validate,
   inputClassName,
 }: TextListProps) => {
+  useFieldTool(onChange, { transform, disabled, sortable: true });
   const { l } = usePage();
+  const recipe = useUiRecipe("button") ?? buttonRecipe;
+  const texts = value ?? [];
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div {...agentAttrs(onChange)} className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={!minlength} label={label} desc={desc} /> : null}
-      <div className="mb-5 h-full gap-2 rounded-md border border-gray-300 p-2">
+      <div className="mb-5 h-full gap-2 rounded-box border border-border p-2">
         <DraggableList
           className="h-full gap-2"
-          onChange={onChange}
+          // Wrapped on purpose: this component already published the field with its own `transform`, and handing
+          // the reference down would register the same names a second time from the list inside it.
+          onChange={(sorted: string[]) => {
+            onChange(sorted);
+          }}
           onRemove={(_, idx) => {
-            onChange(value.filter((_, i) => i !== idx));
+            onChange(texts.filter((_, i) => i !== idx));
           }}
         >
-          {value.map((text, idx) => (
+          {texts.map((text, idx) => (
             <DraggableList.Item key={idx} value={text}>
               <div className="flex w-full items-center">
                 <DraggableList.Cursor>
@@ -547,7 +581,7 @@ const TextList = ({
                     value={text}
                     cacheKey={cache ? `${label}-${desc}-textList-[${idx}]` : undefined}
                     onChange={(text) => {
-                      const newValue = [...value];
+                      const newValue = [...texts];
                       newValue[idx] = transform(text);
                       onChange(newValue);
                     }}
@@ -556,15 +590,18 @@ const TextList = ({
                       else if (text.length > maxlength) return l("base.textTooLongError", { maxlength: maxTextlength });
                       else return validate?.(text) ?? true;
                     }}
-                    className={clsx("w-full", inputClassName)}
-                    inputClassName="w-full input-sm"
+                    className={cn("w-full", inputClassName)}
+                    inputClassName="h-8 w-full"
                     placeholder={placeholder}
                     disabled={disabled}
                   />
                   <button
-                    className="btn btn-xs btn-error btn-square btn-outline"
+                    className={recipe(
+                      { variant: "outline", size: "icon" },
+                      "size-6 border-destructive p-0 text-destructive hover:bg-destructive hover:text-destructive-foreground",
+                    )}
                     onClick={() => {
-                      onChange(value.filter((_, i) => i !== idx));
+                      onChange(texts.filter((_, i) => i !== idx));
                     }}
                   >
                     <BiTrash />
@@ -574,12 +611,12 @@ const TextList = ({
             </DraggableList.Item>
           ))}
         </DraggableList>
-        <div className="my-5 h-[0.5px] bg-base-content/20" />
-        {value.length <= maxTextlength ? (
+        <div className="my-5 h-[0.5px] bg-foreground/20" />
+        {texts.length <= maxTextlength ? (
           <button
-            className="btn btn-outline w-full"
+            className={recipe({ variant: "outline" }, "w-full")}
             onClick={() => {
-              onChange([...value, ""]);
+              onChange([...texts, ""]);
             }}
           >
             + New
@@ -596,7 +633,7 @@ interface TagsProps {
   desc?: string;
   labelClassName?: string;
   className?: string;
-  value: string[];
+  value: string[] | null;
   onChange: (value: string[]) => void;
   inputClassName?: string;
   placeholder?: string;
@@ -626,28 +663,31 @@ const Tags = ({
   validate,
   inputClassName,
 }: TagsProps) => {
+  useFieldTool(onChange, { transform, disabled });
   const { l } = usePage();
+  const badge = useUiRecipe("badge") ?? badgeRecipe;
+  const tagList = value ?? [];
   const [inputVisible, setInputVisible] = useState(false);
   const [tag, setTag] = useState("");
   const addTag = () => {
     if (!tag.length) return;
-    onChange([...value, tag]);
+    onChange([...tagList, tag]);
     setInputVisible(false);
     setTag("");
   };
 
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div {...agentAttrs(onChange)} className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={!minlength} label={label} desc={desc} /> : null}
-      <div className="flex w-full flex-wrap items-center gap-1 rounded-md border border-base-content/20 p-2">
-        {value.map((val, idx) => (
-          <span className="badge badge-outline items-center rounded-full text-xs" key={idx}>
+      <div className="flex w-full flex-wrap items-center gap-1 rounded-box border border-border p-2">
+        {tagList.map((val, idx) => (
+          <span className={badge({ variant: "outline" }, "items-center")} key={idx}>
             <div className="text-xs italic">#</div>
             {val}
             <BiX
               className="ml-1 cursor-pointer opacity-50 duration-200 hover:opacity-100"
               onClick={() => {
-                if (!disabled) onChange(value.filter((v, i) => i !== idx));
+                if (!disabled) onChange(tagList.filter((v, i) => i !== idx));
               }}
             />
           </span>
@@ -678,7 +718,7 @@ const Tags = ({
           />
         ) : !disabled ? (
           <div
-            className="flex items-center gap-2 rounded-full bg-success px-2 py-1 text-success-content text-xs duration-200 hover:cursor-pointer hover:opacity-80"
+            className="flex items-center gap-2 rounded-full bg-success px-2 py-1 text-success-foreground text-xs duration-200 hover:cursor-pointer hover:opacity-80"
             onClick={() => {
               setInputVisible(true);
             }}
@@ -719,16 +759,19 @@ const Date = <Nullable extends boolean>({
   showTime,
   dateClassName,
 }: DateProps<Nullable>) => {
+  useFieldTool(onChange);
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div {...agentAttrs(onChange)} className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
-      {/* //! daysi UI datetime-local 컴포넌트에 max 값 넣으면 오른쪽 끝 짤리는 버그 있음.*/}
+      {/* FIXME: daysi UI datetime-local 컴포넌트에 max 값 넣으면 오른쪽 끝 짤리는 버그 있음.*/}
       <input
         type={showTime ? "datetime-local" : "date"}
-        className={clsx(
-          "input validator text-xs outline-none duration-200 focus-within:outline-none focus:outline-none",
+        className={inputRecipe({}, [
+          // `user-invalid` replaces daisyUI's `.validator`, which coloured the border off the same
+          // pseudo-class. The native date input reports its own min/max violations through it.
+          "user-invalid:border-destructive text-xs outline-none duration-200 focus-within:outline-none focus:outline-none",
           dateClassName,
-        )}
+        ])}
         min={min ? (showTime ? dayjs(min).format("YYYY-MM-DDTHH:mm") : dayjs(min).format("YYYY-MM-DD")) : undefined}
         max={max ? (showTime ? dayjs(max).format("YYYY-MM-DDTHH:mm") : dayjs(max).format("YYYY-MM-DD")) : undefined}
         value={value ? (showTime ? dayjs(value).format("YYYY-MM-DDTHH:mm") : dayjs(value).format("YYYY-MM-DD")) : ""}
@@ -754,6 +797,7 @@ interface DateRangeProps<Nullable extends boolean> {
   showTime?: boolean;
   onChangeFrom: (value: Dayjs) => void;
   onChangeTo: (value: Dayjs) => void;
+  /** The whole range after either end moves. Fires only once both ends are set — nobody can query a half-open one. */
   onChange?: (from: Dayjs, to: Dayjs) => void;
 }
 const DateRange = <Nullable extends boolean>({
@@ -771,13 +815,31 @@ const DateRange = <Nullable extends boolean>({
   onChange,
   showTime,
 }: DateRangeProps<Nullable>) => {
+  /**
+   * Adds the pair callback to one endpoint setter, carrying that setter's own tag onto the wrapper.
+   *
+   * The wrapper really does run the setter, so the tag stays a true statement — and wiring `onChange` then costs
+   * the endpoint neither its agent tool nor its `data-akan-action`, which a plain closure would both drop.
+   */
+  const withPair = (setter: (value: Dayjs) => void, pair: (value: Dayjs) => [Dayjs | null, Dayjs | null]) => {
+    if (!onChange) return setter;
+    const wrapped = (value: Dayjs) => {
+      setter(value);
+      const [nextFrom, nextTo] = pair(value);
+      if (nextFrom && nextTo) onChange(nextFrom, nextTo);
+    };
+    const tag = actionTagOf(setter);
+    return tag ? tagAction(wrapped, tag) : wrapped;
+  };
+  const changeFrom = withPair(onChangeFrom, (value) => [value, to]);
+  const changeTo = withPair(onChangeTo, (value) => [from, value]);
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
 
       <div className="relative flex w-full flex-col items-start gap-2 pt-2 text-center md:flex-row md:items-center">
         <div className="relative flex w-full flex-col items-start justify-start">
-          <div className="absolute -top-2 left-2 z-10 bg-base-100 px-2 font-light text-xs">From</div>
+          <div className="absolute -top-2 left-2 z-10 bg-background px-2 font-light text-xs">From</div>
           <Date
             className="w-full"
             dateClassName="w-full"
@@ -785,13 +847,11 @@ const DateRange = <Nullable extends boolean>({
             value={from}
             max={max}
             min={min}
-            onChange={(value: Dayjs) => {
-              onChangeFrom(value);
-            }}
+            onChange={changeFrom}
           />
         </div>
         <div className="relative flex w-full flex-col items-start gap-2 text-center md:flex-row md:items-center">
-          <div className="absolute -top-2 left-2 z-10 bg-base-100 px-2 font-light text-xs">To</div>
+          <div className="absolute -top-2 left-2 z-10 bg-background px-2 font-light text-xs">To</div>
           <Date
             className="w-full"
             dateClassName="w-full"
@@ -799,9 +859,7 @@ const DateRange = <Nullable extends boolean>({
             value={to}
             max={max}
             min={min}
-            onChange={(value: Dayjs) => {
-              onChangeTo(value);
-            }}
+            onChange={changeTo}
           />
         </div>
       </div>
@@ -852,11 +910,13 @@ const Number = ({
   formatter,
   parser,
 }: NumberProps) => {
+  useFieldTool(onChange, { transform, disabled });
   const { l } = usePage();
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} unit={unit} /> : null}
       <Input.Number
+        {...agentAttrs(onChange)}
         min={min}
         max={max}
         cacheKey={cache ? `${label}-${desc}-number` : undefined}
@@ -869,8 +929,8 @@ const Number = ({
           onChange(transform(value ?? 0));
         }}
         disabled={disabled}
-        className={clsx("w-full", "")}
-        inputClassName={clsx("w-full", inputClassName)}
+        className={cn("w-full", "")}
+        inputClassName={cn("w-full", inputClassName)}
         validate={(value) => {
           //수정여지
           if (min !== undefined && (value as number) < min) return l("base.numberTooSmallError", { min });
@@ -922,9 +982,10 @@ const DoubleNumber = ({
   validate,
   onPressEnter,
 }: DoubleNumberProps) => {
+  useFieldTool(onChange, { transform, disabled });
   const { l } = usePage();
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div {...agentAttrs(onChange)} className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <div className="flex items-center gap-2">
         <Input.Number
@@ -937,8 +998,8 @@ const DoubleNumber = ({
             onChange([transform(num), value ? value[1] : 0]);
           }}
           disabled={disabled}
-          className={clsx("w-full", "")}
-          inputClassName={clsx("w-full focus:border-primary", inputClassName)}
+          className={cn("w-full", "")}
+          inputClassName={cn("w-full focus:border-primary", inputClassName)}
           validate={(value) => {
             if (min && (value as number) < min[0]) return l("base.numberTooSmallError", { min: min[0] });
             else if (max && (value as number) > max[0]) return l("base.numberTooBigError", { max: max[0] });
@@ -956,8 +1017,8 @@ const DoubleNumber = ({
             onChange([value ? value[0] : 0, transform(num ?? 0)]);
           }}
           disabled={disabled}
-          className={clsx("w-full", "")}
-          inputClassName={clsx("w-full focus:border-primary", inputClassName)}
+          className={cn("w-full", "")}
+          inputClassName={cn("w-full focus:border-primary", inputClassName)}
           validate={(value) => {
             if (min && (value as number) < min[1]) return l("base.numberTooSmallError", { min: min[1] });
             else if (max && (value as number) > max[1]) return l("base.numberTooBigError", { max: max[1] });
@@ -1009,11 +1070,13 @@ const Email = ({
   inputClassName,
   inputStyleType,
 }: EmailProps) => {
+  useFieldTool(onChange, { transform, disabled });
   const { l } = usePage();
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Input.Email
+        {...agentAttrs(onChange)}
         value={value ?? ""}
         cacheKey={cache ? `${label}-${desc}-email` : undefined}
         nullable={nullable}
@@ -1022,8 +1085,8 @@ const Email = ({
           onChange(transform(value));
         }}
         disabled={disabled}
-        className={clsx("w-full", "")}
-        inputClassName={clsx("w-full focus:border-primary", inputClassName)}
+        className={cn("w-full", "")}
+        inputClassName={cn("w-full focus:border-primary", inputClassName)}
         inputStyleType={inputStyleType}
         validate={(text: string) => {
           if (text.length < minlength) return l("base.textTooShortError", { minlength });
@@ -1072,12 +1135,14 @@ const Phone = ({
   onPressEnter,
   inputClassName,
 }: PhoneProps) => {
+  useFieldTool(onChange, { transform, disabled });
   const { l } = usePage();
 
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Input
+        {...agentAttrs(onChange)}
         value={value ?? ""}
         cacheKey={cache ? `${label}-${desc}-phone` : undefined}
         nullable={nullable}
@@ -1087,8 +1152,8 @@ const Phone = ({
         }}
         disabled={disabled}
         maxLength={maxlength}
-        className={clsx("w-full", "")}
-        inputClassName={clsx("w-full focus:border-primary", inputClassName)}
+        className={cn("w-full", "")}
+        inputClassName={cn("w-full focus:border-primary", inputClassName)}
         validate={(text: string) => {
           if (!isPhoneNumber(text)) return l("base.phoneInvalidError");
           else return validate?.(text) ?? true;
@@ -1142,12 +1207,14 @@ const Password = ({
   inputClassName,
   showConfirm,
 }: PasswordProps) => {
+  useFieldTool(onChange, { transform, disabled });
   const { l } = usePage();
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <div className="flex flex-col gap-2">
         <Input.Password
+          {...agentAttrs(onChange)}
           cacheKey={cache ? `${label}-${desc}-password` : undefined}
           value={value ?? ""}
           nullable={nullable}
@@ -1156,8 +1223,8 @@ const Password = ({
             onChange(transform(value));
           }}
           disabled={disabled}
-          className={clsx("w-full", "")}
-          inputClassName={clsx("w-full focus:border-primary", inputClassName)}
+          className={cn("w-full", "")}
+          inputClassName={cn("w-full focus:border-primary", inputClassName)}
           validate={(text: string) => {
             if (text.length < minlength) return l("base.textTooShortError", { minlength });
             else if (text.length > maxlength) return l("base.textTooLongError", { maxlength });
@@ -1172,8 +1239,8 @@ const Password = ({
             placeholder={l("base.passwordConfirm")}
             onChange={(value) => onChangeConfirm?.(transform(value))}
             disabled={disabled}
-            className={clsx("w-full", "")}
-            inputClassName={clsx("w-full focus:border-primary", inputClassName)}
+            className={cn("w-full", "")}
+            inputClassName={cn("w-full focus:border-primary", inputClassName)}
             validate={(text: string) => {
               if (value && text !== value) return l("base.passwordNotMatchError");
               else return true;
@@ -1204,6 +1271,12 @@ interface ParentProps<T extends string, State, Input, Full, Light> {
   renderOption: (model: Light) => ReactNode;
   renderSelected?: (value: Light) => ReactNode;
 }
+/** The one line an option renders as, so an agent can match an id against what it reads on screen. */
+const optionLabel = <Light extends { id: string }>(model: Light, render: (model: Light) => ReactNode) => {
+  const rendered = render(model);
+  return typeof rendered === "string" ? rendered : model.id;
+};
+
 const Parent = <T extends string, State, Input, Full extends { id: string }, Light extends { id: string }>({
   label,
   desc,
@@ -1225,6 +1298,7 @@ const Parent = <T extends string, State, Input, Full extends { id: string }, Lig
   const [modelName, ModelName] = [lowerlize(refName), capitalize(refName)];
   const storeUse = st.use as { [key: string]: () => unknown };
   const storeDo = st.do as unknown as { [key: string]: (...args: any[]) => Promise<void> };
+  const storeGet = st.get as unknown as <V>() => { [key: string]: V };
 
   const names = {
     model: modelName,
@@ -1241,9 +1315,15 @@ const Parent = <T extends string, State, Input, Full extends { id: string }, Lig
 
   const modelList = storeUse[namesOfSlice.modelList]() as DataList<Light>;
   const modelListLoading = storeUse[namesOfSlice.modelListLoading]() as string | boolean;
+  useRelationFieldTool(onChange, {
+    read: () => storeGet<DataList<Light>>()[namesOfSlice.modelList],
+    load: () => storeDo[namesOfSlice.refreshModel]({ invalidate: true, queryArgs: initArgs }),
+    label: (model) => optionLabel(model, renderOption),
+    disabled,
+  });
 
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div {...agentAttrs(onChange)} className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Select<string | null, false, true>
         label={label}
@@ -1335,9 +1415,11 @@ const ParentId = <T extends string, State, Input, Full extends { id: string }, L
   };
   const modelList = storeUse[namesOfSlice.modelList]() as DataList<Light>;
   const modelListLoading = storeUse[namesOfSlice.modelListLoading]() as string | boolean;
+  // The id *is* the value here, so the ordinary field setter describes it — no lookup, unlike `Parent`.
+  useFieldTool(onChange, { disabled });
 
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div {...agentAttrs(onChange)} className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Select<string | null, false, true>
         searchable
@@ -1383,7 +1465,7 @@ interface ChildrenProps<T extends string, State, Input, Full, Light> {
   disabled?: boolean;
   nullable?: boolean;
   initArgs?: any[];
-  value: Light[];
+  value: Light[] | null;
   onChange: (value: Light[]) => void;
   onSearch?: (text: string) => void;
   slice: SliceMeta;
@@ -1426,9 +1508,15 @@ const Children = <T extends string, State, Input, Full extends { id: string }, L
   };
   const modelList = storeUse[namesOfSlice.modelList]() as DataList<Light>;
   const modelListLoading = storeUse[namesOfSlice.modelListLoading]() as string | boolean;
+  useRelationFieldTool(onChange, {
+    read: () => storeGet<DataList<Light>>()[namesOfSlice.modelList],
+    load: () => storeDo[namesOfSlice.refreshModel]({ invalidate: true, queryArgs: initArgs }),
+    label: (model) => optionLabel(model, renderOption),
+    disabled,
+  });
 
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div {...agentAttrs(onChange)} className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Select
         searchable
@@ -1437,7 +1525,7 @@ const Children = <T extends string, State, Input, Full extends { id: string }, L
         labelClassName={labelClassName}
         selectClassName={selectClassName}
         multiple
-        value={value.map((model) => model.id)}
+        value={(value ?? []).map((model) => model.id)}
         options={modelList.map((model) => {
           const label = renderOption(model);
           return { label: typeof label === "string" ? label : model.id, value: model.id };
@@ -1476,7 +1564,7 @@ interface ChildrenIdProps<T extends string, State, Input, Full, Light> {
   disabled?: boolean;
   nullable?: boolean;
   initArgs?: any[];
-  value: string[];
+  value: string[] | null;
   slice: SliceMeta;
   onChange: (value: string[]) => void;
   onSearch?: (text: string) => void;
@@ -1516,9 +1604,11 @@ const ChildrenId = <T extends string, State, Input, Full extends { id: string },
   };
   const modelList = storeUse[namesOfSlice.modelList]() as DataList<Light>;
   const modelListLoading = storeUse[namesOfSlice.modelListLoading]() as string | boolean;
+  // The ids *are* the value here, so the ordinary field setter describes them — no lookup, unlike `Children`.
+  useFieldTool(onChange, { disabled });
 
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div {...agentAttrs(onChange)} className={cn("flex flex-col", className)}>
       {label ? <Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Select
         searchable
@@ -1527,7 +1617,7 @@ const ChildrenId = <T extends string, State, Input, Full extends { id: string },
         labelClassName={labelClassName}
         multiple
         // selectClassName={selectClassName}
-        value={value}
+        value={value ?? []}
         options={modelList.map((model) => {
           const label = renderOption(model);
           return { label: typeof label === "string" ? label : model.id, value: model.id };

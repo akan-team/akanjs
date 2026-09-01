@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "`akan script`는 seed data, migration, 점검, 작은 유지보수 수정 같은 일회성 개발/운영 작업에 사용합니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "The script starts the app server container without opening a normal web page.",
@@ -41,10 +41,10 @@ export default function Page() {
                 ko: "Interactive 점검이나 작은 운영 명령에는 `akan console`을 사용하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="command" title={l.trans({ en: "Command", ko: "명령어" })}>
         <Docs.Title>{l.trans({ en: "Command", ko: "명령어" })}</Docs.Title>
@@ -57,6 +57,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Run a script", ko: "Script 실행" })}
           code={`akan script myapp hello
 
@@ -64,7 +65,7 @@ export default function Page() {
 apps/myapp/script/hello.ts`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="lifecycle" title={l.trans({ en: "Server Lifecycle", ko: "Server lifecycle" })}>
         <Docs.Title>{l.trans({ en: "Server Lifecycle", ko: "Server lifecycle" })}</Docs.Title>
@@ -77,6 +78,7 @@ apps/myapp/script/hello.ts`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/myapp/script/hello.ts"
           code={`import { server } from "../server";
 
@@ -93,7 +95,7 @@ const run = async () => {
 void run();`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="service" title={l.trans({ en: "Use Services", ko: "Service 사용" })}>
         <Docs.Title>{l.trans({ en: "Use Services", ko: "Service 사용" })}</Docs.Title>
@@ -106,6 +108,7 @@ void run();`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Read and update data", ko: "데이터 조회와 수정" })}
           code={`import { server, srv } from "../server";
 
@@ -129,12 +132,12 @@ const run = async () => {
 void run();`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="lookup" title={l.trans({ en: "Lookup Helpers", ko: "Lookup helper" })}>
         <Docs.Title>{l.trans({ en: "Lookup Helpers", ko: "Lookup helper" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "`server.get(ArticleService)`: class-based lookup with strong types.",
@@ -159,15 +162,15 @@ void run();`}
                 ko: '`server.getAdaptor("storage")`: infrastructure 작업에서 adaptor를 조회할 때 사용합니다.',
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Print the target environment before changing data.",
@@ -186,10 +189,10 @@ void run();`}
                 ko: "Domain rule이 한곳에 남도록 직접 database를 쓰기보다 service method를 우선 사용하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

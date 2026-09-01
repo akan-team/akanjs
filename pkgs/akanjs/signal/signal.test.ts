@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
-import { ENDPOINT_META, ID, INJECT_META, INTERNAL_META, Int, SLICE_META } from "akanjs/base";
+import { afterEach, describe, expect, test } from "bun:test";
+import { Any, ENDPOINT_META, ID, INJECT_META, INTERNAL_META, Int, SLICE_META } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import { by, type DatabaseCls, DatabaseRegistry, from, into, type ModelCls } from "akanjs/document";
 import {
@@ -194,15 +194,18 @@ const makeHttpRequest = ({
   url = "http://localhost/api?ownerId=u1&ids=a&ids=b",
   params = { id: "123" },
   body,
+  headers = {},
 }: {
   url?: string;
   params?: Record<string, string>;
   body?: Record<string, unknown>;
+  headers?: Record<string, string>;
 } = {}) =>
   ({
     url,
     params,
     body: body ? {} : undefined,
+    headers: new Headers(headers),
     json: async () => body ?? {},
   }) as unknown as Bun.BunRequest;
 
@@ -423,8 +426,8 @@ describe("signal class factories and composition", () => {
     ) {}
 
     expect(Object.keys(MainSlice[SLICE_META]).sort()).toEqual(["", "byOwner", "libOwner"]);
-    expect(MainSlice[SLICE_META][""]?.args[0]?.name).toBe("query");
-    expect(MainSlice[SLICE_META][""]?.args[0]?.option?.nullable).toBe(true);
+    expect(MainSlice[SLICE_META][""]?.args.map((arg) => arg.name)).toEqual(["queryKey", "args"]);
+    expect(MainSlice[SLICE_META][""]?.args.every((arg) => arg.option?.nullable)).toBe(true);
     expect(MainSlice.getGuards.map((guard) => guard.name)).toEqual(["Public", "None"]);
     expect(MainSlice.cruGuards.map((guard) => guard.name)).toEqual(["TestAdmin"]);
     expect(Object.keys(MainSlice.srv.srvMap).sort()).toEqual(["signalTestAuxService", "signalTestItemService"]);
@@ -490,6 +493,19 @@ describe("signal serialization and registry", () => {
       refName: "signalTestItem",
       modelType: "full",
       nullable: true,
+    });
+    // Sort keys are the client's only source for the orderings a list UI may offer.
+    expect(databaseSignal.filter?.sortKeys).toEqual(["latest", "oldest", "relevance", "titleAsc"]);
+    // The filter map is the other half: the root slice names one of these keys instead of carrying a query.
+    expect(databaseSignal.filter?.filter.byOwner).toEqual([
+      { type: "search", refName: "ID", name: "ownerId", ref: "user" },
+    ]);
+    expect(databaseSignal.slice?.[""]?.args[0]).toEqual({
+      type: "search",
+      refName: "String",
+      name: "queryKey",
+      nullable: true,
+      oneOf: ["any", "byOwner"],
     });
     expect(databaseSignal.getGuards).toBeUndefined();
     expect(databaseSignal.cruGuards).toBeUndefined();
@@ -599,6 +615,44 @@ describe("SignalContext execution", () => {
     );
   });
 
+  test("parses boolean search args sent as query text", async () => {
+    const endpointInfo = buildEndpoint
+      .query(String)
+      .search("archived", Boolean)
+      .exec((archived) => `archived:${String(archived)}`);
+    const context = makeSignalContext({
+      endpointInfo,
+      request: makeHttpRequest({ url: "http://localhost/items?archived=true" }),
+    });
+
+    await context.init();
+    const response = (await context.exec()) as Response;
+
+    expect(context.args).toEqual([true]);
+    expect(await response.json()).toBe("archived:true");
+  });
+
+  test("parses an Any search arg as the JSON the query string carries", async () => {
+    const endpointInfo = buildEndpoint
+      .query(String)
+      .search("args", Any)
+      .exec((args) => JSON.stringify(args));
+    const contextOf = (url: string) => makeSignalContext({ endpointInfo, request: makeHttpRequest({ url }) });
+
+    const context = contextOf(`http://localhost/items?args=${encodeURIComponent('["Alpha",7]')}`);
+    await context.init();
+    expect(context.args).toEqual([["Alpha", 7]]);
+    expect(await ((await context.exec()) as Response).json()).toBe('["Alpha",7]');
+
+    const empty = contextOf("http://localhost/items");
+    await empty.init();
+    expect(empty.args).toEqual([null]);
+
+    const malformed = contextOf("http://localhost/items?args=not-json");
+    // `SignalContext.try` wraps init at the route, so a bad value answers 400 instead of a 500.
+    await expect(malformed.init()).rejects.toMatchObject({ message: 'Invalid JSON in "args"', statusCode: 400 });
+  });
+
   test("parses websocket message and pubsub room args", async () => {
     const messageInfo = buildEndpoint
       .message(String)
@@ -610,7 +664,7 @@ describe("SignalContext execution", () => {
       .room("roomId", String)
       .exec(() => undefined);
     const wsReq = {
-      ws: { id: "ws-1" },
+      ws: { id: "ws-1", data: { socketId: "socket-1" } },
       data: ["hello"],
       eventType: "message",
     } as never;
@@ -624,7 +678,7 @@ describe("SignalContext execution", () => {
     });
     const pubsubContext = new SignalContext(
       "roomKey",
-      { ws: { id: "ws-2" }, data: ["room-1"], eventType: "subscribe" } as never,
+      { ws: { id: "ws-2", data: { socketId: "socket-2" } }, data: ["room-1"], eventType: "subscribe" } as never,
       {
         endpointInfo: pubsubInfo,
         adaptor: new (adapt("signalTestPubsubAdaptor"))(),
@@ -642,6 +696,68 @@ describe("SignalContext execution", () => {
     expect(messageContext.internalArgs).toEqual([]);
     expect(pubsubContext.args).toEqual(["room-1"]);
     expect(pubsubContext.getRoomId("roomKey")).toBe("roomKey-room-1");
+  });
+
+  test("hands a message handler the socket id minted at the handshake", async () => {
+    const endpointInfo = buildEndpoint
+      .message(String)
+      .msg("text", String)
+      .with(Ws)
+      .exec((text, ws) => `${text}:${ws.socketId}`);
+    const context = new SignalContext(
+      "messageKey",
+      { ws: { data: { socketId: "socket-1" } }, data: ["hello"], eventType: "message" } as never,
+      {
+        endpointInfo,
+        adaptor: new (adapt("signalTestWsSocketIdAdaptor"))(),
+        registry: getDefaultInjectRegistry(),
+        env: {} as never,
+        live: makeLiveRegistry(),
+        middleware: new Map(),
+      },
+    );
+
+    await context.init();
+    const result = (await context.exec()) as unknown as string;
+
+    expect(result).toBe("hello:socket-1");
+  });
+
+  test("registers ws cleanup through the detached on/off the Ws arg hands out", async () => {
+    const cleaned: string[] = [];
+    const endpointInfo = buildEndpoint
+      .pubsub(String)
+      .room("roomId", String)
+      .with(Ws)
+      .exec((roomId, ws) => {
+        const remove = () => {
+          cleaned.push(`removed:${roomId as string}`);
+        };
+        ws.on("disconnect", remove);
+        ws.on("unsubscribe", remove);
+        ws.off("unsubscribe", remove);
+      });
+    const context = new SignalContext(
+      "roomKey",
+      { ws: { data: { socketId: "socket-1" } }, data: ["room-1"], eventType: "subscribe" } as never,
+      {
+        endpointInfo,
+        adaptor: new (adapt("signalTestWsLifecycleAdaptor"))(),
+        registry: getDefaultInjectRegistry(),
+        env: {} as never,
+        live: makeLiveRegistry(),
+        middleware: new Map(),
+      },
+    );
+
+    await context.init();
+    await context.exec();
+
+    const wsCtx = context.getWebSocketContext();
+    expect(wsCtx.onDisconnect.size).toBe(1);
+    expect(wsCtx.onUnsubscribe.size).toBe(0);
+    for (const handler of wsCtx.onDisconnect) await handler();
+    expect(cleaned).toEqual(["removed:room-1"]);
   });
 
   test("runs guards, internal args, and middleware in order", async () => {
@@ -1155,5 +1271,32 @@ describe("SignalContext websocket authorization", () => {
 
     expect(await context.authorize()).toBe(true);
     expect(signalTestOrder).toEqual(["global:before", "global:after"]);
+  });
+});
+
+describe("SignalContext caller address", () => {
+  afterEach(() => SignalContext.setHttpPeerResolver(null));
+
+  test("prefers a proxy's header over the socket peer", () => {
+    SignalContext.setHttpPeerResolver(() => ({ address: "10.0.0.9", port: 55_000 }));
+    const context = makeSignalContext({
+      request: makeHttpRequest({ headers: { "x-real-ip": "203.0.113.7", "x-forwarded-port": "443" } }),
+    });
+    expect(context.getClientIp()).toBe("203.0.113.7");
+    expect(context.getClientPort()).toBe(443);
+  });
+
+  test("falls back to the socket peer when nothing proxied the call", () => {
+    SignalContext.setHttpPeerResolver(() => ({ address: "::ffff:198.51.100.4", port: 44_100 }));
+    const context = makeSignalContext({ request: makeHttpRequest() });
+    // Unwrapped from its IPv4-mapped form, so it can address a socket as well as identify a caller.
+    expect(context.getClientIp()).toBe("198.51.100.4");
+    expect(context.getClientPort()).toBe(44_100);
+  });
+
+  test("is null rather than a placeholder when there is no header and no peer", () => {
+    const context = makeSignalContext({ request: makeHttpRequest() });
+    expect(context.getClientIp()).toBeNull();
+    expect(context.getClientPort()).toBeNull();
   });
 });

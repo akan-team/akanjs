@@ -106,10 +106,15 @@ describe("TextFieldPaths", () => {
     expect([...Full.text.desc]).toEqual(["summary"]);
   });
 
+  // The `@ts-expect-error` lines are half the assertion: a masked builder takes no `text` role, so this is a
+  // compile error at the call site and never reaches a boot. The throw is the backstop for an option object the
+  // excess-property check cannot see through, and it is what these tests exercise.
   test("rejects secret and hidden fields", () => {
+    // @ts-expect-error a secret field takes no text role
     expect(() => via((f) => ({ token: f.secret(String, { text: "title" }) }))).toThrow(
       'Text field "token" is secret and must not be indexed',
     );
+    // @ts-expect-error a hidden field takes no text role
     expect(() => via((f) => ({ token: f.hidden(String, { text: "title" }) }))).toThrow(
       'Text field "token" is hidden and must not be indexed',
     );
@@ -118,6 +123,7 @@ describe("TextFieldPaths", () => {
   test("rejects resolved fields, which never reach _doc", () => {
     const Input = via((f) => ({ headline: f(String) }));
     const Object_ = via(Input, (f) => ({}));
+    // @ts-expect-error a resolved field takes no text role
     expect(() => via(Object_, ["headline"] as const, (r) => ({ derived: r(String, { text: "title" }) }))).toThrow(
       'Text field "derived" is resolved and is absent from _doc',
     );

@@ -18,6 +18,7 @@ import {
   DocumentSchema,
   documentQueryHelper,
   encodeDocumentValue,
+  FilterQueryError,
   fillMissingFilterArgs,
   from,
   getFilterInfoByKey,
@@ -27,6 +28,7 @@ import {
   into,
   isDocumentId,
   type ModelCls,
+  resolveFilterQuery,
   type SchemaOf,
   sanitizeJson,
 } from ".";
@@ -117,6 +119,7 @@ const DocumentTestModelMixinRef = DocumentTestModelMixin as unknown as ModelCls<
 const DocumentTestItemInputRef = DocumentTestItemInput as unknown as DatabaseCls<
   InstanceType<typeof DocumentTestItemInput>
 >;
+class DocumentTestItemInsightDoc extends by(DocumentTestItemInsight) {}
 
 class LibFilter extends from(DocumentTestItemFull, (makeFilter) => ({
   query: {
@@ -265,6 +268,8 @@ const documentAppClassUserModelInfo = ConstantRegistry.buildModel(
     DocumentAppClassUserInsight,
   },
 );
+// `by` resolves the refName from ConstantRegistry, so an insight doc class cannot precede its buildModel call.
+class DocumentAppClassUserInsightDoc extends by(DocumentAppClassUserInsight) {}
 class DocumentAppClassUserDoc extends by(DocumentAppClassUser) {
   setEducation(education: string | undefined) {
     this.set({ education });
@@ -284,7 +289,7 @@ const documentAppClassUserDatabase = DatabaseRegistry.buildModel(
   DocumentAppClassUserDoc,
   DocumentAppClassUserModel,
   DocumentAppClassUserObject,
-  DocumentAppClassUserInsight,
+  DocumentAppClassUserInsightDoc,
   DocumentAppClassUserFilter,
 );
 const DocumentNoActionDocRef = class DocumentNoActionDoc {} as unknown as DatabaseCls<Record<string, never>>;
@@ -448,6 +453,32 @@ describe("by, from, into, and DatabaseRegistry", () => {
     });
   });
 
+  test("compiles a query key and its args into the filter's own query", () => {
+    expect(resolveFilterQuery(DocumentTestFilter, "byTitle", ["Alpha", true])).toEqual({
+      kind: "all",
+      queries: [{ title: "Alpha" }, { archived: true }],
+    });
+    // No key at all is the `any` filter every model carries, which is what a listing with no filter picked means.
+    expect(resolveFilterQuery(DocumentTestFilter)).toEqual({ removedAt: { empty: true } });
+    // An omitted optional reaches the query as `undefined`, exactly as the other filter call paths pad it.
+    expect(resolveFilterQuery(DocumentTestFilter, "byTitle", ["Alpha"])).toEqual({
+      kind: "all",
+      queries: [{ title: "Alpha" }, {}],
+    });
+    // The declared type is what parses the value, so an id the wire spelled wrong is refused here.
+    expect(() => resolveFilterQuery(DocumentTestFilter, "byOwner", ["not-an-id"])).toThrow(
+      'Invalid filter argument "ownerId" for key: byOwner',
+    );
+    expect(() => resolveFilterQuery(DocumentTestFilter, "byTitle", [])).toThrow(
+      'Missing filter argument "title" for key: byTitle',
+    );
+    expect(() => resolveFilterQuery(DocumentTestFilter, "missing")).toThrow(FilterQueryError);
+    // Args past the ones the filter declared are dropped: the caller names a filter, never a query.
+    expect(resolveFilterQuery(DocumentTestFilter, "byOwner", ["1234567890abcdef12345678", "extra"])).toEqual({
+      ownerId: "1234567890abcdef12345678",
+    });
+  });
+
   test("executes filter query functions with document query helpers", () => {
     const byTitle = getFilterInfoByKey(DocumentTestFilter, "byTitle");
     const byOwner = getFilterInfoByKey(DocumentTestFilter, "byOwner");
@@ -467,6 +498,20 @@ describe("by, from, into, and DatabaseRegistry", () => {
     expect(insightFields.count.getProps().accumulate).toEqual({});
     expect(insightFields.highScoreCount.getProps().accumulate).toEqual({ score: { gte: 10 } });
     expect(insightFields.taggedCount.getProps().accumulate).toEqual({ tags: { oneOf: ["featured", "urgent"] } });
+  });
+
+  test("exposes typed insight and count query methods on an into model", () => {
+    const assertModelQueryMethods = async (model: DocumentTestModel) => {
+      const countByTitle: number = await model.countByTitle("Alpha", false);
+      const insightByOwner: DocumentModel<InstanceType<typeof DocumentTestItemInsight>> =
+        await model.insightByOwner("1234567890abcdef12345678");
+      const insight = await model.insightByTitle("Alpha", false);
+      // Arithmetic, not a computation: it fails to compile the moment the insight falls back to `unknown`.
+      const accumulated: number = insight.count + insight.highScoreCount + insight.taggedCount;
+      return { countByTitle, insightByOwner, accumulated };
+    };
+
+    expect(assertModelQueryMethods).toBeFunction();
   });
 
   test("exposes typed database query methods for filter keys", () => {
@@ -552,7 +597,7 @@ describe("by, from, into, and DatabaseRegistry", () => {
       DocumentTestDoc,
       DocumentTestModel,
       DocumentTestItemObject,
-      DocumentTestItemInsight,
+      DocumentTestItemInsightDoc,
       DocumentTestFilter,
     );
     const scalar = DatabaseRegistry.buildScalar("documentTestScalar", DocumentTestScalar);

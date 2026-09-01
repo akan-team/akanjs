@@ -3,6 +3,7 @@ export const SLICE_META = Symbol.for("akan.slice");
 export const FILTER_META = Symbol.for("akan.filter");
 export const LOADER_META = Symbol.for("akan.loader");
 export const INJECT_META = Symbol.for("akan.inject");
+export const LIBS_REMOVE_HOOK = Symbol.for("akan.service.libsRemoveHook");
 export const ENDPOINT_META = Symbol.for("akan.endpoint");
 export const ENDPOINT_DICT_SHAPE: unique symbol = Symbol.for("akan.endpoint.dictShape") as never;
 export const SLICE_DICT_SHAPE: unique symbol = Symbol.for("akan.slice.dictShape") as never;
@@ -12,6 +13,10 @@ export const STATE_META = Symbol.for("akan.state");
 export const STATE_INIT_META = Symbol.for("akan.state.init");
 export const STATE_DERIVED_META = Symbol.for("akan.state.derived");
 export const ACTION_META = Symbol.for("akan.action");
+/** Which module declared each action. See `ActionOwner`. */
+export const ACTION_OWNER_META = Symbol.for("akan.action.owner");
+/** What a dispatcher does, carried on the function so a component handed one can annotate the DOM with it. */
+export const ACTION_TAG = Symbol.for("akan.action.tag");
 export const SERVER_VALUE = Symbol.for("akan.value.server");
 export const CLIENT_VALUE = Symbol.for("akan.value.client");
 export const DEFAULT_VALUE = Symbol.for("akan.value.default");

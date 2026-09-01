@@ -1,12 +1,16 @@
 "use client";
-import { clsx, msg, router, usePage } from "akanjs/client";
+import { ID } from "akanjs/base";
+import { cn, msg, router, usePage } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import { useMemo, useState } from "react";
 import { AiOutlineDelete } from "react-icons/ai";
 
+import { agentAttrs } from "../agentAttrs";
+import { buttonRecipe } from "../Button";
 import { Modal } from "../Modal";
+import { inputRecipe } from "../recipe";
 
 interface SureToRemoveProps {
   className?: string;
@@ -37,17 +41,33 @@ export default function SureToRemove({
     [],
   );
 
+  const removeModel = async (id: string) => {
+    await storeDo[names.removeModel](id);
+    msg.success("base.removeSuccess", { data: { model: l(`${modelName}.modelName` as "base.new") } });
+    setModalOpen(false);
+    if (!redirect) return;
+    if (redirect === "back") router.back();
+    else router.push(redirect);
+  };
+  // `typeNameToRemove` makes a person retype the name before the button unlocks. An approval card is one click,
+  // so it is not that gate — the lever is withheld rather than offered at a friction the screen does not have.
+  const removeTool = st
+    .tool(typeNameToRemove ? null : names.removeModel)
+    .desc(`Remove one ${modelName}.`)
+    .arg("modelId", ID)
+    .exec((id) => removeModel(id));
   return (
     <div
       className="inline size-full"
+      {...agentAttrs(removeTool)}
       onClick={(e) => {
         e.stopPropagation();
         setModalOpen(true);
       }}
     >
       <div
-        className={clsx(
-          "flex size-full cursor-pointer flex-nowrap items-center justify-center gap-2 whitespace-nowrap text-error",
+        className={cn(
+          "flex size-full cursor-pointer flex-nowrap items-center justify-center gap-2 whitespace-nowrap text-destructive",
           className,
         )}
       >
@@ -59,22 +79,17 @@ export default function SureToRemove({
           setModalOpen(false);
         }}
         title={
-          <div className="font-bold text-error text-lg">
+          <div className="font-bold text-destructive text-lg">
             {l("base.removeModel", { model: l(`${modelName}.modelName` as "base.new") })}
           </div>
         }
-        bodyClassName="border-error"
+        bodyClassName="border-destructive"
         action={
           <button
-            className="btn btn-error w-full"
+            className={buttonRecipe({ variant: "destructive" }, "w-full")}
             disabled={typeNameToRemove && repeatName !== name}
             onClick={async () => {
-              await storeDo[names.removeModel](modelId);
-              msg.success("base.removeSuccess", { data: { model: l(`${modelName}.modelName` as "base.new") } });
-              setModalOpen(false);
-              if (!redirect) return;
-              if (redirect === "back") router.back();
-              else router.push(redirect);
+              await removeModel(modelId);
             }}
           >
             {l("base.removeModel", { model: l(`${modelName}.modelName` as "base.new") })}
@@ -94,7 +109,7 @@ export default function SureToRemove({
         </div>
         {typeNameToRemove ? (
           <input
-            className="input w-full text-center"
+            className={inputRecipe({}, "text-center")}
             placeholder={`${l(`${modelName}.modelName` as "base.new")} name`}
             value={repeatName}
             onChange={(e) => {

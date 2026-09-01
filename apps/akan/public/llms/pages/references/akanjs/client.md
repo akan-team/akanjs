@@ -16,7 +16,7 @@ akanjs/client
 
 Client navigation singleton that normalizes Akan language/base-path prefixes before delegating to the active router. Use it from pages, stores, templates, and utilities for push/replace/back/refresh.
 
-Re-export of `clsx` for composing class names across Akan UI code. Most view/unit/template components import it from `akanjs/client` to keep UI dependencies consistent.
+The one class-combining function: joins conditional parts (`cond && "x"`) and resolves Tailwind conflicts with Akan's semantic tokens registered. Every view/unit/template component imports it from `akanjs/client`.
 
 Common props for generated Unit, Zone, and list UI components. They carry model data, slice metadata, query/init settings, actions, columns, and click handlers.
 

@@ -2,6 +2,7 @@ import { type AdaptorCls, adapt } from "../adapt";
 import type { CacheAdaptor } from "./cache.adaptor";
 import type { CompressAdaptor } from "./compress.adaptor";
 import type { DatabaseAdaptor } from "./database.adaptor";
+import type { LlmAdaptor } from "./llm.adaptor";
 import type { LoggingAdaptor } from "./logging.adaptor";
 import type { QueueAdaptor } from "./queue.adaptor";
 import type { ScheduleAdaptor } from "./schedule.adaptor";
@@ -16,3 +17,4 @@ export const ScheduleAdaptorRole = adapt("scheduleAdaptorRole") as AdaptorCls<Sc
 export const LoggingAdaptorRole = adapt("loggingAdaptorRole") as AdaptorCls<LoggingAdaptor>;
 export const WebsocketAdaptorRole = adapt("websocketAdaptorRole") as AdaptorCls<WebsocketAdaptor>;
 export const CompressAdaptorRole = adapt("compressAdaptorRole") as AdaptorCls<CompressAdaptor>;
+export const LlmAdaptorRole = adapt("llmAdaptorRole") as AdaptorCls<LlmAdaptor>;

@@ -56,7 +56,6 @@ const SSR_RENDER_EXTERNALS = [
 export const AKAN_OPTIONAL_BACKEND_EXTERNALS = [
   "@libsql/client",
   "bullmq",
-  "croner",
   "ioredis",
   "postgres",
   "protobufjs",
@@ -78,6 +77,7 @@ export class ApplicationBuildRunner {
   async build({ spinner = false }: BuildOptions = {}): Promise<BuildResult> {
     // serial build is needed because of Bun.build is unstable for parallel build
     const phaseOptions = { spinner };
+    const { web } = await this.#app.getConfig();
     await this.#runPhase("prepare", "Preparing output directory", () => this.#app.prepareCommand("build"), undefined, {
       spinner,
     });
@@ -92,18 +92,20 @@ export class ApplicationBuildRunner {
     await this.#runPhase(
       "ssr",
       "Building SSR route artifacts",
-      () => this.#buildSsr(),
+      async () => (web.ssr ? await this.#buildSsr() : null),
       (result) =>
         result
           ? `${result.allRoutes.manifest.routeIds.length} routes, ${result.allRoutes.manifest.knownEntries.length} entries`
-          : "skipped",
+          : web.ssr
+            ? "skipped"
+            : "disabled by akan.config.ts web.ssr",
       phaseOptions,
     );
     await this.#runPhase(
       "csr",
       "Building CSR assets",
-      () => this.#buildCsr(),
-      (result) => result?.outputDir ?? "skipped",
+      async () => (web.csr ? await this.#buildCsr() : null),
+      (result) => result?.outputDir ?? (web.csr ? "skipped" : "disabled by akan.config.ts web.csr"),
       phaseOptions,
     );
     await this.#runPhase(
@@ -112,7 +114,7 @@ export class ApplicationBuildRunner {
       () => precompressArtifacts(this.#app),
       (result) =>
         result.files > 0
-          ? `${result.files} files, ${ApplicationBuildRunner.formatBytes(result.inputBytes)} -> ${ApplicationBuildRunner.formatBytes(result.outputBytes)}`
+          ? `${result.files} files, ${ApplicationBuildRunner.formatBytes(result.inputBytes)} -> gzip ${ApplicationBuildRunner.formatBytes(result.outputBytes)} / br ${ApplicationBuildRunner.formatBytes(result.brotliBytes)}`
           : "no files",
       phaseOptions,
     );
@@ -166,7 +168,7 @@ export class ApplicationBuildRunner {
     const akanConfig = await this.#app.getConfig();
     await Promise.all([
       this.#app.dist.writeJson("package.json", akanConfig.getProductionPackageJson()),
-      this.#app.dist.writeFile(`${this.#app.dist.cwdPath}/Dockerfile`, akanConfig.docker.content),
+      this.#app.dist.writeFile(`${this.#app.dist.cwdPath}/Dockerfile`, akanConfig.dockerfile),
     ]);
   }
 
@@ -175,6 +177,7 @@ export class ApplicationBuildRunner {
     const backendExternals = [
       ...new Set([...akanConfig.externalLibs, ...SSR_RENDER_EXTERNALS, ...AKAN_OPTIONAL_BACKEND_EXTERNALS]),
     ];
+    const { web } = akanConfig;
     const backendEntryPoints = [`${this.#app.cwdPath}/main.ts`, `${this.#app.cwdPath}/server.ts`];
     for (const entrypoint of backendEntryPoints) {
       if (!(await Bun.file(entrypoint).exists())) throw new Error(`Backend entrypoint not found: ${entrypoint}`);
@@ -188,17 +191,20 @@ export class ApplicationBuildRunner {
       define: { "process.env.NODE_ENV": JSON.stringify("production") },
       plugins: backendExternals.length > 0 ? [this.#createExternalSpecifiersPlugin(backendExternals)] : [],
     });
-    const rscWorkerResult = await this.#buildOrThrow("rsc-worker", {
-      entrypoints: [this.#resolveRscWorkerBuildEntry()],
-      outdir: this.#app.dist.cwdPath,
-      target: "bun",
-      minify: true,
-      naming: { entry: "[name].[ext]", chunk: "chunk-[hash].[ext]" },
-      conditions: ["react-server"],
-      // `akan build` must embed production react-server-dom regardless of the shell's NODE_ENV.
-      define: { "process.env.NODE_ENV": JSON.stringify("production") },
-      plugins: backendExternals.length > 0 ? [this.#createExternalSpecifiersPlugin(backendExternals)] : [],
-    });
+    // Nothing spawns the RSC worker without SSR, so an api-only image does not carry it.
+    const rscWorkerResult = web.ssr
+      ? await this.#buildOrThrow("rsc-worker", {
+          entrypoints: [this.#resolveRscWorkerBuildEntry()],
+          outdir: this.#app.dist.cwdPath,
+          target: "bun",
+          minify: true,
+          naming: { entry: "[name].[ext]", chunk: "chunk-[hash].[ext]" },
+          conditions: ["react-server"],
+          // `akan build` must embed production react-server-dom regardless of the shell's NODE_ENV.
+          define: { "process.env.NODE_ENV": JSON.stringify("production") },
+          plugins: backendExternals.length > 0 ? [this.#createExternalSpecifiersPlugin(backendExternals)] : [],
+        })
+      : null;
     const consoleRuntimeResult = await this.#buildOrThrow("console-runtime", {
       entrypoints: [this.#resolveConsoleRuntimeBuildEntry()],
       outdir: this.#app.dist.cwdPath,
@@ -209,8 +215,9 @@ export class ApplicationBuildRunner {
     });
     await this.#writeConsoleShim();
     return {
-      entrypoints: backendEntryPoints.length + 2,
-      outputs: backendResult.outputs.length + rscWorkerResult.outputs.length + consoleRuntimeResult.outputs.length + 1,
+      entrypoints: backendEntryPoints.length + (rscWorkerResult ? 2 : 1),
+      outputs:
+        backendResult.outputs.length + (rscWorkerResult?.outputs.length ?? 0) + consoleRuntimeResult.outputs.length + 1,
     };
   }
 

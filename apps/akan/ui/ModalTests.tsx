@@ -1,8 +1,9 @@
 "use client";
-import { Dialog, Modal } from "akanjs/ui";
+import { buttonRecipe, Dialog, LegacyModal, Modal } from "akanjs/ui";
 import { useState } from "react";
+import { panelRecipe } from "./Recipe";
 
-type ModalKey = "basic" | "action" | "long" | "confirm" | "plain";
+type ModalKey = "basic" | "action" | "long" | "confirm" | "plain" | "legacy";
 
 const longItems = Array.from({ length: 28 }, (_, index) => `Scrollable content row ${index + 1}`);
 
@@ -19,19 +20,19 @@ export const ModalTests = () => {
   };
 
   return (
-    <main className="min-h-screen bg-base-100 px-6 py-10 text-base-content">
+    <main className="min-h-screen bg-background px-6 py-10 text-foreground">
       <section className="mx-auto flex max-w-5xl flex-col gap-8">
         <div>
           <p className="font-semibold text-primary text-sm tracking-[0.24em]">AKAN MODAL TESTS</p>
           <h1 className="mt-3 font-black text-4xl tracking-tight md:text-5xl">Headless Modal 샘플 페이지</h1>
-          <p className="mt-4 max-w-2xl text-base-content/70">
+          <p className="mt-4 max-w-2xl text-foreground/70">
             Radix Dialog 제거 후 `Modal`과 compound `Dialog`의 주요 케이스를 직접 열어보고 닫기 동작, overlay, Escape,
             action slot, scroll 영역, confirm close를 확인하는 페이지입니다.
           </p>
         </div>
 
-        <div className="rounded-2xl border border-base-300 bg-base-200/60 p-4">
-          <div className="text-base-content/60 text-sm">최근 action 결과</div>
+        <div className="rounded-2xl border border-border bg-muted/60 p-4">
+          <div className="text-foreground/60 text-sm">최근 action 결과</div>
           <div className="mt-1 font-semibold">{result}</div>
         </div>
 
@@ -61,6 +62,11 @@ export const ModalTests = () => {
             description="title 없이 content만 있는 Modal의 ARIA/레이아웃 확인용입니다."
             onOpen={() => open("plain")}
           />
+          <TestCard
+            title="Legacy Modal"
+            description="spring 애니메이션과 drag-to-dismiss가 있는 이전 skin입니다."
+            onOpen={() => open("legacy")}
+          />
           <CompoundDialogCard
             onSave={() => {
               setResult(`Compound Dialog action: ${new Date().toLocaleTimeString()}`);
@@ -72,7 +78,7 @@ export const ModalTests = () => {
       <Modal open={openModal === "basic"} onCancel={close} title="Basic Modal">
         <div className="space-y-3">
           <p>기본 모달입니다. X 버튼, overlay click, Escape key로 닫히는지 확인하세요.</p>
-          <p className="text-base-content/60 text-sm">
+          <p className="text-foreground/60 text-sm">
             닫힘 애니메이션이 끝난 뒤 unmount되는지도 함께 확인할 수 있습니다.
           </p>
         </div>
@@ -83,13 +89,13 @@ export const ModalTests = () => {
         onCancel={close}
         title="Action Modal"
         action={
-          <div className="flex justify-end gap-2 border-base-300 border-t p-4">
-            <button type="button" className="btn btn-ghost" onClick={close}>
+          <div className="flex justify-end gap-2">
+            <button type="button" className={buttonRecipe({ variant: "ghost" })} onClick={close}>
               취소
             </button>
             <button
               type="button"
-              className="btn btn-primary"
+              className={buttonRecipe({ variant: "primary" })}
               onClick={() => {
                 setResult(`Modal action saved: ${new Date().toLocaleTimeString()}`);
                 close();
@@ -102,18 +108,21 @@ export const ModalTests = () => {
       >
         <div className="space-y-4">
           <p>아래 action slot이 모달 하단에 렌더링되는지 확인합니다.</p>
-          <input className="input input-bordered w-full" placeholder="focus와 입력 동작 확인" />
+          <input
+            className="h-10 w-full rounded-field border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none"
+            placeholder="focus와 입력 동작 확인"
+          />
         </div>
       </Modal>
 
       <Modal open={openModal === "long"} onCancel={close} title="Long Content">
         <div className="space-y-3">
-          <p className="text-base-content/70">
+          <p className="text-foreground/70">
             긴 콘텐츠를 넣어 body 영역이 스크롤되고, 배경 body scroll이 잠기는지 확인합니다.
           </p>
           <div className="grid gap-2">
             {longItems.map((item) => (
-              <div key={item} className="rounded-xl border border-base-300 bg-base-200 px-4 py-3">
+              <div key={item} className="rounded-xl border border-border bg-muted px-4 py-3">
                 {item}
               </div>
             ))}
@@ -124,11 +133,11 @@ export const ModalTests = () => {
       <Modal open={openModal === "confirm"} onCancel={close} title="Confirm Close" confirmClose>
         <div className="space-y-3">
           <p>닫기를 시도하면 브라우저 confirm이 먼저 표시됩니다.</p>
-          <p className="text-base-content/60 text-sm">
+          <p className="text-foreground/60 text-sm">
             cancel을 누르면 모달이 유지되고, confirm을 누르면 닫힘 애니메이션 후 unmount됩니다.
           </p>
           <textarea
-            className="textarea textarea-bordered min-h-28 w-full"
+            className="min-h-28 w-full rounded-field border border-input bg-background p-3 text-sm focus:border-primary focus:outline-none"
             placeholder="작성 중인 값이 있다고 가정합니다."
           />
         </div>
@@ -140,6 +149,13 @@ export const ModalTests = () => {
           <p>title prop이 없어도 body와 close 동작이 정상인지 확인합니다.</p>
         </div>
       </Modal>
+
+      <LegacyModal open={openModal === "legacy"} onCancel={close} title="Legacy Modal">
+        <div className="space-y-3">
+          <p>이전 skin입니다. 열고 닫을 때 spring 전환이 있고, 모바일에서는 헤더를 아래로 끌어 닫을 수 있습니다.</p>
+          <p className="text-foreground/60 text-sm">새 화면은 애니메이션이 없는 `Modal`을 사용합니다.</p>
+        </div>
+      </LegacyModal>
     </main>
   );
 };
@@ -152,12 +168,14 @@ interface TestCardProps {
 
 const TestCard = ({ title, description, onOpen }: TestCardProps) => {
   return (
-    <article className="flex min-h-44 flex-col justify-between rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm">
+    <article
+      className={panelRecipe({ radius: "2xl", padding: "lg" }, "flex min-h-44 flex-col justify-between shadow-sm")}
+    >
       <div>
         <h2 className="font-bold text-xl">{title}</h2>
-        <p className="mt-2 text-base-content/65 text-sm leading-6">{description}</p>
+        <p className="mt-2 text-foreground/65 text-sm leading-6">{description}</p>
       </div>
-      <button type="button" className="btn btn-primary mt-5" onClick={onOpen}>
+      <button type="button" className={buttonRecipe({ variant: "primary" }, "mt-5")} onClick={onOpen}>
         열기
       </button>
     </article>
@@ -170,16 +188,18 @@ interface CompoundDialogCardProps {
 
 const CompoundDialogCard = ({ onSave }: CompoundDialogCardProps) => {
   return (
-    <article className="flex min-h-44 flex-col justify-between rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm">
+    <article
+      className={panelRecipe({ radius: "2xl", padding: "lg" }, "flex min-h-44 flex-col justify-between shadow-sm")}
+    >
       <div>
         <h2 className="font-bold text-xl">Compound Dialog</h2>
-        <p className="mt-2 text-base-content/65 text-sm leading-6">
+        <p className="mt-2 text-foreground/65 text-sm leading-6">
           `Dialog.Trigger`, `Dialog.Title`, `Dialog.Content`, `Dialog.Action` 조합을 확인합니다.
         </p>
       </div>
       <Dialog>
         <Dialog.Trigger className="mt-5">
-          <button type="button" className="btn btn-secondary w-full">
+          <button type="button" className={buttonRecipe({ variant: "secondary" }, "w-full")}>
             열기
           </button>
         </Dialog.Trigger>
@@ -188,12 +208,15 @@ const CompoundDialogCard = ({ onSave }: CompoundDialogCardProps) => {
           <Dialog.Content>
             <div className="space-y-4">
               <p>compound API를 직접 조합한 모달입니다.</p>
-              <input className="input input-bordered w-full" placeholder="Dialog.Content 내부 input" />
+              <input
+                className="h-10 w-full rounded-field border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none"
+                placeholder="Dialog.Content 내부 input"
+              />
             </div>
           </Dialog.Content>
           <Dialog.Action>
-            <div className="flex justify-end border-base-300 border-t p-4">
-              <button type="button" className="btn btn-secondary" onClick={onSave}>
+            <div className="flex justify-end border-border border-t p-4">
+              <button type="button" className={buttonRecipe({ variant: "secondary" })} onClick={onSave}>
                 action 실행
               </button>
             </div>

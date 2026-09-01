@@ -7,21 +7,21 @@
   user-select: none;
 }
 
-/* Dual theme: light by default, dark via data-theme */
-.shiki {
-  background-color: transparent !important;
+/* Dual-theme syntax colors. shiki (defaultColor: false) emits per-token --shiki-light/--shiki-dark
+   CSS variables on its classless token spans. We drive them off [data-theme] — default = dark to
+   match the app's :root default, [data-theme="light"] overrides — so code blocks switch with the
+   page theme. `:not([class])` keeps the .line-number / .expand-icon colors above untouched. */
+.shiki span:not([class]) {
+  color: var(--shiki-dark);
+  font-style: var(--shiki-dark-font-style);
+  font-weight: var(--shiki-dark-font-weight);
+  text-decoration: var(--shiki-dark-text-decoration);
 }
-
-[data-theme="dark"] .shiki,
-[data-theme="dark"] .shiki span {
-  color: var(--shiki-dark) !important;
-  font-style: var(--shiki-dark-font-style) !important;
-  font-weight: var(--shiki-dark-font-weight) !important;
-  text-decoration: var(--shiki-dark-text-decoration) !important;
-}
-
-[data-theme="dark"] .shiki .line-number {
-  color: #6e7681 !important;
+[data-theme="light"] .shiki span:not([class]) {
+  color: var(--shiki-light);
+  font-style: var(--shiki-light-font-style);
+  font-weight: var(--shiki-light-font-weight);
+  text-decoration: var(--shiki-light-text-decoration);
 }
 
 /* Diff styles */

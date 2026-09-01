@@ -13,7 +13,11 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [
   const libs = scanInfo.getLibs();
   return `
 import { ServiceModel } from "akanjs/service";
-${libs.length ? libs.map((lib) => `import { option as ${lib} } from "@libs/${lib}/server";`).join("\n") : 'import type { BackendEnv } from "akanjs/base";'}
+${
+  libs.length
+    ? libs.map((lib) => `import * as ${lib} from "@libs/${lib}/lib/option";`).join("\n")
+    : 'import type { BackendEnv } from "akanjs/base";'
+}
 
 import * as cnst from "./cnst";
 import * as db from "./db";
@@ -21,7 +25,7 @@ import * as db from "./db";
 ${databaseModules.map((module) => `import { ${capitalize(module)}Service } from "./${module}/${module}.service";`).join("\n")}
 ${serviceModules.map((module) => `import { ${capitalize(module)}Service } from "./_${module}/${module}.service";`).join("\n")}
 
-${libs.map((lib) => `export { srv as ${lib} } from "@libs/${lib}/server";`).join("\n")}
+${libs.map((lib) => `export * as ${lib} from "@libs/${lib}/lib/srv";`).join("\n")}
 
 ${databaseModules.map((module) => `export { ${capitalize(module)}Service } from "./${module}/${module}.service";`).join("\n")}
 ${serviceModules.map((module) => `export { ${capitalize(module)}Service } from "./_${module}/${module}.service";`).join("\n")}

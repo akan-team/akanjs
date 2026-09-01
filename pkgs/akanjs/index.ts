@@ -4,12 +4,35 @@ import type { AkanImageConfig } from "akanjs/server";
 export const archs = ["amd64", "arm64"] as const;
 export type Arch = (typeof archs)[number];
 
-export interface DockerConfig {
-  content: string;
+/** One image step. The object form runs only on the matching `TARGETARCH` leg of a multi-arch build. */
+export type DockerRun = string | { [key in Arch]?: string };
+
+/** The pieces Akan assembles a Dockerfile from. */
+export interface DockerImageConfig {
   image: string | { [key in Arch]?: string };
-  preRuns: (string | { [key in Arch]?: string })[];
-  postRuns: (string | { [key in Arch]?: string })[];
+  /** Runs before `bun install`, so a system package a native dependency needs is there for the install. */
+  preRuns: DockerRun[];
+  /** Runs after `bun install`, before the app files are copied. */
+  postRuns: DockerRun[];
   command: string[];
+}
+
+/**
+ * A whole Dockerfile as a string, or the parts Akan assembles one from. The string form is taken verbatim —
+ * nothing is merged into it, including the steps a lib contributes through its own `docker`.
+ */
+export type DockerConfig = string | DockerImageConfig;
+
+/** What an `akan.config.ts` may write for `docker`: a whole Dockerfile, or any subset of the parts. */
+export type DockerOption = string | Partial<DockerImageConfig>;
+
+/**
+ * A lib's contribution to the image of every app that mounts it — a lib never picks the base image or the
+ * command, only the steps its own runtime needs.
+ */
+export interface LibDockerConfig {
+  preRuns: DockerRun[];
+  postRuns: DockerRun[];
 }
 
 export interface AkanRouteDomains {
@@ -24,9 +47,27 @@ export interface AkanRouteConfig {
   domains: AkanRouteDomains;
 }
 
+/**
+ * Which web surfaces an app serves, resolved. `ssr` is the RSC/SSR route renderer and everything it needs —
+ * the pages bundle, the client bundles, the RSC worker process. `csr` is the single-file SPA shell that the
+ * Capacitor mobile build ships and that `/__csr` serves.
+ */
+export interface AkanWebConfig {
+  ssr: boolean;
+  csr: boolean;
+}
+
+/**
+ * What an `akan.config.ts` may write. `false` is an API-only app — no web artifact is built and no web route
+ * is mounted; `true` (the default) is both surfaces. The object form keeps SSR and toggles only the CSR
+ * bundle, which is the whole range there is: the CSR bundle inlines the stylesheet the SSR build compiles, so
+ * CSR without SSR would ship an unstyled app and is not expressible here.
+ */
+export type AkanWebOption = boolean | { csr: boolean };
+
 export type DatabaseMode = "single" | "multiple" | "cluster";
 export type MobileEnv = "local" | "debug" | "develop" | "main";
-export type MobilePermission = "camera" | "contacts" | "location" | "push";
+export type MobilePermission = "camera" | "contacts" | "location" | "push" | "speech";
 
 export interface AkanMobileTargetAssets {
   icon?: string;
@@ -175,6 +216,8 @@ export interface AkanPlugin {
 export interface AppConfigResult {
   docker: DockerConfig;
   defaultDatabaseMode: DatabaseMode;
+  /** Web surfaces built into the app and mounted at boot. Both default to `true`. */
+  web: AkanWebConfig;
   routes?: AkanRouteConfig[];
   /**
    * Mounts `libs/<lib>/page` into this app under `page/(libs)/(<lib>)` on sync. `true` takes every lib
@@ -194,6 +237,8 @@ export interface AppConfigResult {
 
 export interface LibConfigResult {
   externalLibs: string[];
+  /** Image steps every app that mounts this lib inherits, unless that app declares a whole Dockerfile. */
+  docker: LibDockerConfig;
 }
 
 export type DeepPartial<T> = {
@@ -210,7 +255,11 @@ export interface LibConfigContext {
   readonly type: "lib";
 }
 
-export type AppConfigInput = DeepPartial<AppConfigResult> & { plugins?: AkanPlugin[] };
+export type AppConfigInput = Omit<DeepPartial<AppConfigResult>, "docker" | "web"> & {
+  docker?: DockerOption;
+  web?: AkanWebOption;
+  plugins?: AkanPlugin[];
+};
 export type LibConfigInput = DeepPartial<LibConfigResult> & { plugins?: AkanPlugin[] };
 export type AppConfig = AppConfigInput | ((app: AppConfigContext) => AppConfigInput);
 export type LibConfig = LibConfigInput | ((lib: LibConfigContext) => LibConfigInput);

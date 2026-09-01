@@ -7,6 +7,17 @@ const PACKAGE_DIR = import.meta.dir;
 const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT ?? process.cwd();
 const OUT_DIR = process.env.DIST_DIR ?? `${WORKSPACE_ROOT}/dist/pkgs/akanjs`;
 const TYPES_OUT_DIR = `${OUT_DIR}/types`;
+//* Not published, so the dist embeds its source instead of naming a dependency no registry can resolve.
+const EMBEDDED_PACKAGE_NAME = "use-agentic";
+const EMBEDDED_PACKAGE_DIR = path.resolve(PACKAGE_DIR, `../${EMBEDDED_PACKAGE_NAME}`);
+const EMBEDDED_SUBPATH = `vendor/${EMBEDDED_PACKAGE_NAME}`;
+const EMBEDDED_OUT_DIR = `${OUT_DIR}/${EMBEDDED_SUBPATH}`;
+const EMBEDDED_TYPES_OUT_DIR = `${TYPES_OUT_DIR}/${EMBEDDED_SUBPATH}`;
+const EMBEDDED_NON_SOURCE_ENTRIES = ["bunfig.toml", "package.json", "test", "tsconfig.json"];
+const embeddedSpecifierPattern = new RegExp(
+  `(\\bfrom\\s*|\\brequire\\s*\\(\\s*|\\bimport\\s*\\(\\s*|\\bimport\\s+)(["'])${EMBEDDED_PACKAGE_NAME}((?:/[^"']*)?)\\2`,
+  "g",
+);
 const SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"];
 const TEST_FILE_PATTERNS = [
   "**/*.test.ts",
@@ -152,13 +163,38 @@ const rewriteDeclarationRelativeSpecifiers = async (targetDir: string) => {
   }
 };
 
+const embedPackageSource = async () => {
+  await $`mkdir -p ${EMBEDDED_OUT_DIR}`;
+  await $`cp -R ${EMBEDDED_PACKAGE_DIR}/. ${EMBEDDED_OUT_DIR}`;
+  for (const entry of ["node_modules", ...EMBEDDED_NON_SOURCE_ENTRIES]) {
+    await rm(`${EMBEDDED_OUT_DIR}/${entry}`, { recursive: true, force: true });
+  }
+};
+
+const rewriteEmbeddedSpecifiers = async (targetDir: string, embeddedDir: string) => {
+  const glob = new Bun.Glob("**/*.{ts,tsx,js,jsx}");
+  for await (const file of glob.scan({ cwd: targetDir, onlyFiles: true })) {
+    const filePath = `${targetDir}/${file}`;
+    if (filePath.startsWith(`${embeddedDir}/`)) continue;
+    const source = await readFile(filePath, "utf-8");
+    const relativeDir = path.relative(path.dirname(filePath), embeddedDir);
+    const embeddedSpecifier = relativeDir.startsWith(".") ? relativeDir : `./${relativeDir}`;
+    const rewritten = source.replace(
+      embeddedSpecifierPattern,
+      (_match, prefix: string, quote: string, subpath: string) =>
+        `${prefix}${quote}${embeddedSpecifier}${subpath}${quote}`,
+    );
+    if (rewritten !== source) await writeFile(filePath, rewritten);
+  }
+};
+
 const isSourceFile = (filePath: string) => SOURCE_EXTENSIONS.some((ext) => filePath.endsWith(ext));
 
-const isEmittableSourceFile = (filePath: string) => {
-  const relativePath = path.relative(PACKAGE_DIR, filePath);
+const isEmittableSourceFile = (packageDir: string, filePath: string, excludedEntries: string[]) => {
+  const relativePath = path.relative(packageDir, filePath);
   if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) return false;
-  if (relativePath === "build.ts") return false;
-  if (relativePath.startsWith(`build${path.sep}`)) return false;
+  const [topLevelEntry] = relativePath.split(path.sep);
+  if (["build.ts", "build", "node_modules", ...excludedEntries].includes(topLevelEntry ?? "")) return false;
   return isSourceFile(filePath) && !testFilePattern.test(filePath);
 };
 
@@ -169,41 +205,41 @@ const formatDiagnosticMessages = (diagnostics: ts.Diagnostic[]) =>
     getNewLine: () => ts.sys.newLine,
   });
 
-const collectSourceFiles = async () => {
+const collectSourceFiles = async (packageDir: string, excludedEntries: string[] = []) => {
   const files: string[] = [];
   const glob = new Bun.Glob("**/*.{ts,tsx,js,jsx}");
-  for await (const file of glob.scan({ cwd: PACKAGE_DIR, onlyFiles: true })) {
-    const filePath = path.join(PACKAGE_DIR, file);
-    if (isEmittableSourceFile(filePath)) files.push(filePath);
+  for await (const file of glob.scan({ cwd: packageDir, onlyFiles: true })) {
+    const filePath = path.join(packageDir, file);
+    if (isEmittableSourceFile(packageDir, filePath, excludedEntries)) files.push(filePath);
   }
   return files;
 };
 
-const emitDeclarations = async () => {
-  const configPath = path.join(PACKAGE_DIR, "tsconfig.json");
+const emitDeclarations = async (packageDir: string, typesOutDir: string, excludedEntries: string[] = []) => {
+  const configPath = path.join(packageDir, "tsconfig.json");
   const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
   if (configFile.error) throw new Error(formatDiagnosticMessages([configFile.error]));
 
   const parsedConfig = ts.parseJsonConfigFileContent(
     configFile.config,
     ts.sys,
-    PACKAGE_DIR,
+    packageDir,
     {
       declaration: true,
       declarationMap: false,
       emitDeclarationOnly: true,
       noEmit: false,
       noEmitOnError: false,
-      outDir: TYPES_OUT_DIR,
-      rootDir: PACKAGE_DIR,
+      outDir: typesOutDir,
+      rootDir: packageDir,
       sourceMap: false,
-      tsBuildInfoFile: path.join(TYPES_OUT_DIR, "tsconfig.tsbuildinfo"),
+      tsBuildInfoFile: path.join(typesOutDir, "tsconfig.tsbuildinfo"),
     },
     configPath,
   );
   if (parsedConfig.errors.length > 0) throw new Error(formatDiagnosticMessages(parsedConfig.errors));
 
-  const fileNames = await collectSourceFiles();
+  const fileNames = await collectSourceFiles(packageDir, excludedEntries);
   const program = ts.createProgram({ rootNames: fileNames, options: parsedConfig.options });
   const emitResult = program.emit();
   const diagnostics = ts.getPreEmitDiagnostics(program).concat(emitResult.diagnostics);
@@ -299,12 +335,16 @@ const build = async () => {
     await $`rm -rf ${OUT_DIR}/build.ts`;
     await rm(`${OUT_DIR}/build`, { recursive: true, force: true });
     await rm(`${OUT_DIR}/tsconfig.json`, { force: true });
+    await embedPackageSource();
     await removeTestFiles();
+    await rewriteEmbeddedSpecifiers(OUT_DIR, EMBEDDED_OUT_DIR);
 
-    await emitDeclarations();
+    await emitDeclarations(PACKAGE_DIR, TYPES_OUT_DIR);
+    await emitDeclarations(EMBEDDED_PACKAGE_DIR, EMBEDDED_TYPES_OUT_DIR, EMBEDDED_NON_SOURCE_ENTRIES);
     await copyExistingDeclarationFiles();
     await writeDirectoryDeclarationFacades(TYPES_OUT_DIR);
     await stripDeclarationAssetImports(TYPES_OUT_DIR);
+    await rewriteEmbeddedSpecifiers(TYPES_OUT_DIR, EMBEDDED_TYPES_OUT_DIR);
     await rewriteDeclarationRelativeSpecifiers(TYPES_OUT_DIR);
     await stripNonJsdocComments(OUT_DIR);
 

@@ -1,14 +1,16 @@
 "use client";
-import { clsx, msg, usePage } from "akanjs/client";
+import { cn, msg, usePage } from "akanjs/client";
 import { st } from "akanjs/store";
 import { type ReactNode, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   AiOutlineCheckCircle,
+  AiOutlineClose,
+  AiOutlineExclamationCircle,
   AiOutlineInfoCircle,
   AiOutlineLoading3Quarters,
-  AiOutlineQuestionCircle,
+  AiOutlineWarning,
 } from "react-icons/ai";
-import { BsExclamationCircleFill } from "react-icons/bs";
 
 type MessageType = "success" | "error" | "info" | "warning" | "loading";
 
@@ -29,10 +31,25 @@ interface MsgOption {
   data?: Record<string, string | number>;
 }
 
+const messageTone: { [key in MessageType]: { card: string; chip: string; icon: ReactNode } } = {
+  info: { card: "border-info/35", chip: "bg-info/15 text-info", icon: <AiOutlineInfoCircle /> },
+  success: { card: "border-success/35", chip: "bg-success/15 text-success", icon: <AiOutlineCheckCircle /> },
+  warning: { card: "border-warning/35", chip: "bg-warning/15 text-warning", icon: <AiOutlineWarning /> },
+  error: {
+    card: "border-destructive/35",
+    chip: "bg-destructive/15 text-destructive",
+    icon: <AiOutlineExclamationCircle />,
+  },
+  loading: {
+    card: "border-border",
+    chip: "bg-muted text-foreground/60",
+    icon: <AiOutlineLoading3Quarters className="animate-spin" />,
+  },
+};
+
 let timeOuts: TimeOutType[] = [];
 
 const Message = ({ content, type = "info" as MessageType, duration, keyForMessage }: MessageProps) => {
-  const pageState = st.use.pageState();
   const [preBlind, setPreBlind] = useState(false);
   useEffect(() => {
     if (!content) return;
@@ -70,47 +87,46 @@ const Message = ({ content, type = "info" as MessageType, duration, keyForMessag
     timeOuts = timeOuts.filter((item) => item.key !== key);
   };
 
-  const iconClassName = type === "loading" ? "text-info" : `text-${type}`;
-  const getIcon = (type: MessageType) => {
-    const icons: { [key in MessageType]: ReactNode } = {
-      info: <AiOutlineInfoCircle className={clsx("text-2xl", iconClassName)} />,
-      success: <AiOutlineCheckCircle className={clsx("text-2xl", iconClassName)} />,
-      error: <BsExclamationCircleFill className={clsx("text-2xl", iconClassName)} />,
-      warning: <AiOutlineQuestionCircle className={clsx("text-2xl", iconClassName)} />,
-      loading: <AiOutlineLoading3Quarters className={clsx("animate-spin text-2xl", iconClassName)} />,
-    };
-    return icons[type];
-  };
-
+  const tone = messageTone[type];
   return (
     <div
       data-state={preBlind}
-      className="group w-screen animate-zoomIn px-6 duration-300 data-[state=true]:animate-smaller md:max-w-[60%]"
-      style={{
-        paddingTop: pageState.topSafeArea,
-      }}
+      className="pointer-events-auto w-full animate-fadeInDown15-150ms data-[state=true]:animate-smaller"
     >
       <div
-        className={clsx(
-          "typo-body1 flex w-full items-center gap-2 rounded-[4px] border px-4 py-2 text-base-content drop-shadow-lg",
-          {
-            "border-[#EEEEEE] bg-primary-content stroke-base-content": type === "loading" || type === "info",
-            "border-success-border bg-success/80 stroke-success": type === "success",
-            "border-error-border bg-error/80 stroke-error": type === "error",
-            "border-warning-border bg-warning/80 stroke-warning": type === "warning",
-          },
+        className={cn(
+          "flex w-full items-start gap-3 rounded-box border bg-popover/95 p-3 text-popover-foreground shadow-lg backdrop-blur-sm",
+          tone.card,
         )}
       >
-        <div className="flex size-6 items-center justify-center rounded-full bg-base-100">{getIcon(type)}</div>
-        <span className="truncate whitespace-nowrap text-base-100">{content}</span>
+        <div className={cn("flex size-7 shrink-0 items-center justify-center rounded-full text-base", tone.chip)}>
+          {tone.icon}
+        </div>
+        <span className="min-w-0 flex-1 self-center break-words text-sm leading-snug">{content}</span>
+        <button
+          aria-label="Dismiss"
+          className="-mr-1 shrink-0 self-center rounded-full p-1 text-foreground/30 transition-colors hover:text-foreground/70"
+          onClick={() => {
+            setPreBlind(true);
+          }}
+          type="button"
+        >
+          <AiOutlineClose className="text-sm" />
+        </button>
       </div>
     </div>
   );
 };
 
 export const Messages = () => {
-  const messages = st.use.messages();
+  const messages = st.use.messages({ agent: false });
+  const pageState = st.use.pageState({ agent: false });
   const { l } = usePage();
+  const [portalElement, setPortalElement] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    setPortalElement(document.body);
+  }, []);
   useEffect(() => {
     Object.assign(msg, {
       info: (msgKey: `${string}.${string}`, option = {} as MsgOption) => {
@@ -155,11 +171,14 @@ export const Messages = () => {
       },
     });
   }, []);
-  if (!messages.length) return null;
-  return (
+  if (!messages.length || !portalElement) return null;
+  // Portalled to the body like Dialog's modal: the page tree sits under `#pageContainers`, which is
+  // `isolation: isolate`, so a z-index declared inside it can never rise above a body-level overlay.
+  return createPortal(
     <div
       id="toast"
-      className="fixed top-0 left-0 z-[100] mt-[var(--safe-area-top)] flex h-fit w-screen flex-col items-center justify-start gap-2 pt-2"
+      className="pointer-events-none fixed top-0 left-1/2 z-[100] flex h-fit w-full max-w-md -translate-x-1/2 flex-col items-center gap-2 px-4 pt-3"
+      style={{ marginTop: pageState.topSafeArea }}
     >
       {messages.map((message) => (
         <Message
@@ -170,6 +189,7 @@ export const Messages = () => {
           keyForMessage={message.key}
         />
       ))}
-    </div>
+    </div>,
+    portalElement,
   );
 };

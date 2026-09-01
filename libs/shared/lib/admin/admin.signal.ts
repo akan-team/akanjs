@@ -6,7 +6,7 @@ import {
   makeAdminSignoutResponse as makeSignoutResponse,
   SuperAdmin,
 } from "@libs/shared/srvkit";
-import { ID } from "akanjs/base";
+import { ID, Int } from "akanjs/base";
 import { endpoint, internal, Req, slice } from "akanjs/signal";
 import * as cnst from "../cnst";
 import { Err } from "../dict";
@@ -21,7 +21,13 @@ export class AdminInternal extends internal(srv.admin, ({ initialize, process, r
 export class AdminSlice extends slice(
   srv.admin,
   { guards: { root: AdminGuard, get: AdminGuard, cru: SuperAdmin } },
-  () => ({}),
+  (init) => ({
+    inMention: init()
+      .search("text", String)
+      .exec(function (text) {
+        return this.adminService.queryBySearch(text);
+      }),
+  }),
 ) {}
 
 export class AdminEndpoint extends endpoint(srv.admin, ({ query, mutation, pubsub, message }) => ({
@@ -33,10 +39,10 @@ export class AdminEndpoint extends endpoint(srv.admin, ({ query, mutation, pubsu
     .exec(async function (data) {
       return await this.adminService.createAdminWithInitialize(data);
     }),
-  me: query(cnst.Admin)
-    .with(Me)
+  me: query(cnst.Admin, { nullable: true })
+    .with(Me, { nullable: true })
     .exec(async function (me) {
-      return await this.adminService.getAdmin(me.id);
+      return me ? await this.adminService.getAdmin(me.id) : null;
     }),
   setAdminPassword: mutation(Boolean)
     .body("adminId", ID)
@@ -77,6 +83,12 @@ export class AdminEndpoint extends endpoint(srv.admin, ({ query, mutation, pubsu
         }
         throw error;
       }
+    }),
+  runAdminSql: mutation(cnst.InsightRows, { guards: [SuperAdmin] })
+    .body("sql", String, { example: 'SELECT COUNT(*) AS total FROM "user"' })
+    .body("limit", Int, { nullable: true })
+    .exec(async function (sql, limit) {
+      return await this.adminService.runInsight(sql, limit);
     }),
   addAdminRole: mutation(cnst.Admin)
     .body("adminId", ID)

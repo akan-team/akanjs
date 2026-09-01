@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -58,9 +58,9 @@ export default function Page() {
               desc: l.trans({ en: "How users see the data", ko: "사용자가 데이터를 어떻게 보는지" }),
             },
           ].map(({ name, desc }) => (
-            <div key={name} className="rounded-xl border border-base-300 bg-base-100 p-4">
+            <div key={name} className={panelRecipe()}>
               <div className="font-mono font-semibold text-primary">{name}</div>
-              <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+              <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>
           ))}
         </div>
@@ -71,7 +71,7 @@ export default function Page() {
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="model-shape" title={l.trans({ en: "Model Shape", ko: "모델 형태" })}>
         <Docs.Title>{l.trans({ en: "Model Shape", ko: "모델 형태" })}</Docs.Title>
@@ -89,6 +89,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/shop/lib/product/product.constant.ts"
             code={`import { enumOf, Int } from "akanjs/base";
 import { via } from "akanjs/constant";
@@ -133,15 +134,15 @@ export class LightProduct extends via(
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
-              <span className="font-bold text-base-content">{title}: </span>
+            <div key={title} className={panelRecipe({ padding: "row" })}>
+              <span className="font-bold text-foreground">{title}: </span>
 
-              <span className="text-base-content/70 text-sm">{desc}</span>
+              <span className="text-foreground/70 text-sm">{desc}</span>
             </div>
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="document-and-service" title={l.trans({ en: "Document And Service", ko: "Document와 Service" })}>
         <Docs.Title>{l.trans({ en: "Document And Service", ko: "Document와 Service" })}</Docs.Title>
@@ -153,6 +154,7 @@ export class LightProduct extends via(
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/shop/lib/product/product.document.ts"
             code={`import { by, from, into } from "akanjs/document"; // [!code collapse:9]
 
@@ -179,6 +181,7 @@ export class ProductModel extends into(Product, ProductFilter, cnst.product, () 
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/shop/lib/product/product.service.ts"
             code={`import { serve } from "akanjs/service"; // [!code collapse:4]
 
@@ -193,7 +196,7 @@ export class ProductService extends serve(db.product, ({ use, service }) => ({})
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="signal-to-ui" title={l.trans({ en: "Signal To UI", ko: "Signal에서 UI까지" })}>
         <Docs.Title>{l.trans({ en: "Signal To UI", ko: "Signal에서 UI까지" })}</Docs.Title>
@@ -205,6 +208,7 @@ export class ProductService extends serve(db.product, ({ use, service }) => ({})
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/shop/lib/product/product.signal.ts"
             code={`import { Admin } from "@libs/shared/srvkit"; // [!code collapse:17]
 import { endpoint, internal, Public, slice } from "akanjs/signal";
@@ -256,16 +260,16 @@ export class ProductEndpoint extends endpoint(srv.product, ({ query, mutation })
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
-                <span className="text-base-content/70 text-sm">{desc}</span>
+                <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="fetch-and-st"
@@ -302,14 +306,15 @@ export class ProductEndpoint extends endpoint(srv.product, ({ query, mutation })
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
-                <span className="text-base-content/70 text-sm">{desc}</span>
+                <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Server action: call addStock with fetch"
             code={`import { fetch } from "@apps/shop/client";
 
@@ -329,6 +334,7 @@ export const addProductStock = async (productId: string, quantity: number) => {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Client zone: pass fetch.slice metadata to UI components"
             code={`"use client";
 import { type cnst, fetch, Product } from "@apps/shop/client";
@@ -362,6 +368,7 @@ export const Card = ({ init }: CardProps) => {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Client form: read and change state with st"
             code={`"use client";
 import { fetch, st, usePage } from "@apps/shop/client";
@@ -401,7 +408,7 @@ export const General = () => {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="common-decisions" title={l.trans({ en: "Common Decisions", ko: "자주 하는 판단" })}>
         <Docs.Title>{l.trans({ en: "Common Decisions", ko: "자주 하는 판단" })}</Docs.Title>
@@ -446,8 +453,8 @@ export const General = () => {
                 desc: "model.store.ts",
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
-                <span className="font-bold text-base-content">{title}: </span>
+              <div key={title} className={panelRecipe({ padding: "row" })}>
+                <span className="font-bold text-foreground">{title}: </span>
 
                 <span className="font-mono text-primary text-sm">{desc}</span>
               </div>
@@ -461,7 +468,7 @@ export const General = () => {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

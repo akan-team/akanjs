@@ -1,0 +1,25 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Vocabulary closure (`@theme { --color-*: initial }` in akanjs/ui/styles.css) strips the raw
+// Tailwind palette, so classes like `bg-blue-500` generate NO css and silently render as
+// currentColor/transparent. This rule surfaces that silent breakage at lint time. It is the
+// grit port of styleGuard's `raw-palette` rule (frontendBuild/styleGuard.ts) — keep the two
+// regexes in sync. Matching string/template nodes (not raw text) skips comments for free.
+//
+// Bare `bg-neutral` is a semantic token and allowed; the numeric suffix (`bg-neutral-500`)
+// is what marks a raw palette class. black/white stay in the vocabulary for overlays.
+// Escape hatch for legitimate fixed colors: `// biome-ignore lint/plugin: <reason>`
+// (file-wide: `// biome-ignore-all lint/plugin: <reason>`).
+or {
+  JsxString() as $s,
+  JsStringLiteralExpression() as $s,
+  JsTemplateChunkElement() as $s
+} where {
+  $s <: r"[\s\S]*(?:^|[\s\"'`{(\[:!])(?:bg|text|border(?:-[tblrxy])?(?:-[se])?|ring(?:-offset)?|fill|stroke|shadow|from|to|via|divide|outline|decoration|placeholder|caret|accent)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}(?:[\s\"'`})\]:/!,]|$)[\s\S]*",
+  register_diagnostic(
+    span = $s,
+    message = "Raw Tailwind palette class (e.g. bg-blue-500) - vocabulary closure strips these, so they render as no CSS. Use a semantic token (bg-primary, text-foreground/70, ...) or add a biome-ignore with a reason.",
+    severity = "error"
+  )
+}

@@ -1,0 +1,31 @@
+{
+  "title": "SSR Rule",
+  "description": "Akan SSR-first rendering rules — keep JSX on the server and justify every client boundary",
+  "group": "core",
+  "codegenPriority": 3,
+  "deprecated": false,
+  "scans": [
+    {
+      "type": "example",
+      "description": "Client boundary shells that render server children untouched",
+      "path": "{apps,libs}/*/ui/**/*.tsx",
+      "sample": 4
+    },
+    {
+      "type": "example",
+      "description": "Module UI split across client Zone/Template/Util and server Unit/View",
+      "path": "{apps,libs}/*/lib/*/*.tsx",
+      "sample": 4
+    }
+  ],
+  "update": {
+    "filePath": "./ssrRule.instruction.md",
+    "contents": ["purpose", "when a client boundary is earned", "quality rules", "implementation playbook"],
+    "rules": [
+      "Use current Akan APIs only",
+      "Keep output parseable for codegen",
+      "Name the akan.ssr.* rule ids the quality scanner emits",
+      "Ground every pattern in a file that exists in the workspace"
+    ]
+  }
+}

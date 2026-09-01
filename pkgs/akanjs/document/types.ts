@@ -21,7 +21,6 @@ export interface FilterArgProps {
   nullable?: boolean;
   ref?: string;
   default?: string | number | boolean | object | null | (() => string | number | boolean | object | null);
-  renderOption?: (value: never) => string;
   enum?: EnumInstance;
 }
 

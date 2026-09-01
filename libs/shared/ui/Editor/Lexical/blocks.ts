@@ -1,6 +1,6 @@
 import { $createCodeNode } from "@lexical/code";
+import { INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/extension";
 import { INSERT_CHECK_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND } from "@lexical/list";
-import { INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/react/LexicalHorizontalRuleNode";
 import { $createHeadingNode, $createQuoteNode, type HeadingTagType } from "@lexical/rich-text";
 import { $setBlocksType } from "@lexical/selection";
 import { INSERT_TABLE_COMMAND } from "@lexical/table";
@@ -16,7 +16,7 @@ import { INSERT_COLLAPSIBLE_COMMAND } from "./plugins/collapsiblePlugin.util";
  *
  * Conversions (paragraph/heading/quote/code) use `$setBlocksType` so the block's
  * text content is preserved. Lists and the divider go through their dedicated
- * Lexical commands, which the `ListPlugin` / `HorizontalRulePlugin` handle.
+ * Lexical commands, which the `ListPlugin` / local `HorizontalRulePlugin` handle.
  */
 
 /** Runs `transform` inside a single history-batched update against the current range selection. */

@@ -43,6 +43,8 @@ Define frequently used list and lookup conditions once, then use the generated m
 
 The framework already provides all-document and latest/oldest ordering behavior, so only add business-specific search and sort rules.
 
+count and insight are separate accessors over the same query: count returns a plain number, and insight returns the accumulated db.<Model>Insight. Both are generated on the Model and on the Service, so the same call reads identically from either side.
+
 Required input for the query. Required args must come before optional args.
 
 Optional input. Build the query conditionally when the value exists.
@@ -170,9 +172,9 @@ const tickets = await this.listInProject(projectId, { sort: "highPriority" });
 const ticket = await this.findInProject(projectId);
 const ticket = await this.pickInProject(projectId);
 
-const count = await this.countInProject(projectId);
+const count: number = await this.countInProject(projectId);
 const exists = await this.existsInProject(projectId);
-const ticketInsight = await this.insightInProject(projectId);
+const ticketInsight: db.TicketInsight = await this.insightInProject(projectId);
 ```
 
 ### ticket.document.ts

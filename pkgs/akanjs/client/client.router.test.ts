@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import { pathGetLoose } from "../common/pathGetLoose";
 
 type Side = "server" | "client";
 
@@ -48,6 +49,7 @@ beforeAll(() => {
         if (!acc || typeof acc !== "object") return fallback;
         return (acc as Record<string, unknown>)[key] ?? fallback;
       }, obj),
+    pathGetLoose,
     getBasePathFromPathname: (
       pathname: string,
       opts: { basePaths: Set<string>; i18n: { locales: string[] }; headerBasePath?: string },

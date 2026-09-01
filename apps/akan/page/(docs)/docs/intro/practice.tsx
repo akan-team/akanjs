@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 import { Image } from "akanjs/ui";
 
@@ -47,7 +47,7 @@ export default function Page() {
           <Code.Snippet className="w-full" title="Terminal" language="bash" code="akan start koyo" />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       <Scroll.Slide
         id="create-module"
         title={l.trans({ en: "Create icecream order module", ko: "아이스크림 주문 모듈 만들기" })}
@@ -159,6 +159,7 @@ akan create-module icecreamOrder
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             language="bash"
             copy={false}
             showLineNumbers={false}
@@ -276,7 +277,7 @@ akan create-module icecreamOrder
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       <Scroll.Slide id="define-constant" title={l.trans({ en: "Define Constant", ko: "Constant 정의하기" })}>
         <Docs.Title>{l.trans({ en: "Define Constant", ko: "Constant 정의하기" })}</Docs.Title>
         <Docs.Description>
@@ -287,6 +288,7 @@ akan create-module icecreamOrder
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.constant.ts"
             code={`
 import { enumOf, Int } from "akanjs/base";
@@ -346,7 +348,7 @@ export class IcecreamOrderInsight extends via(IcecreamOrder, (field) => ({})) {}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       <Scroll.Slide id="fill-dictionary" title={l.trans({ en: "Fill dictionary", ko: "Dictionary 채우기" })}>
         <Docs.Title>{l.trans({ en: "Fill dictionary", ko: "Dictionary 채우기" })}</Docs.Title>
         <Docs.Description>
@@ -363,24 +365,24 @@ export class IcecreamOrderInsight extends via(IcecreamOrder, (field) => ({})) {}
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🏷️</span>
                 <strong className="text-primary">modelName</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `This is what users will see as the title or name of your feature. Instead of the technical "icecreamOrder", users see "Ice cream Order" in English or "아이스크림 주문" in Korean.`,
                   ko: `사용자가 기능의 제목이나 이름으로 보게 될 내용입니다. 기술적인 "icecreamOrder" 대신 영어로는 "Ice cream Order", 한국어로는 "아이스크림 주문"을 보게 됩니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📝</span>
                 <strong className="text-primary">modelDesc</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `This provides a longer explanation of what this feature does. It helps users understand the purpose and context of ice cream orders in your shop.`,
                   ko: `이 기능이 무엇을 하는지에 대한 더 긴 설명을 제공합니다. 사용자가 가게에서 아이스크림 주문의 목적과 맥락을 이해하는 데 도움이 됩니다.`,
@@ -389,6 +391,7 @@ export class IcecreamOrderInsight extends via(IcecreamOrder, (field) => ({})) {}
             </div>
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.dictionary.ts"
             code={`
 import { modelDictionary } from "akanjs/dictionary"; // [!code collapse:2]
@@ -452,7 +455,7 @@ export const dictionary = modelDictionary(["en", "ko"])
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       <Scroll.Slide id="make-template" title={l.trans({ en: "Make template file", ko: "Template 파일 만들기" })}>
         <Docs.Title>{l.trans({ en: "Make template file", ko: "Template 파일 만들기" })}</Docs.Title>
         <Docs.Description>
@@ -463,6 +466,7 @@ export const dictionary = modelDictionary(["en", "ko"])
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Template.tsx"
             code={`
 "use client"; // [!code collapse:8]
@@ -508,9 +512,9 @@ export const General = ({ className }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
-      <div className="my-6 rounded-lg border border-base-300 bg-base-100 p-4">
-        <div className="text-base-content/80">
+      <Divider />
+      <div className={panelRecipe({ radius: "lg" }, "my-6")}>
+        <div className="text-foreground/80">
           {l.trans({
             en: `🎉 Now customers can create orders using your form. But how do we show those orders in a nice, visual way? Let's create a card design to display each order beautifully.`,
             ko: `🎉 이제 고객들이 폼을 사용해서 주문을 생성할 수 있습니다. 하지만 그 주문들을 멋지고 시각적인 방법으로 어떻게 보여줄까요? 각 주문을 아름답게 표시할 카드 디자인을 만들어봅시다.`,
@@ -527,33 +531,35 @@ export const General = ({ className }: GeneralProps) => {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx"
             code={`
-import { clsx, ModelProps } from "akanjs/client"; // [!code collapse:3]
+import { cn, ModelProps } from "akanjs/client"; // [!code collapse:3]
 import { cnst, usePage } from "@apps/koyo/client";
 
 export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIcecreamOrder>) => {
   const { l } = usePage();
   return (
-    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl border border-base-300 bg-base-100 px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
+    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl border border-border bg-background px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
       <div className="flex flex-col justify-center">
         <div className="flex items-center gap-2 text-lg font-semibold text-primary">
-          <span className="inline-block rounded border border-base-300 bg-base-200 px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded border border-border bg-muted px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
             {l("icecreamOrder.id")}
           </span>
         </div>
         <div className="mt-4 flex items-center gap-2">
-          <span className="inline-block rounded bg-base-200 px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
             {l("icecreamOrder.status")}
           </span>
           <span
-            className={clsx("ml-2 rounded-full border border-base-300 bg-base-100 px-3 py-1 text-sm font-semibold text-base-content/80", {
-              "bg-primary text-primary-content": icecreamOrder.status === "active",
-              "bg-warning text-warning-content": icecreamOrder.status === "processing",
-              "bg-secondary text-secondary-content": icecreamOrder.status === "served",
-              "bg-accent text-accent-content": icecreamOrder.status === "finished",
-              "bg-neutral text-neutral-content": icecreamOrder.status === "canceled",
-            })}
+            className={cn(
+              "ml-2 rounded-full border border-border bg-background px-3 py-1 text-sm font-semibold text-foreground/80",
+              icecreamOrder.status === "active" && "bg-primary text-primary-foreground",
+              icecreamOrder.status === "processing" && "bg-warning text-warning-foreground",
+              icecreamOrder.status === "served" && "bg-secondary text-secondary-foreground",
+              icecreamOrder.status === "finished" && "bg-accent text-accent-foreground",
+              icecreamOrder.status === "canceled" && "bg-neutral text-neutral-foreground",
+            )}
           >
             {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
           </span>
@@ -571,15 +577,15 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
           </div>
           <div>
             {l.trans({
-              en: `The clsx function changes the card's appearance based on the order status, and l() displays the status text in the user's language.`,
-              ko: `clsx 함수는 주문 상태에 따라 카드의 모양을 바꾸고, l()은 사용자의 언어로 상태 텍스트를 표시합니다.`,
+              en: `The cn function changes the card's appearance based on the order status, and l() displays the status text in the user's language.`,
+              ko: `cn 함수는 주문 상태에 따라 카드의 모양을 바꾸고, l()은 사용자의 언어로 상태 텍스트를 표시합니다.`,
             })}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
-      <div className="my-6 rounded-lg border border-base-300 bg-base-100 p-4">
-        <div className="text-base-content/80">
+      <Divider />
+      <div className={panelRecipe({ radius: "lg" }, "my-6")}>
+        <div className="text-foreground/80">
           {l.trans({
             en: `🚀 We have the form (Template) and the display card (Unit). Now let's put it all together on a webpage so customers can actually visit and use your ice cream ordering system!`,
             ko: `🚀 폼(Template)과 표시 카드(Unit)가 있습니다. 이제 고객들이 실제로 방문해서 아이스크림 주문 시스템을 사용할 수 있도록 웹페이지에 모든 것을 연결해봅시다!`,
@@ -596,6 +602,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/page/_index.tsx"
             code={`import { Model } from "akanjs/ui";
 import { cnst, fetch, IcecreamOrder, usePage } from "@apps/koyo/client";
@@ -609,7 +616,7 @@ export default async function Page() {
       <div className="flex items-center gap-4 text-5xl font-black">
         <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
         <Model.New
-          className="btn btn-primary"
+          className={buttonRecipe({ variant: "primary" })}
           slice={fetch.slice.icecreamOrderInPublic}
           renderTitle="name"
           partial={icecreamOrderForm}
@@ -634,36 +641,36 @@ export default async function Page() {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🏷️</span>
                 <strong className="text-primary">{`l("icecreamOrder.modelName")`}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `This displays the page title using our dictionary! It shows "Ice cream Order" (or "아이스크림 주문" in Korean) as a big, bold heading.`,
                   ko: `이것은 우리의 dictionary를 사용해 페이지 제목을 표시합니다! "아이스크림 주문"을 크고 굵은 제목으로 보여줍니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">➕</span>
                 <strong className="text-primary">Model.New Button</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `This creates a "New Order" button that opens the form (Template.General) when clicked. Customers can use this to place new ice cream orders.`,
                   ko: `클릭하면 폼(Template.General)을 여는 "새 주문" 버튼을 만듭니다. 고객들이 새로운 아이스크림 주문을 하는 데 사용할 수 있습니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📋</span>
                 <strong className="text-primary">Zone.Card</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `This displays all existing ice cream orders as cards, showing the order details and status.`,
                   ko: `기존의 모든 아이스크림 주문을 카드로 표시하여 주문 세부사항과 상태를 보여줍니다.`,
@@ -679,7 +686,7 @@ export default async function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

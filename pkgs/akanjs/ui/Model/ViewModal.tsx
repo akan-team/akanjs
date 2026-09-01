@@ -7,6 +7,22 @@ import type { ReactNode } from "react";
 import { Modal } from "../Modal";
 import View from "./View";
 
+interface ViewToolsProps {
+  modelName: string;
+  closeView: () => void;
+}
+
+/**
+ * Mounted only by the modal that is actually open. A list renders one `ViewModal` per row, and only the row
+ * whose id matches opens, so the close verb reaches the surface once instead of once per row.
+ */
+const ViewTools = ({ modelName, closeView }: ViewToolsProps) => {
+  st.tool(`closeViewOf${capitalize(modelName)}`)
+    .desc(`Close the ${modelName} detail view.`)
+    .exec(closeView);
+  return null;
+};
+
 interface ViewModalProps {
   id: string;
   modal?: string;
@@ -55,17 +71,15 @@ export default function ViewModal({
     return render;
   };
 
+  const closeView = () => {
+    storeDo[names.resetModel]();
+  };
   return (
-    <Modal
-      open={isModalOpen}
-      onCancel={() => {
-        storeDo[names.resetModel]();
-      }}
-      className={modalClassName}
-      title={<Title />}
-      action={<Action />}
-    >
-      <View className={viewClassName} model={model} modelLoading={modelLoading} render={renderView} />
-    </Modal>
+    <>
+      {isModalOpen ? <ViewTools modelName={modelName} closeView={closeView} /> : null}
+      <Modal open={isModalOpen} onCancel={closeView} className={modalClassName} title={<Title />} action={<Action />}>
+        <View className={viewClassName} model={model} modelLoading={modelLoading} render={renderView} />
+      </Modal>
+    </>
   );
 }

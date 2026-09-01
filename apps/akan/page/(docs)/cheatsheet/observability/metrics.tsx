@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "Akan 앱이 느리거나 응답하지 않을 때는 두 가지 런타임 endpoint부터 확인하세요. Health는 앱이 살아있는지 알려주고, metrics는 얼마나 바쁜지 알려줍니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "`/_akan/app/health` checks gateway and child process status.",
@@ -35,10 +35,10 @@ export default function Page() {
                 ko: "숫자의 이유가 필요하면 metrics 다음에 log를 확인하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="health" title={l.trans({ en: "Check Health", ko: "Health 확인" })}>
         <Docs.Title>{l.trans({ en: "Check Health", ko: "Health 확인" })}</Docs.Title>
@@ -51,11 +51,13 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           language="bash"
           title={l.trans({ en: "Health endpoint", ko: "Health endpoint" })}
           code={`curl http://localhost:8282/_akan/app/health`}
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Simplified response", ko: "단순화한 응답 예시" })}
           code={`{
   "status": "running",
@@ -70,7 +72,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="metrics" title={l.trans({ en: "Check Metrics", ko: "Metrics 확인" })}>
         <Docs.Title>{l.trans({ en: "Check Metrics", ko: "Metrics 확인" })}</Docs.Title>
@@ -83,11 +85,13 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           language="bash"
           title={l.trans({ en: "Metrics endpoint", ko: "Metrics endpoint" })}
           code={`curl http://localhost:8282/_akan/app/metrics`}
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Simplified response", ko: "단순화한 응답 예시" })}
           code={`{
   "rooms": 12,
@@ -109,12 +113,12 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="read" title={l.trans({ en: "How To Read", ko: "읽는 방법" })}>
         <Docs.Title>{l.trans({ en: "How To Read", ko: "읽는 방법" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "`activeRequests` means requests currently being handled. If it stays high, a slow endpoint may be blocking work.",
@@ -139,10 +143,10 @@ export default function Page() {
                 ko: "`rscPendingRenderCount`는 서버 렌더링 작업이 대기 중인지 볼 때 힌트가 됩니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="memory-log" title={l.trans({ en: "Memory Logs", ko: "메모리 로그" })}>
         <Docs.Title>{l.trans({ en: "Memory Logs", ko: "메모리 로그" })}</Docs.Title>
@@ -155,6 +159,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           language="bash"
           title={l.trans({ en: "Useful env", ko: "유용한 env" })}
           code={`AKAN_MEMORY_LOG=1
@@ -162,7 +167,7 @@ AKAN_MEMORY_LOG_INTERVAL_MS=10000
 AKAN_MEMORY_GC_ON_REPORT=1`}
         />
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "`AKAN_MEMORY_LOG=1` prints memory summaries periodically.",
@@ -181,10 +186,10 @@ AKAN_MEMORY_GC_ON_REPORT=1`}
                 ko: "`AKAN_MEMORY_GC_ON_REPORT=1`은 보고 전에 GC를 실행해 진단에 도움을 줍니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="checklist" title={l.trans({ en: "Troubleshooting Order", ko: "확인 순서" })}>
         <Docs.Title>{l.trans({ en: "Troubleshooting Order", ko: "확인 순서" })}</Docs.Title>
@@ -217,7 +222,7 @@ AKAN_MEMORY_GC_ON_REPORT=1`}
           </ol>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

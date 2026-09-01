@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { InArgs, InValue, Client as LibsqlClient } from "@libsql/client";
-import { type BaseEnv, DEFAULT_VALUE, dayjs, FIELD_META, type PromiseOrObject } from "akanjs/base";
+import { DEFAULT_VALUE, dayjs, FIELD_META, getEnv, type PromiseOrObject } from "akanjs/base";
 import { type ConstantModel, getDefault } from "akanjs/constant";
 import {
   createDocumentId,
@@ -18,7 +18,9 @@ import {
   type DocumentUpdateOptions,
   documentQueryHelper,
   encodeDocumentValue,
+  isDocumentId,
   isDocumentUpdateNode,
+  NoDocumentError,
   resolveDocumentUpdate,
   type SchemaOf,
   sanitizeJson,
@@ -95,9 +97,12 @@ export interface DocumentStore {
     query: DocumentQuery,
     update: DocumentUpdateInput,
   ): Promise<{ acknowledged: boolean; matchedCount: number; modifiedCount: number }>;
-  deleteManyByQuery(
+  removeManyByQuery(
     query: DocumentQuery,
   ): Promise<{ acknowledged: boolean; matchedCount: number; modifiedCount: number }>;
+  removeOneByQuery(
+    query: DocumentQuery,
+  ): Promise<{ acknowledged: boolean; matchedCount: number; modifiedCount: number; upsertedId: string | null }>;
   bulkWrite(
     operations: { updateOne: { filter: DocumentQuery; update: DocumentUpdateInput; upsert?: boolean } }[],
   ): Promise<{ acknowledged: boolean; matchedCount: number; modifiedCount: number; upsertedId: string | null }>;
@@ -116,7 +121,7 @@ export interface DocumentStore {
   exists(query?: DocumentQuery): Promise<string | null>;
   count(query?: DocumentQuery): Promise<number>;
   insight(query?: DocumentQuery): Promise<any>;
-  hydrate(data: DocumentRecord, originalData?: DocumentRecord): any;
+  hydrate(data: DocumentRecord, originalData?: DocumentRecord, options?: { track?: boolean }): any;
 }
 
 export interface SqlResultRows<Row = Record<string, unknown>> {
@@ -144,7 +149,7 @@ export interface DatabaseAdaptor {
   getSearchIndex(): SearchIndex | null;
 }
 
-interface SqliteEnv extends BaseEnv {
+interface SqliteEnv {
   workspaceRoot?: string;
   database?: DatabaseConfig;
 }
@@ -386,6 +391,8 @@ interface SqlDialect {
   docColumn(): string;
   docValuePlaceholder(): string;
   extract(path: string): string;
+  projectExpr(path: string): string;
+  decodeProjected(value: unknown): unknown;
   eq(path: string, value: unknown): SqlFrag;
   ne(path: string, value: unknown): SqlFrag;
   compare(path: string, op: "gt" | "gte" | "lt" | "lte", value: unknown): SqlFrag;
@@ -423,6 +430,16 @@ export class SqliteDialect implements SqlDialect {
   }
   extract(path: string) {
     return `json_extract(${this.docColumn()}, ${this.#path(path)})`;
+  }
+  // A projected column is read back as a value, not compared, so it must keep its JSON type. `json_extract`
+  // unwraps a scalar into a SQL value — a string field holding '{"a":1}' comes back indistinguishable from an
+  // object, and a boolean comes back as 0/1 — while `->` yields the value's JSON text, which `decodeProjected`
+  // parses back into exactly what was stored.
+  projectExpr(path: string) {
+    return `${this.docColumn()} -> ${this.#path(path)}`;
+  }
+  decodeProjected(value: unknown) {
+    return typeof value === "string" ? JSON.parse(value) : value;
   }
   eq(path: string, value: unknown): SqlFrag {
     return value === null
@@ -493,7 +510,7 @@ export class SqliteDialect implements SqlDialect {
     // never duplicates prior placeholders. All operators in one update therefore observe the pre-update document.
     const cur = `json_extract(${this.docColumn()}, ${p})`;
     const arr = `COALESCE(${cur}, json('[]'))`;
-    // biome-ignore lint/nursery/noUnnecessaryConditions: exhaustive switch over a string-literal union, not a truthiness check
+    // biome-ignore lint/suspicious/noUnnecessaryConditions: exhaustive switch over a string-literal union, not a truthiness check
     switch (op) {
       case "set":
         return { sql: `json_set(${acc}, ${p}, json(?))`, params: [jsonStr(value)] };
@@ -558,6 +575,13 @@ export class PostgresDialect implements SqlDialect {
   extract(path: string) {
     return this.#jsonb(path);
   }
+  // `#>` stays jsonb, which the driver parses into the stored value with its type intact.
+  projectExpr(path: string) {
+    return this.#jsonb(path);
+  }
+  decodeProjected(value: unknown) {
+    return value;
+  }
   eq(path: string, value: unknown): SqlFrag {
     return value === null
       ? { sql: `${this.#jsonb(path)} IS NULL`, params: [] }
@@ -618,7 +642,7 @@ export class PostgresDialect implements SqlDialect {
     const jsonbAt = `(${this.docColumn()}) #> ${p}`;
     const textAt = `(${this.docColumn()}) #>> ${p}`;
     const arr = `COALESCE(${jsonbAt}, '[]'::jsonb)`;
-    // biome-ignore lint/nursery/noUnnecessaryConditions: exhaustive switch over a string-literal union, not a truthiness check
+    // biome-ignore lint/suspicious/noUnnecessaryConditions: exhaustive switch over a string-literal union, not a truthiness check
     switch (op) {
       case "set":
         return { sql: `jsonb_set(${acc}, ${p}, ?::jsonb, true)`, params: [jsonStr(value)] };
@@ -752,6 +776,11 @@ class QueryCompiler {
   fieldExpr(path: string) {
     this.assertPath(path);
     return BASE_COLUMNS.has(path) ? quoteIdent(path) : this.dialect.extract(path);
+  }
+
+  projectExpr(path: string) {
+    this.assertPath(path);
+    return BASE_COLUMNS.has(path) ? quoteIdent(path) : this.dialect.projectExpr(path);
   }
 
   // A search node compiles to a JOIN rather than a WHERE fragment, so it contributes no SQL here and instead
@@ -977,6 +1006,17 @@ class UpdateCompiler {
   }
 }
 
+/**
+ * Per-document modification state, attached only when a document is hydrated for writing.
+ * Non-enumerable so `{ ...doc }` in `toRow` and `Object.entries` in `sanitizeJson` never see it.
+ */
+const MODIFICATION_STATE = Symbol("akan.document.modificationState");
+
+interface ModificationState {
+  isNew: boolean;
+  original: Record<string, unknown>;
+}
+
 export class SqlDocumentStore {
   readonly schema: DocumentSchema;
   readonly table: string;
@@ -984,6 +1024,8 @@ export class SqlDocumentStore {
   readonly updateCompiler: UpdateCompiler;
   #insertStmt: AkanSqlStatement | null = null;
   #readStmtCache = new Map<string, AkanSqlStatement>();
+  #docPrototype: object | null = null;
+  #immutableKeys: string[] | null = null;
 
   constructor(
     private readonly owner: DocumentDatabaseOwner,
@@ -1038,6 +1080,7 @@ export class SqlDocumentStore {
   async create(data: DocumentRecord, { runSaveHooks = true }: WriteHookOptions = {}) {
     const now = Date.now();
     const id = data.id ?? createDocumentId(now);
+    if (!isDocumentId(id)) throw new Error(`Invalid ID value: ${id}`);
     const doc = this.hydrate(
       this.prepareDocument({
         ...data,
@@ -1105,9 +1148,16 @@ export class SqlDocumentStore {
     return { acknowledged: true, matchedCount: changes, modifiedCount: changes };
   }
 
-  async deleteManyByQuery(query: DocumentQuery) {
-    // Query-level soft delete is a single atomic UPDATE stamping `removedAt` (bare value = set); it fires no hooks.
+  async removeManyByQuery(query: DocumentQuery) {
+    // Query-level remove is a single atomic UPDATE stamping `removedAt` (bare value = set); it fires no hooks.
+    // "remove", not "delete": the row survives, and `delete` stays free to mean an actual DELETE some day.
     return this.updateManyByQuery(query, { removedAt: dayjs() });
+  }
+
+  async removeOneByQuery(query: DocumentQuery) {
+    // "One" is the newest match: `updateOneByQuery` orders its subquery `createdAt` descending. The caller cannot
+    // pick, and the result carries counts rather than an id, so this is for "at most one of these" — not a queue.
+    return this.updateOneByQuery(query, { removedAt: dayjs() });
   }
 
   // Prepends the mandatory `updatedAt = now` stamp to the compiled assignments so every atomic write bumps it.
@@ -1150,7 +1200,7 @@ export class SqlDocumentStore {
       const rows = await this.prepareReadStmt(
         `SELECT ${this.projectionSql(projection)} FROM ${quoteIdent(this.table)}${join} WHERE ${where} ${order}${limit}${offset}`,
       ).all<ProjectedSqliteDocumentRow>(...args);
-      return rows.map((row) => this.hydrate(this.fromProjectedRow(row, projection)));
+      return rows.map((row) => this.hydrate(this.fromProjectedRow(row, projection), undefined, { track: false }));
     }
     // A bare `*` would also drag the join subquery's `rid`/`score` into the row, so the star is qualified once a
     // join is present.
@@ -1158,7 +1208,7 @@ export class SqlDocumentStore {
     const rows = await this.prepareReadStmt(
       `SELECT ${star} FROM ${quoteIdent(this.table)}${join} WHERE ${where} ${order}${limit}${offset}`,
     ).all<SqliteDocumentRow>(...args);
-    return rows.map((row) => this.hydrate(this.fromRow(row)));
+    return rows.map((row) => this.hydrate(this.fromRow(row), undefined, { track: false }));
   }
 
   async findIds(
@@ -1188,13 +1238,13 @@ export class SqlDocumentStore {
 
   async pickOne(query?: DocumentQuery, options: FindOneOptions = {}) {
     const doc = await this.findOne(query, options);
-    if (!doc) throw new Error(`No Document (${this.table}): ${JSON.stringify(query)}`);
+    if (!doc) throw new NoDocumentError(`No Document (${this.table}): ${JSON.stringify(query)}`);
     return doc;
   }
 
   async pickById(id: string) {
     const doc = await this.findOne({ id } as DocumentQuery);
-    if (!doc) throw new Error(`No Document (${this.table}): ${id}`);
+    if (!doc) throw new NoDocumentError(`No Document (${this.table}): ${id}`);
     return doc;
   }
 
@@ -1427,7 +1477,7 @@ export class SqlDocumentStore {
     const jsonFields = fields.filter((field) => !BASE_COLUMNS.has(field));
     const baseColumns = [...BASE_COLUMNS].map((field) => quoteIdent(field));
     const jsonColumns = jsonFields.map(
-      (field, idx) => `${this.compiler.fieldExpr(field)} AS ${quoteIdent(this.projectionAlias(idx))}`,
+      (field, idx) => `${this.compiler.projectExpr(field)} AS ${quoteIdent(this.projectionAlias(idx))}`,
     );
     return [...baseColumns, ...jsonColumns].join(", ");
   }
@@ -1445,7 +1495,7 @@ export class SqlDocumentStore {
     };
     const jsonFields = fields.filter((field) => !BASE_COLUMNS.has(field));
     for (const [idx, field] of jsonFields.entries()) {
-      const value = this.parseProjectedValue(row[this.projectionAlias(idx)]);
+      const value = this.dialect.decodeProjected(row[this.projectionAlias(idx)]);
       const props = (this.database.doc[FIELD_META] as unknown as FieldMap)[field]?.getProps?.();
       if (value === null && !props?.nullable) {
         if (props?.default != null) {
@@ -1485,7 +1535,7 @@ export class SqlDocumentStore {
 
   private async pickByIdForWrite(id: string) {
     const doc = await this.findOneForWrite({ id } as DocumentQuery);
-    if (!doc) throw new Error(`No Document (${this.table}): ${id}`);
+    if (!doc) throw new NoDocumentError(`No Document (${this.table}): ${id}`);
     return doc;
   }
 
@@ -1495,7 +1545,9 @@ export class SqlDocumentStore {
     originalData: DocumentRecord,
     { runSaveHooks = true, crudType = "update" }: WriteHookOptions = {},
   ) {
-    const doc = this.hydrate(this.prepareDocument({ ...data, id, updatedAt: dayjs() }), originalData);
+    const prepared = this.prepareDocument({ ...data, id, updatedAt: dayjs() });
+    this.#assertImmutableUnchanged(prepared, originalData);
+    const doc = this.hydrate(prepared, originalData);
     if (runSaveHooks) await this.runHooks("save", crudType, doc, "pre");
     await this.runHooks(crudType, crudType, doc, "pre");
     const row = this.toRow(doc);
@@ -1510,15 +1562,21 @@ export class SqlDocumentStore {
     return doc;
   }
 
-  private parseProjectedValue(value: unknown) {
-    if (typeof value !== "string") return value;
-    const trimmed = value.trim();
-    if (!trimmed || (trimmed[0] !== "{" && trimmed[0] !== "[")) return value;
-    try {
-      return JSON.parse(trimmed);
-    } catch {
-      return value;
-    }
+  // `immutable` is enforced on the document path only, mirroring mongoose: a query-level write compiles straight
+  // to SQL and is left alone, the same way mongoose exempts `bulkWrite` — that path fires no hooks either, so a
+  // caller reaching for it has already stepped outside document semantics. Checked before the save hooks so the
+  // error names what the caller changed, not what a hook derived from it.
+  #assertImmutableUnchanged(prepared: DocumentRecord, originalData: DocumentRecord) {
+    this.#immutableKeys ??= Object.entries(this.database.doc[FIELD_META] as unknown as FieldMap)
+      .filter(([, fieldMeta]) => fieldMeta.getProps().immutable)
+      .map(([key]) => key);
+    if (!this.#immutableKeys.length) return;
+    const changed = this.#immutableKeys.filter((key) => jsonStr(prepared[key]) !== jsonStr(originalData[key]));
+    if (!changed.length) return;
+    // The values are left out of the message: an immutable field may also be `field.secret`.
+    throw new Error(
+      `Cannot modify immutable field${changed.length > 1 ? "s" : ""} on ${this.table} (${String(prepared.id)}): ${changed.join(", ")}`,
+    );
   }
 
   private decodeDocumentPayload(payload: Record<string, unknown>) {
@@ -1615,49 +1673,87 @@ export class SqlDocumentStore {
     return result;
   }
 
-  hydrate(data: DocumentRecord, originalData: DocumentRecord = data) {
-    const store = this;
-    const original = JSON.parse(JSON.stringify(sanitizeJson(originalData) ?? {})) as Record<string, unknown>;
+  /**
+   * `track` buys `isModified()` and costs a deep clone of the row, so it is decided per call site rather than
+   * paid everywhere. Only the read paths (`find`, and the projected read behind it) opt out — that clone was 42%
+   * of a list query, and a listed document is never the one a save hook runs on. Everything else keeps it, so an
+   * external caller of `hydrate` sees no change.
+   */
+  hydrate(data: DocumentRecord, originalData: DocumentRecord = data, { track = true }: { track?: boolean } = {}) {
     const isNew = !originalData.id;
     const hydratedData = isNew ? this.prepareDocument(data) : data;
-    const doc = Object.assign(Object.create(this.database.doc.prototype), hydratedData);
-    Object.defineProperties(doc, {
+    const doc = Object.assign(Object.create(this.#documentPrototype()), hydratedData);
+    if (!track) return doc;
+    Object.defineProperty(doc, MODIFICATION_STATE, {
+      value: {
+        isNew,
+        // Cloned rather than referenced: `doc` shares every nested object with `hydratedData`, so an in-place
+        // `doc.tags.push(...)` would otherwise mutate the thing it is being compared against.
+        original: JSON.parse(JSON.stringify(sanitizeJson(originalData) ?? {})) as Record<string, unknown>,
+      } satisfies ModificationState,
+    });
+    return doc;
+  }
+
+  /**
+   * One prototype per store instead of six closures per document. It extends the model's own document prototype,
+   * so declared chain methods and `instanceof` are unaffected, and every method here is non-enumerable exactly as
+   * the previous per-document `defineProperties` made them.
+   */
+  #documentPrototype() {
+    if (this.#docPrototype) return this.#docPrototype;
+    const store = this;
+    this.#docPrototype = Object.create(this.database.doc.prototype, {
       set: {
-        value(patch: DocumentRecord) {
+        value(this: DocumentRecord, patch: DocumentRecord) {
           Object.assign(this, patch);
           return this;
         },
       },
       save: {
-        async value() {
-          return this.id ? store.update(this.id, this) : store.create(this);
+        async value(this: DocumentRecord) {
+          return this.id ? store.update(this.id as string, this) : store.create(this);
         },
       },
       refresh: {
-        async value() {
-          Object.assign(this, await store.pickById(this.id));
+        async value(this: DocumentRecord) {
+          Object.assign(this, await store.pickById(this.id as string));
           return this;
         },
       },
       isModified: {
-        value(field?: string) {
-          if (isNew) return true;
-          if (!field) return JSON.stringify(sanitizeJson(this)) !== JSON.stringify(original);
-          return JSON.stringify(sanitizeJson(this[field])) !== JSON.stringify(original[field]);
+        value(this: DocumentRecord & { [MODIFICATION_STATE]?: ModificationState }, field?: string) {
+          const state = this[MODIFICATION_STATE];
+          if (!state) throw new Error(SqlDocumentStore.#untrackedModificationMessage(store.table));
+          if (state.isNew) return true;
+          if (!field) return JSON.stringify(sanitizeJson(this)) !== JSON.stringify(state.original);
+          return JSON.stringify(sanitizeJson(this[field])) !== JSON.stringify(state.original[field]);
         },
       },
       toJSON: {
-        value() {
+        value(this: DocumentRecord) {
           return sanitizeJson(this);
         },
       },
       toObject: {
-        value() {
+        value(this: DocumentRecord) {
           return sanitizeJson(this);
         },
       },
-    });
-    return doc;
+    }) as object;
+    return this.#docPrototype;
+  }
+
+  // Thrown rather than answered with a guess: both answers are wrong in a way that is silent. `false` skips work
+  // that was needed, `true` redoes work that was not — `admin.document.ts` hashes an already-hashed password on
+  // that branch. A save hook always runs on a written document, which is tracked, so this only fires on a
+  // document that came straight out of a read.
+  static #untrackedModificationMessage(table: string) {
+    return (
+      `isModified() is unavailable on this ${table} document: it was loaded through a read query, which does not ` +
+      `snapshot the row. Call it inside a save hook, or re-load the document through the write path (\`save()\`, ` +
+      `\`update()\`) before comparing.`
+    );
   }
 
   private async runHooks(
@@ -1740,22 +1836,23 @@ export class SqliteDatabase
   extends adapt("sqliteDatabase", ({ env, plug }) => ({
     scheduler: plug(ScheduleAdaptorRole),
     config: env((env: SqliteEnv) => {
-      const appName = env.appName ?? "akan";
-      const environment = env.environment ?? "local";
-      const defaultFile = resolveDefaultSqliteFile({
-        appName,
-        fileName: `${appName}-${environment}.db`,
-        isProduction: process.env.NODE_ENV === "production",
-        operationMode: env.operationMode,
-        workspaceRoot: env.workspaceRoot,
-      });
+      const defaultFile = () => {
+        const { appName, environment, operationMode } = getEnv();
+        return resolveDefaultSqliteFile({
+          appName,
+          fileName: `${appName}-${environment}.db`,
+          isProduction: process.env.NODE_ENV === "production",
+          operationMode,
+          workspaceRoot: env.workspaceRoot,
+        });
+      };
       return {
         journalMode: "WAL",
         busyTimeoutMs: 5000,
         synchronous: "NORMAL",
         foreignKeys: true,
         ...env.database?.sqlite,
-        filePath: env.database?.sqlite?.filePath ?? process.env.SQLITE_DATABASE_PATH ?? defaultFile,
+        filePath: env.database?.sqlite?.filePath ?? process.env.SQLITE_DATABASE_PATH ?? defaultFile(),
         search: {
           enabled: env.database?.search?.enabled ?? parseSearchEnabled(process.env.AKAN_SEARCH_ENABLED),
           tokenizer: env.database?.search?.tokenizer ?? process.env.AKAN_SEARCH_TOKENIZER ?? DEFAULT_TOKENIZER,
@@ -1873,21 +1970,22 @@ export class LibsqlDatabase
   extends adapt("libsqlDatabase", ({ env, plug }) => ({
     scheduler: plug(ScheduleAdaptorRole),
     config: env((env: SqliteEnv) => {
-      const appName = env.appName ?? "akan";
-      const environment = env.environment ?? "local";
-      const defaultFile = resolveDefaultSqliteFile({
-        appName,
-        fileName: `${appName}-${environment}.db`,
-        isProduction: process.env.NODE_ENV === "production",
-        operationMode: env.operationMode,
-        workspaceRoot: env.workspaceRoot,
-      });
+      const defaultFile = () => {
+        const { appName, environment, operationMode } = getEnv();
+        return resolveDefaultSqliteFile({
+          appName,
+          fileName: `${appName}-${environment}.db`,
+          isProduction: process.env.NODE_ENV === "production",
+          operationMode,
+          workspaceRoot: env.workspaceRoot,
+        });
+      };
       return {
         url:
           env.database?.libsql?.url ??
           process.env.LIBSQL_URL ??
           process.env.LIBSQL_URI ??
-          `file:${env.database?.sqlite?.filePath ?? process.env.SQLITE_DATABASE_PATH ?? defaultFile}`,
+          `file:${env.database?.sqlite?.filePath ?? process.env.SQLITE_DATABASE_PATH ?? defaultFile()}`,
         authToken: env.database?.libsql?.authToken ?? process.env.LIBSQL_AUTH_TOKEN,
         search: {
           enabled: env.database?.search?.enabled ?? parseSearchEnabled(process.env.AKAN_SEARCH_ENABLED),

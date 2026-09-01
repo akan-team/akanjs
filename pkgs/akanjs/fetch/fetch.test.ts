@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { DataList, Int } from "akanjs/base";
+import { websocketBinaryFrameContract } from "akanjs/common";
 import { ConstantRegistry, via } from "akanjs/constant";
 import type {
   DatabaseSignal,
@@ -140,6 +141,7 @@ const setAkanPublicEnv = () => {
 
 afterEach(() => {
   FetchClient.resetSharedRegistry();
+  FetchClient.resetSharedClient();
   globalThis.fetch = originalFetch;
   globalThis.WebSocket = originalWebSocket;
   globalThis.setTimeout = originalSetTimeout;
@@ -188,6 +190,10 @@ class FakeWebSocket {
 
   receive(data: unknown) {
     this.onmessage?.({ data: typeof data === "string" ? data : JSON.stringify(data) });
+  }
+
+  receiveBinary(frame: Uint8Array) {
+    this.onmessage?.({ data: frame.buffer.slice(frame.byteOffset, frame.byteOffset + frame.byteLength) });
   }
 
   close() {
@@ -310,6 +316,11 @@ const serviceSignal: SerializedSignal = {
       args: [arg("room", "roomId")],
       returns: { refName: "fetchTestItem", modelType: "light" },
     },
+    streamThing: {
+      type: "pubsub",
+      args: [arg("room", "channel")],
+      returns: { refName: "Binary" },
+    },
   },
 };
 
@@ -318,7 +329,12 @@ const databaseSignal: SerializedSignal = {
   getGuards: ["Public"],
   cruGuards: ["Admin"],
   slice: {
-    "": { args: [arg("search", "query", { refName: "Any", nullable: true })] },
+    "": {
+      args: [
+        arg("search", "queryKey", { refName: "String", nullable: true, oneOf: ["any", "byTitle"] }),
+        arg("search", "args", { refName: "Any", nullable: true }),
+      ],
+    },
     byOwner: { args: [arg("param", "ownerId", { refName: "ID" })], guards: ["Public"] },
   },
   filter: {
@@ -352,6 +368,23 @@ describe("HttpClient", () => {
       HttpClient.makeUrl("/items/:id/:missing", [arg("search", "tags", { arrDepth: 1 }), arg("search", "q")], argMap),
     ).toBe("/items/id-1/:missing?tags=a&tags=b&q=hello");
     expect(HttpClient.makeUrl("/items", [arg("search", "empty", { nullable: true })], new Map())).toBe("/items");
+    // `Any` has a structure the query string cannot spell, and `String(value)` would send "[object Object]".
+    expect(
+      HttpClient.makeUrl(
+        "/items",
+        [arg("search", "args", { refName: "Any", nullable: true })],
+        new Map<string, unknown>([["args", ["a", 2, null]]]),
+      ),
+    ).toBe(`/items?args=${encodeURIComponent('["a",2,null]')}`);
+    // A value JSON cannot spell stringifies to `undefined`, which `URLSearchParams.set` would write as the
+    // literal text "undefined" — and the reader answers 400 on it. An arg it cannot carry it does not carry.
+    expect(
+      HttpClient.makeUrl(
+        "/items",
+        [arg("search", "args", { refName: "Any", nullable: true })],
+        new Map<string, unknown>([["args", () => ["a"]]]),
+      ),
+    ).toBe("/items");
     expect(
       FetchClient.makeHttpUrl(
         "ping",
@@ -720,6 +753,28 @@ describe("FetchClient HTTP generation", () => {
     });
   });
 
+  test("sends a mutation with the verb it declares", async () => {
+    setMockFetch();
+    jsonResponses.push("patched");
+    const restSignal: SerializedSignal = {
+      endpoint: {
+        patchThing: {
+          type: "mutation",
+          method: "PATCH",
+          args: [arg("body", "title")],
+          returns: { refName: "String" },
+        },
+      },
+    };
+    const client = new FetchClient("https://api.example", {}, { service: restSignal });
+
+    expect(await client.handler.patchThing("Renamed")).toBe("patched");
+    expect(fetchCalls[0]).toMatchObject({
+      url: "https://api.example/patchThing",
+      init: { method: "PATCH", body: JSON.stringify({ title: "Renamed" }) },
+    });
+  });
+
   test("supports explicit auth token, request auth, crystalize false, upload bodies, and clone", async () => {
     setMockFetch();
     jsonResponses.push({ title: "Raw", count: 1, nested: { label: "N" } }, "RequestAuth", "uploaded", "cloned");
@@ -947,6 +1002,74 @@ describe("FetchClient HTTP generation", () => {
       FetchClient.build<{ fetch: unknown }>({}, { missingConstant: missingConstantSignal }, { connect: false }),
     ).not.toThrow();
   });
+
+  test("shares one browser client across app and lib builds so a lib subscribe lands on the connected socket", () => {
+    setFakeWebSocket();
+    const globalWithWindow = globalThis as typeof globalThis & { window?: unknown };
+    globalWithWindow.window = {};
+    try {
+      const appSignal: SerializedSignal = {
+        prefix: "appThing",
+        endpoint: { appQuery: { type: "query", args: [], returns: { refName: "String" } } },
+      };
+      const libSignal: SerializedSignal = {
+        prefix: "libThing",
+        endpoint: { libRoom: { type: "pubsub", args: [arg("room", "roomId")], returns: { refName: "String" } } },
+      };
+      const app = FetchClient.build<{ fetch: unknown }>({}, { appThing: appSignal }, { origin: "https://api.example" });
+      const lib = FetchClient.build<{ fetch: unknown }>({}, { libThing: libSignal }, { origin: "https://api.example" });
+
+      expect(lib.fetch).toBe(app.fetch);
+      const proxy = app.fetch as FetchProxy;
+      expect(Object.keys(proxy.instance.serializedSignal)).toEqual(["appThing", "libThing"]);
+
+      proxy.instance.connect();
+      const ws = FakeWebSocket.instances[0];
+      ws.open();
+      (lib.fetch as Record<string, (...args: unknown[]) => unknown>).subscribeLibRoom("r1", () => undefined);
+      expect(JSON.parse(ws.sent.at(-1) ?? "{}")).toEqual({ key: "libRoom", data: ["r1"], subscribe: true });
+    } finally {
+      delete globalWithWindow.window;
+    }
+  });
+
+  test("keeps one client per package on the server", () => {
+    const serverSignal: SerializedSignal = {
+      prefix: "serverThing",
+      endpoint: { serverQuery: { type: "query", args: [], returns: { refName: "String" } } },
+    };
+    const app = FetchClient.build<{ fetch: unknown }>(
+      {},
+      { serverThing: serverSignal },
+      { origin: "https://api.example" },
+    );
+    const lib = FetchClient.build<{ fetch: unknown }>(
+      {},
+      { serverThing: serverSignal },
+      { origin: "https://api.example" },
+    );
+
+    expect(lib.fetch).not.toBe(app.fetch);
+  });
+
+  test("runs a method called on the proxy against the instance, so its private fields stay reachable", async () => {
+    setMockFetch();
+    jsonResponses.push("ok");
+    const { fetch: built } = FetchClient.build<{ fetch: unknown }>(
+      {},
+      { service: serviceSignal },
+      { origin: "https://api.example" },
+    );
+    const proxy = built as FetchProxy & {
+      setJwt: (jwt: string | null) => void;
+      getThing: (id: string, tags: string[], empty: null) => Promise<unknown>;
+    };
+
+    expect(() => proxy.setJwt("proxy-jwt")).not.toThrow();
+    expect(proxy.instance.jwt).toBe("proxy-jwt");
+    await proxy.getThing("1234567890abcdef12345678", [], null);
+    expect(fetchCalls[0]).toMatchObject({ init: { headers: { Authorization: "Bearer proxy-jwt" } } });
+  });
 });
 
 describe("FetchClient database signal helpers", () => {
@@ -1019,6 +1142,7 @@ describe("FetchClient database signal helpers", () => {
       argLength: 1,
     });
     expect(client.sortKeyMap.get("fetchTestItem")).toEqual(["latest", "oldest"]);
+    expect(client.filterQueryMap.get("fetchTestItem")).toEqual({ byTitle: [arg("param", "title")] });
     expect(fetchCalls.map((call) => call.url)).toEqual([
       "https://api.example/fetchTest/fetchTestItem/1234567890abcdef12345678",
       "https://api.example/fetchTest/lightFetchTestItem/1234567890abcdef12345678",
@@ -1068,7 +1192,7 @@ describe("FetchClient database signal helpers", () => {
 });
 
 describe("WsClient", () => {
-  test("warns when realtime APIs are used before websocket connection", () => {
+  test("warns when realtime APIs are used and nothing ever connects", async () => {
     setFakeWebSocket();
     const originalConsoleWarn = console.warn;
     const warnings: string[] = [];
@@ -1080,10 +1204,61 @@ describe("WsClient", () => {
       client.emit("send", ["hello"]);
       client.subscribe({ key: "roomKey", data: ["r1"], handleEvent: () => undefined });
 
+      expect(warnings).toEqual([]);
+      await new Promise((resolve) => originalSetTimeout(resolve, 5));
       expect(warnings).toEqual([
         expect.stringContaining('before emit "send"'),
         expect.stringContaining('before subscribe "roomKey"'),
       ]);
+    } finally {
+      console.warn = originalConsoleWarn;
+    }
+  });
+
+  test("queues a subscribe issued before connect and replays it on open without warning", async () => {
+    setFakeWebSocket();
+    const originalConsoleWarn = console.warn;
+    const warnings: string[] = [];
+    console.warn = ((message: string) => {
+      warnings.push(message);
+    }) as typeof console.warn;
+    try {
+      const client = new WsClient("ws://example/ws");
+      const events: unknown[] = [];
+      client.subscribe({ key: "roomKey", data: ["r1"], handleEvent: (data) => events.push(data) });
+      client.connect();
+      const ws = FakeWebSocket.instances[0];
+      ws.open();
+
+      expect(JSON.parse(ws.sent.at(-1) ?? "{}")).toEqual({ key: "roomKey", data: ["r1"], subscribe: true });
+      ws.receive({ type: "pub", roomId: "roomKey-r1", data: { title: "event" } });
+      expect(events).toEqual([{ title: "event" }]);
+      await new Promise((resolve) => originalSetTimeout(resolve, 5));
+      expect(warnings).toEqual([]);
+    } finally {
+      console.warn = originalConsoleWarn;
+    }
+  });
+
+  test("queues an emit issued before connect and replays it on open without warning", async () => {
+    setFakeWebSocket();
+    const originalConsoleWarn = console.warn;
+    const warnings: string[] = [];
+    console.warn = ((message: string) => {
+      warnings.push(message);
+    }) as typeof console.warn;
+    try {
+      const client = new WsClient("ws://example/ws");
+      client.emit("send", ["hello"]);
+      client.connect();
+      const ws = FakeWebSocket.instances[0];
+      ws.open();
+
+      expect(JSON.parse(ws.sent.at(-1) ?? "{}")).toEqual({ key: "send", data: ["hello"] });
+      client.emit("send", ["again"]);
+      expect(JSON.parse(ws.sent.at(-1) ?? "{}")).toEqual({ key: "send", data: ["again"] });
+      await new Promise((resolve) => originalSetTimeout(resolve, 5));
+      expect(warnings).toEqual([]);
     } finally {
       console.warn = originalConsoleWarn;
     }
@@ -1188,6 +1363,52 @@ describe("WsClient", () => {
 });
 
 describe("FetchClient websocket generation", () => {
+  test("routes a realtime call with a FetchPolicy origin to a socket for that origin", async () => {
+    setFakeWebSocket();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    client.connect();
+    const own = FakeWebSocket.instances[0];
+    own.open();
+
+    await client.handler.sendThing("hello", { origin: "http://localhost:8282" });
+    const remote = FakeWebSocket.instances[1];
+    expect(remote.url).toBe("ws://localhost:8282/ws");
+    remote.open();
+    expect(JSON.parse(remote.sent.at(-1) ?? "{}")).toEqual({ key: "sendThing", data: ["hello"] });
+    expect(own.sent).toEqual([]);
+
+    const listened: unknown[] = [];
+    const cleanupMessage = client.handler.listenSendThing((data: unknown) => listened.push(data), {
+      origin: "http://localhost:8282",
+    }) as () => void;
+    own.receive({ type: "msg", key: "sendThing", data: "own-message" });
+    remote.receive({ type: "msg", key: "sendThing", data: "remote-message" });
+    cleanupMessage();
+    remote.receive({ type: "msg", key: "sendThing", data: "after-cleanup" });
+    expect(listened).toEqual(["remote-message"]);
+
+    const published: unknown[] = [];
+    const cleanupPubsub = (await client.handler.subscribeRoomThing("room-1", (data: unknown) => published.push(data), {
+      origin: "http://localhost:8282",
+    })) as () => void;
+    expect(JSON.parse(remote.sent.at(-1) ?? "{}")).toEqual({ key: "roomThing", data: ["room-1"], subscribe: true });
+    remote.receive({ type: "pub", roomId: "roomThing-room-1", data: { title: "Published" } });
+    expect((published[0] as InstanceType<typeof FetchTestLight>).title).toBe("Published");
+    cleanupPubsub();
+    expect(JSON.parse(remote.sent.at(-1) ?? "{}")).toEqual({ key: "roomThing", data: ["room-1"], subscribe: false });
+
+    const instanceCount = FakeWebSocket.instances.length;
+    await client.handler.sendThing("second", { origin: "http://localhost:8282/" });
+    expect(FakeWebSocket.instances).toHaveLength(instanceCount);
+    expect(JSON.parse(remote.sent.at(-1) ?? "{}")).toEqual({ key: "sendThing", data: ["second"] });
+
+    await client.handler.sendThing("mine", { origin: "https://api.example" });
+    expect(FakeWebSocket.instances).toHaveLength(instanceCount);
+    expect(JSON.parse(own.sent.at(-1) ?? "{}")).toEqual({ key: "sendThing", data: ["mine"] });
+
+    client.disconnect();
+  });
+
   test("registers message and pubsub handlers from serialized endpoints", async () => {
     setFakeWebSocket();
     const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
@@ -1214,5 +1435,50 @@ describe("FetchClient websocket generation", () => {
     expect(published[0]).toBeInstanceOf(FetchTestLight);
     expect((published[0] as InstanceType<typeof FetchTestLight>).title).toBe("Published");
     expect(JSON.parse(ws.sent[2] ?? "{}")).toEqual({ key: "roomThing", data: ["room-1"], subscribe: false });
+  });
+
+  test("hands a binary frame to its room as bytes, and leaves the JSON rooms on the same socket alone", async () => {
+    setFakeWebSocket();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    const streamed: unknown[] = [];
+    const published: unknown[] = [];
+
+    const cleanupStream = (await client.handler.subscribeStreamThing("ch1", (data: unknown) =>
+      streamed.push(data),
+    )) as () => void;
+    await client.handler.subscribeRoomThing("room-1", (data: unknown) => published.push(data));
+
+    ws.receiveBinary(
+      websocketBinaryFrameContract.encode({
+        roomId: "streamThing-ch1",
+        payload: new Uint8Array([2, 148, 1, 2, 63]),
+      }),
+    );
+    ws.receive({ type: "pub", roomId: "roomThing-room-1", data: { title: "Published" } });
+
+    expect(streamed[0]).toBeInstanceOf(Uint8Array);
+    expect([...(streamed[0] as Uint8Array)]).toEqual([2, 148, 1, 2, 63]);
+    expect((published[0] as InstanceType<typeof FetchTestLight>).title).toBe("Published");
+
+    cleanupStream();
+    ws.receiveBinary(websocketBinaryFrameContract.encode({ roomId: "streamThing-ch1", payload: new Uint8Array([9]) }));
+    expect(streamed).toHaveLength(1);
+  });
+
+  test("ignores a binary frame for a room nothing subscribed to", async () => {
+    setFakeWebSocket();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    const streamed: unknown[] = [];
+    await client.handler.subscribeStreamThing("ch1", (data: unknown) => streamed.push(data));
+
+    ws.receiveBinary(websocketBinaryFrameContract.encode({ roomId: "streamThing-ch2", payload: new Uint8Array([1]) }));
+
+    expect(streamed).toEqual([]);
   });
 });

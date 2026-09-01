@@ -1,16 +1,18 @@
-import type { Cls, MergeAllDoubleKeyOfObjects, MergeAllKeyOfTypes } from "akanjs/base";
-import { FILTER_DICT_SHAPE, FILTER_META } from "akanjs/base";
-import type {
-  BaseObject,
-  ConstantFieldTypeInput,
-  DocumentModel,
-  FieldToValue,
-  PlainTypeToFieldType,
-  QueryOf,
-  Serialized,
+import type { Cls, EnumInstance, MergeAllDoubleKeyOfObjects, MergeAllKeyOfTypes } from "akanjs/base";
+import { FILTER_DICT_SHAPE, FILTER_META, getNonArrayModel, isEnum } from "akanjs/base";
+import {
+  type BaseObject,
+  type ConstantFieldType,
+  type ConstantFieldTypeInput,
+  type DocumentModel,
+  deserialize,
+  type FieldToValue,
+  type PlainTypeToFieldType,
+  type QueryOf,
+  type Serialized,
 } from "akanjs/constant";
 
-import type { DocumentQuery, DocumentQueryHelper } from "./documentQuery";
+import { type DocumentQuery, type DocumentQueryHelper, documentQueryHelper } from "./documentQuery";
 import type { ConstantFilterMeta } from "./types";
 
 const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
@@ -96,6 +98,78 @@ export const getFilterSortByKey = (modelRef: FilterCls, key: string) => {
 export const fillMissingFilterArgs = (filterInfo: FilterInfo, args: unknown[]) => {
   if (args.length >= filterInfo.args.length) return args;
   return [...args, ...Array(filterInfo.args.length - args.length).fill(undefined)];
+};
+
+export interface FilterArgInfo {
+  name: string;
+  argRef: ConstantFieldType;
+  arrDepth: number;
+  enum?: EnumInstance;
+  nullable: boolean;
+  ref?: string;
+}
+/** Unwraps a filter arg's declaration the way `EndpointInfo.getArgInfo` unwraps an endpoint's. */
+export const getFilterArgInfo = (arg: FilterInfo["args"][number]): FilterArgInfo => {
+  const [singleArg, arrDepth] = getNonArrayModel(arg.argRef as Cls);
+  const argIsEnum = isEnum(singleArg);
+  return {
+    name: arg.name,
+    argRef: (argIsEnum ? (singleArg as EnumInstance).type : singleArg) as ConstantFieldType,
+    arrDepth,
+    enum: argIsEnum ? (singleArg as EnumInstance) : undefined,
+    nullable: !!arg.option?.nullable,
+    ref: arg.option?.ref,
+  };
+};
+export const getFilterArgInfos = (filterInfo: FilterInfo): FilterArgInfo[] => filterInfo.args.map(getFilterArgInfo);
+
+/** A caller named a filter that does not exist, or gave it arguments it cannot take. Its callers answer 400. */
+export class FilterQueryError extends Error {}
+
+const tryDeserializeFilterArg = (arg: FilterArgInfo, value: unknown, key: string) => {
+  try {
+    return deserialize(arg.argRef, arg.arrDepth, value, { key: arg.name, nullable: arg.nullable });
+  } catch (error) {
+    throw new FilterQueryError(
+      `Invalid filter argument "${arg.name}" for key: ${key}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+};
+
+/**
+ * Compiles a `(queryKey, args)` pair into the query its filter declares — the root slice's whole contract.
+ * Every arg is parsed by the type the filter declared for it, so a Date arg reaches the query as a Dayjs and
+ * an id that is not one is refused here rather than becoming a query that matches nothing. Args past the
+ * declared ones are dropped: the caller names a filter, never a query.
+ */
+export const resolveFilterQuery = (
+  filterRef: FilterCls,
+  queryKey?: string | null,
+  args?: unknown[] | null,
+): QueryOf<any> => {
+  const key = queryKey || "any";
+  const filterInfo = getFilterMeta(filterRef).query[key];
+  const queryFn = filterInfo?.queryFn;
+  if (!queryFn) throw new FilterQueryError(`No filter query for key: ${key}`);
+  const given = Array.isArray(args) ? args : [];
+  const queryArgs = getFilterArgInfos(filterInfo).map((arg, idx) => {
+    const value = given[idx];
+    if (!arg.nullable && (value === null || value === undefined))
+      throw new FilterQueryError(`Missing filter argument "${arg.name}" for key: ${key}`);
+    const parsed = tryDeserializeFilterArg(arg, value, key);
+    // Every other filter call path pads a missing optional with `undefined`; a query that tests `arg === undefined`
+    // must not start seeing `null` because the args arrived over the wire.
+    return parsed === null ? undefined : parsed;
+  });
+  // Whatever the filter body itself throws travels as it is: that one is the app's bug, not the caller's.
+  return queryFn(...queryArgs, documentQueryHelper) as QueryOf<any>;
+};
+
+export const assertFilterFitsCrud = (refName: string, queryKey: string, className: string) => {
+  if (queryKey.toLowerCase() !== refName.toLowerCase()) return;
+  throw new Error(
+    `Filter "${queryKey}" on "${refName}" generates remove${className}/update${className}, which are the generated CRUD methods; rename the filter`,
+  );
 };
 
 export type BaseFilterSortKey = "latest" | "oldest" | "relevance";
@@ -203,7 +277,6 @@ interface ArgProps<Value = unknown> {
   nullable?: boolean;
   ref?: string;
   default?: Value;
-  renderOption?: (arg: never) => string;
 }
 export class FilterInfo<ArgNames extends string[] = any, Args extends any[] = any, Model = any> {
   readonly argNames: ArgNames = [] as unknown as ArgNames;

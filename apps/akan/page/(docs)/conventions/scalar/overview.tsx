@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="when-to-use" title={l.trans({ en: "When To Use Scalar", ko: "Scalar를 쓰는 경우" })}>
         <Docs.Title>{l.trans({ en: "When To Use Scalar", ko: "Scalar를 쓰는 경우" })}</Docs.Title>
@@ -35,7 +35,7 @@ export default function Page() {
               ko: "다른 model의 일부로 저장되는 값이면 scalar를 사용합니다. 독립적인 list page, permission, service method, lifecycle이 필요하면 일반 module model을 사용합니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Good scalar examples: Price, Address, ContactInfo, Coordinate, FileMeta.",
@@ -48,9 +48,10 @@ export default function Page() {
                 ko: "좋은 module model 예시: Product, Order, User, Post, Ticket.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="product.constant.ts"
           code={`import { via } from "akanjs/constant";
 import { Price } from "../__scalar/price/price.constant";
@@ -61,7 +62,7 @@ export class ProductInput extends via((field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="file-map" title={l.trans({ en: "Scalar Files", ko: "Scalar 파일" })}>
         <Docs.Title>{l.trans({ en: "Scalar Files", ko: "Scalar 파일" })}</Docs.Title>
@@ -74,6 +75,7 @@ export class ProductInput extends via((field) => ({
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           language="bash"
           code={`lib/
 └── __scalar/
@@ -86,7 +88,7 @@ export class ProductInput extends via((field) => ({
         └── price.Unit.tsx`}
         />
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               <code>*.abstract.md</code>:{" "}
               {l.trans({
@@ -129,10 +131,10 @@ export class ProductInput extends via((field) => ({
                 ko: "상위 card나 detail page 안에서 scalar를 표시하는 재사용 renderer를 렌더링합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="small-example" title={l.trans({ en: "Small Example", ko: "작은 예시" })}>
         <Docs.Title>{l.trans({ en: "Small Example", ko: "작은 예시" })}</Docs.Title>
@@ -145,6 +147,7 @@ export class ProductInput extends via((field) => ({
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="price.constant.ts"
           code={`import { Float } from "akanjs/base";
 import { via } from "akanjs/constant";
@@ -155,9 +158,9 @@ export class Price extends via((field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

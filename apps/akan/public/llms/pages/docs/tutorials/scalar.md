@@ -499,8 +499,8 @@ export class InventoryStore extends store(sig.inventory, () => ({
 
 ```ts
 "use client"; // [!code collapse:4]
-import { clsx } from "akanjs/client";
-import { Field, Layout } from "akanjs/ui";
+import { cn } from "akanjs/client";
+import { Field, Layout, buttonRecipe } from "akanjs/ui";
 import { cnst, st, usePage } from "@apps/koyo/client";
 import { Loading } from "akanjs/ui"; // [!code ++:2]
 import { useEffect } from "react";
@@ -521,9 +521,9 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
   else if (!todaysInventory.isInStock("yogurtIcecream"))
     return <div className="flex size-full items-center justify-center text-xl">{l("inventory.outOfStock")}</div>;
   return (
-    <Layout.Template className={clsx("w-full space-y-6", className)}>
+    <Layout.Template className={cn("w-full space-y-6", className)}>
       {showServeType ? ( // [!code collapse:15]
-        <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm">
+        <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
           <div className="space-y-6">
             <div className="flex items-center gap-3">
               <span className="text-3xl">🍦</span>
@@ -537,7 +537,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           </div>
         </div>
       ) : null}
-      <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm">
+      <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
         <div className="space-y-6">
           <div className="flex items-center gap-3"> // [!code collapse:4]
             <span className="text-3xl">📏</span>
@@ -554,7 +554,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           />
         </div>
       </div>
-      <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm">
+      <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
         <div className="space-y-6">
           <div className="flex items-center gap-3"> // [!code collapse:4]
             <span className="text-3xl">🍓</span>
@@ -571,7 +571,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           />
         </div>
       </div>
-      <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm"> // [!code collapse:13]
+      <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm"> // [!code collapse:13]
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <span className="text-3xl">📱</span>
@@ -623,8 +623,9 @@ export class InventoryInsight extends via(Inventory, (field) => ({})) {}
 
 ```ts
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { st, usePage } from "@apps/koyo/client";
+import { buttonRecipe } from "akanjs/ui";
 import { BiRefresh } from "react-icons/bi";
 
 interface RefillProps {
@@ -634,7 +635,7 @@ export const Refill = ({ className }: RefillProps) => {
   const { l } = usePage();
   return (
     <button
-      className={clsx("btn btn-primary", className)}
+      className={buttonRecipe({ variant: "primary" }, className)}
       onClick={() => {
         void st.do.refillTodaysInventory();
       }}
@@ -649,7 +650,7 @@ export const Refill = ({ className }: RefillProps) => {
 
 ```ts
 import { dayjs } from "akanjs/base";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { cnst, usePage } from "@apps/koyo/client";
 
 interface GeneralProps {
@@ -660,7 +661,7 @@ interface GeneralProps {
 export const General = ({ className, inventory }: GeneralProps) => {
   const { l } = usePage();
   return (
-    <div className={clsx("w-full space-y-2 rounded-xl border border-base-300 bg-base-100 p-4", className)}>
+    <div className={cn("w-full space-y-2 rounded-xl border border-border bg-background p-4", className)}>
       <div className="text-lg font-bold text-primary">{dayjs(inventory.at).format("YYYY-MM-DD")}</div>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {inventory.stocks.map((stock, index) => {
@@ -669,49 +670,54 @@ export const General = ({ className, inventory }: GeneralProps) => {
           return (
             <div
               key={`${stock.type}-${index}`}
-              className={clsx("space-y-3 rounded-xl border bg-base-100 px-6 py-4 shadow-md", {
-                "border-base-300": status === "empty",
-                "border-warning/40": status === "low",
-                "border-success/40": status === "normal",
-              })}
+              className={cn(
+                "space-y-3 rounded-xl border bg-background px-6 py-4 shadow-md",
+                status === "empty" && "border-border",
+                status === "low" && "border-warning/40",
+                status === "normal" && "border-success/40",
+              )}
             >
               <div className="flex items-center justify-between">
                 <div
-                  className={clsx("rounded px-2 py-1 text-xs font-bold", {
-                    "border border-base-300 bg-base-100 text-base-content/70": status === "empty",
-                    "border border-warning/40 bg-base-100 text-warning": status === "low",
-                    "border border-success/40 bg-base-100 text-success": status === "normal",
-                  })}
+                  className={cn(
+                    "rounded px-2 py-1 text-xs font-bold",
+                    status === "empty" && "border border-border bg-background text-foreground/70",
+                    status === "low" && "border border-warning/40 bg-background text-warning",
+                    status === "normal" && "border border-success/40 bg-background text-success",
+                  )}
                 >
                   {l(`stockType.${stock.type}`)}
                 </div>
                 <div
-                  className={clsx("text-2xl font-bold", {
-                    "text-primary": status === "empty",
-                    "text-warning": status === "low",
-                    "text-success": status === "normal",
-                  })}
+                  className={cn(
+                    "text-2xl font-bold",
+                    status === "empty" && "text-primary",
+                    status === "low" && "text-warning",
+                    status === "normal" && "text-success",
+                  )}
                 >
                   {stock.currentQty} / {stock.totalQty}
                 </div>
               </div>
               <div className="flex items-center justify-between gap-4">
-                <div className="h-2 w-full overflow-hidden rounded-full bg-base-200">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                   <div
-                    className={clsx("h-full", {
-                      "bg-base-300": status === "empty",
-                      "bg-warning": status === "low",
-                      "bg-success": status === "normal",
-                    })}
+                    className={cn(
+                      "h-full",
+                      status === "empty" && "bg-border",
+                      status === "low" && "bg-warning",
+                      status === "normal" && "bg-success",
+                    )}
                     style={{ width: `${Math.min(percentage, 100)}%` }}
                   />
                 </div>
                 <div
-                  className={clsx("text-right text-xs font-bold", {
-                    "text-primary": status === "empty",
-                    "text-warning": status === "low",
-                    "text-success": status === "normal",
-                  })}
+                  className={cn(
+                    "text-right text-xs font-bold",
+                    status === "empty" && "text-primary",
+                    status === "low" && "text-warning",
+                    status === "normal" && "text-success",
+                  )}
                 >
                   {Math.round(percentage)}%
                 </div>
@@ -823,7 +829,7 @@ export default async function Page() {
       <div className="flex items-center gap-4 text-5xl font-black"> // [!code collapse:16]
         <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
         <Model.New
-          className="btn btn-primary"
+          className={buttonRecipe({ variant: "primary" })}
           slice={fetch.slice.icecreamOrderInPublic}
           renderTitle="name"
           partial={icecreamOrderForm}

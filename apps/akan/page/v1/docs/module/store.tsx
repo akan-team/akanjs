@@ -113,7 +113,7 @@ this.set(state => ({ count: state.count + 1 }));`,
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="class-structure" title={l.trans({ en: "Store Class Structure", ko: "Store 클래스 구조" })}>
         <Docs.Title>{l.trans({ en: "Store Class Structure", ko: "Store 클래스 구조" })}</Docs.Title>
@@ -150,7 +150,7 @@ export class ProductStore extends store(sig.product, {
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="state-management" title={l.trans({ en: "State Interaction", ko: "상태 상호작용" })}>
         <Docs.Title>{l.trans({ en: "State Interaction", ko: "상태 상호작용" })}</Docs.Title>
@@ -180,7 +180,7 @@ export class ProductStore extends store(sig.product, {
           </div>
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="standard-api" title={l.trans({ en: "Standard Model API (Base)", ko: "표준 모델 API (기본)" })}>
         <Docs.Title>{l.trans({ en: "Standard Model API (Base)", ko: "표준 모델 API (기본)" })}</Docs.Title>
@@ -201,7 +201,7 @@ export class ProductStore extends store(sig.product, {
         <Docs.SubTitle>2.2. Base Actions (Standard)</Docs.SubTitle>
         <Docs.IntroTable type="method" items={baseMethods} />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="slice-features"
@@ -237,7 +237,7 @@ export class ProductStore extends store(sig.product, {
         <div className="mb-8" />
 
         <Docs.SubTitle>3.2. Generated Slice State</Docs.SubTitle>
-        <div className="mb-4 text-base-content/70 text-sm">
+        <div className="mb-4 text-foreground/70 text-sm">
           {l.trans({
             en: "Replace <Slice> with the capitalized slice name. For the default slice, usually the <Slice> suffix is essentially the model name.",
             ko: "<Slice>를 대문자로 시작하는 Slice 이름으로 대체하세요. 기본 Slice의 경우, 대개 <Slice> 접미사는 본질적으로 모델 이름입니다.",
@@ -250,7 +250,7 @@ export class ProductStore extends store(sig.product, {
         <Docs.SubTitle>3.3. Generated Slice Actions</Docs.SubTitle>
         <Docs.IntroTable type="method" items={sliceMethods} />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="usage-patterns" title={l.trans({ en: "Usage Patterns", ko: "사용 패턴" })}>
         <Docs.Title>{l.trans({ en: "Usage Patterns", ko: "사용 패턴" })}</Docs.Title>
@@ -326,7 +326,7 @@ st.do.setFilterOpen(true);
 st.set({ filterOpen: true });`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="global-access" title={l.trans({ en: "Other Stores (Global)", ko: "다른 스토어 (전역)" })}>
         <Docs.Title>{l.trans({ en: "Other Stores (Global)", ko: "다른 스토어 (전역)" })}</Docs.Title>
@@ -361,7 +361,7 @@ export class ProductStore extends store(sig.product, { ... }) {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="best-practices" title={l.trans({ en: "Store Best Practices", ko: "Store 모범 사례" })}>
         <Docs.Title>{l.trans({ en: "Store Best Practices", ko: "Store 모범 사례" })}</Docs.Title>
@@ -398,7 +398,7 @@ export class ProductStore extends store(sig.product, { ... }) {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

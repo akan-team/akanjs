@@ -23,8 +23,8 @@ export const dictionary = modelDictionary(["en", "ko"])
       accountId: t(["Account ID", "아이디"]).desc(["Account ID Description", "아이디 설명"]),
     })),
     bySearch: fn(["By Search", "검색어별 조회"]).arg((t) => ({
-      text: t(["Search Text", "검색어"]).desc(["Text to search for", "검색할 문자열"]),
-      roles: t(["Roles", "역할"]).desc(["Roles to narrow the search", "검색 범위를 좁힐 역할"]),
+      text: t(["Text", "검색어"]).desc(["Account ID text", "아이디 검색어"]),
+      roles: t(["Roles", "역할"]).desc(["Roles Description", "역할 설명"]),
     })),
   }))
   .enum<AdminRole>("adminRole", (t) => ({
@@ -32,7 +32,13 @@ export const dictionary = modelDictionary(["en", "ko"])
     admin: t(["Admin", "관리자"]).desc(["Admin Description", "관리자 설명"]),
     superAdmin: t(["Super Admin", "최고 관리자"]).desc(["Super Admin Description", "최고 관리자 설명"]),
   }))
-  .slice<AdminSlice>((fn) => ({}))
+  .slice<AdminSlice>((fn) => ({
+    inMention: fn(["Mentionable Admins", "멘션 가능한 관리자"])
+      .desc(["Admins matching a mention search", "멘션 검색어에 일치하는 관리자"])
+      .arg((t) => ({
+        text: t(["Text", "검색어"]).desc(["Account ID text", "아이디 검색어"]),
+      })),
+  }))
   .endpoint<AdminEndpoint>((fn) => ({
     isAdminSystemInitialized: fn(["Is Admin System Initialized", "관리자 시스템 초기화 여부"]),
     createAdminWithInitialize: fn(["Create Admin With Initialize", "초기 관리자 생성"]).arg((t) => ({
@@ -59,6 +65,21 @@ export const dictionary = modelDictionary(["en", "ko"])
       adminId: t(["Admin ID", "관리자 아이디"]).desc(["Admin ID Description", "관리자 아이디 설명"]),
       role: t(["Role", "권한"]).desc(["Role Description", "권한 설명"]),
     })),
+    runAdminSql: fn(["Run SQL", "SQL 실행"])
+      .desc([
+        "Runs one read-only statement against this app's database. Reads only: SELECT or WITH, one statement, and the `_doc` column — where every hidden and secret field lives — cannot be reached. Rows are capped.",
+        "이 앱의 데이터베이스에 읽기 전용 문장 하나를 실행한다. 읽기만 가능하다 — SELECT 또는 WITH, 한 문장, 그리고 hidden·secret 필드가 모두 들어 있는 `_doc` 컬럼에는 닿을 수 없다. 행 수에는 상한이 있다.",
+      ])
+      .arg((t) => ({
+        sql: t(["SQL", "SQL"]).desc([
+          "One SELECT or WITH statement. Quote identifiers with double quotes.",
+          "SELECT 또는 WITH 문장 하나. 식별자는 큰따옴표로 감싼다.",
+        ]),
+        limit: t(["Limit", "행 제한"]).desc([
+          "Rows to return at most. Defaults to the ceiling, which no caller can raise.",
+          "반환할 최대 행 수. 기본값은 상한이며, 호출자가 올릴 수는 없다.",
+        ]),
+      })),
   }))
   .error({
     adminSystemAlreadyInitialized: ["Admin system already initialized", "관리자 시스템이 이미 초기화되었습니다"],

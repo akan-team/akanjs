@@ -298,7 +298,7 @@ export default function Page() {
           </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="core-principles" title={l.trans({ en: "Core Principles", ko: "핵심 원칙" })}>
         <Docs.Title>{l.trans({ en: "Core Principles", ko: "핵심 원칙" })}</Docs.Title>
@@ -355,7 +355,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="file-structure" title={l.trans({ en: "File Structure", ko: "파일 구조" })}>
         <Docs.Title>{l.trans({ en: "File Structure", ko: "파일 구조" })}</Docs.Title>
@@ -379,7 +379,7 @@ export default function Page() {
           <Docs.IntroTable type="field" items={fileStructureItems} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="defining-scalars" title={l.trans({ en: "Defining Scalars", ko: "스칼라 정의하기" })}>
         <Docs.Title>{l.trans({ en: "Defining Scalars", ko: "스칼라 정의하기" })}</Docs.Title>
@@ -414,7 +414,7 @@ export class Price extends via((field) => ({
           <Docs.IntroTable type="field" items={definingScalarItems} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="internationalization" title={l.trans({ en: "scalarDictionary()", ko: "scalarDictionary()" })}>
         <Docs.Title>{l.trans({ en: "scalarDictionary()", ko: "scalarDictionary()" })}</Docs.Title>
@@ -452,7 +452,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
           <Docs.IntroTable type="field" items={dictionaryItems} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="method-extensions"
@@ -488,7 +488,7 @@ export class Price extends by(cnst.Price) {
           <Docs.IntroTable type="field" items={documentItems} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="naming-conventions" title={l.trans({ en: "Naming Conventions", ko: "명명 규칙" })}>
         <Docs.Title>{l.trans({ en: "Naming Conventions", ko: "명명 규칙" })}</Docs.Title>
@@ -503,7 +503,7 @@ export class Price extends by(cnst.Price) {
           <Docs.IntroTable type="field" items={namingItems} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="best-practices" title={l.trans({ en: "Best Practices", ko: "모범 사례" })}>
         <Docs.Title>{l.trans({ en: "Best Practices", ko: "모범 사례" })}</Docs.Title>
@@ -512,7 +512,7 @@ export class Price extends by(cnst.Price) {
           <Docs.IntroTable type="field" items={bestPracticeItems} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="integration" title={l.trans({ en: "Integration Points", ko: "통합 포인트" })}>
         <Docs.Title>{l.trans({ en: "Integration Points", ko: "통합 포인트" })}</Docs.Title>
@@ -575,7 +575,7 @@ export class Price extends by(cnst.Price) {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

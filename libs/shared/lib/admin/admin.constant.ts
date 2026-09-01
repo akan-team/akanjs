@@ -14,11 +14,19 @@ export class AdminObject extends via(AdminInput, (field) => ({
   lastLoginAt: field(Date, { default: () => dayjs(), example: dayjs() }),
 })) {}
 
-export class LightAdmin extends via(AdminObject, ["accountId", "roles"] as const, (resolve) => ({})) {
+export class LightAdmin extends via(AdminObject, ["accountId", "roles", "lastLoginAt"] as const, (resolve) => ({})) {
   hasAccess(role: AdminRole["value"]) {
     if (role === "superAdmin") return this.roles.includes("superAdmin");
     if (role === "admin") return this.roles.includes("superAdmin") || this.roles.includes("admin");
     else return false;
+  }
+  label() {
+    return this.accountId.split("@")[0] ?? this.accountId;
+  }
+  primaryRole(): AdminRole["value"] {
+    if (this.roles.includes("superAdmin")) return "superAdmin";
+    if (this.roles.includes("admin")) return "admin";
+    return "manager";
   }
 }
 

@@ -235,20 +235,62 @@ export function shouldInvalidateRouteCacheEntry(
   return false;
 }
 
-export class LruTtlCache<T> {
-  readonly #entries = new Map<string, { value: T; expiresAt: number }>();
+export interface LruTtlCacheOptions<T> {
+  /**
+   * Measures one entry's payload. Entry count alone says nothing about a cache whose entries span
+   * three orders of magnitude, and a byte ceiling needs a running total to enforce. The default
+   * reports 0 rather than guessing, so `byteSize` stays honest about not knowing.
+   */
+  sizeOf?: (value: T) => number;
+  /** Total payload ceiling. 0 leaves the cache bounded only by `maxEntries`. */
+  maxBytes?: number;
+  /** An entry over this is not stored at all, rather than evicting everything else to fit it. */
+  maxEntryBytes?: number;
+  /**
+   * Cadence of the idle sweep. Without one a filled cache never shrinks: an entry is dropped only
+   * when its own key is fetched after expiry or when a write evicts it, so a pod that stops
+   * serving holds its peak forever — measured at 100 entries / 21.4 MiB still resident 310s after
+   * the last request, with a 30s TTL. 0 disables it.
+   */
+  sweepIntervalMs?: number;
+}
 
-  constructor(readonly maxEntries = 100) {}
+export class LruTtlCache<T> {
+  readonly #entries = new Map<string, { value: T; expiresAt: number; byteLength: number }>();
+  #byteLength = 0;
+  #sweepTimer: ReturnType<typeof setInterval> | null = null;
+  readonly #sizeOf: (value: T) => number;
+  readonly #maxBytes: number;
+  readonly #maxEntryBytes: number;
+
+  constructor(
+    readonly maxEntries = 100,
+    options: LruTtlCacheOptions<T> = {},
+  ) {
+    this.#sizeOf = options.sizeOf ?? (() => 0);
+    this.#maxBytes = options.maxBytes ?? 0;
+    this.#maxEntryBytes = options.maxEntryBytes ?? 0;
+    const sweepIntervalMs = options.sweepIntervalMs ?? 0;
+    if (sweepIntervalMs > 0) {
+      this.#sweepTimer = setInterval(() => this.sweepExpired(), sweepIntervalMs);
+      // Reclaiming an idle cache must never be the reason a process refuses to exit.
+      (this.#sweepTimer as { unref?: () => void }).unref?.();
+    }
+  }
 
   get size(): number {
     return this.#entries.size;
+  }
+
+  get byteSize(): number {
+    return this.#byteLength;
   }
 
   get(key: string): T | null {
     const entry = this.#entries.get(key);
     if (!entry) return null;
     if (entry.expiresAt <= Date.now()) {
-      this.#entries.delete(key);
+      this.#remove(key);
       return null;
     }
     this.#entries.delete(key);
@@ -256,26 +298,56 @@ export class LruTtlCache<T> {
     return entry.value;
   }
 
-  set(key: string, value: T, ttlSeconds: number): void {
-    this.#entries.delete(key);
+  /** Returns whether the entry was stored; a payload over `maxEntryBytes` is rejected. */
+  set(key: string, value: T, ttlSeconds: number): boolean {
+    this.#remove(key);
+    const byteLength = LruTtlCache.#measure(this.#sizeOf, value);
+    if (this.#maxEntryBytes > 0 && byteLength > this.#maxEntryBytes) return false;
+    this.sweepExpired();
     const maxEntries = this.maxEntries > 0 ? this.maxEntries : 100;
     while (this.#entries.size >= maxEntries) {
-      const oldest = this.#entries.keys().next().value;
-      if (!oldest) break;
-      this.#entries.delete(oldest);
+      if (!this.#removeOldest()) break;
     }
-    this.#entries.set(key, { value, expiresAt: Date.now() + ttlSeconds * 1000 });
+    while (this.#maxBytes > 0 && this.#entries.size > 0 && this.#byteLength + byteLength > this.#maxBytes) {
+      if (!this.#removeOldest()) break;
+    }
+    this.#entries.set(key, { value, expiresAt: Date.now() + ttlSeconds * 1000, byteLength });
+    this.#byteLength += byteLength;
+    return true;
+  }
+
+  /**
+   * Drops every expired entry. Deliberately a full scan rather than a walk from the oldest that
+   * stops at the first live entry: insertion order is *LRU* order because `get` reinserts, and TTLs
+   * differ per entry, so expiry is not monotonic in map order and an early break would leave
+   * expired entries behind. The map is bounded by `maxEntries`, so the scan is cheap.
+   */
+  sweepExpired(now = Date.now()): number {
+    let removed = 0;
+    for (const [key, entry] of this.#entries) {
+      if (entry.expiresAt > now) continue;
+      this.#remove(key);
+      removed += 1;
+    }
+    return removed;
+  }
+
+  /** Stops the idle sweep. The cache stays usable; only the timer goes away. */
+  dispose(): void {
+    if (!this.#sweepTimer) return;
+    clearInterval(this.#sweepTimer);
+    this.#sweepTimer = null;
   }
 
   delete(key: string): boolean {
-    return this.#entries.delete(key);
+    return this.#remove(key);
   }
 
   invalidate(predicate: (key: string, value: T) => boolean): number {
     let count = 0;
     for (const [key, entry] of this.#entries) {
       if (!predicate(key, entry.value)) continue;
-      this.#entries.delete(key);
+      this.#remove(key);
       count += 1;
     }
     return count;
@@ -283,5 +355,35 @@ export class LruTtlCache<T> {
 
   clear(): void {
     this.#entries.clear();
+    this.#byteLength = 0;
+  }
+
+  static parseByteCeiling(value: string | undefined | null, fallback = 0): number {
+    const parsed = Number.parseInt(value ?? "", 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
+  #remove(key: string): boolean {
+    const entry = this.#entries.get(key);
+    if (!entry) return false;
+    this.#entries.delete(key);
+    this.#byteLength -= entry.byteLength;
+    return true;
+  }
+
+  #removeOldest(): boolean {
+    const oldest = this.#entries.keys().next().value;
+    if (!oldest) return false;
+    return this.#remove(oldest);
+  }
+
+  /** A measurement must never fail a cache write, and a bad measurement must never skew the total. */
+  static #measure<T>(sizeOf: (value: T) => number, value: T): number {
+    try {
+      const measured = sizeOf(value);
+      return Number.isFinite(measured) && measured > 0 ? measured : 0;
+    } catch {
+      return 0;
+    }
   }
 }

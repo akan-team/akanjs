@@ -11,12 +11,7 @@ export const General = ({ className }: GeneralProps) => {
   const { l } = usePage();
   return (
     <Layout.Template className={className}>
-      <Field.Text
-        label={l("file.filename")}
-        desc={l("file.filename.desc")}
-        value={fileForm.url}
-        onChange={st.do.setUrlOnFile}
-      />
+      <Field.Text label={l("file.url")} desc={l("file.url.desc")} value={fileForm.url} onChange={st.do.setUrlOnFile} />
     </Layout.Template>
   );
 };

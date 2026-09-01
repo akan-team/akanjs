@@ -71,6 +71,12 @@ const serializedSignal: Record<string, SerializedSignal> = {
         args: [{ type: "msg", name: "data", refName: "String" }],
         returns: { refName: "String" },
       },
+      reviewOpenApiItem: {
+        type: "prompt",
+        args: [{ type: "param", name: "openApiItemId", refName: "ID" }],
+        returns: { refName: "Any" },
+        guards: ["User"],
+      },
       getBlob: {
         type: "query",
         path: "localFile/getBlob/*",
@@ -133,6 +139,20 @@ describe("createOpenApiDocument", () => {
         },
       },
     });
+    // A prompt is a plain GET mounted whether or not the app enabled MCP, so an HTTP contract that left it out
+    // described fewer routes than the app serves — and disagreed with the API explorer, which shows the same one.
+    expect(document.paths["/openApiItem/reviewOpenApiItem/{openApiItemId}"]?.get).toMatchObject({
+      operationId: "reviewOpenApiItem",
+      "x-akan-endpoint-type": "prompt",
+      security: [{ bearerAuth: [] }],
+    });
+    // Its declared return is `Any`, which reads as `{}` — a documented route whose body the document could not
+    // describe. The shape is the protocol's, not the endpoint's, so it is published once as a component.
+    expect(document.paths["/openApiItem/reviewOpenApiItem/{openApiItemId}"]?.get?.responses).toMatchObject({
+      "200": { content: { "application/json": { schema: { items: { $ref: "#/components/schemas/PromptMessage" } } } } },
+    });
+    expect(document.components.schemas.PromptMessage).toMatchObject({ required: ["role", "content"] });
+    // The websocket types have no HTTP surface to describe, which is why they are absent.
     expect(document.paths["/openApiItem/openApiItemMessage"]).toBeUndefined();
     expect(document.paths["/ping"]).toBeUndefined();
     expect(document.paths["/localFile/getBlob/*"]).toBeUndefined();
@@ -146,6 +166,25 @@ describe("createOpenApiDocument", () => {
       },
     });
     expect(document.components.schemas.AccessToken).toBeUndefined();
+  });
+
+  test("documents a mutation under the verb it declares", () => {
+    const document = createOpenApiDocument({
+      openApiItem: {
+        prefix: "openApiItem",
+        endpoint: {
+          patchOpenApiItem: {
+            type: "mutation",
+            method: "PATCH",
+            args: [{ type: "body", name: "data", refName: "openApiItem", modelType: "input" }],
+            returns: { refName: "Boolean" },
+            guards: ["User"],
+          },
+        },
+      },
+    });
+
+    expect(Object.keys(document.paths["/openApiItem/patchOpenApiItem"])).toEqual(["patch"]);
   });
 
   test("can include base and non-standard paths explicitly", () => {

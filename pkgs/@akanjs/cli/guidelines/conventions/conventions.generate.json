@@ -1,0 +1,25 @@
+{
+  "title": "Workspace Conventions",
+  "description": "The tool-neutral Akan convention set rendered into every workspace AGENTS.md managed block",
+  "group": "core",
+  "codegenPriority": 1,
+  "deprecated": false,
+  "scans": [],
+  "update": {
+    "filePath": "./conventions.instruction.md",
+    "contents": [
+      "change scope",
+      "lint-enforced rules",
+      "coding style and comments",
+      "client/server boundaries and SSR",
+      "domain module, service, signal, and scalar conventions",
+      "page routing, sync layout, and layer placement"
+    ],
+    "rules": [
+      "Use current Akan APIs only",
+      "State the rule and the reason it exists, never restate a type signature",
+      "Name the .grit rule that enforces a rule wherever one does",
+      "Keep it workspace-neutral — no app or repo names, since every workspace renders this file"
+    ]
+  }
+}

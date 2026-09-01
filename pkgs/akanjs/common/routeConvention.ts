@@ -9,6 +9,36 @@ const DIRECTORY_SCOPED_LEAVES = new Set(["_layout", "_index", "_overrides"]);
 
 export type RouteModuleKind = "page" | "layout" | "overrides";
 
+export const PAGE_ROUTE_EXPORTS: ReadonlySet<string> = new Set([
+  "default",
+  "pageConfig",
+  "head",
+  "metadata",
+  "generateHead",
+  "generateMetadata",
+  "Loading",
+]);
+export const LAYOUT_ROUTE_EXPORTS: ReadonlySet<string> = new Set([...PAGE_ROUTE_EXPORTS, "NotFound", "Error"]);
+export const ROOT_LAYOUT_ROUTE_EXPORTS: ReadonlySet<string> = new Set([
+  ...LAYOUT_ROUTE_EXPORTS,
+  "fonts",
+  "manifest",
+  "theme",
+  "reconnect",
+  "wsConnect",
+  "layoutStyle",
+  "gaTrackingId",
+]);
+/** Root-layout exports that are plain config rather than components, so a PascalCase check cannot allow them. */
+export const RESERVED_ROUTE_CONFIG_EXPORTS: ReadonlySet<string> = new Set(
+  [...ROOT_LAYOUT_ROUTE_EXPORTS].filter((name) => name !== "default" && !/^[A-Z]/.test(name)),
+);
+
+export function getRouteExports(kind: "page" | "layout", { rootLayout = false } = {}): ReadonlySet<string> {
+  if (kind === "page") return PAGE_ROUTE_EXPORTS;
+  return rootLayout ? ROOT_LAYOUT_ROUTE_EXPORTS : LAYOUT_ROUTE_EXPORTS;
+}
+
 export interface ParsedRouteModuleKey {
   key: string;
   kind: RouteModuleKind;
@@ -37,27 +67,37 @@ export function isRouteSourceFile(filePath: string): boolean {
   return tryParseRouteModuleKey(key) !== null;
 }
 
-export function validatePageSourceFile(filePath: string, options: ValidatePageSourceFileOptions = {}): boolean {
-  if (!SOURCE_EXT_RE.test(filePath)) return false;
+/**
+ * Why a `page/` file breaks the route convention, or null when it is fine. Null also covers a non-source
+ * asset, which `page/` tolerates. `akan sync <lib>` reports these alongside its other layout violations,
+ * so the rule stays in one place instead of being restated where it cannot afford to throw.
+ */
+export function getPageSourceFileViolation(filePath: string): string | null {
+  if (!SOURCE_EXT_RE.test(filePath)) return null;
 
   const key = filePath.startsWith("./") ? filePath : `./${filePath.split(/[\\/]/).join("/")}`;
   const match = ROUTE_SOURCE_RE.exec(key);
-  const displayPath = options.filePath ?? key;
-  if (!match) throw new Error(`[route-convention] invalid page source file: ${displayPath}`);
+  if (!match) return "invalid page source file";
 
   const file = match[1] as string;
   const ext = match[2] as string;
   const leaf = file.split("/").filter(Boolean).at(-1);
-  if (!leaf) throw new Error(`[route-convention] invalid page source file: ${displayPath}`);
+  if (!leaf) return "invalid page source file";
 
-  if (ext !== "tsx") throw new Error(`[route-convention] route source files under page/ must use .tsx: ${displayPath}`);
+  if (ext !== "tsx") return "route source files under page/ must use .tsx";
   if (leaf.startsWith("_") && !RESERVED_ROUTE_FILES.has(leaf) && leaf !== INTERNAL_ROOT_LAYOUT_LEAF)
-    throw new Error(
-      `[route-convention] only _index.tsx, _layout.tsx and _overrides.tsx are allowed as reserved route files under page/: ${displayPath}`,
-    );
-  if (/^[A-Z]/.test(leaf))
-    throw new Error(`[route-convention] route page filenames must not start with an uppercase letter: ${displayPath}`);
-  return true;
+    return "only _index.tsx, _layout.tsx and _overrides.tsx are allowed as reserved route files under page/";
+  if (/^[A-Z]/.test(leaf)) return "route page filenames must not start with an uppercase letter";
+  return null;
+}
+
+export function validatePageSourceFile(filePath: string, options: ValidatePageSourceFileOptions = {}): boolean {
+  if (!SOURCE_EXT_RE.test(filePath)) return false;
+
+  const violation = getPageSourceFileViolation(filePath);
+  if (!violation) return true;
+  const key = filePath.startsWith("./") ? filePath : `./${filePath.split(/[\\/]/).join("/")}`;
+  throw new Error(`[route-convention] ${violation}: ${options.filePath ?? key}`);
 }
 
 export function validateSubRoutePageKey(

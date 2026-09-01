@@ -11,6 +11,7 @@
 - Lazy Loading (#overview)
 - External Libraries (#external)
 - Large Components (#internal)
+- Server Adapters (#server)
 - SSR Or Client Only (#ssr)
 - Tips (#tips)
 
@@ -38,6 +39,22 @@ You can also split your own components. This is useful when a page has a heavy e
 
 Lazy editor
 
+Server Adapters
+
+The same idea applies on the server, where the cost is memory instead of bundle size. A `srvkit` barrel re-exports every adapter, so importing one helper loads every SDK the folder touches — and each one stays resident in every replica and every batch worker.
+
+Measured in this workspace: puppeteer 19MB, discord.js 23MB, nodemailer 16MB, firebase-admin 2MB — about 61MB resident before a single request arrives.
+
+Gating construction is not enough. `options.discord ? new DiscordApi(...) : null` still runs the import at module scope.
+
+Worth it for a heavy SDK an app may never configure: mail, push, Discord, a headless browser, an image encoder.
+
+Not worth it for small pure helpers such as jwt or aes — they cost nothing and are used on every request.
+
+Memoized module import
+
+Check what a process actually pays with `AKAN_MEMORY_LOG=1`, which reports RSS per replica on an interval.
+
 SSR Or Client Only
 
 Use default lazy when the component can render on the server.
@@ -64,7 +81,7 @@ import { lazy } from "akanjs/webkit";
 
 const MapWidget = lazy(() => import("heavy-map-widget"), {
   ssr: false,
-  loading: () => <div className="skeleton h-64" />,
+  loading: () => <div className="h-64 animate-pulse rounded-box bg-muted" />,
 });
 
 interface ArticleMapProps {
@@ -91,6 +108,40 @@ export const EditPanel = ({ open }: EditPanelProps) => {
   if (!open) return null;
   return <ArticleEditor />;
 };
+```
+
+### Code
+
+```ts
+import { adapt } from "akanjs/service";
+
+// Memoized at module scope, resolved on first use: the SDK is absent from a process that never sends a message.
+let discordLoad: Promise<typeof import("discord.js")> | null = null;
+const loadDiscord = () => {
+  discordLoad ??= import("discord.js");
+  return discordLoad;
+};
+
+export class DiscordApi extends adapt("discordApi" as const, ({ env }) => ({
+  token: env(() => process.env.DISCORD_TOKEN ?? ""),
+})) {
+  #client: import("discord.js").Client | null = null;
+
+  async #getClient() {
+    if (this.#client) return this.#client;
+    const { Client, GatewayIntentBits } = await loadDiscord();
+    this.#client = new Client({ intents: [GatewayIntentBits.Guilds] });
+    await this.#client.login(this.token);
+    return this.#client;
+  }
+
+  async send(channelId: string, content: string) {
+    const client = await this.#getClient();
+    const channel = await client.channels.fetch(channelId);
+    if (!channel?.isTextBased()) return null;
+    return await channel.send(content);
+  }
+}
 ```
 
 ## Agent Notes

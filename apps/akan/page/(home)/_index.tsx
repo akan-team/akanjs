@@ -1,68 +1,7 @@
 import { usePage } from "@apps/akan/client";
-import { Link } from "akanjs/ui";
+import { Code } from "@apps/akan/ui";
+import { badgeRecipe, buttonRecipe, Link } from "akanjs/ui";
 import { BsArrowRight, BsCheckCircle, BsCloud, BsCodeSlash, BsTerminal } from "react-icons/bs";
-
-const highlightCode = (code: string) => {
-  const tokenPattern =
-    /("(?:[^"\\]|\\.)*"|\b(?:export|class|extends|const|type|interface)\b|\b(?:via|field|String|Number|Boolean)\b|\bbunx\b|create-akan-workspace@latest)/g;
-  return code.split(tokenPattern).map((token, index) => {
-    if (!token) return null;
-    if (/^"/.test(token)) {
-      return (
-        <span key={`${token}-${index}`} className="text-emerald-300">
-          {token}
-        </span>
-      );
-    }
-    if (/^(export|class|extends|const|type|interface)$/.test(token)) {
-      return (
-        <span key={`${token}-${index}`} className="text-pink-300">
-          {token}
-        </span>
-      );
-    }
-    if (/^(via|field|String|Number|Boolean)$/.test(token)) {
-      return (
-        <span key={`${token}-${index}`} className="text-sky-300">
-          {token}
-        </span>
-      );
-    }
-    if (token === "bunx") {
-      return (
-        <span key={`${token}-${index}`} className="text-violet-300">
-          {token}
-        </span>
-      );
-    }
-    if (token === "create-akan-workspace@latest") {
-      return (
-        <span key={`${token}-${index}`} className="text-sky-300">
-          {token}
-        </span>
-      );
-    }
-    return token;
-  });
-};
-
-const RawCode = ({ code, prompt, className = "" }: { code: string; prompt?: string; className?: string }) => {
-  return (
-    <pre
-      className={`w-full overflow-x-auto rounded-lg bg-slate-800 p-4 text-left font-mono text-sm ${className}`}
-      style={{ overflowWrap: "break-word", whiteSpace: "pre-wrap" }}
-    >
-      <code className="block text-slate-100">
-        {prompt && (
-          <span className="select-none text-slate-400" aria-hidden="true">
-            {prompt}{" "}
-          </span>
-        )}
-        {highlightCode(code)}
-      </code>
-    </pre>
-  );
-};
 
 export default function Page() {
   const { l } = usePage();
@@ -276,16 +215,16 @@ export default function Page() {
   ];
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-base-100 text-base-content">
+    <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
       <div className="absolute inset-x-0 top-20 h-px bg-linear-to-r from-transparent via-primary/60 to-transparent" />
 
       <section className="relative mx-auto grid min-h-screen w-full max-w-7xl items-center gap-10 px-6 pt-32 pb-20 lg:grid-cols-[1.02fr_0.98fr] lg:px-8">
         <div>
-          <div className="badge mb-6 border-primary/20 bg-primary/10 px-4 py-3 text-primary">
+          <div className={badgeRecipe(undefined, "mb-6 border-primary/20 bg-primary/10 px-4 py-3 text-primary")}>
             <BsCheckCircle />
             {l.trans({ en: "One line, every platform", ko: "한 줄, 모든 플랫폼" })}
           </div>
-          <h1 className="max-w-4xl font-black text-5xl text-base-content tracking-tight sm:text-5xl lg:text-6xl">
+          <h1 className="max-w-4xl font-black text-5xl text-foreground tracking-tight sm:text-5xl lg:text-6xl">
             {l.trans({
               en: "One line of business code ships web, iOS, Android, server, and database",
               ko: "한 줄의 비즈니스 코드로 웹·iOS·Android·서버·DB를",
@@ -297,13 +236,13 @@ export default function Page() {
               })}
             </span>
           </h1>
-          <p className="mt-6 max-w-2xl text-base-content/70 text-lg leading-8">
+          <p className="mt-6 max-w-2xl text-foreground/70 text-lg leading-8">
             {l.trans({
               en: "No more framework assembly, duplicated declarations, or per-platform rewrites. Write business intent in one place, and five surfaces follow.",
               ko: "프레임워크 조립, 중복 선언, 플랫폼별 재작성은 이제 그만. 비즈니스 코드 한 곳만 작성하면 5개 표현이 같이 따라옵니다.",
             })}
           </p>
-          <p className="mt-3 max-w-2xl text-base text-base-content/60 leading-7">
+          <p className="mt-3 max-w-2xl text-base text-foreground/60 leading-7">
             {l.trans({
               en: "Akan starts with the result people feel first, then keeps the method explainable from database to UI.",
               ko: "Akan은 먼저 체감되는 결과를 만들고, 그 방법론을 데이터베이스부터 UI까지 납득 가능하게 유지합니다.",
@@ -313,7 +252,10 @@ export default function Page() {
             {["akan.config.ts", "Web", "iOS", "Android", "Server", "DB", "Type-safe", "Plugins"].map((surface) => (
               <span
                 key={surface}
-                className="badge badge-lg border-base-content/10 bg-base-content/10 text-base-content"
+                className={badgeRecipe(
+                  undefined,
+                  "border-foreground/10 bg-foreground/10 px-3 py-1 text-foreground text-sm",
+                )}
               >
                 {surface}
               </span>
@@ -321,7 +263,7 @@ export default function Page() {
           </div>
           <div className="mt-10 flex flex-col gap-3 sm:flex-row">
             <Link href="/docs/intro/quickstart">
-              <button className="btn border-none bg-primary text-base-100 hover:bg-primary/80">
+              <button className={buttonRecipe(undefined, "border-none bg-primary text-background hover:bg-primary/80")}>
                 {l.trans({ en: "Get Started", ko: "시작하기" })} <BsArrowRight className="ml-2" />
               </button>
             </Link>
@@ -330,17 +272,18 @@ export default function Page() {
 
         <div className="relative">
           <div className="absolute inset-0 rotate-3 rounded-4xl bg-primary/20 blur-2xl" />
-          <div className="relative overflow-hidden rounded-4xl border border-base-content/10 bg-base-content/6 p-5 shadow-2xl backdrop-blur">
-            <div className="mb-5 flex items-center justify-between rounded-2xl border border-base-content/10 bg-base-100/70 px-4 py-3">
+          <div className="relative overflow-hidden rounded-4xl border border-foreground/10 bg-foreground/6 p-5 shadow-2xl backdrop-blur">
+            <div className="mb-5 flex items-center justify-between rounded-2xl border border-foreground/10 bg-background/70 px-4 py-3">
               <div>
-                <p className="text-base-content/40 text-xs tracking-[0.24em]">Akan.js</p>
-                <p className="font-semibold text-base-content text-lg">
+                <p className="text-foreground/40 text-xs tracking-[0.24em]">Akan.js</p>
+                <p className="font-semibold text-foreground text-lg">
                   {l.trans({ en: "Business code becomes the whole product", ko: "비즈니스 코드가 제품 전체가 됩니다" })}
                 </p>
               </div>
               <div className="rounded-xl bg-primary/10 px-3 py-2 font-medium text-primary text-sm">1 → All</div>
             </div>
-            <RawCode
+            <Code.Snippet
+              showLineNumbers={false}
               code={`export class ProductInput extends via((field) => ({
   name: field(String),
 })) {}`}
@@ -376,9 +319,9 @@ export default function Page() {
                   }),
                 },
               ].map((item) => (
-                <div key={item.title} className="rounded-2xl border border-base-content/10 bg-base-100/80 p-4">
-                  <p className="font-bold text-base-content">{item.title}</p>
-                  <p className="mt-1 text-base-content/60 text-sm leading-6">{item.description}</p>
+                <div key={item.title} className="rounded-2xl border border-foreground/10 bg-background/80 p-4">
+                  <p className="font-bold text-foreground">{item.title}</p>
+                  <p className="mt-1 text-foreground/60 text-sm leading-6">{item.description}</p>
                 </div>
               ))}
             </div>
@@ -388,13 +331,13 @@ export default function Page() {
 
       <section className="relative mx-auto w-full max-w-7xl px-6 pb-20 lg:px-8">
         <div className="mb-10 text-center">
-          <div className="badge mb-4 border-base-content/10 bg-base-content/10 text-base-content">
+          <div className={badgeRecipe(undefined, "mb-4 border-foreground/10 bg-foreground/10 text-foreground")}>
             {l.trans({ en: "Built for the pain you already feel", ko: "이미 느끼고 있는 문제를 위해" })}
           </div>
           <h2 className="font-black text-3xl tracking-tight md:text-5xl">
             {l.trans({ en: "Built for the pain you already feel.", ko: "각자의 페인포인트를 먼저 해결합니다." })}
           </h2>
-          <p className="mx-auto mt-4 max-w-4xl text-base-content/60 leading-7">
+          <p className="mx-auto mt-4 max-w-4xl text-foreground/60 leading-7">
             {l.trans({
               en: "Web, app, server, database, and team size all hurt in different ways. Akan lets each developer recognize their own bottleneck first.",
               ko: "웹, 앱, 서버, DB, 팀 규모는 저마다 다른 방식으로 발목을 잡습니다. Akan은 각 개발자가 자기 병목을 먼저 알아보게 합니다.",
@@ -403,16 +346,15 @@ export default function Page() {
         </div>
         <div className="grid gap-4 lg:grid-cols-3">
           {personaCards.map((card, index) => (
-            <div
-              key={card.title}
-              className="rounded-3xl border border-base-content/10 bg-base-content/4 p-6 backdrop-blur"
-            >
+            <div key={card.title} className="rounded-3xl border border-foreground/10 bg-foreground/4 p-6 backdrop-blur">
               <div className="mb-5 flex items-center justify-between gap-4">
-                <span className="badge border-primary/20 bg-primary/10 text-primary">{card.audience}</span>
-                <span className="font-black text-4xl text-base-content/20">{index + 1}</span>
+                <span className={badgeRecipe(undefined, "border-primary/20 bg-primary/10 text-primary")}>
+                  {card.audience}
+                </span>
+                <span className="font-black text-4xl text-foreground/20">{index + 1}</span>
               </div>
-              <h3 className="font-bold text-2xl text-base-content">{card.title}</h3>
-              <p className="mt-4 text-base-content/65 leading-7">{card.description}</p>
+              <h3 className="font-bold text-2xl text-foreground">{card.title}</h3>
+              <p className="mt-4 text-foreground/65 leading-7">{card.description}</p>
             </div>
           ))}
         </div>
@@ -420,24 +362,24 @@ export default function Page() {
 
       <section className="relative mx-auto w-full max-w-7xl px-6 py-20 lg:px-8">
         <div className="mb-8 text-center md:mb-12">
-          <div className="badge mb-4 border-primary/20 bg-primary/10 text-primary">
+          <div className={badgeRecipe(undefined, "mb-4 border-primary/20 bg-primary/10 text-primary")}>
             {l.trans({ en: "8 in 1", ko: "8 in 1" })}
           </div>
           <h2 className="font-black text-3xl tracking-tight md:text-5xl">
             {l.trans({ en: "One field. Eight layers follow.", ko: "필드 하나. 8개 레이어가 따라옵니다." })}
           </h2>
-          <p className="mx-auto mt-4 max-w-4xl text-base-content/60 leading-7">
+          <p className="mx-auto mt-4 max-w-4xl text-foreground/60 leading-7">
             {l.trans({
               en: "This is why one developer can own web, app, server, and database at once: the scattered wiring compresses into a single business declaration.",
               ko: "1명이 웹, 앱, 서버, DB를 함께 책임질 수 있는 이유입니다. 흩어진 배선이 하나의 비즈니스 선언으로 압축됩니다.",
             })}
           </p>
         </div>
-        <div className="relative overflow-hidden rounded-4xl border border-primary/20 bg-base-content/5 p-5 shadow-2xl backdrop-blur md:p-8">
+        <div className="relative overflow-hidden rounded-4xl border border-primary/20 bg-foreground/5 p-5 shadow-2xl backdrop-blur md:p-8">
           <div className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-primary/70 to-transparent" />
           <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-            <div className="rounded-3xl border border-base-content/10 bg-base-100/80 p-6">
-              <div className="badge mb-4 border-error/20 bg-error/10 text-error">
+            <div className="rounded-3xl border border-foreground/10 bg-background/80 p-6">
+              <div className={badgeRecipe(undefined, "mb-4 border-destructive/20 bg-destructive/10 text-destructive")}>
                 {l.trans({ en: "Before", ko: "Before" })}
               </div>
               <h3 className="font-bold text-2xl">
@@ -446,7 +388,7 @@ export default function Page() {
                   ko: "기존 풀스택에서 필드 하나 추가하려면",
                 })}
               </h3>
-              <p className="mt-3 text-base-content/60 text-sm leading-6">
+              <p className="mt-3 text-foreground/60 text-sm leading-6">
                 {l.trans({
                   en: "Adding a single business field usually means wiring all of this by hand.",
                   ko: "비즈니스 필드 하나를 추가하려면 보통 이만큼을 직접 손으로 해야 합니다.",
@@ -454,23 +396,23 @@ export default function Page() {
               </p>
               <div className="mt-5 grid gap-2">
                 {workflowLayers.map((layer, index) => (
-                  <div key={layer} className="flex items-center gap-3 rounded-2xl bg-base-content/5 px-4 py-3">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-error/10 font-bold text-error text-xs">
+                  <div key={layer} className="flex items-center gap-3 rounded-2xl bg-foreground/5 px-4 py-3">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-destructive/10 font-bold text-destructive text-xs">
                       {index + 1}
                     </span>
-                    <span className="font-medium text-base-content text-sm">{layer}</span>
+                    <span className="font-medium text-foreground text-sm">{layer}</span>
                   </div>
                 ))}
               </div>
-              <p className="mt-5 text-base-content/60 text-sm leading-6">
+              <p className="mt-5 text-foreground/60 text-sm leading-6">
                 {l.trans({
                   en: "Change one place, chase eight. Miss one, and types break — or it blows up at runtime.",
                   ko: "한 곳만 바뀌어도 8곳을 따라 고쳐야 하고, 한 곳을 빠뜨리면 타입이 깨지거나 런타임에서 터집니다.",
                 })}
               </p>
             </div>
-            <div className="rounded-3xl border border-primary/20 bg-base-100/80 p-6">
-              <div className="badge mb-4 border-primary/20 bg-primary/10 text-primary">
+            <div className="rounded-3xl border border-primary/20 bg-background/80 p-6">
+              <div className={badgeRecipe(undefined, "mb-4 border-primary/20 bg-primary/10 text-primary")}>
                 {l.trans({ en: "After — Akan.js", ko: "After — Akan.js" })}
               </div>
               <h3 className="font-bold text-2xl">
@@ -480,13 +422,14 @@ export default function Page() {
                 })}
               </h3>
               <div className="mt-5">
-                <RawCode
+                <Code.Snippet
+                  showLineNumbers={false}
                   code={`export class ProductInput extends via((field) => ({
   name: field(String),
 })) {}`}
                 />
               </div>
-              <p className="mt-5 text-base-content/65 leading-7">
+              <p className="mt-5 text-foreground/65 leading-7">
                 {l.trans({
                   en: "One field declaration — schema and type defined at once. All eight layers above are generated automatically.",
                   ko: "필드 선언 한 줄로 스키마와 타입이 동시에 정의됩니다. 위 8개 레이어는 전부 자동 생성됩니다.",
@@ -499,7 +442,7 @@ export default function Page() {
                   </div>
                 ))}
               </div>
-              <p className="mt-5 text-base-content/50 text-xs leading-5">
+              <p className="mt-5 text-foreground/50 text-xs leading-5">
                 {l.trans({
                   en: "Diagram: field(String) on the left, eight generated layers branching out on the right.",
                   ko: "다이어그램: 왼쪽의 field(String) 한 줄에서 오른쪽 8개 생성 레이어가 분기됩니다.",
@@ -512,7 +455,7 @@ export default function Page() {
 
       <section className="relative mx-auto w-full max-w-7xl px-6 py-20 lg:px-8">
         <div className="mb-10 max-w-4xl">
-          <div className="badge mb-4 border-accent/20 bg-accent/10 text-accent">
+          <div className={badgeRecipe(undefined, "mb-4 border-accent/20 bg-accent/10 text-accent")}>
             {l.trans({ en: "Rules Create Quality", ko: "규칙이 품질을 만듭니다" })}
           </div>
           <h2 className="font-black text-3xl tracking-tight md:text-5xl">
@@ -521,7 +464,7 @@ export default function Page() {
               ko: "AI 코딩은 일정 규모를 넘으면 스파게티가 됩니다.",
             })}
           </h2>
-          <p className="mt-5 max-w-3xl text-base-content/65 leading-7">
+          <p className="mt-5 max-w-3xl text-foreground/65 leading-7">
             {l.trans({
               en: "The faster an agent writes code, the more file paths, names, structures, and declaration styles drift apart — until review and maintenance fall over. Akan stops this at the source with strict rules.",
               ko: "에이전트가 코드를 빨리 뽑을수록 파일 위치, 이름, 구조, 선언 방식이 제각각이 되어 리뷰와 유지보수가 무너집니다. Akan은 엄격한 규칙으로 이 문제를 원천 차단합니다.",
@@ -530,17 +473,14 @@ export default function Page() {
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {qualityItems.map((item) => (
-            <div
-              key={item.title}
-              className="rounded-3xl border border-base-content/10 bg-base-content/4 p-6 backdrop-blur"
-            >
+            <div key={item.title} className="rounded-3xl border border-foreground/10 bg-foreground/4 p-6 backdrop-blur">
               <div
-                className={`mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-base-100/80 ${item.iconClassName}`}
+                className={`mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-background/80 ${item.iconClassName}`}
               >
                 {item.icon}
               </div>
-              <h3 className="font-bold text-base-content text-lg">{item.title}</h3>
-              <p className="mt-2 text-base-content/60 text-sm leading-6">{item.description}</p>
+              <h3 className="font-bold text-foreground text-lg">{item.title}</h3>
+              <p className="mt-2 text-foreground/60 text-sm leading-6">{item.description}</p>
             </div>
           ))}
         </div>
@@ -551,7 +491,7 @@ export default function Page() {
               ko: "이것이 우리가 말하는 에이전틱 풀스택입니다.",
             })}
           </h3>
-          <p className="mt-3 max-w-3xl text-base-content/65 leading-7">
+          <p className="mt-3 max-w-3xl text-foreground/65 leading-7">
             {l.trans({
               en: "Strict rules suit AI agents best. On top of fixed blocks — upload, login, admin, chat, boards, alerts — agents produce nothing but consistent code. It is not an abstract idea, but quality that rules make.",
               ko: "엄격한 규칙은 AI 에이전트에게 가장 잘 맞습니다. 업로드, 로그인, 관리자, 채팅, 게시판, 알림 같은 정해진 블록 위에서 에이전트는 일관된 코드만 생산합니다. 추상적인 개념이 아니라, 규칙이 만든 품질입니다.",
@@ -561,10 +501,10 @@ export default function Page() {
       </section>
 
       <section className="relative mx-auto w-full max-w-7xl px-6 py-20 lg:px-8">
-        <div className="mb-8 rounded-4xl border border-base-content/10 bg-base-content/4 p-6 backdrop-blur md:p-8">
+        <div className="mb-8 rounded-4xl border border-foreground/10 bg-foreground/4 p-6 backdrop-blur md:p-8">
           <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
             <div>
-              <div className="badge mb-4 border-primary/20 bg-primary/10 text-primary">
+              <div className={badgeRecipe(undefined, "mb-4 border-primary/20 bg-primary/10 text-primary")}>
                 {l.trans({ en: "Platform Surfaces", ko: "플랫폼 표현" })}
               </div>
               <h2 className="font-black text-3xl tracking-tight md:text-5xl">
@@ -573,7 +513,7 @@ export default function Page() {
                   ko: "비즈니스 앱에 필요한 모든 것을 연결합니다",
                 })}
               </h2>
-              <p className="mt-4 text-base-content/60 leading-7">
+              <p className="mt-4 text-foreground/60 leading-7">
                 {l.trans({
                   en: "Akan supports web, iOS, Android, server, database, validation, internationalization, and official plugins as one coherent stack.",
                   ko: "Akan은 웹, iOS, Android, 서버, 데이터베이스, 검증, 다국어, 공식 플러그인을 하나의 일관된 스택으로 지원합니다.",
@@ -582,23 +522,23 @@ export default function Page() {
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               {platformSurfaces.map((surface) => (
-                <div key={surface} className="rounded-2xl border border-base-content/10 bg-base-100/80 px-4 py-3">
-                  <p className="font-medium text-base-content text-sm">{surface}</p>
+                <div key={surface} className="rounded-2xl border border-foreground/10 bg-background/80 px-4 py-3">
+                  <p className="font-medium text-foreground text-sm">{surface}</p>
                 </div>
               ))}
             </div>
           </div>
         </div>
 
-        <div className="mb-10 rounded-4xl border border-base-content/10 bg-base-content/4 p-5 backdrop-blur md:p-8">
+        <div className="mb-10 rounded-4xl border border-foreground/10 bg-foreground/4 p-5 backdrop-blur md:p-8">
           <div className="mb-8 text-center">
-            <div className="badge mb-4 border-primary/20 bg-primary/10 text-primary">
+            <div className={badgeRecipe(undefined, "mb-4 border-primary/20 bg-primary/10 text-primary")}>
               {l.trans({ en: "Generated From Intent", ko: "의도에서 자동 생성" })}
             </div>
             <h2 className="font-black text-3xl tracking-tight md:text-5xl">
               {l.trans({ en: "Stop repeating the same plumbing", ko: "반복작업은 이제 그만" })}
             </h2>
-            <p className="mx-auto mt-4 max-w-4xl text-base-content/60 leading-7">
+            <p className="mx-auto mt-4 max-w-4xl text-foreground/60 leading-7">
               {l.trans({
                 en: "Akan turns business declarations into docs, APIs, queries, state, and loading behavior so repetitive work disappears.",
                 ko: "Akan은 비즈니스 선언을 문서, API, 쿼리, 상태, 로딩 처리로 확장해 반복작업을 줄입니다.",
@@ -607,20 +547,20 @@ export default function Page() {
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             {automationItems.map((item, index) => (
-              <div key={item.title} className="rounded-3xl border border-base-content/10 bg-base-100/80 p-6">
+              <div key={item.title} className="rounded-3xl border border-foreground/10 bg-background/80 p-6">
                 <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 font-black text-primary">
                   {index + 1}
                 </div>
                 <h3 className="font-bold text-lg">{item.title}</h3>
-                <p className="mt-2 text-base-content/60 text-sm leading-6">{item.description}</p>
+                <p className="mt-2 text-foreground/60 text-sm leading-6">{item.description}</p>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="mb-10 rounded-4xl border border-base-content/10 bg-base-content/4 p-5 backdrop-blur md:p-8">
+        <div className="mb-10 rounded-4xl border border-foreground/10 bg-foreground/4 p-5 backdrop-blur md:p-8">
           <div className="mb-6 max-w-3xl">
-            <div className="badge mb-4 border-primary/20 bg-primary/10 text-primary">
+            <div className={badgeRecipe(undefined, "mb-4 border-primary/20 bg-primary/10 text-primary")}>
               {l.trans({ en: "Native-Feeling App Packaging", ko: "네이티브스러운 앱 패키징" })}
             </div>
             <h3 className="font-black text-2xl tracking-tight md:text-4xl">
@@ -629,7 +569,7 @@ export default function Page() {
                 ko: "앱 패키징된 웹, 네이티브 수준의 화면 전환",
               })}
             </h3>
-            <p className="mt-3 text-base-content/60 leading-7">
+            <p className="mt-3 text-foreground/60 leading-7">
               {l.trans({
                 en: "Akan web pages are compiled and packaged into apps. Unlike ordinary web packaging that often feels like a wrapped website, Akan ships built-in screen transitions for list-detail flows, overlays, and context changes, so the packaged web can deliver a native-level user experience without a separate UI rewrite.",
                 ko: "Akan에서 작성한 웹은 컴파일되어 앱으로 패키징됩니다. 일반적인 웹 앱 패키징이 감싼 웹사이트처럼 느껴지는 것과 달리, Akan은 목록-상세 흐름, 오버레이, 맥락 전환을 위한 빌트인 화면 전환 기능을 제공해 별도 UI 재작성 없이도 앱 패키징된 웹에서 네이티브 수준의 사용자 경험을 만들 수 있습니다.",
@@ -640,13 +580,13 @@ export default function Page() {
             {transitionItems.map((item) => (
               <div
                 key={item.title}
-                className="overflow-hidden rounded-3xl border border-base-content/10 bg-base-100/80"
+                className="overflow-hidden rounded-3xl border border-foreground/10 bg-background/80"
               >
                 <div className="p-4">
                   <div className="font-bold font-mono text-primary">{item.title}</div>
-                  <p className="mt-2 text-base-content/60 text-sm leading-6">{item.description}</p>
+                  <p className="mt-2 text-foreground/60 text-sm leading-6">{item.description}</p>
                 </div>
-                <div className="border-base-content/10 border-t bg-base-content/5 p-3">
+                <div className="border-foreground/10 border-t bg-foreground/5 p-3">
                   <video
                     src={item.src}
                     autoPlay
@@ -665,23 +605,23 @@ export default function Page() {
           <h2 className="font-black text-3xl tracking-tight md:text-5xl">
             {l.trans({ en: "See the business, not the system", ko: "시스템이 아니라 비즈니스를 보세요" })}
           </h2>
-          <p className="mt-4 text-base-content/60 leading-7">
+          <p className="mt-4 text-foreground/60 leading-7">
             {l.trans({
               en: "These demos show how one convention-driven workspace carries business intent through multiple surfaces.",
               ko: "아래 데모는 하나의 컨벤션 기반 워크스페이스가 비즈니스 의도를 여러 표현으로 이어가는 방식을 보여줍니다.",
             })}
           </p>
-          <RawCode code="bunx create-akan-workspace@latest" prompt="$" className="mx-auto mt-3 max-w-full md:w-fit" />
+          <Code.Snippet title="Terminal" code="bunx create-akan-workspace@latest" language="bash" />
           <div className="mt-4">
             <Link href="/docs/intro/quickstart">
-              <button className="btn btn-primary btn-lg">
+              <button className={buttonRecipe({ variant: "primary", size: "lg" })}>
                 {l.trans({ en: "Get Started", ko: "시작하기" })} <BsArrowRight className="ml-2" />
               </button>
             </Link>
           </div>
         </div>
 
-        <div className="rounded-4xl border border-base-content/10 bg-base-content/4 p-5 backdrop-blur md:p-8">
+        <div className="rounded-4xl border border-foreground/10 bg-foreground/4 p-5 backdrop-blur md:p-8">
           <h2 className="mb-8 text-center font-black text-3xl tracking-tight md:mb-12 md:text-5xl">
             {l.trans({
               en: "How Conventions Expand Your Business Definition",
@@ -692,17 +632,17 @@ export default function Page() {
             {procedureItems.map((item, index) => (
               <div
                 key={item.title}
-                className="overflow-hidden rounded-3xl border border-base-content/10 bg-base-100/80 shadow-xl"
+                className="overflow-hidden rounded-3xl border border-foreground/10 bg-background/80 shadow-xl"
               >
                 <div className="grid items-center gap-6 p-5 md:p-6 lg:grid-cols-[0.8fr_1.2fr]">
                   <div className={index % 2 === 1 ? "lg:order-2" : ""}>
-                    <div className="badge mb-4 border-primary/20 bg-primary/10 text-primary">
+                    <div className={badgeRecipe(undefined, "mb-4 border-primary/20 bg-primary/10 text-primary")}>
                       {String(index + 1).padStart(2, "0")}
                     </div>
                     <h3 className="font-bold text-2xl">{item.title}</h3>
-                    <p className="mt-3 text-base-content/65 text-sm leading-6">{item.description}</p>
+                    <p className="mt-3 text-foreground/65 text-sm leading-6">{item.description}</p>
                   </div>
-                  <div className="overflow-hidden rounded-2xl border border-base-content/10 bg-base-content/5">
+                  <div className="overflow-hidden rounded-2xl border border-foreground/10 bg-foreground/5">
                     <video src={item.src} autoPlay muted loop playsInline className="size-full object-cover" />
                   </div>
                 </div>
@@ -713,8 +653,8 @@ export default function Page() {
       </section>
 
       <section className="relative mx-auto w-full max-w-7xl px-6 py-20 lg:px-8">
-        <div className="overflow-hidden rounded-4xl border border-base-content/10 bg-base-content/6 p-8 text-center shadow-2xl backdrop-blur md:p-12">
-          <div className="badge mb-5 border-primary/20 bg-primary/10 text-primary">
+        <div className="overflow-hidden rounded-4xl border border-foreground/10 bg-foreground/6 p-8 text-center shadow-2xl backdrop-blur md:p-12">
+          <div className={badgeRecipe(undefined, "mb-5 border-primary/20 bg-primary/10 text-primary")}>
             {l.trans({ en: "Built for developer happiness", ko: "개발자의 행복을 위해 설계" })}
           </div>
           <h2 className="font-black text-3xl tracking-tight md:text-5xl">
@@ -723,16 +663,16 @@ export default function Page() {
               ko: "기존 대비 1/4의 코드로 비즈니스를 운영하세요.",
             })}
           </h2>
-          <p className="mx-auto mt-5 max-w-2xl text-base-content/65 leading-7">
+          <p className="mx-auto mt-5 max-w-2xl text-foreground/65 leading-7">
             {l.trans({
               en: "Less code means fewer tokens, clearer intent, easier reviews, and calmer updates. Akan is optimized for the happiness of developers who ship real products.",
               ko: "적은 코드량은 적은 토큰소모, 선명한 의도, 쉬운 리뷰, 안정적인 업데이트로 이어집니다. Akan은 실제 제품을 출시하는 개발자의 행복에 최적화되어 있습니다.",
             })}
           </p>
-          <RawCode code="bunx create-akan-workspace@latest" prompt="$" className="mx-auto mt-3 max-w-full md:w-fit" />
+          <Code.Snippet title="Terminal" code="bunx create-akan-workspace@latest" language="bash" />
           <div className="mt-4">
             <Link href="/docs/intro/quickstart">
-              <button className="btn btn-primary btn-lg">
+              <button className={buttonRecipe({ variant: "primary", size: "lg" })}>
                 {l.trans({ en: "Get Started", ko: "시작하기" })} <BsArrowRight className="ml-2" />
               </button>
             </Link>

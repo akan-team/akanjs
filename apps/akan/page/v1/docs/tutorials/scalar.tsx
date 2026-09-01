@@ -23,7 +23,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="create-scalar" title={l.trans({ en: "Create Scalar", ko: "스칼라 생성하기" })}>
         <Docs.Title>{l.trans({ en: "Create Scalar", ko: "스칼라 생성하기" })}</Docs.Title>
@@ -135,7 +135,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="create-inventory" title={l.trans({ en: "Create Inventory", ko: "인벤토리 생성하기" })}>
         <Docs.Title>{l.trans({ en: "Create Inventory", ko: "인벤토리 생성하기" })}</Docs.Title>
@@ -267,7 +267,7 @@ export const dictionary = modelDictionary(["en", "ko"])
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="business-logic" title={l.trans({ en: "Business Logic", ko: "비즈니스 로직" })}>
         <Docs.Title>{l.trans({ en: "Business Logic", ko: "비즈니스 로직" })}</Docs.Title>
         <Docs.Description>
@@ -418,7 +418,7 @@ export class InventoryService extends serve(db.inventory, ({ use, service }) => 
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="connect-service" title={l.trans({ en: "Connect Service", ko: "서비스 연결하기" })}>
         <Docs.Title>{l.trans({ en: "Connect Service", ko: "서비스 연결하기" })}</Docs.Title>
@@ -521,7 +521,7 @@ export class IcecreamOrderService extends serve(db.icecreamOrder, ({ use, servic
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="connect-signal" title={l.trans({ en: "Connect Signal", ko: "신호 연결하기" })}>
         <Docs.Title>{l.trans({ en: "Connect Signal", ko: "신호 연결하기" })}</Docs.Title>
@@ -650,7 +650,7 @@ export class InventoryStore extends store(sig.inventory, () => ({
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="interact-on-ui" title={l.trans({ en: "Interact on UI", ko: "UI와 상호작용하기" })}>
         <Docs.Title>{l.trans({ en: "Interact on UI", ko: "UI와 상호작용하기" })}</Docs.Title>
@@ -849,7 +849,7 @@ export class InventoryInsight extends via(Inventory, (field) => ({})) {}`}
             title="apps/koyo/lib/inventory/Inventory.Util.tsx"
             code={`
 "use client";
-import { clsx } from "@akanjs/client";
+import { buttonRecipe } from "@akanjs/ui";
 import { st, usePage } from "@koyo/client";
 import { BiRefresh } from "react-icons/bi";
 
@@ -860,7 +860,7 @@ export const Refill = ({ className }: RefillProps) => {
   const { l } = usePage();
   return (
     <button
-      className={clsx("btn btn-primary", className)}
+      className={buttonRecipe({ variant: "primary" }, className)}
       onClick={() => {
         void st.do.refillTodaysInventory();
       }}
@@ -1074,7 +1074,7 @@ export default function Page() {
             <div className="flex items-center gap-4 text-5xl font-black"> // [!code collapse:16]
               <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
               <Model.New
-                className="btn btn-primary"
+                className={buttonRecipe({ variant: "primary" })}
                 sliceName="icecreamOrderInPublic"
                 renderTitle="name"
                 partial={icecreamOrderForm}
@@ -1151,7 +1151,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

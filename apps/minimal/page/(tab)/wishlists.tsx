@@ -1,15 +1,16 @@
-import { Link } from "akanjs/ui";
+import { appCard, iconTileRecipe, Screen } from "@apps/minimal/ui";
+import { buttonRecipe, Link } from "akanjs/ui";
 import { AiOutlineCamera, AiOutlineHeart } from "react-icons/ai";
 
 export default function Page({ searchParams }: { searchParams: { deepLink?: string } }) {
   return (
-    <div className="apptest-screen px-5 pt-6 pb-28">
+    <Screen className="px-5 pt-6 pb-28">
       <div className="flex items-center justify-between">
         <div>
-          <p className="apptest-subtle text-xs uppercase tracking-[0.24em]">Saved places</p>
+          <p className="text-foreground/40 text-xs uppercase tracking-[0.24em]">Saved places</p>
           <h1 className="font-bold text-3xl">Wishlists</h1>
         </div>
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/15 text-2xl text-primary">
+        <div className={iconTileRecipe({ size: "lg" })}>
           <AiOutlineHeart />
         </div>
       </div>
@@ -24,18 +25,21 @@ export default function Page({ searchParams }: { searchParams: { deepLink?: stri
           ["City favorite", "7 stays", "from-secondary to-accent"],
           ["Quiet workcation", "3 stays", "from-accent to-primary"],
         ].map(([title, count, color]) => (
-          <div className="apptest-card overflow-hidden rounded-[1.75rem]" key={title}>
+          <div className={appCard(undefined, "overflow-hidden rounded-[1.75rem]")} key={title}>
             <div className={`h-24 bg-gradient-to-br ${color}`} />
             <div className="p-4">
               <p className="font-semibold">{title}</p>
-              <p className="apptest-muted mt-1 text-sm">{count}</p>
+              <p className="mt-1 text-foreground/50 text-sm">{count}</p>
             </div>
           </div>
         ))}
       </div>
-      <Link className="btn btn-primary mt-5 w-full rounded-2xl border-0" href="/wishlists/camera?deepLink=true">
+      <Link
+        className={buttonRecipe({ variant: "primary" }, "mt-5 w-full rounded-2xl border-0")}
+        href="/wishlists/camera?deepLink=true"
+      >
         <AiOutlineCamera /> Capture a new place
       </Link>
-    </div>
+    </Screen>
   );
 }

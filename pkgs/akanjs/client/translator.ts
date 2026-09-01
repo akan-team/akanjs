@@ -1,4 +1,4 @@
-import { pathGet } from "akanjs/common";
+import { pathGetLoose } from "akanjs/common";
 
 export interface Dictionary {
   [key: string]: {
@@ -68,7 +68,7 @@ export class Translator {
   static translateByLocale(lang: string, key: string, param?: Record<string, string | number>): string {
     const dictionary = getTranslatorState().langDictionaryMap.get(lang);
     if (!dictionary) return key;
-    const msg = (pathGet(key, dictionary, ".", { t: key }) as { t: string }).t;
+    const msg = (pathGetLoose(key, dictionary, ".", { t: key }) as { t: string }).t;
     return param ? msg.replace(/{([^}]+)}/g, (_, key: string) => param[key] as string) : msg;
   }
   // Synchronously merge a single locale's dictionary into the shared map.

@@ -1,10 +1,11 @@
 "use client";
 import { cnst, Err, fetch, st } from "@libs/shared/client";
-import { MapView, Upload } from "@libs/util/ui";
-import { clsx } from "akanjs/client";
+import { type GoogleProps, inputRecipe, MapView, Upload } from "@libs/util/ui";
+import { cn } from "akanjs/client";
 import { capitalize, pathGet } from "akanjs/common";
 import type { ProtoFile } from "akanjs/constant";
 import type { SliceMeta } from "akanjs/fetch";
+import { actionTagOf, useFieldTool } from "akanjs/store";
 import { Field as AkanField, Modal } from "akanjs/ui";
 import { lazy, useInterval } from "akanjs/webkit";
 import { memo, type ReactNode, useCallback, useState } from "react";
@@ -35,11 +36,17 @@ const Rich = memo((props: RichProps) => {
     toolbar,
     blockActions,
     slashMenu,
+    markdown,
     placeholder,
     nullable,
     disabled,
     editorHeight,
+    plugins,
+    agentName,
+    agentBlocks,
   } = props;
+  // No useFieldTool here: it cannot describe an Any field, so AgentRichPlugin publishes this setter as markdown.
+  const agentAction = agentName ?? actionTagOf(onChange)?.action ?? null;
   const { sliceName } = slice;
   const names = {
     modelForm: `${sliceName}Form`,
@@ -51,7 +58,7 @@ const Rich = memo((props: RichProps) => {
     id?: string,
   ) => Promise<(cnst.File | ProtoFile)[]>;
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Editor.Rich
         value={hasValue ? value : pathGet(valuePath, st.get()[names.modelForm as "adminForm"])}
@@ -65,12 +72,16 @@ const Rich = memo((props: RichProps) => {
         toolbar={toolbar}
         blockActions={blockActions}
         slashMenu={slashMenu}
+        markdown={markdown}
         onChange={(val) => {
           onChange(val);
         }}
         disabled={disabled}
-        className={clsx("w-full", "")}
+        className={cn("w-full", "")}
         height={editorHeight}
+        plugins={plugins}
+        agentName={agentAction}
+        agentBlocks={agentBlocks}
       />
     </div>
   );
@@ -85,7 +96,8 @@ interface CoordinateProps {
   desc?: string;
   coordinate: cnst.util.Coordinate | null;
   nullable?: boolean;
-  mapKey: string;
+  mapKey?: string;
+  mapOptions?: GoogleProps["options"];
   onChange: (coordinate: cnst.util.Coordinate) => void;
 }
 export const Coordinate = ({
@@ -98,26 +110,46 @@ export const Coordinate = ({
   nullable,
   coordinate,
   mapKey,
+  mapOptions,
   onChange,
 }: CoordinateProps) => {
+  useFieldTool(onChange);
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
-      <MapView.Google
-        mapKey={mapKey}
-        className={mapClassName}
-        center={coordinate ?? undefined}
-        zoom={3}
-        onClick={(coordinate) => {
-          if (!disabled) onChange(coordinate);
-        }}
-      >
-        {coordinate ? (
-          <MapView.Marker coordinate={coordinate}>
-            <AiTwotoneEnvironment className="text-2xl" />
-          </MapView.Marker>
-        ) : null}
-      </MapView.Google>
+      {mapKey ? (
+        <MapView.Google
+          mapKey={mapKey}
+          className={mapClassName}
+          center={coordinate ?? undefined}
+          zoom={3}
+          options={mapOptions}
+          onClick={(coordinate) => {
+            if (!disabled) onChange(coordinate);
+          }}
+        >
+          {coordinate ? (
+            <MapView.Marker coordinate={coordinate}>
+              <AiTwotoneEnvironment className="text-2xl" />
+            </MapView.Marker>
+          ) : null}
+        </MapView.Google>
+      ) : (
+        <MapView.PigeonMap
+          className={cn("h-72 w-full", mapClassName)}
+          center={coordinate ?? undefined}
+          zoom={3}
+          onClick={(coordinate) => {
+            if (!disabled) onChange(coordinate);
+          }}
+        >
+          {coordinate ? (
+            <MapView.PigeonMarker className="z-10" coordinate={coordinate}>
+              <AiTwotoneEnvironment className="text-2xl" />
+            </MapView.PigeonMarker>
+          ) : null}
+        </MapView.PigeonMap>
+      )}
     </div>
   );
 };
@@ -152,6 +184,7 @@ export const Postcode = ({
   address,
   onChange,
 }: PostcodeProps) => {
+  useFieldTool(onChange);
   const [postModalOpen, setPostModalOpen] = useState(false);
   const getCoordinate = useCallback(async (address: string): Promise<cnst.util.Coordinate> => {
     const kakaoResp = (await (
@@ -170,11 +203,11 @@ export const Postcode = ({
   }, []);
   return (
     <>
-      <div className={clsx("flex flex-col", className)}>
+      <div className={cn("flex flex-col", className)}>
         {label ? <AkanField.Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
         <input
           value={address ?? ""}
-          className="input w-96"
+          className={inputRecipe({}, "w-96")}
           onClick={() => {
             setPostModalOpen(true);
           }}
@@ -235,6 +268,7 @@ export const Img = ({
   disabled,
   aspectRatio,
 }: ImgProps) => {
+  useFieldTool(onChange);
   const { sliceName } = slice;
   const names = {
     addModelFiles: `add${capitalize(sliceName)}Files`,
@@ -248,7 +282,7 @@ export const Img = ({
     onChange(await fetch.file(value.id));
   }, 1000);
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Upload.Image
         className={uploadClassName}
@@ -295,6 +329,7 @@ export const Imgs = ({
   maxlength = 30,
   disabled,
 }: ImgsProps) => {
+  useFieldTool(onChange);
   const { sliceName } = slice;
   const names = {
     addModelFiles: `add${capitalize(sliceName)}Files`,
@@ -311,7 +346,7 @@ export const Imgs = ({
     onChange(value.map((f) => newFiles.find((nf) => nf.id === f.id) ?? f));
   }, 1000);
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={!!minlength} label={label} desc={desc} /> : null}
       <Upload.Images
         multiple
@@ -344,6 +379,7 @@ interface FileProps {
   value: cnst.File | null;
   onChange: (file: cnst.File | null) => void;
   disabled?: boolean;
+  accept?: string;
 }
 export const File = ({
   label,
@@ -357,7 +393,9 @@ export const File = ({
   onChange,
   slice,
   disabled,
+  accept,
 }: FileProps) => {
+  useFieldTool(onChange);
   const { sliceName } = slice;
   const names = {
     addModelFiles: `add${capitalize(sliceName)}Files`,
@@ -371,12 +409,13 @@ export const File = ({
     onChange(await fetch.file(value.id));
   }, 1000);
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
       <Upload.File
         render={render as unknown as (file: ProtoFile) => ReactNode}
         uploadClassName={uploadClassName}
         disabled={disabled}
+        accept={accept}
         file={value}
         onRemove={() => {
           onChange(null);
@@ -417,6 +456,7 @@ export const Files = ({
   maxlength = 30,
   disabled,
 }: FilesProps) => {
+  useFieldTool(onChange);
   const { sliceName } = slice;
   const names = {
     addModelFiles: `add${capitalize(sliceName)}Files`,
@@ -433,7 +473,7 @@ export const Files = ({
     onChange(value.map((f) => newFiles.find((nf) => nf.id === f.id) ?? f));
   }, 1000);
   return (
-    <div className={clsx("flex flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={!!minlength} label={label} desc={desc} /> : null}
       <Upload.FileList
         multiple

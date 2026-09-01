@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -23,28 +23,46 @@ await app.start();`,
     {
       name: "AkanAppOptions",
       desc: l.trans({
-        en: "Constructor option type for `AkanApp`. It configures replica layout, server path, runtime directory, HTTP port, and WebSocket base port for the gateway process.",
-        ko: "`AkanApp` constructor option type입니다. gateway process를 위한 replica layout, server path, runtime directory, HTTP port, WebSocket base port를 설정합니다.",
+        en: "Constructor option type for `AkanApp`. It configures replica layout, server path, runtime directory, HTTP port, and WebSocket base port for the gateway process, plus `openapi` and `modules`. `modules` boots only the named modules and the ones they depend on, in every child; omitted or empty mounts every enabled module.",
+        ko: "`AkanApp` constructor option type입니다. gateway process를 위한 replica layout, server path, runtime directory, HTTP port, WebSocket base port와 함께 `openapi`, `modules`를 설정합니다. `modules`는 지정한 모듈과 그 의존 모듈만 모든 child에서 부팅하며, 비워두면 활성화된 모든 모듈을 마운트합니다.",
       }),
       code: `import type { AkanAppOptions } from "akanjs/server";
 
 const options: AkanAppOptions = {
   replica: "1,0,2",
   runtimeDir: "./runtime",
+  modules: ["article"],
 };`,
+    },
+    {
+      name: "AkanServer web surfaces",
+      desc: l.trans({
+        en: "`server.setWeb(true | false | { csr })` and the `AKAN_SSR` / `AKAN_CSR` env narrow what a process serves beyond its API: SSR is the RSC renderer and its RSC worker process, CSR is the mobile SPA bundle at `/__csr`. They only narrow — a surface `akan.config.ts` left out of the build cannot be switched back on — and `AKAN_SSR=false` takes CSR with it, because the CSR bundle inlines the stylesheet the SSR build compiles. The boot log names the resolved answer.",
+        ko: "`server.setWeb(true | false | { csr })`과 `AKAN_SSR` / `AKAN_CSR` env는 프로세스가 API 외에 무엇을 서비스할지 좁힙니다. SSR은 RSC 렌더러와 그 RSC worker process, CSR은 `/__csr`의 모바일 SPA bundle입니다. 좁히기만 하며, `akan.config.ts`가 빌드에서 뺀 surface는 다시 켤 수 없습니다. `AKAN_SSR=false`는 CSR도 함께 내립니다. CSR bundle이 SSR 빌드가 컴파일한 stylesheet를 인라인하기 때문입니다. 부팅 로그에 확정된 결과가 남습니다.",
+      }),
+      code: `# api only, no RSC worker process
+AKAN_SSR=false bun main.js
+
+# web without the mobile SPA bundle
+AKAN_CSR=false bun main.js`,
     },
     {
       name: "AkanOption",
       desc: l.trans({
-        en: "App/library option builder used by `lib/option.ts`. It registers env-derived use objects, signal middleware, and web proxies consumed by the server runtime.",
-        ko: "`lib/option.ts`에서 사용하는 app/library option builder입니다. server runtime이 사용하는 env-derived use object, signal middleware, web proxy를 등록합니다.",
+        en: "App/library option builder used by `lib/option.ts`. It registers env-derived use objects, signal middleware, adaptor overrides, and web proxies, and carries the settings an app owns: `setMcp` for the MCP server, `setAgentAccess` for the guards a caller must pass to spend the LLM key through the agent relay, and `setLlm` for the model that relay speaks to. Every lib's option is read in mount order with the app's last.",
+        ko: "`lib/option.ts`에서 사용하는 app/library option builder입니다. env-derived use object, signal middleware, adaptor override, web proxy를 등록하고, 앱이 소유하는 설정을 함께 담습니다. `setMcp`는 MCP 서버, `setAgentAccess`는 agent relay로 LLM 키를 쓰려면 통과해야 하는 guard, `setLlm`은 그 relay가 말을 거는 모델입니다. 모든 lib의 option을 마운트 순서대로 읽고 앱의 것을 마지막에 얹습니다.",
       }),
       code: `import { AkanOption } from "akanjs/server";
 
-export const option = new AkanOption()
+import { SignedIn } from "../srvkit";
+
+export const option = new AkanOption<ModulesOptions>()
   .use((env) => ({ appName: env.appName }))
   .applyMiddleware(Logging)
-  .applyWebProxy(localeWebProxy);`,
+  .applyWebProxy(localeWebProxy)
+  .setMcp({ instructions: "Domain tools for the akan app." })
+  .setLlm((options) => options.llm ?? {})
+  .setAgentAccess(SignedIn);`,
     },
     {
       name: "AkanResponse",
@@ -118,17 +136,22 @@ class UserService {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       {symbols.map((symbol) => (
         <Scroll.Slide key={symbol.name} id={symbol.name} title={symbol.name}>
           <Docs.Title>{symbol.name}</Docs.Title>
           <Docs.Description>
             <div>{symbol.desc}</div>
           </Docs.Description>
-          <Code.Snippet title={l.trans({ en: "Usage", ko: "사용 예시" })} language="typescript" code={symbol.code} />
+          <Code.Snippet
+            className="w-full"
+            title={l.trans({ en: "Usage", ko: "사용 예시" })}
+            language="typescript"
+            code={symbol.code}
+          />
         </Scroll.Slide>
       ))}
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

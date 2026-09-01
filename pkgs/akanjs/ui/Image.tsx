@@ -1,5 +1,5 @@
 import { getEnv } from "akanjs/base";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import type { ProtoFile } from "akanjs/constant";
 import type { ImgHTMLAttributes } from "react";
 import { preload as preloadResource } from "react-dom";
@@ -31,7 +31,7 @@ type AkanImageProps = NativeImageProps & {
   /** Akan file object or file-like value with url and imageSize metadata. */
   file?: ImageLikeFile;
   /** Low-quality preview data. Overrides file.abstractData when provided. */
-  abstractData?: string;
+  abstractData?: string | null;
   /** Accessible alt text. Defaults to "image" when omitted. */
   alt?: string;
   /** Image optimizer quality. Defaults to 75. */
@@ -60,12 +60,12 @@ export const Image = ({
     | {
         src?: string;
         file?: ProtoFile;
-        abstractData?: string;
+        abstractData?: string | null;
         alt?: string;
       }
     | {
         src?: undefined;
-        abstractData?: string;
+        abstractData?: string | null;
         file: { url: string; imageSize: [number, number]; abstractData?: string | null } | null;
         alt?: string;
       }
@@ -119,7 +119,7 @@ export const Image = ({
       // fill={props.fill ?? (!width && !height)}
       width={width}
       height={height}
-      className={clsx("object-cover", className)}
+      className={cn("object-cover", className)}
       alt={alt ?? "image"}
       loading={props.loading ?? (isPriority ? "eager" : "lazy")}
       decoding={props.decoding ?? "async"}

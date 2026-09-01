@@ -13,6 +13,7 @@
 - Adapt And Plug (#adaptor)
 - Inject Services (#service)
 - Read Environment (#env)
+- One Key, One Owner (#duplicate)
 - Tips (#tips)
 
 ## Content
@@ -56,6 +57,14 @@ Read Environment
 `env()` is useful when the service needs runtime identity such as app name, operation mode, hostname, or a feature flag.
 
 Environment value
+
+One Key, One Owner
+
+A `use` key and an adaptor `refName` may be claimed once. Claiming either twice is last-write-wins everywhere downstream: the second registration replaces the first, and the replaced adaptor's `onInit` never runs. Akan refuses the boot instead, naming both claimants.
+
+Boot fails with both owners named
+
+The check is per key, not per registration. One adaptor class reached from two services is one adaptor and passes; two different classes under the same name do not. Fix it by renaming one of them, or by declaring it once in a lib both sides plug.
 
 Tips
 
@@ -145,6 +154,15 @@ export class ArticleService extends serve(db.article, ({ env }) => ({
     return `${this.publicUrl}/article/${articleId}`;
   }
 }
+```
+
+### Code
+
+```bash
+[DI:use] 1 duplicate registration(s):
+  • "storageApi" is registered by lib "util" and by lib "shared"
+[DI:adaptor] 1 duplicate registration(s):
+  • "imageStorage" is registered by service "article" and by service "gallery"
 ```
 
 ## Agent Notes

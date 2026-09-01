@@ -5,7 +5,6 @@ import {
   type FetchPolicy,
   isQueryEqual,
   Logger,
-  lowerlize,
   pathSet,
   resolveFileUploadCapability,
 } from "akanjs/common";
@@ -33,18 +32,12 @@ import type {
   SlceDbSort,
   SliceCls,
 } from "akanjs/signal";
+import { tagAction } from "./actionTag";
+import { formSetterNames } from "./formSetterNames";
+import type { SliceActionKey } from "./sliceRole";
 import type { SliceStateKey } from "./state";
 import type { SetGet, StoreSliceArgs, StoreSliceMap, StoreSliceSuffixCap } from "./types";
 
-type SliceActionKey =
-  | "initModel"
-  | "refreshModel"
-  | "selectModel"
-  | "setPageOfModel"
-  | "addPageOfModel"
-  | "setLimitOfModel"
-  | "setQueryArgsOfModel"
-  | "setSortOfModel";
 type _SliceMap<S extends SliceCls> = StoreSliceMap<S>;
 type _ActionRefName<S extends SliceCls> = SlceCnstRefName<S>;
 type _ActionCap<S extends SliceCls> = SlceCnstCapitalizedRefName<S>;
@@ -311,16 +304,7 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
     },
   };
   const fieldSetAction = Object.entries(modelRef[FIELD_META]).reduce((acc, [key, field]) => {
-    const [fieldKeyName, classKeyName] = [lowerlize(key), capitalize(key)];
-    const namesOfField = {
-      field: fieldKeyName,
-      Field: classKeyName,
-      setFieldOnModel: `set${classKeyName}On${className}`,
-      addFieldOnModel: `add${classKeyName}On${className}`,
-      subFieldOnModel: `sub${classKeyName}On${className}`,
-      addOrSubFieldOnModel: `addOrSub${classKeyName}On${className}`,
-      uploadFieldOnModel: `upload${classKeyName}On${className}`,
-    };
+    const namesOfField = formSetterNames(className, key);
     const singleFieldSetAction = {
       [namesOfField.setFieldOnModel]: function (this: SetGet, value: any | null) {
         this.set((state: { [key: string]: any }) => {
@@ -332,6 +316,13 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
                 : (value as object);
           (state[names.modelForm] as { [key: string]: any })[namesOfField.field] = setValue;
         });
+        // After the write, so a hook that reads the field sees the new value. It runs for every writer — the
+        // person's control, the agent's tool, `fill<Model>Form` — because a rule that fires from only one screen is
+        // not a rule about the field.
+        const postSet = (this as unknown as { [key: string]: ((value: unknown) => unknown) | undefined })[
+          namesOfField.postSetField
+        ];
+        if (postSet) void postSet.call(this, value);
       },
       ...(field.isArray
         ? {
@@ -374,7 +365,7 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
             },
           }
         : {}),
-      ...(field.isClass && !!fileUploadRefName && ConstantRegistry.getRefName(field.modelRef) === fileUploadRefName
+      ...(field.isClass && fileUploadRefName && ConstantRegistry.getRefName(field.modelRef) === fileUploadRefName
         ? {
             [namesOfField.uploadFieldOnModel]: async function (
               this: SetGet,
@@ -427,6 +418,12 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
           }
         : {}),
     };
+    // The state path is knowable only here, where the form key and the field are both in hand. `st.do` wrappers
+    // carry it forward, which is what lets `Field.*` write `data-akan-state` without being told anything.
+    tagAction(singleFieldSetAction[namesOfField.setFieldOnModel] as (...args: never[]) => unknown, {
+      action: namesOfField.setFieldOnModel,
+      state: `${names.modelForm}.${namesOfField.field}`,
+    });
     return Object.assign(acc, singleFieldSetAction);
   }, {});
   return Object.assign(fieldSetAction, baseSetAction);
@@ -751,7 +748,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
       this.set({ [names.modelFormLoading]: id, [names.modelModal]: modal ?? "edit" });
       const model = await (fetch[names.model] as (...args: any[]) => Promise<Full>)(id, { onError });
-      const modelForm = deepObjectify<Input>(model as unknown as Input);
+      const modelForm = immerify(modelRef, deepObjectify<Input>(model as unknown as Input) as object) as Input;
       this.set({
         [names.model]: model,
         [names.modelFormLoading]: false,

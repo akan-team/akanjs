@@ -1,19 +1,17 @@
 import { transformerNotationDiff, transformerNotationHighlight } from "@shikijs/transformers";
-import { clsx } from "akanjs/client";
-import type { BundledLanguage, BundledTheme, ShikiTransformer } from "shiki";
+import { cn } from "akanjs/client";
+import type { BundledLanguage, ShikiTransformer } from "shiki";
 import { createHighlighter } from "shiki";
 
 import { Shiki_Client } from "./Shiki_Client";
 
+// Dual theme: shiki emits per-token `--shiki-light`/`--shiki-dark` CSS variables (defaultColor: false)
+// instead of baking one theme's colors inline, so code blocks follow the app's [data-theme] switch.
+// The variable → color wiring lives in ./styles.css.
 const highlighter = createHighlighter({
   themes: ["github-light", "github-dark"],
   langs: ["typescript", "bash"],
 });
-
-const defaultThemes = {
-  light: "github-light",
-  dark: "github-dark",
-} as const satisfies Record<"light" | "dark", BundledTheme>;
 
 const transformerLineNumbers: ShikiTransformer = {
   line(node, line) {
@@ -81,17 +79,17 @@ const parseCollapseAnnotations = (
 interface RawProps {
   className?: string;
   language?: BundledLanguage;
-  theme?: BundledTheme;
   code: string;
   showLineNumbers?: boolean;
 }
 
-export const Raw = ({ className, language = "typescript", theme, code, showLineNumbers = true }: RawProps) => {
+export const Raw = ({ className, language = "typescript", code, showLineNumbers = true }: RawProps) => {
   const { cleanedCode, focusLines } = parseCollapseAnnotations(code);
   const htmlPromise = highlighter.then((highlighter) =>
     highlighter.codeToHtml(cleanedCode, {
       lang: language,
-      ...(theme ? { theme } : { themes: defaultThemes }),
+      themes: { light: "github-light", dark: "github-dark" },
+      defaultColor: false,
       transformers: [
         transformerNotationDiff({
           matchAlgorithm: "v3",
@@ -104,5 +102,5 @@ export const Raw = ({ className, language = "typescript", theme, code, showLineN
       ],
     }),
   );
-  return <Shiki_Client className={clsx("w-max", className)} htmlPromise={htmlPromise} focusLines={focusLines} />;
+  return <Shiki_Client className={cn("w-max", className)} htmlPromise={htmlPromise} focusLines={focusLines} />;
 };

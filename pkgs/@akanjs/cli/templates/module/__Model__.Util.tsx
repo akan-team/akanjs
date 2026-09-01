@@ -21,7 +21,7 @@ interface RemoveProps {
 export const Remove = ({ ${dict.model}Id }: RemoveProps) => {
   const { l } = usePage();
   return (
-    <Model.Remove modelId={${dict.model}Id} slice={fetch.slice["${dict.model}"]}>
+    <Model.Remove modelId={${dict.model}Id} slice={fetch.slice.${dict.model}}>
       <BiTrash /> {l("base.remove")}
     </Model.Remove>
   );

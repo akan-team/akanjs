@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="client-helper"
@@ -40,6 +40,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="small service control"
           code={`"use client";
 
@@ -53,7 +54,7 @@ export const ResyncButton = () => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="what-belongs" title={l.trans({ en: "What Belongs Here", ko: "무엇을 넣나" })}>
         <Docs.Title>{l.trans({ en: "What Belongs Here", ko: "무엇을 넣나" })}</Docs.Title>
@@ -66,14 +67,15 @@ export const ResyncButton = () => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="when Util is enough"
           code={`export const SearchInput = () => {
   return <input onChange={(e) => st.do.setSearchString(e.target.value)} />;
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <Divider />
+      <DocsToc />
     </Scroll>
   );
 }

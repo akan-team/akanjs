@@ -2,6 +2,7 @@
 import { $isLinkNode, TOGGLE_LINK_COMMAND } from "@lexical/link";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { $findMatchingParent, mergeRegister } from "@lexical/utils";
+import { buttonRecipe, inputRecipe } from "@libs/util/ui";
 import {
   $getSelection,
   $isRangeSelection,
@@ -13,7 +14,6 @@ import {
 } from "lexical";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-
 import { safeExternalUrl } from "../url";
 import type { ToolbarState } from "./floatingToolbarPlugin.type";
 
@@ -169,7 +169,7 @@ export const FloatingToolbar = ({
   return (
     <div
       ref={ref}
-      className="fixed z-50 flex items-center gap-1 rounded-md border border-base-content/10 bg-base-100 p-1 shadow-lg"
+      className="fixed z-50 flex items-center gap-1 rounded-md border border-foreground/10 bg-background p-1 shadow-lg"
       style={{ top, left, transform: "translateX(-50%)" }}
       onMouseDown={(event) => event.preventDefault()}
     >
@@ -190,19 +190,23 @@ export const FloatingToolbar = ({
               key={mark.format}
               type="button"
               title={mark.title}
-              className={`btn btn-ghost btn-xs min-h-7 px-2 font-mono ${
-                state.formats.has(mark.format) ? "btn-active" : ""
-              }`}
+              className={buttonRecipe({ variant: "ghost", size: "xs" }, [
+                "min-h-7 px-2 font-mono",
+                state.formats.has(mark.format) && "bg-muted text-foreground",
+              ])}
               onClick={() => onToggleMark(mark.format)}
             >
               {mark.label}
             </button>
           ))}
-          <span className="mx-1 h-5 w-px bg-base-content/20" />
+          <span className="mx-1 h-5 w-px bg-foreground/20" />
           <button
             type="button"
             title="Link (⌘K)"
-            className={`btn btn-ghost btn-xs min-h-7 px-2 ${state.linkUrl ? "btn-active" : ""}`}
+            className={buttonRecipe({ variant: "ghost", size: "xs" }, [
+              "min-h-7 px-2",
+              state.linkUrl && "bg-muted text-foreground",
+            ])}
             onClick={onStartLinkEdit}
           >
             Link
@@ -211,7 +215,7 @@ export const FloatingToolbar = ({
             <button
               type="button"
               title="Remove link"
-              className="btn btn-ghost btn-xs min-h-7 px-2"
+              className={buttonRecipe({ variant: "ghost", size: "xs" }, "min-h-7 px-2")}
               onClick={onRemoveLink}
             >
               Unlink
@@ -242,7 +246,7 @@ export const LinkInput = ({ initial, invalid, onSubmit, onCancel, onChange }: Li
         type="url"
         value={url}
         placeholder="https://…"
-        className={`input input-xs w-52 ${invalid ? "input-error" : ""}`}
+        className={inputRecipe({ size: "xs" }, ["w-52", invalid && "border-destructive"])}
         onMouseDown={(event) => event.stopPropagation()}
         onChange={(event) => {
           setUrl(event.target.value);
@@ -258,7 +262,11 @@ export const LinkInput = ({ initial, invalid, onSubmit, onCancel, onChange }: Li
           }
         }}
       />
-      <button type="button" className="btn btn-primary btn-xs min-h-7" onClick={() => onSubmit(url.trim())}>
+      <button
+        type="button"
+        className={buttonRecipe({ variant: "primary", size: "xs" }, "min-h-7")}
+        onClick={() => onSubmit(url.trim())}
+      >
         OK
       </button>
     </div>

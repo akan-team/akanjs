@@ -20,9 +20,10 @@ const isFrameDebugEnabled = () => {
 export function debugFrame(event: string, payload: DebugPayload = {}) {
   if (!isFrameDebugEnabled()) return;
   debugSeq += 1;
-  console.info(`[akan:frame:${debugSessionId}:${debugSeq}] ${event}`, {
+  const details = {
     href: window.location.href,
     now: Math.round(performance.now()),
     ...payload,
-  });
+  };
+  console.info(`[akan:frame:${debugSessionId}:${debugSeq}] ${event}`, details, JSON.stringify(details));
 }

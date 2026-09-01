@@ -14,6 +14,7 @@ import type {
   SlceDbSort,
   SliceCls,
 } from "akanjs/signal";
+import { databaseStateNames } from "./databaseStateNames";
 import type { StoreSliceArgs, StoreSliceMap, StoreSliceSuffixCap, Submit } from "./types";
 
 export type SliceStateKey =
@@ -151,18 +152,7 @@ export type DefaultState<
 
 export const createDatabaseState = (refName: string) => {
   const cnst = ConstantRegistry.getDatabase(refName);
-  const [fieldName, className] = [refName, capitalize(refName)];
-  const names = {
-    model: fieldName,
-    Model: className,
-    modelLoading: `${fieldName}Loading`,
-    modelForm: `${fieldName}Form`,
-    modelFormLoading: `${fieldName}FormLoading`,
-    modelSubmit: `${fieldName}Submit`,
-    modelViewAt: `${fieldName}ViewAt`,
-    modelModal: `${fieldName}Modal`,
-    modelOperation: `${fieldName}Operation`,
-  };
+  const names = databaseStateNames(refName);
   const baseState = {
     [names.model]: null,
     [names.modelLoading]: true,

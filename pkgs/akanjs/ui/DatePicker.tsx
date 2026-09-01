@@ -1,188 +1,171 @@
 "use client";
 import { type Dayjs, dayjs } from "akanjs/base";
-import { clsx, msg } from "akanjs/client";
-import { lazy } from "akanjs/webkit";
-import { type FocusEvent, useEffect, useRef } from "react";
+import { cn, msg } from "akanjs/client";
+import { type ChangeEvent, useEffect } from "react";
 import { AiOutlineSwapRight } from "react-icons/ai";
 
+import { inputRecipe } from "./recipe";
 import { createOverridable } from "./UiOverride";
 
-const reactDatePickerPackage = "react-datepicker";
-const reactDatePickerStylePath = "react-datepicker/dist/react-datepicker.css";
+type NativeDateType = "date" | "datetime-local" | "time";
 
-const ReactDatePicker = lazy(
-  async () => {
-    await import(reactDatePickerStylePath);
-    return import(reactDatePickerPackage);
-  },
-  { ssr: false },
-);
+// What each native input reads and writes. `datetime-local` carries no zone and no seconds, so its value is the
+// wall clock the user sees; `time` carries no day at all. dayjs parses both back as local, matching the field.
+const valueFormat = { date: "YYYY-MM-DD", "datetime-local": "YYYY-MM-DDTHH:mm", time: "HH:mm" } as const;
+
+const toInputValue = (value: Dayjs | null | undefined, type: NativeDateType) =>
+  value?.isValid() ? value.format(valueFormat[type]) : "";
+
+/** `type="time"` reports a clock reading only, so the day comes from whatever the field already holds. */
+const fromInputValue = (raw: string, type: NativeDateType, base: Dayjs) => {
+  if (!raw) return null;
+  const picked = type === "time" ? dayjs(`${base.format(valueFormat.date)}T${raw}`) : dayjs(raw);
+  return picked.isValid() ? picked : null;
+};
+
+interface NativeDateInputProps {
+  className?: string;
+  type: NativeDateType;
+  value?: Dayjs | null;
+  min?: Dayjs | null;
+  max?: Dayjs | null;
+  disabled?: boolean;
+  disabledDate?: (date: Dayjs) => boolean | null | undefined;
+  onChange: (value: Dayjs) => void;
+}
+const NativeDateInput = ({
+  className,
+  type,
+  value,
+  min,
+  max,
+  disabled,
+  disabledDate,
+  onChange,
+}: NativeDateInputProps) => {
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const picked = fromInputValue(event.target.value, type, value ?? dayjs());
+    if (!picked || disabledDate?.(picked)) {
+      msg.warning("base.selectDateError");
+      // Put the field back by hand: re-rendering the value it already holds leaves the DOM node alone.
+      event.target.value = toInputValue(value, type);
+      return;
+    }
+    onChange(picked);
+  };
+  return (
+    <input
+      className={className}
+      type={type}
+      value={toInputValue(value, type)}
+      min={min ? toInputValue(min, type) : undefined}
+      max={max ? toInputValue(max, type) : undefined}
+      disabled={disabled}
+      onChange={handleChange}
+    />
+  );
+};
+
 export interface DatePickerProps {
+  className?: string;
   value?: Dayjs | null;
   onChange: (value: Dayjs | null) => void;
   showTime?: boolean;
-  format?: string;
-  timeIntervals?: number;
+  /** Earliest selectable value. The browser enforces it. */
+  min?: Dayjs | null;
+  /** Latest selectable value. The browser enforces it. */
+  max?: Dayjs | null;
+  /** Rejected on selection rather than greyed out — a native field constrains only through `min` / `max`. */
   disabledDate?: (date: Dayjs) => boolean | null | undefined;
-  className?: string;
-  placement?: "top" | "bottom" | "left" | "right";
   defaultValue?: Dayjs;
 }
 
 const DefaultDatePicker = ({
+  className = "",
   value,
   onChange,
   showTime,
-  format = "yyyy-MM-dd",
-  timeIntervals = 10,
+  min,
+  max,
   disabledDate,
-  placement,
-  className = "",
   defaultValue,
 }: DatePickerProps) => {
-  const clickNum = useRef(0);
-
   useEffect(() => {
-    if (defaultValue) {
-      onChange(defaultValue);
-    }
+    if (defaultValue) onChange(defaultValue);
   }, [defaultValue]);
 
-  const handleDateChange = (date?: Date | null) => {
-    if (!date) {
-      msg.warning("base.selectDateError");
-      return;
-    }
-    onChange(dayjs(date));
-  };
-
   return (
-    <ReactDatePicker
-      className={clsx("input text-center", className)}
-      selected={value ? value.toDate() : new Date()}
-      disabledKeyboardNavigation
-      onFocus={(e: FocusEvent<HTMLInputElement>) => {
-        // 더블클릭 시 수동인풋 할 수 있게
-        if (clickNum.current % 2 === 0) e.target.blur();
-        clickNum.current++;
-      }}
-      onChange={handleDateChange}
-      showTimeSelect={showTime}
-      popperPlacement={placement}
-      timeIntervals={timeIntervals}
-      filterDate={(date: Date) => (!disabledDate?.(dayjs(date)) ? true : false)}
-      dateFormat={format}
+    <NativeDateInput
+      className={inputRecipe({}, ["text-center", className])}
+      type={showTime ? "datetime-local" : "date"}
+      value={value}
+      min={min}
+      max={max}
+      disabledDate={disabledDate}
+      onChange={onChange}
     />
   );
 };
 
 export interface RangePickerProps {
+  className?: string;
   value: [Dayjs | null, Dayjs | null];
   onChange: (value: [Dayjs | null, Dayjs | null]) => void;
-  format?: string;
   showTime?: boolean;
-  timeIntervals?: number;
+  /** Rejected on selection rather than greyed out — a native field constrains only through `min` / `max`. */
   disabledDate?: (date: Dayjs) => boolean | null | undefined;
-  className?: string;
 }
 
-const DefaultRangePicker = ({
-  value,
-  onChange,
-  format = "yyyy-MM-dd",
-  showTime,
-  timeIntervals = 10,
-  disabledDate,
-  className = "",
-}: RangePickerProps) => {
-  const handleStartDateChange = (date?: Date | null) => {
-    if (!date) {
-      msg.warning("base.selectDateError");
-      return;
-    }
-    onChange([dayjs(date), value[1] ?? dayjs()]);
-  };
-  const handleEndDateChange = (date?: Date | null) => {
-    if (!date) {
-      msg.warning("base.selectDateError");
-      return;
-    }
-    onChange([value[0] ?? dayjs(), dayjs(date)]);
-  };
-
-  const pickerClassName = "m-0 input focus:outline-hidden z-50 p-3 text-center h-full w-full ";
+const DefaultRangePicker = ({ className = "", value, onChange, showTime, disabledDate }: RangePickerProps) => {
+  const type = showTime ? "datetime-local" : "date";
+  // The wrapper is the field shell; the two inputs sit inside it, so they carry no shell of their own —
+  // `p-0` on the wrapper puts their edges on top of its border and a second border would double the line.
+  const inputClassName = "m-0 h-full w-full border-none bg-transparent p-3 text-center focus:outline-hidden";
   return (
-    <div className={clsx("input flex h-full w-fit items-center gap-2 p-0", className)}>
-      <ReactDatePicker
-        className={pickerClassName}
-        selected={value[0] ? value[0].toDate() : undefined}
-        selectsStart
-        startDate={value[0] ? value[0].toDate() : undefined}
-        endDate={value[1] ? value[1].toDate() : undefined}
-        onChange={handleStartDateChange}
-        showTimeSelect={showTime}
-        timeIntervals={timeIntervals}
-        filterDate={(date: Date) => (!disabledDate?.(dayjs(date)) ? true : false)}
-        dateFormat={format}
+    <div className={inputRecipe({}, ["flex h-full w-fit items-center gap-2 p-0", className])}>
+      <NativeDateInput
+        className={inputClassName}
+        type={type}
+        value={value[0]}
+        max={value[1]}
+        disabledDate={disabledDate}
+        onChange={(start) => {
+          onChange([start, value[1] ?? dayjs()]);
+        }}
       />
-      <AiOutlineSwapRight className="text-3xl text-gray-400" />
-      <ReactDatePicker
-        className={pickerClassName}
-        selected={value[1] ? value[1].toDate() : undefined}
-        selectsEnd
-        startDate={value[0] ? value[0].toDate() : undefined}
-        endDate={value[1] ? value[1].toDate() : undefined}
-        onChange={handleEndDateChange}
-        showTimeSelect={showTime}
-        timeIntervals={timeIntervals}
-        filterDate={(date: Date) =>
-          !disabledDate?.(dayjs(date)) && !!value[0] && !dayjs(date).add(1, "day").isBefore(value[0]) ? true : false
-        }
-        filterTime={(time: Date) => !!value[0] && dayjs(time).isAfter(value[0])}
-        dateFormat={format}
+      <AiOutlineSwapRight className="text-3xl text-muted-foreground" />
+      <NativeDateInput
+        className={inputClassName}
+        type={type}
+        value={value[1]}
+        min={value[0]}
+        disabledDate={disabledDate}
+        onChange={(end) => {
+          onChange([value[0] ?? dayjs(), end]);
+        }}
       />
     </div>
   );
 };
 
 export interface TimePickerProps {
+  className?: string;
   value: Dayjs | null;
   onChange: (value: Dayjs) => void;
-  format?: string;
-  timeIntervals?: number;
-  disabledDate?: (date: Dayjs) => boolean | null | undefined;
-  className?: string;
   disabled?: boolean;
+  /** Rejected on selection rather than greyed out — a native field constrains only through `min` / `max`. */
+  disabledDate?: (date: Dayjs) => boolean | null | undefined;
 }
 
-const DefaultTimePicker = ({
-  disabled,
-  className,
-  value,
-  format = "HH:mm",
-  onChange,
-  timeIntervals = 10,
-}: TimePickerProps) => {
-  const handleDateChange = (date?: Date | null) => {
-    if (!date) {
-      msg.warning("base.selectDateError");
-      return;
-    }
-    onChange(dayjs(date));
-  };
-
+const DefaultTimePicker = ({ className, value, onChange, disabled, disabledDate }: TimePickerProps) => {
   return (
-    <ReactDatePicker
-      wrapperClassName="inline-block"
-      className={clsx("inline-block w-auto", className)}
-      selected={value ? value.toDate() : new Date()}
-      onChange={handleDateChange}
-      showTimeSelect
-      showTimeSelectOnly
-      timeIntervals={timeIntervals}
-      timeCaption="Time"
-      dateFormat={format}
+    <NativeDateInput
+      className={cn("inline-block w-auto", className)}
+      type="time"
+      value={value}
       disabled={disabled}
+      disabledDate={disabledDate}
+      onChange={onChange}
     />
   );
 };
@@ -193,103 +176,12 @@ const DatePickerBase = createOverridable("DatePicker", DefaultDatePicker);
  * Date picker. `DatePicker`, `DatePicker.RangePicker`, and `DatePicker.TimePicker` each resolve to a
  * route-scoped override when a `page/**\/_overrides.tsx` in the route's ancestry declares one (slots
  * `DatePicker`, `DatePickerRangePicker`, `DatePickerTimePicker`).
+ *
+ * Each renders one native `<input type="date" | "datetime-local" | "time">`, so the calendar is the browser's
+ * own: an OS wheel on mobile, keyboard entry everywhere, nothing shipped in the bundle. What that costs is a
+ * themed popup, a chosen display format, and per-day disabling — an app needing any of those overrides the slot.
  */
 export const DatePicker = Object.assign(DatePickerBase, {
   RangePicker: createOverridable("DatePickerRangePicker", DefaultRangePicker),
   TimePicker: createOverridable("DatePickerTimePicker", DefaultTimePicker),
 });
-
-// interface MonthPickerProps {
-//   className?: string;
-//   yearClassName?: string;
-//   monthClassName?: string;
-//   value: Dayjs | null;
-//   onChange: (value: Dayjs) => void;
-//   min?: Dayjs;
-//   max?: Dayjs;
-//   dateOfMonth?: "first" | "last";
-// }
-
-// const MonthPicker = ({
-//   className,
-//   yearClassName,
-//   monthClassName,
-//   value,
-//   onChange,
-//   min = dayjs()
-//     .subtract(1, "year")
-//     .set("month", 0)
-//     .set("date", 1)
-//     .set("hour", 0)
-//     .set("minute", 0)
-//     .set("second", 0)
-//     .set("millisecond", 0),
-//   max = dayjs()
-//     .add(1, "year")
-//     .set("month", 11)
-//     .set("date", 1)
-//     .set("hour", 0)
-//     .set("minute", 0)
-//     .set("second", 0)
-//     .set("millisecond", 0),
-//   dateOfMonth = "first",
-// }: MonthPickerProps) => {
-//   const [year, month] = [value?.year(), value?.month()];
-//   const availableYears = Array.from({ length: max.year() - min.year() + 1 }, (_, i) => min.year() + i);
-//   const availableMonths = Array.from({ length: 12 }, (_, i) => i)
-//     .filter((month) => (year === min.year() ? month >= min.month() : true))
-//     .filter((month) => (year === max.year() ? month <= max.month() : true));
-//   return (
-//     <div className={clsx("flex gap-2", className)}>
-//       <Select
-//         className={yearClassName}
-//         value={year}
-//         onChange={(year) => {
-//           if (month)
-//             onChange(
-//               dayjs(value)
-//                 .set("year", year)
-//                 .set("month", year === max.year() ? max.month() : month)
-//                 .set("date", 1)
-//                 .set("hour", 0)
-//                 .set("minute", 0)
-//                 .set("second", 0)
-//                 .set("millisecond", 0)
-//                 .add(dateOfMonth === "first" ? 0 : 1, "month")
-//                 .subtract(dateOfMonth === "first" ? 0 : -1, "millisecond")
-//             );
-//         }}
-//       >
-//         {availableYears.map((year, idx) => (
-//           <Select.Option key={idx} value={year}>
-//             {year}년
-//           </Select.Option>
-//         ))}
-//       </Select>
-//       <Select
-//         className={monthClassName}
-//         value={month}
-//         onChange={(month) => {
-//           onChange(
-//             dayjs(value)
-//               .set("month", month)
-//               .set("date", 1)
-//               .set("hour", 0)
-//               .set("minute", 0)
-//               .set("second", 0)
-//               .set("millisecond", 0)
-//               .add(dateOfMonth === "first" ? 0 : 1, "month")
-//               .subtract(dateOfMonth === "first" ? 0 : -1, "millisecond")
-//           );
-//         }}
-//       >
-//         {availableMonths.map((month, idx) => (
-//           <Select.Option key={idx} value={month}>
-//             {month + 1}월
-//           </Select.Option>
-//         ))}
-//       </Select>
-//     </div>
-//   );
-// };
-// DatePicker.MonthPicker = MonthPicker;

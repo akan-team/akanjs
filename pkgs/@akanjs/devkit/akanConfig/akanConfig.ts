@@ -5,19 +5,24 @@ import type { AkanPlugin } from "akanjs";
 import { type AkanI18nConfig, resolveAkanI18nConfig } from "akanjs/common";
 import type { AkanImageConfig } from "akanjs/server";
 import type { App, Lib } from "../commandDecorators";
-import { WorkspaceExecutor } from "../executors";
+import { LibExecutor, WorkspaceExecutor } from "../executors";
 import type { BaseDevEnv, PackageJson } from "../types";
 import {
   type AkanMobileConfig,
   type AkanMobileTargetConfig,
   type AkanRouteConfig,
+  type AkanWebConfig,
+  type AkanWebOption,
   type AppConfigResult,
   type Arch,
   archs,
   type DatabaseMode,
   type DeepPartial,
   type DockerConfig,
+  type DockerOption,
+  type DockerRun,
   type LibConfigResult,
+  type LibDockerConfig,
 } from "./types";
 
 const DEFAULT_BARREL_IMPORTS = ["akanjs/webkit", "akanjs/common", "akanjs/ui", "akanjs/server"];
@@ -49,9 +54,8 @@ const DEFAULT_OPTIMIZE_IMPORTS = [
   "react-icons/*",
 ];
 const WORKSPACE_BARREL_FACETS = ["ui", "webkit", "common", "client", "server"] as const;
+const DEFAULT_DOCKER_IMAGE = "oven/bun:1-slim";
 const SSR_RUNTIME_PACKAGES = ["react", "react-dom", "react-server-dom-webpack"] as const;
-const NATIVE_RUNTIME_PACKAGES = ["sharp"] as const;
-const DEFAULT_BACKEND_RUNTIME_PACKAGES = ["croner"] as const;
 // The firebase client (push tokens) and the Capacitor toolchain — `@capacitor/cli` (`npx cap`),
 // `@capacitor/assets` (`npx @capacitor/assets`) plus the `@capacitor/core`/`ios`/`android` runtime
 // and native-platform packages that `npx cap add`/`sync` resolve from the workspace node_modules.
@@ -92,8 +96,6 @@ const DATABASE_MODE_RUNTIME_PACKAGES = {
 } satisfies Record<DatabaseMode, readonly string[]>;
 const AKAN_RUNTIME_PACKAGES = new Set<string>([
   ...SSR_RUNTIME_PACKAGES,
-  ...NATIVE_RUNTIME_PACKAGES,
-  ...DEFAULT_BACKEND_RUNTIME_PACKAGES,
   ...MOBILE_RUNTIME_PACKAGES,
   ...Object.values(DATABASE_MODE_RUNTIME_PACKAGES).flat(),
 ]);
@@ -167,11 +169,38 @@ const normalizeDeepLinks = (deepLinks: DeepPartial<AkanMobileTargetConfig["deepL
   } satisfies AkanMobileTargetConfig["deepLinks"];
 };
 
+/** What `akan.config.ts` may write: the resolved shape made partial, with `docker` and `web` in their unions. */
+type AppConfigDeclaration = Omit<DeepPartial<AppConfigResult>, "docker" | "web"> & {
+  docker?: DockerOption;
+  web?: AkanWebOption;
+};
+
+/** What the workspace's libs add to an app's build, read off each `libs/<lib>/akan.config.ts`. */
+export interface LibContributions {
+  externalLibs: string[];
+  docker: LibDockerConfig;
+}
+
+const emptyLibContributions = (): LibContributions => ({
+  externalLibs: [],
+  docker: { preRuns: [], postRuns: [] },
+});
+
+/** First occurrence wins, so a step a lib and its app both declare becomes one layer. */
+const dedupeDockerRuns = (runs: DockerRun[]): DockerRun[] => {
+  const byKey = new Map<string, DockerRun>();
+  for (const run of runs) byKey.set(typeof run === "string" ? run : JSON.stringify(run), run);
+  return [...byKey.values()];
+};
+
 export class AkanAppConfig implements AppConfigResult {
   app: App;
   rootPackageJson: PackageJson;
   docker: DockerConfig;
+  /** The Dockerfile `akan build` writes: the declared string verbatim, or one assembled from the parts. */
+  dockerfile: string;
   defaultDatabaseMode: DatabaseMode;
+  web: AkanWebConfig;
   externalLibs: string[];
   barrelImports: string[];
   optimizeImports: string[];
@@ -196,9 +225,10 @@ export class AkanAppConfig implements AppConfigResult {
     app: App,
     libs: string[],
     rootPackageJson: PackageJson,
-    config: DeepPartial<AppConfigResult>,
+    config: AppConfigDeclaration,
     baseDevEnv: BaseDevEnv,
     plugins: AkanPlugin[] = [],
+    libContributions: LibContributions = emptyLibContributions(),
   ) {
     this.app = app;
     this.rootPackageJson = rootPackageJson;
@@ -207,7 +237,7 @@ export class AkanAppConfig implements AppConfigResult {
     this.plugins = plugins;
     this.#applyRoutes(config?.routes);
     this.defaultDatabaseMode = config?.defaultDatabaseMode ?? "single";
-    this.externalLibs = config?.externalLibs ?? [];
+    this.externalLibs = [...new Set([...(config?.externalLibs ?? []), ...libContributions.externalLibs])];
     this.barrelImports = [
       ...DEFAULT_BARREL_IMPORTS,
       ...WORKSPACE_BARREL_FACETS.map((facet) => `@apps/${app.name}/${facet}`),
@@ -224,7 +254,18 @@ export class AkanAppConfig implements AppConfigResult {
     this.syncPageLibs = (config?.syncPageLibs as string[] | boolean | undefined) ?? false;
     this.hasMobileConfig = Boolean(config.mobile);
     this.mobile = this.#resolveMobileConfig(config.mobile);
-    this.docker = this.#makeDockerContent(config?.docker ?? {});
+    this.web = this.#resolveWebConfig(config.web);
+    this.docker = AkanAppConfig.#resolveDocker(config.docker, libContributions.docker);
+    this.dockerfile = this.#makeDockerfile();
+  }
+  #resolveWebConfig(web: AkanWebOption | undefined): AkanWebConfig {
+    const resolved = typeof web === "object" ? { ssr: true, csr: web.csr } : { ssr: web ?? true, csr: web ?? true };
+    // `akan build-ios` / `build-android` copy `dist/apps/<app>/csr/<target>.html` into the native project.
+    if (!resolved.csr && this.hasMobileConfig)
+      throw new Error(
+        `apps/${this.app.name}/akan.config.ts turns the CSR bundle off but declares mobile targets; the Capacitor build ships that bundle. Drop the mobile section or leave CSR on.`,
+      );
+    return resolved;
   }
   #resolveMobileConfig(mobile: DeepPartial<AkanMobileConfig> | undefined): AkanMobileConfig {
     const {
@@ -325,7 +366,7 @@ export class AkanAppConfig implements AppConfigResult {
         this.branches.forEach((domain) => void domains.add(`${basePath}-${domain}.${serveDomain}`));
       });
   }
-  #getDockerRunScripts(runs: (string | { [key in Arch]?: string })[]) {
+  #getDockerRunScripts(runs: DockerRun[]) {
     return runs.map((run) => {
       if (typeof run === "string") return `RUN ${run}`;
       else
@@ -342,26 +383,31 @@ export class AkanAppConfig implements AppConfigResult {
     if (typeof image === "string") return `FROM ${image}`;
     else return archs.map((arch) => `FROM ${image[arch] ?? defaultImage} AS ${arch}`).join("\n");
   }
-  #makeDockerContent(docker: DeepPartial<DockerConfig>): DockerConfig {
-    if (docker.content)
-      return {
-        content: docker.content,
-        image: {},
-        preRuns: [],
-        postRuns: [],
-        command: [],
-      };
-    const preRunScripts = this.#getDockerRunScripts(docker.preRuns ?? []);
-    const postRunScripts = this.#getDockerRunScripts(docker.postRuns ?? []);
-
-    const imageScript = docker.image
-      ? this.#getDockerImageScript(docker.image, "oven/bun:1-slim")
-      : "FROM oven/bun:1-slim";
-    const command = docker.command ?? ["bun", "main.js"];
-    const content = `${imageScript}
+  /** A declared Dockerfile string is verbatim, so a lib's steps are dropped rather than silently unapplied. */
+  static #resolveDocker(docker: DockerOption | undefined, libDocker: LibDockerConfig): DockerConfig {
+    if (typeof docker === "string") return docker;
+    return {
+      image: docker?.image ?? DEFAULT_DOCKER_IMAGE,
+      preRuns: dedupeDockerRuns([...libDocker.preRuns, ...(docker?.preRuns ?? [])]),
+      postRuns: dedupeDockerRuns([...libDocker.postRuns, ...(docker?.postRuns ?? [])]),
+      command: docker?.command ?? ["bun", "main.js"],
+    };
+  }
+  #makeDockerfile(): string {
+    if (typeof this.docker === "string") return this.docker;
+    const { image, preRuns, postRuns, command } = this.docker;
+    const preRunScripts = this.#getDockerRunScripts(preRuns);
+    const postRunScripts = this.#getDockerRunScripts(postRuns);
+    const imageScript = this.#getDockerImageScript(image, DEFAULT_DOCKER_IMAGE);
+    // The image default matches what the build actually produced; a deployment narrows it further with its
+    // own env, and can never widen it past the artifacts that are in the image.
+    const webEnvLines = [
+      ...(this.web.ssr ? [] : ["ENV AKAN_SSR=false"]),
+      ...(this.web.csr ? [] : ["ENV AKAN_CSR=false"]),
+    ].join("\n");
+    return `${imageScript}
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates tzdata && rm -rf /var/lib/apt/lists/*
 RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime
-RUN apt-get update && apt-get upgrade -y
-RUN apt-get install -y --no-install-recommends git redis build-essential python3 ca-certificates fonts-liberation libappindicator3-1 libasound2 libatk-bridge2.0-0 libatk1.0-0 libc6 libcairo2 libcups2 libdbus-1-3 libexpat1 libfontconfig1 libgbm1 libgcc1 libglib2.0-0 libgtk-3-0 libnspr4 libnss3 libpango-1.0-0 libpangocairo-1.0-0 libstdc++6 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 libxtst6 lsb-release wget xdg-utils udev ffmpeg
 ARG TARGETARCH
 ${preRunScripts.join("\n")}
 RUN mkdir -p /workspace
@@ -380,15 +426,8 @@ ${this.basePaths.size ? `ENV AKAN_PUBLIC_BASE_PATHS=${[...this.basePaths].join("
 ENV AKAN_PUBLIC_DEFAULT_LOCALE=${this.i18n.defaultLocale}
 ENV AKAN_PUBLIC_LOCALES=${this.i18n.locales.join(",")}
 ENV AKAN_PUBLIC_OPERATION_MODE=cloud
-
+${webEnvLines}
 CMD [${command.map((c) => `"${c}"`).join(",")}]`;
-    return {
-      content,
-      image: imageScript,
-      preRuns: docker.preRuns ?? [],
-      postRuns: docker.postRuns ?? [],
-      command,
-    };
   }
   static #importGeneration = 0;
   /**
@@ -415,8 +454,30 @@ CMD [${command.map((c) => `"${c}"`).join(",")}]`;
       app.workspace.getPackageJson(),
     ]);
     const resolved = typeof configImp === "function" ? configImp(app) : configImp;
-    const { plugins, ...config } = (resolved ?? {}) as DeepPartial<AppConfigResult> & { plugins?: AkanPlugin[] };
-    return new AkanAppConfig(app, libs, rootPackageJson, config, baseDevEnv, plugins ?? []);
+    const { plugins, ...config } = (resolved ?? {}) as AppConfigDeclaration & { plugins?: AkanPlugin[] };
+    const libContributions = await AkanAppConfig.#collectLibContributions(app, libs, bustImportCache);
+    return new AkanAppConfig(app, libs, rootPackageJson, config, baseDevEnv, plugins ?? [], libContributions);
+  }
+  //* Every workspace lib is read, not just this app's lib deps: narrowing the set needs the dependency
+  //* scan, and the incremental page rebundle re-reads this config on every file change.
+  static async #collectLibContributions(app: App, libs: string[], bustImportCache: boolean): Promise<LibContributions> {
+    const libConfigs = await Promise.all(
+      libs.map(async (libName) =>
+        LibExecutor.from(app, libName)
+          .getConfig({ refresh: bustImportCache })
+          .catch((error: unknown) => {
+            app.logger.warn(`Skipped libs/${libName}/akan.config.ts contributions: ${String(error)}`);
+            return null;
+          }),
+      ),
+    );
+    return {
+      externalLibs: libConfigs.flatMap((libConfig) => libConfig?.externalLibs ?? []),
+      docker: {
+        preRuns: libConfigs.flatMap((libConfig) => libConfig?.docker.preRuns ?? []),
+        postRuns: libConfigs.flatMap((libConfig) => libConfig?.docker.postRuns ?? []),
+      },
+    };
   }
   #resolveProductionDependencyVersion(lib: string) {
     const rootVersion = this.rootPackageJson.dependencies?.[lib] ?? this.rootPackageJson.devDependencies?.[lib];
@@ -428,13 +489,7 @@ CMD [${command.map((c) => `"${c}"`).join(",")}]`;
     return akanPackageJson.dependencies?.[lib] ?? akanPackageJson.peerDependencies?.[lib];
   }
   #getProductionRuntimePackages() {
-    return [
-      ...this.externalLibs,
-      ...SSR_RUNTIME_PACKAGES,
-      ...NATIVE_RUNTIME_PACKAGES,
-      ...DEFAULT_BACKEND_RUNTIME_PACKAGES,
-      ...this.getDatabaseModeRuntimePackages(),
-    ];
+    return [...this.externalLibs, ...SSR_RUNTIME_PACKAGES, ...this.getDatabaseModeRuntimePackages()];
   }
   getDatabaseModeRuntimePackages(databaseMode: DatabaseMode = this.defaultDatabaseMode) {
     return [...DATABASE_MODE_RUNTIME_PACKAGES[databaseMode]];
@@ -532,15 +587,17 @@ function mergeImageConfig(config: Partial<AkanImageConfig> = {}): AkanImageConfi
 export class AkanLibConfig implements LibConfigResult {
   lib: Lib;
   externalLibs: string[];
+  docker: LibDockerConfig;
   /** Live-only: plugins declared in this lib's `akan.config.ts` (never serialized). */
   plugins: AkanPlugin[];
   constructor(lib: Lib, config: DeepPartial<LibConfigResult>, plugins: AkanPlugin[] = []) {
     this.lib = lib;
     this.externalLibs = config?.externalLibs ?? [];
+    this.docker = { preRuns: config?.docker?.preRuns ?? [], postRuns: config?.docker?.postRuns ?? [] };
     this.plugins = plugins;
   }
-  static async from(lib: Lib) {
-    const [configImp] = await Promise.all([import(`${lib.cwdPath}/akan.config.ts`).then((mod) => mod.default)]);
+  static async from(lib: Lib, { bustImportCache = false }: { bustImportCache?: boolean } = {}) {
+    const configImp = await AkanAppConfig.importConfigModule(lib.cwdPath, { bustImportCache });
     const resolved = typeof configImp === "function" ? configImp(lib) : configImp;
     const { plugins, ...config } = (resolved ?? {}) as DeepPartial<LibConfigResult> & { plugins?: AkanPlugin[] };
     return new AkanLibConfig(lib, config, plugins ?? []);

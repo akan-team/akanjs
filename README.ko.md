@@ -26,7 +26,7 @@ generated reference가 같은 의도에서 이어집니다.
 
 ## 요구사항
 
-- [Bun](https://bun.sh) `>=1.3.13`
+- [Bun](https://bun.sh) `>=1.4.0`
 - TypeScript 중심의 애플리케이션 코드
 - React 기반 UI surface
 

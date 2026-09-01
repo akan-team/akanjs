@@ -6,7 +6,7 @@ export class QualityCommand extends command("quality", [QualityScript], ({ publi
     .arg("action", String, {
       desc: "quality action",
       default: "scan",
-      enum: ["scan"],
+      enum: ["scan", "ssr"],
     })
     .option("format", String, {
       desc: "output format",
@@ -15,7 +15,8 @@ export class QualityCommand extends command("quality", [QualityScript], ({ publi
     })
     .with(Workspace)
     .exec(async function (action, format, workspace) {
-      if (action !== "scan") throw new Error(`Unknown quality action: ${action}. Use "scan".`);
-      await this.qualityScript.scan(workspace, format as "text" | "json");
+      if (action === "scan") await this.qualityScript.scan(workspace, format as "text" | "json");
+      else if (action === "ssr") await this.qualityScript.ssr(workspace, format as "text" | "json");
+      else throw new Error(`Unknown quality action: ${action}. Use "scan" or "ssr".`);
     }),
 })) {}

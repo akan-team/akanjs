@@ -289,8 +289,65 @@ describe("adapt and serve factories", () => {
     const adaptor = new TestAdaptor();
 
     expect(adaptor.logger).toBeDefined();
-    await expect(adaptor.onInit()).resolves.toBeUndefined();
-    await expect(adaptor.onDestroy()).resolves.toBeUndefined();
+    expect(await adaptor.onInit()).toBeUndefined();
+    expect(await adaptor.onDestroy()).toBeUndefined();
+  });
+
+  test("runs sync lifecycle hooks on adaptors and services", async () => {
+    const calls: string[] = [];
+    class SyncAdaptor extends adapt("serviceTestSyncAdaptor" as const, () => ({})) {
+      override onInit() {
+        calls.push("adaptor:init");
+      }
+      override onDestroy() {
+        calls.push("adaptor:destroy");
+      }
+    }
+    class SyncParent extends serve("serviceTestSyncParent" as const, () => ({})) {
+      override onInit() {
+        calls.push("parent:init");
+      }
+      override onDestroy() {
+        calls.push("parent:destroy");
+      }
+    }
+    class SyncChild extends serve("serviceTestSyncChild" as const, () => ({}), SyncParent) {
+      override onInit() {
+        calls.push("child:init");
+      }
+      override async onDestroy() {
+        await Promise.resolve();
+        calls.push("child:destroy");
+      }
+    }
+
+    const adaptor = new SyncAdaptor();
+    await adaptor.onInit();
+    await adaptor.onDestroy();
+
+    const child = new SyncChild();
+    await child._libsOnInit();
+    await child._libsOnDestroy();
+
+    expect(calls).toEqual([
+      "adaptor:init",
+      "adaptor:destroy",
+      "parent:init",
+      "child:init",
+      "parent:destroy",
+      "child:destroy",
+    ]);
+  });
+
+  test("rejects _libsOnInit when a sync hook throws", async () => {
+    class ThrowingParent extends serve("serviceTestSyncThrower" as const, () => ({})) {
+      override onInit() {
+        throw new Error("sync boom");
+      }
+    }
+    class ThrowingChild extends serve("serviceTestSyncThrowerChild" as const, () => ({}), ThrowingParent) {}
+
+    await expect(new ThrowingChild()._libsOnInit()).rejects.toThrow("sync boom");
   });
 
   test("creates plain services with lowerlized names, enabled flags, and lifecycle mixins", async () => {
@@ -342,6 +399,35 @@ describe("adapt and serve factories", () => {
     await child._libsOnDestroy();
 
     expect(calls).toEqual(["parentOne:init", "parentTwo:init", "child:init", "parentOne:destroy", "child:destroy"]);
+  });
+
+  test("resolves a thunk enabled option once, on first read", () => {
+    let evaluations = 0;
+    let allowed = false;
+    class LazyService extends serve(
+      "serviceTestLazyEnabled" as const,
+      {
+        enabled: () => {
+          evaluations += 1;
+          return allowed;
+        },
+      },
+      () => ({}),
+    ) {}
+
+    expect(evaluations).toBe(0);
+    allowed = true;
+    expect(LazyService.enabled).toBe(true);
+    allowed = false;
+    expect(LazyService.enabled).toBe(true);
+    expect(evaluations).toBe(1);
+  });
+
+  test("keeps a falsy thunk result cached", () => {
+    class DisabledService extends serve("serviceTestLazyDisabled" as const, { enabled: () => false }, () => ({})) {}
+
+    expect(DisabledService.enabled).toBe(false);
+    expect(DisabledService.enabled).toBe(false);
   });
 
   test("creates database services with database injection metadata", () => {

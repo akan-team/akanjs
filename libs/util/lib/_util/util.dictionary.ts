@@ -64,6 +64,14 @@ export const dictionary = serviceDictionary(["en", "ko"])
       "Failed to list repository apps: {reason}",
       "저장소 앱 목록을 불러오지 못했습니다: {reason}",
     ],
+    githubWebhookListFailed: [
+      "Failed to list repository webhooks: {reason}",
+      "저장소 웹훅 목록을 불러오지 못했습니다: {reason}",
+    ],
+    githubWebhookRegisterFailed: [
+      "Failed to register the repository webhook: {reason}",
+      "저장소 웹훅을 등록하지 못했습니다: {reason}",
+    ],
     githubPrivateKeyNotConfigured: [
       "GitHub App private key is not configured",
       "GitHub 앱 개인 키가 설정되지 않았습니다",

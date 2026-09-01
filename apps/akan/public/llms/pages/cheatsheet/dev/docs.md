@@ -11,7 +11,7 @@
 - API Documentation (#overview)
 - Render A Zone (#zone)
 - Try An Endpoint (#try-api)
-- Auth And Roles (#auth)
+- Auth And Guards (#auth)
 - Tips (#tips)
 
 ## Content
@@ -24,7 +24,7 @@ Akan can render signal documentation from the generated fetch object. It is not 
 
 Use `Signal.Doc.Zone` for one signal namespace.
 
-Use `Doc.Setting` to choose BaseURL, role, and JWT.
+Use `Doc.Setting` to choose BaseURL, guards, and JWT.
 
 REST and WebSocket test surfaces are shown together.
 
@@ -38,13 +38,13 @@ Try An Endpoint
 
 Open the `base` document, find `ping`, and run it from the REST panel. It should return a simple string response.
 
-Auth And Roles
+Auth And Guards
 
 For guarded endpoints, open the auth modal and paste a JWT. The decoded account helps you confirm which roles are being used for the test.
 
 BaseURL tells you which server the document is calling.
 
-Role filters help you focus on public, user, or admin endpoints.
+The guard filter lists the guard names the signals declare, so you can focus on the endpoints one guard gates.
 
 JWT is only for developer testing in this UI.
 

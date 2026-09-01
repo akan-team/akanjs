@@ -1,36 +1,41 @@
-"use client";
+import { docPill, type Tone } from "../Reference";
 
 export const signalUi = {
-  sectionTitle: "font-extrabold text-lg",
-  sectionDescription: "text-base-content/70 text-sm",
-  sectionPanel: "rounded-xl bg-base-100 p-3",
-  endpointCard: "collapse-arrow collapse my-2 bg-base-200",
-  endpointContent: "collapse-content flex w-full flex-col gap-4 bg-base-100/60",
-  tablePanel: "overflow-x-auto rounded-xl bg-base-100 p-3",
   inputRow: "flex w-full flex-col gap-2 py-2 md:flex-row md:items-center",
-  inputLabel: "w-full font-semibold text-base-content/70 text-sm md:w-36",
-  codePanel:
-    "textarea min-h-[300px] w-full rounded-xl border border-base-300 bg-base-100 p-4 font-normal text-sm text-base-content",
+  inputLabel: "w-full shrink-0 font-mono text-foreground/70 text-sm md:w-40",
 };
 
-export const getEndpointBadgeClassName = (type: string) =>
-  type === "query" || type === "pubsub" ? "badge badge-primary" : "badge badge-secondary";
+/** The REST convention rather than a palette choice: reads are blue, writes are green. */
+const methodTone: { [key: string]: Tone } = {
+  query: "info",
+  prompt: "info",
+  message: "info",
+  mutation: "success",
+  pubsub: "warning",
+};
+
+/** Only a mutation is a POST — enumerating that side leaves a `prompt` a GET beside the queries, and lets a
+ *  read-shaped type added later inherit the right verb rather than be mislabelled. */
+export const getMethodLabel = (type: string) => (type === "mutation" ? "POST" : type === "query" ? "GET" : type);
+
+export const getMethodBadgeClassName = (type: string) =>
+  docPill(methodTone[type] ?? "muted", "w-16 justify-center uppercase");
+
+export const getWsBadgeClassName = (type: string) => docPill(methodTone[type] ?? "muted", "uppercase");
 
 export const getGuardBadgeClassName = (guard: string) =>
-  guard === "Public" ? "badge badge-primary" : guard === "None" ? "badge" : "badge badge-secondary";
+  docPill(guard === "Public" ? "warning" : guard === "None" ? "muted" : "info");
 
-export const getStatusBadgeClassName = (status: string) =>
-  status === "error"
-    ? "badge badge-error"
-    : status === "success" || status === "listening"
-      ? "badge badge-primary"
-      : "badge badge-outline";
+/** Published to agents is quiet; refused is amber, because it is a thing to go fix. */
+export const getMcpBadgeClassName = (exposed: boolean) => docPill(exposed ? "success" : "warning");
 
-export const getStatusTextareaClassName = (status: string) =>
-  status === "error"
-    ? "border-error text-error"
-    : status === "success" || status === "listening"
-      ? "border-primary"
-      : status === "loading"
-        ? "textarea-disabled"
-        : "";
+const statusTone: { [key: string]: Tone } = {
+  error: "error",
+  success: "success",
+  listening: "success",
+  loading: "info",
+};
+
+export const getStatusTone = (status: string): Tone => statusTone[status] ?? "muted";
+
+export const getStatusBadgeClassName = (status: string) => docPill(getStatusTone(status), "uppercase");

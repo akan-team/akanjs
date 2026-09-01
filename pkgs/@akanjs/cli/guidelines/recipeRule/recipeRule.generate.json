@@ -1,0 +1,31 @@
+{
+  "title": "Recipe Rule",
+  "description": "Akan UI recipe authoring and consumption rules (reusable-look layer)",
+  "group": "core",
+  "docsSource": "apps/akan/page/(docs)/docs/arch/ui-recipe.tsx",
+  "codegenPriority": 3,
+  "deprecated": false,
+  "scans": [
+    {
+      "type": "docs",
+      "description": "Current docs source for Recipe Rule",
+      "path": "apps/akan/page/(docs)/docs/arch/ui-recipe.tsx"
+    },
+    {
+      "type": "example",
+      "description": "Existing recipe definitions",
+      "path": "{apps,libs}/*/ui/Recipe/*.ts",
+      "sample": 4
+    }
+  ],
+  "update": {
+    "filePath": "./recipeRule.instruction.md",
+    "contents": ["purpose", "ownership", "consuming", "authoring", "codegen rules", "review checklist"],
+    "rules": [
+      "Use current Akan APIs only",
+      "Keep output parseable for codegen",
+      "Include ownership boundaries and review checklist"
+    ]
+  },
+  "page": "apps/akan/page/(docs)/docs/arch/ui-recipe.tsx"
+}

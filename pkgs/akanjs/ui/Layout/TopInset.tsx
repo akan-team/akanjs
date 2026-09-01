@@ -1,6 +1,6 @@
 "use client";
 import { getEnv } from "akanjs/base";
-import { clsx, DEFAULT_TOP_INSET, debugFrame, usePathCtx } from "akanjs/client";
+import { cn, DEFAULT_TOP_INSET, debugFrame, usePathCtx } from "akanjs/client";
 import { type ReactNode, useLayoutEffect } from "react";
 
 import { Portal } from "../Portal";
@@ -34,7 +34,7 @@ export const TopInset = ({ className, children, estimatedHeight = DEFAULT_TOP_IN
 
   return (
     <Portal id={`topInsetContent${suffix}`}>
-      <div data-akan-frame-slot="topInset" data-akan-frame-role="topChrome" className={clsx("size-full", className)}>
+      <div data-akan-frame-slot="topInset" data-akan-frame-role="topChrome" className={cn("size-full", className)}>
         {children}
       </div>
     </Portal>

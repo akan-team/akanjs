@@ -4,10 +4,14 @@ import { usePage } from "akanjs/client";
 import { type ConstantCls, ConstantRegistry } from "akanjs/constant";
 import type { SerializedArg } from "akanjs/signal";
 import { st } from "akanjs/store";
-import type { ChangeEvent } from "react";
-import { AiOutlineDelete } from "react-icons/ai";
+import type { ChangeEvent, ReactNode } from "react";
+import { AiOutlineDelete, AiOutlinePlus } from "react-icons/ai";
+import { buttonRecipe } from "../Button";
 import { DatePicker } from "../DatePicker";
 import { Input } from "../Input";
+import { dictText, docDash, docUi } from "../Reference";
+import { Select } from "../Select";
+import { Tooltip } from "../Tooltip";
 import UiObject from "./Object";
 import { signalUi } from "./style";
 
@@ -54,60 +58,56 @@ const ArgTable = ({ refName, endpointKey, args }: ArgTableProps) => {
     });
   };
   return (
-    <table className="table">
+    <table className={docUi.tableClass}>
       <thead>
         <tr>
-          <th>Arg Key</th>
-          <th className="text-center">Type</th>
-          <th className="text-center">Enum</th>
-          <th className="text-center">Name</th>
-          <th className="text-center">Description</th>
+          <th>Argument</th>
+          <th>Type</th>
+          <th>Values</th>
+          <th className="w-1/2">Description</th>
         </tr>
       </thead>
-      {args.map((arg, idx) => {
-        const argRef = ConstantRegistry.getModelRef(arg.refName, arg.modelType);
-        const argEnum = arg.enum ? ConstantRegistry.enum.get(arg.enum) : undefined;
-        return (
-          <tbody className="font-normal" key={idx}>
-            <tr>
+      <tbody>
+        {args.map((arg, idx) => {
+          const argRef = ConstantRegistry.getModelRef(arg.refName, arg.modelType);
+          const argEnum = arg.enum ? ConstantRegistry.enum.get(arg.enum) : undefined;
+          const label = dictText(l, `${refName}.signal.${endpointKey}.arg.${arg.name}`);
+          const desc = dictText(l, `${refName}.signal.${endpointKey}.arg.${arg.name}.desc`);
+          return (
+            <tr key={idx}>
               <td>
-                <div className="font-bold">{arg.name}</div>
+                <div className="font-medium font-mono">{arg.name}</div>
+                {label ? <div className="text-foreground/45 text-xs">{label}</div> : null}
               </td>
-              <td className="text-center">
-                <UiObject.Type objRef={argRef as ConstantCls} arrDepth={arg.arrDepth ?? 0} />
+              <td>
+                <UiObject.Type objRef={argRef as ConstantCls} arrDepth={arg.arrDepth ?? 0} nullable={arg.nullable} />
               </td>
-              <td width={argEnum ? "20%" : "10%"} className="text-center">
+              <td>
                 {argEnum ? (
-                  <div className="flex flex-col gap-2">
+                  <div className="flex max-w-56 flex-wrap gap-1">
                     {argEnum.map((opt, idx) => (
-                      <div key={idx}>
+                      <Tooltip content={l._(`${arg.enum}.${opt}`)} key={idx} variant="primary">
                         <button
-                          key={idx}
-                          data-tip={l._(`${arg.enum}.${opt}`)}
+                          className={buttonRecipe({ variant: "outline", size: "xs" }, "font-mono")}
                           onClick={() => {
                             onCopy(opt.toString());
                           }}
-                          className="tooltip tooltip-primary btn btn-outline btn-xs"
+                          type="button"
                         >
                           {opt}
                         </button>
-                      </div>
+                      </Tooltip>
                     ))}
                   </div>
                 ) : (
-                  "-"
+                  <span className={docDash}>—</span>
                 )}
               </td>
-              <td className="text-center text-base-content/70">
-                {l._(`${refName}.signal.${endpointKey}.arg.${arg.name}`)}
-              </td>
-              <td className="text-center text-base-content/70">
-                {l._(`${refName}.signal.${endpointKey}.arg.${arg.name}.desc`)}
-              </td>
+              <td className="text-foreground/70">{desc || <span className={docDash}>—</span>}</td>
             </tr>
-          </tbody>
-        );
-      })}
+          );
+        })}
+      </tbody>
     </table>
   );
 };
@@ -138,51 +138,69 @@ Arg.Param = ArgParam;
 interface ArgQueryProps {
   endpointKey: string;
   arg: SerializedArg;
+  label?: string;
   value: any;
   onChange: (value: any) => void;
+  /** Replaces the scalar input this arg would otherwise get, once per element for an array arg. */
+  renderScalar?: (value: any, onChange: (value: any) => void) => ReactNode;
 }
-const ArgQuery = ({ endpointKey, arg, value, onChange }: ArgQueryProps) => {
+const ArgQuery = ({ endpointKey, arg, label, value, onChange, renderScalar }: ArgQueryProps) => {
   const argRef = ConstantRegistry.getModelRef(arg.refName, arg.modelType);
   if (!PrimitiveRegistry.has(argRef)) throw new Error(`Query arg - ${endpointKey}/${arg.name} must be scalar`);
   else if ((arg.arrDepth ?? 0) > 1)
     throw new Error(`Query arg - ${endpointKey}/${arg.name} must not be more than 2D array`);
   const argType = PrimitiveRegistry.getName(argRef as typeof PrimitiveScalar) as DefaultPrimitiveName;
+  const enumRef = arg.enum ? ConstantRegistry.enum.get(arg.enum) : undefined;
+  const options: (string | number)[] = arg.oneOf ?? (enumRef ? [...enumRef.values] : []);
+  const multiple = (arg.arrDepth ?? 0) > 0;
+  const renderLeaf = (leafValue: unknown, onLeafChange: (value: unknown) => void) =>
+    renderScalar ? (
+      renderScalar(leafValue, onLeafChange)
+    ) : (
+      <Arg argType={argType} value={leafValue as string} onChange={onLeafChange} />
+    );
   return (
     <div className={signalUi.inputRow}>
-      <div className={signalUi.inputLabel}>{arg.name}</div>
+      <div className={signalUi.inputLabel}>{label ?? arg.name}</div>
       <div className="w-full">
-        {(arg.arrDepth ?? 0) > 0 && Array.isArray(value) ? (
-          <div>
+        {options.length ? (
+          <Select<string | number, boolean>
+            options={options.map((option) => ({ label: option, value: option }))}
+            multiple={multiple}
+            nullable={arg.nullable}
+            value={multiple ? ((value as (string | number)[] | null) ?? []) : (value as string | number)}
+            onChange={onChange}
+          />
+        ) : multiple && Array.isArray(value) ? (
+          <div className="flex flex-col gap-2">
             {value.map((val, idx) => (
-              <div key={idx} className="flex items-center gap-2">
-                <Arg
-                  argType={argType}
-                  value={val as string}
-                  onChange={(val) => {
-                    onChange([...(value.slice(0, idx) as string[]), val, ...(value.slice(idx + 1) as string[])]);
-                  }}
-                />
+              <div className="flex items-center gap-2" key={idx}>
+                {renderLeaf(val, (val) => {
+                  onChange([...(value.slice(0, idx) as string[]), val, ...(value.slice(idx + 1) as string[])]);
+                })}
                 <button
-                  className="btn btn-outline btn-sm btn-square"
+                  className={buttonRecipe({ variant: "ghost", size: "icon" }, "size-8 shrink-0 text-foreground/50")}
                   onClick={() => {
                     onChange([...(value.slice(0, idx) as string[]), ...(value.slice(idx + 1) as string[])]);
                   }}
+                  type="button"
                 >
                   <AiOutlineDelete />
                 </button>
               </div>
             ))}
             <button
-              className="btn btn-outline btn-sm"
+              className={buttonRecipe({ variant: "outline", size: "sm" }, "w-fit")}
               onClick={() => {
                 onChange([...(value as string[]), arg.example]);
               }}
+              type="button"
             >
-              + Add
+              <AiOutlinePlus /> Add
             </button>
           </div>
         ) : (
-          <Arg argType={argType} value={value as string} onChange={onChange} />
+          renderLeaf(value, onChange)
         )}
       </div>
     </div>
@@ -213,14 +231,14 @@ const ArgFormData = ({ endpointKey, arg, value, onChange }: ArgFormDataProps) =>
 Arg.FormData = ArgFormData;
 
 interface ArgIDProps {
-  value: string;
+  value: string | null;
   onChange: (value: string) => void;
 }
 const ArgID = ({ value, onChange }: ArgIDProps) => {
   return (
     <Input
-      inputClassName="w-full"
-      value={value}
+      inputClassName="w-full font-mono"
+      value={value ?? ""}
       onChange={(value) => {
         onChange(value);
       }}
@@ -237,7 +255,7 @@ interface ArgIntProps {
 const ArgInt = ({ value, onChange }: ArgIntProps) => {
   return (
     <Input.Number
-      inputClassName="w-full"
+      inputClassName="w-full font-mono"
       value={value}
       onChange={(value) => {
         onChange(value ?? 0);
@@ -255,7 +273,7 @@ interface ArgFloatProps {
 const ArgFloat = ({ value, onChange }: ArgFloatProps) => {
   return (
     <Input.Number
-      inputClassName="w-full"
+      inputClassName="w-full font-mono"
       value={value}
       onChange={(value) => {
         onChange(value ?? 0);
@@ -267,14 +285,14 @@ const ArgFloat = ({ value, onChange }: ArgFloatProps) => {
 Arg.Float = ArgFloat;
 
 interface ArgStringProps {
-  value: string;
+  value: string | null;
   onChange: (value: string) => void;
 }
 const ArgString = ({ value, onChange }: ArgStringProps) => {
   return (
     <Input
-      inputClassName="w-full"
-      value={value}
+      inputClassName="w-full font-mono"
+      value={value ?? ""}
       onChange={(value) => {
         onChange(value);
       }}
@@ -327,7 +345,7 @@ const ArgJson = ({ value, onChange }: ArgJsonProps) => {
     <Input.TextArea
       validate={(e) => true}
       className="w-full"
-      inputClassName="w-full min-h-[300px] rounded-xl border border-base-300 bg-base-100"
+      inputClassName="min-h-56 w-full rounded-box border border-border bg-background font-mono text-xs leading-relaxed"
       value={value}
       onPressEnter={(value) => {
         onChange(value);
@@ -349,7 +367,7 @@ const ArgUpload = ({ value, onChange }: ArgUploadProps) => {
     <input
       type="file"
       multiple
-      className="file-input file-input-bordered w-full max-w-xs"
+      className="w-full max-w-xs cursor-pointer rounded-field border border-input bg-background text-foreground/70 text-sm file:mr-3 file:cursor-pointer file:border-0 file:bg-muted file:px-3 file:py-2 file:font-medium file:text-foreground file:text-sm"
       onChange={(e: ChangeEvent<HTMLInputElement>) => {
         onChange(e.target.files);
       }}

@@ -1,5 +1,5 @@
 "use client";
-import { clsx, router } from "akanjs/client";
+import { cn, router } from "akanjs/client";
 import type { ReactNode } from "react";
 
 interface BackProps {
@@ -8,7 +8,7 @@ interface BackProps {
 }
 export default function Back({ className, children }: BackProps) {
   return (
-    <div className={clsx("cursor-pointer", className)} onClick={() => router.back()}>
+    <div className={cn("cursor-pointer", className)} onClick={() => router.back()}>
       {children}
     </div>
   );

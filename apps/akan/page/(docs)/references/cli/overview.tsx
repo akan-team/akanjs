@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Docs } from "@apps/akan/ui";
+import { cardGridRecipe, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 import { Link } from "akanjs/ui";
 
@@ -149,7 +149,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="command-index" title={l.trans({ en: "Command Index", ko: "Command index" })}>
         <Docs.Title>{l.trans({ en: "Command Index", ko: "Command index" })}</Docs.Title>
@@ -161,27 +161,23 @@ export default function Page() {
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           {cliGroups.map(({ title, href, commands, desc }) => (
-            <Link
-              key={title}
-              href={href}
-              className="rounded-xl border border-base-300 bg-base-100 p-4 hover:border-primary"
-            >
-              <div className="font-bold text-base-content">{title}</div>
+            <Link key={title} href={href} className={panelRecipe({}, "hover:border-primary")}>
+              <div className="font-bold text-foreground">{title}</div>
               <div className="mt-2 space-y-1">
                 {commands.map((command) => (
-                  <div key={command} className="font-mono text-base-content/70">
+                  <div key={command} className="font-mono text-foreground/70">
                     akan {command}
                   </div>
                 ))}
               </div>
-              <div className="mt-2 text-base-content/70">{desc}</div>
+              <div className="mt-2 text-foreground/70">{desc}</div>
             </Link>
           ))}
         </div>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

@@ -23,13 +23,30 @@ Read snapshots from:
 curl http://localhost:8080/_akan/app/metrics
 ```
 
+A replica and its RSC worker are separate processes and are reported separately. **`rssBytes` is the
+replica's own; the worker's is `rscWorkerRssBytes`.** Sum them for what the pod pays.
+
 Key fields:
 
-- `rssBytes`, `heapUsedBytes`, `jscHeapSizeBytes`: distinguish RSS-only native retention from JS heap retention.
+- `rssBytes`, `heapUsedBytes`, `jscHeapSizeBytes`: the replica. Distinguish RSS-only native retention from JS
+  heap retention.
+- `rscWorkerRssBytes`, `rscWorkerHeapUsedBytes`, `rscWorkerJscHeapSizeBytes`, `rscWorkerJscExtraMemorySizeBytes`:
+  the same for the worker. `jscExtra` is off-heap, mostly typed-array backing stores.
 - `rscRenderCount`, `rscInFlightRenderCount`: detect request lifecycle leaks.
 - `rscLoadedRouteModuleCount`, `rscRouteModuleCacheHits`, `rscRouteModuleCacheMisses`: detect route module warm-up.
-- `ssrChunkRegistrySize`, `ssrChunkLoadCount`: detect full-document SSR client chunk retention.
+- `ssrChunkRegistrySize`, `ssrChunkLoadCount`: full-document SSR client chunk loading. **`…RegistrySize` counts
+  keys, not bytes** — evicting does not unload the module, so it can never fall on its own.
+- `httpHtmlCacheEntries` / `httpHtmlCacheBytes`, `rscResultCacheEntries` / `rscResultCacheBytes`,
+  `rscPatchResultCacheEntries` / `rscPatchResultCacheBytes`: what each cache actually holds. Entry count alone
+  says nothing when entries span three orders of magnitude.
 - `httpFullSsrCount`, `httpRscNavigationCount`, `httpStaticAssetCount`, `httpImageCount`: separate request kinds.
+
+Two things measured on `apps/akan` that shape how to read all of the above:
+
+- **Growth converges; it is not a leak.** Ten passes over the same routes plateau by roughly the sixth, with a
+  flat JS heap throughout. Three passes is not enough to tell a plateau from a ratchet.
+- **Freeing JS objects does not lower RSS.** Emptying both result caches returns their bytes to the heap and
+  leaves RSS unchanged. Only not allocating, or restarting the process, reduces what the pod pays.
 
 ## Scenarios
 

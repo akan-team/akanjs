@@ -13,11 +13,9 @@ export interface BaseEnv {
   appName: string;
   environment: Environment;
   operationMode: "local" | "edge" | "cloud" | "module";
-  tunnelUsername: string;
-  tunnelPassword: string;
   databaseMode?: DatabaseMode;
 }
-export type BackendEnv = BaseEnv & {
+export type BackendEnv = {
   hostname?: string | null;
   port?: number;
   database?: {
@@ -75,28 +73,27 @@ export type ClientEnv = BaseEnv & {
 
 let cachedEnv: ClientEnv | undefined;
 
+const missingPublicEnv = (key: string) =>
+  `getEnv() cannot run at build time: akan build does not inject ${key}. Call it from a runtime function instead of at module scope (e.g. env(() => getEnv()) in adapt(), a method body, or a default thunk).`;
+
 /** Reads and caches Akan runtime environment values from process/browser environment settings. */
 export const getEnv = (): ClientEnv => {
   if (cachedEnv) return cachedEnv;
   const appName = process.env.AKAN_PUBLIC_APP_NAME ?? "unknown";
   const repoName = process.env.AKAN_PUBLIC_REPO_NAME ?? "unknown";
   const serveDomain = process.env.AKAN_PUBLIC_SERVE_DOMAIN ?? "unknown";
-  if (appName === "unknown") throw new Error("environment variable AKAN_PUBLIC_APP_NAME is required");
-  if (repoName === "unknown") throw new Error("environment variable AKAN_PUBLIC_REPO_NAME is required");
-  if (serveDomain === "unknown") throw new Error("environment variable AKAN_PUBLIC_SERVE_DOMAIN is required");
+  if (appName === "unknown") throw new Error(missingPublicEnv("AKAN_PUBLIC_APP_NAME"));
+  if (repoName === "unknown") throw new Error(missingPublicEnv("AKAN_PUBLIC_REPO_NAME"));
+  if (serveDomain === "unknown") throw new Error(missingPublicEnv("AKAN_PUBLIC_SERVE_DOMAIN"));
   const environment = (process.env.AKAN_PUBLIC_ENV ?? "debug") as BaseEnv["environment"];
   const operationMode = (process.env.AKAN_PUBLIC_OPERATION_MODE ??
     (environment === "local" ? "local" : "cloud")) as BaseEnv["operationMode"];
-  const tunnelUsername = process.env.SSH_TUNNEL_USERNAME ?? "root";
-  const tunnelPassword = process.env.SSH_TUNNEL_PASSWORD ?? repoName;
   const baseEnv: BaseEnv = {
     repoName,
     serveDomain,
     appName,
     environment,
     operationMode,
-    tunnelUsername,
-    tunnelPassword,
     databaseMode: process.env.AKAN_DATABASE_MODE as DatabaseMode | undefined,
   } as const;
   const side = typeof window === "undefined" ? "server" : "client";

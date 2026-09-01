@@ -3,7 +3,14 @@ import type { ENDPOINT_DICT_SHAPE, FILTER_DICT_SHAPE, SLICE_DICT_SHAPE } from "a
 import type { FilterCls, FilterInfo } from "akanjs/document";
 import type { ServiceModel } from "akanjs/service";
 import type { EndpointCls, EndpointInfo, SliceCls, SliceInfo } from "akanjs/signal";
-import { modelDictionary, scalarDictionary, serviceDictionary } from "./dictInfo";
+import {
+  type ModelDictInfo,
+  modelDictionary,
+  type ServiceDictInfo,
+  scalarDictionary,
+  serviceDictionary,
+} from "./dictInfo";
+import type { registerServiceTrans } from "./locale";
 import { makeDictionary, makeTrans } from "./trans";
 
 type AssertTrue<T extends true> = T;
@@ -25,7 +32,7 @@ type TestFilter = {
 };
 type TestEnum = {
   refName: "dictionaryTestStatus";
-  value: "active" | "archived";
+  value: "active" | "archived" | "v1.2-legacy";
 };
 type TestSlice = {
   active: SliceInfo<
@@ -145,6 +152,67 @@ const assertDictionaryTypeCoverage = () => {
 };
 void assertDictionaryTypeCoverage;
 
+/**
+ * An app dictionary extends the lib's, so the merge has to carry every key group across. It is checked here
+ * because the failure is invisible at runtime — `modelDictionary` returns the base instance itself, so the
+ * entries are all still there and only the *type* loses them, one `l("<model>.<key>")` at a time.
+ */
+const extendedDict = modelDictionary(
+  languages,
+  modelDictionary(languages).translate({
+    inheritedMsg: ["Inherited", "상속됨", "已继承", "継承済み"],
+  }),
+).translate({ ownMsg: ["Own", "자체", "自有", "自前"] });
+type ExtendedEtcKey =
+  typeof extendedDict extends ModelDictInfo<
+    infer _Languages,
+    infer _ModelKey,
+    infer _InsightKey,
+    infer _QueryKey,
+    infer _SortKey,
+    infer _EnumKey,
+    infer _BaseSignalKey,
+    infer _SliceKey,
+    infer _EndpointKey,
+    infer _ErrorKey,
+    infer EtcKey
+  >
+    ? EtcKey
+    : never;
+type _ExtendedDictKeepsBaseTranslateKeys = AssertTrue<"inheritedMsg" extends ExtendedEtcKey ? true : false>;
+type _ExtendedDictKeepsOwnTranslateKeys = AssertTrue<"ownMsg" extends ExtendedEtcKey ? true : false>;
+type _ExtendedDictRejectsUndeclaredKeys = AssertTrue<"neverDeclared" extends ExtendedEtcKey ? false : true>;
+
+/**
+ * The service shape's generic slots, pinned by position.
+ *
+ * A parameter inserted ahead of these shifts every `infer` list that reads them, and missing one is **no type
+ * error anywhere** — the neighbouring slots are all `string`. Runtime keeps working, the entries are all still
+ * registered, and the only symptom is `l("<service>.error.<key>")` quietly leaving the typed key union. That is
+ * why this is asserted by position rather than by translating a key.
+ */
+const slotServiceDict = serviceDictionary(languages)
+  .error({ slotError: ["Slot", "슬롯", "槽", "スロット"] })
+  .translate({ slotEtc: ["Etc", "기타", "其他", "その他"] });
+type SlotServiceKeys =
+  typeof slotServiceDict extends ServiceDictInfo<infer _Languages, infer _EndpointKey, infer ErrorKey, infer EtcKey>
+    ? { error: ErrorKey; etc: EtcKey }
+    : never;
+type _ServiceErrorKeyStaysInItsSlot = AssertTrue<"slotError" extends SlotServiceKeys["error"] ? true : false>;
+type _ServiceEtcKeyStaysInItsSlot = AssertTrue<"slotEtc" extends SlotServiceKeys["etc"] ? true : false>;
+
+// And the same positions as `registerServiceTrans` reads them, which is the copy that actually feeds `l()`. The
+// class assertions above pass whether or not this one was widened alongside it.
+type SlotServiceModule = ReturnType<
+  typeof registerServiceTrans<"slotSvc", TestServiceEndpoint, typeof slotServiceDict>
+>;
+type _RegisteredServiceErrorKeyResolves = AssertTrue<
+  "slotSvc.error.slotError" extends SlotServiceModule["__Error_Key__"] ? true : false
+>;
+type _RegisteredServiceEtcKeyResolves = AssertTrue<
+  "slotSvc.slotEtc" extends SlotServiceModule["__Dict_Key__"] ? true : false
+>;
+
 const modelDict = modelDictionary(languages)
   .of((t) =>
     t(["Dictionary Test Item", "사전 테스트 항목", "字典测试项目", "辞書テスト項目"]).desc([
@@ -198,6 +266,12 @@ const modelDict = modelDictionary(languages)
       "보관된 상태",
       "已归档状态",
       "アーカイブ済み状態",
+    ]),
+    "v1.2-legacy": t(["V1.2 Legacy", "V1.2 레거시", "V1.2 旧版", "V1.2 レガシー"]).desc([
+      "Legacy v1.2 status",
+      "레거시 v1.2 상태",
+      "旧版 v1.2 状态",
+      "レガシー v1.2 状態",
     ]),
   }))
   .applyBaseSignal("dictionaryTestItem")
@@ -319,6 +393,11 @@ describe("makeTrans", () => {
     expect(trans.translate("ko", "dictionaryTestStatus.archived.desc" as never)).toBe("보관된 상태");
     expect(trans.translate("zhChs", "dictionaryTestStatus.active.desc" as never)).toBe("启用状态");
     expect(trans.translate("ja", "dictionaryTestStatus.archived" as never)).toBe("アーカイブ済み");
+
+    // An enum value is a real-world identifier, so a dotted one must not be read as a path into the tree.
+    expect(trans.translate("en", "dictionaryTestStatus.v1.2-legacy" as never)).toBe("V1.2 Legacy");
+    expect(trans.translate("ko", "dictionaryTestStatus.v1.2-legacy.desc" as never)).toBe("레거시 v1.2 상태");
+    expect(trans.translate("en", "dictionaryTestStatus.v1" as never)).toBe("dictionaryTestStatus.v1");
 
     expect(trans.translate("en", "dictionaryTestItem.signal.createDictionaryTestItem" as never)).toBe(
       "Create DictionaryTestItem",
@@ -465,6 +544,20 @@ describe("makeTrans", () => {
     );
     expect(trans.translate("zhChs", "dictionaryTestService.error.unavailable" as never)).toBe("服务不可用");
     expect(trans.translate("ja", "dictionaryTestService.error.unavailable" as never)).toBe("サービスを利用できません");
+  });
+});
+
+describe("modelDictionary extension", () => {
+  test("an extending dictionary keeps the base dictionary's translate and error entries", () => {
+    const libDict = modelDictionary(languages)
+      .error({ notFound: ["Not found", "찾을 수 없습니다", "找不到", "見つかりません"] })
+      .translate({ updateSuccessMsg: ["Updated", "업데이트되었습니다", "已更新", "更新しました"] });
+    const appDict = modelDictionary(languages, libDict)
+      .of((t) => t(["App Item", "앱 항목", "应用项目", "アプリ項目"]))
+      .translate({});
+
+    expect(Object.keys(appDict.etcDictionary)).toEqual(["updateSuccessMsg"]);
+    expect(Object.keys(appDict.errorDictionary)).toEqual(["notFound"]);
   });
 });
 

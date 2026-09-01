@@ -1,8 +1,9 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { type ChangeEvent, type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
 import { AiOutlineDelete, AiOutlineUpload } from "react-icons/ai";
 import { BiEditAlt } from "react-icons/bi";
+import { buttonRecipe, inputRecipe } from "./Recipe";
 
 export interface SignatureProps {
   className?: string;
@@ -104,11 +105,11 @@ export const Signature = ({
   };
 
   return (
-    <div className={clsx("flex flex-col gap-2", className)}>
+    <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex gap-1">
         <button
           type="button"
-          className={clsx("btn btn-sm", mode === "draw" ? "btn-primary" : "btn-ghost")}
+          className={buttonRecipe({ size: "sm", variant: mode === "draw" ? "primary" : "ghost" })}
           onClick={() => {
             setMode("draw");
           }}
@@ -117,14 +118,18 @@ export const Signature = ({
         </button>
         <button
           type="button"
-          className={clsx("btn btn-sm", mode === "upload" ? "btn-primary" : "btn-ghost")}
+          className={buttonRecipe({ size: "sm", variant: mode === "upload" ? "primary" : "ghost" })}
           onClick={() => {
             setMode("upload");
           }}
         >
           <AiOutlineUpload /> {uploadLabel}
         </button>
-        <button type="button" className="btn btn-ghost btn-sm ml-auto text-error" onClick={clear}>
+        <button
+          type="button"
+          className={buttonRecipe({ variant: "ghost", size: "sm" }, "ml-auto text-destructive")}
+          onClick={clear}
+        >
           <AiOutlineDelete /> {clearLabel}
         </button>
       </div>
@@ -133,15 +138,23 @@ export const Signature = ({
           ref={canvasRef}
           width={width}
           height={height}
-          className="aspect-[12/5] w-full touch-none rounded-box border border-base-300 bg-base-100"
+          className="aspect-[12/5] w-full touch-none rounded-box border border-border bg-background"
           onPointerDown={startDraw}
           onPointerMove={moveDraw}
           onPointerUp={endDraw}
           onPointerLeave={endDraw}
         />
       ) : (
-        <div className="flex flex-col items-center gap-3 rounded-box border border-base-300 border-dashed p-4">
-          <input type="file" accept="image/*" className="file-input file-input-bordered w-full" onChange={onUpload} />
+        <div className="flex flex-col items-center gap-3 rounded-box border border-border border-dashed p-4">
+          <input
+            type="file"
+            accept="image/*"
+            className={inputRecipe(
+              {},
+              "py-1 file:mr-3 file:rounded-field file:border-0 file:bg-muted file:px-3 file:py-1 file:font-medium file:text-foreground file:text-sm",
+            )}
+            onChange={onUpload}
+          />
           {value ? <img src={value} alt="signature" className="max-h-40 object-contain" /> : null}
         </div>
       )}

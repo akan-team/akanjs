@@ -1,6 +1,7 @@
 "use client";
 import { type ReactNode, useContext } from "react";
 
+import { agentAttrs } from "../agentAttrs";
 import { DialogContext } from "./context";
 
 export interface TriggerProps {
@@ -8,14 +9,9 @@ export interface TriggerProps {
   children?: ReactNode;
 }
 export const Trigger = ({ className, children }: TriggerProps) => {
-  const { setOpen } = useContext(DialogContext);
+  const { openDialog } = useContext(DialogContext);
   return (
-    <div
-      className={className}
-      onClick={() => {
-        setOpen(true);
-      }}
-    >
+    <div className={className} onClick={openDialog} {...agentAttrs(openDialog)}>
       {children}
     </div>
   );

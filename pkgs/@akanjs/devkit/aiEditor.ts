@@ -19,7 +19,7 @@ import type { FileContent } from "./types";
 
 const MAX_ASK_TRY = 300;
 
-const deepSeekLlmModels = ["deepseek-chat", "deepseek-reasoner"] as const;
+const deepSeekLlmModels = ["deepseek-v4-flash", "deepseek-v4-pro"] as const;
 
 const openAiLlmModels = ["gpt-5.5"] as const;
 

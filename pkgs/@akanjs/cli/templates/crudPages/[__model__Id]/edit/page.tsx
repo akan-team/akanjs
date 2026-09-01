@@ -30,7 +30,7 @@ export default async function Page({ params }: PageProps) {
       </div>
       <Load.Edit
         className="flex flex-col items-center"
-        slice={fetch.slice["${dict.model}InPublic"]}
+        slice={fetch.slice.${dict.model}InPublic}
         edit={${dict.model}Edit}
         type="form"
         onCancel="back"

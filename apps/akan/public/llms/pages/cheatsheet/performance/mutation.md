@@ -23,7 +23,7 @@ Akan has two ways to change stored data. Use document methods when you edit one 
 
 Document methods (`.set().save()`, `Model.update`, `Model.remove`) load a document, run save/update/remove hooks, then persist it.
 
-Query updates (`updateOne`, `updateMany`, `deleteMany`, `bulkWrite`) compile to a single atomic SQL statement and do not load documents.
+Query updates (`updateOne`, `updateMany`, `removeOne`, `removeMany`, `bulkWrite`) compile to a single atomic SQL statement and do not load documents.
 
 Use the `u` update helper for operators, the same way `q` is used for query conditions.
 
@@ -65,7 +65,7 @@ These SQL snippets are simplified to show the idea, and reflect the SQLite/libsq
 
 Query updates do not run document hooks.
 
-`updateOne`, `updateMany`, `deleteMany`, and `bulkWrite` write directly in the database and do not fire save/update/remove hooks.
+`updateOne`, `updateMany`, `removeOne`, `removeMany`, and `bulkWrite` write directly in the database and do not fire save/update/remove hooks.
 
 When a per-document rule must always run, use a document path: `Model.update(id, patch)`, `Model.remove(id)`, or `doc.set(...).save()`.
 

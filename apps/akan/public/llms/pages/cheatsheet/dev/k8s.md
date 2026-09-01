@@ -57,6 +57,8 @@ Scale
 
 `0,0,1`: one all-purpose child for simple environments.
 
+A single request-serving replica (`1,0,0` or `0,0,1`) runs in the pod's only process, with no gateway in front of it. That leaves the kubelet as the only thing that can restart a wedged server, so the chart ships liveness, readiness, and startup probes on /_akan/app/health, which a solo process answers itself.
+
 Tips
 
 Start with conservative requests and watch metrics before raising limits.

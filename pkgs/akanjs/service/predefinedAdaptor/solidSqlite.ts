@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import type { BaseEnv, Dayjs } from "akanjs/base";
+import { type Dayjs, getEnv } from "akanjs/base";
 import { resolveDefaultSqliteFile } from "./sqlitePath";
 
 export interface SolidConfig {
@@ -14,7 +14,7 @@ export interface SolidConfig {
   queueLeaseMs?: number;
 }
 
-export interface SolidEnv extends BaseEnv {
+export interface SolidEnv {
   workspaceRoot?: string;
   solid?: SolidConfig;
 }
@@ -23,18 +23,22 @@ export type SolidValueType = "string" | "number" | "buffer" | "json";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export const getSolidConfig = (env: SolidEnv): Required<SolidConfig> => {
-  const appName = env.appName ?? "akan";
-  const environment = env.environment ?? "local";
-  const defaultFile = resolveDefaultSqliteFile({
+// Kept behind a thunk: `getEnv()` throws when the runtime identity is unset, and a caller that names a
+// `filePath` must not need one.
+const defaultSolidFile = (workspaceRoot?: string) => {
+  const { appName, environment, operationMode } = getEnv();
+  return resolveDefaultSqliteFile({
     appName,
     fileName: `${appName}-${environment}_solid.db`,
     isProduction: process.env.NODE_ENV === "production",
-    operationMode: env.operationMode,
-    workspaceRoot: env.workspaceRoot,
+    operationMode,
+    workspaceRoot,
   });
+};
+
+export const getSolidConfig = (env: SolidEnv): Required<SolidConfig> => {
   return {
-    filePath: env.solid?.filePath ?? process.env.AKAN_SOLID_DB_PATH ?? defaultFile,
+    filePath: env.solid?.filePath ?? process.env.AKAN_SOLID_DB_PATH ?? defaultSolidFile(env.workspaceRoot),
     journalMode: env.solid?.journalMode ?? "WAL",
     busyTimeoutMs: env.solid?.busyTimeoutMs ?? 5000,
     synchronous: env.solid?.synchronous ?? "NORMAL",

@@ -15,6 +15,7 @@ import {
   TableCellHeaderStates,
 } from "@lexical/table";
 import { mergeRegister } from "@lexical/utils";
+import { buttonRecipe } from "@libs/util/ui";
 import {
   $getNodeByKey,
   $getSelection,
@@ -32,7 +33,6 @@ import {
   AiOutlineInsertRowRight,
 } from "react-icons/ai";
 import { RiDeleteColumn, RiDeleteRow, RiLayoutColumnLine, RiLayoutRowLine } from "react-icons/ri";
-
 import type { CellAnchor } from "./tableActionsPlugin.type";
 
 /**
@@ -137,7 +137,7 @@ export const TableActionsPlugin = () => {
 
   return createPortal(
     <div
-      className="fixed z-50 flex items-center gap-0.5 rounded-lg border border-base-content/15 bg-base-100 p-1 text-base-content shadow-xl"
+      className="fixed z-50 flex items-center gap-0.5 rounded-lg border border-foreground/15 bg-background p-1 text-foreground shadow-xl"
       style={{ top: anchor.rect.top - 44, left: anchor.rect.left }}
       onMouseDown={(event) => event.preventDefault()}
     >
@@ -153,14 +153,14 @@ export const TableActionsPlugin = () => {
       <TableActionButton title="Insert column right" onClick={() => run(() => $insertTableColumnAtSelection(true))}>
         <AiOutlineInsertRowRight />
       </TableActionButton>
-      <span className="mx-0.5 h-5 w-px bg-base-content/15" />
+      <span className="mx-0.5 h-5 w-px bg-foreground/15" />
       <TableActionButton title="Toggle header row" onClick={() => toggleHeader("row")}>
         <RiLayoutRowLine />
       </TableActionButton>
       <TableActionButton title="Toggle header column" onClick={() => toggleHeader("column")}>
         <RiLayoutColumnLine />
       </TableActionButton>
-      <span className="mx-0.5 h-5 w-px bg-base-content/15" />
+      <span className="mx-0.5 h-5 w-px bg-foreground/15" />
       <TableActionButton title="Delete row" onClick={() => run(() => $deleteTableRowAtSelection())}>
         <RiDeleteRow />
       </TableActionButton>
@@ -168,7 +168,7 @@ export const TableActionsPlugin = () => {
         <RiDeleteColumn />
       </TableActionButton>
       <TableActionButton title="Delete table" onClick={deleteTable}>
-        <AiOutlineDelete className="text-error" />
+        <AiOutlineDelete className="text-destructive" />
       </TableActionButton>
     </div>,
     document.body,
@@ -182,7 +182,12 @@ interface TableActionButtonProps {
 }
 
 export const TableActionButton = ({ children, title, onClick }: TableActionButtonProps) => (
-  <button type="button" title={title} className="btn btn-xs btn-ghost min-h-7 px-1.5" onClick={onClick}>
+  <button
+    type="button"
+    title={title}
+    className={buttonRecipe({ size: "xs", variant: "ghost" }, "min-h-7 px-1.5")}
+    onClick={onClick}
+  >
     {children}
   </button>
 );

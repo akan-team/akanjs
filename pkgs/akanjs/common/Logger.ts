@@ -60,6 +60,10 @@ export class Logger {
   static isVerbose() {
     return Logger.#levelIdx <= 1;
   }
+  /** For hot-path callers that would otherwise build a message the level is about to discard. */
+  static shouldLog(logLevel: LogLevel) {
+    return Logger.#shouldLog(logLevel);
+  }
 
   name?: string;
   constructor(name?: string) {

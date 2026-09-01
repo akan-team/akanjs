@@ -1,0 +1,31 @@
+{
+  "title": "In-Page Agent Rule",
+  "description": "How an akan screen exposes itself to an in-page agent — st.tool, subscribed keys, built-ins, and the chat",
+  "group": "core",
+  "codegenPriority": 4,
+  "deprecated": false,
+  "scans": [
+    {
+      "type": "example",
+      "description": "Components publishing an agent tool beside the control that already performs the action",
+      "path": "{apps,libs}/*/**/*.tsx",
+      "sample": 4
+    }
+  ],
+  "update": {
+    "filePath": "./agentRule.instruction.md",
+    "contents": [
+      "what a declaration publishes",
+      "mounting the chat",
+      "publishing a tool",
+      "forms and reading state",
+      "built-in tools"
+    ],
+    "rules": [
+      "Use current Akan APIs only",
+      "State the rule before the reason, and keep the reason to one clause",
+      "Never describe a store class as an exposure surface — only st.tool and subscribed keys publish",
+      "Keep it workspace-neutral — no app or repo names"
+    ]
+  }
+}

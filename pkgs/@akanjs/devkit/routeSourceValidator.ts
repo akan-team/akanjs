@@ -1,3 +1,4 @@
+import { getRouteExports } from "akanjs/common";
 import ts from "typescript";
 
 /** What the build needs out of a route module without evaluating it. */
@@ -16,45 +17,6 @@ export interface RouteSourceInfo {
  * validate a route source stay lean.
  */
 export class RouteSourceValidator {
-  static readonly #pageExports = new Set([
-    "default",
-    "pageConfig",
-    "head",
-    "metadata",
-    "generateHead",
-    "generateMetadata",
-    "Loading",
-  ]);
-  static readonly #rootLayoutExports = new Set([
-    "default",
-    "pageConfig",
-    "head",
-    "metadata",
-    "generateHead",
-    "generateMetadata",
-    "fonts",
-    "manifest",
-    "theme",
-    "reconnect",
-    "wsConnect",
-    "layoutStyle",
-    "gaTrackingId",
-    "Loading",
-    "NotFound",
-    "Error",
-  ]);
-  static readonly #layoutExports = new Set([
-    "default",
-    "pageConfig",
-    "head",
-    "metadata",
-    "generateHead",
-    "generateMetadata",
-    "Loading",
-    "NotFound",
-    "Error",
-  ]);
-
   static validateRouteSourceExports(
     source: string,
     filePath: string,
@@ -62,12 +24,7 @@ export class RouteSourceValidator {
     options: { rootLayout?: boolean } = {},
   ): RouteSourceInfo {
     const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-    const allowed =
-      kind === "page"
-        ? RouteSourceValidator.#pageExports
-        : options.rootLayout
-          ? RouteSourceValidator.#rootLayoutExports
-          : RouteSourceValidator.#layoutExports;
+    const allowed = getRouteExports(kind, { rootLayout: options.rootLayout });
     const exported = new Set<string>();
     const assertExport = (name: string) => {
       if (!allowed.has(name)) {

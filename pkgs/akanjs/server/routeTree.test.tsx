@@ -745,4 +745,42 @@ describe("RouteTreeBuilder _overrides", () => {
     expect(html).not.toContain('data-skin="brand"');
     expect(html).toContain("PANEL");
   });
+
+  // What a root layout renders beside `{children}` — the agent chat, a dock, a shell control — is the position a
+  // manifest used to miss: the override rode the non-root layout stream, so the root layout wrapped the provider
+  // instead of sitting inside it, and every slot silently resolved to its default. Asserting on the resolved
+  // output rather than on the provider being present is what makes this catch it: the provider was there.
+  const shellLayoutModule = (title: string) => ({
+    default: ({ children }: { children: ReactNode }) => (
+      <>
+        <Widget onCancel={() => {}} open title={title} />
+        {children}
+      </>
+    ),
+  });
+
+  test("a root layout's own UI resolves through the manifest, not past it", async () => {
+    const routes = new RouteTreeBuilder({
+      "./__root_layout.tsx": async () => shellLayoutModule("SHELL"),
+      "./_overrides.tsx": async () => overridesWrapperModule({ Modal: BrandModal }),
+      "./foo.tsx": async () => ({ default: () => null }),
+    }).build();
+    const html = await renderMatched(routes, "/ko/foo");
+    expect(html).toContain("SHELL");
+    expect(html).toContain('data-skin="brand"');
+    expect(html).not.toContain('data-skin="default"');
+  });
+
+  test("a route-group layout is a root layout too, and its UI resolves the same way", async () => {
+    const routes = new RouteTreeBuilder({
+      "./__root_layout.tsx": async () => ({ default: ({ children }: { children: ReactNode }) => children }),
+      "./_overrides.tsx": async () => overridesWrapperModule({ Modal: BrandModal }),
+      "./(canvas)/_layout.tsx": async () => shellLayoutModule("CANVAS"),
+      "./(canvas)/board.tsx": async () => ({ default: () => null }),
+    }).build();
+    const html = await renderMatched(routes, "/ko/board");
+    expect(html).toContain("CANVAS");
+    expect(html).toContain('data-skin="brand"');
+    expect(html).not.toContain('data-skin="default"');
+  });
 });

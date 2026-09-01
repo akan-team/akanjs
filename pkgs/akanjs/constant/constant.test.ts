@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { dayjs, enumOf, FIELD_META, Float, ID, Int, type PrimitiveScalar } from "akanjs/base";
+import { Binary, dayjs, enumOf, FIELD_META, Float, ID, Int, type PrimitiveScalar } from "akanjs/base";
 import { immerable } from "immer";
 import {
   type ConstantCls,
@@ -165,6 +165,10 @@ type _RelationMethodAssertions = [
   Assert<Equal<Extract<NonFunctionalKeys<InstanceType<typeof MethodUserLight>>, "hello">, never>>,
   Assert<Equal<Extract<NonFunctionalKeys<InstanceType<typeof MethodUserLight>>, "name">, "name">>,
 ];
+type _UnknownModelAssertions = [
+  Assert<Equal<PurifiedModel<unknown>, unknown>>,
+  Assert<Equal<DocumentModel<unknown>, unknown>>,
+];
 
 const validUserId = "1234567890abcdef12345678";
 const validChildId = "abcdefabcdefabcdefabcdef";
@@ -220,6 +224,23 @@ describe("via and ConstantField", () => {
     expect(UserFull.text.filter.has("role")).toBe(true);
   });
 
+  test("defers a default thunk to the first getDefault call and memoizes it", () => {
+    let calls = 0;
+    const LazyInput = via((f) => ({
+      token: f(String, {
+        default: () => {
+          calls += 1;
+          return `token-${calls}`;
+        },
+      }),
+    }));
+
+    expect(calls).toBe(0);
+    expect(LazyInput.getDefault().token).toBe("token-1");
+    expect(LazyInput.getDefault().token).toBe("token-1");
+    expect(calls).toBe(1);
+  });
+
   test("crystalizes constructor input into typed runtime values", () => {
     const user = createUser();
 
@@ -234,6 +255,26 @@ describe("via and ConstantField", () => {
     const address = new AddressInput({ city: "Seoul" } as never);
     expect(address.city).toBe("Seoul");
     expect(address.zip).toBe(10000);
+  });
+
+  test("keeps map entries when re-crystalizing an already crystalized value", () => {
+    const user = createUser();
+    const copiedUser = new UserFull(user as never);
+
+    expect(copiedUser.metadata).toBeInstanceOf(Map);
+    expect(copiedUser.metadata.get("locale")).toBe("ko");
+
+    const complex = new ComplexInput(
+      complexInput({
+        settings: { theme: "dark" },
+        addressBook: { home: { city: "Seoul", zip: 12345, coordinate: { lat: 37, lng: 127 } } },
+      }),
+    ) as { settings: Map<string, string>; addressBook: Map<string, InstanceType<typeof AddressInput>> };
+    const copiedComplex = new ComplexInput(complex as never) as typeof complex;
+
+    expect(copiedComplex.settings.get("theme")).toBe("dark");
+    expect(copiedComplex.addressBook.get("home")).toBeInstanceOf(AddressInput);
+    expect(copiedComplex.addressBook.get("home")?.city).toBe("Seoul");
   });
 
   test("supports maps, deep nested objects, and high-dimensional arrays", () => {
@@ -476,5 +517,13 @@ describe("serialize, deserialize, purify, and immerify", () => {
     expect((immered as unknown as Record<symbol, unknown>)[immerable]).toBe(true);
     const address = immerify(AddressInput as never, { city: "Seoul", zip: 12345 });
     expect((address as Record<symbol, unknown>)[immerable]).toBe(true);
+  });
+});
+
+describe("Binary as a model field", () => {
+  test("fails the class build, naming the File model as the way to store bytes", () => {
+    expect(() => via((f) => ({ blob: f(Binary) }))).toThrow('Field "blob" is Binary, which is not storable');
+    expect(() => via((f) => ({ blobs: f([Binary]) }))).toThrow('Field "blobs" is Binary, which is not storable');
+    expect(() => via((f) => ({ blobs: f(Map, { of: Binary }) }))).toThrow("is Binary, which is not storable");
   });
 });

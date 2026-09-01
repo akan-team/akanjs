@@ -8,7 +8,7 @@ import { getSolidConfig } from "./solidSqlite";
 
 const createCache = async () => {
   const filePath = path.join(tmpdir(), `solid-cache-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
-  const config = getSolidConfig({ appName: "test", environment: "test", solid: { filePath } });
+  const config = getSolidConfig({ solid: { filePath } });
   const cache = new SolidCache();
   // The DI container injects `config`; in tests we assign it directly before init.
   Object.assign(cache, { config });

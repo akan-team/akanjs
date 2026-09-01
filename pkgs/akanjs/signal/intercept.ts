@@ -7,8 +7,8 @@ export type InterceptorCls<Methods = {}, InjectMap extends { [key: string]: Inje
   Methods &
     ExtractInjectInfoObject<InjectMap> & {
       readonly logger: Logger;
-      onInit(): Promise<void>;
-      onDestroy(): Promise<void>;
+      onInit(): Promise<void> | void;
+      onDestroy(): Promise<void> | void;
       intercept(context: SignalContext): AsyncGenerator<unknown> | Promise<unknown>;
     },
   { readonly [INJECT_META]: InjectMap; readonly refName: string }
@@ -31,10 +31,10 @@ export function intercept(refName: string, injectBuilder?: InjectBuilder) {
     intercept(context: SignalContext): AsyncGenerator | Promise<(res: Response) => Promise<Response>> {
       return Promise.resolve((res: Response) => Promise.resolve(res));
     }
-    async onInit() {
+    onInit(): Promise<void> | void {
       //
     }
-    async onDestroy() {
+    onDestroy(): Promise<void> | void {
       //
     }
   };

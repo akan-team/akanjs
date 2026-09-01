@@ -47,22 +47,21 @@ See `docs/GENERATED.md` for the generated file list.
 
 ## House Style
 
-`AGENTS.md` holds the full style guide. The rules agents break most often:
+`AGENTS.md` holds the full style guide, and `akan lint` enforces most of it. The four rules that surprise people,
+because the failure is silent rather than an error:
 
-- **Never hand-order Tailwind classes** — the linter sorts them, including inside `clsx()`, and its output looks
-  unnatural on purpose.
-- **Never `throw new Error`** — throw `new Err("<module>.error.<key>")` with an `[en, ko]` entry in the module
-  dictionary. `common/` cannot import `Err`, so keep throwing code out of it.
-- **Never import a third-party package** from a page, a barrel, or a module file. Re-export it through a one-line
-  shim in `base/`, `webkit/`, or `ui/` first.
-- `#private` is lint-banned in `*.constant.ts`, `*.document.ts`, `*.service.ts`, and `*.store.ts` only; it stays
-  the house style under `srvkit/`.
-- Components are `export const X = ({ … }: XProps) => { … }` with `interface XProps` directly above and
-  `className?: string` first. No `React.FC`, no non-null assertions, no `as any`.
-- `cond ? <X/> : null`, never `{cond && <X/>}` — the latter renders the string `"false"` in a className context.
-- Put display and predicate logic on the `Light<Model>` constant class; keep document chain methods
-  validate → mutate → `return this` without `save()`; keep services to load → chain → save.
-- Do not narrate code in comments. Do document vendor quirks, infrastructure constraints, and security reasoning.
+- **Never hand-order Tailwind classes** — the linter sorts them, including inside `cn()`, and its output looks
+  unnatural on purpose. Do not reorder it back.
+- **Never use a colour outside the semantic vocabulary** — `bg-red-500`, `bg-[#3b82f6]` and `text-base-content`
+  compile to no CSS at all, so the element renders unstyled with no error. Use `bg-primary`, `text-foreground/70`
+  and the other tokens defined in `page/*/styles.css`.
+- **`cond ? <X/> : null`, never `{cond && <X/>}`** — the latter renders the string `"false"` in a className context.
+- **Never wrap a form setter in a pass-through arrow** — `onChange={st.do.setXOnY}` publishes the field to agents
+  and E2E selectors; `onChange={(v) => st.do.setXOnY(v)}` runs identically and publishes nothing.
+
+Two more that are hard errors: **never `throw new Error`** (throw `new Err("<module>.error.<key>")` with an
+`[en, ko]` dictionary entry), and **never import a third-party package** from a page, a barrel, or a module file —
+re-export it through a one-line shim in the lib's `common/`, `webkit/`, or `ui/` first.
 
 ## Abstract Documents
 

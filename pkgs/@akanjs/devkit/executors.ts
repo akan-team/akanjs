@@ -23,6 +23,7 @@ import { pathToFileURL } from "node:url";
 import type { AkanPlugin, AkanSyncContext, PluginRuntimeContext } from "akanjs";
 import {
   capitalize,
+  getPageSourceFileViolation,
   isRouteSourceFile,
   Logger,
   parseRouteModuleKey,
@@ -31,11 +32,19 @@ import {
 } from "akanjs/common";
 import { $ } from "bun";
 import chalk from "chalk";
+import {
+  renderScopeAgentBlock,
+  renderScopeAgentsMd,
+  renderScopeClaudeMd,
+  scanScopeRecipes,
+  upsertAgentBlock,
+} from "./agentsIndex";
 import { AkanAppConfig, AkanLibConfig, decreaseBuildNum, increaseBuildNum } from "./akanConfig";
 import { getRootBoundarySegments, isRootBoundarySegments } from "./artifact/implicitRootLayout";
 import { FileSys } from "./fileSys";
 import { getDirname } from "./getDirname";
 import { Linter } from "./linter";
+import { resolveRepoName } from "./repoIdentity";
 import { AppInfo, LibInfo, PkgInfo, WorkspaceInfo } from "./scanInfo";
 import { Spinner } from "./spinner";
 // Type-only: the implementation is loaded on demand in `getTypeChecker` to keep `typescript` out of
@@ -226,7 +235,7 @@ export class Executor {
         );
       });
       proc.on("exit", (code, signal) => {
-        if (!!code || signal)
+        if (code || signal)
           reject(
             new CommandExecutionError({
               command,
@@ -335,7 +344,7 @@ export class Executor {
         );
       });
       proc.on("exit", (code, signal) => {
-        if (!!code || signal)
+        if (code || signal)
           reject(
             new CommandExecutionError({
               command: modulePath,
@@ -782,7 +791,7 @@ export class WorkspaceExecutor extends Executor {
   static #execs = new Map<string, WorkspaceExecutor>();
   static fromRoot({
     workspaceRoot = process.cwd(),
-    repoName = path.basename(process.cwd()),
+    repoName = resolveRepoName(workspaceRoot),
   }: {
     workspaceRoot?: string;
     repoName?: string;
@@ -999,6 +1008,16 @@ export class SysExecutor extends Executor {
     const path = this.type === "app" ? `apps/${this.name}/lib` : `libs/${this.name}/lib`;
     return await this.workspace.getDirInModule(path, this.name);
   }
+  async getPageConventionViolations(): Promise<{ relativePath: string; reason: string }[]> {
+    if (!(await this.exists("page"))) return [];
+    const violations: { relativePath: string; reason: string }[] = [];
+    for (const entry of await this.getAllFiles("**/*", { cwd: this.getPath("page") })) {
+      const relativePath = entry.split(path.sep).join("/");
+      const reason = getPageSourceFileViolation(relativePath);
+      if (reason) violations.push({ relativePath: `page/${relativePath}`, reason });
+    }
+    return violations;
+  }
 
   #scanInfo: AppInfo | LibInfo | null = null;
   hasScanInfo() {
@@ -1081,9 +1100,28 @@ export class SysExecutor extends Executor {
         await this.#updateDependencies(scanInfo);
         await Promise.all(libInfos.flatMap((libInfo) => libInfo.exec.#getScanTemplateTasks(libInfo)));
       }
+      await this.syncAgentsIndex(scanInfo);
     }
     this.#scanInfo = scanInfo;
     return scanInfo;
+  }
+  /**
+   * 스코프 에이전트 색인(apps|libs/<name>/AGENTS.md) 재생성 — own + 의존 lib 레시피만 싣는다(프레임워크
+   * 레시피는 루트 AGENTS.md 소관). scan(write) 경로에 물려 있어 sync/build/start 어디를 지나도 갱신되고,
+   * `akan lint` 가 같은 렌더 결과와 비교해 신선도를 강제한다. 마커 밖 내용은 사용자 소유라 보존한다.
+   */
+  async syncAgentsIndex(scanInfo?: AppInfo | LibInfo) {
+    const info = scanInfo ?? (await this.scan({ write: false }));
+    const scope = { type: this.type, name: this.name };
+    const recipes = await scanScopeRecipes(this.workspace.workspaceRoot, scope, info.getScanResult().libDeps);
+    const block = renderScopeAgentBlock(scope, recipes);
+    const existing = (await this.exists("AGENTS.md")) ? await this.readFile("AGENTS.md") : null;
+    await this.writeFile(
+      "AGENTS.md",
+      existing?.trim() ? upsertAgentBlock(existing, block) : renderScopeAgentsMd(scope, block),
+    );
+    // CLAUDE.md 는 얇은 포인터라 최초 1회만 깔아준다 — 사용자가 지우거나 고친 것을 되살리지 않는다.
+    if (!(await this.exists("CLAUDE.md"))) await this.writeFile("CLAUDE.md", renderScopeClaudeMd(scope));
   }
   async #updateDependencies(scanInfo: AppInfo | LibInfo) {
     const rootPackageJson = await this.workspace.getPackageJson();
@@ -1333,11 +1371,26 @@ export class AppExecutor extends SysExecutor {
       await Promise.all([this.dist.mkdir("private"), this.dist.mkdir("public")]);
       //* Lib assets are symlinks in the app dir (see syncAssets). dist is the docker build context and the
       //* release tarball root, neither of which follows a link out of itself, so materialize them here.
+      //* `public/` has exactly one reader — the web router's catch-all — so an api-only build leaves it out.
       await Promise.all([
         this.cp("private", `${this.dist.cwdPath}/private`, { dereference: true }),
-        this.cp("public", `${this.dist.cwdPath}/public`, { dereference: true }),
+        ...(akanConfig.web.ssr ? [this.cp("public", `${this.dist.cwdPath}/public`, { dereference: true })] : []),
       ]);
-    } else await this.removeDir(".akan");
+    } else {
+      await this.removeDir(".akan");
+      //? `web` is a build declaration: `akan start` keeps the full dev surface because the incremental
+      //? builder is also the file watcher, so switching it off would take server-code HMR with it.
+      if (!akanConfig.web.ssr || !akanConfig.web.csr)
+        this.logger.verbose(
+          `akan.config.ts disables web.${!akanConfig.web.ssr ? "ssr" : "csr"}; \`akan start\` still serves it, \`akan build\` will not`,
+        );
+    }
+    //? `akan start` is the dev server, and it must say so rather than inherit an answer. Bun auto-loads the
+    //? workspace `.env`, so NODE_ENV=production can reach this process without ever being exported in a shell —
+    //? and a dev server that believes it is production serves from the production route cache, whose every
+    //? route throws because a dev artifact carries no routes manifest. Written into `process.env` and not only
+    //? into the child env because the builder runs here and bakes NODE_ENV into the bundles it emits.
+    if (type === "start") process.env.NODE_ENV = "development";
     const devPort = type === "start" ? (await this.getDevPort()).toString() : undefined;
     const env = this.getCommandEnv({
       AKAN_COMMAND_TYPE: type,
@@ -1676,7 +1729,7 @@ export class LibExecutor extends SysExecutor {
   #akanConfig: AkanLibConfig | null = null;
   override async getConfig({ refresh }: { refresh?: boolean } = {}) {
     if (this.#akanConfig && !refresh) return this.#akanConfig;
-    this.#akanConfig = await AkanLibConfig.from(this);
+    this.#akanConfig = await AkanLibConfig.from(this, { bustImportCache: refresh });
     return this.#akanConfig;
   }
 }
@@ -1782,7 +1835,7 @@ export class PkgExecutor extends Executor {
           default: "./index.ts",
         },
       },
-      engines: { bun: ">=1.3.13" },
+      engines: { bun: ">=1.4.0" },
       ...dependencyMaps,
     };
     await Promise.all([this.dist.writeJson("package.json", distPkgJson), this.writeJson("package.json", distPkgJson)]);

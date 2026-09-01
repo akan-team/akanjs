@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   Any,
+  Binary,
   DEFAULT_VALUE,
   dayjs,
   EXAMPLE_VALUE,
@@ -21,12 +22,23 @@ describe("PrimitiveRegistry", () => {
     expect(PrimitiveRegistry.get("Float")).toBe(Float);
     expect(PrimitiveRegistry.get("ID")).toBe(ID);
     expect(PrimitiveRegistry.get("Any")).toBe(Any);
+    expect(PrimitiveRegistry.get("Binary")).toBe(Binary);
     expect(PrimitiveRegistry.get("Upload")).toBe(Upload);
 
     expect(PrimitiveRegistry.getName(Int)).toBe("Int");
     expect(PrimitiveRegistry.has(Float)).toBe(true);
     expect(PrimitiveRegistry.hasName("ID")).toBe(true);
-    expect(PrimitiveRegistry.getNames()).toEqual(["Int", "Float", "ID", "Any", "Upload", "String", "Boolean", "Date"]);
+    expect(PrimitiveRegistry.getNames()).toEqual([
+      "Int",
+      "Float",
+      "ID",
+      "Any",
+      "Binary",
+      "Upload",
+      "String",
+      "Boolean",
+      "Date",
+    ]);
     expect(PrimitiveRegistry.getAll()).toContain(String);
   });
 
@@ -114,6 +126,17 @@ describe("primitive scalars", () => {
     expect(() => Date._parse("invalid-date" as never)).toThrow("Invalid Date value: Invalid Date");
   });
 
+  test("parses boolean wire spellings sent as text", () => {
+    expect(Boolean._parse("true")).toBe(true);
+    expect(Boolean._parse("false")).toBe(false);
+    expect(Boolean._parse("1")).toBe(true);
+    expect(Boolean._parse("0")).toBe(false);
+    expect(Boolean._parse("True")).toBe(true);
+    expect(Boolean._serialize("true")).toBe(true);
+    expect(() => Boolean._parse("")).toThrow("Invalid Boolean value: ");
+    expect(() => Boolean._parse("yes")).toThrow("Invalid Boolean value: yes");
+  });
+
   test("exposes default metadata for object-like primitives", () => {
     expect(Any.refName).toBe("Any");
     expect(Any[DEFAULT_VALUE]).toBeNull();
@@ -123,5 +146,39 @@ describe("primitive scalars", () => {
     expect(Upload[DEFAULT_VALUE]).toBeNull();
     expect(Upload[EXAMPLE_VALUE]).toBe("FileUpload");
     expect(new Upload().__TEMP_TYPE__).toBe("Upload");
+  });
+});
+
+describe("Binary", () => {
+  test("serializes bytes to base64 and parses them back", () => {
+    const bytes = new Uint8Array([2, 148, 1, 2, 63]);
+    const wire = Binary._serialize(bytes);
+
+    expect(wire).toBe("ApQBAj8=");
+    expect([...(Binary._parse(wire) as Uint8Array)]).toEqual([2, 148, 1, 2, 63]);
+  });
+
+  test("passes bytes through unchanged, which is what a binary frame hands it", () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    expect(Binary._parse(bytes)).toBe(bytes);
+  });
+
+  test("round-trips a payload past the argument-stack limit of the browser fallback", () => {
+    const bytes = new Uint8Array(300_000);
+    for (let idx = 0; idx < bytes.length; idx += 1) bytes[idx] = idx % 256;
+    const parsed = Binary._parse(Binary._serialize(bytes)) as Uint8Array;
+
+    expect(parsed.length).toBe(bytes.length);
+    expect(parsed[0]).toBe(0);
+    expect(parsed[299_999]).toBe(bytes[299_999]);
+  });
+
+  test("reads a view that does not start at its buffer origin", () => {
+    const view = new Uint8Array([9, 9, 1, 2, 3]).subarray(2);
+    expect(Binary._serialize(view)).toBe(Binary._serialize(new Uint8Array([1, 2, 3])));
+  });
+
+  test("refuses a value that is neither bytes nor base64", () => {
+    expect(() => Binary._serialize(42 as never)).toThrow("Invalid Binary value");
   });
 });

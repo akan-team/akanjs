@@ -166,6 +166,7 @@ describe("CloudRunner", () => {
       dependencies: { akanjs: "2.1.0-rc.11" },
     });
     expect(recorder.calls.filter((call) => call.name === "workspace.spawn").map((call) => call.args)).toEqual([
+      ["npm", ["login"], { stdio: "inherit" }],
       [
         "npm",
         [

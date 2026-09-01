@@ -31,7 +31,6 @@ const rootPackageJson = (extra: Partial<PackageJson> = {}): PackageJson => ({
     react: "19.0.0",
     "react-dom": "19.0.0",
     "react-server-dom-webpack": "19.0.0",
-    sharp: "1.0.0",
     lodash: "4.0.0",
   },
   devDependencies: {
@@ -149,8 +148,10 @@ describe("Executor filesystem helpers", () => {
       "AI Development Guide",
     );
     expect(await readFile(path.join(root, "workspace/docs/GENERATED.md"), "utf8")).toContain("Generated Akan Files");
+    // Rules and their plugin registrations live in the package's base config, so a framework release reaches an
+    // existing workspace on `bun update` — the workspace file only extends it and scopes its own files.
     expect(await readFile(path.join(root, "workspace/biome.json"), "utf8")).toContain(
-      "./node_modules/@akanjs/devkit/lint/no-import-client-functions.grit",
+      '"extends": ["@akanjs/devkit/biome.base.json"]',
     );
   });
 
@@ -816,6 +817,29 @@ describe("Workspace and app executor environment contracts", () => {
     expect(offsetMinimalStart.env.AKAN_PUBLIC_CLIENT_PORT).toBe("8286");
     expect(offsetMinimalStart.env.AKAN_PUBLIC_SERVER_PORT).toBe("8286");
   });
+
+  test("pins the start command to development so an ambient NODE_ENV cannot pick the production router", async () => {
+    const root = await makeTempRoot();
+    process.env.AKAN_PUBLIC_REPO_NAME = "repo";
+    process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
+    process.env.AKAN_PUBLIC_ENV = "local";
+    await writeJson(path.join(root, "package.json"), rootPackageJson());
+    await mkdir(path.join(root, "apps/ambient"), { recursive: true });
+    await writeFile(path.join(root, "apps/ambient/akan.config.ts"), "export default {};\n");
+
+    const originalNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      const workspace = new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" });
+      const started = await AppExecutor.from(workspace, "ambient").prepareCommand("start");
+      expect(started.env.NODE_ENV).toBe("development");
+      // The builder runs in this process and bakes NODE_ENV into the dev bundles it emits.
+      expect(process.env.NODE_ENV).toBe("development");
+    } finally {
+      if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = originalNodeEnv;
+    }
+  });
 });
 
 describe("PkgExecutor package generation", () => {
@@ -829,7 +853,7 @@ describe("PkgExecutor package generation", () => {
       exports: { "./extra": { import: "./extra.ts" } },
       peerDependencies: { react: "19.0.0" },
       peerDependenciesMeta: { react: { optional: true } },
-      optionalDependencies: { sharp: "1.0.0" },
+      optionalDependencies: { "@sample/native": "1.0.0" },
     });
 
     const workspace = new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" });
@@ -839,12 +863,12 @@ describe("PkgExecutor package generation", () => {
     expect(distPackageJson).toMatchObject({
       name: "@sample/tool",
       type: "module",
-      engines: { bun: ">=1.3.13" },
+      engines: { bun: ">=1.4.0" },
       dependencies: { lodash: "4.0.0" },
       devDependencies: { typescript: "6.0.0" },
       peerDependencies: { react: "19.0.0" },
       peerDependenciesMeta: { react: { optional: true } },
-      optionalDependencies: { sharp: "1.0.0" },
+      optionalDependencies: { "@sample/native": "1.0.0" },
     });
     expect(distPackageJson.exports?.["."]).toEqual({
       import: "./index.ts",

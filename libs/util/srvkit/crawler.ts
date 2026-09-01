@@ -1,6 +1,15 @@
-import { type Browser, launch } from "puppeteer";
+import type { Browser } from "puppeteer";
 
 import { Err } from "../lib/dict";
+
+type Puppeteer = typeof import("puppeteer");
+
+let puppeteerLoad: Promise<Puppeteer> | null = null;
+
+function loadPuppeteer(): Promise<Puppeteer> {
+  puppeteerLoad ??= import("puppeteer");
+  return puppeteerLoad;
+}
 
 export class Crawler {
   #browser: Browser | null = null;
@@ -8,6 +17,7 @@ export class Crawler {
   #headless = true;
 
   async init({ headless = false }: { headless?: boolean } = {}) {
+    const { launch } = await loadPuppeteer();
     this.#browser = await launch({
       headless,
       args: [

@@ -1,10 +1,13 @@
+import { usePage } from "akanjs/client";
+
+import { Spin } from "./Spin";
+
 export const Area = () => {
+  const { l } = usePage();
   return (
-    <div className="absolute inset-0 flex size-full items-center justify-center bg-base-300/30">
-      <div className="text-center">
-        <span className="loading loading-sm loading-dots" />
-        <div className="z-10 text-sm">Loading</div>
-      </div>
+    <div className="absolute inset-0 flex size-full flex-col items-center justify-center gap-2 rounded-[inherit] bg-background/60 backdrop-blur-sm">
+      <Spin />
+      <div className="text-foreground/60 text-sm">{l("base.processing")}</div>
     </div>
   );
 };

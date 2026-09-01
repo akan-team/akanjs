@@ -82,14 +82,40 @@ describe("route client store bootstrap", () => {
   });
 
   test("bundles akan fetch into production SSR client chunks", () => {
-    expect(RouteClientBuilder.resolveSsrClientExternalOptions("start")).toMatchObject({
+    expect(RouteClientBuilder.resolveSsrClientBundleOptions("start")).toMatchObject({
       external: expect.arrayContaining(["akanjs/fetch"]),
       externalSubpaths: ["akanjs/fetch"],
     });
 
-    expect(RouteClientBuilder.resolveSsrClientExternalOptions("build")).toEqual({
+    expect(RouteClientBuilder.resolveSsrClientBundleOptions("build")).toEqual({
+      target: "bun",
       external: ["react", "react-dom", "react-dom/client", "react/jsx-runtime", "react/jsx-dev-runtime"],
     });
+  });
+
+  test("targets the server so SSR client chunks never resolve a browser export condition", async () => {
+    const root = await makeTempRoot();
+    const pkgDir = path.join(root, "node_modules/dom-conditioned-pkg");
+    await write(
+      path.join(pkgDir, "package.json"),
+      JSON.stringify({
+        name: "dom-conditioned-pkg",
+        type: "module",
+        exports: { ".": { browser: "./index.dom.js", default: "./index.js" } },
+      }),
+    );
+    await write(path.join(pkgDir, "index.dom.js"), 'export const element = document.createElement("i");\n');
+    await write(path.join(pkgDir, "index.js"), "export const element = null;\n");
+    const entry = path.join(root, "entry.ts");
+    await write(entry, 'export { element } from "dom-conditioned-pkg";\n');
+
+    for (const command of ["start", "build"] as const) {
+      const { target } = RouteClientBuilder.resolveSsrClientBundleOptions(command);
+      const built = await Bun.build({ entrypoints: [entry], target, format: "esm" });
+
+      expect(built.success).toBe(true);
+      expect(await built.outputs[0].text()).not.toContain("document.createElement");
+    }
   });
 
   test("rewrites SSR external imports to runtime aliases", () => {

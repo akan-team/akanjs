@@ -10,6 +10,7 @@ import type {
   SerializedSlice,
   ServiceSignal,
 } from "akanjs/signal";
+import { agentTurnConstant } from "../agentTurn";
 import type { ClientSignal, FetchClientType, FetchSignalInput, MergeAllFetchTypes, SliceMeta } from "../fetchType";
 import { memoizeRequestQuery, cookies as requestCookies, headers as requestHeaders } from "../requestStorage";
 import type { GetSliceMetaObjFromDatabaseSignals } from "../types";
@@ -37,6 +38,29 @@ export type FetchProxy<
   FetchClient &
   FetchType & { slice: SliceMetaObj; instance: FetchClient; _FetchType: FetchType; _SliceMetaObj: SliceMetaObj };
 
+interface SharedClientState {
+  proxy: FetchProxy | null;
+  origin: string | null;
+}
+
+const SHARED_CLIENT_KEY = Symbol.for("akanjs.fetch.sharedClient");
+const globalWithSharedClient = globalThis as typeof globalThis & { [SHARED_CLIENT_KEY]?: SharedClientState };
+const sharedClientState: SharedClientState = globalWithSharedClient[SHARED_CLIENT_KEY] ?? { proxy: null, origin: null };
+globalWithSharedClient[SHARED_CLIENT_KEY] = sharedClientState;
+
+interface SharedSignalRegistry {
+  signal: { [key: string]: SerializedSignal };
+  version: number;
+}
+
+const SHARED_SIGNAL_KEY = Symbol.for("akanjs.fetch.sharedSignalRegistry");
+const globalWithSharedSignal = globalThis as typeof globalThis & { [SHARED_SIGNAL_KEY]?: SharedSignalRegistry };
+const sharedSignalRegistry: SharedSignalRegistry = globalWithSharedSignal[SHARED_SIGNAL_KEY] ?? {
+  signal: {},
+  version: 0,
+};
+globalWithSharedSignal[SHARED_SIGNAL_KEY] = sharedSignalRegistry;
+
 type ClientSignalMap<SigType extends { fetch: any }> = {
   [K in keyof SigType as SigType[K] extends DatabaseSignal<any, any, any, any>
     ? K
@@ -47,8 +71,9 @@ type ClientSignalMap<SigType extends { fetch: any }> = {
 
 /** Runtime fetch client that registers serialized Akan signals as HTTP/WebSocket methods. */
 export class FetchClient {
-  static #sharedSerializedSignal: { [key: string]: SerializedSignal } = {};
-  static #sharedRegistryVersion = 0;
+  static {
+    ConstantRegistry.setScalar(agentTurnConstant.refName, agentTurnConstant);
+  }
   readonly logger = new Logger("FetchClient");
   readonly origin: string;
   readonly http: HttpClient;
@@ -56,6 +81,8 @@ export class FetchClient {
   readonly handler: Record<string, FetchHandler>;
   readonly slice: Record<string, SliceMeta> = {};
   readonly sortKeyMap = new Map<string, string[]>();
+  readonly filterQueryMap = new Map<string, { [queryKey: string]: SerializedArg[] }>();
+  readonly #originWs = new Map<string, WsClient>();
   readonly #handlerStore: Record<string, FetchHandler> = {};
   readonly #handlerFactory = new Map<string, FetchHandlerFactory>();
   #sharedRegistryAppliedVersion = 0;
@@ -70,15 +97,36 @@ export class FetchClient {
   ) {
     this.origin = origin;
     this.http = new HttpClient(origin, ErrorCls);
-    const wsUri = `${origin.replace("http://", "ws://").replace("https://", "wss://")}/ws`;
-    this.ws = new WsClient(wsUri, ErrorCls);
+    this.ws = new WsClient(FetchClient.#makeWsUri(origin), ErrorCls);
     Object.assign(this.#handlerStore, handler);
     this.handler = this.#makeHandlerProxy();
     this.applySignal(serializedSignal);
   }
+  /**
+   * Every signal any client in this process has applied, which is the whole callable surface of the app.
+   *
+   * A copy, because this is the registry each client merges its own signals into and a reader that mutated it
+   * would change what the next client applies. Read by the agent catalogue, which needs the argument schemas.
+   */
+  static get sharedSerializedSignal(): { [key: string]: SerializedSignal } {
+    return { ...sharedSignalRegistry.signal };
+  }
   static resetSharedRegistry() {
-    FetchClient.#sharedSerializedSignal = {};
-    FetchClient.#sharedRegistryVersion++;
+    sharedSignalRegistry.signal = {};
+    sharedSignalRegistry.version++;
+  }
+  static resetSharedClient() {
+    sharedClientState.proxy = null;
+    sharedClientState.origin = null;
+  }
+  static #resolveSharedClientProxy(origin: string, Err?: ErrorConstructor) {
+    if (typeof window === "undefined") return null;
+    // A build asking for another origin owns its own instance; the tab-wide socket stays on the first one.
+    if (sharedClientState.proxy) return sharedClientState.origin === origin ? sharedClientState.proxy : null;
+    const proxy = FetchClient.#makeProxy<unknown, Record<string, SliceMeta>>(new FetchClient(origin, {}, {}, Err));
+    sharedClientState.proxy = proxy;
+    sharedClientState.origin = origin;
+    return proxy;
   }
   static #mergeSerializedSignalInto(
     serializedSignal: { [key: string]: SerializedSignal },
@@ -111,13 +159,14 @@ export class FetchClient {
     this.ErrorCls = ErrorCls;
     this.http.setErrorConstructor(ErrorCls);
     this.ws.setErrorConstructor(ErrorCls);
+    for (const ws of this.#originWs.values()) ws.setErrorConstructor(ErrorCls);
   }
   applySignal(serializedSignal: { [key: string]: SerializedSignal }, { share = true }: { share?: boolean } = {}) {
     if (share && Object.keys(serializedSignal).length > 0) {
       for (const [refName, signal] of Object.entries(serializedSignal))
-        FetchClient.#mergeSerializedSignalInto(FetchClient.#sharedSerializedSignal, refName, signal);
-      FetchClient.#sharedRegistryVersion++;
-      this.#sharedRegistryAppliedVersion = FetchClient.#sharedRegistryVersion;
+        FetchClient.#mergeSerializedSignalInto(sharedSignalRegistry.signal, refName, signal);
+      sharedSignalRegistry.version++;
+      this.#sharedRegistryAppliedVersion = sharedSignalRegistry.version;
     }
     for (const [refName, signal] of Object.entries(serializedSignal))
       FetchClient.#mergeSerializedSignalInto(this.serializedSignal, refName, signal);
@@ -130,10 +179,11 @@ export class FetchClient {
           this.#registerSlice(refName, suffix, slice, signal.prefix);
       }
       if (signal.filter) {
-        this.#registerFilterSortKey(refName, signal.filter.sortKeys);
-        for (const [suffix, args] of Object.entries(signal.filter.filter)) {
-          this.#registerFilterQuery(suffix, args);
-        }
+        // The merged copy, not the incoming one: a lib signal applied on its own carries only its own
+        // filters, and the map a UI reads has to hold every filter the model ended up with.
+        const filter = this.serializedSignal[refName]?.filter ?? signal.filter;
+        this.#registerFilterSortKey(refName, filter.sortKeys);
+        this.#registerFilterQuery(refName, filter.filter);
       }
     }
     return this;
@@ -151,9 +201,9 @@ export class FetchClient {
     });
   }
   #syncSharedRegistry() {
-    if (this.#sharedRegistryAppliedVersion === FetchClient.#sharedRegistryVersion) return;
-    this.applySignal(FetchClient.#sharedSerializedSignal, { share: false });
-    this.#sharedRegistryAppliedVersion = FetchClient.#sharedRegistryVersion;
+    if (this.#sharedRegistryAppliedVersion === sharedSignalRegistry.version) return;
+    this.applySignal(sharedSignalRegistry.signal, { share: false });
+    this.#sharedRegistryAppliedVersion = sharedSignalRegistry.version;
   }
   #getOrCreateHandler(key: string): FetchHandler | undefined {
     const current = this.#handlerStore[key];
@@ -185,6 +235,8 @@ export class FetchClient {
   }
   disconnect() {
     this.ws.destroy();
+    for (const ws of this.#originWs.values()) ws.destroy();
+    this.#originWs.clear();
   }
   clone({ origin, connect = true, jwt }: { origin?: string; connect?: boolean; jwt?: string } = {}) {
     const instance = new FetchClient(origin ?? this.origin, {}, this.serializedSignal, this.ErrorCls);
@@ -198,6 +250,21 @@ export class FetchClient {
   setJwt(jwt: string | null) {
     this.jwt = jwt;
     this.ws.setJwt(jwt);
+    for (const ws of this.#originWs.values()) ws.setJwt(jwt);
+  }
+  // A socket's URL is fixed for its lifetime, so `FetchPolicy.origin` cannot redirect the shared one:
+  // it resolves a second socket per origin, connected on first use and torn down by `disconnect()`.
+  #resolveWs(origin?: string) {
+    if (!origin) return this.ws;
+    const target = origin.replace(/\/+$/, "");
+    if (target === this.origin.replace(/\/+$/, "")) return this.ws;
+    const cached = this.#originWs.get(target);
+    if (cached) return cached;
+    const ws = new WsClient(FetchClient.#makeWsUri(target), this.ErrorCls);
+    this.#originWs.set(target, ws);
+    ws.setJwt(this.jwt);
+    ws.connect();
+    return ws;
   }
   #makeAuthHeaders(option?: FetchPolicy): Record<string, string> {
     if (option?.token) return { Authorization: `Bearer ${option.token}` };
@@ -216,8 +283,8 @@ export class FetchClient {
   #registerFilterSortKey(refName: string, sortKeys: string[]) {
     this.sortKeyMap.set(refName, sortKeys);
   }
-  #registerFilterQuery(suffix: string, args: SerializedArg[]) {
-    // TODO: Implement
+  #registerFilterQuery(refName: string, filter: { [queryKey: string]: SerializedArg[] }) {
+    this.filterQueryMap.set(refName, filter);
   }
   #makeHttpFn(key: string, endpoint: SerializedEndpoint, prefix?: string) {
     const argLength = endpoint.args.length;
@@ -225,6 +292,8 @@ export class FetchClient {
     const parseReturn = this.#makeReturnParser(endpoint.returns);
     const { bodyArgs, uploadArgs } = FetchClient.classifyHttpArgs(endpoint.args);
     switch (endpoint.type) {
+      // A prompt is a GET that returns messages instead of a model, so it rides the query path unchanged.
+      case "prompt":
       case "query": {
         const queryFn = async (...argData: unknown[]) => {
           const args = argData.slice(0, argLength);
@@ -251,7 +320,7 @@ export class FetchClient {
           const argMap = new Map(serializerMap.entries().map(([key, serializer], idx) => [key, serializer(args[idx])]));
           const url = FetchClient.makeHttpUrl(key, endpoint, prefix, argMap);
           const body = HttpClient.makeBody(bodyArgs, uploadArgs, argMap);
-          const response = await this.http.post(url, body, {
+          const response = await this.http.send(endpoint.method ?? "POST", url, body, {
             headers: this.#makeAuthHeaders(option),
             baseUrl: option?.origin,
           });
@@ -266,6 +335,7 @@ export class FetchClient {
   }
   #registerEndpoint(key: string, endpoint: SerializedEndpoint, prefix?: string) {
     switch (endpoint.type) {
+      case "prompt":
       case "query": {
         this.#setHandlerFactory(key, () => this.#makeHttpFn(key, endpoint, prefix));
         return;
@@ -291,13 +361,13 @@ export class FetchClient {
               handleEvent(parsedReturn);
             };
             wrappedListeners.set(handleEvent, wrapped);
-            this.ws.subscribe({
+            const ws = this.#resolveWs(fetchPolicy?.origin);
+            ws.subscribe({
               key,
               data,
               handleEvent: wrapped,
             });
-            return () =>
-              this.ws.unsubscribe({ key, data, handleEvent: wrappedListeners.get(handleEvent) ?? handleEvent });
+            return () => ws.unsubscribe({ key, data, handleEvent: wrappedListeners.get(handleEvent) ?? handleEvent });
           };
         });
         return;
@@ -309,8 +379,9 @@ export class FetchClient {
           const serializerMap = this.#makeArgSerializer(endpoint.args);
           return (...argData: unknown[]) => {
             const args = argData.slice(0, msgArgLength);
+            const fetchPolicy = argData[msgArgLength] as FetchPolicy | undefined;
             const data = msgArgs.map((arg, idx) => serializerMap.get(arg.name)?.(args[idx]) ?? null);
-            this.ws.emit(key, data);
+            this.#resolveWs(fetchPolicy?.origin).emit(key, data);
           };
         });
         this.#setHandlerFactory(`listen${capitalize(key)}`, () => {
@@ -322,8 +393,9 @@ export class FetchClient {
               handleEvent(parsedReturn);
             };
             wrappedListeners.set(handleEvent, wrapped);
-            this.ws.on(key, wrapped);
-            return () => this.ws.off(key, wrappedListeners.get(handleEvent) ?? handleEvent);
+            const ws = this.#resolveWs(fetchPolicy.origin);
+            ws.on(key, wrapped);
+            return () => ws.off(key, wrappedListeners.get(handleEvent) ?? handleEvent);
           }) as FetchHandler;
         });
         return;
@@ -333,6 +405,10 @@ export class FetchClient {
         break;
     }
   }
+  static #makeWsUri(origin: string) {
+    return `${origin.replace("http://", "ws://").replace("https://", "wss://")}/ws`;
+  }
+
   static paginationArgs: SerializedArg[] = [
     { type: "search", name: "skip", refName: "Int" },
     { type: "search", name: "limit", refName: "Int" },
@@ -689,8 +765,15 @@ export class FetchClient {
         });
       }
     });
-    const instance = new FetchClient(getEnv().serverHttpUri, handler, serializedSignal);
+    const instance = new FetchClient(FetchClient.#originFromEnv(), handler, serializedSignal);
     return FetchClient.#makeProxy<MergeAllFetchTypes<Signals>, GetSliceMetaObjFromDatabaseSignals<Signals>>(instance);
+  }
+  static #originFromEnv() {
+    try {
+      return getEnv().serverHttpUri;
+    } catch {
+      return "";
+    }
   }
   static build<SigType extends { fetch: any }>(
     constant: object,
@@ -705,10 +788,11 @@ export class FetchClient {
     sig: ClientSignalMap<SigType>;
     fetch: SigType["fetch"];
   } {
-    if (base) base.instance.applySignal(serializedSignal);
+    const shared = base ?? FetchClient.#resolveSharedClientProxy(origin, Err);
+    if (shared) shared.instance.applySignal(serializedSignal);
     if (base && Err) base.instance.setErrorConstructor(Err);
     const proxy =
-      base ??
+      shared ??
       FetchClient.#makeProxy<unknown, Record<string, SliceMeta>>(new FetchClient(origin, {}, serializedSignal, Err));
     if (connect) proxy.instance.connect();
     const sig = {} as any;
@@ -736,7 +820,10 @@ export class FetchClient {
           const handler = instance.#getOrCreateHandler(prop);
           if (handler) return handler;
         }
-        return (instance as unknown as Record<PropertyKey, unknown>)[prop];
+        const value = (instance as unknown as Record<PropertyKey, unknown>)[prop];
+        // A method read off the proxy runs with `this` bound to the proxy, and `#private` fields are
+        // unreachable from anything but the instance itself — `fetch.setJwt()` would throw on `#originWs`.
+        return typeof value === "function" ? value.bind(instance) : value;
       },
     }) as FetchProxy<FetchType, SliceMetaObj>;
   }

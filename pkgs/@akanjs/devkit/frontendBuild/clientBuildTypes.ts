@@ -55,6 +55,8 @@ export interface BuildClientResult {
   rscClientUrl: string;
 }
 
+export type ClientBundleTarget = "browser" | "bun";
+
 export const CLIENT_BUNDLE_NAMING = {
   entry: "[name]-[hash].[ext]",
   chunk: "chunks/[hash].[ext]",
@@ -79,6 +81,8 @@ export interface BundleClientEntriesOptions {
 }
 
 export interface BundleClientEntriesInternalOptions extends BundleClientEntriesOptions {
+  /** Module-resolution target. `"bun"` for the server-executed `client-ssr` bundle, `"browser"` otherwise. */
+  target?: ClientBundleTarget;
   external?: readonly string[];
   externalSubpaths?: readonly string[];
   externalAliases?: Partial<Record<string, string>>;

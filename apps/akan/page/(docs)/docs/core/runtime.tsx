@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,6 +16,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/myapp/main.ts"
             code={`import { AkanApp } from "akanjs/server";
 
@@ -113,9 +114,24 @@ void run();`}
               ko: "단일 Akan App은 clustering 기능을 기본으로 지원합니다. 여러 server replica를 실행하고 Akan App이 트래픽을 분산할 수 있으므로, nginx, docker compose, pm2 같은 별도 로컬 load-balancing 도구를 직접 구성하지 않아도 됩니다.",
             })}
           </Docs.Alert>
+          <div>
+            {l.trans({
+              en: "With one traffic replica there is nothing to balance, so Akan App runs that server in its own process instead of spawning it and proxying to it. The container then holds one process rather than two, and every request skips a proxy hop. Two or more replicas, or a batch-only replica that never listens, bring the gateway back. Set AKAN_SOLO=false to keep the gateway for a single replica; akan start always runs it, because the gateway is also the dev server's build relay and error overlay.",
+              ko: "트래픽 replica가 하나면 분산할 대상이 없으므로, Akan App은 그 서버를 spawn해서 프록시하지 않고 자기 프로세스에서 직접 실행합니다. 컨테이너의 프로세스가 둘에서 하나로 줄고, 모든 요청이 프록시 홉을 건너뜁니다. replica가 둘 이상이거나 listen하지 않는 batch 전용 replica면 gateway가 다시 사용됩니다. 단일 replica에서도 gateway를 쓰려면 AKAN_SOLO=false를 설정하며, akan start는 gateway가 개발 서버의 빌드 릴레이이자 에러 오버레이이기도 하므로 항상 gateway로 실행됩니다.",
+            })}
+          </div>
+          <Docs.Mermaid
+            title="Solo replica"
+            highlightNodes={["solo"]}
+            chart={`flowchart LR
+  browser[Browser] --> solo["Akan App + Akan Server<br/>(one process)"]
+  solo --> webTraffic["Pages, API, WebSocket"]
+  solo --> background["Queue, Timer, Jobs"]
+  solo -.->|"web only"| rsc["RSC Worker"]`}
+          />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       <Scroll.Slide id="dev-prod" title={l.trans({ en: "Root-level Env Variables", ko: "루트 환경변수" })}>
         <Docs.Title>{l.trans({ en: "Root-level Env Variables", ko: "루트 환경변수" })}</Docs.Title>
         <Docs.Description>
@@ -126,6 +142,7 @@ void run();`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title=".env"
             language="bash"
             code={`AKAN_PUBLIC_REPO_NAME=myorg
@@ -253,18 +270,18 @@ AKAN_SEARCH_TOKENIZER="unicode61 remove_diacritics 2"`}
                 "100",
               ],
             ].map(([name, label, desc, values]) => (
-              <div key={name} className="rounded-xl border border-primary/10 bg-base-100 p-3">
+              <div key={name} className="rounded-xl border border-primary/10 bg-background p-3">
                 <div className="break-all font-mono font-semibold text-primary text-sm">{name}</div>
-                <div className="mt-1 font-bold text-base-content">{label}</div>
-                <div className="mt-2 text-base-content/70 text-sm leading-relaxed">{desc}</div>
-                <div className="mt-3 break-all rounded bg-base-200 px-2 py-1 font-mono text-base-content/80 text-xs">
+                <div className="mt-1 font-bold text-foreground">{label}</div>
+                <div className="mt-2 text-foreground/70 text-sm leading-relaxed">{desc}</div>
+                <div className="mt-3 break-all rounded bg-muted px-2 py-1 font-mono text-foreground/80 text-xs">
                   ex) {values}
                 </div>
               </div>
             ))}
           </div>
           <div className="space-y-1">
-            <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+            <div className={panelRecipe()}>
               <div className="font-bold">{l.trans({ en: "AKAN_PUBLIC_ENV modes", ko: "AKAN_PUBLIC_ENV 모드" })}</div>
               <div className="mt-3 space-y-1">
                 {[
@@ -276,14 +293,14 @@ AKAN_SEARCH_TOKENIZER="unicode61 remove_diacritics 2"`}
                   ["develop", l.trans({ en: "Team integration checks.", ko: "팀 통합 상태 확인" })],
                   ["main", l.trans({ en: "Production-like behavior.", ko: "운영에 가까운 동작 확인" })],
                 ].map(([mode, desc]) => (
-                  <div key={mode} className="rounded-lg bg-base-200 p-3">
+                  <div key={mode} className="rounded-lg bg-muted p-3">
                     <div className="font-mono font-semibold text-sm">{mode}</div>
-                    <div className="mt-1 text-base-content/70 text-sm">{desc}</div>
+                    <div className="mt-1 text-foreground/70 text-sm">{desc}</div>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+            <div className={panelRecipe()}>
               <div className="font-bold">
                 {l.trans({ en: "AKAN_PUBLIC_OPERATION_MODE modes", ko: "AKAN_PUBLIC_OPERATION_MODE 모드" })}
               </div>
@@ -296,9 +313,9 @@ AKAN_SEARCH_TOKENIZER="unicode61 remove_diacritics 2"`}
                   ],
                   ["edge", l.trans({ en: "Client uses edge-facing paths.", ko: "클라이언트가 엣지 경로 사용" })],
                 ].map(([mode, desc]) => (
-                  <div key={mode} className="rounded-lg bg-base-200 p-3">
+                  <div key={mode} className="rounded-lg bg-muted p-3">
                     <div className="font-mono font-semibold text-sm">{mode}</div>
-                    <div className="mt-1 text-base-content/70 text-sm">{desc}</div>
+                    <div className="mt-1 text-foreground/70 text-sm">{desc}</div>
                   </div>
                 ))}
               </div>
@@ -349,7 +366,7 @@ AKAN_PUBLIC_LOG_LEVEL=info`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       <Scroll.Slide id="get-env" title={l.trans({ en: "getEnv()", ko: "getEnv()" })}>
         <Docs.Title>{l.trans({ en: "getEnv()", ko: "getEnv()" })}</Docs.Title>
         <Docs.Description>
@@ -360,6 +377,7 @@ AKAN_PUBLIC_LOG_LEVEL=info`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Using getEnv()"
             code={`import { getEnv } from "akanjs/base";
 
@@ -370,9 +388,9 @@ env.serverHttpUri; // API URL
 env.serverWsUri;   // WebSocket URL`}
           />
           <div className="space-y-1">
-            <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+            <div className={panelRecipe()}>
               <div className="font-bold">{l.trans({ en: "Local mode", ko: "로컬 모드" })}</div>
-              <div className="mt-2 text-base-content/70 text-sm leading-relaxed">
+              <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
                   en: "When OPERATION_MODE is local, getEnv() points the browser and API client to your local Akan runtime, usually localhost:8282.",
                   ko: "OPERATION_MODE가 local이면 getEnv()는 브라우저와 API 클라이언트가 내 로컬 Akan 런타임을 바라보도록 합니다. 보통 localhost:8282를 사용합니다.",
@@ -388,9 +406,9 @@ serverHttpUri=http://localhost:8282/api
 serverWsUri=ws://localhost:8282`}
               />
             </div>
-            <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+            <div className={panelRecipe()}>
               <div className="font-bold">{l.trans({ en: "Cloud / edge mode", ko: "클라우드 / 엣지 모드" })}</div>
-              <div className="mt-2 text-base-content/70 text-sm leading-relaxed">
+              <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
                   en: "When OPERATION_MODE is cloud or edge, getEnv() builds service URLs from the app name, environment, and serve domain.",
                   ko: "OPERATION_MODE가 cloud 또는 edge이면 getEnv()는 앱 이름, 환경, 서비스 도메인을 조합해 서비스 URL을 만듭니다.",
@@ -417,7 +435,7 @@ serverWsUri=wss://myapp-main.mydomain.com`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       <Scroll.Slide id="openapi-json" title={l.trans({ en: "OpenAPI JSON", ko: "OpenAPI JSON" })}>
         <Docs.Title>{l.trans({ en: "OpenAPI JSON", ko: "OpenAPI JSON" })}</Docs.Title>
         <Docs.Description>
@@ -428,6 +446,7 @@ serverWsUri=wss://myapp-main.mydomain.com`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/myapp/main.ts"
             code={`import { AkanApp } from "akanjs/server";
 
@@ -443,6 +462,7 @@ void run();`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Read the OpenAPI document"
             language="bash"
             code={`curl http://localhost:8282/openapi.json`}
@@ -474,10 +494,10 @@ void run();`}
                 value: `new AkanServer("myapp", env, "all", lib, { openapi: true })`,
               },
             ].map(({ title, desc, value }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
-                <div className="font-bold text-base-content">{title}</div>
-                <div className="mt-2 text-base-content/70 text-sm leading-relaxed">{desc}</div>
-                <div className="mt-3 break-all rounded bg-base-200 px-2 py-1 font-mono text-base-content/80 text-xs">
+              <div key={title} className={panelRecipe()}>
+                <div className="font-bold text-foreground">{title}</div>
+                <div className="mt-2 text-foreground/70 text-sm leading-relaxed">{desc}</div>
+                <div className="mt-3 break-all rounded bg-muted px-2 py-1 font-mono text-foreground/80 text-xs">
                   {value}
                 </div>
               </div>
@@ -491,7 +511,83 @@ void run();`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
+      <Scroll.Slide id="module-selection" title={l.trans({ en: "Selective Module Boot", ko: "모듈 선택 실행" })}>
+        <Docs.Title>{l.trans({ en: "Selective Module Boot", ko: "모듈 선택 실행" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "An app mounts every module its libraries declare. The modules option narrows that: name the modules a process should serve and Akan boots those plus the ones they depend on, leaving the rest out of the container entirely. A module left out has no service, no signal, no route, and no scheduled job. This is how one codebase runs as several small processes, such as a batch worker that only needs its own domain.",
+              ko: "앱은 라이브러리가 선언한 모든 모듈을 마운트합니다. modules 옵션은 그 범위를 좁힙니다. 이 프로세스가 담당할 모듈을 지정하면 Akan은 그 모듈과 의존하는 모듈만 부팅하고 나머지는 컨테이너에 아예 올리지 않습니다. 빠진 모듈은 service, signal, route, 예약 작업이 모두 존재하지 않습니다. 하나의 코드베이스를 여러 개의 작은 프로세스로 나눠 실행하는 방법이며, 자기 도메인만 필요한 batch worker 같은 경우에 씁니다.",
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="apps/myapp/main.ts"
+            code={`import { AkanApp } from "akanjs/server";
+
+const run = async () => {
+  await new AkanApp("./server", { modules: ["article"] }).start();
+};
+void run();`}
+          />
+          <div>
+            {l.trans({
+              en: "Dependencies are followed for you, so you list entry points instead of the whole graph. A named module pulls in every service and signal it injects, and every model its cascade removes. The boot log prints what was mounted.",
+              ko: "의존성은 프레임워크가 따라가므로 전체 그래프가 아니라 진입점만 적으면 됩니다. 지정한 모듈은 자신이 주입하는 service와 signal, 그리고 cascade로 삭제하는 model을 함께 끌어옵니다. 무엇이 마운트되었는지는 부팅 로그에 표시됩니다.",
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title={l.trans({ en: "Boot log", ko: "부팅 로그" })}
+            language="bash"
+            code={`[DiLifecycle] INFO  Mounting 3 of 12 module(s): article, file, user`}
+          />
+          <div className="space-y-1">
+            {[
+              {
+                title: l.trans({ en: "App option", ko: "앱 옵션" }),
+                desc: l.trans({
+                  en: "Use this when the entry point itself decides which modules the process serves. Every replica it spawns gets the same selection.",
+                  ko: "이 엔트리 포인트가 담당할 모듈을 코드에서 정할 때 사용합니다. 여기서 생성되는 모든 replica가 같은 선택을 받습니다.",
+                }),
+                value: `new AkanApp("./server", { modules: ["article"] })`,
+              },
+              {
+                title: l.trans({ en: "Environment variable", ko: "환경변수" }),
+                desc: l.trans({
+                  en: "Use this when deployment decides the split, so one image can run as different processes without a second entry point.",
+                  ko: "배포 환경에서 분리 방식을 정할 때 사용합니다. 엔트리 포인트를 새로 만들지 않고 같은 이미지를 다른 프로세스로 실행할 수 있습니다.",
+                }),
+                value: "AKAN_MODULES=article,file",
+              },
+              {
+                title: l.trans({ en: "Server option", ko: "서버 옵션" }),
+                desc: l.trans({
+                  en: "Use this when you start AkanServer directly instead of going through AkanApp.",
+                  ko: "AkanApp을 거치지 않고 AkanServer를 직접 시작할 때 사용합니다.",
+                }),
+                value: `new AkanServer("myapp", env, "all", lib, { modules: ["article"] })`,
+              },
+            ].map(({ title, desc, value }) => (
+              <div key={title} className={panelRecipe()}>
+                <div className="font-bold text-foreground">{title}</div>
+                <div className="mt-2 text-foreground/70 text-sm leading-relaxed">{desc}</div>
+                <div className="mt-3 break-all rounded bg-muted px-2 py-1 font-mono text-foreground/80 text-xs">
+                  {value}
+                </div>
+              </div>
+            ))}
+          </div>
+          <Docs.Alert type="warning">
+            {l.trans({
+              en: "A name no module registered fails the boot instead of being ignored, so a typo cannot quietly drop a module. Selection narrows the enabled set rather than replacing it, so it never turns on a module whose service is disabled. Endpoints of a module left out do not exist, so a client that calls one gets a 404.",
+              ko: "등록되지 않은 이름은 무시되지 않고 부팅을 실패시키므로, 오타 때문에 모듈이 조용히 빠지는 일은 없습니다. 선택은 활성화된 모듈 집합을 좁힐 뿐이라 service가 비활성화된 모듈을 켜지는 않습니다. 빠진 모듈의 endpoint는 존재하지 않으므로 클라이언트가 호출하면 404가 됩니다.",
+            })}
+          </Docs.Alert>
+        </Docs.Description>
+      </Scroll.Slide>
+      <Divider />
       <Scroll.Slide
         id="health-metrics-logs"
         title={l.trans({ en: "Health, Metrics, Logs", ko: "상태 확인, 메트릭, 로그" })}
@@ -505,12 +601,12 @@ void run();`}
             })}
           </div>
           <div className="space-y-1">
-            <div className="rounded-xl border border-base-300 bg-base-100 px-4">
+            <div className={panelRecipe({ padding: "row" })}>
               <div className="font-bold">{l.trans({ en: "Health", ko: "상태 확인" })}</div>
-              <div className="mt-2 text-base-content/70 text-sm leading-relaxed">
+              <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
-                  en: "Use this to check whether the gateway and server processes are running and ready.",
-                  ko: "게이트웨이와 서버 프로세스가 실행 중이고 준비되었는지 확인할 때 사용합니다.",
+                  en: "Use this to check whether the server processes are running and ready. A solo replica answers it itself, in the same shape the gateway uses, so a probe reads one contract either way.",
+                  ko: "서버 프로세스가 실행 중이고 준비되었는지 확인할 때 사용합니다. solo replica는 gateway와 같은 형태로 직접 응답하므로, probe는 두 경우 모두 같은 형식을 읽습니다.",
                 })}
               </div>
               <Code.Snippet
@@ -520,9 +616,9 @@ void run();`}
                 code={`curl http://localhost:8282/_akan/app/health`}
               />
             </div>
-            <div className="rounded-xl border border-base-300 bg-base-100 px-4">
+            <div className={panelRecipe({ padding: "row" })}>
               <div className="font-bold">{l.trans({ en: "Metrics", ko: "메트릭" })}</div>
-              <div className="mt-2 text-base-content/70 text-sm leading-relaxed">
+              <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
                   en: "Use this to see runtime counts such as active requests, WebSocket connections, rooms, and process metrics.",
                   ko: "활성 요청, 웹소켓 연결, room, 프로세스 지표 같은 런타임 수치를 확인할 때 사용합니다.",
@@ -535,9 +631,9 @@ void run();`}
                 code={`curl http://localhost:8282/_akan/app/metrics`}
               />
             </div>
-            <div className="rounded-xl border border-base-300 bg-base-100 px-4">
+            <div className={panelRecipe({ padding: "row" })}>
               <div className="font-bold">{l.trans({ en: "Logs", ko: "로그" })}</div>
-              <div className="mt-2 text-base-content/70 text-sm leading-relaxed">
+              <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
                   en: "Use AKAN_PUBLIC_LOG_LEVEL to choose how much detail appears in the terminal. AkanApp also stores gateway and child process output in runtime/logs by default, using AKAN_LOG_FILE_LEVEL for structured Logger output and rotating files by date and size.",
                   ko: "터미널에 어느 정도 자세한 로그를 볼지는 AKAN_PUBLIC_LOG_LEVEL로 조절합니다. AkanApp은 기본적으로 gateway와 child process 출력을 runtime/logs에 저장하며, structured Logger 출력은 AKAN_LOG_FILE_LEVEL 기준으로 저장하고 날짜와 크기 기준으로 파일을 회전합니다.",
@@ -553,7 +649,7 @@ AKAN_MEMORY_LOG=1
 AKAN_LOG_MAX_SIZE_MB=50
 AKAN_LOG_MAX_FILES=100`}
               />
-              <div className="mt-2 text-base-content/70 text-sm leading-relaxed">
+              <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                 {l.trans({
                   en: "File names include app name, environment, operation mode, local date, process key, and sequence. Direct console.log calls from child servers are captured through stdout/stderr pipes; direct gateway console.log calls are not part of Logger sink capture.",
                   ko: "파일명에는 app name, environment, operation mode, 로컬 날짜, process key, sequence가 포함됩니다. child server의 직접 console.log 호출은 stdout/stderr pipe를 통해 저장되지만, gateway process의 직접 console.log 호출은 Logger sink 캡처 대상이 아닙니다.",
@@ -564,7 +660,7 @@ AKAN_LOG_MAX_FILES=100`}
           <Docs.Mermaid
             title="Runtime checks"
             chart={`flowchart LR
-  developer[Developer] --> gateway[Akan App Gateway]
+  developer[Developer] --> gateway["Akan App<br/>(gateway or solo)"]
   gateway --> health["/_akan/app/health"]
   gateway --> metrics["/_akan/app/metrics"]
   gateway --> logs["Terminal Logs"]
@@ -580,7 +676,7 @@ AKAN_LOG_MAX_FILES=100`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

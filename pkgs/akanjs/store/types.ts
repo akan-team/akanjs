@@ -11,6 +11,11 @@ export interface Submit {
   times: number;
 }
 
+/** `agent: false` subscribes without joining the agent surface — the key stays out of what the screen publishes. */
+export interface StoreUseOptions {
+  agent?: boolean;
+}
+
 type IsAny<T> = 0 extends 1 & T ? true : false;
 type PickFunc<
   State,
@@ -35,6 +40,13 @@ export interface SetPick<State = any> {
 export type Get<State, Actions> = {
   get: () => State & Actions;
 };
+
+type VoidAction<T> = T extends (...args: infer Args) => infer Ret
+  ? [Ret] extends [PromiseLike<unknown>]
+    ? (...args: Args) => Promise<void>
+    : (...args: Args) => void
+  : T;
+export type VoidActions<Action> = { [K in keyof Action]: VoidAction<Action[K]> };
 
 export type StoreSliceMap<SlceCls extends SliceCls> = SlceCls[typeof SLICE_META];
 export type StoreSliceSuffix<SlceCls extends SliceCls, Suffix extends keyof StoreSliceMap<SlceCls>> = Suffix & string;

@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, cardGridRecipe, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -15,7 +15,7 @@ export default function Page() {
               ko: "앱과 라이브러리는 모두 asset 폴더를 가질 수 있습니다. 브라우저가 요청할 수 있는 파일은 public에 두고, 서버 코드만 읽어야 하는 파일은 private에 둡니다.",
             })}
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className={cardGridRecipe({ cols: "mdTwo" })}>
             {[
               {
                 title: "asset/public/",
@@ -32,15 +32,15 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
+              <div key={title} className={panelRecipe()}>
                 <div className="font-mono font-semibold text-primary">{title}</div>
-                <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+                <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="public-assets" title={l.trans({ en: "Public Assets", ko: "Public 애셋" })}>
         <Docs.Title>{l.trans({ en: "Public Assets", ko: "Public 애셋" })}</Docs.Title>
@@ -53,6 +53,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="public asset examples"
           language="bash"
           code={`apps/myapp/asset/public/docs/product-guide.pdf
@@ -66,6 +67,7 @@ apps/myapp/asset/public/images/hero.png
         />
 
         <Code.Snippet
+          className="w-full"
           title="Link to a PDF"
           code={`import { Link } from "akanjs/ui";              
 export function GetProductGuide() {
@@ -73,6 +75,7 @@ export function GetProductGuide() {
 }`}
         />
         <Code.Snippet
+          className="w-full"
           title="Fetch static JSON"
           code={`export async function loadSampleProducts() {
   const res = await fetch("/data/sample-products.json");
@@ -80,7 +83,7 @@ export function GetProductGuide() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="optimized-images" title={l.trans({ en: "Optimized Images", ko: "Optimized Image" })}>
         <Docs.Title>{l.trans({ en: "Optimized Images", ko: "Optimized Image" })}</Docs.Title>
@@ -93,6 +96,7 @@ export function GetProductGuide() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="HeroImage.tsx"
           code={`import { Image } from "akanjs/ui";
 
@@ -109,7 +113,7 @@ export function HeroImage() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="private-assets" title={l.trans({ en: "Private Assets", ko: "Private 애셋" })}>
         <Docs.Title>{l.trans({ en: "Private Assets", ko: "Private 애셋" })}</Docs.Title>
@@ -122,6 +126,7 @@ export function HeroImage() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="private asset examples"
           language="bash"
           code={`apps/myapp/asset/private/seed/products.json
@@ -129,6 +134,7 @@ apps/myapp/asset/private/model/yolo.onnx
 libs/shared/asset/private/recommendation/default-rules.json`}
         />
         <Code.Snippet
+          className="w-full"
           title="Load private JSON on the server"
           code={`export async function loadInitialProducts() {
   const file = Bun.file("./private/seed/products.json");
@@ -136,6 +142,7 @@ libs/shared/asset/private/recommendation/default-rules.json`}
 }`}
         />
         <Code.Snippet
+          className="w-full"
           title="Use a private model file on the server"
           code={`export async function detectObjects(image: ArrayBuffer) {
   const file = Bun.file("./private/model/yolo.onnx");
@@ -144,7 +151,7 @@ libs/shared/asset/private/recommendation/default-rules.json`}
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="library-asset-sync" title={l.trans({ en: "Library Asset Sync", ko: "라이브러리 애셋 sync" })}>
         <Docs.Title>{l.trans({ en: "Library Asset Sync", ko: "라이브러리 애셋 sync" })}</Docs.Title>
@@ -157,6 +164,7 @@ libs/shared/asset/private/recommendation/default-rules.json`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="library asset mapping"
           language="bash"
           code={`# Source in a library
@@ -176,6 +184,7 @@ dist/apps/myapp/public/libs/shared/banner/logo.png
 /libs/shared/banner/logo.png`}
         />
         <Code.Snippet
+          className="w-full"
           title="Use synced public library asset"
           code={`import { Image } from "akanjs/ui";
 
@@ -191,6 +200,7 @@ export function SharedLogo() {
 }`}
         />
         <Code.Snippet
+          className="w-full"
           title="Use synced private library asset"
           code={`export async function loadDefaultRules() {
   const file = Bun.file("./private/libs/shared/recommendation/default-rules.json");
@@ -198,7 +208,7 @@ export function SharedLogo() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -222,16 +232,16 @@ export function SharedLogo() {
                 ko: "여러 앱이 같은 파일을 사용한다면 library asset 폴더에 reusable public 파일로 둡니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
+              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {rule}
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

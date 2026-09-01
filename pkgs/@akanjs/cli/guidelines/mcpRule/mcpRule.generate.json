@@ -1,0 +1,25 @@
+{
+  "title": "MCP Exposure Rule",
+  "description": "How Akan signals reach AI agents over MCP — guard-derived exposure, refusals, prompts, and resources",
+  "group": "core",
+  "codegenPriority": 4,
+  "deprecated": false,
+  "scans": [
+    {
+      "type": "example",
+      "description": "Signal files whose slices and endpoints declare the guards MCP exposure is derived from",
+      "path": "{apps,libs}/*/lib/*/*.signal.ts",
+      "sample": 4
+    }
+  ],
+  "update": {
+    "filePath": "./mcpRule.instruction.md",
+    "contents": ["exposure rule", "configuration", "declaring endpoints", "refusals and wire behaviour", "prompts"],
+    "rules": [
+      "Use current Akan APIs only",
+      "State the rule before the reason, and keep the reason to one clause",
+      "Name the env spelling beside every option field",
+      "Keep it workspace-neutral — no app or repo names"
+    ]
+  }
+}

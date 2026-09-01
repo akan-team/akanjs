@@ -1,21 +1,26 @@
 "use client";
 import { PrimitiveRegistry } from "akanjs/base";
-// import { isGqlScalar } from "akanjs/base";
 import { fetch, usePage } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import { type ConstantCls, ConstantRegistry } from "akanjs/constant";
 import type { SerializedEndpoint } from "akanjs/signal";
-// import { Cnst, constantInfo } from "akanjs/constant";
-// import { fetch, makeRequestExample, SerializedEndpoint } from "akanjs/signal";
 import { useEffect, useMemo, useState } from "react";
 import { AiOutlineDisconnect, AiOutlineFileWord, AiOutlineSend, AiOutlineSwap } from "react-icons/ai";
 import { BiSolidNetworkChart } from "react-icons/bi";
+import { buttonRecipe } from "../Button";
+import { Collapse, dictText, docUi, Panel, Segmented } from "../Reference";
 import Arg from "./Arg";
+import { guardsOf } from "./endpointEntries";
 import Listener from "./Listener";
 import { makeRequestExample } from "./makeExample";
 import UiObject from "./Object";
 import Response from "./Response";
-import { getEndpointBadgeClassName, getGuardBadgeClassName, signalUi } from "./style";
+import { getGuardBadgeClassName, getWsBadgeClassName } from "./style";
+
+const messageViewItems = [
+  { key: "doc", label: "Reference", icon: <AiOutlineFileWord /> },
+  { key: "test", label: "Try it", icon: <BiSolidNetworkChart /> },
+] as const;
 
 export default function Message() {
   return <div></div>;
@@ -30,58 +35,37 @@ interface MessageEndpointProps {
 const MessageEndpoint = ({ refName, endpointKey, endpoint, open }: MessageEndpointProps) => {
   const { l } = usePage();
   const [viewStatus, setViewStatus] = useState<"doc" | "test">("doc");
+  const guards = guardsOf(endpoint);
+  const label = dictText(l, `${refName}.signal.${endpointKey}`);
+  const desc = dictText(l, `${refName}.signal.${endpointKey}.desc`);
   return (
-    <div className={signalUi.endpointCard}>
-      <input type="checkbox" defaultChecked={open} />
-      <div className="collapse-title">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className={getEndpointBadgeClassName(endpoint.type)}>{endpoint.type}</div>
-          <div className="font-bold text-lg">{endpointKey}</div>
-          <div className="text-base-content/70 text-sm">{l._(`${refName}.signal.${endpointKey}`)}</div>
-        </div>
-      </div>
-      <div className={signalUi.endpointContent}>
-        <div className="rounded-xl bg-base-100 p-3">
-          <div className={signalUi.sectionTitle}>Description</div>
-          {endpoint.guards?.some((guard) => guard !== "None") ? (
-            <div className="mt-2 flex flex-wrap items-center gap-2 font-normal text-sm">
-              <span className="text-base-content/70">Guards</span>
-              {endpoint.guards.map((guard) => (
+    <Collapse
+      open={open}
+      summary={
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={getWsBadgeClassName(endpoint.type)}>{endpoint.type}</span>
+            <span className="break-all font-medium font-mono text-sm">{endpointKey}</span>
+            <span className="ml-auto flex flex-wrap items-center gap-1.5">
+              {guards.map((guard) => (
                 <span className={getGuardBadgeClassName(guard)} key={guard}>
                   {guard}
                 </span>
               ))}
-            </div>
-          ) : null}
-          <div className="mt-2 font-normal text-base-content/70 text-sm">
-            {l._(`${refName}.signal.${endpointKey}.desc`)}
+            </span>
           </div>
+          {label ? <div className="text-foreground/55 text-sm">{label}</div> : null}
         </div>
-        <div className="join w-fit">
-          <button
-            onClick={() => {
-              setViewStatus("doc");
-            }}
-            className={`btn join-item btn-sm ${viewStatus === "doc" ? "btn-primary" : "btn-outline"}`}
-          >
-            <AiOutlineFileWord className="text-xl" /> View Doc
-          </button>
-          <button
-            onClick={() => {
-              setViewStatus("test");
-            }}
-            className={`btn join-item btn-sm ${viewStatus === "test" ? "btn-primary" : "btn-outline"}`}
-          >
-            <BiSolidNetworkChart className="text-xl" /> Message
-          </button>
-        </div>
-        {viewStatus === "doc" ? (
-          <MessageInterface refName={refName} endpointKey={endpointKey} endpoint={endpoint} />
-        ) : (
-          <MessageTry endpointKey={endpointKey} endpoint={endpoint} />
-        )}
-      </div>
-    </div>
+      }
+    >
+      {desc ? <p className={docUi.prose}>{desc}</p> : null}
+      <Segmented items={messageViewItems} onChange={setViewStatus} value={viewStatus} />
+      {viewStatus === "doc" ? (
+        <MessageInterface refName={refName} endpointKey={endpointKey} endpoint={endpoint} />
+      ) : (
+        <MessageTry endpointKey={endpointKey} endpoint={endpoint} />
+      )}
+    </Collapse>
   );
 };
 Message.Endpoint = MessageEndpoint;
@@ -96,38 +80,30 @@ const MessageInterface = ({ refName, endpointKey, endpoint }: MessageInterfacePr
   const uploadArgs = endpoint.args.filter((arg) => arg.refName === "Upload");
   const args = endpoint.args.filter((arg) => arg.refName !== "Upload");
   const isReturnModelType = !PrimitiveRegistry.has(returnRef);
+  const argSections = [
+    { label: "Form data", args: uploadArgs },
+    { label: "Variables", args },
+  ].filter((section) => section.args.length);
   return (
     <div className="flex flex-col gap-4">
-      {uploadArgs.length ? (
-        <div>
-          <div className={signalUi.sectionTitle}>Form data upload</div>
-          <div className={signalUi.tablePanel}>
-            <Arg.Table refName={refName} endpointKey={endpointKey} args={uploadArgs} />
+      {argSections.map((section) => (
+        <div className="flex flex-col gap-2" key={section.label}>
+          <div className={docUi.sectionLabel}>{section.label}</div>
+          <div className={docUi.tablePanel}>
+            <Arg.Table refName={refName} endpointKey={endpointKey} args={section.args} />
           </div>
         </div>
-      ) : null}
-      {args.length ? (
-        <div>
-          <div className={signalUi.sectionTitle}>Variables</div>
-          <div className={signalUi.tablePanel}>
-            <Arg.Table refName={refName} endpointKey={endpointKey} args={args} />
+      ))}
+      <div className="grid gap-3 md:grid-cols-2 md:items-start">
+        <Panel bodyClassName="max-h-none" label="Returns">
+          <div className="flex flex-col items-start gap-3">
+            <UiObject.Type objRef={returnRef} arrDepth={endpoint.returns.arrDepth ?? 0} />
+            {isReturnModelType ? (
+              <UiObject.Detail className="w-full border-0 bg-transparent" objRef={returnRef as ConstantCls} />
+            ) : null}
           </div>
-        </div>
-      ) : null}
-      <div className="font-bold text-lg">
-        <div className="flex w-full flex-col gap-2 rounded-md font-normal md:flex-row">
-          <div className="w-full md:w-1/2">
-            <div className={signalUi.sectionTitle}>Response Type</div>
-            <div className="max-h-[500px] overflow-auto rounded-xl bg-base-100 p-4 md:h-[500px]">
-              Returns: <UiObject.Type objRef={returnRef} arrDepth={endpoint.returns.arrDepth ?? 0} />
-              {isReturnModelType ? <UiObject.Detail objRef={returnRef as ConstantCls} /> : null}
-            </div>
-          </div>
-          <div className="w-full md:w-1/2">
-            <div className={signalUi.sectionTitle}>Response Example</div>
-            <Response.Example endpoint={endpoint} />
-          </div>
-        </div>
+        </Panel>
+        <Response.Example endpoint={endpoint} />
       </div>
     </div>
   );
@@ -193,57 +169,46 @@ const MessageTry = ({ endpointKey, endpoint }: MessageTryProps) => {
 
   return (
     <div className="flex w-full flex-col gap-4">
-      <div>
-        <div className="grid gap-2 lg:grid-cols-2">
-          <div>
-            <div className={signalUi.sectionTitle}>Variables</div>
-            <div className="w-full items-center justify-center">
-              <Arg.Json
-                value={gqlRequest}
-                onChange={(value: string) => {
-                  setGqlRequest(value);
-                }}
-              />
-            </div>
-          </div>
-          {/* <div>
-              <div className="text-lg">Message String</div>
-              <div className="w-full items-center justify-center">
-                <Request.Example value={gqlStr} />
-              </div>
-            </div> */}
-        </div>
-        <div className="relative flex items-start justify-center gap-2">
-          <div className="flex w-full flex-col gap-2">
-            <button
-              disabled={!!stopListen}
-              className="btn btn-primary w-full"
-              onClick={() => {
-                onListen();
-              }}
-            >
-              <AiOutlineSwap className="" /> Listen Message
-            </button>
-            <button disabled={!stopListen} className="btn btn-secondary w-full" onClick={() => void onSend()}>
-              <AiOutlineSend className="" /> Send Message
-            </button>
-            <button
-              disabled={!stopListen}
-              className="btn btn-outline w-full"
-              onClick={() => {
-                onStopListen();
-              }}
-            >
-              <AiOutlineDisconnect className="" /> Stop Listen Message
-            </button>
-          </div>
-        </div>
+      <div className="flex flex-col gap-2">
+        <div className={docUi.sectionLabel}>Variables</div>
+        <Arg.Json
+          value={gqlRequest}
+          onChange={(value: string) => {
+            setGqlRequest(value);
+          }}
+        />
       </div>
-
-      <div>
-        <div className={signalUi.sectionTitle}>Response</div>
-        <Listener.Result status={response.status} data={messages} />
+      <div className="grid gap-2 md:grid-cols-3">
+        <button
+          disabled={!!stopListen}
+          className={buttonRecipe({ variant: "primary" }, "w-full")}
+          onClick={() => {
+            onListen();
+          }}
+          type="button"
+        >
+          <AiOutlineSwap /> Listen
+        </button>
+        <button
+          disabled={!stopListen}
+          className={buttonRecipe({ variant: "secondary" }, "w-full")}
+          onClick={() => void onSend()}
+          type="button"
+        >
+          <AiOutlineSend /> Send
+        </button>
+        <button
+          disabled={!stopListen}
+          className={buttonRecipe({ variant: "outline" }, "w-full")}
+          onClick={() => {
+            onStopListen();
+          }}
+          type="button"
+        >
+          <AiOutlineDisconnect /> Stop
+        </button>
       </div>
+      <Listener.Result status={response.status} data={messages} />
     </div>
   );
 };

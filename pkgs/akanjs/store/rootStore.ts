@@ -1,5 +1,6 @@
-import type { ACTION_META, Cls, STATE_DERIVED_META, STATE_INIT_META, STATE_META } from "akanjs/base";
+import type { ACTION_META, ACTION_OWNER_META, Cls, STATE_DERIVED_META, STATE_INIT_META, STATE_META } from "akanjs/base";
 import type { SerializedSlice } from "akanjs/signal";
+import type { ActionOwner } from "./actionTag";
 import type { StateDerivedMeta, StateInitializerMap } from "./stateBuilder";
 import type { SetGetWritable } from "./types";
 
@@ -20,6 +21,7 @@ export type RootStoreCls<
     [STATE_INIT_META]: StateInitializerMap;
     [STATE_DERIVED_META]: StateDerivedMeta;
     [ACTION_META]: { [key: string]: (...args: any[]) => any };
+    [ACTION_OWNER_META]: { [key: string]: ActionOwner };
     slice: { [key: string]: { [key: string]: SerializedSlice } };
     _slice: SliceInfoObj;
   }

@@ -21,6 +21,45 @@ describe("AppWsData", () => {
     expect(data.createdAt).toBeGreaterThan(0);
   });
 
+  test("keeps the forwarded set, which is the only record of who connected", () => {
+    const data = AppWsData.fromRequest(
+      new Request("http://localhost/api/ws", {
+        headers: {
+          "x-real-ip": "203.0.113.10",
+          "x-forwarded-for": "203.0.113.10, 10.0.0.5",
+          "x-forwarded-port": "54321",
+          "x-secret": "should-not-be-kept",
+        },
+      }),
+    );
+
+    expect(data.ip).toBe("203.0.113.10");
+    expect(data.port).toBe(54321);
+    expect(data.headers.get("x-secret")).toBeNull();
+  });
+
+  test("falls back to the socket peer only when nothing proxied the handshake", () => {
+    const data = AppWsData.fromRequest(new Request("http://localhost/api/ws"));
+    const peer = { remoteAddress: "::ffff:198.51.100.7" } as Bun.ServerWebSocket<unknown>;
+
+    expect(data.ip).toBeNull();
+    expect(data.ipOf(peer)).toBe("198.51.100.7");
+  });
+
+  test("mints one socketId per connection and keeps it across a credential swap", () => {
+    const data = AppWsData.fromRequest(new Request("http://localhost/api/ws"));
+    const other = AppWsData.fromRequest(new Request("http://localhost/api/ws"));
+    const { socketId } = data;
+
+    expect(socketId).toBeTruthy();
+    expect(other.socketId).not.toBe(socketId);
+
+    AppWsData.applyCredential(data, "next-token");
+    AppWsData.applyCredential(data, null);
+
+    expect(data.socketId).toBe(socketId);
+  });
+
   test("replaces the credential and drops the cached account", () => {
     const data = AppWsData.fromRequest(new Request("http://localhost/api/ws"));
     data.account = { role: "user" };

@@ -1,6 +1,7 @@
 "use client";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { useLexicalEditable } from "@lexical/react/useLexicalEditable";
+import { buttonRecipe } from "@libs/util/ui";
 import type { NodeKey } from "lexical";
 import type { JSX, SyntheticEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -182,7 +183,7 @@ export const ExcalidrawComponent = ({
             onClick={() => {
               if (editable) setOpen(true);
             }}
-            className="flex h-40 w-80 max-w-full flex-col items-center justify-center gap-2 rounded-md border border-base-content/20 border-dashed bg-base-200/40 text-base-content/50"
+            className="flex h-40 w-80 max-w-full flex-col items-center justify-center gap-2 rounded-md border border-foreground/20 border-dashed bg-muted/40 text-foreground/50"
           >
             <AiOutlineEdit className="text-3xl" />
             <span className="text-sm">{editable ? "Click to draw" : "No drawing"}</span>
@@ -226,14 +227,14 @@ export const ExcalidrawModal = ({
   // toolbars cover the Save/Cancel header. Same pattern as CalloutPlugin.
   if (typeof document === "undefined") return null;
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex flex-col bg-base-100 text-base-content">
-      <div className="relative z-10 flex items-center justify-between border-base-content/10 border-b bg-base-100 px-4 py-3">
+    <div className="fixed inset-0 z-[9999] flex flex-col bg-background text-foreground">
+      <div className="relative z-10 flex items-center justify-between border-foreground/10 border-b bg-background px-4 py-3">
         <div className="font-semibold">Edit Excalidraw</div>
         <div className="flex gap-2">
-          <button type="button" className="btn btn-sm btn-ghost" onClick={onCancel}>
+          <button type="button" className={buttonRecipe({ size: "sm", variant: "ghost" })} onClick={onCancel}>
             Cancel
           </button>
-          <button type="button" className="btn btn-sm btn-primary" onClick={onSave}>
+          <button type="button" className={buttonRecipe({ size: "sm", variant: "primary" })} onClick={onSave}>
             Save
           </button>
         </div>
@@ -255,7 +256,7 @@ export const ExcalidrawModal = ({
             }}
           />
         ) : (
-          <div className="flex size-full items-center justify-center text-base-content/50">Loading Excalidraw…</div>
+          <div className="flex size-full items-center justify-center text-foreground/50">Loading Excalidraw…</div>
         )}
       </div>
     </div>,

@@ -121,7 +121,7 @@ export const dragableTouchmove = (
   lastLocation: { x: number; y: number; time: number },
 ) => {
   const pos = { x: coordinates.x + offset.x, y: coordinates.y + offset.y };
-  const newLocation = { x: pos.x, y: pos.y, time: new Date().getTime() };
+  const newLocation = { x: pos.x, y: pos.y, time: Date.now() };
   const translation = translationString(pos.x, pos.y);
   const rotCalc = calcSpeed(lastLocation, newLocation).x / 1000;
   const rotation = rotationString(rotCalc * settings.maxTilt);

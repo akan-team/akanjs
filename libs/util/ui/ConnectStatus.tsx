@@ -1,4 +1,4 @@
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 
 interface ConnectStatusProps {
   className?: string;
@@ -20,27 +20,25 @@ export const ConnectStatus = ({
   return (
     <div className="relative grid place-items-center">
       <div
-        data-tip={tooltip}
-        className={clsx(
+        title={tooltip}
+        className={cn(
           `size-1.5 rounded-full`,
-          {
-            tooltip: !!tooltip,
-            "bg-success": conn === "healthy",
-            [connectedClassName ?? ""]: conn === "healthy",
-            "bg-warning": conn === "unhealthy",
-            [unhealthyClassName ?? ""]: conn === "unhealthy",
-            "bg-gray-300": conn === "disconnected",
-            [disconnectedClassName ?? ""]: conn === "disconnected",
-          },
+          conn === "healthy" && "bg-success",
+          conn === "healthy" && (connectedClassName ?? ""),
+          conn === "unhealthy" && "bg-warning",
+          conn === "unhealthy" && (unhealthyClassName ?? ""),
+          conn === "disconnected" && "bg-muted",
+          conn === "disconnected" && (disconnectedClassName ?? ""),
           className,
         )}
       />
       {conn !== "disconnected" ? (
         <span
-          className={clsx("loading loading-ring loading-xs absolute", {
-            "text-success": conn === "healthy",
-            "text-warning": conn === "unhealthy",
-          })}
+          className={cn(
+            "absolute size-4 animate-spin",
+            conn === "healthy" && "text-success",
+            conn === "unhealthy" && "text-warning",
+          )}
         />
       ) : null}
     </div>

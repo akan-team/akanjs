@@ -17,7 +17,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [
   return `
 import { FetchClient, type FetchClientType } from "akanjs/fetch";
 import { SignalRegistry, serverSignal${libs.length === 0 ? ", fetch as base" : ""} } from "akanjs/signal";
-${libs.map((lib) => `import { fetch as ${lib} } from "@libs/${lib}/server";`).join("\n")}
+${libs.map((lib) => `import { fetch as ${lib} } from "@libs/${lib}/lib/sig";`).join("\n")}
 
 ${[...scanInfo.database.entries()]
   .filter(([_, files]) => files.has("signal"))

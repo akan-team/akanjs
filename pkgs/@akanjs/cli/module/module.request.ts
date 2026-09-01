@@ -168,9 +168,9 @@ export const requestTemplate = ({
 	 코딩 규칙
 		 - 라이브러리 사용
 		 - 아이콘: react-icons 라이브러리 사용
-		 - CSS: tailwind, DaisyUI(card/hero 같은 복잡한 컴포넌트 사용 X) 사용
+		 - CSS: tailwind + akanjs/ui 프리미티브(Button/Badge/Input 등) + 시맨틱 토큰(bg-background/text-foreground/bg-primary 등) 사용 (DaisyUI 금지)
 		 - Ui Component: @util/ui 라이브러리 사용
-		 - 조건부 클래스: clsx 라이브러리 사용
+		 - 조건부 클래스: cn 함수 사용 (akanjs/client, cond && 'x' 형태 — 객체 문법 없음)
 	 코드 스타일
 		 - 색상: 하드코딩(bg-red) 대신 테마 색상(bg-primary) 사용
 		 - 조건부 렌더링: field && <div>... 대신 field ? <div>... : null 사용
@@ -231,9 +231,9 @@ export const requestView = ({
 	 코딩 규칙
 		 - 라이브러리 사용
 		 - 아이콘: react-icons 라이브러리 사용
-		 - CSS: tailwind, DaisyUI(card/hero 같은 복잡한 컴포넌트 사용 X) 사용
+		 - CSS: tailwind + akanjs/ui 프리미티브(Button/Badge/Input 등) + 시맨틱 토큰(bg-background/text-foreground/bg-primary 등) 사용 (DaisyUI 금지)
 		 - Ui Component: @util/ui 라이브러리 사용
-		 - 조건부 클래스: clsx 라이브러리 사용
+		 - 조건부 클래스: cn 함수 사용 (akanjs/client, cond && 'x' 형태 — 객체 문법 없음)
 	 코드 스타일
 		 - 색상: 하드코딩(bg-red) 대신 테마 색상(bg-primary) 사용
 		 - 조건부 렌더링: field && <div>... 대신 field ? <div>... : null 사용
@@ -298,9 +298,9 @@ export const requestUnit = ({
 	 코딩 규칙
 		 - 라이브러리 사용
 		 - 아이콘: react-icons 라이브러리 사용
-		 - CSS: tailwind, DaisyUI(card/hero 같은 복잡한 컴포넌트 사용 X) 사용
+		 - CSS: tailwind + akanjs/ui 프리미티브(Button/Badge/Input 등) + 시맨틱 토큰(bg-background/text-foreground/bg-primary 등) 사용 (DaisyUI 금지)
 		 - Ui Component: @util/ui 라이브러리 사용
-		 - 조건부 클래스: clsx 라이브러리 사용
+		 - 조건부 클래스: cn 함수 사용 (akanjs/client, cond && 'x' 형태 — 객체 문법 없음)
 	 코드 스타일
 		 - 색상: 하드코딩(bg-red) 대신 테마 색상(bg-primary) 사용
 		 - 조건부 렌더링: field && <div>... 대신 field ? <div>... : null 사용
