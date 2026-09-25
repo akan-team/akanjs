@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, cardGridRecipe, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
+import { Code, Docs } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -23,7 +23,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="what-belongs" title={l.trans({ en: "What Belongs In Srvkit", ko: "Srvkit에 두는 것" })}>
         <Docs.Title>{l.trans({ en: "What Belongs In srvkit/", ko: "srvkit/ 에 두는 것" })}</Docs.Title>
@@ -72,19 +72,19 @@ export default function Page() {
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className={panelRecipe()}>
-              <div className="font-bold text-foreground">{title}</div>
-              <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
+            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
+              <div className="font-bold text-base-content">{title}</div>
+              <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
             </div>
           ))}
         </div>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="server-level-appliance" title={l.trans({ en: "Server Level Appliance", ko: "서버 레벨 적용" })}>
         <Docs.Title>{l.trans({ en: "Server Level Appliance", ko: "서버 레벨 적용" })}</Docs.Title>
         <div className="space-y-6">
-          <div className={panelRecipe({ radius: "2xl" })}>
+          <div className="rounded-2xl border border-base-300 bg-base-100 p-4">
             <Docs.Description>
               <div>
                 {l.trans({
@@ -109,9 +109,9 @@ Middleware --> SignalEndpoint["Signal endpoint"]`}
               />
             </div>
           </div>
-          <div className={panelRecipe({ radius: "2xl" })}>
+          <div className="rounded-2xl border border-base-300 bg-base-100 p-4">
             <Docs.Description>
-              <div className="font-bold text-foreground">Middleware</div>
+              <div className="font-bold text-base-content">Middleware</div>
               <div>
                 {l.trans({
                   en: "Middleware runs around signal requests and can attach server-derived values to the request context before business logic runs.",
@@ -120,7 +120,6 @@ Middleware --> SignalEndpoint["Signal endpoint"]`}
               </div>
             </Docs.Description>
             <Code.Snippet
-              className="w-full"
               title="srvkit/middlewares.ts"
               code={`import type { Middleware, SignalContext } from "akanjs/signal";
 
@@ -137,9 +136,9 @@ export class RequestUserMiddleware implements Middleware {
 }`}
             />
           </div>
-          <div className={panelRecipe({ radius: "2xl" })}>
+          <div className="rounded-2xl border border-base-300 bg-base-100 p-4">
             <Docs.Description>
-              <div className="font-bold text-foreground">WebProxy</div>
+              <div className="font-bold text-base-content">WebProxy</div>
               <div>
                 {l.trans({
                   en: "WebProxy runs before the web request reaches the page. Use it when you need redirects, rewrites, or request header changes for routing and rendering.",
@@ -148,7 +147,6 @@ export class RequestUserMiddleware implements Middleware {
               </div>
             </Docs.Description>
             <Code.Snippet
-              className="w-full"
               title="srvkit/webProxies.ts"
               code={`import type { WebProxy } from "akanjs/server";
 
@@ -162,9 +160,9 @@ export class LegacyPageRedirect implements WebProxy {
 }`}
             />
           </div>
-          <div className={panelRecipe({ radius: "2xl" })}>
+          <div className="rounded-2xl border border-base-300 bg-base-100 p-4">
             <Docs.Description>
-              <div className="font-bold text-foreground">Apply Them In Options</div>
+              <div className="font-bold text-base-content">Apply Them In Options</div>
               <div>
                 {l.trans({
                   en: "After declaring them in srvkit, register middleware and web proxies in the app or library option chain.",
@@ -173,7 +171,6 @@ export class LegacyPageRedirect implements WebProxy {
               </div>
             </Docs.Description>
             <Code.Snippet
-              className="w-full"
               title="lib/option.ts"
               code={`export const option = new AkanOption()
   .applyMiddleware(RequestUserMiddleware)
@@ -182,7 +179,7 @@ export class LegacyPageRedirect implements WebProxy {
           </div>
         </div>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide
         id="signal-level-appliance"
@@ -190,7 +187,7 @@ export class LegacyPageRedirect implements WebProxy {
       >
         <Docs.Title>{l.trans({ en: "Signal Level Appliance", ko: "Signal 레벨 적용" })}</Docs.Title>
         <div className="space-y-6">
-          <div className={panelRecipe({ radius: "2xl" })}>
+          <div className="rounded-2xl border border-base-300 bg-base-100 p-4">
             <Docs.Description>
               <div>
                 {l.trans({
@@ -215,9 +212,9 @@ Exec --> Service["Service logic"]`}
               />
             </div>
           </div>
-          <div className={panelRecipe({ radius: "2xl" })}>
+          <div className="rounded-2xl border border-base-300 bg-base-100 p-4">
             <Docs.Description>
-              <div className="font-bold text-foreground">Guard</div>
+              <div className="font-bold text-base-content">Guard</div>
               <div>
                 {l.trans({
                   en: "A Guard checks whether a request can run a signal. Use it for authentication, role checks, ownership checks, or any server-side request protection.",
@@ -225,9 +222,8 @@ Exec --> Service["Service logic"]`}
                 })}
               </div>
             </Docs.Description>
-            <div className={cardGridRecipe()}>
+            <div className="grid gap-3 xl:grid-cols-2">
               <Code.Snippet
-                className="w-full"
                 title="srvkit/guards.ts"
                 code={`import type { Guard, SignalContext } from "akanjs/signal";
 
@@ -241,7 +237,6 @@ export class SignedIn implements Guard {
 }`}
               />
               <Code.Snippet
-                className="w-full"
                 title="order.signal.ts"
                 code={`import { SignedIn } from "@apps/myapp/srvkit";
 export class OrderEndpoint extends endpoint(srv.order, ({ pubsub, query, mutation }) => ({
@@ -254,9 +249,9 @@ export class OrderEndpoint extends endpoint(srv.order, ({ pubsub, query, mutatio
               />
             </div>
           </div>
-          <div className={panelRecipe({ radius: "2xl" })}>
+          <div className="rounded-2xl border border-base-300 bg-base-100 p-4">
             <Docs.Description>
-              <div className="font-bold text-foreground">InternalArg</div>
+              <div className="font-bold text-base-content">InternalArg</div>
               <div>
                 {l.trans({
                   en: "An InternalArg reads request or websocket context and adds a server-derived value to the signal exec arguments. Use it when business logic needs context data without asking the client to send it.",
@@ -264,9 +259,8 @@ export class OrderEndpoint extends endpoint(srv.order, ({ pubsub, query, mutatio
                 })}
               </div>
             </Docs.Description>
-            <div className={cardGridRecipe()}>
+            <div className="grid gap-3 xl:grid-cols-2">
               <Code.Snippet
-                className="w-full"
                 title="srvkit/internalArgs.ts"
                 code={`import type { InternalArg, SignalContext } from "akanjs/signal";
 
@@ -277,7 +271,6 @@ export class CurrentUserId implements InternalArg {
 }`}
               />
               <Code.Snippet
-                className="w-full"
                 title="signal exec shape"
                 code={`import { SignedIn } from "@apps/myapp/srvkit";
 export class OrderEndpoint extends endpoint(srv.order, ({ pubsub, query, mutation }) => ({
@@ -293,7 +286,7 @@ export class OrderEndpoint extends endpoint(srv.order, ({ pubsub, query, mutatio
           </div>
         </div>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide
         id="service-logic"
@@ -310,9 +303,8 @@ export class OrderEndpoint extends endpoint(srv.order, ({ pubsub, query, mutatio
             })}
           </div>
         </Docs.Description>
-        <div className={cardGridRecipe()}>
+        <div className="grid gap-3 xl:grid-cols-2">
           <Code.Snippet
-            className="w-full"
             title="srvkit/createHash.ts"
             code={`import { createHash } from "crypto";
 
@@ -321,7 +313,6 @@ export function createOrderHash(orderId: string) {
 }`}
           />
           <Code.Snippet
-            className="w-full"
             title="srvkit/EmailClient.ts"
             code={`import { Mailer } from "some-mail-provider";
 
@@ -338,7 +329,6 @@ export class EmailClient {
 }`}
           />
           <Code.Snippet
-            className="w-full"
             title="option.ts"
             code={`import { EmailClient } from "../srvkit";
 
@@ -348,7 +338,6 @@ export const option = new AkanOption()
   }));`}
           />
           <Code.Snippet
-            className="w-full"
             title="order.service.ts"
             code={`import { createOrderHash, type EmailClient } from "../srvkit";
 
@@ -363,7 +352,7 @@ export class OrderService extends serve(db.order, ({ use }) => ({
           />
         </div>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="adaptor-plug" title={l.trans({ en: "Adaptor And plug", ko: "Adaptor와 plug" })}>
         <Docs.Title>{l.trans({ en: "Adaptor And plug", ko: "Adaptor와 plug" })}</Docs.Title>
@@ -375,9 +364,8 @@ export class OrderService extends serve(db.order, ({ use }) => ({
             })}
           </div>
         </Docs.Description>
-        <div className={cardGridRecipe()}>
+        <div className="grid gap-3 xl:grid-cols-2">
           <Code.Snippet
-            className="w-full"
             title="srvkit/paymentApi.ts"
             code={`import { adapt } from "akanjs/service";
 
@@ -397,7 +385,6 @@ export class PaymentApi extends adapt("paymentApi", ({ env }) => ({
 }`}
           />
           <Code.Snippet
-            className="w-full"
             title="order.service.ts"
             code={`import { PaymentApi } from "../srvkit";
 import { serve } from "akanjs/service";
@@ -412,7 +399,7 @@ export class OrderService extends serve(db.order, ({ plug }) => ({
           />
         </div>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -440,16 +427,16 @@ export class OrderService extends serve(db.order, ({ plug }) => ({
                 ko: "앱 전용 연동은 app srvkit에, 재사용 가능한 연동은 library srvkit에 둡니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
+              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
                 {rule}
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
-      <DocsToc />
+      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>
   );
 }

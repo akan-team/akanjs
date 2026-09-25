@@ -1,0 +1,17 @@
+---
+description: Akan.js monorepo structure and ownership conventions
+alwaysApply: true
+---
+
+# Repo Overview
+
+- Akan.js is a full-stack TypeScript framework for building all-stack applications at once.
+- Write one line and deploy across web, app, server, database, and infrastructure.
+- Akan prioritizes actual business code by abstracting technical implementation details as much as possible.
+- The goal is minimal code, high performance, and type-safe services that can deploy to web, mobile, server, and DB infrastructure together.
+- This is a Bun-first Akan.js monorepo.
+- Main top-level areas are `apps/`, `libs/`, `pkgs/`, and `infra/`.
+- `apps/<app>` contains app-level pages, domain code, UI, env files, and `akan.config.ts`.
+- `libs/*` contains shared domain and utility libraries.
+- `pkgs/akanjs/*` contains framework, runtime, and tooling facets published through the single `akanjs` package. Prefer extending existing Akan facets before adding new framework-level patterns.
+- `infra/` contains Helm, deployment templates, edge configs, and Jenkins env/secret scripts.

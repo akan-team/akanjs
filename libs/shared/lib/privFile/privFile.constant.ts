@@ -4,9 +4,9 @@ import { via } from "akanjs/constant";
 import { FileStatus } from "../file/file.constant";
 
 export class PrivFileInput extends via((field) => ({
-  alias: field(String, { text: "title" }),
+  alias: field(String),
   filename: field.hidden(String).optional(),
-  mimetype: field(String, { text: "filter" }),
+  mimetype: field(String),
   encoding: field(String),
   privatePath: field.hidden(String).optional(),
   size: field(Int, { default: 0 }),

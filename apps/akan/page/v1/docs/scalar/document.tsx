@@ -63,7 +63,7 @@ export default function Page() {
           </div>
         </div>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <div className="divider" />
 
       <Scroll.Slide
         id="basic-syntax"
@@ -141,7 +141,7 @@ export class YourScalar extends by(cnst.YourScalar) {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <div className="divider" />
 
       <Scroll.Slide
         id="minimal-document"
@@ -169,7 +169,7 @@ import * as cnst from "./price.constant";
 
 export class Price extends by(cnst.Price) {}`}
           />
-          <div className="my-4 flex items-center gap-2 rounded-box border border-info/30 bg-info/10 p-4">
+          <div className="alert alert-info my-4">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
@@ -192,7 +192,7 @@ export class Price extends by(cnst.Price) {}`}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <div className="divider" />
 
       <Scroll.Slide
         id="adding-methods"
@@ -284,7 +284,7 @@ export class Price extends by(cnst.Price) {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <div className="divider" />
 
       <Scroll.Slide
         id="method-examples"
@@ -333,7 +333,7 @@ export class Price extends by(cnst.Price) {
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <div className="divider" />
 
       <Scroll.Slide
         id="constant-vs-document"
@@ -413,7 +413,7 @@ export class Price extends via((field) => ({
   }
 }`}
           />
-          <div className="my-4 flex items-center gap-2 rounded-box border border-warning/30 bg-warning/10 p-4">
+          <div className="alert alert-warning my-4">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="h-6 w-6 shrink-0 stroke-current"
@@ -436,7 +436,7 @@ export class Price extends via((field) => ({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <div className="divider" />
 
       <Scroll.Slide
         id="best-practices"
@@ -526,7 +526,7 @@ export class Price extends via((field) => ({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <div className="divider" />
 
       <Scroll.Slide
         id="checklist"
@@ -542,7 +542,7 @@ export class Price extends via((field) => ({
           })}
         </Docs.Title>
         <Docs.Description>
-          <div className="rounded-lg bg-muted p-4">
+          <div className="rounded-lg bg-base-200 p-4">
             <ul className="space-y-2">
               {[
                 l.trans({
@@ -579,11 +579,7 @@ export class Price extends via((field) => ({
                 }),
               ].map((item, index) => (
                 <li key={index} className="flex items-start">
-                  <input
-                    type="checkbox"
-                    className="mt-1 mr-2 size-4 rounded border border-input accent-primary"
-                    readOnly
-                  />
+                  <input type="checkbox" className="checkbox checkbox-primary mt-1 mr-2" readOnly />
                   <span>{item}</span>
                 </li>
               ))}
@@ -619,7 +615,7 @@ export class Price extends via((field) => ({
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="my-4 h-px w-full bg-border" />
+      <div className="divider" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

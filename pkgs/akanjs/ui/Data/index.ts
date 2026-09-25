@@ -1,14 +1,4 @@
-import {
-  CardList,
-  Dashboard,
-  Insight,
-  Item,
-  ListContainer,
-  Pagination,
-  QueryMaker,
-  RefPicker,
-  TableList,
-} from "./index_";
+import { CardList, Dashboard, Insight, Item, ListContainer, Pagination, TableList } from "./index_";
 
 export const Data = {
   CardList,
@@ -17,7 +7,6 @@ export const Data = {
   Item,
   ListContainer,
   Pagination,
-  QueryMaker,
-  RefPicker,
   TableList,
+  // QueryMaker,
 };

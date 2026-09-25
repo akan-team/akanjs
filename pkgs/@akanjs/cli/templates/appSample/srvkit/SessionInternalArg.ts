@@ -15,9 +15,8 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { a
 
 export class CurrentUserId implements InternalArg<string | null> {
   getArg(context: SignalContext): string | null {
-    // \`context.get\` reads what the account middleware resolved, on every transport. Branching on
-    // \`getHttpContext()\` would return null for the same caller arriving over a websocket or MCP.
-    return context.get<{ id?: string }>("account")?.id ?? null;
+    const user = context.getHttpContext<{ user?: { id: string } }>().req.user;
+    return user?.id ?? null;
   }
 }
 
@@ -25,7 +24,7 @@ export class CurrentUserId implements InternalArg<string | null> {
 // Inject current session language/locale
 // export class CurrentLocale implements InternalArg<string> {
 //   getArg(context: SignalContext): string {
-//     return context.get<string>("locale") ?? "en";
+//     return context.getHttpContext<{ locale?: string }>().req.locale ?? "en";
 //   }
 // }
 `,

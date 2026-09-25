@@ -18,8 +18,5 @@ export * from "./routeClientBuilder";
 export * from "./routesManifestArtifactSerializer";
 export * from "./sourceMtimeIndex";
 export * from "./ssrBaseArtifactBuilder";
-export * from "./styleContract";
-export * from "./styleGuard";
-export * from "./themeValidator";
 export * from "./vendorSpecifiers";
 export * from "./watchRootResolver";

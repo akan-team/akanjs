@@ -1,11 +1,5 @@
 export { applyMixins } from "./applyMixins";
 export { capitalize } from "./capitalize";
-export {
-  clientAddressFromHeaders,
-  clientPortFromHeaders,
-  forwardedHeaders,
-  normalizeIpAddress,
-} from "./clientAddress";
 export { deepObjectify } from "./deepObjectify";
 export {
   type FileUploadCapability,
@@ -21,7 +15,6 @@ export { isDayjs } from "./isDayjs";
 export { isEmail } from "./isEmail";
 export { isPhoneNumber } from "./isPhoneNumber";
 export { isQueryEqual } from "./isQueryEqual";
-export { isThenable } from "./isThenable";
 export { isValidDate } from "./isValidDate";
 export { decodeJwtPayload } from "./jwtDecode";
 export { Logger, type LoggerSink, type LoggerSinkEntry, type LogLevel } from "./Logger";
@@ -33,37 +26,21 @@ export {
   resolveAkanI18nConfig,
 } from "./localeConfig";
 export { lowerlize } from "./lowerlize";
-export {
-  isMcpDescribableArg,
-  type McpExposureEndpoint,
-  type McpExposureOption,
-  mcpBaseVerbOf,
-  mcpHintsOf,
-  mcpPromptRefusalOf,
-  mcpRefusalOf,
-} from "./mcpExposure";
 export { mergeVersion } from "./mergeVersion";
 export { objectify } from "./objectify";
 export { pathGet } from "./pathGet";
-export { pathGetLoose } from "./pathGetLoose";
 export { pathSet } from "./pathSet";
 export { randomPick } from "./randomPick";
 export { randomPicks } from "./randomPicks";
 export {
   assertUniqueRoutePatterns,
   compareRouteSpecificity,
-  getPageSourceFileViolation,
-  getRouteExports,
   isRouteSourceFile,
   isSpecialRouteLeaf,
-  LAYOUT_ROUTE_EXPORTS,
   matchRoutePattern,
   normalizeRoutePattern,
-  PAGE_ROUTE_EXPORTS,
   type ParsedRouteModuleKey,
   parseRouteModuleKey,
-  RESERVED_ROUTE_CONFIG_EXPORTS,
-  ROOT_LAYOUT_ROUTE_EXPORTS,
   type RouteModuleKind,
   routeSegmentToPatternPart,
   routeSegmentToTreePath,
@@ -82,4 +59,3 @@ export {
   type WebsocketAuthRequest,
   websocketAuthContract,
 } from "./websocketAuth";
-export { type WebsocketBinaryFrame, websocketBinaryFrameContract } from "./websocketBinaryFrame";

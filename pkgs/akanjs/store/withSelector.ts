@@ -1,9 +1,8 @@
 import type { Prettify } from "akanjs/base";
 import type { FieldState } from "akanjs/constant";
 import type { RefObject } from "react";
-import type { StAgentic } from "./agentic";
 import type { RootStoreCls } from "./rootStore";
-import type { SliceStateAction, StoreUseOptions, VoidActions } from "./types";
+import type { SliceStateAction } from "./types";
 
 type SetKey<Key extends string> = `set${Capitalize<Key>}`;
 
@@ -12,7 +11,7 @@ export type WithSelectors<RtStoreCls extends RootStoreCls> =
     ? WithSelectorsOf<State, WritableState, Action, InternalSliceObj>
     : never;
 
-type WithSelectorsOf<State, WritableState, Action, InternalSliceObj> = StAgentic & {
+type WithSelectorsOf<State, WritableState, Action, InternalSliceObj> = {
   sub: {
     (listener: (state: State, prev: State) => void): () => void;
     <U>(
@@ -27,9 +26,9 @@ type WithSelectorsOf<State, WritableState, Action, InternalSliceObj> = StAgentic
   ref: <U>(selector: (state: State) => U) => RefObject<U>;
   sel: <U>(selector: (state: State) => U, equals?: (a: U, b: U) => boolean) => U;
   use: {
-    [K in keyof State]: (options?: StoreUseOptions) => State[K];
+    [K in keyof State]: () => State[K];
   };
-  do: VoidActions<Action> & {
+  do: Action & {
     [K in keyof WritableState as K extends string ? SetKey<K> : never]: (value: FieldState<WritableState[K]>) => void;
   };
   get: () => State;
@@ -50,10 +49,12 @@ type WithSelectorsOf<State, WritableState, Action, InternalSliceObj> = StAgentic
 export interface SliceSelectors<RefName extends string, State, Action> {
   refName: RefName;
   use: {
-    [K in keyof State]: (options?: StoreUseOptions) => State[K];
+    [K in keyof State]: () => State[K];
   };
   do: Prettify<
-    VoidActions<Action> & {
+    {
+      [K in keyof Action]: Action[K];
+    } & {
       [K in keyof State as K extends string ? SetKey<K> : never]: (value: FieldState<State[K]>) => void;
     }
   >;

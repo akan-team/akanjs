@@ -48,7 +48,9 @@ export const General = ({ className }: GeneralProps) => {
         desc={l("banner.target.desc")}
         value={bannerForm.target}
         items={cnst.BannerTarget}
-        onChange={st.do.setTargetOnBanner}
+        onChange={(target) => {
+          st.do.setTargetOnBanner(target);
+        }}
       />
       <Field.Date
         label={l("banner.from")}

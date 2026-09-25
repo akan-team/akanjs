@@ -7,7 +7,6 @@ import type {
   EndpInfoReqType,
   EndpointCls,
   EndpointInfo,
-  PromptMessage,
   SlceCnstFull,
   SlceCnstInsight,
   SlceCnstLight,
@@ -41,10 +40,7 @@ type QueryOrMutationFetchFn<E, SlceCls extends SliceCls | never> = (
   ...args: [...EndpInfoArgs<E>, fetchPolicy?: FetchPolicy]
 ) => Promise<EndpInfoReturns<E, SlceCls>>;
 
-/** Typed off `PromptResult` rather than the endpoint's return ref, which is the `Any` carrier a prompt rides on. */
-type PromptFetchFn<E> = (...args: [...EndpInfoArgs<E>, fetchPolicy?: FetchPolicy]) => Promise<PromptMessage[]>;
-
-type MessageEmitFn<E> = (...args: [...EndpInfoArgs<E>, fetchPolicy?: FetchPolicy]) => void;
+type MessageEmitFn<E> = (...args: EndpInfoArgs<E>) => void;
 
 type MessageListenFn<E, SlceCls extends SliceCls | never> = (
   handleEvent: (data: EndpInfoReturns<E, SlceCls>) => PromiseOrObject<void>,
@@ -62,15 +58,13 @@ type PubsubSubscribeFn<E, SlceCls extends SliceCls | never> = (
 type PrimaryFetchFn<E, SlceCls extends SliceCls | never> =
   EndpInfoReqType<E> extends "query" | "mutation"
     ? QueryOrMutationFetchFn<E, SlceCls>
-    : EndpInfoReqType<E> extends "prompt"
-      ? PromptFetchFn<E>
-      : EndpInfoReqType<E> extends "message"
-        ? MessageEmitFn<E>
-        : never;
+    : EndpInfoReqType<E> extends "message"
+      ? MessageEmitFn<E>
+      : never;
 
-// Keys kept as-is: query / mutation / prompt / message (emit)
+// Keys kept as-is: query / mutation / message (emit)
 type PrimaryFetchType<EInfoObj extends { [key: string]: EndpointInfo }, SlceCls extends SliceCls | never> = {
-  [K in keyof EInfoObj as EndpInfoReqType<EInfoObj[K]> extends "query" | "mutation" | "prompt" | "message"
+  [K in keyof EInfoObj as EndpInfoReqType<EInfoObj[K]> extends "query" | "mutation" | "message"
     ? K
     : never]: PrimaryFetchFn<EInfoObj[K], SlceCls>;
 };

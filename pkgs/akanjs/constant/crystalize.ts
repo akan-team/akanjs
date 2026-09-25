@@ -30,10 +30,8 @@ export const crystalize = (field: FieldProps, value: unknown): unknown => {
       isArray: false,
       arrDepth: 0,
     };
-    // An already-crystalized value arrives as a Map, whose entries are not own enumerable keys.
-    const entries = value instanceof Map ? [...value.entries()] : Object.entries(value as Record<string, unknown>);
     return new Map(
-      entries.map(([key, val]: [string, unknown]) => [
+      Object.entries(value as Record<string, unknown>).map(([key, val]) => [
         key,
         field.of
           ? applyFnToArrayObjects(val, (v: never) => crystalize(mapValueField, v))

@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc } from "@apps/akan/ui";
+import { Code, Docs } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="basic-pattern" title={l.trans({ en: "Basic Pattern", ko: "기본 패턴" })}>
         <Docs.Title>{l.trans({ en: "Basic Pattern", ko: "기본 패턴" })}</Docs.Title>
@@ -37,7 +37,6 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="price.dictionary.ts"
           code={`import { scalarDictionary } from "akanjs/dictionary";
 
@@ -51,7 +50,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
   }));`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="builder-order" title={l.trans({ en: "Builder Order", ko: "Builder 순서" })}>
         <Docs.Title>{l.trans({ en: "Builder Order", ko: "Builder 순서" })}</Docs.Title>
@@ -88,7 +87,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
           </ol>
         </Docs.Description>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="language-order" title={l.trans({ en: "Language Order", ko: "언어 순서" })}>
         <Docs.Title>{l.trans({ en: "Language Order", ko: "언어 순서" })}</Docs.Title>
@@ -101,13 +100,12 @@ export const dictionary = scalarDictionary(["en", "ko"])
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="language order"
           code={`export const dictionary = scalarDictionary(["en", "ko"])
   .of((t) => t(["Price", "가격"]).desc(["Price value", "가격 값"]));`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="enum-matching" title={l.trans({ en: "Enum Name Matching", ko: "Enum 이름 맞추기" })}>
         <Docs.Title>{l.trans({ en: "Enum Name Matching", ko: "Enum 이름 맞추기" })}</Docs.Title>
@@ -120,12 +118,10 @@ export const dictionary = scalarDictionary(["en", "ko"])
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="price.constant.ts"
           code={`export class Currency extends enumOf("currency", ["KRW", "USD"] as const) {}`}
         />
         <Code.Snippet
-          className="w-full"
           title="price.dictionary.ts"
           code={`export const dictionary = scalarDictionary(["en", "ko"])
   .enum<Currency>("currency", (t) => ({
@@ -134,7 +130,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
   }));`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="custom-text" title={l.trans({ en: "Small Custom Text", ko: "작은 custom text" })}>
         <Docs.Title>{l.trans({ en: "Small Custom Text", ko: "작은 custom text" })}</Docs.Title>
@@ -147,7 +143,6 @@ export const dictionary = scalarDictionary(["en", "ko"])
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="price.dictionary.ts"
           code={`export const dictionary = scalarDictionary(["en", "ko"])
   .translate({
@@ -155,7 +150,6 @@ export const dictionary = scalarDictionary(["en", "ko"])
   });`}
         />
         <Code.Snippet
-          className="w-full"
           title="PriceLabel.tsx"
           code={`import { usePage } from "@apps/myapp/client";
 
@@ -171,9 +165,9 @@ export const PriceLabel = () => {
 };`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
-      <DocsToc />
+      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>
   );
 }

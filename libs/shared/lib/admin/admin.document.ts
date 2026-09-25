@@ -15,15 +15,14 @@ export class AdminFilter extends from(cnst.Admin, (filter) => ({
       .arg("accountId", String)
       .query((accountId) => ({ accountId })),
     bySearch: filter()
-      .opt("text", String)
+      .arg("text", String)
       .opt("roles", [cnst.AdminRole])
       .query((text, roles, q) =>
-        q.all(text ? q.search(text, { prefix: true }) : {}, roles?.length ? { roles: q.oneOf(roles) } : {}),
+        q.all(q.search(text, { prefix: true }), roles?.length ? { roles: q.oneOf(roles) } : {}),
       ),
   },
   sort: {},
 })) {}
-
 export class Admin extends by(cnst.Admin) {
   declare isModified: (field?: string) => boolean;
 

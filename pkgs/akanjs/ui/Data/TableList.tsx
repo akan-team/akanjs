@@ -7,11 +7,8 @@ import type { FetchInitForm, SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import { type ReactNode, useEffect, useMemo } from "react";
 
-import { Loading } from "../Loading";
 import { Model } from "../Model";
 import { Table } from "../Table";
-import { columnKey } from "./dataExport";
-import { dictLabel } from "./dataText";
 import { Action, convToAntdColumn } from "./Item";
 import DataPagination from "./Pagination";
 
@@ -84,7 +81,7 @@ export default function TableList<
       title:
         typeof columns[0] !== "string" && columns[0].title
           ? columns[0].title
-          : dictLabel(l._, `${sliceName}.${columnKey(columns[0])}`, columnKey(columns[0])),
+          : l._(`${sliceName}.${typeof columns[0] === "string" ? columns[0] : (columns[0] as { key: string }).key}`),
     };
     return [
       {
@@ -111,7 +108,7 @@ export default function TableList<
         title:
           typeof col !== "string" && col.title
             ? col.title
-            : dictLabel(l._, `${sliceName}.${columnKey(col)}`, columnKey(col)),
+            : l._(`${sliceName}.${typeof col === "string" ? col : (col.key as string)}`),
       })),
       ...(actions
         ? [
@@ -135,23 +132,17 @@ export default function TableList<
   }, []);
   return (
     <div className={className}>
-      {/* Blanking the rows while loading would drop the table to its own empty state on every refresh. */}
-      {modelListLoading && !modelList.length ? (
-        <Loading.Skeleton className="rounded-box border border-border bg-card p-4" active />
-      ) : (
-        <Table
-          dataSource={[...modelList] as any[]}
-          columns={cols}
-          loading={!!modelListLoading}
-          bordered
-          size="small"
-          rowKey={(model: Light) => model.id}
-          pagination={false}
-          onRow={(model: Light, idx: number) => ({
-            onClick: () => onItemClick?.(model, idx),
-          })}
-        />
-      )}
+      <Table
+        dataSource={(modelListLoading ? [] : [...modelList]) as any[]}
+        columns={cols}
+        loading={!!modelListLoading}
+        size="small"
+        rowKey={(model: Light) => model.id}
+        pagination={false}
+        onRow={(model: Light, idx: number) => ({
+          onClick: () => onItemClick?.(model, idx),
+        })}
+      />
       <DataPagination slice={slice} />
       {!modelListLoading
         ? modelList.map((model) => (

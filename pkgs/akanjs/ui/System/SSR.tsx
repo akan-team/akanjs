@@ -1,6 +1,6 @@
 import { getEnv } from "akanjs/base";
 import {
-  cn,
+  clsx,
   defaultPageState,
   getPathInfo,
   type PageState,
@@ -195,19 +195,18 @@ const SSRWrapper = ({
           <div
             key="top-safe-area"
             id="topSafeArea"
-            className={cn("fixed inset-x-0 top-0 bg-background")}
+            className={clsx("fixed inset-x-0 top-0 bg-base-100")}
             style={topSafeAreaStyle}
           />
-          <div key="page-containers" id="pageContainers" className={cn("isolate")}>
+          <div key="page-containers" id="pageContainers" className={clsx("isolate")}>
             <div id="pageContainer">
               <div
                 id="pageContent"
                 style={pageContentStyle}
-                className={cn(
-                  "relative isolate",
-                  layoutStyle === "web" && "w-full",
-                  layoutStyle === "mobile" && "left-1/2 h-screen w-[600px] -translate-x-1/2",
-                )}
+                className={clsx("relative isolate", {
+                  "w-full": layoutStyle === "web",
+                  "left-1/2 h-screen w-[600px] -translate-x-1/2": layoutStyle === "mobile",
+                })}
               >
                 {Children.toArray(children)}
               </div>
@@ -216,14 +215,13 @@ const SSRWrapper = ({
           <div
             key="top-inset"
             id="topInsetContainer"
-            className={cn(
-              "fixed inset-x-0 top-0 isolate bg-background",
-              layoutStyle === "mobile" && "left-1/2 w-[600px] -translate-x-1/2",
-              layoutStyle === "web" && "w-full",
-            )}
+            className={clsx("fixed inset-x-0 top-0 isolate bg-base-100", {
+              "left-1/2 w-[600px] -translate-x-1/2": layoutStyle === "mobile",
+              "w-full": layoutStyle === "web",
+            })}
             style={topInsetStyle}
           >
-            <div id="topInsetContent" className={cn("relative isolate size-full")}>
+            <div id="topInsetContent" className={clsx("relative isolate size-full")}>
               <ServerPortalOutlet id="topInsetContent" />
             </div>
           </div>
@@ -240,11 +238,10 @@ const SSRWrapper = ({
           <div
             key="bottom-inset"
             id="bottomInsetContainer"
-            className={cn(
-              "pointer-events-none fixed inset-x-0 bottom-0 isolate overflow-hidden",
-              layoutStyle === "mobile" && "left-1/2 w-[600px] -translate-x-1/2",
-              layoutStyle === "web" && "w-full",
-            )}
+            className={clsx("pointer-events-none fixed inset-x-0 bottom-0 isolate overflow-hidden", {
+              "left-1/2 w-[600px] -translate-x-1/2": layoutStyle === "mobile",
+              "w-full": layoutStyle === "web",
+            })}
             style={bottomInsetStyle}
           >
             <div id="bottomInsetContent" className="pointer-events-none isolate size-full">
@@ -254,11 +251,10 @@ const SSRWrapper = ({
           <div
             key="keyboard-inset"
             id="keyboardInsetContainer"
-            className={cn(
-              "pointer-events-none fixed inset-x-0 bottom-0 isolate overflow-hidden",
-              layoutStyle === "mobile" && "left-1/2 w-[600px] -translate-x-1/2",
-              layoutStyle === "web" && "w-full",
-            )}
+            className={clsx("pointer-events-none fixed inset-x-0 bottom-0 isolate overflow-hidden", {
+              "left-1/2 w-[600px] -translate-x-1/2": layoutStyle === "mobile",
+              "w-full": layoutStyle === "web",
+            })}
             style={bottomInsetStyle}
           >
             <div id="keyboardInsetContent" className="pointer-events-none isolate size-full">
@@ -268,7 +264,7 @@ const SSRWrapper = ({
           <div
             key="bottom-safe-area"
             id="bottomSafeArea"
-            className="fixed inset-x-0 bg-background"
+            className="fixed inset-x-0 bg-base-100"
             style={bottomSafeAreaStyle}
           />
         </ClientPathWrapper>

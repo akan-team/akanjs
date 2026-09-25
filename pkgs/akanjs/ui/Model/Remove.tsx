@@ -1,12 +1,10 @@
 "use client";
-import { ID } from "akanjs/base";
-import { cn, msg, router, usePage } from "akanjs/client";
+import { clsx, msg, router, usePage } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import { type ReactNode, useMemo, useState } from "react";
 
-import { agentAttrs } from "../agentAttrs";
 import { Button } from "../Button";
 import { Modal } from "../Modal";
 
@@ -31,26 +29,10 @@ export default function Remove({ className, name, modelId, slice, modal, redirec
     }),
     [],
   );
-  const removeModel = async (id: string, { onError }: { onError?: (e: string) => void } = {}) => {
-    await storeDo[names.removeModel](id, { onError, modal });
-    msg.success("base.removeSuccess", { data: { model: l(`${modelName}.modelName` as "base.new") } });
-    setModalOpen(false);
-    if (!redirect) return;
-    if (redirect === "back") router.back();
-    else router.push(redirect);
-  };
-  // The confirmation this draws is a modal; the agent's is the approval card the `remove` prefix turns on. Both
-  // land on the same removal, and the id rides in the argument so a per-row copy of this stays interchangeable.
-  const removeTool = st
-    .tool(names.removeModel)
-    .desc(`Remove one ${modelName}.`)
-    .arg("modelId", ID)
-    .exec((id) => removeModel(id));
   return (
     <>
       <div
-        className={cn("cursor-pointer", className)}
-        {...agentAttrs(removeTool)}
+        className={clsx("cursor-pointer", className)}
         onClick={(e) => {
           e.stopPropagation();
           setModalOpen(true);
@@ -64,16 +46,20 @@ export default function Remove({ className, name, modelId, slice, modal, redirec
           setModalOpen(false);
         }}
         title={
-          <div className="font-bold text-destructive text-lg">
+          <div className="font-bold text-error text-lg">
             {l("base.removeModel", { model: l(`${modelName}.modelName` as "base.new") })}
           </div>
         }
         action={
           <Button
-            variant="warning"
-            className="w-full"
+            className="btn btn-warning w-full"
             onClick={async (e, { onError }) => {
-              await removeModel(modelId, { onError });
+              await storeDo[names.removeModel](modelId, { onError, modal });
+              msg.success("base.removeSuccess", { data: { model: l(`${modelName}.modelName` as "base.new") } });
+              setModalOpen(false);
+              if (!redirect) return;
+              if (redirect === "back") router.back();
+              else router.push(redirect);
             }}
           >
             {l("base.yesRemove", { model: l(`${modelName}.modelName` as "base.new") })}

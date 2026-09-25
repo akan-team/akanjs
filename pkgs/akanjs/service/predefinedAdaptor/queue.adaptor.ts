@@ -1,4 +1,4 @@
-import { getEnv } from "akanjs/base";
+import type { BaseEnv } from "akanjs/base";
 import { adapt } from "../adapt";
 import type { AkanJob, AkanJobOptions, AkanWorker } from "../ipcTypes";
 import { RedisCache } from "./cache.adaptor";
@@ -30,10 +30,7 @@ export interface QueueAdaptor {
 export class BullQueue
   extends adapt("bullQueue", ({ plug, env }) => ({
     redis: plug(RedisCache, (redisCache) => redisCache.getClient()),
-    prefix: env(() => {
-      const { repoName, appName, environment, operationMode } = getEnv();
-      return `queue-${repoName}-${appName}-${environment}-${operationMode}`;
-    }),
+    prefix: env((env: BaseEnv) => `queue-${env.repoName}-${env.appName}-${env.environment}-${env.operationMode}`),
   }))
   implements QueueAdaptor
 {

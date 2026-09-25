@@ -58,31 +58,19 @@ interface LintResponse {
   warnings: LintMessage[];
 }
 
-/** Biome reads `biome.json` first and `biome.jsonc` second; only the latter may carry comments. */
-const BIOME_CONFIG_FILES = ["biome.json", "biome.jsonc"] as const;
-
 export class Linter {
   lintRoot: string;
-  configPath: string;
   #biomeBin: string;
 
   constructor(cwdPath: string) {
     this.lintRoot = this.#findBiomeRootPath(cwdPath);
-    this.configPath = Linter.#configPathIn(this.lintRoot) ?? path.join(this.lintRoot, "biome.json");
     const localBiomeBin = path.join(this.lintRoot, "node_modules/.bin/biome");
     this.#biomeBin = existsSync(localBiomeBin) ? localBiomeBin : "biome";
   }
 
-  static #configPathIn(dir: string): string | null {
-    for (const fileName of BIOME_CONFIG_FILES) {
-      const configPath = path.join(dir, fileName);
-      if (existsSync(configPath)) return configPath;
-    }
-    return null;
-  }
-
   #findBiomeRootPath(dir: string): string {
-    if (Linter.#configPathIn(dir)) return dir;
+    const configPath = path.join(dir, "biome.json");
+    if (existsSync(configPath)) return dir;
     const parentDir = path.dirname(dir);
     if (parentDir === dir) throw new Error(`biome.json not found from ${dir}`);
     return this.#findBiomeRootPath(parentDir);
@@ -205,7 +193,7 @@ export class Linter {
       "--max-diagnostics=none",
       "--no-errors-on-unmatched",
       "--config-path",
-      this.configPath,
+      path.join(this.lintRoot, "biome.json"),
       this.#toBiomePath(filePath),
     ]);
     const report = this.#parseBiomeReport(stdout || stderr);
@@ -402,7 +390,14 @@ export class Linter {
 
     const source = readFileSync(resolvedFilePath, "utf8");
     const { stdout } = await this.#runBiome(
-      ["check", "--write", "--config-path", this.configPath, "--stdin-file-path", this.#toBiomePath(resolvedFilePath)],
+      [
+        "check",
+        "--write",
+        "--config-path",
+        path.join(this.lintRoot, "biome.json"),
+        "--stdin-file-path",
+        this.#toBiomePath(resolvedFilePath),
+      ],
       source,
     );
     const lintResult = await this.lintFile(resolvedFilePath);
@@ -417,7 +412,7 @@ export class Linter {
   async getConfigForFile(filePath: string): Promise<unknown> {
     const resolvedFilePath = this.#resolveFilePath(filePath);
     if (!existsSync(resolvedFilePath)) throw new Error(`File not found: ${filePath}`);
-    return JSON.parse(readFileSync(this.configPath, "utf8")) as unknown;
+    return JSON.parse(readFileSync(path.join(this.lintRoot, "biome.json"), "utf8")) as unknown;
   }
 
   /**

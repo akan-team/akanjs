@@ -11,11 +11,9 @@ import {
   insertDivider,
   insertTable,
 } from "../blocks";
-import { insertEmbed, insertExcalidraw, insertFile, insertImage, insertMermaid, insertVideo } from "../media";
-import type { MentionSource } from "../mention.type";
+import { insertEmbed, insertExcalidraw, insertFile, insertImage, insertVideo } from "../media";
 import type { EditorSlashOption } from "../plugin";
 import type { EditorUpload } from "../UploadContext";
-import { openMentionSource } from "./mentionPlugin.command";
 import { SlashOption } from "./slashMenuPlugin.option";
 
 /** Opens a transient file picker and forwards the chosen file. */
@@ -34,14 +32,9 @@ const openFilePicker = (accept: string, onPick: (file: File) => void) => {
  * Builds the option set. Text/list/structure options are always present; the
  * upload-backed media options (image/video/file) appear only when uploads are
  * configured, while embed (URL-based) and callout are always available.
- * `extraOptions` are the entries contributed by the editor's `plugins`, and each
- * `mentionSources` entry gets a `/<label>` reference entry of its own.
+ * `extraOptions` are the entries contributed by the editor's `plugins`.
  */
-export const buildOptions = (
-  upload: EditorUpload,
-  extraOptions: readonly EditorSlashOption[],
-  mentionSources: readonly MentionSource[] = [],
-): SlashOption[] => {
+export const buildOptions = (upload: EditorUpload, extraOptions: readonly EditorSlashOption[]): SlashOption[] => {
   const options: SlashOption[] = [
     new SlashOption("paragraph", {
       label: "Paragraph",
@@ -167,13 +160,6 @@ export const buildOptions = (
       keywords: ["draw", "diagram", "sketch", "whiteboard"],
       run: (editor) => insertExcalidraw(editor, {}),
     }),
-    new SlashOption("mermaid", {
-      label: "Mermaid",
-      description: "Diagram from Mermaid syntax",
-      group: "media",
-      keywords: ["diagram", "flowchart", "sequence", "graph", "chart", "uml", "gantt"],
-      run: (editor) => insertMermaid(editor),
-    }),
     new SlashOption("table", {
       label: "Table",
       description: "Insert a 3×3 table",
@@ -217,18 +203,6 @@ export const buildOptions = (
       run: insertDivider,
     }),
   );
-
-  for (const source of mentionSources) {
-    options.push(
-      new SlashOption(`mention:${source.refName}`, {
-        label: source.label,
-        description: `Mention a ${source.label.toLowerCase()}`,
-        group: "reference",
-        keywords: [source.refName, "mention", ...(source.keywords ?? [])],
-        run: (editor) => openMentionSource(editor, source),
-      }),
-    );
-  }
 
   for (const option of extraOptions) {
     options.push(

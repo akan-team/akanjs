@@ -5,7 +5,7 @@ import { resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import { computeRouteSeedIndex, type RouteSeedIndex, saveRouteSeedIndex } from "../artifact/routeSeedIndex";
 import type { App } from "../commandDecorators";
 import { ClientEntriesBundler } from "./clientEntriesBundler";
-import { CssCompiler, type ImportedStylesheet } from "./cssCompiler";
+import { CssCompiler } from "./cssCompiler";
 import { FontOptimizer } from "./fontOptimizer";
 import { PagesBundleBuilder } from "./pagesBundleBuilder";
 import { RouteClientBuilder } from "./routeClientBuilder";
@@ -77,7 +77,6 @@ export class SsrBaseArtifactBuilder {
       branches: [...akanConfig.branches],
       i18n: akanConfig.i18n,
       imageConfig: akanConfig.images,
-      web: akanConfig.web,
       deepLinkAssociations: Object.values(akanConfig.mobile.targets)
         .filter((target) => (target.deepLinks?.domains?.length ?? 0) > 0)
         .map((target) => ({
@@ -111,7 +110,7 @@ export class SsrBaseArtifactBuilder {
     const ssrBundle = await new ClientEntriesBundler({
       app: this.#app,
       entries: [rscSegmentOutletEntry],
-      ...RouteClientBuilder.resolveSsrClientBundleOptions(this.#command),
+      ...RouteClientBuilder.resolveSsrClientExternalOptions(this.#command),
       outputSubdir: "client-ssr",
       command: this.#command,
     }).bundle();
@@ -185,15 +184,13 @@ export class SsrBaseArtifactBuilder {
   }> {
     const cssCompiler = new CssCompiler(this.#app);
     const cssByBasePath = await cssCompiler.getCssByBasePath();
-    // 스타일 계약(어휘 폐쇄 + WCAG)은 빌드가 아니라 lint 가 강제한다: 어휘 폐쇄는 biome grit 플러그인
-    // (devkit/lint/no-raw-palette-class.grit 외 3종), 콘트라스트는 `akan lint` 의 themeValidator.
     const optimizedFonts = await new FontOptimizer(this.#app, this.#command).optimize();
     const cssAssets = Object.fromEntries(
       await Promise.all(
         Object.entries(cssByBasePath).flatMap(([basePath, baseCssText]) => {
           const cssText = [baseCssText, optimizedFonts.css].filter(Boolean).join("\n");
           if (!cssText) return [];
-          return [this.#writeCssAsset(basePath, cssText, cssCompiler.importedStylesheetsByBasePath[basePath] ?? [])];
+          return [this.#writeCssAsset(basePath, cssText)];
         }),
       ),
     );
@@ -202,7 +199,7 @@ export class SsrBaseArtifactBuilder {
     return { cssCompiler, optimizedFonts, cssAssets };
   }
 
-  async #writeCssAsset(basePath: string, cssText: string, imported: ImportedStylesheet[]) {
+  async #writeCssAsset(basePath: string, cssText: string) {
     const cssAssetName = basePath || "root";
     const preparedCssText = await prepareCssAsset(this.#command, basePath, cssText);
     const cssHash = Bun.hash(`${basePath}\n${preparedCssText}`).toString(36);
@@ -211,23 +208,7 @@ export class SsrBaseArtifactBuilder {
       `/_akan/styles/${cssAssetName}-${cssHash}.css`,
     ];
     await Bun.write(path.join(this.#absArtifactDir, cssRelPath), preparedCssText);
-    SsrBaseArtifactBuilder.#warnDroppedImports(this.#app, cssRelPath, preparedCssText, imported);
     this.#app.verbose(`[base-artifact] wrote ${preparedCssText.length} bytes of CSS for ${basePath} -> ${cssRelPath}`);
     return [basePath, { cssUrl, cssRelPath }] as const;
-  }
-
-  /**
-   * Checked against the file written here rather than against the compiled text, because this is the stylesheet
-   * `base-artifact.json` points at and therefore the only one an SSR render serves. A declaration can survive
-   * the compile and still be missing from the asset — a build that ships CSS to the CSR bundle and not to the
-   * server is indistinguishable, in the browser, from a theme that was never written.
-   */
-  static #warnDroppedImports(app: App, cssRelPath: string, css: string, imported: ImportedStylesheet[]) {
-    for (const { cssPath, declaredNames } of imported) {
-      if (declaredNames.length === 0 || declaredNames.some((name) => css.includes(`${name}:`))) continue;
-      app.logger.warn(
-        `[base-artifact] @import ${cssPath} declares ${declaredNames.length} custom propert${declaredNames.length === 1 ? "y" : "ies"} and none of them are in ${cssRelPath}`,
-      );
-    }
   }
 }

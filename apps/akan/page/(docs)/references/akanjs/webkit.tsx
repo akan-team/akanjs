@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc } from "@apps/akan/ui";
+import { Code, Docs } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -151,22 +151,17 @@ const form: LoginForm = {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
       {symbols.map((symbol) => (
         <Scroll.Slide key={symbol.name} id={symbol.name} title={symbol.name}>
           <Docs.Title>{symbol.name}</Docs.Title>
           <Docs.Description>
             <div>{symbol.desc}</div>
           </Docs.Description>
-          <Code.Snippet
-            className="w-full"
-            title={l.trans({ en: "Usage", ko: "사용 예시" })}
-            language="typescript"
-            code={symbol.code}
-          />
+          <Code.Snippet title={l.trans({ en: "Usage", ko: "사용 예시" })} language="typescript" code={symbol.code} />
         </Scroll.Slide>
       ))}
-      <DocsToc />
+      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>
   );
 }

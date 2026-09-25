@@ -206,13 +206,12 @@ export class ModelDictInfo<
     } as unknown as BaseModelCrudGetSignalTranslation<T, [string, string]>;
   }
   static baseSliceDictionary: {
-    [key in ""]: FunctionTranslation<[string, string], "queryKey" | "args">;
+    [key in ""]: FunctionTranslation<[string, string], "query">;
   } = {
     "": fn(["Universal", "유니버설"])
       .desc(["Universal Slice", "유니버설 슬라이스"])
       .arg((t) => ({
-        queryKey: t(["Query", "쿼리"]).desc(["Filter query to run", "실행할 필터 쿼리"]),
-        args: t(["Arguments", "인자"]).desc(["Arguments of the filter query", "필터 쿼리의 인자"]),
+        query: t(["Query", "쿼리"]).desc(["Query Description", "쿼리 설명"]),
       })),
   };
 
@@ -778,7 +777,6 @@ export class ModelDictInfo<
       });
     });
   }
-  /** Under its own `store` node rather than beside `signal`, because the two hold the same key by design. */
   #registerErrorToRoot(refName: string, rootDict: RootDictionary) {
     this.languages.forEach((language) => {
       ensureNode(getRootModelNode(rootDict, language, refName), "error");
@@ -805,12 +803,6 @@ export class ModelDictInfo<
   }
 }
 
-/**
- * Every parameter of `ModelDictInfo` is listed here positionally, so a parameter added to the class has to be
- * added to all three lists below in the same slot. Omitting one does not fail to compile — inference silently
- * shifts, so the last parameter falls off the end and becomes its default `never`, which reads at the call site
- * as `l("<model>.<key>")` no longer existing.
- */
 // biome-ignore lint/suspicious/noExplicitAny: wildcard type used to merge arbitrary dictionary instances.
 type AnyModelDictInfo = ModelDictInfo<any, any, any, any, any, any, any, any, any, any, any>;
 

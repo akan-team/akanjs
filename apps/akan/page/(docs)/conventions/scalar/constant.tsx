@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
+import { Code, Docs } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="basic-shape" title={l.trans({ en: "Basic Shape", ko: "기본 형태" })}>
         <Docs.Title>{l.trans({ en: "Basic Shape", ko: "기본 형태" })}</Docs.Title>
@@ -37,7 +37,6 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="price.constant.ts"
           code={`import { Float } from "akanjs/base";
 import { via } from "akanjs/constant";
@@ -48,7 +47,7 @@ export class Price extends via((field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide
         id="defaults-optional"
@@ -62,7 +61,7 @@ export class Price extends via((field) => ({
               ko: "값이 안정적인 초기 상태를 가져야 하면 default를 추가합니다. 상위 model이 해당 field 없이도 존재할 수 있다면 `.optional()`을 사용합니다.",
             })}
           </div>
-          <DocsList>
+          <ul className="list-disc space-y-2 pl-5">
             <li>
               {l.trans({
                 en: "`currency` can default to a normal business value such as `KRW`.",
@@ -75,10 +74,9 @@ export class Price extends via((field) => ({
                 ko: "모든 price에 note가 필요한 것은 아니므로 `memo`는 optional일 수 있습니다.",
               })}
             </li>
-          </DocsList>
+          </ul>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="price.constant.ts"
           code={`export class Price extends via((field) => ({
   amount: field(Float, { default: 0 }),
@@ -87,7 +85,7 @@ export class Price extends via((field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="arrays" title={l.trans({ en: "Array Fields", ko: "Array field" })}>
         <Docs.Title>{l.trans({ en: "Array Fields", ko: "Array field" })}</Docs.Title>
@@ -100,7 +98,6 @@ export class Price extends via((field) => ({
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="contactInfo.constant.ts"
           code={`import { via } from "akanjs/constant";
 
@@ -110,7 +107,7 @@ export class ContactInfo extends via((field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="enum-fields" title={l.trans({ en: "Enum Fields", ko: "Enum field" })}>
         <Docs.Title>{l.trans({ en: "Enum Fields", ko: "Enum field" })}</Docs.Title>
@@ -123,7 +120,6 @@ export class ContactInfo extends via((field) => ({
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="price.constant.ts"
           code={`import { enumOf, Float } from "akanjs/base";
 import { via } from "akanjs/constant";
@@ -136,7 +132,7 @@ export class Price extends via((field) => ({
 })) {}`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="helper-methods" title={l.trans({ en: "Small Helpers", ko: "작은 helper" })}>
         <Docs.Title>{l.trans({ en: "Small Helpers", ko: "작은 helper" })}</Docs.Title>
@@ -149,7 +145,6 @@ export class Price extends via((field) => ({
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="price.constant.ts"
           code={`export class Price extends via((field) => ({
   amount: field(Float, { default: 0 }),
@@ -161,9 +156,9 @@ export class Price extends via((field) => ({
 }`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
-      <DocsToc />
+      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>
   );
 }

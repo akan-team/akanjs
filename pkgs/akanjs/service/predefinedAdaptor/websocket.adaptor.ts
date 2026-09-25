@@ -219,14 +219,9 @@ export class WebSocketRedisAdaptor
   }
 
   // ── Socket registration ──
-  /**
-   * `AppWsData` mints the id at the handshake, so this reads it; the fallback only covers a socket that
-   * was upgraded outside the app router. The owning server is recorded in the socket hash below, so the
-   * id itself carries no prefix.
-   */
   #getSocketId(ws: Bun.ServerWebSocket<unknown>): string {
     const data = ws.data as WsSocketData;
-    data.socketId ??= Bun.randomUUIDv7();
+    if (!data.socketId) data.socketId = `${this.serverId}-${Bun.randomUUIDv7()}`;
     return data.socketId;
   }
 

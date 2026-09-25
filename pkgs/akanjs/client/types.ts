@@ -1,6 +1,10 @@
 import type { BaseInsight } from "akanjs/constant";
-import type { FetchInitForm, QuerySetting, SliceMeta } from "akanjs/fetch";
+import type { FetchInitForm, SliceMeta } from "akanjs/fetch";
+import { type ClassValue, clsx as clsxLib } from "clsx";
 import type { ReactElement, ReactNode } from "react";
+
+/** Composes class names with the shared clsx implementation. */
+export const clsx = (...args: ClassValue[]) => clsxLib(...args);
 
 export type ReactFontStyle = "normal" | "italic" | "oblique";
 export type ReactFontDisplay = "auto" | "block" | "swap" | "fallback" | "optional";
@@ -109,7 +113,7 @@ const slugFontPart = (value: string) =>
 export interface ModelsProps<M extends { id: string }> {
   className?: string;
   slice?: SliceMeta;
-  query?: QuerySetting;
+  query?: Record<string, unknown>;
   init?: FetchInitForm<any, any>;
   onClickItem?: (model: M) => unknown;
 }
@@ -127,7 +131,7 @@ export type ModelProps<T extends string, L extends { id: string }> = { [key in T
 export interface ModelDashboardProps<Summary> {
   className?: string;
   summary: Summary;
-  queryMap?: { [column: string]: QuerySetting };
+  queryMap?: Record<string, unknown>;
   columns?: (keyof Summary)[];
   hidePresents?: boolean;
   slice?: SliceMeta;

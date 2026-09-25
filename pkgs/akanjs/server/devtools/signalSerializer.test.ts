@@ -41,8 +41,6 @@ describe("SignalSerializer", () => {
       "getTitle",
       "guardedRoomFeed",
       "roomFeed",
-      "roomQueuedStream",
-      "roomStream",
       "updateTitle",
     ]);
     expect(Object.keys(signal.generated.crud)).toContain(`create${"ServerResolverTestItem"}`);

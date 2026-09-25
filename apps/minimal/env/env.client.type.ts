@@ -7,4 +7,14 @@ export type AppClientEnv = ClientEnv & {
   cloudflare?: {
     siteKey: string;
   };
+  firebase?: {
+    apiKey: string;
+    authDomain?: string;
+    projectId: string;
+    storageBucket?: string;
+    messagingSenderId: string;
+    appId: string;
+    measurementId?: string;
+    vapidKey?: string;
+  };
 };

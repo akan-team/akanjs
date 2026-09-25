@@ -1,7 +1,6 @@
 "use client";
 import { type ReactNode, useContext } from "react";
 
-import { agentAttrs } from "../agentAttrs";
 import { DialogContext } from "./context";
 
 export interface CloseProps {
@@ -9,9 +8,14 @@ export interface CloseProps {
   children?: ReactNode;
 }
 export const Close = ({ className, children }: CloseProps) => {
-  const { closeDialog } = useContext(DialogContext);
+  const { setOpen } = useContext(DialogContext);
   return (
-    <a className={className} onClick={closeDialog} {...agentAttrs(closeDialog)}>
+    <a
+      className={className}
+      onClick={() => {
+        setOpen(false);
+      }}
+    >
       {children}
     </a>
   );

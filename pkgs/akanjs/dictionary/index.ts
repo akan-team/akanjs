@@ -1,4 +1,3 @@
-export * from "./DictionaryLookup";
 export * from "./dictInfo";
 export {
   __Dict_Key__,

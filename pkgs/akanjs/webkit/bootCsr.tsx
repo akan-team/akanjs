@@ -18,7 +18,6 @@ import {
 } from "akanjs/client";
 import {
   assertUniqueRoutePatterns,
-  getRouteExports,
   Logger,
   parseAkanI18nEnv,
   parseBasePaths,
@@ -186,7 +185,6 @@ export const bootCsr = async (context: Record<string, CsrRouteModuleEntry>) => {
     parentLayouts: RouteRender[] = [],
     parentPaths: string[] = [],
     parentPageConfigChain: PageConfig[] = [],
-    parentOverrides: RouteRender[] = [],
   ): PathRoute[] => {
     const parentPath = parentPaths.filter((path) => path !== "/").join("");
     const isRouteGroup = /^\/\(.*\)$/.test(route.path);
@@ -197,22 +195,21 @@ export const bootCsr = async (context: Record<string, CsrRouteModuleEntry>) => {
     const currentRootLayout = isRoot && route.renderLayout ? route.renderLayout : null;
     const currentLayout = !isRoot && route.renderLayout ? route.renderLayout : null;
     const currentLayoutConfig = route.renderLayout && route.layoutPageConfig ? route.layoutPageConfig : null;
-    // See RouteTreeBuilder#getPathRoutes: overrides wrap the whole stack, root layouts included, so a layout's
-    // own JSX and the overlay host it mounts are inside the provider.
+    // See RouteTreeBuilder#getPathRoutes: overrides ride the layout stream just outside this node's own layout,
+    // so nested `_overrides.tsx` merge into nested providers and the closest declaration wins.
     const currentOverrideRenders = route.renderOverrides ? [route.renderOverrides] : [];
-    const overrideRenders = [...parentOverrides, ...currentOverrideRenders];
-    const rootLayoutStack = [...parentRootLayouts, ...(currentRootLayout ? [currentRootLayout] : [])];
-    const renderRootLayouts = [...overrideRenders, ...rootLayoutStack];
-    const renderLayouts = [...parentLayouts, ...(currentLayout ? [currentLayout] : [])];
+    const renderRootLayouts = [...parentRootLayouts, ...(currentRootLayout ? [currentRootLayout] : [])];
+    const renderLayouts = [...parentLayouts, ...currentOverrideRenders, ...(currentLayout ? [currentLayout] : [])];
     const pageConfigChain = [
       ...parentPageConfigChain,
       ...(currentRootLayout || currentLayout ? (currentLayoutConfig ? [currentLayoutConfig] : []) : []),
     ];
     const pageRenderRootLayouts =
-      route.pageIncludesOwnLayout === false && currentRootLayout
-        ? [...overrideRenders, ...parentRootLayouts]
-        : renderRootLayouts;
-    const pageRenderLayouts = route.pageIncludesOwnLayout === false && currentLayout ? parentLayouts : renderLayouts;
+      route.pageIncludesOwnLayout === false && currentRootLayout ? parentRootLayouts : renderRootLayouts;
+    const pageRenderLayouts =
+      route.pageIncludesOwnLayout === false && currentLayout
+        ? [...parentLayouts, ...currentOverrideRenders]
+        : renderLayouts;
     const pageRenderConfigChain =
       route.pageIncludesOwnLayout === false && (currentRootLayout || currentLayout)
         ? parentPageConfigChain
@@ -245,7 +242,7 @@ export const bootCsr = async (context: Record<string, CsrRouteModuleEntry>) => {
         : []),
       ...(route.children.size
         ? [...route.children.values()].flatMap((child) =>
-            getPathRoutes(child, rootLayoutStack, renderLayouts, pathSegments, pageConfigChain, overrideRenders),
+            getPathRoutes(child, renderRootLayouts, renderLayouts, pathSegments, pageConfigChain),
           )
         : []),
     ];
@@ -310,7 +307,39 @@ function validateRouteModuleExports(key: string, mod: RouteModule) {
     if (!mod.default) throw new Error(`[route-convention] ${key} generated override wrapper has no default export`);
     return;
   }
-  const allowed = getRouteExports(parsed.kind, { rootLayout: parsed.isInternalRootLayout });
+  const allowed =
+    parsed.kind === "page"
+      ? new Set(["default", "pageConfig", "head", "metadata", "generateHead", "generateMetadata", "Loading"])
+      : parsed.isInternalRootLayout
+        ? new Set([
+            "default",
+            "pageConfig",
+            "head",
+            "metadata",
+            "generateHead",
+            "generateMetadata",
+            "fonts",
+            "manifest",
+            "theme",
+            "reconnect",
+            "wsConnect",
+            "layoutStyle",
+            "gaTrackingId",
+            "Loading",
+            "NotFound",
+            "Error",
+          ])
+        : new Set([
+            "default",
+            "pageConfig",
+            "head",
+            "metadata",
+            "generateHead",
+            "generateMetadata",
+            "Loading",
+            "NotFound",
+            "Error",
+          ]);
   for (const exportName of Object.keys(mod)) {
     if (!allowed.has(exportName)) {
       throw new Error(`[route-convention] unsupported export "${exportName}" in ${key}`);

@@ -1,8 +1,7 @@
 import { msg } from "@libs/shared/client";
-import { withRedirectQuery } from "@libs/shared/common";
 import { type Dayjs, dayjs } from "akanjs/base";
 import { getCookie, router, setAuth, setCookie } from "akanjs/client";
-import { formatPhone, isPhoneNumber } from "akanjs/common";
+import { isPhoneNumber } from "akanjs/common";
 import { store } from "akanjs/store";
 
 import * as cnst from "../cnst";
@@ -101,29 +100,29 @@ export class UserStore extends store(sig.user, () => ({
     const userId = await fetch.getUserIdHasNickname(nickname);
     this.set({ sameNicknameExists: !!userId });
   }
-  async activateUser(userId: string, { redirect }: { redirect?: string }) {
+  async activateUser(userId: string, { redirect }: { redirect: string }) {
     const accessToken = await fetch.activateUser(userId);
     setAuth(accessToken);
     await this.getSelf(accessToken);
-    if (redirect) router.push(redirect);
+    router.push(redirect);
   }
   async setNicknameOfSelf({ redirect }: { redirect: string }) {
     const { self, userForm } = this.get();
     if (!self.id || !userForm.nickname) return;
     await fetch.setNicknameOfSelf(userForm.nickname);
-    if (redirect) router.push(withRedirectQuery(redirect, { userId: self.id }));
+    if (redirect) router.push(`${redirect}?userId=${self.id}`);
   }
   async setNicknameOfPrepareUser(userId: string, { redirect }: { redirect: string }) {
     const { userForm } = this.get();
     if (!userForm.nickname) return;
     await fetch.setNicknameOfPrepareUser(userId, userForm.nickname);
-    if (redirect) router.push(withRedirectQuery(redirect, { userId }));
+    if (redirect) router.push(`${redirect}?userId=${userId}`);
   }
   async setAppliedImagesOfSelf(appliedImages: cnst.File[], { redirect }: { redirect?: string }) {
     const { self } = this.get();
     if (!self.id || !appliedImages.length) return;
     await fetch.setAppliedImagesOfSelf(appliedImages.map((file) => file.id));
-    if (redirect) router.push(withRedirectQuery(redirect, { userId: self.id }));
+    if (redirect) router.push(`${redirect}?userId=${self.id}`);
   }
   async setAppliedImagesOfPrepareUser(userId: string, { redirect }: { redirect?: string }) {
     const { userForm } = this.get();
@@ -132,7 +131,7 @@ export class UserStore extends store(sig.user, () => ({
       userId,
       userForm.appliedImages.map((file) => file.id),
     );
-    if (redirect) router.push(withRedirectQuery(redirect, { userId }));
+    if (redirect) router.push(`${redirect}?userId=${userId}`);
   }
   //*================================================================*//
   //*====================== Admin Control Area ======================*//
@@ -165,9 +164,6 @@ export class UserStore extends store(sig.user, () => ({
     await fetch.setPasswordByAdmin(user.id, password);
     msg.success("user.changePasswordSuccess", { key: "changePasswordByAdmin" });
   }
-  setPhone(phone: string) {
-    this.set({ phone: formatPhone(phone) });
-  }
   async setPhoneByAdmin(phone: string) {
     const { user } = this.pick("user");
     msg.loading("user.changePhoneLoading", { key: "changePhoneByAdmin" });
@@ -183,7 +179,7 @@ export class UserStore extends store(sig.user, () => ({
     const { accountId } = this.get();
     if (!accountId) return;
     await fetch.setAccountIdInPrepareUser(userId, accountId);
-    router.push(withRedirectQuery(redirect, { userId }));
+    router.push(`${redirect}?userId=${userId}`);
   }
   async generatePrepareUserWithAccountId({ redirect }: { redirect: string }) {
     const { accountId } = this.get();
@@ -200,7 +196,7 @@ export class UserStore extends store(sig.user, () => ({
     const { accountId, password, passwordConfirm } = this.get();
     if (!accountId || !password || password !== passwordConfirm) return;
     await fetch.setPasswordInPrepareUser(userId, accountId, password);
-    router.push(withRedirectQuery(redirect, { userId }));
+    router.push(`${redirect}?userId=${userId}`);
   }
   async signinWithPassword({ redirect, replace }: { redirect: string; replace?: boolean }) {
     try {
@@ -261,13 +257,13 @@ export class UserStore extends store(sig.user, () => ({
     else if (!isPhoneNumber(phone)) return;
     await fetch.setPhoneInPrepareUser(userId, phone, hash);
     this.set({ phoneCode: "", phoneCodeAt: dayjs().add(3, "minutes") });
-    if (redirect) router.push(withRedirectQuery(redirect, { userId, phone, hash }));
+    if (redirect) router.push(`${redirect}?userId=${userId}&phone=${encodeURIComponent(phone)}&hash=${hash}`);
   }
   async verifyPhoneInPrepareUser(userId: string, { redirect }: { redirect?: string } = {}) {
     const { phone, phoneCode } = this.pick("phone", "phoneCode");
     if (!phone || !phoneCode) return;
     await fetch.verifyPhoneInPrepareUser(userId, phone, phoneCode);
-    if (redirect) router.push(withRedirectQuery(redirect, { userId }));
+    if (redirect) router.push(`${redirect}?userId=${userId}`);
   }
   async requestPhoneCodeForSignin(userId: string, phone: string, hash = "signin") {
     const { phoneCodeAt } = this.get();
@@ -293,11 +289,11 @@ export class UserStore extends store(sig.user, () => ({
   //*====================== Secret Setup Area =======================*//
   async setNameOfPrepareUser(userId: string, name: string, { redirect }: { redirect: string }) {
     const success = await fetch.setNameOfPrepareUser(userId, name);
-    if (success) router.push(withRedirectQuery(redirect, { userId }));
+    if (success) router.push(`${redirect}?userId=${userId}`);
   }
   async setAgreePoliciesOfPrepareUser(userId: string, agreePolicies: string[], { redirect }: { redirect: string }) {
     const success = await fetch.setAgreePoliciesOfPrepareUser(userId, agreePolicies);
-    if (success) router.push(withRedirectQuery(redirect, { userId }));
+    if (success) router.push(`${redirect}?userId=${userId}`);
   }
   //*====================== Secret Setup Area =======================*//
   //*================================================================*//
@@ -319,9 +315,9 @@ export class UserStore extends store(sig.user, () => ({
     }: { signinRedirect: string; signupRedirect: string; errorRedirect: string; replace?: boolean },
   ) {
     setCookie("ssoFor", "user");
-    setCookie("signinRedirect", encodeURIComponent(router.getPrefixedPath(signinRedirect)));
-    setCookie("signupRedirect", encodeURIComponent(router.getPrefixedPath(signupRedirect)));
-    setCookie("errorRedirect", encodeURIComponent(router.getPrefixedPath(errorRedirect)));
+    setCookie("signinRedirect", `${router.getPrefixedPath(signinRedirect)}`);
+    setCookie("signupRedirect", `${router.getPrefixedPath(signupRedirect)}`);
+    setCookie("errorRedirect", `${router.getPrefixedPath(errorRedirect)}`);
     setCookie("ssoOrigin", location.origin);
     const url = `/api/user/${ssoType}`;
     if (replace) location.replace(url);

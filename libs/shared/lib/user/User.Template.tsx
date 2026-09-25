@@ -1,13 +1,13 @@
 "use client";
-import { fetch, st, User, usePage } from "@libs/shared/client";
+import { st, usePage } from "@libs/shared/client";
 import { Field, Only } from "@libs/shared/ui";
-import { buttonRecipe, CodeInput, Upload } from "@libs/util/ui";
-import { cn } from "akanjs/client";
-import { isEmail, isPhoneNumber } from "akanjs/common";
+import { CodeInput, Upload } from "@libs/util/ui";
+import { clsx } from "akanjs/client";
+import { formatPhone, isEmail, isPhoneNumber } from "akanjs/common";
 import type { ProtoFile } from "akanjs/constant";
 import { Button, Image, Input, Layout } from "akanjs/ui";
-import { useEffect, useRef } from "react";
-import { AiOutlinePlus } from "react-icons/ai";
+import { useEffect, useRef, useState } from "react";
+import { AiOutlineClose, AiOutlineEdit, AiOutlinePlus, AiOutlineSave } from "react-icons/ai";
 
 export * from "../../ui/UserLeave";
 
@@ -29,9 +29,9 @@ export const General = ({ className }: GeneralProps) => {
       />
       {user ? (
         <Only.Admin>
-          <User.Util.SetAccountIdByAdmin accountId={user.accountId} />
-          <User.Util.SetPasswordByAdmin />
-          <User.Util.SetPhoneByAdmin phone={user.phone} />
+          <SetAccountIdByAdmin accountId={user.accountId} />
+          <SetPasswordByAdmin />
+          <SetPhoneByAdmin phone={user.phone} />
         </Only.Admin>
       ) : null}
     </Layout.Template>
@@ -62,7 +62,9 @@ export const Phone = ({ className, inputClassName, placeholder, userId, redirect
       inputClassName={inputClassName}
       placeholder={placeholder ?? l("user.phonePlaceholder")}
       value={phone}
-      onChange={st.do.setPhone}
+      onChange={(value) => {
+        st.do.setPhone(formatPhone(value));
+      }}
       onPressEnter={() => {
         if (!userId || !isPhoneNumber(phone)) return;
         void st.do.setPhoneInPrepareUser(userId, phone, { redirect });
@@ -83,7 +85,7 @@ export const SubmitPhone = ({ className = "", userId, redirect, hash }: SubmitPh
   const phone = st.use.phone();
   return (
     <button
-      className={cn(buttonRecipe({ variant: "primary" }), className)}
+      className={clsx("btn btn-primary", className)}
       disabled={!isPhoneNumber(phone)}
       onClick={() => {
         void st.do.setPhoneInPrepareUser(userId, phone, { hash, redirect });
@@ -101,7 +103,7 @@ interface PhoneCodeProps {
 export const PhoneCode = ({ className, autoComplete = true }: PhoneCodeProps) => {
   const phoneCode = st.use.phoneCode();
   return (
-    <div className={cn("w-full pb-4", className)}>
+    <div className={clsx("w-full pb-4", className)}>
       <CodeInput
         autoComplete={autoComplete}
         unitStyle="underline"
@@ -148,7 +150,7 @@ export const SubmitName = ({ userId, redirect, className }: SubmitNameProps) => 
   const userForm = st.use.userForm();
   return (
     <button
-      className={cn(buttonRecipe({ variant: "primary" }), className)}
+      className={clsx("btn btn-primary", className)}
       disabled={!userForm.name || userForm.name.length < 2}
       onClick={async () => {
         if (!userForm.name) return;
@@ -184,7 +186,9 @@ export const AccountId = ({
       inputClassName={inputClassName}
       placeholder={placeholder ?? "이메일을 입력해주세요"}
       value={accountId}
-      onChange={st.do.setAccountId}
+      onChange={(value) => {
+        st.do.setAccountId(value);
+      }}
       onPressEnter={() => {
         if (!accountId || !isEmail(accountId)) return;
         void st.do.generatePrepareUserWithAccountId({ redirect });
@@ -201,7 +205,7 @@ export const GeneratePrepareUserWithAccountId = ({ redirect }: GeneratePrepareUs
   const accountId = st.use.accountId();
   return (
     <button
-      className={buttonRecipe({ variant: "primary" })}
+      className="btn btn-primary"
       disabled={!accountId || !isEmail(accountId)}
       onClick={() => {
         if (!accountId || !isEmail(accountId)) return;
@@ -221,7 +225,7 @@ export const SubmitAccountId = ({ userId, redirect }: SubmitAccountIdProps) => {
   const accountId = st.use.accountId();
   return (
     <button
-      className={buttonRecipe({ variant: "primary" })}
+      className={"btn btn-primary"}
       disabled={!accountId || !isEmail(accountId)}
       onClick={() => {
         if (!accountId || !isEmail(accountId)) return;
@@ -243,15 +247,19 @@ export const PasswordWithConfirm = ({ className, userId, redirect }: PasswordWit
   const password = st.use.password();
   const passwordConfirm = st.use.passwordConfirm();
   return (
-    <div className={cn("flex w-full flex-col gap-2", className)}>
+    <div className={clsx("flex w-full flex-col gap-2", className)}>
       <Field.Password
         label={l("user.password")}
         desc={l("user.password.desc")}
         value={password}
-        onChange={st.do.setPassword}
+        onChange={(password) => {
+          st.do.setPassword(password);
+        }}
         showConfirm
         confirmValue={passwordConfirm}
-        onChangeConfirm={st.do.setPasswordConfirm}
+        onChangeConfirm={(passwordConfirm) => {
+          st.do.setPasswordConfirm(passwordConfirm);
+        }}
         onPressEnter={() => {
           if (!password || !passwordConfirm || password !== passwordConfirm) return;
           void st.do.setPasswordInPrepareUser(userId, { redirect });
@@ -271,7 +279,7 @@ export const SubmitPassword = ({ userId, redirect }: SubmitPasswordProps) => {
   const passwordConfirm = st.use.passwordConfirm();
   return (
     <button
-      className={buttonRecipe({ variant: "primary" })}
+      className={"btn btn-primary"}
       disabled={!accountId || !password || !passwordConfirm || password !== passwordConfirm}
       onClick={() => {
         void st.do.setPasswordInPrepareUser(userId, { redirect });
@@ -295,7 +303,7 @@ export const SubmitPolicy = ({
   const agreePolicies = st.use.agreePolicies();
   return (
     <button
-      className={buttonRecipe({ variant: "primary" })}
+      className={"btn btn-primary"}
       disabled={!mandatoryPolicies.every((policy) => agreePolicies.includes(policy))}
       onClick={() => {
         void st.do.setAgreePoliciesOfPrepareUser(userId, agreePolicies, { redirect });
@@ -337,7 +345,7 @@ export const SubmitNicknameOfPrepareUser = ({ redirect, userId, className }: Sub
   const userForm = st.use.userForm();
   return (
     <button
-      className={cn(buttonRecipe({ variant: "default" }, "border-primary-light bg-primary-light"), className)}
+      className={clsx("btn border-primary-light bg-primary-light", className)}
       disabled={!userForm.nickname || userForm.nickname.length < 2 || userForm.nickname.length > 20}
       onClick={() => {
         void st.do.setNicknameOfPrepareUser(userId, { redirect });
@@ -356,7 +364,7 @@ export const SubmitNickname = ({ redirect, className }: SubmitNicknameProps) => 
   const userForm = st.use.userForm();
   return (
     <button
-      className={cn(buttonRecipe({ variant: "default" }, "border-primary-light bg-primary-light"), className)}
+      className={clsx("btn border-primary-light bg-primary-light", className)}
       disabled={!userForm.nickname || userForm.nickname.length < 2 || userForm.nickname.length > 20}
       onClick={() => {
         void st.do.setNicknameOfSelf({ redirect });
@@ -369,9 +377,8 @@ export const SubmitNickname = ({ redirect, className }: SubmitNicknameProps) => 
 
 export const AppliedImages = () => {
   const userForm = st.use.userForm();
-  const { l } = usePage();
   const onRemove = (index: number) => {
-    if (!window.confirm(l("user.removeAppliedImageConfirm"))) return;
+    if (!window.confirm("사진을 삭제하시겠습니까?")) return;
     st.do.subAppliedImagesOnUser(index);
   };
   return (
@@ -389,22 +396,22 @@ export const AppliedImages = () => {
             }}
             renderEmpty={() => (
               <div
-                className={cn(
-                  "flex aspect-1 w-full items-center justify-center rounded-2xl bg-muted duration-300 hover:opacity-50",
-                  i === 0 ? "border-4 border-primary" : "",
+                className={clsx(
+                  "flex aspect-1 w-full items-center justify-center rounded-2xl bg-gray-200 duration-300 hover:opacity-50",
+                  { "border-4 border-primary": i === 0 },
                 )}
               >
                 <AiOutlinePlus className="font-bold text-6xl text-primary opacity-60" />
-                {i === 0 ? (
-                  <div className="absolute top-2 left-2 rounded-md bg-primary px-1 text-white text-xs">
-                    {l("user.mainAppliedImage")}
-                  </div>
-                ) : null}
+                {i === 0 && (
+                  <div className="absolute top-2 left-2 rounded-md bg-primary px-1 text-white text-xs">대표 사진</div>
+                )}
               </div>
             )}
             renderComplete={(file) => (
               <div
-                className={cn("aspect-1 w-full overflow-hidden rounded-2xl", i === 0 ? "border-4 border-primary" : "")}
+                className={clsx("aspect-1 w-full overflow-hidden rounded-2xl", {
+                  "border-4 border-primary": i === 0,
+                })}
               >
                 <Image file={file} className="size-full object-cover" />
               </div>
@@ -425,7 +432,7 @@ export const AppliedImages = () => {
               onRemove(i + 2);
             }}
             renderEmpty={() => (
-              <div className="flex aspect-1 w-full items-center justify-center rounded-xl bg-muted text-primary duration-300 hover:opacity-50">
+              <div className="flex aspect-1 w-full items-center justify-center rounded-xl bg-gray-200 text-primary duration-300 hover:opacity-50">
                 <AiOutlinePlus className="font-bold text-2xl opacity-60" />
               </div>
             )}
@@ -441,6 +448,14 @@ export const AppliedImages = () => {
           />
         ))}
       </div>
+      {/* <BottomSheet onCancel={() => {}} open={false}>
+        <CropImage src={""} download ref={cropRef} />
+        <div className="relative  flex w-full items-center justify-center gap-2">
+          <button onClick={() => {}} className="btn flex-1 rounded-2xl btn-primary">
+            저장
+          </button>
+        </div>
+      </BottomSheet> */}
     </>
   );
 };
@@ -463,20 +478,174 @@ export const SubmitAppliedImages = ({ redirect }: SubmitAppliedImagesProps) => {
   );
 };
 
-interface ActivateByAdminProps {
-  userId: string;
+interface SetAccountIdByAdminProps {
+  className?: string;
+  accountId: string | null;
+}
+export const SetAccountIdByAdmin = ({ className, accountId }: SetAccountIdByAdminProps) => {
+  const [changeId, setChangeId] = useState(accountId ?? "empty");
+  const [editState, setEditState] = useState<"edit" | "saving" | null>(null);
+  return (
+    <div className={clsx("flex items-center gap-2", className)}>
+      <label className="w-24">AccountId: </label>
+      <input
+        className="input"
+        value={changeId}
+        onChange={(e) => {
+          setChangeId(e.target.value);
+        }}
+        disabled={!editState}
+      />
+      {editState ? (
+        <>
+          <button
+            className="btn btn-primary"
+            disabled={
+              editState === "saving" ||
+              changeId === accountId ||
+              changeId.length < 4 ||
+              (isEmail(accountId) && !isEmail(changeId))
+            }
+            onClick={async () => {
+              setEditState("saving");
+              await st.do.setAccountIdByAdmin(changeId);
+              setEditState(null);
+            }}
+          >
+            <AiOutlineSave />
+          </button>
+          <button
+            className="btn btn-outline"
+            disabled={editState === "saving"}
+            onClick={() => {
+              setChangeId(accountId ?? "");
+              setEditState(null);
+            }}
+          >
+            <AiOutlineClose />
+          </button>
+        </>
+      ) : (
+        <button
+          className="btn"
+          onClick={() => {
+            setEditState("edit");
+          }}
+        >
+          <AiOutlineEdit />
+        </button>
+      )}
+    </div>
+  );
+};
+interface SetPasswordByAdminProps {
   className?: string;
 }
-export const ActivateByAdmin = ({ userId, className }: ActivateByAdminProps) => {
-  const { l } = usePage();
+export const SetPasswordByAdmin = ({ className }: SetPasswordByAdminProps) => {
+  const [password, setPassword] = useState("********");
+  const [editState, setEditState] = useState<"edit" | "saving" | null>(null);
   return (
-    <button
-      className={buttonRecipe({ variant: "primary" }, className)}
-      onClick={() => {
-        void fetch.activateUser(userId);
-      }}
-    >
-      {l("user.signal.activateUser")}
-    </button>
+    <div className={clsx("flex items-center gap-2", className)}>
+      <label className="w-24">Password: </label>
+      <input
+        className="input"
+        type="password"
+        value={password}
+        onChange={(e) => {
+          setPassword(e.target.value);
+        }}
+        disabled={!editState}
+      />
+      {editState ? (
+        <>
+          <button
+            className="btn btn-primary"
+            disabled={editState === "saving" || password.length < 8 || password.length > 20}
+            onClick={async () => {
+              setEditState("saving");
+              await st.do.setPasswordByAdmin(password);
+              setEditState(null);
+            }}
+          >
+            <AiOutlineSave />
+          </button>
+          <button
+            className="btn btn-outline"
+            disabled={editState === "saving"}
+            onClick={() => {
+              setPassword("********");
+              setEditState(null);
+            }}
+          >
+            <AiOutlineClose />
+          </button>
+        </>
+      ) : (
+        <button
+          className="btn"
+          onClick={() => {
+            setEditState("edit");
+          }}
+        >
+          <AiOutlineEdit />
+        </button>
+      )}
+    </div>
+  );
+};
+
+interface SetPhoneByAdminProps {
+  className?: string;
+  phone: string | null;
+}
+export const SetPhoneByAdmin = ({ className, phone }: SetPhoneByAdminProps) => {
+  const [changePhone, setChangePhone] = useState(phone ?? "empty");
+  const [editState, setEditState] = useState<"edit" | "saving" | null>(null);
+  return (
+    <div className={clsx("flex items-center gap-2", className)}>
+      <label className="w-24">Phone: </label>
+      <input
+        className="input"
+        value={changePhone}
+        onChange={(e) => {
+          setChangePhone(formatPhone(e.target.value));
+        }}
+        disabled={!editState}
+      />
+      {editState ? (
+        <>
+          <button
+            className="btn btn-primary"
+            disabled={editState === "saving" || !isPhoneNumber(changePhone) || changePhone === phone}
+            onClick={async () => {
+              setEditState("saving");
+              await st.do.setPhoneByAdmin(changePhone);
+              setEditState(null);
+            }}
+          >
+            <AiOutlineSave />
+          </button>
+          <button
+            className="btn btn-outline"
+            disabled={editState === "saving"}
+            onClick={() => {
+              setChangePhone(phone ?? "");
+              setEditState(null);
+            }}
+          >
+            <AiOutlineClose />
+          </button>
+        </>
+      ) : (
+        <button
+          className="btn"
+          onClick={() => {
+            setEditState("edit");
+          }}
+        >
+          <AiOutlineEdit />
+        </button>
+      )}
+    </div>
   );
 };

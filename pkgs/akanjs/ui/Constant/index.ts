@@ -1,7 +1,6 @@
 import Doc from "./Doc";
-import { Graph } from "./Graph";
+import { Mermaid } from "./Mermaid";
 
 export * from "./schemaDoc";
-export * from "./schemaGraph";
 
-export const Constant = { Doc, Graph };
+export const Constant = { Doc, Mermaid };

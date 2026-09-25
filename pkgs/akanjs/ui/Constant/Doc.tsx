@@ -6,24 +6,9 @@ import { useMemo, useState } from "react";
 import { AiOutlineInfoCircle, AiOutlineSearch } from "react-icons/ai";
 import { BiNetworkChart, BiTable } from "react-icons/bi";
 
-import { buttonRecipe } from "../Button";
 import { Input } from "../Input";
 import { Modal } from "../Modal";
-import {
-  Code,
-  Collapse,
-  dictText,
-  docDash,
-  docPill,
-  docUi,
-  Panel,
-  Section,
-  Segmented,
-  SummaryCard,
-  SummaryGrid,
-  Toolbar,
-} from "../Reference";
-import { Graph } from "./Graph";
+import { Mermaid } from "./Mermaid";
 import {
   type DatabaseModelVariant,
   type DatabaseSchema,
@@ -34,27 +19,10 @@ import {
   getVariantTitle,
   type ScalarSchema,
 } from "./schemaDoc";
-import type { SchemaGraphEdge, SchemaGraphNode, SchemaNodeKind } from "./schemaGraph";
 
 export default function Doc() {
   return <div />;
 }
-
-const viewItems = [
-  { key: "table", label: "Table", icon: <BiTable /> },
-  { key: "diagram", label: "Diagram", icon: <BiNetworkChart /> },
-] as const;
-
-const variantItems = databaseModelVariants.map((variant) => ({ key: variant, label: getVariantTitle(variant) }));
-
-/** A model reference is the one type a reader may want to look up elsewhere, so only those carry colour. */
-const typeTone = (field: FieldSchema) =>
-  field.typeKind === "database" || field.typeKind === "scalar" ? "info" : "muted";
-
-const typeLabelOf = (field: FieldSchema) => `${field.typeLabel}${field.required ? "!" : ""}`;
-
-/** A declared `null` default is the same as none, and a column of them reads as data the field does not carry. */
-const defaultLabelOf = (field: FieldSchema) => (field.defaultLabel === "null" ? undefined : field.defaultLabel);
 
 interface ZoneProps {
   models?: string[];
@@ -83,59 +51,63 @@ const Zone = ({ models, scalars, enums, openAll }: ZoneProps) => {
     [schemaDoc.enums, query],
   );
   return (
-    <div className="flex break-after-page flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <h1 className={docUi.pageTitle}>Constant Schema Docs</h1>
-        <p className={docUi.sectionDescription}>
+    <div className="flex break-after-page flex-col gap-4">
+      <div>
+        <div className="font-bold text-3xl">Constant Schema Docs</div>
+        <div className="text-base-content/70">
           Database models, scalar models, enums, and relations from ConstantRegistry.
-        </p>
+        </div>
       </div>
-      <SummaryGrid>
-        <SummaryCard label="Database Models" value={filteredDatabases.length} />
-        <SummaryCard label="Scalar Models" value={filteredScalars.length} />
-        <SummaryCard label="Enums" value={filteredEnums.length} />
-        <SummaryCard label="Relations" value={schemaDoc.relations.length} />
-      </SummaryGrid>
-      <Toolbar>
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        <SummaryCard title="Database Models" value={filteredDatabases.length} />
+        <SummaryCard title="Scalar Models" value={filteredScalars.length} />
+        <SummaryCard title="Enums" value={filteredEnums.length} />
+        <SummaryCard title="Relations" value={schemaDoc.relations.length} />
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-base-200 p-3">
         <Input
-          icon={<AiOutlineSearch className="text-foreground/40" />}
-          iconClassName="-mr-8 z-10 pl-3"
-          inputClassName="w-72 pl-9"
           nullable
-          onChange={setQuery}
-          placeholder="Search models or enums"
           value={query}
+          onChange={setQuery}
+          inputClassName="w-72"
+          icon={<AiOutlineSearch />}
+          placeholder="Search models or enums"
         />
-        <Segmented className="ml-auto" items={viewItems} onChange={setViewMode} value={viewMode} />
-      </Toolbar>
+        <div className="join">
+          <button
+            className={`btn join-item btn-sm ${viewMode === "table" ? "btn-primary" : "btn-outline"}`}
+            onClick={() => setViewMode("table")}
+          >
+            <BiTable /> Table
+          </button>
+          <button
+            className={`btn join-item btn-sm ${viewMode === "diagram" ? "btn-primary" : "btn-outline"}`}
+            onClick={() => setViewMode("diagram")}
+          >
+            <BiNetworkChart /> Diagram
+          </button>
+        </div>
+      </div>
       {viewMode === "diagram" ? (
         <Diagram databases={filteredDatabases} scalars={filteredScalars} />
       ) : (
-        <div className="flex flex-col gap-6">
-          <Section title="Database Models">
-            {filteredDatabases.length ? (
-              <div className="flex flex-col gap-2">
-                {filteredDatabases.map((database) => (
-                  <Model key={database.refName} database={database} openAll={openAll} />
-                ))}
-              </div>
-            ) : (
-              <div className={docUi.emptyPanel}>No database model matches.</div>
-            )}
-          </Section>
+        <div className="flex flex-col gap-4">
+          {filteredDatabases.map((database) => (
+            <Model key={database.refName} database={database} openAll={openAll} />
+          ))}
           {filteredScalars.length ? (
-            <Section title="Scalar Models">
-              <div className="flex flex-col gap-2">
-                {filteredScalars.map((scalar) => (
-                  <Scalar key={scalar.refName} scalar={scalar} openAll={openAll} />
-                ))}
-              </div>
-            </Section>
+            <div className="flex flex-col gap-3">
+              <div className="font-bold text-2xl">Scalar Models</div>
+              {filteredScalars.map((scalar) => (
+                <Scalar key={scalar.refName} scalar={scalar} openAll={openAll} />
+              ))}
+            </div>
           ) : null}
           {filteredEnums.length ? (
-            <Section title="Enums">
+            <div className="flex flex-col gap-3">
+              <div className="font-bold text-2xl">Enums</div>
               <EnumList enums={filteredEnums} />
-            </Section>
+            </div>
           ) : null}
         </div>
       )}
@@ -147,18 +119,18 @@ Doc.Zone = Zone;
 const Print = ({ models, scalars, enums }: ZoneProps) => {
   const schemaDoc = useMemo(() => getConstantSchemaDoc({ models, scalars, enums }), [models, scalars, enums]);
   return (
-    <div className="flex flex-col gap-10 bg-background text-foreground print:bg-white print:text-black">
+    <div className="flex flex-col gap-10 bg-base-100 text-base-content print:bg-white print:text-black">
       <div className="break-after-page">
         <div className="font-bold text-4xl">Constant Schema Definition</div>
-        <div className="mt-2 text-foreground/70 print:text-black">
+        <div className="mt-2 text-base-content/70 print:text-black">
           Database models, scalar models, enums, and relations from ConstantRegistry.
         </div>
-        <SummaryGrid className="mt-6">
-          <SummaryCard label="Database Models" value={schemaDoc.databases.length} />
-          <SummaryCard label="Scalar Models" value={schemaDoc.scalars.length} />
-          <SummaryCard label="Enums" value={schemaDoc.enums.length} />
-          <SummaryCard label="Relations" value={schemaDoc.relations.length} />
-        </SummaryGrid>
+        <div className="mt-6 grid grid-cols-2 gap-2 md:grid-cols-4">
+          <SummaryCard title="Database Models" value={schemaDoc.databases.length} />
+          <SummaryCard title="Scalar Models" value={schemaDoc.scalars.length} />
+          <SummaryCard title="Enums" value={schemaDoc.enums.length} />
+          <SummaryCard title="Relations" value={schemaDoc.relations.length} />
+        </div>
       </div>
       {schemaDoc.databases.map((database) => (
         <PrintDatabase key={database.refName} database={database} />
@@ -198,21 +170,20 @@ const Model = ({ refName, database: databaseProp, openAll }: ModelProps) => {
   if (!database) return null;
   const activeVariant = database.variants[variant] ?? getDefaultVariant(database);
   return (
-    <Collapse
-      open={openAll}
-      summary={
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-bold text-lg">{database.modelName}</span>
-            <span className={docPill("info", "font-mono")}>{database.refName}</span>
-          </div>
-          <div className="text-foreground/55 text-sm">{l._(`${database.refName}.modelDesc`)}</div>
+    <div className="collapse-arrow collapse bg-base-200">
+      <input type="checkbox" defaultChecked={openAll} />
+      <div className="collapse-title">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="font-bold text-xl">{database.modelName}</div>
+          <div className="badge badge-primary">{database.refName}</div>
+          <div className="text-base-content/70 text-sm">{l._(`${database.refName}.modelDesc`)}</div>
         </div>
-      }
-    >
-      <Segmented items={variantItems} onChange={setVariant} value={variant} />
-      <ModelVariantTable variant={activeVariant} />
-    </Collapse>
+      </div>
+      <div className="collapse-content flex flex-col gap-3">
+        <VariantTabs variant={variant} onChange={setVariant} />
+        <ModelVariantTable variant={activeVariant} />
+      </div>
+    </div>
   );
 };
 Doc.Model = Model;
@@ -231,20 +202,19 @@ const Scalar = ({ refName, scalar: scalarProp, openAll }: ScalarProps) => {
   const { l } = usePage();
   if (!scalar) return null;
   return (
-    <Collapse
-      open={openAll}
-      summary={
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-bold text-lg">{scalar.modelName}</span>
-            <span className={docPill("muted", "font-mono")}>{scalar.refName}</span>
-          </div>
-          <div className="text-foreground/55 text-sm">{l._(`${scalar.refName}.modelDesc`)}</div>
+    <div className="collapse-arrow collapse bg-base-200">
+      <input type="checkbox" defaultChecked={openAll} />
+      <div className="collapse-title">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="font-bold text-xl">{scalar.modelName}</div>
+          <div className="badge badge-secondary">{scalar.refName}</div>
+          <div className="text-base-content/70 text-sm">{l._(`${scalar.refName}.modelDesc`)}</div>
         </div>
-      }
-    >
-      <FieldTable refName={scalar.refName} fields={scalar.fields} />
-    </Collapse>
+      </div>
+      <div className="collapse-content">
+        <FieldTable refName={scalar.refName} fields={scalar.fields} />
+      </div>
+    </div>
   );
 };
 Doc.Scalar = Scalar;
@@ -256,11 +226,12 @@ interface EnumProps {
 const EnumList = ({ enums = getConstantSchemaDoc().enums }: EnumProps) => {
   const { l } = usePage();
   return (
-    <div className={docUi.tablePanel}>
-      <table className={docUi.tableClass}>
+    <div className="overflow-x-auto rounded-xl bg-base-200 p-3">
+      <table className="table">
         <thead>
           <tr>
-            <th>Enum</th>
+            <th>Key</th>
+            <th>Ref Name</th>
             <th>Type</th>
             <th>Values</th>
             <th>Used By</th>
@@ -269,40 +240,34 @@ const EnumList = ({ enums = getConstantSchemaDoc().enums }: EnumProps) => {
         <tbody>
           {enums.map((enumSchema) => (
             <tr key={enumSchema.key}>
+              <td>{enumSchema.key}</td>
+              <td>{enumSchema.refName}</td>
+              <td>{enumSchema.typeName}</td>
               <td>
-                <div className={docUi.key}>{enumSchema.key}</div>
-                <div className={docUi.subLabel}>{enumSchema.refName}</div>
-              </td>
-              <td>
-                <span className={docPill("muted", "font-mono")}>{enumSchema.typeName}</span>
-              </td>
-              <td>
-                <div className="flex max-w-72 flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1">
                   {enumSchema.values.map((value) => (
-                    <span
-                      className={buttonRecipe({ variant: "outline", size: "xs" }, "font-mono")}
+                    <div
                       key={String(value)}
-                      title={l._(`${enumSchema.refName}.${value}`)}
+                      className="tooltip tooltip-primary"
+                      data-tip={l._(`${enumSchema.refName}.${value}`)}
                     >
-                      {String(value)}
-                    </span>
+                      <button className="btn btn-xs">{String(value)}</button>
+                    </div>
                   ))}
                 </div>
               </td>
               <td>
                 <div className="flex flex-wrap gap-1">
-                  {enumSchema.usedBy.length ? (
-                    enumSchema.usedBy.map((usage) => (
-                      <span
-                        className={docPill("muted", "font-mono")}
-                        key={`${usage.refName}-${usage.variant}-${usage.fieldKey}`}
-                      >
-                        {usage.refName}.{usage.fieldKey}
-                      </span>
-                    ))
-                  ) : (
-                    <span className={docDash}>—</span>
-                  )}
+                  {enumSchema.usedBy.length
+                    ? enumSchema.usedBy.map((usage) => (
+                        <span
+                          key={`${usage.refName}-${usage.variant}-${usage.fieldKey}`}
+                          className="badge badge-outline"
+                        >
+                          {usage.refName}.{usage.fieldKey}
+                        </span>
+                      ))
+                    : "-"}
                 </div>
               </td>
             </tr>
@@ -314,12 +279,28 @@ const EnumList = ({ enums = getConstantSchemaDoc().enums }: EnumProps) => {
 };
 Doc.Enum = EnumList;
 
+const VariantTabs = ({
+  variant,
+  onChange,
+}: {
+  variant: DatabaseModelVariant;
+  onChange: (variant: DatabaseModelVariant) => void;
+}) => (
+  <div className="tabs tabs-box w-fit">
+    {databaseModelVariants.map((item) => (
+      <button key={item} className={`tab ${variant === item ? "tab-active" : ""}`} onClick={() => onChange(item)}>
+        {getVariantTitle(item)}
+      </button>
+    ))}
+  </div>
+);
+
 const ModelVariantTable = ({ variant }: { variant: ReturnType<typeof getDefaultVariant> }) => (
   <div className="flex flex-col gap-2">
     <div className="flex flex-wrap items-center gap-2">
-      <span className="font-semibold text-base">{variant.modelName}</span>
-      <span className={docPill("muted")}>{getVariantTitle(variant.variant)}</span>
-      <span className="text-foreground/45 text-sm">{variant.fields.length} fields</span>
+      <div className="font-extrabold text-lg">{variant.modelName}</div>
+      <div className="badge badge-outline">{getVariantTitle(variant.variant)}</div>
+      <div className="text-base-content/60 text-sm">{variant.fields.length} fields</div>
     </div>
     <FieldTable refName={variant.refName} fields={variant.fields} />
   </div>
@@ -332,11 +313,11 @@ const PrintDatabase = ({ database }: { database: DatabaseSchema }) => {
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="font-bold text-3xl">{database.modelName}</div>
-          <div className={docPill("info", "font-mono print:border print:border-black print:bg-white print:text-black")}>
+          <div className="badge badge-primary print:border print:border-black print:bg-white print:text-black">
             {database.refName}
           </div>
         </div>
-        <div className="mt-2 text-foreground/70 print:text-black">{l._(`${database.refName}.modelDesc`)}</div>
+        <div className="mt-2 text-base-content/70 print:text-black">{l._(`${database.refName}.modelDesc`)}</div>
       </div>
       {databaseModelVariants.map((variantKey) => {
         const variant = database.variants[variantKey];
@@ -362,13 +343,11 @@ const PrintScalar = ({ scalar }: { scalar: ScalarSchema }) => {
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="font-bold text-2xl">{scalar.modelName}</div>
-          <div
-            className={docPill("muted", "font-mono print:border print:border-black print:bg-white print:text-black")}
-          >
+          <div className="badge badge-secondary print:border print:border-black print:bg-white print:text-black">
             {scalar.refName}
           </div>
         </div>
-        <div className="mt-1 text-foreground/70 print:text-black">{l._(`${scalar.refName}.modelDesc`)}</div>
+        <div className="mt-1 text-base-content/70 print:text-black">{l._(`${scalar.refName}.modelDesc`)}</div>
       </div>
       <PrintFieldTable refName={scalar.refName} fields={scalar.fields} />
     </section>
@@ -380,8 +359,8 @@ const PrintSectionTitle = ({ title }: { title: string }) => <div className="font
 const PrintVariantHeader = ({ title, badge, fields }: { title: string; badge: string; fields: number }) => (
   <div className="flex flex-wrap items-center gap-2">
     <div className="font-extrabold text-xl">{title}</div>
-    <div className={docPill("muted", "print:border print:border-black")}>{badge}</div>
-    <div className="text-foreground/60 text-sm print:text-black">{fields} fields</div>
+    <div className="badge badge-outline print:border print:border-black">{badge}</div>
+    <div className="text-base-content/60 text-sm print:text-black">{fields} fields</div>
   </div>
 );
 
@@ -390,17 +369,19 @@ const FieldTable = ({ refName, fields }: { refName: string; fields: FieldSchema[
   const [selectedField, setSelectedField] = useState<FieldSchema | null>(null);
   return (
     <>
-      <div className={docUi.tablePanel}>
-        <table className={docUi.tableClass}>
+      <div className="overflow-x-auto rounded-xl bg-base-100 p-3">
+        <table className="table">
           <thead>
             <tr>
-              <th>Field</th>
+              <th>Key</th>
               <th>Type</th>
-              <th>Kind</th>
+              <th>Required</th>
+              <th>Field Type</th>
+              <th>Relation</th>
               <th>Default</th>
               <th>Constraints</th>
-              <th>Values</th>
-              <th className="w-1/4">Description</th>
+              <th>Enum</th>
+              <th>Description</th>
               <th />
             </tr>
           </thead>
@@ -408,61 +389,56 @@ const FieldTable = ({ refName, fields }: { refName: string; fields: FieldSchema[
             {fields.map((field) => (
               <tr key={field.key}>
                 <td>
-                  <div className={docUi.key}>{field.key}</div>
-                  <div className={docUi.subLabel}>{l._(`${refName}.${field.key}`)}</div>
+                  <div className="font-bold">{field.key}</div>
+                  <div className="text-base-content/60 text-xs">{l._(`${refName}.${field.key}`)}</div>
                 </td>
                 <td>
-                  <div className="flex flex-col items-start gap-1">
-                    <span className={docPill(typeTone(field), "font-mono")}>{typeLabelOf(field)}</span>
-                    {field.relationLabel ? <span className={docUi.subLabel}>{field.relationLabel}</span> : null}
-                  </div>
+                  <span className={field.typeKind === "primitive" ? "" : "badge badge-primary badge-outline"}>
+                    {field.typeLabel}
+                  </span>
                 </td>
                 <td>
-                  <div className="flex flex-col items-start gap-1">
-                    <span className={docPill("muted")}>{field.fieldType}</span>
-                    {field.select ? null : <span className={docPill("warning")}>select:false</span>}
-                    {field.immutable ? <span className={docPill("muted")}>immutable</span> : null}
-                  </div>
+                  {field.required ? (
+                    <span className="badge badge-error">Required</span>
+                  ) : (
+                    <span className="badge">Optional</span>
+                  )}
                 </td>
-                <td className="max-w-40 truncate font-mono text-xs">
-                  {defaultLabelOf(field) ?? <span className={docDash}>—</span>}
+                <td>
+                  <span className="badge badge-outline">{field.fieldType}</span>
+                  {!field.select ? <span className="badge badge-warning ml-1">select:false</span> : null}
                 </td>
+                <td>
+                  {field.relationLabel ? <span className="badge badge-secondary">{field.relationLabel}</span> : "-"}
+                </td>
+                <td className="max-w-48 truncate">{field.defaultLabel ?? "-"}</td>
                 <td>
                   <div className="flex flex-wrap gap-1">
-                    {field.constraints.length ? (
-                      field.constraints.map((constraint) => (
-                        <span className={docPill("muted", "font-mono")} key={constraint}>
-                          {constraint}
-                        </span>
-                      ))
-                    ) : (
-                      <span className={docDash}>—</span>
-                    )}
+                    {field.constraints.length
+                      ? field.constraints.map((constraint) => (
+                          <span key={constraint} className="badge badge-outline">
+                            {constraint}
+                          </span>
+                        ))
+                      : "-"}
                   </div>
                 </td>
                 <td>
-                  <div className="flex max-w-56 flex-wrap gap-1">
-                    {field.enumValues ? (
-                      field.enumValues.map((value) => (
-                        <span
-                          className={buttonRecipe({ variant: "outline", size: "xs" }, "font-mono")}
-                          key={String(value)}
-                        >
+                  {field.enumValues ? (
+                    <div className="flex flex-wrap gap-1">
+                      {field.enumValues.map((value) => (
+                        <span key={String(value)} className="badge">
                           {String(value)}
                         </span>
-                      ))
-                    ) : (
-                      <span className={docDash}>—</span>
-                    )}
-                  </div>
+                      ))}
+                    </div>
+                  ) : (
+                    "-"
+                  )}
                 </td>
-                <td className="text-foreground/70">{l._(`${refName}.${field.key}.desc`)}</td>
+                <td className="min-w-52">{l._(`${refName}.${field.key}.desc`)}</td>
                 <td>
-                  <button
-                    className={buttonRecipe({ variant: "ghost", size: "xs" }, "text-foreground/50")}
-                    onClick={() => setSelectedField(field)}
-                    type="button"
-                  >
+                  <button className="btn btn-ghost btn-xs" onClick={() => setSelectedField(field)}>
                     <AiOutlineInfoCircle /> Detail
                   </button>
                 </td>
@@ -479,8 +455,8 @@ const FieldTable = ({ refName, fields }: { refName: string; fields: FieldSchema[
 const PrintFieldTable = ({ refName, fields }: { refName: string; fields: FieldSchema[] }) => {
   const { l } = usePage();
   return (
-    <div className="overflow-x-auto rounded-box border border-border bg-background print:overflow-visible print:rounded-none print:border-0">
-      <table className={docUi.tableClass}>
+    <div className="overflow-x-auto rounded-xl bg-base-100 p-3 print:overflow-visible print:rounded-none print:p-0">
+      <table className="table-sm table">
         <thead>
           <tr>
             <th>Key</th>
@@ -500,7 +476,7 @@ const PrintFieldTable = ({ refName, fields }: { refName: string; fields: FieldSc
             <tr key={field.key} className="break-inside-avoid">
               <td>
                 <div className="font-bold">{field.key}</div>
-                <div className="text-foreground/60 text-xs print:text-black">{l._(`${refName}.${field.key}`)}</div>
+                <div className="text-base-content/60 text-xs print:text-black">{l._(`${refName}.${field.key}`)}</div>
               </td>
               <td>{field.typeLabel}</td>
               <td>{field.required ? "Required" : "Optional"}</td>
@@ -539,8 +515,8 @@ const PrintFieldDetail = ({ field }: { field: FieldSchema }) => {
 const PrintEnumTable = ({ enums }: { enums: ReturnType<typeof getConstantSchemaDoc>["enums"] }) => {
   const { l } = usePage();
   return (
-    <div className="overflow-x-auto rounded-box border border-border bg-background print:overflow-visible print:rounded-none print:border-0">
-      <table className={docUi.tableClass}>
+    <div className="overflow-x-auto rounded-xl bg-base-100 p-3 print:overflow-visible print:rounded-none print:p-0">
+      <table className="table-sm table">
         <thead>
           <tr>
             <th>Key</th>
@@ -608,19 +584,20 @@ const FieldDetailModal = ({
     meta: field.meta,
   };
   return (
-    // Anything narrower than the dialog body's own `xl:min-w-[768px]` overflows the card and clips its content.
     <Modal
       title={`${refName}.${field.key}`}
       open={!!field}
       onCancel={onClose}
-      className="max-w-4xl"
+      className="max-w-3xl"
       bodyClassName="flex flex-col gap-4"
     >
       <div>
         <div className="font-bold text-lg">{l._(`${refName}.${field.key}`)}</div>
-        <div className={docUi.sectionDescription}>{l._(`${refName}.${field.key}.desc`)}</div>
+        <div className="text-base-content/70">{l._(`${refName}.${field.key}.desc`)}</div>
       </div>
-      <Code code={JSON.stringify(detail, null, 2)} label="Field" />
+      <pre className="max-h-[60vh] overflow-auto rounded-xl bg-base-200 p-4 text-sm">
+        {JSON.stringify(detail, null, 2)}
+      </pre>
     </Modal>
   );
 };
@@ -635,117 +612,85 @@ const getPrintRelation = (field: FieldSchema) => {
   return parts.length ? parts.join("\n") : "-";
 };
 
+const SummaryCard = ({ title, value }: { title: string; value: number }) => (
+  <div className="rounded-xl bg-base-200 p-4">
+    <div className="text-base-content/60 text-sm">{title}</div>
+    <div className="font-bold text-2xl">{value}</div>
+  </div>
+);
+
 const Diagram = ({ databases, scalars }: { databases: DatabaseSchema[]; scalars: ScalarSchema[] }) => {
-  const graph = useMemo(() => makeSchemaGraph(databases, scalars), [databases, scalars]);
-  const [selectedNode, setSelectedNode] = useState<string | null>(graph.nodes.at(0)?.id ?? null);
+  const [selectedNode, setSelectedNode] = useState<string | null>(
+    databases.at(0)?.refName ?? scalars.at(0)?.refName ?? null,
+  );
+  const graph = useMemo(() => makeDiagram(databases, scalars), [databases, scalars]);
   const selectedRefName = selectedNode ? graph.nodeRefNames.get(selectedNode) : undefined;
   const selectedDatabase = selectedRefName
     ? databases.find((database) => database.refName === selectedRefName)
     : undefined;
   const selectedScalar = selectedRefName ? scalars.find((scalar) => scalar.refName === selectedRefName) : undefined;
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
-      <Graph
-        edges={graph.edges}
-        nodes={graph.nodes}
-        onSelect={setSelectedNode}
-        selectedId={selectedNode}
+    <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+      <Mermaid
         title="Schema Relationship Diagram"
+        chart={graph.chart}
+        highlightNodes={selectedNode ? [selectedNode] : []}
+        onSelectNode={setSelectedNode}
       />
-      <Panel bodyClassName="max-h-none" label="Selected Model">
+      <div className="rounded-xl bg-base-200 p-4">
+        <div className="font-bold text-xl">Selected Model</div>
         {selectedDatabase ? (
-          <DiagramDetail
-            fields={getDefaultVariant(selectedDatabase).fields}
-            modelName={selectedDatabase.modelName}
-            refName={selectedDatabase.refName}
-          />
+          <Model database={selectedDatabase} openAll />
         ) : selectedScalar ? (
-          <DiagramDetail
-            fields={selectedScalar.fields}
-            modelName={selectedScalar.modelName}
-            refName={selectedScalar.refName}
-          />
+          <Scalar scalar={selectedScalar} openAll />
         ) : selectedRefName ? (
-          <div className="flex flex-col items-start gap-2">
-            <span className={docPill("muted")}>External</span>
-            <span className="font-bold">{selectedRefName}</span>
+          <div className="mt-4">
+            <div className="badge badge-outline">External</div>
+            <div className="mt-2 font-bold">{selectedRefName}</div>
           </div>
         ) : (
-          <div className="text-foreground/40 text-sm">Select a node in the diagram.</div>
+          <div className="mt-4 text-base-content/60">Select a node in the diagram.</div>
         )}
-      </Panel>
-    </div>
-  );
-};
-
-interface DiagramDetailProps {
-  refName: string;
-  modelName: string;
-  fields: FieldSchema[];
-}
-
-const DiagramDetail = ({ refName, modelName, fields }: DiagramDetailProps) => {
-  const { l } = usePage();
-  const desc = dictText(l, `${refName}.modelDesc`);
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-bold text-lg">{modelName}</span>
-          <span className={docPill("info", "font-mono")}>{refName}</span>
-        </div>
-        {desc ? <div className={docUi.sectionDescription}>{desc}</div> : null}
-      </div>
-      <div className="flex flex-col divide-y divide-border/60">
-        {fields.map((field) => (
-          <div className="flex items-center justify-between gap-2 py-1.5" key={field.key}>
-            <span className="truncate font-medium font-mono text-sm">{field.key}</span>
-            <span className={docPill(typeTone(field), "shrink-0 font-mono")}>{typeLabelOf(field)}</span>
-          </div>
-        ))}
       </div>
     </div>
   );
 };
 
-const makeSchemaGraph = (databases: DatabaseSchema[], scalars: ScalarSchema[]) => {
+const makeDiagram = (databases: DatabaseSchema[], scalars: ScalarSchema[]) => {
   const schemaDoc = getConstantSchemaDoc({
     models: databases.map((database) => database.refName),
     scalars: scalars.map((scalar) => scalar.refName),
   });
-  const nodes = new Map<string, SchemaGraphNode>();
-  const addNode = (refName: string, title: string, subtitle: string, kind: SchemaNodeKind) => {
-    const id = toNodeId(refName);
-    if (nodes.has(id)) return;
-    nodes.set(id, { id, refName, title, subtitle, kind });
+  const nodeRefNames = new Map<string, string>();
+  const nodeLines = new Map<string, string>();
+  const addNode = (refName: string, label: string) => {
+    const nodeId = toMermaidNodeId(refName);
+    nodeRefNames.set(nodeId, refName);
+    nodeLines.set(nodeId, `  ${nodeId}["${escapeMermaidLabel(label)}"]`);
   };
   databases.forEach((database) => {
-    addNode(database.refName, database.modelName, database.refName, "database");
+    addNode(database.refName, `${database.modelName}\\n${database.refName}`);
   });
   scalars.forEach((scalar) => {
-    addNode(scalar.refName, scalar.modelName, scalar.refName, "scalar");
+    addNode(scalar.refName, `${scalar.modelName}\\n${scalar.refName}`);
   });
   schemaDoc.relations.forEach((relation) => {
-    addNode(relation.targetRefName, capitalize(relation.targetRefName), "external", "external");
+    if (!nodeLines.has(toMermaidNodeId(relation.targetRefName))) {
+      addNode(relation.targetRefName, `${capitalize(relation.targetRefName)}\\nexternal`);
+    }
   });
-  const edges = new Map<string, SchemaGraphEdge>();
-  schemaDoc.relations.forEach((relation) => {
-    const from = toNodeId(relation.sourceRefName);
-    const to = toNodeId(relation.targetRefName);
-    const existing = edges.get(`${from}>${to}`);
-    // One arrow per pair: a model reaching the same target through several fields drew a bundle of identical
-    // arrows, and the field names read better joined into that one arrow's label.
-    edges.set(
-      `${from}>${to}`,
-      existing
-        ? { ...existing, label: `${existing.label}, ${relation.fieldKey}` }
-        : { from, to, label: relation.fieldKey },
-    );
+  const edgeLines = schemaDoc.relations.map((relation) => {
+    const from = toMermaidNodeId(relation.sourceRefName);
+    const to = toMermaidNodeId(relation.targetRefName);
+    const label = escapeMermaidLabel(`${relation.fieldKey}: ${relation.relationType}`);
+    return `  ${from} -->|"${label}"| ${to}`;
   });
-  const nodeRefNames = new Map([...nodes.values()].map((node) => [node.id, node.refName]));
-  return { nodes: [...nodes.values()], edges: [...edges.values()], nodeRefNames };
+  const chart = ["flowchart LR", ...nodeLines.values(), ...edgeLines].join("\n");
+  return { chart, nodeRefNames };
 };
 
-const toNodeId = (refName: string) => `schema_${refName.replace(/[^a-zA-Z0-9_]/g, "_")}`;
+const toMermaidNodeId = (refName: string) => `schema_${refName.replace(/[^a-zA-Z0-9_]/g, "_")}`;
+
+const escapeMermaidLabel = (label: string) => label.replace(/"/g, '\\"');
 
 const matchesQuery = (value: string, query: string) => value.toLowerCase().includes(query.trim().toLowerCase());

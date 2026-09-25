@@ -9,4 +9,3 @@ export const ListContainer = lazy(() => import("./ListContainer"));
 export const Pagination = lazy(() => import("./Pagination"));
 export const TableList = lazy(() => import("./TableList"));
 export const QueryMaker = lazy(() => import("./QueryMaker"));
-export const RefPicker = lazy(() => import("./RefPicker"));

@@ -1,25 +1,21 @@
 "use client";
 import { type cnst, fetch, st, usePage } from "@libs/shared/client";
 import { pad } from "@libs/util/common";
-import { AreYouRobot, buttonRecipe, Icon } from "@libs/util/ui";
+import { AreYouRobot, Icon } from "@libs/util/ui";
 import { usePushNotification } from "@libs/util/webkit";
 import { dayjs } from "akanjs/base";
-import { cn, getCookie, router, setCookie } from "akanjs/client";
-import { formatPhone, isEmail, isPhoneNumber } from "akanjs/common";
-import { Input, Link, Loading, Modal, Switch } from "akanjs/ui";
+import { clsx, getCookie, router, setCookie } from "akanjs/client";
+import { isEmail, isPhoneNumber } from "akanjs/common";
+import { Input, Link, Loading, Modal } from "akanjs/ui";
 import { useInterval } from "akanjs/webkit";
 import { type ReactNode, useEffect, useState } from "react";
-import { AiFillCheckCircle, AiFillGithub, AiOutlineClose, AiOutlineEdit, AiOutlineSave } from "react-icons/ai";
+import { AiFillCheckCircle, AiFillGithub } from "react-icons/ai";
 
 interface SetPasswordWithPhoneProps {
   disabled?: boolean;
   hash?: string;
 }
 export const SetPasswordWithPhone = ({ disabled, hash = "verify" }: SetPasswordWithPhoneProps) => {
-  // XXX: the two sign-in paths stay unpublished on purpose. `signinWithPassword` and `ssoSigninUser` are the
-  // credential gate, and the field setters that `Input.Password` publishes already let a caller write the
-  // password state — pressing sign in as well would turn "fill a form" into "sign in as someone".
-
   const { l } = usePage();
   const self = st.use.self();
   const phoneCode = st.use.phoneCode();
@@ -45,10 +41,7 @@ export const SetPasswordWithPhone = ({ disabled, hash = "verify" }: SetPasswordW
             validate={(value) => true}
           />
           <button
-            className={buttonRecipe(
-              { variant: !phoneCodeAt ? "primary" : "default" },
-              "w-20 whitespace-nowrap text-xs",
-            )}
+            className={`btn w-20 whitespace-nowrap text-xs ${!phoneCodeAt && "btn-primary"}`}
             disabled={!!disabled || !isPhoneNumber(self.phone)} // || self.verifies.includes("phone")}
             onClick={() => {
               if (self.phone) void st.do.requestPhoneCodeForSetPassword(hash);
@@ -75,7 +68,7 @@ export const SetPasswordWithPhone = ({ disabled, hash = "verify" }: SetPasswordW
             </div>
           )}
           <button
-            className={buttonRecipe({ variant: "primary" }, "w-20 whitespace-nowrap text-xs")}
+            className="btn btn-primary w-20 whitespace-nowrap text-xs"
             disabled={!phoneCodeAt || isPhoneVerified}
             onClick={() => void st.do.getSignTokenForSetPassword()}
           >
@@ -147,7 +140,7 @@ export const SignInPassword = ({
           validate={(value: string) => true}
         />
       </div>
-      <div className="mt-4 mb-2 flex w-full items-center justify-end gap-3 text-muted-foreground text-sm tracking-tight">
+      <div className="mt-4 mb-2 flex w-full items-center justify-end gap-3 text-gray-500 text-sm tracking-tight">
         {forgotPasswordHref ? (
           <Link href={forgotPasswordHref} className="cursor-pointer duration-300 hover:opacity-50">
             {l("user.forgotPassword")}
@@ -155,7 +148,7 @@ export const SignInPassword = ({
         ) : null}
         {signupHref ? (
           <>
-            <div className="text-muted-foreground">|</div>
+            <div className="text-gray-400">|</div>
             <Link href={signupHref} className="cursor-pointer bg-none duration-300 hover:opacity-50">
               {l("user.signup")}
             </Link>
@@ -173,10 +166,7 @@ export const SignInPassword = ({
       ) : null}
       <button
         id="signin-button"
-        className={buttonRecipe({ variant: "primary" }, [
-          "w-full gap-2 text-background md:mt-5",
-          !isReady && "pointer-events-none opacity-50",
-        ])}
+        className={`btn btn-primary w-full text-base-100 md:mt-5 ${isReady ? "" : "btn-disabled"} gap-2`}
         disabled={!isSubmitable}
         onClick={() => void st.do.signinWithPassword({ redirect, replace })}
       >
@@ -202,25 +192,10 @@ export const ChangePassword = ({ siteKey }: { siteKey: string }) => {
   const userModal = st.use.userModal();
   const passwordConfirm = st.use.passwordConfirm();
   const turnstileToken = st.use.turnstileToken();
-  st.tool("changePassword", {
-    confirm: true,
-    guard: () =>
-      userModal !== "changePassword"
-        ? "The change-password form is not open."
-        : password.length < 7
-          ? "The new password needs at least seven characters."
-          : password !== passwordConfirm
-            ? "The two new passwords do not match."
-            : !turnstileToken
-              ? "The are-you-a-robot check has to be solved by a person first."
-              : true,
-  })
-    .desc("Save the new password the change-password form holds.")
-    .exec(() => st.do.changePassword());
   return (
     <>
       <button
-        className={buttonRecipe({ size: "sm", variant: "default" })}
+        className="btn btn-sm"
         onClick={() => {
           st.do.setUserModal("changePassword");
         }}
@@ -235,7 +210,7 @@ export const ChangePassword = ({ siteKey }: { siteKey: string }) => {
         title="비밀번호 변경"
         action={
           <button
-            className={buttonRecipe({ variant: "default" }, "w-full")}
+            className="btn w-full"
             onClick={() => void st.do.changePassword()}
             disabled={password.length < 7 || password !== passwordConfirm || !turnstileToken}
           >
@@ -290,67 +265,37 @@ export const SSOButtons = ({
   const { l } = usePage();
   const mainSsoButtonMap: { [key in cnst.SsoType["value"]]: ReactNode } = {
     kakao: (
-      <button
-        className={buttonRecipe(
-          { variant: "default" },
-          "relative flex w-full items-center border-none bg-[var(--kakao)] text-[var(--kakao-ink)] shadow-sm hover:bg-[var(--kakao)] hover:opacity-50",
-        )}
-      >
+      <button className="btn relative flex w-full items-center border-none bg-[#FEE500] text-[#3c1e1e] shadow-sm hover:bg-[#FEE500] hover:opacity-50">
         <Icon.Kakao className="absolute left-4 rounded-full" />
         {l("user.signWithKakao")}
       </button>
     ),
     naver: (
-      <button
-        className={buttonRecipe(
-          { variant: "default" },
-          "relative flex w-full items-center border-none bg-[var(--naver)] text-white shadow-sm hover:bg-[var(--naver)] hover:opacity-50",
-        )}
-      >
+      <button className="btn relative flex w-full items-center border-none bg-[#1ec800] text-white shadow-sm hover:bg-[#1ec800] hover:opacity-50">
         <Icon.Naver className="absolute left-4 rounded-full fill-white" />
         {l("user.signWithNaver")}
       </button>
     ),
     github: (
-      <button
-        className={buttonRecipe(
-          { variant: "default" },
-          "relative flex w-full items-center border-none bg-black text-white shadow-sm",
-        )}
-      >
+      <button className="btn relative flex w-full items-center border-none bg-black text-white shadow-sm">
         <AiFillGithub className="absolute left-[18px] text-4xl text-white" />
         {l("user.signWithGithub")}
       </button>
     ),
     google: (
-      <button
-        className={buttonRecipe(
-          { variant: "default" },
-          "relative flex w-full items-center border border-border bg-white text-black shadow-sm",
-        )}
-      >
+      <button className="btn relative flex w-full items-center border border-gray-200 bg-white text-black shadow-sm">
         <Icon.Google className="absolute left-4 rounded-full" />
         {l("user.signWithGoogle")}
       </button>
     ),
     facebook: (
-      <button
-        className={buttonRecipe(
-          { variant: "default" },
-          "relative flex w-full items-center border-none bg-[var(--telegram)] text-white shadow-sm",
-        )}
-      >
+      <button className="btn relative flex w-full items-center border-none bg-[#039be5] text-white shadow-sm">
         <Icon.Facebook className="absolute left-[22px] rounded-full" width={30} />
         {l("user.signWithFacebook")}
       </button>
     ),
     apple: (
-      <button
-        className={buttonRecipe(
-          { variant: "default" },
-          "relative flex w-full items-center border-none bg-black text-white shadow-sm",
-        )}
-      >
+      <button className="btn relative flex w-full items-center border-none bg-black text-white shadow-sm">
         <Icon.Apple className="absolute left-4 rounded-full" />
         {l("user.signWithApple")}
       </button>
@@ -358,12 +303,12 @@ export const SSOButtons = ({
   };
   const subSsoButtonMap: { [key in cnst.SsoType["value"]]: ReactNode } = {
     kakao: (
-      <button className="relative flex size-14 items-center justify-center rounded-full bg-[var(--kakao)] hover:bg-[var(--kakao)] hover:opacity-50">
+      <button className="relative flex size-14 items-center justify-center rounded-full bg-[#FEE500] hover:bg-[#FEE500] hover:opacity-50">
         <Icon.Kakao className="" />
       </button>
     ),
     naver: (
-      <button className="relative flex size-14 items-center justify-center rounded-full bg-[var(--naver)] hover:bg-[var(--naver)] hover:opacity-50">
+      <button className="relative flex size-14 items-center justify-center rounded-full bg-[#1ec800] hover:bg-[#1ec800] hover:opacity-50">
         <Icon.Naver className="fill-white" />
       </button>
     ),
@@ -380,7 +325,7 @@ export const SSOButtons = ({
       </button>
     ),
     facebook: (
-      <button className="relative flex size-14 items-center justify-center rounded-full bg-[var(--facebook)]">
+      <button className="relative flex size-14 items-center justify-center rounded-full bg-[#1778F2]">
         <Icon.Facebook className="mr-[0.5px] mb-1 fill-transparent" />
       </button>
     ),
@@ -393,7 +338,7 @@ export const SSOButtons = ({
   const mainSsoTypes = mainSsos.filter((ssoType) => !!mainSsoButtonMap[ssoType]);
   const subSsoTypes = subSsos.filter((ssoType) => !!subSsoButtonMap[ssoType]);
   return (
-    <div className={cn("flex w-full flex-col justify-between gap-1.5 md:gap-3", className)}>
+    <div className={clsx("flex w-full flex-col justify-between gap-1.5 md:gap-3", className)}>
       {mainSsoTypes.map((ssoType) => (
         <a
           key={ssoType}
@@ -426,22 +371,6 @@ export const ForgotPassword = () => {
   const { l } = usePage();
   const [finished, setFinished] = useState(false);
   const [accountId, setAccountId] = useState("");
-  st.tool("resetPassword", {
-    confirm: ({ accountId }) => `Send a password reset email to ${String(accountId)}?`,
-    guard: ({ accountId }) =>
-      finished
-        ? "A reset email has already been sent from this screen."
-        : isEmail(String(accountId ?? ""))
-          ? true
-          : "That is not an email address.",
-  })
-    .desc("Email a password-reset link to one account address.")
-    .arg("accountId", String)
-    .exec(async (address) => {
-      setAccountId(address);
-      await st.do.resetPassword(address);
-      setFinished(true);
-    });
   return (
     <div className="flex w-full flex-col gap-2">
       <div className="mb-4 text-center font-bold text-3xl">{l("user.forgotPassword")}</div>
@@ -449,7 +378,7 @@ export const ForgotPassword = () => {
       <div className="mb-2 flex w-full items-baseline">
         <Input
           // icon={<AiOutlineMail />}
-          // iconClassName={buttonRecipe({ shape: "square" , variant: "default" }, "text-xl")}
+          // iconClassName="btn btn-square text-xl"
           className="w-full"
           inputClassName="w-full"
           placeholder={l("user.accountIdPlaceholder")}
@@ -464,7 +393,7 @@ export const ForgotPassword = () => {
         />
       </div>
       <button
-        className={buttonRecipe({ variant: "primary" }, "w-full text-background")}
+        className="btn btn-primary w-full text-base-100"
         disabled={!isEmail(accountId) || finished}
         onClick={async () => {
           await st.do.resetPassword(accountId);
@@ -483,9 +412,6 @@ interface SignoutProps {
   children: ReactNode;
 }
 export const Signout = ({ className, href, children }: SignoutProps) => {
-  st.tool("signout", { confirm: true })
-    .desc("Sign out of this account.")
-    .exec(() => st.do.logout());
   return (
     <Link className={className} href={href} onClick={() => void st.do.logout()}>
       {children}
@@ -500,11 +426,8 @@ interface ResendPhoneCodeForSigninProps {
   hash: string;
 }
 export const ResendPhoneCodeForSignin = ({ className, userId, phone, hash }: ResendPhoneCodeForSigninProps) => {
-  st.tool("resendPhoneCode", { confirm: true })
-    .desc("Send the sign-in code to this phone number again by SMS.")
-    .exec(() => st.do.requestPhoneCodeForSignin(userId, phone, hash));
   return (
-    <div className={cn("mt-2 flex justify-center", className)}>
+    <div className={clsx("mt-2 flex justify-center", className)}>
       <button
         className="cursor-pointer border-b border-dashed text-sm opacity-60 duration-300 hover:opacity-100"
         onClick={() => {
@@ -530,7 +453,7 @@ export const ResendPhoneCodeForSetPhoneInPrepareUser = ({
   hash = "dummy",
 }: ResendPhoneCodeForSetPhoneInPrepareUserProps) => {
   return (
-    <div className={cn("mt-2 flex justify-center", className)}>
+    <div className={clsx("mt-2 flex justify-center", className)}>
       <button
         className="cursor-pointer border-b border-dashed text-sm opacity-60 duration-300 hover:opacity-100"
         onClick={() => {
@@ -546,15 +469,12 @@ export const ResendPhoneCodeForSetPhoneInPrepareUser = ({
 interface ActivateProps {
   className?: string;
   userId: string;
-  redirect?: string;
+  redirect: string;
 }
 export const Activate = ({ className, userId, redirect }: ActivateProps) => {
-  st.tool("activateUser", { confirm: true })
-    .desc("Finish signing up and open the account.")
-    .exec(() => st.do.activateUser(userId, { redirect }));
   return (
     <button
-      className={cn(buttonRecipe({ variant: "primary" }), className)}
+      className={clsx("btn btn-primary", className)}
       onClick={() => {
         void st.do.activateUser(userId, { redirect });
       }}
@@ -578,7 +498,7 @@ export const PhoneSignRoute = ({
   const phone = st.use.phone();
   return (
     <button
-      className={cn(buttonRecipe({ variant: "primary" }), className)}
+      className={clsx("btn btn-primary", className)}
       disabled={!isPhoneNumber(phone)}
       onClick={async () => {
         const userId = await fetch.getUserIdHasPhone(phone);
@@ -614,20 +534,11 @@ export const SigninWithPhoneCode = ({ redirect, userId, className = "" }: Signin
   const handleClick = async () => {
     await st.do.signinWithPhoneCode(userId, { redirect });
   };
-  st.tool("signinWithPhoneCode", {
-    guard: () => (phoneCode.length === 6 ? true : "The six-digit code from the text goes in first."),
-  })
-    .desc("Sign in with the six-digit code that was texted to this number, once it is typed in.")
-    .exec(handleClick);
   useEffect(() => {
     if (phoneCode.length === 6) void handleClick();
   }, [phoneCode]);
   return (
-    <button
-      className={cn(buttonRecipe({ variant: "primary" }), className)}
-      disabled={phoneCode.length !== 6}
-      onClick={handleClick}
-    >
+    <button className={clsx("btn btn-primary", className)} disabled={phoneCode.length !== 6} onClick={handleClick}>
       다음
     </button>
   );
@@ -642,20 +553,11 @@ export const VerifyPhoneInPrepareUser = ({ userId, redirect, className = "" }: V
   const handleClick = async () => {
     await st.do.verifyPhoneInPrepareUser(userId, { redirect });
   };
-  st.tool("verifyPhoneCode", {
-    guard: () => (phoneCode.length === 6 ? true : "The six-digit code from the text goes in first."),
-  })
-    .desc("Confirm the phone number with the six-digit code that was texted to it, once it is typed in.")
-    .exec(handleClick);
   useEffect(() => {
     if (phoneCode.length === 6) void handleClick();
   }, [phoneCode]);
   return (
-    <button
-      className={cn(buttonRecipe({ variant: "primary" }), className)}
-      disabled={phoneCode.length !== 6}
-      onClick={handleClick}
-    >
+    <button className={clsx("btn btn-primary", className)} disabled={phoneCode.length !== 6} onClick={handleClick}>
       다음
     </button>
   );
@@ -666,6 +568,8 @@ interface PushNotificationSwitchProps {
 }
 
 export const PushNotificationSwitch = ({ className }: PushNotificationSwitchProps) => {
+  const user = st.use.user();
+  const self = st.use.self();
   const pushNotification = usePushNotification();
   const deviceToken = st.use.deviceToken();
   //! TODO: 추후 수정필요
@@ -680,231 +584,18 @@ export const PushNotificationSwitch = ({ className }: PushNotificationSwitchProp
     void getToken();
   }, []);
 
-  st.tool("setPushNotification", {
-    guard: ({ on }) =>
-      !deviceToken ? "This device has no push token yet." : on === checked ? `Already ${on ? "on" : "off"}.` : true,
-  })
-    .desc("Turn push notifications on or off for this device.")
-    .arg("on", Boolean)
-    .exec((on) => (on ? st.do.addNotiDeviceTokenOfSelf(deviceToken) : st.do.subNotiDeviceTokenOfSelf(deviceToken)));
   return (
     <div>
-      <Switch
+      <input
+        type="checkbox"
+        className="toggle"
+        // checked={checked}
         checked={checked}
-        onChange={() => {
+        onClick={() => {
           if (checked) void st.do.subNotiDeviceTokenOfSelf(deviceToken);
           else void st.do.addNotiDeviceTokenOfSelf(deviceToken);
         }}
       />
-    </div>
-  );
-};
-
-interface SetAccountIdByAdminProps {
-  className?: string;
-  accountId: string | null;
-}
-export const SetAccountIdByAdmin = ({ className, accountId }: SetAccountIdByAdminProps) => {
-  const { l } = usePage();
-  const [changeId, setChangeId] = useState(accountId ?? "empty");
-  const [editState, setEditState] = useState<"edit" | "saving" | null>(null);
-  const invalid =
-    changeId === accountId || changeId.length < 4 || (isEmail(accountId) && !isEmail(changeId))
-      ? l("user.setAccountIdByAdminInvalid")
-      : null;
-  st.tool("setAccountIdByAdmin", {
-    confirm: "Change the sign-in id of this account?",
-    guard: ({ accountId: next }) =>
-      typeof next !== "string" || next.length < 4
-        ? "An account id is at least four characters."
-        : isEmail(accountId) && !isEmail(next)
-          ? "This account signs in with an email, so the new id has to be an email too."
-          : true,
-  })
-    .desc("Change the account id this user signs in with.")
-    .arg("accountId", String)
-    .exec(async (next) => {
-      await st.do.setAccountIdByAdmin(next);
-      setChangeId(next);
-    });
-  return (
-    <div className={cn("flex items-center gap-2", className)}>
-      <span className="w-24">{l("user.accountId")}</span>
-      <Input
-        value={changeId}
-        onChange={setChangeId}
-        disabled={!editState}
-        validate={() => invalid ?? true}
-        onPressEnter={() => {
-          if (invalid || editState !== "edit") return;
-          void st.do.setAccountIdByAdmin(changeId);
-          setEditState(null);
-        }}
-      />
-      {editState ? (
-        <>
-          <button
-            className={buttonRecipe({ variant: "primary" })}
-            disabled={editState === "saving" || !!invalid}
-            onClick={async () => {
-              setEditState("saving");
-              await st.do.setAccountIdByAdmin(changeId);
-              setEditState(null);
-            }}
-          >
-            <AiOutlineSave />
-          </button>
-          <button
-            className={buttonRecipe({ variant: "outline" })}
-            disabled={editState === "saving"}
-            onClick={() => {
-              setChangeId(accountId ?? "");
-              setEditState(null);
-            }}
-          >
-            <AiOutlineClose />
-          </button>
-        </>
-      ) : (
-        <button
-          className={buttonRecipe({ variant: "default" })}
-          onClick={() => {
-            setEditState("edit");
-          }}
-        >
-          <AiOutlineEdit />
-        </button>
-      )}
-    </div>
-  );
-};
-
-interface SetPasswordByAdminProps {
-  className?: string;
-}
-// XXX: no tool here. Every other admin edit on this screen changes what an account *is*; overwriting its
-// password changes who can *be* it, with no notice to the person who owns it. That is account takeover, so it
-// stays a thing an operator does by hand.
-export const SetPasswordByAdmin = ({ className }: SetPasswordByAdminProps) => {
-  const { l } = usePage();
-  const [password, setPassword] = useState("********");
-  const [editState, setEditState] = useState<"edit" | "saving" | null>(null);
-  return (
-    <div className={cn("flex items-center gap-2", className)}>
-      <span className="w-24">{l("user.password")}</span>
-      <Input.Password
-        value={password}
-        onChange={setPassword}
-        disabled={!editState}
-        validate={(value: string) =>
-          value.length < 8 || value.length > 20 ? l("user.setPasswordByAdminInvalid") : true
-        }
-      />
-      {editState ? (
-        <>
-          <button
-            className={buttonRecipe({ variant: "primary" })}
-            disabled={editState === "saving" || password.length < 8 || password.length > 20}
-            onClick={async () => {
-              setEditState("saving");
-              await st.do.setPasswordByAdmin(password);
-              setEditState(null);
-            }}
-          >
-            <AiOutlineSave />
-          </button>
-          <button
-            className={buttonRecipe({ variant: "outline" })}
-            disabled={editState === "saving"}
-            onClick={() => {
-              setPassword("********");
-              setEditState(null);
-            }}
-          >
-            <AiOutlineClose />
-          </button>
-        </>
-      ) : (
-        <button
-          className={buttonRecipe({ variant: "default" })}
-          onClick={() => {
-            setEditState("edit");
-          }}
-        >
-          <AiOutlineEdit />
-        </button>
-      )}
-    </div>
-  );
-};
-
-interface SetPhoneByAdminProps {
-  className?: string;
-  phone: string | null;
-}
-export const SetPhoneByAdmin = ({ className, phone }: SetPhoneByAdminProps) => {
-  const { l } = usePage();
-  const [changePhone, setChangePhone] = useState(phone ?? "empty");
-  const [editState, setEditState] = useState<"edit" | "saving" | null>(null);
-  st.tool("setPhoneByAdmin", {
-    confirm: "Change the verified phone number of this account?",
-    guard: ({ phone: next }) =>
-      typeof next !== "string" || !isPhoneNumber(formatPhone(next))
-        ? "That is not a phone number this account can verify with."
-        : true,
-  })
-    .desc("Change the phone number this user verifies with.")
-    .arg("phone", String)
-    .exec(async (next) => {
-      const formatted = formatPhone(next);
-      await st.do.setPhoneByAdmin(formatted);
-      setChangePhone(formatted);
-    });
-  return (
-    <div className={cn("flex items-center gap-2", className)}>
-      <span className="w-24">{l("user.phone")}</span>
-      <Input
-        value={changePhone}
-        onChange={(value) => {
-          setChangePhone(formatPhone(value));
-        }}
-        disabled={!editState}
-        validate={(value: string) => isPhoneNumber(value) || l("user.setPhoneByAdminInvalid")}
-      />
-      {editState ? (
-        <>
-          <button
-            className={buttonRecipe({ variant: "primary" })}
-            disabled={editState === "saving" || !isPhoneNumber(changePhone) || changePhone === phone}
-            onClick={async () => {
-              setEditState("saving");
-              await st.do.setPhoneByAdmin(changePhone);
-              setEditState(null);
-            }}
-          >
-            <AiOutlineSave />
-          </button>
-          <button
-            className={buttonRecipe({ variant: "outline" })}
-            disabled={editState === "saving"}
-            onClick={() => {
-              setChangePhone(phone ?? "");
-              setEditState(null);
-            }}
-          >
-            <AiOutlineClose />
-          </button>
-        </>
-      ) : (
-        <button
-          className={buttonRecipe({ variant: "default" })}
-          onClick={() => {
-            setEditState("edit");
-          }}
-        >
-          <AiOutlineEdit />
-        </button>
-      )}
     </div>
   );
 };

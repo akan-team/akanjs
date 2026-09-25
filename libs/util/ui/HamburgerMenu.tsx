@@ -1,5 +1,5 @@
 "use client";
-import { cn } from "akanjs/client";
+import { clsx } from "akanjs/client";
 
 interface HamburgerMenuProps {
   isOpen: boolean;
@@ -12,9 +12,11 @@ export const HamburgerMenu = ({ isOpen, setIsOpen, className, color }: Hamburger
   const toggleMenu = () => {
     setIsOpen(!isOpen);
   };
+  const bgColor = color ? `bg-[${color}]` : "bg-black";
+
   return (
     <button
-      className={cn(
+      className={clsx(
         "isolate flex flex-col items-center justify-center rounded-md transition-all duration-100",
         className,
       )}
@@ -24,31 +26,28 @@ export const HamburgerMenu = ({ isOpen, setIsOpen, className, color }: Hamburger
         {/* 상단 바 */}
         <span
           style={{ backgroundColor: color }}
-          className={cn(
-            "absolute left-0 h-1 w-full rounded-md bg-black transition-all ease-in-out",
-            isOpen && "top-2.5 rotate-45",
-            !isOpen && "top-0",
-          )}
+          className={clsx("absolute left-0 h-1 w-full rounded-md transition-all ease-in-out", {
+            "top-2.5 rotate-45": isOpen,
+            "top-0": !isOpen,
+          })}
         ></span>
 
         {/* 중간 바 */}
         <span
           style={{ backgroundColor: color }}
-          className={cn(
-            "absolute left-0 h-1 w-full rounded-md bg-black transition-all ease-in-out",
-            !isOpen && "top-2.5 opacity-100",
-            isOpen && "top-0 opacity-0",
-          )}
+          className={clsx("absolute left-0 h-1 w-full rounded-md transition-all ease-in-out", {
+            "top-2.5 opacity-100": !isOpen,
+            "top-0 opacity-0": isOpen,
+          })}
         ></span>
 
         {/* 하단 바 */}
         <span
           style={{ backgroundColor: color }}
-          className={cn(
-            "absolute left-0 h-1 w-full rounded-md bg-black transition-all ease-in-out",
-            isOpen && "top-2.5 -rotate-45",
-            !isOpen && "top-5",
-          )}
+          className={clsx("absolute left-0 h-1 w-full rounded-md transition-all ease-in-out", {
+            "top-2.5 -rotate-45": isOpen,
+            "top-5": !isOpen,
+          })}
         ></span>
       </div>
     </button>

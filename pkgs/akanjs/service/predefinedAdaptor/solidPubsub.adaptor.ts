@@ -3,13 +3,9 @@ import { adapt } from "../adapt";
 import { sendAkanIpc } from "../ipcTypes";
 import type { WebsocketAdaptor, WsRedisEventHandler, WsSocketData } from "./websocket.adaptor";
 
-/**
- * `AppWsData` mints the id at the handshake, so this reads it; the fallback only covers a socket that
- * was upgraded outside the app router, where nothing else would have given it one.
- */
-const getSocketId = (ws: Bun.ServerWebSocket<unknown>) => {
+const getSocketId = (ws: Bun.ServerWebSocket<unknown>, serverId: string) => {
   const data = ws.data as WsSocketData;
-  data.socketId ??= Bun.randomUUIDv7();
+  if (!data.socketId) data.socketId = `${serverId}-${Bun.randomUUIDv7()}`;
   return data.socketId;
 };
 
@@ -68,7 +64,7 @@ export class SolidPubSub
   }
 
   async joinRoom(ws: Bun.ServerWebSocket<unknown>, room: string): Promise<void> {
-    const socketId = getSocketId(ws);
+    const socketId = getSocketId(ws, this.serverId);
     const rooms = this.#socketRooms.get(socketId) ?? new Set<string>();
     rooms.add(room);
     this.#socketRooms.set(socketId, rooms);
@@ -76,7 +72,7 @@ export class SolidPubSub
   }
 
   async leaveRoom(ws: Bun.ServerWebSocket<unknown>, room: string): Promise<void> {
-    const socketId = getSocketId(ws);
+    const socketId = getSocketId(ws, this.serverId);
     const rooms = this.#socketRooms.get(socketId);
     rooms?.delete(room);
     if (!rooms || rooms.size === 0) this.#socketRooms.delete(socketId);
@@ -84,7 +80,7 @@ export class SolidPubSub
   }
 
   async leaveAllRooms(ws: Bun.ServerWebSocket<unknown>): Promise<void> {
-    const socketId = getSocketId(ws);
+    const socketId = getSocketId(ws, this.serverId);
     const rooms = this.#socketRooms.get(socketId);
     if (rooms) {
       for (const room of rooms) sendAkanIpc({ type: "pubsub.unsubscribe", roomId: room, socketId, pid: process.pid });
@@ -93,7 +89,7 @@ export class SolidPubSub
   }
 
   async registerSocket(ws: Bun.ServerWebSocket<unknown>): Promise<void> {
-    getSocketId(ws);
+    getSocketId(ws, this.serverId);
   }
 
   async unregisterSocket(ws: Bun.ServerWebSocket<unknown>): Promise<void> {

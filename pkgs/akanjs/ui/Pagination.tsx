@@ -1,10 +1,9 @@
 "use client";
-import { cn } from "akanjs/client";
-import type { ReactNode } from "react";
+import { clsx } from "akanjs/client";
+import type { FC, ReactNode } from "react";
 import { BiChevronLeft, BiChevronRight, BiDotsHorizontalRounded } from "react-icons/bi";
 
-import { buttonRecipe } from "./Button";
-import { createOverridable, useUiRecipe } from "./UiOverride";
+import { createOverridable } from "./UiOverride";
 
 export interface PaginationProps {
   /** Current 1-based page number. */
@@ -25,17 +24,26 @@ export interface PaginationProps {
   };
 }
 
-export const DefaultPagination = ({
+export const DefaultPagination: FC<PaginationProps> = ({
   currentPage,
   total,
   onPageSelect,
   itemsPerPage,
   renderEmpty,
   classNames,
-}: PaginationProps) => {
-  const recipe = useUiRecipe("button") ?? buttonRecipe;
+}) => {
   const totalPages = Math.ceil(total / (itemsPerPage || 1));
-  const pageNumbers = new Array(totalPages).fill("").map((_, i) => String(i + 1));
+  const handleLeftClick = () => {
+    if (currentPage <= 1) return;
+    onPageSelect(currentPage - 1);
+  };
+  const handleRightClick = () => {
+    if (currentPage >= totalPages) return;
+    onPageSelect(currentPage + 1);
+  };
+  const pageNumbers = new Array(totalPages).fill("").map((_, i) => {
+    return String(i + 1);
+  });
   let displayNumbers = pageNumbers;
   if (totalPages > 10) {
     if (currentPage < 5) {
@@ -53,57 +61,62 @@ export const DefaultPagination = ({
     }
   }
 
-  if (total <= 0) return renderEmpty ? <>{renderEmpty}</> : null;
   return (
-    <div className={cn("flex items-center justify-center gap-1", classNames?.className)}>
-      <button
-        aria-label="Previous page"
-        className={recipe({ variant: "ghost", size: "icon" })}
-        disabled={currentPage <= 1}
-        onClick={() => {
-          onPageSelect(currentPage - 1);
-        }}
-        type="button"
-      >
-        <BiChevronLeft />
-      </button>
-      {displayNumbers.map((pageNum, index) => {
-        if (pageNum === "...")
-          return (
-            <span className="flex size-9 items-center justify-center text-foreground/30" key={index}>
-              <BiDotsHorizontalRounded />
-            </span>
-          );
-        const isCurrent = Number(pageNum) === currentPage;
-        return (
+    <div className="flex items-center justify-center">
+      {total > 0 && (
+        <>
           <button
-            aria-current={isCurrent ? "page" : undefined}
-            className={
-              isCurrent
-                ? recipe({ variant: "primary", size: "icon" }, classNames?.activePageNumClassName)
-                : recipe({ variant: "ghost", size: "icon" }, ["text-foreground/60", classNames?.pageNumClassName])
-            }
-            key={index}
-            onClick={() => {
-              onPageSelect(Number(pageNum));
-            }}
-            type="button"
+            className={clsx(
+              "btn btn-ghost btn-square duration-200",
+              currentPage > 1 ? "opacity-100" : "opacity-0 hover:cursor-default hover:opacity-0",
+            )}
+            onClick={handleLeftClick}
           >
-            {pageNum}
+            <BiChevronLeft />
           </button>
-        );
-      })}
-      <button
-        aria-label="Next page"
-        className={recipe({ variant: "ghost", size: "icon" })}
-        disabled={currentPage >= totalPages}
-        onClick={() => {
-          onPageSelect(currentPage + 1);
-        }}
-        type="button"
-      >
-        <BiChevronRight />
-      </button>
+
+          {displayNumbers.map((pageNum, index) => {
+            if (pageNum === "...") {
+              return (
+                <button key={index} className="btn btn-ghost btn-square text-primary/40">
+                  <BiDotsHorizontalRounded />
+                </button>
+              );
+            }
+            if (Number(pageNum) === currentPage) {
+              return (
+                <button
+                  key={index}
+                  className={clsx("btn btn-ghost btn-square text-primary", classNames?.activePageNumClassName)}
+                >
+                  {pageNum}
+                </button>
+              );
+            }
+            return (
+              <button
+                key={index}
+                className={clsx("btn btn-ghost btn-square text-primary/40", classNames?.pageNumClassName)}
+                onClick={() => {
+                  onPageSelect(Number(pageNum));
+                }}
+              >
+                {pageNum}
+              </button>
+            );
+          })}
+
+          <button
+            className={clsx(
+              "btn btn-ghost btn-square duration-200",
+              currentPage < totalPages ? "opacity-100" : "opacity-0 hover:cursor-default hover:opacity-0",
+            )}
+            onClick={handleRightClick}
+          >
+            <BiChevronRight />
+          </button>
+        </>
+      )}
     </div>
   );
 };

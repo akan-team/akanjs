@@ -1,11 +1,11 @@
 "use client";
-import { cn } from "akanjs/client";
+import { clsx } from "akanjs/client";
 import { Overlay } from "pigeon-maps";
 import { useContext } from "react";
 
 import { PigeonMapPropsContext } from "./context";
 
-interface Props {
+interface PigeonOverlayProps {
   className?: string;
   bounds: {
     west: number;
@@ -17,7 +17,7 @@ interface Props {
   onClick?: () => void;
 }
 
-export default function PigeonOverlay({ className, bounds, children, onClick }: Props) {
+export default function PigeonOverlay({ className, bounds, children, onClick }: PigeonOverlayProps) {
   const contextProps = useContext(PigeonMapPropsContext);
 
   const centerLng = (bounds.west + bounds.east) / 2;
@@ -35,7 +35,9 @@ export default function PigeonOverlay({ className, bounds, children, onClick }: 
   return (
     <Overlay {...contextProps} left={centerX} top={centerY}>
       <div
-        className={cn(className, "itsme absolute -translate-x-1/2 -translate-y-1/2", onClick ? "cursor-pointer" : null)}
+        className={clsx(className, "itsme absolute -translate-x-1/2 -translate-y-1/2", {
+          "cursor-pointer": onClick !== undefined,
+        })}
         style={{ width, height }}
         onClick={onClick}
       >

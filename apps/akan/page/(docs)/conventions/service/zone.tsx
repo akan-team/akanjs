@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc } from "@apps/akan/ui";
+import { Code, Docs } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -30,7 +30,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide
         id="store-driven-section"
@@ -52,7 +52,6 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="minimal service zone"
           code={`"use client";
 
@@ -68,9 +67,9 @@ export const Database = () => {
 };`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
-      <DocsToc />
+      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>
   );
 }

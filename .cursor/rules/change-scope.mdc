@@ -1,0 +1,12 @@
+---
+description: Keep edits scoped and avoid unrelated churn
+alwaysApply: true
+---
+
+# Change Scope
+
+- Keep edits scoped to the requested task and the directly related files.
+- Do not reformat unrelated files or rewrite nearby code just for style.
+- Do not revert or overwrite unrelated user changes in a dirty working tree.
+- Prefer established nearby patterns over introducing a new abstraction.
+- Add new abstractions only when they remove real duplication or match an existing project pattern.

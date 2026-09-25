@@ -14,8 +14,6 @@ interface DocsSearchItem {
   href: string;
   section: string;
   category: string;
-  /** Sidebar position from the layout's menuMap — what "the first tutorial" means. Menu-less pages sort last. */
-  order: number;
   title: LocalizedText;
   headings: DocsSearchHeading[];
   body: LocalizedText;
@@ -23,9 +21,7 @@ interface DocsSearchItem {
 
 interface MenuMeta {
   category: string;
-  categoryTitle: LocalizedText;
   title: LocalizedText;
-  order: number;
 }
 
 const appRoot = process.cwd();
@@ -171,7 +167,7 @@ const extractMenuMeta = async () => {
       if (!subMenus || !ts.isArrayLiteralExpression(subMenus)) return;
 
       const categoryText = getProp(node, "name")?.initializer;
-      const categoryTitle = (categoryText ? getLocalizedText(categoryText) : null) ?? { en: "", ko: "" };
+      const category = (categoryText ? getLocalizedText(categoryText) : null)?.en ?? "";
 
       for (const element of subMenus.elements) {
         if (!ts.isObjectLiteralExpression(element)) continue;
@@ -182,7 +178,7 @@ const extractMenuMeta = async () => {
         const href = getStringValue(hrefInitializer);
         const title = getLocalizedText(nameInitializer);
         if (!href || !title) continue;
-        meta.set(href, { category: categoryTitle.en, categoryTitle, title, order: meta.size });
+        meta.set(href, { category, title });
       }
     });
   }
@@ -234,11 +230,9 @@ const extractDocItem = async (filePath: string, menuMeta: Map<string, MenuMeta>)
     href,
     section: sectionFromHref(href),
     category: meta?.category ?? sectionFromHref(href),
-    order: meta?.order ?? Number.MAX_SAFE_INTEGER,
     title: meta?.title ?? fallbackTitle,
     headings,
-    // The category rides in the body so a query like "튜토리얼" matches every page of that section.
-    body: mergeText(meta?.title ?? fallbackTitle, meta?.categoryTitle ?? {}, body),
+    body: mergeText(meta?.title ?? fallbackTitle, body),
   };
 };
 
@@ -247,7 +241,7 @@ const run = async () => {
   const items = await Promise.all(files.map((file) => extractDocItem(file, menuMeta)));
   const index = {
     generatedAt: new Date().toISOString(),
-    items: items.sort((a, b) => a.order - b.order || a.href.localeCompare(b.href)),
+    items: items.sort((a, b) => a.href.localeCompare(b.href)),
   };
 
   await mkdir(path.dirname(outputPath), { recursive: true });

@@ -10,7 +10,7 @@
 
 import type { ConstantType, TextFieldRole } from "akanjs/constant";
 import type { RootDictionary } from "akanjs/dictionary";
-import type { ArgType, HttpMutationMethod, SerializedArg, SerializedReturns } from "akanjs/signal";
+import type { ArgType, SerializedArg, SerializedReturns } from "akanjs/signal";
 
 // * ==================== Envelope ==================== * //
 
@@ -140,7 +140,7 @@ export interface ConstantData {
 export type { ArgType, SerializedArg, SerializedReturns };
 
 export interface EndpointNode {
-  type: "query" | "mutation" | "pubsub" | "message" | "prompt";
+  type: "query" | "mutation" | "pubsub" | "message";
   args: SerializedArg[];
   returns: SerializedReturns;
   path?: string;
@@ -198,9 +198,9 @@ export interface RouteRow {
   signal: string;
   key: string;
   source: "declared" | "crud" | "slice";
-  type: "query" | "mutation" | "message" | "pubsub" | "prompt";
+  type: "query" | "mutation" | "message" | "pubsub";
   transport: "http" | "ws";
-  method: "GET" | HttpMutationMethod | null;
+  method: "GET" | "POST" | null;
   /** Fully prefixed, `:param` placeholders intact — e.g. `/api/user/:userId`. */
   path: string;
   guards: string[];

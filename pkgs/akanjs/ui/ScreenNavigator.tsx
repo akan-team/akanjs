@@ -1,12 +1,9 @@
 "use client";
 import { useDrag } from "@use-gesture/react";
-import { cn } from "akanjs/client";
-import { capitalize } from "akanjs/common";
-import { st } from "akanjs/store";
+import { clsx } from "akanjs/client";
 import { animated } from "akanjs/ui";
-import { type ReactNode, useContext, useEffect, useRef, useState } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import { SpringValue, useSpringValue } from "react-spring";
-import { sharedContext } from "../client/sharedContext";
 
 interface ScreenNavigatorContextType {
   bind: (...args: any[]) => any;
@@ -17,7 +14,7 @@ interface ScreenNavigatorContextType {
   onClickMenu: (menu: string) => void;
 }
 
-const ScreenNavigatorContext = sharedContext<ScreenNavigatorContextType>("screenNavigator", {
+const ScreenNavigatorContext = createContext<ScreenNavigatorContextType>({
   bind: () => ({}),
   xValue: new SpringValue(0),
   setMenu: null as unknown as (menu: string) => void,
@@ -31,8 +28,6 @@ interface ScreenNavigatorProps {
   children: React.ReactNode;
   setMenu?: (menu: string) => void;
   menus: string[];
-  /** Names this navigator for the in-page agent. Without it it publishes nothing — two on one screen would share a name. */
-  namespace?: string;
 }
 
 export const ScreenNavigator = ({
@@ -41,7 +36,6 @@ export const ScreenNavigator = ({
     //
   },
   menus,
-  namespace,
 }: ScreenNavigatorProps) => {
   const [currentMenu, setCurrentMenu] = useState(menus[0]);
   const xValue = useSpringValue(0, { config: { clamp: true } });
@@ -57,7 +51,7 @@ export const ScreenNavigator = ({
   const bind = useDrag(
     ({ first, last, offset: [x], velocity: [vx], direction: [dx], movement: [mx], cancel }) => {
       if (!ref.current) return;
-      // FIXME: 메뉴가 3개 이상일 경우 고려해야함
+      //! 메뉴가 3개 이상일 경우 고려해야함
       const deviceWidth = ref.current.clientWidth / 2;
       if (x > 0 || x < -deviceWidth) return;
       if (dx < 1) {
@@ -102,15 +96,6 @@ export const ScreenNavigator = ({
     }
   };
 
-  const suffix = namespace ? capitalize(namespace) : "";
-  st.expose(namespace ? `screenIn${suffix}` : null, String)
-    .desc("The screen this navigator is showing.")
-    .value(currentMenu);
-  st.tool(namespace ? `goToScreenIn${suffix}` : null)
-    .desc(`Slide the ${namespace ?? ""} navigator to one screen.`)
-    .arg("screen", String, { oneOf: menus })
-    .exec(onClickMenu);
-
   return (
     <ScreenNavigatorContext.Provider value={{ bind, xValue, onClickMenu, menus, currentMenu, setMenu }}>
       <animated.div {...bind()} className="flex h-full w-[200vw] overflow-x-scroll" style={{ x: xValue }} ref={ref}>
@@ -124,7 +109,7 @@ const NavbarItem = ({ menu, children, className }: { menu: string; children: Rea
   const { onClickMenu, currentMenu } = useContext(ScreenNavigatorContext);
   return (
     <div
-      className={cn(className, currentMenu === menu ? "opacity-100" : "opacity-40")}
+      className={clsx(className, currentMenu === menu ? "opacity-100" : "opacity-40")}
       onClick={() => {
         onClickMenu(menu);
       }}

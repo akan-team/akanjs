@@ -1,16 +1,11 @@
 "use client";
 import { config, useSprings } from "@react-spring/web";
 import { useGesture } from "@use-gesture/react";
-import { cn } from "akanjs/client";
-import { useFieldTool } from "akanjs/store";
+import { clsx } from "akanjs/client";
 import { animated } from "akanjs/ui";
-import { type ReactElement, type ReactNode, useContext, useRef } from "react";
+import { createContext, type ReactElement, type ReactNode, useContext, useRef } from "react";
 import { BiTrash } from "react-icons/bi";
 import { MdDragIndicator } from "react-icons/md";
-import { sharedContext } from "../client/sharedContext";
-import { agentAttrs } from "./agentAttrs";
-import { buttonRecipe } from "./Button";
-import { useUiRecipe } from "./UiOverride";
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
@@ -25,7 +20,7 @@ interface DragListContextType<V> {
   bind: (...args: any[]) => any;
   onRemove: (value: V) => void;
 }
-const dragListContext = sharedContext<DragListContextType<any>>("dragList", {} as unknown as DragListContextType<any>);
+const dragListContext = createContext<DragListContextType<any>>({} as unknown as DragListContextType<any>);
 const useDragList = () => useContext(dragListContext);
 
 interface DragListProps<V> {
@@ -36,11 +31,6 @@ interface DragListProps<V> {
   onRemove: (value: V, idx: number) => void;
 }
 const DragList = <V,>({ className, mode = "vertical", children, onChange, onRemove }: DragListProps<V>) => {
-  // A drag-sortable list is a form control like any other: handed the generated setter by reference it publishes
-  // that field, plus `move<Field>On<Model>` for the one gesture it adds over a plain list. The extra `onChange`
-  // arguments a drag reports are ignored by a generated setter, which takes exactly one value — and a caller that
-  // reads them wrapped this in an arrow, so nothing is published for it either way.
-  useFieldTool(onChange, { sortable: true });
   const refs = useRef<(HTMLDivElement | null)[]>([]);
   const order = useRef(children.map((_, index) => index));
   const clientLengths = useRef(children.map((_, index) => 0));
@@ -111,7 +101,7 @@ const DragList = <V,>({ className, mode = "vertical", children, onChange, onRemo
   });
 
   return (
-    <div {...agentAttrs(onChange)} className={cn("isolate flex gap-0", mode === "vertical" && "flex-col", className)}>
+    <div className={clsx(`isolate flex gap-0`, { "flex-col": mode === "vertical" }, className)}>
       {springs.map(({ zIndex, shadow, movement, scale }, i) => (
         <animated.div
           ref={(el: HTMLDivElement | null) => {
@@ -120,8 +110,6 @@ const DragList = <V,>({ className, mode = "vertical", children, onChange, onRemo
           key={i}
           style={{
             zIndex,
-            // 드래그 리프트 그림자(반투명 흑색)는 테마 중립 + react-spring 동적 계산값이라 토큰화 불가.
-            // styleguard-disable-next-line inline-color
             boxShadow: shadow.to((s) => `rgba(0, 0, 0, 0.15) 0px ${s}px ${2 * s}px 0px`),
             scale,
             ...(mode === "vertical" ? { y: movement } : { x: movement }),
@@ -146,13 +134,13 @@ const DragList = <V,>({ className, mode = "vertical", children, onChange, onRemo
 
 interface Cursor {
   className?: string;
-  children: ReactNode;
+  children: any;
 }
 DragList.Cursor = ({ className, children }: Cursor) => {
   const { bind } = useDragList();
   return (
     <div
-      className={cn("cursor-grab duration-200 hover:scale-[1.01] hover:opacity-70 hover:shadow-xl", className)}
+      className={clsx("cursor-grab duration-200 hover:scale-[1.01] hover:opacity-70 hover:shadow-xl", className)}
       {...bind()}
     >
       {children}
@@ -179,9 +167,8 @@ const Item = ({
   removeClassName,
 }: ItemProps) => {
   const { onRemove } = useDragList();
-  const recipe = useUiRecipe("button") ?? buttonRecipe;
   return (
-    <div className={cn("flex w-full items-center gap-2", className)}>
+    <div className={clsx("flex w-full items-center gap-2", className)}>
       {cursor ? (
         <DraggableList.Cursor className={cursorClassName}>
           <MdDragIndicator className="text-xl" />
@@ -190,10 +177,7 @@ const Item = ({
       {children}
       {removable && (
         <button
-          className={recipe({ variant: "outline", size: "xs" }, [
-            "size-6 border-destructive p-0 text-destructive hover:bg-destructive hover:text-destructive-foreground",
-            removeClassName,
-          ])}
+          className={clsx("btn btn-xs btn-error btn-square btn-outline", removeClassName)}
           onClick={() => {
             onRemove(value);
           }}

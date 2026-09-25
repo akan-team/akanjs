@@ -10,6 +10,8 @@ const makeEnv = (environment: string): BaseEnv =>
     appName: "devtools",
     environment,
     operationMode: "local",
+    tunnelUsername: "root",
+    tunnelPassword: "akan",
   }) as BaseEnv;
 
 const makeContext = (environment: string): DevtoolsRouterContext => ({

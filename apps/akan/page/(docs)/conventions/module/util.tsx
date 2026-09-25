@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, cardGridRecipe, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
+import { Code, Docs } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="file-convention" title={l.trans({ en: "File Convention", ko: "파일 규칙" })}>
         <Docs.Title>{l.trans({ en: "File Convention", ko: "파일 규칙" })}</Docs.Title>
@@ -36,7 +36,7 @@ export default function Page() {
             })}
           </div>
         </Docs.Description>
-        <div className={cardGridRecipe({ cols: "three" })}>
+        <div className="grid gap-3 xl:grid-cols-3">
           {[
             {
               title: "Path",
@@ -51,14 +51,14 @@ export default function Page() {
               desc: "Remove, Toolbox, SetOrg, QueryMaker, BackButton",
             },
           ].map(({ title, desc }) => (
-            <div key={title} className={panelRecipe()}>
-              <div className="font-bold text-foreground">{title}</div>
-              <div className="mt-2 text-foreground/70">{desc}</div>
+            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
+              <div className="font-bold text-base-content">{title}</div>
+              <div className="mt-2 text-base-content/70">{desc}</div>
             </div>
           ))}
         </div>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide
         id="model-wrapper-actions"
@@ -74,11 +74,10 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="Project.Util.tsx"
           code={`export const Toolbox = ({ projectId, name, role }: ToolboxProps) => {
   return (
-    <ul className="flex flex-col gap-1 rounded-box border border-border bg-popover p-2 shadow-lg">
+    <ul className="dropdown-content menu">
       <li>
         <Model.Edit renderTitle="name" slice={fetch.slice.projectInOrg} modelId={projectId}>
           <Project.Template.General />
@@ -94,7 +93,6 @@ export default function Page() {
 };`}
         />
         <Code.Snippet
-          className="w-full"
           title="__Model__.Util.tsx"
           code={`export const Remove = ({ productId }: RemoveProps) => {
   const { l } = usePage();
@@ -106,7 +104,7 @@ export default function Page() {
 };`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide
         id="dialog-modal-actions"
@@ -122,14 +120,13 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="BizLicense.Util.tsx"
           code={`export const SetOrg = ({ bizLicenseId }: SetOrgProps) => {
   const [orgId, setOrgId] = useState<string | null>(null);
   return (
     <Dialog>
       <Dialog.Trigger>
-        <button className={buttonRecipe()}>Set Org</button>
+        <button className="btn">Set Org</button>
       </Dialog.Trigger>
       <Dialog.Modal>
         <Field.ParentId value={orgId} onChange={setOrgId} slice={fetch.slice.orgInSelf} />
@@ -142,7 +139,6 @@ export default function Page() {
 };`}
         />
         <Code.Snippet
-          className="w-full"
           title="Report.Util.tsx"
           code={`export const Resolve = ({ report }: ResolveProps) => {
   const reportModal = st.use.reportModal();
@@ -157,7 +153,7 @@ export default function Page() {
 };`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide
         id="query-context-utils"
@@ -173,7 +169,6 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="Ticket.Util.tsx"
           code={`export const QueryMakerInSelf = () => {
   const [projectIds, userIds] = st.use.queryArgsOfTicketInSelf();
@@ -187,16 +182,15 @@ export default function Page() {
 };`}
         />
         <Code.Snippet
-          className="w-full"
           title="Board.Util.tsx"
           code={`export const BackButton = ({ id }: { id: string }) => {
-  const path = st.use.path({ agent: false });
+  const path = st.use.path();
   if (!path.startsWith(\`/board/\${id}/\`)) return null;
   return <Link.Back>Back</Link.Back>;
 };`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -224,16 +218,16 @@ export default function Page() {
                 ko: "큰 toolbox나 workflow modal은 하나의 component에 숨기지 말고 named export로 나눕니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
+              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
                 {rule}
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
-      <DocsToc />
+      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>
   );
 }

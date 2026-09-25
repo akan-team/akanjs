@@ -1,17 +1,16 @@
 import type { Me } from "@libs/shared/common";
 import { isPasswordMatch } from "@libs/shared/srvkit";
 import type { Account } from "akanjs/fetch";
-import { DatabaseAdaptorRole, InsightQuery, serve } from "akanjs/service";
+import { serve } from "akanjs/service";
 import type * as cnst from "../cnst";
 import * as db from "../db";
 import { Err } from "../dict";
 import type * as option from "../option";
 import type * as srv from "../srv";
 
-export class AdminService extends serve(db.admin, ({ use, service, memory, signal, plug }) => ({
+export class AdminService extends serve(db.admin, ({ use, service, memory, signal }) => ({
   rootAdminInfo: use<option.AccountInfo>(),
   securityService: service<srv.util.SecurityService>(),
-  database: plug(DatabaseAdaptorRole),
 })) {
   override async _postRemove(admin: db.Admin) {
     await this.adminModel.revokeRefreshSessions(admin.id);
@@ -110,9 +109,6 @@ export class AdminService extends serve(db.admin, ({ use, service, memory, signa
     const admin = await this.adminModel.pickByAccountId(accountId);
     void admin.updateAccess().save();
     return await this._issueAdminToken(admin, account);
-  }
-  async runInsight(sql: string, limit?: number | null) {
-    return await new InsightQuery(this.database.getConnection()).run(sql, { limit: limit ?? undefined });
   }
   async addRole(adminId: string, role: cnst.AdminRole["value"]) {
     const admin = await this.adminModel.getAdmin(adminId);

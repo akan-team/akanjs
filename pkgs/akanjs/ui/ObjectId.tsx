@@ -2,17 +2,12 @@
 import { useState } from "react";
 import { AiOutlineCheck, AiOutlineCopy } from "react-icons/ai";
 
-import { buttonRecipe } from "./Button";
-import { Tooltip } from "./Tooltip";
-import { useUiRecipe } from "./UiOverride";
-
 interface ObjectIdProps {
   id: string;
 }
 
 export const ObjectId = ({ id }: ObjectIdProps) => {
   const [isCopied, setIsCopied] = useState(false);
-  const recipe = useUiRecipe("button") ?? buttonRecipe;
   const shortenedId = `${id.substring(0, 4)}...${id.substring(id.length - 5)}`;
   const handleCopyClick = () => {
     void navigator.clipboard.writeText(id);
@@ -23,10 +18,10 @@ export const ObjectId = ({ id }: ObjectIdProps) => {
   };
   return (
     <div className="flex items-center gap-2">
-      <Tooltip content={id} variant="primary">
+      <div className="tooltip tooltip-primary" data-tip={id}>
         <div className="font-semibold text-xs">{shortenedId}</div>
-      </Tooltip>
-      <button className={recipe({ variant: "ghost", size: "icon" }, "size-6 rounded-full")} onClick={handleCopyClick}>
+      </div>
+      <button className="btn btn-circle btn-xs" onClick={handleCopyClick}>
         {isCopied ? <AiOutlineCheck /> : <AiOutlineCopy />}
       </button>
     </div>

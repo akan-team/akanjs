@@ -1,18 +1,15 @@
 "use client";
 import type { DataList } from "akanjs/base";
-import { cn, type DataAction, type DataColumn } from "akanjs/client";
+import { clsx, type DataAction, type DataColumn } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import type { FilterInstance } from "akanjs/document";
 import type { FetchInitForm, SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import { type ReactNode, useEffect } from "react";
-import { Empty } from "../Empty";
 import { Loading } from "../Loading";
 import { Model } from "../Model";
 import DataItem from "./Item";
 import DataPagination from "./Pagination";
-
-const gridClassName = "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4";
 
 type DataItemProps<T extends string, M extends { id: string }, L extends { id: string }> = {
   [key in T]: L;
@@ -89,22 +86,14 @@ export default function CardList<
   return (
     <div className={className}>
       {modelListLoading ? (
-        <div className={cn(gridClassName, cardListClassName)}>
+        <div className={clsx("grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5", cardListClassName)}>
           {new Array(limitOfModel || 20)
             .fill(0)
             .map((_, idx) => `skeleton-${idx}`)
-            .map((key) =>
-              renderLoading ? (
-                renderLoading()
-              ) : (
-                <Loading.Skeleton key={key} className="rounded-box border border-border bg-card p-4" active />
-              ),
-            )}
+            .map((key) => (renderLoading ? renderLoading() : <Loading.Skeleton key={key} active />))}
         </div>
-      ) : !modelList.length ? (
-        <Empty />
       ) : (
-        <div className={cn(gridClassName, cardListClassName)}>
+        <div className={clsx("grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5", cardListClassName)}>
           {modelList.map((model, idx) => {
             return (
               <DataItem

@@ -7,7 +7,6 @@ import {
   type BundleClientEntriesInternalOptions,
   type BundleClientEntriesResult,
   CLIENT_BUNDLE_NAMING,
-  type ClientBundleTarget,
   type ClientManifest,
   type MetafileOutput,
   type OpaqueEntryAliases,
@@ -26,7 +25,6 @@ export class ClientEntriesBundler {
   #externalSubpaths: readonly string[];
   #externalAliases: Partial<Record<string, string>>;
   #command: "build" | "start";
-  #target: ClientBundleTarget;
   #outputSubdir: string;
   #reactFastRefresh: boolean;
   #artifactDir: string;
@@ -49,7 +47,6 @@ export class ClientEntriesBundler {
     this.#externalSubpaths = options.externalSubpaths ?? [];
     this.#externalAliases = options.externalAliases ?? {};
     this.#command = options.command ?? "start";
-    this.#target = options.target ?? "browser";
     this.#outputSubdir = options.outputSubdir ?? "client";
     this.#reactFastRefresh = options.reactFastRefresh ?? false;
     this.#artifactDir = `${this.#command === "build" ? this.#app.dist.cwdPath : this.#app.cwdPath}/.akan/artifact`;
@@ -64,7 +61,7 @@ export class ClientEntriesBundler {
       entrypoints: this.#opaqueEntries.entries,
       outdir: this.#outdir,
       splitting: true,
-      target: this.#target,
+      target: "browser",
       format: "esm",
       naming: CLIENT_BUNDLE_NAMING,
       metafile: true,

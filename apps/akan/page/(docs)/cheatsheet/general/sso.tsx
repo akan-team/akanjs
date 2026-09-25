@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
+import { Code, Docs } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -31,7 +31,7 @@ export default function Page() {
           </ol>
         </Docs.Description>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="provider" title={l.trans({ en: "Register Providers", ko: "Provider 등록" })}>
         <Docs.Title>{l.trans({ en: "Register Providers", ko: "Provider 등록" })}</Docs.Title>
@@ -44,7 +44,6 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title={l.trans({ en: "Example options", ko: "설정 예시" })}
           code={`security: {
   sso: {
@@ -54,7 +53,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="callback" title={l.trans({ en: "Write A Callback", ko: "Callback 작성" })}>
         <Docs.Title>{l.trans({ en: "Write A Callback", ko: "Callback 작성" })}</Docs.Title>
@@ -73,7 +72,6 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title={l.trans({ en: "Small callback", ko: "작은 callback" })}
           code={`google: query(Any, { guards: [SSO.Google] })
   .with(Req)
@@ -88,7 +86,7 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
   });`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="account-id" title={l.trans({ en: "Account Id", ko: "Account Id" })}>
         <Docs.Title>{l.trans({ en: "Account Id", ko: "Account Id" })}</Docs.Title>
@@ -99,7 +97,7 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
               ko: "provider마다 사용자 식별값 이름이 다릅니다. service를 호출하기 전에 하나의 `accountId`로 맞춰주세요.",
             })}
           </div>
-          <DocsList>
+          <ul className="list-disc space-y-2 pl-5">
             <li>{l.trans({ en: "GitHub often uses `username`.", ko: "GitHub는 보통 `username`을 사용합니다." })}</li>
             <li>
               {l.trans({
@@ -113,16 +111,15 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
                 ko: "Kakao와 Naver는 주로 `email`을 사용합니다.",
               })}
             </li>
-          </DocsList>
+          </ul>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title={l.trans({ en: "Normalize provider profile", ko: "Provider profile 맞추기" })}
           code={`const accountId =
   provider === "github" ? profile.username : profile.email;`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="redirect" title={l.trans({ en: "Redirects", ko: "Redirect" })}>
         <Docs.Title>{l.trans({ en: "Redirects", ko: "Redirect" })}</Docs.Title>
@@ -133,7 +130,7 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
               ko: "callback 이후 service는 보통 세 곳 중 하나로 이동시킵니다.",
             })}
           </div>
-          <DocsList>
+          <ul className="list-disc space-y-2 pl-5">
             <li>
               {l.trans({
                 en: "Existing user: go to the signed-in page.",
@@ -152,15 +149,15 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
                 ko: "오류: 이해하기 쉬운 메시지와 함께 오류 화면으로 이동합니다.",
               })}
             </li>
-          </DocsList>
+          </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <DocsList>
+          <ul className="list-disc space-y-2 pl-5">
             <li>
               {l.trans({
                 en: "Keep provider-specific code inside the callback. Keep sign-in rules inside the service.",
@@ -179,10 +176,10 @@ googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
                 ko: "SSO를 시작하기 전에 성공, 가입, 오류 redirect를 준비해두세요.",
               })}
             </li>
-          </DocsList>
+          </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <DocsToc />
+      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>
   );
 }

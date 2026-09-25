@@ -1,11 +1,10 @@
 "use client";
-import { cn } from "akanjs/client";
-import { Button, type ButtonVariants, Loading } from "akanjs/ui";
+import { clsx } from "akanjs/client";
+import { Button, Loading } from "akanjs/ui";
 import type { MouseEvent, ReactNode } from "react";
 import { useState } from "react";
-import { AiFillCheckSquare } from "react-icons/ai";
 
-interface TryButtonProps extends ButtonVariants {
+interface TryButtonProps {
   children: ReactNode;
   wrapperClassName?: string;
   className?: string;
@@ -18,9 +17,7 @@ interface TryButtonProps extends ButtonVariants {
 export const TryButton = ({
   children,
   wrapperClassName,
-  className,
-  variant = "primary",
-  size,
+  className = "btn-primary",
   disabled,
   completeOnSuccess,
   footer,
@@ -30,11 +27,9 @@ export const TryButton = ({
   const [loading, setLoading] = useState(false);
   const [completed, setCompleted] = useState(false);
   return (
-    <div className={cn("flex flex-col gap-2", wrapperClassName)}>
+    <div className={clsx("flex flex-col gap-2", wrapperClassName)}>
       <Button
-        variant={variant}
-        size={size}
-        className={cn("w-full", className)}
+        className={clsx("w-full", className)}
         disabled={disabled || loading || completed}
         onClick={async (e) => {
           setErrorMessage("");
@@ -53,7 +48,7 @@ export const TryButton = ({
           <Loading.Spin />
         ) : completed ? (
           <>
-            <AiFillCheckSquare className="text-success" />
+            <input type="checkbox" className="checkbox checkbox-success checkbox-sm" checked readOnly />
             {children}
           </>
         ) : (
@@ -61,7 +56,7 @@ export const TryButton = ({
         )}
       </Button>
       {footer}
-      {errorMessage ? <div className="text-destructive text-sm">{errorMessage}</div> : null}
+      {errorMessage ? <div className="text-error text-sm">{errorMessage}</div> : null}
     </div>
   );
 };

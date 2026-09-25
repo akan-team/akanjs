@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, cardGridRecipe, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
+import { Code, Docs } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -23,7 +23,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide
         id="model-dictionary-pattern"
@@ -39,7 +39,6 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="ticket.dictionary.ts"
           code={`import { modelDictionary } from "akanjs/dictionary";
 
@@ -66,7 +65,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     active: t(["Active", "활성"]),
   }));`}
         />
-        <div className={cardGridRecipe({ cols: "three" })}>
+        <div className="grid gap-3 xl:grid-cols-3">
           {[
             {
               title: ".model",
@@ -90,14 +89,14 @@ export const dictionary = modelDictionary(["en", "ko"])
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className={panelRecipe()}>
-              <div className="font-bold text-foreground">{title}</div>
-              <div className="mt-2 text-foreground/70">{desc}</div>
+            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
+              <div className="font-bold text-base-content">{title}</div>
+              <div className="mt-2 text-base-content/70">{desc}</div>
             </div>
           ))}
         </div>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="using-dictionary" title={l.trans({ en: "Using Dictionaries", ko: "Dictionary 사용하기" })}>
         <Docs.Title>{l.trans({ en: "Using Dictionaries", ko: "Dictionary 사용하기" })}</Docs.Title>
@@ -111,7 +110,6 @@ export const dictionary = modelDictionary(["en", "ko"])
         </Docs.Description>
         <div className="">
           <Code.Snippet
-            className="w-full"
             title="Client UI"
             code={`import { usePage } from "@apps/myapp/client";
 
@@ -121,7 +119,6 @@ export const UserNameField = () => {
 };`}
           />
           <Code.Snippet
-            className="w-full"
             title="Server Error"
             code={`import { Err } from "../dict";
 
@@ -130,7 +127,6 @@ if (!ticket.canArchive()) {
 }`}
           />
           <Code.Snippet
-            className="w-full"
             title="Client Toast"
             code={`import { msg } from "@apps/myapp/client";
 
@@ -141,7 +137,7 @@ msg.error("ticket.error.cannotArchive");`}
           />
         </div>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide
         id="generated-extension"
@@ -157,7 +153,6 @@ msg.error("ticket.error.cannotArchive");`}
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="user.dictionary.ts"
           code={`import { modelDictionary } from "akanjs/dictionary";
 
@@ -171,7 +166,7 @@ export const dictionary = modelDictionary(["en", "ko"], ...user.dictionaries)
   .translate({});`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide
         id="scalar-service-dictionaries"
@@ -186,7 +181,7 @@ export const dictionary = modelDictionary(["en", "ko"], ...user.dictionaries)
             })}
           </div>
         </Docs.Description>
-        <div className={cardGridRecipe({ cols: "three" })}>
+        <div className="grid gap-3 xl:grid-cols-3">
           {[
             {
               title: "modelDictionary",
@@ -210,15 +205,14 @@ export const dictionary = modelDictionary(["en", "ko"], ...user.dictionaries)
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className={panelRecipe()}>
-              <div className="font-bold text-foreground">{title}</div>
-              <div className="mt-2 text-foreground/70">{desc}</div>
+            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
+              <div className="font-bold text-base-content">{title}</div>
+              <div className="mt-2 text-base-content/70">{desc}</div>
             </div>
           ))}
         </div>
 
         <Code.Snippet
-          className="w-full"
           title="coordinate.dictionary.ts"
           code={`import { scalarDictionary } from "akanjs/dictionary";
 
@@ -232,7 +226,6 @@ export const dictionary = scalarDictionary(["en", "ko"])
   }));`}
         />
         <Code.Snippet
-          className="w-full"
           title="util.dictionary.ts"
           code={`import { serviceDictionary } from "akanjs/dictionary";
 
@@ -241,7 +234,7 @@ export const dictionary = serviceDictionary(["en", "ko"]).translate({
 });`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide
         id="errors-language-rules"
@@ -257,7 +250,6 @@ export const dictionary = serviceDictionary(["en", "ko"]).translate({
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="ticket.dictionary.ts"
           code={`.error({
   cannotArchive: ["Cannot archive ticket that is not completed", "완료되지 않은 티켓은 보관할 수 없습니다"],
@@ -267,14 +259,13 @@ export const dictionary = serviceDictionary(["en", "ko"]).translate({
 })`}
         />
         <Code.Snippet
-          className="w-full"
           title="akan.dictionary.ts"
           code={`export const dictionary = serviceDictionary(["en", "ko", "zhChs", "zhCht"]).translate({
   menuGallery: ["Gallery", "갤러리", "画廊", "畫廊"],
 });`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -306,16 +297,16 @@ export const dictionary = serviceDictionary(["en", "ko"]).translate({
                 ko: "모든 translation tuple은 language list와 같은 순서와 길이를 유지합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
+              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
                 {rule}
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
-      <DocsToc />
+      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>
   );
 }

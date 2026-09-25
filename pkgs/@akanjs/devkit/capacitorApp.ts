@@ -24,9 +24,7 @@ interface RunIosConfig extends RunConfig {
   iosDeviceId?: string;
 }
 
-interface PrepareConfig extends RunConfig {
-  iosRunTargetKind?: IosRunTargetKind;
-}
+interface PrepareConfig extends RunConfig {}
 
 type MobileCommandEnv = Record<string, string | undefined>;
 
@@ -121,11 +119,10 @@ interface MaterializeCapacitorConfigOptions {
   localServerUrl?: string;
   localIp?: string;
 }
-type MobilePlatform = "ios" | "android";
 
 export interface LocalDevHostResolution {
   host: string;
-  source: "override" | "detected" | "loopback" | "platform";
+  source: "override" | "detected" | "loopback";
   candidates: { name: string; address: string }[];
 }
 
@@ -568,16 +565,6 @@ export function getAdbDeviceStateIssues(output: string) {
     });
 }
 
-export function getAndroidLocalServerHost(adbDevicesOutput: string | undefined, fallbackHost: string) {
-  const onlineDeviceIds =
-    adbDevicesOutput
-      ?.split(/\r?\n/)
-      .map((line) => line.trim().split(/\s+/))
-      .filter(([id, state]) => id && state === "device")
-      .map(([id]) => id) ?? [];
-  return onlineDeviceIds.length === 1 && onlineDeviceIds[0]?.startsWith("emulator-") ? "10.0.2.2" : fallbackHost;
-}
-
 export const ANDROID_MIN_SDK_VERSION = 26;
 export function raiseGradleMinSdkVersion(content: string, floor: number = ANDROID_MIN_SDK_VERSION): string | null {
   const match = content.match(/minSdkVersion\s*=\s*(\d+)/);
@@ -761,7 +748,7 @@ export class CapacitorApp {
   async save() {
     await this.project.commit();
   }
-  async #prepareIos({ operation, env, regenerate = false, iosRunTargetKind }: PrepareConfig) {
+  async #prepareIos({ operation, env, regenerate = false }: PrepareConfig) {
     await this.init({ platform: "ios", operation, env, regenerate });
     await this.#prepareTargetAssets();
     await this.#prepareExternalFiles("ios");
@@ -770,10 +757,9 @@ export class CapacitorApp {
     await this.#applyDeepLinks("ios", { operation, env });
     await this.#flushIosEntitlements();
     await this.project.commit();
-    await this.#setCodeSignEntitlementsInIosIfExists("App/App.entitlements");
     await this.#generateAssets({ operation, env });
     this.app.verbose(`syncing iOS`);
-    await this.#spawnMobile("npx", ["cap", "sync", "ios"], { operation, env }, { iosRunTargetKind });
+    await this.#spawnMobile("npx", ["cap", "sync", "ios"], { operation, env });
     this.app.verbose(`sync completed.`);
   }
   async buildIos({ env = "debug", regenerate = false }: { env?: RunConfig["env"]; regenerate?: boolean } = {}) {
@@ -791,14 +777,14 @@ export class CapacitorApp {
   }
   async runIos({ operation, env, regenerate = false, noAllowProvisioningUpdates = false, iosDeviceId }: RunIosConfig) {
     if (operation === "release") await this.prepareWww();
+    await this.#prepareIos({ operation, env, regenerate });
     const runTarget = await this.#selectIosRunTarget(iosDeviceId);
-    await this.#prepareIos({ operation, env, regenerate, iosRunTargetKind: runTarget.kind });
     if (runTarget.kind === "simulator") {
       await this.#spawnMobile(
         "npx",
-        ["cap", "run", "ios", "--target", runTarget.id, "--no-sync"],
+        ["cap", "run", "ios", "--target", runTarget.id],
         { operation, env },
-        { stdio: "inherit", platform: "ios", iosRunTargetKind: runTarget.kind },
+        { stdio: "inherit" },
       );
       return;
     }
@@ -892,10 +878,7 @@ export class CapacitorApp {
     noAllowProvisioningUpdates: boolean;
   }) {
     const mobileEnv = sanitizeIosNativeRunEnv(await this.#commandEnv(operation, env));
-    const configContent = await this.#writeCapacitorConfig(
-      { operation, platform: "ios", iosRunTargetKind: runTarget.kind },
-      mobileEnv,
-    );
+    const configContent = await this.#writeCapacitorConfig({ operation }, mobileEnv);
     await this.#writeRootCapacitorConfig(configContent);
     const scheme = this.#iosScheme();
     const command = buildIosNativeRunCommand({
@@ -960,7 +943,6 @@ export class CapacitorApp {
     await this.#applyAndroidMinSdkVersion();
     await this.#applyPermissions({ operation, env });
     await this.#applyDeepLinks("android", { operation, env });
-    await this.#disableNativeKeyboardResizeInAndroid();
     await this.project.commit();
     await this.#generateAssets({ operation, env });
     await this.#ensureAndroidAssetsDir();
@@ -1027,24 +1009,6 @@ export class CapacitorApp {
   }
   async openAndroid() {
     await this.#spawnMobile("npx", ["cap", "open", "android"], { operation: "local", env: "local" });
-  }
-  async #disableNativeKeyboardResizeInAndroid() {
-    const manifestPath = path.join(this.app.cwdPath, this.androidRootPath, "app/src/main/AndroidManifest.xml");
-    let manifest = await readFile(manifestPath, "utf8");
-    let changed = false;
-    manifest = manifest.replace(/<activity\b[^>]*android:name="\.MainActivity"[^>]*>/, (activityTag) => {
-      if (activityTag.includes("android:windowSoftInputMode=")) {
-        const nextTag = activityTag.replace(
-          /android:windowSoftInputMode="[^"]*"/,
-          'android:windowSoftInputMode="adjustNothing"',
-        );
-        changed ||= nextTag !== activityTag;
-        return nextTag;
-      }
-      changed = true;
-      return activityTag.replace(/>$/, '\n            android:windowSoftInputMode="adjustNothing">');
-    });
-    if (changed) await writeFile(manifestPath, manifest);
   }
   async #ensureAndroidAssetsDir() {
     await mkdir(path.join(this.app.cwdPath, this.androidAssetsPath), { recursive: true });
@@ -1136,19 +1100,12 @@ export class CapacitorApp {
     if (html.includes("window.__AKAN_MOBILE_TARGET__")) return html;
     return html.replace(/<\/head\s*>/i, `${script}\n</head>`);
   }
-  async #writeCapacitorConfig(
-    {
-      operation,
-      platform,
-      iosRunTargetKind,
-    }: Pick<RunConfig, "operation"> & { platform?: MobilePlatform; iosRunTargetKind?: IosRunTargetKind },
-    commandEnv: MobileCommandEnv,
-  ) {
+  async #writeCapacitorConfig({ operation }: Pick<RunConfig, "operation">, commandEnv: MobileCommandEnv) {
     await mkdir(this.targetRoot, { recursive: true });
     let localIp: string | undefined;
     if (operation === "local") {
       const override = commandEnv.AKAN_PUBLIC_CLIENT_HOST ?? process.env.AKAN_PUBLIC_CLIENT_HOST;
-      const resolution = await this.#resolveLocalDevHost({ override, platform, iosRunTargetKind });
+      const resolution = selectLocalDevHost(os.networkInterfaces(), { override });
       localIp = resolution.host;
       this.#logDevHostResolution(resolution, commandEnv);
     }
@@ -1161,36 +1118,11 @@ export class CapacitorApp {
     await Bun.write(path.join(this.targetRoot, "capacitor.config.json"), content);
     return content;
   }
-  // An explicit override always wins; an emulator/simulator run reaches the host machine through a
-  // loopback alias (10.0.2.2 / localhost), so LAN detection only applies to physical-device runs.
-  async #resolveLocalDevHost({
-    override,
-    platform,
-    iosRunTargetKind,
-  }: {
-    override?: string;
-    platform?: MobilePlatform;
-    iosRunTargetKind?: IosRunTargetKind;
-  }): Promise<LocalDevHostResolution> {
-    const resolution = selectLocalDevHost(os.networkInterfaces(), { override });
-    if (resolution.source === "override") return resolution;
-    if (platform === "ios" && iosRunTargetKind === "simulator")
-      return { ...resolution, host: "localhost", source: "platform" };
-    if (platform === "android") {
-      try {
-        const host = getAndroidLocalServerHost(await this.#spawn("adb", ["devices"]), resolution.host);
-        return host === resolution.host ? resolution : { ...resolution, host, source: "platform" };
-      } catch {
-        return resolution;
-      }
-    }
-    return resolution;
-  }
   // Surface the live-reload URL a physical device must reach, and warn when auto-detection landed on
   // a likely-unreachable host so a blank WebView is not mistaken for an app bug.
   #logDevHostResolution(resolution: LocalDevHostResolution, commandEnv: MobileCommandEnv) {
     this.app.log(`Mobile live-reload server: ${this.#localCsrUrl(resolution.host, commandEnv)}`);
-    if (resolution.source === "override" || resolution.source === "platform") return;
+    if (resolution.source === "override") return;
     const suspicious = resolution.host === "127.0.0.1" || resolution.host.startsWith("169.254.");
     const alternatives = resolution.candidates.filter((candidate) => candidate.address !== resolution.host);
     if (!suspicious && alternatives.length === 0) return;
@@ -1400,28 +1332,19 @@ export class CapacitorApp {
     command: string,
     args: string[] = [],
     { operation, env }: Pick<RunConfig, "operation" | "env">,
-    options: SpawnMobileOptions = {},
+    options: Parameters<AppExecutor["spawn"]>[2] = {},
   ) {
-    const { iosRunTargetKind, platform, ...spawnOptions } = options;
     const mobileEnv = { ...(await this.#commandEnv(operation, env)), ...options.env };
-    const configContent = await this.#writeCapacitorConfig(
-      { operation, platform: platform ?? this.#inferMobilePlatform(args), iosRunTargetKind },
-      mobileEnv,
-    );
+    const configContent = await this.#writeCapacitorConfig({ operation }, mobileEnv);
     await this.#writeRootCapacitorConfig(configContent);
     try {
       return await this.#spawn(command, args, {
-        ...spawnOptions,
+        ...options,
         env: mobileEnv,
       });
     } finally {
       await this.#clearRootCapacitorConfigs();
     }
-  }
-  #inferMobilePlatform(args: string[]): MobilePlatform | undefined {
-    if (args.includes("android")) return "android";
-    if (args.includes("ios")) return "ios";
-    return undefined;
   }
   async addCamera() {
     await this.#setPermissionInIos({
@@ -1523,30 +1446,13 @@ export class CapacitorApp {
       let end = index;
       while (end < lines.length && !/^\s*\};\s*$/.test(lines[end] ?? "")) end++;
       const settings = lines.slice(start, end + 1);
-      const configName = lines.slice(end + 1, end + 8).find((setting) => setting.includes("name = ")) ?? "";
+      if (settings.some((setting) => setting.includes("CODE_SIGN_ENTITLEMENTS"))) continue;
       const indent = line.match(/^\s*/)?.[0] ?? "";
-      const insertSettings = [];
-      if (!settings.some((setting) => setting.includes("CODE_SIGN_ENTITLEMENTS"))) {
-        insertSettings.push(`${indent}CODE_SIGN_ENTITLEMENTS = ${entitlementsRelPath};`);
-      }
-      if (
-        configName.includes("name = Debug;") &&
-        !settings.some((setting) => setting.includes("CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION"))
-      ) {
-        insertSettings.push(`${indent}CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;`);
-      }
-      if (insertSettings.length > 0) {
-        lines.splice(index, 0, ...insertSettings);
-        index += insertSettings.length;
-        changed = true;
-      }
+      lines.splice(index, 0, `${indent}CODE_SIGN_ENTITLEMENTS = ${entitlementsRelPath};`);
+      index++;
+      changed = true;
     }
     if (changed) await writeFile(pbxprojPath, lines.join("\n"));
-  }
-  async #setCodeSignEntitlementsInIosIfExists(entitlementsRelPath: string) {
-    const entitlementsPath = path.join(this.app.cwdPath, this.iosProjectPath, entitlementsRelPath);
-    if (!(await Bun.file(entitlementsPath).exists())) return;
-    await this.#setCodeSignEntitlementsInIos(entitlementsRelPath);
   }
   async #setUrlSchemesInAndroid(schemes: string[]) {
     const manifestPath = path.join(this.app.cwdPath, this.androidRootPath, "app/src/main/AndroidManifest.xml");

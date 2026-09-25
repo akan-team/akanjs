@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
+import { Code, Docs } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -17,7 +17,6 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="Workspace root"
           language="bash"
           code={`.
@@ -65,14 +64,14 @@ export default function Page() {
               }),
             },
           ].map(({ name, desc }) => (
-            <div key={name} className={panelRecipe()}>
+            <div key={name} className="rounded-xl border border-base-300 bg-base-100 p-4">
               <div className="font-mono font-semibold text-primary">{name}</div>
-              <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
+              <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
             </div>
           ))}
         </div>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="workspace-commands" title={l.trans({ en: "Workspace Commands", ko: "워크스페이스 명령" })}>
         <Docs.Title>{l.trans({ en: "Workspace Commands", ko: "워크스페이스 명령" })}</Docs.Title>
@@ -85,7 +84,6 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="Workspace command examples"
           language="bash"
           code={`akan create-application
@@ -95,9 +93,9 @@ akan lint <app/lib/pkg-name>
 akan lintAll`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
-      <DocsToc />
+      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>
   );
 }

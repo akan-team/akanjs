@@ -12,8 +12,6 @@ interface NewWrapperProps<Full = any> {
   setDefault?: boolean;
   modal?: string | null;
   resets?: string[] | null;
-  /** Suffixes the tool this trigger publishes. Only a second create trigger for the same slice needs one. */
-  namespace?: string;
 }
 
 export default function NewWrapper<Full>({ partial = {}, ...props }: NewWrapperProps<Full>) {

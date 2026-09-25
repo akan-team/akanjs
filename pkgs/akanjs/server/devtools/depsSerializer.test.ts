@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { getEnv } from "akanjs/base";
 import { DepsSerializer } from "./depsSerializer";
 import { DevtoolsFixture, fixtureRefName } from "./devtools.fixture";
 import type { DepsData } from "./types";
@@ -11,7 +10,7 @@ beforeAll(async () => {
   fixture = await DevtoolsFixture.boot("all");
   data = new DepsSerializer({
     di: fixture.lifecycle,
-    env: getEnv(),
+    env: fixture.env,
     name: "AkanServer",
     status: "running",
     serverMode: fixture.serverMode,
@@ -70,7 +69,7 @@ describe("DepsSerializer", () => {
     process.env.DEVTOOLS_TEST_SECRET = "super-secret";
     const withSecret = new DepsSerializer({
       di: fixture.lifecycle,
-      env: getEnv(),
+      env: fixture.env,
       name: "AkanServer",
       status: "running",
       serverMode: "all",

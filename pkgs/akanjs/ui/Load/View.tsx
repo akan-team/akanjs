@@ -1,9 +1,9 @@
 "use client";
-import { cn } from "akanjs/client";
-import { ConstantRegistry, labelOf } from "akanjs/constant";
+import { clsx } from "akanjs/client";
+import { ConstantRegistry } from "akanjs/constant";
 import type { ClientView, ServerView } from "akanjs/fetch";
 import { st } from "akanjs/store";
-import { useFetch, useScreenScope } from "akanjs/webkit";
+import { useFetch } from "akanjs/webkit";
 import { type ReactNode, useEffect, useMemo, useRef } from "react";
 
 import { Empty } from "../Empty";
@@ -72,18 +72,11 @@ function Render<T extends string, Full extends { id: string }>({
   }, [modelViewAt, modelObj.id]);
 
   const renderModel = loadedId.current === modelObj.id ? model : modelInit;
-  const scopePath = useScreenScope({
-    id: `${refName}-view`,
-    kind: refName,
-    label: renderModel ? labelOf(cnst.full, renderModel) : undefined,
-  });
 
   return noDiv && renderModel ? (
     <>{renderView(renderModel)}</>
   ) : renderModel ? (
-    <div className={cn("w-full", className)} data-agent-scope={scopePath}>
-      {renderView(renderModel)}
-    </div>
+    <div className={clsx("w-full", className)}>{renderView(renderModel)}</div>
   ) : null;
 }
 

@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, cardGridRecipe, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
+import { Code, Docs } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -23,7 +23,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide
         id="standard-document-shape"
@@ -62,14 +62,13 @@ export default function Page() {
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className={panelRecipe()}>
-              <div className="font-bold text-foreground">{title}</div>
-              <div className="mt-2 text-foreground/70">{desc}</div>
+            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
+              <div className="font-bold text-base-content">{title}</div>
+              <div className="mt-2 text-base-content/70">{desc}</div>
             </div>
           ))}
         </div>
         <Code.Snippet
-          className="w-full"
           title="ticket.document.ts"
           code={`import { ID } from "akanjs/base";
 import { by, from, into } from "akanjs/document";
@@ -95,7 +94,7 @@ export class Ticket extends by(cnst.Ticket) {
 export class TicketModel extends into(Ticket, TicketFilter, cnst.ticket, () => ({})) {}`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide
         id="query-sort-methods"
@@ -117,15 +116,8 @@ export class TicketModel extends into(Ticket, TicketFilter, cnst.ticket, () => (
               ko: "전체 document 조회와 latest/oldest 정렬은 framework가 이미 제공하므로, 비즈니스에 필요한 검색과 정렬 규칙만 추가합니다.",
             })}
           </div>
-          <div>
-            {l.trans({
-              en: "count and insight are separate accessors over the same query: count returns a plain number, and insight returns the accumulated db.<Model>Insight. Both are generated on the Model and on the Service, so the same call reads identically from either side.",
-              ko: "count와 insight는 같은 query 위의 별개 accessor입니다. count는 number를 반환하고, insight는 누적된 db.<Model>Insight를 반환합니다. 둘 다 Model과 Service에 모두 생성되므로 어느 쪽에서 호출해도 동일하게 읽힙니다.",
-            })}
-          </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="story.document.ts"
           code={`export class TicketFilter extends from(cnst.Ticket, (filter) => ({
   query: {
@@ -138,7 +130,7 @@ export class TicketModel extends into(Ticket, TicketFilter, cnst.ticket, () => (
   },
 })) {}`}
         />
-        <div className={cardGridRecipe({ cols: "three" })}>
+        <div className="grid gap-3 xl:grid-cols-3">
           {[
             {
               title: "arg()",
@@ -162,29 +154,27 @@ export class TicketModel extends into(Ticket, TicketFilter, cnst.ticket, () => (
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className={panelRecipe()}>
-              <div className="font-bold text-foreground">{title}</div>
-              <div className="mt-2 text-foreground/70">{desc}</div>
+            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
+              <div className="font-bold text-base-content">{title}</div>
+              <div className="mt-2 text-base-content/70">{desc}</div>
             </div>
           ))}
         </div>
-        <div className={cardGridRecipe()}>
-          <div className={panelRecipe()}>
-            <div className="font-bold text-foreground">CRUD helpers</div>
-            <div className="mt-2 text-foreground/70">
+        <div className="grid gap-3 xl:grid-cols-2">
+          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+            <div className="font-bold text-base-content">CRUD helpers</div>
+            <div className="mt-2 text-base-content/70">
               get, load, loadMany, create, update, remove, searchDocs, searchCount
             </div>
           </div>
-          <div className={panelRecipe()}>
-            <div className="font-bold text-foreground">Query helpers</div>
-            <div className="mt-2 text-foreground/70">
-              list, listIds, find, findId, pick, pickId, exists, count, insight, query, remove, removeOne, update,
-              updateOne
+          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+            <div className="font-bold text-base-content">Query helpers</div>
+            <div className="mt-2 text-base-content/70">
+              list, listIds, find, findId, pick, pickId, exists, count, insight, query
             </div>
           </div>
         </div>
         <Code.Snippet
-          className="w-full"
           title="ticket.service.ts | ticket.document.ts"
           code={`const ticket = await this.getTicket(ticketId);
 const ticket = await this.loadTicket(ticketId);
@@ -195,18 +185,17 @@ const ticket = await this.updateTicket(ticketId, updateData);
 await this.removeTicket(ticketId);`}
         />
         <Code.Snippet
-          className="w-full"
           title="ticket.service.ts | ticket.document.ts"
           code={`const tickets = await this.listInProject(projectId, { sort: "highPriority" });
 const ticket = await this.findInProject(projectId);
 const ticket = await this.pickInProject(projectId);
 
-const count: number = await this.countInProject(projectId);
+const count = await this.countInProject(projectId);
 const exists = await this.existsInProject(projectId);
-const ticketInsight: db.TicketInsight = await this.insightInProject(projectId);`}
+const ticketInsight = await this.insightInProject(projectId);`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="text-search-query" title={l.trans({ en: "Text Search Query", ko: "텍스트 검색 query" })}>
         <Docs.Title>{l.trans({ en: "Text Search Query", ko: "텍스트 검색 query" })}</Docs.Title>
@@ -262,9 +251,9 @@ const ticketInsight: db.TicketInsight = await this.insightInProject(projectId);`
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-background/30 bg-background p-4">
-              <div className="font-bold text-foreground">{title}</div>
-              <div className="mt-2 text-foreground/70">{desc}</div>
+            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
+              <div className="font-bold text-base-content">{title}</div>
+              <div className="mt-2 text-base-content/70">{desc}</div>
             </div>
           ))}
         </div>
@@ -324,7 +313,6 @@ const count = await this.countBySearch(text, statuses);`}
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="ticket.document.ts"
           code={`export class Ticket extends by(cnst.Ticket) {
   open() {
@@ -334,13 +322,12 @@ const count = await this.countBySearch(text, statuses);`}
 }`}
         />
         <Code.Snippet
-          className="w-full"
           title="ticket.service.ts"
           code={`const ticket = await this.getTicket(ticketId);
 await ticket.open().assign(userId).save();`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="model-into" title={l.trans({ en: "Model-Level Helpers", ko: "Model-level helper" })}>
         <Docs.Title>{l.trans({ en: "Model-Level Helpers", ko: "Model-level helper" })}</Docs.Title>
@@ -353,7 +340,6 @@ await ticket.open().assign(userId).save();`}
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="story.document.ts"
           code={`export class StoryModel extends into(Story, StoryFilter, cnst.story, () => ({})) {
   async publish(storyId: string) {
@@ -362,7 +348,7 @@ await ticket.open().assign(userId).save();`}
 }`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide
         id="generated-extension"
@@ -378,7 +364,6 @@ await ticket.open().assign(userId).save();`}
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="user.document.ts"
           code={`export class UserFilter extends from(cnst.User, (filter) => ({ query: {}, sort: {} }), ...user.filters) {}
 
@@ -391,7 +376,7 @@ export class User extends by(cnst.User, ...user.docs) {
 export class UserModel extends into(User, UserFilter, cnst.user, () => ({}), ...user.models) {}`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide
         id="loaders-lookups"
@@ -407,7 +392,6 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({}), ...
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="product.document.ts"
           code={`export class ProductModel extends into(Product, ProductFilter, cnst.product, ({ byField }) => ({
   productSellerLoader: byField("seller"),
@@ -421,7 +405,6 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({}), ...
 }`}
         />
         <Code.Snippet
-          className="w-full"
           title="order.document.ts"
           code={`export class OrderModel extends into(Order, OrderFilter, cnst.order, ({ byQuery }) => ({
   orderLoader: byQuery(["shop", "orderNumber"] as const),
@@ -432,7 +415,7 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({}), ...
 }`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="schema-hooks" title={l.trans({ en: "Schema Hooks And Indexes", ko: "Schema hook과 index" })}>
         <Docs.Title>{l.trans({ en: "Schema Hooks And Indexes", ko: "Schema hook과 index" })}</Docs.Title>
@@ -451,7 +434,6 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({}), ...
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="story.document.ts"
           code={`export class StoryModel extends into(Story, StoryFilter, cnst.story, () => ({})) {
   static override _onSchema(schema: SchemaOf) {
@@ -460,7 +442,6 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({}), ...
 }`}
         />
         <Code.Snippet
-          className="w-full"
           title="user.document.ts"
           code={`export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
   static override _onSchema(schema: SchemaOf) {
@@ -472,7 +453,7 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({}), ...
 }`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -504,16 +485,16 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({}), ...
                 ko: "scalar document 파일은 작게 유지합니다. 보통 단순한 document class면 충분합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
+              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
                 {rule}
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
-      <DocsToc />
+      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>
   );
 }

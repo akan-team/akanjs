@@ -5,7 +5,7 @@ import type { ImgHTMLAttributes } from "react";
 type CsrImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "alt" | "src"> & {
   src?: string;
   file?: ProtoFile | { url: string; imageSize: [number, number]; abstractData?: string | null } | null;
-  abstractData?: string | null;
+  abstractData?: string;
   priority?: boolean;
   preload?: boolean;
   quality?: number;

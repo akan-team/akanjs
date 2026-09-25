@@ -1,5 +1,5 @@
 "use client";
-import { cn } from "akanjs/client";
+import { clsx } from "akanjs/client";
 import type { ReactNode } from "react";
 
 interface CloseProps {
@@ -9,7 +9,7 @@ interface CloseProps {
 export default function Close({ className, children }: CloseProps) {
   return (
     <div
-      className={cn("cursor-pointer", className)}
+      className={clsx("cursor-pointer", className)}
       onClick={() => {
         window.close();
       }}

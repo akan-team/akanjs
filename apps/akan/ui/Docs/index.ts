@@ -24,5 +24,5 @@ export const Docs = {
   CodeSnippet,
   Search,
 };
-export type { IntroItem, OptionItem };
+export type { OptionItem, IntroItem };
 export { ConstantDocsDemo, ConstantDocsPrintDemo };

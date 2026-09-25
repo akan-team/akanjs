@@ -1,5 +1,6 @@
 // import { Turnstile, TurnstileProps } from "@marsidev/react-turnstile";
 
+import { st } from "@libs/util/client";
 import type { TurnstileProps } from "@marsidev/react-turnstile";
 
 interface AreYouRobotProps {
@@ -8,13 +9,17 @@ interface AreYouRobotProps {
   onSuccess: (token: string) => void;
 }
 export const AreYouRobot = ({ siteKey, options = {}, onSuccess }: AreYouRobotProps) => {
-  // Turnstile is switched off; the widget it replaces is kept here for when it is turned back on.
-  // <Turnstile
-  //   siteKey={siteKey}
-  //   options={{ theme: st.use.theme() === "light" ? "light" : "dark", size: "invisible", ...options }}
-  //   onSuccess={(token) => {
-  //     onSuccess(token);
-  //   }}
-  // />
-  return null;
+  // const { theme } = useTheme();
+  const theme = st.use.theme();
+  const applyTheme = theme === "dark" ? "dark" : theme === "light" ? "light" : "auto";
+  return (
+    <></>
+    // <Turnstile
+    //   siteKey={siteKey}
+    //   options={{ theme: applyTheme, size: "invisible", ...options }}
+    //   onSuccess={(token) => {
+    //     onSuccess(token);
+    //   }}
+    // />
+  );
 };

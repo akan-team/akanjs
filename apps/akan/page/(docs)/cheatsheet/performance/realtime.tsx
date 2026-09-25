@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
+import { Code, Docs } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "실시간 기능은 WebSocket 연결을 유지해 작은 이벤트를 빠르게 주고받게 합니다. 채팅, 게임, 라이브 에디터, 대시보드, 접속 상태에 사용하세요.",
             })}
           </div>
-          <DocsList>
+          <ul className="list-disc space-y-2 pl-5">
             <li>
               {l.trans({
                 en: "`message` is a client-to-server event.",
@@ -35,10 +35,10 @@ export default function Page() {
                 ko: "`room`은 누가 이벤트를 받을지 정합니다.",
               })}
             </li>
-          </DocsList>
+          </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="message" title={l.trans({ en: "Use message", ko: "message 사용" })}>
         <Docs.Title>{l.trans({ en: "Use message", ko: "message 사용" })}</Docs.Title>
@@ -51,7 +51,6 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title={l.trans({ en: "Read receipt", ko: "읽음 처리" })}
           code={`export class ChatEndpoint extends endpoint(srv.chat, ({ message }) => ({
   readMessage: message(Boolean, { guards: [User] })
@@ -64,7 +63,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="pubsub" title={l.trans({ en: "Use pubsub", ko: "pubsub 사용" })}>
         <Docs.Title>{l.trans({ en: "Use pubsub", ko: "pubsub 사용" })}</Docs.Title>
@@ -77,22 +76,18 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title={l.trans({ en: "Chat broadcast", ko: "채팅 broadcast" })}
           code={`export class ChatEndpoint extends endpoint(srv.chat, ({ pubsub }) => ({
   messageAdded: pubsub(cnst.ChatMessage)
     .room("chatId", ID)
     .with(Ws)
-    .exec(async function (chatId, ws) {
+    .exec(async (chatId, ws) => {
       // The room key decides which connected users receive this event.
-      const markAway = () => this.chatService.markAway(chatId, ws.socketId);
-      ws.on("unsubscribe", markAway);
-      ws.on("disconnect", markAway);
     }),
 })) {}`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="flow" title={l.trans({ en: "Chat Flow", ko: "채팅 흐름" })}>
         <Docs.Title>{l.trans({ en: "Chat Flow", ko: "채팅 흐름" })}</Docs.Title>
@@ -105,7 +100,6 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title={l.trans({ en: "Save then publish", ko: "저장 후 publish" })}
           code={`async addMessage(chatId: string, content: string, senderId: string) {
   const message = await this.chatModel.createMessage({
@@ -126,7 +120,6 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title={l.trans({ en: "Client subscription", ko: "클라이언트 구독" })}
           code={`"use client";
 
@@ -145,12 +138,12 @@ export const ChatMessages = ({ chatId }: { chatId: string }) => {
 };`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="room" title={l.trans({ en: "Design Rooms", ko: "Room 설계" })}>
         <Docs.Title>{l.trans({ en: "Design Rooms", ko: "Room 설계" })}</Docs.Title>
         <Docs.Description>
-          <DocsList>
+          <ul className="list-disc space-y-2 pl-5">
             <li>
               {l.trans({
                 en: "Use a narrow room key such as `chatId`, `gameId`, or `documentId`.",
@@ -169,15 +162,15 @@ export const ChatMessages = ({ chatId }: { chatId: string }) => {
                 ko: "허용된 사용자만 보내거나 구독할 수 있도록 guard를 사용하세요.",
               })}
             </li>
-          </DocsList>
+          </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <DocsList>
+          <ul className="list-disc space-y-2 pl-5">
             <li>
               {l.trans({
                 en: "Keep payloads small. Send ids and small patches instead of full pages.",
@@ -202,10 +195,10 @@ export const ChatMessages = ({ chatId }: { chatId: string }) => {
                 ko: "게임이나 커서는 너무 잦은 이벤트를 client에서 throttle하세요.",
               })}
             </li>
-          </DocsList>
+          </ul>
         </Docs.Description>
       </Scroll.Slide>
-      <DocsToc />
+      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>
   );
 }

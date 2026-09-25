@@ -1,7 +1,7 @@
 "use client";
 
 import { getEnv } from "akanjs/base";
-import { cn, getPathInfo, router, usePage, usePathCtx } from "akanjs/client";
+import { clsx, getPathInfo, router, usePage, usePathCtx } from "akanjs/client";
 import { Logger } from "akanjs/common";
 import type { SsrLinkProps } from "./types";
 
@@ -28,17 +28,16 @@ export default function SsrLink({
   const path = internalPathInfo.path;
   if (href.startsWith("#")) {
     return (
-      <a className={cn(className, currentPath === path && (activeClassName ?? ""))} href={href}>
+      <a className={clsx(className, { [activeClassName ?? ""]: currentPath === path })} href={href}>
         {children}
       </a>
     );
   }
   return (
     <a
-      className={cn(
-        className,
-        (activeExact ? currentPath === path : currentPath.startsWith(path)) && (activeClassName ?? ""),
-      )}
+      className={clsx(className, {
+        [activeClassName ?? ""]: activeExact ? currentPath === path : currentPath.startsWith(path),
+      })}
       href={isExternal ? href : href.startsWith("#") ? href : requestHref}
       // passHref
       // replace={replace}

@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, cardGridRecipe, Divider, Docs, DocsToc, type IntroItem, panelRecipe } from "@apps/akan/ui";
+import { Code, Docs, type IntroItem } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function ViewDocsPage() {
@@ -77,7 +77,7 @@ export default function ViewDocsPage() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="comparison" title={l.trans({ en: "View vs Unit", ko: "View vs Unit" })}>
         <Docs.Title>{l.trans({ en: "View vs Unit", ko: "View vs Unit" })}</Docs.Title>
@@ -89,7 +89,7 @@ export default function ViewDocsPage() {
         </Docs.Description>
         <Docs.IntroTable type="Comparison" items={comparisonItems} />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="standard-view-shape" title={l.trans({ en: "Standard View Shape", ko: "표준 View 형태" })}>
         <Docs.Title>{l.trans({ en: "Standard View Shape", ko: "표준 View 형태" })}</Docs.Title>
@@ -102,10 +102,9 @@ export default function ViewDocsPage() {
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="Ticket.View.tsx"
           code={`import { type cnst, usePage } from "@apps/myapp/client";
-import { cn } from "akanjs/client";
+import { clsx } from "akanjs/client";
 
 interface GeneralProps {
   className?: string;
@@ -115,7 +114,7 @@ interface GeneralProps {
 export const General = ({ className, ticket }: GeneralProps) => {
   const { l } = usePage();
   return (
-    <div className={cn("flex w-full flex-col gap-4", className)}>
+    <div className={clsx("flex w-full flex-col gap-4", className)}>
       <h1>{ticket.title}</h1>
       <div>{l("ticket.status")}: {l(\`ticketStatus.\${ticket.status}\`)}</div>
     </div>
@@ -123,7 +122,7 @@ export const General = ({ className, ticket }: GeneralProps) => {
 };`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide
         id="detail-patterns"
@@ -138,9 +137,8 @@ export const General = ({ className, ticket }: GeneralProps) => {
             })}
           </div>
         </Docs.Description>
-        <div className={cardGridRecipe()}>
+        <div className="grid gap-3 xl:grid-cols-2">
           <Code.Snippet
-            className="w-full"
             title="Article.View.tsx"
             code={`interface ArticleViewProps {
   article: cnst.Article;
@@ -154,7 +152,6 @@ export const General = ({ article }: ArticleViewProps) => (
 );`}
           />
           <Code.Snippet
-            className="w-full"
             title="Order.View.tsx"
             code={`interface OrderViewProps {
   order: cnst.Order;
@@ -172,7 +169,7 @@ export const General = ({ order }: OrderViewProps) => {
           />
         </div>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="using-view-pages" title={l.trans({ en: "Using View In Pages", ko: "Page에서 View 사용하기" })}>
         <Docs.Title>{l.trans({ en: "Using View In Pages", ko: "Page에서 View 사용하기" })}</Docs.Title>
@@ -185,7 +182,6 @@ export const General = ({ order }: OrderViewProps) => {
           </div>
         </Docs.Description>
         <Code.Snippet
-          className="w-full"
           title="detail page"
           code={`export default async function Page({ params }: PageProps) {
   const { releaseView } = await fetch.viewRelease(params.releaseId);
@@ -193,7 +189,7 @@ export const General = ({ order }: OrderViewProps) => {
 }`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide
         id="load-view"
@@ -216,7 +212,6 @@ export const General = ({ order }: OrderViewProps) => {
         </Docs.Description>
         <Docs.IntroTable type="field" items={loadViewStateItems} />
         <Code.Snippet
-          className="w-full"
           title="Release.Zone.tsx"
           code={`interface ViewProps {
   view: ClientView<"release", cnst.Release>;
@@ -227,7 +222,7 @@ export const View = ({ view }: ViewProps) => {
 };`}
         />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -255,16 +250,16 @@ export const View = ({ view }: ViewProps) => {
                 ko: "server-fetched view data를 client store state에 hydrate해야 하면 Load.View를 사용합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
+              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
                 {rule}
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
-      <DocsToc />
+      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>
   );
 }

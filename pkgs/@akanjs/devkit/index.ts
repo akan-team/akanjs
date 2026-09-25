@@ -42,7 +42,6 @@ export type * from "./mobile";
 export type * from "./packageExportsMap";
 export type * from "./prompter";
 export type * from "./qualityScanner";
-export type * from "./recipeScanner";
 export type * from "./scanInfo";
 export type * from "./selectModel";
 export type * from "./spinner";

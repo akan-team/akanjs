@@ -5,9 +5,7 @@ interface Dict {
 }
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict) {
   return `
-// Not the \`akanjs/server\` barrel: it re-exports AkanServer, whose graph the gateway never runs. Through the
-// barrel this process evaluates 35MB of SSR renderer and DB driver to spawn children and relay bytes.
-import { AkanApp } from "akanjs/server/akanApp";
+import { AkanApp } from "akanjs/server";
 
 const run = async () => {
   await new AkanApp().start();

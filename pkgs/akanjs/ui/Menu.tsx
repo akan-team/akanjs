@@ -1,11 +1,10 @@
 "use client";
-import { cn } from "akanjs/client";
+import { clsx } from "akanjs/client";
 import { st } from "akanjs/store";
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AiFillCaretDown, AiOutlineEllipsis } from "react-icons/ai";
-import { buttonRecipe } from "./Button";
 
-import { createOverridable, useUiRecipe } from "./UiOverride";
+import { createOverridable } from "./UiOverride";
 
 export interface MenuItem {
   label: ReactNode;
@@ -50,23 +49,30 @@ export const DefaultMenu = ({
 }: MenuProps) => {
   const [expandedKey, setExpandedKey] = useState<string>(); // 서브메뉴
   const [currentKey, setCurrentKey] = useState<string | null>(defaultSelectedKeys?.[0] ?? null); // 선택된 메뉴
-  const modeClassName = mode === "horizontal" ? "flex-row " : "bg-muted";
+  const modeClassName = mode === "horizontal" ? "menu-horizontal flex-row " : "bg-base-200";
   const menuRef = useRef<HTMLDivElement | null>(null);
   const LiRefs = useRef<HTMLLIElement[]>([]);
   const overflowLiRef = useRef<HTMLLIElement | null>(null);
   const itemWidthsRef = useRef<number[]>([]);
-  const innerWidth = st.use.innerWidth({ agent: false });
+  const innerWidth = st.use.innerWidth();
 
   const subMenuClassName =
     mode === "horizontal"
-      ? `fixed bottom-0 flex translate-y-[98%] flex-col rounded-xs border-0 bg-background shadow-lg hover:bg-background`
+      ? `fixed menu-title bottom-0 translate-y-[98%] border-0 rounded-xs shadow-lg bg-base-100 hover:bg-base-100 flex flex-col`
       : "flex flex-col gap-0 p-0 bg-primary/10 hover:bg-primary/10 overflow-hidden";
 
-  const recipe = useUiRecipe("button") ?? buttonRecipe;
   const subMenuItemClassName =
     mode === "inline"
-      ? recipe({ variant: "ghost" }, "m-0 h-full w-full px-2 font-normal text-primary hover:bg-primary/20")
-      : recipe({ variant: "ghost" }, "w-full whitespace-nowrap text-center font-normal text-primary duration-300");
+      ? "w-full h-full bg-red-500 btn btn-ghost px-2 m-0 hover:bg-primary/20 btn btn-ghost text-primary-focus font-normal"
+      : "w-full text-center duration-300 whitespace-nowrap btn btn-ghost text-primary-focus font-normal";
+
+  // const activeClassName = activeStyle === "active" ? "[&>div]:bg-primary/20 [&>div]:text-primary-focus" : "bordered";
+  const activeClassName =
+    activeStyle === "active"
+      ? "bg-primary text-primary-focus"
+      : activeStyle === "bordered"
+        ? " border-b-2 border-white"
+        : activeStyle;
 
   const [overflowMenuItems, setOverflowMenuItems] = useState<MenuItem[]>([]);
 
@@ -122,10 +128,10 @@ export const DefaultMenu = ({
     <div
       ref={menuRef}
       id="menu"
-      className={cn(mode === "horizontal" ? "w-full shrink overflow-hidden" : "w-fit", className)}
+      className={clsx(mode === "horizontal" ? "w-full shrink overflow-hidden" : "w-fit", className)}
     >
       <ul
-        className={cn("flex size-full flex-col flex-nowrap overflow-y-auto p-0", modeClassName, ulClassName)}
+        className={clsx("menu size-full flex-nowrap overflow-y-auto p-0", modeClassName, ulClassName)}
         style={{ ...style }}
         onMouseOver={onMouseOver}
         onMouseLeave={onMouseLeave}
@@ -142,13 +148,10 @@ export const DefaultMenu = ({
                 }}
                 id={item.key}
                 key={item.key}
-                className={cn(
-                  "relative m-0 duration-200 hover:opacity-70",
-                  overflowClassName,
-                  liClassName,
-                  activeStyle === "active" && checkIsActive(item.key) && "bg-border",
-                  activeStyle === "bordered" && checkIsActive(item.key) && "border-background border-b-2",
-                )}
+                className={clsx("relative m-0 duration-200 hover:opacity-70", overflowClassName, liClassName, {
+                  "bg-base-300": activeStyle === "active" && checkIsActive(item.key),
+                  "border-base-100 border-b-2": activeStyle === "bordered" && checkIsActive(item.key),
+                })}
                 onClick={() => {
                   if (!isOverflowItem) handleOnClick(item);
                 }}
@@ -161,12 +164,12 @@ export const DefaultMenu = ({
                 }}
               >
                 <div className="flex h-full justify-between rounded-none">
-                  <div className={cn("flex items-center gap-1", labelClassName?.(checkIsActive(item.key)))}>
+                  <div className={clsx("flex items-center gap-1", labelClassName?.(checkIsActive(item.key)))}>
                     {item.icon}
 
-                    {!inlineCollapsed && <div className="whitespace-nowrap text-foreground">{item.label}</div>}
+                    {!inlineCollapsed && <div className="whitespace-nowrap text-base-content">{item.label}</div>}
                     {/* <div
-                      className={cn(
+                      className={clsx(
                         "whitespace-nowrap  truncate ",
                         mode === "horizontal" && !isOverflowItem && item.children
                           ? "flex justify-start animate-menuOpen"
@@ -178,7 +181,7 @@ export const DefaultMenu = ({
                   </div>
                   {item.children && mode === "inline" && (
                     <AiFillCaretDown
-                      className={cn(
+                      className={clsx(
                         "text-xs transition-transform duration-400",
                         expandedKey === item.key ? "rotate-180" : "",
                       )}
@@ -222,7 +225,6 @@ interface OverflowMenuProps {
 const OverflowMenu = ({ overflowItems, onClick }: OverflowMenuProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [expandedKey, setExpandedKey] = useState<string>(); // 서브메뉴
-  const recipe = useUiRecipe("button") ?? buttonRecipe;
   const handleMouseEnter = () => {
     setIsOpen(true);
   };
@@ -235,12 +237,12 @@ const OverflowMenu = ({ overflowItems, onClick }: OverflowMenuProps) => {
         <AiOutlineEllipsis />
       </div>
       {isOpen && (
-        <div className="fixed -bottom-0 flex translate-y-[98%] flex-col rounded-xs border-0 bg-background p-2 shadow-lg hover:bg-background">
+        <div className="fixed -bottom-0 flex translate-y-[98%] flex-col rounded-xs border-0 bg-base-100 p-2 shadow-lg hover:bg-base-100">
           {overflowItems.map((item) => (
             <div
               key={item.key}
               onClick={() => onClick?.(item)}
-              className={recipe({ variant: "ghost" }, "relative whitespace-nowrap font-normal text-primary")}
+              className="btn btn-ghost relative whitespace-nowrap font-normal text-primary-focus"
               onMouseEnter={() => {
                 if (item.children && expandedKey !== item.key) setExpandedKey(item.key);
               }}
@@ -250,7 +252,7 @@ const OverflowMenu = ({ overflowItems, onClick }: OverflowMenuProps) => {
             >
               {item.label}
               {item.children && expandedKey === item.key && (
-                <div className="absolute top-0 left-0 -translate-x-full bg-background p-4 drop-shadow-sm">
+                <div className="absolute top-0 left-0 -translate-x-full bg-base-100 p-4 drop-shadow-sm">
                   {item.children.map((child) => (
                     <div
                       onClick={(e) => {
@@ -259,10 +261,8 @@ const OverflowMenu = ({ overflowItems, onClick }: OverflowMenuProps) => {
                         setExpandedKey(undefined);
                       }}
                       key={child.key}
-                      className={recipe(
-                        { variant: "ghost" },
-                        "flex items-center justify-center text-center font-normal text-primary",
-                      )}
+                      className="btn btn-ghost flex items-center justify-center text-center font-normal text-primary-focus"
+                      // className="block font-normal text-center btn-sm text-primary-focus h-fit btn btn-ghost "
                     >
                       {child.label}
                     </div>

@@ -25,7 +25,7 @@ server, app packaging, deployment artifacts, and generated references.
 
 ## Requirements
 
-- [Bun](https://bun.sh) `>=1.4.0`
+- [Bun](https://bun.sh) `>=1.3.13`
 - TypeScript-first application code
 - React-based UI surfaces
 

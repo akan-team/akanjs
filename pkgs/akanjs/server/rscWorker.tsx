@@ -13,7 +13,6 @@ import {
   getRequestFrameState,
   getRequestPolicy,
   getRequestTheme,
-  pushRequestFallback,
   requestStorage,
   setRequestFrameState,
   untrackedCookies,
@@ -25,7 +24,6 @@ import { renderToReadableStream } from "react-server-dom-webpack/server.node";
 import type { ClientManifest } from "./artifact";
 import {
   LruTtlCache,
-  type LruTtlCacheOptions,
   parsePositiveInt,
   type RouteCacheEntry,
   type RouteCacheInvalidation,
@@ -124,9 +122,6 @@ interface FlightRenderResult {
   cancelled: boolean;
 }
 
-/** Well above any sensible TTL: this reclaims a cache nobody is reading, not tracks expiry closely. */
-const RESULT_CACHE_SWEEP_INTERVAL_MS = 60_000;
-
 function hashRscTraceCacheKey(cacheKey: string): string {
   let hash = 5381;
   for (let index = 0; index < cacheKey.length; index += 1) hash = (hash * 33) ^ cacheKey.charCodeAt(index);
@@ -202,16 +197,11 @@ export class RscRenderer {
     pagesBundleBuildId: 0,
   };
   readonly #routeStats = new Map<string, RouteRenderStats>();
-  // Both caches hold whole Flight payloads, which have no natural size limit — unlike the html
-  // cache, which has had a per-body cap from the start. Without these ceilings a handful of heavy
-  // routes can fill 100 entries with arbitrarily many MB each.
   #resultCache = new LruTtlCache<CachedRscResult>(
     parsePositiveInt(process.env.AKAN_RSC_RESULT_CACHE_MAX_ENTRIES) ?? 100,
-    RscRenderer.#resultCacheOptions(),
   );
   #patchResultCache = new LruTtlCache<CachedRscResult>(
     parsePositiveInt(process.env.AKAN_RSC_RESULT_CACHE_MAX_ENTRIES) ?? 100,
-    RscRenderer.#resultCacheOptions(),
   );
   readonly #activeRenderReaders = new Map<string, ReadableStreamDefaultReader<Uint8Array>>();
   readonly #cancelledRenderRequests = new Set<string>();
@@ -552,6 +542,7 @@ export class RscRenderer {
           });
           return;
         }
+        const theme = untrackedCookies().get("theme")?.value;
         let element: ReactNode;
         let effectivePatchDecision = safePatchDecision;
         if (match && safePatchDecision.status === "patch" && safePatchDecision.patch) {
@@ -567,9 +558,9 @@ export class RscRenderer {
               reason: "suffix-compose-fallback",
               commonPrefixLength: safePatchDecision.commonPrefixLength,
             };
-            element = await this.#renderMatched(urlObj, match, searchParams);
+            element = await this.#renderMatched(urlObj, match, theme, searchParams);
           } else element = suffixElement;
-        } else if (match) element = await this.#renderMatched(urlObj, match, searchParams);
+        } else if (match) element = await this.#renderMatched(urlObj, match, theme, searchParams);
         else element = await this.#renderNotFound(urlObj);
         const traceCacheKey =
           effectivePatchDecision.status === "patch" ? (patchCacheEntry?.key ?? cacheEntry?.key) : cacheEntry?.key;
@@ -830,12 +821,7 @@ export class RscRenderer {
       rscLoadedRouteModuleKeys: routeStats.loadedModuleKeys,
       rscTopRoutesByRenderCount: this.#topRoutes((route) => route.count),
       rscTopRoutesByFlightBytes: this.#topRoutes((route) => route.flightBytes),
-      // Reported separately: the full and patch caches fill on different request shapes, so a
-      // combined number cannot tell which one is holding the bytes.
-      rscResultCacheEntries: this.#resultCache.size,
-      rscResultCacheBytes: this.#resultCache.byteSize,
-      rscPatchResultCacheEntries: this.#patchResultCache.size,
-      rscPatchResultCacheBytes: this.#patchResultCache.byteSize,
+      rscResultCacheEntries: this.#resultCache.size + this.#patchResultCache.size,
       rscResultCacheHits: this.#resultCacheHits,
       rscResultCacheMisses: this.#resultCacheMisses,
       rscResultCacheBypass: this.#resultCacheBypass,
@@ -918,7 +904,7 @@ export class RscRenderer {
       });
     };
     try {
-      for (;;) {
+      while (true) {
         if (options.requestId && this.#cancelledRenderRequests.has(options.requestId)) {
           await reader.cancel();
           return { chunks, bytes, chunksCount, control: null, lateControlSent, cancelled: true };
@@ -1144,15 +1130,6 @@ export class RscRenderer {
     return decision;
   }
 
-  static #resultCacheOptions(): LruTtlCacheOptions<CachedRscResult> {
-    return {
-      sizeOf: (result) => result.bytes,
-      maxBytes: LruTtlCache.parseByteCeiling(process.env.AKAN_RSC_RESULT_CACHE_MAX_BYTES),
-      maxEntryBytes: LruTtlCache.parseByteCeiling(process.env.AKAN_RSC_RESULT_CACHE_MAX_BODY_BYTES),
-      sweepIntervalMs: RESULT_CACHE_SWEEP_INTERVAL_MS,
-    };
-  }
-
   #getCachedResult(cacheKey: string): CachedRscResult | null {
     const cached = this.#resultCache.get(cacheKey);
     if (!cached) {
@@ -1174,30 +1151,16 @@ export class RscRenderer {
   }
 
   #setCachedResult(cacheKey: string, result: CachedRscResult, ttl: number): void {
-    this.#logRejectedStore("full", result, this.#resultCache.set(cacheKey, result, ttl));
+    this.#resultCache.set(cacheKey, result, ttl);
   }
 
   #setCachedPatchResult(cacheKey: string, result: CachedRscResult, ttl: number): void {
-    this.#logRejectedStore("patch", result, this.#patchResultCache.set(cacheKey, result, ttl));
-  }
-
-  /** A silently dropped store looks identical to a cache miss; say which route is too big to cache. */
-  #logRejectedStore(kind: string, result: CachedRscResult, stored: boolean): void {
-    if (stored) return;
-    this.#logger.verbose(
-      `${kind} result cache store skipped pathname=${result.pathname} bytes=${result.bytes} reason=body-too-large`,
-    );
+    this.#patchResultCache.set(cacheKey, result, ttl);
   }
 
   #runWithRequest<T>(request: Request, fn: () => Promise<T>): Promise<T> {
-    // The flight render executes components while its stream pumps, where Bun's ALS arrives empty even though
-    // run() wraps the whole handler — so keep a request fallback pushed until the render settles, the same
-    // discipline ssrFromRscRenderer's runPump uses. The stack is global and last-push-wins, so concurrent
-    // renders can shadow each other; the real fix is pumping the flight render inside the ALS scope itself.
-    const cleanup = pushRequestFallback(request);
-    const run = () => Promise.resolve(fn()).finally(() => cleanup());
-    if (requestStorage) return Promise.resolve(requestStorage.run(request, run));
-    return run();
+    if (requestStorage) return Promise.resolve(requestStorage.run(request, fn));
+    return fn();
   }
 
   async #renderFallbackDocument({
@@ -1246,8 +1209,12 @@ export class RscRenderer {
     const routeHeadSnapshot = this.#createRouteHeadSnapshot(url, routeHead, {
       hasExplicitLanguageAlternates: routeHead.hasExplicitLanguageAlternates,
     });
+    const theme = untrackedCookies().get("theme")?.value;
     return (
-      <html lang={params.lang ?? RscRenderer.#getLocale(pathname, this.#i18n)} suppressHydrationWarning>
+      <html
+        lang={params.lang ?? RscRenderer.#getLocale(pathname, this.#i18n)}
+        {...(theme ? { "data-theme": theme } : { suppressHydrationWarning: true })}
+      >
         <head key="head">
           <meta key="charset" charSet="utf-8" />
           <meta key="viewport" name="viewport" content="width=device-width, initial-scale=1" />
@@ -1269,6 +1236,7 @@ export class RscRenderer {
   async #renderMatched(
     url: URL,
     match: { pathRoute: PathRoute; params: Record<string, string> },
+    theme?: string,
     searchParams = RouteTreeBuilder.parseSearchParams(url.search),
   ): Promise<ReactNode> {
     this.#logger.verbose(
@@ -1294,9 +1262,11 @@ export class RscRenderer {
       searchParams,
       navKey: url.pathname + url.search,
     });
-    // Cookie theme is applied on the HTML stream and by the client so RSC cache cannot replay a stale data-theme.
     return (
-      <html lang={match.params.lang ?? this.#i18n.defaultLocale} suppressHydrationWarning>
+      <html
+        lang={match.params.lang ?? this.#i18n.defaultLocale}
+        {...(theme ? { "data-theme": theme } : { suppressHydrationWarning: true })}
+      >
         <head key="head">
           <meta key="charset" charSet="utf-8" />
           <meta key="viewport" name="viewport" content="width=device-width, initial-scale=1" />

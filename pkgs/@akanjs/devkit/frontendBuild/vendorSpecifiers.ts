@@ -11,7 +11,6 @@ export const VENDOR_SPECIFIERS = [
   "akanjs/base",
   "akanjs/common",
   "akanjs/constant",
-  "akanjs/fetch",
 ] as const;
 
 export type VendorSpecifier = (typeof VENDOR_SPECIFIERS)[number];

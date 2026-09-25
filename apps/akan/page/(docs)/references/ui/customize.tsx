@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { cardGridRecipe, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
+import { Docs } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -32,7 +32,7 @@ export default function Page() {
 
   const brandComponentCode = `"use client";
 // apps/<app>/ui/BrandModal.tsx
-import { Dialog, type AkanModalComponent, buttonRecipe } from "akanjs/ui";
+import { Dialog, type AkanModalComponent } from "akanjs/ui";
 
 // Compose the framework's headless parts so you re-skin the surface without re-owning
 // focus-trap, escape handling, scroll-lock, or portal behavior. Typed as the slot contract,
@@ -65,12 +65,7 @@ export default override({ Modal: AdminModal, Table: AdminTable });`;
 import type { AkanUiOverrides } from "akanjs/ui";
 
 export const BrandButton: AkanUiOverrides["Button"] = ({ children, onClick, ...rest }) => (
-  <button
-    type="button"
-    className={buttonRecipe({ variant: "primary" })}
-    onClick={(e) => onClick?.(e, { onError: () => {} })}
-    {...rest}
-  >
+  <button className="btn btn-primary" onClick={(e) => onClick(e, { onError: () => {} })} {...rest}>
     {children}
   </button>
 );`;
@@ -108,7 +103,7 @@ export default override({ InputCheckbox: BrandCheckbox });
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="how-it-works" title={l.trans({ en: "How it works", ko: "동작 방식" })}>
         <Docs.Title>{l.trans({ en: "How it works", ko: "동작 방식" })}</Docs.Title>
@@ -134,7 +129,7 @@ export default override({ InputCheckbox: BrandCheckbox });
         </Docs.Description>
         <Docs.CodeSnippet title={l.trans({ en: "2. Manifest", ko: "2. Manifest" })} code={manifestCode} />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="scoping" title={l.trans({ en: "Scoping", ko: "적용 범위" })}>
         <Docs.Title>{l.trans({ en: "Scoping", ko: "적용 범위" })}</Docs.Title>
@@ -148,7 +143,7 @@ export default override({ InputCheckbox: BrandCheckbox });
         </Docs.Description>
         <Docs.CodeSnippet title={l.trans({ en: "Nested scoping", ko: "중첩 적용" })} code={scopingCode} />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="slots" title={l.trans({ en: "Overridable slots", ko: "Override 가능한 slot" })}>
         <Docs.Title>{l.trans({ en: "Overridable slots", ko: "Override 가능한 slot" })}</Docs.Title>
@@ -160,13 +155,13 @@ export default override({ InputCheckbox: BrandCheckbox });
             })}
           </div>
         </Docs.Description>
-        <div className={cardGridRecipe()}>
+        <div className="grid gap-3 xl:grid-cols-2">
           {slotGroups.map(({ title, slots }) => (
-            <div key={title} className={panelRecipe()}>
-              <div className="mb-2 font-bold text-foreground">{title}</div>
+            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
+              <div className="mb-2 font-bold text-base-content">{title}</div>
               <div className="flex flex-wrap gap-2">
                 {slots.map((slot) => (
-                  <span key={slot} className="rounded-md bg-muted px-2 py-1 font-mono text-foreground/80 text-sm">
+                  <span key={slot} className="rounded-md bg-base-200 px-2 py-1 font-mono text-base-content/80 text-sm">
                     {slot}
                   </span>
                 ))}
@@ -175,7 +170,7 @@ export default override({ InputCheckbox: BrandCheckbox });
           ))}
         </div>
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="generic-components" title={l.trans({ en: "Generic components", ko: "Generic 컴포넌트" })}>
         <Docs.Title>{l.trans({ en: "Generic components", ko: "Generic 컴포넌트" })}</Docs.Title>
@@ -189,7 +184,7 @@ export default override({ InputCheckbox: BrandCheckbox });
         </Docs.Description>
         <Docs.CodeSnippet title={l.trans({ en: "Generic override", ko: "Generic override" })} code={genericCode} />
       </Scroll.Slide>
-      <Divider />
+      <div className="divider" />
 
       <Scroll.Slide id="compound-components" title={l.trans({ en: "Compound components", ko: "Compound 컴포넌트" })}>
         <Docs.Title>{l.trans({ en: "Compound components", ko: "Compound 컴포넌트" })}</Docs.Title>
@@ -207,7 +202,7 @@ export default override({ InputCheckbox: BrandCheckbox });
         />
       </Scroll.Slide>
 
-      <DocsToc />
+      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>
   );
 }

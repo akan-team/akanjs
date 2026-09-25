@@ -1,0 +1,21 @@
+---
+description: React component, form, and Tailwind/daisyUI styling conventions
+globs: **/*.tsx
+alwaysApply: false
+---
+
+# React Components And Styling
+
+- Components are `export const X = ({ … }: XProps) => { return (…); };` — arrow const with a block body. `export default` is reserved for pages, layouts, and `lazy()` targets.
+- Never `React.FC`, never `defaultProps`, never `PropsWithChildren`. Defaults go in the destructuring (`prefix = ""`); children are typed `children: ReactNode`.
+- `"use client"` on line 1 above the imports is mechanical by file role: every `.Zone.tsx`, `.Template.tsx`, and `.Util.tsx` has it; no `.Unit.tsx` or `.View.tsx` ever does. `usePage()` is legal in server files.
+- Conditional render is `cond ? <X/> : null`. Never `{cond && <X/>}` — in a `className` context it renders the literal string `"false"`. Early `return null` is for guard clauses only.
+- Never hand-roll loading, empty, or list states. Use `Load.Units` / `Load.View` / `Load.Edit` with `renderItem`, `renderList`, `renderView`, and `renderEmpty`; `<Empty />` for a bare placeholder; and `Model.New` / `Model.Edit` / `Model.SureToRemove` for CRUD modals.
+- Avoid hooks. `useState` is for modal-open, tab, draft-input, and drag state only — never for server data. `useEffect` must be a genuine effect such as subscribe-with-cleanup or one-shot init. Prefer `Tab` over a `useState` mode switch. `.Template.tsx` files contain zero `useState`.
+- Forms are entirely store-driven: `value={xForm.field}` with `onChange={st.do.setFieldOnX}`, the setter passed by reference. Always use `Field.*`, never a bare `<input>` for a model field. Nested rows use `st.do.writeOnX("payments.3.name", v)` plus the generated `add<Field>OnX` / `sub<Field>OnX`.
+- Read with `st.use.*` and write with `st.do.*`. Client components do not call `fetch.*`.
+- Static class strings stay plain strings. Reach for `clsx` only for a conditional or to merge an incoming `className`, and merge the caller last: `clsx("base classes", conditional, className)`. `clsx` comes from `akanjs/client`. No `twMerge`, no `cn()`.
+- Multi-slot components take extra named props (`wrapperClassName`, `bodyClassName`), never a `classNames` object.
+- Use daisyUI semantic tokens with opacity modifiers (`text-base-content/60`, `border-base-content/10`, `bg-base-100/70`, `bg-primary/10`). Never use `dark:` — theming is the daisyUI theme block in `page/*/styles.css`. Raw hex belongs only in marketing surfaces; match the neighbouring files.
+- Hoist enum→class lookups to a module-scope `as const` map typed `{ [key in cnst.XStatus["value"]]: string }`. Do not use `Record<...>`. Escalate the map to `webkit/` when a second module needs it.
+- Use `<Link>` from `akanjs/ui` for internal navigation; `<a>` only for `mailto:` and external links.

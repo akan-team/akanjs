@@ -1,15 +1,10 @@
+import { Cron } from "croner";
 import { adapt } from "../adapt";
 import { CacheAdaptorRole } from "./role.adaptor";
 
-/** The scheduler's own job handle, so the cron backend stays behind this interface. `Bun.cron` satisfies it. */
-export interface AkanCronJob {
-  readonly cron: string;
-  stop(): void;
-}
-
 export interface ScheduleAdaptor {
-  getCron(key: string): AkanCronJob | undefined;
-  registerCron(key: string, cronStr: string, callback: () => Promise<void>, option?: { lock?: boolean }): AkanCronJob;
+  getCron(key: string): Cron | undefined;
+  registerCron(key: string, cronStr: string, callback: () => Promise<void>, option?: { lock?: boolean }): Cron;
   unregisterCron(key: string): void;
   getInterval(key: string): NodeJS.Timeout | undefined;
   registerInterval(
@@ -44,7 +39,7 @@ export class Scheduler
   implements ScheduleAdaptor
 {
   readonly lockMap = new Map<string, boolean>();
-  readonly cronMap = new Map<string, AkanCronJob>();
+  readonly cronMap = new Map<string, Cron>();
   readonly intervalMap = new Map<string, NodeJS.Timeout>();
   readonly timeoutMap = new Map<string, NodeJS.Timeout>();
   readonly initMap = new Map<string, () => Promise<void>>();
@@ -53,10 +48,7 @@ export class Scheduler
     return this.cronMap.get(key);
   }
   registerCron(key: string, cronStr: string, callback: () => Promise<void>, { lock = true }: { lock?: boolean } = {}) {
-    // Bun.cron computes the next fire time only after the callback settles, so overlapping runs are
-    // impossible and `lock: false` cannot be honoured. The lock below stays to make the skip observable.
-    if (!lock) this.logger.warn(`Schedule ${key} requested lock:false, but Bun.cron never overlaps a job`);
-    const cron = Bun.cron(cronStr, async () => {
+    const cron = new Cron(cronStr, async () => {
       if (this.lockMap.get(key) && lock) {
         this.logger.warn(`Schedule ${key} is locked, skipped`);
         return;
