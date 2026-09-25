@@ -39,17 +39,27 @@ export class TextFieldPaths extends TextFieldPathSet {
   // class build the same way the leaf itself would. Checking only the leaf leaves the secret's own subtree open:
   // `_doc` stores a secret in plaintext, so every text field under it would be published through search.
   #assertReachable(path: string, parent: ConstantField) {
-    if (parent.fieldType === "secret") throw new Error(`Text field "${path}" is under a secret field`);
-    if (parent.fieldType === "hidden") throw new Error(`Text field "${path}" is under a hidden field`);
-    if (parent.fieldType === "resolve") throw new Error(`Text field "${path}" is under a resolved field`);
+    // The masked cases name the way out, because the fix is a choice between two intents rather than a repair:
+    // the role goes, or the masking does. Only the reachable-parent cases can be reached from here — the leaf's
+    // own masking is a compile error at the call site, `field.hidden`/`field.secret`/`resolve` taking no `text`.
+    const fix = `Drop the text role on "${path}", or leave the parent unmasked.`;
+    if (parent.fieldType === "secret") throw new Error(`Text field "${path}" is under a secret field. ${fix}`);
+    if (parent.fieldType === "hidden") throw new Error(`Text field "${path}" is under a hidden field. ${fix}`);
+    if (parent.fieldType === "resolve") throw new Error(`Text field "${path}" is under a resolved field. ${fix}`);
     if (parent.arrDepth > 1) throw new Error(`Text field "${path}" is under a nested array and cannot be indexed`);
   }
 
   #assertIndexable(key: string, role: TextFieldRole, field: ConstantField) {
     // A secret field reaching the mirror would surface it in every search result, so fail the class build instead.
-    if (field.fieldType === "secret") throw new Error(`Text field "${key}" is secret and must not be indexed`);
-    if (field.fieldType === "hidden") throw new Error(`Text field "${key}" is hidden and must not be indexed`);
-    if (field.fieldType === "resolve") throw new Error(`Text field "${key}" is resolved and is absent from _doc`);
+    // The option type already refuses this at the call site; this stays as the backstop for an option object the
+    // excess-property check cannot see through, and says which way out to take rather than only what is wrong.
+    const masked = `The search mirror stores plaintext. Drop the text role on "${key}", or make the field plain.`;
+    if (field.fieldType === "secret")
+      throw new Error(`Text field "${key}" is secret and must not be indexed. ${masked}`);
+    if (field.fieldType === "hidden")
+      throw new Error(`Text field "${key}" is hidden and must not be indexed. ${masked}`);
+    if (field.fieldType === "resolve")
+      throw new Error(`Text field "${key}" is resolved and is absent from _doc. Drop the text role on "${key}".`);
     if (field.isMap) throw new Error(`Text field "${key}" is a Map and cannot be indexed`);
     if (field.arrDepth > 1) throw new Error(`Text field "${key}" is a nested array and cannot be indexed`);
     const modelRef = field.modelRef as unknown as Cls;

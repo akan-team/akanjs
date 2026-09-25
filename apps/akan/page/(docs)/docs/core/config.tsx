@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 import { Link } from "akanjs/ui";
 
@@ -27,9 +27,9 @@ export default function Page() {
             { name: "secrets", desc: l.trans({ en: "Secret files", ko: "시크릿 파일" }) },
             { name: "advanced", desc: l.trans({ en: "Build options", ko: "빌드 옵션" }) },
           ].map(({ name, desc }) => (
-            <div key={name} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+            <div key={name} className={panelRecipe({ padding: "row" })}>
               <div className="font-mono font-semibold text-primary">{name}</div>
-              <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+              <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
             </div>
           ))}
         </div>
@@ -57,14 +57,15 @@ export default function Page() {
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
-              <span className="font-bold text-base-content">{title}: </span>
+            <div key={title} className={panelRecipe({ padding: "row" })}>
+              <span className="font-bold text-foreground">{title}: </span>
 
-              <span className="text-base-content/70 text-sm">{desc}</span>
+              <span className="text-foreground/70 text-sm">{desc}</span>
             </div>
           ))}
         </div>
         <Code.Snippet
+          className="w-full"
           title="apps/minimal/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -73,7 +74,7 @@ const config: AppConfig = {};
 export default config;`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="config-shape" title={l.trans({ en: "Config Shape", ko: "설정 파일 형태" })}>
         <Docs.Title>{l.trans({ en: "Config Shape", ko: "설정 파일 형태" })}</Docs.Title>
@@ -119,7 +120,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="app-env" title={l.trans({ en: "Application Env", ko: "애플리케이션 환경설정" })}>
         <Docs.Title>{l.trans({ en: "Application Env", ko: "애플리케이션 환경설정" })}</Docs.Title>
@@ -195,10 +196,10 @@ export const env: ModulesOptions = {
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+            <div key={title} className={panelRecipe({ padding: "row" })}>
               <span className="font-mono font-semibold text-primary">{title}: </span>
 
-              <span className="text-base-content/70 text-sm">{desc}</span>
+              <span className="text-foreground/70 text-sm">{desc}</span>
             </div>
           ))}
         </div>
@@ -215,7 +216,82 @@ export const env: ModulesOptions = {
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
+
+      <Scroll.Slide id="server-option" title={l.trans({ en: "Server Option", ko: "서버 옵션" })}>
+        <Docs.Title>{l.trans({ en: "Server Option", ko: "서버 옵션" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "lib/option.ts is where the app configures its server. env/ holds the values, akan.config.ts holds the build, and this file wires them into the runtime: use objects, signal middleware, adaptor overrides, web proxies, the MCP server, the agent relay's access policy, and the LLM that relay speaks to. Every library the app depends on brings its own option.ts, read in mount order with the app's last — so an app tightens what a library declared without restating it.",
+              ko: "lib/option.ts는 앱이 서버를 설정하는 자리입니다. env/는 값을, akan.config.ts는 빌드를 담고, 이 파일은 그것을 런타임에 연결합니다. use 객체, signal middleware, adaptor override, web proxy에 더해 MCP 서버, agent relay 접근 정책, 그 relay가 말을 거는 LLM까지 여기서 정합니다. 앱이 의존하는 모든 라이브러리도 각자 option.ts를 가지며, 마운트 순서대로 읽고 앱의 것을 마지막에 얹습니다. 그래서 앱은 라이브러리가 선언한 값을 다시 쓰지 않고 조일 수 있습니다.",
+            })}
+          </div>
+        </Docs.Description>
+        <Code.Snippet
+          className="w-full"
+          title="lib/option.ts"
+          code={`import { AkanOption } from "akanjs/server";
+import type { LlmOption } from "akanjs/service";
+
+import { SignedIn } from "../srvkit";
+import type { LibOptions } from "./srv";
+
+export type ModulesOptions = LibOptions & {
+  llm?: LlmOption;
+};
+
+export const option = new AkanOption<ModulesOptions>()
+  .setLlm((options) => options.llm ?? {})
+  .setAgentAccess(SignedIn)
+  .setMcp({ instructions: "Domain tools for the app. Start from taskInTodo." });`}
+        />
+        <div className="space-y-1">
+          {[
+            {
+              title: "setLlm",
+              desc: l.trans({
+                en: "apiKey, model, and host for whichever adaptor holds LlmAdaptorRole. Take the key from the env object rather than writing it here — env.server.* is gitignored, this file is not.",
+                ko: "LlmAdaptorRole을 차지한 어댑터가 쓸 apiKey·model·host입니다. 키는 이 파일에 적지 말고 env 객체에서 받으세요. env.server.*는 gitignore 대상이지만 이 파일은 아닙니다.",
+              }),
+            },
+            {
+              title: "setAgentAccess",
+              desc: l.trans({
+                en: "Who may spend the LLM key through the runAgentTurn relay, named as the guards any other endpoint would name. Several are ANDed. With none the call is refused — the same answer None gives — because the framework has no account model to gate on.",
+                ko: "runAgentTurn 릴레이로 LLM 키를 쓸 수 있는 caller를, 다른 엔드포인트와 똑같이 가드로 지정합니다. 여러 개는 AND로 묶입니다. 프레임워크에는 기준으로 삼을 계정 모델이 없어, 가드가 없으면 호출은 None 가드와 같이 거절됩니다.",
+              }),
+            },
+            {
+              title: "setMcp",
+              desc: l.trans({
+                en: "MCP server settings — instructions, readOnly, path, pageSize, language, auth. Not main.ts: the gateway there only spawns children, while this file is handed to the process that mounts /mcp.",
+                ko: "MCP 서버 설정입니다. instructions·readOnly·path·pageSize·language·auth를 받습니다. main.ts가 아닙니다. main.ts의 gateway는 child를 띄우기만 하고, 이 파일이 /mcp를 마운트하는 프로세스에 전달됩니다.",
+              }),
+            },
+            {
+              title: "use · applyMiddleware · applyAdaptor · applyWebProxy",
+              desc: l.trans({
+                en: "The registration half: env-derived singletons a service reaches with use<T>(), signal middleware, a predefined adaptor role rebound to the app's own implementation, and web proxies.",
+                ko: "등록 쪽입니다. service가 use<T>()로 잡는 env 기반 싱글턴, signal middleware, 미리 정의된 adaptor role을 앱 구현으로 다시 묶는 override, web proxy를 등록합니다.",
+              }),
+            },
+          ].map(({ title, desc }) => (
+            <div key={title} className={panelRecipe({ padding: "row" })}>
+              <span className="font-mono font-semibold text-primary">{title}: </span>
+
+              <span className="text-foreground/70 text-sm">{desc}</span>
+            </div>
+          ))}
+        </div>
+        <Docs.Alert type="info">
+          {l.trans({
+            en: "Each of these has an env spelling too (AKAN_MCP_*, AKAN_AGENT), for a deployment that must configure what the source does not. A value written in option.ts wins over the env of the same name.",
+            ko: "이 설정들에는 env 이름도 하나씩 있습니다(AKAN_MCP_*, AKAN_AGENT). 소스에 없는 값을 배포 시점에 정해야 할 때를 위한 것이며, option.ts에 쓴 값이 같은 이름의 env를 이깁니다.",
+          })}
+        </Docs.Alert>
+      </Scroll.Slide>
+      <Divider />
 
       <Scroll.Slide id="routes" title={l.trans({ en: "Routes and Domains", ko: "Route와 Domain" })}>
         <Docs.Title>{l.trans({ en: "Routes and Domains", ko: "Route와 Domain" })}</Docs.Title>
@@ -228,6 +304,7 @@ export const env: ModulesOptions = {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/myapp/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -243,18 +320,18 @@ const config: AppConfig = {
 export default config;`}
         />
         <div className="space-y-1">
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+          <div className={panelRecipe()}>
             <div className="font-mono font-semibold text-primary">basePath</div>
-            <div className="mt-2 text-base-content/70 text-sm">
+            <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
                 en: "Optional client name for this route. Akan normalizes /store/ to store.",
                 ko: "이 route가 열 클라이언트 이름입니다. Akan은 /store/처럼 적은 값을 store로 정리합니다.",
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-base-300 bg-base-100 p-4">
+          <div className={panelRecipe()}>
             <div className="font-mono font-semibold text-primary">domains</div>
-            <div className="mt-2 text-base-content/70 text-sm">
+            <div className="mt-2 text-foreground/70 text-sm">
               {l.trans({
                 en: "A map of environment names to domains. debug, develop, and main exist by default, and custom branches such as qa can be added.",
                 ko: "환경 이름별 도메인 목록입니다. debug, develop, main은 기본으로 있고, qa 같은 커스텀 브랜치도 추가할 수 있습니다.",
@@ -269,7 +346,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="mobile" title={l.trans({ en: "Mobile Metadata", ko: "모바일 메타데이터" })}>
         <Docs.Title>{l.trans({ en: "Mobile Metadata", ko: "모바일 메타데이터" })}</Docs.Title>
@@ -282,6 +359,7 @@ export default config;`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Mobile config"
           code={`const config: AppConfig = {
   mobile: {
@@ -443,10 +521,10 @@ export default config;`}
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+            <div key={title} className={panelRecipe({ padding: "row" })}>
               <span className="font-mono font-semibold text-primary">{title}: </span>
 
-              <span className="text-base-content/70 text-sm">{desc}</span>
+              <span className="text-foreground/70 text-sm">{desc}</span>
             </div>
           ))}
         </div>
@@ -480,7 +558,7 @@ export default config;`}
               ko: "files는 네이티브 target path를 앱 기준 source file에 매핑합니다. google-services.json, GoogleService-Info.plist 같은 Firebase push 설정 파일에 유용합니다. 서버 service account JSON은 client/native file mapping에 넣지 마세요. 플랫폼별 설정 절차는 ",
             })}
           </span>
-          <Link href="/cheatsheet/dev/mobile" className="link link-primary">
+          <Link href="/cheatsheet/dev/mobile" className="text-primary underline underline-offset-4 hover:no-underline">
             {l.trans({ en: "Mobile Development", ko: "모바일 개발" })}
           </Link>
           <span>{l.trans({ en: ".", ko: " 문서를 참고하세요." })}</span>
@@ -492,7 +570,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="images-env" title={l.trans({ en: "Images And Public Env", ko: "이미지와 공개 환경변수" })}>
         <Docs.Title>{l.trans({ en: "Images And Public Env", ko: "이미지와 공개 환경변수" })}</Docs.Title>
@@ -531,7 +609,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="secret-files" title={l.trans({ en: "Secret Files", ko: "시크릿 파일" })}>
         <Docs.Title>{l.trans({ en: "Secret Files", ko: "시크릿 파일" })}</Docs.Title>
@@ -573,7 +651,7 @@ apps/api/secrets/**/*
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="build-runtime" title={l.trans({ en: "Build And Runtime", ko: "빌드와 런타임" })}>
         <Docs.Title>{l.trans({ en: "Build And Runtime", ko: "빌드와 런타임" })}</Docs.Title>
@@ -586,6 +664,7 @@ apps/api/secrets/**/*
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Build and runtime fields"
           code={`const config: AppConfig = {
   externalLibs: ["shiki"],
@@ -631,15 +710,15 @@ apps/api/secrets/**/*
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+            <div key={title} className={panelRecipe({ padding: "row" })}>
               <span className="font-mono font-semibold text-primary">{title}: </span>
 
-              <span className="text-base-content/70 text-sm">{desc}</span>
+              <span className="text-foreground/70 text-sm">{desc}</span>
             </div>
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="defaults" title={l.trans({ en: "Defaults And Rules", ko: "기본값과 규칙" })}>
         <Docs.Title>{l.trans({ en: "Defaults And Rules", ko: "기본값과 규칙" })}</Docs.Title>
@@ -689,10 +768,10 @@ apps/api/secrets/**/*
               }),
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
-              <span className="font-bold text-base-content">{title}: </span>
+            <div key={title} className={panelRecipe({ padding: "row" })}>
+              <span className="font-bold text-foreground">{title}: </span>
 
-              <span className="text-base-content/70 text-sm">{desc}</span>
+              <span className="text-foreground/70 text-sm">{desc}</span>
             </div>
           ))}
         </div>
@@ -703,7 +782,7 @@ apps/api/secrets/**/*
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

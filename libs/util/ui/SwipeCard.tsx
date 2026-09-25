@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import type React from "react";
 import { forwardRef, memo, useCallback, useImperativeHandle, useLayoutEffect, useRef } from "react";
 import type {
@@ -116,7 +116,7 @@ export const SwipeCard = memo(
 
         let offset = { x: 0, y: 0 };
         let speed = { x: 0, y: 0 };
-        let lastLocation = { x: 0, y: 0, time: new Date().getTime() };
+        let lastLocation = { x: 0, y: 0, time: Date.now() };
         let mouseIsClicked = false;
 
         const handleMove = (coordinates: { x: number; y: number }) => {
@@ -206,7 +206,7 @@ export const SwipeCard = memo(
       ]);
 
       return (
-        <div ref={element} className={clsx("absolute z-20", className)}>
+        <div ref={element} className={cn("absolute z-20", className)}>
           {children}
         </div>
       );

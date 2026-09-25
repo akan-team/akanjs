@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
+import type { AkanWebConfig } from "akanjs";
 import { getEnv } from "akanjs/base";
 import {
   type AkanI18nConfig,
@@ -20,6 +22,7 @@ import {
   RouteSeedIndexStore,
   RoutesManifestStore,
 } from "./artifact";
+import { resolveEncodedSidecar } from "./assetEncoding";
 import {
   getClientFacingOrigin,
   hasRouteCacheInvalidationScope,
@@ -51,13 +54,27 @@ import { type RscRedirectMethod, type RscRedirectStatus, type RscRenderResult, R
 import { createDefaultSitemapXml, getSitemapBasePath } from "./sitemap";
 import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
 import type { RscTraceMetadata, SsrManifest } from "./ssrTypes";
-import { createSystemPageResponse, getSystemPageHomeHref } from "./systemPages";
-import type { BaseBuildArtifact, HttpRoutes, RenderState } from "./types";
+import { createSubRouteIndexResponse, createSystemPageResponse, getSystemPageHomeHref } from "./systemPages";
+import { type BaseBuildArtifact, type HttpRoutes, type RenderState, resolveWebConfig } from "./types";
 
 const CLIENT_CLOSED_REQUEST_STATUS = 499;
 export const DEFAULT_HTML_RESULT_CACHE_MAX_BODY_BYTES = 2 * 1024 * 1024;
+/** Well above any sensible TTL: this only has to reclaim a cache nobody is reading, not track expiry closely. */
+const ROUTE_CACHE_SWEEP_INTERVAL_MS = 60_000;
 const APPLE_APP_SITE_ASSOCIATION_PATH = "/.well-known/apple-app-site-association";
 const ANDROID_ASSET_LINKS_PATH = "/.well-known/assetlinks.json";
+const FIREBASE_MESSAGING_SW_PATH = "/firebase-messaging-sw.js";
+const FIREBASE_WEB_SDK_VERSION = "12.13.0";
+
+interface FirebaseClientEnvConfig {
+  apiKey: string;
+  authDomain?: string;
+  projectId: string;
+  storageBucket?: string;
+  messagingSenderId: string;
+  appId: string;
+  vapidKey?: string;
+}
 
 export function createRscRedirectResponse(
   location: string,
@@ -252,11 +269,13 @@ export interface SsrRoutesResult {
 }
 
 export interface SsrRoutesInputs {
+  web: AkanWebConfig;
   upgradeHmrWs: (req: Request, data: HmrWsData) => boolean;
 }
 
 interface WebRouterOptions {
   artifact: BaseBuildArtifact;
+  web: AkanWebConfig;
   cssBytesByUrl: Record<string, Uint8Array>;
   rsc: RscWorker;
   seedIndex: RouteSeedIndex;
@@ -277,7 +296,13 @@ export class WebRouter {
   #subRoutes: Record<string, string[]>;
   #rsc: RscWorker;
   #hub: HmrWsHub | null = null;
-  #prodMode = process.env.NODE_ENV === "production";
+  /**
+   * `akan start` is the dev server whatever the environment claims. Its artifact directory carries no routes
+   * manifest — only `akan build` writes one — so the production branch cannot build a route on demand and
+   * throws on every request instead. `NODE_ENV` arrives by accident often enough (a workspace `.env` Bun loads
+   * on its own, a CI image default) that the command which started this process has to outrank it.
+   */
+  #prodMode = process.env.NODE_ENV === "production" && process.env.AKAN_COMMAND_TYPE !== "start";
   #builderRpc: BuilderRpc | null;
   #routeCache: RouteClientCache;
   #devHmr: DevHmrController | null = null;
@@ -292,14 +317,25 @@ export class WebRouter {
   };
   readonly #htmlCache = new LruTtlCache<CachedHtmlResult>(
     parsePositiveInt(process.env.AKAN_HTML_RESULT_CACHE_MAX_ENTRIES) ?? 100,
+    {
+      sizeOf: (result) => result.html.length,
+      maxBytes: LruTtlCache.parseByteCeiling(process.env.AKAN_HTML_RESULT_CACHE_MAX_BYTES),
+      sweepIntervalMs: ROUTE_CACHE_SWEEP_INTERVAL_MS,
+    },
   );
   #htmlCacheHits = 0;
   #htmlCacheMisses = 0;
   #htmlCacheBypass = 0;
+  #runtimeManifest: { revision: number; manifest: MergedManifest } | null = null;
   renderState: RenderState;
+  /** What this router actually mounts, already intersected with what the artifact carries. */
+  readonly web: AkanWebConfig;
   #seedIndex: RouteSeedIndex;
-  constructor({ artifact, cssBytesByUrl, rsc, seedIndex, upgradeHmrWs }: WebRouterOptions) {
+  constructor({ artifact, web, cssBytesByUrl, rsc, seedIndex, upgradeHmrWs }: WebRouterOptions) {
     this.#logger.verbose(`[SSR] loaded ${Object.keys(cssBytesByUrl).length} CSS assets`);
+    this.web = web;
+    if (process.env.NODE_ENV === "production" && !this.#prodMode)
+      this.#logger.warn("[SSR] NODE_ENV=production ignored under `akan start`; serving in dev mode");
     this.#artifact = artifact;
     const { subRoutes, ignoredBasePaths } = resolveSubRouteHosts({
       subRoutes: artifact.subRoutes,
@@ -339,7 +375,7 @@ export class WebRouter {
     if (prebuilt) {
       this.#routeCache.seed(prebuilt);
       await this.#rsc.reload({
-        clientManifest: this.#mergeRuntimeManifest(this.#routeCache.merged).clientManifest,
+        clientManifest: this.#mergeRuntimeManifest().clientManifest,
         cssAssets: this.renderState.cssAssets,
         buildId: this.renderState.buildId,
       });
@@ -358,14 +394,16 @@ export class WebRouter {
     });
 
     const renderEnvRoutes: HttpRoutes = {
-      "/__csr": async () => {
-        this.#requestStats.csr += 1;
-        const csrHtml = await this.#resolveCsrHtml(csrOutputDir, "/");
-        const csrFile = csrHtml ? Bun.file(csrHtml) : null;
-        const htmlText =
-          csrFile && (await csrFile.exists())
-            ? await csrFile.text()
-            : `<!doctype html>
+      ...(this.web.csr
+        ? {
+            "/__csr": async () => {
+              this.#requestStats.csr += 1;
+              const csrHtml = await this.#resolveCsrHtml(csrOutputDir, "/");
+              const csrFile = csrHtml ? Bun.file(csrHtml) : null;
+              const htmlText =
+                csrFile && (await csrFile.exists())
+                  ? await csrFile.text()
+                  : `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -378,10 +416,12 @@ export class WebRouter {
     <script type="module" src="/csr.js"></script>
   </body>
 </html>`;
-        return new Response(this.#withCsrHmr(htmlText), {
-          headers: { "Content-Type": "text/html; charset=utf-8" },
-        });
-      },
+              return new Response(this.#withCsrHmr(htmlText), {
+                headers: { "Content-Type": "text/html; charset=utf-8" },
+              });
+            },
+          }
+        : {}),
       [`${clientServePrefix}/*`]: async (req) => {
         this.#requestStats.staticAsset += 1;
         const url = new URL(req.url);
@@ -485,6 +525,16 @@ export class WebRouter {
         WebRouter.#deepLinkAssociationResponse(ANDROID_ASSET_LINKS_PATH, this.#artifact, {
           cacheControl: this.#prodMode ? "public, max-age=3600" : "no-store",
         }) ?? new Response("Not Found", { status: 404 }),
+      [FIREBASE_MESSAGING_SW_PATH]: async () => {
+        this.#requestStats.staticAsset += 1;
+        const firebaseConfig = await WebRouter.#resolveFirebaseClientConfig();
+        return new Response(WebRouter.#createFirebaseMessagingServiceWorker(firebaseConfig), {
+          headers: {
+            "Content-Type": "application/javascript; charset=utf-8",
+            "Cache-Control": "no-store",
+          },
+        });
+      },
       "/*": async (req) => {
         const url = new URL(req.url);
         if (WebRouter.#isImageOptimizerPath(url.pathname)) {
@@ -492,20 +542,20 @@ export class WebRouter {
           return imageOptimizer.handle(req);
         }
 
-        const isCsr = url.searchParams.get("csr") === "true";
-        if (isCsr) {
-          this.#requestStats.csr += 1;
-          const csrHtml = await this.#resolveCsrHtml(csrOutputDir, url.pathname);
-          if (!csrHtml) return this.#csrUnavailableResponse(url.pathname);
-          const html = await Bun.file(csrHtml).text();
-          return new Response(this.#withCsrHmr(html), {
-            headers: { "Content-Type": "text/html; charset=utf-8" },
-          });
-        }
+        if (this.web.csr) {
+          const isCsr = url.searchParams.get("csr") === "true";
+          if (isCsr) {
+            this.#requestStats.csr += 1;
+            const csrHtml = await this.#resolveCsrHtml(csrOutputDir, url.pathname);
+            if (!csrHtml) return this.#csrUnavailableResponse(url.pathname);
+            const html = await Bun.file(csrHtml).text();
+            return new Response(this.#withCsrHmr(html), {
+              headers: { "Content-Type": "text/html; charset=utf-8" },
+            });
+          }
 
-        const csrAssetPath = path.extname(url.pathname) ? WebRouter.#safeResolve(csrOutputDir, url.pathname) : null;
-        if (csrAssetPath) {
-          if (await Bun.file(csrAssetPath).exists()) {
+          const csrAssetPath = path.extname(url.pathname) ? WebRouter.#safeResolve(csrOutputDir, url.pathname) : null;
+          if (csrAssetPath && (await Bun.file(csrAssetPath).exists())) {
             this.#requestStats.staticAsset += 1;
             return WebRouter.#fileResponse(req, csrAssetPath, {
               contentType: Bun.file(csrAssetPath).type || "application/octet-stream",
@@ -552,6 +602,9 @@ export class WebRouter {
           );
         }
 
+        const subRouteIndex = this.#localSubRouteIndexResponse(req, url);
+        if (subRouteIndex) return await subRouteIndex;
+
         try {
           this.#requestStats.fullSsr += 1;
           const manifest = await this.#ensureRoute(url);
@@ -573,7 +626,8 @@ export class WebRouter {
           if (rscResult.type === "redirect")
             return Response.redirect(new URL(rscResult.location, url.origin), rscResult.status);
           if (rscResult.type === "not-found") return this.#renderSystemNotFoundFallbackResponse(req, url);
-          const themeCookieExists = WebRouter.#hasCookie(req, "theme");
+          // First-paint data-theme: cookie is no longer a React <html> prop (RSC cache would replay it).
+          const cookieTheme = WebRouter.#cookieValue(req, "theme");
           const hostRequestStore = createRequestStore(req);
           const extraBootstrapInline = [
             rscResult.trace?.routeState
@@ -591,7 +645,7 @@ export class WebRouter {
             bootstrapModules: [this.#artifact.rscClientUrl],
             extraBootstrapInline: extraBootstrapInline || undefined,
             importmap: this.#artifact.vendorMap,
-            theme: themeCookieExists ? undefined : (rscResult.theme ?? "system"),
+            theme: cookieTheme ?? rscResult.theme ?? "system",
             lateControl: rscResult.lateControl,
             waitForAllReady: rscResult.trace?.ssrBlocking ?? false,
             onCancel: (reason: unknown) => {
@@ -675,6 +729,7 @@ export class WebRouter {
     this.#devHmr?.dispose();
     this.#devHmr = null;
     this.#builderRpc = null;
+    this.#htmlCache.dispose();
     this.#rsc.kill();
     this.#hub = null;
   }
@@ -692,6 +747,7 @@ export class WebRouter {
       httpCsrCount: this.#requestStats.csr,
       httpImageCount: this.#requestStats.image,
       httpHtmlCacheEntries: this.#htmlCache.size,
+      httpHtmlCacheBytes: this.#htmlCache.byteSize,
       httpHtmlCacheHits: this.#htmlCacheHits,
       httpHtmlCacheMisses: this.#htmlCacheMisses,
       httpHtmlCacheBypass: this.#htmlCacheBypass,
@@ -758,9 +814,6 @@ export class WebRouter {
     }
   }
 
-  static #hasCookie(req: Request, name: string): boolean {
-    return parseCookieHeader(req.headers.get("cookie") ?? "").has(name);
-  }
   #getHtmlCacheEntry(req: Request, url: URL): { entry: RouteCacheEntry | null; reason?: string } {
     const decision = resolvePublicRouteCacheEntryDecision({
       request: req,
@@ -810,15 +863,27 @@ export class WebRouter {
     this.#logger.verbose(
       `[route-cache] ensure pathname=${url.pathname} routeId=${matched?.entry.routeId ?? "(none)"} in ${Date.now() - started}ms`,
     );
-    return this.#mergeRuntimeManifest(this.#routeCache.snapshot());
+    return this.#mergeRuntimeManifest();
   }
 
-  #mergeRuntimeManifest(manifest: MergedManifest): MergedManifest {
-    return {
-      ...manifest,
-      clientManifest: WebRouter.#mergeClientManifest(this.#artifact.rscRuntimeClientManifest, manifest.clientManifest),
-      ssrManifest: WebRouter.#mergeSsrManifest(this.#artifact.rscRuntimeSsrManifest, manifest.ssrManifest),
+  /**
+   * Memoized on the route cache's revision. Both the snapshot and the runtime merge copy the whole client manifest
+   * and SSR module map, which is a few hundred KB of structure for a small app — and this ran on every request. In
+   * production the revision never moves after `seed`, so the manifest is built once; in dev a rebuild bumps it and
+   * the next request pays for one fresh copy. The cached object is still a copy, so an in-flight request keeps
+   * consuming a stable manifest across an invalidate exactly as the per-request snapshot made it.
+   */
+  #mergeRuntimeManifest(): MergedManifest {
+    const revision = this.#routeCache.revision;
+    if (this.#runtimeManifest?.revision === revision) return this.#runtimeManifest.manifest;
+    const snapshot = this.#routeCache.snapshot();
+    const manifest: MergedManifest = {
+      ...snapshot,
+      clientManifest: WebRouter.#mergeClientManifest(this.#artifact.rscRuntimeClientManifest, snapshot.clientManifest),
+      ssrManifest: WebRouter.#mergeSsrManifest(this.#artifact.rscRuntimeSsrManifest, snapshot.ssrManifest),
     };
+    this.#runtimeManifest = { revision, manifest };
+    return manifest;
   }
   #renderSystemNotFoundFallbackResponse(req: Request, url: URL): Promise<Response> {
     return createSystemPageResponse({
@@ -829,6 +894,29 @@ export class WebRouter {
       homeHref: this.#getSystemPageHomeHref(req, url.pathname),
       stylesheetHref: this.#getStylesheetHref(req, url.pathname),
     });
+  }
+
+  /**
+   * A build with subRoutes must keep every route file under `page/<basePath>`, so the site root owns no page and
+   * answers 404 — including the URL `akan start` opens a browser on. Locally that reads as a broken app, so serve a
+   * picker of the basePaths this build carries instead. Deployed hosts never reach it: `HostBasePathWebProxy`
+   * rewrites the root onto the basePath its host maps to before the router sees it.
+   */
+  #localSubRouteIndexResponse(req: Request, url: URL): Promise<Response> | null {
+    if (process.env.AKAN_PUBLIC_ENV !== "local" || !this.#artifact.basePaths.length) return null;
+    if (!WebRouter.#isSiteRootPathname(url.pathname, this.#artifact.i18n)) return null;
+    return createSubRouteIndexResponse({
+      method: req.method,
+      locale: WebRouter.#getLocale(url.pathname, this.#artifact.i18n),
+      basePaths: this.#artifact.basePaths,
+      subRoutes: this.#subRoutes,
+    });
+  }
+
+  static #isSiteRootPathname(pathname: string, i18n: AkanI18nConfig): boolean {
+    const segments = pathname.split("/").filter(Boolean);
+    if (!segments.length) return true;
+    return segments.length === 1 && i18n.locales.includes(segments[0] ?? "");
   }
 
   #renderErrorResponse(req: Request, scope: string, err: unknown): Promise<Response> {
@@ -963,18 +1051,24 @@ export class WebRouter {
     });
   }
 
-  static async create({ upgradeHmrWs }: SsrRoutesInputs) {
+  /**
+   * `null` when the build produced no web artifact — an api-only build, or a workspace with no `page/` at all.
+   * The caller boots without a web surface instead of failing on the missing file.
+   */
+  static async create({ web, upgradeHmrWs }: SsrRoutesInputs): Promise<WebRouter | null> {
     const artifactDir = WebRouter.#resolveArtifactDir();
-    const artifact = WebRouter.#normalizeArtifact(
-      (await Bun.file(path.join(artifactDir, "base-artifact.json")).json()) as BaseBuildArtifact,
-      artifactDir,
-    );
+    const artifactFile = Bun.file(path.join(artifactDir, "base-artifact.json"));
+    if (!(await artifactFile.exists())) return null;
+    const artifact = WebRouter.#normalizeArtifact((await artifactFile.json()) as BaseBuildArtifact, artifactDir);
+    const builtWeb = resolveWebConfig(artifact.web);
+    if (!builtWeb.ssr) return null;
     const cssBytesByUrl = await WebRouter.#loadCssBytesByUrl(artifact, artifactDir);
     const rsc = new RscWorker(artifact);
     await rsc.ready;
     const seedIndex = await RouteSeedIndexStore.load(artifactDir);
     return new WebRouter({
       artifact,
+      web: { ssr: true, csr: web.csr && builtWeb.csr },
       cssBytesByUrl,
       rsc,
       seedIndex,
@@ -990,6 +1084,79 @@ export class WebRouter {
 
   static #resolveAppDir() {
     return process.env.AKAN_APP_DIR ?? path.dirname(Bun.main);
+  }
+
+  static async #resolveFirebaseClientConfig(): Promise<FirebaseClientEnvConfig | null> {
+    const envPath = path.join(WebRouter.#resolveAppDir(), "env", "env.client.ts");
+    if (!fs.existsSync(envPath)) return null;
+    try {
+      const envUrl = pathToFileURL(envPath);
+      envUrl.searchParams.set("t", String(Date.now()));
+      const envModule = (await import(envUrl.href)) as { env?: { firebase?: unknown } };
+      return WebRouter.#normalizeFirebaseClientConfig(envModule.env?.firebase);
+    } catch {
+      return null;
+    }
+  }
+
+  static #normalizeFirebaseClientConfig(config: unknown): FirebaseClientEnvConfig | null {
+    if (!config || typeof config !== "object") return null;
+    const value = config as Partial<Record<keyof FirebaseClientEnvConfig, unknown>>;
+    if (
+      typeof value.apiKey !== "string" ||
+      typeof value.projectId !== "string" ||
+      typeof value.messagingSenderId !== "string" ||
+      typeof value.appId !== "string"
+    ) {
+      return null;
+    }
+    return {
+      apiKey: value.apiKey,
+      ...(typeof value.authDomain === "string" ? { authDomain: value.authDomain } : {}),
+      projectId: value.projectId,
+      ...(typeof value.storageBucket === "string" ? { storageBucket: value.storageBucket } : {}),
+      messagingSenderId: value.messagingSenderId,
+      appId: value.appId,
+    };
+  }
+
+  static #createFirebaseMessagingServiceWorker(config: FirebaseClientEnvConfig | null): string {
+    const configJson = JSON.stringify(config);
+    return `/* Generated by Akan.js. Do not edit. */
+const firebaseConfig = ${configJson};
+
+if (firebaseConfig) {
+  importScripts("https://www.gstatic.com/firebasejs/${FIREBASE_WEB_SDK_VERSION}/firebase-app-compat.js");
+  importScripts("https://www.gstatic.com/firebasejs/${FIREBASE_WEB_SDK_VERSION}/firebase-messaging-compat.js");
+
+  firebase.initializeApp(firebaseConfig);
+  const messaging = firebase.messaging();
+
+  const notificationUrl = (payload) =>
+    payload?.data?.url || payload?.fcmOptions?.link || payload?.notification?.click_action;
+
+  messaging.onBackgroundMessage((payload) => {
+    const title = payload?.notification?.title || "";
+    const options = {
+      body: payload?.notification?.body,
+      icon: payload?.notification?.icon,
+      image: payload?.notification?.image,
+      data: {
+        url: notificationUrl(payload),
+        FCM_MSG: payload,
+      },
+    };
+    self.registration.showNotification(title, options);
+  });
+}
+
+self.addEventListener("notificationclick", (event) => {
+  const url = event.notification?.data?.url || event.notification?.data?.FCM_MSG?.data?.url;
+  event.notification?.close();
+  if (!url) return;
+  event.waitUntil(clients.openWindow(url));
+});
+`;
   }
 
   static #normalizeArtifact(artifact: BaseBuildArtifact, artifactDir: string): BaseBuildArtifact {
@@ -1099,16 +1266,12 @@ export class WebRouter {
     headers.set("Last-Modified", new Date(lastModifiedMs).toUTCString());
     if (WebRouter.#isNotModified(req, etag, lastModifiedMs)) return new Response(null, { status: 304, headers });
 
-    const gzipPath = `${filePath}.gz`;
-    if (WebRouter.#acceptsGzip(req) && WebRouter.#isCompressible(options.contentType)) {
-      const gzipFile = Bun.file(gzipPath);
-      if (await gzipFile.exists()) {
-        const gzipBytes = await gzipFile.bytes();
-        headers.set("Content-Encoding", "gzip");
-        headers.set("Content-Length", String(gzipBytes.byteLength));
-        headers.set("Vary", "Accept-Encoding");
-        return new Response(WebRouter.#toArrayBuffer(gzipBytes), { headers });
-      }
+    const sidecar = await resolveEncodedSidecar(req, filePath, options.contentType);
+    if (sidecar) {
+      headers.set("Content-Encoding", sidecar.encoding);
+      headers.set("Content-Length", String(sidecar.bytes.byteLength));
+      headers.set("Vary", "Accept-Encoding");
+      return new Response(sidecar.bytes, { headers });
     }
 
     return new Response(file.stream(), { headers });
@@ -1193,22 +1356,6 @@ export class WebRouter {
     if (!ifModifiedSince) return false;
     const sinceMs = Date.parse(ifModifiedSince);
     return Number.isFinite(sinceMs) && sinceMs >= lastModifiedMs;
-  }
-
-  static #acceptsGzip(req: Request): boolean {
-    const acceptEncoding = req.headers.get("accept-encoding") ?? "";
-    return /\bgzip\b/.test(acceptEncoding);
-  }
-
-  static #isCompressible(contentType: string): boolean {
-    const type = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
-    return (
-      type.startsWith("text/") ||
-      type === "application/javascript" ||
-      type === "application/json" ||
-      type === "application/manifest+json" ||
-      type === "image/svg+xml"
-    );
   }
 
   static #safeResolve(baseDir: string, urlPath: string): string | null {

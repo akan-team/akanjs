@@ -38,7 +38,7 @@ export default async function Page({ params }: PageProps) {
       <div className="flex gap-4 font-bold text-lg items-center">
         <${dict.Model}.Zone.View view={${dict.model}View} />
         <Link href={\`/${dict.model}/\${${dict.model}.id}/edit\`}>
-          <button className="btn">
+          <button className="inline-flex items-center justify-center gap-2 rounded-field bg-primary px-4 py-2 font-medium text-primary-foreground text-sm transition-colors hover:bg-primary/90">
             {l("base.updateModel", { model: l("${dict.model}.modelName") })}
           </button>
         </Link>

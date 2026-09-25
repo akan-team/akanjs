@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs, type IntroItem } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, type IntroItem, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function UnitDocsPage() {
@@ -90,7 +90,7 @@ export default function UnitDocsPage() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="modelprops-light"
@@ -106,21 +106,22 @@ export default function UnitDocsPage() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Article.Unit.tsx"
-          code={`import { type ModelProps, clsx } from "akanjs/client";
+          code={`import { type ModelProps, cn } from "akanjs/client";
 import { Layout } from "akanjs/ui";
 
 export const Card = ({ article, className, href }: ModelProps<"article", cnst.LightArticle>) => {
   return (
-    <Layout.Unit className={clsx("rounded-lg border", className)} href={href}>
+    <Layout.Unit className={cn("rounded-lg border", className)} href={href}>
       <div className="font-bold">{article.title}</div>
-      <div className="text-base-content/70">{article.summary}</div>
+      <div className="text-foreground/70">{article.summary}</div>
     </Layout.Unit>
   );
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="unit-variants" title={l.trans({ en: "Unit Variants", ko: "Unit variant" })}>
         <Docs.Title>{l.trans({ en: "Unit Variants", ko: "Unit variant" })}</Docs.Title>
@@ -139,17 +140,19 @@ export const Card = ({ article, className, href }: ModelProps<"article", cnst.Li
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Article.Unit.tsx"
           code={`interface MiniProps extends ModelProps<"article", cnst.LightArticle> {}
 
 export const Mini = ({ article, className, href }: MiniProps) => (
-  <div className={clsx("flex items-center gap-2", className)}>
+  <div className={cn("flex items-center gap-2", className)}>
     <Link href={href}>{article.title}</Link>
     <Article.Util.Remove article={article} />
   </div>
 );`}
         />
         <Code.Snippet
+          className="w-full"
           title="Article.Unit.tsx"
           code={`export const Gallery = ({ article, href }: ModelProps<"article", cnst.LightArticle>) => (
   <Link href={href} className="overflow-hidden rounded-md border">
@@ -159,7 +162,7 @@ export const Mini = ({ article, className, href }: MiniProps) => (
 );`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="actions-inside-units" title={l.trans({ en: "Actions Inside Units", ko: "Unit 안의 action" })}>
         <Docs.Title>{l.trans({ en: "Actions Inside Units", ko: "Unit 안의 action" })}</Docs.Title>
@@ -172,6 +175,7 @@ export const Mini = ({ article, className, href }: MiniProps) => (
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Article.Unit.tsx"
           code={`<Layout.Unit className="relative rounded-lg border">
   <div>{article.title}</div>
@@ -181,7 +185,7 @@ export const Mini = ({ article, className, href }: MiniProps) => (
 </Layout.Unit>`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="loadunits-direct-rendering"
@@ -210,10 +214,10 @@ export const Mini = ({ article, className, href }: MiniProps) => (
               <col className="w-[40%]" />
             </colgroup>
             <thead>
-              <tr className="bg-base-200">
-                <th className="text-base-content">field</th>
-                <th className="text-base-content">{l.trans({ en: "Description", ko: "설명" })}</th>
-                <th className="text-base-content">{l.trans({ en: "Example", ko: "예제" })}</th>
+              <tr className="bg-muted">
+                <th className="text-foreground">field</th>
+                <th className="text-foreground">{l.trans({ en: "Description", ko: "설명" })}</th>
+                <th className="text-foreground">{l.trans({ en: "Example", ko: "예제" })}</th>
               </tr>
             </thead>
             <tbody>
@@ -233,11 +237,11 @@ export const Mini = ({ article, className, href }: MiniProps) => (
         </div>
         <div className="space-y-4 lg:hidden">
           {loadUnitsStateItems.map((item, index) => (
-            <div key={index} className="rounded-lg bg-base-100 p-3">
+            <div key={index} className="rounded-lg bg-background p-3">
               <div className="mb-2">
                 <span className="block font-bold font-mono text-primary">{item.name}</span>
               </div>
-              <p className="mb-3 text-base-content text-sm leading-relaxed" style={{ whiteSpace: "pre-line" }}>
+              <p className="mb-3 text-foreground text-sm leading-relaxed" style={{ whiteSpace: "pre-line" }}>
                 {item.desc}
               </p>
               <Code.Raw language="typescript" code={item.example as string} />
@@ -245,6 +249,7 @@ export const Mini = ({ article, className, href }: MiniProps) => (
           ))}
         </div>
         <Code.Snippet
+          className="w-full"
           title="Load.Units"
           code={`<Load.Units
   init={articleInit}
@@ -253,6 +258,7 @@ export const Mini = ({ article, className, href }: MiniProps) => (
 />`}
         />
         <Code.Snippet
+          className="w-full"
           title="Direct SSR rendering"
           code={`<div className="flex flex-col gap-2">
   {articleList.map((article) => (
@@ -261,7 +267,7 @@ export const Mini = ({ article, className, href }: MiniProps) => (
 </div>`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -277,8 +283,8 @@ export const Mini = ({ article, className, href }: MiniProps) => (
                 ko: "여러 layout이나 link에서 재사용될 수 있는 Unit은 className과 href를 받습니다.",
               }),
               l.trans({
-                en: "Use clsx to merge caller styling with the Unit's base styling.",
-                ko: "호출하는 쪽의 style과 Unit의 기본 style을 합칠 때 clsx를 사용합니다.",
+                en: "Use cn to merge caller styling with the Unit's base styling.",
+                ko: "호출하는 쪽의 style과 Unit의 기본 style을 합칠 때 cn을 사용합니다.",
               }),
               l.trans({
                 en: "Prefer Layout.Unit or Link for clickable card/list containers.",
@@ -293,16 +299,16 @@ export const Mini = ({ article, className, href }: MiniProps) => (
                 ko: "하나의 Card에 많은 flag를 추가하기보다 display 목적별 variant를 export합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
+              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {rule}
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

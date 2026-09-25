@@ -1,5 +1,5 @@
 "use client";
-//! deprecated, @revenuecat/purchases-capacitor로 대체 필요
+// FIXME: deprecated, @revenuecat/purchases-capacitor로 대체 필요
 // import { fetch } from "@libs/shared";
 // import "cordova-plugin-purchase/www/store.js";
 import "cordova-plugin-purchase/www/store";

@@ -1,5 +1,5 @@
 import type { GetStateObject, ObjectAssign, Prettify } from "akanjs/base";
-import { pathGet } from "akanjs/common";
+import { pathGetLoose } from "akanjs/common";
 
 import { DictionaryRegistry } from "./dictionaryRegistry";
 import type { DictModule } from "./locale";
@@ -177,7 +177,7 @@ export const makeTrans = <
     const msgKey = msgKeys.join(".");
     const langDict = rootDictionary[lang] ?? {};
     const model = langDict[modelName as string] ?? {};
-    const message = pathGet(msgKey as string, model, ".", { t: key }) as { t: string };
+    const message = pathGetLoose(msgKey as string, model, ".", { t: key }) as { t: string };
     return message.t;
   };
   const getDictionary = (lang: Language) => {

@@ -34,7 +34,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="file-convention" title={l.trans({ en: "File Convention", ko: "파일 규칙" })}>
         <Docs.Title>{l.trans({ en: "File Convention", ko: "파일 규칙" })}</Docs.Title>
@@ -46,11 +46,11 @@ export default function Page() {
             })}
           </div>
           <div className="mt-4">
-            <code className="rounded bg-base-200 px-2 py-1 text-sm">lib/[model]/[Model].Template.tsx</code>
+            <code className="rounded bg-muted px-2 py-1 text-sm">lib/[model]/[Model].Template.tsx</code>
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="component-structure" title={l.trans({ en: "Standard Structure", ko: "표준 구조" })}>
         <Docs.Title>{l.trans({ en: "Standard Structure", ko: "표준 구조" })}</Docs.Title>
@@ -106,7 +106,7 @@ export const General = ({ className }: GeneralProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="template-usage" title={l.trans({ en: "Template Usage Patterns", ko: "Template 사용 패턴" })}>
         <Docs.Title>{l.trans({ en: "Template Usage Patterns", ko: "Template 사용 패턴" })}</Docs.Title>
@@ -166,7 +166,7 @@ export const General = ({ className }: GeneralProps) => {
 </Load.Edit>`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="best-practices" title={l.trans({ en: "Template Best Practices", ko: "Template 모범 사례" })}>
         <Docs.Title>{l.trans({ en: "Template Best Practices", ko: "Template 모범 사례" })}</Docs.Title>
@@ -217,7 +217,7 @@ export const General = ({ className }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

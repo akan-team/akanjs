@@ -1,12 +1,16 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { RESERVED_ROUTE_CONFIG_EXPORTS } from "akanjs/common";
 import ignore from "ignore";
 import ts from "typescript";
 import { AbstractDoc } from "./abstractDoc";
+import { FormSetterScanner } from "./formSetterScanner";
+import { formatSsrBalance, type SsrBalanceEntry, SsrScanner } from "./ssrScanner";
+import { isAllowedLibFacetRootFile, rootAllowedDirs, rootAllowedFiles } from "./workspaceLayout";
 
 type QualitySeverity = "warning";
-type QualityScope = "global" | "file" | "convention" | "layout";
+type QualityScope = "global" | "file" | "convention" | "layout" | "ssr" | "agent";
 
 export interface QualityWarning {
   rule: string;
@@ -23,10 +27,11 @@ export interface QualityScanResult {
   workspaceRoot: string;
   scannedFiles: number;
   warnings: QualityWarning[];
+  ssrBalance: SsrBalanceEntry[];
   suggestedRules: string[];
 }
 
-interface SourceFileInfo {
+export interface SourceFileInfo {
   file: string;
   absolutePath: string;
   content: string;
@@ -84,32 +89,10 @@ const SUGGESTED_RULES = [
   "Keep apps/*/lib and libs/*/lib root files limited to generated support facets such as cnst.ts, db.ts, dict.ts, sig.ts, srv.ts, st.ts, useClient.ts, and useServer.ts.",
   "Use domain module folders consistently: lib/<model> for database modules, lib/_<service> for service modules, and lib/__scalar/<scalar> for scalar modules.",
   "Keep module UI filenames predictable: database modules use <Model>.Template/Unit/Util/View/Zone.tsx, service modules use <Service>.Util/Zone.tsx, and scalar modules use <Scalar>.Template/Unit.tsx.",
-  "Move shared app utilities to apps/*/common instead of creating apps/*/base.",
+  "Hand a form control its store setter by reference so the field publishes an agent tool; put normalization in the control's transform prop and a multi-write in a _postSet<Field> hook on the store.",
+  "Move shared app and lib utilities to common/ instead of creating apps/*/base or libs/*/base.",
   "Avoid large mixed-purpose class files; class export files should import helpers from neighboring utility files instead of declaring them inline.",
 ];
-
-const APP_ROOT_FILES = new Set([
-  "akan.app.json",
-  "akan.config.ts",
-  "capacitor.config.ts",
-  "client.ts",
-  "main.ts",
-  "package.json",
-  "server.ts",
-  "tsconfig.json",
-]);
-
-const LIB_ROOT_FILES = new Set([
-  "cnst.ts",
-  "db.ts",
-  "dict.ts",
-  "option.ts",
-  "sig.ts",
-  "srv.ts",
-  "st.ts",
-  "useClient.ts",
-  "useServer.ts",
-]);
 
 const CONVENTION_SUFFIXES = [
   ".constant.ts",
@@ -119,24 +102,6 @@ const CONVENTION_SUFFIXES = [
   ".signal.ts",
   ".store.ts",
 ] as const;
-
-// Non-PascalCase exports the framework recognizes on page/layout route modules (see PageModule/LayoutModule
-// in pkgs/akanjs/client/csrTypes.ts). PascalCase route exports (Loading, NotFound, Error) pass the component
-// check, and the `default` export is handled separately.
-const PAGE_RESERVED_EXPORTS = new Set([
-  "pageConfig",
-  "head",
-  "metadata",
-  "generateHead",
-  "generateMetadata",
-  "fonts",
-  "manifest",
-  "theme",
-  "reconnect",
-  "wsConnect",
-  "layoutStyle",
-  "gaTrackingId",
-]);
 
 // How to remediate each rule, keyed by rule id. Surfaced as a `fix:` line per warning (text + JSON output)
 // so the scan result tells the reader what to do, not just what is wrong.
@@ -159,16 +124,36 @@ const RULE_FIXES: Record<string, string> = {
     "Move the Window augmentation into an approved browser integration file and keep it isolated.",
   "akan.file.prototype-mutation": "Avoid prototype mutation, or isolate it in an approved low-level integration file.",
   "akan.file.class-export-global-declaration": "Move the helper to a sibling file and import it into the class module.",
+  "akan.agent.unpublished-form-setter":
+    "Pass the setter by reference where the wrapper only forwards (onChange={st.do.setTitleOnTask}); move normalization into the control's own transform prop; move a multi-write into a _postSet<Field> hook on the store, keeping the generated setter on the control.",
   "akan.file.component-internal-declaration":
     "Move the type or helper to a type/util file in ui/, webkit/, or common/ by purpose. If it is the component's props, declare it as `interface <Component>Props`.",
   "akan.file.component-export":
     "Move the value or type to a util/constant/type file in ui/, webkit/, or common/ and import it. Adding `export` is not a valid fix — only PascalCase components and their `<Component>Props` interface belong here.",
   "akan.layout.app-root-file":
     "Move the file into a conventional app folder (common, env, lib, page, private, public, script, srvkit, ui, or webkit).",
+  "akan.layout.app-root-folder":
+    "Move the folder's contents into a conventional app folder (common, env, lib, page, private, public, script, srvkit, ui, or webkit) and delete it.",
   "akan.layout.lib-root-file":
-    "Move the file into a domain module folder under lib/; keep lib root limited to generated support facets.",
+    "Move the file into a conventional lib folder (common, env, lib, page, private, public, srvkit, ui, or webkit).",
+  "akan.layout.lib-root-folder":
+    "Move the folder's contents into a conventional lib folder (common, env, lib, page, private, public, srvkit, ui, or webkit) and delete it.",
+  "akan.layout.lib-facet-file":
+    "Move the file into a domain module folder under lib/; keep the lib facet root limited to generated support facets.",
   "akan.layout.module-ui-file":
     "Rename the file to an allowed module UI name, or move it to ui/ if it is not a module component.",
+  "akan.ssr.unnecessary-use-client":
+    'Delete the "use client" directive so the file renders on the server. If it exists only to wrap one client child, drop the wrapper and use the child directly.',
+  "akan.ssr.client-static-component":
+    "Move the component to a server file — a <Model>.Unit.tsx / <Model>.View.tsx for a module, or a ui/ file with no directive — and reference it from the client file.",
+  "akan.ssr.client-static-markup":
+    "Keep the interactive element in the client component and hoist the static subtree into a server component, then accept it as `children` or render it through a Unit/View reference.",
+  "akan.ssr.client-mount-load":
+    "Load the data in the route with `fetch.initX(...)` / `fetch.viewX(...)` and pass the init/view object down as a prop; the client store hydrates from it and the effect goes away.",
+  "akan.ssr.module-missing-server-view":
+    "Add a <Model>.Unit.tsx for list/card rendering and a <Model>.View.tsx for the detail surface, then have the Zone delegate to them.",
+  "akan.ssr.template-client-state":
+    "Bind the field to the store instead: `value={xForm.field}` with `onChange={st.do.setFieldOnX}`.",
 };
 
 function getRuleFix(rule: string): string | undefined {
@@ -190,6 +175,7 @@ export class AkanQualityScanner {
         .filter((file) => AbstractDoc.isAbstractPath(file))
         .map((file) => this.#readTextFile(workspaceRoot, file)),
     );
+    const ssr = new SsrScanner().scan(sourceFiles);
     const warnings = [
       ...this.#scanGlobalQuality(sourceFiles),
       ...sourceFiles.flatMap((sourceFile) => this.#scanSingleFileQuality(sourceFile)),
@@ -197,6 +183,8 @@ export class AkanQualityScanner {
       ...sourceFiles.flatMap((sourceFile) => this.#scanConventionQuality(sourceFile)),
       ...sourceFiles.flatMap((sourceFile) => this.#scanLayoutQuality(sourceFile)),
       ...abstractFiles.flatMap((abstractFile) => this.#scanAbstractQuality(abstractFile)),
+      ...new FormSetterScanner().scan(sourceFiles),
+      ...ssr.warnings,
     ];
 
     return {
@@ -205,6 +193,7 @@ export class AkanQualityScanner {
       warnings: warnings
         .map((warning) => ({ ...warning, fix: warning.fix ?? getRuleFix(warning.rule) }))
         .sort(compareWarnings),
+      ssrBalance: ssr.balance,
       suggestedRules: SUGGESTED_RULES,
     };
   }
@@ -430,26 +419,31 @@ export class AkanQualityScanner {
   }
 
   #scanLayoutQuality(sourceFile: SourceFileInfo): QualityWarning[] {
-    const segments = sourceFile.file.split("/");
     const warnings: QualityWarning[] = [];
-    if (segments[0] === "apps" && segments.length === 3 && !APP_ROOT_FILES.has(segments[2])) {
-      warnings.push({
-        rule: "akan.layout.app-root-file",
-        scope: "layout",
-        severity: "warning",
-        file: sourceFile.file,
-        message: `Unexpected app root file "${segments[2]}". Keep application code in conventional app folders.`,
-      });
+    const rootEntry = getSysRootEntry(sourceFile.file);
+    if (rootEntry) {
+      const { type, name, isDir } = rootEntry;
+      const allowed = isDir ? rootAllowedDirs[type].has(name) : rootAllowedFiles[type].has(name);
+      const kind = isDir ? "folder" : "file";
+      if (!allowed) {
+        warnings.push({
+          rule: `akan.layout.${type}-root-${kind}`,
+          scope: "layout",
+          severity: "warning",
+          file: sourceFile.file,
+          message: `Unexpected ${type} root ${kind} "${name}". Keep ${type} code in conventional ${type} folders.`,
+        });
+      }
     }
 
-    const libRootFile = getLibRootFile(sourceFile.file);
-    if (libRootFile && !LIB_ROOT_FILES.has(libRootFile)) {
+    const libFacetFile = getLibFacetRootFile(sourceFile.file);
+    if (libFacetFile && !isAllowedLibFacetRootFile(libFacetFile)) {
       warnings.push({
-        rule: "akan.layout.lib-root-file",
+        rule: "akan.layout.lib-facet-file",
         scope: "layout",
         severity: "warning",
         file: sourceFile.file,
-        message: `Unexpected lib root file "${libRootFile}". Keep direct lib root files limited to generated support facets.`,
+        message: `Unexpected lib facet root file "${libFacetFile}". Keep direct lib/ root files limited to generated support facets.`,
       });
     }
 
@@ -470,9 +464,31 @@ export function formatQualityScanResult(result: QualityScanResult) {
     "",
     ...formatQualityWarnings(result.warnings),
     "",
+    "SSR balance (component files, JSX elements rendered per side):",
+    "",
+    ...formatSsrBalance(result.ssrBalance),
+    "",
     "Suggested quality rules:",
     "",
     ...result.suggestedRules.map((rule) => `  - ${rule}`),
+  ];
+  return sections.join("\n");
+}
+
+export function formatSsrScanResult(result: QualityScanResult) {
+  const sections = [
+    "Akan SSR Balance Scan",
+    `workspace: ${result.workspaceRoot}`,
+    `scanned files: ${result.scannedFiles}`,
+    `ssr warnings: ${result.warnings.length}`,
+    "",
+    "Server render share (component files, JSX elements rendered per side):",
+    "",
+    ...formatSsrBalance(result.ssrBalance),
+    "",
+    "Warnings:",
+    "",
+    ...formatQualityWarnings(result.warnings),
   ];
   return sections.join("\n");
 }
@@ -652,7 +668,7 @@ function isRestrictedInternalKind(kind: ComponentFileDeclaration["kind"]) {
 
 function isAllowedComponentExport(declaration: ComponentFileDeclaration, isPage: boolean) {
   if (isComponentValueKind(declaration.kind) && isPascalCaseName(declaration.name)) return true;
-  return isPage && PAGE_RESERVED_EXPORTS.has(declaration.name);
+  return isPage && RESERVED_ROUTE_CONFIG_EXPORTS.has(declaration.name);
 }
 
 function isPascalCaseName(name: string) {
@@ -821,7 +837,19 @@ function getConventionDescription(suffix: (typeof CONVENTION_SUFFIXES)[number], 
   return `${modelName}Store`;
 }
 
-function getLibRootFile(file: string) {
+const sysRootTypes = { apps: "app", libs: "lib" } as const;
+
+function getSysRootEntry(file: string) {
+  const segments = file.split("/");
+  const root = segments[0];
+  const name = segments[2];
+  if (!root || !name || segments.length < 3) return null;
+  const type = sysRootTypes[root as keyof typeof sysRootTypes];
+  if (!type) return null;
+  return { type, name, isDir: segments.length > 3 };
+}
+
+function getLibFacetRootFile(file: string) {
   const segments = file.split("/");
   if ((segments[0] === "libs" || segments[0] === "apps") && segments.length === 4 && segments[2] === "lib")
     return segments[3];

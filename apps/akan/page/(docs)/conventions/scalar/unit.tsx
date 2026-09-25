@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="file-shape" title={l.trans({ en: "File Shape", ko: "파일 형태" })}>
         <Docs.Title>{l.trans({ en: "File Shape", ko: "파일 형태" })}</Docs.Title>
@@ -37,6 +37,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           language="bash"
           code={`lib/
 └── __scalar/
@@ -45,7 +46,7 @@ export default function Page() {
         └── price.Unit.tsx`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="scalar-unit" title={l.trans({ en: "Scalar Unit Example", ko: "Scalar Unit 예시" })}>
         <Docs.Title>{l.trans({ en: "Scalar Unit Example", ko: "Scalar Unit 예시" })}</Docs.Title>
@@ -58,6 +59,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="price.Unit.tsx"
           code={`import { cnst } from "@apps/myapp/client";
 
@@ -73,7 +75,7 @@ export const Label = ({ price, className }: LabelProps) => (
 );`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="parent-usage" title={l.trans({ en: "Use From Parent Unit", ko: "상위 Unit에서 사용" })}>
         <Docs.Title>{l.trans({ en: "Use From Parent Unit", ko: "상위 Unit에서 사용" })}</Docs.Title>
@@ -86,19 +88,20 @@ export const Label = ({ price, className }: LabelProps) => (
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="product.Unit.tsx"
           code={`import { Layout } from "akanjs/ui";
 import { cnst, Price } from "@apps/myapp/client";
 
 export const Card = ({ product }: { product: cnst.Product }) => (
-  <Layout.Unit className="rounded-xl border border-base-300 p-4">
+  <Layout.Unit className="rounded-xl border border-border p-4">
     <div className="font-bold">{product.name}</div>
-    <Price.Label price={product.price} className="text-base-content/70" />
+    <Price.Label price={product.price} className="text-foreground/70" />
   </Layout.Unit>
 );`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="variants" title={l.trans({ en: "Small Variants", ko: "작은 variant" })}>
         <Docs.Title>{l.trans({ en: "Small Variants", ko: "작은 variant" })}</Docs.Title>
@@ -111,6 +114,7 @@ export const Card = ({ product }: { product: cnst.Product }) => (
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="price.Unit.tsx"
           code={`export const Compact = ({ price }: { price: Price }) => (
   <span>{price.amount.toLocaleString()}</span>
@@ -124,9 +128,9 @@ export const Detail = ({ price }: { price: Price }) => (
 );`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

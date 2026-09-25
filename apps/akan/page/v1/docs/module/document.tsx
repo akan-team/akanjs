@@ -9,10 +9,10 @@ export default function Page() {
     {
       name: ".arg(name, Type, options?)",
       desc: l.trans({
-        en: "Required parameter. Options include { ref, renderOption } for UI rendering in admin panels.",
-        ko: "필수 파라미터. 관리자 패널의 UI 렌더링을 위한 { ref, renderOption } 옵션 포함.",
+        en: "Required parameter. `ref` names the model an ID points at, so the admin panel offers a picker instead of a text field.",
+        ko: "필수 파라미터. ID가 가리키는 모델을 `ref`로 지정하면 관리자 패널이 텍스트 입력 대신 선택 모달을 띄웁니다.",
       }),
-      example: `.arg("categoryId", ID)`,
+      example: `.arg("categoryId", ID, { ref: "category" })`,
     },
     {
       name: ".opt(name, Type, options?)",
@@ -255,7 +255,7 @@ export default function Page() {
         </Docs.Description>
       </Scroll.Slide>
 
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="filter-definition"
@@ -376,7 +376,7 @@ await this.listInCategory(categoryId, { skip: 0, limit: 10, sort: "latest" });`}
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="document-class" title={l.trans({ en: "Document Class - by()", ko: "Document 클래스 - by()" })}>
         <Docs.Title>{l.trans({ en: "Document Class - by()", ko: "Document 클래스 - by()" })}</Docs.Title>
@@ -425,7 +425,7 @@ export class Product extends by(cnst.Product) {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="model-class" title={l.trans({ en: "Model Class - into()", ko: "Model 클래스 - into()" })}>
         <Docs.Title>{l.trans({ en: "Model Class - into()", ko: "Model 클래스 - into()" })}</Docs.Title>
@@ -452,7 +452,7 @@ export class ProductModel extends into(
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="auto-crud-methods"
@@ -481,7 +481,7 @@ this.productSearch;  // Meilisearch`}
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="auto-query-methods"
@@ -506,7 +506,7 @@ this.productSearch;  // Meilisearch`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="loaders" title={l.trans({ en: "Custom Loaders", ko: "커스텀 로더" })}>
         <Docs.Title>{l.trans({ en: "Custom Loaders", ko: "커스텀 로더" })}</Docs.Title>
@@ -541,7 +541,7 @@ this.productSearch;  // Meilisearch`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="middleware-class" title={l.trans({ en: "Middleware Class", ko: "Middleware 클래스" })}>
         <Docs.Title>{l.trans({ en: "Middleware Class", ko: "Middleware 클래스" })}</Docs.Title>
@@ -570,7 +570,7 @@ this.productSearch;  // Meilisearch`}
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="usage-in-service" title={l.trans({ en: "Document in Service", ko: "Service의 Document" })}>
         <Docs.Title>{l.trans({ en: "Document in Service", ko: "Service의 Document" })}</Docs.Title>
@@ -589,7 +589,7 @@ this.productSearch;  // Meilisearch`}
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="best-practices" title={l.trans({ en: "Best Practices", ko: "모범 사례" })}>
         <Docs.Title>{l.trans({ en: "Best Practices", ko: "모범 사례" })}</Docs.Title>
@@ -643,7 +643,7 @@ this.productSearch;  // Meilisearch`}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

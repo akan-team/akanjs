@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, cardGridRecipe, Divider, Docs, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -23,6 +23,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/myapp/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -31,7 +32,7 @@ const config: AppConfig = {};
 export default config;`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="config-shape" title={l.trans({ en: "Config File Shape", ko: "설정 파일 형태" })}>
         <Docs.Title>{l.trans({ en: "Config File Shape", ko: "설정 파일 형태" })}</Docs.Title>
@@ -43,8 +44,9 @@ export default config;`}
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
+            className="w-full"
             title="object config"
             code={`import type { AppConfig } from "akanjs";
 
@@ -55,6 +57,7 @@ const config: AppConfig = {
 export default config;`}
           />
           <Code.Snippet
+            className="w-full"
             title="function config"
             code={`import type { AppConfig } from "akanjs";
 
@@ -69,7 +72,7 @@ export default config;`}
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="routes" title="routes">
         <Docs.Title>routes</Docs.Title>
@@ -88,6 +91,7 @@ export default config;`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/shop/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -107,7 +111,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="mobile" title="mobile">
         <Docs.Title>mobile</Docs.Title>
@@ -126,6 +130,7 @@ export default config;`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/shop/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -159,7 +164,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="default-database-mode" title="defaultDatabaseMode">
         <Docs.Title>defaultDatabaseMode</Docs.Title>
@@ -178,6 +183,7 @@ export default config;`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/enterprise/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -193,14 +199,86 @@ export default config;`}
               en: "Only customize this when your deployment model really needs separated or clustered database behavior. For details, see ",
               ko: "배포 모델에서 database 분리 또는 cluster 동작이 실제로 필요할 때만 커스터마이징하세요. 자세한 내용은 ",
             })}
-            <a href="/docs/arch/infra#database-mode" className="link link-primary">
+            <a
+              href="/docs/arch/infra#database-mode"
+              className="text-primary underline underline-offset-4 hover:no-underline"
+            >
               {l.trans({ en: "Database Mode", ko: "Database Mode" })}
             </a>
             {l.trans({ en: ".", ko: "를 참고하세요." })}
           </span>
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
+
+      <Scroll.Slide id="web" title="web">
+        <Docs.Title>web</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "web declares which browser surfaces this app builds and serves, as true | false | { csr: boolean }. false is an api-only app; true, the default, is both surfaces; the object form keeps SSR and toggles only the CSR bundle. SSR is the RSC route renderer with its pages bundle, client bundles and RSC worker process; CSR is the single-file SPA bundle the Capacitor mobile build ships. The API is always served and is not part of this switch.",
+              ko: "web은 이 앱이 빌드하고 서비스할 브라우저 surface를 true | false | { csr: boolean } 형태로 선언합니다. false는 api 전용 앱이고, 기본값 true는 두 surface 모두이며, 객체 형태는 SSR을 유지한 채 CSR bundle만 켜고 끕니다. SSR은 pages bundle, client bundle, RSC worker process를 포함한 RSC 라우트 렌더러이고, CSR은 Capacitor 모바일 빌드가 싣는 단일 파일 SPA bundle입니다. API는 항상 서비스되며 이 스위치의 대상이 아닙니다.",
+            })}
+          </div>
+          <div>
+            {l.trans({
+              en: "Turning a surface off removes its build phase, so the deployment image never carries the artifact — and the runtime never mounts the routes that read it. There is no CSR-without-SSR option, by type: the CSR bundle inlines the stylesheet the SSR build compiles, so it would ship an unstyled app.",
+              ko: "surface를 끄면 해당 빌드 단계가 사라져 배포 이미지에 산출물이 들어가지 않고, 런타임도 그 산출물을 읽는 라우트를 mount하지 않습니다. SSR 없이 CSR만 켜는 옵션은 타입상 존재하지 않습니다. CSR bundle이 SSR 빌드가 컴파일한 stylesheet를 인라인하므로 스타일 없는 앱이 나오기 때문입니다.",
+            })}
+          </div>
+        </Docs.Description>
+        <div className={cardGridRecipe()}>
+          <Code.Snippet
+            className="w-full"
+            title="web without the mobile bundle"
+            code={`import type { AppConfig } from "akanjs";
+
+const config: AppConfig = {
+  web: { csr: false },
+};
+
+export default config;`}
+          />
+          <Code.Snippet
+            className="w-full"
+            title="api-only deployment"
+            code={`import type { AppConfig } from "akanjs";
+
+const config: AppConfig = {
+  web: false,
+};
+
+export default config;`}
+          />
+        </div>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "An api-only build writes no route artifact, skips the RSC worker entrypoint, and leaves public/ out of the image, because the web router's catch-all is its only reader. Nothing under page/ is served, including routes a library contributed through syncPageLibs.",
+              ko: "api-only 빌드는 라우트 산출물을 쓰지 않고, RSC worker entrypoint를 건너뛰며, public/을 이미지에서 제외합니다. 이를 읽는 곳이 web router의 catch-all 하나뿐이기 때문입니다. page/ 아래의 어떤 것도 서비스되지 않으며, syncPageLibs로 들어온 라이브러리 라우트도 마찬가지입니다.",
+            })}
+          </div>
+          <div>
+            {l.trans({
+              en: "AKAN_SSR and AKAN_CSR narrow the same two surfaces per deployment. They only narrow: a surface the build left out cannot be switched back on, and the boot log names what the process ended up serving. The generated Dockerfile writes the build's own answer as the image default.",
+              ko: "AKAN_SSR과 AKAN_CSR은 같은 두 surface를 배포 단위로 좁힙니다. 좁히기만 합니다. 빌드에서 빠진 surface는 다시 켤 수 없고, 부팅 로그가 이 프로세스가 실제로 무엇을 서비스하는지 남깁니다. 생성된 Dockerfile에는 빌드가 내린 답이 이미지 기본값으로 기록됩니다.",
+            })}
+          </div>
+        </Docs.Description>
+        <Docs.Alert type="warning">
+          {l.trans({
+            en: "Turning CSR off is refused when the app declares mobile targets, because akan build-ios copies dist/apps/<app>/csr/<target>.html into the native project.",
+            ko: "mobile target을 선언한 앱에서 CSR을 끄면 거부됩니다. akan build-ios가 dist/apps/<app>/csr/<target>.html을 네이티브 프로젝트로 복사하기 때문입니다.",
+          })}
+        </Docs.Alert>
+        <Docs.Alert type="info">
+          {l.trans({
+            en: "akan start ignores web and keeps the whole dev surface: the incremental builder is also the file watcher, so switching it off would take server-code HMR with it. It warns once when the config and the dev server disagree.",
+            ko: "akan start는 web을 무시하고 개발 surface 전체를 유지합니다. incremental builder가 파일 watcher를 겸하고 있어서, 끄면 서버 코드 HMR까지 함께 사라지기 때문입니다. config와 dev server가 어긋나면 한 번 경고합니다.",
+          })}
+        </Docs.Alert>
+      </Scroll.Slide>
+      <Divider />
 
       <Scroll.Slide id="images" title="images">
         <Docs.Title>images</Docs.Title>
@@ -219,6 +297,7 @@ export default config;`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/catalog/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -236,7 +315,7 @@ const config: AppConfig = {
 export default config;`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="i18n" title="i18n">
         <Docs.Title>i18n</Docs.Title>
@@ -255,6 +334,7 @@ export default config;`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/global/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -274,7 +354,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="public-env" title="publicEnv">
         <Docs.Title>publicEnv</Docs.Title>
@@ -293,6 +373,7 @@ export default config;`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/landing/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -309,7 +390,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="secrets" title="secrets">
         <Docs.Title>secrets</Docs.Title>
@@ -327,8 +408,9 @@ export default config;`}
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
+            className="w-full"
             title="apps/api/akan.config.ts"
             code={`import type { AppConfig } from "akanjs";
 
@@ -339,6 +421,7 @@ const config: AppConfig = {
 export default config;`}
           />
           <Code.Snippet
+            className="w-full"
             title=".gitignore (auto-synced)"
             code={`# akan:secrets (managed by akan.config.ts — do not edit)
 apps/api/certs/*.pem
@@ -359,7 +442,7 @@ apps/api/secrets/**/*
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="sync-page-libs" title="syncPageLibs">
         <Docs.Title>syncPageLibs</Docs.Title>
@@ -407,17 +490,18 @@ export default config;`}
           </div>
           <div>
             {l.trans({
-              en: "Akan includes externalLibs in the production package dependencies together with required SSR and native runtime packages.",
-              ko: "Akan은 externalLibs를 필수 SSR/native runtime package와 함께 production package dependencies에 포함합니다.",
+              en: "Akan includes externalLibs in the production package dependencies together with the required SSR runtime packages.",
+              ko: "Akan은 externalLibs를 필수 SSR runtime package와 함께 production package dependencies에 포함합니다.",
             })}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/media/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
-  externalLibs: ["sharp"],
+  externalLibs: ["puppeteer"],
 };
 
 export default config;`}
@@ -429,7 +513,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="barrel-imports" title="barrelImports">
         <Docs.Title>barrelImports</Docs.Title>
@@ -448,6 +532,7 @@ export default config;`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/admin/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -464,7 +549,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="optimize-imports" title="optimizeImports">
         <Docs.Title>optimizeImports</Docs.Title>
@@ -483,6 +568,7 @@ export default config;`}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/dashboard/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
@@ -499,7 +585,7 @@ export default config;`}
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="docker" title="docker">
         <Docs.Title>docker</Docs.Title>
@@ -512,19 +598,26 @@ export default config;`}
           </div>
           <div>
             {l.trans({
-              en: "Akan builds Dockerfile content from the base image, default system packages, your run scripts, app env values, base paths, locale values, and command.",
-              ko: "Akan은 base image, 기본 system package, 사용자 run script, app env 값, basePath, locale 값, command를 조합해 Dockerfile content를 생성합니다.",
+              en: "Akan builds Dockerfile content from the base image, your run scripts, app env values, base paths, locale values, and command. The generated image installs ca-certificates and tzdata and nothing else, so an app that needs a headless browser, ffmpeg, or a native toolchain declares it in preRuns.",
+              ko: "Akan은 base image, 사용자 run script, app env 값, basePath, locale 값, command를 조합해 Dockerfile content를 생성합니다. 생성되는 이미지는 ca-certificates와 tzdata만 설치하므로, headless browser나 ffmpeg, native toolchain이 필요한 앱은 preRuns에 선언합니다.",
+            })}
+          </div>
+          <div>
+            {l.trans({
+              en: "docker is either those parts or a whole Dockerfile written as a string. preRuns run before bun install --production, so build tools a native dependency needs are present for it; postRuns run after it, before app files are copied. image and each run entry also take a per-architecture object, which compiles to a TARGETARCH guard.",
+              ko: "docker는 이 구성 요소들이거나, 문자열로 작성한 Dockerfile 전체입니다. preRuns는 bun install --production 이전에 실행되어 native dependency가 필요로 하는 build tool을 먼저 준비하고, postRuns는 그 이후 app file을 copy하기 전에 실행됩니다. image와 각 run 항목은 architecture별 object도 받으며, 이는 TARGETARCH 분기로 변환됩니다.",
             })}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="apps/worker/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
   docker: {
     image: "oven/bun:1-slim",
-    preRuns: ["apt-get install -y --no-install-recommends imagemagick"],
+    preRuns: ["apt-get update && apt-get install -y --no-install-recommends ffmpeg imagemagick"],
     command: ["bun", "main.js"],
   },
 };
@@ -532,47 +625,45 @@ const config: AppConfig = {
 export default config;`}
         />
         <Code.Snippet
+          className="w-full"
           title="apps/custom-runtime/akan.config.ts"
           code={`import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
-  docker: {
-    content: [
-      "FROM oven/bun:1-slim",
-      "RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime",
-      "RUN apt-get update && apt-get upgrade -y",
-      "RUN apt-get install -y --no-install-recommends git redis build-essential python3 ca-certificates ffmpeg imagemagick",
-      "ARG TARGETARCH",
-      "RUN mkdir -p /workspace",
-      "WORKDIR /workspace",
-      "COPY ./package.json ./package.json",
-      "RUN bun install --production",
-      "COPY . .",
-      "ENV PORT=8282",
-      "ENV NODE_ENV=production",
-      "ENV AKAN_PUBLIC_REPO_NAME=akanjs",
-      "ENV AKAN_PUBLIC_SERVE_DOMAIN=example.com",
-      "ENV AKAN_PUBLIC_APP_NAME=custom-runtime",
-      "ENV AKAN_PUBLIC_ENV=main",
-      "ENV AKAN_PUBLIC_DEFAULT_LOCALE=ko",
-      "ENV AKAN_PUBLIC_LOCALES=ko,en",
-      "ENV AKAN_PUBLIC_OPERATION_MODE=cloud",
-      "",
-      'CMD ["bun","main.js"]',
-    ].join("\\n"),
-  },
+  docker: [
+    "FROM oven/bun:1-slim",
+    "RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata ffmpeg imagemagick",
+    "RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime",
+    "ARG TARGETARCH",
+    "RUN mkdir -p /workspace",
+    "WORKDIR /workspace",
+    "COPY ./package.json ./package.json",
+    "RUN bun install --production",
+    "COPY . .",
+    "ENV PORT=8282",
+    "ENV NODE_ENV=production",
+    "ENV AKAN_PUBLIC_REPO_NAME=akanjs",
+    "ENV AKAN_PUBLIC_SERVE_DOMAIN=example.com",
+    "ENV AKAN_PUBLIC_APP_NAME=custom-runtime",
+    "ENV AKAN_PUBLIC_ENV=main",
+    "ENV AKAN_PUBLIC_DEFAULT_LOCALE=ko",
+    "ENV AKAN_PUBLIC_LOCALES=ko,en",
+    "ENV AKAN_PUBLIC_OPERATION_MODE=cloud",
+    "",
+    'CMD ["bun","main.js"]',
+  ].join("\\n"),
 };
 
 export default config;`}
         />
         <Docs.Alert type="info">
           {l.trans({
-            en: "docker.content is useful when the deployment image must be fully controlled. Keep the default Dockerfile flow when possible: install runtime packages, install production dependencies, copy app files, set Akan public env values, then define CMD.",
-            ko: "docker.content는 deployment image를 완전히 제어해야 할 때 유용합니다. 가능하면 기본 Dockerfile 흐름을 유지하세요. runtime package 설치, production dependency 설치, app file copy, Akan public env 설정, CMD 선언 순서입니다.",
+            en: "The string form is useful when the deployment image must be fully controlled. It is used exactly as written, so nothing is merged into it — including the preRuns a library contributes. Keep the default Dockerfile flow when possible: install runtime packages, install production dependencies, copy app files, set Akan public env values, then define CMD.",
+            ko: "문자열 형태는 deployment image를 완전히 제어해야 할 때 유용합니다. 작성한 그대로 사용되므로 library가 기여한 preRuns를 포함해 어떤 것도 병합되지 않습니다. 가능하면 기본 Dockerfile 흐름을 유지하세요. runtime package 설치, production dependency 설치, app file copy, Akan public env 설정, CMD 선언 순서입니다.",
           })}
         </Docs.Alert>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="library-config-fields"
@@ -582,31 +673,41 @@ export default config;`}
         <Docs.Description>
           <div>
             {l.trans({
-              en: "LibConfig uses the same partial object or function shape, but its current practical surface is externalLibs. Use it when a shared library wraps a dependency that must be available in production runtime packaging.",
-              ko: "LibConfig도 같은 partial object 또는 function 형태를 사용하지만, 현재 실전에서 다루는 표면은 externalLibs입니다. shared library가 production runtime packaging에 포함되어야 하는 dependency를 감쌀 때 사용합니다.",
+              en: "LibConfig uses the same partial object or function shape, and its practical surface is externalLibs and docker. Use externalLibs when a shared library wraps a dependency that must be available in production runtime packaging.",
+              ko: "LibConfig도 같은 partial object 또는 function 형태를 사용하며, 실전에서 다루는 표면은 externalLibs와 docker입니다. externalLibs는 shared library가 production runtime packaging에 포함되어야 하는 dependency를 감쌀 때 사용합니다.",
             })}
           </div>
           <div>
             {l.trans({
-              en: "Akan resolves missing values to an empty list and stores the result with the library scan result.",
-              ko: "Akan은 빠진 값을 빈 목록으로 resolve하고, 그 결과를 library scan result에 저장합니다.",
+              en: "docker declares the image steps the library's own runtime needs, as preRuns and postRuns only — the base image and the command stay the app's decision. Library steps are emitted before the app's own, and a step declared on both sides becomes one layer.",
+              ko: "docker는 해당 library의 runtime이 필요로 하는 image step을 preRuns와 postRuns로만 선언합니다. base image와 command는 app이 결정합니다. library step은 app 자신의 step보다 앞서 배치되며, 양쪽에서 같은 step을 선언하면 하나의 layer로 합쳐집니다.",
+            })}
+          </div>
+          <div>
+            {l.trans({
+              en: "Akan resolves missing values to an empty list and merges every workspace library's externalLibs and docker steps into each app, so an app that uses the library does not repeat the declaration. An app whose docker is a whole Dockerfile string takes neither.",
+              ko: "Akan은 빠진 값을 빈 목록으로 resolve하고, workspace의 모든 library externalLibs와 docker step을 각 app에 합칩니다. 따라서 해당 library를 쓰는 app이 같은 선언을 반복하지 않아도 됩니다. docker를 Dockerfile 문자열 전체로 선언한 app은 둘 다 받지 않습니다.",
             })}
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="libs/shared/akan.config.ts"
           code={`import type { LibConfig } from "akanjs";
 
 const config: LibConfig = {
-  externalLibs: ["sharp"],
+  externalLibs: ["puppeteer"],
+  docker: {
+    preRuns: ["apt-get update && apt-get install -y --no-install-recommends chromium"],
+  },
 };
 
 export default config;`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

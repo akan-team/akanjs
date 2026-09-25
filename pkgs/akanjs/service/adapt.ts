@@ -4,8 +4,8 @@ import { type ExtractInjectInfoObject, type InjectBuilder, type InjectInfo, inje
 
 export interface Adaptor {
   readonly logger: Logger;
-  onInit(): Promise<void>;
-  onDestroy(): Promise<void>;
+  onInit(): Promise<void> | void;
+  onDestroy(): Promise<void> | void;
 }
 
 export type AdaptorCls<
@@ -31,10 +31,10 @@ export function adapt(name: string, injectBuilder?: InjectBuilder) {
     readonly logger = new Logger(name);
     static readonly [INJECT_META] = injectInfoMap;
     static readonly refName = name;
-    async onInit() {
+    onInit(): Promise<void> | void {
       //
     }
-    async onDestroy() {
+    onDestroy(): Promise<void> | void {
       //
     }
   }

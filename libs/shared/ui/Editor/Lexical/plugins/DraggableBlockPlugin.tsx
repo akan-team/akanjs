@@ -98,30 +98,30 @@ export const DraggableBlockPlugin = ({ anchorElem }: DraggableBlockPluginProps) 
           <button
             type="button"
             title="Drag to move · click for actions"
-            className="flex min-h-6 cursor-grab items-center rounded px-0.5 py-0.5 text-base text-base-content/50 hover:bg-base-200 hover:text-base-content active:cursor-grabbing"
+            className="flex min-h-6 cursor-grab items-center rounded px-0.5 py-0.5 text-base text-foreground/50 hover:bg-muted hover:text-foreground active:cursor-grabbing"
             onClick={() => setMenuOpen((open) => !open)}
           >
             <MdDragIndicator />
           </button>
           {menuOpen ? (
-            <div className="absolute top-full left-0 z-50 mt-1 min-w-36 rounded-md border border-base-content/10 bg-base-100 p-1 shadow-xl">
+            <div className="absolute top-full left-0 z-50 mt-1 min-w-36 rounded-md border border-foreground/10 bg-background p-1 shadow-xl">
               <button
                 type="button"
-                className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-base-200"
+                className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
                 onClick={addBelow}
               >
                 Add block below
               </button>
               <button
                 type="button"
-                className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-base-200"
+                className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
                 onClick={duplicate}
               >
                 Duplicate
               </button>
               <button
                 type="button"
-                className="block w-full rounded px-2 py-1.5 text-left text-error text-sm hover:bg-base-200"
+                className="block w-full rounded px-2 py-1.5 text-left text-destructive text-sm hover:bg-muted"
                 onClick={remove}
               >
                 Delete

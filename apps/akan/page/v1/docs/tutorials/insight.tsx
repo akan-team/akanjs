@@ -17,7 +17,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="create-query-maker" title={l.trans({ en: "Create Query Maker", ko: "쿼리 메이커 생성하기" })}>
         <Docs.Title>{l.trans({ en: "Create Query Maker", ko: "쿼리 메이커 생성하기" })}</Docs.Title>
@@ -239,7 +239,7 @@ export const dictionary = modelDictionary(["en", "ko"])
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Util.tsx"
             code={`
 "use client"; // [!code collapse:3]
-import { clsx } from "@akanjs/client";
+import { buttonRecipe } from "@akanjs/ui";
 import { st, usePage } from "@koyo/client";
 import { cnst } from "@koyo/client"; // [!code ++:2]
 import { Select } from "@akanjs/ui";
@@ -253,7 +253,7 @@ export const Process = ({ className, icecreamOrderId, disabled }: ProcessProps) 
   const { l } = usePage();
   return (
     <button
-      className={clsx("btn btn-secondary", className)}
+      className={buttonRecipe({ variant: "secondary" }, className)}
       disabled={disabled}
       onClick={() => {
         void st.do.processIcecreamOrder(icecreamOrderId);
@@ -273,7 +273,7 @@ export const Serve = ({ className, icecreamOrderId, disabled }: ServeProps) => {
   const { l } = usePage();
   return (
     <button
-      className={clsx("btn btn-accent", className)}
+      className={buttonRecipe({ variant: "accent" }, className)}
       disabled={disabled}
       onClick={() => {
         void st.do.serveIcecreamOrder(icecreamOrderId);
@@ -293,7 +293,7 @@ export const Finish = ({ className, icecreamOrderId, disabled }: FinishProps) =>
   const { l } = usePage();
   return (
     <button
-      className={clsx("btn btn-success", className)}
+      className={buttonRecipe({ variant: "success" }, className)}
       disabled={disabled}
       onClick={() => {
         void st.do.finishIcecreamOrder(icecreamOrderId);
@@ -313,7 +313,7 @@ export const Cancel = ({ className, icecreamOrderId, disabled }: CancelProps) =>
   const { l } = usePage();
   return (
     <button
-      className={clsx("btn btn-warning", className)}
+      className={buttonRecipe({ variant: "warning" }, className)}
       disabled={disabled}
       onClick={() => {
         void st.do.cancelIcecreamOrder(icecreamOrderId);
@@ -404,7 +404,7 @@ export default function Page() {
               <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
               <IcecreamOrder.Util.PublicQueryMaker /> // [!code ++]
               <Model.New
-                className="btn btn-primary"
+                className={buttonRecipe({ variant: "primary" })}
                 sliceName="icecreamOrderInPublic"
                 renderTitle="name"
                 partial={icecreamOrderForm}
@@ -426,7 +426,7 @@ export default function Page() {
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="accelerate-with-insight"
@@ -692,12 +692,12 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
       <div className="flex items-center gap-3 border-b pb-4">
         <span className="text-3xl font-extrabold text-pink-600">🍦</span>
         <span className="text-2xl font-bold">{l("icecreamOrder.modelName")}</span>
-        <span className="text-base-content/50 ml-auto text-xs">#{icecreamOrder.id}</span>
+        <span className="text-foreground/50 ml-auto text-xs">#{icecreamOrder.id}</span>
       </div>
       <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-        <div className="text-base-content/50 font-semibold">{l("icecreamOrder.size")}</div>
+        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.size")}</div>
         <div>{icecreamOrder.size} cc</div>
-        <div className="text-base-content/50 font-semibold">{l("icecreamOrder.toppings")}</div>
+        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.toppings")}</div>
         <div className="flex flex-wrap gap-2">
           {icecreamOrder.toppings.length === 0 ? (
             <span className="text-gray-400 italic">{l.trans({ en: "No toppings", ko: "토핑 없음" })}</span>
@@ -712,7 +712,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             ))
           )}
         </div>
-        <div className="text-base-content/50 font-semibold">{l("icecreamOrder.status")}</div>
+        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.status")}</div>
         <div>
           <span
             className={clsx("inline-block rounded-full px-2 py-1 text-xs font-semibold", {
@@ -726,9 +726,9 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
           </span>
         </div>
-        <div className="text-base-content/50 font-semibold">{l("icecreamOrder.createdAt")}</div>
+        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.createdAt")}</div>
         <div className="text-gray-500">{icecreamOrder.createdAt.format("YYYY-MM-DD HH:mm:ss")}</div>
-        <div className="text-base-content/50 font-semibold">{l("icecreamOrder.updatedAt")}</div>
+        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.updatedAt")}</div>
         <div className="text-gray-500">{icecreamOrder.updatedAt.format("YYYY-MM-DD HH:mm:ss")}</div>
       </div>
       <div className="flex items-center justify-end gap-2">
@@ -925,7 +925,7 @@ export default function Page() {
               <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div> // [!code collapse:10]
               <IcecreamOrder.Util.PublicQueryMaker />
               <Model.New
-                className="btn btn-primary"
+                className={buttonRecipe({ variant: "primary" })}
                 sliceName="icecreamOrderInPublic"
                 renderTitle="name"
                 partial={icecreamOrderForm}
@@ -1002,7 +1002,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

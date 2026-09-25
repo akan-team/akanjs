@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs, type IntroItem } from "@apps/akan/ui";
+import { Code, cardGridRecipe, Divider, Docs, DocsToc, type IntroItem, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -74,7 +74,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="file-convention" title={l.trans({ en: "File Convention", ko: "파일 규칙" })}>
         <Docs.Title>{l.trans({ en: "File Convention", ko: "파일 규칙" })}</Docs.Title>
@@ -86,7 +86,7 @@ export default function Page() {
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-3">
+        <div className={cardGridRecipe({ cols: "three" })}>
           {[
             {
               title: "Path",
@@ -101,14 +101,14 @@ export default function Page() {
               desc: "General, Phone, SubmitPhone, Preview",
             },
           ].map(({ title, desc }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
-              <div className="font-bold text-base-content">{title}</div>
-              <div className="mt-2 text-base-content/70">{desc}</div>
+            <div key={title} className={panelRecipe()}>
+              <div className="font-bold text-foreground">{title}</div>
+              <div className="mt-2 text-foreground/70">{desc}</div>
             </div>
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="standard-form-template"
@@ -124,11 +124,12 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Ticket.Template.tsx"
           code={`"use client";
 import { st, usePage } from "@apps/akan/client";
 import { Field } from "@libs/shared/ui";
-import { Layout } from "akanjs/ui";
+import { Layout, buttonRecipe } from "akanjs/ui";
 
 interface TicketEditProps {
   className?: string;
@@ -151,7 +152,7 @@ export const General = ({ className }: TicketEditProps) => {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="field-patterns" title={l.trans({ en: "Field Patterns", ko: "Field 패턴" })}>
         <Docs.Title>{l.trans({ en: "Field Patterns", ko: "Field 패턴" })}</Docs.Title>
@@ -169,8 +170,9 @@ export const General = ({ className }: TicketEditProps) => {
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
+            className="w-full"
             title="Field.Parent"
             code={`<Field.Parent
   slice={fetch.slice.projectInSelf}
@@ -181,6 +183,7 @@ export const General = ({ className }: TicketEditProps) => {
 />`}
           />
           <Code.Snippet
+            className="w-full"
             title="Field.ToggleSelect"
             code={`<Field.ToggleSelect
   label={l("ticket.type")}
@@ -190,6 +193,7 @@ export const General = ({ className }: TicketEditProps) => {
 />`}
           />
           <Code.Snippet
+            className="w-full"
             title="Field.Img"
             code={`<Field.Img
   slice={fetch.slice.bizCard}
@@ -200,6 +204,7 @@ export const General = ({ className }: TicketEditProps) => {
 />`}
           />
           <Code.Snippet
+            className="w-full"
             title="Field.Yoopta"
             code={`<Field.Yoopta
   label={l("ticket.content")}
@@ -212,7 +217,7 @@ export const General = ({ className }: TicketEditProps) => {
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="split-components" title={l.trans({ en: "Split Components", ko: "Component 분리" })}>
         <Docs.Title>{l.trans({ en: "Split Components", ko: "Component 분리" })}</Docs.Title>
@@ -224,8 +229,9 @@ export const General = ({ className }: TicketEditProps) => {
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
+            className="w-full"
             title="User.Template.tsx"
             code={`export const Phone = ({ userId, redirect }: PhoneProps) => {
   const phone = st.use.phone();
@@ -242,6 +248,7 @@ export const General = ({ className }: TicketEditProps) => {
 };`}
           />
           <Code.Snippet
+            className="w-full"
             title="Submit component"
             code={`export const SubmitPhone = ({ userId, redirect }: SubmitPhoneProps) => {
   const phone = st.use.phone();
@@ -254,7 +261,7 @@ export const General = ({ className }: TicketEditProps) => {
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="template-usage" title={l.trans({ en: "Template Usage Patterns", ko: "Template 사용 패턴" })}>
         <Docs.Title>{l.trans({ en: "Template Usage Patterns", ko: "Template 사용 패턴" })}</Docs.Title>
@@ -282,8 +289,9 @@ export const General = ({ className }: TicketEditProps) => {
           </div>
         </Docs.Description>
         <Docs.IntroTable type="field" items={loadEditStateItems} />
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
+            className="w-full"
             title="new.tsx"
             code={`export default async function Page() {
   const pickupInPhoneForm: Partial<cnst.Pickup> = {};
@@ -301,6 +309,7 @@ export const General = ({ className }: TicketEditProps) => {
 }`}
           />
           <Code.Snippet
+            className="w-full"
             title="edit.tsx"
             code={`const { story, storyEdit } = await fetch.editStory(storyId);
 
@@ -319,6 +328,7 @@ export const General = ({ className }: TicketEditProps) => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Ticket.Util.tsx"
           code={`<Model.Edit renderTitle="title" slice={fetch.slice.ticket} modelId={ticketId}>
   <Ticket.Template.General />
@@ -336,13 +346,14 @@ export const General = ({ className }: TicketEditProps) => {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="Release.Zone.tsx"
           code={`<Model.NewWrapper partial={{ devApp }} slice={fetch.slice.releaseInDevApp}>
-  <button className="btn btn-secondary">+ New</button>
+  <button className={buttonRecipe({ variant: "secondary" })}>+ New</button>
 </Model.NewWrapper>`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -378,16 +389,16 @@ export const General = ({ className }: TicketEditProps) => {
                 ko: "준비된 edit data가 있는 server page에는 Load.Edit, modal edit trigger에는 Model.Edit, new-form button에는 Model.NewWrapper를 사용합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
+              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {rule}
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

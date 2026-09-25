@@ -32,7 +32,7 @@ export class SummaryModel extends into(Summary, SummaryFilter, cnst.summary, () 
     if ((await this.Summary.countDocuments({ status: "active" })) > 1) {
       const summary = await this.Summary.pickOne({ status: "active" });
       const q = documentQueryHelper;
-      await this.Summary.deleteMany(q.all({ status: "active" }, { id: q.ne(summary.id) }));
+      await this.Summary.removeMany(q.all({ status: "active" }, { id: q.ne(summary.id) }));
     }
     await this.Summary.updateOne(
       { status: "active", type: "active" },

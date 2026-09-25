@@ -15,13 +15,13 @@ export class NotificationType extends enumOf("notificationType", ["topic", "toke
 
 export class NotificationInput extends via((field) => ({
   token: field(String).optional(),
-  title: field(String),
-  content: field(String),
+  title: field(String, { text: "title" }),
+  content: field(String, { text: "desc" }),
   url: field(String).optional(),
   field: field(String).optional(),
-  image: field(File).optional(),
+  image: field(File, { text: "thumb" }).optional(),
   type: field(NotificationType, { default: "token" }),
-  level: field(NotiLevel, { default: "notice" }),
+  level: field(NotiLevel, { default: "notice", text: "filter" }),
 })) {}
 
 export class NotificationObject extends via(NotificationInput, (field) => ({})) {}

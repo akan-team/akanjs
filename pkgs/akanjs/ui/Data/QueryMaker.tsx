@@ -1,360 +1,174 @@
 "use client";
-
-import type { SliceMeta } from "akanjs/fetch";
+import { cn, fetch, usePage } from "akanjs/client";
+import { capitalize } from "akanjs/common";
+import type { QuerySetting, SliceMeta } from "akanjs/fetch";
+import type { SerializedArg } from "akanjs/signal";
+import { st } from "akanjs/store";
+import { useDebounce } from "akanjs/webkit";
+import { useRef, useState } from "react";
+import { Select } from "../Select";
+import Arg from "../Signal/Arg";
+import { dictLabel } from "./dataText";
+import RefPicker from "./RefPicker";
 
 interface QueryMakerProps {
   className?: string;
   slice: SliceMeta;
-  query?: Record<string, unknown>;
+  query?: QuerySetting;
+  /** Where a completed filter goes. Defaults to the slice's own store, which is where a listing reads it. */
+  onApply?: (setting: ResolvedQuerySetting) => void;
 }
-interface QuerySetting {
+export interface QueryMakerState {
+  queryKeys: string[];
+  args: SerializedArg[];
+  setting: ResolvedQuerySetting;
+  selectKey: (queryKey: string) => void;
+  setArg: (idx: number, value: unknown) => void;
+  /** Applies a whole filter at once, for a control that stands for one — a dashboard tile, a saved view. */
+  applySetting: (setting: QuerySetting) => void;
+}
+/** A setting whose thunk has been read, which is the only form the store and the wire accept. */
+export interface ResolvedQuerySetting {
   queryKey: string;
-  arg: Record<string, unknown>;
+  args: unknown[];
 }
-const searchQuerySetting: QuerySetting = { queryKey: "search", arg: { $search: undefined as string | undefined } };
-const byStatusQuerySetting: QuerySetting = { queryKey: "byStatuses", arg: { statuses: null } };
-
-export default function QueryMaker({ className, slice, query }: QueryMakerProps) {
-  const { sliceName } = slice;
-  return null;
-  // const { l } = usePage();
-  // const storeDo = st.do as unknown as { [key: string]: (...args) => Promise<void> };
-  // const cnstInfo = constantInfo.getDatabase(sliceName);
-  // const isModelSearchable = hasTextField(cnstInfo.full);
-  // const { subMenu, filter } = st.use.searchParams();
-  // const filterRef = cnstInfo.filter;
-  // const filterQueryMap = getFilterQueryMap(filterRef);
-  // const defaultQuerySetting = { ...(isModelSearchable ? searchQuerySetting : byStatusQuerySetting), ...(query ?? {}) };
-  // const isInitialized = useRef(false);
-  // const [querySetting, setQuerySetting] = useState<QuerySetting>(defaultQuerySetting);
-  // const getQuery = useCallback(
-  //   (querySetting: QuerySetting) => {
-  //     if (querySetting.queryKey === "search") {
-  //       const query = querySetting.arg;
-  //       return query;
-  //     } else {
-  //       const queryFn = getFilterQuery(filterRef, querySetting.queryKey);
-  //       const filterQueryArgMetas = getFilterArgMetas(filterRef, querySetting.queryKey);
-  //       const queryArgs = filterQueryArgMetas.map((queryArgMeta) => querySetting.arg[queryArgMeta.name] as string);
-  //       const query = queryFn(...queryArgs);
-  //       return query;
-  //     }
-  //   },
-  //   [filter]
-  // );
-  // const setQueryOfModel = useDebounce((querySetting: QuerySetting) => {
-  //   const query = getQuery(querySetting);
-  //   if (!isInitialized.current) {
-  //     void storeDo[`init${capitalize(sliceName)}`](query);
-  //     isInitialized.current = true;
-  //   } else void storeDo[`setQueryArgsOf${capitalize(sliceName)}`](query);
-  // });
-  // useEffect(() => {
-  //   if (filter && subMenu === sliceName) setQuerySetting({ queryKey: filter, arg: {} });
-  // }, [filter, subMenu]);
-  // useEffect(() => {
-  //   setQueryOfModel(querySetting);
-  // }, [querySetting]);
-  // return (
-  //   <div className={clsx("flex w-full items-center gap-4", className)}>
-  //     <div className="flex flex-col gap-2">
-  //       Query
-  //       <Select<string>
-  //         value={querySetting.queryKey}
-  //         options={Object.keys(filterQueryMap).map((queryKey) => ({
-  //           label: l.field("summary", queryKey),
-  //           value: queryKey,
-  //         }))}
-  //         onChange={(queryKey: string) => {
-  //           const filterQueryArgMetas = getFilterArgMetas(filterRef, queryKey);
-  //           const defaultArg = Object.fromEntries(
-  //             filterQueryArgMetas.map((queryArgMeta) => [
-  //               queryArgMeta.name,
-  //               queryArgMeta.nullable
-  //                 ? null
-  //                 : queryArgMeta.arrDepth
-  //                   ? { oneOf: [] }
-  //                   : queryArgMeta.default
-  //                     ? typeof queryArgMeta.default === "function"
-  //                       ? queryArgMeta.default()
-  //                       : queryArgMeta.default
-  //                     : (scalarDefaultMap.get(queryArgMeta.modelRef) ?? null),
-  //             ])
-  //           );
-  //           setQuerySetting({ queryKey, arg: defaultArg });
-  //         }}
-  //       />
-  //     </div>
-  //     {querySetting.queryKey === "search" ? (
-  //       <div className="flex w-full flex-col gap-2">
-  //         Search
-  //         <label className="input flex w-full items-center gap-2">
-  //           <input
-  //             type="text"
-  //             className="grow"
-  //             placeholder="Type to search..."
-  //             value={(querySetting.arg.$search as string | undefined) ?? ""}
-  //             onChange={(e) => {
-  //               setQuerySetting({ ...querySetting, arg: e.target.value ? { $search: e.target.value } : {} });
-  //             }}
-  //           />
-  //           <BiSearch className="size-4 opacity-70" />
-  //         </label>
-  //       </div>
-  //     ) : (
-  //       getFilterArgMetas(filterRef, querySetting.queryKey).map((queryArgMeta, idx) => (
-  //         <div className="flex flex-col gap-2" key={idx}>
-  //           <div className="text-sm text-gray-500">{l.qarg(slice, querySetting.queryKey, queryArgMeta.name)}</div>
-  //           <QueryArg
-  //             queryArgMeta={queryArgMeta}
-  //             value={querySetting.arg[queryArgMeta.name] as string}
-  //             onChange={(value) => {
-  //               setQuerySetting({
-  //                 ...querySetting,
-  //                 arg: { ...querySetting.arg, [queryArgMeta.name]: value as string },
-  //               });
-  //             }}
-  //           />
-  //         </div>
-  //       ))
-  //     )}
-  //   </div>
-  // );
+interface QueryMakerKeyProps {
+  className?: string;
+  selectClassName?: string;
+  slice: SliceMeta;
+  state: QueryMakerState;
+}
+interface QueryMakerArgsProps {
+  className?: string;
+  slice: SliceMeta;
+  state: QueryMakerState;
 }
 
-// interface QueryArgProps {
-//   queryArgMeta: FilterArgMeta;
-//   value: any;
-//   onChange: (value: any) => void;
-// }
-// function QueryArg({ queryArgMeta, value, onChange }: QueryArgProps) {
-//   const argType = getGqlTypeStr(queryArgMeta.modelRef) as GqlScalarName;
-//   if (queryArgMeta.enum && queryArgMeta.arrDepth && queryArgMeta.arrDepth < 2)
-//     return (
-//       <QueryArg.Enum
-//         options={queryArgMeta.enum.values}
-//         value={value as (string | number)[] | null}
-//         onChange={onChange}
-//         nullable={queryArgMeta.nullable}
-//         multiple={queryArgMeta.arrDepth ? queryArgMeta.arrDepth >= 1 : false}
-//       />
-//     );
-//   return argType === "ID" ? (
-//     <QueryArg.ID queryArgMeta={queryArgMeta} value={value as string} onChange={onChange} />
-//   ) : argType === "Int" ? (
-//     <QueryArg.Int value={value as number} onChange={onChange} />
-//   ) : argType === "Float" ? (
-//     <QueryArg.Float value={value as number} onChange={onChange} />
-//   ) : argType === "String" ? (
-//     <QueryArg.String value={value as string} onChange={onChange} />
-//   ) : argType === "Boolean" ? (
-//     <QueryArg.Boolean value={value as boolean} onChange={onChange} />
-//   ) : argType === "Date" ? (
-//     <QueryArg.Date value={value as Dayjs} onChange={onChange} />
-//   ) : argType === "JSON" ? (
-//     <QueryArg.Json value={value as string} onChange={onChange} />
-//   ) : (
-//     <></>
-//   );
-// }
+/** A filter's args may be written as a thunk, so that an arg relative to now is read when the filter is applied. */
+export const resolveQuerySetting = (setting: QuerySetting): ResolvedQuerySetting => {
+  const args = setting.args ?? setting.queryArgs;
+  return { queryKey: setting.queryKey, args: typeof args === "function" ? args() : (args ?? []) };
+};
 
-// interface ArgEnumProps {
-//   options: (string | number)[];
-//   value: (string | number)[] | string | number | null;
-//   onChange: (value: (string | number)[] | string | number | null) => void;
-//   nullable?: boolean;
-//   multiple?: boolean;
-// }
-// const ArgEnum = ({ options, value, onChange, nullable, multiple }: ArgEnumProps) => {
-//   return (
-//     <Select
-//       options={options.map((option) => ({
-//         label: option.toString(),
-//         value: option,
-//       }))}
-//       value={value ?? []}
-//       onChange={(val) => {
-//         onChange(val as (string | number)[] | string | number | null);
-//       }}
-//       multiple={multiple}
-//     />
-//   );
-// };
-// QueryArg.Enum = ArgEnum;
+// An arg the browser has no input for is one this maker cannot fill, so the filter taking it is not offered.
+const isFillableArg = (arg: SerializedArg) => !arg.modelType;
+const defaultArg = (arg: SerializedArg) => ((arg.arrDepth ?? 0) > 0 ? [] : null);
+// A cleared text input reads back as "" and a cleared list as [] — neither is a value the caller supplied.
+const isFilledArg = (value: unknown) =>
+  value !== null && value !== undefined && value !== "" && !(Array.isArray(value) && !value.length);
+/** A filter the server will accept: every arg it declared as required has been given a value. */
+export const isReadyQuery = (args: SerializedArg[], values: unknown[]) =>
+  args.every((arg, idx) => arg.nullable || isFilledArg(values[idx]));
 
-// interface ArgIDProps {
-//   queryArgMeta: FilterArgMeta;
-//   value: string | null;
-//   onChange: (value: string | null) => void;
-// }
-// const ArgID = ({ queryArgMeta, value, onChange }: ArgIDProps) => {
-//   if (!queryArgMeta.ref)
-//     return (
-//       <Input
-//         inputClassName="w-full"
-//         value={value ?? ""}
-//         onChange={(value) => {
-//           onChange(value ? value : null);
-//         }}
-//         validate={(e) => true}
-//       />
-//     );
-//   else return <SelectIDWithRef queryArgMeta={queryArgMeta} value={value} onChange={onChange} />;
-// };
-// QueryArg.ID = ArgID;
+/**
+ * The filter a listing is showing, and the one write that applies it. Held in a hook rather than a component
+ * because the key select rides the toolbar while the args that key takes render under it — two places in the
+ * tree, one selection.
+ */
+export const useQueryMaker = ({ slice, query, onApply }: QueryMakerProps): QueryMakerState => {
+  const { refName, sliceName } = slice;
+  const storeDo = st.do as unknown as { [key: string]: (...args: unknown[]) => Promise<void> };
+  const filterQuery = fetch.filterQueryMap?.get(refName) ?? {};
+  const queryKeys = Object.entries(filterQuery)
+    .filter(([, args]) => args.every(isFillableArg))
+    .map(([queryKey]) => queryKey);
+  const [setting, setSetting] = useState<ResolvedQuerySetting>(
+    query ? resolveQuerySetting(query) : { queryKey: queryKeys[0] ?? "any", args: [] },
+  );
+  // Read through a ref: the debounced callback is memoized on the first render, so a caller passing a fresh
+  // closure each render would keep getting the very first one.
+  const applyRef = useRef<(setting: ResolvedQuerySetting) => void>(() => undefined);
+  applyRef.current = (setting) => {
+    if (onApply) onApply(setting);
+    else void storeDo[`setQueryArgsOf${capitalize(sliceName)}`](setting.queryKey, setting.args);
+  };
+  // Debounced because a text arg writes on every keystroke, and each write is a round trip.
+  const applyQuery = useDebounce((setting: ResolvedQuerySetting) => {
+    applyRef.current(setting);
+  }, []);
+  const update = (setting: ResolvedQuerySetting) => {
+    setSetting(setting);
+    // Picking a filter that takes a required arg leaves the query incomplete until the arg is typed, and the
+    // server refuses an incomplete one. Hold it here rather than firing a request that can only fail.
+    if (isReadyQuery(filterQuery[setting.queryKey] ?? [], setting.args)) applyQuery(setting);
+  };
+  const args = filterQuery[setting.queryKey] ?? [];
+  return {
+    queryKeys,
+    args,
+    setting,
+    selectKey: (queryKey) => {
+      update({ queryKey, args: (filterQuery[queryKey] ?? []).map(defaultArg) });
+    },
+    setArg: (idx, value) => {
+      update({ ...setting, args: args.map((arg, i) => (i === idx ? value : (setting.args[i] ?? defaultArg(arg)))) });
+    },
+    applySetting: (setting) => {
+      update(resolveQuerySetting(setting));
+    },
+  };
+};
 
-// interface SelectIDWithRefProps {
-//   queryArgMeta: FilterArgMeta;
-//   value: string | null;
-//   onChange: (value: string | null) => void;
-// }
-// const SelectIDWithRef = ({ queryArgMeta, value, onChange }: SelectIDWithRefProps) => {
-//   if (!queryArgMeta.ref) throw new Error("No ref in queryArgMeta");
-//   const [modalOpen, setModalOpen] = useState(false);
-//   const storeUse = st.use as { [key: string]: () => unknown };
-//   const modelList = storeUse[`${queryArgMeta.ref}List`]() as DataList<{ id: string }>;
-//   const renderOption = queryArgMeta.renderOption ?? ((value: { id: string }) => value.id);
-//   const selectedModel = value ? modelList.get(value) : null;
-//   return (
-//     <>
-//       <button
-//         className="btn"
-//         onClick={() => {
-//           setModalOpen(true);
-//         }}
-//       >
-//         {selectedModel ? renderOption(selectedModel) : `Select ${queryArgMeta.ref}`}
-//       </button>
-//       <Modal
-//         open={modalOpen}
-//         onCancel={() => {
-//           setModalOpen(false);
-//         }}
-//       >
-//         <div className="flex w-full flex-col gap-4 pb-[256px]">
-//           <QueryMaker sliceName={queryArgMeta.ref} />
-//           <Select<string | null>
-//             value={value}
-//             options={modelList.map((model) => ({
-//               label: renderOption(model),
-//               value: model.id,
-//             }))}
-//             onChange={(value) => {
-//               onChange(value);
-//             }}
-//           />
-//         </div>
-//       </Modal>
-//     </>
-//   );
-// };
+/** The filter picker. Sized for a toolbar, beside the sort and page-size selects. */
+export const QueryMakerKey = ({ className, selectClassName, slice, state }: QueryMakerKeyProps) => {
+  const { l } = usePage();
+  const { queryKeys, setting, selectKey } = state;
+  if (queryKeys.length < 2) return null;
+  return (
+    <Select<string>
+      className={className}
+      selectClassName={selectClassName}
+      value={setting.queryKey}
+      options={queryKeys.map((queryKey) => ({
+        label: dictLabel(l._, `${slice.refName}.query.${queryKey}`, queryKey),
+        value: queryKey,
+      }))}
+      onChange={selectKey}
+    />
+  );
+};
 
-// interface ArgIntProps {
-//   value: number;
-//   onChange: (value: number) => void;
-// }
-// const ArgInt = ({ value, onChange }: ArgIntProps) => {
-//   return (
-//     <Input.Number
-//       inputClassName="w-full"
-//       value={value}
-//       onChange={(value) => {
-//         onChange(value ?? 0);
-//       }}
-//       validate={(e) => true}
-//     />
-//   );
-// };
-// QueryArg.Int = ArgInt;
+/** What the picked filter asks for. Renders nothing for a filter that takes no arguments. */
+export const QueryMakerArgs = ({ className, slice, state }: QueryMakerArgsProps) => {
+  const { l } = usePage();
+  const { args, setting, setArg } = state;
+  if (!args.length) return null;
+  return (
+    <div className={cn("mb-4 flex w-full flex-col gap-1 rounded-box border border-border p-3", className)}>
+      {args.map((arg, idx) => {
+        // An id the filter declared against a model is picked from that model, not typed as hex. The picker
+        // runs the same maker against the ref's own filters, so a ref of a ref keeps nesting.
+        const ref = arg.ref && fetch.slice[arg.ref] ? arg.ref : undefined;
+        return (
+          <Arg.Query
+            key={arg.name}
+            endpointKey={setting.queryKey}
+            arg={arg}
+            label={dictLabel(l._, `${slice.refName}.query.${setting.queryKey}.arg.${arg.name}`, arg.name)}
+            value={setting.args[idx] ?? defaultArg(arg)}
+            onChange={(value: unknown) => {
+              setArg(idx, value);
+            }}
+            renderScalar={
+              ref
+                ? (value: string | null, onChange: (value: string | null) => void) => (
+                    <RefPicker refName={ref} value={value} onChange={onChange} />
+                  )
+                : undefined
+            }
+          />
+        );
+      })}
+    </div>
+  );
+};
 
-// interface ArgFloatProps {
-//   value: number;
-//   onChange: (value: number) => void;
-// }
-// const ArgFloat = ({ value, onChange }: ArgFloatProps) => {
-//   return (
-//     <Input.Number
-//       inputClassName="w-full"
-//       value={value}
-//       onChange={(value) => {
-//         onChange(value ?? 0);
-//       }}
-//       validate={(e) => true}
-//     />
-//   );
-// };
-// QueryArg.Float = ArgFloat;
-
-// interface ArgStringProps {
-//   value: string | null | undefined;
-//   onChange: (value: string | null) => void;
-// }
-// const ArgString = ({ value, onChange }: ArgStringProps) => {
-//   return (
-//     <Input
-//       inputClassName="w-full"
-//       value={value ?? ""}
-//       onChange={(value) => {
-//         onChange(value ? value : null);
-//       }}
-//       validate={(e) => true}
-//     />
-//   );
-// };
-// QueryArg.String = ArgString;
-
-// interface ArgBooleanProps {
-//   value: boolean;
-//   onChange: (value: boolean) => void;
-// }
-// const ArgBoolean = ({ value, onChange }: ArgBooleanProps) => {
-//   return (
-//     <Input.Checkbox
-//       className="w-full"
-//       checked={value}
-//       onChange={(value) => {
-//         onChange(value);
-//       }}
-//     />
-//   );
-// };
-// QueryArg.Boolean = ArgBoolean;
-
-// interface ArgDateProps {
-//   value: Dayjs;
-//   onChange: (value: Dayjs | null) => void;
-// }
-// const ArgDate = ({ value, onChange }: ArgDateProps) => {
-//   return (
-//     <DatePicker
-//       className="w-full"
-//       value={value}
-//       onChange={(value) => {
-//         onChange(value);
-//       }}
-//     />
-//   );
-// };
-// QueryArg.Date = ArgDate;
-
-// interface ArgJsonProps {
-//   value: string;
-//   onChange: (value: string) => void;
-// }
-// const ArgJson = ({ value, onChange }: ArgJsonProps) => {
-//   return (
-//     <Input.TextArea
-//       validate={(e) => true}
-//       className="w-full"
-//       inputClassName="w-full min-h-[300px]"
-//       value={value}
-//       onPressEnter={(value) => {
-//         onChange(value);
-//       }}
-//       onChange={(value) => {
-//         onChange(value);
-//       }}
-//     />
-//   );
-// };
-// QueryArg.Json = ArgJson;
+export default function QueryMaker({ className, slice, query, onApply }: QueryMakerProps) {
+  const state = useQueryMaker({ slice, query, onApply });
+  return (
+    <div className={cn("flex w-full flex-col gap-1", className)}>
+      <QueryMakerKey className="w-full md:w-72" slice={slice} state={state} />
+      <QueryMakerArgs slice={slice} state={state} />
+    </div>
+  );
+}

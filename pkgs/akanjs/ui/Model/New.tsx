@@ -1,4 +1,4 @@
-import { clsx, usePage } from "akanjs/client";
+import { cn, usePage } from "akanjs/client";
 import type { SliceMeta } from "akanjs/fetch";
 import type { ReactNode } from "react";
 import { AiOutlinePlus } from "react-icons/ai";
@@ -15,6 +15,8 @@ interface NewProps<Full = any> {
   modal?: string | null;
   partial?: Partial<Full> | (() => Partial<Full>);
   renderTitle?: ((model: { id: string }) => string | ReactNode) | string;
+  /** Suffixes the tool this button publishes. Only a second create button for the same slice needs one. */
+  namespace?: string;
 }
 
 export default function New({
@@ -26,15 +28,17 @@ export default function New({
   modal,
   partial,
   renderTitle,
+  namespace,
 }: NewProps) {
   const { l } = usePage();
   return (
-    <div className={clsx("inline", wrapperClassName)}>
+    <div className={cn("inline", wrapperClassName)}>
       <NewWrapper
-        className={clsx("flex w-full items-center justify-center gap-2", className)}
+        className={cn("flex w-full items-center justify-center gap-2", className)}
         slice={slice}
         modal={modal}
         partial={partial}
+        namespace={namespace}
       >
         <AiOutlinePlus /> {type === "button" ? l("base.new") : null}
       </NewWrapper>

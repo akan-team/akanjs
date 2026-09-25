@@ -1,6 +1,8 @@
 "use client";
 import { cnst, msg, st, usePage } from "@libs/shared/client";
-import { clsx } from "akanjs/client";
+import { buttonRecipe } from "@libs/util/ui";
+import { Int } from "akanjs/base";
+import { cn } from "akanjs/client";
 import { Input, Radio } from "akanjs/ui";
 import { useEffect, useState } from "react";
 
@@ -15,6 +17,23 @@ export const LeaveInfo = ({ className, redirect, leaveReasons, comeBackReasons }
   useEffect(() => {
     st.do.setLeaveInfo(new cnst.LeaveInfo());
   }, []);
+  st.tool("answerLeaveSurvey")
+    .desc(
+      "Answer the leaving survey — why you are going, how satisfied you were, and anything else. It does not close the account.",
+    )
+    .opt("type", cnst.LeaveType)
+    .opt("reason", String)
+    .opt("satisfaction", Int)
+    .opt("voc", String)
+    .exec((type, reason, satisfaction, voc) =>
+      st.do.setLeaveInfo({
+        ...leaveInfo,
+        ...(type ? { type } : {}),
+        ...(reason ? { reason } : {}),
+        ...(satisfaction ? { satisfaction } : {}),
+        ...(voc ? { voc } : {}),
+      }),
+    );
   if (leaveInfo.type === "noReply")
     return (
       <LeaveTypeStep
@@ -70,7 +89,7 @@ export const LeaveTypeStep = ({ className, value, onChange }: LeaveTypeStepProps
   const { l } = usePage();
   const [type, setType] = useState<cnst.LeaveType["value"]>(value);
   return (
-    <div className={clsx("flex h-full flex-col items-center justify-center gap-4", className)}>
+    <div className={cn("flex h-full flex-col items-center justify-center gap-4", className)}>
       <div className="mb-10 w-full text-xl">
         탈퇴를 선택하셨습니다.
         <br />
@@ -91,7 +110,7 @@ export const LeaveTypeStep = ({ className, value, onChange }: LeaveTypeStepProps
         ))}
       </Radio>
       <button
-        className="btn btn-primary w-full"
+        className={buttonRecipe({ variant: "primary" }, "w-full")}
         onClick={() => {
           onChange(type);
         }}
@@ -130,7 +149,7 @@ export const Reason = ({
   const reasons = leaveInfo.type === "comeback" ? comeBackReasons : leaveReasons;
   const [reason, setReason] = useState<string | null>(value);
   return (
-    <div className={clsx("flex flex-col items-center justify-center gap-4", className)}>
+    <div className={cn("flex flex-col items-center justify-center gap-4", className)}>
       <div className="mb-10 w-full text-xl">{askText}</div>
       <Radio
         className="flex flex-col items-start justify-start gap-5 px-2"
@@ -146,7 +165,7 @@ export const Reason = ({
         ))}
       </Radio>
       <button
-        className="btn btn-primary w-full"
+        className={buttonRecipe({ variant: "primary" }, "w-full")}
         disabled={!reason}
         onClick={() => {
           if (reason) onChange(reason);
@@ -168,7 +187,7 @@ export const Satisfaction = ({ className, value, onChange }: SatisfactionProps) 
   const satisfyLevel = ["매우 만족", "만족", "보통", "불만족", "매우 불만족"];
   const [satisfaction, setSatisfaction] = useState<number | null>(value);
   return (
-    <div className={clsx("flex flex-col items-center justify-center gap-4", className)}>
+    <div className={cn("flex flex-col items-center justify-center gap-4", className)}>
       <div className="mb-10 w-full text-xl">서비스에 대해 얼마나 만족하셨나요?</div>
       <Radio
         className="flex flex-col items-start justify-start gap-5 px-2"
@@ -184,7 +203,7 @@ export const Satisfaction = ({ className, value, onChange }: SatisfactionProps) 
         ))}
       </Radio>
       <button
-        className="btn btn-primary w-full"
+        className={buttonRecipe({ variant: "primary" }, "w-full")}
         disabled={satisfaction === null}
         onClick={() => {
           if (satisfaction !== null) onChange(satisfaction);
@@ -203,13 +222,20 @@ interface VocProps {
   redirect?: string;
 }
 export const Voc = ({ className, value, onChange, redirect }: VocProps) => {
+  st.tool("leaveService", { confirm: "Close the account permanently? This cannot be undone." })
+    .desc("Close this account for good and submit the leaving survey with it.")
+    .exec(async () => {
+      await st.do.setLeaveInfoOfSelf();
+      await st.do.removeSelf({ redirect });
+      msg.success("user.leaveSuccess");
+    });
   return (
-    <div className={clsx("flex flex-col items-center justify-center gap-4", className)}>
+    <div className={cn("flex flex-col items-center justify-center gap-4", className)}>
       <div className="mb-10 w-full text-xl">운영진에 바라는 개선사항을 알려주세요.</div>
       <Input.TextArea
         autoFocus
         className="w-full"
-        inputClassName="p-2 w-full rounded-md h-[300px] resize-none bg-base-100"
+        inputClassName="p-2 w-full rounded-md h-[300px] resize-none bg-background"
         value={value ?? ""}
         validate={(value) => true}
         placeholder="기타 의견을 남겨주세요."
@@ -218,7 +244,7 @@ export const Voc = ({ className, value, onChange, redirect }: VocProps) => {
         }}
       />
       <button
-        className="btn btn-secondary w-full"
+        className={buttonRecipe({ variant: "secondary" }, "w-full")}
         onClick={async () => {
           await st.do.setLeaveInfoOfSelf();
           if (!window.confirm("탈퇴하시겠습니까?")) return;

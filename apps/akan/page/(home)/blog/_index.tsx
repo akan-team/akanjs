@@ -73,13 +73,13 @@ export default function Page() {
   const [...listPosts] = posts;
 
   return (
-    <main className="min-h-screen bg-base-100 font-mono text-base-content">
-      <section className="border-base-300 border-b">
+    <main className="min-h-screen bg-background font-mono text-foreground">
+      <section className="border-border border-b">
         <div className="mx-auto max-w-5xl px-6 pt-16 pb-8 lg:px-8">
           <h1 className="font-bold text-2xl text-primary leading-none tracking-tight md:text-4xl">
             {l.trans({ en: "Akan.js Blog", ko: "Akan.js Blog" })}
           </h1>
-          <p className="mt-6 text-base-content/65 text-sm leading-8">
+          <p className="mt-6 text-foreground/65 text-sm leading-8">
             {l.trans({
               en: "Field notes on full-stack conventions, Bun-first runtime design, performance, and the small decisions that keep product work focused.",
               ko: "풀스택 컨벤션, Bun-first 런타임 설계, 성능, 그리고 제품 개발을 집중하게 만드는 작은 결정들에 관한 기록입니다.",
@@ -93,20 +93,20 @@ export default function Page() {
           <Link
             key={post.href}
             href={post.href}
-            className="group my-4 block rounded-2xl border border-base-300 p-5 transition hover:border-primary/30 hover:shadow-[0_18px_45px_rgba(var(--color-primary),0.18)]"
+            className="group my-4 block rounded-2xl border border-border p-5 transition hover:border-primary/30 hover:shadow-[0_18px_45px_rgba(var(--color-primary),0.18)]"
           >
             <article className="grid gap-6 md:grid-cols-[1fr_180px] md:items-center">
               <div>
-                <p className="font-semibold text-base-content/45 text-sm">{l.trans(post.eyebrow)}</p>
+                <p className="font-semibold text-foreground/45 text-sm">{l.trans(post.eyebrow)}</p>
                 <h2 className="mt-2 text-2xl leading-tight tracking-tight group-hover:text-primary">
                   {l.trans(post.title)}
                 </h2>
-                <p className="mt-3 text-base-content/65 text-sm leading-7">{l.trans(post.desc)}</p>
-                <p className="mt-4 text-base-content/40 text-xs">
+                <p className="mt-3 text-foreground/65 text-sm leading-7">{l.trans(post.desc)}</p>
+                <p className="mt-4 text-foreground/40 text-xs">
                   {l.trans(post.meta)} · {l.trans(post.date)}
                 </p>
               </div>
-              <div className="hidden h-28 overflow-hidden rounded-sm bg-base-200 md:block">
+              <div className="hidden h-28 overflow-hidden rounded-sm bg-muted md:block">
                 <img
                   src={post.image}
                   alt={l.trans(post.title)}

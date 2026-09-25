@@ -16,11 +16,11 @@ export const IntroTable = ({ items, type }: { items: IntroItem[]; type: string }
       <div className="hidden overflow-x-auto lg:block">
         <table className="table w-full">
           <thead>
-            <tr className="bg-base-200">
-              <th className="text-base-content">{type}</th>
-              <th className="text-base-content">{l.trans({ en: "Description", ko: "설명" })}</th>
+            <tr className="bg-muted">
+              <th className="text-foreground">{type}</th>
+              <th className="text-foreground">{l.trans({ en: "Description", ko: "설명" })}</th>
               {items.some((item) => !!item.example) ? (
-                <th className="text-base-content">{l.trans({ en: "Example", ko: "예제" })}</th>
+                <th className="text-foreground">{l.trans({ en: "Example", ko: "예제" })}</th>
               ) : null}
             </tr>
           </thead>
@@ -42,11 +42,11 @@ export const IntroTable = ({ items, type }: { items: IntroItem[]; type: string }
 
       <div className="space-y-4 lg:hidden">
         {items.map((item, index) => (
-          <div key={index} className="rounded-lg bg-base-100 p-3">
+          <div key={index} className="rounded-lg bg-background p-3">
             <div className="mb-2">
               <span className="block font-bold font-mono text-primary">{item.name}</span>
             </div>
-            <p className="mb-3 text-base-content text-sm leading-relaxed" style={{ whiteSpace: "pre-line" }}>
+            <p className="mb-3 text-foreground text-sm leading-relaxed" style={{ whiteSpace: "pre-line" }}>
               {item.desc}
             </p>
             {item.example ? <Code.Raw language="typescript" code={item.example as string} /> : null}

@@ -1,12 +1,17 @@
 "use client";
-import { useSpring } from "@react-spring/web";
-// TODO: 디자인 수정, 테마 적용 안됨
-import { clsx, usePage } from "akanjs/client";
-import { type ButtonHTMLAttributes, type ReactNode, useEffect, useState } from "react";
+import { cn, usePage } from "akanjs/client";
+import { useEscapeKey } from "akanjs/webkit";
+import { type ButtonHTMLAttributes, type ReactNode, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { BiMessageRoundedError } from "react-icons/bi";
+import { buttonRecipe } from "./Button";
+import { overlayZ, useOverlayLayerProps } from "./overlayLayer";
+import { useOverlayPosition } from "./overlayPosition";
+import { createOverridable, useUiRecipe } from "./UiOverride";
 
-import { animated } from "./animated";
-import { createOverridable } from "./UiOverride";
+// The pointer is a 12px square rotated 45°, so half of it reaches past the panel edge on the aimed side.
+const POINTER_HALF = 6;
+const TRIGGER_GAP = POINTER_HALF + 2;
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   loading?: boolean;
@@ -48,92 +53,106 @@ export const DefaultPopconfirm = ({
   decoClassName,
 }: PopconfirmProps) => {
   const { l } = usePage();
+  const recipe = useUiRecipe("button") ?? buttonRecipe;
   const [isConfirming, setIsConfirming] = useState(false);
-
-  const popconfirmProps = useSpring({
-    opacity: isConfirming ? 1 : 0,
-    from: {
-      opacity: 0,
-    },
+  // Resolved in an effect rather than at render, so the first client pass portals exactly what the server did.
+  const [portal, setPortal] = useState<HTMLElement | null>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Read through the portal-to-be: whichever dismissable scope rendered this popover owns it.
+  const overlayLayerProps = useOverlayLayerProps();
+  const position = useOverlayPosition({
+    opened: isConfirming,
+    triggerRef,
+    panelRef,
+    align: "end",
+    gap: TRIGGER_GAP,
   });
-
-  // popconfirm 위치 조정 (x 좌표가 음수인 경우)
-  useEffect(() => {
-    const popconfirm = document.querySelector(".popconfirm");
-    const popconfirmRect = popconfirm?.getBoundingClientRect();
-    const popconfirmDeco = document.querySelector(".popconfirm-deco");
-
-    // popconfirmRect.x 가 좌측 화면 밖으로 나가는 경우
-    if (popconfirmRect && popconfirmRect.x < 0) {
-      popconfirm?.classList.add("left-0", "right-auto");
-      popconfirmDeco?.classList.add("left-10", "left-auto");
-    }
-    // popconfirmRect.x 가 우측 화면 밖으로 나가는 경우
-    if (popconfirmRect && popconfirmRect.x + popconfirmRect.width > window.innerWidth) {
-      popconfirm?.classList.add("left-auto", "right-0");
-    }
-  }, [isConfirming]);
 
   const handleConfirm = () => {
     setIsConfirming(false);
     onConfirm?.();
   };
-
   const handleCancel = () => {
     setIsConfirming(false);
   };
+  useEscapeKey(isConfirming, handleCancel);
+  useEffect(() => {
+    setPortal(document.body);
+  }, []);
 
-  return (
+  const panel = (
     <>
-      <div className="relative inline-block">
+      <div
+        {...overlayLayerProps}
+        className="fixed inset-0"
+        style={{ zIndex: overlayZ.popconfirmScrim }}
+        onClick={handleCancel}
+      />
+      <div
+        {...overlayLayerProps}
+        className="w-64 animate-fadeIn rounded-box border border-border bg-popover p-4 text-popover-foreground shadow-xl"
+        // Inline, because a computed position cannot be a class.
+        style={{
+          position: "fixed",
+          zIndex: overlayZ.popconfirm,
+          top: position?.top ?? 0,
+          left: position?.left ?? 0,
+          visibility: position ? undefined : "hidden",
+        }}
+        ref={panelRef}
+        role="dialog"
+      >
         <div
-          className={clsx("trigger", triggerClassName)}
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsConfirming(true);
-          }}
-        >
-          {children}
+          className={cn(
+            "absolute size-3 rotate-45 border-border bg-popover",
+            // The two borders drawn are the outer corner, so they must follow the side the panel landed on.
+            position?.above ? "-bottom-1.5 border-r border-b" : "-top-1.5 border-t border-l",
+            decoClassName,
+          )}
+          style={decoClassName ? undefined : { left: (position?.anchorOffset ?? 0) - POINTER_HALF }}
+        />
+        <div className="flex gap-2">
+          <BiMessageRoundedError className="mt-0.5 shrink-0 text-lg text-warning" />
+          <div className="min-w-0">
+            <p className="font-semibold text-sm leading-snug">{title}</p>
+            {description ? <div className="mt-1 text-foreground/70 text-sm leading-snug">{description}</div> : null}
+          </div>
         </div>
-        {isConfirming && (
-          <animated.div
-            className="popconfirm absolute -right-2 bottom-0 z-10 translate-y-[106%] rounded-lg border border-base-300 bg-base-100 p-4 shadow-xl"
-            style={popconfirmProps}
+        <div className="mt-3 flex justify-end gap-2">
+          <button
+            className={recipe({ variant: "ghost", size: "xs" })}
+            onClick={handleCancel}
+            type="button"
+            {...cancelButtonProps}
           >
-            <div
-              className={clsx(
-                "popconfirm-deco absolute -top-2 size-4 rotate-45 rounded-sm border-base-300 border-t border-l bg-base-100",
-                { "right-10": !decoClassName },
-                decoClassName,
-              )}
-            ></div>
-            <div className="flex gap-1">
-              <BiMessageRoundedError className="text-orange-500" />
-              <div>
-                <p className="mb-2 whitespace-nowrap font-bold">{title}</p>
-                <div className="mb-2 whitespace-nowrap">{description}</div>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <button className="btn btn-xs btn-outline" onClick={handleCancel} {...cancelButtonProps}>
-                {cancelText ?? l("base.cancel")}
-              </button>
-              <button className="btn btn-xs" onClick={handleConfirm} {...okButtonProps}>
-                {okText ?? l("base.ok")}
-              </button>
-            </div>
-          </animated.div>
-        )}
+            {cancelText ?? l("base.cancel")}
+          </button>
+          <button
+            className={recipe({ variant: "primary", size: "xs" })}
+            onClick={handleConfirm}
+            type="button"
+            {...okButtonProps}
+          >
+            {okText ?? l("base.ok")}
+          </button>
+        </div>
       </div>
-      {isConfirming && (
-        <div
-          className="absolute top-0 left-0 h-screen w-full"
-          onClick={() => {
-            setIsConfirming(false);
-          }}
-        ></div>
-      )}
     </>
+  );
+  return (
+    <div className="relative inline-block" ref={triggerRef}>
+      <div
+        className={cn("trigger", triggerClassName)}
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsConfirming(true);
+        }}
+      >
+        {children}
+      </div>
+      {isConfirming && portal ? createPortal(panel, portal) : null}
+    </div>
   );
 };
 

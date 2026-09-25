@@ -1,0 +1,24 @@
+{
+  "title": "Workspace Onboarding",
+  "description": "Product-workspace orientation — layout, decision matrix, workflow recipes, and query gotchas",
+  "group": "core",
+  "codegenPriority": 2,
+  "deprecated": false,
+  "scans": [],
+  "update": {
+    "filePath": "./workspaceOnboarding.instruction.md",
+    "contents": [
+      "workspace layout and generated files",
+      "agent workflow and common commands",
+      "where-do-I-put-this decision matrix",
+      "workflow recipes",
+      "modeling and query gotchas"
+    ],
+    "rules": [
+      "Use current Akan APIs only",
+      "Write for someone building a product on Akan, not for someone changing Akan",
+      "Refer to the app as <%= appName %>; the renderer substitutes the workspace's first app",
+      "Do not repeat a rule that the conventions guideline already states"
+    ]
+  }
+}

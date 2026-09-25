@@ -17,7 +17,7 @@ export const Refresh = ({ children, onRefresh }: RefreshProps) => {
     <PullToRefresh
       onRefresh={onRefresh}
       refreshingContent={
-        <div className="fixed left-1/2 flex size-10 -translate-x-1/2 items-center justify-center rounded-full bg-base-100 shadow-sm">
+        <div className="fixed left-1/2 flex size-10 -translate-x-1/2 items-center justify-center rounded-full bg-background shadow-sm">
           <BiLoaderAlt className="animate-spin text-2xl" />
         </div>
       }

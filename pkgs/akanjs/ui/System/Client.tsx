@@ -2,11 +2,12 @@
 import { type ClientEnv, dayjs, getEnv, logo } from "akanjs/base";
 import {
   clearRscNavigationCache,
-  clsx,
+  cn,
   Device,
   debugFrame,
   defaultPageState,
   fetch,
+  getCookie,
   getPathInfo,
   initAuth,
   type Location,
@@ -194,7 +195,7 @@ export const ClientPathWrapper = ({
       <animated.div
         {...bindProps}
         {...props}
-        className={clsx("group/path", className)}
+        className={cn("group/path", className)}
         ref={wrapperRef}
         style={{ ...frameCssVars, ...(bindProps.style ?? {}), ...(style ?? {}) } as TransitionStyle}
         data-lang={lang}
@@ -218,10 +219,10 @@ interface ClientBridgeProps {
 
 export const ClientBridge = ({ env, lang, theme, prefix, gaTrackingId, wsConnect = true }: ClientBridgeProps) => {
   (globalThis as typeof globalThis & { __AKAN_CLIENT_ENV__?: ClientEnv }).__AKAN_CLIENT_ENV__ = env;
-  const uiOperation = st.use.uiOperation();
-  const pathname = st.use.pathname();
-  const params = st.use.params();
-  const searchParams = st.use.searchParams();
+  const uiOperation = st.use.uiOperation({ agent: false });
+  const pathname = st.use.pathname({ agent: false });
+  const params = st.use.params({ agent: false });
+  const searchParams = st.use.searchParams({ agent: false });
   const language = (params.lang as string | undefined) ?? lang;
   const path = `/${pathname.split("/").slice(2).join("/")}`;
   // const { setTheme, themes, theme: nextTheme } = useTheme();
@@ -256,9 +257,16 @@ export const ClientBridge = ({ env, lang, theme, prefix, gaTrackingId, wsConnect
     (fetch.instance as { connect: () => void }).connect();
   }, [wsConnect]);
 
+  useLayoutEffect(() => {
+    restoreDocumentTheme(theme);
+  }, [theme, pathname]);
+
   useEffect(() => {
-    if (getThemeCookie() !== undefined) return;
-    applyThemePolicy(theme ?? "system");
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) restoreDocumentTheme(theme);
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
   }, [theme]);
 
   // useEffect(() => {
@@ -297,11 +305,15 @@ export const ClientBridge = ({ env, lang, theme, prefix, gaTrackingId, wsConnect
 };
 Client.Bridge = ClientBridge;
 
-function getThemeCookie(): string | undefined {
-  return document.cookie
-    .split(";")
-    .find((cookie) => cookie.trim().startsWith("theme="))
-    ?.split("=")[1];
+function restoreDocumentTheme(layoutTheme: AkanTheme | undefined): void {
+  const cookieTheme = getCookie("theme");
+  // RSC cache replay and bfcache can restore a stale data-theme; the cookie is the live preference.
+  if (cookieTheme) {
+    document.documentElement.setAttribute("data-theme", cookieTheme);
+    st.do.setTheme(cookieTheme);
+    return;
+  }
+  applyThemePolicy(layoutTheme ?? "system");
 }
 
 function applyThemePolicy(theme: AkanTheme): void {
@@ -328,7 +340,7 @@ function buildSearchParams(entries: Iterable<[string, string]>): Record<string, 
 }
 
 export const ClientInner = () => {
-  const uiOperation = st.use.uiOperation();
+  const uiOperation = st.use.uiOperation({ agent: false });
   return (
     <>
       <div key="modal-root" id="modal-root" />

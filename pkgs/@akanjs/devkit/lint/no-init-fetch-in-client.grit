@@ -1,0 +1,47 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// `fetch.init<Model><Suffix>` is not a request, it is a hydration snapshot. `#registerSlice`
+// (pkgs/akanjs/fetch/client/fetchClient.ts) composes it out of the slice's list and insight queries and
+// returns a `ServerInit` whose only consumer is the `init` prop of `Load.Units` / `Load.View`, which
+// writes it into the store before React ever renders. `fetch.get<Model>Init<Suffix>` is the same call
+// returning the payload alone. Run from a route they resolve before the first byte and the markup ships
+// populated; run after hydration they are two extra round-trips for a shell the browser already painted
+// empty, landing in a local variable no store reads — `Load.*` seeds state, so a value held in a client
+// closure reaches nothing.
+//
+// The client is not missing the load, only this spelling of it: every slice also generates
+// `st.do.init<Model><Suffix>` (pkgs/akanjs/store/action.ts), which runs the same two queries and commits
+// them to state.
+//
+// Both names are matched by shape, since a lint rule cannot know which slices exist. The generated one is
+// `init` + `Capitalize<refName>` + `Capitalize<suffix>`, so it always carries two capital-led segments —
+// requiring the second one is what keeps a hand-written `initPayment` / `initSession` endpoint out, while
+// `initializeSomething` was never at risk (`init` is followed by a lowercase letter). What is left over is a
+// custom endpoint that happens to spell the generated shape exactly, `initPaymentSession` or
+// `get<X>Init<Y>`; suppress that one with `// biome-ignore lint/plugin: <reason>`.
+//
+// `view`/`edit` hydrate the same way but are not matched here: `edit<X>` is a plausible custom endpoint
+// name, whereas the two shapes above are not.
+//
+// The gate is the file. `JsDirective` anchors `"use client"` to the real directive — docs pages carry the
+// same text as an ordinary string literal and inside sample code, and neither is one. `*.store.ts` is
+// added by name because a store is client-only by role and carries no directive.
+JsCallExpression() as $call where {
+  $call <: `fetch.$endpoint($...)`,
+  $endpoint <: or {
+    r"init[A-Z][A-Za-z0-9_$]*[A-Z][A-Za-z0-9_$]*",
+    r"get[A-Z][A-Za-z0-9_$]*Init[A-Z][A-Za-z0-9_$]*"
+  },
+  or {
+    $filename <: r".*\.store\.ts",
+    $call <: within JsModule() as $module where {
+      $module <: contains JsDirective() as $directive where { $directive <: r"[\s\S]*use client[\s\S]*" }
+    }
+  },
+  register_diagnostic(
+    span = $call,
+    message = "This is a server-side hydration call. It composes the slice's list and insight queries into a snapshot whose only consumer is the init prop of Load.Units / Load.View, so on the client it costs two extra round-trips for a shell the browser already painted, and the result lands in a value nothing reads. Load it in the route — await fetch.initXInY(...) in page/** and pass the result down as an init prop, or hand the unawaited promise to a Zone and let Load.* resolve it behind a skeleton. To reload from the client, call the generated store action st.do.initXInY() instead, which writes the same data into state.",
+    severity = "error"
+  )
+}

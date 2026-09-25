@@ -200,7 +200,7 @@ export class IncrementalBuilderHost {
     // one at a time, into the dev error page a recycle is supposed to be invisible to. `ready` the
     // field is deliberately untouched: `onExit` reads it to tell a planned exit from a boot failure.
     this.#status = "recycling";
-    this.logger.info(`recycling builder pid=${proc.pid} (${reason})`);
+    this.logger.debug(`recycling builder pid=${proc.pid} (${reason})`);
     this.#recycleTimer = setTimeout(() => {
       this.#recycleTimer = null;
       if (this.#proc !== proc) return;

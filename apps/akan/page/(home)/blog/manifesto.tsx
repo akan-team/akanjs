@@ -1,4 +1,5 @@
 import { usePage } from "@apps/akan/client";
+import { panelRecipe } from "@apps/akan/ui";
 
 const principles = [
   {
@@ -55,16 +56,16 @@ export default function Page() {
   const { l } = usePage();
 
   return (
-    <main className="min-h-screen bg-base-100 text-base-content">
+    <main className="min-h-screen bg-background text-foreground">
       <article className="mx-auto max-w-3xl px-6 py-10 lg:px-8">
         <header>
           <div className="mb-12 flex items-center justify-between gap-4">
-            <p className="font-semibold text-base-content/50 text-sm uppercase tracking-[0.2em]">
+            <p className="font-semibold text-foreground/50 text-sm uppercase tracking-[0.2em]">
               {l.trans({ en: "Akan.js Manifesto", ko: "Akan.js Manifesto" })}
             </p>
           </div>
 
-          <p className="mb-4 text-base-content/50 text-sm">
+          <p className="mb-4 text-foreground/50 text-sm">
             {l.trans({ en: "Why we build Akan.js", ko: "왜 Akan.js를 만드는가" })}
           </p>
           <h1 className="font-black text-4xl leading-tight tracking-tight md:text-5xl">
@@ -73,7 +74,7 @@ export default function Page() {
               ko: "개발자는 중요한 일에 인생을 써야 한다",
             })}
           </h1>
-          <p className="mt-6 text-base-content/70 text-lg leading-8">
+          <p className="mt-6 text-foreground/70 text-lg leading-8">
             {l.trans({
               en: "Akan.js exists because modern software teams lose too much time to project boundaries, duplicated source code, framework glue, and style mismatches. We want one clear way to describe a business and let the system carry that intent across web, app-oriented clients, servers, databases, and deployment.",
               ko: "Akan.js는 현대 소프트웨어 팀이 프로젝트 경계, 중복된 소스코드, 프레임워크 접착 작업, 서로 다른 코딩 스타일에 너무 많은 시간을 잃고 있다는 문제의식에서 출발했습니다. 우리는 비즈니스를 설명하는 하나의 명확한 방법을 만들고, 그 의도가 web, app-oriented client, server, database, deployment까지 흐르게 하고 싶습니다.",
@@ -81,14 +82,14 @@ export default function Page() {
           </p>
         </header>
 
-        <section className="mt-12 rounded-3xl bg-base-200 p-6 md:p-8">
+        <section className="mt-12 rounded-3xl bg-muted p-6 md:p-8">
           <p className="font-bold text-primary text-sm uppercase tracking-[0.2em]">
             {l.trans({ en: "The problem", ko: "문제의식" })}
           </p>
           <h2 className="mt-3 font-bold text-2xl">
             {l.trans({ en: "Too much work is not product work", ko: "너무 많은 일이 제품을 위한 일이 아니다" })}
           </h2>
-          <div className="mt-4 space-y-4 text-base-content/75 leading-7">
+          <div className="mt-4 space-y-4 text-foreground/75 leading-7">
             <p>
               {l.trans({
                 en: "A business usually needs a frontend, backend, database model, mobile surface, admin screen, deployment pipeline, test setup, and monitoring path. The intent is often the same, but each layer asks developers to repeat it in a different language.",
@@ -114,7 +115,7 @@ export default function Page() {
           <h2 className="font-bold text-2xl">
             {l.trans({ en: "Convention is a communication tool", ko: "컨벤션은 의사소통 도구다" })}
           </h2>
-          <div className="mt-4 space-y-4 text-base-content/75 leading-7">
+          <div className="mt-4 space-y-4 text-foreground/75 leading-7">
             <p>
               {l.trans({
                 en: "Ruby on Rails gave the industry a powerful phrase: convention over configuration. Akan.js takes that idea seriously for both human programmers and AI coding agents.",
@@ -138,9 +139,9 @@ export default function Page() {
 
         <section className="mt-12 grid gap-4 md:grid-cols-3">
           {principles.map((principle) => (
-            <div key={principle.title.en} className="rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm">
+            <div key={principle.title.en} className={panelRecipe({ radius: "2xl", padding: "lg" }, "shadow-sm")}>
               <h3 className="font-bold text-lg">{l.trans(principle.title)}</h3>
-              <p className="mt-3 text-base-content/70 text-sm leading-6">{l.trans(principle.desc)}</p>
+              <p className="mt-3 text-foreground/70 text-sm leading-6">{l.trans(principle.desc)}</p>
             </div>
           ))}
         </section>
@@ -151,12 +152,12 @@ export default function Page() {
           </h2>
           <div className="mt-6 space-y-4">
             {timeline.map((item) => (
-              <div key={item.year} className="rounded-2xl bg-base-200 p-5">
+              <div key={item.year} className="rounded-2xl bg-muted p-5">
                 <div className="flex flex-wrap items-baseline gap-3">
                   <span className="font-black text-2xl text-primary">{item.year}</span>
                   <h3 className="font-bold text-lg">{l.trans(item.title)}</h3>
                 </div>
-                <p className="mt-3 text-base-content/70 leading-7">{l.trans(item.desc)}</p>
+                <p className="mt-3 text-foreground/70 leading-7">{l.trans(item.desc)}</p>
               </div>
             ))}
           </div>
@@ -166,7 +167,7 @@ export default function Page() {
           <h2 className="font-bold text-2xl">
             {l.trans({ en: "What Akan.js is trying to protect", ko: "Akan.js가 지키려는 것" })}
           </h2>
-          <p className="mt-4 text-base-content/75 leading-7">
+          <p className="mt-4 text-foreground/75 leading-7">
             {l.trans({
               en: "Akan.js is not only a faster stack or a different folder rule. It is an attempt to protect developer attention. Source code should be reusable, business intent should stay unified, and product teams should not burn their lives on accidental complexity.",
               ko: "Akan.js는 단지 더 빠른 스택이나 다른 폴더 규칙이 아닙니다. 개발자의 주의력을 지키려는 시도입니다. 소스코드는 재사용 가능해야 하고, 비즈니스 의도는 통합되어 있어야 하며, 제품 팀은 우연한 복잡성 때문에 삶을 태워서는 안 됩니다.",

@@ -15,7 +15,7 @@ import {
   type LexicalNode,
   type NodeKey,
 } from "lexical";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { MediaAlign } from "./shared.type";
 
 export const ALIGN_TO_JUSTIFY: Record<MediaAlign, string> = {
@@ -74,6 +74,35 @@ export const useMediaNode = (nodeKey: NodeKey) => {
   }, [editor, nodeKey]);
 
   return { editor: editor as LexicalEditor, editable, isSelected, setSelected, removeNode };
+};
+
+/**
+ * Tracks the tone of the daisyUI theme on `<html>` so a node that bakes colors
+ * into its own render (Mermaid) can redraw when the app flips light/dark. Falls
+ * back to the OS preference while no `data-theme` is pinned. Starts `false` so
+ * the server render and the first client render agree.
+ */
+export const useDarkTheme = () => {
+  const [dark, setDark] = useState(false);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const read = () => {
+      const theme = root.getAttribute("data-theme");
+      setDark(theme ? theme === "dark" : media.matches);
+    };
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+    media.addEventListener("change", read);
+    return () => {
+      observer.disconnect();
+      media.removeEventListener("change", read);
+    };
+  }, []);
+
+  return dark;
 };
 
 /**

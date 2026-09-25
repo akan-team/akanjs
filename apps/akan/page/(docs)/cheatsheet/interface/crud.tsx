@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "CRUD는 보통 가장 먼저 만드는 화면입니다. 목록을 보고, 하나를 열고, 새로 만들고, 수정하고, 삭제합니다. Akan에서는 이런 작업 대부분이 model slice 주변에 이미 준비되어 있습니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Slice decides which records this screen can read and edit.",
@@ -30,10 +30,10 @@ export default function Page() {
                 ko: "Load와 Model component는 slice를 UI 동작에 연결합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="slice" title={l.trans({ en: "Start With A Slice", ko: "Slice부터 시작하기" })}>
         <Docs.Title>{l.trans({ en: "Start With A Slice", ko: "Slice부터 시작하기" })}</Docs.Title>
@@ -46,6 +46,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Post slice", ko: "Post slice" })}
           code={`export class PostSlice extends slice(
   srv.post,
@@ -58,7 +59,7 @@ export default function Page() {
 ) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="list" title={l.trans({ en: "List And Open", ko: "목록과 열기" })}>
         <Docs.Title>{l.trans({ en: "List And Open", ko: "목록과 열기" })}</Docs.Title>
@@ -71,6 +72,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Post list zone", ko: "Post list zone" })}
           code={`export const PublicPosts = ({ init }) => {
   return (
@@ -89,7 +91,7 @@ export default function Page() {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="create-edit" title={l.trans({ en: "Create And Edit", ko: "생성하고 수정하기" })}>
         <Docs.Title>{l.trans({ en: "Create And Edit", ko: "생성하고 수정하기" })}</Docs.Title>
@@ -102,6 +104,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Create page", ko: "생성 page" })}
           code={`<Load.Edit
   slice={fetch.slice.postInAdmin}
@@ -113,13 +116,14 @@ export default function Page() {
 </Load.Edit>`}
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Edit modal", ko: "수정 modal" })}
           code={`<Model.EditModal id={post.id} slice={fetch.slice.postInAdmin} type="form">
   <Post.Template.General />
 </Model.EditModal>`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="remove" title={l.trans({ en: "Remove In Util", ko: "삭제는 Util에 두기" })}>
         <Docs.Title>{l.trans({ en: "Remove In Util", ko: "삭제는 Util에 두기" })}</Docs.Title>
@@ -132,6 +136,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Remove helper", ko: "삭제 helper" })}
           code={`export const Remove = ({ postId }: { postId: string }) => {
   const { l } = usePage();
@@ -143,12 +148,12 @@ export default function Page() {
 };`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Name slices after screens, not database queries.",
@@ -167,10 +172,10 @@ export default function Page() {
                 ko: "삭제, 발행, 승인, dialog 열기처럼 반복되는 동작은 Util component로 빼세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

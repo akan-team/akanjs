@@ -1,7 +1,9 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { type ReactNode, useContext, useEffect } from "react";
 
+import { agentAttrs } from "../agentAttrs";
+import { Tooltip } from "../Tooltip";
 import { TabContext } from "./context";
 
 export interface MenuProps {
@@ -24,33 +26,45 @@ export const Menu = ({
   scrollToTop,
   tooltip,
 }: MenuProps) => {
-  const { menu: currentMenu, setMenu, menuSet } = useContext(TabContext);
+  const { menu: currentMenu, setMenu, menus, switchTab } = useContext(TabContext);
   useEffect(() => {
-    if (!menuSet.current) return;
-    menuSet.current.add(menu);
-  }, [menu]);
+    if (!menus.current) return;
+    menus.current.set(menu, disabled);
+    return () => {
+      menus.current?.delete(menu);
+    };
+  }, [menu, disabled]);
   useEffect(() => {
-    if (!disabled || !menuSet.current) return;
-    if (currentMenu === menu) setMenu([...menuSet.current.values()].find((m) => m !== menu) ?? null);
+    if (!disabled || !menus.current) return;
+    if (currentMenu === menu) setMenu([...menus.current].find(([key, off]) => key !== menu && !off)?.[0] ?? null);
   }, [disabled]);
 
+  const active = menu === currentMenu;
   return (
-    <div
-      data-tip={tooltip}
-      className={clsx(className, {
-        "cursor-pointer": menu !== currentMenu && !disabled,
-        "cursor-not-allowed": disabled,
-        tooltip: !!tooltip,
-        [activeClassName]: menu === currentMenu,
-        [disabledClassName]: disabled,
-      })}
-      onClick={() => {
-        if (disabled) return;
-        setMenu(menu);
-        if (scrollToTop) window.scrollTo({ top: 0, behavior: "smooth" });
-      }}
-    >
-      {children}
-    </div>
+    <Tooltip content={tooltip}>
+      <button
+        aria-selected={active}
+        className={cn(
+          "rounded-field px-3 py-1.5 font-medium text-sm transition-colors",
+          !active && !disabled && "cursor-pointer text-foreground/55 hover:bg-muted/60 hover:text-foreground/80",
+          active && "bg-muted text-foreground",
+          disabled && "cursor-not-allowed opacity-50",
+          className,
+          active && activeClassName,
+          disabled && disabledClassName,
+        )}
+        disabled={disabled}
+        onClick={() => {
+          if (disabled) return;
+          switchTab(menu);
+          if (scrollToTop) window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
+        {...agentAttrs(switchTab)}
+        role="tab"
+        type="button"
+      >
+        {children}
+      </button>
+    </Tooltip>
   );
 };

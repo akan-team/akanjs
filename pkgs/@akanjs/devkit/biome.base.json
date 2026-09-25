@@ -1,0 +1,336 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.8/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": false
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 120
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "suspicious": {
+        "noConsole": {
+          "level": "error",
+          "options": {
+            "allow": ["assert", "error", "info", "warn"]
+          }
+        },
+        "noArrayIndexKey": "off",
+        "noShadowRestrictedNames": "off",
+        "noUnnecessaryConditions": {
+          "level": "warn"
+        }
+      },
+      "correctness": {
+        "noUnusedFunctionParameters": "off",
+        "noUnusedImports": {
+          "level": "error",
+          "fix": "safe"
+        },
+        "useParseIntRadix": "off",
+        "useExhaustiveDependencies": "off",
+        "useHookAtTopLevel": "off"
+      },
+      "nursery": {
+        "useSortedClasses": {
+          "level": "error",
+          "fix": "safe",
+          "options": {
+            "attributes": ["classList"],
+            "functions": ["cn"]
+          }
+        }
+      },
+      "a11y": "off",
+      "complexity": {
+        "noStaticOnlyClass": "off"
+      },
+      "style": {
+        "useTemplate": {
+          "level": "warn",
+          "fix": "safe"
+        }
+      }
+    },
+    "domains": {
+      "project": "recommended",
+      "react": "recommended",
+      "test": "recommended",
+      "types": "all"
+    }
+  },
+  "javascript": {
+    "parser": {
+      "unsafeParameterDecoratorsEnabled": true
+    },
+    "formatter": {
+      "quoteStyle": "double"
+    }
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "**/env.client.local.ts",
+        "**/env.client.debug.ts",
+        "**/env.client.develop.ts",
+        "**/env.client.main.ts",
+        "**/env.client.testing.ts",
+        "**/env.server.local.ts",
+        "**/env.server.develop.ts",
+        "**/env.server.main.ts",
+        "**/env.server.testing.ts",
+        "**/env.server.type.ts",
+        "apps/*/lib/cnst.ts",
+        "apps/*/lib/dict.ts",
+        "apps/*/lib/db.ts",
+        "apps/*/lib/srv.ts",
+        "apps/*/lib/st.ts",
+        "apps/*/lib/sig.ts",
+        "apps/*/lib/useClient.ts",
+        "apps/*/lib/useServer.ts",
+        "apps/*/client.ts",
+        "apps/*/server.ts",
+        "apps/*/lib/*/index.tsx",
+        "libs/*/lib/cnst.ts",
+        "libs/*/lib/dict.ts",
+        "libs/*/lib/db.ts",
+        "libs/*/lib/srv.ts",
+        "libs/*/lib/st.ts",
+        "libs/*/lib/sig.ts",
+        "libs/*/lib/useClient.ts",
+        "libs/*/lib/useServer.ts",
+        "libs/*/client.ts",
+        "libs/*/server.ts",
+        "libs/*/index.ts",
+        "libs/*/lib/*/index.tsx",
+        "apps/*/lib/__lib/**",
+        "libs/*/lib/__lib/**"
+      ],
+      "linter": { "enabled": false },
+      "formatter": { "enabled": false },
+      "assist": { "enabled": false }
+    },
+    {
+      "includes": [
+        "apps/**/*.ts",
+        "apps/**/*.tsx",
+        "libs/**/*.ts",
+        "libs/**/*.tsx",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.spec.ts",
+        "!**/*.spec.tsx",
+        "!**/*.constant.ts",
+        "!**/common/**",
+        "!**/env/**"
+      ],
+      "plugins": ["./node_modules/@akanjs/devkit/lint/no-throw-raw-error.grit"]
+    },
+    {
+      "includes": [
+        "{apps,libs}/**/page/**/*.ts",
+        "{apps,libs}/**/page/**/*.tsx",
+        "{apps,libs}/**/*.Unit.tsx",
+        "{apps,libs}/**/*.View.tsx"
+      ],
+      "plugins": [
+        "./node_modules/@akanjs/devkit/lint/no-import-client-functions.grit",
+        "./node_modules/@akanjs/devkit/lint/no-use-client-in-server.grit"
+      ]
+    },
+    {
+      "includes": ["{apps,libs}/**/page/**/*.ts", "{apps,libs}/**/page/**/*.tsx"],
+      "plugins": ["./node_modules/@akanjs/devkit/lint/non-scalar-props-restricted.grit"]
+    },
+    {
+      "includes": [
+        "{apps,libs}/**/*.constant.ts",
+        "{apps,libs}/**/*.document.ts",
+        "{apps,libs}/**/*.service.ts",
+        "{apps,libs}/**/*.store.ts"
+      ],
+      "plugins": ["./node_modules/@akanjs/devkit/lint/no-js-private-class-method.grit"]
+    },
+    {
+      "includes": ["{apps,libs}/**/*.store.ts"],
+      "plugins": ["./node_modules/@akanjs/devkit/lint/no-return-in-store-action.grit"]
+    },
+    {
+      "includes": ["{apps,libs}/**/*.signal.ts"],
+      "plugins": ["./node_modules/@akanjs/devkit/lint/no-redeclare-predefined-endpoint.grit"]
+    },
+    {
+      "includes": ["{apps,libs}/**/*.Util.tsx", "{apps,libs}/**/*.Zone.tsx"],
+      "plugins": ["./node_modules/@akanjs/devkit/lint/no-model-type-in-util-zone.grit"]
+    },
+    {
+      "includes": ["{apps,libs}/**/ui/**/*.tsx", "!**/*.test.tsx", "!**/*.spec.tsx"],
+      "plugins": ["./node_modules/@akanjs/devkit/lint/no-async-component-in-ui.grit"]
+    },
+    {
+      "includes": ["{apps,libs}/**/*.tsx", "!**/*.test.tsx", "!**/*.spec.tsx"],
+      "plugins": ["./node_modules/@akanjs/devkit/lint/no-unpublished-form-setter.grit"]
+    },
+    {
+      "includes": [
+        "{apps,libs}/**/*.ts",
+        "{apps,libs}/**/*.tsx",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.spec.ts",
+        "!**/*.spec.tsx"
+      ],
+      "plugins": ["./node_modules/@akanjs/devkit/lint/no-init-fetch-in-client.grit"]
+    },
+    {
+      "includes": [
+        "**/ui/**/*.ts",
+        "**/ui/**/*.tsx",
+        "**/webkit/**/*.ts",
+        "**/webkit/**/*.tsx",
+        "**/common/**/*.ts",
+        "**/page/**/*.tsx",
+        "**/*.constant.ts",
+        "**/*.store.ts",
+        "**/*.Template.tsx",
+        "**/*.Unit.tsx",
+        "**/*.Util.tsx",
+        "**/*.View.tsx",
+        "**/*.Zone.tsx",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.spec.ts",
+        "!**/*.spec.tsx"
+      ],
+      "plugins": ["./node_modules/@akanjs/devkit/lint/no-bang-comment-in-client.grit"]
+    },
+    {
+      "includes": [
+        "{apps,libs}/**/*.constant.ts",
+        "{apps,libs}/**/*.dictionary.ts",
+        "{apps,libs}/**/*.document.ts",
+        "{apps,libs}/**/*.service.ts",
+        "{apps,libs}/**/*.signal.ts",
+        "{apps,libs}/**/*.store.ts",
+        "{apps,libs}/**/*.Template.tsx",
+        "{apps,libs}/**/*.Unit.tsx",
+        "{apps,libs}/**/*.Util.tsx",
+        "{apps,libs}/**/*.View.tsx",
+        "{apps,libs}/**/*.Zone.tsx"
+      ],
+      "plugins": ["./node_modules/@akanjs/devkit/lint/no-deep-internal-import.grit"]
+    },
+    {
+      "includes": [
+        "{apps,libs}/**/page/**/*.ts",
+        "{apps,libs}/**/page/**/*.tsx",
+        "{apps,libs}/**/index.ts",
+        "{apps,libs}/**/index.tsx",
+        "{apps,libs}/**/cnst.ts",
+        "{apps,libs}/**/db.ts",
+        "{apps,libs}/**/dict.ts",
+        "{apps,libs}/**/option.ts",
+        "{apps,libs}/**/sig.ts",
+        "{apps,libs}/**/srv.ts",
+        "{apps,libs}/**/st.ts",
+        "{apps,libs}/**/*.constant.ts",
+        "{apps,libs}/**/*.dictionary.ts",
+        "{apps,libs}/**/*.document.ts",
+        "{apps,libs}/**/*.service.ts",
+        "{apps,libs}/**/*.signal.ts",
+        "{apps,libs}/**/*.signal.test.ts",
+        "{apps,libs}/**/*.service.test.ts",
+        "{apps,libs}/**/*.store.ts",
+        "{apps,libs}/**/*.Template.tsx",
+        "{apps,libs}/**/*.Unit.tsx",
+        "{apps,libs}/**/*.Util.tsx",
+        "{apps,libs}/**/*.View.tsx",
+        "{apps,libs}/**/*.Zone.tsx"
+      ],
+      "plugins": [
+        "./node_modules/@akanjs/devkit/lint/no-import-external-library.grit",
+        "./node_modules/@akanjs/devkit/lint/no-deep-internal-import.grit"
+      ]
+    },
+    {
+      "includes": [
+        "apps/**/*.tsx",
+        "libs/**/*.tsx",
+        "apps/**/ui/**/*.ts",
+        "libs/**/ui/**/*.ts",
+        "apps/**/webkit/**/*.ts",
+        "libs/**/webkit/**/*.ts",
+        "apps/**/page/**/*.ts",
+        "libs/**/page/**/*.ts",
+        "apps/**/common/**/*.ts",
+        "libs/**/common/**/*.ts",
+        "apps/**/*.store.ts",
+        "libs/**/*.store.ts",
+        "apps/**/*.constant.ts",
+        "libs/**/*.constant.ts",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.spec.ts",
+        "!**/*.spec.tsx"
+      ],
+      "plugins": ["./node_modules/@akanjs/devkit/lint/no-import-server-in-client.grit"]
+    },
+    {
+      "includes": [
+        "apps/**/*.document.ts",
+        "libs/**/*.document.ts",
+        "apps/**/*.dictionary.ts",
+        "libs/**/*.dictionary.ts",
+        "apps/**/*.service.ts",
+        "libs/**/*.service.ts",
+        "apps/**/*.signal.ts",
+        "libs/**/*.signal.ts",
+        "apps/**/srvkit/**/*.ts",
+        "libs/**/srvkit/**/*.ts",
+        "apps/**/common/**/*.ts",
+        "libs/**/common/**/*.ts",
+        "apps/**/*.constant.ts",
+        "libs/**/*.constant.ts",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.spec.ts",
+        "!**/*.spec.tsx"
+      ],
+      "plugins": ["./node_modules/@akanjs/devkit/lint/no-import-client-in-server.grit"]
+    },
+    {
+      "includes": [
+        "apps/**/*.ts",
+        "apps/**/*.tsx",
+        "libs/**/*.ts",
+        "libs/**/*.tsx",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.spec.ts",
+        "!**/*.spec.tsx"
+      ],
+      "plugins": [
+        "./node_modules/@akanjs/devkit/lint/no-raw-palette-class.grit",
+        "./node_modules/@akanjs/devkit/lint/no-arbitrary-color.grit",
+        "./node_modules/@akanjs/devkit/lint/no-daisyui-legacy-class.grit",
+        "./node_modules/@akanjs/devkit/lint/no-inline-color.grit",
+        "./node_modules/@akanjs/devkit/lint/no-interpolated-arbitrary-class.grit"
+      ]
+    }
+  ]
+}

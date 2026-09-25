@@ -25,12 +25,12 @@ export const OptionTable = ({ items }: { items: OptionItem[] }) => {
             <col style={{ width: "40%" }} />
           </colgroup>
           <thead>
-            <tr className="bg-base-300">
-              <th className="text-base-content text-xs lg:text-sm">{l.trans({ en: "Option", ko: "옵션" })}</th>
-              <th className="text-base-content text-xs lg:text-sm">{l.trans({ en: "Type", ko: "타입" })}</th>
-              <th className="text-base-content text-xs lg:text-sm">{l.trans({ en: "Default", ko: "기본값" })}</th>
-              <th className="text-base-content text-xs lg:text-sm">{l.trans({ en: "Description", ko: "설명" })}</th>
-              <th className="text-base-content text-xs lg:text-sm">{l.trans({ en: "Example", ko: "예제" })}</th>
+            <tr className="bg-border">
+              <th className="text-foreground text-xs lg:text-sm">{l.trans({ en: "Option", ko: "옵션" })}</th>
+              <th className="text-foreground text-xs lg:text-sm">{l.trans({ en: "Type", ko: "타입" })}</th>
+              <th className="text-foreground text-xs lg:text-sm">{l.trans({ en: "Default", ko: "기본값" })}</th>
+              <th className="text-foreground text-xs lg:text-sm">{l.trans({ en: "Description", ko: "설명" })}</th>
+              <th className="text-foreground text-xs lg:text-sm">{l.trans({ en: "Example", ko: "예제" })}</th>
             </tr>
           </thead>
           <tbody>
@@ -51,15 +51,15 @@ export const OptionTable = ({ items }: { items: OptionItem[] }) => {
 
       <div className="space-y-4 lg:hidden">
         {items.map((item, index) => (
-          <div key={index} className="rounded-lg bg-base-100 p-3">
+          <div key={index} className="rounded-lg bg-background p-3">
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <span className="font-bold font-mono text-primary">{item.key}</span>
-              <span className="text-base-content text-xs opacity-50">:</span>
+              <span className="text-foreground text-xs opacity-50">:</span>
               <span className="font-mono text-secondary text-sm">{item.type}</span>
-              <span className="text-base-content text-xs opacity-50">:</span>
+              <span className="text-foreground text-xs opacity-50">:</span>
               <span className="font-mono text-secondary text-sm">{item.default ?? "-"}</span>
             </div>
-            <p className="mb-3 text-base-content text-sm leading-relaxed">{item.desc}</p>
+            <p className="mb-3 text-foreground text-sm leading-relaxed">{item.desc}</p>
             <Code.Raw language="typescript" code={item.example} />
           </div>
         ))}

@@ -129,7 +129,7 @@ interface PublishProps {
 export const Publish = ({ postId }: PublishProps) => {
   const { l } = usePage();
   return (
-    <button className={clsx("btn btn-primary", className)} onClick={() => st.do.publishPost(postId)}>
+    <button className={buttonRecipe({ variant: "primary" }, className)} onClick={() => st.do.publishPost(postId)}>
       {l("post.signal.publishPost")}
     </button>
   );

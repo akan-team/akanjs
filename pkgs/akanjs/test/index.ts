@@ -13,4 +13,4 @@ export {
   setupSignalTestTarget,
   terminateSignalTestContext,
 } from "./signalTestRuntime";
-export { TestServer, type TestServerOptions } from "./testServer";
+export { type TestEnv, TestServer, type TestServerOptions } from "./testServer";

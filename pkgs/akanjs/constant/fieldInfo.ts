@@ -107,6 +107,13 @@ export interface ConstantFieldProps<
   validate?: (value: FieldValue, model: any) => boolean;
   text?: TextFieldRole;
   cascade?: CascadeAction;
+  /**
+   * Renders on the page, never reaches an agent. Stripped wherever a value is masked for an AI caller — the
+   * in-page agent's reads and every MCP result — and left untouched everywhere else, so a `File`'s blur
+   * placeholder still ships to `<Image>`. Unlike `hidden`/`secret` this is about cost, not secrecy: a field
+   * nothing can answer a question with is pure spend on every turn it rides.
+   */
+  visual?: boolean;
   meta?: Metadata;
 }
 export const fieldPresets = ["email", "password", "url"] as const;
@@ -198,6 +205,7 @@ interface ConstantFieldBuildProps<
   validate?: (value: FieldValue, model: any) => boolean;
   text?: TextFieldRole;
   cascade?: CascadeAction;
+  visual: boolean;
   modelRef: ConstantModelRef;
   arrDepth: number;
   optArrDepth: number;
@@ -322,6 +330,7 @@ export class ConstantField<
   readonly validate?: (value: FieldValue, model: any) => boolean;
   readonly text?: TextFieldRole;
   readonly cascade?: CascadeAction;
+  readonly visual: boolean;
   readonly modelRef: ConstantModelRef;
   readonly arrDepth: number;
   readonly optArrDepth: number;
@@ -354,6 +363,7 @@ export class ConstantField<
     this.validate = props.validate;
     this.text = props.text;
     this.cascade = props.cascade;
+    this.visual = props.visual;
     this.modelRef = props.modelRef;
     this.arrDepth = props.arrDepth;
     this.optArrDepth = props.optArrDepth;
@@ -433,6 +443,7 @@ export class ConstantField<
       validate: option.validate,
       text: option.text,
       cascade: option.cascade,
+      visual: option.visual ?? false,
       modelRef,
       arrDepth: arrDepth,
       optArrDepth: optArrDepth,
@@ -451,7 +462,17 @@ export class ConstantField<
   get isMap() {
     return (this.modelRef as Cls) === Map;
   }
+  // Built once and shared: a field's props are a pure function of the field, and the read paths ask for them per
+  // field per row (`decodeDocumentPayload`, `crystalize`, `purify`), which made this the single largest source of
+  // garbage on a list query. Frozen so the sharing stays true — no caller mutates the result today, and one that
+  // starts to has to say so by cloning. Built lazily rather than in the constructor because `isScalar` reads
+  // `modelRef.modelType`, which `via()` assigns while the model classes are still being wired up.
+  #props: FieldProps | null = null;
   getProps(): FieldProps {
+    this.#props ??= Object.freeze(this.#buildProps());
+    return this.#props;
+  }
+  #buildProps(): FieldProps {
     return {
       nullable: this.nullable as unknown as boolean,
       ref: this.ref,
@@ -473,6 +494,7 @@ export class ConstantField<
       validate: this.validate,
       text: this.text,
       cascade: this.cascade,
+      visual: this.visual,
       modelRef: this.modelRef,
       arrDepth: this.arrDepth,
       optArrDepth: this.optArrDepth,
@@ -487,6 +509,14 @@ export class ConstantField<
 export interface FieldObject {
   [key: string]: ConstantField;
 }
+
+/**
+ * `text` names a column in the plaintext search mirror, so a masked field carrying one would publish what it
+ * masks through search — the class build refuses it (`TextFieldPaths`). Removing the key from the option type
+ * moves that refusal to the call site, where the fix is obvious. Distributive because `FieldOption` is a union:
+ * a plain `Omit` over it would collapse to the keys the members share.
+ */
+type WithoutTextRole<Option> = Option extends unknown ? Omit<Option, "text"> : never;
 
 type FieldOption<
   Value extends ConstantFieldTypeInput,
@@ -525,13 +555,33 @@ export const field = <
     fieldType: "property",
   });
 
-field.hidden = <
+/**
+ * A stored property the page renders and an agent never sees — `field(value, { visual: true })`, spelled short
+ * because the reason to reach for it is always the same one. A blur placeholder, a rendered HTML body, a
+ * serialized geometry: real data the screen needs, and hundreds of tokens per record that no question is answered
+ * from. It stays a plain `property` everywhere else, so persistence, search, forms and the page response are
+ * untouched.
+ */
+field.visual = <
   ExplicitType,
   Value extends ConstantFieldTypeInput = PlainTypeToFieldType<ExplicitType>,
   MapValue = Value extends MapConstructor ? typeof PrimitiveScalar : never,
 >(
   value: Value,
   option: FieldOption<Value, MapValue> = {},
+) =>
+  new FieldInfo<"property", Value, ExplicitType, MapValue>(value, {
+    ...option,
+    fieldType: "property",
+    visual: true,
+  });
+field.hidden = <
+  ExplicitType,
+  Value extends ConstantFieldTypeInput = PlainTypeToFieldType<ExplicitType>,
+  MapValue = Value extends MapConstructor ? typeof PrimitiveScalar : never,
+>(
+  value: Value,
+  option: WithoutTextRole<FieldOption<Value, MapValue>> = {},
 ) =>
   new FieldInfo<"hidden", Value, ExplicitType, MapValue>(value, {
     ...option,
@@ -544,7 +594,7 @@ field.secret = <
   MapValue = Value extends MapConstructor ? typeof PrimitiveScalar : never,
 >(
   value: Value,
-  option: FieldOption<Value, MapValue> = {},
+  option: WithoutTextRole<FieldOption<Value, MapValue>> = {},
 ) =>
   new FieldInfo<"secret", Value | null, ExplicitType | null, MapValue>(value, {
     ...option,
@@ -559,7 +609,7 @@ export const resolve = <
   MapValue = Value extends MapConstructor ? typeof PrimitiveScalar : never,
 >(
   value: Value,
-  option: FieldOption<Value, MapValue> = {},
+  option: WithoutTextRole<FieldOption<Value, MapValue>> = {},
 ) =>
   new FieldInfo<"resolve", Value, ExplicitType, MapValue>(value, {
     ...option,

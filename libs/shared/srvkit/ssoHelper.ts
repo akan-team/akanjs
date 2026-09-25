@@ -163,9 +163,12 @@ export interface AccessTokenResponse {
 
 export type OAuthType = Exclude<utilOption.SSOType, "apple">;
 
+export const headerSafeLocation = (redirect: string) =>
+  redirect.replace(/[^ -~]/gu, (char) => encodeURIComponent(char));
+
 export const makeSsoRedirectResponse = (redirect: string, cookie?: Record<string, string>) => {
   const headers = new Headers({
-    Location: redirect,
+    Location: headerSafeLocation(redirect),
     "X-Redirect-Method": "replace",
   });
 

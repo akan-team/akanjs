@@ -1,5 +1,6 @@
 import {
   Any,
+  Binary,
   type Cls,
   FIELD_META,
   Float,
@@ -28,6 +29,7 @@ const scalarSampleMap = new Map<PrimitiveScalar, () => any>([
   [Boolean, () => sample.bool()],
   [Date, () => sample.dayjs()],
   [Upload, () => "FileUpload"],
+  [Binary, () => new Uint8Array([0, 1, 2])],
   [Any, () => ({})],
 ]);
 const getPrimitiveSample = (ref: Cls, field: ConstantField) => {

@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { type ReactNode, useEffect, useRef } from "react";
 
 interface CodeInputProps {
@@ -24,15 +24,15 @@ export const CodeInput = ({
 }: CodeInputProps) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const defaultUnitClassName =
-    unitStyle === "box" ? "border border-gray-300 rounded-sm items-center" : "border-b border-gray-300 items-end pb-2";
+    unitStyle === "box" ? "border border-border rounded-sm items-center" : "border-b border-border items-end pb-2";
   const Box = ({ indexNum, children }: { indexNum: number; children: ReactNode }) => {
     return (
       <div
-        className={clsx(
+        className={cn(
           "flex h-16 w-full justify-center text-2xl duration-150",
           defaultUnitClassName,
           unitClassName,
-          indexNum === value.length ? "border-primary" : "border-gray-300",
+          indexNum === value.length ? "border-primary" : "border-border",
         )}
       >
         {children}
@@ -48,7 +48,7 @@ export const CodeInput = ({
   }, [value]);
 
   return (
-    <div className={clsx("relative flex items-center justify-center gap-2", className)}>
+    <div className={cn("relative flex items-center justify-center gap-2", className)}>
       {Array(maxNum)
         .fill("")
         .map((_, i) => {

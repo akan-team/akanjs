@@ -2,29 +2,40 @@ import { describe, expect, test } from "bun:test";
 
 import { RouteSourceValidator } from "./routeSourceValidator";
 
-const source = `export const wsConnect = false;
-export default function Layout() {
-  return null;
-}
-`;
+const validate = (source: string, kind: "page" | "layout", rootLayout = false) =>
+  RouteSourceValidator.validateRouteSourceExports(source, `page/_${kind}.tsx`, kind, { rootLayout });
 
-describe("RouteSourceValidator root-layout exports", () => {
-  // The generator (implicitRootLayout), the runtime routeTreeBuilder, and the docs all
-  // support wsConnect on a root layout, but this validator forgot it, so declaring the
-  // documented switch failed typecheck/lint/build with "unsupported export".
-  test("accepts wsConnect on a root layout", () => {
-    expect(() =>
-      RouteSourceValidator.validateRouteSourceExports(source, "/app/page/admin/_layout.tsx", "layout", {
-        rootLayout: true,
-      }),
-    ).not.toThrow();
+describe("RouteSourceValidator", () => {
+  test("accepts every root-layout config export the route tree honors", () => {
+    const source = [
+      "export default function Layout() { return null; }",
+      "export const fonts = [];",
+      "export const manifest = {};",
+      'export const theme = "dark";',
+      "export const reconnect = true;",
+      "export const wsConnect = true;",
+      "export const layoutStyle = {};",
+      'export const gaTrackingId = "G-1";',
+    ].join("\n");
+
+    expect(() => validate(source, "layout", true)).not.toThrow();
   });
 
-  test("still rejects wsConnect on a nested layout", () => {
-    expect(() =>
-      RouteSourceValidator.validateRouteSourceExports(source, "/app/page/admin/users/_layout.tsx", "layout", {
-        rootLayout: false,
-      }),
-    ).toThrow(/unsupported export "wsConnect"/);
+  test("rejects root-layout-only exports on a nested layout and on a page", () => {
+    const source = ["export default function Layout() { return null; }", "export const wsConnect = true;"].join("\n");
+
+    expect(() => validate(source, "layout")).toThrow('unsupported export "wsConnect"');
+    expect(() => validate(source, "page")).toThrow('unsupported export "wsConnect"');
+  });
+
+  test("reads devOnly off pageConfig without evaluating the module", () => {
+    const source = [
+      "export default function Page() { return null; }",
+      "export const pageConfig = { devOnly: true };",
+    ].join("\n");
+
+    expect(RouteSourceValidator.validateRouteSourceExports(source, "page/_index.tsx", "page")).toEqual({
+      devOnly: true,
+    });
   });
 });

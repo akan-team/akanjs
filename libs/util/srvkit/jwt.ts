@@ -1,4 +1,4 @@
-import type { Dayjs } from "dayjs";
+import type { Dayjs } from "akanjs/base";
 import { jwtVerify as joseVerify, SignJWT } from "jose";
 
 const encodeSecret = (secret: string) => new TextEncoder().encode(secret);

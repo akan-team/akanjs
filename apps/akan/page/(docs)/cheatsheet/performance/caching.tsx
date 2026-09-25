@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "캐싱은 비용이 큰 작업 앞에 두는 작은 key-value 지름길입니다. 인증 코드, 카운터, 요약값, 계산된 옵션처럼 잠깐 재사용해도 되는 데이터에 사용하세요.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Document cache is close to one model.",
@@ -35,10 +35,10 @@ export default function Page() {
                 ko: "Provider는 실행 모드에 따라 sqlite/libsql 또는 redis가 될 수 있습니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="document-cache" title={l.trans({ en: "Document Cache", ko: "Document cache" })}>
         <Docs.Title>{l.trans({ en: "Document Cache", ko: "Document cache" })}</Docs.Title>
@@ -51,6 +51,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Cache a short-lived code", ko: "짧게 사는 코드 캐싱" })}
           code={`export class ArticleModel extends into(Article, ArticleFilter, cnst.article, () => ({})) {
   async savePreviewToken(articleId: string, token: string) {
@@ -68,7 +69,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="service-memory" title={l.trans({ en: "Service Memory", ko: "Service memory" })}>
         <Docs.Title>{l.trans({ en: "Service Memory", ko: "Service memory" })}</Docs.Title>
@@ -81,6 +82,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Service-level cache", ko: "Service 단위 cache" })}
           code={`export class ArticleService extends serve(db.article, ({ memory }) => ({
   latestArticleId: memory(String),
@@ -95,12 +97,12 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="choose" title={l.trans({ en: "Which One?", ko: "무엇을 쓸까?" })}>
         <Docs.Title>{l.trans({ en: "Which One?", ko: "무엇을 쓸까?" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Use document cache when the key is a model id.",
@@ -119,15 +121,15 @@ export default function Page() {
                 ko: "Replica 사이에 공유될 필요가 없는 값에만 local memory를 사용하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Prefer short TTLs first. You can extend them after the behavior is stable.",
@@ -152,10 +154,10 @@ export default function Page() {
                 ko: "Cache를 원본으로 생각하지 마세요. 빠른 복사본일 뿐입니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

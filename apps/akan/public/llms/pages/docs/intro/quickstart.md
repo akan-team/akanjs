@@ -30,7 +30,7 @@ Requirements
 
 For the first run, Bun is the only required dependency. Docker and native IDEs become useful when you add local services or mobile builds.
 
-Bun 1.3.13 or higher
+Bun 1.4.0 or higher
 
 Docker for local database services
 

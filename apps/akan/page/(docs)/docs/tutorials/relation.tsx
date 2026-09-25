@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -52,7 +52,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="create-delivery-module"
@@ -67,6 +67,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             language="bash"
             title="Terminal"
             code={`
@@ -75,7 +76,7 @@ akan create-module delivery
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="define-relationship" title={l.trans({ en: "Define Relationship", ko: "관계 정의하기" })}>
         <Docs.Title>{l.trans({ en: "Define Relationship", ko: "관계 정의하기" })}</Docs.Title>
@@ -87,6 +88,7 @@ akan create-module delivery
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/delivery/delivery.constant.ts"
             code={`
 import { via } from "akanjs/constant";
@@ -112,26 +114,26 @@ export class DeliveryInsight extends via(Delivery, (field) => ({})) {}`}
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔗</span>
                 <strong className="text-primary">{"field([LightIcecreamOrder], { minlength: 1 })"}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `This defines a one-to-many relationship by embedding an array of LightIcecreamOrder. The "Light" version contains only essential fields (serveType, size, toppings, status) - perfect for embedding without duplicating entire documents.`,
                   ko: `LightIcecreamOrder 배열을 임베딩하여 일대다 관계를 정의합니다. "Light" 버전은 필수 필드만 포함합니다 (serveType, size, toppings, status) - 전체 문서를 복제하지 않고 임베딩하기에 완벽합니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">📦</span>
                 <strong className="text-primary">
                   {l.trans({ en: "Embedded vs Referenced", ko: "임베디드 vs 참조" })}
                 </strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `By embedding LightIcecreamOrder, the delivery document contains all necessary order info without additional database queries. This is ideal for data that's read together frequently.`,
                   ko: `LightIcecreamOrder를 임베딩함으로써, 배달 문서는 추가 데이터베이스 쿼리 없이 모든 필요한 주문 정보를 포함합니다. 이것은 함께 자주 읽히는 데이터에 이상적입니다.`,
@@ -146,6 +148,7 @@ export class DeliveryInsight extends via(Delivery, (field) => ({})) {}`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/delivery/delivery.dictionary.ts"
             code={`
 import { modelDictionary } from "akanjs/dictionary"; // [!code collapse:5]
@@ -183,6 +186,7 @@ export const dictionary = modelDictionary(["en", "ko"])
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/delivery/delivery.service.ts"
             code={`
 import { serve } from "akanjs/service";
@@ -211,36 +215,36 @@ export class DeliveryService extends serve(db.delivery, ({ use, service }) => ({
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🔌</span>
                 <strong className="text-primary">{"service<srv.IcecreamOrderService>()"}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Injects the IcecreamOrderService so DeliveryService can interact with orders. This enables cross-model operations.`,
                   ko: `IcecreamOrderService를 주입하여 DeliveryService가 주문과 상호작용할 수 있게 합니다. 이를 통해 모델 간 작업이 가능해집니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">⚡</span>
                 <strong className="text-primary">_postCreate</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `A lifecycle hook that runs after a delivery is created. It iterates through all linked orders and marks them as finished - perfect for cascading updates.`,
                   ko: `배달이 생성된 후 실행되는 라이프사이클 훅입니다. 모든 연결된 주문을 순회하며 완료 처리합니다 - 연쇄 업데이트에 완벽합니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">🚫</span>
                 <strong className="text-primary">_preUpdate</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Prevents updates to deliveries by throwing an Err. Once a delivery is created, it becomes immutable - ensuring data integrity.`,
                   ko: `Err 오류를 발생시켜 배달 수정을 방지합니다. 배달이 생성되면 불변이 됩니다 - 데이터 무결성을 보장합니다.`,
@@ -255,10 +259,11 @@ export class DeliveryService extends serve(db.delivery, ({ use, service }) => ({
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/delivery/Delivery.Template.tsx"
             code={`
 "use client";
-import { Field, Layout } from "akanjs/ui";
+import { Field, Layout, buttonRecipe } from "akanjs/ui";
 import { cnst, fetch, st, usePage } from "@apps/koyo/client";
 
 interface GeneralProps {
@@ -330,6 +335,7 @@ export const General = ({ className }: GeneralProps) => {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.signal.ts"
             code={`
 import { ID } from "akanjs/base"; // [!code collapse:13]
@@ -397,6 +403,7 @@ export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query,
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.document.ts"
             code={`
 import { by, from, into, type SchemaOf } from "akanjs/document"; // [!code collapse:5]
@@ -449,6 +456,7 @@ export class IcecreamOrderModel extends into(IcecreamOrder, IcecreamOrderFilter,
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.dictionary.ts"
             code={`
 import { modelDictionary } from "akanjs/dictionary"; // [!code collapse:11]
@@ -567,6 +575,7 @@ export const dictionary = modelDictionary(["en", "ko"])
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/delivery/Delivery.Unit.tsx"
             code={`
 import type { ModelProps } from "akanjs/client"; // [!code collapse:3]
@@ -577,7 +586,7 @@ import { IcecreamOrder } from "@apps/koyo/client"; // [!code ++]
 export const Card = ({ delivery, href }: ModelProps<"delivery", cnst.LightDelivery>) => {
   const { l } = usePage();
   return (
-    <Link href={href} className="block w-full rounded border bg-base-300 p-4"> // [!code highlight:10]
+    <Link href={href} className="block w-full rounded border bg-border p-4"> // [!code highlight:10]
       <div className="mb-3 text-lg font-bold">
         {l("delivery.modelName")} #{delivery.id.slice(-4)}
       </div>
@@ -603,6 +612,7 @@ export const Card = ({ delivery, href }: ModelProps<"delivery", cnst.LightDelive
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/delivery/Delivery.Zone.tsx"
             code={`
 "use client"; // [!code collapse:4]
@@ -644,7 +654,7 @@ export const New = ({ className }: NewProps) => {
   return (
     <div className={className}>
       <button
-        className="btn btn-primary"
+        className={buttonRecipe({ variant: "primary" })}
         onClick={() => {
           st.do.newDelivery();
         }}
@@ -681,6 +691,7 @@ export const New = ({ className }: NewProps) => {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/page/_index.tsx"
             code={`
 import { Load, Model } from "akanjs/ui"; // [!code collapse:2]
@@ -704,10 +715,10 @@ export default async function Page() {
       <Inventory.Zone.Today />
       <Tab defaultMenu="icecreamOrder"> // [!code highlight:33]
         <Tab.Menus className="flex items-center">
-          <Tab.Menu menu="icecreamOrder" className="btn btn-xl" activeClassName="btn-primary">
+          <Tab.Menu menu="icecreamOrder" className={buttonRecipe({ size: "lg" }, "h-14 px-8 text-lg")} activeClassName="bg-primary text-primary-foreground">
             {l("icecreamOrder.modelName")}
           </Tab.Menu>
-          <Tab.Menu menu="delivery" className="btn btn-xl" activeClassName="btn-primary">
+          <Tab.Menu menu="delivery" className={buttonRecipe({ size: "lg" }, "h-14 px-8 text-lg")} activeClassName="bg-primary text-primary-foreground">
             {l("delivery.modelName")}
           </Tab.Menu>
         </Tab.Menus>
@@ -716,7 +727,7 @@ export default async function Page() {
             <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
             <IcecreamOrder.Util.PublicQueryMaker />
             <Model.New
-              className="btn btn-primary"
+              className={buttonRecipe({ variant: "primary" })}
               slice={fetch.slice.icecreamOrderInPublic}
               renderTitle="name"
               partial={icecreamOrderForm}
@@ -769,16 +780,16 @@ export default async function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="summary" title={l.trans({ en: "Summary", ko: "요약" })}>
         <Docs.Title>{l.trans({ en: "Summary", ko: "요약" })}</Docs.Title>
         <Docs.Description>
-          <div className="my-6 rounded-lg bg-linear-to-r from-base-100 to-base-300 p-6">
+          <div className="my-6 rounded-lg bg-linear-to-r from-background to-border p-6">
             <div className="mb-3 font-bold text-lg text-primary">
               {l.trans({ en: "🎉 What You've Accomplished:", ko: "🎉 달성한 것들:" })}
             </div>
-            <ul className="space-y-2 text-base-content/70 text-sm">
+            <ul className="space-y-2 text-foreground/70 text-sm">
               <li>
                 ✓{" "}
                 {l.trans({
@@ -824,12 +835,12 @@ export default async function Page() {
             </ul>
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-100 p-4">
+            <div className={panelRecipe({ radius: "lg" })}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-primary">💡</span>
                 <strong className="text-primary">{l.trans({ en: "Best Practices", ko: "모범 사례" })}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 <ul className="list-inside list-disc space-y-1">
                   <li>
                     {l.trans({
@@ -867,9 +878,9 @@ export default async function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

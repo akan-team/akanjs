@@ -52,7 +52,7 @@ export class LibraryRunner extends runner("library") {
     Object.keys(allDependencies)
       .sort()
       .forEach((dep) => {
-        if (!!libPackageJson.dependencies?.[dep] || !!rootPackageJson.dependencies?.[dep])
+        if (libPackageJson.dependencies?.[dep] || rootPackageJson.dependencies?.[dep])
           dependencies[dep] = allDependencies[dep];
         else devDependencies[dep] = allDependencies[dep];
       });

@@ -1,14 +1,15 @@
 "use client";
-import { clsx, usePage } from "akanjs/client";
-import { useEffect, useState } from "react";
+import { cn, usePage } from "akanjs/client";
+import { st } from "akanjs/store";
+import type { ReactNode } from "react";
 
 import { Link } from "../Link";
 import { BottomInset } from "./BottomInset";
 
 interface TabType {
   name: string;
-  icon: React.ReactNode;
-  activeIcon?: React.ReactNode;
+  icon: ReactNode;
+  activeIcon?: ReactNode;
   notiCount?: number;
   href: string;
 }
@@ -21,21 +22,9 @@ export interface BottomTabProps {
 
 export const BottomTab = ({ className, tabs, height = 64 }: BottomTabProps) => {
   const { lang } = usePage();
-  //ssr 에러나서 꼼짝없이 쓴거임. 페이지 이동에 대응안됨.
-  const [isRendered, setIsRendered] = useState<boolean>(false);
-  const isActiveTab = (tabHref: string) => {
-    if (!isRendered) return false;
-    const locationPath = window.location.pathname.startsWith(`/${lang}`)
-      ? window.location.pathname.slice(lang.length + 1) === ""
-        ? "/"
-        : window.location.pathname.slice(lang.length + 1)
-      : window.location.pathname;
-    return tabHref === "/" ? locationPath === tabHref : locationPath.startsWith(tabHref);
-  };
-
-  useEffect(() => {
-    setIsRendered(true);
-  }, []);
+  const path = st.use.path({ agent: false });
+  const localePath = path.startsWith(`/${lang}`) ? path.slice(lang.length + 1) || "/" : path;
+  const isActiveTab = (href: string) => (href === "/" ? localePath === href : localePath.startsWith(href));
 
   return (
     <BottomInset
@@ -47,29 +36,35 @@ export const BottomTab = ({ className, tabs, height = 64 }: BottomTabProps) => {
       frameSource="bottomTab"
     >
       <div
-        className={clsx(
-          `flex size-full items-center justify-around rounded-t-xl border border-base-200 border-b-0 bg-base-100`,
+        className={cn(
+          "flex size-full items-center justify-around border-border border-t bg-background/95 text-foreground backdrop-blur-sm",
           className,
         )}
       >
-        {tabs.map((tab) => (
-          <Link
-            key={tab.name}
-            href={tab.href}
-            replace
-            className={`relative flex w-full flex-col items-center justify-end gap-1 ${
-              isActiveTab(tab.href) ? "" : "opacity-60"
-            }`}
-          >
-            <div className="indicator">
-              {isActiveTab(tab.href) ? (tab.activeIcon ?? tab.icon) : tab.icon}
-              {tab.notiCount && tab.notiCount > 0 ? (
-                <div className="indicator-item flex size-2 items-center justify-center rounded-full bg-secondary text-[10px] text-base-100"></div>
-              ) : null}
-            </div>
-            <span>{tab.name}</span>
-          </Link>
-        ))}
+        {tabs.map((tab) => {
+          const active = isActiveTab(tab.href);
+          return (
+            <Link
+              key={tab.name}
+              href={tab.href}
+              replace
+              className={cn(
+                "relative flex w-full flex-col items-center justify-end gap-1 py-1.5 transition-colors",
+                active ? "font-medium text-primary" : "text-foreground/55 hover:text-foreground/80",
+              )}
+            >
+              <div className="relative inline-flex w-max text-xl">
+                {active ? (tab.activeIcon ?? tab.icon) : tab.icon}
+                {tab.notiCount ? (
+                  <span className="absolute -top-1 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 font-medium text-[10px] text-destructive-foreground leading-none">
+                    {tab.notiCount > 99 ? "99+" : tab.notiCount}
+                  </span>
+                ) : null}
+              </div>
+              <span className="text-[11px]">{tab.name}</span>
+            </Link>
+          );
+        })}
       </div>
     </BottomInset>
   );

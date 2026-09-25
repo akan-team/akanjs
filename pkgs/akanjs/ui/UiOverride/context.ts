@@ -1,6 +1,16 @@
 "use client";
-import { type ComponentType, createContext } from "react";
-
+import type { ComponentType } from "react";
+import type { ClassNameValue as ClassValue } from "tailwind-merge";
+import { sharedContext } from "../../client/sharedContext";
+import type { ApprovalProps as AgentApprovalProps } from "../Agent/Approval";
+import type { BubbleProps as AgentBubbleProps } from "../Agent/Bubble";
+import type { ChatProps as AgentChatProps } from "../Agent/Chat";
+import type { ComposerProps as AgentComposerProps } from "../Agent/Composer";
+import type { LauncherProps as AgentLauncherProps } from "../Agent/Launcher";
+import type { CodeProps as AgentCodeProps, MarkdownProps as AgentMarkdownProps } from "../Agent/Markdown";
+import type { MenuProps as AgentMenuProps } from "../Agent/Menu";
+import type { QuestionProps as AgentQuestionProps } from "../Agent/Question";
+import type { BadgeProps } from "../Badge";
 import type { ButtonProps } from "../Button";
 import type { DatePickerProps, RangePickerProps, TimePickerProps } from "../DatePicker";
 import type { DropdownProps } from "../Dropdown";
@@ -16,9 +26,11 @@ import type { ModalProps } from "../Modal";
 import type { PaginationProps } from "../Pagination";
 import type { PopconfirmProps } from "../Popconfirm";
 import type { ItemProps as RadioItemProps, RadioProps } from "../Radio";
+import type { BadgeVariants, ButtonVariants, InputSurfaceVariants } from "../recipe";
 import type { SelectProps } from "../Select";
 import type { TableProps } from "../Table";
 import type { MultiProps as ToggleSelectMultiProps, ToggleSelectProps } from "../ToggleSelect";
+import type { TooltipProps } from "../Tooltip";
 import type { UnauthorizedProps } from "../Unauthorized";
 
 /**
@@ -35,6 +47,7 @@ import type { UnauthorizedProps } from "../Unauthorized";
  */
 export interface AkanUiOverrides {
   // Leaf primitives — plain drop-in components.
+  Badge: ComponentType<BadgeProps>;
   Modal: ComponentType<ModalProps>;
   Empty: ComponentType<EmptyProps>;
   Pagination: ComponentType<PaginationProps>;
@@ -42,7 +55,21 @@ export interface AkanUiOverrides {
   Dropdown: ComponentType<DropdownProps>;
   Table: ComponentType<TableProps>;
   Menu: ComponentType<MenuProps>;
+  Tooltip: ComponentType<TooltipProps>;
   Unauthorized: ComponentType<UnauthorizedProps>;
+  AgentChat: ComponentType<AgentChatProps>;
+
+  // In-page chat, one slot per part. `AgentChat` replaces the whole panel; these replace what it renders, so an
+  // app re-skins the transcript or the composer without re-implementing the loop, the slash commands, or the
+  // approval gate. `AgentCode` is the seam a syntax highlighter binds to — the fence's language reaches it.
+  AgentLauncher: ComponentType<AgentLauncherProps>;
+  AgentBubble: ComponentType<AgentBubbleProps>;
+  AgentComposer: ComponentType<AgentComposerProps>;
+  AgentApproval: ComponentType<AgentApprovalProps>;
+  AgentQuestion: ComponentType<AgentQuestionProps>;
+  AgentMenu: ComponentType<AgentMenuProps>;
+  AgentMarkdown: ComponentType<AgentMarkdownProps>;
+  AgentCode: ComponentType<AgentCodeProps>;
 
   // Generic components. The public export keeps its full generic signature; the slot stores the widest
   // instantiation, so an override is authored against that erased prop type without touching generics.
@@ -85,8 +112,33 @@ export type AkanUiOverrideName = keyof AkanUiOverrides;
 export type AkanModalComponent = AkanUiOverrides["Modal"];
 
 /**
+ * Registry of framework recipe slots an app may swap through the same `_overrides.tsx`
+ * manifest: `override({ recipes: { button: neonButtonRecipe } })`. A recipe swap changes
+ * only the className factory — the component's structure/behavior (async states, focus,
+ * a11y) is untouched. Each replacement must accept the framework recipe's full variant
+ * contract, so every call site keeps working (a replacement with *extra* optional axes is
+ * assignable — contravariance — but those axes are only reachable from code that knows the
+ * replacement's own type).
+ *
+ * Scope: a recipe slot is a **client-side, route-scoped restyle**. It reaches framework
+ * client components, which resolve through `useUiRecipe(...)`. It never reaches a raw
+ * `xRecipe(...)` call in app JSX (statically imported — no context), nor server components
+ * (`Unit`/`View`), which intentionally render the canonical framework recipe. Extending the
+ * *vocabulary* is not this slot's job: add the axis to the framework recipe, or author an
+ * app recipe in `apps/<app>/ui/Recipe/`.
+ */
+export interface AkanUiRecipes {
+  button: (variants?: ButtonVariants, className?: ClassValue) => string;
+  badge: (variants?: BadgeVariants, className?: ClassValue) => string;
+  input: (variants?: InputSurfaceVariants, className?: ClassValue) => string;
+}
+
+/** Shape of an `_overrides.tsx` manifest: component slots plus an optional recipe-slot map. */
+export type AkanUiOverrideManifest = Partial<AkanUiOverrides> & { recipes?: Partial<AkanUiRecipes> };
+
+/**
  * Holds the override map for the current route subtree. Empty at the root, then
  * merged (child wins) by each nested `UiOverrideProvider`, mirroring how nested
  * `_layout.tsx` / `_overrides.tsx` stack down the route tree.
  */
-export const UiOverrideContext = createContext<Partial<AkanUiOverrides>>({});
+export const UiOverrideContext = sharedContext<AkanUiOverrideManifest>("uiOverride", {});

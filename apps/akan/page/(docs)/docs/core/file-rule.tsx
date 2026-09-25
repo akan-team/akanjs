@@ -1,7 +1,7 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 
 export default function Page() {
   const { l } = usePage();
@@ -23,6 +23,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="lib/product/"
             language="bash"
             code={`lib/product/
@@ -63,10 +64,10 @@ export default function Page() {
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
-                <span className="font-bold text-base-content">{title}: </span>
+              <div key={title} className={panelRecipe({ padding: "row" })}>
+                <span className="font-bold text-foreground">{title}: </span>
 
-                <span className="text-base-content/70 text-sm">{desc}</span>
+                <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
@@ -78,7 +79,7 @@ export default function Page() {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="module-files" title={l.trans({ en: "Module Files", ko: "모듈 파일" })}>
         <Docs.Title>{l.trans({ en: "Module Files", ko: "모듈 파일" })}</Docs.Title>
@@ -160,32 +161,34 @@ export default function Page() {
                 }),
               },
             ].map(({ title, type, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <div className="flex items-center justify-between">
                   <div
-                    className={clsx("font-mono font-semibold", {
-                      "text-success": type === "client",
-                      "text-primary": type === "server",
-                      "text-warning": type === "shared",
-                    })}
+                    className={cn(
+                      "font-mono font-semibold",
+                      type === "client" && "text-success",
+                      type === "server" && "text-primary",
+                      type === "shared" && "text-warning",
+                    )}
                   >
                     {title}
                   </div>
                   <div
-                    className={clsx("rounded-full px-2 py-1 font-semibold text-xs", {
-                      "bg-success/10 text-success": type === "client",
-                      "bg-primary/10 text-primary": type === "server",
-                      "bg-warning/10 text-warning": type === "shared",
-                    })}
+                    className={cn(
+                      "rounded-full px-2 py-1 font-semibold text-xs",
+                      type === "client" && "bg-success/10 text-success",
+                      type === "server" && "bg-primary/10 text-primary",
+                      type === "shared" && "bg-warning/10 text-warning",
+                    )}
                   >
                     {type}
                   </div>
                 </div>
-                <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+                <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               </div>
             ))}
           </div>
-          <div className="font-bold text-base-content text-lg">{l.trans({ en: "UI Files", ko: "UI 파일" })}</div>
+          <div className="font-bold text-foreground text-lg">{l.trans({ en: "UI Files", ko: "UI 파일" })}</div>
           <div>
             {l.trans({
               en: "UI files describe how a model appears on screen. They use PascalCase because they export React components or UI groups.",
@@ -199,6 +202,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="lib/bizCard/"
             language="bash"
             code={`BizCard.View.tsx      # how a biz card is displayed
@@ -245,16 +249,16 @@ BizCard.Zone.tsx      # large screen areas such as admin/list/detail`}
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-mono font-semibold text-success">{title}: </span>
 
-                <span className="text-base-content/70 text-sm">{desc}</span>
+                <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="naming-rule" title={l.trans({ en: "Naming Rule", ko: "이름 규칙" })}>
         <Docs.Title>{l.trans({ en: "Naming Rule", ko: "이름 규칙" })}</Docs.Title>
@@ -309,7 +313,7 @@ Product.Zone.tsx`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="facet-files" title={l.trans({ en: "Facet Files And Barrels", ko: "Facet 파일과 Barrel" })}>
         <Docs.Title>{l.trans({ en: "Facet Files And Barrels", ko: "Facet 파일과 Barrel" })}</Docs.Title>
@@ -368,14 +372,14 @@ export const PriceText = () => {}
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
-                <span className="text-base-content/70 text-sm">{desc}</span>
+                <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
-          <div className="font-bold text-base-content text-lg">Barrel Imports</div>
+          <div className="font-bold text-foreground text-lg">Barrel Imports</div>
           <div>
             {l.trans({
               en: "A barrel file re-exports many files from one entry point. Akan can analyze configured barrel imports and rewrite imports to the exact source file, so importing from @apps/myapp/ui can stay convenient without always pulling the entire barrel into the bundle.",
@@ -389,6 +393,7 @@ export const PriceText = () => {}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="barrel import"
             code={`// ui/index.ts
 export * from "./ProductCard";
@@ -405,7 +410,7 @@ import { ProductCard } from "@apps/myapp/ui";`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="module-differences" title={l.trans({ en: "Module Differences", ko: "모듈별 차이" })}>
         <Docs.Title>{l.trans({ en: "Module Differences", ko: "모듈별 차이" })}</Docs.Title>
@@ -446,16 +451,16 @@ import { ProductCard } from "@apps/myapp/ui";`}
                 }),
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
+              <div key={title} className={panelRecipe({ padding: "row" })}>
                 <span className="font-mono font-semibold text-primary">{title}: </span>
 
-                <span className="text-base-content/70 text-sm">{desc}</span>
+                <span className="text-foreground/70 text-sm">{desc}</span>
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="workflow" title={l.trans({ en: "Codegen And Choices", ko: "자동생성과 선택 기준" })}>
         <Docs.Title>{l.trans({ en: "Codegen And Choices", ko: "자동생성과 선택 기준" })}</Docs.Title>
@@ -473,6 +478,7 @@ import { ProductCard } from "@apps/myapp/ui";`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="Generated UI index idea"
             code={`import * as Unit from "./Product.Unit";
 import * as Util from "./Product.Util";
@@ -487,7 +493,7 @@ export const Product = { Unit, Util, View, Zone };`}
               ko: "그래서 이름 규칙이 중요합니다. Product.View.tsx를 임의로 바꾸면 Akan은 그 파일을 Product 모듈의 View 파일로 인식할 수 없습니다.",
             })}
           </Docs.Alert>
-          <div className="font-bold text-base-content text-lg">
+          <div className="font-bold text-foreground text-lg">
             {l.trans({ en: "Common Choices", ko: "자주 하는 선택" })}
           </div>
           <div>
@@ -529,8 +535,8 @@ export const Product = { Unit, Util, View, Zone };`}
                 desc: "Model.Zone.tsx",
               },
             ].map(({ title, desc }) => (
-              <div key={title} className="rounded-xl border border-base-300 bg-base-100 px-4 py-0">
-                <span className="font-bold text-base-content">{title}: </span>
+              <div key={title} className={panelRecipe({ padding: "row" })}>
+                <span className="font-bold text-foreground">{title}: </span>
 
                 <span className="font-mono text-primary text-sm">{desc}</span>
               </div>
@@ -538,9 +544,9 @@ export const Product = { Unit, Util, View, Zone };`}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

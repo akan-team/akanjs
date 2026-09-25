@@ -1,8 +1,8 @@
 import { usePage } from "@apps/akan/client";
 import { Scroll } from "@libs/util/ui";
-
 import { Code } from "./Code";
 import { Docs } from "./Docs";
+import { panelRecipe } from "./Recipe";
 
 export interface PropRow {
   name: string;
@@ -65,7 +65,7 @@ export const UiComponentSlide = ({ component }: { component: UiComponentReferenc
         <Docs.Description>
           <div className="space-y-1">
             {component.notes.map((note) => (
-              <div key={note} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
+              <div key={note} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {note}
               </div>
             ))}

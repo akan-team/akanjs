@@ -1,10 +1,21 @@
 import { adapt } from "akanjs/service";
-import admin from "firebase-admin";
 import type { TokenMessage, TopicMessage } from "firebase-admin/messaging";
 
 import { Err } from "../lib/dict";
 import type { ModulesOptions } from "../lib/option";
 import type { MessageOptions, PushNotificationMessage } from "./pushNotificationServer.type";
+
+type FirebaseAdmin = typeof import("firebase-admin");
+
+let firebaseLoad: Promise<FirebaseAdmin> | null = null;
+
+async function loadFirebase(): Promise<FirebaseAdmin> {
+  firebaseLoad ??= import("firebase-admin").then((mod) => {
+    const loaded = mod as unknown as { default?: FirebaseAdmin } & FirebaseAdmin;
+    return loaded.default ?? loaded;
+  });
+  return await firebaseLoad;
+}
 
 export interface PushNotificationServerOptions {
   firebase: {
@@ -20,7 +31,9 @@ export class PushNotificationServer extends adapt("pushNotificationServer", ({ e
   firebase: env((env: ModulesOptions) => env.pushNoti?.firebase),
 })) {
   override async onInit() {
-    if (admin.apps.length === 0 && this.firebase) {
+    if (!this.firebase) return;
+    const admin = await loadFirebase();
+    if (admin.apps.length === 0) {
       admin.initializeApp({
         credential: admin.credential.cert({
           projectId: this.firebase.project_id,
@@ -32,10 +45,12 @@ export class PushNotificationServer extends adapt("pushNotificationServer", ({ e
   }
 
   async subscribeToTopic(token: string, topic: string) {
+    const admin = await loadFirebase();
     return await admin.messaging().subscribeToTopic(token, topic);
   }
 
   async unsubscribeFromTopic(token: string, topic: string) {
+    const admin = await loadFirebase();
     return await admin.messaging().unsubscribeFromTopic(token, topic);
   }
 
@@ -83,6 +98,7 @@ export class PushNotificationServer extends adapt("pushNotificationServer", ({ e
     if (!this.firebase) return;
     const generatedMessage = this.createPushNotificationMessage(message);
     try {
+      const admin = await loadFirebase();
       const sendId = await admin.messaging().send(generatedMessage);
       if (message.topic) this.logger.log(`Sent ${message.topic} to topic push notification.`);
       else this.logger.log(`Sent ${message.token} to token push notification.`);

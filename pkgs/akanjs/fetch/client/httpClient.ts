@@ -1,4 +1,4 @@
-import type { SerializedArg } from "akanjs/signal";
+import type { HttpMutationMethod, SerializedArg } from "akanjs/signal";
 
 export interface ErrorResponsePayload {
   error: string;
@@ -54,31 +54,33 @@ export class HttpClient {
     if (data instanceof FormData) return { body: data, headers: {} };
     return { body: JSON.stringify(data), headers: { "Content-Type": "application/json" } };
   }
-  async put<Returns = unknown>(
+  async send<Returns = unknown>(
+    method: HttpMutationMethod,
     url: string,
     data: FormData | Record<string, unknown>,
     options: FetchOptions = {},
   ): Promise<Returns> {
     const { body, headers } = this.#makeReqContent(data);
     const res = await fetch(`${this.#resolveBaseUrl(options.baseUrl)}${url}`, {
-      method: "PUT",
+      method,
       body,
       headers: { ...headers, ...options.headers },
     });
     return await this.#readJsonResponse<Returns>(res);
+  }
+  async put<Returns = unknown>(
+    url: string,
+    data: FormData | Record<string, unknown>,
+    options: FetchOptions = {},
+  ): Promise<Returns> {
+    return await this.send<Returns>("PUT", url, data, options);
   }
   async post<Returns = unknown>(
     url: string,
     data: FormData | Record<string, unknown>,
     options: FetchOptions = {},
   ): Promise<Returns> {
-    const { body, headers } = this.#makeReqContent(data);
-    const res = await fetch(`${this.#resolveBaseUrl(options.baseUrl)}${url}`, {
-      method: "POST",
-      body,
-      headers: { ...headers, ...options.headers },
-    });
-    return await this.#readJsonResponse<Returns>(res);
+    return await this.send<Returns>("POST", url, data, options);
   }
   async delete<Returns = unknown>(url: string, options: FetchOptions = {}): Promise<Returns> {
     const res = await fetch(`${this.#resolveBaseUrl(options.baseUrl)}${url}`, {
@@ -113,7 +115,15 @@ export class HttpClient {
     searchArgs.forEach((arg) => {
       const argValue = argMap.get(arg.name);
       if (argValue === null || argValue === undefined) return;
-      if (arg.arrDepth && Array.isArray(argValue))
+      // `Any` carries a structure the query string has no spelling for; `String(value)` would send
+      // "[object Object]". `HttpExecutionContext` parses it back with the same rule.
+      if (arg.refName === "Any") {
+        // A value JSON has no spelling for — a function, a symbol — stringifies to the JS `undefined`, which
+        // `set` would write as the literal text "undefined" and the reader would reject as malformed JSON.
+        // An arg it cannot carry is an arg it does not carry.
+        const encoded = JSON.stringify(argValue);
+        if (encoded !== undefined) searchParams.set(arg.name, encoded);
+      } else if (arg.arrDepth && Array.isArray(argValue))
         argValue.forEach((value) => {
           searchParams.append(arg.name, String(value));
         });

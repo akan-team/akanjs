@@ -1,5 +1,6 @@
 "use client";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
+import { buttonRecipe, inputRecipe } from "@libs/util/ui";
 import type { NodeKey } from "lexical";
 import { useState } from "react";
 import type { EmbedProviderType } from "../embed";
@@ -29,7 +30,7 @@ export const EmbedComponent = ({ nodeKey, embedUrl, provider, width, height, ali
       <EmbedUrlForm nodeKey={nodeKey} />
     ) : (
       <div className="my-2 flex w-full justify-center" contentEditable={false}>
-        <div className="rounded-md bg-base-200 p-6 text-base-content/50">Embed URL is not configured.</div>
+        <div className="rounded-md bg-muted p-6 text-foreground/50">Embed URL is not configured.</div>
       </div>
     );
   }
@@ -56,7 +57,7 @@ export const EmbedComponent = ({ nodeKey, embedUrl, provider, width, height, ali
         width={width}
         height={height}
         allowFullScreen
-        className="block max-w-full rounded-md bg-base-200"
+        className="block max-w-full rounded-md bg-muted"
       />
     </MediaFrame>
   );
@@ -83,8 +84,8 @@ export const EmbedUrlForm = ({ nodeKey }: { nodeKey: NodeKey }) => {
 
   return (
     <div className="my-2 flex w-full justify-center" contentEditable={false}>
-      <div className="flex w-full max-w-md flex-col gap-2 rounded-lg border border-base-content/15 bg-base-200/60 p-3">
-        <span className="font-medium text-base-content/70 text-sm">
+      <div className="flex w-full max-w-md flex-col gap-2 rounded-lg border border-foreground/15 bg-muted/60 p-3">
+        <span className="font-medium text-foreground/70 text-sm">
           Paste a {policy.allowedEmbedProviders.join(" / ")} URL
         </span>
         <div className="flex gap-2">
@@ -93,7 +94,7 @@ export const EmbedUrlForm = ({ nodeKey }: { nodeKey: NodeKey }) => {
             autoFocus
             value={value}
             placeholder="https://www.youtube.com/watch?v=…"
-            className="input input-sm input-bordered w-full"
+            className={inputRecipe({ size: "sm" }, "w-full")}
             onChange={(event) => setValue(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
@@ -102,11 +103,11 @@ export const EmbedUrlForm = ({ nodeKey }: { nodeKey: NodeKey }) => {
               }
             }}
           />
-          <button type="button" className="btn btn-sm btn-primary" onClick={submit}>
+          <button type="button" className={buttonRecipe({ size: "sm", variant: "primary" })} onClick={submit}>
             Embed
           </button>
         </div>
-        {error ? <span className="text-error text-xs">{error}</span> : null}
+        {error ? <span className="text-destructive text-xs">{error}</span> : null}
       </div>
     </div>
   );

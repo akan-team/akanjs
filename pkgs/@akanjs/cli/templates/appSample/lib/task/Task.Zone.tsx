@@ -6,7 +6,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { a
     content: `"use client";
 import { type cnst, Task, usePage } from "@apps/${dict.appName}/client";
 import type { ClientInit, ClientView } from "akanjs/fetch";
-import { Link, Load } from "akanjs/ui";
+import { Link, Load, buttonRecipe } from "akanjs/ui";
 
 // ===== Task.Zone.tsx =====
 // Convention: lib/<module>/ — PascalCase .tsx, Zone suffix = composition layer between pages and UI.
@@ -28,9 +28,9 @@ export const Card = ({ className, init }: CardProps) => {
       init={init}
       renderEmpty={() => (
         <div className="flex flex-col items-center gap-4 py-16 text-center">
-          <div className="text-base-content/40 text-lg">{l("task.taskNoTasks")}</div>
+          <div className="text-foreground/40 text-lg">{l("task.taskNoTasks")}</div>
           <Link href="/task/new">
-            <button className="btn btn-primary btn-sm">{l("task.taskCreateFirst")}</button>
+            <button className={buttonRecipe({ variant: "primary", size: "sm" })}>{l("task.taskCreateFirst")}</button>
           </Link>
         </div>
       )}

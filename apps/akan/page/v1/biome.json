@@ -1,0 +1,81 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.8/schema.json",
+  "root": false,
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 120
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "suspicious": {
+        "noConsole": {
+          "level": "error",
+          "options": {
+            "allow": ["assert", "error", "info", "warn"]
+          }
+        },
+        "noArrayIndexKey": "off",
+        "noShadowRestrictedNames": "off",
+        "noUnnecessaryConditions": {
+          "level": "error"
+        }
+      },
+      "correctness": {
+        "noUnusedFunctionParameters": "off",
+        "noUnusedImports": {
+          "level": "error",
+          "fix": "safe"
+        },
+        "useParseIntRadix": "off",
+        "useExhaustiveDependencies": "off",
+        "useHookAtTopLevel": "off"
+      },
+      "nursery": {
+        "useSortedClasses": {
+          "level": "error",
+          "fix": "safe",
+          "options": {
+            "attributes": ["classList"],
+            "functions": ["cn"]
+          }
+        }
+      },
+      "a11y": "off",
+      "complexity": {
+        "noStaticOnlyClass": "off"
+      },
+      "style": {
+        "useTemplate": {
+          "level": "warn",
+          "fix": "safe"
+        }
+      }
+    },
+    "domains": {
+      "project": "recommended",
+      "react": "recommended",
+      "test": "recommended",
+      "types": "all"
+    }
+  },
+  "javascript": {
+    "parser": {
+      "unsafeParameterDecoratorsEnabled": true
+    },
+    "formatter": {
+      "quoteStyle": "double"
+    }
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  }
+}

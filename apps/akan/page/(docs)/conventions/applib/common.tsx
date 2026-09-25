@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, cardGridRecipe, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -23,7 +23,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="what-belongs" title={l.trans({ en: "What Belongs In Common", ko: "Common에 두는 것" })}>
         <Docs.Title>{l.trans({ en: "What Belongs In Common", ko: "Common에 두는 것" })}</Docs.Title>
@@ -110,17 +110,17 @@ export const getQueryMeta = (refName: string) => new QueryMeta(refName);`,
 };`,
             },
           ].map(({ title, desc, snippetTitle, code }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
-              <div className="font-bold text-base-content">{title}</div>
-              <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+            <div key={title} className={panelRecipe()}>
+              <div className="font-bold text-foreground">{title}</div>
+              <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               <div className="mt-3">
-                <Code.Snippet title={snippetTitle} code={code} />
+                <Code.Snippet className="w-full" title={snippetTitle} code={code} />
               </div>
             </div>
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="barrel-optimization"
@@ -145,6 +145,7 @@ export const getQueryMeta = (refName: string) => new QueryMeta(refName);`,
         </Docs.Description>
         <div className="space-y-3">
           <Code.Snippet
+            className="w-full"
             title="common/randomCode.ts"
             code={`export const randomCode = (length = 6) => {
   return Math.floor(Math.random() * 10 ** length)
@@ -152,10 +153,14 @@ export const getQueryMeta = (refName: string) => new QueryMeta(refName);`,
     .padStart(length, "0");
 };`}
           />
-          <Code.Snippet title="common/index.ts" code={`export { randomCode } from "./randomCode";`} />
+          <Code.Snippet
+            className="w-full"
+            title="common/index.ts"
+            code={`export { randomCode } from "./randomCode";`}
+          />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="server-client-usage"
@@ -170,8 +175,9 @@ export const getQueryMeta = (refName: string) => new QueryMeta(refName);`,
             })}
           </div>
         </Docs.Description>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className={cardGridRecipe()}>
           <Code.Snippet
+            className="w-full"
             title="order.service.ts"
             code={`import { randomCode } from "@libs/util/common";
 
@@ -182,6 +188,7 @@ export class OrderService extends serve(db.order, () => ({})) {
 }`}
           />
           <Code.Snippet
+            className="w-full"
             title="page.tsx"
             code={`import { randomCode } from "@libs/util/common";
 
@@ -191,7 +198,7 @@ export function PreviewCode() {
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -215,16 +222,16 @@ export function PreviewCode() {
                 ko: "common helper는 작고 순수하게 유지하고 barrel에서 import합니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
+              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {rule}
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

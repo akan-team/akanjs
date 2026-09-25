@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="string-store" title={l.trans({ en: "String Store Ref", ko: "String store ref" })}>
         <Docs.Title>{l.trans({ en: "String Store Ref", ko: "String store ref" })}</Docs.Title>
@@ -37,6 +37,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="minimal service store"
           code={`export class SearchStore extends store("search" as const, () => ({
   searchIndexName: null as string | null,
@@ -45,7 +46,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="fetch-actions" title={l.trans({ en: "Fetch Actions", ko: "Fetch action" })}>
         <Docs.Title>{l.trans({ en: "Fetch Actions", ko: "Fetch action" })}</Docs.Title>
@@ -58,6 +59,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="loading and fetch"
           code={`async setSearchIndexName(searchIndexName: string) {
   this.set({ searchIndexName, loading: true });
@@ -68,7 +70,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="pagination-state" title={l.trans({ en: "Feature State", ko: "Feature state" })}>
         <Docs.Title>{l.trans({ en: "Feature State", ko: "Feature state" })}</Docs.Title>
@@ -81,6 +83,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="pagination action"
           code={`async setPage(page: number) {
   const { searchIndexName } = this.get();
@@ -91,9 +94,9 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

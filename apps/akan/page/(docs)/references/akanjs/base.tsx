@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -57,6 +57,18 @@ import { via } from "akanjs/constant";
 export const eventPayload = via.scalar("eventPayload", {
   body: Any,
 });`,
+    },
+    {
+      name: "Binary",
+      desc: l.trans({
+        en: "Raw bytes for a signal argument or return, never a model field. It is a Uint8Array on both sides and base64 on a JSON wire; a pubsub whose whole return is Binary sends its own websocket frame instead. Store a blob as a File model.",
+        ko: "signal argument와 return을 위한 raw byte입니다. model field로는 쓸 수 없습니다. 양쪽 모두 Uint8Array이고 JSON wire에서는 base64이며, return 전체가 Binary인 pubsub은 별도의 websocket binary frame으로 보냅니다. blob 저장은 File model을 사용합니다.",
+      }),
+      code: `import { Binary } from "akanjs/base";
+
+export class StreamEndpoint extends endpoint(srv.stream, ({ pubsub }) => ({
+  chunkReceived: pubsub(Binary).room("channel", String).exec(() => undefined),
+}))  {}`,
     },
     {
       name: "dayjs / Dayjs",
@@ -122,17 +134,22 @@ const user = users.pick("a");`,
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       {symbols.map((symbol) => (
         <Scroll.Slide key={symbol.name} id={symbol.name} title={symbol.name}>
           <Docs.Title>{symbol.name}</Docs.Title>
           <Docs.Description>
             <div>{symbol.desc}</div>
           </Docs.Description>
-          <Code.Snippet title={l.trans({ en: "Usage", ko: "사용 예시" })} language="typescript" code={symbol.code} />
+          <Code.Snippet
+            className="w-full"
+            title={l.trans({ en: "Usage", ko: "사용 예시" })}
+            language="typescript"
+            code={symbol.code}
+          />
         </Scroll.Slide>
       ))}
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

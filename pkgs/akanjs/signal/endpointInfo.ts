@@ -1,4 +1,5 @@
 import {
+  Any,
   arraiedModel,
   type Cls,
   type Dayjs,
@@ -19,9 +20,22 @@ import type {
 } from "akanjs/constant";
 import type { ServiceModel } from "akanjs/service";
 import type { InternalArgCls } from "./internalArg";
+import type { PromptResult } from "./mcp";
 import type { ArgType, SignalOption, SrvMap } from "./types";
 
-export type EndpointType = "query" | "mutation" | "pubsub" | "message";
+export type EndpointType = "query" | "mutation" | "pubsub" | "message" | "prompt";
+
+/**
+ * A prompt travels as `Any` because `PrimitiveRegistry.has(Any)` is true, so `resolveReturn` and `makeResponse`
+ * hand the messages back untouched. Registering a scalar for `PromptMessage` would buy nothing the builder's
+ * `exec` constraint does not already give, and would push a client-side model into every app that never uses one.
+ *
+ * It does not follow that a prompt's payload is unmasked. What a return ref masks is the value's own fields, and
+ * a prompt's are fixed by the protocol; the document inside an attachment is a JSON string by the time any return
+ * ref could reach it. So masking is declared at the attachment instead — `Msg.mask` — where the model is named
+ * and a payload that lost its class on the way still masks correctly.
+ */
+const promptCarrier = Any;
 
 export interface EndpointArgProps<Optional extends boolean = false> {
   nullable?: Optional;
@@ -140,6 +154,7 @@ export class EndpointInfo<
     _ServerArg = DocumentModel<_ArgType>,
   >(name: ArgName, arg: Arg, option?: EndpointArgProps<Optional>) {
     if (this.execFn) throw new Error("Query function is already set");
+    this.#assertPromptArg("body");
     this.argNames.push(name);
     this.args.push(EndpointInfo.getArgInfo("body", name, arg, option));
     return this as unknown as EndpointInfo<
@@ -165,6 +180,7 @@ export class EndpointInfo<
   >(name: string, arg: Arg, option?: Omit<EndpointArgProps, "nullable">) {
     if (this.execFn) throw new Error("Query function is already set");
     else if (this.args.at(-1)?.option?.nullable) throw new Error("Last argument is nullable");
+    this.#assertPromptArg("room");
     this.argNames.push(name);
     this.args.push(EndpointInfo.getArgInfo("room", name, arg, option));
     return this as unknown as EndpointInfo<
@@ -191,6 +207,7 @@ export class EndpointInfo<
   >(name: string, arg: Arg, option?: EndpointArgProps<Optional>) {
     if (this.execFn) throw new Error("Query function is already set");
     else if (this.args.at(-1)?.option?.nullable) throw new Error("Last argument is nullable");
+    this.#assertPromptArg("msg");
     this.argNames.push(name);
     this.args.push(EndpointInfo.getArgInfo("msg", name, arg, option));
     return this as unknown as EndpointInfo<
@@ -229,6 +246,14 @@ export class EndpointInfo<
       ServerReturns,
       Nullable
     >;
+  }
+  /**
+   * `prompts/get` sends `arguments` as `{ [key: string]: string }` — there is no place in the request for an
+   * object body, and no socket behind a prompt for a room or a message. `param` and `search` survive because
+   * both already travel as text in a URL.
+   */
+  #assertPromptArg(argType: ArgType) {
+    if (this.type === "prompt") throw new Error(`A prompt takes .param() and .search() only, not .${argType}()`);
   }
   _addArgs(args: ArgInfo<EndpointArgProps<boolean>>[]) {
     for (const arg of args) {
@@ -284,7 +309,9 @@ export class EndpointInfo<
       ...args: [...ServerArgs, ...InternalArgs]
     ) => ReqType extends "pubsub"
       ? Promise<void> | void
-      : PromiseOrObject<DocumentModel<FieldToValue<Returns>> | (Nullable extends true ? null | undefined : never)>,
+      : ReqType extends "prompt"
+        ? PromiseOrObject<PromptResult>
+        : PromiseOrObject<DocumentModel<FieldToValue<Returns>> | (Nullable extends true ? null | undefined : never)>,
   >(
     execFn: ExecFn,
   ): EndpointInfo<
@@ -345,6 +372,13 @@ export type BuildEndpoint<SrvModule extends ServiceModel = ServiceModel> = {
     returnRef: Returns,
     signalOption?: SignalOption<Returns, Nullable>,
   ) => EndpointInfo<"message", SrvMap<SrvModule>, [], [], [], [], Returns, never, never, Nullable>;
+  /**
+   * Declares an MCP prompt. It takes no return type because the return is always `PromptMessage[]`, and no
+   * `.body()` because `prompts/get` sends its arguments as a flat string map — see `param`.
+   */
+  prompt: (
+    signalOption?: SignalOption<typeof promptCarrier, false>,
+  ) => EndpointInfo<"prompt", SrvMap<SrvModule>, [], [], [], [], typeof promptCarrier, never, never, false>;
 };
 
 export const buildEndpoint = {
@@ -364,6 +398,8 @@ export const buildEndpoint = {
     returnRef: Returns,
     signalOption?: SignalOption<Returns, Nullable>,
   ) => new EndpointInfo("message", returnRef, signalOption),
+  prompt: (signalOption?: SignalOption<typeof promptCarrier, false>) =>
+    new EndpointInfo("prompt", promptCarrier, signalOption),
 } as unknown as BuildEndpoint<any>;
 
 export type EndpointBuilder<SrvModule extends ServiceModel = ServiceModel> = (builder: BuildEndpoint<SrvModule>) => {

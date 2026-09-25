@@ -1,5 +1,5 @@
 import type { Self } from "@libs/shared/common";
-import { MASTER_PHONECODE, MASTER_PHONES } from "@libs/shared/common";
+import { MASTER_PHONECODE, MASTER_PHONES, withRedirectQuery } from "@libs/shared/common";
 import type { AuthTokenMeta, SsoCookie } from "@libs/shared/srvkit";
 import { randomCode, randomString } from "@libs/util/common";
 import type { EmailApi, PurpleApi } from "@libs/util/srvkit";
@@ -295,7 +295,7 @@ export class UserService extends serve(db.user, ({ use, service }) => ({
         } else {
           const user = await this.generatePrepareUser(prepareUserId);
           await this.userModel.setSsoInPrepareUser(user.id, accountId, ssoType);
-          return { redirect: `${signupRedirect}?userId=${user.id}` };
+          return { redirect: withRedirectQuery(signupRedirect, { userId: user.id }) };
         }
       }
     } catch (error) {

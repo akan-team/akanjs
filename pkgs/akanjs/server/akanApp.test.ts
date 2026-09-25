@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { watch } from "node:fs";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { createConnection, type Socket } from "node:net";
 import { tmpdir } from "node:os";
@@ -11,14 +10,18 @@ const tempRoots: string[] = [];
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const waitFor = async <T>(fn: () => Promise<T | null>, timeoutMs = 5_000): Promise<T> => {
+const waitFor = async <T>(
+  fn: () => Promise<T | null>,
+  timeoutMs = 5_000,
+  message = `Timed out after ${timeoutMs}ms`,
+): Promise<T> => {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     const value = await fn();
     if (value) return value;
     await wait(50);
   }
-  throw new Error(`Timed out after ${timeoutMs}ms`);
+  throw new Error(message);
 };
 
 const withTimeout = async <T>(promise: Promise<T>, message: string, timeoutMs = 5_000): Promise<T> => {
@@ -103,30 +106,16 @@ const waitForRawCloseCode = (socket: Socket) =>
     "timed out waiting for raw websocket close",
   );
 
+// Poll rather than fs.watch: Bun coalesces appends made within one window and drops all but the first
+// event, so a close relayed right after the upgrade line never wakes a watcher.
 const observeNextRelayEvent = async (filePath: string, trigger: () => void | Promise<void>): Promise<string> => {
   const previous = (await readFile(filePath, "utf8")).trim().split("\n").filter(Boolean).length;
-  let watcher: ReturnType<typeof watch> | undefined;
-  let timer: Timer | undefined;
-  try {
-    const observed = new Promise<string>((resolve, reject) => {
-      const inspect = () => {
-        void readFile(filePath, "utf8")
-          .then((text) => {
-            const codes = text.trim().split("\n").filter(Boolean);
-            if (codes.length > previous) resolve(codes[previous] ?? "");
-          })
-          .catch(reject);
-      };
-      watcher = watch(filePath, inspect);
-      watcher.once("error", reject);
-      timer = setTimeout(() => reject(new Error("timed out waiting for upstream relay event")), 5_000);
-    });
-    await trigger();
-    return await observed;
-  } finally {
-    watcher?.close();
-    if (timer) clearTimeout(timer);
-  }
+  await trigger();
+  return await waitFor(
+    async () => (await readFile(filePath, "utf8")).trim().split("\n").filter(Boolean)[previous] ?? null,
+    5_000,
+    "timed out waiting for upstream relay event",
+  );
 };
 
 const writeWebSocketRelayChild = async (serverPath: string, observedPath: string) => {
@@ -269,6 +258,41 @@ describe("makeAkanChildProxyHeaders", () => {
 
     expect(headers.get("x-forwarded-host")).toBe("internal.example");
     expect(headers.get("x-forwarded-proto")).toBe("http");
+  });
+
+  test("stamps the socket peer as the client, since the child only ever sees the gateway", () => {
+    const req = new Request("http://internal.example/", { headers: { host: "internal.example" } });
+
+    const headers = makeAkanChildProxyHeaders(req, 0, { address: "203.0.113.10", port: 54321, family: "IPv4" });
+
+    expect(headers.get("x-real-ip")).toBe("203.0.113.10");
+    expect(headers.get("x-forwarded-for")).toBe("203.0.113.10");
+    expect(headers.get("x-forwarded-port")).toBe("54321");
+  });
+
+  test("unwraps an IPv4-mapped peer, which a udp4 return path cannot use", () => {
+    const req = new Request("http://internal.example/", { headers: { host: "internal.example" } });
+
+    const headers = makeAkanChildProxyHeaders(req, 0, { address: "::ffff:203.0.113.10", port: 1, family: "IPv6" });
+
+    expect(headers.get("x-real-ip")).toBe("203.0.113.10");
+  });
+
+  test("keeps an upstream proxy's x-real-ip over its own peer, which is then that proxy", () => {
+    const req = new Request("http://internal.example/", {
+      headers: { host: "internal.example", "x-real-ip": "203.0.113.10", "x-forwarded-for": "203.0.113.10" },
+    });
+
+    const headers = makeAkanChildProxyHeaders(req, 0, { address: "10.0.0.5", port: 443, family: "IPv4" });
+
+    expect(headers.get("x-real-ip")).toBe("203.0.113.10");
+    expect(headers.get("x-forwarded-for")).toBe("203.0.113.10, 203.0.113.10");
+  });
+
+  test("falls back to loopback only when there is no peer to read", () => {
+    const req = new Request("http://internal.example/", { headers: { host: "internal.example" } });
+
+    expect(makeAkanChildProxyHeaders(req, 0).get("x-real-ip")).toBe("127.0.0.1");
   });
 });
 
@@ -559,6 +583,72 @@ describe("AkanApp", () => {
     }
   }, 20_000);
 
+  test("serves immutable client artifacts only while ssr is on", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "akan-app-web-"));
+    tempRoots.push(root);
+    const serverPath = path.join(root, "server.ts");
+    const runtimeDir = path.join(root, "runtime");
+
+    await Bun.write(path.join(root, ".akan/artifact/client/app.js"), "export const x = 1;\n");
+    await Bun.write(
+      serverPath,
+      `
+          export const server = {
+            async start() {
+              const http = Bun.serve({
+                unix: process.env.AKAN_CHILD_SOCKET,
+                fetch() { return new Response("from-child"); },
+              });
+              process.on("message", (message) => {
+                if (!message || typeof message !== "object") return;
+                if (message.type === "health.ping") {
+                  process.send?.({ type: "health.pong", nonce: message.nonce, sentAt: message.sentAt, pid: process.pid });
+                }
+                if (message.type === "shutdown") {
+                  http.stop(true);
+                  process.exit(0);
+                }
+              });
+              process.send?.({
+                type: "ready",
+                pid: process.pid,
+                replicaIdx: Number(process.env.AKAN_REPLICA_IDX ?? 0),
+                role: process.env.SERVER_MODE ?? "all",
+                upstream: { type: "unix", socketPath: process.env.AKAN_CHILD_SOCKET },
+                healthPath: "/_akan/app/child-health",
+              });
+            },
+          };
+        `,
+    );
+
+    // `#web` is read at construction, so each case needs its own gateway.
+    const readAsset = async (ssr: string | undefined) => {
+      const port = 24_000 + Math.floor(Math.random() * 10_000);
+      if (ssr === undefined) delete process.env.AKAN_SSR;
+      else process.env.AKAN_SSR = ssr;
+      const app = new AkanApp(serverPath, { replica: 1, runtimeDir, port });
+      const running = app.start();
+      try {
+        await waitFor(async () => {
+          const res = await fetch(`http://127.0.0.1:${port}/_akan/app/health`).catch(() => null);
+          if (!res?.ok) return null;
+          const body = (await res.json()) as { children: Array<{ ready: boolean }> };
+          return body.children[0]?.ready ? body : null;
+        });
+        return await (await fetch(`http://127.0.0.1:${port}/_akan/client/app.js`)).text();
+      } finally {
+        delete process.env.AKAN_SSR;
+        await app.stop();
+        await Promise.race([running, wait(1_000)]);
+      }
+    };
+
+    expect(await readAsset(undefined)).toContain("export const x = 1;");
+    // With ssr off the prefix is not the gateway's any more, so it falls through to the child like any path.
+    expect(await readAsset("false")).toBe("from-child");
+  }, 40_000);
+
   test("force-kills a child that ignores graceful shutdown within the shutdown budget", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "akan-app-slow-shutdown-"));
     tempRoots.push(root);
@@ -801,4 +891,133 @@ describe("AkanApp", () => {
       await withTimeout(running, "timed out waiting for AkanApp to stop", 1_000);
     }
   }, 20_000);
+});
+
+describe("AkanApp solo", () => {
+  const soloEnvKeys = ["AKAN_SOLO", "SERVER_MODE", "AKAN_REPLICA", "AKAN_REPLICA_IDX", "AKAN_APP_DIR"] as const;
+
+  /** `#startSolo` writes the child env onto this process, so every case restores what it found. */
+  const withSoloEnv = async (env: { [key: string]: string | undefined }, fn: () => Promise<void>) => {
+    const saved = new Map(soloEnvKeys.map((key) => [key, process.env[key]]));
+    Object.entries(env).forEach(([key, value]) => {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    });
+    try {
+      await fn();
+    } finally {
+      for (const [key, value] of saved) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  };
+
+  /** Records the pid that ran it, which is what separates an in-process start from a spawned child. */
+  const writeReportingServer = async (serverPath: string, reportPath: string) =>
+    await Bun.write(
+      serverPath,
+      `
+        export const server = {
+          async start({ listen }) {
+            await Bun.write(${JSON.stringify(reportPath)}, JSON.stringify({
+              pid: process.pid,
+              listen,
+              role: process.env.SERVER_MODE,
+              replicaIdx: process.env.AKAN_REPLICA_IDX,
+              childSocket: process.env.AKAN_CHILD_SOCKET ?? null,
+            }));
+            if (!process.send) return;
+            process.send({
+              type: "ready",
+              pid: process.pid,
+              replicaIdx: Number(process.env.AKAN_REPLICA_IDX ?? 0),
+              role: process.env.SERVER_MODE ?? "all",
+              upstream: { type: "unix", socketPath: process.env.AKAN_CHILD_SOCKET },
+            });
+            await new Promise(() => {});
+          },
+        };
+      `,
+    );
+
+  const makeSoloRoot = async (name: string) => {
+    const root = await mkdtemp(path.join(tmpdir(), name));
+    tempRoots.push(root);
+    const serverPath = path.join(root, "server.ts");
+    const reportPath = path.join(root, "report.json");
+    await writeReportingServer(serverPath, reportPath);
+    return { root, serverPath, reportPath, runtimeDir: path.join(root, "runtime") };
+  };
+
+  const readReport = async (reportPath: string) =>
+    await waitFor(
+      async () => ((await Bun.file(reportPath).exists()) ? await Bun.file(reportPath).json() : null),
+      6_000,
+      "timed out waiting for the server to report how it was started",
+    );
+
+  test("runs the single environment-configured replica in this process", async () => {
+    const { serverPath, reportPath, runtimeDir } = await makeSoloRoot("akan-app-solo-");
+    await withSoloEnv({ AKAN_SOLO: undefined, AKAN_REPLICA: undefined }, async () => {
+      const app = new AkanApp(serverPath, { runtimeDir, port: 24_000 + Math.floor(Math.random() * 10_000) });
+      await app.start();
+      const report = (await readReport(reportPath)) as { pid: number; listen: boolean; childSocket: string | null };
+      expect(report.pid).toBe(process.pid);
+      expect(report.listen).toBe(true);
+      // Its absence is what `AkanServer` reads to know it owns `/_akan/app/*` and the rotating log.
+      expect(report.childSocket).toBeNull();
+      expect(await readdir(runtimeDir).catch(() => [])).toEqual([]);
+    });
+  }, 10_000);
+
+  test("spawns a child when the topology was passed explicitly", async () => {
+    const { serverPath, reportPath, runtimeDir } = await makeSoloRoot("akan-app-solo-explicit-");
+    await withSoloEnv({ AKAN_SOLO: undefined, AKAN_REPLICA: undefined }, async () => {
+      const app = new AkanApp(serverPath, {
+        replica: 1,
+        runtimeDir,
+        port: 24_000 + Math.floor(Math.random() * 10_000),
+      });
+      const running = app.start();
+      try {
+        const report = (await readReport(reportPath)) as { pid: number; childSocket: string | null };
+        expect(report.pid).not.toBe(process.pid);
+        expect(report.childSocket).not.toBeNull();
+      } finally {
+        await app.stop();
+        await Promise.race([running, wait(1_000)]);
+      }
+    });
+  }, 10_000);
+
+  test("spawns a child when AKAN_SOLO is off", async () => {
+    const { serverPath, reportPath, runtimeDir } = await makeSoloRoot("akan-app-solo-off-");
+    await withSoloEnv({ AKAN_SOLO: "false", AKAN_REPLICA: undefined }, async () => {
+      const app = new AkanApp(serverPath, { runtimeDir, port: 24_000 + Math.floor(Math.random() * 10_000) });
+      const running = app.start();
+      try {
+        expect(((await readReport(reportPath)) as { pid: number }).pid).not.toBe(process.pid);
+      } finally {
+        await app.stop();
+        await Promise.race([running, wait(1_000)]);
+      }
+    });
+  }, 10_000);
+
+  test("spawns a child for a batch-only replica, which would leave nothing listening", async () => {
+    const { serverPath, reportPath, runtimeDir } = await makeSoloRoot("akan-app-solo-batch-");
+    await withSoloEnv({ AKAN_SOLO: undefined, AKAN_REPLICA: "0,1,0" }, async () => {
+      const app = new AkanApp(serverPath, { runtimeDir, port: 24_000 + Math.floor(Math.random() * 10_000) });
+      const running = app.start();
+      try {
+        const report = (await readReport(reportPath)) as { pid: number; role: string };
+        expect(report.pid).not.toBe(process.pid);
+        expect(report.role).toBe("batch");
+      } finally {
+        await app.stop();
+        await Promise.race([running, wait(1_000)]);
+      }
+    });
+  }, 10_000);
 });

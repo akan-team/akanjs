@@ -1,6 +1,14 @@
 import { Logger } from "akanjs/common";
-import { createTransport } from "nodemailer";
 import type { SendMailOptions, Transporter } from "./emailApi.helper";
+
+type Nodemailer = typeof import("nodemailer");
+
+let nodemailerLoad: Promise<Nodemailer> | null = null;
+
+function loadNodemailer(): Promise<Nodemailer> {
+  nodemailerLoad ??= import("nodemailer");
+  return nodemailerLoad;
+}
 
 export interface EmailApiOptions {
   address: string;
@@ -11,10 +19,15 @@ export interface EmailApiOptions {
 export class EmailApi {
   readonly #logger = new Logger("EmailApi");
   readonly #options: EmailApiOptions;
-  readonly #mailer: Transporter;
+  #mailerLoad: Promise<Transporter> | null = null;
   constructor(options: EmailApiOptions) {
     this.#options = options;
-    this.#mailer = createTransport({ host: options.address, port: 587, secure: false, auth: options.auth });
+  }
+  #getMailer(): Promise<Transporter> {
+    this.#mailerLoad ??= loadNodemailer().then(({ createTransport }) =>
+      createTransport({ host: this.#options.address, port: 587, secure: false, auth: this.#options.auth }),
+    );
+    return this.#mailerLoad;
   }
   static getHtmlContent(id: string, password: string, serviceName: string) {
     return `<!DOCTYPE html>
@@ -87,7 +100,8 @@ export class EmailApi {
   }
   async sendMail(mail: SendMailOptions) {
     try {
-      const res = await this.#mailer.sendMail({ from: this.#options.auth.user, ...mail });
+      const mailer = await this.#getMailer();
+      const res = await mailer.sendMail({ from: this.#options.auth.user, ...mail });
       const toAddresses = Array.isArray(mail.to)
         ? mail.to.map((t: any) => (typeof t === "string" ? t : t.address)).join(",")
         : typeof mail.to === "string"

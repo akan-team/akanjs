@@ -8,8 +8,8 @@ declare const window: {
 };
 
 export const Gtag = ({ trackingId, debugMode = false }: { trackingId: string; debugMode?: boolean }) => {
-  const pathname = st.use.pathname();
-  const searchParams = st.use.searchParams();
+  const pathname = st.use.pathname({ agent: false });
+  const searchParams = st.use.searchParams({ agent: false });
   // https://developers.google.com/analytics/devguides/collection/gtagjs/pages
   const pageview = (url: string) => {
     window.gtag?.("config", trackingId, { page_path: url });

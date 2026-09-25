@@ -1,5 +1,5 @@
+import { webcrypto } from "node:crypto";
 import { Logger } from "akanjs/common";
-import { webcrypto } from "crypto";
 import { Err } from "../lib/dict";
 import type { CloudflareResponse, Dns, DnsInput } from "./cloudflareApi.helper";
 

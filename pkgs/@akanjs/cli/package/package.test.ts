@@ -163,7 +163,7 @@ describe("PackageRunner", () => {
       version: "1.0.0",
       description: "repo",
       dependencies: { lodash: "4.0.0" },
-      devDependencies: { "@biomejs/biome": "2.3.5", "@types/bun": "1.3.14", typescript: "6.0.0" },
+      devDependencies: { "@biomejs/biome": "2.3.5", "@types/bun": "1.4.0", typescript: "6.0.0" },
     });
     await writeJson(`${root}/pkgs/akanjs/package.json`, {
       name: "akanjs",
@@ -171,12 +171,10 @@ describe("PackageRunner", () => {
       description: "tool",
       exports: {},
       peerDependencies: {
-        daisyui: "5.5.20",
         "react-icons": "5.0.0",
         "tailwind-scrollbar": "4.0.0",
       },
       peerDependenciesMeta: {
-        daisyui: { optional: true },
         "react-icons": { optional: true },
         "tailwind-scrollbar": { optional: true },
       },
@@ -202,17 +200,54 @@ describe("PackageRunner", () => {
       peerDependenciesMeta: Record<string, { optional: boolean }>;
     };
     expect(distPackageJson.dependencies).toEqual({ lodash: "4.0.0" });
-    expect(distPackageJson.devDependencies).toEqual({ "@biomejs/biome": "2.3.5", "@types/bun": "1.3.14" });
+    expect(distPackageJson.devDependencies).toEqual({ "@biomejs/biome": "2.3.5", "@types/bun": "1.4.0" });
     expect(distPackageJson.peerDependencies).toEqual({
-      daisyui: "5.5.20",
       "react-icons": "5.0.0",
       "tailwind-scrollbar": "4.0.0",
     });
     expect(distPackageJson.peerDependenciesMeta).toEqual({
-      daisyui: { optional: true },
       "react-icons": { optional: true },
       "tailwind-scrollbar": { optional: true },
     });
+  });
+
+  test("keeps an embedded workspace package out of generated dependencies", async () => {
+    const { root, pkg } = await createTempPackage("akanjs");
+    tempRoots.push(root);
+    await writeJson(`${root}/package.json`, {
+      name: "repo",
+      version: "1.0.0",
+      description: "repo",
+      dependencies: { lodash: "4.0.0" },
+      devDependencies: { "@biomejs/biome": "2.3.5", "@types/bun": "1.4.0" },
+    });
+    await writeJson(`${root}/pkgs/use-agentic/package.json`, {
+      name: "use-agentic",
+      version: "0.1.0",
+      description: "core",
+      exports: {},
+    });
+    await writeText(
+      `${root}/pkgs/akanjs/index.ts`,
+      [
+        'import "lodash";',
+        'import { useAgent } from "use-agentic";',
+        'import type { ChatMessage } from "use-agentic";',
+        "export const value = useAgent;",
+        "export type Message = ChatMessage;",
+        "",
+      ].join("\n"),
+    );
+    const runner = new PackageRunner();
+
+    await runner.buildPackage(pkg);
+
+    const distPackageJson = (await Bun.file(`${root}/dist/pkgs/akanjs/package.json`).json()) as {
+      dependencies: Record<string, string>;
+      devDependencies: Record<string, string>;
+    };
+    expect(distPackageJson.dependencies).toEqual({ lodash: "4.0.0" });
+    expect(distPackageJson.devDependencies).toEqual({ "@biomejs/biome": "2.3.5", "@types/bun": "1.4.0" });
   });
 
   test("fails when a scanned dependency is missing from the root package.json", async () => {

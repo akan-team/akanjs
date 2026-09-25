@@ -1,6 +1,6 @@
 "use client";
 import { type cnst, st } from "@libs/util/client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 
 import Google from "./Google";
 
@@ -63,10 +63,9 @@ interface MapProps {
   onClick?: (coordinate: cnst.Coordinate) => void;
   onRightClick?: (coordinate: cnst.Coordinate) => void;
   onMouseMove?: (coordinate: cnst.Coordinate) => void;
-  mapKey: string;
   children: any;
 }
-export default function Map({ className, children, onLoad, onClick, onRightClick, onMouseMove, mapKey }: MapProps) {
+export default function Map({ className, children, onLoad, onClick, onRightClick, onMouseMove }: MapProps) {
   const theme = st.use.theme();
   const mapCenter = st.use.mapCenter();
   const mapZoom = st.use.mapZoom();
@@ -74,8 +73,8 @@ export default function Map({ className, children, onLoad, onClick, onRightClick
   const mapPanControl = st.use.mapPanControl();
   return (
     <Google
-      mapKey={mapKey}
-      className={clsx("w-full", className)}
+      mapKey="AIzaSyCrOEDjjMR2AsCUfmv0y7pEe-YPNlXcMpk"
+      className={cn("w-full", className)}
       options={{ styles: theme === "dark" ? darkStyle : lightStyle, gestureHandling: mapPanControl ? "auto" : "none" }}
       center={mapCenter}
       zoom={mapZoom}

@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="endpoint-query" title={l.trans({ en: "Endpoint Queries", ko: "Endpoint query" })}>
         <Docs.Title>{l.trans({ en: "Endpoint Queries", ko: "Endpoint query" })}</Docs.Title>
@@ -37,6 +37,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="minimal query endpoint"
           code={`export class SearchEndpoint extends endpoint(srv.search, ({ query }) => ({
   getSearchResult: query(cnst.SearchResult)
@@ -48,7 +49,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="endpoint-mutation" title={l.trans({ en: "Endpoint Mutations", ko: "Endpoint mutation" })}>
         <Docs.Title>{l.trans({ en: "Endpoint Mutations", ko: "Endpoint mutation" })}</Docs.Title>
@@ -61,6 +62,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="minimal mutation endpoint"
           code={`export class SecurityEndpoint extends endpoint(srv.security, ({ mutation }) => ({
   encrypt: mutation(String)
@@ -71,7 +73,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="internal-and-cron" title={l.trans({ en: "Internal And Cron", ko: "Internal과 cron" })}>
         <Docs.Title>{l.trans({ en: "Internal And Cron", ko: "Internal과 cron" })}</Docs.Title>
@@ -84,6 +86,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="minimal cron"
           code={`export class SearchInternal extends internal(srv.search, ({ cron }) => ({
   refreshIndex: cron("0 * * * *", { serverMode: "batch" }).exec(async function () {
@@ -92,7 +95,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="custom-routes" title={l.trans({ en: "Custom Routes", ko: "Custom route" })}>
         <Docs.Title>{l.trans({ en: "Custom Routes", ko: "Custom route" })}</Docs.Title>
@@ -105,6 +108,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="prefixless endpoint"
           code={`export class LocalFileEndpoint extends endpoint(srv.localFile, ({ query }) => ({
   getBlob: query(Any, { path: "localFile/getBlob/*" })
@@ -115,7 +119,7 @@ export default function Page() {
 })) {}`}
         />
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

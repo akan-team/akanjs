@@ -20,7 +20,7 @@ export default function Page() {
             <div className="mb-3 font-bold text-lg text-primary">
               {l.trans({ en: "🏗️ Architecture Highlights", ko: "🏗️ 아키텍처 하이라이트" })}
             </div>
-            <div className="text-base-content/80 text-sm">
+            <div className="text-foreground/80 text-sm">
               {l.trans({
                 en: `Each function has one Nest module, and these modules combine to form a server. Multiple servers form a cluster that provides high availability and scalability for your services.`,
                 ko: `각 기능별로 1개의 Nest 모듈이 만들어지며, 모듈들이 모여 1개의 서버를 구성합니다. 여러 서버가 모여 서비스의 고가용성과 확장성을 제공하는 클러스터를 형성합니다.`,
@@ -29,7 +29,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="module-structure" title={l.trans({ en: "Backend Module Structure", ko: "백엔드 모듈 구조" })}>
         <Docs.Title>{l.trans({ en: "Backend Module Structure", ko: "백엔드 모듈 구조" })}</Docs.Title>
@@ -40,7 +40,7 @@ export default function Page() {
               ko: `Akan.js의 각 데이터 모델은 전용 모듈을 가집니다. 이러한 모듈식 접근 방식은 관심사의 깔끔한 분리를 보장하고 코드베이스를 유지보수하고 확장하기 쉽게 만듭니다.`,
             })}
           </div>
-          <div className="my-6 rounded-lg bg-base-200 p-6">
+          <div className="my-6 rounded-lg bg-muted p-6">
             <Image src="/akanjsImage/back_0.png" width={1000} height={1000} className="w-full rounded-lg" />
           </div>
           <div>
@@ -50,56 +50,56 @@ export default function Page() {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-content text-sm">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
                   1
                 </span>
-                <strong className="text-base-content">Constant</strong>
+                <strong className="text-foreground">Constant</strong>
               </div>
-              <div className="ml-8 text-base-content/70 text-sm">
+              <div className="ml-8 text-foreground/70 text-sm">
                 {l.trans({
                   en: `Defines the data model schema, types, enums, and validation rules. This is the single source of truth shared between backend and frontend.`,
                   ko: `데이터 모델 스키마, 타입, 열거형, 검증 규칙을 정의합니다. 백엔드와 프론트엔드 간에 공유되는 단일 진실의 원천입니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-content text-sm">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
                   2
                 </span>
-                <strong className="text-base-content">Document</strong>
+                <strong className="text-foreground">Document</strong>
               </div>
-              <div className="ml-8 text-base-content/70 text-sm">
+              <div className="ml-8 text-foreground/70 text-sm">
                 {l.trans({
                   en: `Handles MongoDB operations including CRUD, queries, filters, and document methods. Includes middleware hooks for pre/post operations.`,
                   ko: `CRUD, 쿼리, 필터, 문서 메서드를 포함한 MongoDB 작업을 처리합니다. 작업 전/후 미들웨어 훅을 포함합니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-content text-sm">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
                   3
                 </span>
-                <strong className="text-base-content">Service</strong>
+                <strong className="text-foreground">Service</strong>
               </div>
-              <div className="ml-8 text-base-content/70 text-sm">
+              <div className="ml-8 text-foreground/70 text-sm">
                 {l.trans({
                   en: `Contains business logic and orchestrates operations. Supports dependency injection to access other services and external APIs.`,
                   ko: `비즈니스 로직을 포함하고 작업을 조율합니다. 다른 서비스와 외부 API에 접근하기 위한 의존성 주입을 지원합니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-content text-sm">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
                   4
                 </span>
-                <strong className="text-base-content">Signal</strong>
+                <strong className="text-foreground">Signal</strong>
               </div>
-              <div className="ml-8 text-base-content/70 text-sm">
+              <div className="ml-8 text-foreground/70 text-sm">
                 {l.trans({
                   en: `Exposes GraphQL endpoints (Slices and Endpoints) with automatic type generation, authentication guards, and rate limiting.`,
                   ko: `자동 타입 생성, 인증 가드, 속도 제한과 함께 GraphQL 엔드포인트(슬라이스와 엔드포인트)를 노출합니다.`,
@@ -109,7 +109,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="server-cluster" title={l.trans({ en: "Server Cluster Structure", ko: "서버 클러스터 구조" })}>
         <Docs.Title>{l.trans({ en: "Server Cluster Structure", ko: "서버 클러스터 구조" })}</Docs.Title>
@@ -121,26 +121,26 @@ export default function Page() {
             })}
           </div>
           <div className="my-4 space-y-3">
-            <div className="rounded-lg bg-base-200 p-4">
+            <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-2xl">⚡</span>
-                <strong className="text-base-content text-lg">
+                <strong className="text-foreground text-lg">
                   {l.trans({ en: "Federation Mode", ko: "페더레이션 모드" })}
                 </strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Handles incoming requests from the frontend with horizontal scaling capability. Multiple containers can be deployed to distribute the load, ensuring high availability and responsiveness.`,
                   ko: `수평 확장 기능으로 프론트엔드로부터 들어오는 요청을 처리합니다. 여러 컨테이너를 배포하여 부하를 분산할 수 있어 고가용성과 응답성을 보장합니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg bg-base-200 p-4">
+            <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-2xl">🔄</span>
-                <strong className="text-base-content text-lg">{l.trans({ en: "Batch Mode", ko: "배치 모드" })}</strong>
+                <strong className="text-foreground text-lg">{l.trans({ en: "Batch Mode", ko: "배치 모드" })}</strong>
               </div>
-              <div className="text-base-content/70 text-sm">
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Runs as a single container in the cluster for scheduled tasks, queue processing, and security operations. Ensures consistent execution without race conditions.`,
                   ko: `예약된 작업, 큐 처리, 보안 작업을 위해 클러스터에서 단일 컨테이너로 실행됩니다. 경쟁 조건 없이 일관된 실행을 보장합니다.`,
@@ -148,7 +148,7 @@ export default function Page() {
               </div>
             </div>
           </div>
-          <div className="my-6 rounded-lg bg-base-200 p-6">
+          <div className="my-6 rounded-lg bg-muted p-6">
             <Image src="/akanjsImage/back_1.png" width={1000} height={1000} className="w-full rounded-lg" />
           </div>
           <div>
@@ -158,18 +158,18 @@ export default function Page() {
             })}
           </div>
           <div className="my-4 grid gap-4 md:grid-cols-2">
-            <div className="rounded-lg bg-base-200 p-4">
-              <div className="mb-2 font-bold text-base-content">🗄️ MongoDB</div>
-              <div className="text-base-content/70 text-sm">
+            <div className="rounded-lg bg-muted p-4">
+              <div className="mb-2 font-bold text-foreground">🗄️ MongoDB</div>
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `Primary database for persistent data storage. Supports 1-3 database connections for sharding and replication.`,
                   ko: `영구 데이터 저장을 위한 주 데이터베이스. 샤딩과 복제를 위해 1-3개의 데이터베이스 연결을 지원합니다.`,
                 })}
               </div>
             </div>
-            <div className="rounded-lg bg-base-200 p-4">
-              <div className="mb-2 font-bold text-base-content">⚡ Redis</div>
-              <div className="text-base-content/70 text-sm">
+            <div className="rounded-lg bg-muted p-4">
+              <div className="mb-2 font-bold text-foreground">⚡ Redis</div>
+              <div className="text-foreground/70 text-sm">
                 {l.trans({
                   en: `In-memory cache for session management, real-time subscriptions, and shared state between server instances.`,
                   ko: `세션 관리, 실시간 구독, 서버 인스턴스 간 공유 상태를 위한 인메모리 캐시.`,
@@ -179,7 +179,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="request-handling" title={l.trans({ en: "Request Handling", ko: "요청 처리" })}>
         <Docs.Title>{l.trans({ en: "Request Handling", ko: "요청 처리" })}</Docs.Title>
@@ -192,7 +192,7 @@ export default function Page() {
           </div>
           <div className="my-4 space-y-2">
             <div className="flex items-start gap-3">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-content text-xs">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-xs">
                 1
               </span>
               <div>
@@ -204,7 +204,7 @@ export default function Page() {
               </div>
             </div>
             <div className="flex items-start gap-3">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-content text-xs">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-xs">
                 2
               </span>
               <div>
@@ -216,7 +216,7 @@ export default function Page() {
               </div>
             </div>
             <div className="flex items-start gap-3">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-content text-xs">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-xs">
                 3
               </span>
               <div>
@@ -230,7 +230,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

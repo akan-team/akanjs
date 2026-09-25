@@ -1,4 +1,5 @@
 import type { SliceMeta } from "akanjs/fetch";
+import type { SerializedArg } from "akanjs/signal";
 import type { ReactNode } from "react";
 import type { TransMessageOption } from "./makePageProto";
 
@@ -47,6 +48,10 @@ type RuntimeFetch = typeof globalThis.fetch & {
   serializedSignal: Record<string, unknown>;
   setJwt: (jwt: string | null) => void;
   slice: Record<string, SliceMeta>;
+  /** Sort keys per model refName, registered from each serialized signal's filter. */
+  sortKeyMap?: Map<string, string[]>;
+  /** Filter queries per model refName, with the args each one takes — what the root slice picks from. */
+  filterQueryMap?: Map<string, { [queryKey: string]: SerializedArg[] }>;
   ws: RuntimeWs;
   [key: string]: unknown;
 };
@@ -75,6 +80,13 @@ globalWithRuntime[CLIENT_RUNTIME_KEY] = state;
 const missingRuntimeError = () =>
   new Error("Akan client runtime is not registered. Import the generated app client first.");
 
+const applyRuntimeErrorConstructor = (runtime: ClientRuntime) => {
+  const instance = (runtime.fetch as RuntimeFetch | undefined)?.instance as
+    | { setErrorConstructor?: (Err: unknown) => void }
+    | undefined;
+  if (typeof instance?.setErrorConstructor === "function") instance.setErrorConstructor(runtime.Err);
+};
+
 export const registerClientRuntime = <Runtime>(
   runtime: Runtime,
   { scope = "app" }: { scope?: RuntimeScope } = {},
@@ -82,6 +94,7 @@ export const registerClientRuntime = <Runtime>(
   if (state.scope === "app" && scope === "lib") return runtime;
   state.runtime = runtime as ClientRuntime;
   state.scope = scope;
+  applyRuntimeErrorConstructor(state.runtime);
   return runtime;
 };
 

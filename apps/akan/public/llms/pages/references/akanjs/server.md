@@ -16,9 +16,11 @@ akanjs/server
 
 Gateway/orchestrator used by app `main.ts` files. It starts child server replicas, proxies HTTP and WebSocket traffic, reports metrics, and handles shutdown for local and production runs.
 
-Constructor option type for `AkanApp`. It configures replica layout, server path, runtime directory, HTTP port, and WebSocket base port for the gateway process.
+Constructor option type for `AkanApp`. It configures replica layout, server path, runtime directory, HTTP port, and WebSocket base port for the gateway process, plus `openapi` and `modules`. `modules` boots only the named modules and the ones they depend on, in every child; omitted or empty mounts every enabled module.
 
-App/library option builder used by `lib/option.ts`. It registers env-derived use objects, signal middleware, and web proxies consumed by the server runtime.
+`server.setWeb(true | false | { csr })` and the `AKAN_SSR` / `AKAN_CSR` env narrow what a process serves beyond its API: SSR is the RSC renderer and its RSC worker process, CSR is the mobile SPA bundle at `/__csr`. They only narrow — a surface `akan.config.ts` left out of the build cannot be switched back on — and `AKAN_SSR=false` takes CSR with it, because the CSR bundle inlines the stylesheet the SSR build compiles. The boot log names the resolved answer.
+
+App/library option builder used by `lib/option.ts`. It registers env-derived use objects, signal middleware, adaptor overrides, and web proxies, and carries the settings an app owns: `setMcp` for the MCP server, `setAgentAccess` for the guards a caller must pass to spend the LLM key through the agent relay, and `setLlm` for the model that relay speaks to. Every lib's option is read in mount order with the app's last.
 
 Response helper for web proxy code. `next` continues the request, `rewrite` proxies to a different URL while preserving proxy metadata, and `redirect` returns a normal redirect response.
 

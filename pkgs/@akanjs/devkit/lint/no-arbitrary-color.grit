@@ -1,0 +1,19 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Arbitrary-value color literals (`bg-[#3b82f6]`, `text-[rgb(0,0,0)]`) bypass the semantic
+// token layer, so they ignore data-theme switching and theme contrast validation. Grit port
+// of styleGuard's `arbitrary-color` rule (frontendBuild/styleGuard.ts) — keep in sync.
+// Variable references (`bg-[--brand]`, `text-[var(--fg)]`) do not match, by design.
+or {
+  JsxString() as $s,
+  JsStringLiteralExpression() as $s,
+  JsTemplateChunkElement() as $s
+} where {
+  $s <: r"[\s\S]*\[(?:#[0-9a-fA-F]{3,8}|(?:rgb|rgba|hsl|hsla|oklch|oklab|lab|lch|hwb|color)\([^\]]*\))\][\s\S]*",
+  register_diagnostic(
+    span = $s,
+    message = "Arbitrary color value bypasses the semantic token layer (no theme switching, no contrast validation). Use a semantic token, or reference a variable (bg-[--brand]) declared in styles.css.",
+    severity = "error"
+  )
+}

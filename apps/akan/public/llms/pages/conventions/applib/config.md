@@ -13,6 +13,7 @@
 - routes (#routes)
 - mobile (#mobile)
 - defaultDatabaseMode (#default-database-mode)
+- web (#web)
 - images (#images)
 - i18n (#i18n)
 - publicEnv (#public-env)
@@ -66,6 +67,20 @@ Database Mode
 
 .
 
+web
+
+web declares which browser surfaces this app builds and serves, as true | false | { csr: boolean }. false is an api-only app; true, the default, is both surfaces; the object form keeps SSR and toggles only the CSR bundle. SSR is the RSC route renderer with its pages bundle, client bundles and RSC worker process; CSR is the single-file SPA bundle the Capacitor mobile build ships. The API is always served and is not part of this switch.
+
+Turning a surface off removes its build phase, so the deployment image never carries the artifact — and the runtime never mounts the routes that read it. There is no CSR-without-SSR option, by type: the CSR bundle inlines the stylesheet the SSR build compiles, so it would ship an unstyled app.
+
+An api-only build writes no route artifact, skips the RSC worker entrypoint, and leaves public/ out of the image, because the web router's catch-all is its only reader. Nothing under page/ is served, including routes a library contributed through syncPageLibs.
+
+AKAN_SSR and AKAN_CSR narrow the same two surfaces per deployment. They only narrow: a surface the build left out cannot be switched back on, and the boot log names what the process ended up serving. The generated Dockerfile writes the build's own answer as the image default.
+
+Turning CSR off is refused when the app declares mobile targets, because akan build-ios copies dist/apps/<app>/csr/<target>.html into the native project.
+
+akan start ignores web and keeps the whole dev surface: the incremental builder is also the file watcher, so switching it off would take server-code HMR with it. It warns once when the config and the dev server disagree.
+
 images
 
 images configures Akan's optimized image pipeline. It controls allowed image sizes, output formats, remote sources, local paths, redirects, timeout, and byte limits.
@@ -110,7 +125,7 @@ externalLibs
 
 externalLibs marks dependencies that should not be bundled into app code. When declared here, Akan installs them as separate packages during the production build.
 
-Akan includes externalLibs in the production package dependencies together with required SSR and native runtime packages.
+Akan includes externalLibs in the production package dependencies together with the required SSR runtime packages.
 
 Use this for native or runtime-sensitive packages. Normal TypeScript helpers usually do not need externalLibs.
 
@@ -134,15 +149,19 @@ docker
 
 docker customizes the production container Akan generates for an app. Use it only when deployment needs extra system packages or a different startup command.
 
-Akan builds Dockerfile content from the base image, default system packages, your run scripts, app env values, base paths, locale values, and command.
+Akan builds Dockerfile content from the base image, your run scripts, app env values, base paths, locale values, and command. The generated image installs ca-certificates and tzdata and nothing else, so an app that needs a headless browser, ffmpeg, or a native toolchain declares it in preRuns.
 
-docker.content is useful when the deployment image must be fully controlled. Keep the default Dockerfile flow when possible: install runtime packages, install production dependencies, copy app files, set Akan public env values, then define CMD.
+docker is either those parts or a whole Dockerfile written as a string. preRuns run before bun install --production, so build tools a native dependency needs are present for it; postRuns run after it, before app files are copied. image and each run entry also take a per-architecture object, which compiles to a TARGETARCH guard.
+
+The string form is useful when the deployment image must be fully controlled. It is used exactly as written, so nothing is merged into it — including the preRuns a library contributes. Keep the default Dockerfile flow when possible: install runtime packages, install production dependencies, copy app files, set Akan public env values, then define CMD.
 
 Library Config Fields
 
-LibConfig uses the same partial object or function shape, but its current practical surface is externalLibs. Use it when a shared library wraps a dependency that must be available in production runtime packaging.
+LibConfig uses the same partial object or function shape, and its practical surface is externalLibs and docker. Use externalLibs when a shared library wraps a dependency that must be available in production runtime packaging.
 
-Akan resolves missing values to an empty list and stores the result with the library scan result.
+docker declares the image steps the library's own runtime needs, as preRuns and postRuns only — the base image and the command stay the app's decision. Library steps are emitted before the app's own, and a step declared on both sides becomes one layer.
+
+Akan resolves missing values to an empty list and merges every workspace library's externalLibs and docker steps into each app, so an app that uses the library does not repeat the declaration. An app whose docker is a whole Dockerfile string takes neither.
 
 ## Code Examples
 
@@ -239,6 +258,30 @@ const config: AppConfig = {
 export default config;
 ```
 
+### web without the mobile bundle
+
+```ts
+import type { AppConfig } from "akanjs";
+
+const config: AppConfig = {
+  web: { csr: false },
+};
+
+export default config;
+```
+
+### api-only deployment
+
+```ts
+import type { AppConfig } from "akanjs";
+
+const config: AppConfig = {
+  web: false,
+};
+
+export default config;
+```
+
 ### apps/catalog/akan.config.ts
 
 ```ts
@@ -324,7 +367,7 @@ export default config;
 import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
-  externalLibs: ["sharp"],
+  externalLibs: ["puppeteer"],
 };
 
 export default config;
@@ -362,7 +405,7 @@ import type { AppConfig } from "akanjs";
 const config: AppConfig = {
   docker: {
     image: "oven/bun:1-slim",
-    preRuns: ["apt-get install -y --no-install-recommends imagemagick"],
+    preRuns: ["apt-get update && apt-get install -y --no-install-recommends ffmpeg imagemagick"],
     command: ["bun", "main.js"],
   },
 };
@@ -376,31 +419,28 @@ export default config;
 import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
-  docker: {
-    content: [
-      "FROM oven/bun:1-slim",
-      "RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime",
-      "RUN apt-get update && apt-get upgrade -y",
-      "RUN apt-get install -y --no-install-recommends git redis build-essential python3 ca-certificates ffmpeg imagemagick",
-      "ARG TARGETARCH",
-      "RUN mkdir -p /workspace",
-      "WORKDIR /workspace",
-      "COPY ./package.json ./package.json",
-      "RUN bun install --production",
-      "COPY . .",
-      "ENV PORT=8282",
-      "ENV NODE_ENV=production",
-      "ENV AKAN_PUBLIC_REPO_NAME=akanjs",
-      "ENV AKAN_PUBLIC_SERVE_DOMAIN=example.com",
-      "ENV AKAN_PUBLIC_APP_NAME=custom-runtime",
-      "ENV AKAN_PUBLIC_ENV=main",
-      "ENV AKAN_PUBLIC_DEFAULT_LOCALE=ko",
-      "ENV AKAN_PUBLIC_LOCALES=ko,en",
-      "ENV AKAN_PUBLIC_OPERATION_MODE=cloud",
-      "",
-      'CMD ["bun","main.js"]',
-    ].join("\n"),
-  },
+  docker: [
+    "FROM oven/bun:1-slim",
+    "RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata ffmpeg imagemagick",
+    "RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime",
+    "ARG TARGETARCH",
+    "RUN mkdir -p /workspace",
+    "WORKDIR /workspace",
+    "COPY ./package.json ./package.json",
+    "RUN bun install --production",
+    "COPY . .",
+    "ENV PORT=8282",
+    "ENV NODE_ENV=production",
+    "ENV AKAN_PUBLIC_REPO_NAME=akanjs",
+    "ENV AKAN_PUBLIC_SERVE_DOMAIN=example.com",
+    "ENV AKAN_PUBLIC_APP_NAME=custom-runtime",
+    "ENV AKAN_PUBLIC_ENV=main",
+    "ENV AKAN_PUBLIC_DEFAULT_LOCALE=ko",
+    "ENV AKAN_PUBLIC_LOCALES=ko,en",
+    "ENV AKAN_PUBLIC_OPERATION_MODE=cloud",
+    "",
+    'CMD ["bun","main.js"]',
+  ].join("\n"),
 };
 
 export default config;
@@ -412,7 +452,10 @@ export default config;
 import type { LibConfig } from "akanjs";
 
 const config: LibConfig = {
-  externalLibs: ["sharp"],
+  externalLibs: ["puppeteer"],
+  docker: {
+    preRuns: ["apt-get update && apt-get install -y --no-install-recommends chromium"],
+  },
 };
 
 export default config;

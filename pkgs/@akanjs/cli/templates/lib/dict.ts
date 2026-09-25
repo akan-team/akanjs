@@ -9,7 +9,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [
   const libs = scanInfo.getLibs();
   return `
 import { makeDictionary, makeTrans, registerScalarTrans, registerServiceTrans, registerModelTrans${libs.length === 0 ? `, dictionary as base` : ""} } from "akanjs/dictionary";
-${libs.length ? libs.map((lib) => `import { dictionary as ${lib} } from "@libs/${lib}/server";`).join("\n") : ""}
+${libs.length ? libs.map((lib) => `import { dictionary as ${lib} } from "@libs/${lib}/lib/dict";`).join("\n") : ""}
 
 ${databaseModules.map((module) => `import * as ${module} from "./${module}/${module}.dictionary";`).join("\n")}
 ${serviceModules.map((module) => `import * as ${module} from "./_${module}/${module}.dictionary";`).join("\n")}

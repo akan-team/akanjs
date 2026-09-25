@@ -1,6 +1,7 @@
 "use client";
-import { clsx, usePage } from "akanjs/client";
+import { cn, usePage } from "akanjs/client";
 import { isEmail } from "akanjs/common";
+import { useFieldTool } from "akanjs/store";
 import React, {
   type ChangeEvent,
   type InputHTMLAttributes,
@@ -12,8 +13,12 @@ import React, {
   useState,
 } from "react";
 import { AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
+import { agentAttrs } from "./agentAttrs";
+import { inputRecipe } from "./recipe";
+import { createOverridable, useUiRecipe } from "./UiOverride";
 
-import { createOverridable } from "./UiOverride";
+// 입력 표면은 서버-안전 recipe 레이어(./recipe)의 inputRecipe 가 단일 소스다 — 여기서 클래스를 재작성하지 않는다.
+// 각 컴포넌트는 recipes.input 슬롯을 먼저 조회하고 canonical inputRecipe 로 폴백한다 (Button 과 동일한 해석 라인).
 
 export type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange"> & {
   /** Visual input style. */
@@ -57,9 +62,11 @@ const DefaultInput = ({
   validate,
   ...rest
 }: InputProps) => {
+  useFieldTool(onChange, { disabled: rest.disabled });
   const { l } = usePage();
   const [firstFocus, setFirstFocus] = useState(true);
   const validateResult = validate ? validate(value) : undefined;
+  const inputBase = (useUiRecipe("input") ?? inputRecipe)();
   const status: "error" | "warning" | "success" | null =
     !nullable && !value ? null : !value.length ? "warning" : validateResult === true ? "success" : "error";
   const invalidMessage =
@@ -72,19 +79,21 @@ const DefaultInput = ({
   const statusClass =
     inputStyleType === "bordered"
       ? status === "error"
-        ? "input-error"
+        ? "border-destructive"
         : !firstFocus && status === "warning"
-          ? "input-warning"
+          ? "border-warning"
           : status === "success"
-            ? "input-success"
+            ? "border-success"
             : ""
       : "";
-  const inputType =
-    inputStyleType === "bordered"
-      ? "input"
-      : inputStyleType === "borderless"
-        ? "input-ghost"
-        : "border-0  border-b rounded-none";
+  const inputType = cn(
+    inputBase,
+    inputStyleType === "borderless"
+      ? "border-transparent bg-transparent"
+      : inputStyleType === "underline"
+        ? "rounded-none border-0 border-b"
+        : "",
+  );
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (onPressEnter && e.key === "Enter") onPressEnter(e.currentTarget.value, e);
     if (e.key === "Escape") {
@@ -100,10 +109,11 @@ const DefaultInput = ({
   }, [value]);
 
   return (
-    <div className={clsx("relative isolate flex items-center", className)}>
-      {icon ? <div className={clsx("flex items-center justify-center", iconClassName)}>{icon}</div> : null}
+    <div className={cn("relative isolate flex items-center", className)}>
+      {icon ? <div className={cn("flex items-center justify-center", iconClassName)}>{icon}</div> : null}
       <input
         {...rest}
+        {...agentAttrs(onChange)}
         ref={inputRef}
         value={value}
         onChange={(e) => {
@@ -116,8 +126,8 @@ const DefaultInput = ({
           if (firstFocus && value) setFirstFocus(false);
         }}
         onKeyDown={handleKeyDown}
-        className={clsx(
-          `b-5 text-base-content outline-hidden duration-300 focus:border-primary focus:outline-hidden ${icon && ""}`,
+        className={cn(
+          "text-foreground outline-hidden duration-300 focus:border-primary focus:outline-hidden",
           inputType,
           // statusClass,
           inputClassName,
@@ -125,7 +135,7 @@ const DefaultInput = ({
       />
       <div
         data-validate={!!validateResult}
-        className="absolute -bottom-4 whitespace-nowrap text-error text-xs duration-300"
+        className="absolute -bottom-4 whitespace-nowrap text-destructive text-xs duration-300"
       >
         {invalidMessage}
       </div>
@@ -161,9 +171,11 @@ const DefaultTextArea = ({
   validate,
   ...rest
 }: TextAreaProps) => {
+  useFieldTool(onChange, { disabled: rest.disabled });
   const { l } = usePage();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const validateResult = validate(value);
+  const textareaBase = (useUiRecipe("input") ?? inputRecipe)({ kind: "area" });
   const [firstFocus, setFirstFocus] = useState(true);
   const status: "error" | "warning" | "success" =
     !nullable && !value.length ? "warning" : validateResult === true ? "success" : "error";
@@ -175,11 +187,11 @@ const DefaultTextArea = ({
         : validateResult;
   const statusClass =
     status === "error"
-      ? "textarea-error"
+      ? "border-destructive"
       : !firstFocus && status === "warning"
-        ? "textarea-warning"
+        ? "border-warning"
         : status === "success"
-          ? "textarea-success"
+          ? "border-success"
           : "";
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (onPressEnter && e.key === "Enter") onPressEnter(e.currentTarget.value, e);
@@ -194,9 +206,10 @@ const DefaultTextArea = ({
   }, []);
 
   return (
-    <div className={clsx("relative mb-5", className)}>
+    <div className={cn("relative mb-5", className)}>
       <textarea
         {...rest}
+        {...agentAttrs(onChange)}
         ref={inputRef}
         value={value}
         onChange={(e) => {
@@ -209,14 +222,17 @@ const DefaultTextArea = ({
         onBlur={(e) => {
           if (firstFocus && value) setFirstFocus(false);
         }}
-        className={clsx(
-          `textarea textarea-bordered resize-none text-base-content outline-hidden duration-300 focus:border-primary focus:outline-hidden`,
+        className={cn(
+          cn(
+            textareaBase,
+            "resize-none text-foreground outline-hidden duration-300 focus:border-primary focus:outline-hidden",
+          ),
           statusClass,
           inputClassName,
         )}
       />
       {invalidMessage ? (
-        <div className="absolute -bottom-4 animate-fadeIn text-error text-xs">{invalidMessage}</div>
+        <div className="absolute -bottom-4 animate-fadeIn text-destructive text-xs">{invalidMessage}</div>
       ) : null}
     </div>
   );
@@ -250,11 +266,13 @@ const DefaultPassword = ({
   validate,
   ...rest
 }: PasswordProps) => {
+  useFieldTool(onChange, { disabled: rest.disabled });
   const { l } = usePage();
   const inputRef = useRef<HTMLInputElement>(null);
   const validateResult = validate(value);
   const [firstFocus, setFirstFocus] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
+  const inputBase = (useUiRecipe("input") ?? inputRecipe)();
   const status: "error" | "warning" | "success" =
     !nullable && !value.length ? "warning" : validateResult === true ? "success" : "error";
   const invalidMessage =
@@ -265,11 +283,11 @@ const DefaultPassword = ({
         : validateResult;
   const statusClass =
     status === "error"
-      ? "input-error"
+      ? "border-destructive"
       : !firstFocus && status === "warning"
-        ? "input-warning"
+        ? "border-warning"
         : status === "success"
-          ? "input-success"
+          ? "border-success"
           : "";
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (onPressEnter && e.key === "Enter") onPressEnter(e.currentTarget.value, e);
@@ -284,15 +302,16 @@ const DefaultPassword = ({
     }
   }, []);
   return (
-    <div className={clsx("relative isolate pb-2", className)}>
-      <div className={clsx("relative flex items-center justify-between", inputWrapperClassName)}>
+    <div className={cn("relative isolate pb-2", className)}>
+      <div className={cn("relative flex items-center justify-between", inputWrapperClassName)}>
         {icon ? (
-          <div className={clsx("absolute inset-y-0 left-4 z-10 flex items-center justify-center", iconClassName)}>
+          <div className={cn("absolute inset-y-0 left-4 z-10 flex items-center justify-center", iconClassName)}>
             {icon}
           </div>
         ) : null}
         <input
           {...rest}
+          {...agentAttrs(onChange)}
           type={showPassword ? "text" : "password"}
           ref={inputRef}
           value={value}
@@ -306,8 +325,10 @@ const DefaultPassword = ({
             }
             onChange?.(e.target.value, e);
           }}
-          className={clsx(
-            `input text-base-content duration-300 focus:border-primary focus:outline-hidden ${icon && "pl-12"}`,
+          className={cn(
+            inputBase,
+            "text-foreground duration-300 focus:border-primary focus:outline-hidden",
+            icon && "pl-12",
             statusClass,
             inputClassName,
           )}
@@ -324,7 +345,7 @@ const DefaultPassword = ({
       </div>
       <div
         data-validate={!!invalidMessage.length}
-        className="h-2 text-error text-xs duration-300 data-[validate=false]:opacity-0 data-[validate=true]:opacity-100"
+        className="h-2 text-destructive text-xs duration-300 data-[validate=false]:opacity-0 data-[validate=true]:opacity-100"
       >
         {invalidMessage}
       </div>
@@ -362,9 +383,11 @@ const DefaultEmail = ({
   inputWrapperClassName,
   ...rest
 }: EmailProps) => {
+  useFieldTool(onChange, { disabled: rest.disabled });
   const { l } = usePage();
   const inputRef = useRef<HTMLInputElement>(null);
   const isValidEmail = isEmail(value);
+  const inputBase = (useUiRecipe("input") ?? inputRecipe)();
   const [firstFocus, setFirstFocus] = useState(true);
   const validateResult = !isValidEmail ? l("base.emailInvalidError") : validate(value);
   const status: "error" | "warning" | "success" =
@@ -377,18 +400,13 @@ const DefaultEmail = ({
         : validateResult;
   const statusClass =
     status === "error"
-      ? "input-error"
+      ? "border-destructive"
       : !firstFocus && status === "warning"
-        ? "input-warning"
+        ? "border-warning"
         : status === "success"
-          ? "input-success"
+          ? "border-success"
           : "";
-  const inputType =
-    inputStyleType === "bordered"
-      ? "input-bordered"
-      : inputStyleType === "borderless"
-        ? "input"
-        : "input-bordered rounded-none";
+  const inputType = cn(inputBase, inputStyleType === "underline" ? "rounded-none" : "");
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (onPressEnter && e.key === "Enter") onPressEnter(e.currentTarget.value, e);
     if (e.key === "Escape") {
@@ -406,15 +424,16 @@ const DefaultEmail = ({
   }, []);
 
   return (
-    <div className={clsx("relative isolate mb-5", className)}>
-      <div className={clsx("flex items-center", inputWrapperClassName)}>
+    <div className={cn("relative isolate mb-5", className)}>
+      <div className={cn("flex items-center", inputWrapperClassName)}>
         {icon ? (
-          <div className={clsx("absolute inset-y-0 left-4 z-10 flex items-center justify-center", iconClassName)}>
+          <div className={cn("absolute inset-y-0 left-4 z-10 flex items-center justify-center", iconClassName)}>
             {icon}
           </div>
         ) : null}
         <input
           {...rest}
+          {...agentAttrs(onChange)}
           type="email"
           value={value}
           ref={inputRef}
@@ -428,10 +447,9 @@ const DefaultEmail = ({
             }
             onChange?.(e.target.value, e);
           }}
-          className={clsx(
-            `input text-base-content outline-hidden duration-300 focus:border-primary focus:outline-hidden ${
-              icon && "pl-12"
-            }`,
+          className={cn(
+            "text-foreground outline-hidden duration-300 focus:border-primary focus:outline-hidden",
+            icon && "pl-12",
             inputType,
             statusClass,
             inputClassName,
@@ -439,7 +457,7 @@ const DefaultEmail = ({
         />
       </div>
       {invalidMessage ? (
-        <div className="absolute -bottom-4 animate-fadeIn text-error text-xs">{invalidMessage}</div>
+        <div className="absolute -bottom-4 animate-fadeIn text-destructive text-xs">{invalidMessage}</div>
       ) : null}
     </div>
   );
@@ -480,9 +498,11 @@ const DefaultNumber = ({
   parser,
   ...rest
 }: NumberProps) => {
+  useFieldTool(onChange, { disabled: rest.disabled });
   const { l } = usePage();
   const inputRef = useRef<HTMLInputElement>(null);
   const validateResult = validate ? validate(value) : undefined;
+  const inputBase = (useUiRecipe("input") ?? inputRecipe)();
   const generateFormat = () => {
     return isNaN(value ?? 0) ? "" : formatter ? formatter(value?.toString() ?? "") : (value?.toString() ?? "");
   };
@@ -507,13 +527,13 @@ const DefaultNumber = ({
   const statusClass =
     validate !== undefined
       ? status === "error"
-        ? "input-error"
+        ? "border-destructive"
         : !firstFocus && status === "warning"
-          ? "input-warning"
+          ? "border-warning"
           : status === "success"
-            ? "input-success"
-            : "input"
-      : "input";
+            ? "border-success"
+            : ""
+      : "";
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     const numberValue = parseFloat(e.currentTarget.value.replace(/[^\d-]/g, ""));
@@ -574,15 +594,16 @@ const DefaultNumber = ({
   }, [value]);
 
   return (
-    <div className={clsx("relative isolate", className)}>
-      <div className={clsx("flex items-center", inputWrapperClassName)}>
+    <div className={cn("relative isolate", className)}>
+      <div className={cn("flex items-center", inputWrapperClassName)}>
         {icon ? (
-          <div className={clsx("absolute inset-y-0 left-4 z-10 flex items-center justify-center", iconClassName)}>
+          <div className={cn("absolute inset-y-0 left-4 z-10 flex items-center justify-center", iconClassName)}>
             {icon}
           </div>
         ) : null}
         <input
           {...rest}
+          {...agentAttrs(onChange)}
           ref={inputRef}
           value={formatValue}
           onKeyDown={handleKeyDown}
@@ -601,8 +622,10 @@ const DefaultNumber = ({
             onChange(parser ? parseFloat(parsedValue) : parseFloat(e.target.value), e);
             if (cacheKey) sessionStorage.setItem(cacheKey, parsedValue);
           }}
-          className={clsx(
-            `input text-base-content duration-300 focus:border-primary focus:outline-hidden ${icon && "pl-12"}`,
+          className={cn(
+            inputBase,
+            "text-foreground duration-300 focus:border-primary focus:outline-hidden",
+            icon && "pl-12",
             statusClass,
             inputClassName,
           )}
@@ -610,7 +633,7 @@ const DefaultNumber = ({
       </div>
 
       {invalidMessage ? (
-        <div className="absolute -bottom-4 animate-fadeIn text-error text-xs">{invalidMessage}</div>
+        <div className="absolute -bottom-4 animate-fadeIn text-destructive text-xs">{invalidMessage}</div>
       ) : null}
     </div>
   );
@@ -623,12 +646,16 @@ export type CheckboxProps = Omit<InputHTMLAttributes<HTMLInputElement>, "onChang
 };
 
 const DefaultCheckbox = ({ checked, onChange, className, ...rest }: CheckboxProps) => {
+  useFieldTool(onChange, { disabled: rest.disabled });
   return (
     <input
       {...rest}
+      {...agentAttrs(onChange)}
       type="checkbox"
       checked={checked}
-      className={clsx("checkbox", className)}
+      // Native rendering with `accent-color` rather than an appearance-none rebuild: the browser keeps
+      // the focus ring, keyboard toggle and indeterminate state, and only the fill needs theming.
+      className={cn("size-5 accent-primary", className)}
       onChange={(e) => {
         onChange(e.target.checked, e);
       }}

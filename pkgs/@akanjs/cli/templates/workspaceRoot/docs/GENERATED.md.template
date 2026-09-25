@@ -9,20 +9,21 @@ sync or build can overwrite local changes.
 | --- | --- |
 | `apps/*/client.ts` | App-wide client entrypoint for generated fetch, store, and client runtime exports. |
 | `apps/*/server.ts` | App-wide server entrypoint for generated server, service, signal, database, and dictionary exports. |
+| `libs/*/client.ts`, `libs/*/server.ts`, `libs/*/index.ts` | The same entrypoints for a library. |
 
-## App Library Barrels
+## Module Barrels (apps and libs alike)
 
 | File | Purpose |
 | --- | --- |
-| `apps/*/lib/cnst.ts` | Re-exports constants and model shapes from module `*.constant.ts` files. |
-| `apps/*/lib/db.ts` | Re-exports database models from module `*.document.ts` files. |
-| `apps/*/lib/dict.ts` | Re-exports dictionaries from module `*.dictionary.ts` files. |
-| `apps/*/lib/srv.ts` | Re-exports services from module `*.service.ts` files. |
-| `apps/*/lib/sig.ts` | Re-exports endpoints, slices, and internals from module `*.signal.ts` files. |
-| `apps/*/lib/st.ts` | Re-exports stores from module `*.store.ts` files. |
-| `apps/*/lib/useClient.ts` | Client-safe generated imports for fetch, message, signal, and store usage. |
-| `apps/*/lib/useServer.ts` | Server-safe generated imports for service, database, signal, and dictionary usage. |
-| `apps/*/lib/**/index.ts` | Per-module generated barrel files. |
+| `{apps,libs}/*/lib/cnst.ts` | Re-exports constants and model shapes from module `*.constant.ts` files. |
+| `{apps,libs}/*/lib/db.ts` | Re-exports database models from module `*.document.ts` files. |
+| `{apps,libs}/*/lib/dict.ts` | Re-exports dictionaries from module `*.dictionary.ts` files. |
+| `{apps,libs}/*/lib/srv.ts` | Re-exports services from module `*.service.ts` files. |
+| `{apps,libs}/*/lib/sig.ts` | Re-exports endpoints, slices, and internals from module `*.signal.ts` files. |
+| `{apps,libs}/*/lib/st.ts` | Re-exports stores from module `*.store.ts` files. |
+| `{apps,libs}/*/lib/useClient.ts` | Client-safe generated imports for fetch, message, signal, and store usage. |
+| `{apps,libs}/*/lib/useServer.ts` | Server-safe generated imports for service, database, signal, and dictionary usage. |
+| `{apps,libs}/*/lib/**/index.ts` | Per-module generated barrel files. |
 
 ## Shared Surface Barrels
 
@@ -32,6 +33,7 @@ sync or build can overwrite local changes.
 | `*/webkit/index.ts` | Re-exports webkit/browser helper files. |
 | `*/srvkit/index.ts` | Re-exports server-kit helper files. |
 | `*/common/index.ts` | Re-exports common helper files. |
+| `*/plugin/index.ts` | Re-exports `<name>.plugin.ts` declarations. |
 
 ## How To Change Generated Output
 

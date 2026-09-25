@@ -92,6 +92,66 @@ export function createRscWorkerInvalidateCacheMessage(
   };
 }
 
+/**
+ * The RSC worker samples its own process with the same `ProcessMetricsCollector.collect` its host
+ * replica uses, so its report carries `pid` / `rssBytes` / `role` / … under the identical names.
+ * `AkanServer` spreads the host's report into its own `collect({ role, ...webRouter.getMetrics() })`
+ * and `collect` spreads `extra` last (`processMetricsCollector.ts:122`) — so passing these through
+ * unprefixed silently overwrote the replica's own process fields, and the replica's RSS was reported
+ * nowhere. Rename them onto `rscWorker*`; the `rsc*` render counters, which only the worker
+ * produces, pass through untouched.
+ *
+ * XXX A new process-level field in `ProcessMetricsCollector.collect` must be added here too, or it
+ * starts shadowing the replica again.
+ */
+export function projectRscWorkerProcessMetrics(metrics: AkanMetricsReport): AkanMetricsReport {
+  const {
+    role: _role,
+    pid: _pid,
+    trace: _trace,
+    reportedAt,
+    rssBytes,
+    heapTotalBytes,
+    heapUsedBytes,
+    externalBytes,
+    arrayBuffersBytes,
+    cpuUserMicros,
+    cpuSystemMicros,
+    maxRssKb,
+    jscHeapSizeBytes,
+    jscHeapCapacityBytes,
+    jscExtraMemorySizeBytes,
+    jscObjectCount,
+    jscProtectedObjectCount,
+    eventLoopLagMeanMs,
+    eventLoopLagP99Ms,
+    eventLoopLagMaxMs,
+    gcDurationMs,
+    ...renderMetrics
+  } = metrics;
+  return {
+    ...renderMetrics,
+    rscWorkerReportedAt: reportedAt,
+    rscWorkerRssBytes: rssBytes,
+    rscWorkerHeapTotalBytes: heapTotalBytes,
+    rscWorkerHeapUsedBytes: heapUsedBytes,
+    rscWorkerExternalBytes: externalBytes,
+    rscWorkerArrayBuffersBytes: arrayBuffersBytes,
+    rscWorkerCpuUserMicros: cpuUserMicros,
+    rscWorkerCpuSystemMicros: cpuSystemMicros,
+    rscWorkerMaxRssKb: maxRssKb,
+    rscWorkerJscHeapSizeBytes: jscHeapSizeBytes,
+    rscWorkerJscHeapCapacityBytes: jscHeapCapacityBytes,
+    rscWorkerJscExtraMemorySizeBytes: jscExtraMemorySizeBytes,
+    rscWorkerJscObjectCount: jscObjectCount,
+    rscWorkerJscProtectedObjectCount: jscProtectedObjectCount,
+    rscWorkerEventLoopLagMeanMs: eventLoopLagMeanMs,
+    rscWorkerEventLoopLagP99Ms: eventLoopLagP99Ms,
+    rscWorkerEventLoopLagMaxMs: eventLoopLagMaxMs,
+    rscWorkerGcDurationMs: gcDurationMs,
+  };
+}
+
 export function createRscHostRenderStream(input: {
   setPending: (pending: RscPending) => void;
   deletePending: () => void;
@@ -474,18 +534,7 @@ export class RscWorker {
   }
 
   getMetrics(): AkanMetricsReport {
-    const {
-      rscWorkerPid: _rscWorkerPid,
-      rscWorkerStatus: _rscWorkerStatus,
-      rscWorkerRestartCount: _rscWorkerRestartCount,
-      rscWorkerRecycleCount: _rscWorkerRecycleCount,
-      rscWorkerLastRecycleReason: _rscWorkerLastRecycleReason,
-      rscPendingRenderCount: _rscPendingRenderCount,
-      rscQueuedSendCount: _rscQueuedSendCount,
-      rscHostPendingChunkOverflowCount: _rscHostPendingChunkOverflowCount,
-      ...workerMetrics
-    } = this.#lastWorkerMetrics;
-    return Object.assign(workerMetrics, {
+    return Object.assign(projectRscWorkerProcessMetrics(this.#lastWorkerMetrics), {
       rscWorkerPid: this.#proc.pid,
       rscWorkerStatus: this.#status,
       rscWorkerRestartCount: this.#restartCount,

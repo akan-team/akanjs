@@ -19,6 +19,9 @@ spec:
       labels:
         app: app
     spec:
+      # `AkanServer` gives itself 30s to drain (`AKAN_SHUTDOWN_TIMEOUT_MS`); k8s defaults to exactly that, so
+      # SIGKILL would land the instant its own budget expired. Leave it room to finish.
+      terminationGracePeriodSeconds: 40
       containers:
         - name: app
           image: {{ .Values.image.registry }}/{{ .Values.repoName }}/{{ .Values.appName }}:{{ default (printf "%s-live" $branch) .Values.image.tag }}
@@ -35,8 +38,35 @@ spec:
           env:
             - name: AKAN_PUBLIC_ENV
               value: {{ $branch }}
+            # One traffic replica runs in the container's only process; more spawn a gateway that proxies them.
             - name: AKAN_REPLICA
               value: {{ $config.app.replica }}
+            {{- if hasKey $config.app "solo" }}
+            - name: AKAN_SOLO
+              value: {{ $config.app.solo | quote }}
+            {{- end }}
+          # With one replica nothing supervises the server but the kubelet, so these are what restarts a wedged
+          # pod. `startupProbe` carries the boot: an SSR replica loads its route artifacts before it listens.
+          startupProbe:
+            httpGet:
+              path: /_akan/app/health
+              port: 8282
+            periodSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            httpGet:
+              path: /_akan/app/health
+              port: 8282
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /_akan/app/health
+              port: 8282
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 2
           volumeMounts:
             - name: sqlite-data
               mountPath: /workspace/sqlite

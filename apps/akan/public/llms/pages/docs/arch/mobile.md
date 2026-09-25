@@ -47,6 +47,8 @@ Handles OS system areas such as notches, home indicators, and Android system bar
 
 Separates app chrome such as navbars, tabs, fixed actions, and keyboard accessories from page content.
 
+A BottomInset with keyboardSticky can also opt into contentAnchor="bottom" so scrollable content resizes with the keyboard while preserving the content bottom edge.
+
 Native Bridge
 
 Device capabilities are accessed through Capacitor plugins. Akan keeps the app-level API small: declare the needed native capability, sync/build the native project, then call the matching client hook or plugin wrapper from the CSR app.

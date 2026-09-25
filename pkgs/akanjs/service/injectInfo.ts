@@ -1,4 +1,4 @@
-import { type BaseEnv, type Cls, INJECT_META } from "akanjs/base";
+import { type BackendEnv, type Cls, INJECT_META } from "akanjs/base";
 import {
   type ConstantFieldTypeInput,
   ConstantRegistry,
@@ -119,7 +119,7 @@ export class InjectInfo<
     instance: Adaptor | Service,
     applyCls: AdaptorCls | ServiceCls,
     registry: InjectRegistry,
-    env: BaseEnv,
+    env: BackendEnv,
   ) {
     const injectMap = applyCls[INJECT_META] as Record<string, InjectInfo>;
     await Promise.all(
@@ -240,7 +240,12 @@ export class InjectInfo<
     const value = await injectInfo.generateFactory(depInstance);
     Object.defineProperty(instance, propKey, { value, writable: false, enumerable: true });
   }
-  static async #injectEnv(instance: Adaptor | Service, propKey: string, injectInfo: InjectInfo<"env">, env: BaseEnv) {
+  static async #injectEnv(
+    instance: Adaptor | Service,
+    propKey: string,
+    injectInfo: InjectInfo<"env">,
+    env: BackendEnv,
+  ) {
     const value = await injectInfo.generateFactory(env);
     Object.defineProperty(instance, propKey, { value, writable: false, enumerable: true });
   }

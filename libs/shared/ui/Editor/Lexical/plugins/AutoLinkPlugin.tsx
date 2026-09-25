@@ -6,8 +6,11 @@ import {
 
 import { safeExternalUrl } from "../url";
 
-const URL_REGEX =
-  /((https?:\/\/(www\.)?)|(www\.))[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&/=]*)/;
+const URL_HOST_CHARS = "-a-zA-Z0-9@:%._+~#=";
+const URL_PATH_CHARS = "-a-zA-Z0-9()@:%_+.~#?&/=";
+const URL_REGEX = new RegExp(
+  String.raw`((https?:\/\/(www\.)?)|(www\.))[${URL_HOST_CHARS}]{1,256}\.[a-zA-Z0-9()]{1,6}\b([${URL_PATH_CHARS}]*)`,
+);
 const EMAIL_REGEX =
   /(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))/;
 

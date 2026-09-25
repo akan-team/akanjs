@@ -46,6 +46,28 @@ export type CapacitorContactsModule = {
   };
 };
 
+export type CapacitorSpeechRecognitionModule = {
+  SpeechRecognition: {
+    available: () => Promise<{ available: boolean }>;
+    checkPermissions: () => Promise<{ speechRecognition: CapacitorPermissionState }>;
+    requestPermissions: () => Promise<{ speechRecognition: CapacitorPermissionState }>;
+    start: (options: Record<string, unknown>) => Promise<{ matches?: string[] }>;
+    stop: () => Promise<void>;
+    removeAllListeners: () => Promise<void> | void;
+    addListener: (
+      eventName: string,
+      listenerFunc: (data: { matches?: string[] }) => void,
+    ) => Promise<{ remove: () => Promise<void> | void }> | { remove: () => Promise<void> | void };
+  };
+};
+
+export type CapacitorTextToSpeechModule = {
+  TextToSpeech: {
+    speak: (options: { text: string; lang?: string; rate?: number }) => Promise<void>;
+    stop: () => Promise<void>;
+  };
+};
+
 export type CapacitorCoreModule = {
   CapacitorCookies: {
     setCookie: (options: { key: string; value: string; path?: string }) => Promise<void> | void;
@@ -155,6 +177,8 @@ type CapacitorModuleMap = {
   preferences: CapacitorPreferencesModule;
   pushNotifications: CapacitorPushNotificationsModule;
   safeArea: CapacitorSafeAreaModule;
+  speechRecognition: CapacitorSpeechRecognitionModule;
+  textToSpeech: CapacitorTextToSpeechModule;
   updater: CapacitorUpdaterModule;
 };
 
@@ -255,6 +279,16 @@ export const loadCapacitorPushNotifications = () =>
 export const loadCapacitorSafeArea = () =>
   loadCapacitorModule("safeArea", async () => ({
     SafeArea: getCapacitorPlugin<CapacitorSafeAreaModule["SafeArea"]>("SafeArea"),
+  }));
+
+export const loadCapacitorSpeechRecognition = () =>
+  loadCapacitorModule("speechRecognition", async () => ({
+    SpeechRecognition: getCapacitorPlugin<CapacitorSpeechRecognitionModule["SpeechRecognition"]>("SpeechRecognition"),
+  }));
+
+export const loadCapacitorTextToSpeech = () =>
+  loadCapacitorModule("textToSpeech", async () => ({
+    TextToSpeech: getCapacitorPlugin<CapacitorTextToSpeechModule["TextToSpeech"]>("TextToSpeech"),
   }));
 
 export const loadCapacitorUpdater = () =>

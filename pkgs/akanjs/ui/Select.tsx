@@ -1,12 +1,16 @@
 "use client";
 import { type Cls, type EnumInstance, isEnum } from "akanjs/base";
-import { clsx, usePage } from "akanjs/client";
+import { cn, usePage } from "akanjs/client";
+import { useFieldTool } from "akanjs/store";
 import { useDebounce } from "akanjs/webkit";
 import { type ComponentType, createElement, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { BiCheck, BiChevronDown, BiX } from "react-icons/bi";
 import { BsQuestionCircleFill } from "react-icons/bs";
 import { TiDelete } from "react-icons/ti";
-
+import { agentAttrs } from "./agentAttrs";
+import { overlayZ, useOverlayLayerProps } from "./overlayLayer";
+import { useOverlayPosition } from "./overlayPosition";
 import { useUiOverride } from "./UiOverride";
 
 interface LabelOption<T> {
@@ -81,6 +85,7 @@ const DefaultSelect = <
   renderOption,
   renderSelected,
 }: SelectProps<T, Multiple, Searchable, Option>) => {
+  useFieldTool(onChange, { disabled });
   const { l } = usePage();
   const [isOpen, setIsOpen] = useState(false);
   const labeledOptions: { label: string | boolean | number; value: T }[] = useMemo(
@@ -102,8 +107,21 @@ const DefaultSelect = <
 
   const [selectedValues, setSelectedValues] = useState<T[]>(multiple ? (value as T[]) : [value as T]);
   const [searchText, setSearchText] = useState("");
+  // Resolved in an effect rather than at render: the first client pass has to match the server's, which
+  // portalled nothing. The panel is mounted while closed, so a render-time `typeof document` branch would
+  // hand hydration an extra node on every SSR page that renders a Select.
+  const [portal, setPortal] = useState<HTMLElement | null>(null);
   const [searchOptions, setSearchOptions] = useState<{ label: ReactNode; value: T }[]>(labeledOptions);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const optionsRef = useRef<HTMLDivElement>(null);
+  // Read through the portal-to-be: whichever dismissable scope rendered this field owns its options.
+  const overlayLayerProps = useOverlayLayerProps();
+  const position = useOverlayPosition({
+    opened: isOpen,
+    triggerRef: dropdownRef,
+    panelRef: optionsRef,
+    align: "start",
+  });
 
   const selected = (v: T) => {
     if (multiple) return selectedValues.includes(v);
@@ -111,7 +129,10 @@ const DefaultSelect = <
   };
 
   const handleClickOutside = (event: Event) => {
-    if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+    const target = event.target as Node;
+    // The options portal out of this subtree, so the field alone is no longer the whole of "inside".
+    if (optionsRef.current?.contains(target)) return;
+    if (dropdownRef.current && !dropdownRef.current.contains(target)) {
       setIsOpen(false);
     }
   };
@@ -151,6 +172,10 @@ const DefaultSelect = <
   }, [isOpen]);
 
   useEffect(() => {
+    setPortal(document.body);
+  }, []);
+
+  useEffect(() => {
     setSearchOptions(labeledOptions);
   }, [labeledOptions]);
 
@@ -164,15 +189,15 @@ const DefaultSelect = <
   }, [value]);
 
   return (
-    <div className={clsx("relative min-w-[150px]", className)} ref={dropdownRef}>
+    <div {...agentAttrs(onChange)} className={cn("relative min-w-[150px]", className)} ref={dropdownRef}>
       <div
         data-open={isOpen}
-        className={clsx(
-          "btn flex h-auto min-h-[40px] w-full cursor-pointer items-center px-0 py-1 pr-5 pl-1 focus:outline-hidden",
-          "bg-base-100 data-[open=true]:border-primary",
+        className={cn(
+          "flex h-auto min-h-[40px] w-full cursor-pointer items-center rounded-field border border-input px-0 py-1 pr-5 pl-1 focus:outline-hidden",
+          "bg-background data-[open=true]:border-primary",
           disabled && "pointer-events-none opacity-50",
           selectClassName,
-          { "border-base-300": isOpen },
+          isOpen && "border-border",
         )}
         onClick={() => {
           if (disabled) return;
@@ -187,7 +212,7 @@ const DefaultSelect = <
               return (
                 <div
                   key={index}
-                  className="flex items-center gap-2 rounded-lg bg-success/70 px-2 py-1 text-success-content text-xs"
+                  className="flex items-center gap-2 rounded-field bg-primary px-2 py-1 text-primary-foreground text-xs"
                 >
                   {renderSelected ? renderSelected(optionValue.value) : optionValue.label}
                   <button
@@ -217,7 +242,7 @@ const DefaultSelect = <
           {searchable ? (
             <input
               type="text"
-              className="input w-full flex-1 border-none bg-transparent shadow-none outline-none focus:border-none focus:shadow-none focus:outline-none"
+              className="w-full flex-1 border-none bg-transparent shadow-none outline-none focus:border-none focus:shadow-none focus:outline-none"
               placeholder={selectedValues.length > 0 ? "" : placeholder}
               value={searchText}
               onChange={(e) => {
@@ -256,69 +281,88 @@ const DefaultSelect = <
           />
         ) : null}
         <BiChevronDown
-          className={clsx("absolute top-1/2 right-2 -translate-y-1/2 text-lg duration-100", { "rotate-180": isOpen })}
+          className={cn("absolute top-1/2 right-2 -translate-y-1/2 text-lg duration-100", isOpen && "rotate-180")}
         />
       </div>
-      <div
-        data-open={isOpen}
-        className={clsx(
-          "scrollbar-thin scrollbar-thumb-base-content/20 scrollbar-track scrollbar-track-base-content/40 absolute z-20 mt-0.5 w-full overflow-y-scroll rounded-md border-base-300 bg-base-200 shadow-lg transition-all",
-          "origin-center duration-200 data-[open=false]:h-0 data-[open=true]:h-[270px] data-[open=true]:border data-[open=false]:border-none",
-          selectorClassName,
-        )}
-      >
-        {nullable && (
-          <div
-            className="cursor-pointer p-2"
-            onClick={() => {
-              setIsOpen(false);
-            }}
-          />
-        )}
-        {searchOptions.length > 0 ? (
-          searchOptions.map((option, index) => {
-            const isSelected = selected(option.value);
-            return (
-              <div key={index} className="group">
+      {portal
+        ? createPortal(
+            <div
+              ref={optionsRef}
+              {...overlayLayerProps}
+              data-open={isOpen}
+              // Inline, because a computed position cannot be a class. The width follows the field, which is
+              // what `w-full` did while the panel still lived inside it.
+              style={{
+                position: "fixed",
+                zIndex: overlayZ.select,
+                top: position?.top ?? 0,
+                left: position?.left ?? 0,
+                width: position?.anchorWidth,
+                visibility: position ? undefined : "hidden",
+              }}
+              className={cn(
+                "scrollbar-thin scrollbar-thumb-foreground/20 scrollbar-track scrollbar-track-foreground/40 overflow-y-auto rounded-box border border-border bg-popover text-popover-foreground shadow-lg",
+                // Animated through max-height, not height: `height` cannot ease to `auto`, so a fixed open
+                // height was the only way to animate — and it left a short list padded out with dead space.
+                // Only that property eases: `transition-all` would ease the computed top/left as well, and
+                // the panel would lag behind its field on every scroll.
+                "origin-center transition-[max-height] duration-200 data-[open=false]:max-h-0 data-[open=true]:max-h-[270px] data-[open=true]:border data-[open=false]:border-none",
+                selectorClassName,
+              )}
+            >
+              {nullable && (
                 <div
-                  className={clsx(
-                    "relative m-2 cursor-pointer rounded-sm p-2 duration-100 last:border-b-0 hover:bg-base-300",
-                    {
-                      selectedClassName: !multiple && isSelected,
-                      "bg-success/70 text-success-content": isSelected,
-                    },
-                  )}
+                  className="cursor-pointer p-2"
                   onClick={() => {
-                    onSelect(option.value, index);
-                    setSearchText("");
+                    setIsOpen(false);
                   }}
-                >
-                  {/* {option.label} */}
-                  {renderOption ? renderOption(option.value) : option.label}
-                  <div className={clsx("absolute top-1/2 right-2 -translate-y-1/2 flex-wrap duration-200", {})}>
-                    <div
-                      className={clsx("duration-200", {
-                        "translate-y-0 opacity-100": isSelected,
-                        "-translate-y-full opacity-0": !isSelected,
-                      })}
-                    >
-                      <BiCheck />
+                />
+              )}
+              {searchOptions.length > 0 ? (
+                searchOptions.map((option, index) => {
+                  const isSelected = selected(option.value);
+                  return (
+                    <div key={index} className="group">
+                      <div
+                        className={cn(
+                          "relative mx-1 my-0.5 cursor-pointer rounded-field p-2 transition-colors last:border-b-0 hover:bg-muted",
+                          !multiple && isSelected && selectedClassName,
+                          isSelected && "bg-success/70 text-success-foreground",
+                        )}
+                        onClick={() => {
+                          onSelect(option.value, index);
+                          setSearchText("");
+                        }}
+                      >
+                        {/* {option.label} */}
+                        {renderOption ? renderOption(option.value) : option.label}
+                        <div className="absolute top-1/2 right-2 -translate-y-1/2 flex-wrap duration-200">
+                          <div
+                            className={cn(
+                              "duration-200",
+                              isSelected ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0",
+                            )}
+                          >
+                            <BiCheck />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="h-px w-full px-2 group-last:hidden">
+                        <div className="size-full bg-foreground/10" />
+                      </div>
                     </div>
-                  </div>
+                  );
+                })
+              ) : (
+                <div className="flex size-full flex-col items-center justify-center gap-2 p-2 text-center text-5xl text-foreground/50">
+                  <BsQuestionCircleFill />
+                  <div className="text-sm">{l("base.noOptions")}</div>
                 </div>
-                <div className="h-px w-full px-2 group-last:hidden">
-                  <div className="size-full bg-base-content/10" />
-                </div>
-              </div>
-            );
-          })
-        ) : (
-          <div className="flex size-full flex-col items-center justify-center gap-2 p-2 text-center text-5xl text-base-content/50">
-            <BsQuestionCircleFill />
-            <div className="text-sm">{l("base.noOptions")}</div>
-          </div>
-        )}
-      </div>
+              )}
+            </div>,
+            portal,
+          )
+        : null}
     </div>
   );
 };

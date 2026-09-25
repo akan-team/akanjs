@@ -1,9 +1,8 @@
-import { type Cls, FIELD_META, getNonArrayModel, PrimitiveRegistry, type PrimitiveScalar } from "akanjs/base";
-import { type ConstantCls, type ConstantField, ConstantRegistry, type ConstantType } from "akanjs/constant";
 import { FetchClient } from "akanjs/fetch";
-import type { SerializedArg, SerializedEndpoint, SerializedReturns, SerializedSignal } from "../types";
+import { Msg } from "../mcp";
+import { type JsonSchema, JsonSchemaBuilder } from "../schema";
+import type { SerializedArg, SerializedEndpoint, SerializedSignal } from "../types";
 
-type OpenApiSchema = Record<string, unknown>;
 type OpenApiParameter = Record<string, unknown>;
 type OpenApiOperation = Record<string, unknown>;
 type OpenApiPathItem = Record<string, OpenApiOperation>;
@@ -28,15 +27,28 @@ export interface OpenApiDocument {
   servers?: { url: string; description?: string }[];
   paths: Record<string, OpenApiPathItem>;
   components: {
-    schemas: Record<string, OpenApiSchema>;
-    securitySchemes?: Record<string, OpenApiSchema>;
+    schemas: Record<string, JsonSchema>;
+    securitySchemes?: Record<string, JsonSchema>;
   };
 }
 
+/**
+ * Every endpoint type this app answers over HTTP, which is what an API contract has to list.
+ *
+ * `prompt` is a plain `GET` mounted whether or not the app enabled MCP, so leaving it out described an app that
+ * serves fewer routes than it does — and left this document disagreeing with the API explorer, which shows the
+ * same route. The websocket types (`pubsub`, `message`) have no HTTP surface to describe and are absent for that
+ * reason rather than by omission.
+ */
 const httpMethods = {
   query: "get",
   mutation: "post",
+  prompt: "get",
 } as const;
+
+const schema = new JsonSchemaBuilder();
+/** Not a model, so it is handed to `referencedSchemas` beside them — and travels only if a prompt route cites it. */
+const promptMessageSchemaName = "PromptMessage";
 
 export const createOpenApiDocument = (
   serializedSignal: Record<string, SerializedSignal>,
@@ -49,8 +61,9 @@ export const createOpenApiDocument = (
   for (const [refName, signal] of Object.entries(serializedSignal)) {
     if (excludeSignals.has(refName)) continue;
     for (const [endpointKey, endpoint] of collectRestEndpoints(refName, signal)) {
-      const method = httpMethods[endpoint.type as keyof typeof httpMethods];
-      if (!method) continue;
+      const declaredMethod = httpMethods[endpoint.type as keyof typeof httpMethods];
+      if (!declaredMethod) continue;
+      const method = endpoint.type === "mutation" ? (endpoint.method?.toLowerCase() ?? declaredMethod) : declaredMethod;
 
       const path = toOpenApiPath(FetchClient.makeHttpUrl(endpointKey, endpoint, signal.prefix, new Map()));
       if (!options.includeNonStandardPaths && isNonStandardOpenApiPath(path)) continue;
@@ -71,7 +84,10 @@ export const createOpenApiDocument = (
     ...(options.servers?.length ? { servers: options.servers } : {}),
     paths,
     components: {
-      schemas: createReferencedComponentSchemas(paths),
+      schemas: schema.referencedSchemas(paths, {
+        ...schema.allModelSchemas(),
+        [promptMessageSchemaName]: Msg.schema,
+      }),
       ...(hasProtectedOperation
         ? {
             securitySchemes: {
@@ -95,7 +111,7 @@ const collectRestEndpoints = (refName: string, signal: SerializedSignal): [strin
       )
     : [];
   return [...baseEndpointEntries, ...sliceEndpointEntries, ...Object.entries(signal.endpoint)].filter(
-    ([, endpoint]) => endpoint.type === "query" || endpoint.type === "mutation",
+    ([, endpoint]) => endpoint.type in httpMethods,
   );
 };
 
@@ -143,7 +159,7 @@ const createParameter = (
   name: arg.name,
   in: location,
   required: location === "path",
-  schema: createArgSchema(arg),
+  schema: schema.arg(arg),
   ...(arg.example !== undefined ? { example: arg.example } : {}),
   ...(options.resolveDescription?.(`${refName}.signal.${endpointKey}.arg.${arg.name}.desc`)
     ? { description: options.resolveDescription(`${refName}.signal.${endpointKey}.arg.${arg.name}.desc`) }
@@ -152,12 +168,12 @@ const createParameter = (
 
 const createRequestBody = (bodyArgs: SerializedArg[], uploadArgs: SerializedArg[]) => {
   const required = [...bodyArgs, ...uploadArgs].filter((arg) => !arg.nullable).map((arg) => arg.name);
-  const schema = {
+  const bodySchema = {
     type: "object",
     properties: Object.fromEntries(
       [...bodyArgs, ...uploadArgs].map((arg) => [
         arg.name,
-        uploadArgs.includes(arg) ? createUploadSchema(arg) : createArgSchema(arg),
+        uploadArgs.includes(arg) ? schema.upload(arg) : schema.arg(arg),
       ]),
     ),
     ...(required.length ? { required } : {}),
@@ -166,7 +182,7 @@ const createRequestBody = (bodyArgs: SerializedArg[], uploadArgs: SerializedArg[
     required: required.length > 0,
     content: {
       [uploadArgs.length ? "multipart/form-data" : "application/json"]: {
-        schema,
+        schema: bodySchema,
       },
     },
   };
@@ -181,173 +197,22 @@ const createResponseContent = (endpoint: SerializedEndpoint) =>
       }
     : {
         "application/json": {
-          schema: createReturnSchema(endpoint.returns),
+          // Every prompt answers the same fixed shape, which its declared `Any` return cannot say. Reading the
+          // return type here described the route as returning anything at all — `{}` — so a reader of this
+          // document learnt that the route exists and nothing about what comes back from it.
+          schema:
+            endpoint.type === "prompt"
+              ? { type: "array", items: { $ref: `#/components/schemas/${promptMessageSchemaName}` } }
+              : schema.returns(endpoint.returns),
         },
       };
-
-const createReturnSchema = (returns: SerializedReturns): OpenApiSchema =>
-  withNullable(
-    withArrayDepth(createRefSchema(returns.refName, returns.modelType), returns.arrDepth ?? 0),
-    !!returns.nullable,
-  );
-
-const createArgSchema = (arg: SerializedArg): OpenApiSchema => {
-  const schema = arg.enum ? createEnumSchema(arg.enum) : createRefSchema(arg.refName, arg.modelType);
-  return withNullable(withArrayDepth(schema, arg.arrDepth ?? 0), !!arg.nullable);
-};
-
-const createUploadSchema = (arg: SerializedArg): OpenApiSchema => {
-  const fileSchema = { type: "string", format: "binary" };
-  return withNullable(withArrayDepth(fileSchema, arg.arrDepth ?? 0), !!arg.nullable);
-};
-
-const createRefSchema = (refName: string, modelType?: ConstantType): OpenApiSchema => {
-  if (!modelType) return createPrimitiveSchema(refName);
-  const modelRef = ConstantRegistry.getModelRef(refName, modelType);
-  return { $ref: `#/components/schemas/${ConstantRegistry.getModelName(modelRef as Cls)}` };
-};
-
-const createComponentSchemas = (): Record<string, OpenApiSchema> => {
-  const schemas: Record<string, OpenApiSchema> = {};
-  for (const [, database] of ConstantRegistry.database.entries()) {
-    [database.input, database.object, database.full, database.light, database.insight].forEach((modelRef) => {
-      schemas[ConstantRegistry.getModelName(modelRef)] = createModelSchema(modelRef);
-    });
-  }
-  for (const [, scalar] of ConstantRegistry.scalar.entries()) {
-    schemas[ConstantRegistry.getModelName(scalar.model)] = createModelSchema(scalar.model);
-  }
-  return schemas;
-};
-
-const createReferencedComponentSchemas = (paths: Record<string, OpenApiPathItem>): Record<string, OpenApiSchema> => {
-  const allSchemas = createComponentSchemas();
-  const referencedNames = collectSchemaRefNames(paths);
-  const pending = [...referencedNames];
-  for (let idx = 0; idx < pending.length; idx++) {
-    const schemaName = pending[idx];
-    if (!schemaName) continue;
-    const schema = allSchemas[schemaName];
-    if (!schema) continue;
-    for (const nestedName of collectSchemaRefNames(schema)) {
-      if (referencedNames.has(nestedName)) continue;
-      referencedNames.add(nestedName);
-      pending.push(nestedName);
-    }
-  }
-  return Object.fromEntries(
-    [...referencedNames]
-      .sort((a, b) => a.localeCompare(b))
-      .flatMap((name) => (allSchemas[name] ? ([[name, allSchemas[name]]] as const) : [])),
-  );
-};
-
-const collectSchemaRefNames = (value: unknown): Set<string> => {
-  const refs = new Set<string>();
-  const visit = (current: unknown) => {
-    if (!current || typeof current !== "object") return;
-    if (Array.isArray(current)) {
-      current.forEach(visit);
-      return;
-    }
-    const record = current as Record<string, unknown>;
-    if (typeof record.$ref === "string") {
-      const match = record.$ref.match(/^#\/components\/schemas\/(.+)$/);
-      if (match?.[1]) refs.add(match[1]);
-    }
-    Object.values(record).forEach(visit);
-  };
-  visit(value);
-  return refs;
-};
-
-const createModelSchema = (modelRef: ConstantCls): OpenApiSchema => {
-  const fields = (modelRef as { [FIELD_META]?: Record<string, ConstantField> })[FIELD_META] ?? {};
-  const properties: Record<string, OpenApiSchema> = {};
-  const required: string[] = [];
-  for (const [key, field] of Object.entries(fields)) {
-    const props = field.getProps();
-    properties[key] = createFieldSchema(field);
-    if (!props.nullable) required.push(key);
-  }
-  return {
-    type: "object",
-    properties,
-    ...(required.length ? { required } : {}),
-    additionalProperties: false,
-  };
-};
-
-const createFieldSchema = (field: ConstantField): OpenApiSchema => {
-  const props = field.getProps();
-  const schema = props.enum ? createInlineEnumSchema([...props.enum.values]) : createFieldRefSchema(props);
-  return withNullable(withArrayDepth(schema, props.arrDepth), props.nullable);
-};
-
-const createFieldRefSchema = (props: ReturnType<ConstantField["getProps"]>): OpenApiSchema => {
-  if (props.isMap) {
-    const [valueRef, valueArrDepth] = getNonArrayModel(props.of as Cls | Cls[]);
-    return {
-      type: "object",
-      additionalProperties: withArrayDepth(createModelRefSchema(valueRef as Cls), valueArrDepth),
-    };
-  }
-  return createModelRefSchema(props.modelRef as Cls);
-};
-
-const createModelRefSchema = (modelRef: Cls): OpenApiSchema => {
-  if (PrimitiveRegistry.has(modelRef))
-    return createPrimitiveSchema(PrimitiveRegistry.getName(modelRef as typeof PrimitiveScalar));
-  return { $ref: `#/components/schemas/${ConstantRegistry.getModelName(modelRef)}` };
-};
-
-const createPrimitiveSchema = (refName: string): OpenApiSchema => {
-  switch (refName) {
-    case "Boolean":
-      return { type: "boolean" };
-    case "Date":
-      return { type: "string", format: "date-time" };
-    case "Float":
-      return { type: "number" };
-    case "ID":
-      return { type: "string", pattern: "^[0-9a-fA-F]{24}$" };
-    case "Int":
-      return { type: "integer" };
-    case "Upload":
-      return { type: "string", format: "binary" };
-    case "Any":
-      return {};
-    case "String":
-    default:
-      return { type: "string" };
-  }
-};
-
-const createEnumSchema = (refName: string): OpenApiSchema => {
-  const enumRef = ConstantRegistry.enum.get(refName);
-  if (!enumRef) return { type: "string", "x-akan-enum": refName };
-  return createInlineEnumSchema([...enumRef.values]);
-};
-
-const createInlineEnumSchema = (values: unknown[]): OpenApiSchema => ({
-  type: values.every((value) => typeof value === "number") ? "number" : "string",
-  enum: values,
-});
-
-const withArrayDepth = (schema: OpenApiSchema, arrDepth: number): OpenApiSchema => {
-  let current = schema;
-  for (let idx = 0; idx < arrDepth; idx++) current = { type: "array", items: current };
-  return current;
-};
-
-const withNullable = (schema: OpenApiSchema, nullable: boolean): OpenApiSchema =>
-  nullable ? { anyOf: [schema, { type: "null" }] } : schema;
 
 const getProtectedGuards = (guards?: string[]) =>
   (guards ?? []).filter((guard) => guard !== "None" && guard !== "Public");
 
 const isBinaryResponseEndpoint = (endpoint: SerializedEndpoint) =>
   endpoint.returns.refName === "Upload" ||
+  endpoint.returns.refName === "Binary" ||
   (endpoint.returns.refName === "Any" &&
     Boolean(endpoint.path?.includes("*") || endpoint.path?.toLowerCase().includes("blob")));
 

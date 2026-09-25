@@ -1,1 +1,1 @@
-export type SlashGroup = "text" | "list" | "media" | "structure";
+export type SlashGroup = "text" | "list" | "media" | "structure" | "reference";

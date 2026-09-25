@@ -1,0 +1,36 @@
+{
+  "name": "use-agentic",
+  "version": "0.1.0",
+  "description": "Bind an in-page AI agent to what a React app is already doing — state, actions, and screen scopes become the agent's tools and context.",
+  "sourceType": "module",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akan-team/akanjs.git",
+    "directory": "pkgs/use-agentic"
+  },
+  "engines": {
+    "bun": ">=1.4.0"
+  },
+  "exports": {
+    ".": {
+      "import": "./index.ts",
+      "types": "./index.ts",
+      "default": "./index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "20.11.2",
+    "happy-dom": "20.11.2",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  }
+}

@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -106,7 +106,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="when-to-use" title={l.trans({ en: "When To Use It", ko: "언제 사용하나" })}>
         <Docs.Title>{l.trans({ en: "When To Use It", ko: "언제 사용하나" })}</Docs.Title>
@@ -120,16 +120,16 @@ export default function Page() {
         </Docs.Description>
         <div className="space-y-3">
           {moduleExamples.map(({ name, path, role }) => (
-            <div key={name} className="border-base-300 border-l-2 pl-4">
-              <div className="font-bold text-base-content">
-                {name} <span className="font-mono font-normal text-base-content/70">({path})</span>
+            <div key={name} className="border-border border-l-2 pl-4">
+              <div className="font-bold text-foreground">
+                {name} <span className="font-mono font-normal text-foreground/70">({path})</span>
               </div>
-              <div className="text-base-content/70">{role}</div>
+              <div className="text-foreground/70">{role}</div>
             </div>
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="file-map" title={l.trans({ en: "Service File Map", ko: "Service file map" })}>
         <Docs.Title>{l.trans({ en: "Service File Map", ko: "Service file map" })}</Docs.Title>
@@ -143,14 +143,14 @@ export default function Page() {
         </Docs.Description>
         <div className="space-y-3">
           {fileMap.map(({ file, role }) => (
-            <div key={file} className="border-base-300 border-l-2 pl-4">
-              <div className="font-bold text-base-content">{file}</div>
-              <div className="text-base-content/70">{role}</div>
+            <div key={file} className="border-border border-l-2 pl-4">
+              <div className="font-bold text-foreground">{file}</div>
+              <div className="text-foreground/70">{role}</div>
             </div>
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="folder-shape" title={l.trans({ en: "Folder Shape", ko: "Folder shape" })}>
         <Docs.Title>{l.trans({ en: "Folder Shape", ko: "Folder shape" })}</Docs.Title>
@@ -163,6 +163,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="_search service module"
           code={`libs/util/lib/_search/
   search.abstract.md     // workflow intent
@@ -174,7 +175,7 @@ export default function Page() {
   Search.Zone.tsx        // page section`}
         />
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

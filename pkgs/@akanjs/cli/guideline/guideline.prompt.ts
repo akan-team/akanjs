@@ -139,7 +139,7 @@ ${await this.getDocumentation("framework")}
 2. Documentation page writing method
 ${await this.getDocumentation("docPageRule")}
 
-3. CSS rule with TailwindCSS and DaisyUI
+3. CSS rule with TailwindCSS and akanjs/ui primitives (semantic tokens; no daisyui)
 ${await this.getDocumentation("cssRule")}
 
 I want to update the Next.js server-side page located at ${writePath}.
@@ -153,8 +153,8 @@ Please update this page with the latest content below. A great design applicatio
 ${instruction}
 
 Please follow these CSS rules when writing:
-- Use tailwindcss
-- Use className from the daisyui library
+- Use tailwindcss with the semantic design tokens (bg-background, text-foreground, bg-primary, text-muted-foreground, border-border, …)
+- Use akanjs/ui primitives (Button, Badge, Input, Field, …) instead of raw daisyui classes; do not use daisyui
 
 Please return only the file result in the following format for easy parsing.
 \`\`\`tsx

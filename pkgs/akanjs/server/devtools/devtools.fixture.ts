@@ -29,13 +29,6 @@ export class DevtoolsFixture {
 
     const workspaceRoot = await mkdtemp(join(tmpdir(), "akan-devtools-"));
     const env = {
-      repoName: "akan",
-      serveDomain: "example.com",
-      appName: "devtools",
-      environment: "local",
-      operationMode: "local",
-      tunnelUsername: "root",
-      tunnelPassword: "akan",
       workspaceRoot,
       database: {
         sqlite: {
@@ -75,7 +68,7 @@ export class DevtoolsFixture {
       scalars: [],
       option: new AkanOption(),
     });
-    const lifecycle = new DiLifecycle(env, serverMode, lib);
+    const lifecycle = new DiLifecycle({ env }, lib);
     await lifecycle.initializeAll();
     return new DevtoolsFixture(lifecycle, env, serverMode, workspaceRoot);
   }

@@ -1,12 +1,12 @@
 "use client";
 import { DataList } from "akanjs/base";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { capitalize, isQueryEqual, lowerlize } from "akanjs/common";
 import type { BaseInsight } from "akanjs/constant";
-import { ConstantRegistry } from "akanjs/constant";
+import { ConstantRegistry, labelOf } from "akanjs/constant";
 import type { ClientInit, ServerInit } from "akanjs/fetch";
 import { st } from "akanjs/store";
-import { useFetch } from "akanjs/webkit";
+import { useFetch, usePageTool, useScreenScope } from "akanjs/webkit";
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef } from "react";
 
 import { Empty } from "../Empty";
@@ -113,7 +113,6 @@ function Render<RefName extends string, Light extends { id: string }>({
   const initModelObjInsight = (init as any)[names.modelObjInsight] as BaseInsight;
   const initLimitOfModel = (init as any)[names.limitOfModel] as number;
   const initPageOfModel = (init as any)[names.pageOfModel] as number;
-  const modelStaleAt = storeUse[namesOfSlice.modelStaleAt]() as Date;
 
   const useCache =
     !modelListLoading &&
@@ -152,11 +151,12 @@ function Render<RefName extends string, Light extends { id: string }>({
   }, []);
 
   useEffect(() => {
+    const modelStaleAt = storeGet<Date>()[namesOfSlice.modelStaleAt];
     const staleThreshold = Math.max(modelStaleAt.getTime(), staleTime === undefined ? 0 : Date.now() - staleTime);
     if (storeGet<Date>()[namesOfSlice.modelInitAt].getTime() >= staleThreshold) return;
     if (storeGet<boolean>()[namesOfSlice.modelListLoading]) return;
     void storeDo[namesOfSlice.refreshModel]({ invalidate: true });
-  }, [modelStaleAt]);
+  }, []);
 
   const modelInsight = storeUse[namesOfSlice.modelInsight]() as BaseInsight;
   const limitOfModel = storeUse[namesOfSlice.limitOfModel]() as number;
@@ -182,8 +182,25 @@ function Render<RefName extends string, Light extends { id: string }>({
     },
     reverse,
   };
+  usePageTool({
+    name: pagination && insight.count > limit ? namesOfSlice.setPageOfModel : null,
+    model: modelName,
+    page,
+    lastPage: Math.ceil(insight.count / (limit || insight.count || 1)),
+    total: insight.count,
+    onSelect: (page) => moreProps.onPageSelect(page, { scrollToTop: false }),
+  });
 
   const modelDataList = !loaded.current ? modelInitList.filter(filter).sort(sort) : modelList.filter(filter).sort(sort);
+  const scopePath = useScreenScope({
+    id: sliceName,
+    kind: refName,
+    items: () =>
+      modelDataList.map((item) => {
+        const label = labelOf(cnst.full, item);
+        return { id: item.id, ...(label ? { label } : {}) };
+      }),
+  });
   const showLoading = loaded.current && modelListLoading;
   if (renderList)
     return (
@@ -191,12 +208,11 @@ function Render<RefName extends string, Light extends { id: string }>({
         {modelDataList.length || renderEmpty === false ? (
           <ContainerWrapper
             containerRef={containerRef}
-            className={clsx(className, {
-              "grid-cols-1 md:grid-cols-1 lg:grid-cols-1": modelDataList.length === 0,
-            })}
+            className={cn(className, modelDataList.length === 0 && "grid-cols-1 md:grid-cols-1 lg:grid-cols-1")}
             noDiv={noDiv}
             pagination={pagination}
             moreProps={moreProps}
+            scope={scopePath}
           >
             {renderList(modelDataList)}
           </ContainerWrapper>
@@ -217,6 +233,7 @@ function Render<RefName extends string, Light extends { id: string }>({
         noDiv={noDiv}
         pagination={pagination}
         moreProps={moreProps}
+        scope={scopePath}
       >
         {modelDataList.length
           ? (reverse ? [...modelDataList].reverse() : modelDataList)
@@ -321,6 +338,7 @@ interface ContainerWrapperProps {
   noDiv?: boolean;
   pagination?: boolean;
   moreProps: MoreProps;
+  scope?: string;
 }
 const ContainerWrapper = ({
   children,
@@ -329,6 +347,7 @@ const ContainerWrapper = ({
   noDiv,
   pagination,
   moreProps,
+  scope,
 }: ContainerWrapperProps) => {
   return noDiv ? (
     <MoreWrapper pagination={pagination} moreProps={moreProps}>
@@ -336,12 +355,12 @@ const ContainerWrapper = ({
     </MoreWrapper>
   ) : pagination ? (
     <MoreWrapper pagination={pagination} moreProps={moreProps}>
-      <div ref={containerRef} className={className}>
+      <div ref={containerRef} className={className} data-agent-scope={scope}>
         {children}
       </div>
     </MoreWrapper>
   ) : (
-    <div ref={containerRef} className={className}>
+    <div ref={containerRef} className={className} data-agent-scope={scope}>
       <MoreWrapper pagination={pagination} moreProps={moreProps}>
         {children}
       </MoreWrapper>

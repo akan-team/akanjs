@@ -1,3 +1,4 @@
+import type { AkanWebConfig } from "akanjs";
 import type { PromiseOrObject } from "akanjs/base";
 import type { AkanI18nConfig } from "akanjs/common";
 import type { ClientManifest } from "./artifact";
@@ -12,6 +13,8 @@ export type WebsocketRoute = (
 export type WebsocketRoutes = Record<string, WebsocketRoute>;
 
 export type HttpRoutes = Bun.Serve.Options<unknown>["routes"];
+
+export type LocalPublish = (roomId: string, data: object | object[] | Uint8Array) => void;
 
 export interface SignalRouteOptions {
   globalPrefix?: false;
@@ -100,6 +103,28 @@ export type BaseBuildArtifact = {
   i18n: AkanI18nConfig;
   imageConfig: AkanImageConfig;
   deepLinkAssociations?: MobileDeepLinkAssociation[];
+  /**
+   * Which surfaces this artifact was built for. Absent on an artifact written before the option existed,
+   * which is read as both on — the shape every such build actually has.
+   */
+  web?: AkanWebConfig;
+};
+
+export const resolveWebConfig = (web: Partial<AkanWebConfig> | undefined): AkanWebConfig => ({
+  ssr: web?.ssr ?? true,
+  csr: web?.csr ?? true,
+});
+
+/**
+ * `AKAN_SSR` / `AKAN_CSR`, both on unless the env says otherwise — the same shape `AKAN_MCP` uses, because a
+ * switch a deployment has to find before anything works is a switch most deployments never find. Read by the
+ * gateway and by every replica, so both agree on what the pod serves.
+ */
+export const getWebConfigFromEnv = (): AkanWebConfig => {
+  const off = (name: string) => process.env[name] === "false" || process.env[name] === "0";
+  const ssr = !off("AKAN_SSR");
+  // The CSR bundle inlines the stylesheet the SSR build compiles, so a csr-only process has no artifact.
+  return { ssr, csr: ssr && !off("AKAN_CSR") };
 };
 
 export interface MobileDeepLinkAssociation {

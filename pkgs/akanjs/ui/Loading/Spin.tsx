@@ -1,22 +1,28 @@
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import type { ReactNode } from "react";
-import { AiOutlineLoading } from "react-icons/ai";
+import { AiOutlineLoading3Quarters } from "react-icons/ai";
 
 export interface SpinProps {
   indicator?: ReactNode;
   isCenter?: boolean;
   className?: string;
+  size?: "sm" | "md" | "lg";
 }
-export const Spin = ({ indicator, isCenter, className }: SpinProps) => {
-  return (
-    <div className={clsx("inline-block py-1", className)}>
-      <div className={isCenter ? "absolute inset-0 flex size-full flex-none items-center justify-center" : ""}>
-        {indicator ? (
-          <div className="[&>svg]:animate-spin">{indicator}</div>
-        ) : (
-          <AiOutlineLoading className="animate-spin text-lg text-primary/60" />
-        )}
-      </div>
-    </div>
-  );
-};
+
+const sizeClass = { sm: "text-sm", md: "text-xl", lg: "text-3xl" } as const;
+
+export const Spin = ({ indicator, isCenter, className, size = "md" }: SpinProps) => (
+  <div
+    className={cn(
+      "inline-block py-1",
+      isCenter && "absolute inset-0 flex size-full items-center justify-center py-0",
+      className,
+    )}
+  >
+    {indicator ? (
+      <span className="[&>svg]:animate-spin">{indicator}</span>
+    ) : (
+      <AiOutlineLoading3Quarters className={cn("animate-spin text-primary/70", sizeClass[size])} />
+    )}
+  </div>
+);

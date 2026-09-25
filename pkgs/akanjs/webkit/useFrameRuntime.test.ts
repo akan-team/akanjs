@@ -44,7 +44,7 @@ describe("useFrameRuntime", () => {
         platformProfile: "ios",
         sticky: true,
       }),
-    ).toMatchObject({ height: 320, offset: 320, visible: true, sticky: true });
+    ).toMatchObject({ height: 320, offset: 320, visible: true, sticky: true, animationDuration: 420 });
 
     expect(
       resolveKeyboardFrame({
@@ -54,7 +54,7 @@ describe("useFrameRuntime", () => {
         platformProfile: "android",
         sticky: true,
       }),
-    ).toMatchObject({ offset: 140 });
+    ).toMatchObject({ height: 180, offset: 180, source: "visualViewport" });
 
     expect(
       resolveKeyboardFrame({
@@ -64,7 +64,7 @@ describe("useFrameRuntime", () => {
         platformProfile: "ios",
         sticky: false,
       }),
-    ).toMatchObject({ offset: 0, sticky: false });
+    ).toMatchObject({ offset: 0, sticky: false, animationDuration: 420 });
   });
 
   test("uses visual viewport keyboard fallback on ios when native height is missing", async () => {
@@ -107,6 +107,42 @@ describe("useFrameRuntime", () => {
     expect(layout.contentViewport).toMatchObject({ top: 0, bottom: 452, height: 452 });
   });
 
+  test("keeps android keyboard accessory above the keyboard when visual viewport also shrinks", async () => {
+    const { resolveKeyboardFrame, resolveKeyboardLayout } = await import("./useFrameRuntime");
+
+    const viewport = { width: 390, height: 844, visualWidth: 390, visualHeight: 524, visualOffsetTop: 0 };
+    const keyboard = resolveKeyboardFrame({
+      keyboardHeight: 520,
+      bottomSafeArea: 0,
+      visualViewportKeyboardHeight: 320,
+      platformProfile: "android",
+      sticky: true,
+    });
+    const layout = resolveKeyboardLayout({ viewport, keyboard, accessoryHeight: 72, bottomSafeArea: 0 });
+
+    expect(keyboard).toMatchObject({ height: 320, offset: 320, visible: true, sticky: true, source: "visualViewport" });
+    expect(layout.keyboardAccessory).toMatchObject({ top: 452, bottom: 524, height: 72, visible: true });
+    expect(layout.contentViewport).toMatchObject({ top: 0, bottom: 452, height: 452 });
+  });
+
+  test("keeps android keyboard accessory at the resized WebView edge", async () => {
+    const { resolveKeyboardFrame, resolveKeyboardLayout } = await import("./useFrameRuntime");
+
+    const viewport = { width: 448, height: 896, visualWidth: 448, visualHeight: 608, visualOffsetTop: 0 };
+    const keyboard = resolveKeyboardFrame({
+      keyboardHeight: 336,
+      bottomSafeArea: 48,
+      visualViewportKeyboardHeight: 288,
+      platformProfile: "android",
+      sticky: true,
+    });
+    const layout = resolveKeyboardLayout({ viewport, keyboard, accessoryHeight: 72, bottomSafeArea: 48 });
+
+    expect(keyboard).toMatchObject({ height: 288, offset: 288, visible: true, sticky: true, source: "visualViewport" });
+    expect(layout.keyboardAccessory).toMatchObject({ top: 536, bottom: 608, height: 72, visible: true });
+    expect(layout.contentViewport).toMatchObject({ top: 0, bottom: 536, height: 536 });
+  });
+
   test("keeps content viewport above keyboard accessory even while keyboard is hidden", async () => {
     const { resolveKeyboardFrame, resolveKeyboardLayout } = await import("./useFrameRuntime");
 
@@ -139,11 +175,12 @@ describe("useFrameRuntime", () => {
     const layout = resolveKeyboardLayout({ viewport, keyboard, accessoryHeight: 72, bottomSafeArea: 20 });
 
     expect(keyboard).toMatchObject({ offset: 0, visible: false, sticky: true, frozen: true });
+    expect(keyboard.animationDuration).toBe(90);
     expect(layout.keyboardAccessory).toMatchObject({ top: 752, bottom: 824, height: 72, visible: true });
   });
 
   test("uses max keyboard accessory slot height for route layout", async () => {
-    const { resolveKeyboardAccessoryHeight } = await import("./useFrameRuntime");
+    const { hasBottomAnchoredKeyboardSlot, resolveKeyboardAccessoryHeight } = await import("./useFrameRuntime");
 
     expect(
       resolveKeyboardAccessoryHeight("/chat", {
@@ -154,6 +191,19 @@ describe("useFrameRuntime", () => {
         },
       }),
     ).toBe(72);
+    expect(
+      hasBottomAnchoredKeyboardSlot("/chat", {
+        "/chat": {
+          input: {
+            type: "bottomInset",
+            role: "keyboardAccessory",
+            contentAnchor: "bottom",
+            height: 72,
+            source: "bottomInset",
+          },
+        },
+      }),
+    ).toBe(true);
   });
 
   test("keeps inset reservation explicit while preserving the base page state", async () => {

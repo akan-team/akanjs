@@ -1,5 +1,6 @@
 import {
   ACTION_META,
+  ACTION_OWNER_META,
   type Cls,
   type MergeAllActionTypes,
   type MergeAllKeyOfObjects,
@@ -24,6 +25,7 @@ import type {
   SliceCls,
 } from "akanjs/signal";
 import { type DefaultAction, makeActions, makeFormSetter } from "./action";
+import type { ActionOwner } from "./actionTag";
 import { createDatabaseState, createSliceState, type DefaultState } from "./state";
 import {
   createDerivedStateBuilder,
@@ -120,6 +122,7 @@ export type StoreCls<
     [STATE_INIT_META]: StateInitializerMap;
     [STATE_DERIVED_META]: StateDerivedMeta;
     [ACTION_META]: { [key: string]: (...args: any[]) => any };
+    [ACTION_OWNER_META]: { [key: string]: ActionOwner };
     slice: { [key: string]: SerializedSlice };
     _slice: SlceCls[typeof SLICE_META];
   }
@@ -187,6 +190,7 @@ export function store<Sig extends ClientSignal<any, any, any> | string, State>(
     static [STATE_INIT_META] = {};
     static [STATE_DERIVED_META] = createEmptyDerivedMeta();
     static [ACTION_META] = {};
+    static [ACTION_OWNER_META] = {};
     static slice = {};
   } as StoreCls;
   const writableStateRaw = stateFactory(createWritableStateBuilder());
@@ -204,6 +208,7 @@ export function store<Sig extends ClientSignal<any, any, any> | string, State>(
     writable.meta,
   );
   Object.assign(storeCls[ACTION_META], ...libStores.map((libStore) => libStore[ACTION_META]));
+  Object.assign(storeCls[ACTION_OWNER_META], ...libStores.map((libStore) => libStore[ACTION_OWNER_META] ?? {}));
   applyMixins(storeCls, libStores);
   if (signal) {
     const signalState = {
@@ -218,6 +223,10 @@ export function store<Sig extends ClientSignal<any, any, any> | string, State>(
     };
     Object.assign(storeCls.prototype, actions);
     Object.assign(storeCls[ACTION_META], actions);
+    Object.assign(
+      storeCls[ACTION_OWNER_META],
+      Object.fromEntries(Object.keys(actions).map((key) => [key, { refName }])),
+    );
     Object.assign(storeCls.slice, signal.serializedSignal.slice ?? {});
   }
   if (derivedStateFactory) {

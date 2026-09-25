@@ -18,9 +18,9 @@ export class UtilStore extends store("util" as const, () => ({
   fitToScreenByCoordinate(...coordinates: cnst.Coordinate[]) {
     (this as unknown as RootStore).set({ mapBounds: cnst.Coordinate.getBounds(...coordinates) });
   }
-  fitToScreenThroughCenterAndZoom(locations: cnst.Coordinate[]) {
+  fitToScreenThroughCenterAndZoom(locations: cnst.Coordinate[], explicitZoom?: number) {
     const result = cnst.Coordinate.computeCenterAndZoomFromLocations(locations);
     if (!result) return;
-    (this as unknown as RootStore).set({ mapCenter: result.center, mapZoom: result.zoom });
+    (this as unknown as RootStore).set({ mapCenter: result.center, mapZoom: explicitZoom ?? result.zoom });
   }
 }

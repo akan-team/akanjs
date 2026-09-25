@@ -1,0 +1,41 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// A form control publishes its own setter by reading the action off the function it was handed
+// (`actionTagOf` in pkgs/akanjs/store/actionTag.ts). A setter passed by reference names the field it
+// writes, so the control emits `data-akan-action` and `useFieldTool` publishes the field to the in-page
+// agent. An arrow that only forwards its argument is a fresh anonymous closure carrying neither, so the
+// field silently becomes unreachable to the agent, to an E2E selector, and to the accessibility tree —
+// while looking identical to a reader. Generated field setters take exactly one value
+// (`makeFormSetter` in pkgs/akanjs/store/action.ts), so the wrapper never changes what runs.
+//
+// Only a pure forwarding body is reported: the argument reaches the setter unchanged, as the sole
+// statement. Each other shape has its own home, so none of them is reported here:
+//
+//   normalize  `(v) => set(formatPhone(v))`      -> the control's own `transform` prop, which every text and
+//                                                   number `Field.*` already takes. Keep `onChange` a reference.
+//   composite  `(v) => { set(v); other(v); }`    -> a `_postSet<Field>` method on the store, with the generated
+//                                                   setter left on the control. A generated action cannot be
+//                                                   overridden: mapped types make them properties (TS2425).
+//   nested     `(v) => writeOnX('a.3.b', v)`     -> unannotatable by design. An agent reaches an embedded row
+//                                                   through `fill<Model>Form`, which waves composites through.
+//
+// A typed parameter (`(v: string) => st.do.setVOnX(v)`) is not matched: the parameter and the argument
+// bind to different text, so the metavariable cannot unify them. Under-reporting, not a false positive.
+//
+JsxAttribute() as $attr where {
+  $attr <: contains JsArrowFunctionExpression() as $arrow,
+  $arrow <: `($p) => $body`,
+  // One bare parameter. A metavariable matches a whole parameter list leniently, so `(a, b)` binds the
+  // text "a, b" and is excluded here rather than by the snippet.
+  $p <: r"[A-Za-z_$][A-Za-z0-9_$]*",
+  $body <: contains `st.do.$action($p)` as $call,
+  $action <: r"set[A-Za-z0-9_$]*On[A-Za-z0-9_$]*",
+  // The body is that call and nothing else — `r"..."` is a full match, so an extra statement fails it.
+  $body <: r"\{?\s*(?:void\s+|await\s+)?st\.do\.[A-Za-z0-9_$]+\([A-Za-z_$][A-Za-z0-9_$]*\)\s*;?\s*\}?",
+  register_diagnostic(
+    span = $arrow,
+    message = "This arrow only forwards its argument, and an anonymous closure names no action — the control publishes no agent tool and emits no data-akan-action for the field. Pass the setter by reference: onChange={st.do.setTypeOnTicket}. A wrapper that does more is not reported: normalization belongs in the control's transform prop, a multi-write belongs in a _postSet<Field> hook on the store, and a nested path through writeOnX is reached by the agent through fill<Model>Form.",
+    severity = "error"
+  )
+}

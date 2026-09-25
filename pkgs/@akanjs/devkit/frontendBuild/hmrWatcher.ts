@@ -209,7 +209,7 @@ export class HmrWatcher {
     // per-batch detail stays at verbose because a save-all trips this on every save.
     if (!this.#reportedCompensating) {
       this.#reportedCompensating = true;
-      this.#logger.info(
+      this.#logger.verbose(
         `[hmr] recovered ${unreported} change(s) that fs.watch did not report; Bun coalesces concurrent saves and drops all but one, so changes are resolved by mtime`,
       );
     }

@@ -208,7 +208,7 @@ export class SignalSerializer {
     return Object.entries(nodes).flatMap(([key, node]) => {
       const info = meta[key];
       if (!info) return [];
-      const transport = node.type === "query" || node.type === "mutation" ? "http" : "ws";
+      const transport = node.type === "pubsub" || node.type === "message" ? "ws" : "http";
       return [
         {
           signal,
@@ -216,7 +216,7 @@ export class SignalSerializer {
           source: typeof source === "function" ? source(key) : source,
           type: node.type,
           transport,
-          method: node.type === "query" ? "GET" : node.type === "mutation" ? "POST" : null,
+          method: node.type === "mutation" ? (info.signalOption.method ?? "POST") : transport === "http" ? "GET" : null,
           path:
             transport === "ws"
               ? SignalSerializer.#joinPath(prefix, websocketPrefix)

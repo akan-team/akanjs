@@ -169,8 +169,8 @@ export const makePageProto = <
               __html: translator.translate(lang, key, {
                 ...param,
                 // strong: (chunks: string) => `<b>${chunks}</b>`,
-                // "bg-primary": (chunks: string) => `<span className="bg-primary text-base-100">${chunks}</span>`,
-                // primary: (chunks: string) => `<span className="bg-base-100 text-primary">${chunks}</span>`,
+                // "bg-primary": (chunks: string) => `<span className="bg-primary text-background">${chunks}</span>`,
+                // primary: (chunks: string) => `<span className="bg-background text-primary">${chunks}</span>`,
                 br: `<br />`,
               }),
             }}

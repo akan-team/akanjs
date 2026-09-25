@@ -161,3 +161,8 @@ infra/master/jenkins/credentials.sh
 **/.akan
 **/bun.lock
 **/tsconfig.tsbuildinfo
+
+# akan:secrets (managed by akan.config.ts — do not edit)
+apps/akan/secrets/**/*
+apps/minimal/secrets/**
+# akan:secrets:end

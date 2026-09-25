@@ -285,9 +285,14 @@ export class DevResourceProbe {
       "rscWorkerRecycleCount",
       "httpFullSsrCount",
     ];
-    const rssMb = (Number(child.rssBytes ?? 0) / 1024 / 1024).toFixed(0);
+    // `rssBytes` is the replica's own; the RSC worker is a separate process reporting under
+    // `rscWorker*`. These used to be the same field, because the worker's report shadowed the
+    // replica's — so this line printed the worker's RSS labelled as the child's.
+    const toMb = (bytes: unknown) => (Number(bytes ?? 0) / 1024 / 1024).toFixed(0);
     const parts = keys.map((key) => `${key}=${child[key] ?? "?"}`);
-    console.info(`[metrics ${label}] rsc rss=${rssMb}MB ${parts.join(" ")}`);
+    console.info(
+      `[metrics ${label}] replicaRss=${toMb(child.rssBytes)}MB rscWorkerRss=${toMb(child.rscWorkerRssBytes)}MB ${parts.join(" ")}`,
+    );
   }
 
   async #waitForLog(pattern: RegExp, timeoutMs: number): Promise<boolean> {

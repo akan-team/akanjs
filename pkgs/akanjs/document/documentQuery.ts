@@ -162,6 +162,9 @@ export const createDocumentQueryHelper = () => ({
   lte: (value: unknown) => op("lte", value),
   between: (from: unknown, to: unknown) => op("between", [from, to]),
   exists: (path: string) => ({ [path]: op("exists") }),
+  // `missing` is key absence, not "no value": an optional field left out of an insert has no key, but the same
+  // field on a document read back and saved carries an explicit null the read materialized. `empty` covers both
+  // and is what a caller asking "has no value" wants.
   missing: (path: string) => ({ [path]: op("missing") }),
   empty: (path: string) => ({ [path]: op("empty") }),
   has: (value: unknown) => op("has", value),

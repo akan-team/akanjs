@@ -1,40 +1,29 @@
-import { generateJwtSecret, resolveJwt } from "@libs/util/srvkit";
-import type { BaseEnv } from "akanjs/base";
+import { resolveJwt, resolveJwtSecret } from "@libs/util/srvkit";
+import { getEnv } from "akanjs/base";
 import type { Account } from "akanjs/fetch";
 import type { Middleware, SignalContext } from "akanjs/signal";
+import type { ModulesOptions } from "../lib/option";
 import type { AccessAccount, ReqType } from "./accountMiddleware.helper";
-
-interface WsAuthState {
-  account?: Account;
-  resolvedAuthorization?: string;
-}
 
 export class AccountMiddleware implements Middleware {
   static readonly refName = "AccountMiddleware";
 
-  async use(env: BaseEnv) {
-    const jwtSecret = generateJwtSecret(env.appName, env.environment);
+  async use(env: ModulesOptions) {
+    const { appName, environment } = getEnv();
+    const jwtSecret = resolveJwtSecret(appName, environment, env.security?.jwtSecret);
     return async (context: SignalContext, next: () => Promise<unknown>) => {
       const req = (
         context.transport === "http" ? context.getHttpContext().req : context.getWebSocketContext().ws.data
       ) as Partial<ReqType>;
-      const authorization =
-        req.headers?.get("authorization") ?? (req.cookies?.has("jwt") ? `Bearer ${req.cookies.get("jwt")}` : undefined);
-      // A socket verifies its token once per credential instead of once per frame.
-      const wsState = context.transport === "websocket" ? (req as WsAuthState) : null;
-      if (wsState?.account && wsState.resolvedAuthorization === (authorization ?? "")) return await next();
-      const account = await resolveJwt<AccessAccount>(jwtSecret, authorization, {
-        appName: env.appName,
-        environment: env.environment,
-      } as unknown as AccessAccount);
+      const account = await resolveJwt<AccessAccount>(
+        jwtSecret,
+        req.headers?.get("authorization") ?? (req.cookies?.has("jwt") ? `Bearer ${req.cookies.get("jwt")}` : undefined),
+        { appName, environment } as unknown as AccessAccount,
+      );
       Object.assign(req, {
-        account:
-          account.tokenType === "access"
-            ? account
-            : ({ appName: env.appName, environment: env.environment } as Account),
+        account: account.tokenType === "access" ? account : ({ appName, environment } as Account),
         userAgent: req["user-agent"],
       });
-      if (wsState) wsState.resolvedAuthorization = authorization ?? "";
       return await next();
     };
   }

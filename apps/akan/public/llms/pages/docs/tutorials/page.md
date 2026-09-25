@@ -270,7 +270,7 @@ export const dictionary = modelDictionary(["en", "ko"])
 
 ```ts
 "use client"; // [!code collapse:4]
-import { Field, Layout } from "akanjs/ui";
+import { Field, Layout, buttonRecipe } from "akanjs/ui";
 import { cnst, st, usePage } from "@apps/koyo/client";
 
 interface GeneralProps {
@@ -318,7 +318,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => { 
 ### apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx
 
 ```ts
-import { clsx, type ModelProps } from "akanjs/client"; // [!code collapse:7]
+import { cn, type ModelProps } from "akanjs/client"; // [!code collapse:7]
 import { Model } from "akanjs/ui";
 import { cnst, fetch, IcecreamOrder, usePage } from "@apps/koyo/client";
 
@@ -328,44 +328,46 @@ interface CardProps extends ModelProps<"icecreamOrder", cnst.LightIcecreamOrder>
 export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
   const { l } = usePage();
   return (
-    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-base-100 via-base-200 to-base-300 px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
+    <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-muted to-border px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
       <div className="flex flex-col justify-center">
         <div className="flex items-center gap-2 text-lg font-semibold text-primary">
-          <span className="inline-block rounded bg-base-200 px-2 py-1 text-xs font-bold tracking-wider uppercase">
+          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider uppercase">
             {l("icecreamOrder.id")}
           </span>
           <span className="ml-2 font-mono text-primary">#{icecreamOrder.id.slice(-4)}</span>
-          <span // [!code ++:9]
-            className={clsx("ml-2 rounded px-2 py-1 text-xs font-semibold uppercase", {
-              "border border-primary/40 bg-base-100 text-primary": icecreamOrder.serveType === "forHere",
-              "border border-warning/40 bg-base-100 text-warning": icecreamOrder.serveType === "takeOut",
-              "border border-info/40 bg-info text-info-content": icecreamOrder.serveType === "delivery",
-            })}
+          <span // [!code ++:10]
+            className={cn(
+              "ml-2 rounded px-2 py-1 text-xs font-semibold uppercase",
+              icecreamOrder.serveType === "forHere" && "border border-primary/40 bg-background text-primary",
+              icecreamOrder.serveType === "takeOut" && "border border-warning/40 bg-background text-warning",
+              icecreamOrder.serveType === "delivery" && "border border-info/40 bg-info text-info-foreground",
+            )}
           >
             {l(`serveType.${icecreamOrder.serveType}`)}
           </span>
         </div>
-        <div className="mt-4 flex items-center gap-2"> // [!code collapse:16]
-          <span className="inline-block rounded border border-base-300 bg-base-100 px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+        <div className="mt-4 flex items-center gap-2"> // [!code collapse:17]
+          <span className="inline-block rounded border border-border bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
             {l("icecreamOrder.status")}
           </span>
           <span
-            className={clsx("ml-2 rounded-full px-3 py-1 text-sm font-semibold", {
-              "border border-primary/40 bg-base-100 text-primary": icecreamOrder.status === "active",
-              "border border-warning/40 bg-base-100 text-warning": icecreamOrder.status === "processing",
-              "border border-info/40 bg-info text-info-content": icecreamOrder.status === "served",
-              "border border-accent/40 bg-base-100 text-accent": icecreamOrder.status === "finished",
-              "border border-base-300 bg-base-100 text-base-content/70": icecreamOrder.status === "canceled",
-            })}
+            className={cn(
+              "ml-2 rounded-full px-3 py-1 text-sm font-semibold",
+              icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
+              icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
+              icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
+              icecreamOrder.status === "finished" && "border border-accent/40 bg-background text-accent",
+              icecreamOrder.status === "canceled" && "border border-border bg-background text-foreground/70",
+            )}
           >
             {l(`icecreamOrderStatus.${icecreamOrder.status}`)}
           </span>
         </div>
       </div>
       {showControls ? ( // [!code collapse:16]
-        <div className="bg-base-100 flex items-center justify-center gap-2 rounded-xl p-4">
+        <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4">
           <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
-            <button className="btn btn-primary">
+            <button className={buttonRecipe({ variant: "primary" })}>
               <span>{l.trans({ en: "View", ko: "보기" })}</span>
             </button>
           </Model.ViewWrapper>
@@ -392,24 +394,24 @@ import { usePage } from "@apps/koyo/client";
 export default function Page() {
   const { l } = usePage();
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-linear-to-br from-base-100 via-base-200 to-base-300 p-6">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-linear-to-br from-background via-muted to-border p-6">
       <div className="absolute top-6 right-6 flex gap-2">
         <Link.Lang
           lang="en"
-          className="rounded-lg bg-base-100/70 px-4 py-2 font-semibold text-primary backdrop-blur-sm transition-all duration-200 hover:bg-base-100 hover:shadow-md"
+          className="rounded-lg bg-background/70 px-4 py-2 font-semibold text-primary backdrop-blur-sm transition-all duration-200 hover:bg-background hover:shadow-md"
         >
           English
         </Link.Lang>
         <Link.Lang
           lang="ko"
-          className="rounded-lg bg-base-100/70 px-4 py-2 font-semibold text-primary backdrop-blur-sm transition-all duration-200 hover:bg-base-100 hover:shadow-md"
+          className="rounded-lg bg-background/70 px-4 py-2 font-semibold text-primary backdrop-blur-sm transition-all duration-200 hover:bg-background hover:shadow-md"
         >
           한국어
         </Link.Lang>
       </div>
       <div className="w-full max-w-4xl space-y-8 text-center">
         <div className="space-y-4">
-          <h1 className="bg-linear-to-r from-base-100 via-base-200 to-base-300 text-7xl font-bold text-primary duration-1000 md:text-8xl">
+          <h1 className="bg-linear-to-r from-background via-muted to-border text-7xl font-bold text-primary duration-1000 md:text-8xl">
             Koyo
           </h1>
           <p className="text-2xl font-light text-primary delay-150 duration-1000 md:text-3xl">
@@ -424,14 +426,14 @@ export default function Page() {
         <div className="flex flex-col items-center gap-4 pt-8 delay-500 duration-1000 sm:flex-row sm:justify-center">
           <Link
             href="/icecreamOrder/new?serveType=forHere"
-            className="inline-flex w-full items-center justify-center gap-3 rounded-full border border-base-300 bg-base-200 px-10 py-6 text-2xl font-semibold text-primary shadow-2xl transition-all duration-300 hover:scale-105 hover:bg-base-200 hover:shadow-md active:scale-95 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-3 rounded-full border border-border bg-muted px-10 py-6 text-2xl font-semibold text-primary shadow-2xl transition-all duration-300 hover:scale-105 hover:bg-muted hover:shadow-md active:scale-95 sm:w-auto"
           >
             <span className="text-4xl">🍽️</span>
             {l.trans({ en: "For Here", ko: "매장 식사" })}
           </Link>
           <Link
             href="/icecreamOrder/new?serveType=takeOut"
-            className="inline-flex w-full items-center justify-center gap-3 rounded-full border border-base-300 bg-base-200 px-10 py-6 text-2xl font-semibold text-primary shadow-2xl transition-all duration-300 hover:scale-105 hover:bg-base-200 hover:shadow-md active:scale-95 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-3 rounded-full border border-border bg-muted px-10 py-6 text-2xl font-semibold text-primary shadow-2xl transition-all duration-300 hover:scale-105 hover:bg-muted hover:shadow-md active:scale-95 sm:w-auto"
           >
             <span className="text-4xl">🛍️</span>
             {l.trans({ en: "Take Out", ko: "포장 주문" })}
@@ -452,19 +454,19 @@ import { usePage } from "@apps/koyo/client";
 export default function Page() {
   const { l } = usePage();
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-linear-to-br from-base-100 via-base-200 to-base-300 p-6">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-linear-to-br from-background via-muted to-border p-6">
       <div className="w-full max-w-2xl space-y-8 text-center">
         <div className="flex justify-center">
-          <div className="flex h-32 w-32 items-center justify-center rounded-full bg-linear-to-r from-base-100 to-base-300 text-7xl shadow-2xl">
+          <div className="flex h-32 w-32 items-center justify-center rounded-full bg-linear-to-r from-background to-border text-7xl shadow-2xl">
             ✓
           </div>
         </div>
         <div className="space-y-4">
-          <h1 className="bg-linear-to-r from-base-100 via-base-200 to-base-300 text-5xl font-bold text-primary md:text-6xl">
+          <h1 className="bg-linear-to-r from-background via-muted to-border text-5xl font-bold text-primary md:text-6xl">
             {l.trans({ en: "Order Placed!", ko: "주문 완료!" })}
           </h1>
         </div>
-        <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm">
+        <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
           <div className="space-y-3">
             <div className="flex items-center justify-center gap-2 text-lg text-primary">
               <span className="text-3xl">🎉</span>
@@ -472,7 +474,7 @@ export default function Page() {
                 {l.trans({ en: "We're preparing your order", ko: "주문을 준비하고 있습니다" })}
               </span>
             </div>
-            <p className="text-base-content/70">
+            <p className="text-foreground/70">
               {l.trans({
                 en: "Please wait for your order number to be called",
                 ko: "주문 번호가 호출될 때까지 기다려 주세요",
@@ -483,7 +485,7 @@ export default function Page() {
         <div className="pt-4">
           <Link
             href="/icecreamOrder"
-            className="inline-flex items-center justify-center gap-3 rounded-full border border-base-300 bg-base-200 px-12 py-6 text-2xl font-semibold text-primary shadow-2xl transition-all hover:scale-105 hover:bg-base-200 hover:shadow-md active:scale-95"
+            className="inline-flex items-center justify-center gap-3 rounded-full border border-border bg-muted px-12 py-6 text-2xl font-semibold text-primary shadow-2xl transition-all hover:scale-105 hover:bg-muted hover:shadow-md active:scale-95"
           >
             <span className="text-4xl">🏠</span>
             {l.trans({ en: "Place New Order", ko: "새 주문하기" })}
@@ -512,13 +514,13 @@ export default function Page({ searchParams }: PageProps) {
   const icecreamOrderForm: Partial<cnst.IcecreamOrder> = { serveType };
         
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-linear-to-br from-base-100 via-base-200 to-base-300 p-6">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-linear-to-br from-background via-muted to-border p-6">
       <div className="w-full max-w-2xl space-y-8">
         <div className="space-y-4 text-center">
           <div className="flex justify-center">
             <span className="text-8xl">🍦</span>
           </div>
-          <h1 className="bg-linear-to-r from-base-100 via-base-200 to-base-300 text-5xl font-bold text-primary md:text-6xl">
+          <h1 className="bg-linear-to-r from-background via-muted to-border text-5xl font-bold text-primary md:text-6xl">
             {l("base.createModel", { model: l("icecreamOrder.modelName") })}
           </h1>
           <p className="text-xl font-light text-primary">
@@ -545,7 +547,7 @@ export default function Page({ searchParams }: PageProps) {
 
 ```ts
 "use client";
-import { clsx } from "akanjs/client"; // [!code ++]
+import { cn } from "akanjs/client"; // [!code ++]
 import { Field, Layout } from "akanjs/ui"; // [!code collapse:8]
 import { cnst, st, usePage } from "@apps/koyo/client";
 
@@ -558,9 +560,9 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
   const { l } = usePage();
   const icecreamOrderForm = st.use.icecreamOrderForm();
   return (
-    <Layout.Template className={clsx("w-full space-y-6", className)}> // [!code highlight:56]
+    <Layout.Template className={cn("w-full space-y-6", className)}> // [!code highlight:56]
       {showServeType ? (
-        <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm">
+        <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
           <div className="space-y-6">
             <div className="flex items-center gap-3">
               <span className="text-3xl">🍦</span>
@@ -574,7 +576,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           </div>
         </div>
       ) : null}
-      <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm">
+      <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <span className="text-3xl">📏</span>
@@ -587,7 +589,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           />
         </div>
       </div>
-      <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm">
+      <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <span className="text-3xl">🍓</span>
@@ -600,7 +602,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           />
         </div>
       </div>
-      <div className="rounded-2xl border border-base-300 bg-base-100 p-8 shadow-md backdrop-blur-sm">
+      <div className="rounded-2xl border border-border bg-background p-8 shadow-md backdrop-blur-sm">
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <span className="text-3xl">📱</span>

@@ -1,9 +1,20 @@
 # Akan.js Monorepo — Agent Guide
 
 This is the canonical, tool-neutral guide for coding agents (Claude Code, Codex, Cursor, and others)
-working in this repository. It consolidates the rules in `.cursor/rules/*.mdc`, which remain the
-Cursor-native copies. Keep this file as the single source of truth: `CLAUDE.md` imports it, and when a
-rule changes, update it here and mirror it into the matching `.cursor/rules/*.mdc` file.
+working in this repository, and the only copy. Claude Code reads it through `CLAUDE.md` (`@AGENTS.md`)
+and Cursor through `.cursor/rules/akan.mdc`, both of which are pointers holding no content of their own —
+there is nothing to mirror a rule change into. The section between the `akan:agent` markers is generated
+by `akan agent install`; edit anything outside the markers freely.
+
+<!-- akan:agent:start -->
+<!-- akan:agent:version 3.0.0-alpha.65 -->
+
+## Workspace
+
+- Repo: akanjs
+- Apps: minimal, akan
+- Libraries: util, shared
+- Packages: akanjs, create-akan-workspace, use-agentic, @akanjs/cli, @akanjs/devkit
 
 ## Repo Overview
 
@@ -28,33 +39,105 @@ rule changes, update it here and mirror it into the matching `.cursor/rules/*.md
 
 ## Lint-Enforced Rules (These Break The Build)
 
-Enforced by `biome.json` and the grit plugins in `pkgs/@akanjs/devkit/lint/`. Several of them produce output
-that looks wrong; do not "fix" it back.
+Enforced by `biome.json`, which extends `@akanjs/devkit/biome.base.json` — that file scopes every grit plugin in
+`@akanjs/devkit/lint/` to the paths it applies to. Several rules produce output that looks wrong; do not "fix" it
+back.
 
 - **Never hand-order Tailwind classes.** `nursery/useSortedClasses` is an error and also sorts the string
-  arguments to `clsx()` and `cva()`. Sorter output such as `font-bold text-2xl text-base-content` or
-  `border-base-content/5 border-t` is correct. Write the classes in any order, run the formatter, leave the result.
+  arguments to `cn()`. Sorter output such as `font-bold text-2xl text-foreground` or
+  `border-foreground/5 border-t` is correct. Write the classes in any order, run the formatter, leave the result.
+- **Stay inside the color vocabulary.** Vocabulary closure strips the raw Tailwind palette, so these render as
+  no CSS and fail lint (`no-raw-palette-class.grit`, `no-arbitrary-color.grit`, `no-daisyui-legacy-class.grit`, `no-inline-color.grit`,
+  `no-interpolated-arbitrary-class.grit`): raw palette classes (`bg-blue-500`), arbitrary color values
+  (`bg-[#3b82f6]`), an arbitrary class built by interpolation, daisyUI legacy classes (`btn-primary`, `card-body`)
+  and its dropped color slots (`bg-base-100`, `text-base-content`, `text-primary-content`, `bg-error` — use
+  `background`/`muted`/`border`, `foreground`, `<color>-foreground`, `destructive`), and color literals in
+  `style={{...}}`. Use semantic tokens (`bg-primary`, `text-foreground/70`). A legitimate
+  fixed color (OS-chrome mockups, data-viz) takes a `// biome-ignore lint/plugin: <reason>` with the reason
+  spelled out.
 - **Never `throw new Error`.** Throw `new Err("<module>.error.<key>")` and register the key as `[en, ko]` in that
   module's dictionary `.error({})`. Import `Err` from `"../dict"` on the server and from `"@libs/<lib>/client"` or
-  `"@apps/<app>/client"` in UI. `no-throw-raw-error.grit` exempts `*.test.ts`, `*.spec.ts`, `*.constant.ts`, and
-  `common/**` — `common/` has no legal `Err` import path, so keep throwing code out of it.
+  `"@apps/<app>/client"` in UI. `no-throw-raw-error.grit` exempts tests, `*.constant.ts`, `common/**`, and
+  `env/**` — `common/` and `env/` have no legal `Err` import path, so keep throwing code out of them.
 - **Never import a third-party package** from `page/**`, from any barrel, or from any
   `*.{constant,dictionary,document,service,signal,store}.ts` / `*.{Template,Unit,Util,View,Zone}.tsx`
-  (`no-import-external-library.grit`). Re-export the symbol through a lib first. One-line re-export shims such as
-  `libs/<lib>/base/<pkg>.ts` and `libs/<lib>/webkit/<hook>.ts` exist for exactly this reason — they are
-  load-bearing, not cruft. Do not delete them.
+  (`no-import-external-library.grit`). Re-export the symbol through a lib first. One-line re-export shims in a lib's
+  `common/`, `webkit/`, or `ui/` exist for exactly this reason — they are load-bearing, not cruft. Do not delete
+  them.
 - **`#private` is banned in exactly four file suffixes:** `*.constant.ts`, `*.document.ts`, `*.service.ts`, and
   `*.store.ts` (`no-js-private-class-method.grit`). The rule is scoped by file path, not by class shape, so
   `#private` remains the house style everywhere under `srvkit/`, including `adapt()` adapter classes.
 - **No `console.log` / `console.debug`.** Only `assert`, `error`, `info`, and `warn` are allowed. Server code uses
   the injected `this.logger.*` or `new Logger("ClassName")`.
+- **Never write a `//!` marker in browser-reachable code** — `ui/`, `webkit/`, `common/`, `page/**/*.tsx`,
+  `*.constant.ts`, `*.store.ts`, and the five module component suffixes (`no-bang-comment-in-client.grit`). Bun
+  classifies `//!` and `/*!` as legal comments and keeps them through minification, so the note ships to every
+  visitor. Use `// FIXME:` there; `//!` stays legal in server, `srvkit/`, and CLI files.
+- **Never return a value from a store action** (`no-return-in-store-action.grit`). Every method of a `store(...)`
+  class dispatches through `st.do.<action>()`, which is typed `void` / `Promise<void>`, so the value is
+  unreachable — write it into state with `this.set({ ... })`. A bare `return;` guard, a `return` inside a nested
+  callback, a getter, and a `static` helper are all still fine.
 - **Never redeclare a generated CRUD endpoint name** in `*.signal.ts` (`no-redeclare-predefined-endpoint.grit`).
+- **Never type a `*.Util.tsx` / `*.Zone.tsx` prop as a `cnst` model** (`no-model-type-in-util-zone.grit`). Those two
+  roles are always client components, so a `cnst.Banner` / `cnst.LightBanner` prop is a class instance the server has
+  to hand across the boundary; take `bannerId: string` and read the model from the store instead. **Only prop
+  positions are read** — a `*Props` interface or type alias, and the inline object type on the component's own
+  parameter — and only shapes that are actually an instance are flagged. Exempt: an indexed enum access
+  (`cnst.<Enum>["value"]`, a string union), a `ClientInit` / `ClientView` / `ClientEdit` type argument (plain
+  `GetStateObject<…>` data), a `ModelsProps<…>` type argument, a function-typed prop, and any `cnst` type that
+  never leaves the file. `ModelProps<"setting", cnst.LightSetting>` and any other indexed access
+  (`cnst.Banner["image"]` is a `File`) stay flagged.
+- **Never wrap a form setter in a pass-through arrow** (`no-unpublished-form-setter.grit`).
+  `onChange={(type) => st.do.setTypeOnTicket(type)}` runs identically to `onChange={st.do.setTypeOnTicket}`, but
+  the arrow is a fresh anonymous closure, so the control emits no `data-akan-action` and publishes no agent tool
+  for the field — a silent failure in two lines that read the same. A wrapper that transforms the value, adds a
+  statement, or writes a nested path with `writeOnX` stays legal; publish that one with an explicit `st.tool`.
+  Scoped to `{apps,libs}/**/*.tsx`, and a typed parameter is not matched, so it under-reports rather than
+  misfiring.
 - **No deep imports past a barrel** (`no-deep-internal-import.grit`). Cross-module constant references such as
   `../map/map.constant` are the sanctioned exception.
+- **Never import across the client/server boundary.** Client files (`ui/`, `webkit/`, `page/`, `*.store.ts`, every
+  `.tsx`) may not import a `*.document.ts` / `*.dictionary.ts` / `*.service.ts` / `*.signal.ts`, `srvkit/`, a
+  package `server` entrypoint, or the `db` / `srv` / `sig` / `dict` / `option` / `useServer` barrels
+  (`no-import-server-in-client.grit`). Server files (those four suffixes plus `srvkit/`) may not import a
+  `*.store.ts`, a module component, `ui/`, `webkit/`, a package `client` entrypoint, or the `st` / `store` /
+  `useClient` barrels (`no-import-client-in-server.grit`). Shared files — `common/` and `*.constant.ts` — are held
+  to **both**, so they reach neither side. `import type` is erased before bundling and stays legal in every
+  direction; a mixed value-and-type import is not exempt. Scoped to `apps/**` and `libs/**`: `pkgs/akanjs/**`
+  implements the boundary and is where the two graphs legitimately meet.
 - **Server-component discipline** is enforced on `page/**`, `*.Unit.tsx`, and `*.View.tsx`
   (`no-import-client-functions.grit`, `no-use-client-in-server.grit`, `non-scalar-props-restricted.grit`).
+- **Never write an async component outside `page/`** (`no-async-component-in-ui.grit`, scoped to
+  `{apps,libs}/**/ui/**/*.tsx`). React has no async client component, so a `ui/` component that awaits breaks as
+  soon as a client parent renders it, and the load drops below the route, which could have started it before the
+  first byte. Await in the page — or hand an unawaited `fetch.*` to a `Zone` as an `init` / `view` prop — and take
+  the resolved data as a prop. A component is a PascalCase binding whose own initializer is `async`, so an async
+  handler declared inside a synchronous component, an inline `onClick={async () => …}`, and
+  `lazy(async () => import(…))` are all untouched.
+- **Never call `fetch.init*` from a client file** (`no-init-fetch-in-client.grit`). `fetch.init<Model><Suffix>` and
+  `fetch.get<Model>Init<Suffix>` compose the slice's list and insight queries into the hydration snapshot that
+  `Load.Units` / `Load.View` seed the store from. From a route it resolves before the first byte; after hydration it
+  is two extra round-trips for a shell the browser already painted, landing in a value nothing reads. Load it in the
+  page and pass the result down as an `init` prop — or hand the unawaited promise across — and reload from the client
+  through the generated `st.do.init<Model><Suffix>()`. The gate is the file: the real `"use client"` directive (the
+  same text as a string literal or inside sample code is not one) plus `*.store.ts`, which is client-only by role and
+  carries no directive. The name is matched by shape, since a lint rule cannot know which slices exist: the
+  generated one always carries two capital-led segments (`init` + `Capitalize<refName>` + `Capitalize<suffix>`), so
+  a hand-written `initPayment` is out and `initializeSomething` was never in. `view` / `edit` hydrate alike but are
+  left unmatched — `edit<X>` is a plausible custom endpoint name.
 - `noArrayIndexKey` and `useExhaustiveDependencies` are **off** on purpose: `key={idx}` for embedded scalars and
   short dependency arrays are intentional, not oversights.
+- **A grit plugin diagnostic is suppressed as `lint/plugin`, not `plugin`** — `// biome-ignore lint/plugin: <reason>`
+  for one line, `// biome-ignore-all lint/plugin: <reason>` for a file. The bare `// biome-ignore plugin:` form Biome's
+  own category name suggests does nothing. Suppress a plugin only where the rule is genuinely wrong for the file, and
+  say why: the module-convention plugins (`no-import-external-library`, `no-deep-internal-import`, the store/signal
+  ones) apply to `apps/**` and `libs/**` only, so a plain package under `pkgs/` never needs the escape hatch.
+- **`biome.json` is strict JSON — a comment in it breaks config resolution.** Biome does not report the parse
+  error; it falls back to discovery and aborts on whatever nested config the walk finds. Rename the file to
+  `biome.jsonc` to document a disabled rule; `akan lint` pins the config path either way, so it reports the parse
+  error on the offending line.
+- **`akan lint` prints up to 200 diagnostics** (`--max-diagnostics <n>`, `0` for no limit). Biome's own default is 20
+  with no count, which reads as progress when the mix of findings merely changed.
 
 ## Coding Style (`**/*.{ts,tsx}`)
 
@@ -93,7 +176,7 @@ that looks wrong; do not "fix" it back.
 - Prefer focused behavior tests for public contracts and edge cases over implementation-detail assertions.
 - Run package suites with `bun run akan test <pkg>` from the repo root, or `cd <pkg> && bun test --isolate`. Plain `bun test` without `--isolate` shares one global object across test files and fails dozens of tests from cross-file state pollution (`bunfig.toml` `[test] isolate` is not honored as of Bun 1.3), and running `bun test` from the repo root breaks subprocess stdio pipes.
 - Split signal tests in two. `<model>.signal.spec.ts` holds reusable fixtures built on `sampleOf(cnst.XInput)` with explicit `Promise<cnst.X>` return types and **no assertions**. `<model>.signal.test.ts` holds the assertions: `describe("<Model> Signal")`, `let` fixtures at describe scope, one `beforeAll`, story-ordered `it`s, and negatives via `await expect(p).rejects.toThrow()`.
-- `lib/user/user.signal.spec.ts` is the one place agent types are re-exported and re-typed; import `UserAgent` / `AdminAgent` from there rather than from the shared lib directly.
+- `lib/user/user.signal.spec.ts` is the one place agent types are re-exported and re-typed; import `UserAgent` / `AdminAgent` from there rather than from the owning lib directly.
 - A placeholder `it` with a descriptive title is an acceptable floor. Write a real suite when the behaviour is security-relevant.
 
 ## Comments
@@ -109,7 +192,9 @@ Do not narrate code. Do document the thing the code cannot say. Both halves are 
   1. `TODO` — unfinished work that must be tracked in-code
   2. `FIXME` — known broken or incorrect behavior that must be fixed
   3. `XXX` — dangerous / surprising hazard that a reader must not miss
-  4. `//!` — disabled or must-fix code
+  4. `//!` — disabled or must-fix code. **Server, `srvkit/`, and CLI files only.** Bun's bundler treats `//!`
+     (and `/*!`) as a legal comment and keeps it through minification, so in browser-reachable code the note
+     ships verbatim to every visitor. Use `// FIXME:` there instead; `no-bang-comment-in-client.grit` enforces it.
   5. `//?` — an explanatory aside
   6. `//*` — a design note
   7. Deletion caution — warn why removing a line or block would break something non-obvious
@@ -122,7 +207,7 @@ Do not narrate code. Do document the thing the code cannot say. Both halves are 
 - Use Bun and ESM assumptions from the root `tsconfig.json`.
 - Prefer path aliases over deep relative imports when crossing package boundaries.
 - Use `akanjs/*` for framework facets, `@apps/*` for apps, `@libs/*` for shared libs, and `@contract/*` for contract code.
-- Respect existing client/server entrypoints such as `@libs/shared/client`, `@libs/shared/server`, `@apps/akasys/client`, and `@apps/akasys/server`.
+- Respect existing client/server entrypoints — `@libs/<lib>/client` / `@libs/<lib>/server` and `@apps/<app>/client` / `@apps/<app>/server`.
 - Let Biome organize imports instead of manually reshuffling unrelated imports.
 - Namespace the generated barrels in backend `.ts` files: `import * as cnst from "../cnst"`, `* as db`, `* as srv`. Use `import type * as srv` in services so the runtime graph stays lazy, and a value import in signals.
 - In `.tsx` files use one flat named import from the package client path (`import { cnst, fetch, st, Ticket, usePage } from "@apps/<app>/client"`) — never a relative `../` import.
@@ -144,6 +229,161 @@ Do not narrate code. Do document the thing the code cannot say. Both halves are 
 - Preserve established domain file roles such as `.document.ts`, `.service.ts`, `.store.ts`, `.constant.ts`, and `.client.ts`.
 - When unsure, inspect nearby files in the same app or package before introducing a new boundary pattern.
 
+## SSR First — Server Rendering Is The Default
+
+Akan is SSR-first. Every JSX element that renders on the server ships as HTML and costs nothing to hydrate;
+every element behind `"use client"` ships twice — as markup and as bundled JS that must re-run in the browser.
+The boundary is not about which file *may* be client, it is about **how little** ends up on the client side.
+
+**The default is server. `"use client"` is a cost you justify per component, not a habit.** A component earns the
+directive only by using a client-only capability: a React hook, a JSX event handler, the store (`st.use.*` /
+`st.do.*`), a browser global, or a client-only third-party package. Rendering markup, reading a param, calling
+`l()`, and mapping over data are all server work.
+
+Measure before and after with `akan quality ssr` (`--format json` for tooling). It prints the server render share
+per app and lib — server-rendered JSX elements over total — and the SSR warnings below. Treat **50% server share
+as the floor** for an app or lib and a **falling share as a regression**: if a change moves markup to the client,
+say why in the PR or move it back.
+
+### What `akan quality ssr` Flags
+
+| Rule | Means |
+|---|---|
+| `akan.ssr.unnecessary-use-client` | The directive is there but nothing in the file needs it. Delete it. |
+| `akan.ssr.client-static-component` | A component in a client file renders real markup with zero client-only capability — pure server work sitting in the bundle. |
+| `akan.ssr.client-static-markup` | A large subtree wraps one or two interactive touches. Split it: interaction stays client, markup goes server. |
+| `akan.ssr.client-mount-load` | A `useEffect(…, [])` loads server data. The route can fetch it before the first byte. |
+| `akan.ssr.module-missing-server-view` | A module renders only from `Template`/`Zone`/`Util` and has no `Unit`/`View` at all. |
+| `akan.ssr.template-client-state` | A `Template` holds form state in `useState` instead of the store. |
+
+A third-party client package or an `index_.tsx` `lazy()` boundary is a legitimate reason for the directive and is
+not flagged. Interaction-driven `fetch.*` (a lookup inside `onClick`) is not flagged either — only mount-time loads
+are, because those are the ones the server could have done.
+
+### Server-Side Implementation Playbook
+
+1. **Wrap the interaction, not the UI.** The smallest useful client component adds one behaviour and renders
+   `children` untouched, so the markup inside never reaches the bundle.
+2. **Split compound components so panels stay on the server.** `Tab` / `Tab.Menus` / `Tab.Menu` / `Tab.Panel` in
+   `akanjs/ui` is the shape: only the provider and menu hold state, and `<Tab.Panel>` renders children as-is.
+   Never one `"use client"` file with a mode `useState` and every panel body inlined.
+3. **Sync state instead of fetching it.** The route calls `fetch.initXInY(...)` / `fetch.viewX(...)` and passes
+   the result into a `Zone` as an `init` / `view` prop; `Load.Units` / `Load.View` hydrate the store from it.
+   Never a `useEffect(…, [])` that fetches on mount.
+4. **Push the boundary down to the leaf that needs it.** A store-reading `Zone` should hold zero markup and
+   delegate to a server `View`.
+5. **Hand the promise across, not the awaited value.** `ClientInit` / `ClientView` are `PromiseOrObject<T>`, so a
+   route may pass an unawaited `fetch.initX(...)` and `Load.*` resolves it behind a skeleton.
+6. **Use named `ReactNode` slots, not just `children`.** `Layout.Navbar` takes `title`, `back`, `left`, `right`,
+   and `children`, so a client shell composes server content in five places instead of absorbing it.
+7. **Let the server do the derived work.** Display and predicate logic belongs on `Light<Model>`; enum→class
+   lookups belong in a module-scope `as const` map.
+8. **Gate auth on the server.** `getSelf({ unauthorize: "/signin" })` in `_layout.tsx` redirects before any HTML
+   is sent.
+9. **Prefer CSS over client state for pure visibility.** A `data-*` attribute plus `group-data-[…]` variants, or
+   `<details>`/`<summary>`, keeps both branches server-rendered.
+10. **Keep the heavy island out of the first load.** A large client-only widget goes behind the
+    `ui/<Folder>/index_.tsx` + `lazy()` pair. `usePage()` and `l()` work in server components, so translation
+    never forces a boundary.
+
+Full version with code, the `Tab` composition example, and a review checklist: `get_guideline` with `ssrRule`, or
+`akan guideline show ssrRule`.
+
+## Web Surfaces — Building And Serving Without SSR/CSR
+
+An app serves three things: the API, the SSR/RSC web renderer, and the CSR single-file bundle. The API is always
+on; the other two are declared in `akan.config.ts` as **`web: true | false | { csr: boolean }`** and can be
+narrowed again per deployment.
+
+```ts
+const config: AppConfig = { web: { csr: false } }; // web without the mobile bundle
+const config: AppConfig = { web: false }; // api only
+```
+
+- **`web: { csr: false }`** drops the CSR build phase and the `/__csr` + `?csr=true` routes. The CSR bundle is
+  what the Capacitor mobile build ships, so a web-only deployment never needs it — and an app that declares a
+  `mobile` section is refused, because `akan build-ios` copies `dist/apps/<app>/csr/<target>.html` into the
+  native project.
+- **`web: false`** is an API-only build: no base artifact, no pages or client bundles, no RSC worker
+  entrypoint, and no `public/` in the image (the web router's catch-all is its only reader). Nothing under
+  `page/` is served, including routes a lib contributed through `syncPageLibs`.
+- **There is no CSR-without-SSR option, by type.** The CSR bundle inlines the stylesheet the SSR base artifact
+  compiles, so it would ship an unstyled app — the object form therefore carries only `csr`, and SSR goes off
+  only through the whole-surface `false`.
+- **At runtime, `AKAN_SSR` and `AKAN_CSR` narrow further and never widen** — `false` or `0` turns one off, and
+  `AKAN_SSR=false` takes CSR with it for the same reason the option has no such pair. A surface the build left
+  out cannot be switched back on, and the boot log names what the process ended up serving. The generated
+  Dockerfile writes the build's own answer as the image default.
+- **A build with no web artifact boots the API instead of crashing.** `WebRouter.create` returns `null` when
+  `.akan/artifact/base-artifact.json` is absent — an api-only build, or a workspace with no `page/` at all.
+- `akan start` ignores `web` and keeps the whole dev surface: the incremental builder is also the file watcher,
+  so switching it off would take server-code HMR with it. It warns once when the config and the dev server
+  disagree.
+- The saving is mostly the RSC worker, which is a **separate process per web-serving replica**. Measured on
+  `apps/akan` at boot plus one render: 350MB across 3 processes with SSR on, 120MB across 2 with
+  `AKAN_SSR=false`, and the built image goes 86MB → 6.2MB when the artifacts are left out of it too.
+- **The generated image installs `ca-certificates` and `tzdata` and nothing else.** It used to carry the whole
+  Chromium runtime, ffmpeg, `build-essential`, `python3` and `redis` in every app's image whether or not the app
+  reached for any of them. An app that needs one declares it in `docker.preRuns` / `docker.postRuns`, which are
+  emitted around the `bun install` — that is the migration for a `puppeteer` or `ffmpeg` app.
+
+## The Process Model — Gateway And Solo
+
+A container runs one process per replica, a gateway in front of them when there is more than one, and one RSC
+worker per web-serving replica.
+
+- **One traffic replica runs in the container's only process.** `AKAN_REPLICA=0,0,1` — the default, and what
+  every environment in `infra/app/values` sets — means there is nothing to balance and nothing to fan pubsub out
+  to, so `AkanApp` starts that replica in-process rather than spawning it. Measured on `apps/akan`: 28MB less RSS
+  and twice the requests per second, because every request used to cross a unix-socket proxy hop. Declare two or
+  more and the gateway is back, spawning and proxying them.
+- **`AKAN_SOLO=false` forces the gateway** for a single replica. Like `AKAN_SSR`, the env only narrows — it
+  cannot fold a real gateway's replicas into one process. Passing `replica` to `new AkanApp(...)` also keeps the
+  gateway: code that states a topology is asking for the thing that serves it.
+- **`akan start` always runs the gateway**, whatever the replica count. It is also the dev host's builder relay,
+  its crash page, and what holds the port across a child restart.
+- **A batch-only replica (`0,1,0`) keeps the gateway too**, because a batch server never listens and the gateway
+  is then the only thing bound to answer `/_akan/app/health`.
+- **The RSC worker is never folded in.** It runs under `--conditions react-server`, which resolves the same
+  module graph differently, so it cannot share a process with the server that renders client components.
+- **A solo process answers `/_akan/app/health`, `/_akan/app/metrics` and `/_akan/bench/ping` itself**, in the
+  gateway's own shape — a `children` array with one entry — so a probe reads one contract either way. It owns the
+  rotating log file the gateway would otherwise write, in the same `runtime/logs` directory.
+- **Nothing supervises a solo process but the orchestrator**, since the gateway's crash-restart-with-backoff went
+  with it. `infra/app/templates/app.yaml` carries the liveness, readiness and startup probes that replace it.
+- **`main.ts` imports `AkanApp` from `akanjs/server/akanApp`, not the barrel.** The barrel re-exports
+  `AkanServer`, whose graph the gateway never runs; through it the process evaluated 35MB of SSR renderer and
+  SQLite driver to spawn children and relay bytes. Keep entrypoint imports at the leaf.
+
+## The Generated Image — `docker` In `akan.config.ts`
+
+**`docker` is `string | { image, preRuns, postRuns, command }`** — a whole Dockerfile, or the parts Akan
+assembles one from. There is no `content` field; the string *is* the content.
+
+```ts
+const config: AppConfig = {
+  docker: { preRuns: ["apt-get update && apt-get install -y --no-install-recommends ffmpeg"] },
+};
+const config: AppConfig = { docker: "FROM oven/bun:1-slim\n…" }; // verbatim, nothing merged in
+```
+
+- `image` and each run entry take `string | { amd64?, arm64? }`; the object form compiles to a
+  `RUN if [ "$TARGETARCH" = "<arch>" ]` guard, so a multi-arch build runs it on one leg only. `preRuns` land
+  before `bun install --production` (where a native dependency's build tools have to be), `postRuns` after it
+  and before the app files are copied.
+- **A lib declares the steps its own runtime needs**, and every app that mounts it inherits them:
+  `libs/<lib>/akan.config.ts` takes `docker: { preRuns, postRuns }` and nothing else — the base image and the
+  command belong to the app. Lib steps are emitted before the app's own, and an identical step declared twice
+  becomes one layer.
+- **The string form takes no contributions.** A Dockerfile handed over whole is used exactly as written, so a
+  lib's `preRuns` are dropped rather than spliced into a file Akan does not own. An app that needs both writes
+  the parts instead.
+- Like `externalLibs`, lib steps are collected from **every lib in the workspace**, not just this app's
+  dependency closure — narrowing that set needs the dependency scan, and this config is re-read on every file
+  change in dev. Keep a lib's steps to what its runtime genuinely requires.
+- `AkanAppConfig.docker` is the resolved declaration; `AkanAppConfig.dockerfile` is the text `akan build` writes
+  to `dist/apps/<app>/Dockerfile`.
+
 ## React Components And Styling (`**/*.tsx`)
 
 - Components are `export const X = ({ … }: XProps) => { return (…); };` — arrow const with a block body. `export default` is reserved for pages, layouts, and `lazy()` targets.
@@ -152,11 +392,10 @@ Do not narrate code. Do document the thing the code cannot say. Both halves are 
 - Conditional render is `cond ? <X/> : null`. Never `{cond && <X/>}` — in a `className` context it renders the literal string `"false"`. Early `return null` is for guard clauses only.
 - Never hand-roll loading, empty, or list states. Use `Load.Units` / `Load.View` / `Load.Edit` with `renderItem`, `renderList`, `renderView`, and `renderEmpty`; `<Empty />` for a bare placeholder; and `Model.New` / `Model.Edit` / `Model.SureToRemove` for CRUD modals.
 - Avoid hooks. `useState` is for modal-open, tab, draft-input, and drag state only — never for server data. `useEffect` must be a genuine effect such as subscribe-with-cleanup or one-shot init. Prefer `Tab` over a `useState` mode switch. `.Template.tsx` files contain zero `useState`.
-- Forms are entirely store-driven: `value={xForm.field}` with `onChange={st.do.setFieldOnX}`, the setter passed by reference. Always use `Field.*`, never a bare `<input>` for a model field. Nested rows use `st.do.writeOnX("payments.3.name", v)` plus the generated `add<Field>OnX` / `sub<Field>OnX`.
+- Forms are entirely store-driven: `value={xForm.field}` with `onChange={st.do.setFieldOnX}`, the setter passed by reference. Always use `Field.*`, never a bare `<input>` for a model field. Nested rows use `st.do.writeOnX("payments.3.name", v)` plus the generated `add<Field>OnX` / `sub<Field>OnX`. **Passing the setter by reference is also what makes the framework emit `data-akan-action` / `data-akan-state`** on the control — the annotation an in-page agent, an E2E selector, and an external browser agent all read. Wrapping it in an inline arrow (`onChange={(v) => st.do.setFieldOnX(v)}`) silently drops that: a closure the caller wrote says nothing about what it does. Never hand-write a `data-akan-*` attribute.
 - Read with `st.use.*` and write with `st.do.*`. Client components do not call `fetch.*`.
-- Static class strings stay plain strings. Reach for `clsx` only for a conditional or to merge an incoming `className`, and merge the caller last: `clsx("base classes", conditional, className)`. `clsx` comes from `akanjs/client`. No `twMerge`, no `cn()`.
+- Static class strings stay plain strings. Reach for `cn` only for a conditional or to merge an incoming `className`, and merge the caller last: `cn("base classes", cond && "extra", className)`. `cn` comes from `akanjs/client` (token-aware tailwind-merge) and is the only class-combining function — no `clsx` (removed), no raw `twMerge` imports, no object syntax (`{ x: cond }` → `cond && "x"`).
 - Multi-slot components take extra named props (`wrapperClassName`, `bodyClassName`), never a `classNames` object.
-- Use daisyUI semantic tokens with opacity modifiers (`text-base-content/60`, `border-base-content/10`, `bg-base-100/70`, `bg-primary/10`). Never use `dark:` — theming is the daisyUI theme block in `page/*/styles.css`. Raw hex belongs only in marketing surfaces; match the neighbouring files.
 - Hoist enum→class lookups to a module-scope `as const` map typed `{ [key in cnst.XStatus["value"]]: string }`. Do not use `Record<...>`. Escalate the map to `webkit/` when a second module needs it.
 - Use `<Link>` from `akanjs/ui` for internal navigation; `<a>` only for `mailto:` and external links.
 
@@ -184,16 +423,22 @@ Do not narrate code. Do document the thing the code cannot say. Both halves are 
 
 **`<model>.constant.ts`** — five classes in order with one blank line between them and `enumOf("camelName", [...] as const)`
 classes above: `XInput → XObject → LightX → X → XInsight`. Write `XInsight` even when it is empty. Put display and
-predicate logic on `LightX` (`isNew()`, `canWrite(user?)`, `formatTimes()`, `isCancellable()`) — the Light class is the
-one both server and client hold, so shared logic belongs there instead of in a util module. This is the most commonly
-missed rule in the codebase. Collection-level helpers go `static` on the full model. Give any field whose business
-meaning is not obvious a short trailing comment.
+predicate logic on `LightX` (`isNew()`, `canWrite(user?)`, `formatTimes()`) — the Light class is the one both server
+and client hold, so shared logic belongs there instead of in a util module. This is the most commonly missed rule in
+the codebase. Collection-level helpers go `static` on the full model. Give any field whose business meaning is not
+obvious a short trailing comment.
 
 **`<model>.document.ts`** — fixed order: `XFilter extends from(...)` → `X extends by(...)` → `XModel extends into(...)`,
 with `sort: {}` always present. Chain methods validate → mutate → `return this`, and never `save()`; the caller saves,
 so chains compose (`org.removeUser(id).removeInvite(id).save()`). Put a one-line comment above each stating the
 transition. Atomic counters live on the Model class with the updater-callback form, returning `!!modifiedCount`.
-Indexes and derived totals go in `static override _onSchema`, not in the service.
+Indexes and derived totals go in `static override _onSchema`, not in the service. **Removal is always soft** — the
+framework has no hard delete for a model table, and `delete` is deliberately left unused so it can mean one later.
+The facade spells `Many`/`One` out on its writes (`updateOne` / `updateMany` / `removeOne` / `removeMany`), because a
+bare `update`/`remove` would read like the document-path `update(id)` / `doc.remove()` while hitting every match; only
+the count was shortened to `count(query)`, with `countDocuments` kept as `@deprecated`. `updateById(id, update)` and
+`removeById(id)` are those same query-level writes narrowed to one id, **not** the document path: they fire no hooks,
+so a model whose removal cascades or carries a `_postRemove` still goes through `remove<Model>(id)`.
 
 **`<model>.service.ts`** — keep methods to a few lines: load → chain → `return await ….save()`. Write `return await`
 explicitly in tail position; do not "optimize" it away. Side effects belong in `override async _preUpdate` /
@@ -208,8 +453,9 @@ delegating to the service.
 stores need none, because state and CRUD actions are generated. The body is three lines: `await fetch.X` →
 `this.setX(...)` → toast. The optimistic shape is mutate the client model, `void fetch.*`, then commit. Use
 `this.pick(...)` when the value must exist, `this.get()` when it may not, and `this.set({...})` to write. Mutate lists
-through the collection API (`this.set({ xList: xList.set(x).save() })`), not array spread. **Never
-`import type { RootStore } from "../st"`** — it crashes `akan build` with a Bun SSR segfault.
+through the collection API (`this.set({ xList: xList.set(x).save() })`), not array spread. **An action returns
+nothing** (`no-return-in-store-action.grit`) — hand the result to `this.set({...})`; a bare `return;` guard stays
+fine. **Never `import type { RootStore } from "../st"`** — it crashes `akan build` with a Bun SSR segfault.
 
 **`<model>.dictionary.ts`** — fixed chain, with empty stages still written:
 `.of() → .model() → .insight() → .query() → .sort() → .enum() → .slice() → .endpoint() → .error() → .translate()`.
@@ -236,13 +482,32 @@ workflow changes.
 - Slice-level `guards` only reach the generated query/mutation endpoints. A `pubsub`/`message` endpoint is unguarded unless it declares its own `guards` in its signal option.
 - A pubsub room is authorized once, at subscribe. When a socket's credential changes the framework re-runs each room's guards and unsubscribes the ones that now fail (`SignalResolver.revalidateWsRooms`), so guards must stay side-effect free and safe to re-run.
 - A websocket carries its credential in the handshake snapshot on `ws.data` (`AppWsData`); clients that hold the token in memory send it with `fetch.setJwt(...)`, which forwards an auth frame over the socket.
+- **Never read the caller's IP off the socket or the request peer — take `.with(Ip)`.** Whenever a federation
+  gateway is in front, `ws.remoteAddress` and the child's own peer are the *gateway* (`127.0.0.1`) for every
+  caller and for the whole life of every socket. `Ip` reads what a proxy recorded (`x-real-ip`, then the first
+  `x-forwarded-for` entry) and falls back to the peer only when nothing proxied the call — which is the answer
+  for a solo process behind an ingress that sets neither; `context.getClientIp()` is the same answer inside a
+  guard or middleware. It arrives unwrapped from
+  its `::ffff:` IPv4-mapped form, so it can address a `udp4` socket as well as identify a caller, and it is
+  `null` rather than a placeholder when genuinely unknown — a loopback-looking address for an unknown caller
+  is the failure this replaced. The gateway also forwards the client port (`x-forwarded-port`, read with
+  `context.getClientPort()`) along with host and protocol.
+- **Every socket carries a `socketId`, and only the framework mints one.** `AppWsData` assigns it at the handshake, and a `message` / `pubsub` handler reads it off the `Ws` internal arg — `.with(Ws)` hands `{ ws, socketId, subscribe, on, off }`. Never mint your own from `ws.data`: the room bookkeeping keys on the framework's id, and a second one fails to match it silently. It identifies a **connection**, not a caller — a reconnect gets a new id and the federation gateway's own socket is a different one — so per-user state keys on the account, never on this.
+
+- **A cleanup registered with `ws.on("disconnect" | "unsubscribe", fn)` is scoped to the call that registered it.**
+  From a `pubsub` subscribe it belongs to that room — `unsubscribe` runs when the client leaves it or a credential
+  change revokes it, `disconnect` when the socket closes while still subscribed — so a room already left runs
+  neither again, and cleanup that must happen either way registers for both. From a `message` handler it belongs to
+  the socket and runs at close. A handler that throws is logged and never blocks the rest of the teardown.
 
 ### Authorization Defaults
 
 - **Every `slice()` takes an explicit `{ guards: {…} }` second argument, and `root:` is always `Admin`.**
 - **Every custom `mutation` / `query` / `message` names its own `guards: [...]` array.** Never rely on the slice default. `Public` belongs on a slice `get:`, never on a mutation.
+- **The guards are also the MCP exposure decision** — see MCP Exposure. An endpoint that names none is not published to agents at all, and a mutation whose only guard is `Public` is refused, so a missing `guards` array now costs visibility as well as authorization.
 - Resource guards are `Can<Verb><Model>` classes in `srvkit/guards.ts` that `implements Guard` with an `async canPass(context)`. They **fail closed**: no resource named ⇒ `false`; a load that throws ⇒ `logger.warn` then `false`. Admin bypass goes first.
 - Keep `static name = "User";` on guard classes. `fetch` serializes guard names and the API explorer filters on them; it looks like dead code, and deleting it breaks the UI. Comment it so the next reader knows.
+- **Every guard class also declares `static scope: GuardScope`, and it is required with no default.** `"account"` means the verdict reads the caller and nothing about the call, so it can be evaluated with no arguments — which is what lets an MCP listing hide what this caller certainly cannot use. `"resource"` means it needs the call's arguments (`context.getArg()`) and fails closed without them, so it is never evaluated for a listing: the entry stays visible and is stopped at call time. Getting it wrong is not a type error, so the marker is mandatory rather than defaulted — `SignedIn` / `Admin` / role checks are `"account"`, and every `Can<Verb><Model>` is `"resource"`.
 - The acting user arrives via `.with(Self)` / `.with(CurrentUserId)` / `.with(Me)`. Never trust a client-supplied id.
 - Guards ship with the library that owns the model and are imported by its own signals through the package path, so a mounting app inherits authorization and cannot forget it.
 - Services re-check ownership even when a guard already gated the call — two independent gates.
@@ -252,7 +517,38 @@ workflow changes.
 
 - `.body(...)` / `.param(...)` args accept `ConstantFieldTypeInput` only: scalars, model refs, or `enumOf(...)`.
 - Numbers must use `Int` or `Float` — `Number` is rejected (`pkgs/akanjs/signal/endpointInfo.ts`).
-- `Upload` is valid only inside a mutation flagged for file upload: `mutation([cnst.File], { fileUpload: true }).body("files", [Upload])` (see `libs/shared/lib/file/file.signal.ts`). It is not a model field type.
+- `Upload` is valid only inside a mutation flagged for file upload: `mutation([cnst.File], { fileUpload: true }).body("files", [Upload])`, as the `file` module does. It is not a model field type.
+- Bytes are `Binary`, never `Any` — see Scalar & Field Type Reference.
+
+### Binary Pubsub
+
+- **`pubsub(Binary)` sends its payload in a websocket binary frame**, skipping the JSON `{ type: "pub" }`
+  envelope and the base64 a JSON wire would need. The client's subscribe callback receives a `Uint8Array`.
+  Nothing else is declared: the return type is the whole switch, and text and binary frames coexist on one
+  socket, so every JSON endpoint is untouched. The optimization applies only when the **whole** return is
+  `Binary` — `[Binary]`, or a `Binary` inside a model, falls back to base64.
+- **A declared `Binary` room coalesces under backpressure**: while a socket cannot keep up the room keeps only
+  its newest frame and drops the rest, which is what a telemetry or video stream wants. Declare
+  `pubsub(Binary, { backpressure: "queue" })` when the frames are a sequence a subscriber must see in full, such
+  as deltas against a base it already holds; the send buffer then grows with the slowest subscriber. Coalescing
+  is keyed by the endpoint, not carried with the frame, so this process, an IPC deliver and a Redis fan-out all
+  reach the same answer. Coalesced frames are counted in `pubsubCoalesceCount` on the replica's metrics report.
+- **A `pubsub(Any)` that happens to carry bytes is framed too, and warns once.** `Any` passes a `Buffer` through
+  untouched, so the transport sees bytes and sends them whole rather than as a number array — an undeclared
+  publisher is fixed rather than left corrupt. It is still not the contract: it queues rather than coalescing
+  (nobody declared lossy delivery for that room), and a Redis fan-out still JSON-stringifies it. Declare
+  `Binary`.
+- The federation gateway relays a binary frame unchanged, and Bun IPC carries bytes as bytes, so the only hop
+  that needed teaching was the socket itself. A cross-server (Redis) fan-out encodes it as protobuf `bytes`.
+
+### Mutation HTTP Verb
+
+- A `mutation` is `POST`. `{ method: "PATCH" | "PUT" | "DELETE" }` moves it, and one path may carry several verbs
+  — a `query` GET and a `mutation` POST on the same custom `path` are mounted side by side. Two endpoints claiming
+  the same path **and** verb fail the boot rather than silently shadowing one another.
+- Reach for it only when a foreign wire protocol forces the verb (a client you cannot change that sends
+  `PATCH /rest/v1/<table>`). Akan's own `fetch.*` client, the OpenAPI document, and the API explorer all follow
+  whatever is declared, so nothing needs restating per caller.
 
 ### Reserved Endpoint Names
 
@@ -261,10 +557,53 @@ workflow changes.
 
 ### Slices, Queries, and Hydration
 
+- **The root slice (`""`, generated by `slice()`) takes `queryKey` and `args`, not a query.** `initX("byOwner",
+  [ownerId])` names one of the model's own filters and passes that filter's args; no key at all is the `any`
+  filter every model carries. A raw query descriptor let a caller compose a query the model never declared, and
+  could not survive the query string at all — `String(value)` sends `[object Object]`. Args are parsed by the type
+  the filter declared, a missing required one is refused, and args past the declared ones are dropped
+  (`resolveFilterQuery`, `pkgs/akanjs/document/filterMeta.ts`). It is an admin API: `root:` is always `Admin`.
+- **Give an id filter arg a `ref` and the admin panel stops asking for hex.** `filter().arg("ownerId", ID, { ref:
+  "user" })` names the model the id points at; the arg then renders a picker that runs the same query maker against
+  that model's own filters, so a ref of a ref keeps nesting. The picker holds its rows in local state rather than the
+  ref model's store — that store is a singleton, and loading into it would overwrite whatever listing of the same
+  model is already on screen. `ref` is the only UI hint a filter arg carries; there is no render callback, because a
+  function cannot cross to the client.
+- **A summary counter names the listing it counts, on the field itself.** `field(Int).meta(getQueryMeta("user")
+  .query("byStatuses").args([["prepare"]]))` is what makes the dashboard tile clickable: clicking it applies that
+  filter to the listing in place — one request, no navigation — and fills the arg controls under the toolbar, so
+  the filter is visible and editable rather than opaque. `args` may be a thunk (`() => [dayjs().subtract(1,
+  "hour")]`), read at the click so a relative time is current. A meta naming a different model counts a different
+  listing, so its tile stays inert here. `AdminPanel`'s `queryMap` still overrides per column, and is now only for
+  a column whose field cannot declare one.
+- **A picker row is labelled by `labelOf`, which reads `Light<Model>.label()` first.** Then the field carrying
+  `text: "title"`, then `title` / `name`, with the id as the floor. Write the method on the Light class — that is
+  where display logic belongs, and the same label is what `Load.Units` and the in-page agent's screen scope show.
+  A model with none renders ids and says so in the picker.
 - A slice's `exec` returns a `QueryOf` (an opaque query descriptor, `pkgs/akanjs/constant/types.ts`); you **cannot** chain `.sort()`/`.limit()` on it.
 - Apply ordering/paging via the store `init` fetch option instead: `initX(..., { sort, page, limit })` (`pkgs/akanjs/fetch/fetchType/sliceFetch.type.ts`).
 - Generated list accessors like `listBy(...)` return `Promise<Doc[]>`. For a chainable builder (`.sort().skip().limit().select()`) use the model facade's `findMany`/`findOne` (`FindManyChain`, `pkgs/akanjs/document/into.ts`).
 - **Hydrated vs raw:** server queries return hydrated `cnst.<Model>` instances (with `set`/`save`/`refresh`); client fetch results are raw `GetStateObject` plain data (functions stripped, `pkgs/akanjs/base/types.ts`).
+- Every filter generates fourteen methods: `list` · `listIds` · `find` · `findId` · `pick` · `pickId` · `exists` ·
+  `count` · `insight` · `query` · **`remove`** · **`removeOne`** · **`update`** · **`updateOne`**. The last four are
+  query-level writes — one atomic UPDATE, **no hooks**, and therefore no `_postRemove` and no cascade. Use them on a
+  model that carries no removal side effect; otherwise remove documents one at a time.
+- **`update<Filter>` / `updateOne<Filter>` are chains, not calls:** `await updateInRoot(rootId).set({ status:
+  "archived" })`. The patch cannot trail the filter args — a filter's own args may be optional and no tuple type
+  puts a required element after those — so it lands on a terminal `.set()`, mirroring the `UPDATE … SET …` it
+  compiles to. Building the chain touches nothing; only `.set()` runs a query.
+- `removeOne` / `updateOne` hit the **newest** match — the subquery they compile to is ordered `createdAt` descending
+  and there is no way to change that. They also report only counts, never which row they touched, so they are for
+  "there is at most one of these", not for claiming the next item off a queue. Pass a query that matches one row.
+- **A filter may not be keyed after its own model.** Filter methods are assigned after CRUD, so a filter `chat` on
+  model `chat` would silently swap the single-document `removeChat`/`updateChat` for a hookless query-level one. It
+  throws at boot instead (`assertFilterFitsCrud`).
+- **"Has no value" is `q.empty`, never `q.missing`.** The three absence operators are distinct: `q.exists` is the
+  key being present, `q.missing` is the key being *absent from the stored JSON*, and `q.empty` is either — absent,
+  or present and null. An optional field is written both ways over its life: an insert that omits it leaves the key
+  out, while a document read back and saved carries the explicit `null` that the read materialized. So `q.missing`
+  matches a freshly inserted row and silently stops matching that same row after its first round-trip save. Reach
+  for it only to find rows written before the field was declared.
 
 ### Text Search In A Filter — `q.search()`
 
@@ -319,7 +658,7 @@ Conventions that hold for both shapes:
 - Resolve secrets as `process.env.X ?? options.x ?? deterministicGenerator(...)` **inside a function**, never at module scope.
 - Extend a function by appending an optional trailing parameter with a default, never by changing arity.
 - Parameters: up to three required primitives positional; optional flags in a trailing `{ … } = {}`; four or more parameters, or any two same-typed strings, in one named destructured object.
-- Release locks in `finally`. Load heavy optional dependencies through a module-level memoized promise (`sharpLoad ??= import("sharp")`).
+- Release locks in `finally`. Load heavy optional dependencies through a module-level memoized promise (`puppeteerLoad ??= import("puppeteer")`).
 
 ### Error Placement
 
@@ -327,6 +666,111 @@ Conventions that hold for both shapes:
 - Best-effort code returns a sentinel (`null`, `undefined`, `[0, 0]`, `{}`). There are no Result/Either wrappers.
 - `try/catch` is rare and always converts an exception into a decision, never swallows one. Guards catch → `logger.warn` → `return false`; adapters catch → `logger.error` → `return null`; UI uses `try/finally` to reset a spinner. A bodyless `catch {}` is acceptable only with a one-line reason.
 - Store actions do not `try/catch` — let the framework toast the `Err`. Client-side validation failure is `msg.error("<key>")` plus an early return, never a throw.
+
+### MCP Exposure
+
+Every signal is served to AI agents as an MCP server on `POST /mcp`. **`/mcp` is mounted by default and exposure
+follows an endpoint's guards — there is no per-endpoint opt-in, and nothing to write in a signal file.** An endpoint
+that declares a real guard is published; one that declares none is refused, and so is a mutation whose only guard is
+`Public`. The guards are already the authorization decision, so a second switch would say nothing they do not —
+while guaranteeing that every endpoint added later is invisible to agents until somebody remembers it.
+
+- Settings live in the app's `lib/option.ts` — `option.setMcp({ enabled, readOnly, path, version, instructions,
+  allowedOrigins, pageSize, language, auth })`, **not `main.ts`**. Every lib's option is read in mount order with
+  the app's last, and each field has an `AKAN_MCP_*` env spelling the option overrides.
+- **The refusals are fail-closed**: an endpoint with no `guards`, a mutation with no real guard (`[Public]` is
+  having none), `pubsub` and `message`, an `Any` or `Upload` return, a file upload, and a required `Any` argument.
+  A `prompt` also refuses a list argument and any `Any` argument.
+- **Every refusal is named in the boot log**, with a `MCP catalogue: tools=… prompts=…` count. Read that line
+  first when a tool you expected is missing — with no opt-in to notice, it is the only place the answer exists.
+  The boot log also names every published entry with no dictionary `.desc()`: an agent picks a tool by its
+  description, so write the model `.desc()` the generated entries borrow.
+- A refused endpoint answers the *same* "unknown tool" as one that does not exist, and a guard's refusal is
+  generalized to `You are not permitted to perform this action.` Never make either message more helpful — the
+  difference is what enumerates your private surface.
+- **A `field.visual` field is stripped from every MCP result**, and from the readable schema so the two agree — the
+  model-level answer to a field the page needs and an agent does not. `resolveReturn` leaves it alone, so the
+  browser still receives it.
+- **A structured result ships twice by default** — once as `structuredContent`, once as the same JSON in the text
+  block, which is what the spec asks for clients predating the structured field and is also a flat doubling of what
+  every model-returning tool costs. `option.setMcp({ legacyTextBlock: false })` leaves a pointer there instead.
+- `AKAN_MCP_READONLY=true` is the read-only-deployment valve, not the exposure switch; `AKAN_MCP=false` takes the
+  whole surface off.
+- **`prompt()`** is invoked by the *user* as a slash command, never chosen by the model. `exec` returns
+  `PromptMessage[]` built with `Msg.user` / `Msg.assistant` / `Msg.resource` / `Msg.image`; an embedded payload is
+  masked by the model you name (`Msg.resource(uri, task, { model: cnst.LightTask })`), and one whose
+  `hidden`/`secret` fields are populated with no model named is refused. It is also mounted as a plain HTTP `GET`
+  whether or not MCP is enabled, so guard it like any other read.
+
+Full contract — configuration, wire behaviour, resource URIs, OAuth metadata, protocol revisions, and
+`McpProgress.report`: `get_guideline` with `mcpRule`, or `akan guideline show mcpRule`.
+
+## In-Page Agent
+
+Every akan app can host a component-level agent that reads the rendered screen and drives it. **A component
+declaration is the surface, exactly**: `st.tool` publishes one action, and `st.use` / `st.sel` / `st.ref` make one
+store key readable while the reading component is mounted. Nothing is derived from a store class — a lever the
+screen does not offer the user is not one an agent may pull in their place. The React core is the `use-agentic`
+package; apps and libs never import it directly (`no-import-external-library`) — everything reaches them through
+`st.*` and `akanjs/ui`.
+
+- **Mount `<Agent.Chat />` once in a layout.** The endpoint is a stateless relay that **never executes tools**:
+  every tool runs in the caller's own browser session, gated by guards and the approval card. Its guard is
+  `AgentRelayAccess`, which refuses every call until the app names a guard of its own —
+  `option.setAgentAccess(SignedIn)`.
+- **The LLM is configured in `option.ts`, never through the environment.** `option.setLlm({ apiKey, model, host })`
+  fills whichever adaptor holds `LlmAdaptorRole`; swap providers with `option.applyAdaptor(LlmAdaptorRole, X)`.
+- **Declare the tool beside the control that already does it.**
+  `st.tool("x").desc("…").arg("id", ID).opt("force", Boolean).exec(fn)` publishes one action and returns the
+  callable to hand to `onClick` — one handler for the person and the agent. `.desc()` is required and comes first,
+  `.arg()` is an argument the caller must pass and `.opt()` one it may, and `.exec()` is the only hook. Reach a
+  store action from the body (`.exec((id) => st.do.removeX(id))`); `st.do` on its own reaches nobody.
+- **Publish a tool only where the screen already renders the control.** A falsy name declares the tool without
+  publishing it, which is how a conditional surface stays legal — `.exec()` is a hook, so withhold the name, not
+  the call. A `disabled` control publishes nothing.
+- **A component that renders once per row takes the row id as an argument**, never a closure over it — fifty
+  registrations of one name leave forty-nine shadowed. The description is what makes the repeats one declaration:
+  same name and same `.desc()` is the same tool registered fifty times, and only a second description under that
+  name warns.
+- **`{ settle: false }` is the read that returns what is already there.** Every other tool is waited out before
+  what it did to the screen is reported, because a write may still be landing when `exec` resolves. `{ confirm }`
+  and `{ guard }` ride the same object; a `remove*` name confirms by default.
+- **A component that can render twice on one screen takes a `namespace` prop** (`Tab`, `Dialog`, `Dropdown`,
+  `ScreenNavigator`) and publishes nothing without one.
+- **Forms publish themselves**: a `Field.*` / `Input.*` / `Select` / `Switch` handed `onChange={st.do.setXOnY}`
+  **by reference** publishes that setter, and `st.use.yForm()` adds `fillYForm(patch)`. An inline arrow publishes
+  nothing — normalize with the control's `transform` prop, and multi-write with a `_postSet<Field>` store method.
+- **Reading is per key, not per store.** `st.use.x({ agent: false })` keeps a subscribed key off the surface;
+  a key no component reads is unreadable. A value with populated `hidden`/`secret` fields is refused at read.
+- **A component's own value is published by its declared type.** `st.expose("taskId", ID).desc("…").value(v)` for
+  a derived value and `st.useState("tab", String, { set: true }).desc("…").init("all")` for local state — the type
+  typechecks what is handed over and decides how it is read, so a model class masks by that model. `Any` is the
+  escape hatch: no typecheck, and the value passes untouched. `.value()` also takes a thunk, read when the agent
+  reads.
+- **Return what answers the question, not the record.** A tool's value is capped at 20,000 characters before it
+  enters the transcript and clipped with a note the model reads (`ToolOutput.limit`), because a store key is sized
+  for a screen and not for a model's window: one `readState` of a list whose rows carry inlined bytes is megabytes,
+  and from there it rides *every* later turn. Each tool row in the chat carries its own estimated token cost and
+  opens onto the value the model was handed — that row is where a conversation that filled up in four messages
+  explains itself. A field that is bulky and useless to a model is fixed once at the model instead:
+  `field.visual(String)` keeps it on the page and out of every agent-facing read and MCP result.
+- **`<Agent.Skip label="site footer">` leaves a region out of the default `readScreen`** — a footer, a cookie
+  banner, a nav that repeats on every route. `[skipped: site footer]` stands in its place rather than nothing, since
+  a deleted region reads as an absent one, and the marker's name is a `section` that reads the region on request.
+  Put `data-agent-skip="<name>"` on the element the page already renders where a wrapper div would move the layout.
+  It hides **text, not behaviour**: an `st.tool` inside is published as before. Narrowing from the other side —
+  `Agent.Zone`, `readScreen({ section })` — is the better move on a screen that is mostly chrome.
+- **Route guidance is `<Agent.Guide instructions="..." />`** rendered from a `_layout.tsx` or page — the render
+  tree is the cascade. It is a component, not a `pageConfig` field, and `*.abstract.md` is never served to agents.
+- The framework publishes five built-ins on every store surface — `navigate`, `goBack`, `readScreen`,
+  `readState(key)`, `highlight(target)` — plus `askUser`, which the session owns. **There is no general-purpose
+  wait**: publish an `st.tool` beside the control that starts the work and let it await the work.
+- **Model-facing text is English, always** — every `.desc()`, `instructions`, Guide text. The `l()` rule covers
+  strings a *user* reads.
+
+Full contract — the chat's own options, attachments and speech, zones, what `akanjs/ui` publishes for you, slash
+commands, transcript compaction, and the built-in tool semantics: `get_guideline` with `agentRule`, or
+`akan guideline show agentRule`.
 
 ## Scalar Modeling (`**/*.constant.ts`)
 
@@ -337,13 +781,22 @@ Conventions that hold for both shapes:
 - Follow the established model layering pattern in this order: `Input`, `Object`, `Light<Model>`, full `<Model>`, and `<Model>Insight`. Write all five, and write `<Model>Insight` even when it is empty.
 - Put display and predicate logic on the `Light<Model>` class rather than in a util module — see Module File Playbook.
 - Defaults are a literal for scalars and a thunk for anything constructed. Arrays are `field([T])`; optional is the postfix `.optional()`.
+- **`field.visual(T)` is a field the page renders and an agent never sees** — a blur placeholder, a rendered HTML body, a serialized geometry. It stays an ordinary stored `property` (persistence, search, forms and the page response untouched) and is stripped wherever a value is masked for an AI caller: every in-page-agent read and every MCP result, along with the MCP readable schema. Unlike `hidden`/`secret` it is cost, not secrecy — nothing is refused over one. Reach for it whenever a field is bulky and useless to a model; that is cheaper than every tool learning to avoid it.
 
 ### Scalar & Field Type Reference
 
-- **Import from `akanjs/base`** (real classes/helpers, not globals): `Int`, `Float`, `ID`, `Any`, `Upload`, `enumOf`, and the `dayjs` factory. There is **no `JSON` scalar** — use `Any` for open/flexible payloads.
+- **Import from `akanjs/base`** (real classes/helpers, not globals): `Int`, `Float`, `ID`, `Any`, `Binary`, `Upload`, `enumOf`, and the `dayjs` factory. There is **no `JSON` scalar** — use `Any` for open/flexible payloads.
 - **Use the JS globals directly (no import needed)**: `String`, `Boolean`, `Date`. They are monkey-patched to behave like scalars, so `field(String)` typechecks.
 - **`Number` is not a valid field/body type.** `NumberConstructor` is intentionally not augmented, so `field(Number)` / `.body("x", Number)` fails to typecheck. Use `Int` or `Float` instead.
 - Runtime resolution of every scalar (globals included) goes through `PrimitiveRegistry` by `refName` (`pkgs/akanjs/base/primitiveRegistry.ts`).
+- **`Binary` is raw bytes on the wire, and never a model field.** It is `Uint8Array` on both sides — a Node
+  `Buffer` is one, so a server handler may pass one straight in — and it accepts base64 in either direction, so
+  the same declaration serves a JSON body and a binary frame. It is **not storable**: the class build refuses
+  `field(Binary)` naming the `File` model instead, because every non-base field lives in the `_doc` JSON column
+  and bytes would sit there as base64 and ride every read of the row. Never send bytes as `Any` — `Any` passes a
+  `Buffer` through untouched and `JSON.stringify` then spells it `{ type: "Buffer", data: number[] }`, which
+  `JSON.parse` never restores; the result is 3.6x the wire and a shape that only breaks at the first byte-offset
+  read. MCP refuses a `Binary` return for the same reason it refuses `Any`.
 
 ### Text Search Fields — the `text` role
 
@@ -353,10 +806,13 @@ Conventions that hold for both shapes:
   `filter` 0): `title` is the one line a human scans for, `desc` is prose, `tag` is a keyword list, `filter` is a
   scoping value (status, owner, role) that must be matchable but must never outrank a real title hit.
 - `thumb` is mirrored for rendering a hit and is **not** indexed — never expect it to match.
-- **A `secret`, `hidden`, or `resolve()` field with `text` throws at class-build time**, not at query time. That is
-  deliberate: the mirror is plaintext, so an indexed secret would leak through search. Do not work around it. The
-  same throw covers a `text` field *underneath* one of those — a scalar's own field is reachable through its parent,
-  so `f.secret(Noti)` where `Noti.label` carries a role is rejected at the parent, not silently indexed.
+- **`field.secret`, `field.hidden` and `resolve()` take no `text` role — it is a compile error**, because the
+  mirror is plaintext and an indexed secret would leak through search. The class build throws the same refusal as
+  a backstop, for an option object the excess-property check cannot see through, and names the way out: drop the
+  role, or leave the field unmasked. Do not work around either. The throw also covers a `text` field *underneath*
+  one of those — a scalar's own field is reachable through its parent, so `f.secret(Noti)` where `Noti.label`
+  carries a role is rejected at the parent, not silently indexed; that one is only reachable at runtime, since the
+  pairing spans two files.
 - The role works on a relation too (`image: field(File, { text: "thumb" })`) and on an array (`playing: field([String],
   { text: "tag" })`); an array of objects indexes by leaf key, including an array leaf (`works[*].tags`). A field
   inside a `Map` indexes nothing: there is no fixed path to extract it from.
@@ -376,35 +832,49 @@ Conventions that hold for both shapes:
 ### Image & File Fields
 
 - **Do not declare `Upload` as a model field.** `Upload` is a signal-body-only primitive (see Service And Signal Conventions). Models reference the `File` model instead.
-- Declare an image/file field as a relation to `File`: `image: field(File).optional()` for one, `images: field([File])` for many (see `libs/shared/lib/user/user.constant.ts`, `libs/shared/lib/banner/banner.constant.ts`).
+- Declare an image/file field as a relation to `File`: `image: field(File).optional()` for one, `images: field([File])` for many.
 - The store then auto-generates an `upload<Field>On<Model>(fileList)` action that calls the framework upload mutation and polls file status until it leaves `"uploading"` (`pkgs/akanjs/store/action.ts`).
-- Storage is wired through the `StorageAdaptor` DI role (default `BlobStorage`, `pkgs/akanjs/service/predefinedAdaptor/storage.adaptor.ts`); the reference implementation is the `file` lib (`libs/shared/lib/file/*`). Do not hand-roll data-URL fallbacks.
+- Storage is wired through the `StorageAdaptor` DI role (default `BlobStorage`, `pkgs/akanjs/service/predefinedAdaptor/storage.adaptor.ts`); the reference implementation is the `file` module. Do not hand-roll data-URL fallbacks.
 
 ### Cascade Remove — the `cascade` option
 
-- A relation field removes what it points at with `field(File, { cascade: "remove" })`. It works on an array too
-  (`images: field([File], { cascade: "remove" })`), and only on a relation: a primitive, an `ID`, and a scalar each
-  fail the class build, because none of them names a document the framework could remove.
-- **The cascade goes through the target's service, never its model.** That is what runs the target's `_postRemove`,
-  which is where a module puts the side effect the removal has to carry — `FileService._postRemove` deletes the
-  stored blob/object there. Reaching the model instead still empties the row, so nothing looks broken until the
-  storage bill arrives.
-- Target services resolve **lazily, at removal time**, so a cascade adds no boot-order edge between two services and
-  a cascade cycle cannot fail the boot. They resolve *before* the parent is touched, so a model cascading into a
-  module the app never mounted fails with nothing half-removed.
-- **Nothing checks whether another document still references the same target.** `File` in particular is deduped by
-  `origin`, so two parents can share one row; declaring `cascade` says the field owns its target exclusively, and
-  that judgement is the declaring model's to make.
-- Removal is soft (`removedAt`) but the storage delete a `_postRemove` performs is not — a cascade is not
-  restorable. Weigh that before adding it to a model users can undelete.
-- **Query-level removes fire no hooks and therefore no cascade.** `deleteManyByQuery` / `updateManyByQuery` stamp
-  `removedAt` in one atomic UPDATE, so nothing downstream runs. Remove one document at a time when it cascades.
+**The value names the direction, and getting it wrong is a data loss.** The two actions can sit on the same field
+shape, so `cascade` never means "related" — it means one of exactly these:
+
+- `removeRef` — *when I am removed, remove what this field points at.* Declared on the relation the owner holds:
+  `image: field(File, { cascade: "removeRef" })`, arrays included. Only a relation accepts it; a primitive, a bare
+  `ID`, and a scalar each fail the class build.
+- `removeWith` — *when what this field points at is removed, remove me.* Declared on the child's own reference to
+  its owner, so the owner never learns about its children and a lib model can be extended by an app's. Three forms:
+  a relation (`field(AgentSession, { cascade: "removeWith" })`), an id with `ref`, or a polymorphic id with
+  `refPath`. An array, a Map, `ref` together with `refPath`, and a field naming no owner each fail the class build.
+- **A `refPath` must name an `enumOf` field** — a free-form owner type is unknowable at build time, so every
+  model's removal would have to sweep the polymorphic table on the chance it is the owner.
+- **A cascade goes through the target's service, never its model** — that path is what runs the target's
+  `_postRemove`, where a module puts the side effect the removal has to carry.
+- **Bulk is decided at boot, per target model, for both directions.** A target with no `remove` schema hook, no
+  `_pre`/`_postRemove`, no cascade of its own, and no children takes one `removeManyByQuery`. Adding a
+  `_postRemove` silently flips it back to one document at a time — the boot log is the only place that shows.
+- **The plan is sealed after every service is live**, so a `listenPost("remove")` registered in `onInit` counts,
+  and an unmounted `removeRef` target or `removeWith` owner fails the boot rather than the first removal. An
+  unmounted `refPath` candidate only warns, since that list spans optional modules by design.
+- **Nothing checks whether another document still references the same target.** `File` in particular is deduped
+  by `origin`, so two parents can share one row; `removeRef` claims the field owns its target exclusively.
+- Removal is soft (`removedAt`), but the storage delete a `_postRemove` performs is not — a cascade is not
+  restorable, and reviving the owner does not revive what went with it.
+- A `removeWith` declaration **auto-creates its index** (`{ removedAt, fk }`, or `{ removedAt, typeKey, fk }` when
+  polymorphic); every non-base field lives in the `_doc` JSON column, so the lookup would otherwise scan the table.
+- **Query-level removes fire no hooks and therefore no cascade** — `removeManyByQuery` / `updateManyByQuery`, the
+  generated `remove<Filter>` / `update<Filter>`, and the facade's `removeById` / `updateById`. Remove one document
+  at a time when it cascades.
+- Cascades are **idempotent**: `removedAt IS NULL` is ANDed into every query-level write. Cycles are cut by a
+  visited set carried down the whole chain, with a depth cap of 16.
 
 ## Akan Page Routing (`apps/**/page/**`)
 
 - `apps/<app>/page` may contain route modules only. Do not add helper logic or component-only files there.
 - Route source files under `page/` must use `.tsx`. Do not add `logic.ts`, `.js`, or `.jsx` files under `page/`.
-- Route pages use `_index.tsx`; layouts use `_layout.tsx`; per-route UI overrides use `_overrides.tsx`.
+- A route page is either `<routeName>.tsx` (serving `/routeName`) or a directory's `_index.tsx`; layouts use `_layout.tsx`; per-route UI overrides use `_overrides.tsx`.
 - Reserved `_*.tsx` route filenames are limited to `_index.tsx`, `_layout.tsx`, and `_overrides.tsx`; do not add files like `_Component.tsx` or `_helper.tsx`.
 - Page filenames must not start with an uppercase letter. Move helper components like `Component.tsx` to app `ui`, `common`, or `lib` instead.
 - Dynamic segments use `[id]`; route groups use directories like `(user)`, `(public)`, `(tab)`, or `(detail)`.
@@ -413,9 +883,9 @@ Conventions that hold for both shapes:
 - Prefer `export default function Page` or `export default async function Page` for page components.
 - `libs/<lib>/page` follows the same rules and ships routes to apps that opt in with `syncPageLibs` in `akan.config.ts`: `true` takes every lib dep that has a `page` folder, an array takes the libs listed, `false` (the default) syncs nothing.
 - `akan sync` links those routes into `apps/<app>/page/(libs)/(<lib>)` — once per basePath when the app declares subRoutes. The folder is generated and gitignored; edit the lib source, never the link.
-- Both path segments are route groups, so a lib route mounts at its own path (`libs/shared/page/login/_index.tsx` serves `/login`). Two synced routes that resolve to the same pattern are a sync-time error.
+- Both path segments are route groups, so a lib route mounts at its own path (`libs/<lib>/page/login/_index.tsx` serves `/login`). Two synced routes that resolve to the same pattern are a sync-time error.
 - `export const pageConfig = { devOnly: true }` keeps a route out of `akan build` while it keeps serving under `akan start` and keeps being typechecked. On a `_layout.tsx` it excludes every route under that directory too. Write it as a literal `true`/`false` — the build reads it off the source without evaluating the module.
-- Before changing route behavior, check `pkgs/akanjs/server/src/routeTree.tsx` and nearby routes for the expected pattern.
+- Before changing route behavior, check `pkgs/akanjs/server/routeTreeBuilder.ts` and nearby routes for the expected pattern.
 
 ### Page Body Shape
 
@@ -445,11 +915,19 @@ export const pageConfig = { transition: "stack" } satisfies PageConfig;
 
 ## Akan Sync Conventions (`apps/**`, `libs/**`)
 
-- `apps/<appName>` root may only contain these files: `akan.app.json`, `akan.config.ts`, `capacitor.config.ts`, `client.ts`, `main.ts`, `package.json`, `server.ts`, `tsconfig.json`.
-- `apps/<appName>` root may only contain these folders: `.akan`, `android`, `common`, `env`, `ios`, `lib`, `page`, `plugin`, `private`, `public`, `script`, `srvkit`, `ui`, `webkit`.
+- `apps/<appName>` root may only contain these files: `AGENTS.md`, `CLAUDE.md`, `akan.app.json`, `akan.config.ts`, `capacitor.config.ts`, `client.ts`, `main.ts`, `package.json`, `server.ts`, `tsconfig.json`, `tsconfig.tsbuildinfo`.
+- `apps/<appName>` root may only contain these folders: `.akan`, `android`, `common`, `env`, `ios`, `lib`, `mobile`, `page`, `plugin`, `private`, `public`, `script`, `secrets`, `srvkit`, `ui`, `webkit`.
+- `libs/<libName>` root may only contain these files: `AGENTS.md`, `CLAUDE.md`, `README.md`, `akan.config.ts`, `akan.lib.json`, `client.ts`, `index.ts`, `package.json`, `server.ts`, `tsconfig.json`, `tsconfig.spec.json`, `tsconfig.tsbuildinfo`.
+- `libs/<libName>` root may only contain these folders: `common`, `env`, `lib`, `page`, `plugin`, `private`, `public`, `srvkit`, `ui`, `webkit`. A library is never booted or packaged as an app, so the run and mobile entries an app carries (`main.ts`, `capacitor.config.ts`, `.akan`, `android`, `ios`, `mobile`, `script`, `secrets`) are rejected there.
+- Both allowlists have one source — `pkgs/@akanjs/devkit/workspaceLayout.ts`. `akan sync` (error), `akan doctor`
+  (diagnostic), and `akan quality scan` (warning) all read it, so add a new root entry there and mirror it into this
+  list, never into one of the three call sites.
+- `akan sync` maintains a scoped agent guide per app/lib: `apps/<app>/AGENTS.md` / `libs/<lib>/AGENTS.md`. The
+  section between the `akan:agent` markers (the `## Recipes In Scope` index) is generated — do not hand-edit it;
+  content outside the markers is yours. `akan lint` fails when the generated section is stale.
 - The `plugin/` facet holds Akan plugin declarations; files use the `<name>.plugin.ts` convention (e.g. `pushNotification.plugin.ts`) and are re-exported from the generated `plugin/index.ts` barrel.
-- Do not add `apps/*/base`; place shared app utilities under `apps/*/common`.
-- `apps/*/lib` and `libs/*/lib` root files are limited to generated/support files: `cnst.ts`, `db.ts`, `dict.ts`, `option.ts`, `sig.ts`, `srv.ts`, `st.ts`, `useClient.ts`, `useServer.ts`.
+- Do not add `apps/*/base` or `libs/*/base`; place shared utilities under that app or lib's own `common/`.
+- `apps/*/lib` and `libs/*/lib` root files are limited to generated/support files: `cnst.ts`, `db.ts`, `dict.ts`, `option.ts`, `sig.ts`, `srv.ts`, `st.ts`, `useClient.ts`, `useServer.ts` — plus a `<model>.signal.test.ts` / `.spec.ts`, the one hand-written file that belongs there because the suite boots the whole barrel.
 - Domain module folders are `lib/<model>` for database modules, `lib/_<service>` for service modules, and `lib/__scalar/<scalar>` for scalar modules.
 - Database module UI files are limited to `<Model>.Template.tsx`, `<Model>.Unit.tsx`, `<Model>.Util.tsx`, `<Model>.View.tsx`, and `<Model>.Zone.tsx`.
 - Service module UI files are limited to `<Service>.Util.tsx` and `<Service>.Zone.tsx`.
@@ -470,6 +948,7 @@ export const pageConfig = { transition: "stack" } satisfies PageConfig;
 | `plugin/` | build- or CLI-time `AkanPlugin` | `<name>.plugin.ts`, registered in `akan.config.ts` |
 
 - Hooks return a named object of async closures, never a tuple.
+- `libs/<lib>/ui/tokens.css` is the one CSS file a lib owns: plain `:root` custom properties for colors that must **not** follow the theme (a vendor brand color, a fixed surface). Every app whose pages reach that lib compiles it automatically, ahead of the app's own stylesheets, so nothing is imported by hand and no app can forget it. Reference them as `bg-[var(--kakao)]`; `@theme` extensions stay in the app stylesheet, because the color vocabulary is closed per stylesheet. Theme-following colors are the app's, not the lib's.
 - A layer-root `index.ts` is generated, but a `ui/<Folder>/index.tsx` that builds a namespace is hand-written source. The distinguishing test is that a generated barrel contains nothing but `export * from "./X";` lines.
 - `ui/<Folder>/index_.tsx` (trailing underscore) is the `"use client"` + `lazy()` boundary, with a server-safe `index.tsx` beside it. Collapsing the pair into one file breaks RSC.
 
@@ -485,7 +964,7 @@ when two shapes disagree.
 - Stale `// TODO: Implement …` comments above implemented methods.
 - `{cond && <X/>}` in JSX, hard-coded Korean bypassing `l()`, and `window.alert(...)` for user feedback.
 - Bare `/* eslint-disable */` blocks — use `// biome-ignore lint/<rule>: <why>`.
-- Raw palette grays such as `text-gray-400` instead of daisyUI semantic tokens.
+- Raw palette grays such as `text-gray-400` instead of the semantic tokens (`text-foreground/70`).
 
 ## Secrets And Env Safety (`.env`, `infra/**`, `*secret*`, `*credential*`)
 
@@ -502,16 +981,115 @@ when two shapes disagree.
 - To test a built artifact locally, run it from the generated app directory with the required Akan runtime environment variables.
 
 ```bash
-cd dist/apps/akan && USE_AKANJS_PKGS=true AKAN_PUBLIC_REPO_NAME=akanjs AKAN_PUBLIC_SERVE_DOMAIN="akanjs.com" AKAN_PUBLIC_APP_NAME=akan AKAN_PUBLIC_ENV=local AKAN_PUBLIC_OPERATION_MODE=local SERVER_MODE=federation AKAN_PUBLIC_BASE_PATHS=akanjs,soft,office bun main.js
+cd dist/apps/<appName> && USE_AKANJS_PKGS=true AKAN_PUBLIC_REPO_NAME=<repo> AKAN_PUBLIC_SERVE_DOMAIN="<domain>" \
+  AKAN_PUBLIC_APP_NAME=<appName> AKAN_PUBLIC_ENV=local AKAN_PUBLIC_OPERATION_MODE=local SERVER_MODE=federation \
+  AKAN_PUBLIC_BASE_PATHS=<basePaths> bun main.js
 ```
 
-- Adjust `<appName>`, `AKAN_PUBLIC_APP_NAME`, and `AKAN_PUBLIC_BASE_PATHS` to match the app being tested.
+## Akan Module Abstracts
+
+- Before changing a domain, service, or scalar module, read its `*.abstract.md` file first.
+- Update the abstract when business invariants, workflows, or public behavior change.
+- Do not update the abstract for formatting-only, import-only, or style-only changes.
+- Service modules live in `lib/_<service>`, but their abstract file is `<service>.abstract.md`.
+- Keep an abstract short. Run `akan compact <app-or-lib>` to rewrite bloated abstracts down to the invariants the code cannot show; `akan quality scan` warns past 300 lines.
+
+## Generated Files
+
+Do not hand-edit generated Akan files such as `apps/*/client.ts`, `apps/*/server.ts`, `*/lib/cnst.ts`, `*/lib/db.ts`, `*/lib/dict.ts`, `*/lib/sig.ts`, `*/lib/srv.ts`, `*/lib/st.ts`, `*/lib/useClient.ts`, `*/lib/useServer.ts`, `*/lib/**/index.ts`, `*/ui/index.ts`, `*/webkit/index.ts`, `*/srvkit/index.ts`, `*/common/index.ts`.
+If generated output is stale or broken, update the owning source file and run `akan repair generated` or `akan sync <app-or-lib>`.
+
+## Recipes
+
+Framework UI recipes (Tailwind-variant look factories), importable from every app and lib. Consume by exact name —
+`import { <name> } from "akanjs/ui"`, then `<name>(variants?, className?)`. The second arg merges internally and
+takes **an array too**, so never wrap it in `cn()`: `<name>({}, ["h-full", isWide && "w-full", className])`.
+Do not guess recipe names, import paths, or variant values; the list below carries
+the full contract (`*` marks the default, `key?` is a boolean flag), so there is no need to open the recipe file to
+consume one. tsc still reports variant mistakes. **Before inlining a repeated surface (card, box,
+tile, …): reuse a recipe, or add one as `apps/<app>/ui/Recipe/<name>.ts` (one recipe per file, re-exported from
+that folder's `index.ts`) — never re-implement the same look inline in several places, and never author a
+near-duplicate.** Full authoring/consumption policy: the `recipeRule` guideline.
+
+Import from `akanjs/ui`:
+- `badgeRecipe`(variant: default*|primary|secondary|accent|neutral|success|warning|info|error|outline · size: xs|sm|md*|lg · outline?) — 뱃지 look — 시맨틱 variant × size, outline 플래그는 색을 유지한 외곽선 스타일. `<Badge>` 가 소비하며, recipes.badge 슬롯으로 교체 가능.
+- `buttonRecipe`(variant: default|primary*|secondary|accent|neutral|outline|ghost|destructive|success|warning|info|link · size: xs|sm|md*|lg|icon · shape: default*|square|circle · outline?) — 버튼 look — 시맨틱 variant × size × shape, outline 플래그는 색을 유지한 외곽선 스타일. `<Button>` 이 소비하며, `_overrides.tsx` 의 recipes.button 슬롯으로 교체 가능.
+- `inputRecipe`(kind: field*|area · size: xs|sm|md*|lg|xl · tone: default*|primary|error) — 입력 표면 look — Input/TextArea/Select 가 공유하는 필드 셸. kind 로 한 줄 필드(field)/멀티라인(area), tone 으로 강조/오류 상태를 고른다.
+
+App and lib recipes are **not** listed here. Each app/lib carries its own generated index —
+`apps/<app>/AGENTS.md` / `libs/<lib>/AGENTS.md` (`## Recipes In Scope`) — regenerated by `akan sync` and
+verified by `akan lint`. When working inside an app or lib, consult that file before consuming or authoring a look.
+
+## MCP Workflow Policy
+
+- Prefer Akan MCP workflows before direct source edits.
+- Direct source edits are denied when an allowlisted Akan workflow or repair tool can perform the change.
+- Use `akan mcp --mode plan` to inspect `list_workflows`, `explain_workflow`, and `plan_workflow`.
+- If `plan_workflow` returns `planPath` or `next.tool=apply_workflow`, call `apply_workflow({ planPath })` before editing source files directly.
+- Use `akan mcp --mode apply` only for allowlisted `apply_workflow`, `run_validation`, and repair tools.
+- After `apply_workflow`, run `run_validation` with `validationTarget` when present; otherwise use `applyReportPath`.
+- If no workflow exists, or apply reports unsupported/no-op/failed diagnostics that require manual action, keep edits scoped to owning source files and never patch generated files directly.
+- For compound requests, split the request into workflows and apply each `planPath` in order, such as `create-module` followed by `add-field`.
+- **CLI-only fallback (MCP not connected):** `akan mcp` starts a stdio MCP server, so the `list_workflows`/`plan_workflow`/`apply_workflow` tools exist only when your agent is wired to it as an MCP client. When they are unavailable, the CLI is a first-class equivalent: `akan workflow list` / `explain <name>` / `plan <name> ... --format json --out <planPath>` / `apply <planPath> --format json`, `akan doctor --strict --format json` for validation, and `akan repair generated|imports|module-shape --app <app> --format json` for repairs. Scaffolding primitives (`create-module`/`create-scalar`/`create-service` take the target app/lib as a POSITIONAL arg; `add-field`/`add-enum-field` use `--app`/`--module` flags) call the same code the workflows do.
+
+## Validation
+
+- `akan sync <app-or-lib>`
+- `akan lint <app-or-lib-or-pkg>`
+- `akan typecheck <app-name>`
+- `akan test <app-or-lib-or-pkg>`
+- `akan build <app-name>`
+- `akan doctor --strict --format json`
+- `akan quality scan [--format json]`
+- `akan quality ssr [--format json]`
+
+## Framework Guide
+
+# Akan.js Framework Guide
+
+## Purpose
+Use this as the compact framework context for AI codegen. It should explain how Akan turns convention-based files into a full-stack app without teaching every API in one place.
+
+## Ownership
+- `apps/<app>` contains app code, pages, env files, module folders, UI, webkit, srvkit, and common utilities.
+- `libs/<lib>` contains reusable domain and utility libraries consumed by apps.
+- `pkgs/akanjs` contains framework facets such as base, constant, document, service, signal, store, client, ui, and CLI tooling.
+- Domain behavior lives near the model folder instead of being split by technical layer first.
+
+## Current Akan Patterns
+- Database module flow is `constant -> dictionary -> document -> service -> signal -> store -> UI`.
+- Scalars live under `lib/__scalar/<scalarName>` and represent embedded value objects.
+- Service modules live under `lib/_<serviceName>` when behavior is not centered on one stored model.
+- Generated registry files such as `cnst.ts`, `db.ts`, `dict.ts`, `sig.ts`, `srv.ts`, and `st.ts` are scanner outputs and should not be hand-authored.
+- Pages and components should consume generated client/server helpers rather than duplicating model shapes.
+
+## Codegen Rules
+- Prefer the most specific guideline for file syntax; use this guide only for global architecture context.
+- When generating a new feature, start with the smallest necessary layer set and add later layers only when required by behavior.
+- Keep business decisions in constant, document, or service; keep API exposure in signal; keep client coordination in store; keep rendering in UI files.
+- Use direct module imports where scanner rules expect them, and avoid inventing new top-level app folders.
+
+## Theming And UI Customization
+When a request implies a distinct look and feel, do not stop at colors — customize both the theme and, when needed, the components.
+
+- **Theme (`apps/<app>/page/styles.css`).** The app imports Tailwind and `akanjs/ui/styles.css`, then overrides semantic token *values* per theme under `:root, [data-theme="dark"]` and `[data-theme="light"]` (`--background`, `--foreground`, `--primary`, `--muted`, `--border`, … each with a `-foreground` pair for text). The framework maps them to Tailwind color names, so `bg-primary` / `text-foreground` follow the `data-theme` attribute; corner rounding uses `--radius-box` / `--radius-field`. Fetch `get_guideline` with `cssRule` for the full token set before a deep theme pass.
+- **Lib tokens (`libs/<lib>/ui/tokens.css`).** Colors a lib's own components pin — a vendor brand color, a fixed surface — are declared once there as plain `:root` custom properties and compiled into every app that reaches the lib, ahead of the app's stylesheets. Reference them as `bg-[var(--kakao)]`; never copy the block into each app.
+- **Components (`page/**/_overrides.tsx`).** When a default `akanjs/ui` component (Button, Modal, Table, Input, Select, …) is too restrictive for the design, re-skin it per route instead of forking, wrapping, or fighting it with utility classes. Write a drop-in replacement in `apps/<app>/ui/` typed against the slot contract (`AkanModalComponent`, or `AkanUiOverrides["<Slot>"]`), composing the framework's headless parts, then bind it in a `page/**/_overrides.tsx` manifest with a single `export default override({ Slot: BrandComponent })`. Overrides cascade down the route tree like layouts (closest ancestor wins). Fetch `get_guideline` with `componentRule` and read the `references/ui/customize` docs page for the slot list and patterns.
+
+## Review Checklist
+- The instruction points to current docs pages, not removed docs routes.
+- Generated examples use current Akan builder APIs and scanner-friendly filenames.
+- The output contract tells the model which file paths to return.
+- The guide avoids broad framework essays when a concrete file rule is better.
 
 ## Before You Finish
 
 1. `bun run akan lint <appName>` — Tailwind class order, `Err`, `console`, `#private` scope, unused imports.
 2. `bun run akan typecheck <appName>` — server/client boundary violations.
 3. `bun run akan sync <appName>` if you added, renamed, or deleted any file.
-4. Re-read the file you wrote against its section above.
-5. Did you add a comment? Delete it unless it documents an external constraint or a security decision.
-6. Did behavior or an invariant change? Update the module's `*.abstract.md`.
+4. Did you write or change a `.tsx` file? `bun run akan quality ssr` — did the server share hold, and did you add
+   a `"use client"` you cannot justify?
+5. Re-read the file you wrote against its section above.
+6. Did you add a comment? Delete it unless it documents an external constraint or a security decision.
+7. Did behavior or an invariant change? Update the module's `*.abstract.md`.
+<!-- akan:agent:end -->

@@ -30,6 +30,8 @@ Unit where relative display stops and date formatting begins.
 
 Automatic compact format or full date-time format.
 
+Relative phrasing. `"fromNow"` (default) is dayjs locale strings. `"always"` / `"auto"` use Intl (`1 day ago` vs `yesterday`). A function replaces the relative label.
+
 Namespace of loading indicators for async UI: full-area overlays, buttons, inputs, progress bars, skeletons, and spinners.
 
 Absolute overlay for blocking a local area.

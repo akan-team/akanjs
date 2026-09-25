@@ -320,7 +320,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="file-structure" title={l.trans({ en: "File Structure", ko: "파일 구조" })}>
         <Docs.Title>{l.trans({ en: "File Structure", ko: "파일 구조" })}</Docs.Title>
@@ -351,7 +351,7 @@ export default function Page() {
           <Docs.IntroTable type="field" items={fileStructureItems} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="constant-model"
@@ -422,7 +422,7 @@ export class Product extends via(ProductObject, LightProduct, (resolve) => ({}))
           <Docs.IntroTable type="field" items={constantItems} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="document-schema"
@@ -493,7 +493,7 @@ export class ProductMiddleware extends beyond(ProductModel, Product) {
           <Docs.IntroTable type="field" items={documentItems} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="service-logic"
@@ -547,7 +547,7 @@ export class ProductService extends serve(db.product, ({ service }) => ({
           <Docs.IntroTable type="field" items={serviceItems} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="signal-api"
@@ -613,7 +613,7 @@ export class ProductEndpoint extends endpoint(srv.product, ({ mutation }) => ({
           <Docs.IntroTable type="field" items={signalItems} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="store-state"
@@ -664,7 +664,7 @@ export class ProductStore extends store(sig.product, {
           <Docs.IntroTable type="field" items={storeItems} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="ui-components"
@@ -690,7 +690,7 @@ export class ProductStore extends store(sig.product, {
           <Docs.IntroTable type="field" items={uiItems} />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="data-flow"
@@ -802,7 +802,7 @@ export class ProductStore extends store(sig.product, {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="best-practices"
@@ -888,7 +888,7 @@ export class ProductStore extends store(sig.product, {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

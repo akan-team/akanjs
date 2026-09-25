@@ -8,10 +8,10 @@ export class BannerStatus extends enumOf("bannerStatus", ["active", "displaying"
 export class BannerTarget extends enumOf("bannerTarget", ["_blank", "_self"] as const) {}
 
 export class BannerInput extends via((field) => ({
-  category: field(String).optional(),
-  title: field(String).optional(),
-  content: field(String).optional(),
-  image: field(File, { cascade: "remove" }).optional(),
+  category: field(String, { text: "tag" }).optional(),
+  title: field(String, { text: "title" }).optional(),
+  content: field(String, { text: "desc" }).optional(),
+  image: field(File, { text: "thumb" }).optional(),
   href: field(String),
   target: field(BannerTarget, { default: "_self" }),
   from: field(Date, { default: dayjs() }),
@@ -19,7 +19,7 @@ export class BannerInput extends via((field) => ({
 })) {}
 
 export class BannerObject extends via(BannerInput, (field) => ({
-  status: field(BannerStatus, { default: "active" }),
+  status: field(BannerStatus, { default: "active", text: "filter" }),
 })) {}
 
 export class LightBanner extends via(

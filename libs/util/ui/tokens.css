@@ -1,0 +1,15 @@
+/* Vendor marks, owned here because `ui/Icon` draws them and `@libs/shared`'s sign-in buttons fill with them —
+   util is the lib both sides already depend on, so one declaration covers every app that reaches either.
+   These are NOT semantic tokens: a Kakao button has to be Kakao yellow in every theme, so nothing here may
+   swap on `data-theme`. Reference them as `bg-[var(--kakao)]`; `@theme` extension does not work from a
+   lib-owned stylesheet, so `bg-kakao` would generate no CSS. */
+:root {
+  --kakao: #fee500;
+  --kakao-ink: #3c1e1e;
+  --naver: #1ec800;
+  --telegram: #039be5;
+  --facebook: #1778f2;
+  --discord: #5865f2;
+  --discord-legacy: #7289da;
+  --instagram: #e53c5c;
+}

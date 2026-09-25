@@ -73,7 +73,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="view-wrapper" title={l.trans({ en: "Add View/Edit Modal", ko: "보기/수정 모달 추가하기" })}>
         <Docs.Title>{l.trans({ en: "Add View/Edit Modal", ko: "보기/수정 모달 추가하기" })}</Docs.Title>
         <Docs.Description>
@@ -171,7 +171,7 @@ export const View = ({ view }: ViewProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide
         id="button-on-unit"
         title={l.trans({ en: "Add View Button to Cards", ko: "카드에 뷰 버튼 추가하기" })}
@@ -219,9 +219,9 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
           </span>
         </div>
       </div>
-      <div className="bg-base-100/50 flex items-center justify-center gap-2 rounded-xl p-4"> // [!code ++:7]
+      <div className="bg-background/50 flex items-center justify-center gap-2 rounded-xl p-4"> // [!code ++:7]
         <Model.ViewWrapper sliceName="icecreamOrder" modelId={icecreamOrder.id}>
-          <button className="btn btn-primary">
+          <button className={buttonRecipe({ variant: "primary" })}>
             <span>{l.trans({ en: "View", ko: "보기" })}</span>
           </button>
         </Model.ViewWrapper>
@@ -270,7 +270,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="design-detail-view" title={l.trans({ en: "Design Detail View", ko: "상세 뷰 디자인하기" })}>
         <Docs.Title>{l.trans({ en: "Design Detail View", ko: "상세 뷰 디자인하기" })}</Docs.Title>
         <Docs.Description>
@@ -298,12 +298,12 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
       <div className="flex items-center gap-3 border-b pb-4">
         <span className="text-3xl font-extrabold text-pink-600">🍦</span>
         <span className="text-2xl font-bold">{l("icecreamOrder.modelName")}</span>
-        <span className="ml-auto text-xs text-base-content/50">#{icecreamOrder.id}</span>
+        <span className="ml-auto text-xs text-foreground/50">#{icecreamOrder.id}</span>
       </div>
       <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-        <div className="font-semibold text-base-content/50">{l("icecreamOrder.size")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.size")}</div>
         <div>{icecreamOrder.size} cc</div>
-        <div className="font-semibold text-base-content/50">{l("icecreamOrder.toppings")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.toppings")}</div>
         <div className="flex flex-wrap gap-2">
           {icecreamOrder.toppings.length === 0 ? (
             <span className="italic text-gray-400">
@@ -320,7 +320,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             ))
           )}
         </div>
-        <div className="font-semibold text-base-content/50">{l("icecreamOrder.status")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.status")}</div>
         <div>
           <span
             className={clsx("inline-block rounded-full px-2 py-1 text-xs font-semibold", {
@@ -334,9 +334,9 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
           </span>
         </div>
-        <div className="font-semibold text-base-content/50">{l("icecreamOrder.createdAt")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.createdAt")}</div>
         <div className="text-gray-500">{icecreamOrder.createdAt.format("YYYY-MM-DD HH:mm:ss")}</div>
-        <div className="font-semibold text-base-content/50">{l("icecreamOrder.updatedAt")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.updatedAt")}</div>
         <div className="text-gray-500">{icecreamOrder.updatedAt.format("YYYY-MM-DD HH:mm:ss")}</div>
       </div>
     </div>
@@ -389,7 +389,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="test-implementation" title={l.trans({ en: "Test Your Implementation", ko: "구현 테스트하기" })}>
         <Docs.Title>{l.trans({ en: "Test Your Implementation", ko: "구현 테스트하기" })}</Docs.Title>
         <Docs.Description>
@@ -444,7 +444,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide
         id="best-practices"
         title={l.trans({ en: "Best Practices for Detail Views", ko: "상세 뷰 모범 사례" })}
@@ -517,7 +517,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
       <Scroll.Slide id="next-steps" title={l.trans({ en: "What's Next?", ko: "다음은 무엇인가요?" })}>
         <Docs.Title>{l.trans({ en: "What's Next?", ko: "다음은 무엇인가요?" })}</Docs.Title>
         <Docs.Description>

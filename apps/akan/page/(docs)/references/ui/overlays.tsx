@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Docs, type UiComponentReference, UiComponentSlide } from "@apps/akan/ui";
+import { Divider, Docs, DocsToc, type UiComponentReference, UiComponentSlide } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -8,8 +8,8 @@ export default function Page() {
     {
       name: "Modal",
       desc: l.trans({
-        en: "Controlled modal wrapper built on Akan's headless `Dialog` state. Use it for common app overlays where you want title/content/action slots without composing the full dialog namespace.",
-        ko: "Akan의 headless `Dialog` state 위에 구성된 controlled modal wrapper입니다. full dialog namespace를 직접 조합하지 않고 title/content/action slot만 필요한 일반 app overlay에 사용합니다.",
+        en: "Controlled modal wrapper built on Akan's headless `Dialog` state. Use it for common app overlays where you want title/content/action slots without composing the full dialog namespace. The surface is deliberately plain — no transition, no gesture — so it never animates content the user is reading. `LegacyModal` keeps the previous animated skin.",
+        ko: "Akan의 headless `Dialog` state 위에 구성된 controlled modal wrapper입니다. full dialog namespace를 직접 조합하지 않고 title/content/action slot만 필요한 일반 app overlay에 사용합니다. transition과 gesture가 없는 단순한 surface라서 읽고 있는 내용이 움직이지 않습니다. 이전 애니메이션 skin은 `LegacyModal`에 남아 있습니다.",
       }),
       props: [
         {
@@ -41,7 +41,7 @@ export default function Page() {
           desc: l.trans({ en: "Ask for confirmation before closing.", ko: "닫기 전에 confirmation을 요청합니다." }),
         },
       ],
-      code: `import { Modal } from "akanjs/ui";
+      code: `import { Modal, buttonRecipe } from "akanjs/ui";
 
 export const ProductModal = ({ open, close, product }) => (
   <Modal open={open} onCancel={close} title="Product">
@@ -78,6 +78,14 @@ export const ProductModal = ({ open, close, product }) => (
           }),
         },
         {
+          name: "Dialog.LegacyModal",
+          type: "component",
+          desc: l.trans({
+            en: "Previous surface: spring open/close and drag-to-dismiss on touch.",
+            ko: "이전 surface입니다. spring 전환과 touch drag-to-dismiss가 있습니다.",
+          }),
+        },
+        {
           name: "Dialog.Title / Content / Action",
           type: "components",
           desc: l.trans({ en: "Named modal slots.", ko: "이름이 있는 modal slot입니다." }),
@@ -87,20 +95,20 @@ export const ProductModal = ({ open, close, product }) => (
 
 <Dialog defaultOpen={false}>
   <Dialog.Trigger>
-    <button className="btn">Open</button>
+    <button className={buttonRecipe()}>Open</button>
   </Dialog.Trigger>
   <Dialog.Modal>
     <Dialog.Title>Custom dialog</Dialog.Title>
     <Dialog.Content>Body content</Dialog.Content>
-    <Dialog.Action><button className="btn">Save</button></Dialog.Action>
+    <Dialog.Action><button className={buttonRecipe()}>Save</button></Dialog.Action>
   </Dialog.Modal>
 </Dialog>;`,
     },
     {
       name: "Popconfirm",
       desc: l.trans({
-        en: "Inline confirmation popover for destructive or irreversible actions. It wraps a trigger element and shows localized OK/cancel buttons.",
-        ko: "파괴적이거나 되돌릴 수 없는 action을 위한 inline confirmation popover입니다. trigger element를 감싸고 localized OK/cancel button을 표시합니다.",
+        en: "Inline confirmation popover for destructive or irreversible actions. It wraps a trigger element and shows localized OK/cancel buttons. The popover portals to document.body and is placed against its trigger — above it when there is no room below, with the pointer following — so it is not clipped by a modal, a scrolling container, or the dropdown menu that Model.Remove draws it from. Its scrim swallows the next click, and the overlay that opened it stays open.",
+        ko: "파괴적이거나 되돌릴 수 없는 action을 위한 inline confirmation popover입니다. trigger element를 감싸고 localized OK/cancel button을 표시합니다. popover는 document.body로 portal되어 trigger 기준으로 배치되며, 아래 공간이 없으면 위로 뒤집히고 화살표도 따라갑니다. 따라서 modal, 스크롤 컨테이너, Model.Remove가 이것을 그리는 dropdown menu에 잘리지 않습니다. scrim이 다음 클릭을 흡수하고, 이것을 연 overlay는 열린 채로 남습니다.",
       }),
       props: [
         {
@@ -127,14 +135,14 @@ export const ProductModal = ({ open, close, product }) => (
       code: `import { Popconfirm } from "akanjs/ui";
 
 <Popconfirm title="Remove product?" onConfirm={() => remove(product.id)}>
-  <button className="btn btn-error btn-sm">Remove</button>
+  <button className={buttonRecipe({ variant: "destructive", size: "sm" })}>Remove</button>
 </Popconfirm>;`,
     },
     {
       name: "Dropdown",
       desc: l.trans({
-        en: "Compact dropdown menu wrapper. It is commonly used for row actions, comment/story menus, and context actions in list UIs.",
-        ko: "compact dropdown menu wrapper입니다. list UI의 row action, comment/story menu, context action에 자주 사용됩니다.",
+        en: "Compact dropdown menu wrapper. It is commonly used for row actions, comment/story menus, and context actions in list UIs. The menu portals to document.body and is placed against its trigger, so it is not clipped by a modal surface, a scrolling modal body, or a table's scroll container. A menu item may open a Modal: the menu stays mounted while it is closed, so the overlay survives, and clicks inside an overlay this menu opened do not count as outside clicks. An overlay it did not open still dismisses it.",
+        ko: "compact dropdown menu wrapper입니다. list UI의 row action, comment/story menu, context action에 자주 사용됩니다. menu는 document.body로 portal되어 trigger 기준으로 배치되므로 modal surface, 스크롤되는 modal body, table scroll container에 잘리지 않습니다. menu item이 Modal을 열어도 됩니다. 메뉴는 닫힐 때 unmount되지 않고 숨겨지므로 overlay가 그대로 유지되며, 이 메뉴가 연 overlay 내부 클릭은 외부 클릭으로 처리되지 않습니다. 이 메뉴가 열지 않은 overlay는 평소대로 메뉴를 닫습니다.",
       }),
       props: [
         {
@@ -157,6 +165,22 @@ export const ProductModal = ({ open, close, product }) => (
           type: "string",
           desc: l.trans({ en: "Classes for the menu panel.", ko: "menu panel에 적용할 class입니다." }),
         },
+        {
+          name: "align",
+          type: `"start" | "end"`,
+          desc: l.trans({
+            en: "Trigger edge the menu lines up with, end (right) by default. Position is computed, so a left-0 class cannot do this.",
+            ko: "menu를 trigger의 어느 쪽 끝에 맞출지 정합니다. 기본값은 end(오른쪽)입니다. 위치를 계산해서 넣기 때문에 left-0 class로는 바꿀 수 없습니다.",
+          }),
+        },
+        {
+          name: "data-dropdown-keep-open",
+          type: "attribute",
+          desc: l.trans({
+            en: "Put it on a menu item that runs its own interaction (a switch, a copy button) so clicking it does not close the menu.",
+            ko: "자체 상호작용을 가진 menu item(switch, copy button 등)에 붙이면 클릭해도 메뉴가 닫히지 않습니다.",
+          }),
+        },
       ],
       code: `import { Dropdown } from "akanjs/ui";
 
@@ -165,6 +189,9 @@ export const ProductModal = ({ open, close, product }) => (
   content={
     <>
       <li><button>Edit</button></li>
+      <li data-dropdown-keep-open="">
+        <Switch checked={notify} onChange={setNotify} />
+      </li>
       <li><button>Remove</button></li>
     </>
   }
@@ -196,7 +223,7 @@ export const ProductModal = ({ open, close, product }) => (
       code: `import { Copy } from "akanjs/ui";
 
 <Copy text={shareUrl}>
-  <button className="btn btn-sm">Copy link</button>
+  <button className={buttonRecipe({ size: "sm" })}>Copy link</button>
 </Copy>;`,
     },
   ];
@@ -214,11 +241,11 @@ export const ProductModal = ({ open, close, product }) => (
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       {components.map((component) => (
         <UiComponentSlide key={component.name} component={component} />
       ))}
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

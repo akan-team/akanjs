@@ -21,7 +21,7 @@ export class AdminStore extends store(sig.admin, () => ({
   }
   async initAdminAuth() {
     const me = await fetch.me();
-    this.set({ me });
+    this.set({ me: me ?? new cnst.Admin() });
   }
   async setAdminPassword(adminId: string, password: string) {
     await fetch.setAdminPassword(adminId, password);

@@ -1,4 +1,4 @@
 "use client";
-import { createContext } from "react";
+import { sharedContext } from "./sharedContext";
 
-export const dictionaryContext = createContext<{ [key: string]: { [key: string]: string } }>({});
+export const dictionaryContext = sharedContext<{ [key: string]: { [key: string]: string } }>("dictionary", {});

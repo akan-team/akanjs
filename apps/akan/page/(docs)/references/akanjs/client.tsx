@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -18,14 +18,14 @@ router.replace("/signin");
 router.refresh();`,
     },
     {
-      name: "clsx",
+      name: "cn",
       desc: l.trans({
-        en: "Re-export of `clsx` for composing class names across Akan UI code. Most view/unit/template components import it from `akanjs/client` to keep UI dependencies consistent.",
-        ko: "Akan UI code 전반에서 class name을 조합하기 위한 `clsx` re-export입니다. 대부분의 view/unit/template component는 UI dependency를 일관되게 유지하기 위해 `akanjs/client`에서 import합니다.",
+        en: 'The one class-combining function: joins conditional parts (`cond && "x"`) and resolves Tailwind conflicts with Akan\'s semantic tokens registered. Every view/unit/template component imports it from `akanjs/client`.',
+        ko: '유일한 class 결합 함수입니다. 조건부 조각(`cond && "x"`)을 합치고, Akan 시맨틱 토큰이 등록된 tailwind-merge 로 충돌을 해소합니다. 모든 view/unit/template component 는 `akanjs/client`에서 import합니다.',
       }),
-      code: `import { clsx } from "akanjs/client";
+      code: `import { cn } from "akanjs/client";
 
-<button className={clsx("btn", active && "btn-primary")} />;`,
+<button className={cn("px-3 py-1", active && "bg-primary text-primary-foreground")} />;`,
     },
     {
       name: "ModelProps / ModelsProps",
@@ -137,17 +137,22 @@ const scrollTop = device.getScrollTop();`,
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
       {symbols.map((symbol) => (
         <Scroll.Slide key={symbol.name} id={symbol.name} title={symbol.name}>
           <Docs.Title>{symbol.name}</Docs.Title>
           <Docs.Description>
             <div>{symbol.desc}</div>
           </Docs.Description>
-          <Code.Snippet title={l.trans({ en: "Usage", ko: "사용 예시" })} language="typescript" code={symbol.code} />
+          <Code.Snippet
+            className="w-full"
+            title={l.trans({ en: "Usage", ko: "사용 예시" })}
+            language="typescript"
+            code={symbol.code}
+          />
         </Scroll.Slide>
       ))}
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

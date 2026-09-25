@@ -1,5 +1,6 @@
 import {
-  type BaseEnv,
+  type BackendEnv,
+  Binary,
   type Cls,
   ENDPOINT_META,
   FIELD_META,
@@ -8,6 +9,7 @@ import {
   INTERNAL_META,
   Int,
   PrimitiveRegistry,
+  type PromiseOrObject,
   SLICE_META,
 } from "akanjs/base";
 import { capitalize, Logger } from "akanjs/common";
@@ -31,7 +33,10 @@ import { SignalContext, type WebSocketExecutionContext } from "../../signal/sign
 import type { SliceCls } from "../../signal/slice";
 import type { SliceInfo } from "../../signal/sliceInfo";
 import type { WebsocketMessageData, WebsocketSubscribeAck } from "../../signal/types";
-import type { HttpRoutes, SignalRoutes, WebsocketRoutes } from "../types";
+import type { HttpRoutes, LocalPublish, SignalRoutes, WebsocketRoutes } from "../types";
+
+type HttpRouteHandler = (req: Bun.BunRequest) => Response | Promise<Response | undefined> | undefined;
+type HttpMethodRoutes = Record<string, HttpRouteHandler>;
 
 export class SignalResolver {
   static logger = new Logger("SignalResolver");
@@ -39,12 +44,18 @@ export class SignalResolver {
   static makeRoomId(key: string, args: unknown[]) {
     return `${key}${args.length ? "-" : ""}${args.join("-")}`;
   }
-  static #localPublish: (roomId: string, data: object | object[]) => void = () => {
-    SignalResolver.logger.warn(`Local publish is not initialized yet`);
+  static #localPublish: LocalPublish = () => {
+    SignalResolver.logger.verbose(`Local publish is not initialized yet`);
   };
-  static setLocalPublish(localPublish: (roomId: string, data: object | object[]) => void, websocket: WebsocketAdaptor) {
+  static readonly #coalescingRooms = new Set<string>();
+
+  static coalescesRoom(roomId: string): boolean {
+    const separator = roomId.indexOf("-");
+    return SignalResolver.#coalescingRooms.has(separator >= 0 ? roomId.slice(0, separator) : roomId);
+  }
+  static setLocalPublish(localPublish: LocalPublish, websocket: WebsocketAdaptor) {
     SignalResolver.#localPublish = localPublish;
-    websocket.setEventHandler((roomId, data) => localPublish(roomId, data as object | object[]));
+    websocket.setEventHandler((roomId, data) => localPublish(roomId, data as object | object[] | Uint8Array));
   }
   static resolveServerSignal(
     serverSignalCls: ServerSignalCls,
@@ -56,6 +67,9 @@ export class SignalResolver {
     Object.entries(endpointMeta).forEach(([key, endpointInfo]) => {
       if (endpointInfo.type !== "pubsub") throw new Error(`Endpoint ${key} is not a pubsub endpoint`);
       websocket.registerEndpoint(key, endpointInfo.returns.returnRef as Cls, endpointInfo.returns.arrDepth);
+      const isBinaryFrame = endpointInfo.returns.returnRef === Binary && !endpointInfo.returns.arrDepth;
+      if (isBinaryFrame && endpointInfo.signalOption.backpressure !== "queue") SignalResolver.#coalescingRooms.add(key);
+      let warnedRawBytes = false;
       const serializeFn = (data: unknown) =>
         serialize(endpointInfo.returns.returnRef, endpointInfo.returns.arrDepth, data, "object", {
           nullable: endpointInfo.returns.nullable,
@@ -71,12 +85,22 @@ export class SignalResolver {
             registry,
             live,
           });
+          const roomId = SignalResolver.makeRoomId(key, roomArgs);
+          if (isBinaryFrame) {
+            const bytes = Binary._parse(resolvedData as Uint8Array) as Uint8Array;
+            websocket.publish(roomId, bytes);
+            SignalResolver.#localPublish(roomId, bytes);
+            return;
+          }
           const serializedData = serializeFn(resolvedData) as object | object[] | null;
           if (!serializedData) {
             this.logger.warn(`Failed to serialize data for ${key}`);
             return;
           }
-          const roomId = SignalResolver.makeRoomId(key, roomArgs);
+          if (!warnedRawBytes && ArrayBuffer.isView(serializedData)) {
+            warnedRawBytes = true;
+            this.logger.warn(`${key} publishes bytes but does not return Binary; declare pubsub(Binary) instead.`);
+          }
           websocket.publish(roomId, serializedData);
           SignalResolver.#localPublish(roomId, serializedData);
         },
@@ -319,6 +343,64 @@ export class SignalResolver {
     Bun.ServerWebSocket<unknown>,
     Map<string, SignalContext<WebSocketExecutionContext>>
   >();
+  /**
+   * Message contexts that registered a lifecycle handler. A message context is otherwise dropped the moment it
+   * answers, so `ws.on("disconnect", …)` from one would land in an object nothing reads again — a silent
+   * no-op beside the same call working from a pubsub subscribe.
+   */
+  static #liveWsMessageCtx = new WeakMap<Bun.ServerWebSocket<unknown>, Set<SignalContext<WebSocketExecutionContext>>>();
+  static #retainWsContext(ws: Bun.ServerWebSocket<unknown>, context: SignalContext<WebSocketExecutionContext>) {
+    const wsCtx = context.getWebSocketContext();
+    if (!wsCtx.onDisconnect.size && !wsCtx.onUnsubscribe.size) return;
+    const contexts = SignalResolver.#liveWsMessageCtx.get(ws) ?? new Set<SignalContext<WebSocketExecutionContext>>();
+    contexts.add(context);
+    SignalResolver.#liveWsMessageCtx.set(ws, contexts);
+  }
+  /**
+   * Cleanup handlers belong to the app, so one that throws must not take the rest of the teardown with it: a
+   * rejection here would skip `unregisterSocket` and leak the socket's room membership in Redis for good.
+   *
+   * A close ends both the subscription and the connection, so it passes both events — and a handler registered
+   * for both, the way a cleanup that must happen either way is written, runs once rather than twice.
+   */
+  static async #runLifecycleHandlers(
+    contexts: Iterable<SignalContext<WebSocketExecutionContext>>,
+    events: ("unsubscribe" | "disconnect")[],
+  ) {
+    const handlers = new Set<() => PromiseOrObject<void>>();
+    for (const event of events)
+      for (const context of contexts) {
+        const wsCtx = context.getWebSocketContext();
+        for (const handler of event === "disconnect" ? wsCtx.onDisconnect : wsCtx.onUnsubscribe) handlers.add(handler);
+      }
+    if (!handlers.size) return;
+    const results = await Promise.allSettled([...handlers].map(async (handler) => await handler()));
+    for (const result of results)
+      if (result.status === "rejected")
+        SignalResolver.logger.error(`WebSocket cleanup handler failed: ${result.reason}`);
+  }
+  /**
+   * A path may legitimately carry several methods — a `query` GET and a `mutation` POST sharing a custom `path` —
+   * so methods merge rather than replace. The same method twice leaves one of the two endpoints unreachable with
+   * nothing said about it, and the shadowed half is as easily the guarded one, so it fails the boot instead.
+   */
+  static #mountHttpRoute(routes: HttpRoutes, path: string, handlers: HttpMethodRoutes, owner?: string) {
+    const table = routes as Record<string, HttpMethodRoutes | undefined>;
+    const existing = table[path];
+    const conflict = Object.keys(handlers).find((method) => !!existing?.[method]);
+    if (conflict)
+      throw new Error(
+        `Route conflict: ${conflict} ${path} is declared more than once${owner ? ` (by "${owner}")` : ""}.`,
+      );
+    table[path] = { ...existing, ...handlers };
+  }
+
+  /** Same rule across endpoint classes, which are resolved one at a time and then folded into one table. */
+  static mergeHttpRoutes(target: HttpRoutes, source: HttpRoutes) {
+    for (const [path, handlers] of Object.entries((source ?? {}) as Record<string, HttpMethodRoutes>))
+      SignalResolver.#mountHttpRoute(target, path, handlers);
+  }
+
   static resolveEndpoint(
     endpointCls: EndpointCls,
     endpoint: Endpoint,
@@ -327,7 +409,7 @@ export class SignalResolver {
       env,
       live,
       middleware,
-    }: { registry: InjectRegistry; env: BaseEnv; live: LiveRegistry; middleware: Map<string, MiddlewareCls> },
+    }: { registry: InjectRegistry; env: BackendEnv; live: LiveRegistry; middleware: Map<string, MiddlewareCls> },
   ): SignalRoutes {
     const endpointMeta = endpointCls[ENDPOINT_META] as { [key: string]: EndpointInfo };
     const routes: HttpRoutes = {};
@@ -352,26 +434,55 @@ export class SignalResolver {
           }).init();
           return await context.exec();
         });
+      if (endpointInfo.signalOption.method && endpointInfo.type !== "mutation")
+        SignalResolver.logger.warn(
+          `"${key}" declares method ${endpointInfo.signalOption.method} on a ${endpointInfo.type}, which is ignored.`,
+        );
       switch (endpointInfo.type) {
         case "query":
-          routes[path] = SignalResolver.#canUsePrimitiveQueryFastPath(endpointInfo, middleware)
-            ? {
-                GET: async (req) => {
-                  if (SignalResolver.#hasAuthCredential(req)) return await normalHttpHandler(req);
-                  return await SignalContext.try(endpoint, endpointInfo, key, async () => {
-                    const result = await endpointInfo.execFn?.call(endpoint);
-                    return result instanceof Response ? result : Response.json(result);
-                  });
+          SignalResolver.#mountHttpRoute(
+            routes,
+            path,
+            SignalResolver.#canUsePrimitiveQueryFastPath(endpointInfo, middleware)
+              ? {
+                  GET: async (req) => {
+                    if (SignalResolver.#hasAuthCredential(req)) return await normalHttpHandler(req);
+                    return await SignalContext.try(endpoint, endpointInfo, key, async () => {
+                      const result = await endpointInfo.execFn?.call(endpoint);
+                      return result instanceof Response ? result : Response.json(result);
+                    });
+                  },
+                }
+              : {
+                  GET: normalHttpHandler,
                 },
-              }
-            : {
-                GET: normalHttpHandler,
-              };
+            key,
+          );
           break;
         case "mutation":
-          routes[path] = {
-            POST: normalHttpHandler,
-          };
+          SignalResolver.#mountHttpRoute(
+            routes,
+            path,
+            { [endpointInfo.signalOption.method ?? "POST"]: normalHttpHandler },
+            key,
+          );
+          break;
+        case "prompt":
+          // Served as a plain GET beside the queries, so the same prompt a client renders as a slash command can
+          // be previewed from the web UI. The query fast path is deliberately not shared: it skips guards.
+          //
+          // XXX: this route exists whether or not the app enabled MCP, and whatever the prompt opted into — MCP
+          // exposure gates the catalogue, not the HTTP surface. So guard it like any other read rather than
+          // assuming the MCP switch is what stands in front of it. Field masking is not the gap it once was
+          // (`Msg.mask` takes the model), but masking answers *what* goes out and never *who* may ask.
+          //
+          // Which is why the unguarded case is said out loud rather than left to a reader of the comment above.
+          // An explicit `[Public]` is a decision and stays quiet; an absent `guards` decided nothing.
+          if (!(endpointInfo.signalOption.guards ?? []).length)
+            SignalResolver.logger.warn(
+              `Prompt "${key}" declares no guards, and its GET route is mounted whether or not this app enables MCP.`,
+            );
+          SignalResolver.#mountHttpRoute(routes, path, { GET: normalHttpHandler }, key);
           break;
         case "pubsub":
           wsRoutes[key] = async (ws, message, event) => {
@@ -397,10 +508,7 @@ export class SignalResolver {
               const roomCtxMap = SignalResolver.#liveWsPubsubRoomCtx.get(ws);
               if (roomCtxMap) {
                 const roomCtx = roomCtxMap.get(roomId);
-                if (roomCtx) {
-                  const unsubscribeHandlers = [...roomCtx.getWebSocketContext().onUnsubscribe.values()];
-                  await Promise.all(unsubscribeHandlers.map((handler) => handler()));
-                }
+                if (roomCtx) await SignalResolver.#runLifecycleHandlers([roomCtx], ["unsubscribe"]);
                 roomCtxMap.delete(roomId);
                 if (roomCtxMap.size === 0) SignalResolver.#liveWsPubsubRoomCtx.delete(ws);
                 // Remove room membership from Redis
@@ -420,6 +528,7 @@ export class SignalResolver {
               { endpointInfo, adaptor: endpoint, registry, env, live, middleware },
             ).init();
             const result = (await context.exec()) as object | object[];
+            SignalResolver.#retainWsContext(ws, context as SignalContext<WebSocketExecutionContext>);
             const messageData: WebsocketMessageData = { type: "msg", key, data: result };
             return messageData;
           };
@@ -440,10 +549,17 @@ export class SignalResolver {
     return trimmed ? `/${trimmed}` : "";
   }
 
+  // Rebuilt per slice list request before this cache: the projection is a pure function of the Light class, and
+  // every `${refName}List${Key}` endpoint asks for it on the way to `__list`.
+  static #selectCache = new WeakMap<Cls, Record<string, true>>();
   static #selectForConstant(constant: Cls): Record<string, true> | undefined {
+    const cached = SignalResolver.#selectCache.get(constant);
+    if (cached) return cached;
     const fields = (constant as { [FIELD_META]?: Record<string, unknown> })[FIELD_META];
     if (!fields) return undefined;
-    return Object.fromEntries(Object.keys(fields).map((field) => [field, true]));
+    const select = Object.fromEntries(Object.keys(fields).map((field) => [field, true] as const));
+    SignalResolver.#selectCache.set(constant, select);
+    return select;
   }
 
   static #canUsePrimitiveQueryFastPath(endpointInfo: EndpointInfo, middleware: Map<string, MiddlewareCls>) {
@@ -476,7 +592,7 @@ export class SignalResolver {
     for (const [roomId, roomCtx] of [...roomCtxMap]) {
       if (await roomCtx.authorize()) continue;
       ws.unsubscribe(roomId);
-      await Promise.all([...roomCtx.getWebSocketContext().onUnsubscribe.values()].map((handler) => handler()));
+      await SignalResolver.#runLifecycleHandlers([roomCtx], ["unsubscribe"]);
       roomCtxMap.delete(roomId);
       websocket.leaveRoom(ws, roomId);
       revokedRooms.push(roomId);
@@ -491,18 +607,13 @@ export class SignalResolver {
   }
 
   static async handleWsClose(ws: Bun.ServerWebSocket<any>, registry: InjectRegistry) {
-    const roomCtxMap = SignalResolver.#liveWsPubsubRoomCtx.get(ws);
-    if (roomCtxMap) {
-      const unsubscribeHandlers = [...roomCtxMap.values()].flatMap((roomCtx) => [
-        ...roomCtx.getWebSocketContext().onUnsubscribe.values(),
-      ]);
-      await Promise.all(unsubscribeHandlers.map((handler) => handler()));
-      const disconnectHandlers = [...roomCtxMap.values()].flatMap((roomCtx) => [
-        ...roomCtx.getWebSocketContext().onDisconnect.values(),
-      ]);
-      await Promise.all(disconnectHandlers.map((handler) => handler()));
-    }
+    const contexts = [
+      ...(SignalResolver.#liveWsPubsubRoomCtx.get(ws)?.values() ?? []),
+      ...(SignalResolver.#liveWsMessageCtx.get(ws) ?? []),
+    ];
+    await SignalResolver.#runLifecycleHandlers(contexts, ["unsubscribe", "disconnect"]);
     SignalResolver.#liveWsPubsubRoomCtx.delete(ws);
+    SignalResolver.#liveWsMessageCtx.delete(ws);
 
     // Clean up socket from Redis
     await SignalResolver.#getWebsocket(registry).unregisterSocket(ws);

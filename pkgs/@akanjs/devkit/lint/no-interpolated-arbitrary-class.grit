@@ -1,0 +1,24 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Tailwind extracts arbitrary values from raw source *text*, so a bracket whose contents are built at
+// runtime (`min-h-[${minHeight}px]`, `bg-[${color}]`) compiles to NO css. The class name exists in the DOM
+// and the prop looks wired, but nothing applies — the failure is completely silent, and it gets worse when a
+// literal of the same shape happens to exist elsewhere in the codebase: the default value works by accident
+// while every override dies quietly (that is exactly how `Empty`'s minHeight went unnoticed).
+//
+// Grit port of styleGuard's `interpolated-arbitrary` rule (frontendBuild/styleGuard.ts) — keep the two
+// regexes in sync. Matching template *chunks* is what makes this detectable: the chunk before `${` still
+// carries the unterminated `-[`.
+//
+// The fix is a style prop for the runtime value (`style={{ minHeight }}`) — dimensions are not colors, so
+// no-inline-color does not apply — or a fixed set of literal classes when the value comes from an enum.
+// Escape hatch: `// biome-ignore lint/plugin: <reason>`.
+JsTemplateChunkElement() as $chunk where {
+  $chunk <: r"[\s\S]*(?:^|[\s\"'`{(\[:!])[a-z][a-z0-9-]*-\[[^\]]*$",
+  register_diagnostic(
+    span = $chunk,
+    message = "Interpolated Tailwind arbitrary value (e.g. `min-h-[${n}px]`) - the scanner reads source text, so this compiles to no CSS and is silently ignored. Use a style prop for the runtime value, or a fixed set of literal classes.",
+    severity = "error"
+  )
+}

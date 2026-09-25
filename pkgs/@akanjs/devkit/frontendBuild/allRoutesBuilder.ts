@@ -47,11 +47,24 @@ export class AllRoutesBuilder {
     this.#app.verbose(`[build-all] discovered ${seedIndex.entries.length} routes`);
     this.#discovery = await GraphClientEntryDiscovery.create(this.#app);
 
+    // Discovery first, bundling second. Chunk splitting only dedupes within one `Bun.build`, so a
+    // dependency shared by entries from different routes was emitted once per route that reached it.
+    // Discovery is cached and does no bundling, so collecting every entry up front costs almost nothing.
+    const allEntries: string[] = [];
+    const seen = new Set<string>();
     for (const entry of seedIndex.entries) {
       const seeds = Array.from(new Set([...seedIndex.globalLayoutFiles, ...entry.seeds]));
-      const delta = await this.#buildRoute(entry.routeId, seeds);
-      this.#mergeRoute(entry.routeId, delta);
+      for (const discovered of await this.#discovery.discover(seeds)) {
+        if (seen.has(discovered)) continue;
+        seen.add(discovered);
+        allEntries.push(discovered);
+      }
+      this.#routeIds.push(entry.routeId);
     }
+    this.#app.verbose(`[build-all] ${allEntries.length} client entries across ${this.#routeIds.length} routes`);
+
+    const delta = await this.#buildEntries(allEntries);
+    this.#mergeDelta(delta);
     this.#merged.knownEntries = Array.from(this.#knownSet);
 
     const manifest: RoutesManifest = {
@@ -76,28 +89,34 @@ export class AllRoutesBuilder {
     return { manifest, manifestPath, seedIndex };
   }
 
-  async #buildRoute(routeId: string, seeds: string[]): Promise<BuildRouteClientResult> {
+  async #buildEntries(entries: string[]): Promise<BuildRouteClientResult> {
     if (!this.#discovery) throw new Error("[build-all] client entry discovery is not initialized");
+    if (entries.length === 0)
+      return {
+        manifestDelta: {},
+        ssrManifestDelta: { moduleLoading: null, moduleMap: {} },
+        newEntries: [],
+        clientDeps: [],
+      };
     const started = Date.now();
     const delta = await new RouteClientBuilder({
       app: this.#app,
-      routeId,
-      seeds,
+      seeds: [],
+      entries,
       artifact: this.#artifact,
       knownEntries: this.#knownSet,
       discovery: this.#discovery,
       command: this.#command,
     }).build();
-    this.#app.verbose(`[build-all] ${routeId} +${delta.newEntries.length} entries (${Date.now() - started}ms)`);
+    this.#app.verbose(`[build-all] bundled ${delta.newEntries.length} entries (${Date.now() - started}ms)`);
     return delta;
   }
 
-  #mergeRoute(routeId: string, delta: BuildRouteClientResult): void {
+  #mergeDelta(delta: BuildRouteClientResult): void {
     for (const [key, row] of Object.entries(delta.manifestDelta)) this.#merged.clientManifest[key] = row;
     for (const [url, byName] of Object.entries(delta.ssrManifestDelta.moduleMap)) {
       this.#merged.ssrManifest.moduleMap[url] = byName;
     }
     for (const abs of delta.newEntries) this.#knownSet.add(abs);
-    this.#routeIds.push(routeId);
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { $createParagraphNode, $createTextNode, $getRoot, createEditor } from "lexical";
+import { $createParagraphNode, $createTextNode, $getRoot, createEditor, type Klass, type LexicalNode } from "lexical";
 
 import { isSerializedEditorState } from "./softGuard";
 
@@ -8,9 +8,10 @@ import { isSerializedEditorState } from "./softGuard";
 // pull @lexical/list|link|code, whose dev ESM builds trip bun's module loader
 // under `bun test` (a test-runtime-only issue; the app webpack build is fine).
 // See [[akan-lexical-editor-bun-test]].
-const makeEditor = () =>
+const makeEditor = (nodes: Klass<LexicalNode>[] = []) =>
   createEditor({
     namespace: "akan-test",
+    nodes,
     onError: (error) => {
       throw error;
     },
@@ -85,6 +86,100 @@ describe("Lexical serialization", () => {
     );
     expect(formats.every((f) => f > 0)).toBe(true);
     expect(new Set(formats).size).toBe(marks.length);
+  });
+});
+
+describe("mention node", () => {
+  // Imported inside the test, not at module scope: `class MentionNode extends TextNode`
+  // evaluated at import time turns a runner that cannot initialize lexical into an
+  // unloadable module (the whole file disappears from the report) instead of ordinary
+  // test failures.
+  const insertMention = async () => {
+    const [{ MentionNode }, { $createMentionNode }] = await Promise.all([
+      import("./nodes/MentionNode"),
+      import("./nodes/mentionNode.util"),
+    ]);
+    const editor = makeEditor([MentionNode]);
+    editor.update(
+      () => {
+        const paragraph = $createParagraphNode();
+        paragraph.append($createTextNode("cc "));
+        paragraph.append(
+          $createMentionNode({
+            refName: "admin",
+            refId: "a1",
+            label: "kangmin",
+            href: "/admin/a1",
+            imageUrl: "https://cdn.akan.io/a1.png",
+          }),
+        );
+        $getRoot().append(paragraph);
+      },
+      { discrete: true },
+    );
+    return editor;
+  };
+
+  it("round-trips its ref payload and token mode", async () => {
+    const editor = await insertMention();
+    const json1 = editor.getEditorState().toJSON();
+    const json2 = editor.parseEditorState(json1).toJSON();
+    expect(json2).toEqual(json1);
+
+    const chip = editor
+      .parseEditorState(json1)
+      .read(() => $getRoot().getFirstChild()?.getLastChild()?.exportJSON()) as Record<string, unknown>;
+    expect(chip).toMatchObject({
+      type: "akan-mention",
+      refName: "admin",
+      refId: "a1",
+      label: "kangmin",
+      href: "/admin/a1",
+      imageUrl: "https://cdn.akan.io/a1.png",
+      mode: "token",
+      text: "kangmin",
+    });
+  });
+
+  it("reads back as the bare label so previews and search stay in sync with the chip", async () => {
+    const editor = await insertMention();
+    const text = editor.getEditorState().read(() => $getRoot().getTextContent());
+    expect(text).toBe("cc kangmin");
+  });
+
+  it("strips a legacy `@label` text field on import", async () => {
+    const { MentionNode } = await import("./nodes/MentionNode");
+    const editor = makeEditor([MentionNode]);
+    const legacy = {
+      root: {
+        type: "root",
+        version: 1,
+        children: [
+          {
+            type: "paragraph",
+            version: 1,
+            children: [
+              {
+                type: "akan-mention",
+                version: 1,
+                text: "@kangmin",
+                refName: "admin",
+                refId: "a1",
+                label: "kangmin",
+                href: "/admin/a1",
+                imageUrl: null,
+                format: 0,
+                detail: 0,
+                mode: "token",
+                style: "",
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const restored = editor.parseEditorState(legacy);
+    expect(restored.read(() => $getRoot().getTextContent())).toBe("kangmin");
   });
 });
 

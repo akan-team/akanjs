@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { AkanMetricsReport } from "akanjs/service";
 import { LruTtlCache } from "./cachePolicy";
 import { shouldRenderLocaleAlternates } from "./metadata";
 import type { AkanRouterStateV1, AkanRscPatchMetadata } from "./routeState";
@@ -22,6 +23,7 @@ import {
   getRscHostMaxPendingChunks,
   isRscHostPendingChunkOverflow,
   nextRscHostPendingChunkCount,
+  projectRscWorkerProcessMetrics,
   type RscPending,
 } from "./rscWorkerHost";
 import { type CachedRscReplayMessage, replayCachedRscResult } from "./rscWorkerReplay";
@@ -92,6 +94,68 @@ function createHostRenderHarness(options: { maxPendingChunks?: number; signal?: 
     cancelReasons,
   };
 }
+
+describe("RscWorker process metric projection", () => {
+  // Every field `ProcessMetricsCollector.collect` samples from the live process. None may survive
+  // the projection under its own name, or it overwrites the replica's when `AkanServer` merges.
+  const processLevelKeys = [
+    "role",
+    "pid",
+    "reportedAt",
+    "rssBytes",
+    "heapTotalBytes",
+    "heapUsedBytes",
+    "externalBytes",
+    "arrayBuffersBytes",
+    "cpuUserMicros",
+    "cpuSystemMicros",
+    "maxRssKb",
+    "jscHeapSizeBytes",
+    "jscHeapCapacityBytes",
+    "jscExtraMemorySizeBytes",
+    "jscObjectCount",
+    "jscProtectedObjectCount",
+    "eventLoopLagMeanMs",
+    "eventLoopLagP99Ms",
+    "eventLoopLagMaxMs",
+    "gcDurationMs",
+    "trace",
+  ] as const;
+
+  test("strips every process-level field the worker samples about itself", () => {
+    const workerReport = Object.fromEntries(processLevelKeys.map((key) => [key, 1])) as AkanMetricsReport;
+    const projected = projectRscWorkerProcessMetrics(workerReport) as Record<string, unknown>;
+    for (const key of processLevelKeys) expect(projected[key]).toBeUndefined();
+  });
+
+  test("renames the worker's own sample onto rscWorker* and passes render counters through", () => {
+    const projected = projectRscWorkerProcessMetrics({
+      role: "rsc-worker",
+      pid: 4242,
+      rssBytes: 999,
+      heapUsedBytes: 111,
+      jscExtraMemorySizeBytes: 7,
+      rscRenderCount: 12,
+      rscResultCacheBytes: 34,
+    });
+    expect(projected.rscWorkerRssBytes).toBe(999);
+    expect(projected.rscWorkerHeapUsedBytes).toBe(111);
+    expect(projected.rscWorkerJscExtraMemorySizeBytes).toBe(7);
+    expect(projected.rscRenderCount).toBe(12);
+    expect(projected.rscResultCacheBytes).toBe(34);
+  });
+
+  test("leaves the replica's own process sample intact through the merge AkanServer performs", () => {
+    const projected = projectRscWorkerProcessMetrics({ role: "rsc-worker", pid: 4242, rssBytes: 999 });
+    // Mirrors `collect({ role, ...webRouter.getMetrics() })` — `extra` is spread last, so anything
+    // the worker leaks here wins over the replica's live sample.
+    const replicaReport: AkanMetricsReport = { pid: 1, rssBytes: 100, role: "federation", ...projected };
+    expect(replicaReport.pid).toBe(1);
+    expect(replicaReport.rssBytes).toBe(100);
+    expect(replicaReport.role).toBe("federation");
+    expect(replicaReport.rscWorkerRssBytes).toBe(999);
+  });
+});
 
 describe("RscWorker host pending chunk cap", () => {
   test("uses a conservative default when the env value is invalid", () => {

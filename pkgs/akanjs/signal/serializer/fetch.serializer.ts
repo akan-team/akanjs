@@ -1,6 +1,7 @@
 import { type Cls, ENDPOINT_META, PrimitiveRegistry, type PrimitiveScalar, SLICE_META } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { ConstantRegistry, type ConstantType } from "akanjs/constant";
+import { type FilterArgInfo, getFilterArgInfos, getFilterMeta } from "akanjs/document";
 import type { LiveRegistry } from "akanjs/service";
 import type {
   ArgInfo,
@@ -9,6 +10,7 @@ import type {
   EndpointInfo,
   SerializedArg,
   SerializedEndpoint,
+  SerializedFilter,
   SerializedReturns,
   SerializedSignal,
   SerializedSlice,
@@ -64,11 +66,41 @@ export class FetchSerializer {
       args: endpointInfo.args.map(FetchSerializer.#serializeArg),
       returns: FetchSerializer.#serializeReturns(endpointInfo),
       ...(endpointInfo.signalOption.path ? { path: endpointInfo.signalOption.path } : {}),
+      ...(endpointInfo.signalOption.method ? { method: endpointInfo.signalOption.method } : {}),
       ...(endpointInfo.signalOption.fileUpload ? { fileUpload: true } : {}),
       ...(guards?.length ? { guards } : {}),
     };
   }
 
+  static #serializeFilterArg(argInfo: FilterArgInfo): SerializedArg {
+    const { refName, modelType } = FetchSerializer.#resolveRefInfo(argInfo.argRef as Cls);
+    return {
+      type: "search",
+      refName,
+      name: argInfo.name,
+      ...(modelType ? { modelType: modelType as SerializedArg["modelType"] } : {}),
+      ...(argInfo.arrDepth ? { arrDepth: argInfo.arrDepth } : {}),
+      ...(argInfo.nullable ? { nullable: true } : {}),
+      ...(argInfo.enum ? { enum: argInfo.enum.refName } : {}),
+      ...(argInfo.ref ? { ref: argInfo.ref } : {}),
+    };
+  }
+  /**
+   * The model's filter surface, which is what the root slice takes instead of a raw query. A client cannot
+   * offer a filter it cannot name, nor fill args it cannot type — so both travel, unlike the query map that
+   * used to stay server-side.
+   */
+  static #serializeFilter(sliceCls: SliceCls): SerializedFilter | undefined {
+    const filterMeta = getFilterMeta(sliceCls.srv.db.filter, { allowEmpty: true });
+    if (!filterMeta) return undefined;
+    const filter = Object.fromEntries(
+      Object.entries(filterMeta.query).map(([key, filterInfo]) => [
+        key,
+        getFilterArgInfos(filterInfo).map(FetchSerializer.#serializeFilterArg),
+      ]),
+    );
+    return { filter, sortKeys: Object.keys(filterMeta.sort) };
+  }
   static #serializeSlice(sliceInfo: SliceInfo): SerializedSlice {
     const guards = sliceInfo.signalOption.guards?.map((g) => g.name);
     return {
@@ -90,9 +122,15 @@ export class FetchSerializer {
     for (const [key, endpointInfo] of Object.entries(endpointMeta)) {
       endpoint[key] = FetchSerializer.#serializeEndpoint(endpointInfo);
     }
+    const filter = FetchSerializer.#serializeFilter(sliceCls);
+    // The root slice picks one of these keys, so the list it may pick from belongs on the argument itself:
+    // every audience that reads a schema — the API explorer, the OpenAPI document, an MCP client — gets it.
+    const queryKeyArg = slice[""]?.args.find((arg) => arg.name === "queryKey");
+    if (queryKeyArg && filter) queryKeyArg.oneOf = Object.keys(filter.filter);
     return {
       ...(prefix ? { prefix } : {}),
       ...(Object.keys(slice).length ? { slice } : {}),
+      ...(filter ? { filter } : {}),
       ...(sliceCls.getGuards.filter((g) => g.name !== "None").length
         ? { getGuards: sliceCls.getGuards.map((g) => g.name) }
         : {}),

@@ -14,7 +14,7 @@ export class ShutdownManager {
 
     for (const signal of signals) {
       process.on(signal, async () => {
-        logger.info(`Received ${signal}, starting graceful shutdown...`);
+        logger.debug(`Received ${signal}, starting graceful shutdown...`);
         try {
           await onShutdown();
           process.exit(0);

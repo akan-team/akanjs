@@ -1,5 +1,6 @@
 import { Crawler, FileManager, getImageAbstract, getImageSize, IpfsApi, type StorageApi } from "@libs/util/srvkit";
 import { sleep } from "akanjs/common";
+import { createDocumentId } from "akanjs/document";
 import type { LocalFile } from "akanjs/server";
 import { serve } from "akanjs/service";
 
@@ -51,13 +52,16 @@ export class FileService extends serve(db.file, ({ use, plug }) => ({
     uri: string,
     purpose: string,
     group: string,
-    header: { [key: string]: string } = {},
+    { header, rename, fileId }: { header?: { [key: string]: string }; rename?: string; fileId?: string } = {},
   ): Promise<db.File | null> {
     try {
-      const file = await this.fileModel.findByOrigin(uri);
-      if (file) return file;
-      const localFile = await this.saveImageFromUri(uri, { header });
-      return await this.addFileFromLocal(localFile, purpose, group, { origin: uri });
+      const requestedFile = fileId ? await this.loadFile(fileId) : null;
+      if (requestedFile) return requestedFile;
+      const isDataUri = uri.startsWith("data:");
+      const file = isDataUri ? null : await this.fileModel.findByOrigin(uri);
+      if (file && (!fileId || file.id === fileId)) return file;
+      const localFile = await this.saveImageFromUri(uri, { header, rename });
+      return await this.addFileFromLocal(localFile, purpose, group, { origin: uri, fileId });
     } catch (_err) {
       this.logger.warn(`Failed to add file from URI - ${uri}`);
       return null;
@@ -73,6 +77,23 @@ export class FileService extends serve(db.file, ({ use, plug }) => ({
       this.logger.warn(`Failed to get json from URI - ${uri}`);
       return undefined;
     }
+  }
+  async readFileBuffer(file: db.File): Promise<Buffer> {
+    return await this._readFileBuffer(file);
+  }
+  async readFileAsBase64(file: db.File): Promise<string> {
+    return (await this._readFileBuffer(file)).toString("base64");
+  }
+  private async _readFileBuffer(file: db.File): Promise<Buffer> {
+    if (file.url.startsWith("http://") || file.url.startsWith("https://")) {
+      const response = await fetch(file.url, { signal: AbortSignal.timeout(60_000) });
+      if (!response.ok) throw new Err("file.error.fileReadFailed", { filename: file.filename });
+      return Buffer.from(await response.arrayBuffer());
+    }
+    const urlPrefix = `${this.storageApi.urlPrefix}/`;
+    if (!file.url.startsWith(urlPrefix)) throw new Err("file.error.fileReadFailed", { filename: file.filename });
+    const stream = await this.storageApi.readReadyData(file.url.replace(urlPrefix, ""));
+    return Buffer.from(await new Response(stream).arrayBuffer());
   }
 
   async _addFileFromStream(fileStream: File, fileMeta: db.FileMeta, purpose: string, group: string | null) {
@@ -97,7 +118,9 @@ export class FileService extends serve(db.file, ({ use, plug }) => ({
         await this.fileModel.progressUpload(file.id, progress.loaded, fileMeta.size);
       },
       uploadSuccess: async (url) => {
-        const abstract = fileStream.type.startsWith("image/") ? await getImageAbstract(url) : {};
+        const abstract = fileStream.type.startsWith("image/")
+          ? await getImageAbstract(await resolvedFileStream.arrayBuffer().then((b) => Buffer.from(b)))
+          : {};
         void this.fileModel.finishUpload(file.id, url, abstract);
       },
     });
@@ -107,31 +130,24 @@ export class FileService extends serve(db.file, ({ use, plug }) => ({
     localFile: LocalFile,
     purpose: string,
     group = "default",
-    { origin }: { origin?: string } = {},
+    { origin, fileId }: { origin?: string; fileId?: string } = {},
   ): Promise<db.File> {
     const { size } = await FileManager.getFileStat(localFile);
-    const file = await this.fileModel.createFile({
-      ...localFile,
-      url: "",
-      imageSize: localFile.mimetype.startsWith("image/") ? await getImageSize(localFile.localPath) : [0, 0],
-      origin,
-      size,
+    const imageSize = localFile.mimetype.startsWith("image/") ? await getImageSize(localFile.localPath) : [0, 0];
+    const data = { ...localFile, url: "", imageSize, origin, size };
+    // An edge or station copying a file down from the cloud keeps the source's id so both sides
+    // resolve the same reference; generateFile is the only path that accepts one.
+    const file = fileId
+      ? await this.fileModel.generateFile({ id: fileId, ...data })
+      : await this.fileModel.createFile(data);
+    const path = `${purpose.length ? purpose : "default"}/${group?.length ? group : "default"}/${this._convertFileName(file)}`;
+    const url = await this.storageApi.uploadDataFromLocal({
+      path,
+      localPath: localFile.localPath,
     });
-    return new Promise((resolve, reject) => {
-      this.storageApi.uploadDataFromStream({
-        path: `${purpose}/${group}/${localFile.filename}`,
-        body: FileManager.readFileAsStream(localFile),
-        mimetype: localFile.mimetype,
-        updateProgress: async (progress) => {
-          await this.fileModel.progressUpload(file.id, progress.loaded, size);
-        },
-        uploadSuccess: async (url) => {
-          const abstract = localFile.mimetype.startsWith("image/") ? await getImageAbstract(url) : {};
-          await this.fileModel.finishUpload(file.id, url, abstract);
-          resolve(file.set({ status: "active", progress: 100, url, ...abstract }));
-        },
-      });
-    });
+    const abstract = localFile.mimetype.startsWith("image/") ? await getImageAbstract(localFile.localPath) : {};
+    await this.fileModel.finishUpload(file.id, url, abstract);
+    return file.set({ status: "active", progress: 100, url, ...abstract });
   }
   async saveImageFromUri(
     uri: string,
@@ -140,12 +156,21 @@ export class FileService extends serve(db.file, ({ use, plug }) => ({
     const dirname = `${this.localDir}/uriDownload`;
     if (uri.startsWith("data:")) return await FileManager.saveEncodedData(uri, dirname);
     const readStream = uri.startsWith("ipfs://")
-      ? await FileManager.readUrlAsStream(this.ipfsApi.getHttpsUri(uri))
-      : await FileManager.readUrlAsStream(uri);
-    const filename = uri.split("/").pop();
-    const localPath = `${dirname}${filename ? `/${filename}` : ""}`;
-    const localFile = await FileManager.writeStreamToFile(readStream, localPath, { cache, rename });
-    return localFile;
+      ? await FileManager.readUrlAsStream(this.ipfsApi.getHttpsUri(uri), { headers: header })
+      : await FileManager.readUrlAsStream(uri, { headers: header });
+    const filename = rename ?? this._filenameFromUri(uri);
+    const localPath = `${dirname}/${filename}`;
+    return await FileManager.writeStreamToFile(readStream, localPath, { cache, rename: filename });
+  }
+  private _filenameFromUri(uri: string) {
+    let basename = "";
+    try {
+      basename = new URL(uri).pathname.split("/").pop() ?? "";
+    } catch {
+      basename = uri.split("/").pop()?.split("?")[0] ?? "";
+    }
+    const ext = basename.includes(".") ? `.${basename.split(".").pop()}` : "";
+    return `${createDocumentId()}${ext}`;
   }
   private _convertFileName(file: db.File) {
     const split = file.filename.split(".");

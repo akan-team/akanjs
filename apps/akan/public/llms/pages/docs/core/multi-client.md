@@ -85,6 +85,8 @@ Local development
 
 Production domains
 
+Locally the site root has no page of its own, so Akan answers it with a list of every basePath in the build instead of a 404. Deployed hosts never see that list; the matching domain opens its client directly.
+
 CSR And Mobile Builds
 
 When the app is built, Akan can prepare CSR web output per basePath. Mobile targets can also point to a basePath, so Android and iOS apps can open the right client from the same backend.

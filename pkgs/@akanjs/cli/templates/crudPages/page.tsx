@@ -23,7 +23,7 @@ export default async function Page() {
         <div className="animate-fadeIn px-4 pt-4 flex gap-4 items-center">
           <div className="font-bold text-lg md:text-4xl">${dict.Model}s</div>
           <Link href={\`/${dict.model}/new\`}>
-            <button className="btn">+ {l("base.createModel", { model: l("${dict.model}.modelName") })}</button>
+            <button className="inline-flex items-center justify-center gap-2 rounded-field bg-primary px-4 py-2 font-medium text-primary-foreground text-sm transition-colors hover:bg-primary/90">+ {l("base.createModel", { model: l("${dict.model}.modelName") })}</button>
           </Link>
         </div>
         <div>{l("${dict.model}.modelDesc")}</div>

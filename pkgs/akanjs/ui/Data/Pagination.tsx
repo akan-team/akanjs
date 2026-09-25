@@ -1,9 +1,10 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import type { BaseInsight } from "akanjs/constant";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
+import { usePageTool } from "akanjs/webkit";
 
 import { Pagination as Pagn } from "../Pagination";
 
@@ -38,15 +39,21 @@ export default function Pagination<T extends string>({ className, slice }: Pagin
   const limitOfModel = storeUse[namesOfSlice.limitOfModel]() as number;
   const lastPageOfModel = storeUse[namesOfSlice.lastPageOfModel]() as number;
   const pageOfModel = storeUse[namesOfSlice.pageOfModel]() as number;
+  const setPageOfModel = usePageTool({
+    name: modelInsight.count > limitOfModel ? namesOfSlice.setPageOfModel : null,
+    model: modelName,
+    page: pageOfModel,
+    lastPage: lastPageOfModel,
+    total: modelInsight.count,
+    onSelect: (page) => void storeDo[namesOfSlice.setPageOfModel](page),
+  });
   return (
-    <div className={clsx("mt-4 flex flex-wrap justify-center", className)}>
+    <div className={cn("mt-4 flex flex-wrap justify-center", className)}>
       <Pagn
         currentPage={pageOfModel}
         // showQuickJumper={lastPageOfModel > 10}
         total={modelInsight.count}
-        onPageSelect={(page) => {
-          void storeDo[namesOfSlice.setPageOfModel](page);
-        }}
+        onPageSelect={setPageOfModel}
         itemsPerPage={limitOfModel || modelInsight.count}
       />
     </div>

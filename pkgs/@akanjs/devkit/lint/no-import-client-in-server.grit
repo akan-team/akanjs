@@ -1,0 +1,48 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Server files (*.document.ts, *.dictionary.ts, *.service.ts, *.signal.ts, srvkit/) and shared files
+// (common/, *.constant.ts) run in Bun with no DOM and no bundler, and every CLI command, worker, and
+// migration that loads a service loads whatever the service imports. Reaching into the client graph
+// pulls React, the store, and the browser globals they touch into that process, and it runs the
+// dependency backwards: the client entrypoint is built on top of cnst and sig, not the other way round.
+//
+// `import type` is erased before bundling and stays legal. A mixed value-and-type import is not exempt.
+or {
+  JsModuleSource() as $source where {
+    $source <: within JsImport() as $import,
+    not $import <: r"import\s+type[\s\S]*",
+    $source <: or {
+      r"\".*\.store\"",
+      r"\".*\.(?:Template|Unit|Util|View|Zone)\""
+    },
+    register_diagnostic(
+      span = $source,
+      message = "Client module. A server or shared file must not import a *.store or a module component (*.Template, *.Unit, *.Util, *.View, *.Zone) — server code reaches the model through cnst and db, never through client state or JSX.",
+      severity = "error"
+    )
+  },
+  JsModuleSource() as $source where {
+    $source <: within JsImport() as $import,
+    not $import <: r"import\s+type[\s\S]*",
+    $source <: or {
+      r"\"(?:.*/)?(?:ui|webkit)(?:/.*)?\"",
+      r"\".*/client(?:/.*)?\""
+    },
+    register_diagnostic(
+      span = $source,
+      message = "Client entrypoint. A server or shared file must not import ui/, webkit/, or a package client entrypoint such as '@libs/<lib>/client' or 'akanjs/client' — import the server entrypoint or a common/ helper instead.",
+      severity = "error"
+    )
+  },
+  JsModuleSource() as $source where {
+    $source <: within JsImport() as $import,
+    not $import <: r"import\s+type[\s\S]*",
+    $source <: r"\"(?:.*/)?(?:st|store|useClient)\"",
+    register_diagnostic(
+      span = $source,
+      message = "Client barrel. A server or shared file must not import st, store, or useClient — server code holds no client state, and Err comes from dict on the server.",
+      severity = "error"
+    )
+  }
+}

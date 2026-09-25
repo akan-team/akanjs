@@ -1,0 +1,45 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Client files (ui/, webkit/, page/, *.store.ts, every .tsx) and shared files (common/, *.constant.ts)
+// are compiled into the browser bundle, so a single value import of a server module drags its whole
+// graph along — the database driver, node:crypto, a secret resolved from process.env. The boundary has
+// to hold at the import statement, because by the call site the module is already bundled.
+//
+// `import type` is erased before bundling and stays legal, so a shared file may still name a server-side
+// type. A mixed value-and-type import is not exempt: it emits a real edge.
+or {
+  JsModuleSource() as $source where {
+    $source <: within JsImport() as $import,
+    not $import <: r"import\s+type[\s\S]*",
+    $source <: r"\".*\.(?:document|dictionary|service|signal)\"",
+    register_diagnostic(
+      span = $source,
+      message = "Server module. A client or shared file must not import a *.document, *.dictionary, *.service, or *.signal file — take the model from the package client entrypoint ('@libs/<lib>/client') or from its *.constant instead. Write 'import type' if only the type is needed.",
+      severity = "error"
+    )
+  },
+  JsModuleSource() as $source where {
+    $source <: within JsImport() as $import,
+    not $import <: r"import\s+type[\s\S]*",
+    $source <: or {
+      r"\"(?:.*/)?srvkit(?:/.*)?\"",
+      r"\".*/server(?:/.*)?\""
+    },
+    register_diagnostic(
+      span = $source,
+      message = "Server entrypoint. A client or shared file must not import srvkit/ or a package server entrypoint such as '@apps/<app>/server' or 'akanjs/server' — import the matching client entrypoint instead.",
+      severity = "error"
+    )
+  },
+  JsModuleSource() as $source where {
+    $source <: within JsImport() as $import,
+    not $import <: r"import\s+type[\s\S]*",
+    $source <: r"\"(?:.*/)?(?:db|srv|sig|dict|option|useServer)\"",
+    register_diagnostic(
+      span = $source,
+      message = "Server barrel. A client or shared file must not import db, srv, sig, dict, option, or useServer — read models from cnst, state from st, and Err from the package client entrypoint.",
+      severity = "error"
+    )
+  }
+}

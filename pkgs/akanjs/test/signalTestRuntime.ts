@@ -1,12 +1,12 @@
-import type { BackendEnv } from "akanjs/base";
+import type { BackendEnv, BaseEnv } from "akanjs/base";
 import type { FetchProxy } from "akanjs/fetch";
 import type { AkanLib } from "akanjs/server";
-import { TestServer, type TestServerOptions } from "./testServer";
+import { type TestEnv, TestServer, type TestServerOptions } from "./testServer";
 
 export interface SignalTestTarget {
   type: "app" | "lib";
   name: string;
-  env: BackendEnv;
+  env: TestEnv;
   fetch: FetchProxy;
   libs: AkanLib[];
 }
@@ -87,14 +87,12 @@ export const setupSignalTestTarget = async <Fetch = FetchProxy>(
   pendingContext = (async () => {
     terminatingContext = undefined;
     const resolvedOptions = { ...configuredOptions, ...options };
-    const env: BackendEnv = {
+    const env: BaseEnv = {
       repoName: process.env.AKAN_PUBLIC_REPO_NAME ?? "akanjs",
       serveDomain: process.env.AKAN_PUBLIC_SERVE_DOMAIN ?? "akanjs.com",
       appName: name,
       environment: "testing",
       operationMode: "local",
-      tunnelUsername: process.env.SSH_TUNNEL_USERNAME ?? "username",
-      tunnelPassword: process.env.SSH_TUNNEL_PASSWORD ?? process.env.AKAN_PUBLIC_REPO_NAME ?? "password",
     };
     TestServer.applyProcessEnv(env, resolvedOptions);
 
@@ -105,7 +103,7 @@ export const setupSignalTestTarget = async <Fetch = FetchProxy>(
     const target: SignalTestTarget = {
       type,
       name,
-      env: targetModule.env,
+      env: { ...env, ...targetModule.env },
       fetch: targetModule.fetch,
       libs: [...dependencyModules.map((mod) => mod.lib), targetModule.lib],
     };

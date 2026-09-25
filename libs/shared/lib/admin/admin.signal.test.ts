@@ -56,6 +56,42 @@ describe("Admin Signal", () => {
       await expect(adminAgent.fetch.refreshAdminJwt(refreshedToken.refreshToken)).rejects.toThrow();
     });
 
+    it("runs a read-only statement for a superAdmin, and refuses anyone else", async () => {
+      const { rows, columns, truncated } = await rootAdminAgent.fetch.runAdminSql(
+        `SELECT COUNT(*) AS total FROM "admin"`,
+        null,
+      );
+      expect(columns).toEqual(["total"]);
+      expect((rows[0] as { total: number }).total).toBeGreaterThan(0);
+      expect(truncated).toBe(false);
+
+      const plainAgent = await adminSpec.getPlainAdminAgent(rootAdminAgent);
+      await expect(plainAgent.fetch.runAdminSql(`SELECT 1 AS one`, null)).rejects.toThrow();
+    });
+
+    it("cannot reach a secret field through SQL, and cannot write", async () => {
+      // `password` is `field.secret` on this very model, and it lives in `_doc` like every non-base field.
+      await expect(rootAdminAgent.fetch.runAdminSql(`SELECT _doc FROM "admin"`, null)).rejects.toThrow();
+      await expect(
+        rootAdminAgent.fetch.runAdminSql(`SELECT json_extract(_doc, '$.password') AS leaked FROM "admin"`, null),
+      ).rejects.toThrow();
+      // `SELECT *` names no column, so the row filter rather than the statement check is what drops it.
+      const { columns } = await rootAdminAgent.fetch.runAdminSql(`SELECT * FROM "admin"`, null);
+      expect(columns).not.toContain("_doc");
+      expect(columns).toContain("id");
+
+      await expect(rootAdminAgent.fetch.runAdminSql(`DELETE FROM "admin"`, null)).rejects.toThrow();
+      await expect(rootAdminAgent.fetch.runAdminSql(`SELECT 1; DROP TABLE "admin"`, null)).rejects.toThrow();
+      const { rows } = await rootAdminAgent.fetch.runAdminSql(`SELECT COUNT(*) AS total FROM "admin"`, null);
+      expect((rows[0] as { total: number }).total).toBeGreaterThan(0);
+    });
+
+    it("caps the rows it returns and says when it did", async () => {
+      const { rows, truncated } = await rootAdminAgent.fetch.runAdminSql(`SELECT "id" FROM "admin"`, 1);
+      expect(rows).toHaveLength(1);
+      expect(truncated).toBe(true);
+    });
+
     it("can remove admin", async () => {
       // 1. Admin 삭제
       adminAgent.admin = await rootAdminAgent.fetch.removeAdmin(adminAgent.admin.id);

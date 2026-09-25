@@ -1,26 +1,25 @@
-import { ACTION_META, STATE_DERIVED_META, STATE_INIT_META } from "akanjs/base";
+import { ACTION_META, ACTION_OWNER_META, STATE_DERIVED_META, STATE_INIT_META } from "akanjs/base";
 import { Translator } from "akanjs/client";
 import { capitalize, Logger, parseAkanI18nEnv } from "akanjs/common";
-import { produce } from "immer";
+import { ConstantRegistry } from "akanjs/constant";
+import type { SerializedArg } from "akanjs/signal";
+import { enableMapSet, produce } from "immer";
 import type { RefObject } from "react";
+import { useScopePath } from "use-agentic";
+import { type ActionOwner, actionTagOf, tagAction } from "./actionTag";
+import { useFormTools } from "./agentic/useFormTools";
 import { useEffect, useRef, useSyncExternalStore } from "./hooks";
 import type { RootStoreCls } from "./rootStore";
+import type { SliceActionKey, SliceActionRole, SliceStateRole } from "./sliceRole";
 import type { SliceStateKey } from "./state";
 import { evaluateInitializers, type SearchParamsState, type StateDerivedMeta } from "./stateBuilder";
+import type { StoreUseOptions } from "./types";
+
+enableMapSet();
 
 type StoreStateRecord = Record<string, unknown>;
 type StoreAction = (...args: unknown[]) => unknown;
 type TranslationParam = Record<string, string | number>;
-
-type SliceActionKey =
-  | "initModel"
-  | "refreshModel"
-  | "selectModel"
-  | "setPageOfModel"
-  | "addPageOfModel"
-  | "setLimitOfModel"
-  | "setQueryArgsOfModel"
-  | "setSortOfModel";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -136,6 +135,11 @@ export class StoreInstance {
   }) as any;
 
   sel = <U>(selector: (state: StoreStateRecord) => U, equals?: (a: U, b: U) => boolean) => {
+    this.#useLiveSelector(selector);
+    return this.#sel(selector, equals);
+  };
+
+  #sel = <U>(selector: (state: StoreStateRecord) => U, equals?: (a: U, b: U) => boolean) => {
     const eq = equals ?? Object.is;
     return useSyncExternalStore(
       (onStoreChange: () => void) => {
@@ -154,7 +158,67 @@ export class StoreInstance {
     );
   };
 
+  retainLive = (key: string, scopeKey = "") => {
+    const scopes = this.#liveKeys.get(key) ?? new Map<string, number>();
+    scopes.set(scopeKey, (scopes.get(scopeKey) ?? 0) + 1);
+    this.#liveKeys.set(key, scopes);
+  };
+
+  releaseLive = (key: string, scopeKey = "") => {
+    const scopes = this.#liveKeys.get(key);
+    if (!scopes) return;
+    const count = scopes.get(scopeKey) ?? 0;
+    if (count <= 1) scopes.delete(scopeKey);
+    else scopes.set(scopeKey, count - 1);
+    if (!scopes.size) this.#liveKeys.delete(key);
+  };
+
+  #useLive(key: string, count = true) {
+    // Retention is tagged with the ambient agent scope, so a zone session sees only the keys its own subtree reads.
+    const scopeKey = useScopePath().join(".");
+    useEffect(() => {
+      if (!count) return;
+      this.retainLive(key, scopeKey);
+      return () => {
+        this.releaseLive(key, scopeKey);
+      };
+    }, [key, count, scopeKey]);
+  }
+
+  /**
+   * `sel` and `ref` take an opaque selector, so the keys it reads are learned by running it once over a recording
+   * proxy. Captured at mount, like every surface declaration: the retained set must equal the released set, and a
+   * selector is a new closure every render.
+   */
+  #useLiveSelector(selector: (state: StoreStateRecord) => unknown) {
+    const scopeKey = useScopePath().join(".");
+    useEffect(() => {
+      const keys = [...this.#touched(selector)];
+      for (const key of keys) this.retainLive(key, scopeKey);
+      return () => {
+        for (const key of keys) this.releaseLive(key, scopeKey);
+      };
+    }, [scopeKey]);
+  }
+
+  #touched(selector: (state: StoreStateRecord) => unknown) {
+    const touched = new Set<string>();
+    const proxy = new Proxy(this.#state, {
+      get: (target, key) => {
+        if (typeof key === "string") touched.add(key);
+        return Reflect.get(target, key);
+      },
+    });
+    try {
+      selector(proxy as StoreStateRecord);
+    } catch {
+      // A selector that throws on the current state still counted every key it reached first.
+    }
+    return touched;
+  }
+
   ref = <U>(selector: (state: StoreStateRecord) => U): RefObject<U> => {
+    this.#useLiveSelector(selector);
     const ref = useRef(selector(this.get()));
     useEffect(
       () =>
@@ -166,9 +230,76 @@ export class StoreInstance {
     return ref as RefObject<U>;
   };
 
-  use: { [key: string]: () => unknown } = {};
+  use: { [key: string]: (options?: StoreUseOptions) => unknown } = {};
   do: { [key: string]: StoreAction } = {};
   slice: { [key: string]: unknown } = {};
+
+  readonly #sliceActionRoles = new Map<string, SliceActionRole>();
+  readonly #sliceStateRoles = new Map<string, SliceStateRole>();
+  readonly #actionArity = new Map<string, number>();
+  readonly #actionOwners = new Map<string, ActionOwner>();
+  readonly #liveKeys = new Map<string, Map<string, number>>();
+  readonly #generatedSetters = new Set<string>();
+
+  /**
+   * How many mounted components are reading each state key right now. `st.use.*` is a hook, so subscription is
+   * presence — this is how an agent context knows which keys the screen is actually built from.
+   */
+  get liveKeys(): ReadonlyMap<string, number> {
+    return this.liveKeysIn("");
+  }
+
+  /**
+   * The live keys as one zone view sees them: retentions tagged at the view's scope or below. The empty view is the
+   * whole screen. Zones are views, not walls — a key read inside a zone counts for that zone and for the root alike.
+   */
+  liveKeysIn(viewKey: string): ReadonlyMap<string, number> {
+    const keys = new Map<string, number>();
+    for (const [key, scopes] of this.#liveKeys) {
+      let total = 0;
+      for (const [scopeKey, count] of scopes) {
+        if (viewKey && scopeKey !== viewKey && !scopeKey.startsWith(`${viewKey}.`)) continue;
+        total += count;
+      }
+      if (total > 0) keys.set(key, total);
+    }
+    return keys;
+  }
+
+  /** Which module declared each action. See `ActionOwner`. */
+  get actionOwners(): ReadonlyMap<string, ActionOwner> {
+    return this.#actionOwners;
+  }
+
+  /**
+   * How many arguments each action declares.
+   *
+   * Recorded because `do[key]` is a rest-argument wrapper around the real method, so its own `length` is zero for
+   * everything — the arity is gone by the time anyone holding the instance could ask. A rest parameter on the method
+   * itself still reads as zero; nothing can recover that.
+   */
+  get actionArity(): ReadonlyMap<string, number> {
+    return this.#actionArity;
+  }
+
+  /** What each generated slice key is, for a reader that has only the finished store. See `SliceActionRole`. */
+  get sliceActionRoles(): ReadonlyMap<string, SliceActionRole> {
+    return this.#sliceActionRoles;
+  }
+
+  get sliceStateRoles(): ReadonlyMap<string, SliceStateRole> {
+    return this.#sliceStateRoles;
+  }
+
+  /** Keys the store materializes from a computation, the URL, or storage. `set` throws on them. */
+  get derivedKeys(): ReadonlySet<string> {
+    return this.#derivedMeta.derivedKeys;
+  }
+
+  /** The `set<Key>` conveniences `#extendAccessors` writes for every plain state key. Their value is untyped. */
+  get generatedSetters(): ReadonlySet<string> {
+    return this.#generatedSetters;
+  }
 
   constructor(store?: RootStoreCls) {
     if (store) this.addStore(store);
@@ -187,6 +318,7 @@ export class StoreInstance {
       hasNewStateKey = true;
     }
     if (hasNewStateKey) this.#state = nextState;
+    for (const [key, owner] of Object.entries(store[ACTION_OWNER_META] ?? {})) this.#actionOwners.set(key, owner);
     this.#mergeActions(store[ACTION_META]);
     this.#extendAccessors(derivedState, store[ACTION_META]);
     this.#buildSlices(store);
@@ -194,35 +326,65 @@ export class StoreInstance {
     return this;
   }
 
+  /** `<model>Form` for a model this client knows, or null — the only state key whose setters are worth publishing. */
+  static #formRefNameOf(key: string) {
+    if (!key.endsWith("Form")) return null;
+    const refName = key.slice(0, -"Form".length);
+    return ConstantRegistry.database.has(refName) ? refName : null;
+  }
+
   #mergeActions(actions: { [key: string]: StoreAction }) {
     for (const [k, method] of Object.entries(actions)) {
       this.#ctx[k] = (...args: unknown[]) => method.call(this.#ctx, ...args);
+      this.#actionArity.set(k, method.length);
     }
   }
 
   #extendAccessors(state: StoreStateRecord, actions: { [key: string]: StoreAction }) {
     for (const k of Object.keys(state)) {
       if (typeof state[k] !== "function") {
-        this.use[k] = () => this.sel((s) => s[k]);
+        // Reading a form is what publishes its field setters: the component that put the form on screen is the
+        // one saying an agent may fill it, and no app writes `st.tool` once per field to say the same thing.
+        const formRefName = StoreInstance.#formRefNameOf(k);
+        this.use[k] = formRefName
+          ? (options?: StoreUseOptions) => {
+              const publish = options?.agent !== false;
+              this.#useLive(k, publish);
+              useFormTools(publish ? formRefName : null, (action, value) => {
+                void (this.do[action] as ((value: unknown) => unknown) | undefined)?.(value);
+              });
+              return this.#sel((s) => s[k]);
+            }
+          : (options?: StoreUseOptions) => {
+              this.#useLive(k, options?.agent !== false);
+              return this.#sel((s) => s[k]);
+            };
         if (this.#derivedMeta.derivedKeys.has(k)) continue;
         const setKey = `set${capitalize(k)}`;
-        this.do[setKey] = (value: unknown) => this.set({ [k]: value });
+        // A declared action of the same name (`setPageOfX` is a slice action) wins the key; no convenience setter.
+        if (setKey in actions) continue;
+        this.do[setKey] = tagAction((value: unknown) => this.set({ [k]: value }), { action: setKey, state: k });
+        this.#actionArity.set(setKey, 1);
+        this.#generatedSetters.add(setKey);
       }
     }
     for (const k of Object.keys(actions)) {
-      this.do[k] = async (...args: unknown[]) => {
+      const dispatch = async (...args: unknown[]) => {
         Logger.verbose(`${k} action loading...`);
         const start = Date.now();
         try {
+          // action can return the result, but it is restricted to undefined, because of maintainability concerns
           const result = await (this.#ctx[k] as StoreAction)(...args);
           Logger.verbose(`=> ${k} action dispatched (${Date.now() - start}ms)`);
-          return result;
         } catch (error) {
           this.#showActionErrorMessage(k, error);
           Logger.error(`${k} action error return: ${error instanceof Error ? error.message : String(error)}`);
           throw error;
         }
       };
+      // Carried over from the method rather than rebuilt, because a generated setter knows the state path it writes
+      // and this wrapper does not. Everything else at least knows its own name.
+      this.do[k] = tagAction(dispatch, actionTagOf(actions[k]) ?? { action: k });
     }
   }
 
@@ -252,7 +414,7 @@ export class StoreInstance {
     });
   }
 
-  #buildSlice(refName: string, sliceName: string, serializedSlice: { args?: any[] }) {
+  #buildSlice(refName: string, sliceName: string, serializedSlice: { args?: SerializedArg[] }) {
     const [fieldName, className] = [refName, capitalize(refName)];
     const names: { [key in SliceStateKey | SliceActionKey | "model" | "Model"]: string } = {
       model: fieldName,
@@ -322,14 +484,20 @@ export class StoreInstance {
       argLength: serializedSlice.args?.length ?? 0,
     };
 
+    const args = serializedSlice.args ?? [];
     for (const key of Object.keys(namesOfSliceAction) as SliceActionKey[]) {
       const rootActionKey = namesOfSliceAction[key];
-      if (this.do[rootActionKey]) targetSlice.do[names[key]] = this.do[rootActionKey];
+      if (!this.do[rootActionKey]) continue;
+      targetSlice.do[names[key]] = this.do[rootActionKey];
+      this.#sliceActionRoles.set(rootActionKey, { role: key, refName, sliceName, args });
     }
 
     for (const key of Object.keys(namesOfSliceState) as SliceStateKey[]) {
       const rootStateKey = namesOfSliceState[key];
-      if (this.use[rootStateKey]) targetSlice.use[names[key]] = this.use[rootStateKey];
+      if (this.use[rootStateKey]) {
+        targetSlice.use[names[key]] = this.use[rootStateKey];
+        this.#sliceStateRoles.set(rootStateKey, { role: key, refName, sliceName });
+      }
       const setRootKey = `set${capitalize(rootStateKey)}`;
       const setLocalKey = `set${capitalize(names[key])}`;
       if (this.do[setRootKey]) targetSlice.do[setLocalKey] = this.do[setRootKey];

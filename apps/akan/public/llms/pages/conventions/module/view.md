@@ -76,7 +76,7 @@ Use Load.View when server-fetched view data must hydrate into client store state
 
 ```ts
 import { type cnst, usePage } from "@apps/myapp/client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 
 interface GeneralProps {
   className?: string;
@@ -86,7 +86,7 @@ interface GeneralProps {
 export const General = ({ className, ticket }: GeneralProps) => {
   const { l } = usePage();
   return (
-    <div className={clsx("flex w-full flex-col gap-4", className)}>
+    <div className={cn("flex w-full flex-col gap-4", className)}>
       <h1>{ticket.title}</h1>
       <div>{l("ticket.status")}: {l(`ticketStatus.${ticket.status}`)}</div>
     </div>

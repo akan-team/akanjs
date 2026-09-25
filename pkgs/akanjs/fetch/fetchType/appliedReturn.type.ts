@@ -8,6 +8,23 @@ export type SliceMeta = {
   argLength: number;
 };
 
+/** What the root slice takes: one of the model's declared filter queries, and the args that filter asks for. */
+export interface QuerySetting {
+  queryKey: string;
+  /**
+   * Read when the query is applied rather than when the setting is written, so a thunk keeps an arg relative to
+   * now — `() => [dayjs().subtract(1, "hour")]` — current at the moment the user asks for it.
+   */
+  args?: unknown[] | (() => unknown[]);
+  /**
+   * The same list under the name the rest of the framework already uses for it — the `queryArgsOf<Model>` state
+   * key, `refresh<Model>({ queryArgs })`, and a field's own `.meta(...)` declaration. Accepted so a query a
+   * field declares is one of these as it stands, rather than something every caller has to rename by hand.
+   * `args` wins when both are given.
+   */
+  queryArgs?: unknown[] | (() => unknown[]);
+}
+
 export type ServerInit<
   RefName extends string,
   Light,

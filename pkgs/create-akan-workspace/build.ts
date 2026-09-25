@@ -5,7 +5,7 @@ const build = async () => {
     const outdir = process.env.DIST_DIR ?? `${workspaceRoot}/dist/pkgs/create-akan-workspace`;
     const pkgJson = await Bun.file(`${pkgDir}/package.json`).json();
     await Bun.build({ entrypoints: [`${pkgDir}/index.ts`], splitting: false, target: "bun", outdir });
-    const distPkgJson = { ...pkgJson, type: "module", main: "./index.js", engines: { bun: ">=1.3.13" } };
+    const distPkgJson = { ...pkgJson, type: "module", main: "./index.js", engines: { bun: ">=1.4.0" } };
     const pkgJsonContent = JSON.stringify(distPkgJson, null, 2);
     await Promise.all([
       Bun.write(`${outdir}/package.json`, pkgJsonContent),

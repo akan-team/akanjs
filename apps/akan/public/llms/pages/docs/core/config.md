@@ -11,6 +11,7 @@
 - App Config (#app-config)
 - Config Shape (#config-shape)
 - Application Env (#app-env)
+- Server Option (#server-option)
 - Routes and Domains (#routes)
 - Mobile Metadata (#mobile)
 - Images And Public Env (#images-env)
@@ -75,6 +76,20 @@ Type files define the shape of env values, so missing or misspelled settings can
 Client env and publicEnv are different. env.client.* stores app values for each environment, while publicEnv only allows selected process.env names to be exposed to browser builds.
 
 Server env can also include options from shared libraries through env.server.type.ts. This lets an app keep one final server env object while reusing library-level defaults.
+
+Server Option
+
+lib/option.ts is where the app configures its server. env/ holds the values, akan.config.ts holds the build, and this file wires them into the runtime: use objects, signal middleware, adaptor overrides, web proxies, the MCP server, the agent relay's access policy, and the LLM that relay speaks to. Every library the app depends on brings its own option.ts, read in mount order with the app's last — so an app tightens what a library declared without restating it.
+
+apiKey, model, and host for whichever adaptor holds LlmAdaptorRole. Take the key from the env object rather than writing it here — env.server.* is gitignored, this file is not.
+
+Who may spend the LLM key through the runAgentTurn relay, named as the guards any other endpoint would name. Several are ANDed. With none the call is refused — the same answer None gives — because the framework has no account model to gate on.
+
+MCP server settings — instructions, readOnly, path, pageSize, language, auth. Not main.ts: the gateway there only spawns children, while this file is handed to the process that mounts /mcp.
+
+The registration half: env-derived singletons a service reaches with use<T>(), signal middleware, a predefined adaptor role rebound to the app's own implementation, and web proxies.
+
+Each of these has an env spelling too (AKAN_MCP_*, AKAN_AGENT), for a deployment that must configure what the source does not. A value written in option.ts wins over the env of the same name.
 
 Routes and Domains
 
@@ -251,6 +266,25 @@ export const env: ModulesOptions = {
     sso: {},
   },
 };
+```
+
+### lib/option.ts
+
+```ts
+import { AkanOption } from "akanjs/server";
+import type { LlmOption } from "akanjs/service";
+
+import { SignedIn } from "../srvkit";
+import type { LibOptions } from "./srv";
+
+export type ModulesOptions = LibOptions & {
+  llm?: LlmOption;
+};
+
+export const option = new AkanOption<ModulesOptions>()
+  .setLlm((options) => options.llm ?? {})
+  .setAgentAccess(SignedIn)
+  .setMcp({ instructions: "Domain tools for the app. Start from taskInTodo." });
 ```
 
 ### apps/myapp/akan.config.ts

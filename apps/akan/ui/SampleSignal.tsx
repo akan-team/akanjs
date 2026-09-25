@@ -7,5 +7,5 @@ interface SampleSignalProps {
 }
 
 export const SampleSignal = ({ className }: SampleSignalProps) => {
-  return <Signal.Doc.Zone refName="bizDoc" fetch={fetch} />;
+  return <Signal.Doc.Zone refName="doc" fetch={fetch} />;
 };

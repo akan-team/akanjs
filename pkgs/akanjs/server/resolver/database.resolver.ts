@@ -2,6 +2,7 @@ import type { PromiseOrObject } from "akanjs/base";
 import { applyMixins, capitalize } from "akanjs/common";
 import { type ConstantModel, DEFAULT_PAGE_SIZE, type QueryOf } from "akanjs/constant";
 import {
+  assertFilterFitsCrud,
   CacheDatabase,
   type CRUDEventType,
   type DatabaseInstance,
@@ -19,7 +20,9 @@ import {
   getLoaderInfos,
   type ListQueryOption,
   type Mdl,
+  NoDocumentError,
   type SaveEventType,
+  type UpdateChain,
 } from "akanjs/document";
 import {
   type AdaptorCls,
@@ -47,7 +50,11 @@ const timedQuery = async <T>(fn: () => Promise<T>): Promise<T> => {
 };
 
 export class DatabaseResolver {
-  static resolveDatabase(constant: ConstantModel, database: DatabaseModel): AdaptorCls<DatabaseInstance> {
+  /** Returns the schema alongside the adaptor: the cascade planner reads its `remove` hooks to pick a strategy. */
+  static resolveDatabase(
+    constant: ConstantModel,
+    database: DatabaseModel,
+  ): { adaptor: AdaptorCls<DatabaseInstance>; schema: DocumentSchema } {
     const [modelName, className]: [string, string] = [database.refName, capitalize(database.refName)];
     // `sort` stays null when the caller named none, so the store can pick relevance order for a text search and
     // its own default otherwise. Defaulting to "latest" here would make every search look explicitly sorted.
@@ -84,6 +91,17 @@ export class DatabaseResolver {
       if (indexedSortFieldKeys.has(key)) continue;
       indexedSortFieldKeys.add(key);
       schema.index(fields);
+    }
+    // Every non-base field lives inside the `_doc` JSON column, so finding a model's children by the id they hold
+    // is a table scan until an expression index exists. A cascade runs that lookup on every parent removal.
+    for (const path of constant.full.cascade.removeWith.values()) {
+      const fields = path.typeKey
+        ? { removedAt: 1, [path.typeKey]: 1, [path.key]: 1 }
+        : { removedAt: 1, [path.key]: 1 };
+      const key = Object.keys(fields).join(",");
+      if (indexedSortFieldKeys.has(key)) continue;
+      indexedSortFieldKeys.add(key);
+      schema.index(fields as { [key: string]: 1 | -1 });
     }
 
     class DatabaseModelInstance extends adapt(`${modelName}Model`, ({ plug }) => ({
@@ -207,9 +225,9 @@ export class DatabaseResolver {
           refName: modelName,
           pickOne: (query: QueryOf<any>, projection?: any) => store.pickOne(query, { select: projection }),
           pickById: (id: string | undefined, projection?: any) => {
-            if (!id) throw new Error("No Document ID");
+            if (!id) throw new NoDocumentError("No Document ID");
             return store.findOne({ id }, { select: projection }).then((doc) => {
-              if (!doc) throw new Error(`No Document (${modelName}): ${id}`);
+              if (!doc) throw new NoDocumentError(`No Document (${modelName}): ${id}`);
               return doc;
             });
           },
@@ -219,11 +237,17 @@ export class DatabaseResolver {
           find: (query: QueryOf<any>) => createFindManyChain(query),
           findOne: (query: QueryOf<any>) => createFindOneChain(query),
           findById: (id: string | undefined) => (id ? store.findOne({ id }) : Promise.resolve(null)),
-          countDocuments: (query: QueryOf<any>) => store.count(query),
+          count: (query: QueryOf<any>) => store.count(query),
           updateOne: (query: QueryOf<any>, update: DocumentUpdateInput, options?: { upsert?: boolean }) =>
             store.updateOneByQuery(query, update, options),
           updateMany: (query: QueryOf<any>, update: DocumentUpdateInput) => store.updateManyByQuery(query, update),
-          deleteMany: (query: QueryOf<any>) => store.deleteManyByQuery(query),
+          removeOne: (query: QueryOf<any>) => store.removeOneByQuery(query),
+          removeMany: (query: QueryOf<any>) => store.removeManyByQuery(query),
+          updateById: (id: string, update: DocumentUpdateInput, options?: { upsert?: boolean }) =>
+            store.updateOneByQuery({ id }, update, options),
+          removeById: (id: string) => store.removeOneByQuery({ id }),
+          // Kept so existing call sites keep working; `@deprecated` on the `Mdl` type is what points them onward.
+          countDocuments: (query: QueryOf<any>) => store.count(query),
           bulkWrite: (
             operations: { updateOne: { filter: QueryOf<any>; update: DocumentUpdateInput; upsert?: boolean } }[],
           ) => store.bulkWrite(operations),
@@ -261,7 +285,7 @@ export class DatabaseResolver {
       async __pickId(query?: QueryOf<any>, queryOption?: FindQueryOption): Promise<string> {
         const { find, sort, skip, sample } = getFindQuery(query, queryOption);
         const id = await this.__store.findId(find, { sort, skip, sample });
-        if (!id) throw new Error(`No Document (${database.refName}): ${JSON.stringify(query)}`);
+        if (!id) throw new NoDocumentError(`No Document (${database.refName}): ${JSON.stringify(query)}`);
         return id;
       }
       async __exists(query?: QueryOf<any>): Promise<string | null> {
@@ -287,7 +311,7 @@ export class DatabaseResolver {
       }
       async __get(id: string) {
         const doc = await this.__loader.load(id);
-        if (!doc) throw new Error(`No Document (${database.refName}): ${id}`);
+        if (!doc) throw new NoDocumentError(`No Document (${database.refName}): ${id}`);
         return doc;
       }
       async [`get${className}`](id: string) {
@@ -323,6 +347,18 @@ export class DatabaseResolver {
       async __remove(id: string) {
         return await this.__store.remove(id);
       }
+      async __removeMany(query: QueryOf<any>) {
+        return await timedQuery(() => this.__store.removeManyByQuery(query));
+      }
+      async __removeOne(query: QueryOf<any>) {
+        return await timedQuery(() => this.__store.removeOneByQuery(query));
+      }
+      async __updateMany(query: QueryOf<any>, update: DocumentUpdateInput) {
+        return await timedQuery(() => this.__store.updateManyByQuery(query, update));
+      }
+      async __updateOne(query: QueryOf<any>, update: DocumentUpdateInput) {
+        return await timedQuery(() => this.__store.updateOneByQuery(query, update));
+      }
       async [`remove${className}`](id: string) {
         return this.__remove(id);
       }
@@ -348,6 +384,7 @@ export class DatabaseResolver {
     Object.entries(filterMeta.query).forEach(([queryKey, filterInfo]) => {
       const queryFn = filterInfo.queryFn;
       if (!queryFn) throw new Error(`No query function for key: ${queryKey}`);
+      assertFilterFitsCrud(modelName, queryKey, className);
       Object.assign(DatabaseModelInstance.prototype, {
         [`list${capitalize(queryKey)}`]: async function (...args: any) {
           const { query, queryOption } = getQueryDataFromKey(queryKey, args);
@@ -387,9 +424,30 @@ export class DatabaseResolver {
         },
         [`query${capitalize(queryKey)}`]: (...args: any) =>
           queryFn(...fillMissingFilterArgs(filterInfo, args), documentQueryHelper),
+        [`remove${capitalize(queryKey)}`]: async function (...args: any) {
+          const query = queryFn(...fillMissingFilterArgs(filterInfo, args), documentQueryHelper);
+          return (this as unknown as DatabaseInstance).__removeMany(query);
+        },
+        [`removeOne${capitalize(queryKey)}`]: async function (...args: any) {
+          const query = queryFn(...fillMissingFilterArgs(filterInfo, args), documentQueryHelper);
+          return (this as unknown as DatabaseInstance).__removeOne(query);
+        },
+        [`update${capitalize(queryKey)}`]: function (...args: any): UpdateChain {
+          const instance = this as unknown as DatabaseInstance;
+          const query = queryFn(...fillMissingFilterArgs(filterInfo, args), documentQueryHelper);
+          return { set: (update) => instance.__updateMany(query, update) };
+        },
+        [`updateOne${capitalize(queryKey)}`]: function (...args: any): UpdateChain {
+          const instance = this as unknown as DatabaseInstance;
+          const query = queryFn(...fillMissingFilterArgs(filterInfo, args), documentQueryHelper);
+          return { set: (update) => instance.__updateOne(query, update) };
+        },
       });
     });
     applyMixins(DatabaseModelInstance, [database.model]);
-    return DatabaseModelInstance as unknown as AdaptorCls<DatabaseInstance<any, any, any, any, any, any>>;
+    return {
+      adaptor: DatabaseModelInstance as unknown as AdaptorCls<DatabaseInstance<any, any, any, any, any, any>>,
+      schema,
+    };
   }
 }

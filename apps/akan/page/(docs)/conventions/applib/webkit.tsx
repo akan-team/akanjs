@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -23,7 +23,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="what-belongs" title={l.trans({ en: "What Belongs In Webkit", ko: "Webkit에 두는 것" })}>
         <Docs.Title>{l.trans({ en: "What Belongs In Webkit", ko: "Webkit에 두는 것" })}</Docs.Title>
@@ -39,11 +39,11 @@ export default function Page() {
               code: `export const ticketStatusColorMap = {
   active: {
     label: "Active",
-    badgeColor: "badge-secondary",
+    badgeColor: "secondary",
   },
   rejected: {
     label: "Rejected",
-    badgeColor: "badge-error",
+    badgeColor: "error",
   },
 };`,
             },
@@ -113,17 +113,17 @@ export function getSignedInUser() {
 }`,
             },
           ].map(({ title, desc, snippetTitle, code }) => (
-            <div key={title} className="rounded-xl border border-base-300 bg-base-100 p-4">
-              <div className="font-bold text-base-content">{title}</div>
-              <div className="mt-2 text-base-content/70 text-sm">{desc}</div>
+            <div key={title} className={panelRecipe()}>
+              <div className="font-bold text-foreground">{title}</div>
+              <div className="mt-2 text-foreground/70 text-sm">{desc}</div>
               <div className="mt-3">
-                <Code.Snippet title={snippetTitle} code={code} />
+                <Code.Snippet className="w-full" title={snippetTitle} code={code} />
               </div>
             </div>
           ))}
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="barrel-optimization"
@@ -148,6 +148,7 @@ export function getSignedInUser() {
         </Docs.Description>
         <div className="space-y-3">
           <Code.Snippet
+            className="w-full"
             title="webkit/downloadFile.ts"
             code={`"use client";
 
@@ -158,8 +159,13 @@ export const downloadFile = async (url: string, filename: string) => {
   saveAs(await res.blob(), filename);
 };`}
           />
-          <Code.Snippet title="webkit/index.ts" code={`export { downloadFile } from "./downloadFile";`} />
           <Code.Snippet
+            className="w-full"
+            title="webkit/index.ts"
+            code={`export { downloadFile } from "./downloadFile";`}
+          />
+          <Code.Snippet
+            className="w-full"
             title="page.tsx"
             code={`import { downloadFile } from "@libs/shared/webkit";
 
@@ -169,7 +175,7 @@ export function DownloadButton() {
           />
         </div>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="practical-rules" title={l.trans({ en: "Practical Rules", ko: "실전 규칙" })}>
         <Docs.Title>{l.trans({ en: "Practical Rules", ko: "실전 규칙" })}</Docs.Title>
@@ -193,16 +199,16 @@ export function DownloadButton() {
                 ko: "downloadFile.ts가 downloadFile을 export하는 것처럼 파일명과 export명을 맞춥니다.",
               }),
             ].map((rule) => (
-              <div key={rule} className="rounded-xl border border-base-300 bg-base-100 px-4 text-base-content/70">
+              <div key={rule} className={panelRecipe({ padding: "row" }, "text-foreground/70")}>
                 {rule}
               </div>
             ))}
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

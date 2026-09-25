@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { DEFAULT_AKAN_I18N } from "akanjs/common";
 import { createRequestStore } from "akanjs/fetch";
 import {
@@ -118,15 +121,18 @@ async function withFullSsrCacheHarness<T>(
     artifact?: BaseBuildArtifact;
     worker?: FakeRscWorker;
     nodeEnv?: string;
+    commandType?: string;
     htmlCacheEnabled?: string;
     htmlCachePaths?: string;
     htmlCacheMaxBodyBytes?: string;
     appDir?: string;
+    web?: { ssr: boolean; csr: boolean };
     onRenderInput?: (input: Parameters<SsrFromRscRenderer["render"]>[0]) => void;
   } = {},
 ): Promise<T> {
   const envSnapshot = {
     NODE_ENV: process.env.NODE_ENV,
+    AKAN_COMMAND_TYPE: process.env.AKAN_COMMAND_TYPE,
     AKAN_PUBLIC_APP_NAME: process.env.AKAN_PUBLIC_APP_NAME,
     AKAN_PUBLIC_REPO_NAME: process.env.AKAN_PUBLIC_REPO_NAME,
     AKAN_PUBLIC_SERVE_DOMAIN: process.env.AKAN_PUBLIC_SERVE_DOMAIN,
@@ -139,6 +145,8 @@ async function withFullSsrCacheHarness<T>(
     AKAN_HTML_RESULT_CACHE_MAX_BODY_BYTES: process.env.AKAN_HTML_RESULT_CACHE_MAX_BODY_BYTES,
   };
   process.env.NODE_ENV = options.nodeEnv ?? "production";
+  if (options.commandType === undefined) delete process.env.AKAN_COMMAND_TYPE;
+  else process.env.AKAN_COMMAND_TYPE = options.commandType;
   process.env.AKAN_PUBLIC_APP_NAME = "akan-test";
   process.env.AKAN_PUBLIC_REPO_NAME = "akan";
   process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.test";
@@ -173,6 +181,7 @@ async function withFullSsrCacheHarness<T>(
   const fakeWorker = options.worker ?? createFakeRscWorker();
   const router = new WebRouter({
     artifact: options.artifact ?? createTestArtifact(),
+    web: options.web ?? { ssr: true, csr: true },
     cssBytesByUrl: {},
     rsc: fakeWorker as never,
     seedIndex: { entries: [], globalLayoutFiles: [] },
@@ -191,6 +200,17 @@ async function withFullSsrCacheHarness<T>(
       else process.env[key] = value;
     }
   }
+}
+
+async function createTempAppWithClientEnv(firebaseConfig: Record<string, unknown>): Promise<string> {
+  const appDir = await mkdtemp(path.join(os.tmpdir(), "akan-web-router-app-"));
+  const envDir = path.join(appDir, "env");
+  await mkdir(envDir, { recursive: true });
+  await writeFile(
+    path.join(envDir, "env.client.ts"),
+    `export const env = ${JSON.stringify({ firebase: firebaseConfig }, null, 2)};\n`,
+  );
+  return appDir;
 }
 
 describe("WebRouter RSC target normalization", () => {
@@ -292,6 +312,114 @@ describe("WebRouter sub route host resolution", () => {
   });
 });
 
+describe("WebRouter local sub route index", () => {
+  const artifactWithSubRoutes = (): BaseBuildArtifact => ({
+    ...createTestArtifact(),
+    subRoutes: { soft: ["soft.example.test"] },
+    basePaths: ["soft", "office"],
+  });
+
+  async function requestRoot(
+    pathname: string,
+    { env, artifact }: { env?: string; artifact?: BaseBuildArtifact } = {},
+  ): Promise<{ response: Response; renderCount: number }> {
+    const previous = process.env.AKAN_PUBLIC_ENV;
+    if (env === undefined) delete process.env.AKAN_PUBLIC_ENV;
+    else process.env.AKAN_PUBLIC_ENV = env;
+    try {
+      return await withFullSsrCacheHarness(
+        async ({ fullSsr, fakeWorker }) => {
+          const response = await fullSsr(new Request(`https://akan.example.test${pathname}`));
+          return { response, renderCount: fakeWorker.renderCalls.length };
+        },
+        { artifact: artifact ?? artifactWithSubRoutes() },
+      );
+    } finally {
+      if (previous === undefined) delete process.env.AKAN_PUBLIC_ENV;
+      else process.env.AKAN_PUBLIC_ENV = previous;
+    }
+  }
+
+  test("serves a basePath picker at the site root instead of a 404", async () => {
+    const { response, renderCount } = await requestRoot("/en/", { env: "local" });
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(renderCount).toBe(0);
+    expect(html).toContain('href="/en/soft"');
+    expect(html).toContain('href="/en/office"');
+    expect(html).toContain("soft.example.test");
+  });
+
+  test("keeps the picker on the bare root and on every configured locale", async () => {
+    await expect(requestRoot("/", { env: "local" }).then((r) => r.response.status)).resolves.toBe(200);
+    const { response } = await requestRoot("/ko", { env: "local" });
+    await expect(response.text()).resolves.toContain('href="/ko/soft"');
+  });
+
+  test("leaves non-root paths to the renderer", async () => {
+    const { renderCount } = await requestRoot("/en/soft", { env: "local" });
+    expect(renderCount).toBe(1);
+  });
+
+  test("stays local-only and sub-route-only", async () => {
+    await expect(requestRoot("/en/", { env: "debug" }).then((r) => r.renderCount)).resolves.toBe(1);
+    await expect(
+      requestRoot("/en/", { env: "local", artifact: createTestArtifact() }).then((r) => r.renderCount),
+    ).resolves.toBe(1);
+  });
+});
+
+describe("WebRouter dev mode selection", () => {
+  const devRoutes = async (commandType?: string) => {
+    // A dev router opens the builder IPC channel, which exists only in a process the CLI spawned.
+    const originalSend = process.send;
+    process.send = ((): boolean => true) as typeof process.send;
+    try {
+      return await withFullSsrCacheHarness(async ({ renderEnvRoutes }) => Object.keys(renderEnvRoutes), {
+        nodeEnv: "production",
+        commandType,
+      });
+    } finally {
+      process.send = originalSend;
+    }
+  };
+
+  test("keeps dev mode under `akan start` even when NODE_ENV claims production", async () => {
+    await expect(devRoutes("start")).resolves.toContain("/_akan/hmr");
+  });
+
+  test("stays in production mode when no command claims otherwise", async () => {
+    await expect(devRoutes()).resolves.not.toContain("/_akan/hmr");
+  });
+});
+
+describe("WebRouter csr surface", () => {
+  const routeKeys = async (web?: { ssr: boolean; csr: boolean }) =>
+    await withFullSsrCacheHarness(async ({ renderEnvRoutes }) => Object.keys(renderEnvRoutes), { web });
+
+  test("mounts /__csr only while the csr surface is on", async () => {
+    await expect(routeKeys()).resolves.toContain("/__csr");
+    await expect(routeKeys({ ssr: true, csr: false })).resolves.not.toContain("/__csr");
+  });
+
+  test("stops answering ?csr=true once the csr surface is off", async () => {
+    const withCsr = await withFullSsrCacheHarness(
+      async ({ fullSsr }) => await fullSsr(new Request("https://example.test/?csr=true")),
+      { web: { ssr: true, csr: true } },
+    );
+    // No artifact on disk, so this is the prod "no CSR html" 404 rather than a render — but it is the CSR path.
+    expect(withCsr.status).toBe(404);
+
+    const withoutCsr = await withFullSsrCacheHarness(
+      async ({ fullSsr }) => await fullSsr(new Request("https://example.test/?csr=true")),
+      { web: { ssr: true, csr: false } },
+    );
+    expect(withoutCsr.status).toBe(200);
+    expect(await withoutCsr.text()).toContain("render-1");
+  });
+});
+
 describe("WebRouter deep link associations", () => {
   const artifactWithDeepLinks = (): BaseBuildArtifact => ({
     ...createTestArtifact(),
@@ -362,6 +490,60 @@ describe("WebRouter deep link associations", () => {
       },
       { artifact: artifactWithDeepLinks() },
     );
+  });
+});
+
+describe("WebRouter Firebase messaging service worker", () => {
+  test("serves generated Firebase messaging service worker from client env config only", async () => {
+    const appDir = await createTempAppWithClientEnv({
+      apiKey: "public-api-key",
+      authDomain: "example.firebaseapp.com",
+      projectId: "public-project",
+      storageBucket: "public-project.appspot.com",
+      messagingSenderId: "1234567890",
+      appId: "public-app-id",
+      vapidKey: "public-vapid-key",
+      private_key: "SERVER_PRIVATE_KEY_MUST_NOT_LEAK",
+    });
+
+    try {
+      await withFullSsrCacheHarness(
+        async ({ renderEnvRoutes }) => {
+          const serviceWorkerRoute = renderEnvRoutes["/firebase-messaging-sw.js"];
+          expect(serviceWorkerRoute).toBeDefined();
+          if (!serviceWorkerRoute) return;
+          const response = await serviceWorkerRoute(new Request("https://example.test/firebase-messaging-sw.js"));
+          const body = await response.text();
+
+          expect(response.status).toBe(200);
+          expect(response.headers.get("Content-Type")).toContain("application/javascript");
+          expect(response.headers.get("Cache-Control")).toBe("no-store");
+          expect(body).toContain("public-api-key");
+          expect(body).toContain("public-project");
+          expect(body).toContain("firebase-messaging-compat.js");
+          expect(body).not.toContain("SERVER_PRIVATE_KEY_MUST_NOT_LEAK");
+          expect(body).not.toContain("private_key");
+        },
+        { appDir },
+      );
+    } finally {
+      await rm(appDir, { recursive: true, force: true });
+    }
+  });
+
+  test("serves no-op Firebase messaging service worker without client env config", async () => {
+    await withFullSsrCacheHarness(async ({ renderEnvRoutes }) => {
+      const serviceWorkerRoute = renderEnvRoutes["/firebase-messaging-sw.js"];
+      expect(serviceWorkerRoute).toBeDefined();
+      if (!serviceWorkerRoute) return;
+      const response = await serviceWorkerRoute(new Request("https://example.test/firebase-messaging-sw.js"));
+      const body = await response.text();
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      expect(body).toContain("const firebaseConfig = null");
+      expect(body).toContain("notificationclick");
+    });
   });
 });
 

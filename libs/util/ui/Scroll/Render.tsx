@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { createContext, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 interface RenderProps {
@@ -98,10 +98,13 @@ export const Render = ({
         id={id}
         ref={setWrapperRef}
         data-rendered={rendered}
-        className={clsx("group/scroll transition-all", duration ? `duration-${duration}` : null, className, {
-          [preClassName]: !rendered,
-          [postClassName]: rendered,
-        })}
+        className={cn(
+          "group/scroll transition-all",
+          duration ? `duration-${duration}` : null,
+          className,
+          !rendered && preClassName,
+          rendered && postClassName,
+        )}
         style={{ scrollMarginTop: "100px" }}
       >
         {/* {children} */}

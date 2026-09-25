@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { Any, dayjs, Float, Int, type PrimitiveScalar } from "akanjs/base";
+import { Any, Binary, dayjs, Float, Int, type PrimitiveScalar } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
-import { ProtobufCompressor } from "./compress.adaptor";
+import { JsonCompressor, ProtobufCompressor } from "./compress.adaptor";
 
 const NestedScalar = via((f) => ({
   label: f(String),
@@ -65,6 +65,20 @@ describe("Compressor", () => {
       const buf = expectBuffer(Compressor.encode(Date, 0, now));
       const decoded = Compressor.decode<Date>(Date, 0, buf);
       expect(dayjs(decoded).toISOString()).toBe(now.toISOString());
+    });
+
+    test("Binary keeps every byte, which the Redis fan-out depends on", () => {
+      const packet = new Uint8Array([2, 148, 1, 2, 63, 0, 255]);
+      const buf = expectBuffer(Compressor.encode(Binary, 0, packet));
+      const decoded = Compressor.decode<Uint8Array>(Binary, 0, buf, { raw: true });
+      expect([...decoded]).toEqual([...packet]);
+    });
+
+    test("Binary survives the JSON compressor too, which would otherwise spell it as a number array", () => {
+      const json = new JsonCompressor();
+      const packet = new Uint8Array([2, 148, 1, 2, 63]);
+      const buf = expectBuffer(json.encode(Binary, 0, packet));
+      expect([...json.decode<Uint8Array>(Binary, 0, buf, { raw: true })]).toEqual([...packet]);
     });
 
     test("Any (JSON object)", () => {

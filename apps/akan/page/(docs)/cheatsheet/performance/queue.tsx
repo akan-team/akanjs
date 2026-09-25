@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsList, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -16,7 +16,7 @@ export default function Page() {
               ko: "큐 작업은 사용자 요청을 막으면 안 되는 일을 처리할 때 씁니다. 버튼 요청은 빠르게 끝나고, 무거운 작업은 백그라운드 process가 수행합니다.",
             })}
           </div>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Good for backups, exports, report generation, imports, and long AI jobs.",
@@ -35,10 +35,10 @@ export default function Page() {
                 ko: "Process는 느린 작업을 request 경로 밖에서 수행합니다.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="endpoint" title={l.trans({ en: "Queue From Endpoint", ko: "Endpoint에서 queue 넣기" })}>
         <Docs.Title>{l.trans({ en: "Queue From Endpoint", ko: "Endpoint에서 queue 넣기" })}</Docs.Title>
@@ -51,6 +51,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Queue report generation", ko: "Report 생성 queue" })}
           code={`export class ReportEndpoint extends endpoint(srv.report, ({ mutation }) => ({
   queueGenerateReport: mutation(cnst.Report)
@@ -61,6 +62,7 @@ export default function Page() {
 })) {}`}
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Service queues process", ko: "Service에서 process 호출" })}
           code={`async queueGenerateReport(reportId: string) {
   const report = await this.reportModel.getReport(reportId);
@@ -70,7 +72,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="process" title={l.trans({ en: "Run In Process", ko: "Process에서 실행" })}>
         <Docs.Title>{l.trans({ en: "Run In Process", ko: "Process에서 실행" })}</Docs.Title>
@@ -83,6 +85,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Internal process", ko: "Internal process" })}
           code={`export class ReportInternal extends internal(srv.report, ({ process }) => ({
   generateReport: process(Boolean)
@@ -94,6 +97,7 @@ export default function Page() {
 })) {}`}
         />
         <Code.Snippet
+          className="w-full"
           title={l.trans({ en: "Slow job", ko: "느린 작업" })}
           code={`async generateReport(reportId: string) {
   const report = await this.reportModel.getReport(reportId);
@@ -107,7 +111,7 @@ export default function Page() {
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="replica" title={l.trans({ en: "Replica Roles", ko: "Replica 역할" })}>
         <Docs.Title>{l.trans({ en: "Replica Roles", ko: "Replica 역할" })}</Docs.Title>
@@ -133,12 +137,12 @@ export default function Page() {
   status --> userView["User Sees Progress"]`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="tips" title={l.trans({ en: "Tips", ko: "꿀팁" })}>
         <Docs.Title>{l.trans({ en: "Tips", ko: "꿀팁" })}</Docs.Title>
         <Docs.Description>
-          <ul className="list-disc space-y-2 pl-5">
+          <DocsList>
             <li>
               {l.trans({
                 en: "Always store job status: `waiting`, `running`, `done`, `failed`.",
@@ -163,10 +167,10 @@ export default function Page() {
                 ko: "Endpoint는 빠르게 반환하고, 느린 작업은 process에서 하세요.",
               })}
             </li>
-          </ul>
+          </DocsList>
         </Docs.Description>
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

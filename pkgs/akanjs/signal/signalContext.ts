@@ -1,5 +1,6 @@
 import {
-  type BaseEnv,
+  Any,
+  type BackendEnv,
   type Cls,
   FIELD_META,
   INTERNAL_META,
@@ -7,6 +8,7 @@ import {
   type PromiseOrObject,
   Upload,
 } from "akanjs/base";
+import { clientAddressFromHeaders, clientPortFromHeaders, normalizeIpAddress } from "akanjs/common";
 import {
   type ConstantCls,
   type ConstantFieldTypeInput,
@@ -16,11 +18,20 @@ import {
 } from "akanjs/constant";
 import type { Adaptor, AdaptorCls, DatabaseService, InjectRegistry, LiveRegistry } from "akanjs/service";
 import type { Internal, InternalCls, InternalInfo, MiddlewareCls } from ".";
-import type { EndpointInfo } from "./endpointInfo";
+import type { EndpointInfo, EndpointType } from "./endpointInfo";
 import { Exception } from "./exception";
+import { guardOf } from "./guard";
+// Deliberately past the barrel: `./mcp` re-exports `McpDocument`, which would drag `akanjs/fetch` into the
+// signal graph. `Msg` itself imports nothing.
+import { Msg } from "./mcp/Msg";
 import { isTraceEnabled, runWithTrace, SignalTrace, traceSpan } from "./trace";
 
 export type SignalTransportType = "http" | "websocket";
+
+/** What `Bun.Server.requestIP` reports for the socket a request arrived on. */
+export type HttpPeerResolver = (req: Request) => { address: string; port: number } | null;
+
+const httpEndpointTypes = new Set<EndpointType>(["query", "mutation", "prompt"]);
 
 interface WebSocketRequest {
   ws: Bun.ServerWebSocket<unknown>;
@@ -28,6 +39,7 @@ interface WebSocketRequest {
   eventType: WebSocketEventType;
 }
 type RuntimeRecord = Record<string, unknown>;
+type MiddlewareHandler = (context: SignalContext, next: () => Promise<unknown>) => PromiseOrObject<unknown>;
 
 interface ExceptionLike {
   statusCode: number;
@@ -46,7 +58,7 @@ const isExceptionLike = (error: unknown): error is ExceptionLike => {
 
 export class SignalContext<
   Ctx extends HttpExecutionContext | WebSocketExecutionContext = HttpExecutionContext | WebSocketExecutionContext,
-  Env extends BaseEnv = BaseEnv,
+  Env extends BackendEnv = BackendEnv,
 > {
   key: string;
   transport: SignalTransportType;
@@ -70,6 +82,7 @@ export class SignalContext<
       env,
       live,
       middleware,
+      ctx,
     }: {
       endpointInfo: EndpointInfo;
       adaptor: Adaptor;
@@ -77,12 +90,19 @@ export class SignalContext<
       env: Env;
       live: LiveRegistry;
       middleware: Map<string, MiddlewareCls>;
+      /**
+       * Runs the endpoint against a caller-built context instead of one derived from the request. MCP needs it:
+       * its arguments arrive as one named object rather than in a URL, but every guard, middleware and
+       * internalArg reads the request through this context, so the transport has to stay the same one.
+       */
+      ctx?: Ctx;
     },
   ) {
     this.key = key;
-    this.transport = endpointInfo.type === "query" || endpointInfo.type === "mutation" ? "http" : "websocket";
+    this.transport = httpEndpointTypes.has(endpointInfo.type) ? "http" : "websocket";
     this.endpointInfo = endpointInfo;
-    if (this.transport === "http") this.ctx = new HttpExecutionContext(reqOrWsReq as Bun.BunRequest) as Ctx;
+    if (ctx) this.ctx = ctx;
+    else if (this.transport === "http") this.ctx = new HttpExecutionContext(reqOrWsReq as Bun.BunRequest) as Ctx;
     else this.ctx = new WebSocketExecutionContext(reqOrWsReq as WebSocketRequest) as Ctx;
     this.adaptor = adaptor;
     this.#registry = registry;
@@ -119,8 +139,7 @@ export class SignalContext<
     if (guards.length === 0) return;
     await Promise.all(
       guards.map(async (GuardCls) => {
-        const guard = new GuardCls();
-        const canPass = await guard.canPass(this);
+        const canPass = await guardOf(GuardCls).canPass(this);
         if (!canPass) throw new Exception.Forbidden(`Access denied by guard: ${GuardCls.name}`);
       }),
     );
@@ -133,6 +152,32 @@ export class SignalContext<
   async authorize(): Promise<boolean> {
     try {
       await this.#withMiddleware(async () => await this.#checkGuards(), { endpointMiddlewares: false })();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  /**
+   * Evaluates only the guards marked `static scope = "account"` — the ones that read the caller and nothing
+   * else — so a catalogue can hide entries the caller certainly cannot use.
+   *
+   * **Never an access gate.** An endpoint whose guards are all resource-scoped passes here and is stopped later
+   * by `#checkGuards` with the arguments those guards need. Erring visible is deliberate: a resource guard fails
+   * closed with no arguments, so evaluating one here would delete every legitimate entry from the listing.
+   */
+  async canListForAccount(): Promise<boolean> {
+    const guards = (this.endpointInfo.signalOption.guards ?? []).filter((GuardCls) => GuardCls.scope === "account");
+    if (guards.length === 0) return true;
+    try {
+      await this.#withMiddleware(
+        async () => {
+          for (const GuardCls of guards) {
+            if (!(await guardOf(GuardCls).canPass(this)))
+              throw new Exception.Forbidden(`Access denied by guard: ${GuardCls.name}`);
+          }
+        },
+        { endpointMiddlewares: false },
+      )();
       return true;
     } catch {
       return false;
@@ -151,11 +196,44 @@ export class SignalContext<
     for (let i = middlewares.length - 1; i >= 0; i--) {
       const MiddlewareCls = middlewares[i];
       if (!MiddlewareCls) continue;
-      const middleware = new MiddlewareCls();
       const currentNext = next;
-      next = async () => await (await middleware.use(this.getEnv()))(this, currentNext);
+      next = async () =>
+        await (await SignalContext.#getMiddlewareHandler(MiddlewareCls, this.getEnv()))(this, currentNext);
     }
     return next;
+  }
+  /**
+   * `use(env)` takes no context, so the instance and the handler it returns are a function of `(class, env)` and
+   * hold for the life of the process. Building both per request cost an instance, a handler and a closure on every
+   * call for every registered middleware — and `Logging` is registered by default.
+   */
+  static #httpPeer: HttpPeerResolver | null = null;
+  /**
+   * Lets the http branch of `getClientIp` reach the socket the way the websocket branch already reaches
+   * `ws.remoteAddress`. Registered by whichever `Bun.serve` is listening, because only the server can answer
+   * `requestIP`. Behind the federation gateway this never fires — the gateway always writes `x-real-ip` —
+   * so it is the answer for a process nothing is proxying.
+   */
+  static setHttpPeerResolver(resolve: HttpPeerResolver | null) {
+    SignalContext.#httpPeer = resolve;
+  }
+  static #middlewareHandlers = new WeakMap<MiddlewareCls, WeakMap<object, Promise<MiddlewareHandler>>>();
+  static #getMiddlewareHandler(MiddlewareCls: MiddlewareCls, env: BackendEnv): Promise<MiddlewareHandler> {
+    const byEnv =
+      SignalContext.#middlewareHandlers.get(MiddlewareCls) ?? new WeakMap<object, Promise<MiddlewareHandler>>();
+    SignalContext.#middlewareHandlers.set(MiddlewareCls, byEnv);
+    const cached = byEnv.get(env);
+    if (cached) return cached;
+    // A rejected setup is evicted rather than cached: a middleware that failed to initialize once should get
+    // another chance on the next request instead of poisoning the endpoint for the life of the process.
+    const handler = Promise.resolve(new MiddlewareCls().use(env) as PromiseOrObject<MiddlewareHandler>).catch(
+      (error: unknown) => {
+        byEnv.delete(env);
+        throw error;
+      },
+    );
+    byEnv.set(env, handler);
+    return handler;
   }
   async exec() {
     if (!this.trace) return await this.#exec();
@@ -190,9 +268,14 @@ export class SignalContext<
       );
     };
     const next = this.#withMiddleware(coreExec);
-    const result = this.trace ? await traceSpan("execChain", () => next()) : await next();
+    const raw = this.trace ? await traceSpan("execChain", () => next()) : await next();
     if (this.endpointInfo.type === "pubsub") return;
-    if (result instanceof Response) return result;
+    if (raw instanceof Response) return raw;
+    // A prompt declares `PromptMessage[]` but rides the `Any` carrier, so `resolveReturn` and `makeResponse` both
+    // hand the value straight back and nothing downstream would notice a malformed one. Normalizing here rather
+    // than in the MCP dispatcher is what makes the HTTP route and `prompts/get` return the same shape — the web
+    // preview is only a preview if it is.
+    const result = this.endpointInfo.type === "prompt" ? Msg.normalize(raw) : raw;
     if (!this.trace) {
       const resolved = await SignalContext.resolveReturn(result, {
         signalContext: this,
@@ -365,6 +448,36 @@ export class SignalContext<
     if (this.transport === "http") return this.getHttpContext<{ [key: string]: T }>().req[key] ?? null;
     return this.getWebSocketContext<{ [key: string]: T }>().ws.data[key] ?? null;
   }
+  /**
+   * The caller's IP, preferring what a proxy recorded over the socket peer. Behind the federation gateway the
+   * peer is the gateway itself for every request and for the whole life of every socket, so `remoteAddress`
+   * alone names the wrong machine — which is why nothing here reads it first. IPv4 arrives unwrapped from its
+   * `::ffff:` form, so it can be used as a destination as well as an identity.
+   *
+   * `null` means no proxy recorded one and the transport has no peer to fall back on — never a placeholder,
+   * because a loopback-looking address for an unknown caller is the failure this replaced.
+   */
+  getClientIp(): string | null {
+    if (this.transport === "http") {
+      const { req } = this.getHttpContext();
+      const forwarded = clientAddressFromHeaders(req.headers);
+      if (forwarded) return forwarded;
+      const peer = SignalContext.#httpPeer?.(req);
+      return peer ? normalizeIpAddress(peer.address) : null;
+    }
+    const { ws } = this.getWebSocketContext<{ headers?: Headers }>();
+    const forwarded = ws.data.headers ? clientAddressFromHeaders(ws.data.headers) : null;
+    return forwarded ?? (ws.remoteAddress ? normalizeIpAddress(ws.remoteAddress) : null);
+  }
+  /** The caller's source port as the nearest proxy recorded it, else this socket's own. */
+  getClientPort(): number | null {
+    if (this.transport === "http") {
+      const { req } = this.getHttpContext();
+      return clientPortFromHeaders(req.headers) ?? SignalContext.#httpPeer?.(req)?.port ?? null;
+    }
+    const { ws } = this.getWebSocketContext<{ headers?: Headers }>();
+    return (ws.data.headers ? clientPortFromHeaders(ws.data.headers) : null) ?? null;
+  }
   getRoomId(key: string) {
     if (this.transport !== "websocket") throw new Error("Transport is not websocket");
     else if (this.endpointInfo.type !== "pubsub") throw new Error("Endpoint is not pubsub");
@@ -393,6 +506,16 @@ export class HttpExecutionContext<Appended = unknown> {
   get url() {
     if (!this.#url) this.#url = new URL(this.req.url);
     return this.#url;
+  }
+  /** The read side of `HttpClient.makeUrl`'s `Any` rule: the query string carries the value JSON-encoded. */
+  static #parseAny(name: string, raw: string | string[] | null): unknown {
+    if (raw === null) return null;
+    if (Array.isArray(raw)) return raw.map((value) => HttpExecutionContext.#parseAny(name, value));
+    try {
+      return JSON.parse(raw);
+    } catch {
+      throw new Exception.BadRequest(`Invalid JSON in "${name}"`);
+    }
   }
   async getArgs(endpointInfo: EndpointInfo): Promise<unknown[]> {
     if (endpointInfo.args.length === 0) return [];
@@ -433,7 +556,8 @@ export class HttpExecutionContext<Appended = unknown> {
             nullable: arg.option?.nullable,
           });
         case "search": {
-          const value = arg.arrDepth ? this.url.searchParams.getAll(arg.name) : this.url.searchParams.get(arg.name);
+          const raw = arg.arrDepth ? this.url.searchParams.getAll(arg.name) : this.url.searchParams.get(arg.name);
+          const value = arg.argRef === Any ? HttpExecutionContext.#parseAny(arg.name, raw) : raw;
           const result = deserialize(arg.argRef, arg.arrDepth, value, {
             key: arg.name,
             nullable: arg.option?.nullable,
@@ -496,14 +620,16 @@ export class WebSocketExecutionContext<Appended = unknown> {
       nullable: endpointInfo.returns.nullable,
     }) as unknown as Response;
   }
-  on(event: "disconnect" | "unsubscribe", handler: () => void) {
+  // Arrows, not methods: `Ws` hands these to a handler detached from the context, so a method would run with
+  // the wrapper object as `this` and register into nothing.
+  on = (event: "disconnect" | "unsubscribe", handler: () => PromiseOrObject<void>) => {
     if (event === "disconnect") this.onDisconnect.add(handler);
     else this.onUnsubscribe.add(handler);
-  }
-  off(event: "disconnect" | "unsubscribe", handler: () => void) {
+  };
+  off = (event: "disconnect" | "unsubscribe", handler: () => PromiseOrObject<void>) => {
     if (event === "disconnect") this.onDisconnect.delete(handler);
     else this.onUnsubscribe.delete(handler);
-  }
+  };
 }
 
 export class ResolveFieldContext {

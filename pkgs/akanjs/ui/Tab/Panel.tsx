@@ -1,5 +1,5 @@
 "use client";
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { type ReactNode, useContext, useEffect, useState } from "react";
 
 import { TabContext } from "./context";
@@ -20,6 +20,6 @@ export const Panel = ({ className, menu, children, loading = "eager" }: PanelPro
     else if (loading === "every") setLoaded(currentMenu === menu);
   }, [currentMenu]);
 
-  if (loading === "eager") return <div className={clsx(className, { hidden: currentMenu !== menu })}>{children}</div>;
-  else return loaded ? <div className={clsx(className, { hidden: currentMenu !== menu })}>{children}</div> : null;
+  if (loading === "eager") return <div className={cn(className, currentMenu !== menu && "hidden")}>{children}</div>;
+  else return loaded ? <div className={cn(className, currentMenu !== menu && "hidden")}>{children}</div> : null;
 };

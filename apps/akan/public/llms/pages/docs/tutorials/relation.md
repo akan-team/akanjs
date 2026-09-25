@@ -205,7 +205,7 @@ export class DeliveryService extends serve(db.delivery, ({ use, service }) => ({
 
 ```ts
 "use client";
-import { Field, Layout } from "akanjs/ui";
+import { Field, Layout, buttonRecipe } from "akanjs/ui";
 import { cnst, fetch, st, usePage } from "@apps/koyo/client";
 
 interface GeneralProps {
@@ -465,7 +465,7 @@ import { IcecreamOrder } from "@apps/koyo/client"; // [!code ++]
 export const Card = ({ delivery, href }: ModelProps<"delivery", cnst.LightDelivery>) => {
   const { l } = usePage();
   return (
-    <Link href={href} className="block w-full rounded border bg-base-300 p-4"> // [!code highlight:10]
+    <Link href={href} className="block w-full rounded border bg-border p-4"> // [!code highlight:10]
       <div className="mb-3 text-lg font-bold">
         {l("delivery.modelName")} #{delivery.id.slice(-4)}
       </div>
@@ -521,7 +521,7 @@ export const New = ({ className }: NewProps) => {
   return (
     <div className={className}>
       <button
-        className="btn btn-primary"
+        className={buttonRecipe({ variant: "primary" })}
         onClick={() => {
           st.do.newDelivery();
         }}
@@ -570,10 +570,10 @@ export default async function Page() {
       <Inventory.Zone.Today />
       <Tab defaultMenu="icecreamOrder"> // [!code highlight:33]
         <Tab.Menus className="flex items-center">
-          <Tab.Menu menu="icecreamOrder" className="btn btn-xl" activeClassName="btn-primary">
+          <Tab.Menu menu="icecreamOrder" className={buttonRecipe({ size: "lg" }, "h-14 px-8 text-lg")} activeClassName="bg-primary text-primary-foreground">
             {l("icecreamOrder.modelName")}
           </Tab.Menu>
-          <Tab.Menu menu="delivery" className="btn btn-xl" activeClassName="btn-primary">
+          <Tab.Menu menu="delivery" className={buttonRecipe({ size: "lg" }, "h-14 px-8 text-lg")} activeClassName="bg-primary text-primary-foreground">
             {l("delivery.modelName")}
           </Tab.Menu>
         </Tab.Menus>
@@ -582,7 +582,7 @@ export default async function Page() {
             <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
             <IcecreamOrder.Util.PublicQueryMaker />
             <Model.New
-              className="btn btn-primary"
+              className={buttonRecipe({ variant: "primary" })}
               slice={fetch.slice.icecreamOrderInPublic}
               renderTitle="name"
               partial={icecreamOrderForm}

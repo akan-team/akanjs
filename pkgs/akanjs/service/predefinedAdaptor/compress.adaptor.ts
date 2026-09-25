@@ -1,6 +1,7 @@
 import {
   Any,
   applyFnToArrayObjects,
+  Binary,
   type Cls,
   type Dayjs,
   dayjs,
@@ -41,10 +42,12 @@ export interface CompressAdaptor {
 }
 
 export class JsonCompressor extends adapt("jsonCompressor", () => ({})) implements CompressAdaptor {
-  encode(_ref: Cls, _arrDepth: number, value: unknown): Buffer | null {
+  encode(ref: Cls, arrDepth: number, value: unknown): Buffer | null {
+    if (ref === Binary && !arrDepth) return Buffer.from(value as Uint8Array);
     return Buffer.from(JSON.stringify(value));
   }
   decode<T = unknown>(ref: Cls, arrDepth: number, buffer: Buffer, { raw = false }: { raw?: boolean } = {}): T {
+    if (ref === Binary && !arrDepth) return buffer as T;
     const value = JSON.parse(buffer.toString()) as T;
     if (raw || arrDepth > 0 || PrimitiveRegistry.has(ref)) return value;
     return new (ref as ConstantCls)().set(value as object) as T;
@@ -59,6 +62,7 @@ export class ProtobufCompressor extends adapt("protobufCompressor", () => ({})) 
     [Float, "float"],
     [Boolean, "bool"],
     [Date, "double"],
+    [Binary, "bytes"],
   ]);
   #primitiveProtoEncodeMap = new Map<PrimitiveScalar, (value: never) => unknown>([
     [Date, (value: Date | Dayjs) => dayjs(value).toDate().getTime()],

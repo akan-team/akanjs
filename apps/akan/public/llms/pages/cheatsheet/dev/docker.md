@@ -12,6 +12,7 @@
 - Minimal Compose (#compose)
 - Open Console (#console)
 - Important Env (#env)
+- Trim The Web Surface (#web-surface)
 - Scale With AKAN_REPLICA (#replica)
 - Tips (#tips)
 
@@ -49,11 +50,25 @@ Important Env
 
 `AKAN_REPLICA`: controls child process roles for scaling.
 
+`AKAN_SSR=false`: serves the API only. Drops the RSC worker process every web-serving replica otherwise spawns.
+
+`AKAN_CSR=false`: keeps SSR but stops serving the mobile SPA bundle at `/__csr` and `?csr=true`.
+
+Trim The Web Surface
+
+A deployment that only answers API calls does not need the web half at all. `AKAN_SSR=false` takes down the RSC worker and the render routes; `AKAN_CSR=false` takes down only the mobile SPA bundle. Both narrow what the build produced and can never widen it, and the boot log names what the process ended up serving.
+
+Declare it in akan.config.ts as `web: false` to also keep the artifacts out of the image: no route artifact, no CSR bundle, no RSC worker entrypoint, and no public/ folder. Measured on this docs app, that is 86MB down to 6.2MB.
+
+API-only container
+
 Scale With AKAN_REPLICA
 
 `AKAN_REPLICA` is a compact way to choose how many federation, batch, and all-purpose child processes the app starts.
 
 Replica examples
+
+A single request-serving replica runs in the container's only process — there is nothing to balance, so the app skips the gateway and its proxy hop. Ask for two or more and the gateway comes back to spawn and route them. Set AKAN_SOLO=false to keep the gateway with one replica.
 
 Tips
 
@@ -99,9 +114,15 @@ docker exec -it myapp sh -lc 'AKAN_CONSOLE=1 bun console.js'
 ### Code
 
 ```ts
-AKAN_REPLICA="1,0,0"  # one request-serving child
-AKAN_REPLICA="2,1,0"  # two request children and one batch child
-AKAN_REPLICA="0,0,1"  # one all-purpose child
+docker run -e AKAN_SSR=false -e AKAN_REPLICA="1,0,0" -p 8282:8282 myapp
+```
+
+### Code
+
+```ts
+AKAN_REPLICA="1,0,0"  # one request-serving process, no gateway
+AKAN_REPLICA="0,0,1"  # one all-purpose process, no gateway
+AKAN_REPLICA="2,1,0"  # two request children and one batch child, behind a gateway
 ```
 
 ## Agent Notes

@@ -185,7 +185,7 @@ class IncrementalBuilder {
     if (this.#shuttingDown) return;
     this.#shuttingDown = true;
     const started = Date.now();
-    this.#logger.info(`shutdown requested (${reason}); draining ${this.#inFlight} work item(s)`);
+    this.#logger.debug(`shutdown requested (${reason}); draining ${this.#inFlight} work item(s)`);
     if (this.#cssRebuildTimer) {
       // Only reachable if a css batch landed between the idle report and this request: the fresh
       // boot build recompiles css from scratch anyway, so dropping the debounce loses nothing.
@@ -200,7 +200,7 @@ class IncrementalBuilder {
     // flushed — a `css-updated` relayed milliseconds before this line would be dropped with no error
     // anywhere, leaving the backend serving the previous bundle. See `BuilderChannel`.
     const flushed = await BuilderChannel.drain();
-    this.#logger.info(
+    this.#logger.debug(
       `drained in ${Date.now() - started}ms${flushed ? ` after flushing ${flushed} ipc write(s)` : ""}; exiting for recycle`,
     );
     process.exit(0);

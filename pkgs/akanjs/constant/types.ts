@@ -14,18 +14,20 @@ type ObjectToId<O> = O extends BaseObject
         ? DocumentModel<O>
         : O;
 
-type Docify<T, _StateKeys extends keyof GetStateObject<T> = keyof GetStateObject<T>> = {
-  [K in _StateKeys as null extends T[K] ? never : K]-?: ObjectToId<NonNullable<T[K]>>;
-} & {
-  [K in _StateKeys as null extends T[K] ? K : never]?: ObjectToId<NonNullable<T[K]>> | undefined;
-};
-export type DocumentModel<T> = T extends (infer S)[]
-  ? DocumentModel<S>[]
-  : T extends string | number | boolean | Dayjs | File
-    ? T
-    : T extends Map<infer K, infer V>
-      ? Map<K, DocumentModel<V>>
-      : Docify<T>;
+type Docify<T, _StateKeys extends keyof GetStateObject<T> = keyof GetStateObject<T>> = unknown extends T
+  ? T
+  : { [K in _StateKeys as null extends T[K] ? never : K]-?: ObjectToId<NonNullable<T[K]>> } & {
+      [K in _StateKeys as null extends T[K] ? K : never]?: ObjectToId<NonNullable<T[K]>> | undefined;
+    };
+export type DocumentModel<T> = unknown extends T
+  ? T
+  : T extends (infer S)[]
+    ? DocumentModel<S>[]
+    : T extends string | number | boolean | Dayjs | File
+      ? T
+      : T extends Map<infer K, infer V>
+        ? Map<K, DocumentModel<V>>
+        : Docify<T>;
 
 export type FieldState<T> = T extends { id: string } ? T | null : T;
 export type DefaultOf<S> = GetStateObject<{ [K in keyof S]: FieldState<S[K]> }>;

@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -23,7 +23,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="declare-adapter" title={l.trans({ en: "Declare Adapter", ko: "어댑터 선언하기" })}>
         <Docs.Title>{l.trans({ en: "Declare Adapter", ko: "어댑터 선언하기" })}</Docs.Title>
@@ -41,6 +41,7 @@ export default function Page() {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             language="typescript"
             title="apps/koyo/srvkit/alarmApi.ts"
             code={`
@@ -62,6 +63,7 @@ export class AlarmApi {
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/srvkit/index.ts"
             code={`
 export * from "./alarmApi";`}
@@ -100,7 +102,7 @@ export * from "./alarmApi";`}
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="use-external-api" title={l.trans({ en: "Use External API", ko: "외부 API 사용하기" })}>
         <Docs.Title>{l.trans({ en: "Use External API", ko: "외부 API 사용하기" })}</Docs.Title>
@@ -112,6 +114,7 @@ export * from "./alarmApi";`}
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/option.ts"
             code={`
 import { AlarmApi } from "@apps/koyo/srvkit"; // [!code ++]
@@ -137,6 +140,7 @@ export const option = new AkanOption<ModulesOptions>().use((options) => ({
         </div>
 
         <Code.Snippet
+          className="w-full"
           title="apps/koyo/lib/icecreamOrder/icecreamOrder.service.ts"
           code={`
 import { AlarmApi } from "@apps/koyo/srvkit"; // [!code ++]
@@ -166,7 +170,7 @@ export class IcecreamOrderService extends serve(db.icecreamOrder, ({ use, servic
 }`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide
         id="query-in-document"
@@ -181,6 +185,7 @@ export class IcecreamOrderService extends serve(db.icecreamOrder, ({ use, servic
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.service.ts"
             code={`
 import { dayjs } from "akanjs/base"; // [!code ++]
@@ -230,6 +235,7 @@ export class IcecreamOrderService extends serve(db.icecreamOrder, ({ use, servic
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.document.ts"
             code={`
 import { by, from, into, type SchemaOf } from "akanjs/document"; // [!code collapse:5]
@@ -274,8 +280,8 @@ export class IcecreamOrderModel extends into(IcecreamOrder, IcecreamOrderFilter,
           />
           <div>
             {l.trans({
-              en: `By declaring the byStatuses query in IcecreamOrderFilter, you can use list, find, count, sample functions according to the given query conditions. For example, you can use listByStatuses, countByStatuses functions.`,
-              ko: `IcecreamOrderFilter에서 byStatuses 쿼리를 선언하면, 주어진 조건의 쿼리에 맞게 list, find, count, sample 등의 기능을 사용할 수 있습니다. 예를 들면, listByStatuses, countByStatuses 등의 기능을 사용할 수 있습니다.`,
+              en: `By declaring the byStatuses query in IcecreamOrderFilter, you can use list, find, count, insight, sample functions according to the given query conditions. For example, you can use listByStatuses, countByStatuses, and insightByStatuses functions. countByStatuses returns a number, and insightByStatuses returns db.IcecreamOrderInsight.`,
+              ko: `IcecreamOrderFilter에서 byStatuses 쿼리를 선언하면, 주어진 조건의 쿼리에 맞게 list, find, count, insight, sample 등의 기능을 사용할 수 있습니다. 예를 들면, listByStatuses, countByStatuses, insightByStatuses 등의 기능을 사용할 수 있습니다. countByStatuses는 number를, insightByStatuses는 db.IcecreamOrderInsight를 반환합니다.`,
             })}
           </div>
           <Docs.Alert>
@@ -289,7 +295,7 @@ export class IcecreamOrderModel extends into(IcecreamOrder, IcecreamOrderFilter,
         </Docs.Description>
       </Scroll.Slide>
 
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="use-interval" title={l.trans({ en: "Use Interval", ko: "인터벌 사용하기" })}>
         <Docs.Title>{l.trans({ en: "Use Interval", ko: "인터벌 사용하기" })}</Docs.Title>
@@ -301,6 +307,7 @@ export class IcecreamOrderModel extends into(IcecreamOrder, IcecreamOrderFilter,
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.signal.ts"
             code={`
 import { ID } from "akanjs/base"; // [!code collapse:7]
@@ -355,6 +362,7 @@ export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query,
             })}
           </div>
           <Code.Snippet
+            className="w-full"
             language="bash"
             code={`[AlarmApi] 44136 - 11/06/2025, 22:19:29 PM    WARN  myapp: IcecreamOrder 690c9f5d83050b6bb34b93bc is melting 😱 +331830ms`}
           />
@@ -374,8 +382,8 @@ export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query,
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <Divider />
+      <DocsToc />
     </Scroll>
   );
 }

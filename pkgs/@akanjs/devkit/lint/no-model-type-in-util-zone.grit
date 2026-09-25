@@ -1,0 +1,58 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// `Util` and `Zone` are always client components, so a *prop* typed as a `cnst` model is a hydrated
+// class instance the server has to hand across the boundary — the methods are stripped on the way and
+// what arrives is a plain object wearing the model's type.
+//
+// Only prop positions are reported: the component's `*Props` interface / type alias, or the inline
+// object type on its parameter. A `cnst` type anywhere else in the file never crosses the boundary and
+// stays legal — a local annotation, a callback parameter the framework already types with the model
+// (`renderItem`, `renderList`), a module-scope helper, a non-`Props` local shape, and the props of a
+// component nested inside another one. A function-typed prop is client-internal too: a closure cannot
+// cross the RSC boundary at all, so whoever passes it already holds the value it takes.
+//
+// The exempt generics are the framework props types whose model parameter never lands on a prop as
+// data: `ClientInit` / `ClientView` / `ClientEdit` (mapped to plain `GetStateObject`) and `ModelsProps`,
+// whose only use of the model is `onClickItem?: (model: M) => unknown` — a callback, so the caller
+// already holds the value. `ModelProps<"x", cnst.LightX>` is *not* exempt: it spreads the model onto
+// the props themselves.
+TsReferenceType() as $ref where {
+  $ref <: r"cnst\.[A-Za-z_$][A-Za-z0-9_$]*",
+  not $ref <: within TsIndexedAccessType() as $indexed where {
+    $indexed <: r"cnst\.[A-Za-z_$][A-Za-z0-9_$]*\[.value.\][\s\S]*"
+  },
+  not $ref <: within TsReferenceType() as $wrapper where {
+    $wrapper <: r"(?:(?:Client|Server)(?:Init|View|Edit)|ModelsProps)<[\s\S]*"
+  },
+  not $ref <: within TsFunctionType(),
+  or {
+    $ref <: within TsInterfaceDeclaration() as $propsInterface where {
+      $propsInterface <: r"interface\s+[A-Za-z0-9_$]*Props[\s\S]*"
+    },
+    $ref <: within TsTypeAliasDeclaration() as $propsAlias where {
+      $propsAlias <: r"type\s+[A-Za-z0-9_$]*Props[\s\S]*"
+    },
+    and {
+      $ref <: within JsFormalParameter(),
+      // A parameter is a sibling of the body, so this only drops the ones belonging to a function
+      // declared *inside* a component — a nested component or a local callback.
+      not $ref <: within JsFunctionBody(),
+      // Same for a callback handed straight to a call, which an expression-bodied component leaves
+      // outside every function body: `rows.map((row: cnst.LightTicket) => …)`.
+      not $ref <: within JsCallArguments(),
+      or {
+        $ref <: within JsVariableDeclarator() as $component where {
+          $component <: r"[A-Z][A-Za-z0-9_$]*[\s\S]*"
+        },
+        $ref <: within JsFunctionDeclaration() as $componentFn where {
+          $componentFn <: r"(?:async\s+)?function\s+[A-Z][A-Za-z0-9_$]*[\s\S]*"
+        }
+      }
+    }
+  },
+  register_diagnostic(
+    span = $ref,
+    message = "Util and Zone are client components, so a cnst model type on a prop is a class instance crossing the server boundary. Take an id instead (bannerId: string), or hand server data across as ClientInit / ClientView. An enum union such as cnst.AdminRole['value'] is allowed, and so is a cnst type that stays inside the file — a local annotation or a callback parameter."
+  )
+}

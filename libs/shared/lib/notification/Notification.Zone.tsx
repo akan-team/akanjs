@@ -18,5 +18,5 @@ export const Initialize = ({ onPushToken }: InitializeProps) => {
     void initialize();
   }, [onPushToken]);
 
-  return <></>;
+  return null;
 };

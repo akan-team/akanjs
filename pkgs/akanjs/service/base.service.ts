@@ -1,4 +1,5 @@
 import type { Base } from "akanjs/signal";
+import { AgentService } from "./agent.service";
 import { serve } from "./serve";
 import { ServiceModel } from "./serviceModule";
 
@@ -11,4 +12,4 @@ export class BaseService extends serve("base" as const, ({ env, signal, memory }
   }
 }
 
-export const srv = { base: new ServiceModel(BaseService) };
+export const srv = { base: new ServiceModel(BaseService), agent: new ServiceModel(AgentService) };

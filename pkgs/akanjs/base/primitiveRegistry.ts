@@ -44,7 +44,7 @@ export class PrimitiveRegistry {
   }
 }
 
-export type PrimitiveValue = string | number | boolean | Dayjs | Date | null | undefined;
+export type PrimitiveValue = string | number | boolean | Dayjs | Date | Uint8Array | null | undefined;
 export class PrimitiveScalar {
   static refName: string;
   static [SERVER_VALUE]: unknown;
@@ -177,6 +177,49 @@ export class Any extends PrimitiveScalar {
 }
 PrimitiveRegistry.register(Any);
 
+type NodeBuffer = Uint8Array & { toString(encoding: string): string };
+interface BufferCtor {
+  from(buffer: ArrayBufferLike, byteOffset: number, length: number): NodeBuffer;
+  from(text: string, encoding: string): NodeBuffer;
+}
+
+export class Binary extends PrimitiveScalar {
+  static override refName: "Binary" = "Binary";
+  static override [SERVER_VALUE]: Uint8Array;
+  static override [CLIENT_VALUE]: Uint8Array;
+  static override [DEFAULT_VALUE]: Uint8Array | null = null;
+  static override [PURIFIED_VALUE]: Uint8Array | null = null;
+  static override [EXAMPLE_VALUE]: string = "AAEC";
+
+  static override validate(value: Uint8Array | string): boolean {
+    return value instanceof Uint8Array || typeof value === "string";
+  }
+  static override parseValue(input: Uint8Array | string): Uint8Array {
+    return typeof input === "string" ? Binary.#fromBase64(input) : input;
+  }
+  static override serializeValue(value: Uint8Array | string): string {
+    return typeof value === "string" ? value : Binary.#toBase64(value);
+  }
+
+  static #toBase64(bytes: Uint8Array): string {
+    const buffer = (globalThis as { Buffer?: BufferCtor }).Buffer;
+    if (buffer) return buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("base64");
+    let binary = "";
+    for (let idx = 0; idx < bytes.length; idx += 0x8000)
+      binary += String.fromCharCode(...bytes.subarray(idx, idx + 0x8000));
+    return btoa(binary);
+  }
+  static #fromBase64(text: string): Uint8Array {
+    const buffer = (globalThis as { Buffer?: BufferCtor }).Buffer;
+    if (buffer) return buffer.from(text, "base64");
+    const binary = atob(text);
+    const bytes = new Uint8Array(binary.length);
+    for (let idx = 0; idx < binary.length; idx += 1) bytes[idx] = binary.charCodeAt(idx);
+    return bytes;
+  }
+}
+PrimitiveRegistry.register(Binary);
+
 export class Upload extends PrimitiveScalar {
   static override refName: "Upload" = "Upload";
   static override [SERVER_VALUE]: File;
@@ -210,12 +253,12 @@ declare global {
     [DEFAULT_VALUE]: boolean;
     [PURIFIED_VALUE]: boolean;
     [EXAMPLE_VALUE]: boolean;
-    validate(value: boolean | number): boolean;
-    parseValue(input: boolean | number): boolean | number;
-    serializeValue(value: boolean | number): boolean | number;
-    _parse(input: boolean | number): boolean;
-    _serialize(value: boolean | number): boolean;
-    _checkValue(value: boolean | number): void;
+    validate(value: boolean | number | string): boolean;
+    parseValue(input: boolean | number | string): boolean | number | string;
+    serializeValue(value: boolean | number | string): boolean | number | string;
+    _parse(input: boolean | number | string): boolean;
+    _serialize(value: boolean | number | string): boolean;
+    _checkValue(value: boolean | number | string): void;
   }
   interface DateConstructor {
     refName: "Date";
@@ -308,10 +351,15 @@ Object.assign(String, scalarPrimitiveStatics, {
 PrimitiveRegistry.register(String);
 
 // Boolean
-const normalizeBooleanPrimitiveValue = (value: boolean | number): boolean | null => {
+// Query strings, path params, and FormData fields arrive as text, so the wire spellings normalize here.
+const normalizeBooleanPrimitiveValue = (value: boolean | number | string): boolean | null => {
   if (typeof value === "boolean") return value;
   if (value === 1) return true;
   if (value === 0) return false;
+  if (typeof value !== "string") return null;
+  const text = value.trim().toLowerCase();
+  if (text === "true" || text === "1") return true;
+  if (text === "false" || text === "0") return false;
   return null;
 };
 
@@ -320,13 +368,13 @@ Object.assign(Boolean, {
   refName: "Boolean",
   [DEFAULT_VALUE]: false,
   [EXAMPLE_VALUE]: true,
-  validate(value: boolean | number) {
+  validate(value: boolean | number | string) {
     return normalizeBooleanPrimitiveValue(value) !== null;
   },
-  parseValue(input: boolean | number) {
+  parseValue(input: boolean | number | string) {
     return normalizeBooleanPrimitiveValue(input) ?? input;
   },
-  serializeValue(value: boolean | number) {
+  serializeValue(value: boolean | number | string) {
     return normalizeBooleanPrimitiveValue(value) ?? value;
   },
 });
@@ -354,4 +402,4 @@ Object.assign(Date, {
 });
 PrimitiveRegistry.register(Date);
 
-export type DefaultPrimitiveName = "String" | "Boolean" | "Date" | "Int" | "Float" | "ID" | "Any" | "Upload";
+export type DefaultPrimitiveName = "String" | "Boolean" | "Date" | "Int" | "Float" | "ID" | "Any" | "Binary" | "Upload";

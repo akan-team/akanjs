@@ -127,11 +127,7 @@ export const env = {
       ),
       this.writeFile(
         "env/env.server.ts",
-        `import { getEnv } from "akanjs/base";
-
-export const env = {
-  ...getEnv(),
-} as const;
+        `export const env = {} as const;
 `,
       ),
       this.writeFile(

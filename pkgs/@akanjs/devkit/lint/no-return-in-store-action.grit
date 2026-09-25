@@ -1,0 +1,35 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Every prototype method of a `store(...)` class is registered as an action
+// (StoreRegistry.register) and reaches callers only as `st.do.<action>`, which re-wraps it
+// (StoreInstance.#extendAccessors) and is typed void by `VoidActions` in
+// pkgs/akanjs/store/types.ts. A returned value is therefore unreachable from every call
+// site — it reads like a contract while being dead code. Write the result into state with
+// `this.set({ ... })` instead.
+//
+// Deliberately not flagged, because none of these are actions: a bare `return;` guard, a
+// `return` belonging to a nested callback, a getter, a `static` helper, and a class-property
+// arrow (an instance field, so `register` never sees it).
+`return $value;` as $return where {
+  not $value <: r"",
+  $return <: within JsClassDeclaration() as $storeClass where {
+    $storeClass <: contains JsExtendsClause() as $extends where {
+      $extends <: r"extends\s+store\([\s\S]*"
+    }
+  },
+  $return <: within JsMethodClassMember() as $action where {
+    not $action <: r"static[\s\S]*"
+  },
+  not $return <: within JsArrowFunctionExpression(),
+  not $return <: within JsFunctionExpression(),
+  not $return <: within JsFunctionDeclaration(),
+  not $return <: within JsMethodObjectMember(),
+  not $return <: within JsGetterObjectMember(),
+  not $return <: within JsSetterObjectMember(),
+  register_diagnostic(
+    span = $return,
+    message = "Store actions dispatch as void — st.do.<action>() never exposes this value. Write the result into state with this.set({ ... }) and drop the returned value; a bare 'return;' guard clause is fine.",
+    severity = "error"
+  )
+}

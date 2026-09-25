@@ -1,4 +1,4 @@
-import { clsx } from "akanjs/client";
+import { cn } from "akanjs/client";
 import type { CSSProperties } from "react";
 
 export interface LoadingProps {
@@ -6,12 +6,10 @@ export interface LoadingProps {
   active?: boolean;
   style?: CSSProperties;
 }
-export const Button = ({ className = "", active, style }: LoadingProps) => {
-  const activeClassName = active ? "animate-pulse" : "";
-  return (
-    <div
-      className={clsx("inline-block h-8 w-16 rounded-md bg-gray-200 align-bottom", activeClassName, className)}
-      style={style}
-    />
-  );
-};
+
+export const Button = ({ className = "", active = true, style }: LoadingProps) => (
+  <div
+    className={cn("inline-block h-9 w-20 rounded-field bg-muted align-bottom", active && "animate-pulse", className)}
+    style={style}
+  />
+);

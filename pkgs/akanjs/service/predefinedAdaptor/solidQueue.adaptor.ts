@@ -1,4 +1,5 @@
 import type { Database, Statement } from "bun:sqlite";
+import { getEnv } from "akanjs/base";
 import { adapt } from "../adapt";
 import { type AkanJob, type AkanJobOptions, type AkanWorker, sendAkanIpc } from "../ipcTypes";
 import type { QueueAdaptor } from "./queue.adaptor";
@@ -56,8 +57,11 @@ class SolidWorker implements AkanWorker {
 export class SolidQueue
   extends adapt("solidQueue", ({ env }) => ({
     config: env((env: SolidEnv) => getSolidConfig(env)),
-    queueName: env((env: SolidEnv) => `queue-${env.repoName}-${env.appName}-${env.environment}-${env.operationMode}`),
-    workerId: env((env: SolidEnv) => `${env.appName}-${process.env.AKAN_REPLICA_IDX ?? "0"}-${process.pid}`),
+    queueName: env(() => {
+      const { repoName, appName, environment, operationMode } = getEnv();
+      return `queue-${repoName}-${appName}-${environment}-${operationMode}`;
+    }),
+    workerId: env(() => `${getEnv().appName}-${process.env.AKAN_REPLICA_IDX ?? "0"}-${process.pid}`),
   }))
   implements QueueAdaptor
 {

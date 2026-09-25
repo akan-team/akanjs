@@ -22,6 +22,8 @@ Finite number primitive scalar for decimal values such as coordinates, rates, ba
 
 Loose object scalar for payloads whose shape is intentionally open. Prefer explicit scalar/model fields when the shape is stable; use Any for integration blobs or flexible metadata.
 
+Raw bytes for a signal argument or return, never a model field. It is a Uint8Array on both sides and base64 on a JSON wire; a pubsub whose whole return is Binary sends its own websocket frame instead. Store a blob as a File model.
+
 Akan re-exports the configured dayjs function and Dayjs type from base. Apps and libs use it for document dates, store state dates, service calculations, and UI formatting.
 
 Creates a typed enum scalar class from a literal value list. The generated enum exposes values, has, indexOf, find, filter, map, and forEach helpers used by constants and UI labels.

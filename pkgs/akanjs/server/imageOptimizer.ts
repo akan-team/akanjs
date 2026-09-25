@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { Logger } from "akanjs/common";
+import { isAnimatedImage } from "./animatedImage";
 import { ImageOptimizerError } from "./imageOptimizerError";
 import {
   type AkanImageConfig,
@@ -9,18 +11,6 @@ import {
   getAkanImageWidths,
   mergeAkanImageConfig,
 } from "./types";
-
-type SharpFactory = typeof import("sharp");
-
-let sharpLoad: Promise<SharpFactory> | null = null;
-
-function loadSharp(): Promise<SharpFactory> {
-  sharpLoad ??= import("sharp").then((mod) => {
-    const loaded = mod as unknown as { default?: SharpFactory } & SharpFactory;
-    return loaded.default ?? loaded;
-  });
-  return sharpLoad;
-}
 
 export interface ImageOptimizerOptions {
   publicDir: string;
@@ -59,18 +49,37 @@ export class ImageOptimizer {
   static readonly #webp = "image/webp";
   static readonly #gif = "image/gif";
   static readonly #avif = "image/avif";
+  static readonly #heic = "image/heic";
   static readonly #bypassTypes = new Set(["image/x-icon", "image/x-icns", "image/bmp", "image/jxl", "image/heic"]);
 
   #publicDir: string;
   #cacheDir: string;
   #prodMode: boolean;
   #config: AkanImageConfig;
+  #logger = new Logger("ImageOptimizer");
 
   constructor({ publicDir, cacheDir, prodMode, config }: ImageOptimizerOptions) {
     this.#publicDir = publicDir;
     this.#cacheDir = cacheDir;
     this.#prodMode = prodMode;
-    this.#config = mergeAkanImageConfig(config);
+    const merged = mergeAkanImageConfig(config);
+    const formats = merged.formats.filter((format) => ImageOptimizer.#isCodecAvailable(format));
+    if (formats.length !== merged.formats.length) {
+      const dropped = merged.formats.filter((format) => !formats.includes(format));
+      this.#logger.warn(`${dropped.join(", ")} needs an OS codec this platform does not have; serving webp instead`);
+    }
+    this.#config = { ...merged, formats: formats.length ? formats : ["image/webp"] };
+  }
+
+  /**
+   * AVIF, HEIC and TIFF ride the OS codec, which only the `system` backend has — macOS and Windows.
+   * A Linux container runs the `bun` backend, where both encode and decode raise
+   * `ERR_IMAGE_FORMAT_UNSUPPORTED`, so those types are decided up front rather than thrown at.
+   */
+  static #isCodecAvailable(contentType: string): boolean {
+    if (contentType !== ImageOptimizer.#avif && contentType !== ImageOptimizer.#heic && contentType !== "image/tiff")
+      return true;
+    return Bun.Image.backend === "system";
   }
 
   async handle(req: Request): Promise<Response> {
@@ -217,7 +226,8 @@ export class ImageOptimizer {
     const shouldBypass =
       inputType === ImageOptimizer.#svg ||
       ImageOptimizer.#bypassTypes.has(inputType) ||
-      (await ImageOptimizer.#isAnimated(source.buffer, inputType));
+      !ImageOptimizer.#isCodecAvailable(inputType) ||
+      isAnimatedImage(source.buffer, inputType);
     const outputType =
       shouldBypass || !params.outputType || inputType === ImageOptimizer.#webp || inputType === ImageOptimizer.#avif
         ? inputType
@@ -240,7 +250,7 @@ export class ImageOptimizer {
     let cacheable = true;
     if (!shouldBypass) {
       try {
-        buffer = await ImageOptimizer.#optimizeWithSharp(source.buffer, {
+        buffer = await ImageOptimizer.#optimize(source.buffer, {
           width: params.width,
           quality: params.quality,
           contentType: outputType,
@@ -281,24 +291,17 @@ export class ImageOptimizer {
     return new Response(ImageOptimizer.#toArrayBuffer(image.buffer), { headers });
   }
 
-  static async #optimizeWithSharp(
+  static async #optimize(
     buffer: Buffer,
     options: { width: number; quality: number; contentType: string },
   ): Promise<Buffer> {
-    const sharp = await loadSharp();
-    if (sharp.concurrency() > 1) sharp.concurrency(Math.max(Math.floor(sharp.concurrency() / 2), 1));
-    const transformer = sharp(buffer, {
-      limitInputPixels: 268_402_689,
-      sequentialRead: true,
-    }).resize(options.width, undefined, { withoutEnlargement: true });
+    const image = new Bun.Image(buffer).resize(options.width, undefined, { withoutEnlargement: true });
 
-    if (options.contentType === ImageOptimizer.#avif)
-      return await transformer.avif({ quality: options.quality }).toBuffer();
-    if (options.contentType === ImageOptimizer.#webp)
-      return await transformer.webp({ quality: options.quality }).toBuffer();
-    if (options.contentType === ImageOptimizer.#png)
-      return await transformer.png({ quality: options.quality }).toBuffer();
-    return await transformer.jpeg({ quality: options.quality }).toBuffer();
+    if (options.contentType === ImageOptimizer.#avif) return await image.avif({ quality: options.quality }).toBuffer();
+    if (options.contentType === ImageOptimizer.#webp) return await image.webp({ quality: options.quality }).toBuffer();
+    // Bun's PNG encoder takes no quality — it is lossless unless you opt into palette quantization.
+    if (options.contentType === ImageOptimizer.#png) return await image.png().toBuffer();
+    return await image.jpeg({ quality: options.quality }).toBuffer();
   }
 
   static #getPreferredOutputType(accept: string, formats: AkanImageFormat[]): AkanImageFormat | "" {
@@ -373,22 +376,6 @@ export class ImageOptimizer {
       chunks.push(value);
     }
     return Buffer.concat(chunks);
-  }
-
-  static async #isAnimated(buffer: Buffer, contentType: string): Promise<boolean> {
-    if (
-      contentType !== ImageOptimizer.#gif &&
-      contentType !== ImageOptimizer.#webp &&
-      contentType !== ImageOptimizer.#png
-    )
-      return false;
-    try {
-      const sharp = await loadSharp();
-      const metadata = await sharp(buffer, { animated: true }).metadata();
-      return Boolean(metadata.pages && metadata.pages > 1);
-    } catch {
-      return false;
-    }
   }
 
   static #detectContentType(buffer: Buffer): string | null {

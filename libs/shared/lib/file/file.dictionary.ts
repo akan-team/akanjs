@@ -91,4 +91,5 @@ export const dictionary = modelDictionary(["en", "ko"])
       "파일 스트림과 파일 메타의 수가 일치하지 않습니다",
     ],
     cloudPathNotFound: ["Cloud path is not found", "클라우드 경로를 찾을 수 없습니다"],
+    fileReadFailed: ["Failed to read the file data of {filename}", "{filename} 파일 데이터를 읽지 못했습니다"],
   });

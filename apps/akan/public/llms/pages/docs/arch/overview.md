@@ -90,7 +90,7 @@ Explains CSR web inside Capacitor, multi-client basePath targets, local CSR test
 
 Styling Foundation
 
-Explains Tailwind CSS, DaisyUI, design system thinking, theme declaration, and font declaration.
+Explains Tailwind CSS, semantic design tokens, design system thinking, theme declaration, and font declaration.
 
 How To Read The Architecture Docs
 

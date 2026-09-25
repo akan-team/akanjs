@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, Docs } from "@apps/akan/ui";
+import { Code, Divider, Docs, DocsToc } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 
 export default function Page() {
@@ -24,7 +24,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="endpoint-labels" title={l.trans({ en: "Endpoint Labels", ko: "Endpoint label" })}>
         <Docs.Title>{l.trans({ en: "Endpoint Labels", ko: "Endpoint label" })}</Docs.Title>
@@ -37,6 +37,7 @@ export default function Page() {
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="endpoint label"
           code={`import { serviceDictionary } from "akanjs/dictionary";
 import type { SearchEndpoint } from "./search.signal";
@@ -46,7 +47,7 @@ export const dictionary = serviceDictionary(["en", "ko"]).endpoint<SearchEndpoin
 }));`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="endpoint-args" title={l.trans({ en: "Endpoint Arguments", ko: "Endpoint argument" })}>
         <Docs.Title>{l.trans({ en: "Endpoint Arguments", ko: "Endpoint argument" })}</Docs.Title>
@@ -59,6 +60,7 @@ export const dictionary = serviceDictionary(["en", "ko"]).endpoint<SearchEndpoin
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="one argument"
           code={`export const dictionary = serviceDictionary(["en", "ko"]).endpoint<SearchEndpoint>((fn) => ({
   getSearchResult: fn(["Get search result", "검색 결과 가져오기"]).arg((t) => ({
@@ -67,7 +69,7 @@ export const dictionary = serviceDictionary(["en", "ko"]).endpoint<SearchEndpoin
 }));`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="translate-keys" title={l.trans({ en: "Translate Keys", ko: "Translate key" })}>
         <Docs.Title>{l.trans({ en: "Translate Keys", ko: "Translate key" })}</Docs.Title>
@@ -80,6 +82,7 @@ export const dictionary = serviceDictionary(["en", "ko"]).endpoint<SearchEndpoin
           </div>
         </Docs.Description>
         <Code.Snippet
+          className="w-full"
           title="service phrases"
           code={`export const dictionary = serviceDictionary(["en", "ko"]).translate({
   loading: ["Loading...", "불러오는 중..."],
@@ -87,7 +90,7 @@ export const dictionary = serviceDictionary(["en", "ko"]).endpoint<SearchEndpoin
 });`}
         />
       </Scroll.Slide>
-      <div className="divider" />
+      <Divider />
 
       <Scroll.Slide id="using-keys" title={l.trans({ en: "Using Keys", ko: "Key 사용" })}>
         <Docs.Title>{l.trans({ en: "Using Keys", ko: "Key 사용" })}</Docs.Title>
@@ -99,9 +102,13 @@ export const dictionary = serviceDictionary(["en", "ko"]).endpoint<SearchEndpoin
             })}
           </div>
         </Docs.Description>
-        <Code.Snippet title="client usage" code={`<button>{l("search.signal.getSearchResult")}</button>`} />
+        <Code.Snippet
+          className="w-full"
+          title="client usage"
+          code={`<button>{l("search.signal.getSearchResult")}</button>`}
+        />
       </Scroll.Slide>
-      <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
+      <DocsToc />
     </Scroll>
   );
 }

@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import { pathGetLoose } from "../common/pathGetLoose";
 
 type Side = "server" | "client";
 type RenderMode = "ssr" | "csr";
@@ -65,6 +66,7 @@ beforeAll(() => {
         if (!acc || typeof acc !== "object") return fallback;
         return (acc as Record<string, unknown>)[key] ?? fallback;
       }, obj),
+    pathGetLoose,
   }));
   mock.module("akanjs/fetch", () => ({
     defaultAccount: { appName: envState.appName, environment: envState.environment },

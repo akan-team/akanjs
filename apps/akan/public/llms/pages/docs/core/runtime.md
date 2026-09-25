@@ -12,6 +12,7 @@
 - Root-level Env Variables (#dev-prod)
 - getEnv() (#get-env)
 - OpenAPI JSON (#openapi-json)
+- Selective Module Boot (#module-selection)
 - Health, Metrics, Logs (#health-metrics-logs)
 
 ## Content
@@ -39,6 +40,8 @@ batch: runs background work such as queues, timers, and scheduled jobs.
 all: runs both federation and batch behavior in one server process. This is the simple local default.
 
 A single Akan App has built-in clustering. You can run multiple server replicas and let Akan App distribute traffic, without setting up separate local load-balancing tools such as nginx, docker compose, or pm2.
+
+With one traffic replica there is nothing to balance, so Akan App runs that server in its own process instead of spawning it and proxying to it. The container then holds one process rather than two, and every request skips a proxy hop. Two or more replicas, or a batch-only replica that never listens, bring the gateway back. Set AKAN_SOLO=false to keep the gateway for a single replica; akan start always runs it, because the gateway is also the dev server's build relay and error overlay.
 
 Root-level Env Variables
 
@@ -158,13 +161,27 @@ Use this when you start AkanServer directly instead of going through AkanApp.
 
 OpenAPI JSON is opt-in. Enable it only for environments where exposing API structure is acceptable, because it describes routes, request fields, response schemas, and guard metadata.
 
+Selective Module Boot
+
+An app mounts every module its libraries declare. The modules option narrows that: name the modules a process should serve and Akan boots those plus the ones they depend on, leaving the rest out of the container entirely. A module left out has no service, no signal, no route, and no scheduled job. This is how one codebase runs as several small processes, such as a batch worker that only needs its own domain.
+
+Dependencies are followed for you, so you list entry points instead of the whole graph. A named module pulls in every service and signal it injects, and every model its cascade removes. The boot log prints what was mounted.
+
+Boot log
+
+Use this when the entry point itself decides which modules the process serves. Every replica it spawns gets the same selection.
+
+Use this when deployment decides the split, so one image can run as different processes without a second entry point.
+
+A name no module registered fails the boot instead of being ignored, so a typo cannot quietly drop a module. Selection narrows the enabled set rather than replacing it, so it never turns on a module whose service is disabled. Endpoints of a module left out do not exist, so a client that calls one gets a 404.
+
 Health, Metrics, Logs
 
 Akan runtime exposes simple ways to check whether the app is alive, how busy it is, and what it is doing. In local development, these are mostly useful when a page does not load or a background job seems stuck.
 
 Health
 
-Use this to check whether the gateway and server processes are running and ready.
+Use this to check whether the server processes are running and ready. A solo replica answers it itself, in the same shape the gateway uses, so a probe reads one contract either way.
 
 Metrics
 
@@ -282,6 +299,23 @@ void run();
 
 ```bash
 curl http://localhost:8282/openapi.json
+```
+
+### apps/myapp/main.ts
+
+```ts
+import { AkanApp } from "akanjs/server";
+
+const run = async () => {
+  await new AkanApp("./server", { modules: ["article"] }).start();
+};
+void run();
+```
+
+### Code
+
+```bash
+[DiLifecycle] INFO  Mounting 3 of 12 module(s): article, file, user
 ```
 
 ### health

@@ -44,6 +44,7 @@ export interface WebsocketHandlersInputs {
   hmrHub: HmrWsHub | null;
   hmrState: HmrStateSource | null;
   logger: Logger;
+  onDrain?: () => void;
 }
 
 type WsTaggedData = { kind?: string };
@@ -111,8 +112,11 @@ export class ApiRouter {
     hmrHub,
     hmrState,
     logger,
+    onDrain,
   }: WebsocketHandlersInputs): Bun.WebSocketHandler<WsTaggedData> {
     return {
+      // The only signal that a backpressured socket has caught up, so a parked frame retries here or on a timer.
+      drain: () => onDrain?.(),
       open: (ws) => {
         // HMR sockets live in a separate logical channel from the app's signal
         // websockets. We tag them via `data.kind === "akan-hmr"` at upgrade

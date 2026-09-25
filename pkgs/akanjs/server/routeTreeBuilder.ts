@@ -13,6 +13,7 @@ import type {
 import {
   assertUniqueRoutePatterns,
   compareRouteSpecificity,
+  getRouteExports,
   matchRoutePattern,
   parseBasePaths,
   parseRouteModuleKey,
@@ -49,44 +50,6 @@ export interface RouteModuleCacheStats {
 }
 
 export class RouteTreeBuilder {
-  static readonly #pageRouteExports = new Set([
-    "default",
-    "pageConfig",
-    "head",
-    "metadata",
-    "generateHead",
-    "generateMetadata",
-    "Loading",
-  ]);
-  static readonly #rootLayoutExports = new Set([
-    "default",
-    "pageConfig",
-    "head",
-    "metadata",
-    "generateHead",
-    "generateMetadata",
-    "fonts",
-    "manifest",
-    "theme",
-    "reconnect",
-    "wsConnect",
-    "layoutStyle",
-    "gaTrackingId",
-    "Loading",
-    "NotFound",
-    "Error",
-  ]);
-  static readonly #layoutRouteExports = new Set([
-    "default",
-    "pageConfig",
-    "head",
-    "metadata",
-    "generateHead",
-    "generateMetadata",
-    "Loading",
-    "NotFound",
-    "Error",
-  ]);
   static readonly #moduleCacheStats: RouteModuleCacheStats = {
     moduleCount: 0,
     loadedModuleCount: 0,
@@ -228,6 +191,7 @@ export class RouteTreeBuilder {
     parentLayouts: RouteRender[] = [],
     parentPaths: string[] = [],
     parentHead?: ResolveHead,
+    parentOverrides: RouteRender[] = [],
   ): PathRoute[] {
     const parentPath = parentPaths.filter((p) => p !== "/").join("");
     const currentPathSegment = /^\/\(.*\)$/.test(route.path) ? "" : route.path;
@@ -236,12 +200,15 @@ export class RouteTreeBuilder {
     const pathSegments = [...parentPaths, ...(currentPathSegment ? [currentPathSegment] : [])];
     const currentRootLayout = isRoot && route.renderLayout ? route.renderLayout : null;
     const currentLayout = !isRoot && route.renderLayout ? route.renderLayout : null;
-    // Overrides always ride the (non-root) layout stream so both SSR and CSR mount the provider, and sit just
-    // outside this node's own layout so the layout's UI is overridden too. Nested `_overrides.tsx` then stack
-    // into nested providers, so the closest declaration wins (the provider merges over ancestor context).
+    // Overrides wrap the whole stack, root layouts included. Riding the non-root stream instead left a root
+    // layout wrapping the provider, so its own JSX — and the overlay host it mounts, which portalled Modals
+    // render into — sat outside every manifest and silently took the framework default. Nested manifests still
+    // stack in node order, and `parentRootLayouts` stays override-free because the root-boundary test counts it.
     const currentOverrideRenders = route.renderOverrides ? [route.renderOverrides] : [];
-    const renderRootLayouts = [...parentRootLayouts, ...(currentRootLayout ? [currentRootLayout] : [])];
-    const renderLayouts = [...parentLayouts, ...currentOverrideRenders, ...(currentLayout ? [currentLayout] : [])];
+    const overrideRenders = [...parentOverrides, ...currentOverrideRenders];
+    const rootLayoutStack = [...parentRootLayouts, ...(currentRootLayout ? [currentRootLayout] : [])];
+    const renderRootLayouts = [...overrideRenders, ...rootLayoutStack];
+    const renderLayouts = [...parentLayouts, ...(currentLayout ? [currentLayout] : [])];
     if (route.renderLayout) {
       this.#fallbackRoutes.push({
         path: routePath,
@@ -252,11 +219,10 @@ export class RouteTreeBuilder {
     }
     const routeHead = RouteTreeBuilder.#composeHeadResolvers(route.renderLayout?.resolveHead, parentHead);
     const pageRenderRootLayouts =
-      route.pageIncludesOwnLayout === false && currentRootLayout ? parentRootLayouts : renderRootLayouts;
-    const pageRenderLayouts =
-      route.pageIncludesOwnLayout === false && currentLayout
-        ? [...parentLayouts, ...currentOverrideRenders]
-        : renderLayouts;
+      route.pageIncludesOwnLayout === false && currentRootLayout
+        ? [...overrideRenders, ...parentRootLayouts]
+        : renderRootLayouts;
+    const pageRenderLayouts = route.pageIncludesOwnLayout === false && currentLayout ? parentLayouts : renderLayouts;
     const pageHead = route.pageIncludesOwnLayout === false ? parentHead : routeHead;
     return [
       ...(route.renderPage
@@ -275,7 +241,7 @@ export class RouteTreeBuilder {
         : []),
       ...(route.children.size
         ? [...route.children.values()].flatMap((child) =>
-            this.#getPathRoutes(child, renderRootLayouts, renderLayouts, pathSegments, routeHead),
+            this.#getPathRoutes(child, rootLayoutStack, renderLayouts, pathSegments, routeHead, overrideRenders),
           )
         : []),
     ];
@@ -311,12 +277,7 @@ export class RouteTreeBuilder {
       return;
     }
     const parsed = parseRouteModuleKey(key);
-    const allowed =
-      kind === "page"
-        ? RouteTreeBuilder.#pageRouteExports
-        : parsed.isInternalRootLayout
-          ? RouteTreeBuilder.#rootLayoutExports
-          : RouteTreeBuilder.#layoutRouteExports;
+    const allowed = getRouteExports(kind, { rootLayout: parsed.isInternalRootLayout });
     for (const exportName of Object.keys(mod)) {
       if (!allowed.has(exportName)) {
         throw new Error(`[route-convention] unsupported export "${exportName}" in ${key}`);

@@ -11,9 +11,9 @@ interface KeyboardAvoidingProps {
   keyboardSticky?: boolean;
 }
 export const KeyboardAvoiding = ({ children, className }: KeyboardAvoidingProps) => {
-  const keyboardHeight = st.use.keyboardHeight();
+  const keyboardHeight = st.use.keyboardHeight({ agent: false });
   const defaultHeight = useRef<number | null>(null);
-  const pageState = st.use.pageState();
+  const pageState = st.use.pageState({ agent: false });
   const { pageContentRef } = useCsr();
   const [{ height }, setSpring] = useSpring(() => ({
     height: 0,

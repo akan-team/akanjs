@@ -1,4 +1,5 @@
 export * from "./adapt";
+export * from "./agent.service";
 export * from "./base.service";
 export * from "./injectInfo";
 export * from "./injectInfo";

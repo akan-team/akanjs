@@ -77,7 +77,7 @@ artifact is built last and is not overwritten by the root `akan` bootstrap scrip
 
 ## Requirements
 
-- [Bun](https://bun.sh) `>=1.3.13`
+- [Bun](https://bun.sh) `>=1.4.0`
 - A TypeScript Akan workspace
 
 ## License

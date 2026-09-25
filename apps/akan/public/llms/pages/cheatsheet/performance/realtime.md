@@ -90,8 +90,11 @@ export class ChatEndpoint extends endpoint(srv.chat, ({ pubsub }) => ({
   messageAdded: pubsub(cnst.ChatMessage)
     .room("chatId", ID)
     .with(Ws)
-    .exec(async (chatId, ws) => {
+    .exec(async function (chatId, ws) {
       // The room key decides which connected users receive this event.
+      const markAway = () => this.chatService.markAway(chatId, ws.socketId);
+      ws.on("unsubscribe", markAway);
+      ws.on("disconnect", markAway);
     }),
 })) {}
 ```

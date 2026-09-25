@@ -10,7 +10,7 @@ interface DragEmptyProps {
 
 export default function DragEmpty({ columnId }: DragEmptyProps) {
   const { l } = usePage();
-  const { attributes, listeners, setNodeRef, transform, isOver, isDragging } = useSortable({
+  const { attributes, listeners, setNodeRef } = useSortable({
     id: `${columnId}-empty`,
     disabled: true, // 드래그 비활성화
   });

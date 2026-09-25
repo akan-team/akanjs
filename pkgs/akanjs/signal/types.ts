@@ -68,6 +68,8 @@ interface TimerOption {
   enabled?: boolean;
 }
 
+export type HttpMutationMethod = "POST" | "PATCH" | "PUT" | "DELETE";
+
 export interface SignalOption<Response = any, Nullable extends boolean = false, _Key = keyof UnCls<Response>>
   extends InitOption,
     TimerOption {
@@ -83,8 +85,20 @@ export interface SignalOption<Response = any, Nullable extends boolean = false, 
   middlewares?: MiddlewareCls[];
   prefix?: false | string;
   globalPrefix?: false;
+  /**
+   * HTTP verb for a `mutation`, `POST` unless named. Only a foreign wire protocol needs the others — a client
+   * that cannot be changed and sends `PATCH /rest/v1/<table>`. Every other endpoint type ignores it.
+   */
+  method?: HttpMutationMethod;
   /** Marks this mutation as the framework file-upload endpoint (see resolveFileUploadCapability). */
   fileUpload?: boolean;
+  /**
+   * What a `pubsub(Binary)` does when a subscriber cannot keep up. `"coalesce"` (the default) keeps only the
+   * newest frame per room, which is what a telemetry or video stream wants — an old frame is worthless once a
+   * newer one exists. Name `"queue"` when the frames are a sequence a subscriber has to see in full, such as
+   * deltas against a base it already holds; the send buffer then grows with the slowest subscriber.
+   */
+  backpressure?: "coalesce" | "queue";
 
   // * ==================== Schedule ==================== * //
   scheduleType?: "init" | "destroy" | "cron" | "interval" | "timeout";
@@ -101,6 +115,7 @@ interface SerializedSignalOption {
   prefix?: false | string;
   globalPrefix?: false;
   guards?: string[];
+  method?: HttpMutationMethod;
   fileUpload?: boolean;
 }
 export interface SerializedSlice extends SerializedSignalOption {}
@@ -121,12 +136,17 @@ export interface SerializedArg {
   nullable?: boolean;
   example?: string | number | boolean | Date;
   enum?: string;
+  /** The values this arg accepts, when they are a fixed list the caller has to pick from. */
+  oneOf?: (string | number)[];
+  /** For an id a filter declared against a model: the model it points at, so a UI can offer a picker. */
+  ref?: string;
 }
 export interface SerializedEndpoint extends SerializedSignalOption {
-  type: "query" | "mutation" | "pubsub" | "message";
+  type: "query" | "mutation" | "pubsub" | "message" | "prompt";
   returns: SerializedReturns;
 }
 export interface SerializedFilter {
+  /** Every filter query the model declares, by key, with the args each one takes. */
   filter: { [key: string]: SerializedArg[] };
   sortKeys: string[];
 }

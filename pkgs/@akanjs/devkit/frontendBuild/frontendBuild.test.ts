@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RoutesManifest } from "akanjs/server";
 import { CsrArtifactBuilder } from "./csrArtifactBuilder";
-import { CssCompiler, isIgnoredNodeModuleSource } from "./cssCompiler";
+import { CssCompiler, declaredCustomProperties, isIgnoredNodeModuleSource } from "./cssCompiler";
 import { CssImportResolver } from "./cssImportResolver";
 import { DevChangePlanner } from "./devChangePlanner";
 import { DevGeneratedIndexSync } from "./devGeneratedIndexSync";
@@ -113,7 +113,9 @@ describe("PagesBundleBuilder", () => {
     await write(entry, ['import "./styles.css";', "export const marker = 1;", ""].join("\n"));
     await write(
       css,
-      ['@plugin "daisyui" {', "  themes: false;", "}", "@theme {", "  --color-primary: red;", "}", ""].join("\n"),
+      ['@plugin "tailwind-scrollbar" {', "  themes: false;", "}", "@theme {", "  --color-primary: red;", "}", ""].join(
+        "\n",
+      ),
     );
 
     const result = await Bun.build({
@@ -389,6 +391,20 @@ describe("CssImportResolver", () => {
     expect(await resolver.resolve("@libs/ui/missing", root)).toBeNull();
   });
 
+  test("never substitutes the package stylesheet for a subpath that does not exist", async () => {
+    const root = await makeTempRoot();
+    await write(
+      path.join(root, "node_modules/vendor/package.json"),
+      JSON.stringify({ name: "vendor", style: "index.css" }),
+    );
+    await write(path.join(root, "node_modules/vendor/index.css"), ".vendor {}\n");
+
+    const resolver = new CssImportResolver(root, {});
+
+    expect(await resolver.resolve("vendor", root)).toBe(path.join(root, "node_modules/vendor/index.css"));
+    expect(await resolver.resolve("vendor/ui/tokens.css", root)).toBeNull();
+  });
+
   test("resolves css from single-package Akan workspace subpaths", async () => {
     const root = await makeTempRoot();
     await write(path.join(root, "pkgs/akanjs/ui/styles.css"), "body {}\n");
@@ -425,5 +441,78 @@ describe("CssCompiler", () => {
     const css = await compiler.compileCss([cssPath], []);
 
     expect(css).toContain(".text-fuchsia-500");
+  });
+
+  test("reads declarations that prove a stylesheet arrived, ignoring theme variables that may not", () => {
+    expect(declaredCustomProperties(":root { --kakao: #fee500; --naver: #1ec800; }")).toEqual(["--kakao", "--naver"]);
+    expect(declaredCustomProperties("@theme inline {\n  --color-brand: var(--brand);\n}\n")).toEqual([]);
+    expect(declaredCustomProperties("@theme { --color-x: initial; }\n:root { --brand: #111; }")).toEqual(["--brand"]);
+    expect(declaredCustomProperties(".a { color: var(--kakao); }")).toEqual([]);
+    expect(declaredCustomProperties(":root{--a:#111}\n@media (min-width:1px){:root{--a:#222;--b:#333}}")).toEqual([
+      "--a",
+      "--b",
+    ]);
+  });
+
+  test("fails loudly on a stylesheet import that resolves to nothing", async () => {
+    const root = await makeTempRoot();
+    const cssPath = path.join(root, "apps/demo/page/styles.css");
+    await write(cssPath, '@import "../../../libs/shared/ui/tokens.css";\n');
+
+    const compiler = new CssCompiler({
+      workspace: { workspaceRoot: root },
+      cwdPath: path.join(root, "apps/demo"),
+      getTsConfig: async () => ({ compilerOptions: { paths: {} } }),
+    } as never);
+
+    await expect(compiler.compileCss([cssPath], [])).rejects.toThrow(
+      /failed to resolve stylesheet import "\.\.\/\.\.\/\.\.\/libs\/shared\/ui\/tokens\.css"/,
+    );
+  });
+
+  test("reports every @import per base path so the written asset can be checked against it", async () => {
+    const root = await makeTempRoot();
+    const appDir = path.join(root, "apps/demo");
+    await write(path.join(appDir, "page/_index.tsx"), 'import "./styles.css";\nexport default () => null;\n');
+    await write(path.join(appDir, "page/styles.css"), '@import "../../../libs/shared/ui/brand.css";\n');
+    await write(path.join(root, "libs/shared/ui/brand.css"), ":root { --kakao: #fee500; --naver: #1ec800; }\n");
+
+    const compiler = new CssCompiler({
+      workspace: { workspaceRoot: root },
+      cwdPath: appDir,
+      getPageKeys: async () => ["./_index.tsx"],
+      getConfig: async () => ({ barrelImports: [], basePaths: [] }),
+      getTsConfig: async () => ({ compilerOptions: { paths: {} } }),
+    } as never);
+    const cssByBasePath = await compiler.getCssByBasePath();
+
+    expect(cssByBasePath[""]).toContain("--kakao");
+    expect(compiler.importedStylesheetsByBasePath[""]).toEqual([
+      { cssPath: path.join(root, "libs/shared/ui/brand.css"), declaredNames: ["--kakao", "--naver"] },
+    ]);
+  });
+
+  test("compiles lib-owned tokens ahead of the app stylesheets that may override them", async () => {
+    const root = await makeTempRoot();
+    const appDir = path.join(root, "apps/demo");
+    await write(
+      path.join(appDir, "page/_index.tsx"),
+      'import "./styles.css";\nimport { Card } from "@libs/shared/ui";\nexport default () => <Card />;\n',
+    );
+    await write(path.join(appDir, "page/styles.css"), ":root { --brand: #111111; }\n");
+    await write(path.join(root, "libs/shared/ui/index.ts"), "export const Card = () => null;\n");
+    await write(path.join(root, "libs/shared/ui/tokens.css"), ":root { --kakao: #fee500; }\n");
+    await write(path.join(root, "libs/unused/ui/tokens.css"), ":root { --unused: #000000; }\n");
+
+    const compiler = new CssCompiler({
+      workspace: { workspaceRoot: root },
+      cwdPath: appDir,
+      getPageKeys: async () => ["./_index.tsx"],
+      getConfig: async () => ({ barrelImports: [] }),
+      getTsConfig: async () => ({ compilerOptions: { paths: { "@libs/*": ["./libs/*"] } } }),
+    } as never);
+    const { cssPaths } = await compiler.discoverCssAndSources();
+
+    expect(cssPaths).toEqual([path.join(root, "libs/shared/ui/tokens.css"), path.join(appDir, "page/styles.css")]);
   });
 });

@@ -1,6 +1,7 @@
 import { usePage } from "@apps/akan/client";
 import { Code, Docs } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
+import { badgeRecipe } from "akanjs/ui";
 
 export default function Page() {
   const { l } = usePage();
@@ -46,7 +47,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="architecture" title={l.trans({ en: "Module Architecture", ko: "모듈 아키텍처" })}>
         <Docs.Title>{l.trans({ en: "Module Architecture", ko: "모듈 아키텍처" })}</Docs.Title>
@@ -77,7 +78,7 @@ export default function Page() {
           <div className="my-4 overflow-x-auto">
             <table className="table-zebra table w-full text-sm">
               <thead>
-                <tr className="bg-base-300">
+                <tr className="bg-border">
                   <th>{l.trans({ en: "Category", ko: "카테고리" })}</th>
                   <th>{l.trans({ en: "Files", ko: "파일" })}</th>
                   <th>{l.trans({ en: "Output", ko: "결과물" })}</th>
@@ -86,7 +87,7 @@ export default function Page() {
               <tbody>
                 <tr>
                   <td>
-                    <span className="badge badge-warning">Common</span>
+                    <span className={badgeRecipe({ variant: "warning" })}>Common</span>
                   </td>
                   <td>constant, dictionary, signal</td>
                   <td>
@@ -95,14 +96,14 @@ export default function Page() {
                 </tr>
                 <tr>
                   <td>
-                    <span className="badge badge-success">Backend</span>
+                    <span className={badgeRecipe({ variant: "success" })}>Backend</span>
                   </td>
                   <td>document, service</td>
                   <td>{l.trans({ en: "MongoDB models, business logic", ko: "MongoDB 모델, 비즈니스 로직" })}</td>
                 </tr>
                 <tr>
                   <td>
-                    <span className="badge badge-info">Frontend</span>
+                    <span className={badgeRecipe({ variant: "info" })}>Frontend</span>
                   </td>
                   <td>store, Template, Unit, View, Zone, Util</td>
                   <td>{l.trans({ en: "State management, UI components", ko: "상태 관리, UI 컴포넌트" })}</td>
@@ -112,7 +113,7 @@ export default function Page() {
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="common-files" title={l.trans({ en: "Common Files", ko: "공통 파일" })}>
         <Docs.Title>{l.trans({ en: "Common Files", ko: "공통 파일" })}</Docs.Title>
@@ -126,7 +127,7 @@ export default function Page() {
           <div className="my-4 overflow-x-auto">
             <table className="table-zebra table w-full text-sm">
               <thead>
-                <tr className="bg-base-300">
+                <tr className="bg-border">
                   <th>{l.trans({ en: "File", ko: "파일" })}</th>
                   <th>{l.trans({ en: "Description", ko: "설명" })}</th>
                 </tr>
@@ -178,7 +179,7 @@ export default function Page() {
           </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="backend-files" title={l.trans({ en: "Backend Files", ko: "백엔드 파일" })}>
         <Docs.Title>{l.trans({ en: "Backend Files", ko: "백엔드 파일" })}</Docs.Title>
@@ -192,7 +193,7 @@ export default function Page() {
           <div className="my-4 overflow-x-auto">
             <table className="table-zebra table w-full text-sm">
               <thead>
-                <tr className="bg-base-300">
+                <tr className="bg-border">
                   <th>{l.trans({ en: "File", ko: "파일" })}</th>
                   <th>{l.trans({ en: "Description", ko: "설명" })}</th>
                 </tr>
@@ -234,7 +235,7 @@ constant.ts (Schema)
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="frontend-files" title={l.trans({ en: "Frontend Files", ko: "프론트엔드 파일" })}>
         <Docs.Title>{l.trans({ en: "Frontend Files", ko: "프론트엔드 파일" })}</Docs.Title>
@@ -248,7 +249,7 @@ constant.ts (Schema)
           <div className="my-4 overflow-x-auto">
             <table className="table-zebra table w-full text-sm">
               <thead>
-                <tr className="bg-base-300">
+                <tr className="bg-border">
                   <th>{l.trans({ en: "File", ko: "파일" })}</th>
                   <th>{l.trans({ en: "Type", ko: "타입" })}</th>
                   <th>{l.trans({ en: "Description", ko: "설명" })}</th>
@@ -365,7 +366,7 @@ constant.ts (Schema)
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide id="naming-convention" title={l.trans({ en: "File Naming Convention", ko: "파일 명명 규칙" })}>
         <Docs.Title>{l.trans({ en: "File Naming Convention", ko: "파일 명명 규칙" })}</Docs.Title>
@@ -379,7 +380,7 @@ constant.ts (Schema)
           <div className="my-4 overflow-x-auto">
             <table className="table-zebra table w-full text-sm">
               <thead>
-                <tr className="bg-base-300">
+                <tr className="bg-border">
                   <th>{l.trans({ en: "Pattern", ko: "패턴" })}</th>
                   <th>{l.trans({ en: "Example", ko: "예시" })}</th>
                   <th>{l.trans({ en: "Description", ko: "설명" })}</th>
@@ -420,7 +421,7 @@ constant.ts (Schema)
           />
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.Slide
         id="best-practices"
@@ -530,7 +531,7 @@ constant.ts (Schema)
           </div>
         </Docs.Description>
       </Scroll.Slide>
-      <div className="divider" />
+      <div className="my-4 h-px w-full bg-border" />
 
       <Scroll.TitleNavigator className="fixed top-32 right-0 hidden w-[250px] flex-col gap-2 lg:flex" />
     </Scroll>

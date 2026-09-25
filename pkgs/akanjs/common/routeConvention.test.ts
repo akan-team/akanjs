@@ -3,9 +3,11 @@ import { describe, expect, test } from "bun:test";
 import {
   assertUniqueRoutePatterns,
   compareRouteSpecificity,
+  getRouteExports,
   isRouteSourceFile,
   matchRoutePattern,
   parseRouteModuleKey,
+  RESERVED_ROUTE_CONFIG_EXPORTS,
   validatePageSourceFile,
   validateSubRoutePageKey,
 } from "./routeConvention";
@@ -137,6 +139,26 @@ describe("route convention", () => {
         'app "akan" uses subRoutes (akanjs, soft)',
       );
     }
+  });
+
+  test("allows every root-layout config export the framework honors", () => {
+    const rootLayout = getRouteExports("layout", { rootLayout: true });
+    for (const name of ["wsConnect", "reconnect", "theme", "fonts", "manifest", "layoutStyle", "gaTrackingId"]) {
+      expect(rootLayout.has(name)).toBe(true);
+      expect(RESERVED_ROUTE_CONFIG_EXPORTS.has(name)).toBe(true);
+    }
+    expect(getRouteExports("layout").has("wsConnect")).toBe(false);
+    expect(getRouteExports("page").has("wsConnect")).toBe(false);
+  });
+
+  test("keeps page exports a subset of layout exports, and layout of root layout", () => {
+    const page = getRouteExports("page");
+    const layout = getRouteExports("layout");
+    const rootLayout = getRouteExports("layout", { rootLayout: true });
+    for (const name of page) expect(layout.has(name)).toBe(true);
+    for (const name of layout) expect(rootLayout.has(name)).toBe(true);
+    expect([...RESERVED_ROUTE_CONFIG_EXPORTS].every((name) => !/^[A-Z]/.test(name))).toBe(true);
+    expect(RESERVED_ROUTE_CONFIG_EXPORTS.has("default")).toBe(false);
   });
 
   test("matches and sorts route patterns by specificity", () => {

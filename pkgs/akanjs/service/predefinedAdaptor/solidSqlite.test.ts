@@ -1,9 +1,10 @@
 import { Database, type SQLQueryBindings, type Statement } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
-import { dayjs, Int } from "akanjs/base";
+import { dayjs, ID, Int } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import {
   by,
+  createDocumentQueryHelper,
   type DatabaseCls,
   DatabaseRegistry,
   DocumentSchema,
@@ -22,6 +23,7 @@ import { decodeSolidValue, encodeSolidValue, getSolidConfig, toEpochMs } from ".
 import { resolveDefaultSqliteFile } from "./sqlitePath";
 
 const { set, inc, push, pull, addToSet, unset, mul, min, max } = documentUpdateHelper;
+const q = createDocumentQueryHelper();
 
 const InsightTestStatus = ["active", "failed", "deploying"] as const;
 class InsightTestInput extends via((f) => ({
@@ -70,6 +72,7 @@ class TicketHistory extends via((f) => ({
 class TicketTestInput extends via((f) => ({
   title: f(String),
   status: f(String, { default: "active" }),
+  archived: f(Boolean, { default: false }),
   issuedAt: f(Date).optional(),
   transactionAt: f(Date, { default: dayjs(0) }),
   histories: f([TicketHistory]),
@@ -103,6 +106,39 @@ const ticketTestDatabase = DatabaseRegistry.buildModel(
   TicketTestObject,
   TicketTestInsight,
   TicketTestFilter,
+);
+
+class ImmutableTestInput extends via((f) => ({
+  title: f(String),
+  ownerId: f(ID, { immutable: true }),
+  origin: f(String, { default: "seed", immutable: true }),
+})) {}
+class ImmutableTestObject extends via(ImmutableTestInput, () => ({})) {}
+class ImmutableTestLight extends via(ImmutableTestObject, ["title"] as const, () => ({})) {}
+class ImmutableTestFull extends via(ImmutableTestObject, ImmutableTestLight, () => ({})) {}
+class ImmutableTestInsight extends via(ImmutableTestFull, (f) => ({
+  count: f(Int, { default: 0, accumulate: {} }),
+})) {}
+const immutableTestConstant = ConstantRegistry.buildModel(
+  "sqliteImmutableTest",
+  ImmutableTestInput,
+  ImmutableTestObject,
+  ImmutableTestFull,
+  ImmutableTestLight,
+  ImmutableTestInsight,
+  { ImmutableTestInput, ImmutableTestObject, ImmutableTestFull, ImmutableTestLight, ImmutableTestInsight },
+);
+class ImmutableTestFilter extends from(ImmutableTestFull, () => ({})) {}
+class ImmutableTestDoc extends by(ImmutableTestFull) {}
+class ImmutableTestModel extends into(ImmutableTestDoc, ImmutableTestFilter, immutableTestConstant, () => ({})) {}
+const immutableTestDatabase = DatabaseRegistry.buildModel(
+  "sqliteImmutableTest",
+  ImmutableTestInput as unknown as DatabaseCls<InstanceType<typeof ImmutableTestInput>>,
+  ImmutableTestDoc,
+  ImmutableTestModel,
+  ImmutableTestObject,
+  ImmutableTestInsight,
+  ImmutableTestFilter,
 );
 
 class TestSqliteStatement implements AkanSqlStatement {
@@ -270,15 +306,11 @@ describe("solid sqlite utilities", () => {
       process.env.AKAN_SOLID_DB_PATH = "/tmp/solid.db";
       expect(
         getSolidConfig({
-          appName: "demo",
-          environment: "test",
           solid: { queueLeaseMs: 7, journalMode: "MEMORY" },
         }).filePath,
       ).toBe("/tmp/solid.db");
       expect(
         getSolidConfig({
-          appName: "demo",
-          environment: "test",
           solid: { queueLeaseMs: 7, journalMode: "MEMORY" },
         }),
       ).toMatchObject({
@@ -352,6 +384,36 @@ describe("solid sqlite utilities", () => {
     }
   });
 
+  test("keeps a valid caller-supplied id and rejects anything else", async () => {
+    const db = new Database(":memory:", { strict: true, create: true });
+    const client = new TestSqliteClient(db);
+    const store = new SqlDocumentStore(
+      new TestDatabaseOwner(client),
+      ticketTestConstant,
+      ticketTestDatabase,
+      new DocumentSchema(),
+    );
+
+    try {
+      await client.execute(
+        `CREATE TABLE IF NOT EXISTS "_akan_meta" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL, "updatedAt" INTEGER NOT NULL)`,
+      );
+      await store.ensure();
+
+      await expect(store.create({ id: "not-an-id", title: "Ticket", histories: [] })).rejects.toThrow(
+        "Invalid ID value: not-an-id",
+      );
+      await expect(store.create({ id: "", title: "Ticket", histories: [] })).rejects.toThrow("Invalid ID value: ");
+
+      const pinned = "aaaaaaaaaaaaaaaaaaaaaaaa";
+      const created = await store.create({ id: pinned, title: "Ticket", histories: [] });
+      expect(created.id).toBe(pinned);
+      expect((await store.pickById(pinned)).id).toBe(pinned);
+    } finally {
+      await client.close();
+    }
+  });
+
   test("runs save hooks on document persistence but bypasses them on query-based writes", async () => {
     const db = new Database(":memory:", { strict: true, create: true });
     const client = new TestSqliteClient(db);
@@ -412,7 +474,11 @@ describe("solid sqlite utilities", () => {
 
       // upsert insert via updateOne query: still a document create -> create hooks only, save hooks bypassed
       calls.length = 0;
-      await store.updateOneByQuery({ id: "upsert-1", title: "Upserted" }, { histories: set([]) }, { upsert: true });
+      await store.updateOneByQuery(
+        { id: "111111111111111111111111", title: "Upserted" },
+        { histories: set([]) },
+        { upsert: true },
+      );
       expect(calls).toEqual(["pre:create", "post:create"]);
 
       // remove(id): document soft delete -> remove hooks only, no save/update
@@ -420,9 +486,9 @@ describe("solid sqlite utilities", () => {
       await store.remove(created.id);
       expect(calls).toEqual(["pre:remove", "post:remove"]);
 
-      // deleteMany query: atomic soft delete fires NO document hooks
+      // removeMany query: atomic soft delete fires NO document hooks
       calls.length = 0;
-      await store.deleteManyByQuery({ id: "upsert-1" });
+      await store.removeManyByQuery({ id: "111111111111111111111111" });
       expect(calls).toEqual([]);
     } finally {
       await client.close();
@@ -485,17 +551,22 @@ describe("solid sqlite utilities", () => {
 
       // upsert insert applies inc from 0 and setOnInsert (functional builder form)
       const rUp = await store.updateOneByQuery(
-        { id: "new-1", title: "New" },
+        { id: "222222222222222222222222", title: "New" },
         ({ inc, setOnInsert }) => ({ score: inc(3), status: setOnInsert("fresh") }),
         { upsert: true },
       );
-      expect(rUp).toEqual({ acknowledged: true, matchedCount: 0, modifiedCount: 1, upsertedId: "new-1" });
-      const up = await store.pickById("new-1");
+      expect(rUp).toEqual({
+        acknowledged: true,
+        matchedCount: 0,
+        modifiedCount: 1,
+        upsertedId: "222222222222222222222222",
+      });
+      const up = await store.pickById("222222222222222222222222");
       expect(up.score).toBe(3);
       expect(up.status).toBe("fresh");
 
-      // deleteMany soft-deletes atomically and hides the row from later reads
-      const rDel = await store.deleteManyByQuery({ status: "failed" });
+      // removeMany soft-deletes atomically and hides the row from later reads
+      const rDel = await store.removeManyByQuery({ status: "failed" });
       expect(rDel).toEqual({ acknowledged: true, matchedCount: 1, modifiedCount: 1 });
       expect(await store.findId({ id: b.id })).toBeNull();
       expect(await store.count()).toBe(2);
@@ -538,6 +609,116 @@ describe("solid sqlite utilities", () => {
 
       expect(stored.secretToken).toBe("token-1");
       expect(updated).toMatchObject({ title: "Updated", secretToken: "token-1" });
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("keeps every projected field at its declared type", async () => {
+    const db = new Database(":memory:", { strict: true, create: true });
+    const client = new TestSqliteClient(db);
+    const owner = new TestDatabaseOwner(client);
+    const store = new SqlDocumentStore(owner, ticketTestConstant, ticketTestDatabase, new DocumentSchema());
+
+    try {
+      await client.execute(
+        `CREATE TABLE IF NOT EXISTS "_akan_meta" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL, "updatedAt" INTEGER NOT NULL)`,
+      );
+      await store.ensure();
+
+      const objectish = await store.create({
+        title: "Ticket",
+        archived: true,
+        issuedAt: dayjs(1700000000000),
+        histories: [{ action: "open", flag: true }],
+        hiddenNote: "note",
+        secretToken: '{"a":1}',
+      });
+      const selected = await store.pickOne(
+        { id: objectish.id },
+        { select: { title: true, archived: true, issuedAt: true, histories: true, secretToken: true } },
+      );
+
+      expect(selected.secretToken).toBe('{"a":1}');
+      expect(selected.archived).toBe(true);
+      expect(selected.title).toBe("Ticket");
+      expect(selected.issuedAt?.valueOf()).toBe(1700000000000);
+      expect(selected.histories[0]).toMatchObject({ action: "open", flag: true, content: [], count: 0 });
+
+      const arrayish = await store.create({
+        title: "Ticket",
+        histories: [],
+        hiddenNote: "note",
+        secretToken: '["a","b"]',
+      });
+      const plain = await store.pickOne({ id: arrayish.id }, { select: { archived: true, secretToken: true } });
+
+      expect(plain.secretToken).toBe('["a","b"]');
+      expect(plain.archived).toBe(false);
+    } finally {
+      await client.close();
+    }
+  });
+
+  // `missing` is key absence and `empty` is "no value". They diverge on an optional field, because a document
+  // read back carries an explicit null the insert never wrote — so the same field answers `missing` before a
+  // round-trip save and `empty` either way.
+  test("separates an absent key from a null value", async () => {
+    const db = new Database(":memory:", { strict: true, create: true });
+    const client = new TestSqliteClient(db);
+    const owner = new TestDatabaseOwner(client);
+    const store = new SqlDocumentStore(owner, ticketTestConstant, ticketTestDatabase, new DocumentSchema());
+
+    try {
+      await client.execute(
+        `CREATE TABLE IF NOT EXISTS "_akan_meta" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL, "updatedAt" INTEGER NOT NULL)`,
+      );
+      await store.ensure();
+
+      const created = await store.create({ title: "T", histories: [], hiddenNote: "n", secretToken: "s" });
+      expect(await store.count(q.missing("issuedAt"))).toBe(1);
+      expect(await store.count(q.empty("issuedAt"))).toBe(1);
+
+      await (await store.pickById(created.id)).save();
+      expect(await store.count(q.missing("issuedAt"))).toBe(0);
+      expect(await store.count(q.empty("issuedAt"))).toBe(1);
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("rejects immutable field changes on the document path but not on query writes", async () => {
+    const db = new Database(":memory:", { strict: true, create: true });
+    const client = new TestSqliteClient(db);
+    const owner = new TestDatabaseOwner(client);
+    const store = new SqlDocumentStore(owner, immutableTestConstant, immutableTestDatabase, new DocumentSchema());
+
+    try {
+      await client.execute(
+        `CREATE TABLE IF NOT EXISTS "_akan_meta" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL, "updatedAt" INTEGER NOT NULL)`,
+      );
+      await store.ensure();
+
+      const created = await store.create({ title: "First", ownerId: "user-1" });
+      expect(created.ownerId).toBe("user-1");
+      expect(created.origin).toBe("seed");
+
+      const doc = await store.pickById(created.id);
+      doc.set({ title: "Renamed" });
+      await doc.save();
+      expect((await store.pickById(created.id)).title).toBe("Renamed");
+
+      await expect(store.update(created.id, { ownerId: "user-2" })).rejects.toThrow(
+        /immutable field on sqliteImmutableTest \(.+\): ownerId/,
+      );
+      expect((await store.pickById(created.id)).ownerId).toBe("user-1");
+
+      const stale = await store.pickById(created.id);
+      stale.set({ ownerId: "user-2", origin: "moved" });
+      await expect(stale.save()).rejects.toThrow(/immutable fields on sqliteImmutableTest \(.+\): ownerId, origin/);
+
+      await store.updateManyByQuery({ id: created.id }, { ownerId: set("user-3") });
+      expect((await store.pickById(created.id)).ownerId).toBe("user-3");
     } finally {
       await client.close();
     }

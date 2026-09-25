@@ -3,8 +3,9 @@ import { Logger } from "akanjs/common";
 import type { DocumentModel, QueryOf } from "akanjs/constant";
 import type { CacheAdaptor, CacheSetOptions } from "akanjs/service";
 import type { DataLoader } from "./dataLoader";
+import type { DocumentUpdateInput } from "./documentQuery";
 import type { ExtractQuery, ExtractSort, FilterInstance } from "./filterMeta";
-import type { CRUDEventType, Mdl, SaveEventType } from "./into";
+import type { CRUDEventType, Mdl, SaveEventType, UpdateResult } from "./into";
 import type { DataInputOf, FindQueryOption, ListQueryOption } from "./types";
 
 export class CacheDatabase<T = unknown> {
@@ -25,6 +26,15 @@ export class CacheDatabase<T = unknown> {
     await this.cache.delete(this.refName, `${topic}:${key}`);
   }
 }
+/**
+ * What `update<Filter>` returns. The patch cannot be a trailing parameter — a filter's own args may be optional,
+ * and no tuple type puts a required element after those — and leading it reads backwards. So it lands here, on a
+ * terminal `.set()` that mirrors the `UPDATE … SET …` it compiles to.
+ */
+export interface UpdateChain<Doc = any> {
+  set(update: DocumentUpdateInput<Doc>): Promise<UpdateResult>;
+}
+
 type QueryMethodOfKey<
   CapitalizedK extends string,
   Doc,
@@ -53,6 +63,15 @@ type QueryMethodOfKey<
   [K in `insight${CapitalizedK}`]: (...args: _Args) => Promise<Insight>;
 } & {
   [K in `query${CapitalizedK}`]: (...args: _Args) => _QueryOfDoc;
+} & {
+  // No queryOption: a query-level write has no sort or page to apply, it hits everything that matches.
+  [K in `remove${CapitalizedK}`]: (...args: _Args) => Promise<UpdateResult>;
+} & {
+  [K in `removeOne${CapitalizedK}`]: (...args: _Args) => Promise<UpdateResult>;
+} & {
+  [K in `update${CapitalizedK}`]: (...args: _Args) => UpdateChain<Doc>;
+} & {
+  [K in `updateOne${CapitalizedK}`]: (...args: _Args) => UpdateChain<Doc>;
 };
 type QueryMethodMap<Query, Doc, Insight, _FindQueryOption, _ListQueryOption, _QueryOfDoc> = {
   [K in keyof Query]: K extends string
@@ -105,6 +124,10 @@ type DatabaseModelWithQuerySort<
   __create: (data: _DataInput) => Promise<Doc>;
   __update: (id: string, data: Partial<Doc>) => Promise<Doc>;
   __remove: (id: string) => Promise<Doc>;
+  __removeMany: (query: _QueryOfDoc) => Promise<UpdateResult>;
+  __removeOne: (query: _QueryOfDoc) => Promise<UpdateResult>;
+  __updateMany: (query: _QueryOfDoc, update: DocumentUpdateInput<Doc>) => Promise<UpdateResult>;
+  __updateOne: (query: _QueryOfDoc, update: DocumentUpdateInput<Doc>) => Promise<UpdateResult>;
   __list(query: _QueryOfDoc, queryOption?: _ListQueryOption): Promise<Doc[]>;
   __listIds(query: _QueryOfDoc, queryOption?: _ListQueryOption): Promise<string[]>;
   __find(query: _QueryOfDoc, queryOption?: _FindQueryOption): Promise<Doc | null>;

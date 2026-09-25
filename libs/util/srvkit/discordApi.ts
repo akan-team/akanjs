@@ -1,4 +1,4 @@
-import * as discord from "discord.js";
+import type * as discord from "discord.js";
 import { Err } from "../lib/dict";
 import type {
   DiscordBot,
@@ -7,6 +7,15 @@ import type {
   SendWebhookMessageWithEmbedType,
 } from "./discordApi.helper";
 
+type Discord = typeof import("discord.js");
+
+let discordLoad: Promise<Discord> | null = null;
+
+function loadDiscord(): Promise<Discord> {
+  discordLoad ??= import("discord.js");
+  return discordLoad;
+}
+
 export interface DiscordApiOptions {
   tokens: DiscordToken[];
   webhook: string;
@@ -14,13 +23,17 @@ export interface DiscordApiOptions {
 
 export class DiscordApi {
   readonly #options: DiscordApiOptions;
-  readonly #webhook: discord.WebhookClient;
+  #webhookLoad: Promise<discord.WebhookClient> | null = null;
   #bots: Map<string, DiscordBot> = new Map<string, DiscordBot>();
   constructor(options: DiscordApiOptions) {
     this.#options = options;
-    this.#webhook = new discord.WebhookClient({ url: options.webhook });
+  }
+  #getWebhook(): Promise<discord.WebhookClient> {
+    this.#webhookLoad ??= loadDiscord().then(({ WebhookClient }) => new WebhookClient({ url: this.#options.webhook }));
+    return this.#webhookLoad;
   }
   static async makeDiscordBot({ token, serverId }: DiscordToken): Promise<DiscordBot> {
+    const discord = await loadDiscord();
     const client = new discord.Client({
       intents: [
         discord.IntentsBitField.Flags.Guilds,
@@ -62,10 +75,12 @@ export class DiscordApi {
     return this;
   }
   async log(message: string) {
-    return await this.#webhook.send(message);
+    const webhook = await this.#getWebhook();
+    return await webhook.send(message);
   }
   async sendWebhookMessageWithEmbed({ message, embed }: SendWebhookMessageWithEmbedType) {
-    return await this.#webhook.send({
+    const webhook = await this.#getWebhook();
+    return await webhook.send({
       content: message,
       embeds: [embed],
     });

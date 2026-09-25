@@ -56,7 +56,7 @@ await runner.build();
 
 ## 요구사항
 
-- [Bun](https://bun.sh) `>=1.3.13`
+- [Bun](https://bun.sh) `>=1.4.0`
 - TypeScript
 - Optional peer는 Capacitor integration처럼 해당 기능을 사용할 때만 필요합니다.
 

@@ -1,9 +1,9 @@
-import { Any, type Assign, type Cls, type MergeAllKeyOfObjects, SLICE_DICT_SHAPE, SLICE_META } from "akanjs/base";
+import { Any, type Assign, type MergeAllKeyOfObjects, SLICE_DICT_SHAPE, SLICE_META } from "akanjs/base";
 import { applyMixins } from "akanjs/common";
-import type { DocumentModel, QueryOf } from "akanjs/constant";
-import type { FilterInstance } from "akanjs/document";
+import { type FilterInstance, FilterQueryError, resolveFilterQuery } from "akanjs/document";
 import { type Adaptor, type AdaptorCls, dangerouslyAdapt, type ServiceModel } from "akanjs/service";
-import type { Guard, GuardCls } from "./guard";
+import { Exception } from "./exception";
+import type { GuardCls } from "./guard";
 import {
   buildSlice,
   type SliceBuilder,
@@ -42,17 +42,17 @@ export type SliceCls<
 
 interface RootSliceOption {
   guards?: {
-    root?: Cls<Guard> | Cls<Guard>[];
-    get?: Cls<Guard> | Cls<Guard>[];
-    cru?: Cls<Guard> | Cls<Guard>[];
-    create?: Cls<Guard> | Cls<Guard>[];
-    update?: Cls<Guard> | Cls<Guard>[];
-    remove?: Cls<Guard> | Cls<Guard>[];
+    root?: GuardCls | GuardCls[];
+    get?: GuardCls | GuardCls[];
+    cru?: GuardCls | GuardCls[];
+    create?: GuardCls | GuardCls[];
+    update?: GuardCls | GuardCls[];
+    remove?: GuardCls | GuardCls[];
   };
   prefix?: string;
 }
 
-type RootSliceQuery<SrvModule extends ServiceModel, Full = CnstFull<SrvModule>> = QueryOf<DocumentModel<Full>>;
+type RootSliceQueryKey<Filter extends FilterInstance> = Extract<keyof Filter["query"], string>;
 
 type ExtendSliceInfoObj<
   SrvModule extends ServiceModel,
@@ -91,7 +91,7 @@ export function slice<
   _Light = CnstLight<SrvModule>,
   _Insight = CnstInsight<SrvModule>,
   _Filter extends FilterInstance = DbFilter<SrvModule>,
-  _Query = RootSliceQuery<SrvModule, _Full>,
+  _QueryKey extends string = RootSliceQueryKey<_Filter>,
 >(
   srv: SrvModule,
   option: RootSliceOption,
@@ -111,25 +111,19 @@ export function slice<
             _Insight,
             _Filter,
             SrvMap<SrvModule>,
-            ["query"],
-            [query?: _Query | null],
+            ["queryKey", "args"],
+            [queryKey?: _QueryKey | null, args?: unknown[] | null],
             [],
-            [_Query]
+            [_QueryKey | undefined, unknown[] | undefined]
           >;
         }
       : ExtendSliceInfoObj<SrvModule, LibSlices>
   >
 > {
   if (!srv.cnst || !srv.db) throw new Error("cnst and db are required");
-  const init = buildSlice(
-    srv.srv.refName,
-    srv.cnst.input,
-    srv.cnst.full,
-    srv.cnst.light,
-    srv.cnst.insight,
-    srv.db.filter,
-  );
-  const toGuards = (guard?: Cls<Guard> | Cls<Guard>[]) => (guard ? (Array.isArray(guard) ? guard : [guard]) : []);
+  const filterRef = srv.db.filter;
+  const init = buildSlice(srv.srv.refName, srv.cnst.input, srv.cnst.full, srv.cnst.light, srv.cnst.insight, filterRef);
+  const toGuards = (guard?: GuardCls | GuardCls[]) => (guard ? (Array.isArray(guard) ? guard : [guard]) : []);
   const rootGuards = toGuards(option.guards?.root);
   const getGuards = toGuards(option.guards?.get);
   const cruGuards = toGuards(option.guards?.cru);
@@ -153,9 +147,21 @@ export function slice<
     static removeGuards = removeGuards;
     static [SLICE_META] = Object.assign(
       {
+        // The root slice names one of the model's own filters instead of carrying a query: an admin API that
+        // took a raw descriptor let any caller compose a query the model never declared.
         [""]: init({ guards: rootGuards })
-          .search<"query", object>("query", Any)
-          .exec((query) => query ?? {}),
+          .search<"queryKey", string>("queryKey", String)
+          .search<"args", unknown[]>("args", Any)
+          .exec((queryKey, args) => {
+            try {
+              return resolveFilterQuery(filterRef, queryKey, args);
+            } catch (error) {
+              // A filter this model does not declare, or args it cannot take, is the caller's mistake — the
+              // schema names every key and every argument, so saying which one is wrong leaks nothing.
+              if (error instanceof FilterQueryError) throw new Exception.BadRequest(error.message);
+              throw error;
+            }
+          }),
       },
       sliceBuilder(init as Parameters<BuildSlice>[0]),
     );
