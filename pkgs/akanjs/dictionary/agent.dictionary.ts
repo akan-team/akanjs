@@ -30,4 +30,13 @@ export const agentDictionary = serviceDictionary(["en", "ko"])
       "{provider} refused this turn with status {status}. Reason: {reason}",
       "{provider}가 이번 턴을 거절했습니다 (status {status}). 사유: {reason}",
     ],
+    // Printed only once the chat has already summarized itself and been refused again, so it names what is left.
+    contextOverflow: [
+      "This conversation no longer fits the model's context window at {provider}. Use /compact to summarize it, or /new to start over",
+      "대화가 {provider} 모델의 컨텍스트 창을 넘었습니다. /compact로 요약하거나 /new로 새로 시작할 수 있습니다.",
+    ],
+    quotaExceeded: [
+      "The agent's usage limit for this account has been reached",
+      "이 계정의 에이전트 사용 한도에 도달했습니다.",
+    ],
   });

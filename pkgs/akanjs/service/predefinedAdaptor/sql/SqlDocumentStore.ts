@@ -1,5 +1,6 @@
 import { DEFAULT_VALUE, dayjs, FIELD_META } from "akanjs/base";
-import { type ConstantModel, getDefault } from "akanjs/constant";
+import { Logger } from "akanjs/common";
+import { type ConstantModel, freshPrimitiveValue, getDefault } from "akanjs/constant";
 import {
   createDocumentId,
   type DatabaseModel,
@@ -20,6 +21,7 @@ import { descriptorHash, quoteIdent, stableJson } from "../sqlDescriptor";
 import { SqliteDialect } from "./dialect/sqlite";
 import { QueryCompiler } from "./QueryCompiler";
 import {
+  type AkanSqlClient,
   type AkanSqlStatement,
   BASE_COLUMNS,
   type DocumentDatabaseOwner,
@@ -38,15 +40,26 @@ import {
   type SortOption,
   type SqlDialect,
   type SqliteDocumentRow,
+  type TransferRow,
   toSafeRefName,
   type WriteHookOptions,
 } from "./types";
 import { UpdateCompiler } from "./UpdateCompiler";
-import { decodeDateValue, encodeSqlValue, jsonStr } from "./values";
+import { assertStorableJson, decodeDateValue, encodeSqlValue, jsonStr } from "./values";
+
+interface DeclaredIndex {
+  name: string;
+  next: string;
+  metaKey: string;
+  hash: string;
+  create: (name: string, concurrently: boolean) => string;
+}
 
 // A field hands out its own literal default — the `[]` every array field is given when it declares no default
 // included. The constant layer copies it on the way into an instance (`crystalize`); this path does not, so
 // without a copy one document's `push` lands in the model default and in every document filled from it after.
+type StoredRow = Omit<SqliteDocumentRow, "id">;
+
 const freshDefault = (value: unknown) => (Array.isArray(value) ? [...(value as unknown[])] : value);
 
 export class SqlDocumentStore {
@@ -54,10 +67,15 @@ export class SqlDocumentStore {
   readonly table: string;
   readonly compiler: QueryCompiler;
   readonly updateCompiler: UpdateCompiler;
-  #insertStmt: AkanSqlStatement | null = null;
-  #readStmtCache = new Map<string, AkanSqlStatement>();
+  // Keyed by connection as well as text: inside a transaction `getConnection()` hands out the transaction's own client,
+  // and a statement bound to the pool would run outside it.
+  #statements = new WeakMap<AkanSqlClient, Map<string, AkanSqlStatement>>();
   #docPrototype: object | null = null;
   #immutableKeys: string[] | null = null;
+  #ensured: Promise<void> | null = null;
+  static readonly #logger = new Logger("SqlDocumentStore");
+  /** The row a document was read as, or last written as. See `#changesOf`. */
+  static readonly #storedRow = Symbol("akan.storedRow");
 
   constructor(
     private readonly owner: DocumentDatabaseOwner,
@@ -71,42 +89,106 @@ export class SqlDocumentStore {
     const fields = database.doc[FIELD_META] as unknown as FieldMap;
     // Resolved per compile rather than captured: the store is built before the adaptor finishes `onInit`, so the
     // search index does not exist yet at this point.
-    this.compiler = new QueryCompiler(fields, dialect, this.table, () => !!this.owner.getSearchIndex()?.enabled);
+    this.compiler = new QueryCompiler(fields, dialect, this.table, () => this.owner.getSearchIndex());
     this.updateCompiler = new UpdateCompiler(fields, dialect);
   }
 
-  async ensure() {
+  // `getStore()` starts this and the model's `onInit` awaits it, so the two share one run: two `CREATE TABLE IF NOT
+  // EXISTS` on one name at once are harmless in SQLite and a duplicate-key error in Postgres.
+  ensure() {
+    this.#ensured ??= this.#ensure();
+    return this.#ensured;
+  }
+
+  async #ensure() {
     this.assertValidRefName(this.table);
-    const db = this.owner.getConnection();
-    const ts = this.dialect.timestampType();
-    await db.execute(
-      `CREATE TABLE IF NOT EXISTS ${quoteIdent(this.table)} (
+    const indexes = await this.#declaredIndexes();
+    const createSchema = async () => {
+      const db = this.owner.getConnection();
+      const existed = !!this.owner.buildIndexConcurrently && !!(await this.owner.hasTable?.(this.table));
+      const ts = this.dialect.timestampType();
+      await db.execute(
+        `CREATE TABLE IF NOT EXISTS ${quoteIdent(this.table)} (
         "id" TEXT PRIMARY KEY NOT NULL,
         "createdAt" ${ts} NOT NULL,
         "updatedAt" ${ts} NOT NULL,
         "removedAt" ${ts},
         "_doc" ${this.dialect.docColumnType()} NOT NULL
       )`,
-    );
-    await this.owner.setMeta(
-      `table:${this.table}`,
-      await descriptorHash({ table: this.table, columns: ["id", "createdAt", "updatedAt", "removedAt", "_doc"] }),
-    );
-    for (const [idx, index] of this.schema.indexes.entries()) {
-      const name = index.name ?? `${this.table}_${Object.keys(index.fields).map(toSafeRefName).join("_")}_${idx}`;
-      this.assertValidRefName(name);
-      const hash = await descriptorHash(index);
-      const metaKey = `index:${this.table}:${name}`;
-      const existing = await this.owner.getMeta(metaKey);
-      if (existing && existing !== hash) throw new Error(`Index descriptor mismatch: ${name}`);
-      const expressions = Object.keys(index.fields).map((field) => this.compiler.fieldExpr(field));
-      const unique = index.unique ? "UNIQUE " : "";
-      await db.execute(
-        `CREATE ${unique}INDEX IF NOT EXISTS ${quoteIdent(name)} ON ${quoteIdent(this.table)} (${expressions.join(", ")})`,
       );
+      await this.owner.grantInsight?.(this.table);
+      await this.owner.setMeta(
+        `table:${this.table}`,
+        await descriptorHash({ table: this.table, columns: ["id", "createdAt", "updatedAt", "removedAt", "_doc"] }),
+      );
+      const concurrent: (DeclaredIndex & { replace: boolean })[] = [];
+      for (const index of indexes) {
+        const stored = await this.owner.getMeta(index.metaKey);
+        const replace = !!stored && stored !== index.hash;
+        if (replace)
+          SqlDocumentStore.#logger.warn(
+            `Index ${index.name} on ${this.table} changed its descriptor and is rebuilt; on a large table that is a full index build`,
+          );
+        if (existed && !replace && (await this.owner.hasValidIndex?.(index.name))) {
+          await this.owner.setMeta(index.metaKey, index.hash);
+          continue;
+        }
+        if (existed) {
+          concurrent.push({ ...index, replace });
+          continue;
+        }
+        if (replace) await this.#replaceIndex(index);
+        else await db.execute(index.create(index.name, false));
+        await this.owner.setMeta(index.metaKey, index.hash);
+      }
+      return concurrent;
+    };
+    const concurrent = this.owner.lockSchema ? await this.owner.lockSchema(createSchema) : await createSchema();
+    for (const { name, next, create, replace, metaKey, hash } of concurrent) {
+      await this.owner.buildIndexConcurrently?.({ name, next, create: (target) => create(target, true), replace });
       await this.owner.setMeta(metaKey, hash);
     }
     await this.owner.getSearchIndex()?.ensureRef(this.constant, this.database);
+  }
+
+  async #declaredIndexes(): Promise<DeclaredIndex[]> {
+    return await Promise.all(
+      this.schema.indexes.map(async (index, idx) => {
+        const declared = index.name ?? `${this.table}_${Object.keys(index.fields).map(toSafeRefName).join("_")}_${idx}`;
+        this.assertValidRefName(declared);
+        const name = this.dialect.indexName(declared);
+        const columns = Object.keys(index.fields).map((path) => ({
+          path,
+          expr: this.compiler.fieldExpr(path),
+          isArray: this.compiler.isArrayPath(path),
+        }));
+        return {
+          name,
+          next: this.dialect.indexName(`${declared}_next`),
+          metaKey: `index:${this.table}:${name}`,
+          hash: await descriptorHash(index),
+          create: (target: string, concurrently: boolean) =>
+            this.dialect.createIndex({
+              name: target,
+              table: this.table,
+              unique: !!index.unique,
+              columns,
+              concurrently,
+            }),
+        };
+      }),
+    );
+  }
+
+  // In one transaction, so a new definition the rows refuse — a `unique` over duplicates — leaves the old index.
+  async #replaceIndex(index: DeclaredIndex) {
+    const rebuild = async () => {
+      const db = this.owner.getConnection();
+      await db.execute(`DROP INDEX IF EXISTS ${quoteIdent(index.name)}`);
+      await db.execute(index.create(index.name, false));
+    };
+    if (this.owner.transaction) await this.owner.transaction(rebuild);
+    else await rebuild();
   }
 
   async create(data: DocumentRecord, { runSaveHooks = true }: WriteHookOptions = {}) {
@@ -127,7 +209,7 @@ export class SqlDocumentStore {
     await this.insertStmt().run(row.id, row.createdAt, row.updatedAt, row.removedAt, row._doc);
     await this.runHooks("create", "create", doc, "post");
     if (runSaveHooks) await this.runHooks("save", "create", doc, "post");
-    return doc;
+    return this.#withStoredRow(doc, row);
   }
 
   async clone(data: DocumentRecord & { id: string }) {
@@ -142,6 +224,47 @@ export class SqlDocumentStore {
   async remove(id: string) {
     // Document-level soft delete: fire `remove` hooks, not `save`/`update`.
     return this.update(id, { removedAt: dayjs() }, { runSaveHooks: false, crudType: "remove" });
+  }
+
+  /** Up to `limit` stored rows after the id `after`, in id order and removed ones included. */
+  async exportRows(after: string, limit: number): Promise<TransferRow[]> {
+    const rows = await this.owner
+      .getConnection()
+      .prepare(
+        `SELECT "id", "createdAt", "updatedAt", "removedAt", "_doc" FROM ${quoteIdent(this.table)} WHERE "id" > ? ORDER BY "id" LIMIT ${Math.trunc(limit)}`,
+      )
+      .all<SqliteDocumentRow>(after);
+    const epoch = (value: unknown) => decodeDateValue(value)?.valueOf() ?? null;
+    return rows.map((row) => ({
+      id: row.id,
+      createdAt: epoch(row.createdAt) ?? 0,
+      updatedAt: epoch(row.updatedAt) ?? 0,
+      removedAt: epoch(row.removedAt),
+      _doc: JSON.parse(row._doc) as Record<string, unknown>,
+    }));
+  }
+
+  /**
+   * Writes rows as they were stored elsewhere, replacing a row whose id is taken. No hook runs and no field is
+   * derived: the rows are already what the source database held.
+   */
+  async importRows(rows: TransferRow[]) {
+    const write = async () => {
+      const statement = this.owner.getConnection().prepare(
+        `INSERT INTO ${quoteIdent(this.table)} ("id", "createdAt", "updatedAt", "removedAt", "_doc") VALUES (?, ?, ?, ?, ${this.dialect.docValuePlaceholder()})
+           ON CONFLICT("id") DO UPDATE SET "createdAt" = excluded."createdAt", "updatedAt" = excluded."updatedAt", "removedAt" = excluded."removedAt", "_doc" = excluded."_doc"`,
+      );
+      for (const row of rows)
+        await statement.run(
+          row.id,
+          row.createdAt,
+          row.updatedAt,
+          row.removedAt,
+          assertStorableJson(JSON.stringify(row._doc), this.table),
+        );
+    };
+    if (this.owner.transaction) await this.owner.transaction(write);
+    else await write();
   }
 
   // Query-based writes push a single atomic UPDATE to the database (no read-modify-write, no lost-update race) and
@@ -194,6 +317,8 @@ export class SqlDocumentStore {
 
   // Prepends the mandatory `updatedAt = now` stamp to the compiled assignments so every atomic write bumps it.
   private compiledUpdate(update: DocumentUpdate) {
+    for (const raw of Object.values(update))
+      assertStorableJson(jsonStr(isDocumentUpdateNode(raw) ? raw.value : raw), this.table);
     const compiled = this.updateCompiler.compile(update);
     return {
       assignments: [`${quoteIdent("updatedAt")} = ?`, ...compiled.assignments],
@@ -229,7 +354,7 @@ export class SqlDocumentStore {
     const args = [...this.joinParams(joins), ...params];
     const projection = this.resolveProjection(options.select);
     if (projection) {
-      const rows = await this.prepareReadStmt(
+      const rows = await this.prepareStmt(
         `SELECT ${this.projectionSql(projection)} FROM ${quoteIdent(this.table)}${join} WHERE ${where} ${order}${limit}${offset}`,
       ).all<ProjectedSqliteDocumentRow>(...args);
       return rows.map((row) => this.hydrate(this.fromProjectedRow(row, projection), undefined, { track: false }));
@@ -237,10 +362,10 @@ export class SqlDocumentStore {
     // A bare `*` would also drag the join subquery's `rid`/`score` into the row, so the star is qualified once a
     // join is present.
     const star = joins.length ? `${quoteIdent(this.table)}.*` : "*";
-    const rows = await this.prepareReadStmt(
+    const rows = await this.prepareStmt(
       `SELECT ${star} FROM ${quoteIdent(this.table)}${join} WHERE ${where} ${order}${limit}${offset}`,
     ).all<SqliteDocumentRow>(...args);
-    return rows.map((row) => this.hydrate(this.fromRow(row), undefined, { track: false }));
+    return rows.map((row) => this.#withStoredRow(this.hydrate(this.fromRow(row), undefined, { track: false }), row));
   }
 
   async findIds(
@@ -254,7 +379,7 @@ export class SqlDocumentStore {
     const offset = skipValue ? ` OFFSET ${skipValue}` : "";
     const join = this.joinSql(joins);
     const order = options.sample ? "ORDER BY random()" : `ORDER BY ${this.orderBy(options.sort, joins)}`;
-    const rows = await this.prepareReadStmt(
+    const rows = await this.prepareStmt(
       `SELECT ${quoteIdent(this.table)}."id" FROM ${quoteIdent(this.table)}${join} WHERE ${where} ${order}${limit}${offset}`,
     ).all<{ id: string }>(...this.joinParams(joins), ...params);
     return rows.map((row) => row.id);
@@ -286,7 +411,7 @@ export class SqlDocumentStore {
 
   async count(query?: DocumentQuery) {
     const { where, params, joins } = this.safeQuery(query);
-    const row = await this.prepareReadStmt(
+    const row = await this.prepareStmt(
       `SELECT count(*) as count FROM ${quoteIdent(this.table)}${this.joinSql(joins)} WHERE ${where}`,
     ).get<{ count: number }>(...this.joinParams(joins), ...params);
     return row?.count ?? 0;
@@ -334,8 +459,8 @@ export class SqlDocumentStore {
     return joins.flatMap((join) => join.params);
   }
 
-  // bm25 scores are negative and grow more negative with a better match, so ascending is most-relevant-first.
-  // The `id` tiebreaker keeps skip/limit paging stable when two rows score identically. An explicitly requested
+  // Every engine's score sorts best-first ascending: bm25 is negative and falls with a better match, and Postgres
+  // negates its rank to match. The `id` tiebreaker keeps skip/limit paging stable when two rows score identically. An explicitly requested
   // sort always wins; `relevance` reaches here as an empty sort map, which is what asks for the score order.
   private orderBy(sort: SortOption, joins: SearchJoin[]) {
     const explicit = sort && Object.keys(sort).length ? sort : null;
@@ -471,12 +596,11 @@ export class SqlDocumentStore {
       createdAt: Number(encodeSqlValue(doc.createdAt ?? dayjs())),
       updatedAt: Number(encodeSqlValue(doc.updatedAt ?? dayjs())),
       removedAt: doc.removedAt ? Number(encodeSqlValue(doc.removedAt)) : null,
-      _doc: JSON.stringify(sanitizeJson(payload)),
+      _doc: assertStorableJson(JSON.stringify(sanitizeJson(payload)), this.table),
     };
   }
 
   private fromRow(row: SqliteDocumentRow) {
-    // SQLite/libsql return `_doc` as a JSON string; the Postgres `jsonb` driver already returns a parsed object.
     const rawDoc: unknown = row._doc;
     const raw = typeof rawDoc === "string" ? JSON.parse(rawDoc) : (rawDoc as Record<string, unknown>);
     const payload = this.decodeDocumentPayload(raw);
@@ -540,7 +664,9 @@ export class SqlDocumentStore {
             typeof props.default === "function" ? (props.default as (data: unknown) => unknown)(doc) : props.default;
         } else {
           doc[field] =
-            ((props as Record<string, unknown>).modelRef as { [DEFAULT_VALUE]?: unknown })?.[DEFAULT_VALUE] ?? null;
+            freshPrimitiveValue(
+              ((props as Record<string, unknown>).modelRef as { [DEFAULT_VALUE]?: unknown })?.[DEFAULT_VALUE],
+            ) ?? null;
         }
       } else {
         doc[field] = props ? this.decodeFieldValue(value, props) : value;
@@ -558,10 +684,10 @@ export class SqlDocumentStore {
     const join = this.joinSql(joins);
     const order = options.sample ? "ORDER BY random()" : `ORDER BY ${this.orderBy(options.sort, joins)}`;
     const star = joins.length ? `${quoteIdent(this.table)}.*` : "*";
-    const rows = await this.prepareReadStmt(
+    const rows = await this.prepareStmt(
       `SELECT ${star} FROM ${quoteIdent(this.table)}${join} WHERE ${where} ${order}${limit}${offset}`,
     ).all<SqliteDocumentRow>(...this.joinParams(joins), ...params);
-    return rows.map((row) => this.hydrate(this.fromRow(row)));
+    return rows.map((row) => this.#withStoredRow(this.hydrate(this.fromRow(row)), row));
   }
 
   private async findOneForWrite(query?: DocumentQuery, options: FindOneOptions = {}) {
@@ -591,14 +717,78 @@ export class SqlDocumentStore {
     if (runSaveHooks) await this.runHooks("save", crudType, doc, "pre", previous);
     await this.runHooks(crudType, crudType, doc, "pre", previous);
     const row = this.toRow(doc);
-    await this.owner
-      .getConnection()
-      .prepare(
-        `UPDATE ${quoteIdent(this.table)} SET "createdAt" = ?, "updatedAt" = ?, "removedAt" = ?, "_doc" = ${this.dialect.docValuePlaceholder()} WHERE "id" = ?`,
-      )
-      .run(row.createdAt, row.updatedAt, row.removedAt, row._doc, id);
+    const stored = (originalData as Record<symbol, StoredRow | undefined>)[SqlDocumentStore.#storedRow];
+    await this.#writeChanges(id, stored ?? this.toRow(originalData), row);
     await this.runHooks(crudType, crudType, doc, "post", previous);
     if (runSaveHooks) await this.runHooks("save", crudType, doc, "post", previous);
+    return this.#withStoredRow(doc, row);
+  }
+
+  /**
+   * Writes the fields `written` holds differently from `read`, merged into the row in the statement itself.
+   *
+   * Rewriting the whole `_doc` put back every field as this process last read it, erasing what another request or
+   * process wrote to a different field in between. A field both of them changed goes to the later write, as it did.
+   * `read` is the row as stored, so a key it lacks is written out the way the whole-document write did — `q.missing`
+   * tells rows written before a field existed apart by exactly that.
+   */
+  async #writeChanges(id: string, read: StoredRow, written: StoredRow) {
+    const before = SqlDocumentStore.#encodedFields(read);
+    const after = SqlDocumentStore.#encodedFields(written);
+    const assignments = [`"updatedAt" = ?`];
+    const params: unknown[] = [written.updatedAt];
+    for (const column of ["createdAt", "removedAt"] as const) {
+      if (before.get(column) === after.get(column)) continue;
+      assignments.push(`${quoteIdent(column)} = ?`);
+      params.push(written[column]);
+    }
+    const payload = JSON.parse(written._doc) as Record<string, unknown>;
+    const set: [string, string][] = [];
+    const removed: string[] = [];
+    for (const field of new Set([...before.keys(), ...after.keys()])) {
+      if (BASE_COLUMNS.has(field) || before.get(field) === after.get(field)) continue;
+      if (after.has(field)) set.push([field, JSON.stringify(payload[field])]);
+      else removed.push(field);
+    }
+    if (set.length || removed.length) {
+      const merged = this.dialect.mergeDocument(set, removed);
+      assignments.push(`"_doc" = ${merged.sql}`);
+      params.push(...merged.params);
+    }
+    await this.owner
+      .getConnection()
+      .prepare(`UPDATE ${quoteIdent(this.table)} SET ${assignments.join(", ")} WHERE "id" = ?`)
+      .run(...params, id);
+  }
+
+  // The fields a document holds differently from the row it was read as. A document with no row — built by the
+  // caller rather than read — is taken as changing every field it holds.
+  #changesOf(doc: DocumentRecord): DocumentRecord {
+    const row = (doc as Record<symbol, StoredRow | undefined>)[SqlDocumentStore.#storedRow];
+    if (!row) return doc;
+    // Decoded and encoded again, so a field the document never touched compares equal to itself: defaults filled in
+    // on read, and nested models rebuilt in declared order, would otherwise read as changes and be written back.
+    const reread = this.hydrate(this.fromRow({ ...row, id: String(doc.id) }), undefined, { track: false });
+    const read = SqlDocumentStore.#encodedFields(this.toRow(reread));
+    const held = SqlDocumentStore.#encodedFields(this.toRow(doc));
+    const changes: DocumentRecord = {};
+    for (const field of new Set([...read.keys(), ...held.keys()]))
+      if (read.get(field) !== held.get(field)) changes[field] = doc[field];
+    return changes;
+  }
+
+  // Key order is left out of the comparison: jsonb stores an object's keys in an order of its own.
+  static #encodedFields({ createdAt, removedAt, _doc }: StoredRow) {
+    const fields = new Map(
+      Object.entries(JSON.parse(_doc) as Record<string, unknown>).map(([field, value]) => [field, stableJson(value)]),
+    );
+    fields.set("createdAt", String(createdAt));
+    fields.set("removedAt", String(removedAt ?? null));
+    return fields;
+  }
+
+  #withStoredRow<Doc extends object>(doc: Doc, row: StoredRow): Doc {
+    Object.defineProperty(doc, SqlDocumentStore.#storedRow, { value: row, configurable: true });
     return doc;
   }
 
@@ -638,7 +828,9 @@ export class SqlDocumentStore {
           result[key] = getDefault((props.modelRef as { [FIELD_META]: FieldMap })[FIELD_META] as never);
         } else {
           result[key] =
-            ((props as Record<string, unknown>).modelRef as { [DEFAULT_VALUE]?: unknown })?.[DEFAULT_VALUE] ?? null;
+            freshPrimitiveValue(
+              ((props as Record<string, unknown>).modelRef as { [DEFAULT_VALUE]?: unknown })?.[DEFAULT_VALUE],
+            ) ?? null;
         }
       } else {
         result[key] = this.decodeFieldValue(value, props);
@@ -739,6 +931,14 @@ export class SqlDocumentStore {
     return doc;
   }
 
+  serialize(doc: DocumentRecord) {
+    return JSON.stringify(this.toRow(doc));
+  }
+
+  deserialize(text: string) {
+    return this.hydrate(this.fromRow(JSON.parse(text) as SqliteDocumentRow), undefined, { track: false });
+  }
+
   /**
    * One prototype per store instead of six closures per document. It extends the model's own document prototype,
    * so declared chain methods and `instanceof` are unaffected, and every method here is non-enumerable exactly as
@@ -756,13 +956,14 @@ export class SqlDocumentStore {
       },
       save: {
         async value(this: DocumentRecord) {
-          return this.id ? store.update(this.id as string, this) : store.create(this);
+          return this.id ? store.update(this.id as string, store.#changesOf(this)) : store.create(this);
         },
       },
       refresh: {
         async value(this: DocumentRecord) {
-          Object.assign(this, await store.pickById(this.id as string));
-          return this;
+          const fresh = (await store.pickById(this.id as string)) as DocumentRecord & Record<symbol, StoredRow>;
+          Object.assign(this, fresh);
+          return store.#withStoredRow(this, fresh[SqlDocumentStore.#storedRow]);
         },
       },
       isModified: {
@@ -816,24 +1017,27 @@ export class SqlDocumentStore {
   }
 
   private insertStmt() {
-    this.#insertStmt ??= this.owner
-      .getConnection()
-      .prepare(
-        `INSERT INTO ${quoteIdent(this.table)} ("id", "createdAt", "updatedAt", "removedAt", "_doc") VALUES (?, ?, ?, ?, ${this.dialect.docValuePlaceholder()})`,
-      );
-    return this.#insertStmt;
+    return this.prepareStmt(
+      `INSERT INTO ${quoteIdent(this.table)} ("id", "createdAt", "updatedAt", "removedAt", "_doc") VALUES (?, ?, ?, ?, ${this.dialect.docValuePlaceholder()})`,
+    );
   }
 
-  private prepareReadStmt(sql: string) {
-    const cached = this.#readStmtCache.get(sql);
+  private prepareStmt(sql: string) {
+    const connection = this.owner.getConnection();
+    let cache = this.#statements.get(connection);
+    if (!cache) {
+      cache = new Map();
+      this.#statements.set(connection, cache);
+    }
+    const cached = cache.get(sql);
     if (cached) return cached;
     // Keep the cache bounded; list/find query shapes repeat heavily, while ad-hoc filters should not grow forever.
-    if (this.#readStmtCache.size >= 128) {
-      const oldest = this.#readStmtCache.keys().next().value;
-      if (oldest) this.#readStmtCache.delete(oldest);
+    if (cache.size >= 128) {
+      const oldest = cache.keys().next().value;
+      if (oldest) cache.delete(oldest);
     }
-    const stmt = this.owner.getConnection().prepare(sql);
-    this.#readStmtCache.set(sql, stmt);
+    const stmt = connection.prepare(sql);
+    cache.set(sql, stmt);
     return stmt;
   }
 

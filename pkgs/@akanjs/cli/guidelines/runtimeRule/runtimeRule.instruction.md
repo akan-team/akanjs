@@ -184,6 +184,80 @@ const config: AppConfig = { docker: "FROM oven/bun:1-slim\n…" }; // verbatim, 
 - `AkanAppConfig.docker` is the resolved declaration; `AkanAppConfig.dockerfile` is the text `akan build` writes
   to `dist/apps/<app>/Dockerfile`.
 
+## Database Modes — `database` In `akan.config.ts`
+
+| mode | database | cache · queue · pubsub | runs as |
+|---|---|---|---|
+| `single` | SQLite file | SQLite files (Solid) | one container |
+| `multiple` | one SQLite file (WAL) on a host volume every container on that host opens | Redis | containers on one host |
+| `cluster` | Postgres | Redis | pods on several servers |
+
+- **`database: { modes: ["single", "cluster"] }` is what the build can run in**; the first is what `akan start`
+  runs. `akan build` carries the drivers of every declared mode (`multiple` → `bullmq`, `ioredis`; `cluster` adds
+  `postgres`).
+- **A deployment names its mode with `AKAN_DATABASE_MODE`**, and only a declared one. With one declared mode it may
+  leave it out; with several it must name one — the fallback would be a SQLite file inside each pod. `akan start`,
+  `build`, `script` and `console` resolve it the same way from the shell. One image can serve an edge site in
+  `single` and a cloud cluster in `cluster`: declare both.
+- **Where the data lives is the deployment's env, ahead of `env.server.ts`**: `SQLITE_DATABASE_PATH`,
+  `AKAN_SOLID_DB_PATH`, `POSTGRES_URL` (or `POSTGRES_HOST`/`PORT`/`DATABASE`/`USER`/`PASSWORD`),
+  `POSTGRES_INSIGHT_URL`, `LIBSQL_URL`. `REDIS_URI` is required outside local development. Pool size, SSL and
+  prepared statements ride the Postgres URL (`?max=20&ssl=require`, `prepare=false` behind PgBouncer).
+- **Uploads**: a deployed `multiple`/`cluster` app uses object storage, or a volume every instance mounts with
+  `AKAN_STORAGE_SHARED=true`.
+- **`runAdminSql` on Postgres reads as its own login role** holding base-column `SELECT` and nothing else:
+  `CREATE ROLE <name> LOGIN PASSWORD '…'` with no other role granted, `POSTGRES_INSIGHT_URL` logging in as it, and
+  `GRANT USAGE ON SCHEMA` from the DBA when the app does not own its schema. Every model table grants the role its
+  base columns at boot. Without it the console refuses on Postgres; `_doc` is never readable either way.
+- **`akan dbup`** starts what the workspace's apps declare (`--mode multiple` is Redis, `cluster` adds Postgres).
+  **`akan db-export <app>` / `akan db-import <app>`** move every model table as stored rows through NDJSON files
+  (`--dir`, default `local/transfer`) between whatever the shell's `AKAN_DATABASE_MODE` points at; a rerun
+  replaces rows, search is rebuilt after, and sessions, queued jobs and uploaded files do not move.
+- **`q.raw(sql)` is the dialect's own SQL** — `json_extract("_doc", '$.f')` on SQLite, `("_doc" #>> '{f}')` on
+  Postgres. An app that runs in both modes avoids it.
+
+## Operations — Snapshots, Restore And The `/_akan/ops` Channel
+
+`GET /_akan/app/info` answers `{ appName, repoName, environment, operationMode }` on every deployment — the same
+`AKAN_PUBLIC_*` values the client bundle already carries — so a control plane can check which app a host is
+serving without a key. Everything else is behind the ops channel.
+
+| surface | what it does |
+|---|---|
+| `bun main.js ops snapshot [--id] [--out] [--include-solid] [--json]` | `VACUUM INTO` a consistent copy, `integrity_check`, sha256, gzip, optional age encryption, `manifest.json` |
+| `bun main.js ops restore <manifest.json> [--identity <file>]` | offline only: verify, stage, keep the old file as `<db>.pre-restore-<ts>` (its `-wal`/`-shm` beside it), swap |
+| `GET /_akan/ops/info` | the public info plus `akanVersion`, `buildId`, `serverMode`, `databaseMode`, `solo`, `startedAt`, `replicaIdx` |
+| `POST /_akan/ops/snapshot` `{ id, includeSolid?, uploadUrls: { main, solid?, manifest } }` | 202; a child process snapshots, then PUTs each file and the manifest **last** |
+| `GET /_akan/ops/snapshot/:id` | `running` → `uploading` → `done` \| `failed`; kept in memory, so a restart answers 404 |
+
+- **The entry is the image's own `main.js`** — a production image carries no `akan` CLI. `AkanApp.start()` hands
+  `argv[2] === "ops"` to the command before it boots anything. It reads the container's env — the `AKAN_PUBLIC_*`
+  identity and the database paths — so run it with that env (`docker compose exec`), never a bare shell's.
+- **Restore refuses while an app answers `/_akan/app/health` on `PORT`** and names it by its `/_akan/app/info`;
+  `--force` is for a port some other app holds.
+- **The channel exists only when `AKAN_OPS_PUBLIC_KEY` is set** (Ed25519: PEM, JWK, base64 SPKI or raw 32 bytes).
+  The control plane signs a short EdDSA JWS — `aud`, `iat`, `exp` at most 300s after `iat`, a `jti` the process
+  refuses twice — and the host holds only the public half, so a machine someone carries off mints nothing.
+  `aud` is `<appName>/<environment>`, or `<appName>/<environment>/<AKAN_OPS_INSTANCE>` when that is set, and then
+  only that: a token minted for the app as a whole would replay across every host sharing the name. 30 calls a
+  minute per process; every refusal is the same 401. A malformed key leaves the app serving with the channel off.
+- **The app holds no storage credential.** It PUTs to the presigned URLs it was handed (`application/octet-stream`,
+  the manifest `application/json`), plain http only to loopback. The manifest landing is the commit marker.
+- **Snapshots cover the SQLite modes only.** `single` copies the main file and, with `includeSolid`, the Solid file;
+  `multiple` copies the main file; `cluster` is refused. Paths follow the adaptors' env precedence
+  (`SQLITE_DATABASE_PATH`, `AKAN_SOLID_DB_PATH`, `AKAN_SQLITE_DIR`); a solo process uses the path its adaptor
+  actually opened, so a gateway deployment that moved the file in `env.server.ts` names it in the env too.
+- **`AKAN_BACKUP_RECIPIENT=age1…[,age1…]` encrypts before upload** — age v1 X25519, so `age -d -i key.txt` opens
+  it. Restore takes `--identity` / `AKAN_BACKUP_IDENTITY_FILE`, or a file an operator already decrypted with
+  `age -d -o <name without .age>`.
+- **The host keeps the newest `AKAN_OPS_SNAPSHOT_KEEP` (default 2) snapshots** under `AKAN_OPS_SNAPSHOT_DIR`
+  (default `<db dir>/snapshots/<id>/`) — the copy an edge still has while its uplink or the bucket is down.
+- **`buildId` is `AKAN_BUILD_ID` when the deployment sets it**, else the git sha `akan build` wrote into
+  `akan.build.json` beside `main.js` (`-dirty` when the tree was).
+- **`operationMode` does not gate any of this** — the key does. `edge` means a production host outside the
+  cluster: the console refuses it like `cloud`, and `init` / `interval` / `cron` take `operationMode: ["edge"]` to
+  run only there. Everything else behaves as `cloud`; `local` is a developer machine.
+
 ## Shipped Assets — `assets` In `akan.config.ts`
 
 `akan build` copies the whole `public/` tree into `dist`, lib assets dereferenced, and that copy is the image.

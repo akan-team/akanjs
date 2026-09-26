@@ -246,8 +246,8 @@ export default page().render(() => {
       key: "src",
       type: "string",
       desc: l.trans({
-        en: "A direct URL that wins over `file.url`. With neither, `/empty.png` is shown.",
-        ko: "직접 넘기는 URL이며 `file.url`보다 우선합니다. 둘 다 없으면 `/empty.png`를 그립니다.",
+        en: "A direct URL that wins over `file.url`. With neither, an empty `bg-muted` box renders and nothing is requested.",
+        ko: "직접 넘기는 URL이며 `file.url`보다 우선합니다. 둘 다 없으면 요청 없이 `bg-muted` 빈 상자를 그립니다.",
       }),
     },
     {

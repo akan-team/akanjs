@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import path from "node:path";
 import type { DevBuildStatus } from "../artifact";
 import {
   devBuildStatusToHmrMessage,
@@ -50,7 +51,7 @@ describe("DevHmrController client manifest entry detection", () => {
       workspaceRoot,
     );
 
-    expect(changed).toEqual(new Set(["/repo/apps/demo/ui/Header.tsx"]));
+    expect(changed).toEqual(new Set([path.resolve("/repo/apps/demo/ui/Header.tsx")]));
   });
 });
 

@@ -1,4 +1,5 @@
 import type { DatabaseMode } from "akanjs";
+import { DatabaseModes } from "akanjs/base";
 import {
   type AdaptorCls,
   BlobStorage,
@@ -11,7 +12,6 @@ import {
   type DatabaseAdaptor,
   DatabaseAdaptorRole,
   JsonCompressor,
-  LibsqlDatabase,
   type LlmAdaptor,
   LlmAdaptorRole,
   type LoggingAdaptor,
@@ -34,6 +34,7 @@ import {
   type WebsocketAdaptor,
   WebsocketAdaptorRole,
 } from "akanjs/service";
+import { collectAdaptors } from "./resolveAdaptorHierarchy";
 
 export interface PredefinedAdaptor {
   database: AdaptorCls<DatabaseAdaptor>;
@@ -71,11 +72,23 @@ export const predefinedAdaptor = {
   llm: OpenaiLlm,
 };
 
+/**
+ * The classes a role's adaptor plugs by class rather than by role. The container builds them beside the set, the way
+ * it builds what a service plugs — an adaptor applied over a role may bring a helper of its own.
+ */
+export const collectPredefinedDependencies = (adaptors: PredefinedAdaptor): AdaptorCls[] => {
+  const roles = new Set<AdaptorCls>(Object.values(predefinedAdaptorRole));
+  return [...collectAdaptors(Object.values(adaptors))].filter((adaptor) => !roles.has(adaptor));
+};
+
+// multiple keeps single's database, one WAL file on a host volume that every container opens, and moves the rest to
+// Redis. LibsqlDatabase is applied over the database role where a remote sqld is wanted; on a file it only adds a
+// second binding to the same SQLite.
 export const getPredefinedAdaptor = (mode: DatabaseMode = "single"): PredefinedAdaptor => {
-  if (mode === "single") return predefinedAdaptor;
+  if (DatabaseModes.parse(mode, "The database mode") === "single") return predefinedAdaptor;
   return {
     ...predefinedAdaptor,
-    database: mode === "cluster" ? PostgresDatabase : LibsqlDatabase,
+    database: mode === "cluster" ? PostgresDatabase : SqliteDatabase,
     cache: RedisCache,
     queue: BullQueue,
     websocket: WebSocketRedisAdaptor,

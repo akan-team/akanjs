@@ -1,5 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { Any, type Dayjs, dayjs, enumOf, type Float, type GetStateObject, ID, Int, Upload } from "akanjs/base";
+import {
+  Any,
+  CLIENT_VALUE,
+  type Dayjs,
+  dayjs,
+  enumOf,
+  type Float,
+  type GetStateObject,
+  ID,
+  Int,
+  type PrimitiveAgentFace,
+  PrimitiveRegistry,
+  PrimitiveScalar,
+  SERVER_VALUE,
+  Upload,
+} from "akanjs/base";
 import { via } from "akanjs/constant";
 import { AgentValue, type AgentValueOf } from "./AgentValue";
 
@@ -9,6 +24,22 @@ const ReadableNote = via((f) => ({
 }));
 
 class ReadableMode extends enumOf("agentValueMode", ["fit", "fill"] as const) {}
+
+interface ReadableTextDoc {
+  lines: string[];
+}
+class ReadableText extends PrimitiveScalar {
+  static override refName = "ReadableText";
+  static override [SERVER_VALUE]: ReadableTextDoc;
+  static override [CLIENT_VALUE]: ReadableTextDoc;
+  static override agent: PrimitiveAgentFace<ReadableTextDoc> = {
+    schema: { type: "string" },
+    read: (value) => value.lines.join("\n"),
+  };
+}
+PrimitiveRegistry.register(ReadableText);
+
+const ReadablePage = via((f) => ({ title: f(String), body: f(ReadableText) }));
 
 describe("AgentValue.serialize", () => {
   test("scalars and enums pass through, arrays element by element", () => {
@@ -33,6 +64,16 @@ describe("AgentValue.serialize", () => {
     expect(AgentValue.serialize([ReadableNote], [value])).toEqual([{ title: "hello" }]);
   });
 
+  test("a primitive declaring an agent face leaves in that face, alone, in an array, and inside a model", () => {
+    expect(AgentValue.serialize(ReadableText, { lines: ["# Title", "body"] })).toBe("# Title\nbody");
+    expect(AgentValue.serialize([ReadableText], [{ lines: ["a"] }, { lines: ["b"] }])).toEqual(["a", "b"]);
+    expect(AgentValue.serialize(ReadableText, null)).toBeNull();
+    expect(AgentValue.serialize(ReadablePage, { title: "t", body: { lines: ["x"] } })).toEqual({
+      title: "t",
+      body: "x",
+    });
+  });
+
   test("Any passes the value untouched — the escape hatch is not a mask", () => {
     const payload = { progress: 0.4, nested: { secretMemo: "kept" } };
     expect(AgentValue.serialize(Any, payload)).toBe(payload);
@@ -48,6 +89,7 @@ describe("AgentValue.publishable", () => {
       expect(AgentValue.publishable('st.expose("job")', Map as never)).toBe(false);
       expect(AgentValue.publishable('st.expose("file")', Upload)).toBe(false);
       expect(AgentValue.publishable('st.expose("note")', ReadableNote)).toBe(true);
+      expect(AgentValue.publishable('st.expose("text")', ReadableText)).toBe(true);
     } finally {
       console.error = error;
     }
@@ -55,7 +97,7 @@ describe("AgentValue.publishable", () => {
       'st.expose("job") is not published: its type is the type Map, and a readable value is a scalar, an enum, a model, or Any.',
     );
     expect(errors[1]).toBe(
-      'st.expose("file") is not published: its type is the scalar Upload, which an agent cannot read.',
+      'st.expose("file") is not published: its type is the scalar Upload, which an agent cannot read: it declares no `agent` face.',
     );
   });
 });
@@ -78,6 +120,7 @@ describe("AgentValueOf", () => {
     expect(pinned<Equals<AgentValueOf<typeof Float>, number>>()).toBe(true);
     expect(pinned<Equals<AgentValueOf<typeof ID>, string>>()).toBe(true);
     expect(pinned<Equals<AgentValueOf<typeof Any>, unknown>>()).toBe(true);
+    expect(pinned<Equals<AgentValueOf<typeof ReadableText>, ReadableTextDoc>>()).toBe(true);
     expect(pinned<Equals<AgentValueOf<typeof ReadableMode>, "fit" | "fill">>()).toBe(true);
   });
 

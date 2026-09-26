@@ -67,8 +67,8 @@ export default page().render(() => {
     {
       name: "ui/",
       desc: l.trans({
-        en: "Renders JSX and is not bound to one model; a model-bound component goes in its module.",
-        ko: "JSX를 그리되 모델 하나에 묶이지 않는 컴포넌트입니다. 모델에 묶인 컴포넌트는 그 모듈에 둡니다.",
+        en: "Renders JSX or defines a recipe, bound to no model; a model-bound component goes in its module.",
+        ko: "JSX를 그리거나 레시피로 모양을 정의하되 모델 하나에 묶이지 않는 코드입니다. 모델에 묶인 컴포넌트는 그 모듈에 둡니다.",
       }),
       example: l.trans({
         en: "apps/akan/ui/BrowserMockup.tsx\n// PascalCase component, camelCase sidecar",
@@ -102,8 +102,8 @@ export default page().render(() => {
         {
           name: <span className="font-sans">{l.trans({ en: "Render map", ko: "표시용 맵" })}</span>,
           desc: l.trans({
-            en: "A shared table from an enum value to a look, such as a badge variant or icon per status.",
-            ko: "상태별 배지 variant나 아이콘처럼, enum 값을 화면 모양으로 바꾸는 공용 표입니다.",
+            en: "A shared table from an enum value to a recipe variant name or icon, never to class strings.",
+            ko: "상태별 배지 variant 이름이나 아이콘처럼, enum 값을 고르는 공용 표입니다. 클래스 문자열은 담지 않습니다.",
           }),
           marks: onBoth,
         },
@@ -382,6 +382,22 @@ export const icecreamOrderStatusVariant = {
                   <span>
                     <strong>두 번째 모듈이 쓸 때 옮깁니다.</strong> 한 모듈만 쓰는 표는 그 파일 최상단의{" "}
                     <code>as const</code> 맵으로 둡니다. 다른 모듈도 필요해지면 <code>webkit/</code>으로 옮깁니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Class strings go in a recipe instead.</strong> A table whose values are classes is a variant
+                    axis, so it moves to a recipe in <code>ui/Recipe/</code>, not here.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>클래스 문자열은 레시피에 둡니다.</strong> 값이 클래스인 표는 variant 축이므로 여기가 아니라{" "}
+                    <code>ui/Recipe/</code>의 레시피로 옮깁니다.
                   </span>
                 ),
               })}

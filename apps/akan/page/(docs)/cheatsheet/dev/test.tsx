@@ -69,7 +69,7 @@ export default page().render(() => {
 
   const serverOptionRows = [
     {
-      key: "databaseMode",
+      key: "storage",
       type: '"memory" | "tempFile"',
       default: '"memory"',
       desc: l.trans({
@@ -667,7 +667,7 @@ describe("Article Signal", () => {
             title="apps/myapp/lib/article/article.signal.test.ts"
             code={`import { configureSignalTest } from "akanjs/test";
 
-configureSignalTest({ databaseMode: "tempFile" });`}
+configureSignalTest({ storage: "tempFile" });`}
           />
           <Docs.OptionTable items={serverOptionRows} />
           <ul className="my-4 list-disc space-y-2 pl-5">
@@ -738,6 +738,98 @@ akan test myapp --write false
 akan test shared`}
           />
           <Docs.OptionTable items={commandOptionRows} />
+
+          <Docs.SubSubTitle>
+            {l.trans({ en: "Running in another database mode", ko: "다른 데이터베이스 모드로 돌리기" })}
+          </Docs.SubSubTitle>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  A signal suite runs in <code>single</code> mode. To run it in <code>multiple</code> or{" "}
+                  <code>cluster</code>, name the mode and the services it needs:
+                </span>
+              ),
+              ko: (
+                <span>
+                  signal 테스트는 <code>single</code> 모드로 돕니다. <code>multiple</code>이나 <code>cluster</code>로
+                  돌리려면 모드와 그 모드가 쓰는 서비스를 알려 줍니다:
+                </span>
+              ),
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="Terminal"
+            language="bash"
+            code={`akan dbup --mode cluster
+AKAN_TEST_DATABASE_MODE=cluster \\
+  AKAN_TEST_REDIS_URL=redis://localhost:6379 \\
+  AKAN_TEST_POSTGRES_URL=postgres://akan:akan@localhost:5432/akan \\
+  akan test myapp`}
+          />
+          <ul className="my-4 list-disc space-y-2 pl-5">
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>
+                      <code>multiple</code> needs <code>AKAN_TEST_REDIS_URL</code>, <code>cluster</code> also{" "}
+                      <code>AKAN_TEST_POSTGRES_URL</code>.
+                    </strong>{" "}
+                    Each test file starts on an emptied Redis database and a Postgres schema of its own, dropped
+                    afterwards.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>
+                      <code>multiple</code>에는 <code>AKAN_TEST_REDIS_URL</code>이, <code>cluster</code>에는{" "}
+                      <code>AKAN_TEST_POSTGRES_URL</code>까지 필요합니다.
+                    </strong>{" "}
+                    test 파일마다 비운 Redis 데이터베이스와 자기만의 Postgres 스키마에서 시작하고, 스키마는 끝나면
+                    지웁니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>The Postgres user must be able to create schemas and roles.</strong> The one{" "}
+                    <code>akan dbup --mode cluster</code> starts can.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>Postgres 사용자는 스키마와 role을 만들 수 있어야 합니다.</strong>{" "}
+                    <code>akan dbup --mode cluster</code>가 띄우는 Postgres의 사용자는 그럴 수 있습니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>
+                      Only <code>AKAN_TEST_DATABASE_MODE</code> picks the mode.
+                    </strong>{" "}
+                    An <code>AKAN_DATABASE_MODE</code> left in your shell does not reach the suite.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>
+                      모드는 <code>AKAN_TEST_DATABASE_MODE</code>로만 정합니다.
+                    </strong>{" "}
+                    셸에 남아 있는 <code>AKAN_DATABASE_MODE</code>는 테스트에 닿지 않습니다.
+                  </span>
+                ),
+              })}
+            </li>
+          </ul>
 
           <Docs.SubSubTitle>{l.trans({ en: "Which command to use", ko: "어떤 명령을 쓸까" })}</Docs.SubSubTitle>
           <Docs.Matrix

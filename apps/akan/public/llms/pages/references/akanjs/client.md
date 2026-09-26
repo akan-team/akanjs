@@ -156,7 +156,7 @@ Fonts to subset and preload. Write the list inline; see `Font / createFont` belo
 
 The PWA manifest, emitted as a data URL.
 
-`mobile` centers the app in a 600px column.
+`mobile` centers the app in a column at most 600px wide, and fills a narrower screen.
 
 Shows an overlay while the websocket is disconnected.
 

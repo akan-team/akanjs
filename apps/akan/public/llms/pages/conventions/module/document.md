@@ -123,7 +123,7 @@ Treats the last word as a prefix, which a search-as-you-type box needs.
 
 Limits the match to some columns, e.g. `{ columns: ["title"] }`. Omitted, all four match.
 
-bm25 weights in the order title, desc, tag, filter. Four finite numbers.
+Ranking weights in the order title, desc, tag, filter: four finite, non-negative numbers.
 
 One document, or throw. The second argument is a bare projection, e.g. `{ secret: true }`.
 

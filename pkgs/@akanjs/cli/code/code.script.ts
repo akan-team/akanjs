@@ -8,6 +8,7 @@ export interface CodeScriptOptions {
   json: boolean;
   thinking: boolean;
   rpc: boolean;
+  rpcListen: string | null;
   interactive: boolean;
   resume: string | null;
 }
@@ -23,6 +24,7 @@ export class CodeScript extends script("code", [CodeRunner]) {
       thinking: options.thinking,
       ...(options.resume ? { resume: options.resume } : {}),
     };
+    if (options.rpcListen) return await this.codeRunner.serve(run, options.rpcListen);
     if (options.rpc) return await this.codeRunner.serve(run);
     // The interactive host is the default when there is a terminal to draw on and nothing to run headlessly.
     // `--json` is a pipe's request for frames, and a pipe has no terminal, so either one rules the TUI out.

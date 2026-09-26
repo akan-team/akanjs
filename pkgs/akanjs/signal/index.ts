@@ -1,5 +1,6 @@
 export * from "./agent";
 export * from "./agent.signal";
+export * from "./agentMeter";
 export * from "./agentTurn";
 export * from "./agentTurnStream";
 export * from "./base.signal";

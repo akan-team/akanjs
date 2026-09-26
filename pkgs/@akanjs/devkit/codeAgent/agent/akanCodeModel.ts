@@ -13,7 +13,7 @@ export interface CodeAgentModelRef {
 }
 
 /** DeepSeek's million-token window is what makes a 26k-token `AGENTS.md` affordable on every turn. */
-export const akanCodeDefaultModel: CodeAgentModelRef = { provider: "deepseek", id: "deepseek-v4-flash" };
+export const akanCodeDefaultModel: CodeAgentModelRef = { provider: "deepseek", id: "deepseek-flash" };
 
 /**
  * Models the catalogue declares text-only that take a picture anyway.

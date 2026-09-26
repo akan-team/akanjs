@@ -65,6 +65,7 @@ describe("getEnv", () => {
       appName: "minimal",
       environment: "main",
       operationMode: "cloud",
+      databaseMode: "single",
       side: "server",
       renderMode: "csr",
       websocket: true,

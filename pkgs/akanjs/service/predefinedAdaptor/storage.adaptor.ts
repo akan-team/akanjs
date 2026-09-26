@@ -74,6 +74,19 @@ export class BlobStorage
   }))
   implements StorageAdaptor
 {
+  /**
+   * Throws where files kept on this machine's disk would be invisible to the app's other instances: a deployed
+   * `multiple` or `cluster` app whose operator has not declared, with `AKAN_STORAGE_SHARED=true`, that the directory
+   * is one volume mounted on every instance. A development machine runs every process on one disk.
+   */
+  static assertShared(storage: string) {
+    const { databaseMode, environment, operationMode } = getEnv();
+    if (!databaseMode || databaseMode === "single" || environment === "local" || operationMode === "local") return;
+    if (["1", "true"].includes(process.env.AKAN_STORAGE_SHARED ?? "")) return;
+    throw new Error(
+      `${storage} keeps files on this instance's own disk, which the other instances of a ${databaseMode} deployment cannot read. Configure object storage, or mount one volume on every instance and set AKAN_STORAGE_SHARED=true.`,
+    );
+  }
   #localPathToUrl(path: string) {
     return `${this.urlPrefix}/${path}`;
   }
@@ -94,6 +107,7 @@ export class BlobStorage
     return paths.map((path) => this.#localPathToUrl(path));
   }
   async uploadDataFromLocal({ path, localPath, meta, access = "public" }: UploadRequest) {
+    BlobStorage.assertShared("BlobStorage");
     const filePath = access === "private" ? `${this.privateRoot}/${path}` : `${this.root}/${path}`;
     await Bun.write(filePath, Bun.file(localPath));
     if (meta) await Bun.write(`${filePath}.meta`, JSON.stringify(meta));
@@ -107,6 +121,7 @@ export class BlobStorage
     uploadSuccess,
     access = "public",
   }: UploadFromStreamRequest) {
+    BlobStorage.assertShared("BlobStorage");
     const filePath = access === "private" ? `${this.privateRoot}/${path}` : `${this.root}/${path}`;
     try {
       await Bun.write(filePath, new Response(body));
@@ -122,6 +137,7 @@ export class BlobStorage
     return { localPath: renamePath ?? localPath };
   }
   async copyData({ copyPath, pastePath, host }: CopyRequest) {
+    BlobStorage.assertShared("BlobStorage");
     await Bun.write(`${this.root}/${pastePath}`, Bun.file(`${this.root}/${copyPath}`));
     return pastePath;
   }

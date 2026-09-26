@@ -77,4 +77,35 @@ describe("AgentTurnStream", () => {
       },
     ]);
   });
+
+  test("done carries the provider's count and the model's limits in the wire's own shape", async () => {
+    const response = AgentTurnStream.response(async () => ({
+      text: "ok",
+      stop: "end",
+      usage: { inputTokens: 18_230, outputTokens: 41, cachedTokens: 9_000 },
+      limits: { window: 128_000, output: 8_192 },
+    }));
+    expect((await framesOf(response)).at(-1)).toEqual({
+      type: "done",
+      stop: "end",
+      usage: { input: 18_230, output: 41 },
+      limits: { window: 128_000, output: 8_192 },
+    });
+  });
+
+  test("a prompt past the window is flagged, so a session can compact and ask again", async () => {
+    const response = AgentTurnStream.response(async () => {
+      throw Object.assign(new Error("agent.error.contextOverflow"), {
+        data: { provider: "api.deepseek.com", limit: 65_536 },
+      });
+    });
+    expect(await framesOf(response)).toEqual([
+      {
+        type: "error",
+        message: "agent.error.contextOverflow",
+        data: { provider: "api.deepseek.com", limit: 65_536 },
+        overflow: { limit: 65_536 },
+      },
+    ]);
+  });
 });

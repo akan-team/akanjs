@@ -15,6 +15,7 @@
 - Listen To Status (#subscribe)
 - Wrap A Remote Node (#remote-object)
 - Very Fast Data (#fast-data)
+- Run The Edge Site (#edge-site)
 - Tips (#tips)
 
 ## Content
@@ -50,6 +51,30 @@ No answer before the timeout
 A proxy in front answered 502, 503 or 504 with its own page
 
 A separate transport
+
+Setting
+
+Edge site
+
+Cloud cluster
+
+`cloud`, the image default
+
+Data
+
+SQLite files on a mounted volume that `AKAN_SQLITE_DIR` names
+
+`POSTGRES_URL` and `REDIS_URI`
+
+Instances
+
+One container
+
+Several servers
+
+Minimal Compose
+
+The compose file for one edge container and its volumes.
 
 Broadcast With pubsub
 
@@ -95,7 +120,11 @@ Very Fast Data
 
 Use
 
-Data
+Run The Edge Site
+
+An edge site is usually one container that keeps its data in SQLite files. The cloud can run the same app as a cluster, from the same image.
+
+Each deployment of the image then says where it runs and where its data lives:
 
 Tips
 
@@ -188,6 +217,18 @@ export class RemoteEdge {
     for (const unsubscribe of this.#unsubscribes.splice(0)) unsubscribe();
   }
 }
+```
+
+### apps/myapp/akan.config.ts
+
+```ts
+import type { AppConfig } from "akanjs";
+
+const config: AppConfig = {
+  database: { modes: ["single", "cluster"] },
+};
+
+export default config;
 ```
 
 ## Agent Notes

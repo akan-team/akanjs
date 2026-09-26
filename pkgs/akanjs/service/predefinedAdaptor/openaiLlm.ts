@@ -1,13 +1,6 @@
-import { Err } from "akanjs/dictionary";
 import { adapt } from "../adapt";
-import {
-  type LlmAccepts,
-  type LlmAdaptor,
-  type LlmOption,
-  type LlmTurnAnswer,
-  type LlmTurnRequest,
-  llmProviderOf,
-} from "./llm.adaptor";
+import type { LlmAccepts, LlmAdaptor, LlmLimits, LlmOption, LlmTurnAnswer, LlmTurnRequest } from "./llm.adaptor";
+import { LlmOverflow } from "./llmOverflow";
 import { type OpenaiAnswer, OpenaiDialect } from "./openaiDialect";
 
 /**
@@ -24,7 +17,7 @@ import { type OpenaiAnswer, OpenaiDialect } from "./openaiDialect";
  * behalf.
  */
 export class OpenaiLlm
-  extends adapt("openaiLlm" as const, ({ use }) => ({
+  extends adapt("akanOpenaiLlm" as const, ({ use }) => ({
     llmOption: use<LlmOption>(),
   }))
   implements LlmAdaptor
@@ -33,6 +26,11 @@ export class OpenaiLlm
 
   get #host() {
     return this.llmOption.host ?? OpenaiLlm.defaultHost;
+  }
+
+  /** No answer ceiling: the dialect sends none, so the provider's own default is the one that applies. */
+  get limits(): LlmLimits {
+    return this.llmOption.contextWindow ? { window: this.llmOption.contextWindow } : {};
   }
 
   /**
@@ -62,13 +60,13 @@ export class OpenaiLlm
           "/chat/completions",
           OpenaiDialect.requestBody(model, request, { accepts }),
         );
-        return OpenaiDialect.turnAnswer(answer);
+        return { ...OpenaiDialect.turnAnswer(answer), model };
       }
       const body = await this.#apiStream(
         "/chat/completions",
         OpenaiDialect.requestBody(model, request, { accepts, stream: true }),
       );
-      return await OpenaiDialect.consumeStream(body, onDelta);
+      return { ...(await OpenaiDialect.consumeStream(body, onDelta)), model };
     } catch (error) {
       // Logged here and rethrown rather than answered as `null`: a refusal the provider explained — a transcript
       // past the context window is the common one — is the whole of what the user needs to read in the chat, and
@@ -103,10 +101,6 @@ export class OpenaiLlm
 
   /** Carried on the `Err` so the chat prints the provider's own sentence rather than a status number. */
   static async refusal(host: string, response: Response): Promise<Error> {
-    return new Err("agent.error.llmRequestFailed", {
-      provider: llmProviderOf(host),
-      status: String(response.status),
-      reason: await OpenaiDialect.reasonOf(response),
-    });
+    return LlmOverflow.refusal(host, response.status, await OpenaiDialect.reasonOf(response));
   }
 }

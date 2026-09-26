@@ -1,6 +1,6 @@
-import { type BackendEnv, ENDPOINT_META } from "akanjs/base";
+import { type BackendEnv, ENDPOINT_META, PrimitiveRegistry } from "akanjs/base";
 import { interpolateTranslation, Logger } from "akanjs/common";
-import { ConstantRegistry, mask } from "akanjs/constant";
+import { agentRead, ConstantRegistry, mask } from "akanjs/constant";
 import { DictionaryLookup } from "akanjs/dictionary";
 import { NoDocumentError } from "akanjs/document";
 import type { InjectRegistry, LiveRegistry } from "akanjs/service";
@@ -251,11 +251,13 @@ export class McpDispatcher {
    *
    * Done here rather than in `resolveReturn`, which every ordinary HTTP response also passes through: the point of
    * a `visual` field is that a browser still receives it. MCP results reach an agent and nothing else, so this is
-   * where the model's own declaration is honoured, and it is the same `mask` the in-page agent's reads use.
+   * where the model's own declaration is honoured, and it is the same `mask` the in-page agent's reads use. A
+   * primitive return has no model to mask by, but one declaring an agent face is still read into it.
    */
   static #readable(exposed: McpExposedEndpoint, value: unknown): unknown {
-    const { refName, modelType } = exposed.endpoint.returns;
-    if (!modelType) return value;
+    const { refName, modelType, arrDepth = 0 } = exposed.endpoint.returns;
+    if (!modelType)
+      return PrimitiveRegistry.hasName(refName) ? agentRead(PrimitiveRegistry.get(refName), value, arrDepth) : value;
     try {
       return mask(ConstantRegistry.getModelRef(refName, modelType), value);
     } catch (error) {

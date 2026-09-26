@@ -464,8 +464,8 @@ export default page().render(() => {
       type: '"web" | "mobile"',
       default: '"web"',
       desc: l.trans({
-        en: "`mobile` centers the app in a 600px column.",
-        ko: "`mobile`은 앱을 가운데 600px 폭의 열에 그립니다.",
+        en: "`mobile` centers the app in a column at most 600px wide, and fills a narrower screen.",
+        ko: "`mobile`은 앱을 가운데 최대 600px 폭의 열에 그리고, 그보다 좁은 화면은 꽉 채웁니다.",
       }),
     },
     {

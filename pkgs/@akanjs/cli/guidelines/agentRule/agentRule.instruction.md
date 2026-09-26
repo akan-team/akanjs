@@ -96,15 +96,21 @@ apps and libs never import it directly (`no-import-external-library`) — everyt
   nothing about, and it stays text-only until `option.setLlm({ accepts })` says otherwise — handing bytes to a
   model that cannot decode them kills the whole turn on a 400, where text-only degrades them to a note the model
   can repeat back.
-- **A refusal is one key, `agent.error.llmRequestFailed`, and it names the host.** The provider's own sentence
-  rides in `reason` and the hostname in `provider`, so an adaptor an app wrote reports through the same
-  translated channel the shipped ones do rather than needing a key in the framework's dictionary it cannot
-  add.
+- **A refusal is `agent.error.llmRequestFailed`, and it names the host** — unless the prompt did not fit. The
+  provider's own sentence rides in `reason` and the hostname in `provider`. `LlmOverflow.refusal(host, status,
+  reason)` builds it, and reads the one refusal a chat can undo — a prompt past the window, recognized from each
+  provider's own sentence — as `agent.error.contextOverflow` with the `limit` it named, which the relay flags so
+  the chat compacts and asks again. An adaptor an app wrote throws through the same function, so its refusals
+  translate and recover the way the shipped ones do without a key in the framework's dictionary it cannot add.
 - **`accepts` is answered per model, through `option.setLlm({ accepts })`.** An adaptor answers for an API and one
   API serves models that differ, so the override rides beside the `model` it is a fact about. It is not a table
   the framework keeps: a table is a claim about models that ship after it, and getting this wrong is the worst
   failure available — a provider handed bytes it cannot decode either refuses the turn or accepts it having seen
   nothing, and the model then answers confidently about a file it never read.
+- **`contextWindow` is declared the same way: `option.setLlm({ contextWindow })`.** Every turn relays it with the
+  answer ceiling the adaptor actually sends (`LlmAdaptor.limits` — `AnthropicLlm` always sends one, `OpenaiLlm`
+  none), and the chat guards its window with it. It is not a table either; a model id is retired or renamed long
+  before a table notices.
 - **An adaptor answers `null` for "not configured" and *throws* for a refusal it can explain.** The two are
   different things to be told: collapsing both into `null`, the way the adapter convention otherwise reads, left a
   user reading `llmUnavailable` — "no model is configured" — about a conversation that had merely outgrown the
@@ -539,18 +545,29 @@ apps and libs never import it directly (`no-import-external-library`) — everyt
 - **A long conversation summarizes itself, because nothing else is keeping it inside the model's window.** The
   loop runs in the browser and the relay holds no session, so an uncompacted chat grows until the provider
   refuses the whole request — a refusal, never a shorter answer, which is why compaction runs *before* the turn
-  that would have overflowed rather than as a recovery after it. Past `compact.at` estimated tokens (four
-  characters to a token, over the JSON the turn posts; 24k by default, well under the smallest window a provider
-  is likely to have, since the tools and the screen context ride on top of it and neither compacts) the history above the last `keep` messages
-  becomes one message standing in for it, flagged `summary` on the wire — `<Agent.Chat compact={{ at, keep }} />`
-  tunes it per provider and `{ at: 0 }` turns it off, and `/compact` does the same on demand keeping nothing.
+  that would have overflowed. **Two triggers, each before every assistant turn.** `compact.at` is a ceiling on
+  cost: past that many estimated transcript tokens (four characters to a token, over the JSON the turn posts —
+  except an inlined picture, counted at the ~1,600 tokens a provider bills for its pixels rather than its base64;
+  24k by default) the history compacts, because the relay resends the whole transcript every turn and the app
+  pays for each one. The **window guard** compacts once the prompt nears the window the server reports —
+  `window − answer ceiling (8,192 when unreported) − compact.buffer (13,000, the margin Claude Code leaves)` —
+  measured by the provider's own count of the last turn (`done.usage`, kept on that assistant message) plus the
+  four-character estimate for what arrived since, so a Korean transcript the character rule reads as small is
+  still caught. The window comes from `option.setLlm({ contextWindow })` or from the first refusal that names it;
+  with neither, only the ceiling runs. **A refusal for length is answered once**: a relay flags it `overflow` on
+  the wire, and the session compacts and sends the same turn again, and a second refusal in the same send fails
+  with `agent.error.contextOverflow`. Either way the history above the last `keep` messages
+  becomes one message standing in for it, flagged `summary` on the wire — `<Agent.Chat compact={{ at, keep, buffer }} />`
+  tunes it, `{ at: Infinity }` leaves only the window guard, `{ at: 0 }` turns off the ceiling, the guard and the recovery alike, and `/compact` does
+  the same on demand keeping nothing. The header draws the estimate against whichever trigger is nearer.
   **The cut never lands on a `tool` message**: the kept half may not open with a result whose call was summarized
   away, a shape every provider dialect rejects. A user message is preferred where the tail holds one — everything
   above it is settled — but one assistant turn that ran ten tools has none, and that is the transcript that
   outgrows the window, so a cut there opens on the assistant message instead. The summarizing
   turn carries no tools and no screen context — it summarizes the conversation, it does not act on it — and it is
   fed a *bounded* digest rather than the transcript itself, since the transcript being summarized is the one that
-  no longer fits. A summary that cannot be produced leaves the transcript alone, the turn goes out as it would
+  no longer fits. The previous summary is the exception: it rides the digest whole, under its own label and outside
+  the bound, because it is the only record of what was compacted before it. A summary that cannot be produced leaves the transcript alone, the turn goes out as it would
   have, and the next one asks again — a summarizer that was momentarily unreachable says nothing about whether
   this transcript can shrink. One that *landed* and shrank nothing does, so that one is not retried until another
   threshold's worth has been added. On the

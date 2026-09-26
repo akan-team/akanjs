@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { SysExecutor } from "./executors";
 
 export type AbstractKind = "domain" | "service" | "scalar" | "other";
@@ -25,7 +26,9 @@ export class AbstractDoc {
     return folder.startsWith("_") ? "service" : "domain";
   }
   static async findAll(sys: SysExecutor, { module }: { module?: string | null } = {}) {
-    const filePaths = (await sys.getAllFiles(`${AbstractDoc.#facetRoots}/**/*${AbstractDoc.suffix}`)).sort();
+    const filePaths = (await sys.getAllFiles(`${AbstractDoc.#facetRoots}/**/*${AbstractDoc.suffix}`))
+      .map((filePath) => filePath.split(path.sep).join("/"))
+      .sort();
     const docs = await Promise.all(filePaths.map((filePath) => AbstractDoc.read(sys, filePath)));
     if (!module) return docs;
     return docs.filter((doc) => doc.moduleName === module || doc.folderName === module);

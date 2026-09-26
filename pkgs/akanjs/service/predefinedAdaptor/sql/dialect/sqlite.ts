@@ -1,8 +1,7 @@
 import type { DocumentUpdateOperator } from "akanjs/document";
-import { DOC_TABLE, FTS_TABLE } from "../../searchIndex";
 import { jsonPath, quoteIdent } from "../../sqlDescriptor";
-import type { SearchJoinProps, SqlDialect, SqlFrag } from "../types";
-import { encodeSqlValue, jsonStr } from "../values";
+import type { CreateIndexProps, SqlDialect, SqlFrag } from "../types";
+import { encodeSqlValue, jsonStr, likePattern } from "../values";
 
 export class SqliteDialect implements SqlDialect {
   readonly name = "sqlite" as const;
@@ -83,19 +82,16 @@ export class SqliteDialect implements SqlDialect {
     };
   }
   contains(path: string, value: unknown): SqlFrag {
-    return { sql: `${this.extract(path)} LIKE ?`, params: [`%${String(value)}%`] };
+    return { sql: `${this.extract(path)} LIKE ? ESCAPE '\\'`, params: [likePattern(value)] };
   }
-  searchJoin({ alias, ref, match, weights }: SearchJoinProps): SqlFrag {
-    // The subquery exposes only `rid`/`score`: `search_doc` carries a `title` column of its own, so joining it
-    // unwrapped raises `ambiguous column name` against any model that also has one. Aliasing `refId` to `rid`
-    // keeps `"id"` in the outer WHERE unambiguous, which is what lets the base table stay un-aliased.
-    return {
-      sql:
-        `JOIN (SELECT d."refId" AS rid, bm25(${FTS_TABLE}, ${weights.join(", ")}) AS score ` +
-        `FROM ${FTS_TABLE} JOIN ${DOC_TABLE} d ON d."fid" = ${FTS_TABLE}."rowid" ` +
-        `WHERE ${FTS_TABLE} MATCH ? AND d."ref" = ?) ${alias} ON ${alias}."rid" = ${quoteIdent(ref)}."id"`,
-      params: [match, ref],
-    };
+  orderTerm(expr: string, direction: 1 | -1) {
+    return `${expr} ${direction === 1 ? "ASC" : "DESC"}`;
+  }
+  indexName(name: string) {
+    return name;
+  }
+  createIndex({ name, table, unique, columns }: CreateIndexProps) {
+    return `CREATE ${unique ? "UNIQUE " : ""}INDEX IF NOT EXISTS ${quoteIdent(name)} ON ${quoteIdent(table)} (${columns.map(({ expr }) => expr).join(", ")})`;
   }
   applyUpdate(acc: string, op: DocumentUpdateOperator, path: string, value: unknown): SqlFrag {
     const p = this.#path(path);
@@ -132,6 +128,12 @@ export class SqliteDialect implements SqlDialect {
       case "setOnInsert":
         return { sql: acc, params: [] };
     }
+  }
+  mergeDocument(set: [field: string, json: string][], removed: string[]): SqlFrag {
+    let sql = this.docColumn();
+    if (set.length) sql = `json_set(${sql}, ${set.map(([field]) => `${this.#path(field)}, json(?)`).join(", ")})`;
+    if (removed.length) sql = `json_remove(${sql}, ${removed.map((field) => this.#path(field)).join(", ")})`;
+    return { sql, params: set.map(([, json]) => json) };
   }
   affectedRows(result: unknown): number {
     const row = result as { changes?: number | bigint; rowsAffected?: number } | null;

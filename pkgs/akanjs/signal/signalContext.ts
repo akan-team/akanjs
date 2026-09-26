@@ -313,7 +313,7 @@ export class SignalContext<
         registry: this.#registry,
         live: this.#live,
       });
-      return this.ctx.makeResponse(resolved, this.endpointInfo);
+      return this.ctx.makeResponse(this.#settleUndefined(resolved), this.endpointInfo);
     }
     const resolved = await traceSpan("resolveReturn", () =>
       SignalContext.resolveReturn(result, {
@@ -324,7 +324,19 @@ export class SignalContext<
         live: this.#live,
       }),
     );
-    return await traceSpan("serialize", async () => this.ctx.makeResponse(resolved, this.endpointInfo));
+    return await traceSpan("serialize", async () =>
+      this.ctx.makeResponse(this.#settleUndefined(resolved), this.endpointInfo),
+    );
+  }
+  //? A handler that falls off its end returns `undefined`, which Bun's `Response.json` refuses with an error naming
+  //? neither the endpoint nor its return. A nullable or `Any` return answers `null`; any other broke its contract.
+  #settleUndefined(resolved: unknown) {
+    if (resolved !== undefined) return resolved;
+    const { nullable, returnRef } = this.endpointInfo.returns;
+    if (nullable || returnRef === Any) return null;
+    throw new Error(
+      `${this.endpointInfo.type} ${this.key} returned undefined, but its return is not nullable: return a value, or declare { nullable: true } and return null`,
+    );
   }
   /** Whether `run` already logged this failure, so a transport's catch does not log it a second time. */
   static wasReported(error: unknown) {

@@ -1,8 +1,20 @@
+export interface AgentProgressStep {
+  id: string;
+  label: string;
+  status: "pending" | "running" | "done" | "error";
+  detail?: string;
+}
+
 export interface AgentProgressReport {
   /** One short line about the step in flight. Read by the user, not the model — keep it prose. */
   message: string;
   done?: number;
   total?: number;
+  /**
+   * The activity of work running somewhere else — a server job, a code worker — that this one call is waiting on.
+   * Each report replaces the list whole, so a relay forwards what it has and never merges.
+   */
+  steps?: AgentProgressStep[];
 }
 
 /**
@@ -19,7 +31,7 @@ export interface AgentProgressReport {
 export class AgentProgress {
   static #sink: ((report: AgentProgressReport) => void) | null = null;
 
-  static report(message: string, amount: { done?: number; total?: number } = {}) {
+  static report(message: string, amount: { done?: number; total?: number; steps?: AgentProgressStep[] } = {}) {
     AgentProgress.#sink?.({ message, ...amount });
   }
 

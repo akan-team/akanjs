@@ -1,13 +1,21 @@
-import type { AgentWireMessage, LlmAccepts, LlmTurnAnswer, LlmTurnRequest } from "./llm.adaptor";
+import type { AgentWireMessage, LlmAccepts, LlmTurnAnswer, LlmTurnRequest, LlmUsage } from "./llm.adaptor";
 
 export interface OpenaiToolCall {
   id?: string;
   function?: { name?: string; arguments?: string };
 }
+interface OpenaiUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  prompt_tokens_details?: { cached_tokens?: number } | null;
+  prompt_cache_hit_tokens?: number;
+}
 export interface OpenaiAnswer {
   choices?: { message?: { content?: string | null; tool_calls?: OpenaiToolCall[] }; finish_reason?: string }[];
+  usage?: OpenaiUsage | null;
 }
 interface OpenaiStreamChunk {
+  usage?: OpenaiUsage | null;
   choices?: {
     delta?: {
       content?: string | null;
@@ -49,7 +57,8 @@ export class OpenaiDialect {
   ) {
     return {
       model,
-      ...(stream ? { stream: true } : {}),
+      //* Without `include_usage` a streamed turn reports no token counts at all; the final chunk carries them.
+      ...(stream ? { stream: true, stream_options: { include_usage: true } } : {}),
       messages: [
         { role: "system" as const, content: OpenaiDialect.systemPrompt(request) },
         ...request.messages.flatMap((message) => OpenaiDialect.providerMessages(message, accepts)),
@@ -171,6 +180,7 @@ export class OpenaiDialect {
     const calls = new Map<number, { id?: string; name?: string; args: string }>();
     let text = "";
     let finish: string | null = null;
+    let usage: LlmUsage | undefined;
     let buffer = "";
     const decoder = new TextDecoder();
     const feed = (line: string) => {
@@ -178,6 +188,7 @@ export class OpenaiDialect {
       const payload = line.slice(5).trim();
       if (!payload || payload === "[DONE]") return;
       const chunk = JSON.parse(payload) as OpenaiStreamChunk;
+      if (chunk.usage) usage = OpenaiDialect.usageOf(chunk.usage);
       const choice = chunk.choices?.[0];
       if (!choice) return;
       if (choice.delta?.content) {
@@ -222,6 +233,16 @@ export class OpenaiDialect {
       ...(text ? { text } : {}),
       ...(toolCalls.length ? { toolCalls } : {}),
       stop: OpenaiDialect.stopOf(finish, toolCalls.length),
+      ...(usage ? { usage } : {}),
+    };
+  }
+
+  //* DeepSeek reports its cache hits as `prompt_cache_hit_tokens` rather than OpenAI's nested detail.
+  static usageOf(usage: OpenaiUsage): LlmUsage {
+    return {
+      inputTokens: usage.prompt_tokens ?? 0,
+      outputTokens: usage.completion_tokens ?? 0,
+      cachedTokens: usage.prompt_tokens_details?.cached_tokens ?? usage.prompt_cache_hit_tokens ?? 0,
     };
   }
 
@@ -244,6 +265,7 @@ export class OpenaiDialect {
       ...(choice?.message?.content ? { text: choice.message.content } : {}),
       ...(toolCalls.length ? { toolCalls } : {}),
       stop: OpenaiDialect.stopOf(choice?.finish_reason, toolCalls.length),
+      ...(answer.usage ? { usage: OpenaiDialect.usageOf(answer.usage) } : {}),
     };
   }
 

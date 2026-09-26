@@ -16,7 +16,9 @@ import type {
   ToolCallRequest,
   ToolCallResult,
   ToolCard,
+  TurnLimits,
   TurnStop,
+  TurnUsage,
 } from "./types";
 
 export interface PendingApproval {
@@ -182,8 +184,15 @@ export class AgentSession {
   #history: SessionHistory | undefined;
   #onCompact: AgentSessionOptions["onCompact"];
   #compacting = false;
-  /** Size below which auto-compaction stays out of the way, raised when a summary failed to shrink anything. */
-  #compactFloor = 0;
+  /**
+   * Sizes below which auto-compaction stays out of the way, raised when a summary failed to shrink anything — one
+   * per trigger, since the ceiling reads the transcript and the guard the whole prompt.
+   */
+  #compactFloor = { transcript: 0, prompt: 0 };
+  /** What the backend reported about its model, or what a refusal named — kept for the life of the session. */
+  #limits: TurnLimits = {};
+  /** What the tools, the screen context and the instructions cost the last request, for a host's gauge. */
+  #overhead = 0;
 
   constructor(surface: SurfaceView, runner: AgentRunner, options: AgentSessionOptions = {}) {
     this.#surface = surface;
@@ -403,6 +412,7 @@ export class AgentSession {
     const maxTurns = this.#options.maxTurns ?? 12;
     try {
       let budget = maxTurns;
+      let recovered = false;
       for (let turn = 0; ; turn += 1) {
         if (controller.signal.aborted) return;
         if (turn >= budget) {
@@ -417,13 +427,21 @@ export class AgentSession {
           budget = turn + maxTurns;
         }
         await this.#autoCompact(controller.signal);
-        const { toolCalls, stop } = await this.#assistantTurn(controller.signal);
+        const { toolCalls, stop, overflow } = await this.#assistantTurn(controller.signal);
         // Stop can land after the calls were recorded and before any of them ran. They are answered rather than
         // dropped: an unanswered call is the one shape every provider dialect refuses, and the transcript this
         // turn leaves behind is what the next one posts.
         if (controller.signal.aborted) {
           this.#unanswered(toolCalls);
           return;
+        }
+        if (overflow) {
+          if (recovered || !(await this.#recover(overflow, controller.signal))) {
+            if (!controller.signal.aborted) this.#fail(overflow.message);
+            return;
+          }
+          recovered = true;
+          continue;
         }
         // A turn the provider cut off is one whose last call may be missing, so the ones that did arrive are
         // closed rather than run: acting on half an intention is worse than stopping. The user is told because
@@ -485,7 +503,7 @@ export class AgentSession {
     this.#messages = [];
     this.#staged = [];
     this.#inserts = [];
-    this.#compactFloor = 0;
+    this.#compactFloor = { transcript: 0, prompt: 0 };
     // The pending debounced save would re-create the entry clear() just removed.
     if (this.#saveTimer) {
       clearTimeout(this.#saveTimer);
@@ -587,9 +605,26 @@ export class AgentSession {
     }
   };
 
-  /** What the transcript is estimated to cost the next turn, in tokens — the number auto-compaction watches. */
+  /** What the transcript is estimated to cost the next turn, in tokens — the number the `at` ceiling watches. */
   get tokens() {
     return Compaction.tokensOf(this.#messages);
+  }
+
+  /**
+   * How close the conversation is to summarizing itself, measured against whichever trigger is nearer: the `at`
+   * ceiling over the transcript, or the window guard over the whole prompt once the backend has reported its
+   * window. Each pair is in its own unit, which is why only the nearer one is answered. No `compactAt` means
+   * nothing will compact it.
+   */
+  get context(): { used: number; compactAt?: number } {
+    const { at, buffer } = this.#compactOptions;
+    const prompt = Compaction.promptTokensOf(this.#messages, () => this.#overhead);
+    if (!at) return { used: prompt };
+    const guard = Compaction.thresholdOf(this.#limits, buffer);
+    const ceiling = Number.isFinite(at) ? { used: Compaction.tokensOf(this.#messages), compactAt: at } : null;
+    const window = Number.isFinite(guard) ? { used: prompt, compactAt: guard } : null;
+    if (ceiling && window) return ceiling.used / ceiling.compactAt >= window.used / window.compactAt ? ceiling : window;
+    return ceiling ?? window ?? { used: prompt };
   }
 
   /** Records a host-side failure (a prompt fetch, an upload) in the transcript, where every other failure lands. */
@@ -612,7 +647,7 @@ export class AgentSession {
       if (!summary || signal.aborted) return false;
       const replaced = this.#messages.slice(0, at);
       const message = Compaction.message(summary);
-      this.#messages = [message, ...this.#messages.slice(at)];
+      this.#messages = [message, ...this.#messages.slice(at).map(Transcript.unmeasured)];
       try {
         this.#onCompact?.(replaced, message);
       } catch {
@@ -627,13 +662,21 @@ export class AgentSession {
 
   /**
    * Runs before the turn that would have overflowed rather than after it fails: the provider answers a request
-   * that is too long with a refusal, not with a shorter answer, so there is nothing to recover from afterwards.
-   * Best effort — a summary that cannot be produced leaves the transcript as it stands and the turn goes out as
-   * it would have, since it may well still fit.
+   * that is too long with a refusal, not with a shorter answer, so waiting for one costs a round trip that was
+   * refused. Best effort — a summary that cannot be produced leaves the transcript as it stands and the turn goes
+   * out as it would have, since it may well still fit.
    */
   async #autoCompact(signal: AbortSignal) {
-    const { at = Compaction.defaults.at, keep = Compaction.defaults.keep } = this.#options.compact ?? {};
-    if (!at || Compaction.tokensOf(this.#messages) < Math.max(at, this.#compactFloor)) return;
+    const { at, keep, buffer } = this.#compactOptions;
+    if (!at) return;
+    const guard = Compaction.thresholdOf(this.#limits, buffer);
+    const measure = () => ({
+      transcript: Compaction.tokensOf(this.#messages),
+      prompt: Compaction.promptTokensOf(this.#messages, () => AgentSession.#tokensOfFrame(this.#frame())),
+    });
+    const before = measure();
+    const floor = this.#compactFloor;
+    if (before.transcript < Math.max(at, floor.transcript) && before.prompt <= Math.max(guard, floor.prompt)) return;
     let compacted = false;
     try {
       compacted = await this.#compact(keep, signal);
@@ -644,12 +687,60 @@ export class AgentSession {
       console.warn(`[use-agentic] compaction failed: ${error instanceof Error ? error.message : String(error)}`);
       return;
     }
-    const after = Compaction.tokensOf(this.#messages);
+    const after = measure();
     // A transcript still over the threshold after summarizing itself cannot shrink — one kept message is that
-    // large — so the next attempt waits for another threshold's worth of growth rather than re-summarizing on
-    // every turn. A summary that never landed is not that: retrying it costs one call, and never retrying it
-    // costs the conversation.
-    this.#compactFloor = compacted && after >= at ? after + at : 0;
+    // large, or the tools alone fill the window — so the next attempt waits for another threshold's worth of
+    // growth rather than re-summarizing on every turn. A summary that never landed is not that: retrying it costs
+    // one call, and never retrying it costs the conversation.
+    this.#compactFloor = {
+      transcript: compacted && after.transcript >= at ? after.transcript + at : 0,
+      prompt: compacted && after.prompt > guard ? after.prompt + buffer : 0,
+    };
+  }
+
+  /**
+   * Answers a refusal for length the one way a session can: compact, and ask again. Once per send — a transcript
+   * refused again after its own summary is not one another summary will fit — and never where the host turned
+   * automatic compaction off, since that host keeps the window itself.
+   */
+  async #recover(overflow: { limit?: number }, signal: AbortSignal): Promise<boolean> {
+    if (overflow.limit) this.#limits = { ...this.#limits, window: overflow.limit };
+    const { at, keep } = this.#compactOptions;
+    if (!at) return false;
+    const draft = this.#messages[this.#messages.length - 1];
+    if (draft?.role === "assistant" && !Transcript.carries(draft)) this.#messages = this.#messages.slice(0, -1);
+    try {
+      return await this.#compact(keep, signal);
+    } catch (error) {
+      console.warn(`[use-agentic] compaction failed: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+  }
+
+  get #compactOptions() {
+    const {
+      at = Compaction.defaults.at,
+      keep = Compaction.defaults.keep,
+      buffer = Compaction.defaults.buffer,
+    } = this.#options.compact ?? {};
+    return { at, keep, buffer };
+  }
+
+  /** What rides every turn beside the transcript. Read per turn, because the screen it describes moves. */
+  #frame(): Omit<RunnerRequest, "messages" | "signal"> {
+    const { tools, guides } = this.#surface.snapshot();
+    const instructions = [this.#options.instructions, ...guides].filter(Boolean).join("\n\n");
+    return {
+      tools: tools.some((tool) => tool.name === AgentSession.askUserTool.name)
+        ? tools
+        : [...tools, AgentSession.askUserTool],
+      context: this.#options.buildContext?.(this.#surface) ?? AgentSession.#defaultContext(this.#surface),
+      ...(instructions ? { instructions } : {}),
+    };
+  }
+
+  static #tokensOfFrame(frame: Omit<RunnerRequest, "messages" | "signal">): number {
+    return Math.ceil(JSON.stringify(frame).length / 4);
   }
 
   /** No tools and no screen context: this turn summarizes the conversation, and must not act on it. */
@@ -670,32 +761,33 @@ export class AgentSession {
     return text;
   }
 
-  async #assistantTurn(signal: AbortSignal): Promise<{ toolCalls: ToolCallRequest[]; stop: TurnStop }> {
-    const { tools, guides } = this.#surface.snapshot();
-    const instructions = [this.#options.instructions, ...guides].filter(Boolean).join("\n\n");
-    const request: RunnerRequest = {
-      messages: Transcript.wire(this.#messages),
-      tools: tools.some((tool) => tool.name === AgentSession.askUserTool.name)
-        ? tools
-        : [...tools, AgentSession.askUserTool],
-      context: this.#options.buildContext?.(this.#surface) ?? AgentSession.#defaultContext(this.#surface),
-      ...(instructions ? { instructions } : {}),
-      signal,
-    };
+  async #assistantTurn(
+    signal: AbortSignal,
+  ): Promise<{ toolCalls: ToolCallRequest[]; stop: TurnStop; overflow?: { message: string; limit?: number } }> {
+    const frame = this.#frame();
+    this.#overhead = AgentSession.#tokensOfFrame(frame);
+    const request: RunnerRequest = { messages: Transcript.wire(this.#messages), ...frame, signal };
     this.#append({ role: "assistant" });
     let text = "";
     const toolCalls: ToolCallRequest[] = [];
     let stop: TurnStop = "end";
+    let usage: TurnUsage | undefined;
     for await (const event of this.#runner.run(request)) {
       if (signal.aborted) break;
       if (event.type === "text") {
         text += event.delta;
         this.#patchLast({ text });
       } else if (event.type === "toolCall") toolCalls.push({ id: event.id, name: event.name, args: event.args });
-      else if (event.type === "done") stop = event.stop;
+      else if (event.type === "done") {
+        stop = event.stop;
+        usage = event.usage;
+        if (event.limits) this.#limits = { ...this.#limits, ...event.limits };
+      } else if (event.overflow)
+        return { toolCalls: [], stop: "end", overflow: { message: event.message, limit: event.overflow.limit } };
       else throw new Error(event.message);
     }
-    if (toolCalls.length) this.#patchLast({ toolCalls });
+    if (toolCalls.length || usage)
+      this.#patchLast({ ...(toolCalls.length ? { toolCalls } : {}), ...(usage ? { usage } : {}) });
     return { toolCalls, stop };
   }
 

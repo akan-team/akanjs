@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { enumOf, Int, Upload } from "akanjs/base";
+import {
+  CLIENT_VALUE,
+  enumOf,
+  Int,
+  type PrimitiveAgentFace,
+  PrimitiveRegistry,
+  PrimitiveScalar,
+  SERVER_VALUE,
+  Upload,
+} from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import type { SerializedSignal } from "../types";
 import { createOpenApiDocument } from "./openapi";
@@ -184,6 +193,63 @@ describe("createOpenApiDocument", () => {
           },
         },
       },
+    });
+  });
+});
+
+interface OpenApiNoteDoc {
+  lines: string[];
+}
+class OpenApiNote extends PrimitiveScalar {
+  static override refName = "OpenApiNote";
+  static override [SERVER_VALUE]: OpenApiNoteDoc;
+  static override [CLIENT_VALUE]: OpenApiNoteDoc;
+  static override jsonSchema = { type: "object", properties: { lines: { type: "array" } } };
+  static override agent: PrimitiveAgentFace<OpenApiNoteDoc> = {
+    schema: { type: "string" },
+    read: (value) => value.lines.join("\n"),
+  };
+}
+PrimitiveRegistry.register(OpenApiNote);
+
+class OpenApiPageInput extends via((field) => ({ body: field(OpenApiNote) })) {}
+class OpenApiPageObject extends via(OpenApiPageInput, () => ({})) {}
+class LightOpenApiPage extends via(OpenApiPageObject, [] as const, () => ({})) {}
+class OpenApiPage extends via(OpenApiPageObject, LightOpenApiPage, () => ({})) {}
+class OpenApiPageInsight extends via(OpenApiPage, () => ({})) {}
+ConstantRegistry.buildModel(
+  "openApiPage",
+  OpenApiPageInput,
+  OpenApiPageObject,
+  OpenApiPage,
+  LightOpenApiPage,
+  OpenApiPageInsight,
+  {},
+);
+
+describe("createOpenApiDocument with an agent-faced primitive", () => {
+  test("describes the wire shape a browser sends, never the agent face", () => {
+    const document = createOpenApiDocument({
+      openApiPage: {
+        prefix: "openApiPage",
+        endpoint: {
+          rewriteOpenApiPage: {
+            type: "mutation",
+            args: [
+              { type: "body", name: "body", refName: "OpenApiNote" },
+              { type: "body", name: "data", refName: "openApiPage", modelType: "input" },
+            ],
+            returns: { refName: "openApiPage", modelType: "full" },
+            guards: ["User"],
+          },
+        },
+      },
+    });
+    expect(document.paths["/openApiPage/rewriteOpenApiPage"]?.post?.requestBody).toMatchObject({
+      content: { "application/json": { schema: { properties: { body: OpenApiNote.jsonSchema } } } },
+    });
+    expect(document.components.schemas.OpenApiPageInput).toMatchObject({
+      properties: { body: OpenApiNote.jsonSchema },
     });
   });
 });

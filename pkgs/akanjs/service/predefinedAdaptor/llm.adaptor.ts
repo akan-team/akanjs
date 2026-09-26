@@ -92,6 +92,20 @@ export interface LlmTurnAnswer {
    * call at all, so it would end the loop looking exactly like a model that chose to stop.
    */
   stop: "end" | "toolUse" | "length";
+  /** What the provider billed for this turn, when it said. Absent from a provider that reports nothing. */
+  usage?: LlmUsage;
+  /** The model that answered, as the adaptor named it to the provider. */
+  model?: string;
+}
+
+/**
+ * `inputTokens` is the whole prompt, cached part included, so a meter sums one field for volume and reads
+ * `cachedTokens` for how much of it was billed at the cache rate.
+ */
+export interface LlmUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cachedTokens: number;
 }
 
 /**
@@ -112,6 +126,19 @@ export interface LlmAdaptor {
   chat(request: LlmTurnRequest, onDelta?: (delta: string) => void): Promise<LlmTurnAnswer | null>;
   /** Which attachment carriers this provider's model can read. Omitted means text only. */
   readonly accepts?: LlmAccepts;
+  /** What the configured model holds, as far as the adaptor was told. Omitted means nothing is known. */
+  readonly limits?: LlmLimits;
+}
+
+/**
+ * Relayed to the browser on every turn, which is where the transcript is compacted: with a window to measure
+ * against, the chat summarizes itself before the provider refuses a prompt rather than after.
+ */
+export interface LlmLimits {
+  /** The model's context window, prompt and answer together. */
+  window?: number;
+  /** The answer ceiling the adaptor actually requests. One it never sends is not a ceiling, so it is left out. */
+  output?: number;
 }
 
 /**
@@ -160,6 +187,12 @@ export interface LlmOption {
    * the role carries nothing it would have to guess the legality of per model.
    */
   maxTokens?: number;
+  /**
+   * The configured model's context window, in tokens. Declared here rather than kept in a table for the reason
+   * `accepts` is: a table is a claim about models that ship after it. Left out, the chat learns the window from
+   * the first refusal that names it and compacts on its transcript ceiling until then.
+   */
+  contextWindow?: number;
 }
 
 /**

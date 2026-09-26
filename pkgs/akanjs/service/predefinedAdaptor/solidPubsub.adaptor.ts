@@ -1,7 +1,13 @@
-import type { BaseEnv, Cls } from "akanjs/base";
+import { getEnv } from "akanjs/base";
 import { adapt } from "../adapt";
 import { sendAkanIpc } from "../ipcTypes";
-import type { WebsocketAdaptor, WsRedisEventHandler, WsSocketData } from "./websocket.adaptor";
+import type {
+  LiveChange,
+  LiveChangeHandler,
+  WebsocketAdaptor,
+  WsRedisEventHandler,
+  WsSocketData,
+} from "./websocket.adaptor";
 
 /**
  * `AppWsData` mints the id at the handshake, so this reads it; the fallback only covers a socket that
@@ -15,21 +21,25 @@ const getSocketId = (ws: Bun.ServerWebSocket<unknown>) => {
 
 export class SolidPubSub
   extends adapt("solidPubsub", ({ env }) => ({
-    serverId: env(
-      ({ appName, environment, operationMode }: BaseEnv) =>
-        `${appName}-${environment}-${operationMode}-${process.env.AKAN_REPLICA_IDX ?? "0"}-${process.pid}`,
-    ),
+    serverId: env(() => {
+      const { appName, environment, operationMode } = getEnv();
+      return `${appName}-${environment}-${operationMode}-${process.env.AKAN_REPLICA_IDX ?? "0"}-${process.pid}`;
+    }),
   }))
   implements WebsocketAdaptor
 {
-  readonly #endpointMap = new Map<string, { returnRef: Cls; arrDepth: number }>();
   readonly #socketRooms = new Map<string, Set<string>>();
   #eventHandler: WsRedisEventHandler | null = null;
+  #changeHandler: LiveChangeHandler | null = null;
   readonly #messageHandler = (message: unknown) => {
     if (!message || typeof message !== "object") return;
-    const data = message as { type?: string; roomId?: string; data?: unknown; origin?: string };
+    const data = message as { type?: string; roomId?: string; data?: unknown; origin?: string; change?: LiveChange };
     if (data.type === "pubsub.deliver" && data.roomId && data.origin !== this.serverId) {
       this.#eventHandler?.(data.roomId, data.data);
+      return;
+    }
+    if (data.type === "live.change" && data.change && data.origin !== this.serverId) {
+      this.#changeHandler?.(data.change);
       return;
     }
     if (data.type === "pubsub.snapshot.request") {
@@ -48,11 +58,20 @@ export class SolidPubSub
   override async onDestroy() {
     process.off("message", this.#messageHandler);
     this.#eventHandler = null;
+    this.#changeHandler = null;
     this.#socketRooms.clear();
   }
 
   publish(roomId: string, data: unknown): void {
     sendAkanIpc({ type: "pubsub.publish", roomId, data: data as object | object[], origin: this.serverId });
+  }
+
+  publishChange(change: LiveChange): void {
+    sendAkanIpc({ type: "live.change", change, origin: this.serverId });
+  }
+
+  onChange(handler: LiveChangeHandler): void {
+    this.#changeHandler = handler;
   }
 
   setEventHandler(handler: WsRedisEventHandler): void {
@@ -61,10 +80,6 @@ export class SolidPubSub
 
   clearEventHandler(): void {
     this.#eventHandler = null;
-  }
-
-  registerEndpoint(key: string, returnRef: Cls, arrDepth: number): void {
-    this.#endpointMap.set(key, { returnRef, arrDepth });
   }
 
   async joinRoom(ws: Bun.ServerWebSocket<unknown>, room: string): Promise<void> {

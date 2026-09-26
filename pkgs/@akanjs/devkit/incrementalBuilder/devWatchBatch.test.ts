@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import path from "node:path";
 import { DevChangePlanner } from "../frontendBuild";
 import { prepareDevWatchBatch } from "./devWatchBatch";
 
 describe("prepareDevWatchBatch", () => {
   test("includes generated indexes in the same invalidate generation", () => {
-    const root = "/repo";
-    const changedFile = `${root}/libs/shared/common/foo.ts`;
-    const generatedIndex = `${root}/libs/shared/common/index.ts`;
+    const root = path.resolve("/repo");
+    const changedFile = path.join(root, "libs/shared/common/foo.ts");
+    const generatedIndex = path.join(root, "libs/shared/common/index.ts");
     const prepared = prepareDevWatchBatch({
       generation: 12,
       batch: { files: [changedFile], kinds: new Set(["code"]) },
@@ -25,9 +26,9 @@ describe("prepareDevWatchBatch", () => {
   test.each(["common", "srvkit", "ui", "webkit"])(
     "keeps %s facet add/delete generated index in the same generation",
     (facet) => {
-      const root = "/repo";
-      const changedFile = `${root}/libs/shared/${facet}/tmpExample.ts`;
-      const generatedIndex = `${root}/libs/shared/${facet}/index.ts`;
+      const root = path.resolve("/repo");
+      const changedFile = path.join(root, "libs/shared", facet, "tmpExample.ts");
+      const generatedIndex = path.join(root, "libs/shared", facet, "index.ts");
       const prepared = prepareDevWatchBatch({
         generation: 20,
         batch: { files: [changedFile], kinds: new Set(["code"]) },

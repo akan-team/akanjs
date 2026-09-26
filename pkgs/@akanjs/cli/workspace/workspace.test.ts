@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import path from "node:path";
 import { CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor, PkgExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
+import { Linter } from "@akanjs/devkit/linter";
 import {
   cleanupCliTempWorkspace,
   createCallRecorder,
@@ -370,7 +372,7 @@ describe("WorkspaceRunner", () => {
     workspace.spawn = spawn;
 
     await runner.lint(exec as never, workspace as never, { fix: true });
-    expect(spawn).toHaveBeenCalledWith("./node_modules/.bin/biome", [
+    expect(spawn).toHaveBeenCalledWith(`./node_modules/.bin/${Linter.biomeBinName}`, [
       "check",
       "--write",
       "--no-errors-on-unmatched",
@@ -379,7 +381,7 @@ describe("WorkspaceRunner", () => {
     ]);
 
     await runner.lint(exec as never, workspace as never, { fix: false, maxDiagnostics: 0 });
-    expect(spawn).toHaveBeenLastCalledWith("./node_modules/.bin/biome", [
+    expect(spawn).toHaveBeenLastCalledWith(`./node_modules/.bin/${Linter.biomeBinName}`, [
       "check",
       "--no-errors-on-unmatched",
       "--max-diagnostics=none",
@@ -399,12 +401,12 @@ describe("WorkspaceRunner", () => {
 
     await runner.lint({ cwdPath: `${root}/apps/demo` } as never, workspace as never, { fix: false });
 
-    expect(spawn).toHaveBeenCalledWith("./node_modules/.bin/biome", [
+    expect(spawn).toHaveBeenCalledWith(`./node_modules/.bin/${Linter.biomeBinName}`, [
       "check",
       "--no-errors-on-unmatched",
       `--max-diagnostics=${defaultMaxDiagnostics}`,
       "--config-path",
-      `${root}/biome.jsonc`,
+      path.join(root, "biome.jsonc"),
       `${root}/apps/demo`,
     ]);
   });

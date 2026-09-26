@@ -1,3 +1,5 @@
+import { DatabaseModes } from "./databaseModes";
+
 type ProcessEnvLike = { env?: Record<string, string | undefined> };
 
 const globalWithProcess = globalThis as unknown as { process?: ProcessEnvLike };
@@ -19,8 +21,6 @@ export type BackendEnv = {
   hostname?: string | null;
   port?: number;
   database?: {
-    mode?: DatabaseMode;
-    driver?: "sqlite" | "libsql" | "postgres";
     sqlite?: {
       filePath?: string;
       journalMode?: string;
@@ -41,6 +41,7 @@ export type BackendEnv = {
       database?: string;
       user?: string;
       password?: string;
+      insightUrl?: string;
     };
   };
   solid?: {
@@ -51,6 +52,7 @@ export type BackendEnv = {
     cleanupIntervalMs?: number;
     queuePollIntervalMs?: number;
     queueLeaseMs?: number;
+    queueFailedRetentionMs?: number;
   };
   onCleanup?: () => Promise<void>;
 };
@@ -133,7 +135,14 @@ export const getEnv = (): ClientEnv => {
     appName,
     environment,
     operationMode,
-    databaseMode: process.env.AKAN_DATABASE_MODE as DatabaseMode | undefined,
+    databaseMode:
+      typeof window === "undefined"
+        ? DatabaseModes.settle({
+            requested: process.env.AKAN_DATABASE_MODE,
+            declared: process.env.AKAN_DATABASE_MODES,
+            local: environment === "local" || operationMode === "local",
+          })
+        : undefined,
   } as const;
   const side = typeof window === "undefined" ? "server" : "client";
   const renderMode = (process.env.AKAN_PUBLIC_RENDER_ENV ?? "csr") as ClientEnv["renderMode"];

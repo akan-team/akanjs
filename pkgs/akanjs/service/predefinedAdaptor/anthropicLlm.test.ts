@@ -225,13 +225,24 @@ describe("AnthropicLlm answers", () => {
   });
 
   test("a refusal carries the API's own sentence, named by the host that refused", async () => {
-    const body = JSON.stringify({ error: { type: "invalid_request_error", message: "prompt is too long" } });
+    const body = JSON.stringify({ error: { type: "not_found_error", message: "model: claude-nope" } });
+    const error = (await AnthropicLlm.refusal(
+      "https://api.anthropic.com/v1",
+      new Response(body, { status: 404 }),
+    )) as Error & { data?: Record<string, string> };
+    expect(error.message).toBe("agent.error.llmRequestFailed");
+    expect(error.data).toEqual({ provider: "api.anthropic.com", status: "404", reason: "model: claude-nope" });
+  });
+
+  test("a prompt past the window is its own refusal, with both counts the API named", async () => {
+    const message = "prompt is too long: 213462 tokens > 200000 maximum";
+    const body = JSON.stringify({ error: { type: "invalid_request_error", message } });
     const error = (await AnthropicLlm.refusal(
       "https://api.anthropic.com/v1",
       new Response(body, { status: 400 }),
-    )) as Error & { data?: Record<string, string> };
-    expect(error.message).toBe("agent.error.llmRequestFailed");
-    expect(error.data).toEqual({ provider: "api.anthropic.com", status: "400", reason: "prompt is too long" });
+    )) as Error & { data?: Record<string, string | number> };
+    expect(error.message).toBe("agent.error.contextOverflow");
+    expect(error.data).toEqual({ provider: "api.anthropic.com", limit: 200_000, requested: 213_462 });
   });
 });
 

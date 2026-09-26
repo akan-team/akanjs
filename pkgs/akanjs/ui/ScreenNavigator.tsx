@@ -113,9 +113,11 @@ export const ScreenNavigator = ({
 
   return (
     <ScreenNavigatorContext.Provider value={{ bind, xValue, onClickMenu, menus, currentMenu, setMenu }}>
-      <animated.div {...bind()} className="flex h-full w-[200vw] overflow-x-scroll" style={{ x: xValue }} ref={ref}>
-        {children}
-      </animated.div>
+      <div className="h-full w-full overflow-hidden">
+        <animated.div {...bind()} className="flex h-full w-[200%]" style={{ x: xValue }} ref={ref}>
+          {children}
+        </animated.div>
+      </div>
     </ScreenNavigatorContext.Provider>
   );
 };
@@ -137,7 +139,7 @@ ScreenNavigator.NavbarItem = NavbarItem;
 
 const Screen = ({ children }: { children: React.ReactNode }) => {
   return (
-    <div className="h-full w-screen overflow-scroll" style={{ touchAction: "pan-y" }}>
+    <div className="h-full w-1/2 overflow-scroll" style={{ touchAction: "pan-y" }}>
       {children}
     </div>
   );

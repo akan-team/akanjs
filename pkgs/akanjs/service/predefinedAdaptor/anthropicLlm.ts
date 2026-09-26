@@ -1,15 +1,16 @@
-import { Err } from "akanjs/dictionary";
 import { adapt } from "../adapt";
 import type {
   AgentWireAttachment,
   AgentWireMessage,
   LlmAccepts,
   LlmAdaptor,
+  LlmLimits,
   LlmOption,
   LlmTurnAnswer,
   LlmTurnRequest,
+  LlmUsage,
 } from "./llm.adaptor";
-import { llmProviderOf } from "./llm.adaptor";
+import { LlmOverflow } from "./llmOverflow";
 
 type AnthropicSource = { type: "base64"; media_type: string; data: string } | { type: "url"; url: string };
 type AnthropicBlock =
@@ -22,12 +23,21 @@ interface AnthropicMessage {
   role: "user" | "assistant";
   content: AnthropicBlock[];
 }
+interface AnthropicUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number | null;
+  cache_creation_input_tokens?: number | null;
+}
 interface AnthropicAnswer {
   content?: { type?: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }[];
   stop_reason?: string;
+  usage?: AnthropicUsage;
 }
 interface AnthropicStreamEvent {
   type?: string;
+  message?: { usage?: AnthropicUsage };
+  usage?: AnthropicUsage;
   index?: number;
   content_block?: { type?: string; id?: string; name?: string };
   delta?: { type?: string; text?: string; partial_json?: string; stop_reason?: string };
@@ -44,7 +54,7 @@ interface AnthropicStreamEvent {
  * `model` is required and has no default, for the reason `OpenaiLlm` gives.
  */
 export class AnthropicLlm
-  extends adapt("anthropicLlm" as const, ({ use }) => ({
+  extends adapt("akanAnthropicLlm" as const, ({ use }) => ({
     llmOption: use<LlmOption>(),
   }))
   implements LlmAdaptor
@@ -75,6 +85,11 @@ export class AnthropicLlm
     return this.llmOption.host ?? "https://api.anthropic.com/v1";
   }
 
+  get limits(): LlmLimits {
+    const output = this.llmOption.maxTokens ?? AnthropicLlm.defaultMaxTokens;
+    return this.llmOption.contextWindow ? { window: this.llmOption.contextWindow, output } : { output };
+  }
+
   /** What the API's blocks carry. A model of the family that reads neither takes the `accepts` override. */
   get accepts(): LlmAccepts {
     return this.llmOption.accepts ?? { image: true, document: true };
@@ -95,12 +110,12 @@ export class AnthropicLlm
         const answer = await this.#api<AnthropicAnswer>(
           AnthropicLlm.requestBody(model, request, { accepts, maxTokens }),
         );
-        return this.#reported(AnthropicLlm.turnAnswer(answer));
+        return { ...this.#reported(AnthropicLlm.turnAnswer(answer)), model };
       }
       const body = await this.#apiStream(
         AnthropicLlm.requestBody(model, request, { accepts, stream: true, maxTokens }),
       );
-      return this.#reported(await AnthropicLlm.consumeStream(body, onDelta));
+      return { ...this.#reported(await AnthropicLlm.consumeStream(body, onDelta)), model };
     } catch (error) {
       // Logged and rethrown rather than answered as `null` — see `OpenaiLlm.chat` for why the two differ.
       this.logger.error(`Anthropic turn failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -153,11 +168,7 @@ export class AnthropicLlm
   }
 
   static async refusal(host: string, response: Response): Promise<Error> {
-    return new Err("agent.error.llmRequestFailed", {
-      provider: llmProviderOf(host),
-      status: String(response.status),
-      reason: await AnthropicLlm.reasonOf(response),
-    });
+    return LlmOverflow.refusal(host, response.status, await AnthropicLlm.reasonOf(response));
   }
 
   /** The API answers a refusal as `{ error: { type, message } }`, and the sentence is the half worth printing. */
@@ -331,6 +342,17 @@ export class AnthropicLlm
       ...(text ? { text } : {}),
       ...(toolCalls.length ? { toolCalls } : {}),
       stop: AnthropicLlm.stopOf(answer.stop_reason, toolCalls.length),
+      ...(answer.usage ? { usage: AnthropicLlm.usageOf(answer.usage) } : {}),
+    };
+  }
+
+  //* Anthropic's `input_tokens` leaves out what was read from or written to the cache; both are prompt, so both count.
+  static usageOf(usage: AnthropicUsage): LlmUsage {
+    const cachedTokens = usage.cache_read_input_tokens ?? 0;
+    return {
+      inputTokens: (usage.input_tokens ?? 0) + cachedTokens + (usage.cache_creation_input_tokens ?? 0),
+      outputTokens: usage.output_tokens ?? 0,
+      cachedTokens,
     };
   }
 
@@ -352,6 +374,7 @@ export class AnthropicLlm
     const calls = new Map<number, { id?: string; name?: string; args: string }>();
     let text = "";
     let stopReason: string | null = null;
+    let usage: AnthropicUsage = {};
     let buffer = "";
     const decoder = new TextDecoder();
     const feed = (line: string) => {
@@ -374,6 +397,9 @@ export class AnthropicLlm
         }
       }
       if (event.type === "message_delta" && event.delta?.stop_reason) stopReason = event.delta.stop_reason;
+      //* `message_start` carries the prompt side and `message_delta` the running output count.
+      if (event.type === "message_start" && event.message?.usage) usage = { ...usage, ...event.message.usage };
+      if (event.type === "message_delta" && event.usage) usage = { ...usage, ...event.usage };
     };
     /** A frame the provider mangled costs that frame. Throwing would lose the whole answer, text already streamed
      * and all, over one line of a protocol the caller cannot fix. */
@@ -403,6 +429,7 @@ export class AnthropicLlm
       ...(text ? { text } : {}),
       ...(toolCalls.length ? { toolCalls } : {}),
       stop: AnthropicLlm.stopOf(stopReason, toolCalls.length),
+      ...(Object.keys(usage).length ? { usage: AnthropicLlm.usageOf(usage) } : {}),
     };
   }
 

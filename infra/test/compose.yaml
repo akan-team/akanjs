@@ -1,0 +1,55 @@
+# Backends for the database-mode conformance suites (`bun run testConformance`).
+#
+# Two of each engine: the oldest version Akan supports and the newest. Host ports are left for Docker to pick so
+# two branches can run the suites on one build host at once; `runConformance.ts` asks compose for them.
+#
+# Postgres keeps the image's default `en_US.UTF-8` locale on purpose — it is what managed Postgres hands out, and a
+# dialect that only behaves under `C` collation would pass here and fail in production.
+services:
+  redis-min:
+    image: redis:7.2
+    ports: ["6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+  redis:
+    image: redis:8
+    ports: ["6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+  postgres-min:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: akan
+      POSTGRES_PASSWORD: akan
+      POSTGRES_DB: akan
+    ports: ["5432"]
+    volumes:
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U akan -d akan"]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: akan
+      POSTGRES_PASSWORD: akan
+      POSTGRES_DB: akan
+    ports: ["5432"]
+    volumes:
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U akan -d akan"]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+  libsql:
+    image: ghcr.io/tursodatabase/libsql-server:latest
+    ports: ["8080"]

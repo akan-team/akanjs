@@ -59,6 +59,12 @@ interface InitOption {
   serverMode?: "federation" | "batch" | "all";
   operationMode?: ("cloud" | "edge" | "local" | (string & {}))[];
   enabled?: boolean;
+  /**
+   * For an `initialize` that must not run on two instances at once — a find-or-create would create twice. Instances
+   * booting together take turns, and one that waited for another's run skips its own; an instance booting later still
+   * runs it. Every instance runs it at once when unset, which suits per-process work such as warming a cache.
+   */
+  once?: boolean;
 }
 
 interface TimerOption {

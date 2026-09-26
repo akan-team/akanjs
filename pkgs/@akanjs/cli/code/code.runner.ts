@@ -23,13 +23,15 @@ export class CodeRunner extends runner("code") {
    * `consoleToStderr` is imported first and on its own line: it must run before the engine's module body does,
    * or anything the engine logs while loading lands on stdout and corrupts the very first frame.
    */
-  async serve(options: CodeRunOptions) {
+  async serve(options: CodeRunOptions, listen?: string) {
     await import("@akanjs/devkit/codeAgent/agent/consoleToStderr");
-    const [{ CodeAgent }, { CodeAgentRpcHost }] = await Promise.all([
+    const [{ CodeAgent }, { CodeAgentRpcHost }, { CodeAgentRpcListener }] = await Promise.all([
       import("@akanjs/devkit/codeAgent/agent/CodeAgent"),
       import("@akanjs/devkit/codeAgent/agent/CodeAgentRpcHost"),
+      import("@akanjs/devkit/codeAgent/agent/CodeAgentRpcListener"),
     ]);
-    const profile = CodeRunner.profileOf(options);
+    const address = listen ? CodeAgentRpcListener.parse(listen) : null;
+    const profile = CodeRunner.profileOf(options, { hostAttached: true });
     const agent = await CodeAgent.create({
       workspace: options.workspace,
       cwd: profile.paths.root,
@@ -38,7 +40,12 @@ export class CodeRunner extends runner("code") {
       model: CodeRunner.modelOf(options.model),
       mode: "rpc",
     });
-    await new CodeAgentRpcHost(agent).serve();
+    if (!address) return await new CodeAgentRpcHost(agent).serve();
+    const listener = new CodeAgentRpcListener(new CodeAgentRpcHost(agent, null), address).listen();
+    process.stderr.write(
+      `akan code rpc listening on ${"unix" in address ? address.unix : `${address.hostname}:${listener.port}`}\n`,
+    );
+    await listener.serve();
   }
 
   /**
@@ -52,7 +59,7 @@ export class CodeRunner extends runner("code") {
       import("@akanjs/devkit/codeAgent/agent/CodeAgent"),
       import("./CodeTui"),
     ]);
-    const profile = CodeRunner.profileOf(options);
+    const profile = CodeRunner.profileOf(options, { hostAttached: false });
     const apps = options.app ? [options.app] : await options.workspace.getApps();
     let resume = options.resume;
     let prompt = seed;
@@ -96,7 +103,7 @@ export class CodeRunner extends runner("code") {
     // The engine costs ~122MiB resident on import, and `akan --help` loads every command module. Importing it
     // here rather than at the top of the file keeps that cost on the one command that needs it.
     const { CodeAgent } = await import("@akanjs/devkit/codeAgent/agent/CodeAgent");
-    const profile = CodeRunner.profileOf(options);
+    const profile = CodeRunner.profileOf(options, { hostAttached: false });
     const agent = await CodeAgent.create({
       workspace: options.workspace,
       cwd: profile.paths.root,
@@ -116,13 +123,22 @@ export class CodeRunner extends runner("code") {
     }
   }
 
-  static profileOf(options: CodeRunOptions): CodeAgentProfile {
+  static profileOf(options: CodeRunOptions, { hostAttached }: { hostAttached: boolean }): CodeAgentProfile {
     if (!isCodeAgentPresetName(options.profile))
       throw new Error(`Unknown profile: ${options.profile}. Use local, pod, review, or web.`);
     const root = options.app
       ? `${options.workspace.workspaceRoot}/apps/${options.app}`
       : options.workspace.workspaceRoot;
-    return codeAgentPresets[options.profile](root);
+    const profile = codeAgentPresets[options.profile](root);
+    return { ...profile, ui: { ...profile.ui, canPrompt: CodeRunner.canPrompt(profile, hostAttached) } };
+  }
+
+  //* A host on the RPC wire is someone to ask; a pod job with none must never park a turn in `awaiting`.
+  static canPrompt(profile: CodeAgentProfile, hostAttached: boolean) {
+    const forced = process.env.AKAN_CODE_CAN_PROMPT;
+    if (forced === "1") return true;
+    if (forced === "0") return false;
+    return hostAttached || profile.ui.canPrompt;
   }
 
   static modelOf(model: string | undefined): CodeAgentModelRef | undefined {

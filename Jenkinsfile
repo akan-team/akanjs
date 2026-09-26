@@ -154,10 +154,33 @@ pipeline {
                 }
             }
         }
-        // The app and lib suites (ALL_PROJECTS + TEST_LIBS) are still not run anywhere. Their testing
-        // credentials are already fetched in Prepare Build, so the missing piece is only a command —
-        // but they have never been green in CI, so enabling them belongs in its own change rather than
-        // silently blocking every deploy.
+        stage("Lib Suites"){
+            steps {
+                // TEST_LIBS in the default (single) database mode, with the testing credentials Prepare Build
+                // fetched. Non-gating until they have been green here: `shared` still needs its lexical packages
+                // and phone fixtures on this host.
+                catchError(buildResult: "UNSTABLE", stageResult: "FAILURE") {
+                    timeout(time: 20, unit: "MINUTES") {
+                        script {
+                            TEST_LIBS.tokenize(",").each { lib ->
+                                sh "ssh -i $SSH_KEY $BUILD_USER@$BUILD_HOST -p $BUILD_PORT \"cd $REPO_NAME/$BRANCH && bun run runAkan test $lib\""
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        stage("Database Mode Conformance"){
+            steps {
+                // The same suites against Redis and Postgres (infra/test/compose.yaml, oldest and newest supported
+                // versions), plus TEST_LIBS in multiple and cluster mode. A lib test counts only if it passed in
+                // single mode, so what this host lacks for "Lib Suites" does not fail it; red means a mode regressed,
+                // or a fixed defect still carries its `test.failing` marker.
+                timeout(time: 30, unit: "MINUTES") {
+                    sh "ssh -i $SSH_KEY $BUILD_USER@$BUILD_HOST -p $BUILD_PORT \"cd $REPO_NAME/$BRANCH && BRANCH=$BRANCH TEST_LIBS=$TEST_LIBS bun run testConformance --libs\""
+                }
+            }
+        }
         stage("Dockerize"){
             steps {
                 script {

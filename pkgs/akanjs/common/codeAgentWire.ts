@@ -190,10 +190,19 @@ export type CodeAgentEventBody =
     }
   | { type: "question"; question: CodeAgentQuestion }
   | { type: "question_resolved"; questionId: string; answer: CodeAgentAnswer; rendered: string }
+  /** A question nobody could be asked — no host attached — answered with nothing; the model continued on its own. */
+  | { type: "question_skipped"; question: CodeAgentQuestion; reason: "no-host" }
   | { type: "approval"; request: CodeAgentApprovalRequest }
   | { type: "approval_resolved"; approvalId: string; approved: boolean }
   | { type: "context"; used: number; max: number | undefined }
-  | { type: "compaction"; phase: "start" | "end"; reason: "manual" | "threshold" | "overflow" }
+  /** An `end` carrying neither `error` nor `aborted` is the only one that compacted anything. */
+  | {
+      type: "compaction";
+      phase: "start" | "end";
+      reason: "manual" | "threshold" | "overflow";
+      error?: string;
+      aborted?: boolean;
+    }
   | { type: "retry"; attempt: number; maxAttempts: number; delayMs: number; message: string }
   | { type: "queue"; steering: string[]; followUp: string[] }
   | { type: "notice"; level: "info" | "warning" | "error"; message: string }
@@ -255,6 +264,7 @@ export const codeAgentEventPersistence: { [key in CodeAgentEventType]: "live" | 
   tool_end: "persist",
   question: "persist",
   question_resolved: "persist",
+  question_skipped: "persist",
   approval: "live",
   approval_resolved: "live",
   context: "live",
@@ -395,14 +405,18 @@ export const codeAgentEventLabel = (event: CodeAgentEventBody): string => {
       return `? ${event.question.prompt}`;
     case "question_resolved":
       return `= ${event.rendered}`;
+    case "question_skipped":
+      return `? ${event.question.prompt} (skipped: ${event.reason})`;
     case "approval":
       return `approve? ${event.request.summary}`;
     case "approval_resolved":
       return event.approved ? "approved" : "denied";
     case "context":
       return `context ${event.used}${event.max ? `/${event.max}` : ""}`;
-    case "compaction":
-      return `compaction ${event.phase} (${event.reason})`;
+    case "compaction": {
+      const outcome = event.error ? ` — ${event.error}` : event.aborted ? " — cancelled" : "";
+      return `compaction ${event.phase} (${event.reason})${outcome}`;
+    }
     case "retry":
       return `retry ${event.attempt}/${event.maxAttempts} in ${event.delayMs}ms — ${event.message}`;
     case "queue":

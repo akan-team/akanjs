@@ -16,7 +16,15 @@ export interface JsonSchemaBuilderOptions {
    * refuse it) — the shorter form a listing that is re-sent to every agent is paid for by the byte.
    */
   nullable?: "anyOf" | "type";
+  /**
+   * Which shape a primitive is published as. `wire` is what an HTTP body carries, which is what an API contract
+   * describes. `agent` is what an agent reads and writes, on both sides of a call: a primitive's `agent.schema`
+   * when it declares one, its wire shape otherwise.
+   */
+  face?: JsonSchemaFace;
 }
+
+export type JsonSchemaFace = "wire" | "agent";
 
 export type JsonSchemaRelations = "inline" | "id" | "named";
 
@@ -56,9 +64,15 @@ export interface JsonSchemaModelOptions {
 export class JsonSchemaBuilder {
   readonly #refPrefix: string;
   readonly #nullableForm: "anyOf" | "type";
-  constructor({ refPrefix = "#/components/schemas/", nullable = "anyOf" }: JsonSchemaBuilderOptions = {}) {
+  readonly #face: JsonSchemaFace;
+  constructor({
+    refPrefix = "#/components/schemas/",
+    nullable = "anyOf",
+    face = "wire",
+  }: JsonSchemaBuilderOptions = {}) {
     this.#refPrefix = refPrefix;
     this.#nullableForm = nullable;
+    this.#face = face;
   }
 
   arg(arg: SerializedArg): JsonSchema {
@@ -172,14 +186,17 @@ export class JsonSchemaBuilder {
   }
 
   #ref(refName: string, modelType?: ConstantType): JsonSchema {
-    if (!modelType) return JsonSchemaBuilder.primitive(refName);
+    if (!modelType) return JsonSchemaBuilder.primitive(refName, { face: this.#face });
     const modelRef = ConstantRegistry.getModelRef(refName, modelType);
     return { $ref: `${this.#refPrefix}${ConstantRegistry.getModelName(modelRef as Cls)}` };
   }
 
   #modelRef(modelRef: Cls, { relations = "inline", idPattern = true }: JsonSchemaModelOptions = {}): JsonSchema {
     if (PrimitiveRegistry.has(modelRef))
-      return JsonSchemaBuilder.primitive(PrimitiveRegistry.getName(modelRef as typeof PrimitiveScalar), { idPattern });
+      return JsonSchemaBuilder.primitive(PrimitiveRegistry.getName(modelRef as typeof PrimitiveScalar), {
+        idPattern,
+        face: this.#face,
+      });
     if (relations !== "inline" && !ConstantRegistry.isScalar(modelRef as ConstantCls)) {
       if (relations === "id") return JsonSchemaBuilder.primitive("ID", { idPattern });
       return { type: "object", description: ConstantRegistry.getModelName(modelRef) };
@@ -212,7 +229,13 @@ export class JsonSchemaBuilder {
     return JsonSchemaBuilder.#inlineEnum([...enumRef.values]);
   }
 
-  static primitive(refName: string, { idPattern = true }: Pick<JsonSchemaModelOptions, "idPattern"> = {}): JsonSchema {
+  static primitive(
+    refName: string,
+    { idPattern = true, face = "wire" }: Pick<JsonSchemaModelOptions, "idPattern"> & { face?: JsonSchemaFace } = {},
+  ): JsonSchema {
+    const scalar = PrimitiveRegistry.hasName(refName) ? PrimitiveRegistry.get(refName) : null;
+    const declared = (face === "agent" ? scalar?.agent?.schema : undefined) ?? scalar?.jsonSchema;
+    if (declared) return { ...declared };
     switch (refName) {
       case "Boolean":
         return { type: "boolean" };

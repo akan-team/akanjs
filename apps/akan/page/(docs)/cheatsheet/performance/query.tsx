@@ -94,8 +94,8 @@ export default page().render(() => {
     {
       name: "_doc",
       desc: l.trans({
-        en: "A JSON column holding every field the model declares, read with `json_extract(_doc, '$.field')`.",
-        ko: "모델이 선언한 field를 모두 담는 JSON 컬럼입니다. `json_extract(_doc, '$.field')`로 읽습니다.",
+        en: "A JSON column holding every declared field; SQLite reads one with `json_extract(_doc, '$.field')`.",
+        ko: "모델이 선언한 field를 모두 담는 JSON 컬럼입니다. SQLite에서는 `json_extract(_doc, '$.field')`로 읽습니다.",
       }),
     },
     {
@@ -236,8 +236,8 @@ export default page().render(() => {
     {
       name: "q.search",
       desc: l.trans({
-        en: "Full-text search over `text`-role fields, compiled to a JOIN. SQLite and libsql only.",
-        ko: "`text` 역할 field의 전문 검색으로, WHERE가 아닌 JOIN이 됩니다. SQLite와 libsql에서만 동작합니다.",
+        en: "Full-text search over `text`-role fields, compiled to a JOIN. Works in every database mode.",
+        ko: "`text` 역할 field의 전문 검색으로, WHERE가 아닌 JOIN이 됩니다. 모든 데이터베이스 모드에서 동작합니다.",
       }),
       example: sqlOf(
         `q.search(text, { prefix: true })`,
@@ -301,8 +301,8 @@ export default page().render(() => {
     {
       name: "q.raw",
       desc: l.trans({
-        en: "Your own SQL fragment, wrapped in parentheses.",
-        ko: "직접 쓴 SQL 조각입니다. 괄호로 감싸져 들어갑니다.",
+        en: "Your own SQL fragment, wrapped in parentheses; write it in your database's dialect.",
+        ko: "직접 쓴 SQL 조각입니다. 괄호로 감싸져 그대로 들어가므로, 쓰는 데이터베이스의 문법으로 씁니다.",
       }),
       example: sqlOf(`q.raw("json_extract(_doc, '$.score') > ?", [minScore])`, `(json_extract(_doc, '$.score') > ?)`),
     },
@@ -839,19 +839,37 @@ export class TaskService extends serve(db.task, () => ({})) {
               {l.trans({
                 en: (
                   <span>
-                    <strong>Write it for your database.</strong> The snippet is SQLite / libsql. On Postgres,{" "}
-                    <code>_doc</code> is <code>jsonb</code>, so the fragment uses jsonb operators instead.
+                    <strong>Write it for your database.</strong> The snippet is SQLite / libsql. Postgres keeps{" "}
+                    <code>_doc</code> as <code>jsonb</code> and reads a field as text, so the same condition is{" "}
+                    <code>{`("_doc" #>> '{score}')::numeric > ?`}</code>.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>쓰는 데이터베이스에 맞춰 작성합니다.</strong> 위 코드는 SQLite / libsql 문법입니다.
-                    Postgres에서는 <code>_doc</code>이 <code>jsonb</code>이므로 jsonb 연산자로 씁니다.
+                    Postgres는 <code>_doc</code>을 <code>jsonb</code>로 두고 field를 텍스트로 읽으므로, 같은 조건은{" "}
+                    <code>{`("_doc" #>> '{score}')::numeric > ?`}</code>입니다.
                   </span>
                 ),
               })}
             </li>
           </ul>
+          <Docs.Alert type="warning">
+            {l.trans({
+              en: (
+                <span>
+                  <strong>A raw fragment is not translated between databases.</strong> An app that runs on both SQLite
+                  and Postgres avoids <code>q.raw</code>, or writes the fragment per database.
+                </span>
+              ),
+              ko: (
+                <span>
+                  <strong>raw 조각은 데이터베이스에 맞춰 바뀌지 않습니다.</strong> SQLite와 Postgres 양쪽에서 도는 앱은{" "}
+                  <code>q.raw</code>를 쓰지 않거나, 데이터베이스마다 조각을 따로 씁니다.
+                </span>
+              ),
+            })}
+          </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -1068,16 +1086,18 @@ export class TaskModel extends into(Task, TaskFilter, cnst.task, () => ({})) {
               {l.trans({
                 en: (
                   <span>
-                    <strong>The index is built on the expression the filter compiles to.</strong>{" "}
+                    <strong>The index is built on the expression the filter compiles to.</strong> On SQLite,{" "}
                     <code>{"schema.index({ project: 1 })"}</code> indexes{" "}
-                    <code>{"json_extract(_doc, '$.project')"}</code>, which <code>{"{ project }"}</code> then uses.
+                    <code>{"json_extract(_doc, '$.project')"}</code>, which <code>{"{ project }"}</code> then uses;
+                    Postgres indexes its own form of the same expression.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>인덱스는 필터가 쓰는 식 그대로 만들어집니다.</strong>{" "}
+                    <strong>인덱스는 필터가 쓰는 식 그대로 만들어집니다.</strong> SQLite에서{" "}
                     <code>{"schema.index({ project: 1 })"}</code>는 <code>{"json_extract(_doc, '$.project')"}</code>에
-                    인덱스를 걸고, <code>{"{ project }"}</code> 조건이 그 인덱스를 씁니다.
+                    인덱스를 걸고, <code>{"{ project }"}</code> 조건이 그 인덱스를 씁니다. Postgres는 같은 식을 Postgres
+                    문법으로 바꾼 형태에 인덱스를 겁니다.
                   </span>
                 ),
               })}

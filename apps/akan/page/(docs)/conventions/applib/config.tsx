@@ -78,10 +78,10 @@ export default page().render(() => {
           marks: appOnly,
         },
         {
-          name: "defaultDatabaseMode",
+          name: "database",
           desc: l.trans({
-            en: "`single`, `multiple` or `cluster`, used when `AKAN_DATABASE_MODE` is unset.",
-            ko: "`AKAN_DATABASE_MODE`가 없을 때 쓸 `single`, `multiple`, `cluster` 중 하나입니다.",
+            en: "The database modes the build can run in; a deployment picks one with `AKAN_DATABASE_MODE`.",
+            ko: "빌드가 실행될 수 있는 데이터베이스 모드이며, 배포는 `AKAN_DATABASE_MODE`로 그중 하나를 고릅니다.",
           }),
           marks: appOnly,
         },
@@ -368,7 +368,7 @@ export default page().render(() => {
               en: (
                 <span>
                   Every app and library keeps one <code>akan.config.ts</code> at its root. It declares how that app is
-                  served, built and packaged: domains, web surfaces, the mobile app, the database mode and the Docker
+                  served, built and packaged: domains, web surfaces, the mobile app, the database modes and the Docker
                   image.
                 </span>
               ),
@@ -897,21 +897,23 @@ export default config;`}
       </Scroll.Slide>
       <Divider />
 
-      <Scroll.Slide id="default-database-mode" title="defaultDatabaseMode">
-        <Docs.Title>defaultDatabaseMode</Docs.Title>
+      <Scroll.Slide id="default-database-mode" title="database">
+        <Docs.Title>database</Docs.Title>
         <Docs.Description>
           <div>
             {l.trans({
               en: (
                 <span>
-                  <code>defaultDatabaseMode</code> picks the engines behind storage, the queue and the cache. Most apps
-                  leave it out and run on <code>single</code>:
+                  <code>database.modes</code> lists the database modes the app's build can run in. A mode picks the
+                  engines behind storage, the queue and the cache; most apps leave the key out and run on{" "}
+                  <code>single</code>:
                 </span>
               ),
               ko: (
                 <span>
-                  <code>defaultDatabaseMode</code>는 저장소, 큐, 캐시를 맡을 엔진을 고릅니다. 대부분의 앱은 이 키를
-                  생략하고 <code>single</code>로 동작합니다:
+                  <code>database.modes</code>는 앱의 빌드가 실행될 수 있는 데이터베이스 모드를 나열합니다. 모드는
+                  저장소, 큐, 캐시를 맡을 엔진을 고르며, 대부분의 앱은 이 키를 생략하고 <code>single</code>로
+                  동작합니다:
                 </span>
               ),
             })}
@@ -935,8 +937,8 @@ export default config;`}
               {
                 mode: "multiple",
                 engines: l.trans({
-                  en: "libSQL for data, Redis for the queue and cache.",
-                  ko: "데이터는 libSQL, 큐와 캐시는 Redis가 맡습니다.",
+                  en: "One SQLite file on a host volume for data, Redis for the queue and cache.",
+                  ko: "데이터는 호스트 볼륨의 SQLite 파일 하나, 큐와 캐시는 Redis가 맡습니다.",
                 }),
               },
               {
@@ -950,8 +952,8 @@ export default config;`}
           />
           <div>
             {l.trans({
-              en: "Set it only when the deployment needs a different mode by default:",
-              ko: "배포 환경에서 기본 모드를 바꿔야 할 때만 적습니다:",
+              en: "Declare every mode a deployment of the app may use. The first one is the default:",
+              ko: "앱의 배포가 쓸 수 있는 모드를 모두 선언합니다. 첫 번째가 기본값입니다:",
             })}
           </div>
           <Code.Snippet
@@ -960,7 +962,7 @@ export default config;`}
             code={`import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
-  defaultDatabaseMode: "multiple",
+  database: { modes: ["single", "cluster"] },
 };
 
 export default config;`}
@@ -970,14 +972,15 @@ export default config;`}
               {l.trans({
                 en: (
                   <span>
-                    <strong>The env var wins.</strong> <code>AKAN_DATABASE_MODE</code> overrides this value for one run
-                    or one deployment.
+                    <strong>A deployment names one of them.</strong> <code>AKAN_DATABASE_MODE</code> picks one of the
+                    declared modes and no other. With one declared it may be left out; with several, every deployment
+                    names one.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>환경변수가 우선합니다.</strong> <code>AKAN_DATABASE_MODE</code>를 주면 그 실행이나
-                    배포에서는 이 값을 덮어씁니다.
+                    <strong>배포는 그중 하나를 고릅니다.</strong> <code>AKAN_DATABASE_MODE</code>는 선언된 모드 중
+                    하나만 고를 수 있습니다. 선언이 하나면 생략해도 되고, 여럿이면 배포마다 하나를 적어야 합니다.
                   </span>
                 ),
               })}
@@ -986,17 +989,16 @@ export default config;`}
               {l.trans({
                 en: (
                   <span>
-                    <strong>Drivers follow the mode.</strong> <code>multiple</code> adds <code>@libsql/client</code>,{" "}
-                    <code>bullmq</code>, <code>ioredis</code> and <code>protobufjs</code> to the production{" "}
-                    <code>package.json</code>; <code>cluster</code> adds <code>postgres</code> instead of libSQL.
+                    <strong>The CLI picks the same way.</strong> <code>akan start</code>, <code>akan build</code>,{" "}
+                    <code>akan script</code> and <code>akan console</code> use the shell's{" "}
+                    <code>AKAN_DATABASE_MODE</code> if set, otherwise the first declared mode.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>드라이버도 모드를 따라갑니다.</strong> <code>multiple</code>은 프로덕션{" "}
-                    <code>package.json</code>에 <code>@libsql/client</code>, <code>bullmq</code>, <code>ioredis</code>,{" "}
-                    <code>protobufjs</code>를 더하고, <code>cluster</code>는 libSQL 대신 <code>postgres</code>를
-                    더합니다.
+                    <strong>CLI도 같은 방식으로 고릅니다.</strong> <code>akan start</code>, <code>akan build</code>,{" "}
+                    <code>akan script</code>, <code>akan console</code>은 셸에 <code>AKAN_DATABASE_MODE</code>가 있으면
+                    그 모드를, 없으면 첫 번째로 선언한 모드를 씁니다.
                   </span>
                 ),
               })}
@@ -1005,9 +1007,57 @@ export default config;`}
               {l.trans({
                 en: (
                   <span>
-                    <strong>Move up only for a real need.</strong> <code>multiple</code> and <code>cluster</code> need a
-                    database and Redis running locally (<code>akan dbup --mode multiple</code>). When to switch is
-                    explained in{" "}
+                    <strong>Connection values come from the deployment.</strong> <code>SQLITE_DATABASE_PATH</code>,{" "}
+                    <code>POSTGRES_URL</code> and the other{" "}
+                    <Link href="/docs/core/runtime#env-database" className={inlineLink}>
+                      connection variables
+                    </Link>{" "}
+                    win over the same values in <code>env.server.ts</code>, and <code>REDIS_URI</code> is read from the
+                    environment only.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>연결 값은 배포 환경이 정합니다.</strong> <code>SQLITE_DATABASE_PATH</code>,{" "}
+                    <code>POSTGRES_URL</code> 같은{" "}
+                    <Link href="/docs/core/runtime#env-database" className={inlineLink}>
+                      연결 환경변수
+                    </Link>
+                    는 <code>env.server.ts</code>에 적은 같은 값보다 우선하며, <code>REDIS_URI</code>는 환경변수에서만
+                    읽습니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Drivers follow the declared modes.</strong> <code>akan build</code> puts every declared
+                    mode's drivers in the production <code>package.json</code>: <code>multiple</code> adds{" "}
+                    <code>bullmq</code> and <code>ioredis</code>, and <code>cluster</code> adds <code>postgres</code>{" "}
+                    too. An app that applies <code>LibsqlDatabase</code> itself lists <code>@libsql/client</code> in{" "}
+                    <code>externalLibs</code>.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>드라이버는 선언한 모드를 따라갑니다.</strong> <code>akan build</code>는 선언한 모든 모드의
+                    드라이버를 프로덕션 <code>package.json</code>에 넣으며, <code>multiple</code>은 <code>bullmq</code>
+                    와 <code>ioredis</code>를, <code>cluster</code>는 <code>postgres</code>까지 더합니다.{" "}
+                    <code>LibsqlDatabase</code>를 직접 적용하는 앱은 <code>@libsql/client</code>를{" "}
+                    <code>externalLibs</code>에 적습니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Move up only for a real need.</strong> Locally, <code>multiple</code> needs Redis and{" "}
+                    <code>cluster</code> needs Redis and Postgres; <code>akan start</code> starts them, and{" "}
+                    <code>akan dbup</code> starts what your apps declare. When to switch is explained in{" "}
                     <Link href="/docs/arch/infra#database-mode" className={inlineLink}>
                       Database Mode
                     </Link>
@@ -1016,9 +1066,9 @@ export default config;`}
                 ),
                 ko: (
                   <span>
-                    <strong>실제로 필요할 때만 올립니다.</strong> <code>multiple</code>과 <code>cluster</code>는
-                    로컬에서도 데이터베이스와 Redis가 떠 있어야 합니다(<code>akan dbup --mode multiple</code>). 언제
-                    바꿀지는{" "}
+                    <strong>실제로 필요할 때만 올립니다.</strong> 로컬에서 <code>multiple</code>은 Redis가,{" "}
+                    <code>cluster</code>는 Redis와 Postgres가 필요하며, <code>akan start</code>가 이를 띄우고{" "}
+                    <code>akan dbup</code>은 앱들이 선언한 것을 띄웁니다. 언제 바꿀지는{" "}
                     <Link href="/docs/arch/infra#database-mode" className={inlineLink}>
                       데이터베이스 모드
                     </Link>

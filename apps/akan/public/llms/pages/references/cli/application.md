@@ -62,6 +62,8 @@ Start the local database containers.
 
 Stop the local database containers.
 
+Copy an app's data out of one database mode and into another.
+
 Run a file from the app's `script/` folder.
 
 Open an interactive server console.
@@ -138,7 +140,7 @@ Free the dev ports first. A holder that is not an akan process is reported and l
 
 Apps booted at a time. Unset: the lower of half the memory ÷ 900MB and cores ÷ 4.
 
-Start the local database first, per mode the apps declare. On exit it stops only what it started.
+Start the local services of the mode each app runs in first. On exit it stops only what it started.
 
 Open the app in the browser.
 
@@ -156,13 +158,53 @@ memory budget
 
 `AKAN_MEMORY_LIMIT` lowers the memory `--concurrency` is derived from.
 
-Start the local database containers with Docker Compose, writing the compose file into `local/` on first use. `akan start` already runs it unless `--dbup false`.
+Start the local database services with Docker Compose: Redis for `multiple`, Redis and Postgres 18 for `cluster`. `akan start` already runs it unless `--dbup false`.
 
-`single` starts nothing, `multiple` starts Redis and libSQL, `cluster` Redis and Postgres.
+Start one mode's services; `single` needs none. Left out, every mode the workspace's apps declare.
 
 Needs a running Docker daemon. Services already running are left as they are.
 
+compose file
+
+`local/docker-compose.yaml` is written on first use and then left to you.
+
+missing service
+
+An older compose file may lack one. Add it, or move the file aside to get the current template.
+
 Stop the local database with `docker compose down` in `local/`. Every service of that compose project stops, whichever app started it.
+
+Write every model table of the app to one NDJSON file each, from the database of the mode the shell names. Pair it with `db-import` to move data between modes, such as `single` to `cluster`.
+
+Folder to write the files into, relative to the workspace root.
+
+mode
+
+The shell's `AKAN_DATABASE_MODE`, or the app's first declared mode.
+
+deployed data
+
+For a deployed `single` app, copy its SQLite file and point `SQLITE_DATABASE_PATH` at the copy.
+
+no traffic
+
+Boots the app without listening and without running cron or init jobs.
+
+Read the files `db-export` wrote into the database of the mode the shell names. The app must declare that mode.
+
+Folder to read the files from, relative to the workspace root.
+
+rows
+
+Rows move as stored, removed ones included. An existing id is replaced, so a rerun is safe.
+
+text search
+
+The search index is rebuilt after the import.
+
+not moved
+
+Sessions and queued jobs stay behind, so users sign in again. Copy uploads in `local/` yourself.
 
 Sync the app, then run `apps/<app>/script/<filename>.ts` with Bun. Leave the filename out to pick one from a list.
 

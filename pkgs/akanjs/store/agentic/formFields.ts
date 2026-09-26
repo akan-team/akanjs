@@ -81,6 +81,9 @@ export class FormFields {
       return value ? { type: "object", additionalProperties: value } : null;
     }
     if (PrimitiveRegistry.has(modelRef)) {
+      // An agent-faced primitive is written through the editor that owns it, which can refuse a lossy rewrite; a
+      // form setter publishing `agent.schema` would take the same value around that guard.
+      if (PrimitiveRegistry.agentOf(modelRef)) return null;
       try {
         return StToolBuilder.schemaOf(modelRef as unknown as ParamFieldType);
       } catch {
@@ -93,6 +96,7 @@ export class FormFields {
   }
 
   static #ofSchema(field: ConstantField): JsonSchema | null {
+    if (PrimitiveRegistry.agentOf(field.of)) return null;
     try {
       return StToolBuilder.schemaOf(field.of as unknown as ParamFieldType);
     } catch {

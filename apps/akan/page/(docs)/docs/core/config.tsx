@@ -88,11 +88,11 @@ const configKeys = [
     ko: "Dockerfile 전체 문자열이거나, akan build가 Dockerfile을 조립할 재료입니다.",
   },
   {
-    key: "defaultDatabaseMode",
-    type: "single | multiple | cluster",
-    default: "single",
-    en: "Fallback for AKAN_DATABASE_MODE; also picks the drivers in the production package.json.",
-    ko: "AKAN_DATABASE_MODE가 없을 때 쓰는 모드이며, 프로덕션 package.json의 드라이버 패키지도 정합니다.",
+    key: "database",
+    type: "{ modes: DatabaseMode[] }",
+    default: '{ modes: ["single"] }',
+    en: "The modes the build can run in; each deployment picks one with AKAN_DATABASE_MODE.",
+    ko: "빌드가 실행될 수 있는 모드 목록이며, 배포마다 AKAN_DATABASE_MODE로 그중 하나를 고릅니다.",
   },
   {
     key: "externalLibs",
@@ -257,11 +257,11 @@ const buildFields = [
     ko: "스캔과 번들링에서 펼칠 추가 barrel 경로이며, 워크스페이스 밖의 barrel에만 씁니다.",
   },
   {
-    key: "defaultDatabaseMode",
-    type: "single | multiple | cluster",
-    default: "single",
-    en: "multiple adds the libsql, queue, and protobuf drivers; cluster swaps libsql for postgres.",
-    ko: "multiple은 libsql·queue·protobuf 드라이버를 더하고, cluster는 libsql 대신 postgres를 씁니다.",
+    key: "database.modes",
+    type: '("single" | "multiple" | "cluster")[]',
+    default: '["single"]',
+    en: "Every declared mode's drivers ship: multiple adds bullmq and ioredis, cluster also postgres.",
+    ko: "선언한 모든 모드의 드라이버가 함께 설치됩니다. multiple은 bullmq·ioredis를, cluster는 postgres까지 더합니다.",
   },
   {
     key: "assets.pruneFonts",
@@ -894,7 +894,7 @@ const config: AppConfig = {
   externalLibs: ["shiki"],
   optimizeImports: ["custom-icons"],
   barrelImports: ["@acme/ui"],
-  defaultDatabaseMode: "single",
+  database: { modes: ["single", "cluster"] },
   assets: { pruneFonts: true, keepFonts: ["fonts/Assistant-*.woff2"] },
   syncPageLibs: ["shared"],
   plugins: [pushNotificationPlugin],
@@ -920,6 +920,42 @@ const config: AppConfig = {
             ko: "라이브러리가 이 중 셋에 값을 더합니다. 라이브러리 자신의 externalLibs, docker.preRuns·docker.postRuns, assets.keepFonts는 그 라이브러리를 마운트하는 모든 앱에 함께 적용됩니다. 생성되는 이미지에는 ca-certificates와 tzdata만 설치되므로, ffmpeg나 헤드리스 브라우저가 필요한 앱은 직접 선언해야 합니다.",
           })}
         </div>
+        <ul className="my-4 list-disc space-y-2 pl-5">
+          <li>
+            {l.trans({
+              en: (
+                <span>
+                  <strong>One image, several deployments.</strong> With <code>{'["single", "cluster"]'}</code> the same
+                  image runs an edge site and a cloud cluster, and each deployment names its mode with{" "}
+                  <code>AKAN_DATABASE_MODE</code>.
+                </span>
+              ),
+              ko: (
+                <span>
+                  <strong>이미지 하나로 여러 배포를 합니다.</strong> <code>{'["single", "cluster"]'}</code>로 선언하면
+                  같은 이미지가 엣지 사이트와 클라우드 클러스터를 모두 실행하고, 배포마다{" "}
+                  <code>AKAN_DATABASE_MODE</code>로 모드를 정합니다.
+                </span>
+              ),
+            })}
+          </li>
+          <li>
+            {l.trans({
+              en: (
+                <span>
+                  <strong>libSQL is opt-in.</strong> No mode ships <code>@libsql/client</code>, so an app that applies{" "}
+                  <code>LibsqlDatabase</code> itself lists it in <code>externalLibs</code>.
+                </span>
+              ),
+              ko: (
+                <span>
+                  <strong>libSQL은 직접 켭니다.</strong> 어느 모드도 <code>@libsql/client</code>를 싣지 않으므로,{" "}
+                  <code>LibsqlDatabase</code>를 직접 적용하는 앱은 이를 <code>externalLibs</code>에 적습니다.
+                </span>
+              ),
+            })}
+          </li>
+        </ul>
         <Docs.Alert type="warning">
           {l.trans({
             en: "A docker written as a string is the whole Dockerfile, taken verbatim. Nothing is merged into it — including the preRuns and postRuns your libraries declared, which are silently dropped rather than silently unapplied.",

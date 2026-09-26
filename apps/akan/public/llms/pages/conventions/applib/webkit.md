@@ -37,7 +37,7 @@ Touches `node:*`, `Bun`, `process.env`, a secret, or a server SDK.
 
 libs/util/srvkit/cloudflareApi.ts // camelCase file, PascalCase class
 
-Renders JSX and is not bound to one model; a model-bound component goes in its module.
+Renders JSX or defines a recipe, bound to no model; a model-bound component goes in its module.
 
 apps/akan/ui/BrowserMockup.tsx // PascalCase component, camelCase sidecar
 
@@ -51,7 +51,7 @@ No "use client" — server and client
 
 Render map
 
-A shared table from an enum value to a look, such as a badge variant or icon per status.
+A shared table from an enum value to a recipe variant name or icon, never to class strings.
 
 Account helper
 

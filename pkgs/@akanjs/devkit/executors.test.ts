@@ -312,9 +312,17 @@ describe("Workspace and app executor environment contracts", () => {
     expect(env.AKAN_PUBLIC_SERVER_PORT).toBe("8285");
     expect(env.EXTRA).toBe("ok");
 
+    const shellOperationMode = process.env.AKAN_PUBLIC_OPERATION_MODE;
+    process.env.AKAN_PUBLIC_OPERATION_MODE = "local";
     const prepared = await app.prepareCommand("build");
+    const bakedOperationMode = process.env.AKAN_PUBLIC_OPERATION_MODE;
+    if (shellOperationMode === undefined) delete process.env.AKAN_PUBLIC_OPERATION_MODE;
+    else process.env.AKAN_PUBLIC_OPERATION_MODE = shellOperationMode;
+    expect(bakedOperationMode).toBeUndefined();
     expect(prepared.env.AKAN_COMMAND_TYPE).toBe("build");
     expect(prepared.env.AKAN_PUBLIC_BASE_PATHS).toBe("admin");
+    expect(prepared.env.AKAN_DATABASE_MODE).toBe("single");
+    expect(prepared.env.AKAN_DATABASE_MODES).toBe("single");
     // Bundling reads `process.env` through getPublicEnv and `define`s every AKAN_PUBLIC_* into a literal, so a
     // dev port published here would be baked into the artifact and outrank the PORT the container is run with.
     expect(process.env.AKAN_PUBLIC_APP_NAME).toBe("demo");

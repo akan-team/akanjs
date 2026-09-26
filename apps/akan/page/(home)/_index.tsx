@@ -1,8 +1,16 @@
 import { usePage } from "@apps/akan/client";
-import { Code } from "@apps/akan/ui";
+import { Code, RoadmapTrajectory, ShowcaseThumbnail } from "@apps/akan/ui";
 import { page } from "akanjs/client";
 import { badgeRecipe, buttonRecipe, Link } from "akanjs/ui";
-import { BsArrowRight, BsCheckCircle, BsCloud, BsCodeSlash, BsTerminal } from "react-icons/bs";
+import {
+  BsArrowRight,
+  BsArrowUpRight,
+  BsCheckCircle,
+  BsCloudArrowUp,
+  BsCodeSlash,
+  BsRobot,
+  BsTerminal,
+} from "react-icons/bs";
 
 export default page().render(() => {
   const { l } = usePage();
@@ -68,12 +76,12 @@ export default page().render(() => {
       }),
     },
     {
-      icon: <BsCloud className="size-7" />,
-      iconClassName: "text-secondary",
-      title: l.trans({ en: "Slice Removes Spaghetti State", ko: "슬라이스 하나로 스파게티 상태관리 제거" }),
+      icon: <BsRobot className="size-7" />,
+      iconClassName: "text-info",
+      title: l.trans({ en: "A Guide Agents Actually Read", ko: "에이전트가 실제로 읽는 가이드" }),
       description: l.trans({
-        en: "Declare a slice once and get list loading, pagination, statistics, state, and loading behavior together.",
-        ko: "슬라이스 하나로 리스트 조회, 페이지네이션, 통계조회, 상태관리, 로딩처리가 함께 생성됩니다.",
+        en: "Every workspace ships a generated AGENTS.md, a plan-then-apply workflow MCP and akan code, so an agent edits through the rules, not around them.",
+        ko: "모든 워크스페이스에 생성된 AGENTS.md, 계획 후 적용하는 워크플로 MCP, akan code가 들어 있어 에이전트는 규칙을 우회하지 않고 규칙을 따라 고칩니다.",
       }),
     },
     {
@@ -95,6 +103,8 @@ export default page().render(() => {
     l.trans({ en: "Type-safe from DB to UI", ko: "DB부터 UI까지 타입 안전" }),
     l.trans({ en: "Built-in internationalization", ko: "다국어 지원 기본 탑재" }),
     l.trans({ en: "Official plugin blocks", ko: "공식 플러그인 기능 블록" }),
+    l.trans({ en: "MCP server with OAuth 2.1", ko: "OAuth 2.1을 갖춘 MCP 서버" }),
+    l.trans({ en: "In-page AI agent", ko: "인페이지 AI 에이전트" }),
   ];
   const automationItems = [
     {
@@ -214,21 +224,210 @@ export default page().render(() => {
       }),
     },
   ];
+  const heroSurfaces = [
+    {
+      title: l.trans({ en: "Web / App", ko: "웹 / 앱" }),
+      description: l.trans({
+        en: "SEO web and native-feeling client transitions.",
+        ko: "SEO 가능한 웹과 앱다운 페이지 전환.",
+      }),
+    },
+    {
+      title: l.trans({ en: "Server / Realtime", ko: "서버 / 실시간" }),
+      description: l.trans({
+        en: "Bun-powered HTTP and WebSocket surfaces.",
+        ko: "Bun 기반 HTTP와 WebSocket 표현.",
+      }),
+    },
+    {
+      title: l.trans({ en: "Database / Validation", ko: "DB / 검증" }),
+      description: l.trans({
+        en: "SQLite first, scalable, and schema validated.",
+        ko: "SQLite 우선, 확장 가능, 스키마 검증.",
+      }),
+    },
+    {
+      title: l.trans({ en: "Docs / Plugins", ko: "문서 / 플러그인" }),
+      description: l.trans({
+        en: "Live docs and official feature blocks.",
+        ko: "실시간 문서와 공식 기능 블록.",
+      }),
+    },
+    {
+      title: l.trans({ en: "MCP / Prompts", ko: "MCP / 프롬프트" }),
+      description: l.trans({
+        en: "Every guarded endpoint becomes an agent tool.",
+        ko: "가드가 있는 모든 엔드포인트가 에이전트 도구로.",
+      }),
+    },
+    {
+      title: l.trans({ en: "In-page agent", ko: "인페이지 에이전트" }),
+      description: l.trans({
+        en: "An assistant that works the screen with your users.",
+        ko: "사용자와 함께 화면을 다루는 어시스턴트.",
+      }),
+    },
+  ];
+  const proofItems = [
+    { value: "26MB → 8.1MB", label: l.trans({ en: "Client build output in v3", ko: "v3 클라이언트 빌드 결과물" }) },
+    {
+      value: "3.5ms → 0.9ms",
+      label: l.trans({ en: "Hydrating 1,000 rows on the client", ko: "클라이언트 1,000행 하이드레이션" }),
+    },
+    { value: "−33%", label: l.trans({ en: "Time for a 50-row list query", ko: "50행 목록 쿼리 시간" }) },
+  ];
+  const agentSurfaces = [
+    {
+      title: l.trans({ en: "Every app is an MCP server", ko: "모든 앱이 MCP 서버" }),
+      description: l.trans({
+        en: "Each endpoint its guards admit is a tool Claude, Cursor or any MCP client can call, with the same masking as your screens. mcp: false keeps one off the shelf.",
+        ko: "가드가 허용하는 엔드포인트마다 Claude, Cursor 같은 MCP 클라이언트가 부를 수 있는 도구가 되고, 화면과 같은 마스킹을 거칩니다. mcp: false로 목록에서만 뺄 수 있습니다.",
+      }),
+      codeTitle: "task.signal.ts",
+      code: `completeTask: mutation(cnst.Task, {
+  guards: [SignedIn],
+})
+  .param("taskId", String)
+  .exec(function (taskId) { … })`,
+    },
+    {
+      title: l.trans({ en: "An agent that works the screen", ko: "화면을 다루는 에이전트" }),
+      description: l.trans({
+        en: "<Agent.Chat /> reads the rendered page and drives it through the same controls a person uses, inside their own session, asking before anything changes data.",
+        ko: "<Agent.Chat />가 렌더링된 페이지를 읽고, 사용자 자신의 세션 안에서 사람이 쓰는 컨트롤로 화면을 움직이며, 데이터를 바꾸기 전에는 승인을 받습니다.",
+      }),
+      codeTitle: "Plan.Zone.tsx",
+      code: `const publish = st.tool("publish")
+  .desc("Publish the plan.")
+  .exec(() => st.do.publish());
+
+<Button onClick={publish} />`,
+    },
+    {
+      title: l.trans({ en: "Pages become prompts", ko: "페이지가 프롬프트로" }),
+      description: l.trans({
+        en: "One stage on a page publishes the screen as an MCP prompt: its fetches run under the caller's token and the agent gets the data plus the tools to act on it.",
+        ko: "페이지에 단계 하나를 붙이면 화면이 MCP 프롬프트가 됩니다. 페이지의 fetch가 호출자의 토큰으로 돌고, 에이전트는 데이터와 그걸 다룰 도구를 함께 받습니다.",
+      }),
+      codeTitle: "tickets.tsx",
+      code: `export default page()
+  .param("projectId", ID)
+  .prompt(
+    "briefProjectTickets",
+    "Brief one project.",
+  )
+  .render(…);`,
+    },
+  ];
+  const showcasePreviews = [
+    {
+      name: "akanjs.com",
+      motif: "docs" as const,
+      tone: "primary" as const,
+      isSample: false,
+      badge: l.trans({ en: "Built by the Akan team", ko: "Akan 팀 제작" }),
+      description: l.trans({
+        en: "This site: docs, blog, full-text docs search and an in-page docs agent from one Akan.js app.",
+        ko: "지금 보고 계신 이 사이트입니다. 문서, 블로그, 문서 전문 검색, 인페이지 문서 에이전트가 하나의 Akan.js 앱에서 나옵니다.",
+      }),
+    },
+    {
+      name: "Frontline Rooms",
+      motif: "arena" as const,
+      tone: "primary" as const,
+      isSample: true,
+      badge: l.trans({ en: "Sample", ko: "샘플" }),
+      description: l.trans({
+        en: "A match server streaming 20 Hz state frames to each room over binary pubsub.",
+        ko: "초당 20번 상태 프레임을 바이너리 pubsub으로 룸마다 흘려보내는 게임 서버입니다.",
+      }),
+    },
+    {
+      name: "Ledgerline",
+      motif: "agent" as const,
+      tone: "success" as const,
+      isSample: true,
+      badge: l.trans({ en: "Sample", ko: "샘플" }),
+      description: l.trans({
+        en: "A finance console where an in-page agent fills the expense form and a person approves every change.",
+        ko: "인페이지 에이전트가 경비 폼을 채우고 모든 변경은 사람이 승인하는 재무 콘솔입니다.",
+      }),
+    },
+  ];
+  const deploySteps = [
+    {
+      command: "akan login",
+      description: l.trans({
+        en: "Sign in to Akan Cloud from your machine.",
+        ko: "이 컴퓨터에서 Akan Cloud에 로그인합니다.",
+      }),
+    },
+    {
+      command: "akan tunnel <app>",
+      description: l.trans({
+        en: "Share the app you are running on a public URL before you ship.",
+        ko: "배포 전에 실행 중인 앱을 공개 URL로 공유합니다.",
+      }),
+    },
+    {
+      command: "akan build <app>",
+      description: l.trans({
+        en: "Build the production artifact Akan Cloud runs.",
+        ko: "Akan Cloud가 돌릴 프로덕션 결과물을 빌드합니다.",
+      }),
+    },
+  ];
+  const roadmapWaypoints = [
+    { key: "v1", label: "v1", caption: l.trans({ en: "Liftoff", ko: "리프트오프" }), state: "flown" as const },
+    { key: "v2", label: "v2", caption: "Max-Q", state: "flown" as const },
+    {
+      key: "v3",
+      label: l.trans({ en: "v3 · You are here", ko: "v3 · 현재 위치" }),
+      caption: l.trans({ en: "Stage separation", ko: "단 분리" }),
+      state: "current" as const,
+    },
+    ...[
+      { en: "Desktop", ko: "데스크톱" },
+      { en: "Mobile", ko: "모바일" },
+      { en: "Agent network", ko: "에이전트 네트워크" },
+      { en: "Cloud", ko: "클라우드" },
+      { en: "Data scale-out", ko: "데이터 확장" },
+      { en: "Blocks", ko: "블록" },
+      { en: "Studio", ko: "스튜디오" },
+      { en: "Offline", ko: "오프라인" },
+      { en: "Autopilot", ko: "오토파일럿" },
+    ].map((caption, idx) => ({
+      key: `0${idx + 1}`,
+      label: `0${idx + 1}`,
+      caption: l.trans(caption),
+      state: idx < 3 ? ("committed" as const) : ("proposed" as const),
+    })),
+  ];
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
+    <main className="relative min-h-screen overflow-hidden break-keep bg-background text-foreground">
       <div className="absolute inset-x-0 top-20 h-px bg-linear-to-r from-transparent via-primary/60 to-transparent" />
 
-      <section className="relative mx-auto grid min-h-screen w-full max-w-7xl items-center gap-10 px-6 pt-32 pb-20 lg:grid-cols-[1.02fr_0.98fr] lg:px-8">
+      <section className="relative mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 items-center gap-10 px-6 pt-32 pb-20 lg:grid-cols-[1.02fr_0.98fr] lg:px-8">
         <div>
-          <div className={badgeRecipe(undefined, "mb-6 border-primary/20 bg-primary/10 px-4 py-3 text-primary")}>
+          <Link
+            href="/blog/v3release"
+            className={badgeRecipe(
+              undefined,
+              "mb-6 border-primary/20 bg-primary/10 px-4 py-3 text-primary transition hover:bg-primary/15",
+            )}
+          >
             <BsCheckCircle />
-            {l.trans({ en: "One line, every platform", ko: "한 줄, 모든 플랫폼" })}
-          </div>
+            {l.trans({
+              en: "New · Akan.js v3 — agents join the full stack",
+              ko: "New · Akan.js v3 — 풀스택에 에이전트가 합류",
+            })}
+            <BsArrowRight />
+          </Link>
           <h1 className="max-w-4xl font-black text-5xl text-foreground tracking-tight sm:text-5xl lg:text-6xl">
             {l.trans({
-              en: "One line of business code ships web, iOS, Android, server, and database",
-              ko: "한 줄의 비즈니스 코드로 웹·iOS·Android·서버·DB를",
+              en: "One line of business code ships web, iOS, Android, server, database — and agents",
+              ko: "한 줄의 비즈니스 코드로 웹·iOS·Android·서버·DB, 그리고 에이전트까지",
             })}
             <span className="text-primary">
               {l.trans({
@@ -239,8 +438,8 @@ export default page().render(() => {
           </h1>
           <p className="mt-6 max-w-2xl text-foreground/70 text-lg leading-8">
             {l.trans({
-              en: "No more framework assembly, duplicated declarations, or per-platform rewrites. Write business intent in one place, and five surfaces follow.",
-              ko: "프레임워크 조립, 중복 선언, 플랫폼별 재작성은 이제 그만. 비즈니스 코드 한 곳만 작성하면 5개 표현이 같이 따라옵니다.",
+              en: "No more framework assembly, duplicated declarations, or per-platform rewrites. Write business intent in one place: five surfaces follow, and AI agents use it too — as MCP tools, page prompts and an in-page assistant, behind the same guards.",
+              ko: "프레임워크 조립, 중복 선언, 플랫폼별 재작성은 이제 그만. 비즈니스 코드 한 곳만 작성하면 5개 표현이 따라오고, 같은 가드 뒤에서 MCP 도구, 페이지 프롬프트, 인페이지 어시스턴트로 AI 에이전트도 그대로 씁니다.",
             })}
           </p>
           <p className="mt-3 max-w-2xl text-base text-foreground/60 leading-7">
@@ -250,7 +449,7 @@ export default page().render(() => {
             })}
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            {["akan.config.ts", "Web", "iOS", "Android", "Server", "DB", "Type-safe", "Plugins"].map((surface) => (
+            {["Web", "iOS", "Android", "Server", "DB", "MCP", "In-page agent", "Type-safe"].map((surface) => (
               <span
                 key={surface}
                 className={badgeRecipe(
@@ -267,6 +466,9 @@ export default page().render(() => {
               <button className={buttonRecipe(undefined, "border-none bg-primary text-background hover:bg-primary/80")}>
                 {l.trans({ en: "Get Started", ko: "시작하기" })} <BsArrowRight className="ml-2" />
               </button>
+            </Link>
+            <Link href="/showcase" className={buttonRecipe({ variant: "outline" })}>
+              {l.trans({ en: "See the showcase", ko: "쇼케이스 보기" })}
             </Link>
           </div>
         </div>
@@ -290,36 +492,7 @@ export default page().render(() => {
 })) {}`}
             />
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {[
-                {
-                  title: l.trans({ en: "Web / App", ko: "웹 / 앱" }),
-                  description: l.trans({
-                    en: "SEO web and native-feeling client transitions.",
-                    ko: "SEO 가능한 웹과 앱다운 페이지 전환.",
-                  }),
-                },
-                {
-                  title: l.trans({ en: "Server / Realtime", ko: "서버 / 실시간" }),
-                  description: l.trans({
-                    en: "Bun-powered HTTP and WebSocket surfaces.",
-                    ko: "Bun 기반 HTTP와 WebSocket 표현.",
-                  }),
-                },
-                {
-                  title: l.trans({ en: "Database / Validation", ko: "DB / 검증" }),
-                  description: l.trans({
-                    en: "SQLite first, scalable, and schema validated.",
-                    ko: "SQLite 우선, 확장 가능, 스키마 검증.",
-                  }),
-                },
-                {
-                  title: l.trans({ en: "Docs / Plugins", ko: "문서 / 플러그인" }),
-                  description: l.trans({
-                    en: "Live docs and official feature blocks.",
-                    ko: "실시간 문서와 공식 기능 블록.",
-                  }),
-                },
-              ].map((item) => (
+              {heroSurfaces.map((item) => (
                 <div key={item.title} className="rounded-2xl border border-foreground/10 bg-background/80 p-4">
                   <p className="font-bold text-foreground">{item.title}</p>
                   <p className="mt-1 text-foreground/60 text-sm leading-6">{item.description}</p>
@@ -327,6 +500,28 @@ export default page().render(() => {
               ))}
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="relative mx-auto w-full max-w-7xl px-6 pb-20 lg:px-8">
+        <div className="grid gap-px overflow-hidden rounded-3xl border border-foreground/10 bg-foreground/10 sm:grid-cols-2 lg:grid-cols-4">
+          {proofItems.map((item) => (
+            <div key={item.value} className="bg-background/90 px-6 py-5">
+              <p className="font-black font-mono text-2xl text-primary">{item.value}</p>
+              <p className="mt-1 text-foreground/60 text-sm">{item.label}</p>
+            </div>
+          ))}
+          <Link
+            href="/blog/v3release#v3-performance"
+            className="group flex flex-col justify-center bg-background/90 px-6 py-5"
+          >
+            <p className="flex items-center gap-2 font-bold text-foreground group-hover:text-primary">
+              {l.trans({ en: "v3 benchmark", ko: "v3 벤치마크" })} <BsArrowRight />
+            </p>
+            <p className="mt-1 text-foreground/60 text-sm">
+              {l.trans({ en: "Startup 2× faster, a third less memory", ko: "시작 2배 빠르게, 메모리 3분의 1 절감" })}
+            </p>
+          </Link>
         </div>
       </section>
 
@@ -443,21 +638,61 @@ export default page().render(() => {
                   </div>
                 ))}
               </div>
-              <p className="mt-5 text-foreground/50 text-xs leading-5">
-                {l.trans({
-                  en: "Diagram: field(String) on the left, eight generated layers branching out on the right.",
-                  ko: "다이어그램: 왼쪽의 field(String) 한 줄에서 오른쪽 8개 생성 레이어가 분기됩니다.",
-                })}
-              </p>
             </div>
           </div>
         </div>
       </section>
 
       <section className="relative mx-auto w-full max-w-7xl px-6 py-20 lg:px-8">
+        <div className="mb-10 text-center">
+          <div className={badgeRecipe(undefined, "mb-4 border-primary/20 bg-primary/10 text-primary")}>
+            {l.trans({ en: "Agents Use It", ko: "에이전트가 쓰는 앱" })}
+          </div>
+          <h2 className="font-black text-3xl tracking-tight md:text-5xl">
+            {l.trans({
+              en: "Every app is agent-ready from the first line.",
+              ko: "모든 앱이 첫 줄부터 에이전트 레디입니다.",
+            })}
+          </h2>
+          <p className="mx-auto mt-4 max-w-4xl text-foreground/60 leading-7">
+            {l.trans({
+              en: "The guards that protect your screens also publish them to AI agents. Nothing to opt in, nothing to keep in sync: the same endpoint serves the button, the MCP tool and the in-page assistant.",
+              ko: "화면을 지키는 가드가 그 화면을 AI 에이전트에게도 공개합니다. 켜야 할 것도, 맞춰야 할 것도 없습니다. 같은 엔드포인트가 버튼, MCP 도구, 인페이지 어시스턴트를 함께 받칩니다.",
+            })}
+          </p>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-3">
+          {agentSurfaces.map((item) => (
+            <div
+              key={item.title}
+              className="flex flex-col rounded-3xl border border-foreground/10 bg-foreground/4 p-6 backdrop-blur"
+            >
+              <h3 className="font-bold text-foreground text-xl">{item.title}</h3>
+              <p className="mt-3 text-foreground/60 text-sm leading-6">{item.description}</p>
+              <Code.Snippet className="mt-5 w-full" title={item.codeTitle} code={item.code} showLineNumbers={false} />
+            </div>
+          ))}
+        </div>
+        <div className="mt-6 flex flex-col items-start justify-between gap-4 rounded-4xl border border-primary/20 bg-primary/5 p-6 md:flex-row md:items-center md:p-8">
+          <p className="max-w-3xl text-foreground/70 leading-7">
+            {l.trans({
+              en: "With libs/shared, OAuth 2.1 comes built in: an agent signs in as the user and acts with exactly that user's rights.",
+              ko: "libs/shared를 쓰면 OAuth 2.1이 내장됩니다. 에이전트는 사용자로 로그인하고 정확히 그 사용자의 권한으로만 움직입니다.",
+            })}
+          </p>
+          <Link href="/blog/v3release" className={buttonRecipe({ variant: "primary" }, "shrink-0")}>
+            {l.trans({ en: "What's new in v3", ko: "v3에서 달라진 점" })} <BsArrowRight className="ml-2" />
+          </Link>
+        </div>
+      </section>
+
+      <section className="relative mx-auto w-full max-w-7xl px-6 py-20 lg:px-8">
         <div className="mb-10 max-w-4xl">
           <div className={badgeRecipe(undefined, "mb-4 border-accent/20 bg-accent/10 text-accent")}>
-            {l.trans({ en: "Rules Create Quality", ko: "규칙이 품질을 만듭니다" })}
+            {l.trans({
+              en: "Agents Build It · Rules Create Quality",
+              ko: "에이전트가 만드는 앱 · 규칙이 품질을 만듭니다",
+            })}
           </div>
           <h2 className="font-black text-3xl tracking-tight md:text-5xl">
             {l.trans({
@@ -494,8 +729,8 @@ export default page().render(() => {
           </h3>
           <p className="mt-3 max-w-3xl text-foreground/65 leading-7">
             {l.trans({
-              en: "Strict rules suit AI agents best. On top of fixed blocks — upload, login, admin, chat, boards, alerts — agents produce nothing but consistent code. It is not an abstract idea, but quality that rules make.",
-              ko: "엄격한 규칙은 AI 에이전트에게 가장 잘 맞습니다. 업로드, 로그인, 관리자, 채팅, 게시판, 알림 같은 정해진 블록 위에서 에이전트는 일관된 코드만 생산합니다. 추상적인 개념이 아니라, 규칙이 만든 품질입니다.",
+              en: "It runs in both directions. Agents build the app on strict rules and fixed blocks — upload, login, admin, chat, boards, alerts — so they produce nothing but consistent code. And agents use the app through the same guards people do. Not an abstract idea, but quality that rules make.",
+              ko: "에이전틱 풀스택은 양방향입니다. 에이전트는 엄격한 규칙과 업로드, 로그인, 관리자, 채팅, 게시판, 알림 같은 정해진 블록 위에서 앱을 만들기에 일관된 코드만 생산합니다. 그리고 에이전트는 사람과 같은 가드를 거쳐 그 앱을 씁니다. 추상적인 개념이 아니라, 규칙이 만든 품질입니다.",
             })}
           </p>
         </div>
@@ -576,6 +811,12 @@ export default page().render(() => {
                 ko: "Akan에서 작성한 웹은 컴파일되어 앱으로 패키징됩니다. 일반적인 웹 앱 패키징이 감싼 웹사이트처럼 느껴지는 것과 달리, Akan은 목록-상세 흐름, 오버레이, 맥락 전환을 위한 빌트인 화면 전환 기능을 제공해 별도 UI 재작성 없이도 앱 패키징된 웹에서 네이티브 수준의 사용자 경험을 만들 수 있습니다.",
               })}
             </p>
+            <p className="mt-3 text-foreground/60 leading-7">
+              {l.trans({
+                en: "Brand it without a fork: recipes and a per-route _overrides.tsx re-skin every framework component. Native desktop apps are next on the roadmap.",
+                ko: "포크 없이 브랜드를 입히세요. 레시피와 라우트별 _overrides.tsx로 모든 프레임워크 컴포넌트를 갈아입힙니다. 네이티브 데스크톱 앱은 로드맵의 다음 단계입니다.",
+              })}
+            </p>
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {transitionItems.map((item) => (
@@ -612,14 +853,6 @@ export default page().render(() => {
               ko: "아래 데모는 하나의 컨벤션 기반 워크스페이스가 비즈니스 의도를 여러 표현으로 이어가는 방식을 보여줍니다.",
             })}
           </p>
-          <Code.Snippet title="Terminal" code="bunx create-akan-workspace@latest" language="bash" />
-          <div className="mt-4">
-            <Link href="/docs/intro/quickstart">
-              <button className={buttonRecipe({ variant: "primary", size: "lg" })}>
-                {l.trans({ en: "Get Started", ko: "시작하기" })} <BsArrowRight className="ml-2" />
-              </button>
-            </Link>
-          </div>
         </div>
 
         <div className="rounded-4xl border border-foreground/10 bg-foreground/4 p-5 backdrop-blur md:p-8">
@@ -653,10 +886,114 @@ export default page().render(() => {
         </div>
       </section>
 
+      <section className="relative mx-auto w-full max-w-7xl px-6 pb-10 lg:px-8">
+        <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+          <div>
+            <div className={badgeRecipe(undefined, "mb-4 border-primary/20 bg-primary/10 text-primary")}>
+              {l.trans({ en: "Showcase", ko: "쇼케이스" })}
+            </div>
+            <h2 className="font-black text-3xl tracking-tight md:text-5xl">
+              {l.trans({ en: "Built with Akan.js", ko: "Akan.js로 만든 것들" })}
+            </h2>
+          </div>
+          <Link href="/showcase" className="flex items-center gap-2 font-semibold text-primary hover:underline">
+            {l.trans({ en: "See all projects", ko: "모든 프로젝트 보기" })} <BsArrowRight />
+          </Link>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          {showcasePreviews.map((item) => (
+            <Link
+              key={item.name}
+              href="/showcase"
+              className="group rounded-3xl border border-foreground/10 bg-foreground/4 p-4 transition hover:border-primary/30"
+            >
+              <ShowcaseThumbnail motif={item.motif} tone={item.tone} />
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <h3 className="font-bold text-lg group-hover:text-primary">{item.name}</h3>
+                <span
+                  className={badgeRecipe(
+                    { size: "sm" },
+                    item.isSample
+                      ? "border-foreground/20 border-dashed bg-transparent text-foreground/50"
+                      : "border-primary/20 bg-primary/10 text-primary",
+                  )}
+                >
+                  {item.badge}
+                </span>
+              </div>
+              <p className="mt-2 text-foreground/60 text-sm leading-6">{item.description}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className="relative mx-auto w-full max-w-7xl px-6 py-10 lg:px-8">
+        <div className="grid gap-8 rounded-4xl border border-foreground/10 bg-foreground/4 p-6 backdrop-blur md:p-10 lg:grid-cols-2 lg:items-center">
+          <div>
+            <div className={badgeRecipe(undefined, "mb-4 border-primary/20 bg-primary/10 text-primary")}>
+              <BsCloudArrowUp />
+              {l.trans({ en: "Deploy", ko: "배포" })}
+            </div>
+            <h2 className="font-black text-3xl tracking-tight md:text-5xl">
+              {l.trans({ en: "From akan build to a live URL", ko: "akan build에서 라이브 URL까지" })}
+            </h2>
+            <p className="mt-4 text-foreground/60 leading-7">
+              {l.trans({
+                en: "Akan Cloud is the deploy platform built for Akan apps. Sign in from the CLI, share a preview, build, and ship it live.",
+                ko: "Akan Cloud는 Akan 앱을 위해 만든 배포 플랫폼입니다. CLI에서 로그인하고, 미리보기를 공유하고, 빌드해서 라이브로 내보내세요.",
+              })}
+            </p>
+            <Link
+              href="https://cloud.akanjs.com"
+              target="_blank"
+              className={buttonRecipe({ variant: "primary", size: "lg" }, "mt-6")}
+            >
+              {l.trans({ en: "Open Akan Cloud", ko: "Akan Cloud 열기" })} <BsArrowUpRight className="ml-2" />
+            </Link>
+          </div>
+          <div className="rounded-3xl border border-foreground/10 bg-background/80 p-5 font-mono text-sm">
+            {deploySteps.map((step, idx) => (
+              <div key={step.command} className="flex gap-4 border-foreground/10 border-b py-3 last:border-none">
+                <span className="text-foreground/30">{String(idx + 1).padStart(2, "0")}</span>
+                <div>
+                  <p className="text-primary">$ {step.command}</p>
+                  <p className="mt-1 font-sans text-foreground/60 text-xs leading-5">{step.description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="relative mx-auto w-full max-w-7xl px-6 py-10 lg:px-8">
+        <div className="rounded-4xl border border-foreground/10 bg-foreground/3 p-6 md:p-10">
+          <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
+            <div>
+              <div className={badgeRecipe(undefined, "mb-4 border-primary/20 bg-primary/10 font-mono text-primary")}>
+                {l.trans({ en: "Roadmap", ko: "로드맵" })}
+              </div>
+              <h2 className="font-black text-3xl tracking-tight md:text-5xl">
+                {l.trans({ en: "Where we're headed", ko: "우리가 향하는 곳" })}
+              </h2>
+              <p className="mt-4 max-w-2xl text-foreground/60 leading-7">
+                {l.trans({
+                  en: "Native desktop apps, production-grade mobile and an agent network across sessions and apps come next.",
+                  ko: "네이티브 데스크톱 앱, 프로덕션급 모바일, 세션과 앱을 넘나드는 에이전트 네트워크가 다음입니다.",
+                })}
+              </p>
+            </div>
+            <Link href="/roadmap" className="flex items-center gap-2 font-semibold text-primary hover:underline">
+              {l.trans({ en: "See the roadmap", ko: "로드맵 보기" })} <BsArrowRight />
+            </Link>
+          </div>
+          <RoadmapTrajectory className="mt-6" waypoints={roadmapWaypoints} />
+        </div>
+      </section>
+
       <section className="relative mx-auto w-full max-w-7xl px-6 py-20 lg:px-8">
         <div className="overflow-hidden rounded-4xl border border-foreground/10 bg-foreground/6 p-8 text-center shadow-2xl backdrop-blur md:p-12">
           <div className={badgeRecipe(undefined, "mb-5 border-primary/20 bg-primary/10 text-primary")}>
-            {l.trans({ en: "Built for developer happiness", ko: "개발자의 행복을 위해 설계" })}
+            {l.trans({ en: "One person, a whole product", ko: "한 사람이, 제품 전체를" })}
           </div>
           <h2 className="font-black text-3xl tracking-tight md:text-5xl">
             {l.trans({

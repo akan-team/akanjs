@@ -64,7 +64,7 @@ An image another service already optimized
 
 The image to show. Its `imageSize` fills in `width` and `height` when you omit them.
 
-A direct URL that wins over `file.url`. With neither, `/empty.png` is shown.
+A direct URL that wins over `file.url`. With neither, an empty `bg-muted` box renders and nothing is requested.
 
 The rendered width in CSS pixels. It picks the 1x/2x candidates.
 

@@ -109,6 +109,11 @@ export const baseDictionary = serviceDictionary(["en", "ko"])
     agentToolRunning: ["Running", "실행 중"],
     agentToolResult: ["Show what this tool returned", "이 툴이 반환한 값 보기"],
     agentTokens: ["~{count} tokens", "약 {count} 토큰"],
+    agentTokensOf: ["~{count} / {limit} tokens", "약 {count} / {limit} 토큰"],
+    agentCompactsAt: [
+      "The conversation summarizes itself past {limit} tokens",
+      "{limit} 토큰을 넘으면 대화를 스스로 요약합니다",
+    ],
     agentSummarizing: ["Summarizing the conversation…", "대화를 요약하는 중…"],
     agentContinue: ["This is taking a while. Keep going?", "시간이 걸리고 있습니다. 계속할까요?"],
     agentKeepGoing: ["Keep going", "계속하기"],

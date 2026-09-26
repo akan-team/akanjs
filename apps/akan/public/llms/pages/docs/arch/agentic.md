@@ -244,7 +244,7 @@ To turn it off, visual={false} draws nothing, and visual={{ cursor: false }} kee
 
 Swapping the Model
 
-The model is configured in option.ts, never in the environment. setLlm fills apiKey, model, host, accepts and maxTokens for whichever adaptor holds LlmAdaptorRole, so the settings survive a provider swap.
+The model is configured in option.ts, never in the environment. setLlm fills apiKey, model, host, accepts, maxTokens and contextWindow for whichever adaptor holds LlmAdaptorRole, so the settings survive a provider swap.
 
 Two adaptors ship, one per wire:
 

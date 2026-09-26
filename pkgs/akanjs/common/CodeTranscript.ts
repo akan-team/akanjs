@@ -181,6 +181,13 @@ export class CodeTranscript {
       case "question":
         this.#question = event.question;
         return this.#push({ kind: "question", id: event.question.questionId, question: event.question });
+      case "question_skipped":
+        return this.#push({
+          kind: "question",
+          id: event.question.questionId,
+          question: event.question,
+          rendered: `(${event.reason})`,
+        });
       case "question_resolved":
         if (this.#question?.questionId === event.questionId) this.#question = undefined;
         return this.#patch(event.questionId, (part) => {
@@ -199,8 +206,13 @@ export class CodeTranscript {
         return;
       case "compaction":
         this.#compacting = event.phase === "start";
-        if (event.phase === "end") this.#notice("info", `Compacted the conversation (${event.reason}).`);
-        return;
+        if (event.phase === "start") return;
+        // A manual compaction that fails throws to whoever asked for it, and that caller reports it. The automatic
+        // ones have no caller, so this line is the only place their failure is ever seen.
+        if ((event.error || event.aborted) && event.reason === "manual") return;
+        if (event.error) return this.#notice("warning", event.error);
+        if (event.aborted) return this.#notice("info", "Compaction cancelled.");
+        return this.#notice("info", `Compacted the conversation (${event.reason}).`);
       case "retry":
         return this.#notice(
           "warning",

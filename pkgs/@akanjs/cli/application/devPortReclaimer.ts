@@ -1,3 +1,5 @@
+import { HostProcessProbe } from "./hostProcessProbe";
+
 export interface PortHolder {
   /** The process that will actually be signalled: the topmost akan process above the listener. */
   pid: number;
@@ -33,11 +35,9 @@ export interface ReclaimReport {
  * the session that asked for the port fails to bind anyway.
  */
 export class DevPortReclaimer {
-  /** Reading one port's holder is milliseconds of work; anything near this is an `lsof` that is stuck. */
-  static readonly lsofTimeoutMs = 3_000;
   /** How long a signalled holder may take to release the port before it is reported as still holding. */
   static readonly releaseTimeoutMs = 8_000;
-  /** Depth cap on the ancestry walk, so a pathological `ps` cannot loop it. */
+  /** Depth cap on the ancestry walk, so a pathological process table cannot loop it. */
   static readonly maxAncestorDepth = 8;
   static readonly #releasePollMs = 100;
   /** A gateway also binds `port + 10_000` for websockets, so reclaiming one without the other is useless. */
@@ -51,14 +51,21 @@ export class DevPortReclaimer {
 
   /** `true` for a command line that belongs to an akan dev tree — the CLI, an app entry, or a worker. */
   static isAkanCommand(command: string): boolean {
+    const normalized = command.replaceAll("\\", "/");
     return (
-      /(^|\/)akan(\s|$)/.test(command) ||
-      command.includes("@akanjs/cli") ||
-      command.includes("akanjs/server") ||
-      /\bapps\/[^/\s]+\/main\.ts\b/.test(command) ||
-      command.includes("incrementalBuilder.proc") ||
-      command.includes("rscWorker")
+      /(^|\/)akan(\.exe)?"?(\s|$)/.test(normalized) ||
+      normalized.includes("@akanjs/cli") ||
+      normalized.includes("akanjs/server") ||
+      /\bapps\/[^/\s]+\/main\.ts\b/.test(normalized) ||
+      normalized.includes("incrementalBuilder.proc") ||
+      normalized.includes("rscWorker")
     );
+  }
+
+  readonly #probe: HostProcessProbe;
+
+  constructor(probe = new HostProcessProbe()) {
+    this.#probe = probe;
   }
 
   async reclaim(ports: number[]): Promise<ReclaimReport> {
@@ -83,11 +90,11 @@ export class DevPortReclaimer {
 
   async holdersOf(port: number): Promise<PortHolder[]> {
     const holders: PortHolder[] = [];
-    for (const listenerPid of await this.#pidsOn(port)) {
+    for (const listenerPid of await this.#probe.listenersOn(port)) {
       // Never this process or its parent: `--kill` runs before the session boots, so the only tree on
       // these ports that includes us would be one we are about to create.
       if (listenerPid === process.pid || listenerPid === process.ppid) continue;
-      const command = await this.#commandOf(listenerPid);
+      const command = await this.#probe.commandOf(listenerPid);
       if (!command) continue;
       if (!DevPortReclaimer.isAkanCommand(command)) {
         holders.push({ pid: listenerPid, command, port, listenerPid, akan: false });
@@ -103,36 +110,13 @@ export class DevPortReclaimer {
   async #akanRootOf(pid: number, command: string): Promise<{ pid: number; command: string }> {
     let root = { pid, command };
     for (let depth = 0; depth < DevPortReclaimer.maxAncestorDepth; depth += 1) {
-      const parentPid = await this.#ppidOf(root.pid);
+      const parentPid = await this.#probe.parentOf(root.pid);
       if (parentPid === null || parentPid <= 1 || parentPid === process.pid || parentPid === process.ppid) break;
-      const parentCommand = await this.#commandOf(parentPid);
+      const parentCommand = await this.#probe.commandOf(parentPid);
       if (!parentCommand || !DevPortReclaimer.isAkanCommand(parentCommand)) break;
       root = { pid: parentPid, command: parentCommand };
     }
     return root;
-  }
-
-  async #ppidOf(pid: number): Promise<number | null> {
-    const output = await this.#run(["ps", "-p", String(pid), "-o", "ppid="]);
-    const parsed = Number(output.trim());
-    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-  }
-
-  async #pidsOn(port: number): Promise<number[]> {
-    const output = await this.#run(["lsof", "-ti", `tcp:${port}`, "-sTCP:LISTEN"]);
-    return [
-      ...new Set(
-        output
-          .split("\n")
-          .map((line) => Number(line.trim()))
-          .filter((pid) => Number.isInteger(pid) && pid > 0),
-      ),
-    ];
-  }
-
-  async #commandOf(pid: number): Promise<string | null> {
-    const output = await this.#run(["ps", "-p", String(pid), "-o", "command="]);
-    return output.trim() || null;
   }
 
   /**
@@ -140,15 +124,25 @@ export class DevPortReclaimer {
    * gateway strands them. SIGKILL only once the grace period is gone.
    */
   async #terminate(pid: number): Promise<boolean> {
+    //? Windows has no SIGTERM — `process.kill` is TerminateProcess on that one pid — so the whole tree goes at once.
+    if (this.#probe.platform === "win32") {
+      await HostProcessProbe.run(["taskkill", "/PID", String(pid), "/T", "/F"]);
+      return await this.#released(pid);
+    }
     if (!this.#signal(pid, "SIGTERM")) return !this.#alive(pid);
+    if (await this.#released(pid)) return true;
+    this.#signal(pid, "SIGKILL");
+    await Bun.sleep(DevPortReclaimer.#releasePollMs);
+    return !this.#alive(pid);
+  }
+
+  async #released(pid: number): Promise<boolean> {
     const deadline = Date.now() + DevPortReclaimer.releaseTimeoutMs;
     while (Date.now() < deadline) {
       if (!this.#alive(pid)) return true;
       await Bun.sleep(DevPortReclaimer.#releasePollMs);
     }
-    this.#signal(pid, "SIGKILL");
-    await Bun.sleep(DevPortReclaimer.#releasePollMs);
-    return !this.#alive(pid);
+    return false;
   }
 
   #signal(pid: number, signal: "SIGTERM" | "SIGKILL"): boolean {
@@ -167,19 +161,6 @@ export class DevPortReclaimer {
       return true;
     } catch (error) {
       return (error as NodeJS.ErrnoException).code === "EPERM";
-    }
-  }
-
-  /** Bounded: an `lsof` against a wedged socket table hangs, and this runs before anything is up. */
-  async #run(command: string[]): Promise<string> {
-    const proc = Bun.spawn(command, { stdio: ["ignore", "pipe", "ignore"] });
-    const timer = setTimeout(() => proc.kill("SIGKILL"), DevPortReclaimer.lsofTimeoutMs);
-    try {
-      return await new Response(proc.stdout).text();
-    } catch {
-      return "";
-    } finally {
-      clearTimeout(timer);
     }
   }
 }

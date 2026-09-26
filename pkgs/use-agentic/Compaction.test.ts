@@ -49,6 +49,44 @@ describe("Compaction.tokensOf", () => {
     expect(Compaction.tokensOf([long])).toBeGreaterThan(1000);
     expect(Compaction.tokensOf([{ role: "assistant", text: "y".repeat(4000), local: true }])).toBe(0);
   });
+
+  test("an inlined picture costs what a provider bills for it, not its base64", () => {
+    const shot = { name: "screen.png", mimeType: "image/png", data: "A".repeat(400_000) };
+    const tokens = Compaction.tokensOf([{ role: "user", text: "fix this button", attachments: [shot] }]);
+    expect(tokens).toBeGreaterThanOrEqual(Compaction.imageTokens);
+    expect(tokens).toBeLessThan(Compaction.imageTokens + 100);
+    // Text is what a text attachment costs, so it is still counted as it rides.
+    const notes = { name: "notes.txt", mimeType: "text/plain", text: "x".repeat(40_000) };
+    expect(Compaction.tokensOf([{ role: "user", attachments: [notes] }])).toBeGreaterThan(10_000);
+  });
+});
+
+describe("Compaction.promptTokensOf", () => {
+  test("starts from the provider's count and estimates only what arrived after it", () => {
+    const counted: ChatMessage = { role: "assistant", text: "a", usage: { input: 50_000, output: 1_000 } };
+    const after = result("c1", "read");
+    expect(Compaction.promptTokensOf([user("x".repeat(40_000)), counted, after], () => 999_999)).toBe(
+      51_000 + Compaction.tokensOf([after]),
+    );
+  });
+
+  test("with no count, the tools and the context stand in beside the transcript", () => {
+    const messages = [user("hi")];
+    expect(Compaction.promptTokensOf(messages, () => 3_000)).toBe(Compaction.tokensOf(messages) + 3_000);
+  });
+
+  test("a count is never part of what the estimate says is posted", () => {
+    const counted: ChatMessage = { role: "assistant", text: "a", usage: { input: 1, output: 1 } };
+    expect(Compaction.tokensOf([counted])).toBe(Compaction.tokensOf([assistant("a")]));
+  });
+});
+
+describe("Compaction.thresholdOf", () => {
+  test("holds back the answer ceiling and the buffer, and is off while the window is unknown", () => {
+    expect(Compaction.thresholdOf({ window: 128_000, output: 8_000 }, 13_000)).toBe(107_000);
+    expect(Compaction.thresholdOf({ window: 128_000 }, 13_000)).toBe(128_000 - Compaction.answerTokens - 13_000);
+    expect(Compaction.thresholdOf({}, 13_000)).toBe(Number.POSITIVE_INFINITY);
+  });
 });
 
 describe("Compaction.digest", () => {
@@ -85,11 +123,22 @@ describe("Compaction.digest", () => {
     expect(digest).not.toContain("a wide shot");
   });
 
-  test("an overlong digest gives way in the middle, keeping the earlier summary and where it now is", () => {
-    const messages = [user("SUMMARY OF EVERYTHING"), ...Array.from({ length: 40 }, (_, at) => assistant(`m${at}`))];
+  test("an overlong digest gives way in the middle, keeping where it started and where it now is", () => {
+    const messages = [user("THE ORIGINAL ASK"), ...Array.from({ length: 40 }, (_, at) => assistant(`m${at}`))];
     const digest = Compaction.digest(messages, 200);
     expect(digest.length).toBeLessThanOrEqual(260);
-    expect(digest).toContain("SUMMARY OF EVERYTHING");
+    expect(digest).toContain("THE ORIGINAL ASK");
+    expect(digest).toContain("m39");
+    expect(digest).toContain("messages omitted");
+  });
+
+  test("a previous summary is carried whole under its own label, outside the bound", () => {
+    const notes = `${"n".repeat(2_999)}END`;
+    const messages = [Compaction.message(notes), ...Array.from({ length: 40 }, (_, at) => assistant(`m${at}`))];
+    const digest = Compaction.digest(messages, 200);
+    // Clipped, the rest of it is gone from every summary after this one; as a `user:` line it reads as an ask.
+    expect(digest.startsWith(`previous summary:\n${notes}`)).toBe(true);
+    expect(digest).not.toContain(`user: ${notes.slice(0, 10)}`);
     expect(digest).toContain("m39");
     expect(digest).toContain("messages omitted");
   });

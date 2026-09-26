@@ -1,7 +1,6 @@
 import {
   type AgentSession,
   createAgentSession,
-  DEFAULT_COMPACTION_SETTINGS,
   DefaultResourceLoader,
   type ExtensionAPI,
   type InlineExtension,
@@ -37,6 +36,8 @@ import { akanCodePaths } from "./akanCodePaths";
 import { CodeAgentAsks } from "./CodeAgentAsks";
 import { CodeAgentEventMapper } from "./CodeAgentEventMapper";
 import { CodeAgentGate } from "./CodeAgentGate";
+import { CodeAgentProxy } from "./CodeAgentProxy";
+import { CodeAgentSuspended } from "./CodeAgentSuspended";
 import { CodeAgentUi } from "./CodeAgentUi";
 import { CodeMailbox } from "./CodeMailbox";
 import { CodeSessionFork } from "./CodeSessionFork";
@@ -77,6 +78,7 @@ export class CodeAgent {
   readonly #gate: CodeAgentGate;
   readonly #mapper = new CodeAgentEventMapper();
   readonly #asks = new CodeAgentAsks();
+  #suspended = new CodeAgentSuspended(null);
   readonly #listeners = new Set<(event: CodeAgentEvent) => void>();
   #session: AgentSession | undefined;
   #disposePlugins: (() => void) | undefined;
@@ -106,9 +108,9 @@ export class CodeAgent {
     const cwd = options.cwd ?? workspaceRoot;
     const agent = new CodeAgent(options.profile);
     const settingsManager = AkanCodeServices.settings();
-    const modelRuntime = await AkanCodeServices.runtime(workspaceRoot);
+    const modelRuntime = await AkanCodeServices.runtime(workspaceRoot, CodeAgentProxy.fromEnv(options.profile));
     const model = await akanCodeModel(modelRuntime, options.model);
-    const compaction = DEFAULT_COMPACTION_SETTINGS;
+    const compaction = settingsManager.getCompactionSettings(model);
     const modelWarnings = akanCodeModelWarnings(model, compaction.reserveTokens + compaction.keepRecentTokens);
 
     const akan = await AkanCodePlugins.build({
@@ -153,9 +155,11 @@ export class CodeAgent {
     agent.#disposePlugins = akan.dispose;
     agent.#mcp = akan.mcp;
     agent.#workspaceRoot = workspaceRoot;
-    if (options.profile.session.store === "file") agent.#sessionDir = akanCodePaths.sessionsDir(workspaceRoot);
+    if (options.profile.session.store !== "memory") agent.#sessionDir = akanCodePaths.sessionsDir(workspaceRoot);
     await agent.#attach(session, options.mode ?? "print");
-    if (agent.#sessionDir) agent.#openMail(akanCodePaths.mailDir(workspaceRoot), cwd);
+    agent.#suspended = new CodeAgentSuspended(CodeAgentSuspended.fileOf(agent.#sessionDir, agent.sessionId));
+    if (agent.#sessionDir && options.profile.session.store === "file")
+      agent.#openMail(akanCodePaths.mailDir(workspaceRoot), cwd);
     for (const message of modelWarnings) agent.#emit({ type: "notice", level: "warning", message });
     return agent;
   }
@@ -262,6 +266,10 @@ export class CodeAgent {
   announce() {
     this.#emit({ type: "session", info: this.info });
     this.#restore();
+    //* A resumed worker says again what it is still waiting on, or a host that reattached has no card to answer.
+    const { question, approvals } = this.#suspended;
+    if (question) this.#emit({ type: "question", question });
+    for (const request of approvals) this.#emit({ type: "approval", request });
   }
 
   /**
@@ -346,10 +354,13 @@ export class CodeAgent {
       return true;
     }
     if (this.#profile.interaction.question !== "suspend") return false;
-    this.#emit({ type: "question_resolved", questionId, answer, rendered });
+    const suspended = this.#suspended.takeQuestion(questionId);
+    if (!suspended) return false;
+    const suspendedRendered = codeAgentRenderAnswer(suspended, answer);
+    this.#emit({ type: "question_resolved", questionId, answer, rendered: suspendedRendered });
     // The answer has to reach the model as prose: compaction and the next turn read message content only, so
     // an answer that exists solely as structure is one the agent will not remember being given.
-    await this.prompt(`The user answered: ${rendered}\nContinue the task.`);
+    await this.prompt(`The user answered: ${suspendedRendered}\nContinue the task.`);
     return true;
   }
 
@@ -359,6 +370,7 @@ export class CodeAgent {
       return true;
     }
     if (this.#profile.interaction.approval !== "suspend") return false;
+    if (!this.#suspended.takeApproval(approvalId)) return false;
     this.#emit({ type: "approval_resolved", approvalId, approved });
     if (approved) await this.prompt("The user approved the pending action. Retry it and continue.");
     return true;
@@ -561,17 +573,16 @@ export class CodeAgent {
     // Nobody to ask means nobody to refuse: a pod would otherwise deny every write it was created to make.
     if (!this.#profile.ui.canPrompt) return true;
     const approvalId = this.#asks.nextId("a");
-    this.#emit({
-      type: "approval",
-      request: {
-        approvalId,
-        toolCallId,
-        name,
-        summary: codeAgentClip(summary, codeAgentLabelChars),
-        policy: this.#profile.approval,
-      },
-    });
+    const request = {
+      approvalId,
+      toolCallId,
+      name,
+      summary: codeAgentClip(summary, codeAgentLabelChars),
+      policy: this.#profile.approval,
+    };
+    this.#emit({ type: "approval", request });
     if (this.#profile.interaction.approval === "suspend") {
+      this.#suspended.addApproval(request);
       this.#mapper.noteOutcome("awaiting");
       return false;
     }
@@ -586,10 +597,14 @@ export class CodeAgent {
    * between them. An empty answer is a skip, which is a real answer and not a failure.
    */
   async ask(spec: Omit<CodeAgentQuestion, "questionId">) {
-    if (!this.#profile.ui.canPrompt) return undefined;
     const question: CodeAgentQuestion = { questionId: this.#asks.nextId("q"), ...spec };
+    if (!this.#profile.ui.canPrompt) {
+      this.#emit({ type: "question_skipped", question, reason: "no-host" });
+      return undefined;
+    }
     this.#emit({ type: "question", question });
     if (this.#profile.interaction.question === "suspend") {
+      this.#suspended.setQuestion(question);
       this.#mapper.noteOutcome("awaiting");
       return undefined;
     }

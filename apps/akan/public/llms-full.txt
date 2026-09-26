@@ -271,6 +271,10 @@ A stable address inside the cluster that forwards to whichever pods run the app.
 
 A Helm package of Kubernetes manifests. The one Akan ships lives in infra/app.
 
+A Kubernetes object that hands private values, such as database URLs, to pods as env vars.
+
+Volume access modes: one node mounts the first, pods on many nodes share the second.
+
 SQLite's write-ahead log mode, which lets reads keep going while a write is in progress.
 
 MVP or feature prototype
@@ -289,7 +293,7 @@ Production service
 
 Cloud · main
 
-Use the main branch of the same cloud deployment. The shipped chart runs one pod per app, so plan the database and cache layer before traffic outgrows it.
+Use the main branch of the same cloud deployment. The chart runs one pod in single mode; before traffic outgrows it, move that branch to cluster mode with your own Postgres and Redis.
 
 An SSR or CSR page response for browser users.
 
@@ -303,15 +307,11 @@ Mode
 
 Database
 
-Queue / PubSub
+Where it runs
 
-Cache
+Cache · queue · pubsub
 
-SQLite based, Bun IPC accelerated
-
-SQLite key-value cache
-
-The best start for MVPs, internal tools, admin pages, content sites and small-to-medium services.
+One SQLite file
 
 ## Mobile App Architecture
 
@@ -994,6 +994,7 @@ Priority: P0
 Headings:
 - Akan Runtime
 - Identity And Environment
+- Database Variables
 - Text Search Variables
 - Logging Variables
 - getEnv()
@@ -2020,6 +2021,8 @@ Start the local database containers.
 
 Stop the local database containers.
 
+Copy an app's data out of one database mode and into another.
+
 Run a file from the app's `script/` folder.
 
 Open an interactive server console.
@@ -2029,8 +2032,6 @@ Follow a running app's logs, filtered.
 Check and Build
 
 Typecheck the app.
-
-Run the tests of an app, library or package.
 
 ## Cloud CLI
 
@@ -2161,7 +2162,7 @@ Narrows the agent to one app, rooted at `apps/<app>`. Without it, the whole repo
 
 Picks what the agent may do: its tools, approvals and session storage. See Profiles below.
 
-`<provider>/<id>`. Default: `deepseek/deepseek-v4-flash`; without its key, the first available.
+`<provider>/<id>`. Default: `deepseek/deepseek-flash`; without its key, the first available.
 
 Prints one event per line as JSON. The full-screen session then opens only with `--interactive`.
 
@@ -3141,7 +3142,7 @@ Touches window, navigator or Capacitor, or is a React hook.
 
 Touches node:*, Bun, process.env, a secret, or a server SDK.
 
-Renders JSX and is not bound to one model; a model-bound component goes in its module.
+Renders JSX or defines a recipe, bound to no model; a model-bound component goes in its module.
 
 A build-time or CLI-time AkanPlugin, registered in akan.config.ts.
 
@@ -3168,7 +3169,7 @@ Headings:
 - Config File Shape
 - routes
 - mobile
-- defaultDatabaseMode
+- database
 - web
 - images
 - i18n
@@ -3201,7 +3202,7 @@ Mobile, data and env
 
 The native app's identity and one target per Capacitor package.
 
-`single`, `multiple` or `cluster`, used when `AKAN_DATABASE_MODE` is unset.
+The database modes the build can run in; a deployment picks one with `AKAN_DATABASE_MODE`.
 
 An allowlist of extra env names for browser code. The build does not read it yet.
 
@@ -3228,7 +3229,7 @@ Touches window, navigator or Capacitor, or is a React hook.
 
 Touches node:*, Bun, process.env, a secret, or a server SDK.
 
-Renders JSX and is not bound to one model; a model-bound component goes in its module.
+Renders JSX or defines a recipe, bound to no model; a model-bound component goes in its module.
 
 A build-time or CLI-time AkanPlugin, registered in akan.config.ts.
 
@@ -3271,7 +3272,7 @@ sidecar
 
 A camelCase helper or type file that serves one component, like `swipeCard.util.ts`.
 
-Draws JSX, bound to no model — ui/
+Draws JSX or defines a look, bound to no model — ui/
 
 landing hero · admin header
 
@@ -3315,7 +3316,7 @@ Touches `node:*`, `Bun`, `process.env`, a secret, or a server SDK.
 
 libs/util/srvkit/cloudflareApi.ts // camelCase file, PascalCase class
 
-Renders JSX and is not bound to one model; a model-bound component goes in its module.
+Renders JSX or defines a recipe, bound to no model; a model-bound component goes in its module.
 
 ## model.abstract.md
 
@@ -5120,6 +5121,7 @@ Headings:
 - Minimal Compose
 - Container Env
 - Scale With AKAN_REPLICA
+- Several Containers On One Host
 - Trim The Web Surface
 - Customize The Image
 - Open Console
@@ -5427,6 +5429,7 @@ Headings:
 - Listen To Status
 - Wrap A Remote Node
 - Very Fast Data
+- Run The Edge Site
 - Tips
 
 Edge Computing

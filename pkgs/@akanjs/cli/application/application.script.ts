@@ -12,7 +12,7 @@ import {
   script,
   type Workspace,
 } from "@akanjs/devkit/commandDecorators";
-import { LibExecutor, PkgExecutor } from "@akanjs/devkit/executors";
+import { AppExecutor, LibExecutor, PkgExecutor } from "@akanjs/devkit/executors";
 import type { DevStdioMode } from "@akanjs/devkit/incrementalBuilder";
 import { formatSlicePlan } from "@akanjs/devkit/slicePlanner";
 import { confirm } from "@inquirer/prompts";
@@ -269,7 +269,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
   ) {
     await app.scanSync({ write });
     const akanConfig = await app.getConfig();
-    const databaseMode = (process.env.AKAN_DATABASE_MODE ?? akanConfig.defaultDatabaseMode ?? "single") as DatabaseMode;
+    const databaseMode = akanConfig.resolveDatabaseMode();
     await this.syncDatabaseModeDependencies(app, akanConfig, databaseMode);
     if (app.getEnv() === "local" && dbup && databaseMode !== "single") {
       const wasDbAlreadyUp = await this.dbup(app.workspace, databaseMode);
@@ -353,7 +353,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     for (const app of apps) {
       if (app.getEnv() !== "local") continue;
       const akanConfig = await app.getConfig();
-      const mode = (process.env.AKAN_DATABASE_MODE ?? akanConfig.defaultDatabaseMode ?? "single") as DatabaseMode;
+      const mode = akanConfig.resolveDatabaseMode();
       await this.syncDatabaseModeDependencies(app, akanConfig, mode);
       if (mode !== "single") modes.add(mode);
     }
@@ -473,6 +473,25 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
   }
   async codepush(app: App, os: "ios" | "android") {
     await this.applicationRunner.codepush(app, os);
+  }
+  async transferDatabase(app: App, direction: "export" | "import", dir: string) {
+    await this.applicationRunner.transferDatabase(app, direction, dir);
+  }
+  /** One compose project serves every app, so without a named mode it brings up what all of them declare. */
+  async dbupDeclared(workspace: Workspace, mode: DatabaseMode | null) {
+    const declared = mode
+      ? [mode]
+      : await Promise.all(
+          (await workspace.getApps()).map(
+            async (appName) => (await AppExecutor.from(workspace, appName).getConfig()).database.modes,
+          ),
+        ).then((modes) => [...new Set(modes.flat())]);
+    const needing = declared.filter((each) => each !== "single");
+    if (!needing.length) {
+      workspace.log("No app here declares a database mode that runs on local services; single needs none.");
+      return;
+    }
+    for (const each of needing) await this.dbup(workspace, each);
   }
   async dbup(workspace: Workspace, mode: DatabaseMode = "multiple"): Promise<boolean> {
     const spinner = workspace.spinning(`Starting local database (${mode})...`);

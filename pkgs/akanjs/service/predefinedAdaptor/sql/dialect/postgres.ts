@@ -1,10 +1,42 @@
+import { createHash } from "node:crypto";
 import type { DocumentUpdateOperator } from "akanjs/document";
 import { quoteIdent } from "../../sqlDescriptor";
-import type { SearchJoinProps, SqlDialect, SqlFrag } from "../types";
-import { jsonStr } from "../values";
+import type { CreateIndexProps, PathKind, SqlDialect, SqlFrag } from "../types";
+import { jsonStr, likePattern } from "../values";
 
 export class PostgresDialect implements SqlDialect {
   readonly name = "postgres" as const;
+  static readonly #setFunction = "akan_jsonb_set";
+  // Postgres cuts an identifier at 63 bytes, and two index names cut to one prefix make `IF NOT EXISTS` skip the second.
+  static readonly #identifierBytes = 63;
+
+  /**
+   * `json_set` in SQLite creates the objects a nested path is missing and leaves the document alone when a parent is
+   * not an object; `jsonb_set` returns the document untouched when a parent is missing, so a nested write vanishes.
+   * A function rather than inline SQL because updates fold into one expression: reading the accumulated document
+   * twice per level would repeat every earlier operation's parameters.
+   */
+  static schemaSetup() {
+    return `CREATE OR REPLACE FUNCTION ${PostgresDialect.#setFunction}(target jsonb, path text[], value jsonb) RETURNS jsonb
+      LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE AS $akan$
+      DECLARE
+        child jsonb;
+      BEGIN
+        IF jsonb_typeof(target) IS DISTINCT FROM 'object' THEN
+          RETURN target;
+        END IF;
+        IF cardinality(path) = 1 THEN
+          RETURN target || jsonb_build_object(path[1], value);
+        END IF;
+        child := COALESCE(target -> path[1], '{}'::jsonb);
+        IF jsonb_typeof(child) <> 'object' THEN
+          RETURN target;
+        END IF;
+        RETURN target || jsonb_build_object(path[1], ${PostgresDialect.#setFunction}(child, path[2:], value));
+      END
+      $akan$`;
+  }
+
   timestampType() {
     return "BIGINT";
   }
@@ -14,8 +46,10 @@ export class PostgresDialect implements SqlDialect {
   docColumn() {
     return quoteIdent("_doc");
   }
+  // postgres.js serializes a value bound to a `jsonb` parameter itself, so the JSON text the store already built would
+  // be stored as one JSON string. Bound as text, Postgres parses it.
   docValuePlaceholder() {
-    return "?::jsonb";
+    return "?::text::jsonb";
   }
   #path(path: string) {
     return `'{${path
@@ -29,47 +63,75 @@ export class PostgresDialect implements SqlDialect {
   #text(path: string) {
     return `(${this.docColumn()} #>> ${this.#path(path)})`;
   }
-  extract(path: string) {
-    return this.#jsonb(path);
+  // SQLite's answers are the contract — live sync's in-memory evaluator is pinned to them — so a path compares the way
+  // `json_extract` reads it. A declared string reads as text in byte order, since a jsonb string follows the database
+  // collation, which puts "a" before "B". Anything else stays jsonb with a stored JSON null read as SQL NULL, so a null
+  // is left out of `<>`, `<` and `NOT IN`, sorts first, and does not collide in a unique index.
+  #value(path: string, kind: PathKind) {
+    return kind === "text" ? `(${this.#text(path)} COLLATE "C")` : `NULLIF(${this.#jsonb(path)}, 'null'::jsonb)`;
   }
-  // `#>` stays jsonb, which the driver parses into the stored value with its type intact.
+  // Against a non-string operand a declared string compares as jsonb, where "5" and 5 differ — as they do in SQLite.
+  #operandKind(kind: PathKind, operands: unknown[]): PathKind {
+    return kind === "text" && operands.every((operand) => typeof operand === "string") ? "text" : "json";
+  }
+  #operand(kind: PathKind) {
+    return kind === "text" ? "?" : "?::text::jsonb";
+  }
+  #bind(value: unknown, kind: PathKind) {
+    return kind === "text" ? value : jsonStr(value);
+  }
+  #binary(path: string, operator: string, value: unknown, kind: PathKind): SqlFrag {
+    const operandKind = this.#operandKind(kind, [value]);
+    return {
+      sql: `${this.#value(path, operandKind)} ${operator} ${this.#operand(operandKind)}`,
+      params: [this.#bind(value, operandKind)],
+    };
+  }
+  #list(path: string, operator: "IN" | "NOT IN", values: unknown[], kind: PathKind): SqlFrag {
+    const operandKind = this.#operandKind(kind, values);
+    return {
+      sql: `${this.#value(path, operandKind)} ${operator} (${values.map(() => this.#operand(operandKind)).join(", ")})`,
+      params: values.map((value) => this.#bind(value, operandKind)),
+    };
+  }
+  extract(path: string, kind: PathKind = "json") {
+    return this.#value(path, kind);
+  }
   projectExpr(path: string) {
     return this.#jsonb(path);
   }
+  // jsonb arrives as its text (`PostgresDatabase` parses it no further), so a stored string stays a string.
   decodeProjected(value: unknown) {
-    return value;
+    return typeof value === "string" ? JSON.parse(value) : value;
   }
-  eq(path: string, value: unknown): SqlFrag {
+  eq(path: string, value: unknown, kind: PathKind = "json"): SqlFrag {
     return value === null
-      ? { sql: `${this.#jsonb(path)} IS NULL`, params: [] }
-      : { sql: `${this.#jsonb(path)} = ?::jsonb`, params: [jsonStr(value)] };
+      ? { sql: `${this.#value(path, kind)} IS NULL`, params: [] }
+      : this.#binary(path, "=", value, kind);
   }
-  ne(path: string, value: unknown): SqlFrag {
+  ne(path: string, value: unknown, kind: PathKind = "json"): SqlFrag {
     return value === null
-      ? { sql: `${this.#jsonb(path)} IS NOT NULL`, params: [] }
-      : { sql: `${this.#jsonb(path)} <> ?::jsonb`, params: [jsonStr(value)] };
+      ? { sql: `${this.#value(path, kind)} IS NOT NULL`, params: [] }
+      : this.#binary(path, "<>", value, kind);
   }
-  compare(path: string, op: "gt" | "gte" | "lt" | "lte", value: unknown): SqlFrag {
+  compare(path: string, op: "gt" | "gte" | "lt" | "lte", value: unknown, kind: PathKind = "json"): SqlFrag {
     const operators = { gt: ">", gte: ">=", lt: "<", lte: "<=" } as const;
-    return { sql: `${this.#jsonb(path)} ${operators[op]} ?::jsonb`, params: [jsonStr(value)] };
+    return this.#binary(path, operators[op], value, kind);
   }
-  between(path: string, from: unknown, to: unknown): SqlFrag {
+  between(path: string, from: unknown, to: unknown, kind: PathKind = "json"): SqlFrag {
+    const operandKind = this.#operandKind(kind, [from, to]);
+    const value = this.#value(path, operandKind);
+    const operand = this.#operand(operandKind);
     return {
-      sql: `(${this.#jsonb(path)} >= ?::jsonb AND ${this.#jsonb(path)} <= ?::jsonb)`,
-      params: [jsonStr(from), jsonStr(to)],
+      sql: `(${value} >= ${operand} AND ${value} <= ${operand})`,
+      params: [this.#bind(from, operandKind), this.#bind(to, operandKind)],
     };
   }
-  inList(path: string, values: unknown[]): SqlFrag {
-    return {
-      sql: `${this.#jsonb(path)} IN (${values.map(() => "?::jsonb").join(", ")})`,
-      params: values.map(jsonStr),
-    };
+  inList(path: string, values: unknown[], kind: PathKind = "json"): SqlFrag {
+    return this.#list(path, "IN", values, kind);
   }
-  notInList(path: string, values: unknown[]): SqlFrag {
-    return {
-      sql: `${this.#jsonb(path)} NOT IN (${values.map(() => "?::jsonb").join(", ")})`,
-      params: values.map(jsonStr),
-    };
+  notInList(path: string, values: unknown[], kind: PathKind = "json"): SqlFrag {
+    return this.#list(path, "NOT IN", values, kind);
   }
   exists(path: string): SqlFrag {
     return { sql: `${this.#jsonb(path)} IS NOT NULL`, params: [] };
@@ -80,17 +142,38 @@ export class PostgresDialect implements SqlDialect {
   empty(path: string): SqlFrag {
     return { sql: `(${this.#jsonb(path)} IS NULL OR jsonb_typeof(${this.#jsonb(path)}) = 'null')`, params: [] };
   }
+  // `@>` on a missing value is NULL, which `NOT` keeps NULL where SQLite's `EXISTS` answers false. The `AND` makes it
+  // false without hiding the `@>` from a GIN index.
   arrayHas(path: string, value: unknown): SqlFrag {
-    return { sql: `${this.#jsonb(path)} @> ?::jsonb`, params: [jsonStr(value)] };
+    return {
+      sql: `(${this.#jsonb(path)} @> ?::text::jsonb AND ${this.#jsonb(path)} IS NOT NULL)`,
+      params: [jsonStr(value)],
+    };
   }
+  // SQLite's LIKE folds ASCII letters only. ILIKE and lower() follow the locale and would also fold "É" into "é".
   contains(path: string, value: unknown): SqlFrag {
-    return { sql: `${this.#text(path)} LIKE ?`, params: [`%${String(value)}%`] };
+    return {
+      sql: `translate(${this.#text(path)}, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz') LIKE ? ESCAPE '\\'`,
+      params: [likePattern(String(value).replace(/[A-Z]/g, (char) => char.toLowerCase()))],
+    };
   }
-  searchJoin({ ref }: SearchJoinProps): SqlFrag {
-    // Failing loudly beats returning every row: a silently dropped search reads as "the query matched everything".
-    throw new Error(
-      `Text search on "${ref}" requires the sqlite or libsql database; Postgres has no fts5 index to join.`,
-    );
+  // SQLite sorts NULL below every value; Postgres puts it last in an ascending sort.
+  orderTerm(expr: string, direction: 1 | -1) {
+    return `${expr} ${direction === 1 ? "ASC NULLS FIRST" : "DESC NULLS LAST"}`;
+  }
+  indexName(name: string) {
+    if (Buffer.byteLength(name) <= PostgresDialect.#identifierBytes) return name;
+    const hash = createHash("sha256").update(name).digest("hex").slice(0, 8);
+    return `${name.slice(0, PostgresDialect.#identifierBytes - hash.length - 1)}_${hash}`;
+  }
+  createIndex({ name, table, unique, columns, concurrently = false }: CreateIndexProps) {
+    const create = `CREATE ${unique ? "UNIQUE " : ""}INDEX ${concurrently ? "CONCURRENTLY " : ""}IF NOT EXISTS ${quoteIdent(name)} ON ${quoteIdent(table)}`;
+    const [column] = columns;
+    // An array field is matched with `@>`, which a btree cannot serve.
+    if (!unique && columns.length === 1 && column.isArray)
+      return `${create} USING GIN (${this.#jsonb(column.path)} jsonb_path_ops)`;
+    // `NULLS FIRST` as `orderTerm` sorts: an ascending sort scans the index forward, a descending one backward.
+    return `${create} (${columns.map(({ expr }) => `${expr} NULLS FIRST`).join(", ")})`;
   }
   applyUpdate(acc: string, op: DocumentUpdateOperator, path: string, value: unknown): SqlFrag {
     const p = this.#path(path);
@@ -98,51 +181,61 @@ export class PostgresDialect implements SqlDialect {
     // only ever the write target.
     const jsonbAt = `(${this.docColumn()}) #> ${p}`;
     const textAt = `(${this.docColumn()}) #>> ${p}`;
-    const arr = `COALESCE(${jsonbAt}, '[]'::jsonb)`;
+    const arr = `COALESCE(NULLIF(${jsonbAt}, 'null'::jsonb), '[]'::jsonb)`;
+    const set = (next: string) => `${PostgresDialect.#setFunction}(${acc}, ${p}, ${next})`;
     // biome-ignore lint/suspicious/noUnnecessaryConditions: exhaustive switch over a string-literal union, not a truthiness check
     switch (op) {
       case "set":
-        return { sql: `jsonb_set(${acc}, ${p}, ?::jsonb, true)`, params: [jsonStr(value)] };
+        return { sql: set("?::text::jsonb"), params: [jsonStr(value)] };
       case "unset":
         return { sql: `(${acc}) #- ${p}`, params: [] };
       case "inc":
-        return {
-          sql: `jsonb_set(${acc}, ${p}, to_jsonb(COALESCE((${textAt})::numeric, 0) + ?), true)`,
-          params: [Number(value)],
-        };
+        return { sql: set(`to_jsonb(COALESCE((${textAt})::numeric, 0) + ?)`), params: [Number(value)] };
       case "mul":
-        return {
-          sql: `jsonb_set(${acc}, ${p}, to_jsonb(COALESCE((${textAt})::numeric, 0) * ?), true)`,
-          params: [Number(value)],
-        };
+        return { sql: set(`to_jsonb(COALESCE((${textAt})::numeric, 0) * ?)`), params: [Number(value)] };
       case "min":
         return {
-          sql: `jsonb_set(${acc}, ${p}, to_jsonb(LEAST(COALESCE((${textAt})::numeric, ?), ?)), true)`,
+          sql: set(`to_jsonb(LEAST(COALESCE((${textAt})::numeric, ?), ?))`),
           params: [Number(value), Number(value)],
         };
       case "max":
         return {
-          sql: `jsonb_set(${acc}, ${p}, to_jsonb(GREATEST(COALESCE((${textAt})::numeric, ?), ?)), true)`,
+          sql: set(`to_jsonb(GREATEST(COALESCE((${textAt})::numeric, ?), ?))`),
           params: [Number(value), Number(value)],
         };
       case "push":
-        return {
-          sql: `jsonb_set(${acc}, ${p}, ${arr} || jsonb_build_array(?::jsonb), true)`,
-          params: [jsonStr(value)],
-        };
+        return { sql: set(`${arr} || jsonb_build_array(?::text::jsonb)`), params: [jsonStr(value)] };
       case "addToSet":
         return {
-          sql: `jsonb_set(${acc}, ${p}, CASE WHEN ${arr} @> jsonb_build_array(?::jsonb) THEN ${arr} ELSE ${arr} || jsonb_build_array(?::jsonb) END, true)`,
+          sql: set(
+            `CASE WHEN ${arr} @> jsonb_build_array(?::text::jsonb) THEN ${arr} ELSE ${arr} || jsonb_build_array(?::text::jsonb) END`,
+          ),
           params: [jsonStr(value), jsonStr(value)],
         };
       case "pull":
         return {
-          sql: `jsonb_set(${acc}, ${p}, COALESCE((SELECT jsonb_agg(elem) FROM jsonb_array_elements(${arr}) elem WHERE elem <> ?::jsonb), '[]'::jsonb), true)`,
+          sql: set(
+            `COALESCE((SELECT jsonb_agg(elem) FROM jsonb_array_elements(${arr}) elem WHERE elem <> ?::text::jsonb), '[]'::jsonb)`,
+          ),
           params: [jsonStr(value)],
         };
       case "setOnInsert":
         return { sql: acc, params: [] };
     }
+  }
+  // `||` replaces a top-level key whole, the way a full rewrite did, where a nested `set` would merge into it.
+  mergeDocument(set: [field: string, json: string][], removed: string[]): SqlFrag {
+    let sql = this.docColumn();
+    const params: unknown[] = [];
+    if (set.length) {
+      sql = `(${sql} || ?::text::jsonb)`;
+      params.push(`{${set.map(([field, json]) => `${JSON.stringify(field)}:${json}`).join(",")}}`);
+    }
+    for (const field of removed) {
+      sql = `(${sql} - ?::text)`;
+      params.push(field);
+    }
+    return { sql, params };
   }
   affectedRows(result: unknown): number {
     const row = result as { count?: number } | Array<unknown> | null;

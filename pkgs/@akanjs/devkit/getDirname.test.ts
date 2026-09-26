@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { getDirname } from "./getDirname";
 
 describe("getDirname", () => {
   test("converts file URLs to filesystem paths", () => {
-    const dirname = getDirname("file:///tmp/akan%20workspace/index.ts");
+    const filePath = path.resolve("/tmp/akan workspace/index.ts");
+    const dirname = getDirname(pathToFileURL(filePath).href);
 
-    expect(dirname).toBe(path.join("/tmp", "akan workspace"));
+    expect(dirname).toBe(path.dirname(filePath));
   });
 
   test("keeps Windows drive paths valid when running on Windows", () => {

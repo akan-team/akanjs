@@ -110,7 +110,7 @@ describe("system pages", () => {
 
   test("keeps RSC worker system-page helpers free of react-dom/server", async () => {
     const result = await Bun.build({
-      entrypoints: [new URL("./rscWorker.tsx", import.meta.url).pathname],
+      entrypoints: [`${import.meta.dir}/rscWorker.tsx`],
       target: "bun",
       conditions: ["react-server"],
     });

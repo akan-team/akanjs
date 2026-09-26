@@ -63,6 +63,7 @@ export type BuilderReq = {
   id: number;
   routeId: string;
   seeds: string[];
+  graphSeeds?: string[];
   knownEntries: string[];
   generation?: number;
 };

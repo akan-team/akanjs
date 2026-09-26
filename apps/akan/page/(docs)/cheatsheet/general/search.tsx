@@ -141,8 +141,8 @@ export default page().render(() => {
       type: "[title, desc, tag, filter]",
       default: "[10, 1, 3, 0]",
       desc: l.trans({
-        en: "Replaces the ranking weights: exactly four finite numbers, in title, desc, tag, filter order.",
-        ko: "순위 가중치를 바꿉니다. title, desc, tag, filter 순서대로 유한한 숫자 네 개를 넘깁니다.",
+        en: "Replaces the ranking weights: four finite, non-negative numbers, in title, desc, tag, filter order.",
+        ko: "순위 가중치를 바꿉니다. title, desc, tag, filter 순서대로 음수가 아닌 유한한 숫자 네 개를 넘깁니다.",
       }),
       example: "q.search(text, { weights: [20, 1, 5, 0] })",
     },
@@ -189,9 +189,10 @@ export default page().render(() => {
       type: "string",
       default: "unicode61 remove_diacritics 2",
       desc: l.trans({
-        en: "Picks the fts5 tokenizer. A change rebuilds the index on the next boot.",
-        ko: "fts5 토크나이저를 고릅니다. 값을 바꾸면 다음 부팅 때 인덱스를 다시 만듭니다.",
+        en: "Picks the fts5 tokenizer; Postgres reads only the two forms below.",
+        ko: "fts5 토크나이저를 고릅니다. Postgres는 아래 두 형식만 읽습니다.",
       }),
+      example: "unicode61 [remove_diacritics 0|1|2]\ntrigram [case_sensitive 0|1]",
     },
   ];
 
@@ -263,24 +264,14 @@ export default page().render(() => {
               ko: "클라이언트에서도 검색하게 할지는 별도의 결정입니다. 아래 '클라이언트에 공개하기'에서 다룹니다.",
             })}
           </div>
+          <div>
+            {l.trans({
+              en: "Search works in every database mode. For the same text, SQLite, libSQL and Postgres match the same documents, but Postgres can order them differently because its ranking does not weigh how rare a word is. Postgres setup is covered in Operating It.",
+              ko: "검색은 모든 데이터베이스 모드에서 동작합니다. 같은 텍스트라면 SQLite, libSQL, Postgres 모두 같은 document를 찾지만, Postgres는 단어가 얼마나 드문지를 순위에 반영하지 않아서 순서가 다를 수 있습니다. Postgres 설정은 아래 '운영하기'에서 다룹니다.",
+            })}
+          </div>
           <Docs.SubSubTitle>{l.trans({ en: "Words used on this page", ko: "이 페이지에서 쓰는 말" })}</Docs.SubSubTitle>
           <Docs.IntroTable type={l.trans({ en: "Term", ko: "용어" })} items={termRows} />
-          <Docs.Alert type="warning">
-            {l.trans({
-              en: (
-                <span>
-                  <strong>Search needs SQLite or libsql.</strong> On Postgres, <code>q.search()</code> throws instead of
-                  returning every row.
-                </span>
-              ),
-              ko: (
-                <span>
-                  <strong>검색은 SQLite나 libsql에서만 동작합니다.</strong> Postgres에서는 <code>q.search()</code>가
-                  모든 행을 돌려주는 대신 에러를 던집니다.
-                </span>
-              ),
-            })}
-          </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -590,14 +581,16 @@ export class ProductObject extends via(ProductInput, (field) => ({
               {l.trans({
                 en: (
                   <span>
-                    <strong>Raw user input is safe.</strong> Punctuation that would otherwise be search syntax is quoted
-                    for you.
+                    <strong>Raw user input is safe.</strong> Nothing in it is read as search syntax. Punctuation splits
+                    a word into pieces that must appear side by side, so <code>follow-up</code> finds “follow-up” and
+                    “follow up”.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>사용자 입력을 그대로 넣어도 안전합니다.</strong> 검색 문법으로 해석될 문장부호는 알아서
-                    따옴표 처리됩니다.
+                    <strong>사용자 입력을 그대로 넣어도 안전합니다.</strong> 입력의 어떤 글자도 검색 문법으로 해석되지
+                    않습니다. 문장부호는 단어를 조각으로 나누고 그 조각들이 나란히 있어야 매치되므로,{" "}
+                    <code>follow-up</code>은 “follow-up”과 “follow up”을 찾습니다.
                   </span>
                 ),
               })}
@@ -850,14 +843,14 @@ export class ProductObject extends via(ProductInput, (field) => ({
               {l.trans({
                 en: (
                   <span>
-                    <strong>A tokenizer change is cheap.</strong> The index is rebuilt from its own copy of the text
-                    without re-reading any model table, so the setting is safe to revisit.
+                    <strong>A tokenizer change is cheap.</strong> The next boot rebuilds the index from its own copy of
+                    the text without re-reading any model table, so the setting is safe to revisit.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>토크나이저 변경은 가볍습니다.</strong> 모델 테이블을 다시 읽지 않고 인덱스가 보관한 텍스트
-                    사본에서 다시 만들므로, 부담 없이 다시 조정할 수 있습니다.
+                    <strong>토크나이저 변경은 가볍습니다.</strong> 다음 부팅 때 모델 테이블을 다시 읽지 않고 인덱스가
+                    보관한 텍스트 사본에서 인덱스를 다시 만들므로, 부담 없이 다시 조정할 수 있습니다.
                   </span>
                 ),
               })}
@@ -866,14 +859,86 @@ export class ProductObject extends via(ProductInput, (field) => ({
               {l.trans({
                 en: (
                   <span>
-                    <strong>Stagger restarts after changing it, above all on a large index.</strong> Processes do not
-                    share the rebuild, so a fleet restarted at once repeats it in every process.
+                    <strong>A fleet restarted at once rebuilds once.</strong> The first process rebuilds and the rest
+                    wait for it. On SQLite a process waits only up to its busy timeout (5 seconds by default), so
+                    stagger restarts when the index is large.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>바꾼 뒤에는 재시작을 나눠서 하세요. 인덱스가 크면 특히 그렇습니다.</strong> 프로세스끼리
-                    재생성을 나눠 맡지 않아서, 한꺼번에 재시작하면 프로세스마다 각자 다시 만듭니다.
+                    <strong>한꺼번에 재시작해도 재생성은 한 번입니다.</strong> 첫 프로세스가 다시 만들고 나머지는
+                    기다립니다. SQLite에서는 busy timeout(기본 5초)까지만 기다리므로, 인덱스가 크면 재시작을 나눠서
+                    하세요.
+                  </span>
+                ),
+              })}
+            </li>
+          </ul>
+          <Docs.SubSubTitle>{l.trans({ en: "On Postgres", ko: "Postgres에서" })}</Docs.SubSubTitle>
+          <div>
+            {l.trans({
+              en: "Three things are specific to Postgres:",
+              ko: "Postgres에만 해당하는 것이 세 가지 있습니다:",
+            })}
+          </div>
+          <ul className="my-4 list-disc space-y-2 pl-5">
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>The tokenizer needs an extension.</strong> <code>unicode61</code> needs{" "}
+                    <code>unaccent</code> unless it is <code>remove_diacritics 0</code>, and <code>trigram</code> needs{" "}
+                    <code>pg_trgm</code>. Akan creates it if its database role has the privilege; otherwise run{" "}
+                    <code>CREATE EXTENSION unaccent</code> (or <code>pg_trgm</code>) as a role that has it.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>토크나이저에 맞는 확장이 필요합니다.</strong> <code>unicode61</code>에는{" "}
+                    <code>unaccent</code>가(<code>remove_diacritics 0</code>이면 불필요), <code>trigram</code>에는{" "}
+                    <code>pg_trgm</code>이 필요합니다. Akan이 쓰는 데이터베이스 role에 권한이 있으면 Akan이 만들고,
+                    없으면 권한이 있는 role로 <code>CREATE EXTENSION unaccent</code>(또는 <code>pg_trgm</code>)를
+                    실행합니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>
+                      Create the database with a UTF-8 <code>LC_CTYPE</code>,
+                    </strong>{" "}
+                    such as <code>en_US.UTF-8</code> or <code>C.UTF-8</code>. Otherwise case is ignored for ASCII
+                    letters only, where SQLite ignores it for every letter.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>
+                      데이터베이스는 UTF-8 <code>LC_CTYPE</code>로 만듭니다.
+                    </strong>{" "}
+                    <code>en_US.UTF-8</code>이나 <code>C.UTF-8</code> 같은 값입니다. 그렇지 않으면 SQLite와 달리 ASCII
+                    문자에서만 대소문자를 구분하지 않습니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Only the start of a very long text is indexed.</strong> With <code>unicode61</code>,
+                    Postgres indexes the first 20,000 characters of a document's <code>title</code>, <code>tag</code>{" "}
+                    and <code>filter</code> text and the first 200,000 of its <code>desc</code>.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>아주 긴 텍스트는 앞부분만 색인됩니다.</strong> <code>unicode61</code>에서 Postgres는
+                    document마다 <code>title</code>, <code>tag</code>, <code>filter</code> 텍스트의 앞 20,000자와{" "}
+                    <code>desc</code>의 앞 200,000자만 색인합니다.
                   </span>
                 ),
               })}

@@ -7,7 +7,7 @@ import {
   type QueueAdaptor,
   QueueAdaptorRole,
   type ScheduleAdaptor,
-  Scheduler,
+  ScheduleAdaptorRole,
   type ServiceModel,
 } from "akanjs/service";
 import { type BuildInternal, buildInternal, type InternalBuilder, type InternalInfo } from "./internalInfo";
@@ -49,7 +49,7 @@ export function internal<
     ]),
   ];
   const internalCls = class Internal extends dangerouslyAdapt(`${refName}Internal`, ({ plug, service }) => ({
-    schedule: plug(Scheduler),
+    schedule: plug(ScheduleAdaptorRole),
     queue: plug(QueueAdaptorRole),
     ...Object.fromEntries(srvKeys.map((srvRefName) => [srvRefName, service()])),
   })) {

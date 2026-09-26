@@ -296,15 +296,25 @@ export class Subspace {
   /**
    * `git archive` emits exactly the tracked files at HEAD, which is why the copy needs no exclude list of
    * its own: generated barrels, the `(libs)`/`public/libs` symlinks, env values, secrets and the lockfile
-   * are all outside git and cannot enter the archive. Directory arguments only — a file list would put
-   * route paths like `page/(docs)/…` through a shell.
+   * are all outside git and cannot enter the archive. Spawned without a shell, whose quoting differs between
+   * `sh` and `cmd.exe`.
    */
   async #extract(paths: string[], excludes: string[] = []) {
-    const pathspec = paths.map((entry) => `'${entry}'`).join(" ");
-    const excludeArgs = excludes.map((entry) => `--exclude='${entry}'`).join(" ");
-    await this.#workspace.exec(
-      `git archive HEAD -- ${pathspec} | tar -x -C '${this.#clonePath}' ${excludeArgs}`.trim(),
-    );
+    // Relative, because GNU tar reads a drive-letter archive name (`C:\…`) as `host:path` on a remote host.
+    const archivePath = path.relative(this.#workspace.workspaceRoot, `${this.#clonePath}.tar`);
+    await this.#workspace.spawn("git", ["archive", "-o", archivePath, "HEAD", "--", ...paths]);
+    try {
+      await this.#workspace.spawn("tar", [
+        "-x",
+        "-f",
+        archivePath,
+        "-C",
+        this.#clonePath,
+        ...excludes.map((entry) => `--exclude=${entry}`),
+      ]);
+    } finally {
+      await rm(path.join(this.#workspace.workspaceRoot, archivePath), { force: true });
+    }
   }
 
   /**
@@ -399,7 +409,8 @@ export class Subspace {
     const gitignorePath = path.join(this.#clonePath, ".gitignore");
     if (!(await FileSys.fileExists(gitignorePath))) return;
     const [begin = "", end = ""] = Subspace.secretsMarkers;
-    const lines = (await FileSys.readText(gitignorePath)).split("\n");
+    // `git archive` checks text out as CRLF under Windows Git's default `core.autocrlf=true`.
+    const lines = (await FileSys.readText(gitignorePath)).split(/\r?\n/);
     const beginIdx = lines.indexOf(begin);
     const endIdx = lines.indexOf(end);
     const filtered =

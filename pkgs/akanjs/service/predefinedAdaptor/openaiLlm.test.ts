@@ -79,27 +79,24 @@ describe("OpenaiLlm content parts", () => {
 
 describe("OpenaiLlm refusals", () => {
   test("carries the provider's own sentence, named by the host that refused", async () => {
-    const body = JSON.stringify({ error: { message: "context_length_exceeded" } });
-    const error = (await OpenaiLlm.refusal(OpenaiLlm.defaultHost, new Response(body, { status: 400 }))) as Error & {
+    const body = JSON.stringify({ error: { message: "Incorrect API key provided" } });
+    const error = (await OpenaiLlm.refusal(OpenaiLlm.defaultHost, new Response(body, { status: 401 }))) as Error & {
       data?: Record<string, string>;
     };
     expect(error.message).toBe("agent.error.llmRequestFailed");
-    expect(error.data).toEqual({ provider: "api.openai.com", status: "400", reason: "context_length_exceeded" });
+    expect(error.data).toEqual({ provider: "api.openai.com", status: "401", reason: "Incorrect API key provided" });
   });
 
-  test("a gateway the app named answers under its own host, not OpenAI's", async () => {
+  test("a prompt past the window is its own refusal, named by the gateway and the window it gave", async () => {
     const body = JSON.stringify({ error: { message: "This model's maximum context length is 65536 tokens" } });
     const error = (await OpenaiLlm.refusal(
       "https://api.deepseek.com",
       new Response(body, { status: 400 }),
     )) as Error & {
-      data?: Record<string, string>;
+      data?: Record<string, string | number>;
     };
-    expect(error.data).toEqual({
-      provider: "api.deepseek.com",
-      status: "400",
-      reason: "This model's maximum context length is 65536 tokens",
-    });
+    expect(error.message).toBe("agent.error.contextOverflow");
+    expect(error.data).toEqual({ provider: "api.deepseek.com", limit: 65_536 });
   });
 
   test("a body that is not the dialect's JSON falls back to the status line", async () => {

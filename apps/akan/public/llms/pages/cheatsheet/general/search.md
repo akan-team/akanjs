@@ -54,7 +54,7 @@ all four
 
 Looks only in the named roles. `thumb` is not indexed, so it is not a column.
 
-Replaces the ranking weights: exactly four finite numbers, in title, desc, tag, filter order.
+Replaces the ranking weights: four finite, non-negative numbers, in title, desc, tag, filter order.
 
 Best match first.
 
@@ -74,13 +74,15 @@ unset = on
 
 Switches the index on or off. Off keeps indexed data; back on re-syncs every model.
 
-Picks the fts5 tokenizer. A change rebuilds the index on the next boot.
+Picks the fts5 tokenizer; Postgres reads only the two forms below.
 
 Akan has full-text search built in. There is no search server to run and no index to keep in sync by hand.
 
 It takes three steps:
 
 Letting clients search as well is a separate decision, covered in Publishing To Clients.
+
+Search works in every database mode. For the same text, SQLite, libSQL and Postgres match the same documents, but Postgres can order them differently because its ranking does not weigh how rare a word is. Postgres setup is covered in Operating It.
 
 Words used on this page
 
@@ -139,6 +141,10 @@ A public catalog search, with its own guard:
 Operating It
 
 The index keeps itself current through database triggers. A write from any path is reflected, including bulk query-level updates that fire no document hooks.
+
+On Postgres
+
+Three things are specific to Postgres:
 
 Gotchas
 

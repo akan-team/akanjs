@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { Int } from "akanjs/base";
+import {
+  CLIENT_VALUE,
+  Int,
+  type PrimitiveAgentFace,
+  PrimitiveRegistry,
+  PrimitiveScalar,
+  SERVER_VALUE,
+} from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import type { SerializedSignal } from "../types";
 import { McpDocument } from "./McpDocument";
@@ -541,5 +548,60 @@ describe("McpDocument", () => {
   test("orders the catalogue deterministically", () => {
     // Clients cache the list and an LLM prompt cache keys on its exact text.
     expect(names(new McpDocument(signal()))).toEqual(names(new McpDocument(signal())));
+  });
+});
+
+interface McpNoteDoc {
+  lines: string[];
+}
+class McpNote extends PrimitiveScalar {
+  static override refName = "McpNote";
+  static override [SERVER_VALUE]: McpNoteDoc;
+  static override [CLIENT_VALUE]: McpNoteDoc;
+  static override jsonSchema = { type: "object", properties: { lines: { type: "array" } } };
+  static override agent: PrimitiveAgentFace<McpNoteDoc> = {
+    schema: { type: "string", description: "Markdown." },
+    read: (value) => value.lines.join("\n"),
+  };
+}
+PrimitiveRegistry.register(McpNote);
+
+class McpPageInput extends via((field) => ({ title: field(String), body: field(McpNote) })) {}
+class McpPageObject extends via(McpPageInput, () => ({})) {}
+class LightMcpPage extends via(McpPageObject, ["title"] as const, () => ({})) {}
+class McpPage extends via(McpPageObject, LightMcpPage, () => ({})) {}
+class McpPageInsight extends via(McpPage, () => ({})) {}
+ConstantRegistry.buildModel("mcpPage", McpPageInput, McpPageObject, McpPage, LightMcpPage, McpPageInsight, {});
+
+describe("McpDocument with an agent-faced primitive", () => {
+  const doc = new McpDocument({
+    mcpPage: {
+      prefix: "mcpPage",
+      endpoint: {
+        rewriteMcpPage: {
+          type: "mutation",
+          args: [
+            { type: "param", name: "mcpPageId", refName: "ID" },
+            { type: "body", name: "body", refName: "McpNote" },
+            { type: "body", name: "data", refName: "mcpPage", modelType: "input" },
+          ],
+          returns: { refName: "mcpPage", modelType: "full" },
+          guards: ["Admin"],
+        },
+      },
+    },
+  });
+  const tool = doc.tools.find(({ name }) => name === "rewriteMcpPage");
+
+  test("asks for the agent shape in an argument and inside a model it takes", () => {
+    const properties = tool?.inputSchema.properties as Record<string, unknown>;
+    expect(properties.body).toEqual(McpNote.agent.schema);
+    const defs = tool?.inputSchema.$defs as Record<string, { properties: Record<string, unknown> }>;
+    expect(defs.McpPageInput.properties.body).toEqual(McpNote.agent.schema);
+  });
+
+  test("promises the agent shape in the result, which is what `mask` reads the value into", () => {
+    const defs = tool?.outputSchema?.$defs as Record<string, { properties: Record<string, unknown> }>;
+    expect(defs.McpPage.properties.body).toEqual(McpNote.agent.schema);
   });
 });

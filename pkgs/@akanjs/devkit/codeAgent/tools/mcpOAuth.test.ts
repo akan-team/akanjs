@@ -303,12 +303,16 @@ describe("MCP sign-in", () => {
 });
 
 describe("the token file", () => {
-  test("it is readable only by its owner, and lives outside the workspace", async () => {
+  test("it lives outside the workspace", async () => {
     await McpSignIn.run(refOf(), { open: browser });
     const file = McpTokenStore.file();
     expect(file.startsWith(home)).toBe(true);
     expect(await Bun.file(file).exists()).toBe(true);
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+  });
+
+  test.skipIf(process.platform === "win32")("it is readable only by its owner", async () => {
+    await McpSignIn.run(refOf(), { open: browser });
+    expect(statSync(McpTokenStore.file()).mode & 0o777).toBe(0o600);
   });
 
   test("a corrupt file costs the sign-ins and not the session", async () => {

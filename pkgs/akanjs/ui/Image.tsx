@@ -15,6 +15,8 @@ const DEFAULT_IMAGE_WIDTHS = [...new Set([...DEFAULT_IMAGE_DEVICE_SIZES, ...DEFA
   (a, b) => a - b,
 );
 const DEFAULT_IMAGE_QUALITY = 75;
+//? A transparent pixel, so an image with no url fills its box without a request for an asset no app ships.
+const EMPTY_IMAGE = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
 type NativeImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "alt" | "src" | "srcSet"> & {
   /** Fill the parent box when the renderer supports fill-style images. */
@@ -70,7 +72,7 @@ export const Image = ({
         alt?: string;
       }
   )) => {
-  const url = src ?? file?.url ?? "/empty.png";
+  const url = src || file?.url || null;
   const [width, height] = [props.width ?? file?.imageSize[0], props.height ?? file?.imageSize[1]];
 
   const blurDataURL = abstractData ?? file?.abstractData;
@@ -92,15 +94,11 @@ export const Image = ({
       />
     );
 
-  const optimized = getOptimizedImageAttrs({
-    src: url,
-    width,
-    sizes: props.sizes,
-    quality,
-    unoptimized,
-  });
+  const optimized = url
+    ? getOptimizedImageAttrs({ src: url, width, sizes: props.sizes, quality, unoptimized })
+    : { src: EMPTY_IMAGE, srcSet: undefined };
 
-  if (isPriority) {
+  if (isPriority && url) {
     preloadResource(optimized.src, {
       as: "image",
       imageSrcSet: optimized.srcSet,
@@ -120,7 +118,7 @@ export const Image = ({
       // fill={props.fill ?? (!width && !height)}
       width={width}
       height={height}
-      className={cn("object-cover", className)}
+      className={cn("object-cover", !url && "bg-muted", className)}
       alt={alt ?? "image"}
       loading={props.loading ?? (isPriority ? "eager" : "lazy")}
       decoding={props.decoding ?? "async"}

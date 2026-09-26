@@ -1,7 +1,7 @@
 import { type BackendEnv, getEnv } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { DictionaryLookup } from "akanjs/dictionary";
-import type { InjectRegistry, LiveRegistry } from "akanjs/service";
+import { CacheAdaptorRole, type InjectRegistry, type LiveRegistry } from "akanjs/service";
 import {
   MCP_LEGACY_VERSION,
   MCP_META_CLIENT_CAPABILITIES,
@@ -26,7 +26,7 @@ import type { HttpRoutes } from "../types";
 import { McpAuth, type McpAuthOption } from "./McpAuth";
 import { McpAuthRequiredError, McpDispatcher } from "./McpDispatcher";
 import { McpEventStream } from "./McpEventStream";
-import { McpRateLimiter, type McpRateLimitOption } from "./McpRateLimiter";
+import { McpRateLimiter, type McpRateLimitOption, type McpSharedCounter } from "./McpRateLimiter";
 import { PagePromptComposer } from "./PagePromptComposer";
 
 export interface McpRouterProps {
@@ -133,7 +133,13 @@ export class McpRouter {
     const legacyTextBlock = props.outputSchema === "none" ? undefined : props.legacyTextBlock;
     this.#dispatcher = new McpDispatcher({ ...props, legacyTextBlock, language: props.language ?? defaultLanguage });
     this.#auth = new McpAuth({ ...props.auth, path: props.path ?? "/mcp" });
-    this.#limiter = props.rateLimit === false ? null : new McpRateLimiter(props.rateLimit);
+    this.#limiter =
+      props.rateLimit === false
+        ? null
+        : new McpRateLimiter(
+            props.rateLimit,
+            (props.registry.adaptor.get(CacheAdaptorRole) as McpSharedCounter | undefined) ?? null,
+          );
   }
 
   createRoutes(): HttpRoutes {
@@ -327,11 +333,11 @@ export class McpRouter {
       case "prompts/list":
         return await this.#list(call, "prompts", (await this.#pagePromptEntries()).map(McpRouter.#promptOf));
       case "tools/call": {
-        const slot = this.#acquire(call);
+        const slot = await this.#acquire(call);
         return "refused" in slot ? slot.refused : await this.#toolsCall(call, document, slot.release);
       }
       case "prompts/get": {
-        const slot = this.#acquire(call);
+        const slot = await this.#acquire(call);
         if ("refused" in slot) return slot.refused;
         try {
           return await this.#promptsGet(call, document);
@@ -340,7 +346,7 @@ export class McpRouter {
         }
       }
       case "resources/read": {
-        const slot = this.#acquire(call);
+        const slot = await this.#acquire(call);
         if ("refused" in slot) return slot.refused;
         try {
           return await this.#resourcesRead(call, document);
@@ -373,9 +379,9 @@ export class McpRouter {
    * carries a JSON-RPC body like every other envelope-level refusal, and `Retry-After` because a client that
    * backs off by that header is the one behaviour a limit is asking for.
    */
-  #acquire(call: McpCall): { refused: Response } | { release: () => void } {
+  async #acquire(call: McpCall): Promise<{ refused: Response } | { release: () => void }> {
     if (!this.#limiter) return { release: () => {} };
-    const verdict = this.#limiter.acquire(McpAuth.callerKey(call.req));
+    const verdict = await this.#limiter.acquire(McpAuth.callerKey(call.req));
     if (verdict.ok) return { release: verdict.release };
     const seconds = Math.max(1, Math.ceil(verdict.retryAfterMs / 1000));
     const message =

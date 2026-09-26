@@ -132,7 +132,11 @@ export class RouteClientCache {
       );
       return delta;
     }
-    for (const [key, row] of Object.entries(delta.manifestDelta)) this.merged.clientManifest[key] = row;
+    for (const [key, row] of Object.entries(delta.manifestDelta)) {
+      const previous = this.merged.clientManifest[key];
+      if (previous && previous.id !== row.id) delete this.merged.ssrManifest.moduleMap[previous.id];
+      this.merged.clientManifest[key] = row;
+    }
     for (const [url, byName] of Object.entries(delta.ssrManifestDelta.moduleMap))
       this.merged.ssrManifest.moduleMap[url] = byName;
     for (const entry of delta.newEntries) this.merged.knownEntries.add(entry);

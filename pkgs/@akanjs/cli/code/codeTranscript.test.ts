@@ -229,6 +229,24 @@ describe("CodeTranscript", () => {
     expect(transcript.queue).toEqual({ steering: 0, followUp: 0 });
   });
 
+  test("an automatic compaction that failed says so instead of claiming it compacted", () => {
+    const notices = (end: Extract<CodeAgentEventBody, { type: "compaction" }>) =>
+      feed(new CodeTranscript(), [{ type: "compaction", phase: "start", reason: end.reason }, end]).parts.flatMap(
+        (part) => (part.kind === "notice" ? [`${part.level}: ${part.text}`] : []),
+      );
+    expect(
+      notices({ type: "compaction", phase: "end", reason: "threshold", error: "Auto-compaction failed: 529" }),
+    ).toEqual(["warning: Auto-compaction failed: 529"]);
+    expect(notices({ type: "compaction", phase: "end", reason: "overflow", aborted: true })).toEqual([
+      "info: Compaction cancelled.",
+    ]);
+    expect(notices({ type: "compaction", phase: "end", reason: "threshold" })).toEqual([
+      "info: Compacted the conversation (threshold).",
+    ]);
+    // `/compact` throws to its caller, which reports it — a second line here would say the same thing twice.
+    expect(notices({ type: "compaction", phase: "end", reason: "manual", error: "Compaction failed: x" })).toEqual([]);
+  });
+
   /**
    * The checklist made into a test.
    *
@@ -256,6 +274,11 @@ describe("CodeTranscript", () => {
       },
       question: { type: "question", question: { questionId: "q1", prompt: "?", kind: "text" } },
       question_resolved: { type: "question_resolved", questionId: "q1", answer: { text: "y" }, rendered: "y" },
+      question_skipped: {
+        type: "question_skipped",
+        question: { questionId: "q2", prompt: "?", kind: "text" },
+        reason: "no-host",
+      },
       approval: {
         type: "approval",
         request: { approvalId: "a1", toolCallId: "c0", name: "write", summary: "s", policy: "writes" },

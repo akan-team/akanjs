@@ -156,8 +156,8 @@ export default page().render(() => {
           defaultValue: "-",
           enumOrFlag: "nullable · flag: -m",
           desc: l.trans({
-            en: "`<provider>/<id>`. Default: `deepseek/deepseek-v4-flash`; without its key, the first available.",
-            ko: "`<provider>/<id>` 형식입니다. 기본은 `deepseek/deepseek-v4-flash`이고, 그 키가 없으면 쓸 수 있는 첫 모델입니다.",
+            en: "`<provider>/<id>`. Default: `deepseek/deepseek-flash`; without its key, the first available.",
+            ko: "`<provider>/<id>` 형식입니다. 기본은 `deepseek/deepseek-flash`이고, 그 키가 없으면 쓸 수 있는 첫 모델입니다.",
           }),
         },
         {
@@ -245,7 +245,7 @@ export default page().render(() => {
 akan code "add a comment module to koyo"
 akan code --app koyo
 akan code "review the order flow" --profile review
-akan code "add a topping field" --model deepseek/deepseek-v4-flash --thinking true
+akan code "add a topping field" --model deepseek/deepseek-flash --thinking true
 akan code --resume <session-id>
 akan code "summarize the diff" --json true
 akan code --rpc true`,

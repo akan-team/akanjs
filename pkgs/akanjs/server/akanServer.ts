@@ -13,6 +13,7 @@ import type {
   SolidConfig,
 } from "akanjs/service";
 import type { ServerSignal, ServerSignalCls, WebsocketPublishData } from "akanjs/signal";
+import { AgentMeter } from "../signal/agentMeter";
 import { CrossSiteGuard } from "../signal/CrossSiteGuard";
 import { AgentRelayAccess } from "../signal/guards";
 import { createOpenApiDocument } from "../signal/openapi";
@@ -34,6 +35,9 @@ import { LogHub } from "./logging/logHub";
 import { LogStreamRoute } from "./logging/logStreamRoute";
 import { RotatingLogWriter } from "./logging/rotatingLogWriter";
 import { type McpAuthOption, type McpRateLimitOption, McpRouter } from "./mcp";
+import { AppInfo } from "./ops/appInfo";
+import { OpsRoute } from "./ops/opsRoute";
+import { SqliteFiles } from "./ops/sqliteFiles";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
 import { WebProxyRunner } from "./proxy";
 import { SignalResolver } from "./resolver";
@@ -209,6 +213,7 @@ export class AkanServer {
   #logForwarder: LogForwarder | null = null;
   #hubFileSink: HubFileSink | null = null;
   #logStream: LogStreamRoute | null = null;
+  #ops: OpsRoute | null | undefined;
   #lastMetrics: AkanMetricsReport = {};
   constructor(
     name = "AkanServer",
@@ -232,6 +237,8 @@ export class AkanServer {
       if (mcp !== undefined) this.setMcp(mcp);
       const agentAccess = lib.option.getAgentAccess();
       if (agentAccess !== undefined) AgentRelayAccess.use(agentAccess);
+      const [usage, quota] = [lib.option.getAgentUsage(), lib.option.getAgentQuota()];
+      if (usage !== undefined || quota !== undefined) AgentMeter.use({ usage, quota });
       const crossSite = lib.option.getCrossSite();
       if (crossSite !== undefined) CrossSiteGuard.configure(crossSite);
     });
@@ -554,7 +561,7 @@ export class AkanServer {
     return this.listen();
   }
   async stop() {
-    if (this.status !== "running") {
+    if (this.status !== "running" && this.status !== "initialized") {
       this.logger.warn("AkanServer is not running. Cannot stop.");
       return;
     }
@@ -605,9 +612,7 @@ export class AkanServer {
 
   #handleIpcMessage(message: AkanIpcMessage) {
     if (!message || typeof message !== "object") return;
-    if (message.type === "pubsub.deliver")
-      this.#localPublish?.(message.roomId, message.data as object | object[] | Uint8Array);
-    else if (message.type === "health.ping")
+    if (message.type === "health.ping")
       process.send?.({
         type: "health.pong",
         nonce: message.nonce,
@@ -729,6 +734,7 @@ export class AkanServer {
             metrics: this.#lastMetrics,
           }),
           this.#logStream,
+          this.#opsRoute(),
         )
       : {};
     // Builds the catalogue here rather than on the first agent request, so what MCP published — and what it
@@ -748,6 +754,33 @@ export class AkanServer {
       getStatus: () => this.status,
     }).createRoutes();
     return { ...openapiRoutes, ...mcpRoutes, ...devtoolsRoutes, ...soloRoutes };
+  }
+
+  #opsRoute() {
+    if (this.#ops !== undefined) return this.#ops;
+    this.#ops = OpsRoute.fromEnv({
+      detail: () => AppInfo.detail({ serverMode: this.serverMode, solo: true, replicaIdx: 0 }),
+      sources: () => this.#sqliteSources(),
+    });
+    return this.#ops;
+  }
+
+  //* The adaptors' own resolved paths, so a file an app placed through `env.server.ts` is the one copied.
+  #sqliteSources() {
+    const fromEnv = SqliteFiles.fromEnv();
+    const filePathOf = (refName: string) => {
+      try {
+        return (this.#di.getAdaptor(refName) as { config?: { filePath?: unknown } }).config?.filePath;
+      } catch {
+        return undefined;
+      }
+    };
+    const main = filePathOf("sqliteDatabase");
+    const solid = filePathOf("solidQueue") ?? filePathOf("solidCache");
+    return {
+      main: typeof main === "string" ? main : fromEnv.main,
+      solid: fromEnv.solid && typeof solid === "string" ? solid : fromEnv.solid,
+    };
   }
 
   #startFileLogging() {

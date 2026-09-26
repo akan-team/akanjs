@@ -58,8 +58,10 @@ export interface ChatProps {
   runner?: AgentRunner;
   maxTurns?: number;
   /**
-   * When the conversation summarizes itself to stay inside the model's window — `at` estimated tokens, `keep`
-   * messages left verbatim below the summary. Tune it per provider; `{ at: 0 }` turns it off.
+   * When the conversation summarizes itself — past `at` estimated transcript tokens, a ceiling on what each turn
+   * costs, or once the prompt nears the window the server reports (`option.setLlm({ contextWindow })`), keeping
+   * `buffer` free on top of the answer. `keep` messages stay verbatim below the summary. `{ at: Infinity }` leaves
+   * only the window guard; `{ at: 0 }` turns all of it off.
    */
   compact?: CompactOptions;
   /**
@@ -506,7 +508,7 @@ export const DefaultChat = ({
   }, [version]);
   // Recomputed per transcript change, never per render: the estimate walks every message, and the composer
   // re-renders on every keystroke.
-  const tokens = useMemo(() => session.tokens, [version]);
+  const context = useMemo(() => session.context, [version]);
   const unread = open ? 0 : Math.max(0, session.messages.length - read.current);
   const layer = (surface: ReactNode) => (inline ? surface : overlay ? createPortal(surface, overlay) : null);
   if (!open)
@@ -543,9 +545,16 @@ export const DefaultChat = ({
         <header className="flex items-center gap-2 border-foreground/5 border-b px-4 py-3">
           <span className="font-semibold text-sm">{title ?? l("base.agent")}</span>
           {session.isRunning ? <span className="size-2 animate-pulse rounded-full bg-primary" /> : null}
-          {tokens ? (
-            <span className="shrink-0 whitespace-nowrap text-[10px] text-foreground/40">
-              {l("base.agentTokens", { count: tokenCount(tokens) })}
+          {context.used ? (
+            <span
+              className="shrink-0 whitespace-nowrap text-[10px] text-foreground/40"
+              title={
+                context.compactAt ? l("base.agentCompactsAt", { limit: tokenCount(context.compactAt) }) : undefined
+              }
+            >
+              {context.compactAt
+                ? l("base.agentTokensOf", { count: tokenCount(context.used), limit: tokenCount(context.compactAt) })
+                : l("base.agentTokens", { count: tokenCount(context.used) })}
             </span>
           ) : null}
           <span className="ml-auto flex items-center gap-2">

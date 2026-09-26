@@ -22,7 +22,8 @@ const loaded = (root: string, name = "AGENTS.md"): AkanContextFile[] => [
   { path: path.join(root, name), content: "the workspace guide" },
 ];
 
-const namesOf = (files: AkanContextFile[], root: string) => files.map((file) => path.relative(root, file.path));
+const namesOf = (files: AkanContextFile[], root: string) =>
+  files.map((file) => path.relative(root, file.path).split(path.sep).join("/"));
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });

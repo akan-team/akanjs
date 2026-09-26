@@ -292,6 +292,23 @@ describe("CodeAgentEventMapper", () => {
     const frames = mapper.map({ type: "agent_end", messages: [{ stopReason: "aborted" }], willRetry: false } as never);
     expect(frames).toEqual([{ type: "turn_end", turnId: "t1", stopReason: "aborted" }]);
   });
+
+  test("a compaction that failed or was cancelled carries that, not just its reason", () => {
+    const mapper = new CodeAgentEventMapper();
+    const end = (fields: object) =>
+      mapper.map({
+        type: "compaction_end",
+        reason: "threshold",
+        result: undefined,
+        willRetry: false,
+        ...fields,
+      } as never);
+    expect(end({ aborted: false, errorMessage: "Auto-compaction failed: 529" })).toEqual([
+      { type: "compaction", phase: "end", reason: "threshold", error: "Auto-compaction failed: 529" },
+    ]);
+    expect(end({ aborted: true })).toEqual([{ type: "compaction", phase: "end", reason: "threshold", aborted: true }]);
+    expect(end({ aborted: false })).toEqual([{ type: "compaction", phase: "end", reason: "threshold" }]);
+  });
 });
 
 describe("CodeAgentStreamPrinter", () => {

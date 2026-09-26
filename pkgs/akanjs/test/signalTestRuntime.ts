@@ -17,7 +17,7 @@ export interface SignalTestContext<Fetch = FetchProxy> {
   terminate: () => Promise<void>;
 }
 
-export type SignalTestOptions = Pick<TestServerOptions, "databaseMode" | "workerId" | "port" | "serverMode">;
+export type SignalTestOptions = Pick<TestServerOptions, "storage" | "workerId" | "port" | "serverMode">;
 
 type SignalServerModule = {
   env: BackendEnv;
@@ -108,7 +108,7 @@ export const setupSignalTestTarget = async <Fetch = FetchProxy>(
       libs: [...dependencyModules.map((mod) => mod.lib), targetModule.lib],
     };
     const testServer = new TestServer(target.env, target.libs, {
-      databaseMode: "memory",
+      storage: "memory",
       ...resolvedOptions,
     });
     await testServer.init();

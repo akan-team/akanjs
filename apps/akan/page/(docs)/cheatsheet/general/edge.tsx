@@ -166,7 +166,46 @@ export default page().render(() => {
     },
   ];
 
+  const siteColumns = [
+    { key: "setting", label: l.trans({ en: "Setting", ko: "설정" }) },
+    { key: "edge", label: l.trans({ en: "Edge site", ko: "엣지 사이트" }) },
+    { key: "cloud", label: l.trans({ en: "Cloud cluster", ko: "클라우드 클러스터" }) },
+  ];
+  const siteRows = [
+    {
+      setting: "`AKAN_PUBLIC_OPERATION_MODE`",
+      edge: "`edge`",
+      cloud: l.trans({ en: "`cloud`, the image default", ko: "`cloud` (이미지 기본값)" }),
+    },
+    {
+      setting: "`AKAN_DATABASE_MODE`",
+      edge: "`single`",
+      cloud: "`cluster`",
+    },
+    {
+      setting: l.trans({ en: "Data", ko: "데이터" }),
+      edge: l.trans({
+        en: "SQLite files on a mounted volume that `AKAN_SQLITE_DIR` names",
+        ko: "`AKAN_SQLITE_DIR`가 가리키는 마운트 볼륨의 SQLite 파일",
+      }),
+      cloud: l.trans({ en: "`POSTGRES_URL` and `REDIS_URI`", ko: "`POSTGRES_URL`과 `REDIS_URI`" }),
+    },
+    {
+      setting: l.trans({ en: "Instances", ko: "인스턴스" }),
+      edge: l.trans({ en: "One container", ko: "컨테이너 하나" }),
+      cloud: l.trans({ en: "Several servers", ko: "여러 서버" }),
+    },
+  ];
+
   const relatedLinks = [
+    {
+      href: "/cheatsheet/dev/docker#compose",
+      title: l.trans({ en: "Minimal Compose", ko: "최소 compose 파일" }),
+      desc: l.trans({
+        en: "The compose file for one edge container and its volumes.",
+        ko: "엣지 컨테이너 하나와 그 볼륨을 띄우는 compose 파일입니다.",
+      }),
+    },
     {
       href: "/cheatsheet/performance/realtime#pubsub",
       title: l.trans({ en: "Broadcast With pubsub", ko: "pubsub으로 room에 보내기" }),
@@ -277,13 +316,15 @@ export default page().render(() => {
                 en: (
                   <span>
                     <strong>The caller needs the endpoint too.</strong> A <code>fetch</code> holds only the endpoints
-                    its own app and libs declare, so put the ones the edge serves in a lib both apps use.
+                    its own app and libs declare, so put the ones the edge serves in a lib both apps use, or run one app
+                    on both sides.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>호출하는 쪽도 그 endpoint를 알아야 합니다.</strong> <code>fetch</code>에는 자기 앱과 lib이
-                    선언한 endpoint만 있으므로, 엣지가 제공하는 endpoint는 두 앱이 함께 쓰는 lib에 둡니다.
+                    선언한 endpoint만 있으므로, 엣지가 제공하는 endpoint는 두 앱이 함께 쓰는 lib에 두거나 한 앱을
+                    양쪽에서 돌립니다.
                   </span>
                 ),
               })}
@@ -816,6 +857,107 @@ export class RemoteEdge {
                       바이트를 <code>Any</code>로 보내지 마세요.
                     </strong>{" "}
                     <code>Any</code> 안의 <code>Buffer</code>는 약 3.6배 큰 JSON 숫자 배열이 됩니다.
+                  </span>
+                ),
+              })}
+            </li>
+          </ul>
+        </Docs.Description>
+      </Scroll.Slide>
+      <Divider />
+
+      <Scroll.Slide id="edge-site" title={l.trans({ en: "Run The Edge Site", ko: "엣지 사이트 띄우기" })}>
+        <Docs.Title>{l.trans({ en: "Run The Edge Site", ko: "엣지 사이트 띄우기" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "An edge site is usually one container that keeps its data in SQLite files. The cloud can run the same app as a cluster, from the same image.",
+              ko: "엣지 사이트는 보통 데이터를 SQLite 파일에 두는 컨테이너 하나입니다. 클라우드는 같은 이미지로 같은 앱을 클러스터로 돌릴 수 있습니다.",
+            })}
+          </div>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  Declare both database modes in <code>akan.config.ts</code>:
+                </span>
+              ),
+              ko: (
+                <span>
+                  <code>akan.config.ts</code>에 두 데이터베이스 모드를 모두 선언합니다:
+                </span>
+              ),
+            })}
+          </div>
+        </Docs.Description>
+        <Code.Snippet
+          className="w-full"
+          title="apps/myapp/akan.config.ts"
+          code={`import type { AppConfig } from "akanjs";
+
+const config: AppConfig = {
+  database: { modes: ["single", "cluster"] },
+};
+
+export default config;`}
+        />
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "Each deployment of the image then says where it runs and where its data lives:",
+              ko: "그다음 이미지를 배포할 때마다 어디서 도는지, 데이터가 어디 있는지를 정합니다:",
+            })}
+          </div>
+          <Docs.Table columns={siteColumns} rows={siteRows} />
+          <ul className={bulletList}>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>The operation mode and the database mode are independent.</strong> <code>edge</code> or{" "}
+                    <code>cloud</code> says where the server runs; <code>single</code> or <code>cluster</code> says
+                    where its data lives.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>운영 모드와 데이터베이스 모드는 서로 따로입니다.</strong> <code>edge</code>나{" "}
+                    <code>cloud</code>는 서버가 어디서 도는지를, <code>single</code>이나 <code>cluster</code>는 데이터가
+                    어디 있는지를 정합니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Only internals follow the operation mode.</strong> An internal declared as{" "}
+                    <code>{'cron("0 4 * * *", { operationMode: ["cloud"] })'}</code> never runs on the edge, while every
+                    endpoint is served on both sides.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>운영 모드를 따르는 것은 internal뿐입니다.</strong>{" "}
+                    <code>{'cron("0 4 * * *", { operationMode: ["cloud"] })'}</code>처럼 선언한 internal은 엣지에서 돌지
+                    않고, endpoint는 모두 양쪽에서 제공됩니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Every deployment names its mode.</strong> With two modes declared,{" "}
+                    <code>AKAN_DATABASE_MODE</code> is required; only a developer machine falls back to the first.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>배포마다 모드를 적습니다.</strong> 모드를 두 개 선언했다면 <code>AKAN_DATABASE_MODE</code>가
+                    꼭 필요하고, 첫 번째 모드로 넘어가는 것은 개발 기기뿐입니다.
                   </span>
                 ),
               })}

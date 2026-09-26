@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -6,6 +6,9 @@ import { Executor, WorkspaceExecutor } from "./executors";
 import { FileSys } from "./fileSys";
 import { formatSubspaceDiff, formatSubspacePushResults, formatSubspaceStatuses, Subspace } from "./subspace";
 import { SubspaceConfig } from "./subspaceConfig";
+
+//? Each case drives several real git clones and pushes; on a 4-core Windows VM that alone lands at 2-5s.
+setDefaultTimeout(20_000);
 
 const tempRoots: string[] = [];
 const originalEnv = { ...process.env };
@@ -96,7 +99,7 @@ const makeMirror = async (servedApp: string, privateApp: string, libName: string
   await write(path.join(wsRoot, "benchmarks/bench.ts"), "export {};\n");
   await write(
     path.join(wsRoot, "akan.subspace.ts"),
-    `export default { pushableBranches: ["develop"], exclude: ["benchmarks"], subspaces: [{ name: "acme", repo: "${bareRoot}", apps: ["${servedApp}"] }] };\n`,
+    `export default { pushableBranches: ["develop"], exclude: ["benchmarks"], subspaces: [{ name: "acme", repo: ${JSON.stringify(bareRoot)}, apps: ["${servedApp}"] }] };\n`,
   );
 
   await makeSys(wsRoot, "apps", servedApp, {

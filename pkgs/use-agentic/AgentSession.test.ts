@@ -1006,6 +1006,134 @@ describe("AgentSession compaction", () => {
     expect(requests.at(-1)?.messages[0]).toMatchObject({ text: "notes", summary: true });
   });
 
+  test("the window guard compacts on the provider's own count while the transcript estimate is still small", async () => {
+    const surface = new AgenticSurface();
+    surface.registerTool([], { name: "look", run: () => "ok" });
+    const { runner, requests } = scripted(
+      [
+        { type: "toolCall", id: "c0", name: "look", args: {} },
+        // Past 128k − 8k answer − 13k buffer: what a Korean transcript the four-character rule reads as small costs.
+        {
+          type: "done",
+          stop: "toolUse",
+          usage: { input: 110_000, output: 500 },
+          limits: { window: 128_000, output: 8_192 },
+        },
+      ],
+      [
+        { type: "text", delta: "done" },
+        { type: "done", stop: "end" },
+      ],
+    );
+    let summaries = 0;
+    const session = new AgentSession(surface, runner, {
+      compact: {
+        keep: 1,
+        summarize: async () => {
+          summaries += 1;
+          return "notes";
+        },
+      },
+    });
+    await session.send("짧은 질문");
+    expect(Compaction.tokensOf(requests[0].messages)).toBeLessThan(100);
+    expect(summaries).toBe(1);
+    expect(requests[1].messages[0]).toMatchObject({ text: "notes", summary: true });
+    // The count measured a prompt the summary has replaced, so the kept call no longer carries it — nor did the wire.
+    expect(session.messages.some((message) => message.role === "assistant" && message.toolCalls && message.usage)).toBe(
+      false,
+    );
+    expect(requests.every((request) => request.messages.every((message) => message.usage === undefined))).toBe(true);
+  });
+
+  test("a refusal for length compacts and asks again, and learns the window it named", async () => {
+    const surface = new AgenticSurface();
+    surface.registerTool([], { name: "look", run: () => "ok" });
+    const { runner, requests } = scripted(
+      [
+        { type: "toolCall", id: "c0", name: "look", args: {} },
+        { type: "done", stop: "toolUse" },
+      ],
+      [{ type: "error", message: "The prompt is too long", overflow: { limit: 50_000 } }],
+      [
+        { type: "text", delta: "answered" },
+        { type: "done", stop: "end" },
+      ],
+    );
+    const session = new AgentSession(surface, runner, {
+      compact: { at: Number.POSITIVE_INFINITY, keep: 1, summarize: async () => "notes" },
+    });
+    await session.send("look, then answer");
+    expect(requests).toHaveLength(3);
+    expect(requests[2].messages[0]).toMatchObject({ text: "notes", summary: true });
+    expect(session.messages.at(-1)).toMatchObject({ role: "assistant", text: "answered" });
+    expect(session.messages.some((message) => message.error)).toBe(false);
+    // `Infinity` leaves only the guard, which now sits under the window the refusal named.
+    expect(session.context.compactAt).toBe(50_000 - Compaction.answerTokens - Compaction.defaults.buffer);
+  });
+
+  test("a second refusal in the same send fails with the provider's own sentence", async () => {
+    const surface = new AgenticSurface();
+    surface.registerTool([], { name: "look", run: () => "ok" });
+    const { runner, requests } = scripted(
+      [
+        { type: "toolCall", id: "c0", name: "look", args: {} },
+        { type: "done", stop: "toolUse" },
+      ],
+      [{ type: "error", message: "The prompt is too long", overflow: {} }],
+    );
+    const session = new AgentSession(surface, runner, { compact: { keep: 1, summarize: async () => "notes" } });
+    await session.send("look, then answer");
+    expect(requests).toHaveLength(3);
+    expect(session.messages.at(-1)).toMatchObject({ role: "assistant", error: "The prompt is too long" });
+  });
+
+  test("a host that turned compaction off gets the refusal as the failure it is", async () => {
+    let summaries = 0;
+    const { runner, requests } = scripted([{ type: "error", message: "The prompt is too long", overflow: {} }]);
+    const session = new AgentSession(new AgenticSurface(), runner, {
+      compact: {
+        at: 0,
+        summarize: async () => {
+          summaries += 1;
+          return "notes";
+        },
+      },
+    });
+    await session.send("hi");
+    expect(requests).toHaveLength(1);
+    expect(summaries).toBe(0);
+    expect(session.messages.at(-1)).toMatchObject({ role: "assistant", error: "The prompt is too long" });
+  });
+
+  test("a screenshot does not compact itself out of the task it was attached to", async () => {
+    const surface = new AgenticSurface();
+    surface.registerTool([], { name: "look", run: () => "ok" });
+    const { runner, requests } = scripted(
+      ...Array.from({ length: 4 }, (_, at) => [
+        { type: "toolCall" as const, id: `c${at}`, name: "look", args: {} },
+        { type: "done" as const, stop: "toolUse" as const },
+      ]),
+      [
+        { type: "text", delta: "fixed" },
+        { type: "done", stop: "end" },
+      ],
+    );
+    let summaries = 0;
+    const session = new AgentSession(surface, runner, {
+      compact: {
+        summarize: async () => {
+          summaries += 1;
+          return "notes";
+        },
+      },
+    });
+    const shot = { name: "screen.png", mimeType: "image/png", data: "A".repeat(400_000) };
+    await session.send([{ role: "user", text: "fix the button on this screen", attachments: [shot] }]);
+    expect(summaries).toBe(0);
+    expect(requests.every((request) => request.messages[0].attachments?.[0]?.data === shot.data)).toBe(true);
+  });
+
   test("a tool result too large for the window is bounded before it enters the transcript", async () => {
     const surface = new AgenticSurface();
     // What a `readState` of one record with inlined bytes looks like: small on screen, megabytes on the wire.

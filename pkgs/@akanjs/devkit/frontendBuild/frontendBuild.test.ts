@@ -333,13 +333,14 @@ describe("RoutesManifestArtifactSerializer", () => {
 describe("HmrChangeClassifier", () => {
   test("classifies code, css, config, and ignored files", () => {
     const classifier = new HmrChangeClassifier();
-    expect(classifier.classify("/repo/apps/demo/page/_index.tsx")).toBe("code");
-    expect(classifier.classify("/repo/apps/demo/page/styles.css")).toBe("css");
-    expect(classifier.classify("/repo/apps/demo/akan.config.ts")).toBe("config");
-    expect(classifier.classify("/repo/apps/demo/.DS_Store")).toBe("ignore");
-    expect(classifier.classify(`/repo/apps/demo/node_modules/pkg/index.ts`)).toBe("ignore");
-    expect(classifier.classify(`/repo/apps/demo/.akan/generated/page.tsx`)).toBe("ignore");
-    expect(classifier.classify("/repo/apps/demo/public/logo.png")).toBe("ignore");
+    const app = path.resolve("/repo/apps/demo");
+    expect(classifier.classify(path.join(app, "page/_index.tsx"))).toBe("code");
+    expect(classifier.classify(path.join(app, "page/styles.css"))).toBe("css");
+    expect(classifier.classify(path.join(app, "akan.config.ts"))).toBe("config");
+    expect(classifier.classify(path.join(app, ".DS_Store"))).toBe("ignore");
+    expect(classifier.classify(path.join(app, "node_modules/pkg/index.ts"))).toBe("ignore");
+    expect(classifier.classify(path.join(app, ".akan/generated/page.tsx"))).toBe("ignore");
+    expect(classifier.classify(path.join(app, "public/logo.png"))).toBe("ignore");
   });
 });
 
@@ -394,16 +395,16 @@ describe("DevGeneratedIndexSync", () => {
 
 describe("DevChangePlanner", () => {
   test("classifies server, client, shared, and generated barrel changes", () => {
-    const root = "/repo";
+    const root = path.resolve("/repo");
     const planner = new DevChangePlanner({ workspaceRoot: root });
-    const generatedIndex = `${root}/libs/shared/common/index.ts`;
+    const generatedIndex = path.join(root, "libs/shared/common/index.ts");
     const plan = planner.plan({
       generation: 7,
       files: [
-        `${root}/libs/shared/lib/admin/admin.service.ts`,
-        `${root}/libs/shared/lib/admin/Admin.Template.tsx`,
-        `${root}/libs/shared/lib/admin/admin.constant.ts`,
-        `${root}/libs/shared/common/foo.ts`,
+        path.join(root, "libs/shared/lib/admin/admin.service.ts"),
+        path.join(root, "libs/shared/lib/admin/Admin.Template.tsx"),
+        path.join(root, "libs/shared/lib/admin/admin.constant.ts"),
+        path.join(root, "libs/shared/common/foo.ts"),
       ],
       kinds: ["code"],
       generatedFiles: [generatedIndex],
@@ -429,21 +430,22 @@ describe("DevChangePlanner", () => {
   });
 
   test("recycles builder for macro-backed dictionary and signal metadata changes", () => {
-    const root = "/repo";
+    const root = path.resolve("/repo");
     const planner = new DevChangePlanner({ workspaceRoot: root });
+    const dictionaryFile = path.join(root, "apps/demo/lib/_demo/demo.dictionary.ts");
     const dictionaryPlan = planner.plan({
       generation: 3,
-      files: [`${root}/apps/demo/lib/_demo/demo.dictionary.ts`],
+      files: [dictionaryFile],
       kinds: ["code"],
     });
     const signalPlan = planner.plan({
       generation: 4,
-      files: [`${root}/libs/shared/lib/admin/admin.signal.ts`],
+      files: [path.join(root, "libs/shared/lib/admin/admin.signal.ts")],
       kinds: ["code"],
     });
 
     expect(dictionaryPlan.actions).toEqual(["rebuild-client", "restart-backend", "restart-builder"]);
-    expect(dictionaryPlan.reasonByFile[`${root}/apps/demo/lib/_demo/demo.dictionary.ts`]).toContain("runtime-metadata");
+    expect(dictionaryPlan.reasonByFile[dictionaryFile]).toContain("runtime-metadata");
     expect(signalPlan.actions).toContain("restart-builder");
   });
 });

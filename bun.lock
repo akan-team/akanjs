@@ -34,6 +34,7 @@
         "@lexical/plain-text": "^0.51.0",
         "@libsql/client": "^0.17.3",
         "@marsidev/react-turnstile": "^1.5.2",
+        "@noble/ciphers": "^2.4.0",
         "@octokit/webhooks-types": "^7.6.1",
         "@react-google-maps/api": "^2.20.8",
         "@react-spring/web": "^10.1.0",
@@ -143,11 +144,12 @@
         "chance": "^1.1.13",
         "happy-dom": "20.11.2",
         "typescript": "^6.0.3",
+        "use-agentic": "workspace:*",
       },
     },
     "pkgs/@akanjs/cli": {
       "name": "@akanjs/cli",
-      "version": "3.0.0-beta.16",
+      "version": "3.0.0-beta.18",
       "bin": {
         "akan": "./index.ts",
       },
@@ -161,7 +163,7 @@
         "@inquirer/prompts": "^8.4.3",
         "@tailwindcss/node": "^4.3.0",
         "@trapezedev/project": "^7.1.4",
-        "akanjs": "3.0.0-beta.16",
+        "akanjs": "3.0.0-beta.18",
         "chalk": "^5.6.2",
         "commander": "^14.0.3",
         "dayjs": "^1.11.20",
@@ -183,7 +185,7 @@
     },
     "pkgs/@akanjs/devkit": {
       "name": "@akanjs/devkit",
-      "version": "3.0.0-beta.16",
+      "version": "3.0.0-beta.18",
       "dependencies": {
         "@earendil-works/chord": "0.86.1",
         "@earendil-works/pi-agent-core": "0.86.1",
@@ -194,7 +196,7 @@
         "@inquirer/prompts": "^8.4.3",
         "@tailwindcss/node": "^4.3.0",
         "@trapezedev/project": "^7.1.4",
-        "akanjs": "3.0.0-beta.16",
+        "akanjs": "3.0.0-beta.18",
         "chalk": "^5.6.2",
         "commander": "^14.0.3",
         "dayjs": "^1.11.20",
@@ -220,9 +222,10 @@
     },
     "pkgs/akanjs": {
       "name": "akanjs",
-      "version": "3.0.0-beta.16",
+      "version": "3.0.0-beta.18",
       "dependencies": {
         "@lexical/plain-text": "^0.51.0",
+        "@noble/ciphers": "^2.4.0",
         "dayjs": "^1.11.20",
         "immer": "^11.1.8",
         "lexical": "^0.51.0",
@@ -322,7 +325,7 @@
     },
     "pkgs/create-akan-workspace": {
       "name": "create-akan-workspace",
-      "version": "3.0.0-beta.16",
+      "version": "3.0.0-beta.18",
       "bin": {
         "create-akan-workspace": "index.js",
       },
@@ -923,6 +926,8 @@
     "@napi-rs/canvas-win32-x64-msvc": ["@napi-rs/canvas-win32-x64-msvc@0.1.100", "", { "os": "win32", "cpu": "x64" }, "sha512-MyT1j3mHC2+Lu4pBi9mKyMJhtP6U7k7EldY7sj/uS5gJA65gTXt8MefJQXLJo5d/vZbuWmfxzkEUNc/urV3pHA=="],
 
     "@neon-rs/load": ["@neon-rs/load@0.0.4", "", {}, "sha512-kTPhdZyTQxB+2wpiRcFWrDcejc4JI6tkPuS7UZCG4l6Zvc5kU/gGQ/ozvHTh1XR5tS+UlfAfGuPajjzQjCiHCw=="],
+
+    "@noble/ciphers": ["@noble/ciphers@2.4.0", "", {}, "sha512-AnjFn0Jv92laAkvMrghlFZq4qQCIN/4DxFV/eooqtC2YTjB7kBeLMS2T9KJX4Dn+ZVXLOwK0lSgqDtx9gvxtiw=="],
 
     "@nodable/entities": ["@nodable/entities@2.1.1", "", {}, "sha512-Pig3HxDIoMgjdEH8OCf/dkcTmLFjJRjWuq8jSnklu284/TKOPibSRERmOykiwmyXTtv61mP+44f3GMx0tLAyjg=="],
 

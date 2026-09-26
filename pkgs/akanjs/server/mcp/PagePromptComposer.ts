@@ -1,5 +1,6 @@
+import { PrimitiveRegistry } from "akanjs/base";
 import { Logger } from "akanjs/common";
-import { ConstantRegistry, type ConstantType, type MaskModel } from "akanjs/constant";
+import { agentRead, ConstantRegistry, type ConstantType, type MaskModel } from "akanjs/constant";
 import type { McpDocument } from "../../signal/mcp/McpDocument";
 import { Msg, type PromptMessage } from "../../signal/mcp/Msg";
 import type { PagePromptEntry, PagePromptRecord, PagePromptRun } from "../../signal/mcp/pagePrompt";
@@ -105,7 +106,10 @@ export class PagePromptComposer {
   #attachmentOf(record: PagePromptRecord): Attachment | null {
     const { key, args, returns } = record;
     const uri = this.#props.document.resourceUri(key, args) ?? PagePromptComposer.#callUri(key, args);
-    if (!returns.modelType) return { key, uri, value: record.value };
+    if (!returns.modelType) {
+      const primitive = PrimitiveRegistry.hasName(returns.refName) ? PrimitiveRegistry.get(returns.refName) : null;
+      return { key, uri, value: agentRead(primitive, record.value, returns.arrDepth ?? 0) };
+    }
     try {
       return {
         key,

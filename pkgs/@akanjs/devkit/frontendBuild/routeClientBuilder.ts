@@ -28,6 +28,15 @@ const SSR_CLIENT_ALIAS_EXTERNALS = [
 export interface BuildRouteClientOptions {
   app: App;
   seeds: string[];
+  /**
+   * Seeds of every route, so a build that has to run at all bundles the whole app's client entries.
+   *
+   * A page loads entries first built for other routes, and entries from two `Bun.build` runs each carry
+   * their own copy of every app and lib module — one page evaluated a lib's module-scope registration
+   * twice. The whole app costs about what one route did, since every entry already imports the client
+   * barrel, and content-hashed chunk names keep unchanged chunks at the URLs the browser already holds.
+   */
+  graphSeeds?: string[];
   artifact: BaseBuildArtifact;
   knownEntries?: Set<string>;
   routeId?: string;
@@ -39,13 +48,13 @@ export interface BuildRouteClientOptions {
    * `AllRoutesBuilder` passes every route's entries at once so they share one `Bun.build`. Chunk
    * splitting is scoped to a single invocation, so a dependency reachable from entries spread across
    * several invocations is emitted once per invocation — mermaid landed in `apps/akan` four times that
-   * way. Dev keeps one build per route and leaves this unset.
+   * way. Dev passes `graphSeeds` instead, for the same reason.
    */
   entries?: string[];
 }
 
 export interface BuildRouteClientResult {
-  /** Newly-emitted manifest rows keyed by `${absEntry}#${exportName}`. */
+  /** Newly-emitted manifest rows keyed by `${absEntry}#${exportName}`, for every entry this build bundled. */
   manifestDelta: ClientManifest;
   /** Newly-emitted ssrManifest rows keyed by entry URL. */
   ssrManifestDelta: SsrManifest;
@@ -53,7 +62,7 @@ export interface BuildRouteClientResult {
   newEntries: string[];
   /** Absolute paths of all `"use client"` leaves discovered from this route's seeds. */
   discoveredEntries?: string[];
-  /** Absolute source files included in the browser bundles for new entries. */
+  /** Absolute source files included in the browser bundles for this route's bundled entries. */
   clientDeps: string[];
   /** Absolute source files included in the browser bundle, grouped by original client entry. */
   clientDepsByEntry?: Record<string, string[]>;
@@ -67,6 +76,7 @@ interface BootstrapEntries {
 export class RouteClientBuilder {
   #app: App;
   #seeds: string[];
+  #graphSeeds?: string[];
   #knownEntries: Set<string>;
   #command: "build" | "start";
   #discovery?: ClientEntryDiscovery;
@@ -75,6 +85,7 @@ export class RouteClientBuilder {
   constructor(options: BuildRouteClientOptions) {
     this.#app = options.app;
     this.#seeds = options.seeds;
+    this.#graphSeeds = options.graphSeeds;
     this.#knownEntries = options.knownEntries ?? new Set<string>();
     this.#command = options.command ?? "start";
     this.#discovery = options.discovery;
@@ -82,17 +93,18 @@ export class RouteClientBuilder {
   }
 
   async build(): Promise<BuildRouteClientResult> {
-    const discovered =
-      this.#entries ??
-      (await (this.#discovery ?? (await GraphClientEntryDiscovery.create(this.#app))).discover(this.#seeds));
-    const entries = discovered.filter((e) => !this.#knownEntries.has(e));
-    if (entries.length === 0) return this.#emptyResult(discovered);
+    const discovered = this.#entries ?? (await (await this.#getDiscovery()).discover(this.#seeds));
+    if (discovered.every((e) => this.#knownEntries.has(e))) return this.#emptyResult(discovered);
+    const entries = this.#graphSeeds
+      ? [...new Set([...discovered, ...(await (await this.#getDiscovery()).discover(this.#graphSeeds))])].sort()
+      : discovered.filter((e) => !this.#knownEntries.has(e));
 
     const bootstrapEntries = await this.#createBootstrapEntries(entries);
     const browserBundle = await this.#buildBrowserBundle(bootstrapEntries);
     const ssrBundle = await this.#buildSsrBundle(bootstrapEntries);
 
     const acceptedEntries = new Set(entries);
+    const routeEntries = new Set(discovered);
     const manifestDelta: ClientManifest = {};
     const ssrModuleMap: SsrManifest["moduleMap"] = {};
     const clientDeps = new Set<string>();
@@ -122,17 +134,22 @@ export class RouteClientBuilder {
       for (const dep of browserBundle.entryDepsByAbsPath.get(buildEntry) ?? []) deps.add(path.resolve(dep));
       const sortedDeps = [...deps].sort();
       clientDepsByEntry[originalEntry] = sortedDeps;
-      for (const dep of sortedDeps) clientDeps.add(dep);
+      if (routeEntries.has(originalEntry)) for (const dep of sortedDeps) clientDeps.add(dep);
     }
 
     return {
       manifestDelta,
       ssrManifestDelta: { moduleLoading: null, moduleMap: ssrModuleMap },
-      newEntries: entries,
+      newEntries: entries.filter((e) => !this.#knownEntries.has(e)),
       discoveredEntries: discovered,
       clientDeps: [...clientDeps].sort(),
       clientDepsByEntry,
     };
+  }
+
+  async #getDiscovery(): Promise<ClientEntryDiscovery> {
+    this.#discovery ??= await GraphClientEntryDiscovery.create(this.#app);
+    return this.#discovery;
   }
 
   #emptyResult(discoveredEntries: string[] = []): BuildRouteClientResult {

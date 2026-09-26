@@ -99,7 +99,7 @@ From `AKAN_PUBLIC_ENV`.
 
 From `AKAN_PUBLIC_OPERATION_MODE`. It is `"local"` when `environment` is `"local"`.
 
-From `AKAN_DATABASE_MODE`. `undefined` when it is not set.
+From `AKAN_DATABASE_MODE`, else the mode the app declares. `undefined` in the browser.
 
 Whether this code is running on the server or in the browser.
 

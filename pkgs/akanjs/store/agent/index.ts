@@ -1,7 +1,7 @@
 // The two channels a long `st.tool` body reaches for, re-exported because an app may not import `use-agentic`
 // directly (`no-import-external-library`) and a tool that can neither report progress nor honour Stop is exactly
 // the tool this facet exists to make writable.
-export { AgentAbort, AgentProgress } from "use-agentic";
+export { AgentAbort, AgentProgress, type AgentProgressStep } from "use-agentic";
 export * from "./AgentBridge";
 export * from "./AgentContext";
 export * from "./AgentCursor";

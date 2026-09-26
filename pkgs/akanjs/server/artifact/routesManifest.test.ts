@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import path from "node:path";
 import { type RoutesManifest, RoutesManifestStore } from "./routesManifestStore";
 
 describe("routes manifest artifact paths", () => {
   test("serializes file-system paths relative to the artifact directory and restores them", () => {
-    const artifactDir = "/repo/dist/apps/akan/.akan/artifact";
+    const artifactDir = path.resolve("/repo/dist/apps/akan/.akan/artifact");
     const clientEntry = "apps/akan/ui/ProfileCard.tsx#default";
-    const knownEntry = "/repo/apps/akan/ui/ProfileCard.tsx";
-    const ssrEntry = "/repo/dist/apps/akan/.akan/artifact/client-ssr/ProfileCard-abc.js";
+    const knownEntry = path.resolve("/repo/apps/akan/ui/ProfileCard.tsx");
+    const ssrEntry = path.resolve("/repo/dist/apps/akan/.akan/artifact/client-ssr/ProfileCard-abc.js");
     const manifest: RoutesManifest = {
       routeIds: ["/profile"],
       clientManifest: {

@@ -11,6 +11,7 @@ import {
   getDefaultInjectRegistry,
   getDefaultLiveRegistry,
   getSolidConfig,
+  type LiveChange,
   SolidPubSub,
   SolidQueue,
   type WebsocketAdaptor,
@@ -1212,6 +1213,7 @@ describe("SignalResolver declaration contracts", () => {
     live.service.set("serverResolverTestItem", {
       listenPost: (_type: string, listener: (doc: unknown, type: string, previous?: unknown) => void) =>
         listeners.push(listener),
+      __databaseModel: { __store: makeTextStore() },
     } as never);
 
     const published: { roomId: string; data: unknown }[] = [];
@@ -1219,6 +1221,14 @@ describe("SignalResolver declaration contracts", () => {
     const liveKeys = SignalResolver.registerLiveSync(LiveTestSlice, { registry, live });
     expect(liveKeys).toEqual(["serverResolverTestItemLiveInCategory"]);
     expect(listeners).toHaveLength(3);
+
+    // With no room here yet, the write is still handed on: every other server may hold one.
+    await listeners[0]({ id: validId, category: "news", createdAt: dayjs(1000), updatedAt: dayjs(1000) }, "create");
+    expect(websocket.instance.calls.filter((call: { method: string }) => call.method === "publishChange")).toHaveLength(
+      1,
+    );
+    expect(published).toEqual([]);
+    websocket.instance.calls.length = 0;
 
     const resolved = SignalResolver.resolveEndpoint(SliceEndpoint, sliceEndpoint as never, {
       registry,
@@ -1237,6 +1247,23 @@ describe("SignalResolver declaration contracts", () => {
     expect(published).toHaveLength(1);
     expect(published[0].roomId).toBe("serverResolverTestItemLiveInCategory-news");
     expect(published[0].data).toMatchObject({ op: "enter", id: validId });
+    // The room's event goes to this server's sockets; the write itself is what crosses to the others.
+    expect(websocket.instance.calls.map((call: { method: string }) => call.method)).toEqual([
+      "joinRoom",
+      "publishChange",
+    ]);
+
+    // A write another server made is routed into the room held here.
+    published.length = 0;
+    const elsewhere = { ...inRoom, id: "5f5f5f5f5f5f5f5f5f5f5f5f", title: "Beta" };
+    websocket.receiveChange({ refName: "serverResolverTestItem", next: JSON.stringify(elsewhere) });
+    await Bun.sleep(0);
+    expect(published).toEqual([
+      {
+        roomId: "serverResolverTestItemLiveInCategory-news",
+        data: expect.objectContaining({ op: "enter", id: elsewhere.id }),
+      },
+    ]);
 
     // Editing the row out of this slice's own filter has to arrive as a removal from the list it left.
     published.length = 0;
@@ -1312,7 +1339,10 @@ describe("SignalResolver declaration contracts", () => {
     registry.adaptor.set(SolidPubSub, websocket.instance);
     const live = getDefaultLiveRegistry();
     live.sliceCls.set(GuardedLiveSlice.baseName, GuardedLiveSlice as never);
-    live.service.set("serverResolverTestItem", { listenPost: () => undefined } as never);
+    live.service.set("serverResolverTestItem", {
+      listenPost: () => undefined,
+      __databaseModel: { __store: makeTextStore() },
+    } as never);
     SignalResolver.registerLiveSync(GuardedLiveSlice, { registry, live });
     const resolved = SignalResolver.resolveEndpoint(SliceEndpoint, sliceEndpoint as never, {
       registry,
@@ -1353,7 +1383,10 @@ describe("SignalResolver declaration contracts", () => {
     registry.adaptor.set(SolidPubSub, websocket.instance);
     const live = getDefaultLiveRegistry();
     live.sliceCls.set(PausedLiveSlice.baseName, PausedLiveSlice as never);
-    live.service.set("serverResolverTestItem", { listenPost: () => undefined } as never);
+    live.service.set("serverResolverTestItem", {
+      listenPost: () => undefined,
+      __databaseModel: { __store: makeTextStore() },
+    } as never);
     SignalResolver.registerLiveSync(PausedLiveSlice, { registry, live });
     const resolved = SignalResolver.resolveEndpoint(SliceEndpoint, sliceEndpoint as never, {
       registry,
@@ -1511,10 +1544,6 @@ describe("SignalResolver declaration contracts", () => {
       createdAt: new Date(0),
       updatedAt: new Date(0),
       removedAt: null,
-    });
-    expect(websocket.instance.calls).toContainEqual({
-      method: "registerEndpoint",
-      args: ["roomFeed", ServerResolverTestLight, 0],
     });
     expect(websocket.instance.calls.at(-1)).toEqual({
       method: "publish",
@@ -1678,15 +1707,28 @@ describe("SignalResolver declaration contracts", () => {
   });
 });
 
+// A document store reduced to the text round trip live sync needs to hand a write to another server.
+const makeTextStore = () => ({
+  serialize: (doc: object) => JSON.stringify(doc),
+  deserialize: (text: string) => {
+    const doc = JSON.parse(text) as Record<string, unknown>;
+    return { ...doc, createdAt: dayjs(doc.createdAt as string), updatedAt: dayjs(doc.updatedAt as string) };
+  },
+});
+
 const makeFakeWebsocket = () => {
   class FakeWebsocket extends adapt("solidPubsub") {}
+  let changeHandler: ((change: LiveChange) => void) | null = null;
   const instance = Object.assign(new FakeWebsocket(), {
     calls: [] as { method: string; args: unknown[] }[],
-    registerEndpoint(key: string, returnRef: unknown, arrDepth: number) {
-      this.calls.push({ method: "registerEndpoint", args: [key, returnRef, arrDepth] });
-    },
     publish(roomId: string, data: unknown) {
       this.calls.push({ method: "publish", args: [roomId, data] });
+    },
+    publishChange(change: LiveChange) {
+      this.calls.push({ method: "publishChange", args: [change] });
+    },
+    onChange(handler: (change: LiveChange) => void) {
+      changeHandler = handler;
     },
     setEventHandler(handler: unknown) {
       this.calls.push({ method: "setEventHandler", args: [handler] });
@@ -1704,7 +1746,7 @@ const makeFakeWebsocket = () => {
       this.calls.push({ method: "unregisterSocket", args: [ws] });
     },
   }) as InstanceType<typeof FakeWebsocket> & WebsocketAdaptor & { calls: { method: string; args: unknown[] }[] };
-  return { cls: FakeWebsocket, instance };
+  return { cls: FakeWebsocket, instance, receiveChange: (change: LiveChange) => changeHandler?.(change) };
 };
 
 const makeWs = () => {

@@ -15,7 +15,7 @@ or {
   JsModuleSource() as $source where {
     $source <: within JsImport(),
     not $filename <: r".*\.(?:test|spec)\.tsx?",
-    $filename <: r".*(?:apps|libs)/[^/]+/lib/[^/]+/[^/]+\.(?:ts|tsx)",
+    $filename <: r".*(?:apps|libs)[/\\][^/\\]+[/\\]lib[/\\][^/\\]+[/\\][^/\\]+\.(?:ts|tsx)",
     $source <: r"\"\.\./\.\./.*\"",
     register_diagnostic(
       span = $source,
@@ -25,7 +25,7 @@ or {
   JsModuleSource() as $source where {
     $source <: within JsImport(),
     not $filename <: r".*\.(?:test|spec)\.tsx?",
-    $filename <: r".*/lib/.+\.tsx",
+    $filename <: r".*[/\\]lib[/\\].+\.tsx",
     $source <: r"\"\.\./.*\"",
     register_diagnostic(
       span = $source,

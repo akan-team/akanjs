@@ -90,14 +90,15 @@ with it. `conventions` carries the invariants — this is the full contract behi
 - **A slice endpoint never reaches "unspecified".** The resolver fills `latest` before the query is built, so a
   client asking for the score order has to name `relevance`; leaving `sort` off gets `latest`, not relevance.
 - Scope a search with `columns` (`q.search(text, { columns: ["title"] })`) and re-weight with `weights`, a tuple of
-  finite numbers positional over `["title", "desc", "tag", "filter"]`.
+  finite, non-negative numbers positional over `["title", "desc", "tag", "filter"]` — Postgres ranks by weight
+  class and has no reading for a negative one.
 
 
 ## Text Search Fields — the `text` role
 
 - A field joins the full-text index by declaring one of five roles: `field(String, { text: "title" })`, and likewise
   `"desc"`, `"tag"`, `"thumb"`, `"filter"`. Nothing else opts a field in, and there is no per-model switch.
-- Pick the role by what the value *is*, because `bm25` weights them positionally (`title` 10, `tag` 3, `desc` 1,
+- Pick the role by what the value *is*, because the rank weights them positionally (`title` 10, `tag` 3, `desc` 1,
   `filter` 0): `title` is the one line a human scans for, `desc` is prose, `tag` is a keyword list, `filter` is a
   scoping value (status, owner, role) that must be matchable but must never outrank a real title hit.
 - `thumb` is mirrored for rendering a hit and is **not** indexed — never expect it to match.
@@ -114,15 +115,24 @@ with it. `conventions` carries the invariants — this is the full contract behi
 - Declaring roles is all the wiring there is. Mirror rows are maintained by SQL triggers — not document hooks —
   because `updateOneByQuery` and friends fire no hooks, and most searchable-field mutations go through exactly that
   path.
-- Search runs on sqlite/libsql only. `q.search()` against Postgres throws, loudly, rather than returning every row.
+- Search runs in every database mode: fts5 on SQLite/libSQL, a weighted `tsvector` under a GIN index on Postgres.
+  For the same text the same documents match — punctuation splits words the way unicode61 does, and a phrase never
+  runs from one column into the next — but the order may differ, since Postgres ranks without document frequency.
+  Assert on the match set, never on a Postgres order the weights alone do not decide.
+- Postgres reads `AKAN_SEARCH_TOKENIZER` as `unicode61 [remove_diacritics 0|1|2]` (`simple`, with `unaccent` unless
+  `0`) or `trigram [case_sensitive 0|1]` (`pg_trgm`); any other spelling is refused. The extension is created when
+  the role may, otherwise a role that may runs `CREATE EXTENSION`. It indexes the first 20,000 characters of
+  `title`, `tag` and `filter` and 200,000 of `desc` — a tsvector refuses more than 1MB, and the refusal would fail
+  the model write. A database whose `LC_CTYPE` is `C` keeps non-ASCII case apart; use a UTF-8 ctype.
 - `AKAN_SEARCH_ENABLED=0` switches the index off process-wide; unset means on. It never deletes mirror data, and
   re-enabling reconciles every ref. **Give every process the same value** — a process cannot drop triggers for models
   it does not mount, so a mixed fleet leaves stale triggers behind.
 - The tokenizer is `AKAN_SEARCH_TOKENIZER` (or `database.search.tokenizer`, which wins), defaulting to
   `unicode61 remove_diacritics 2`. Changing it rebuilds the index from the mirror on the next boot — the model
-  tables are never re-read — so it is a safe knob, unlike a `text` role change, which re-reads every row. The
-  rebuild takes no cross-process claim, so a fleet restarted at once repeats it in every process; stagger the
-  restart when the mirror is large.
+  tables are never re-read — so it is a safe knob, unlike a `text` role change, which re-reads every row. The schema
+  is ensured in one write turn — a SQLite write transaction, a Postgres schema lock — so of a fleet restarted at
+  once the first rebuilds and the rest find it current. A SQLite process waits for that turn up to its
+  `busy_timeout`, so stagger the restart when the mirror is large.
 
 ## Cascade Remove — the `cascade` option
 

@@ -6,7 +6,7 @@ import { configureSignalTest } from "akanjs/test";
 
 import * as taskSpec from "./task.signal.spec";
 
-configureSignalTest({ databaseMode: "memory" });
+configureSignalTest({ storage: "memory" });
 
 describe("Task signal smoke", () => {
   test("creates a task in todo", async () => {

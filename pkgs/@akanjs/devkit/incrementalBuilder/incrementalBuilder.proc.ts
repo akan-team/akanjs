@@ -100,6 +100,7 @@ class IncrementalBuilder {
         app: this.#app,
         routeId: msg.routeId,
         seeds: msg.seeds,
+        graphSeeds: msg.graphSeeds,
         artifact: this.#artifact,
         knownEntries: new Set<string>(msg.knownEntries),
         discovery: this.#discovery,

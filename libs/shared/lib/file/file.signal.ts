@@ -6,7 +6,11 @@ import * as cnst from "../cnst";
 import type * as db from "../db";
 import * as srv from "../srv";
 
-export class FileInternal extends internal(srv.file, () => ({})) {}
+export class FileInternal extends internal(srv.file, ({ interval }) => ({
+  failStaleUploads: interval(5 * 60 * 1000).exec(async function () {
+    await this.fileService.failStaleUploads();
+  }),
+})) {}
 
 export class FileSlice extends slice(srv.file, { guards: { root: None, get: Public, cru: None } }, (init) => ({
   inIds: init({ guards: [Public] })

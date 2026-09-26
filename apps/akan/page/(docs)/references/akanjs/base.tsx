@@ -258,8 +258,8 @@ export default page().render(() => {
       key: "databaseMode",
       type: '"single" | "multiple" | "cluster" | undefined',
       desc: l.trans({
-        en: "From `AKAN_DATABASE_MODE`. `undefined` when it is not set.",
-        ko: "`AKAN_DATABASE_MODE`에서 읽습니다. 설정하지 않으면 `undefined`입니다.",
+        en: "From `AKAN_DATABASE_MODE`, else the mode the app declares. `undefined` in the browser.",
+        ko: "`AKAN_DATABASE_MODE`에서 읽고, 없으면 앱이 선언한 모드입니다. 브라우저에서는 `undefined`입니다.",
       }),
     },
     {

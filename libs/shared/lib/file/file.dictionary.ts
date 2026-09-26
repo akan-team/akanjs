@@ -57,6 +57,10 @@ export const dictionary = modelDictionary(["en", "ko"])
       "File is being uploaded, but not yet created",
       "파일이 업로드중이며 아직 생성되지 않았습니다",
     ]),
+    failed: t(["Failed", "실패"]).desc([
+      "The upload stopped before it finished; upload the file again",
+      "업로드가 끝나기 전에 멈췄습니다. 파일을 다시 올려야 합니다",
+    ]),
   }))
   .slice<FileSlice>((fn) => ({
     inIds: fn(["In Ids", "Id별 조회"])

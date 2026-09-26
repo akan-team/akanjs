@@ -1,4 +1,5 @@
 import { Crawler, FileManager, getImageAbstract, getImageSize, IpfsApi, type StorageApi } from "@libs/util/srvkit";
+import { dayjs } from "akanjs/base";
 import { sleep } from "akanjs/common";
 import { createDocumentId } from "akanjs/document";
 import type { LocalFile } from "akanjs/server";
@@ -16,6 +17,9 @@ export class FileService extends serve(db.file, ({ use, plug }) => ({
   override async _postRemove(file: db.File) {
     await this.storageApi.deleteData(file.url);
     return file;
+  }
+  async failStaleUploads() {
+    return await this.fileModel.failStaleUploads(dayjs().subtract(15, "minute"));
   }
   async generate(): Promise<db.File> {
     return (

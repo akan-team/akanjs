@@ -19,6 +19,8 @@ export class CodeAgentAsks {
   #question: { question: CodeAgentQuestion; deferred: Deferred<string> } | undefined;
   readonly #approvals = new Map<string, Deferred<boolean>>();
   #nextId = 0;
+  //* Ids outlive the process on a suspending session, so a resumed worker must not hand out `q1` a second time.
+  readonly #epoch = Date.now().toString(36);
 
   get pendingQuestionId() {
     return this.#question?.question.questionId;
@@ -35,7 +37,7 @@ export class CodeAgentAsks {
 
   nextId(prefix: string) {
     this.#nextId += 1;
-    return `${prefix}${this.#nextId}`;
+    return `${prefix}${this.#epoch}.${this.#nextId}`;
   }
 
   openQuestion(question: CodeAgentQuestion) {

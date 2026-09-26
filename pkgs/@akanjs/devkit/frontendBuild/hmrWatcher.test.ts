@@ -161,7 +161,7 @@ describe("HmrWatcher", () => {
     TEST_TIMEOUT_MS,
   );
 
-  test.skipIf(process.getuid?.() === 0)(
+  test.skipIf(process.getuid?.() === 0 || process.platform === "win32")(
     "warns at startup when part of the tree cannot be read",
     async () => {
       const root = await makeRoot();

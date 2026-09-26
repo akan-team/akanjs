@@ -914,7 +914,8 @@ describe("Agent.Chat", () => {
     // The value the model was handed is the one thing a transcript never showed, and it is what fills a window.
     expect(row?.querySelector("pre")?.textContent).toContain("alpha");
     expect(row?.textContent).toContain("base.agentTokens");
-    expect(container.querySelector("header")?.textContent).toContain("base.agentTokens");
+    // The header measures against the point it compacts at, which the default ceiling always gives it.
+    expect(container.querySelector("header")?.textContent).toContain("base.agentTokensOf");
     unmount();
   });
 
@@ -1938,6 +1939,15 @@ describe("Agent chat mention pills", () => {
     resolve: async () => "a dancer in a red coat",
   };
   const editorOf = (container: HTMLElement) => container.querySelector<HTMLElement>('[role="textbox"]');
+  const rowOf = (container: HTMLElement, label: string) =>
+    [...container.querySelectorAll("button")].find((button) => button.textContent?.includes(label));
+  // The editor is a lazy chunk, and loading it is a module read that no fixed wait is sure to outlast.
+  const untilDrawn = async (done: () => boolean) => {
+    for (let i = 0; i < 300 && !done(); i += 1)
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+  };
 
   // The whole point of the editor: the draft still carries the token — it is what puts the reference on the
   // message — and the person sees the name they picked.
@@ -1949,11 +1959,9 @@ describe("Agent chat mention pills", () => {
       </lib.AgentProvider>,
     );
     try {
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 250));
-      });
+      await untilDrawn(() => !!editorOf(container)?.textContent && !!rowOf(container, "Karina"));
       expect(editorOf(container)?.textContent).toBe("compare @Kar");
-      const row = [...container.querySelectorAll("button")].find((button) => button.textContent?.includes("Karina"));
+      const row = rowOf(container, "Karina");
       expect(row).toBeTruthy();
       await act(async () => {
         row?.click();
@@ -1980,9 +1988,7 @@ describe("Agent chat mention pills", () => {
       </lib.AgentProvider>,
     );
     try {
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
+      await untilDrawn(() => !!editorOf(container)?.textContent);
       expect(editorOf(container)?.textContent).toBe("fix Cut 3 body please");
     } finally {
       unmount();

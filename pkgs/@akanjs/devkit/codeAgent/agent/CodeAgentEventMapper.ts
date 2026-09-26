@@ -79,7 +79,15 @@ export class CodeAgentEventMapper {
       case "compaction_start":
         return [{ type: "compaction", phase: "start", reason: event.reason }];
       case "compaction_end":
-        return [{ type: "compaction", phase: "end", reason: event.reason }];
+        return [
+          {
+            type: "compaction",
+            phase: "end",
+            reason: event.reason,
+            ...(event.errorMessage ? { error: event.errorMessage } : {}),
+            ...(event.aborted ? { aborted: true } : {}),
+          },
+        ];
       case "auto_retry_start":
         return [
           {

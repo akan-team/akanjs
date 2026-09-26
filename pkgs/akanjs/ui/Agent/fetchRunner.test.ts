@@ -111,6 +111,27 @@ describe("fetchRunner", () => {
     ]);
   });
 
+  test("a translated overflow keeps the flag the session compacts on", async () => {
+    Translator.seed("en", {
+      agent: { error: { contextOverflow: { t: "No longer fits at {provider}." } } },
+    });
+    Translator.setActiveLocale("en");
+    handlerHolder.runAgentTurn = () => undefined;
+    const fetcher = (async () =>
+      new Response(
+        `data: ${JSON.stringify({
+          type: "error",
+          message: "agent.error.contextOverflow",
+          data: { provider: "api.deepseek.com", limit: 65_536 },
+          overflow: { limit: 65_536 },
+        })}\n\n`,
+        { headers: { "content-type": "text/event-stream" } },
+      )) as unknown as typeof fetch;
+    expect(await collect(request(), fetcher)).toEqual([
+      { type: "error", message: "No longer fits at api.deepseek.com.", overflow: { limit: 65_536 } },
+    ]);
+  });
+
   test("a key with no entry is left as it is rather than becoming a worse sentence", async () => {
     Translator.setActiveLocale("ko");
     handlerHolder.runAgentTurn = () => undefined;

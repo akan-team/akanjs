@@ -428,7 +428,10 @@ export class RscWorker {
     maxAttempts: number | undefined;
   };
 
-  constructor(artifact: BaseBuildArtifact) {
+  readonly #failBeforeReady: boolean;
+
+  constructor(artifact: BaseBuildArtifact, { failBeforeReady = false }: { failBeforeReady?: boolean } = {}) {
+    this.#failBeforeReady = failBeforeReady;
     this.#clientManifest = artifact.rscRuntimeClientManifest ?? {};
     this.#pagesBundlePath = artifact.pagesBundlePath;
     this.#pagesBundleBuildId = artifact.pagesBundleBuildId;
@@ -949,6 +952,11 @@ export class RscWorker {
 
     if (this.#killed) {
       this.#status = "stopped";
+      return;
+    }
+    if (this.#failBeforeReady && !this.#readyResolved) {
+      this.#status = "stopped";
+      this.#rejectReady(err);
       return;
     }
 

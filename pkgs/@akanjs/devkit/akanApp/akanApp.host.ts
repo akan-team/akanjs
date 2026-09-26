@@ -621,28 +621,37 @@ export class AkanAppHost {
     );
   }
   /**
-   * Another process's RSS, read from the OS rather than asked of the process. `/proc` where it exists,
-   * `ps` otherwise (macOS has no `/proc`). Null when it cannot be read, which callers treat as
-   * "no new information" rather than as zero.
+   * Another process's RSS, read from the OS rather than asked of the process. `tasklist` on Windows, `/proc`
+   * where it exists, `ps` otherwise (macOS has no `/proc`). Null when it cannot be read, which callers treat
+   * as "no new information" rather than as zero.
    */
   static async readProcessRssBytes(pid: number): Promise<number | null> {
+    if (process.platform === "win32")
+      return await AkanAppHost.#readRssKbVia(
+        ["tasklist", "/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"],
+        AkanAppHost.#tasklistRssKb,
+      );
     const status = await Bun.file(`/proc/${pid}/status`)
       .text()
       .catch(() => null);
     const vmRssKb = status === null ? null : /VmRSS:\s+(\d+) kB/.exec(status)?.[1];
     if (vmRssKb) return Number(vmRssKb) * 1024;
-    return await AkanAppHost.#readRssViaPs(pid);
+    return await AkanAppHost.#readRssKbVia(["ps", "-o", "rss=", "-p", String(pid)], (output) => Number(output.trim()));
   }
   /**
-   * `ps`, bounded. An absent `ps` is already handled — it answers `null`, which callers read as "no new
-   * information" — but a `ps` that never answers was not: the only caller awaits it after a 20s settle,
+   * `ps` or `tasklist`, bounded. An absent tool is already handled — it answers `null`, which callers read as
+   * "no new information" — but a `ps` that never answers was not: the only caller awaits it after a 20s settle,
    * so the recycle it was about to commit simply never happened, silently. The harness has hit exactly
    * this hang while shelling out to `ps` under load.
    */
-  static async #readRssViaPs(pid: number, timeoutMs = PS_RSS_TIMEOUT_MS): Promise<number | null> {
+  static async #readRssKbVia(
+    command: string[],
+    parseKb: (output: string) => number,
+    timeoutMs = PS_RSS_TIMEOUT_MS,
+  ): Promise<number | null> {
     let proc: Bun.Subprocess<"ignore", "pipe", "ignore">;
     try {
-      proc = Bun.spawn(["ps", "-o", "rss=", "-p", String(pid)], { stdio: ["ignore", "pipe", "ignore"] });
+      proc = Bun.spawn(command, { stdio: ["ignore", "pipe", "ignore"] });
     } catch {
       return null;
     }
@@ -650,13 +659,18 @@ export class AkanAppHost {
     try {
       const output = await new Response(proc.stdout).text();
       await proc.exited;
-      const rssKb = Number(output.trim());
+      const rssKb = parseKb(output);
       return Number.isFinite(rssKb) && rssKb > 0 ? rssKb * 1024 : null;
     } catch {
       return null;
     } finally {
       clearTimeout(killer);
     }
+  }
+  /** `Mem Usage` is the working set — what `process.memoryUsage.rss()` reports on Windows — in locale-grouped KB. */
+  static #tasklistRssKb(output: string): number {
+    const memUsage = /"([^"]*)"\s*$/m.exec(output)?.[1];
+    return memUsage ? Number(memUsage.replace(/\D/g, "")) : Number.NaN;
   }
   #cancelRssRecycle(): void {
     this.#rssRecycleReason = null;

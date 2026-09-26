@@ -1,4 +1,5 @@
 import type { LogRecord } from "akanjs/common";
+import type { LiveChange } from "./predefinedAdaptor/websocket.adaptor";
 
 export type AkanChildRole = "all" | "federation" | "batch";
 
@@ -9,6 +10,7 @@ export type AkanUpstream = { type: "unix"; socketPath: string } | { type: "tcp";
 export interface AkanJobOptions {
   delay?: number;
   attempts?: number;
+  /** Smaller runs sooner, and a job with none runs before every prioritized one — bullmq's reading. */
   priority?: number;
   backoff?: number | { type?: string; delay?: number };
   removeOnComplete?: boolean | number;
@@ -150,6 +152,7 @@ export type AkanIpcMessage =
   | { type: "pubsub.unsubscribe"; roomId: string; socketId?: string; pid?: number }
   | { type: "pubsub.snapshot.request" }
   | { type: "pubsub.snapshot"; rooms: string[]; pid?: number }
+  | { type: "live.change"; change: LiveChange; origin?: string }
   | { type: "queue.enqueued"; queue: string; name: string; jobId: string }
   | { type: "queue.wake"; queue?: string; name?: string }
   | { type: "health.ping"; nonce: string; sentAt: number }

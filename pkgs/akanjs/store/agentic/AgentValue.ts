@@ -11,7 +11,7 @@ import {
   type PrimitiveScalar,
   type UnCls,
 } from "akanjs/base";
-import { type ConstantModelRef, type MaskModel, mask, maskFieldsOf } from "akanjs/constant";
+import { agentRead, type ConstantModelRef, type MaskModel, mask, maskFieldsOf } from "akanjs/constant";
 
 // biome-ignore lint/suspicious/noExplicitAny: enum values are arbitrary string/number literal unions.
 type AgentSingleType = typeof PrimitiveScalar | EnumInstance<string, any> | ConstantModelRef;
@@ -45,15 +45,15 @@ export type AgentValueOf<T> = T extends readonly (infer F)[]
               ? V
               : unknown;
 
-type ValueKind = "any" | "date" | "scalar" | "enum" | "model";
+type ValueKind = "any" | "date" | "scalar" | "agent" | "enum" | "model";
 
 /**
  * Turns a declared type into what an agent may read of a value of that type.
  *
  * The type is the whole declaration: it typechecks what the component hands over, and it decides how the value is
- * rendered — a model class masks by that model, a `Date` leaves as an ISO string, a scalar passes. `Any` is the
- * escape hatch and passes the value untouched, so a payload nobody modeled stays publishable and the caller owns
- * whether it is JSON and whether it is worth its tokens.
+ * rendered — a model class masks by that model, a `Date` leaves as an ISO string, a primitive declaring an agent
+ * face is read into it, a scalar passes. `Any` is the escape hatch and passes the value untouched, so a payload
+ * nobody modeled stays publishable and the caller owns whether it is JSON and whether it is worth its tokens.
  */
 export class AgentValue {
   static serialize(type: AgentFieldType, value: unknown): unknown {
@@ -83,6 +83,8 @@ export class AgentValue {
         const parsed = dayjs(value as string | number | Date);
         return parsed.isValid() ? parsed.toISOString() : null;
       }
+      case "agent":
+        return agentRead(type, value);
       case "model":
         return mask(type as MaskModel, value);
       default:
@@ -92,6 +94,7 @@ export class AgentValue {
 
   static #kindOf(type: AgentSingleType): ValueKind {
     if (isEnum(type as Cls)) return "enum";
+    if (PrimitiveRegistry.agentOf(type)) return "agent";
     if (PrimitiveRegistry.has(type as unknown as Cls)) {
       const refName = PrimitiveRegistry.getName(type as typeof PrimitiveScalar);
       switch (refName) {
@@ -106,7 +109,7 @@ export class AgentValue {
         case "Boolean":
           return "scalar";
         default:
-          throw new Error(`the scalar ${refName}, which an agent cannot read.`);
+          throw new Error(`the scalar ${refName}, which an agent cannot read: it declares no \`agent\` face.`);
       }
     }
     if (maskFieldsOf(type as MaskModel)) return "model";

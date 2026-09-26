@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AkanPlugin } from "akanjs";
-import { normalizeRoutePrefix } from "akanjs/base";
+import { DatabaseModes, normalizeRoutePrefix } from "akanjs/base";
 import { type AkanI18nConfig, resolveAkanI18nConfig } from "akanjs/common";
 import type { AkanImageConfig } from "akanjs/server";
 import type { App, Lib } from "../commandDecorators";
@@ -11,6 +11,7 @@ import type { BaseDevEnv, PackageJson } from "../types";
 import {
   type AkanApiConfig,
   type AkanAssetsConfig,
+  type AkanDatabaseConfig,
   type AkanMobileConfig,
   type AkanMobileTargetConfig,
   type AkanRouteConfig,
@@ -93,16 +94,6 @@ const MOBILE_APP_CAPACITOR_PLUGINS = [
   "@capacitor/push-notifications",
   "capacitor-plugin-safe-area",
 ] as const;
-const DATABASE_MODE_RUNTIME_PACKAGES = {
-  single: [],
-  multiple: ["@libsql/client", "bullmq", "ioredis", "protobufjs"],
-  cluster: ["bullmq", "ioredis", "postgres", "protobufjs"],
-} satisfies Record<DatabaseMode, readonly string[]>;
-const AKAN_RUNTIME_PACKAGES = new Set<string>([
-  ...SSR_RUNTIME_PACKAGES,
-  ...MOBILE_RUNTIME_PACKAGES,
-  ...Object.values(DATABASE_MODE_RUNTIME_PACKAGES).flat(),
-]);
 const DEFAULT_AKAN_IMAGE_CONFIG: AkanImageConfig = {
   deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
   imageSizes: [32, 48, 64, 96, 128, 256, 384],
@@ -211,7 +202,7 @@ export class AkanAppConfig implements AppConfigResult {
   docker: DockerConfig;
   /** The Dockerfile `akan build` writes: the declared string verbatim, or one assembled from the parts. */
   dockerfile: string;
-  defaultDatabaseMode: DatabaseMode;
+  database: AkanDatabaseConfig;
   web: AkanWebConfig;
   externalLibs: string[];
   barrelImports: string[];
@@ -250,7 +241,7 @@ export class AkanAppConfig implements AppConfigResult {
     this.baseDevEnv = baseDevEnv;
     this.plugins = plugins;
     this.#applyRoutes(config?.routes);
-    this.defaultDatabaseMode = config?.defaultDatabaseMode ?? "single";
+    this.database = AkanAppConfig.#database(app, config);
     this.externalLibs = [...new Set([...(config?.externalLibs ?? []), ...libContributions.externalLibs])];
     this.barrelImports = [
       ...DEFAULT_BARREL_IMPORTS,
@@ -458,6 +449,7 @@ ENV AKAN_PUBLIC_LOCALES=${this.i18n.locales.join(",")}
 ENV AKAN_PUBLIC_API_PREFIX=${this.api.prefix}
 ENV AKAN_PUBLIC_WS_PREFIX=${this.api.websocketPrefix}
 ENV AKAN_PUBLIC_OPERATION_MODE=cloud
+ENV AKAN_DATABASE_MODES=${this.database.modes.join(",")}
 ENV AKAN_LOG_TO_FILE=0
 ${webEnvLines}
 CMD [${command.map((c) => `"${c}"`).join(",")}]`;
@@ -526,13 +518,30 @@ CMD [${command.map((c) => `"${c}"`).join(",")}]`;
     return akanPackageJson.dependencies?.[lib] ?? akanPackageJson.peerDependencies?.[lib];
   }
   #getProductionRuntimePackages() {
-    return [...this.externalLibs, ...SSR_RUNTIME_PACKAGES, ...this.getDatabaseModeRuntimePackages()];
+    return [
+      ...this.externalLibs,
+      ...SSR_RUNTIME_PACKAGES,
+      ...this.database.modes.flatMap((mode) => this.getDatabaseModeRuntimePackages(mode)),
+    ];
   }
-  getDatabaseModeRuntimePackages(databaseMode: DatabaseMode = this.defaultDatabaseMode) {
-    return [...DATABASE_MODE_RUNTIME_PACKAGES[databaseMode]];
+  getDatabaseModeRuntimePackages(databaseMode: DatabaseMode) {
+    return [...DatabaseModes.drivers[databaseMode]];
   }
-  getMissingDatabaseModeDependencySpecs(databaseMode: DatabaseMode = this.defaultDatabaseMode) {
+  getMissingDatabaseModeDependencySpecs(databaseMode: DatabaseMode) {
     return this.#getMissingDependencySpecs(this.getDatabaseModeRuntimePackages(databaseMode));
+  }
+  /** The mode a CLI command runs this app in: the shell's `AKAN_DATABASE_MODE` if the app declares it, else the first. */
+  resolveDatabaseMode() {
+    return DatabaseModes.resolve({
+      requested: process.env.AKAN_DATABASE_MODE,
+      declared: this.database.modes.join(","),
+      local: true,
+    });
+  }
+  static #database(app: App, config: AppConfigDeclaration): AkanDatabaseConfig {
+    const declared = config?.database?.modes?.filter((mode): mode is DatabaseMode => !!mode);
+    const modes = declared?.length ? declared : ["single"];
+    return { modes: DatabaseModes.parseList(modes.join(","), `database.modes in apps/${app.name}/akan.config.ts`) };
   }
   getMobileRuntimePackages() {
     // The app Capacitor plugins are installed at the workspace root too, so bun can resolve the
@@ -557,6 +566,9 @@ CMD [${command.map((c) => `"${c}"`).join(",")}]`;
         if (!version) throw new Error(`Dependency ${lib} not found in package.json`);
         return `${lib}@${version}`;
       });
+  }
+  get akanVersion() {
+    return getAkanPackageJson().version;
   }
   getProductionPackageJson(data: Partial<PackageJson> = {}): PackageJson {
     return {

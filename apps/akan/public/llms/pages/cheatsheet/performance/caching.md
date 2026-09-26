@@ -58,17 +58,29 @@ SQLite file
 
 `local/apps/<app>/` in dev, `sqlite/` in production. `AKAN_SOLID_DB_PATH` sets the file.
 
-`REDIS_URI` if set; otherwise localhost when local and the in-cluster `redis-svc` in cloud.
+`REDIS_URI`, required once deployed. A developer machine uses localhost.
 
-Stores a string, number or Buffer. Without `expireAt` it stays until you delete it.
+Stores text, a number, a boolean, bytes or an object. Without `expireAt` it stays until deleted.
 
-Reads the value back. A missing or expired key reads empty.
+Reads the value back as stored. A missing or expired key reads `undefined`.
 
 Removes the value right away.
 
-One shared value, read and written through three async methods.
+Reads and removes in one step: of two callers racing for a one-time value, one gets it.
 
-A shared async key–value map.
+Writes only if nothing live is stored, and answers whether this call wrote.
+
+Adds `by` (1 by default) and answers the total; the expiry applies if this call creates it.
+
+A hash under one key: each field is written, read and removed alone, and expires on its own.
+
+Lists the fields, lists them with their values, or empties the hash.
+
+The one-step `getDel`, `setIfAbsent` and `incr`, for a single field.
+
+One shared value behind async methods; `getDel`, `setIfAbsent` and `incr` each act in one step.
+
+A shared async key–value map. `getOrInsert` keeps the first writer's value, across replicas too.
 
 A plain field on this process, read and assigned directly; on a `Map`, a real `Map`.
 
@@ -114,7 +126,7 @@ The Options Object
 
 The endpoint `cache` option next to `timeout` and `guards`.
 
-The setting that picks SQLite or Redis for the cache.
+The setting that declares the database modes, and with them SQLite or Redis for the cache.
 
 Server Caching
 
@@ -159,16 +171,13 @@ Read next
 ```ts
 export class ArticleModel extends into(Article, ArticleFilter, cnst.article, () => ({})) {
   async savePreviewToken(articleId: string, token: string) {
-    await this.articleCache.set("previewTokens", articleId, token, {
+    await this.articleCache.hset("previewTokens", articleId, token, true, {
       expireAt: dayjs().add(10, "minute"),
     });
   }
 
   async consumePreviewToken(articleId: string, token: string) {
-    const saved = await this.articleCache.get<string>("previewTokens", articleId);
-    if (saved !== token) return false;
-    await this.articleCache.delete("previewTokens", articleId);
-    return true;
+    return !!(await this.articleCache.hgetDel("previewTokens", articleId, token));
   }
 }
 ```

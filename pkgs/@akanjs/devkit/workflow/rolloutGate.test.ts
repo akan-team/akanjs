@@ -24,7 +24,7 @@ const workspacePackageManifestPaths = async () => {
   for (const workspace of workspaces) {
     const glob = new Bun.Glob(`${workspace}/package.json`);
     for await (const relativePath of glob.scan({ cwd: workspaceRoot, onlyFiles: true })) {
-      paths.add(relativePath);
+      paths.add(relativePath.split(path.sep).join("/"));
     }
   }
   return [...paths].sort();

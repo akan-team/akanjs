@@ -1304,14 +1304,14 @@ export class BannerObject extends via(BannerInput, (field) => ({
               {l.trans({
                 en: (
                   <>
-                    <strong>Search needs SQLite or libsql.</strong> <code>q.search()</code> on Postgres throws rather
-                    than quietly returning every row.
+                    <strong>Search works in every database mode.</strong> For the same text, SQLite, libSQL and Postgres
+                    match the same documents; only the order can differ on Postgres.
                   </>
                 ),
                 ko: (
                   <>
-                    <strong>검색은 SQLite나 libsql에서만 됩니다.</strong> Postgres에서 <code>q.search()</code>를 부르면
-                    모든 행을 조용히 돌려주는 대신 예외를 던집니다.
+                    <strong>검색은 모든 데이터베이스 모드에서 동작합니다.</strong> 같은 텍스트라면 SQLite, libSQL,
+                    Postgres가 같은 도큐먼트를 찾고, Postgres에서는 순서만 다를 수 있습니다.
                   </>
                 ),
               })}

@@ -112,6 +112,9 @@ const asBiomeReport = (candidate: string): BiomeReport | null => {
 const BIOME_CONFIG_FILES = ["biome.json", "biome.jsonc"] as const;
 
 export class Linter {
+  //? Bun links a package bin as `<name>.exe` (plus a `.bunx` stub) on Windows, and a bare `<name>` elsewhere.
+  static readonly biomeBinName = process.platform === "win32" ? "biome.exe" : "biome";
+
   lintRoot: string;
   configPath: string;
   #biomeBin: string;
@@ -119,7 +122,7 @@ export class Linter {
   constructor(cwdPath: string) {
     this.lintRoot = this.#findBiomeRootPath(cwdPath);
     this.configPath = Linter.#configPathIn(this.lintRoot) ?? path.join(this.lintRoot, "biome.json");
-    const localBiomeBin = path.join(this.lintRoot, "node_modules/.bin/biome");
+    const localBiomeBin = path.join(this.lintRoot, "node_modules", ".bin", Linter.biomeBinName);
     this.#biomeBin = existsSync(localBiomeBin) ? localBiomeBin : "biome";
   }
 

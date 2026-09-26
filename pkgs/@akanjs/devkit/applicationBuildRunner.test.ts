@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { AKAN_BACKEND_MINIFY, AKAN_OPTIONAL_BACKEND_EXTERNALS } from "./applicationBuildRunner";
 
 describe("ApplicationBuildRunner", () => {
@@ -16,8 +18,8 @@ describe("ApplicationBuildRunner", () => {
   });
 
   test("a bundler that mangles identifiers loses the class name a Logger reads", async () => {
-    const dir = `${process.env.TMPDIR ?? "/tmp"}/akan-minify-${Bun.randomUUIDv7()}`;
-    const entry = `${dir}/entry.ts`;
+    const dir = path.join(os.tmpdir(), `akan-minify-${Bun.randomUUIDv7()}`);
+    const entry = path.join(dir, "entry.ts");
     await Bun.write(
       entry,
       `const serve = () => class Service { readonly name = this.constructor.name; };
@@ -26,7 +28,7 @@ console.info(new SampleService().name);
 `,
     );
     const build = async (minify: Bun.BuildConfig["minify"]) => {
-      const result = await Bun.build({ entrypoints: [entry], target: "bun", minify, outdir: `${dir}/out` });
+      const result = await Bun.build({ entrypoints: [entry], target: "bun", minify, outdir: path.join(dir, "out") });
       expect(result.success).toBe(true);
       const proc = Bun.spawn([process.execPath, result.outputs[0].path], { stdout: "pipe" });
       return (await new Response(proc.stdout).text()).trim();

@@ -5,7 +5,10 @@ import type { DefaultOf } from "./types";
 export interface DefaultPlan {
   /** Fields whose default is a value that can be shared: a primitive, `null`, or the field's own literal. */
   shared: Record<string, unknown>;
-  /** Fields that have to be produced per call — a thunk, a fresh array, or a nested scalar record. */
+  /**
+   * Fields that have to be produced per call — a thunk, a fresh array, a nested scalar record, or a primitive's
+   * structured default.
+   */
   perCall: Map<string, () => unknown>;
 }
 
@@ -56,7 +59,23 @@ const buildPlan = (fieldObj: FieldObject): DefaultPlan => {
     else if (field.isClass) {
       if (field.isScalar) perCall.set(key, () => getDefault(field.modelRef[FIELD_META]));
       else shared[key] = null;
-    } else shared[key] = (field.modelRef as unknown as typeof PrimitiveScalar)[DEFAULT_VALUE];
+    } else {
+      const primitiveDefault = (field.modelRef as unknown as typeof PrimitiveScalar)[DEFAULT_VALUE];
+      if (isStructured(primitiveDefault)) perCall.set(key, () => structuredClone(primitiveDefault));
+      else shared[key] = primitiveDefault;
+    }
   }
   return { shared, perCall };
 };
+
+const isStructured = (value: unknown): value is object =>
+  typeof value === "object" &&
+  value !== null &&
+  (Array.isArray(value) || Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+
+/**
+ * A primitive's value is never an identity, so a plain object or array — an empty editor document as a primitive's
+ * `DEFAULT_VALUE` — is copied for each use, for the reason an array field default is. An instance (a `Dayjs`, a
+ * `Uint8Array`) is handed back as is: its own API is how it changes, and a structured copy would drop its prototype.
+ */
+export const freshPrimitiveValue = <T>(value: T): T => (isStructured(value) ? structuredClone(value) : value);

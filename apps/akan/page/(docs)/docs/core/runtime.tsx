@@ -257,6 +257,209 @@ AKAN_PUBLIC_LOG_LEVEL=info`}
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
+      <Scroll.Slide id="env-database" title={l.trans({ en: "Database Variables", ko: "데이터베이스 환경변수" })}>
+        <Docs.Title>{l.trans({ en: "Database Variables", ko: "데이터베이스 환경변수" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  Which database mode a deployment runs and where its data lives are the deployment's to say. These
+                  variables win over the same values in <code>env.server.ts</code>, so one image can serve several
+                  deployments:
+                </span>
+              ),
+              ko: (
+                <span>
+                  배포가 어떤 데이터베이스 모드로 돌고 데이터가 어디에 있는지는 배포가 정합니다. 아래 변수는{" "}
+                  <code>env.server.ts</code>에 적은 같은 값보다 우선하므로, 이미지 하나로 여러 배포를 할 수 있습니다:
+                </span>
+              ),
+            })}
+          </div>
+          <Docs.OptionTable
+            items={[
+              {
+                key: "AKAN_DATABASE_MODE",
+                type: "single | multiple | cluster",
+                default: l.trans({ en: "the first declared mode", ko: "첫 번째로 선언한 모드" }),
+                desc: l.trans({
+                  en: "One of `database.modes`; a deployment of a build that declares several must set it.",
+                  ko: "`database.modes` 중 하나이며, 여러 모드를 선언한 빌드의 배포는 반드시 설정합니다.",
+                }),
+              },
+              {
+                key: "AKAN_SQLITE_DIR",
+                type: "string",
+                default: l.trans({ en: "/workspace/sqlite in the image", ko: "이미지에서는 /workspace/sqlite" }),
+                desc: l.trans({
+                  en: "The folder for any SQLite file no path names: the database, and `single`'s cache and queue file.",
+                  ko: "경로를 따로 정하지 않은 SQLite 파일을 둘 디렉터리이며, 데이터베이스 파일과 `single`의 캐시·큐 파일이 여기에 놓입니다.",
+                }),
+              },
+              {
+                key: "SQLITE_DATABASE_PATH",
+                type: "string",
+                desc: l.trans({
+                  en: "Moves the database file alone, in `single` and `multiple`; it wins over `AKAN_SQLITE_DIR`.",
+                  ko: "`single`과 `multiple`의 데이터베이스 파일 하나만 옮기며, `AKAN_SQLITE_DIR`보다 우선합니다.",
+                }),
+              },
+              {
+                key: "AKAN_SOLID_DB_PATH",
+                type: "string",
+                desc: l.trans({
+                  en: "The SQLite file where `single` keeps its cache, queue and pubsub.",
+                  ko: "`single`이 캐시, 큐, PubSub을 두는 SQLite 파일입니다.",
+                }),
+              },
+              {
+                key: "POSTGRES_URL",
+                type: "string",
+                desc: l.trans({
+                  en: "The `cluster` database (alias `POSTGRES_URI`), with pool size and SSL in its query string.",
+                  ko: "`cluster`의 데이터베이스이며(별칭 `POSTGRES_URI`), 풀 크기와 SSL은 쿼리 문자열에 적습니다.",
+                }),
+              },
+              {
+                key: "POSTGRES_HOST",
+                type: "string",
+                default: "localhost",
+                desc: l.trans({
+                  en: "The URL in parts, with `POSTGRES_PORT`, `POSTGRES_DATABASE`, `POSTGRES_USER`, `POSTGRES_PASSWORD`.",
+                  ko: "같은 URL을 나눠 적으며, `POSTGRES_PORT`, `POSTGRES_DATABASE`, `POSTGRES_USER`, `POSTGRES_PASSWORD`와 함께 씁니다.",
+                }),
+              },
+              {
+                key: "POSTGRES_INSIGHT_URL",
+                type: "string",
+                desc: l.trans({
+                  en: "Logs the SQL console in on `cluster`, as a role that may read base columns only.",
+                  ko: "`cluster`에서 SQL 콘솔이 로그인할 URL이며, 기본 컬럼만 읽을 수 있는 role이어야 합니다.",
+                }),
+              },
+              {
+                key: "LIBSQL_URL",
+                type: "string",
+                desc: l.trans({
+                  en: "Only for an app that applies `LibsqlDatabase` itself; `LIBSQL_AUTH_TOKEN` carries its token.",
+                  ko: "앱이 `LibsqlDatabase`를 직접 적용할 때만 쓰며, 토큰은 `LIBSQL_AUTH_TOKEN`에 둡니다.",
+                }),
+              },
+              {
+                key: "REDIS_URI",
+                type: "string",
+                tags: [l.trans({ en: "required outside local", ko: "local 밖에서 필수" })],
+                desc: l.trans({
+                  en: "The one Redis every instance of `multiple` or `cluster` shares; `rediss://` turns on TLS.",
+                  ko: "`multiple`과 `cluster`의 모든 인스턴스가 함께 쓰는 Redis이며, `rediss://`로 TLS를 켭니다.",
+                }),
+              },
+              {
+                key: "AKAN_STORAGE_SHARED",
+                type: "true | 1",
+                desc: l.trans({
+                  en: "Every instance mounts one upload volume; disk uploads in `multiple` and `cluster` need it.",
+                  ko: "모든 인스턴스가 같은 업로드 볼륨을 마운트한다는 뜻이며, `multiple`과 `cluster`의 디스크 업로드에 필요합니다.",
+                }),
+              },
+            ]}
+          />
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  An app that declares <code>{'database: { modes: ["single", "cluster"] }'}</code> ships one image that
+                  serves both of these:
+                </span>
+              ),
+              ko: (
+                <span>
+                  <code>{'database: { modes: ["single", "cluster"] }'}</code>를 선언한 앱은 이미지 하나로 아래 두 배포를
+                  모두 실행합니다:
+                </span>
+              ),
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title=".env"
+            language="bash"
+            showLineNumbers={false}
+            code={`# An edge site: one container, its SQLite files on a volume
+AKAN_PUBLIC_OPERATION_MODE=edge
+AKAN_DATABASE_MODE=single
+AKAN_SQLITE_DIR=/data
+
+# The same image on a cloud cluster
+AKAN_PUBLIC_OPERATION_MODE=cloud
+AKAN_DATABASE_MODE=cluster
+POSTGRES_URL=postgres://app:…@db.internal:5432/app?max=20&ssl=require
+REDIS_URI=redis://redis.internal:6379`}
+          />
+          <ul className="my-4 list-disc space-y-2 pl-5">
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>
+                      Only local development may skip <code>REDIS_URI</code>.
+                    </strong>{" "}
+                    A developer machine falls back to localhost, or to <code>REDIS_HOST</code> when{" "}
+                    <code>akan start</code> runs against a shared environment.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>
+                      <code>REDIS_URI</code>를 생략할 수 있는 곳은 로컬 개발뿐입니다.
+                    </strong>{" "}
+                    개발자 PC에서는 localhost를 쓰고, <code>akan start</code>가 공용 환경에 붙어 실행될 때는{" "}
+                    <code>REDIS_HOST</code>를 씁니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Behind a PgBouncer in transaction mode,</strong> add <code>prepare=false</code> to{" "}
+                    <code>POSTGRES_URL</code>; the driver reads every such setting from the query string.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>transaction 모드의 PgBouncer 뒤에서는</strong> <code>POSTGRES_URL</code>에{" "}
+                    <code>prepare=false</code>를 붙입니다. 드라이버가 이런 설정을 모두 쿼리 문자열에서 읽습니다.
+                  </span>
+                ),
+              })}
+            </li>
+          </ul>
+          <Docs.Alert type="warning">
+            {l.trans({
+              en: (
+                <span>
+                  <strong>Uploads need storage every instance reads.</strong> A deployed <code>multiple</code> or{" "}
+                  <code>cluster</code> app keeps them in object storage, or on one volume every instance mounts with{" "}
+                  <code>AKAN_STORAGE_SHARED=true</code>. Outside development, an upload to a disk only one instance
+                  reads is refused.
+                </span>
+              ),
+              ko: (
+                <span>
+                  <strong>업로드는 모든 인스턴스가 읽는 곳에 둡니다.</strong> 배포된 <code>multiple</code>이나{" "}
+                  <code>cluster</code> 앱은 업로드를 오브젝트 스토리지나, 모든 인스턴스가 마운트한 볼륨 하나에 두고{" "}
+                  <code>AKAN_STORAGE_SHARED=true</code>를 설정합니다. 개발 환경 밖에서는 인스턴스 하나만 읽는 디스크로의
+                  업로드가 거부됩니다.
+                </span>
+              ),
+            })}
+          </Docs.Alert>
+        </Docs.Description>
+      </Scroll.Slide>
+      <Divider />
       <Scroll.Slide id="env-search" title={l.trans({ en: "Text Search Variables", ko: "텍스트 검색 환경변수" })}>
         <Docs.Title>{l.trans({ en: "Text Search Variables", ko: "텍스트 검색 환경변수" })}</Docs.Title>
         <Docs.Description>
@@ -282,16 +485,16 @@ AKAN_PUBLIC_LOG_LEVEL=info`}
                 type: "string",
                 default: "unicode61 remove_diacritics 2",
                 desc: l.trans({
-                  en: "The fts5 tokenizer; database.search.tokenizer in the app config takes precedence.",
-                  ko: "색인에 쓰는 fts5 토크나이저이며, 앱 설정의 database.search.tokenizer가 우선합니다.",
+                  en: "fts5 tokenizer (Postgres: unicode61 or trigram); `database.search.tokenizer` in env.server.ts wins.",
+                  ko: "색인에 쓰는 fts5 토크나이저이며(Postgres는 unicode61 또는 trigram), env.server.ts의 `database.search.tokenizer`가 우선합니다.",
                 }),
               },
             ]}
           />
           <Docs.Alert type="warning">
             {l.trans({
-              en: "Changing the tokenizer rebuilds the index from the mirror on the next boot, separately in every process that restarts, so stagger the restart when the mirror is large.",
-              ko: "토크나이저를 바꾸면 다음 부팅에서 미러로부터 색인을 다시 만들며, 재시작한 프로세스마다 각자 다시 만듭니다. 미러가 크다면 재시작을 나눠서 하세요.",
+              en: "Changing the tokenizer rebuilds the index from the mirror on the next boot. Of processes restarted at once, the first rebuilds and the rest wait for it; on SQLite a process waits only up to its busy timeout, so stagger the restart when the mirror is large.",
+              ko: "토크나이저를 바꾸면 다음 부팅에서 미러로부터 색인을 다시 만듭니다. 한꺼번에 재시작하면 첫 프로세스가 다시 만들고 나머지는 기다립니다. SQLite에서는 busy timeout까지만 기다리므로, 미러가 크다면 재시작을 나눠서 하세요.",
             })}
           </Docs.Alert>
         </Docs.Description>

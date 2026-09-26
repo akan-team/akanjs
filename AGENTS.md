@@ -7,14 +7,14 @@ there is nothing to mirror a rule change into. The section between the `akan:age
 by `akan agent install`; edit anything outside the markers freely.
 
 <!-- akan:agent:start -->
-<!-- akan:agent:version 3.0.0-beta.17 -->
+<!-- akan:agent:version 3.0.0-beta.18 -->
 
 ## Workspace
 
 - Repo: akanjs
 - Apps: minimal, akan
 - Libraries: util, shared
-- Packages: akanjs, create-akan-workspace, use-agentic, @akanjs/cli, @akanjs/devkit
+- Packages: akanjs, use-agentic, create-akan-workspace, @akanjs/cli, @akanjs/devkit
 
 ## Repo Overview
 
@@ -46,7 +46,7 @@ you fetch on demand — `get_guideline` with the name, or `akan guideline show <
 | name | covers |
 |---|---|
 | `ssrRule` | server-share targets, the `akan.ssr.*` warnings, the client-boundary playbook |
-| `runtimeRule` | `web` / `csr` surfaces, gateway vs solo processes, logging, the generated image, shipped assets |
+| `runtimeRule` | `web` / `csr` surfaces, gateway vs solo processes, logging, the generated image, shipped assets, database modes |
 | `queryRule` | slices and hydration, the generated filter methods, full-text search, cascade removal |
 | `transportRule` | guards across HTTP and websocket, socket identity and cleanup, binary pubsub, mutation verbs |
 | `mcpRule` | MCP configuration, wire behaviour, resource URIs, OAuth metadata, protocol revisions |
@@ -355,6 +355,14 @@ Full contract: `get_guideline` with `runtimeRule`, or `akan guideline show runti
 - **`assets: { pruneFonts, keepFonts }`** trims from the `dist` copy of `public/` the fonts nothing reads; source
   trees are never touched. A font with `optimize` on is a build input, not a runtime asset. `keepFonts` belongs to
   the `akan.config.ts` that owns the font, written against that scope's own `public/`.
+- **Database modes are `database: { modes: [...] }`** — `single` (SQLite + Solid), `multiple` (one SQLite file on
+  a host volume + Redis), `cluster` (Postgres + Redis). The build carries the drivers of every declared mode and a
+  deployment picks one with `AKAN_DATABASE_MODE` — a declared one, named whenever the build declares several.
+  Where the data lives (`POSTGRES_URL`, `REDIS_URI`, `SQLITE_DATABASE_PATH`) is the deployment's env, ahead of
+  `env.server.ts`. `q.raw` is written in the dialect's own SQL, so an app running in two modes avoids it.
+- **Backups run through the image's own `main.js`**: `bun main.js ops snapshot` / `ops restore` (offline), and
+  `/_akan/ops/*` for a control plane, mounted only when `AKAN_OPS_PUBLIC_KEY` is set and authenticated by a short
+  EdDSA token that key verifies. `GET /_akan/app/info` is public. `operationMode` gates none of it.
 
 ## React Components And Styling (`**/*.tsx`)
 
@@ -377,7 +385,7 @@ Full contract: `get_guideline` with `runtimeRule`, or `akan guideline show runti
   nothing — they covered five control types, keyed on the translated label, and restored over server data.
 - Static class strings stay plain strings. Reach for `cn` only for a conditional or to merge an incoming `className`, and merge the caller last: `cn("base classes", cond && "extra", className)`. `cn` comes from `akanjs/client` (token-aware tailwind-merge) and is the only class-combining function — no `clsx` (removed), no raw `twMerge` imports, no object syntax (`{ x: cond }` → `cond && "x"`).
 - Multi-slot components take extra named props (`wrapperClassName`, `bodyClassName`), never a `classNames` object.
-- Hoist enum→class lookups to a module-scope `as const` map typed `{ [key in cnst.XStatus["value"]]: string }`. Do not use `Record<...>`. Escalate the map to `webkit/` when a second module needs it.
+- Hoist enum→class lookups to a module-scope `as const` map typed `{ [key in cnst.XStatus["value"]]: string }`. Do not use `Record<...>`. When a second module needs it, the classes become a variant axis of a recipe in `ui/Recipe/`; only a map from the enum to another recipe's variant name (`BadgeVariants["variant"]`) moves to `webkit/`.
 - Use `<Link>` from `akanjs/ui` for internal navigation; `<a>` only for `mailto:` and external links.
 
 ## Naming And Language
@@ -811,7 +819,8 @@ Full contract — the trigger-maintained mirror, tokenizer changes, `AKAN_SEARCH
   backstop, including for a `text` field *underneath* one of those. Do not work around either.
 - The role works on a relation (`image: field(File, { text: "thumb" })`) and on an array; an array of objects
   indexes by leaf key. A field inside a `Map` indexes nothing — there is no fixed path to extract it from.
-- Search runs on sqlite/libsql only. `q.search()` against Postgres throws, loudly, rather than returning every row.
+- Search runs in every database mode — fts5 on SQLite/libSQL, a weighted `tsvector` (`pg_trgm` for `trigram`) on
+  Postgres. The same text matches the same documents; only the order may differ on Postgres.
 
 ### Image & File Fields
 
@@ -936,10 +945,13 @@ export default page()
 | `common/` | pure, isomorphic, zero-dependency; may import only sibling `common/*` and `akanjs/base`. Cannot import `Err`, so keep throwing code out of it. | camelCase file, filename equals the single export |
 | `webkit/` | touches `window` / `navigator` / Capacitor, or is a React hook | `use<Thing>.tsx` — `.tsx` even with no JSX |
 | `srvkit/` | touches `node:*`, `Bun`, `process.env`, a secret, or a server SDK | camelCase file, PascalCase class |
-| `ui/` | renders JSX and is not bound to one model | PascalCase component, camelCase sidecar (`swipeCard.util.ts`) |
+| `ui/` | renders JSX, or defines a look (a recipe in `Recipe/`, a lib's `tokens.css`), and is not bound to one model | PascalCase component, camelCase sidecar (`swipeCard.util.ts`), `Recipe/<name>.ts` |
 | `plugin/` | build- or CLI-time `AkanPlugin` | `<name>.plugin.ts`, registered in `akan.config.ts` |
 
 - Hooks return a named object of async closures, never a tuple.
+- `ui/` is the presentation layer — markup and the looks it is built from — so a recipe lives there although it is
+  neither a component nor a hook. Not `webkit/`: its hooks are `"use client"`, the opposite signal for a function
+  server components call. Not `common/`: it cannot import `akanjs/ui`, where `recipe` / `tv` come from.
 - `libs/<lib>/ui/tokens.css` is the one CSS file a lib owns: plain `:root` custom properties for colors that must **not** follow the theme (a vendor brand color, a fixed surface). Every app whose pages reach that lib compiles it automatically, ahead of the app's own stylesheets, so nothing is imported by hand and no app can forget it. Reference them as `bg-[var(--kakao)]`; `@theme` extensions stay in the app stylesheet, because the color vocabulary is closed per stylesheet. Theme-following colors are the app's, not the lib's.
 - A layer-root `index.ts` is generated, but a `ui/<Folder>/index.tsx` that builds a namespace is hand-written source. The distinguishing test is that a generated barrel contains nothing but `export * from "./X";` lines.
 - `ui/<Folder>/index_.tsx` (trailing underscore) is the `"use client"` + `lazy()` boundary, with a server-safe `index.tsx` beside it. Collapsing the pair into one file breaks RSC.

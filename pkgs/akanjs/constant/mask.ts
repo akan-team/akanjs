@@ -1,4 +1,4 @@
-import { FIELD_META } from "akanjs/base";
+import { type Cls, FIELD_META, getNonArrayModel, type PrimitiveAgentFace, PrimitiveRegistry } from "akanjs/base";
 
 /**
  * A model as masking reads it — the constructor, for the field metadata it carries at runtime.
@@ -14,7 +14,10 @@ export interface MaskModel {
 interface MaskField {
   fieldType?: string;
   isClass?: boolean;
+  isMap?: boolean;
   modelRef?: MaskModel;
+  of?: unknown;
+  arrDepth?: number;
   visual?: boolean;
 }
 
@@ -40,7 +43,8 @@ export const leakingFieldsOf = (model: MaskModel, value: Record<string, unknown>
 /**
  * Strips what a model marks `hidden`, `secret`, or `visual`, by the model the caller names rather than by the one
  * the value happens to still carry. The first two are secrecy and the third is cost, but the answer is the same
- * one — leave the field out — and this is the only place every AI-facing read already passes through.
+ * one — leave the field out — and this is the only place every AI-facing read already passes through. For the same
+ * reason it is where a primitive declaring an agent face is read into that face (`agentRead`).
  *
  * That distinction is the whole point. A check that reads the class off the value can only mask what arrives as an
  * instance, so a `{ ...doc }` spread, a `toJSON()`, an `immerify()`, or a round-trip through `JSON.stringify` reaches
@@ -61,9 +65,39 @@ export const mask = (model: MaskModel, value: unknown): unknown => {
   const masked: Record<string, unknown> = {};
   for (const [key, field] of Object.entries(fields)) {
     if (field.fieldType === "hidden" || field.fieldType === "secret" || field.visual || !(key in source)) continue;
-    masked[key] = field.isClass && field.modelRef ? mask(field.modelRef, source[key]) : source[key];
+    masked[key] = maskField(field, source[key]);
   }
   return masked;
+};
+
+/**
+ * What an agent reads of a primitive value: the primitive's `agent.read` when it declares an agent face, the value
+ * untouched otherwise. The read is applied through `arrDepth` levels of array, the way a field declares them.
+ */
+export const agentRead = (modelRef: unknown, value: unknown, arrDepth = 0): unknown => {
+  const face = PrimitiveRegistry.agentOf(modelRef);
+  return face ? readThrough(face, value, arrDepth) : value;
+};
+
+const readThrough = (face: PrimitiveAgentFace, value: unknown, arrDepth: number): unknown => {
+  if (value === null || value === undefined) return value;
+  if (arrDepth > 0 && Array.isArray(value)) return value.map((item) => readThrough(face, item, arrDepth - 1));
+  return face.read(value);
+};
+
+const maskField = (field: MaskField, value: unknown): unknown => {
+  if (field.isClass && field.modelRef) return mask(field.modelRef, value);
+  if (field.isMap) return maskMapValues(field.of, value);
+  return agentRead(field.modelRef, value, field.arrDepth ?? 0);
+};
+
+// A hydrated value holds a `Map` and a wire copy a plain object; either leaves as a plain object, which is also the
+// only form of the two that survives `JSON.stringify`.
+const maskMapValues = (of: unknown, value: unknown): unknown => {
+  const [valueRef, arrDepth] = getNonArrayModel(of as Cls);
+  if (!PrimitiveRegistry.agentOf(valueRef) || value === null || typeof value !== "object") return value;
+  const entries = value instanceof Map ? [...value.entries()] : Object.entries(value);
+  return Object.fromEntries(entries.map(([key, item]) => [key, agentRead(valueRef, item, arrDepth)]));
 };
 
 /**

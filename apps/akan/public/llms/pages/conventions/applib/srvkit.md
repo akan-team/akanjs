@@ -26,7 +26,7 @@ Touches window, navigator or Capacitor, or is a React hook.
 
 Touches node:*, Bun, process.env, a secret, or a server SDK.
 
-Renders JSX and is not bound to one model; a model-bound component goes in its module.
+Renders JSX or defines a recipe, bound to no model; a model-bound component goes in its module.
 
 A build-time or CLI-time AkanPlugin, registered in akan.config.ts.
 

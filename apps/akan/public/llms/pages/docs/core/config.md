@@ -376,7 +376,7 @@ const config: AppConfig = {
   externalLibs: ["shiki"],
   optimizeImports: ["custom-icons"],
   barrelImports: ["@acme/ui"],
-  defaultDatabaseMode: "single",
+  database: { modes: ["single", "cluster"] },
   assets: { pruneFonts: true, keepFonts: ["fonts/Assistant-*.woff2"] },
   syncPageLibs: ["shared"],
   plugins: [pushNotificationPlugin],

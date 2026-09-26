@@ -34,6 +34,10 @@ A stable address inside the cluster that forwards to whichever pods run the app.
 
 A Helm package of Kubernetes manifests. The one Akan ships lives in infra/app.
 
+A Kubernetes object that hands private values, such as database URLs, to pods as env vars.
+
+Volume access modes: one node mounts the first, pods on many nodes share the second.
+
 SQLite's write-ahead log mode, which lets reads keep going while a write is in progress.
 
 MVP or feature prototype
@@ -52,7 +56,7 @@ Production service
 
 Cloud · main
 
-Use the main branch of the same cloud deployment. The shipped chart runs one pod per app, so plan the database and cache layer before traffic outgrows it.
+Use the main branch of the same cloud deployment. The chart runs one pod in single mode; before traffic outgrows it, move that branch to cluster mode with your own Postgres and Redis.
 
 An SSR or CSR page response for browser users.
 
@@ -66,23 +70,31 @@ Mode
 
 Database
 
-Queue / PubSub
+Where it runs
 
-Cache
+Cache · queue · pubsub
 
-SQLite based, Bun IPC accelerated
+One SQLite file
 
-SQLite key-value cache
+SQLite files: a key-value cache, and a queue and pubsub sped up by Bun IPC
+
+One container
+
+One SQLite file (WAL) on a host volume that every container opens
+
+Several containers on one host
+
+Several servers
 
 The best start for MVPs, internal tools, admin pages, content sites and small-to-medium services.
 
 Enough for most products under roughly 10k DAU, especially with WAL mode.
 
-When you need a separate cache, pub/sub, queue-like work, or realistic service boundaries.
+When one host runs several containers that need a shared cache, pub/sub and queue.
 
-Cache and background work are separated, while staying lighter than cluster storage.
+Lighter than cluster: cache and background work move to Redis, the data stays in one SQLite file.
 
-When local runs should match the production cluster, or you need heavier relational storage.
+For several servers, local runs that match production, or heavier relational storage.
 
 The most production-like mode, for heavier concurrent work and cluster validation.
 
@@ -170,15 +182,29 @@ When to pick each mode
 
 When → what you get
 
-The default mode lives in akan.config.ts:
+Declaring the modes
 
-multiple and cluster need their database and Redis running beside the app on your machine. akan dbup starts the local database for the mode you name:
+Local services
+
+Deploying multiple: docker compose on one host
+
+Deploying cluster: the Kubernetes chart
+
+Uploaded files
+
+A deployed multiple or cluster app runs several instances, and each must read the files the others wrote. Keep uploads in one of two places:
+
+Outside development, an upload to a local disk that only one instance can read is refused.
+
+Moving data between modes
+
+The SQL console on cluster
 
 Growth Stages
 
 Infrastructure does not need to start big. A business can begin with one server and one container, then grow step by step as traffic and reliability requirements increase. The three stages at a glance:
 
-Stage 1 is stable. Stages 2 and 3 are experimental: they describe where the shape goes next, not a chart you can apply today.
+Stage 1 is stable, and stages 2 and 3 are experimental. Both have a recipe under Database Mode above: docker compose on one host for stage 2, the chart's cluster mode for stage 3.
 
 A small product, MVP, internal tool or early admin page runs on one server with one Akan container. That single container serves the database, API, web, CSR, image optimization, cache and queue, and single database mode is usually enough.
 
@@ -190,29 +216,81 @@ Users reach one server that holds one Akan runtime container, and SQLite WAL sto
 
 When traffic grows but one machine is still enough, run multiple containers on the same server. This is vertical scaling: a stronger server, more containers, and multiple or cluster database mode.
 
-Users pass a reverse proxy into one large server running Akan runtime containers A, B and C, and every container shares Redis for cache, pubsub and queue plus libsql or Postgres on the same server.
+Users pass a reverse proxy into one large server running Akan runtime containers A, B and C, and every container shares one Redis for cache, pubsub and queue plus one database on the same server: a SQLite file every container opens, or Postgres.
 
 3. Cloud cluster scale
 
 When one server is no longer enough, move to a cloud cluster. Multiple servers run multiple containers, and cluster mode keeps the database/cache layer closer to production operation.
 
-Inside a cloud cluster, users enter through a Kubernetes Ingress and Service that fan out to cloud nodes A, B and C, each running one Akan runtime pod against a shared Redis cluster and Postgres database.
+Inside a cloud cluster, users enter through a Kubernetes Ingress and Service that fan out to cloud nodes A, B and C, each running one Akan runtime pod against one shared Redis and one Postgres database.
 
 ## Code Examples
 
-### akan.config.ts
+### apps/myapp/akan.config.ts
 
 ```ts
+import type { AppConfig } from "akanjs";
+
 const config: AppConfig = {
-  defaultDatabaseMode: "single",
+  database: { modes: ["single", "cluster"] },
 };
+
+export default config;
 ```
 
-### Local database commands
+### Terminal
 
 ```bash
-akan dbup --mode multiple
-akan dbup --mode cluster
+akan dbup                  # every mode the workspace's apps declare
+akan dbup --mode multiple  # Redis
+akan dbup --mode cluster   # Redis and Postgres 18
+```
+
+### docker-compose.yaml
+
+```yaml
+services:
+  redis:
+    image: redis:8
+  app:
+    image: <registry>/<repo>/<app>:<tag>
+    deploy:
+      replicas: 3
+    environment:
+      AKAN_DATABASE_MODE: multiple
+      REDIS_URI: redis://redis:6379
+      SQLITE_DATABASE_PATH: /data/app.db
+      AKAN_STORAGE_SHARED: "true"
+    volumes:
+      - app-data:/data
+      - app-files:/workspace/local
+volumes:
+  app-data:
+  app-files:
+```
+
+### infra/app/values/myapp-values.yaml
+
+```yaml
+main:
+  database:
+    mode: cluster # single (default) or cluster
+    # A Secret holding POSTGRES_URL, REDIS_URI and, optionally,
+    # POSTGRES_INSIGHT_URL
+    secretName: app-database
+  app:
+    pods: 3 # cluster only; default 2
+  storage:
+    # Optional: a ReadWriteMany claim mounted at /workspace/local
+    sharedClaim: uploads
+```
+
+### Terminal
+
+```bash
+akan db-export myapp
+AKAN_DATABASE_MODE=cluster POSTGRES_URL=postgres://… REDIS_URI=redis://… \
+  akan db-import myapp
 ```
 
 ## Agent Notes

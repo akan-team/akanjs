@@ -14,7 +14,7 @@ afterEach(() => {
 describe("runtime dir", () => {
   test("prefers the caller's own path over everything else", () => {
     process.env.AKAN_RUNTIME_DIR = "/tmp/ignored";
-    expect(resolveRuntimeDir("/tmp/explicit")).toBe("/tmp/explicit");
+    expect(resolveRuntimeDir("/tmp/explicit")).toBe(path.resolve("/tmp/explicit"));
   });
 
   test("takes AKAN_RUNTIME_DIR next, absolute", () => {

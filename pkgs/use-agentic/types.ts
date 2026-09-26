@@ -174,6 +174,23 @@ export interface ToolCallResult {
  */
 export type TurnStop = "end" | "toolUse" | "length";
 
+/** What the provider counted for one turn. `input` is the whole prompt, cached part included — what the window held. */
+export interface TurnUsage {
+  input: number;
+  output: number;
+}
+
+/**
+ * What the backend knows about the model it relays to, each only when it was told: a window it guesses is worse
+ * than none, because a guard placed on a wrong number fires at the wrong time and nothing says so.
+ */
+export interface TurnLimits {
+  /** The model's context window, prompt and answer together. */
+  window?: number;
+  /** The answer ceiling the backend actually requests. */
+  output?: number;
+}
+
 /**
  * A file the user handed the conversation rather than the screen — which is why it rides a message instead of a
  * tool, the same reason `askUser` belongs to the session and not to the surface.
@@ -254,6 +271,12 @@ export interface ChatMessage {
    * a host renders it as one.
    */
   summary?: boolean;
+  /**
+   * What the provider counted for the turn that wrote this assistant message. Kept on the message so it moves,
+   * persists and is summarized away with it; never sent, and dropped from what a compaction keeps, since it
+   * measured a prompt that no longer exists.
+   */
+  usage?: TurnUsage;
 }
 
 /** One block of screen context the host assembles per turn. `kind` is the host's vocabulary; the wire forwards it verbatim. */
@@ -265,12 +288,20 @@ export interface ContextBlock {
 export type RunnerEvent =
   | { type: "text"; delta: string }
   | { type: "toolCall"; id: string; name: string; args: Record<string, unknown> }
-  | { type: "done"; stop: TurnStop }
+  | { type: "done"; stop: TurnStop; usage?: TurnUsage; limits?: TurnLimits }
   /**
    * `data` accompanies a message that is a code rather than a sentence — the values whoever resolves the code
    * interpolates into its text. A host that does not know the code shows the message as it stands.
+   *
+   * `overflow` marks the provider refusing a prompt too long for its window — the one refusal a session can undo
+   * on its own, by compacting and asking again. `limit` is the window when the refusal named it.
    */
-  | { type: "error"; message: string; data?: Record<string, string | number> };
+  | {
+      type: "error";
+      message: string;
+      data?: Record<string, string | number>;
+      overflow?: { limit?: number };
+    };
 
 export interface RunnerRequest {
   messages: ChatMessage[];

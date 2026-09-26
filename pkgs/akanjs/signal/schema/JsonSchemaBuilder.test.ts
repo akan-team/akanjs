@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { enumOf, Int, Upload } from "akanjs/base";
+import {
+  CLIENT_VALUE,
+  enumOf,
+  Int,
+  type PrimitiveAgentFace,
+  PrimitiveRegistry,
+  PrimitiveScalar,
+  SERVER_VALUE,
+  Upload,
+} from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import { JsonSchemaBuilder } from "./JsonSchemaBuilder";
 
@@ -247,5 +256,80 @@ describe("JsonSchemaBuilder relations", () => {
     ).toEqual({
       anyOf: [{ $ref: "#/components/schemas/SchemaTagInput" }, { type: "null" }],
     });
+  });
+});
+
+interface SchemaNoteDoc {
+  lines: string[];
+}
+class SchemaNote extends PrimitiveScalar {
+  static override refName = "SchemaNote";
+  static override [SERVER_VALUE]: SchemaNoteDoc;
+  static override [CLIENT_VALUE]: SchemaNoteDoc;
+  static override jsonSchema = { type: "object", properties: { lines: { type: "array", items: { type: "string" } } } };
+  static override agent: PrimitiveAgentFace<SchemaNoteDoc> = {
+    schema: { type: "string", contentMediaType: "text/markdown" },
+    read: (value) => value.lines.join("\n"),
+  };
+}
+PrimitiveRegistry.register(SchemaNote);
+
+class SchemaMemo extends PrimitiveScalar {
+  static override refName = "SchemaMemo";
+}
+PrimitiveRegistry.register(SchemaMemo);
+
+class SchemaPageInput extends via((field) => ({
+  body: field(SchemaNote),
+  drafts: field([SchemaNote]).optional(),
+  byLocale: field(Map, { of: SchemaNote }),
+})) {}
+class SchemaPageObject extends via(SchemaPageInput, () => ({})) {}
+class LightSchemaPage extends via(SchemaPageObject, [] as const, () => ({})) {}
+class SchemaPage extends via(SchemaPageObject, LightSchemaPage, () => ({})) {}
+class SchemaPageInsight extends via(SchemaPage, () => ({})) {}
+ConstantRegistry.buildModel(
+  "schemaPage",
+  SchemaPageInput,
+  SchemaPageObject,
+  SchemaPage,
+  LightSchemaPage,
+  SchemaPageInsight,
+  {},
+);
+
+describe("JsonSchemaBuilder primitive faces", () => {
+  const wireSchema = SchemaNote.jsonSchema;
+  const agentSchema = SchemaNote.agent.schema;
+
+  test("publishes a primitive's declared wire shape, and its agent shape only when asked for that face", () => {
+    expect(JsonSchemaBuilder.primitive("SchemaNote")).toEqual(wireSchema);
+    expect(JsonSchemaBuilder.primitive("SchemaNote", { face: "agent" })).toEqual(agentSchema);
+  });
+
+  test("falls back to the wire shape, then to the built-in table, when a primitive declares less", () => {
+    expect(JsonSchemaBuilder.primitive("SchemaMemo", { face: "agent" })).toEqual({ type: "string" });
+    expect(JsonSchemaBuilder.primitive("Date", { face: "agent" })).toEqual({ type: "string", format: "date-time" });
+  });
+
+  test("carries the face into args, returns, arrays, maps and nullability", () => {
+    const agent = new JsonSchemaBuilder({ face: "agent", nullable: "type" });
+    expect(agent.arg({ type: "body", name: "body", refName: "SchemaNote", nullable: true })).toEqual({
+      ...agentSchema,
+      type: ["string", "null"],
+    });
+    expect(agent.returns({ refName: "SchemaNote", arrDepth: 1 })).toEqual({ type: "array", items: agentSchema });
+    const { properties } = agent.allModelSchemas().SchemaPageInput as { properties: Record<string, unknown> };
+    expect(properties.body).toEqual(agentSchema);
+    expect(properties.drafts).toEqual({ type: ["array", "null"], items: agentSchema });
+    expect(properties.byLocale).toEqual({ type: "object", additionalProperties: agentSchema });
+    const wire = new JsonSchemaBuilder().allModelSchemas().SchemaPageInput as { properties: Record<string, unknown> };
+    expect(wire.properties.body).toEqual(wireSchema);
+  });
+
+  test("hands out a copy, so decorating one published schema cannot change the declaration", () => {
+    const published = JsonSchemaBuilder.primitive("SchemaNote", { face: "agent" });
+    published.description = "changed";
+    expect(SchemaNote.agent.schema).not.toHaveProperty("description");
   });
 });

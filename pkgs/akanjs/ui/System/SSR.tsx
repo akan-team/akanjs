@@ -198,7 +198,7 @@ const SSRWrapper = ({
                 className={cn(
                   "relative isolate",
                   layoutStyle === "web" && "w-full",
-                  layoutStyle === "mobile" && "left-1/2 h-screen w-[600px] -translate-x-1/2",
+                  layoutStyle === "mobile" && "left-1/2 h-screen w-full max-w-[600px] -translate-x-1/2",
                 )}
               >
                 {Children.toArray(children)}
@@ -210,7 +210,7 @@ const SSRWrapper = ({
             id="topInsetContainer"
             className={cn(
               "fixed inset-x-0 top-0 isolate bg-background",
-              layoutStyle === "mobile" && "left-1/2 w-[600px] -translate-x-1/2",
+              layoutStyle === "mobile" && "left-1/2 w-full max-w-[600px] -translate-x-1/2",
               layoutStyle === "web" && "w-full",
             )}
             style={topInsetStyle}
@@ -222,7 +222,10 @@ const SSRWrapper = ({
           <div
             key="top-left-action"
             id="topLeftActionContainer"
-            className="absolute top-0 left-0 isolate flex aspect-1 items-center justify-center"
+            className={cn(
+              "absolute top-0 left-0 isolate flex aspect-1 items-center justify-center",
+              layoutStyle === "mobile" && "left-[max(0px,calc(50%_-_300px))]",
+            )}
             style={topInsetStyle}
           >
             <div id="topLeftActionContent" className="isolate flex size-full items-center justify-center">
@@ -234,7 +237,7 @@ const SSRWrapper = ({
             id="bottomInsetContainer"
             className={cn(
               "pointer-events-none fixed inset-x-0 bottom-0 isolate overflow-hidden",
-              layoutStyle === "mobile" && "left-1/2 w-[600px] -translate-x-1/2",
+              layoutStyle === "mobile" && "left-1/2 w-full max-w-[600px] -translate-x-1/2",
               layoutStyle === "web" && "w-full",
             )}
             style={bottomInsetStyle}
@@ -248,7 +251,7 @@ const SSRWrapper = ({
             id="keyboardInsetContainer"
             className={cn(
               "pointer-events-none fixed inset-x-0 bottom-0 isolate overflow-hidden",
-              layoutStyle === "mobile" && "left-1/2 w-[600px] -translate-x-1/2",
+              layoutStyle === "mobile" && "left-1/2 w-full max-w-[600px] -translate-x-1/2",
               layoutStyle === "web" && "w-full",
             )}
             style={bottomInsetStyle}

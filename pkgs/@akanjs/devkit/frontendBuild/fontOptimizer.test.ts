@@ -170,7 +170,7 @@ describe("FontOptimizer discovery", () => {
     expect(result.fonts).toEqual([]);
     expect(result.files).toEqual([]);
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("page/_layout.tsx");
+    expect(warnings[0]).toContain(path.join("page", "_layout.tsx"));
   });
 
   test("warns about an entry it cannot read and keeps the ones it can", async () => {

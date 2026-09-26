@@ -84,7 +84,7 @@ Swaps the transport. The default posts to `runAgentTurn`; `httpRunner({ url })` 
 
 Model round trips one ask may spend. At the limit, the chat asks the user whether to keep going.
 
-Summarizes past `at` estimated tokens, keeping the last `keep` messages. `{ at: 0 }` turns it off.
+Summarizes past `at` estimated tokens or `buffer` short of the known window. `{ at: 0 }` turns it off.
 
 `true` gives all five built-ins, `false` none, an array only those named. `askUser` always stays.
 

@@ -99,11 +99,13 @@ export class DevHmrController {
   readonly #dirty = new Set<Exclude<ChangeKind, "ignore">>();
   readonly #dirtyFiles = new Set<string>();
   readonly #buildStatusByPhase = new Map<DevBuildStatus["phase"], DevBuildStatus>();
+  readonly #graphSeeds: string[];
 
   constructor({ renderState, rsc, seedIndex, upgradeHmrWs }: DevHmrControllerOptions) {
     this.#renderState = renderState;
     this.#rsc = rsc;
     this.#seedIndex = seedIndex;
+    this.#graphSeeds = [...new Set([...seedIndex.globalLayoutFiles, ...seedIndex.entries.flatMap((e) => e.seeds)])];
     this.#upgradeHmrWs = upgradeHmrWs;
     this.#builderRpc = this.#createBuilderRpc();
     this.routeCache = this.#createRouteCache();
@@ -265,7 +267,12 @@ export class DevHmrController {
     return new RouteClientCache({
       buildRoute: async (routeId, { seeds, knownEntries, generation }) => {
         const expandedSeeds = [...new Set([...this.#seedIndex.globalLayoutFiles, ...seeds])];
-        return this.#builderRpc.buildRoute(routeId, { seeds: expandedSeeds, knownEntries, generation });
+        return this.#builderRpc.buildRoute(routeId, {
+          seeds: expandedSeeds,
+          graphSeeds: this.#graphSeeds,
+          knownEntries,
+          generation,
+        });
       },
       onMerge: async (routeId, { delta, merged, generation }) => {
         const removedEntries = this.#rememberClientEntries(routeId, delta.discoveredEntries ?? delta.newEntries);

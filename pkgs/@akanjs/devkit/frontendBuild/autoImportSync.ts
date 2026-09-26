@@ -161,6 +161,10 @@ const LIB_BARRELS: Record<string, { barrel: string; kind: ImportKind }> = {
   cnst: { barrel: "cnst", kind: "namespace" },
   srv: { barrel: "srv", kind: "namespace" },
 };
+//* Registry names that are also runtime globals. An unbound `fetch(url)` is the platform's fetch, and importing Akan's
+//* over it silently rebinds the call, so such a name is claimed only when every reference has the Akan member shape
+//* (`fetch.viewX()`); one bare use leaves the file alone.
+const GLOBAL_NAMES = new Set(["fetch"]);
 //* ECMAScript/TS structural globals never resolved as domain symbols, so that a package model named
 //* e.g. `Map` cannot shadow the JS `Map` used in `new Map()`. Domain-y globals like `File` are allowed
 //* on purpose (they are real models here).
@@ -378,13 +382,14 @@ export const transformSource = (
   const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, scriptKindFor(fileName));
   const bound = collectBoundNames(sf);
   const used = collectUsedReferences(sf);
+  const bareGlobals = collectBareGlobalReferences(sf);
 
   // Group the needed symbols by their import target: framework registry first, then dynamic resolver.
   // Named groups map each name to whether it is type-only, so we can emit `import type`/inline `type`.
   const namedBySpecifier = new Map<string, Map<string, boolean>>();
   const namespaceImports: { name: string; specifier: string }[] = [];
   for (const name of used) {
-    if (bound.has(name)) continue;
+    if (bound.has(name) || bareGlobals.has(name)) continue;
     const target = targetFor(name, ctx) ?? resolveExtra?.(name) ?? null;
     if (!target) continue;
     if (target.kind === "namespace") namespaceImports.push({ name, specifier: target.specifier });
@@ -476,6 +481,19 @@ const collectUsedReferences = (sf: ts.SourceFile): Set<string> => {
   };
   ts.forEachChild(sf, visit);
   return used;
+};
+
+const collectBareGlobalReferences = (sf: ts.SourceFile): Set<string> => {
+  const bare = new Set<string>();
+  const visit = (node: ts.Node) => {
+    if (ts.isIdentifier(node) && GLOBAL_NAMES.has(node.text) && isReferencePosition(node)) {
+      const parent = node.parent;
+      if (!(parent && ts.isPropertyAccessExpression(parent) && parent.expression === node)) bare.add(node.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(sf, visit);
+  return bare;
 };
 
 //* True when the identifier reads a binding, as opposed to being a member name, property key, or

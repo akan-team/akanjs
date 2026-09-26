@@ -29,9 +29,10 @@
     "release:verify-packages": "bun dist/pkgs/@akanjs/cli/index.js verify-akan-publish-packages",
     "release:smoke-registry": "bun run akan reset-registry && bun run akan smoke-registry --test=true --tag=rc --registry=http://127.0.0.1:4873",
     "akan": "bun pkgs/@akanjs/cli/build.ts && bun dist/pkgs/@akanjs/cli/index.js",
-    "testPkgs": "bun run buildAkan && for p in akanjs @akanjs/devkit @akanjs/cli; do printf '\\n== %s\\n' \"$p\" && bun run runAkan test \"$p\" || exit 1; done",
+    "testPkgs": "bun run buildAkan && for p in akanjs @akanjs/devkit @akanjs/cli create-akan-workspace; do printf '\\n== %s\\n' \"$p\" && bun run runAkan test \"$p\" || exit 1; done",
     "typecheckPkgs": "for p in pkgs/akanjs pkgs/@akanjs/devkit pkgs/@akanjs/cli; do printf '\\n== %s\\n' \"$p\" && bunx tsc --noEmit -p \"$p/tsconfig.json\" || exit 1; done",
     "testDevStability": "cd pkgs/@akanjs/devkit && AKAN_DEV_STABILITY_INTEGRATION=1 bun test --isolate \"$PWD/integration/devStability.integration.test.ts\"",
+    "testConformance": "bun infra/test/runConformance.ts",
     "killAkan": "lsof -ti tcp:8282,18282-18300 | xargs kill -9",
     "buildAkan": "bun pkgs/@akanjs/cli/build.ts",
     "runAkan": "bun dist/pkgs/@akanjs/cli/index.js",
@@ -61,7 +62,8 @@
     "bun-plugin-tailwind": "^0.1.2",
     "chance": "^1.1.13",
     "happy-dom": "20.11.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "use-agentic": "workspace:*"
   },
   "dependencies": {
     "@aws-sdk/client-cloudfront": "^3.1049.0",
@@ -93,6 +95,7 @@
     "@lexical/plain-text": "^0.51.0",
     "@libsql/client": "^0.17.3",
     "@marsidev/react-turnstile": "^1.5.2",
+    "@noble/ciphers": "^2.4.0",
     "@octokit/webhooks-types": "^7.6.1",
     "@react-google-maps/api": "^2.20.8",
     "@react-spring/web": "^10.1.0",

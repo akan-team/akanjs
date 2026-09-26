@@ -34,8 +34,8 @@ export default page().render(() => {
     {
       name: "ui/",
       desc: l.trans({
-        en: "Renders JSX and is not bound to one model; a model-bound component goes in its module.",
-        ko: "JSX를 그리되 model 하나에 묶이지 않습니다. model에 묶인 컴포넌트는 그 module에 둡니다.",
+        en: "Renders JSX or defines a recipe, bound to no model; a model-bound component goes in its module.",
+        ko: "JSX를 그리거나 레시피로 모양을 정의하되 model 하나에 묶이지 않습니다. model에 묶인 컴포넌트는 그 module에 둡니다.",
       }),
       example: "apps/akan/ui/BrowserMockup.tsx\n// PascalCase component, camelCase sidecar",
     },

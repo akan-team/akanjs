@@ -133,7 +133,7 @@ export class PackageRunner extends runner("package") {
         stdio: "inherit",
       });
     } else {
-      await $`cp -r ${pkg.cwdPath}/. ${pkg.dist.cwdPath}`;
+      await pkg.dist.cp(pkg.cwdPath, pkg.dist.cwdPath);
       await Promise.all([
         pkg.generateDistPackageJson(packageRuntimeDeps, packageRuntimeDevDeps),
         pkg.generateTsconfigJson(),

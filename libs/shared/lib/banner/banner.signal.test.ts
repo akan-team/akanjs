@@ -10,7 +10,7 @@ import * as adminSpec from "../admin/admin.signal.spec";
 import * as cnst from "../cnst";
 import type { AdminAgent, UserAgent } from "../user/user.signal.spec";
 
-configureSignalTest({ databaseMode: "tempFile" });
+configureSignalTest({ storage: "tempFile" });
 
 describe("banner signal test", () => {
   describe("banner service test", () => {

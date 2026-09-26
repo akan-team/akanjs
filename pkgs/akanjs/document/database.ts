@@ -1,7 +1,7 @@
 import type { MergedValues, PromiseOrObject } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import type { DocumentModel, QueryOf } from "akanjs/constant";
-import type { CacheAdaptor, CacheSetOptions } from "akanjs/service";
+import type { CacheAdaptor, CacheSetOptions, CacheValue } from "akanjs/service";
 import type { DataLoader } from "./dataLoader";
 import type { DocumentUpdateInput } from "./documentQuery";
 import type { ExtractQuery, ExtractSort, FilterInstance } from "./filterMeta";
@@ -16,14 +16,50 @@ export class CacheDatabase<T = unknown> {
   ) {
     this.logger = new Logger(`${refName}Cache`);
   }
-  async set(topic: string, key: string, value: string | number | Buffer, option: CacheSetOptions = {}) {
+  async set(topic: string, key: string, value: CacheValue, option: CacheSetOptions = {}) {
     await this.cache.set(this.refName, `${topic}:${key}`, value, option);
   }
-  async get<T extends string | number | Buffer>(topic: string, key: string): Promise<T | undefined> {
+  async get<T extends CacheValue = CacheValue>(topic: string, key: string): Promise<T | undefined> {
     return await this.cache.get<T>(this.refName, `${topic}:${key}`);
   }
   async delete(topic: string, key: string) {
     await this.cache.delete(this.refName, `${topic}:${key}`);
+  }
+  async getDel<T extends CacheValue = CacheValue>(topic: string, key: string): Promise<T | undefined> {
+    return await this.cache.getDel<T>(this.refName, `${topic}:${key}`);
+  }
+  async setIfAbsent(topic: string, key: string, value: CacheValue, option: CacheSetOptions = {}) {
+    return await this.cache.setIfAbsent(this.refName, `${topic}:${key}`, value, option);
+  }
+  async incr(topic: string, key: string, by = 1, option: CacheSetOptions = {}) {
+    return await this.cache.incr(this.refName, `${topic}:${key}`, by, option);
+  }
+  async hset(topic: string, key: string, subKey: string, value: CacheValue, option: CacheSetOptions = {}) {
+    await this.cache.hset(this.refName, `${topic}:${key}`, subKey, value, option);
+  }
+  async hget<T extends CacheValue = CacheValue>(topic: string, key: string, subKey: string): Promise<T | undefined> {
+    return await this.cache.hget<T>(this.refName, `${topic}:${key}`, subKey);
+  }
+  async hdelete(topic: string, key: string, subKey: string) {
+    await this.cache.hdelete(this.refName, `${topic}:${key}`, subKey);
+  }
+  async hkeys(topic: string, key: string) {
+    return await this.cache.hkeys(this.refName, `${topic}:${key}`);
+  }
+  async hentries<T extends CacheValue = CacheValue>(topic: string, key: string): Promise<[string, T][]> {
+    return await this.cache.hentries<T>(this.refName, `${topic}:${key}`);
+  }
+  async hclear(topic: string, key: string) {
+    await this.cache.hclear(this.refName, `${topic}:${key}`);
+  }
+  async hgetDel<T extends CacheValue = CacheValue>(topic: string, key: string, subKey: string): Promise<T | undefined> {
+    return await this.cache.hgetDel<T>(this.refName, `${topic}:${key}`, subKey);
+  }
+  async hsetIfAbsent(topic: string, key: string, subKey: string, value: CacheValue, option: CacheSetOptions = {}) {
+    return await this.cache.hsetIfAbsent(this.refName, `${topic}:${key}`, subKey, value, option);
+  }
+  async hincr(topic: string, key: string, subKey: string, by = 1, option: CacheSetOptions = {}) {
+    return await this.cache.hincr(this.refName, `${topic}:${key}`, subKey, by, option);
   }
 }
 /**

@@ -120,6 +120,30 @@ describe("httpRunner streaming", () => {
     expect(events).toEqual([{ type: "error", message: "agent.error.llmRequestFailed", data: { status: "400" } }]);
   });
 
+  test("a JSON answer carries the provider's count and the model's limits onto done", async () => {
+    const fetcher = (async () =>
+      new Response(
+        JSON.stringify({ text: "ok", usage: { input: 900, output: 12 }, limits: { window: 128_000, output: 8_192 } }),
+      )) as unknown as typeof fetch;
+    const events = await collect(httpRunner({ url: "/t", fetcher }).run(request()));
+    expect(events.at(-1)).toEqual({
+      type: "done",
+      stop: "end",
+      usage: { input: 900, output: 12 },
+      limits: { window: 128_000, output: 8_192 },
+    });
+  });
+
+  test("a refusal flagged as overflow keeps the flag and the window it named", async () => {
+    const refused = (overflow: unknown) =>
+      (async () =>
+        new Response(JSON.stringify({ message: "too long", overflow }), { status: 400 })) as unknown as typeof fetch;
+    const [named] = await collect(httpRunner({ url: "/t", fetcher: refused({ limit: 65_536 }) }).run(request()));
+    expect(named).toEqual({ type: "error", message: "too long", overflow: { limit: 65_536 } });
+    const [bare] = await collect(httpRunner({ url: "/t", fetcher: refused(true) }).run(request()));
+    expect(bare).toEqual({ type: "error", message: "too long", overflow: {} });
+  });
+
   test("a body with no message falls back to the status, and a nested data is not forwarded", async () => {
     const fetcher = (async () =>
       new Response(JSON.stringify({ statusCode: 502, data: { nested: { deep: true } } }), {

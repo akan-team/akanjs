@@ -1,4 +1,4 @@
-import type { AgentRunner, RunnerEvent, ToolCallRequest } from "./types";
+import type { AgentRunner, RunnerEvent, ToolCallRequest, TurnLimits, TurnUsage } from "./types";
 
 export interface HttpRunnerOptions {
   url: string;
@@ -11,6 +11,8 @@ interface TurnAnswer {
   text?: string;
   toolCalls?: ToolCallRequest[];
   stop?: "end" | "toolUse" | "length";
+  usage?: TurnUsage;
+  limits?: TurnLimits;
 }
 
 const eventTypes = new Set(["text", "toolCall", "done", "error"]);
@@ -73,6 +75,13 @@ const interpolations = (value: unknown): Record<string, string | number> | undef
   return entries.length ? Object.fromEntries(entries) : undefined;
 };
 
+const overflowOf = (value: unknown): { limit?: number } | undefined => {
+  if (!value) return undefined;
+  if (typeof value !== "object") return {};
+  const { limit } = value as { limit?: unknown };
+  return typeof limit === "number" ? { limit } : {};
+};
+
 /**
  * The server's own message travels verbatim — it was written for whoever is reading the chat, and a prefix in
  * front of it both reads as two sentences and hides a coded message from the host that would have resolved it.
@@ -81,11 +90,12 @@ const interpolations = (value: unknown): Record<string, string | number> | undef
 const turnError = async (response: Response): Promise<RunnerEvent> => {
   const fallback = { type: "error", message: `Agent turn failed: ${response.status}` } as const;
   try {
-    const body = (await response.json()) as { message?: unknown; error?: unknown; data?: unknown };
+    const body = (await response.json()) as { message?: unknown; error?: unknown; data?: unknown; overflow?: unknown };
     const message = typeof body.message === "string" ? body.message : typeof body.error === "string" ? body.error : "";
     if (!message) return fallback;
     const data = interpolations(body.data);
-    return { type: "error", message, ...(data ? { data } : {}) };
+    const overflow = overflowOf(body.overflow);
+    return { type: "error", message, ...(data ? { data } : {}), ...(overflow ? { overflow } : {}) };
   } catch {
     return fallback;
   }
@@ -126,6 +136,11 @@ export const httpRunner = ({ url, headers, fetcher }: HttpRunnerOptions): AgentR
     const turn = (await response.json()) as TurnAnswer;
     if (turn.text) yield { type: "text", delta: turn.text };
     for (const call of turn.toolCalls ?? []) yield { type: "toolCall", id: call.id, name: call.name, args: call.args };
-    yield { type: "done", stop: turn.stop ?? (turn.toolCalls?.length ? "toolUse" : "end") };
+    yield {
+      type: "done",
+      stop: turn.stop ?? (turn.toolCalls?.length ? "toolUse" : "end"),
+      ...(turn.usage ? { usage: turn.usage } : {}),
+      ...(turn.limits ? { limits: turn.limits } : {}),
+    };
   },
 });

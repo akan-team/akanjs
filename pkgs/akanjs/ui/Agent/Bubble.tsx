@@ -1,7 +1,14 @@
 "use client";
 import { cn, usePage } from "akanjs/client";
 import { memo } from "react";
-import { type AgentProgressReport, AgentSession, type ChatMessage, type ToolCallResult, ToolOutput } from "use-agentic";
+import {
+  type AgentProgressReport,
+  type AgentProgressStep,
+  AgentSession,
+  type ChatMessage,
+  type ToolCallResult,
+  ToolOutput,
+} from "use-agentic";
 import { createOverridable } from "../UiOverride";
 import { Chips } from "./Attach";
 import Markdown from "./Markdown";
@@ -34,6 +41,39 @@ const payloadOf = ({ result, changes, error }: ToolCallResult) => ({
   ...(changes?.length ? { changes } : {}),
   ...(error ? { error } : {}),
 });
+
+const stepGlyph = { pending: "○", running: "●", done: "✓", error: "✕" } as const;
+const stepTone = {
+  pending: "text-foreground/40",
+  running: "animate-pulse text-warning",
+  done: "text-success",
+  error: "text-destructive",
+} as const;
+
+interface StepListProps {
+  steps: AgentProgressStep[];
+}
+//* Folded by default: a code worker's edit-by-edit trail is what a user opens when the one-line summary is not
+//* enough, not what every running row should grow by.
+const StepList = ({ steps }: StepListProps) => {
+  const settled = steps.filter((step) => step.status === "done" || step.status === "error").length;
+  return (
+    <details className="px-2 pb-1">
+      <summary className="cursor-pointer font-mono text-[10px] text-foreground/50">
+        {settled}/{steps.length}
+      </summary>
+      <ul className="mt-1 flex flex-col gap-0.5">
+        {steps.map((step) => (
+          <li className="flex items-baseline gap-2 text-[10px]" key={step.id}>
+            <span className={cn("shrink-0", stepTone[step.status])}>{stepGlyph[step.status]}</span>
+            <span className="truncate">{step.label}</span>
+            {step.detail ? <span className="truncate text-foreground/50">{step.detail}</span> : null}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+};
 
 /**
  * The arguments ride along because two calls of one tool are the same row otherwise — two searches, one name.
@@ -81,6 +121,13 @@ const Row = ({ name, args, result, progress }: RowProps) => {
       </span>
     </>
   );
+  if (progress?.steps?.length)
+    return (
+      <div className="rounded-field bg-muted">
+        <div className="flex items-baseline gap-2 px-2 py-1">{head}</div>
+        <StepList steps={progress.steps} />
+      </div>
+    );
   if (!payload || !Object.keys(payload).length)
     return <div className="flex items-baseline gap-2 rounded-field bg-muted px-2 py-1">{head}</div>;
   return (

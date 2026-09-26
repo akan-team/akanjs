@@ -63,7 +63,7 @@ Narrows the agent to one app, rooted at `apps/<app>`. Without it, the whole repo
 
 Picks what the agent may do: its tools, approvals and session storage. See Profiles below.
 
-`<provider>/<id>`. Default: `deepseek/deepseek-v4-flash`; without its key, the first available.
+`<provider>/<id>`. Default: `deepseek/deepseek-flash`; without its key, the first available.
 
 Prints one event per line as JSON. The full-screen session then opens only with `--interactive`.
 

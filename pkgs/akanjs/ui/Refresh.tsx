@@ -3,9 +3,9 @@ import { lazy } from "akanjs/webkit";
 import type { ReactElement } from "react";
 import { BiLoaderAlt } from "react-icons/bi";
 
-const pullToRefreshPackage = "react-simple-pull-to-refresh";
-
-const PullToRefresh = lazy(() => import(pullToRefreshPackage), { ssr: false });
+//? An optional peer: `as string` keeps tsc from resolving it in a workspace that never installed it, while Bun
+//? strips the assertion and bundles the literal. A variable hid it from Bun too, leaving a bare browser import.
+const PullToRefresh = lazy(() => import("react-simple-pull-to-refresh" as string), { ssr: false });
 
 interface RefreshProps {
   children: ReactElement;

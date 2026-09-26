@@ -249,11 +249,12 @@ describe("SourceMtimeIndex", () => {
   describe("a directory it cannot read", () => {
     /**
      * `chmod 000` does not stop root, so these would assert the opposite of what they mean when the suite
-     * runs as root (CI containers commonly do).
+     * runs as root (CI containers commonly do). On Windows it only sets the read-only attribute, which leaves
+     * a directory listable.
      */
-    const asRoot = process.getuid?.() === 0;
+    const cannotLock = process.getuid?.() === 0 || process.platform === "win32";
 
-    test.skipIf(asRoot)("is reported as a gap instead of silently skipped", async () => {
+    test.skipIf(cannotLock)("is reported as a gap instead of silently skipped", async () => {
       const root = await makeRoot();
       await seed(root, "open/a.ts");
       const hidden = await seed(root, "locked/b.ts");
@@ -269,7 +270,7 @@ describe("SourceMtimeIndex", () => {
       expect(index.coverageGaps).toEqual([{ path: path.dirname(hidden), code: "EACCES" }]);
     });
 
-    test.skipIf(asRoot)("becomes visible again once it is readable, and clears the gap", async () => {
+    test.skipIf(cannotLock)("becomes visible again once it is readable, and clears the gap", async () => {
       const root = await makeRoot();
       const hidden = await seed(root, "locked/b.ts");
       const locked = path.dirname(hidden);
@@ -287,7 +288,7 @@ describe("SourceMtimeIndex", () => {
       expect(await index.collectChanges()).toEqual([hidden]);
     });
 
-    test.skipIf(asRoot)("does not report the files under it as deleted while it is unreadable", async () => {
+    test.skipIf(cannotLock)("does not report the files under it as deleted while it is unreadable", async () => {
       const root = await makeRoot();
       const abs = await seed(root, "locked/b.ts");
       const locked = path.dirname(abs);

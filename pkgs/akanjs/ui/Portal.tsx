@@ -10,9 +10,9 @@ interface PortalProps {
 }
 
 export const Portal = ({ children, id }: PortalProps) => {
-  const [targetElement, setTargetElement] = useState<HTMLElement | null>(() =>
-    typeof document === "undefined" ? null : document.getElementById(id),
-  );
+  //? Null on the first client render too: the server rendered nothing here, and a portal created during
+  //? hydration makes React claim the parent's next server node for the portal's content.
+  const [targetElement, setTargetElement] = useState<HTMLElement | null>(null);
 
   useLayoutEffect(() => {
     setTargetElement(document.getElementById(id));

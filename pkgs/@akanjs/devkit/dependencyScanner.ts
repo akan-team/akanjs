@@ -10,8 +10,10 @@ const testFileRegex = /\.(?:test|spec)\.[cm]?[tj]sx?$/;
 // `__fixtures__` holds deliberately invalid sample sources for the lint-rule suites; tsconfig `exclude` and
 // biome's `!` override already skip them, and their imports are violations rather than real dependencies.
 const skipDirs = ["node_modules", "dist", "build", ".git", ".next", "public", "ios", "android", "__fixtures__"];
-const isSkippedPath = (filePath: string) =>
-  skipDirs.some((dir) => filePath.includes(`/${dir}/`) || filePath.startsWith(`${dir}/`));
+const isSkippedPath = (filePath: string) => {
+  const posixPath = filePath.split(path.sep).join("/");
+  return skipDirs.some((dir) => posixPath.includes(`/${dir}/`) || posixPath.startsWith(`${dir}/`));
+};
 const builtinModuleSet = new Set([...builtinModules, ...builtinModules.map((mod) => `node:${mod}`)]);
 const stripShebang = (source: string) => source.replace(/^#!.*(?:\r?\n|$)/, "");
 

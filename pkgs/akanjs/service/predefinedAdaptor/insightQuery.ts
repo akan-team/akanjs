@@ -1,4 +1,5 @@
-import type { AkanSqlClient } from "./database.adaptor";
+import type { DatabaseAdaptor } from "./database.adaptor";
+import { PostgresAkanClient } from "./sql/driver/postgres";
 
 export interface InsightQueryOptions {
   /** Rows to return at most. Clamped to `InsightQuery.maxRows`, which no caller can raise. */
@@ -23,19 +24,21 @@ export interface InsightQueryResult {
  * owns no guard strong enough to sit in front of it. An app that wants it writes the endpoint with its own
  * `SuperAdmin`, the same way guards ship with the library that owns the model.
  *
- * Three things enforce read-only, and only the third is ours:
+ * **`_doc` never crosses the boundary.** Every non-base field lives in that one JSON column, and an arbitrary SELECT
+ * names no model to mask by, so the column itself is what is withheld — and the engine withholds it, because no check
+ * on a statement's text can: a `*` renamed by a column list, a whole-row value and SQLite's quoted-string names all
+ * reach it without spelling it. The statement runs on a connection the database adaptor opens for it
+ * (`openInsight()`), where the column does not exist as far as the engine can tell — see `SqliteInsightSession` and
+ * `PostgresInsightSession` — and which cannot write.
+ *
+ * The rest is layered on top, for readable refusals and depth:
  *
  * 1. The statement is wrapped as a derived table — `SELECT * FROM (<sql>) AS "akanInsight" LIMIT ?`. Nothing but a
- *    query is legal in that position, in either dialect, so a write is a syntax error from the engine rather than a
- *    pattern this code had to recognise. A second statement smuggled behind `;` is a syntax error for the same
- *    reason, and the row ceiling rides along on the same wrapper.
- * 2. A rejection before execution, so the caller reads why rather than a syntax error. It runs on the statement with
+ *    query is legal in that position, in either dialect, and the row ceiling rides along on the same wrapper.
+ * 2. A rejection before execution, so the caller reads why rather than an engine error. It runs on the statement with
  *    comments and string literals removed, because that is what makes `-- ` and `'…'` unable to hide anything.
- * 3. **`_doc` never crosses the boundary.** Every non-base field lives in that one JSON column, which is where the
- *    plan's "re-apply schema-based masking" runs into the fact that an arbitrary SELECT has no model to mask by. So
- *    the enforceable rule is the column itself: unnameable in the statement, dropped from the rows, and any cell
- *    that still arrives holding a JSON object or array is refused. An insight is made of scalars; a value that is
- *    not one is either a document or indistinguishable from it.
+ * 3. The rows: the document column is dropped, and any cell that still arrives holding a JSON object or array is
+ *    refused. An insight is made of scalars; a value that is not one is either a document or indistinguishable from it.
  *
  * What that costs is real and worth saying: this answers "how many, since when, grouped how" over base columns and
  * the search mirror, and it cannot read a domain field. Field-level reads go through the domain tools, which mask.
@@ -57,19 +60,30 @@ export class InsightQuery {
     /\b(insert|update|delete|drop|alter|create|truncate|replace|grant|revoke|attach|detach|vacuum|reindex|pragma)\b/i;
   /** The column every document's non-base fields live in. See the class note. */
   static readonly #documentColumn = "_doc";
+  static readonly #identifierChar = /[\p{L}\p{N}_$]/u;
+  static readonly #dollarQuote = /^\$(?:[\p{L}_][\p{L}\p{N}_]*)?\$/u;
 
-  readonly #client: AkanSqlClient;
+  readonly #database: DatabaseAdaptor;
 
-  constructor(client: AkanSqlClient) {
-    this.#client = client;
+  constructor(database: DatabaseAdaptor) {
+    this.#database = database;
   }
 
   async run(sql: string, { limit = InsightQuery.maxRows, timeoutMs = 10_000 }: InsightQueryOptions = {}) {
-    const statement = InsightQuery.#assertReadable(sql);
+    const statement = InsightQuery.#assertReadable(sql, this.#database.getConnection() instanceof PostgresAkanClient);
     const rows = Math.max(1, Math.min(limit, InsightQuery.maxRows));
-    // One more than asked for, which is how truncation is detected without a second count query.
-    const wrapped = `SELECT * FROM (${statement}) AS "akanInsight" LIMIT ${rows + 1}`;
-    const found = await InsightQuery.#raced(this.#client.prepare(wrapped).all(), timeoutMs);
+    // One more than asked for, which is how truncation is detected without a second count query. The newline ends a
+    // trailing `--` comment before it can swallow the wrapper's own closing parenthesis.
+    const wrapped = `SELECT * FROM (${statement}\n) AS "akanInsight" LIMIT ${rows + 1}`;
+    if (!this.#database.openInsight)
+      throw new Error("This database adaptor opens no insight connection, so it cannot run an insight query.");
+    const session = await this.#database.openInsight();
+    let found: Record<string, unknown>[];
+    try {
+      found = await InsightQuery.#raced(session.read(wrapped, timeoutMs), timeoutMs);
+    } finally {
+      await session.close();
+    }
     const truncated = found.length > rows;
     const kept = truncated ? found.slice(0, rows) : found;
     return {
@@ -80,12 +94,11 @@ export class InsightQuery {
   }
 
   /**
-   * Stops waiting; does not stop the query.
+   * Stops waiting; Postgres also stops the query, through `statement_timeout`.
    *
-   * With libsql or Postgres the driver call is genuinely asynchronous, so the caller is freed and the connection
-   * finishes on its own. With `bun:sqlite` it is synchronous and holds the event loop, so this timer cannot fire
-   * until the query is already done — the ceiling is what limits that case, not the clock. Do not read the timeout
-   * as protection against an expensive statement.
+   * With `bun:sqlite` the read is synchronous and holds the event loop, so this timer cannot fire until the query is
+   * already done — the ceiling is what limits that case, not the clock. Do not read the timeout as protection against
+   * an expensive statement on SQLite.
    */
   static async #raced<T>(work: Promise<T[]>, timeoutMs: number): Promise<T[]> {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -100,10 +113,10 @@ export class InsightQuery {
   }
 
   /** Returns the statement with a trailing `;` removed, or throws naming what is wrong with it. */
-  static #assertReadable(sql: string) {
+  static #assertReadable(sql: string, postgres: boolean) {
     const statement = sql.trim().replace(/;\s*$/, "");
     if (!statement) throw new Error("An insight query needs a statement.");
-    const bare = InsightQuery.#stripLiterals(statement);
+    const bare = InsightQuery.#stripLiterals(statement, postgres);
     if (bare.includes(";")) throw new Error("An insight query is one statement. Remove the `;`.");
     const first = /[a-z]+/.exec(bare.toLowerCase())?.[0];
     if (!first || !InsightQuery.#allowedFirstKeywords.has(first))
@@ -122,21 +135,81 @@ export class InsightQuery {
   /**
    * Blanks out comments and string literals so the checks above read only what the engine would treat as syntax.
    *
-   * Replaced with spaces rather than deleted, so nothing that was two tokens becomes one — `a/**\/b` must not read
-   * as the identifier `ab`. Dollar-quoting is not handled: it is Postgres function-body syntax, and a statement
-   * that begins with SELECT or WITH has nowhere legal to put one.
+   * One pass, left to right, because a literal can hold a comment opener and a comment can hold a quote: stripped in
+   * separate passes, `SELECT '--', _doc …` read as a comment from inside the string to the end of the line, and the
+   * column it hid went through. Replaced with spaces rather than deleted, so nothing that was two tokens becomes one —
+   * `a/**\/b` must not read as the identifier `ab`. Where the engines disagree the scan blanks the lesser span: a block
+   * comment ends at the first `*\/`, which Postgres would nest past, so the rest shows and at worst refuses a statement.
    *
-   * A double-quoted span is **unquoted, not blanked**. It is an identifier in both dialects, not a literal, so
-   * blanking it was what let `SELECT "_doc"` through the column check while `SELECT _doc` was refused. Keeping the
-   * contents means SQLite's fallback — a double-quoted string, where no such column exists — is read as an
-   * identifier too, which errs toward refusing a statement rather than toward reading the column.
+   * A quoted identifier is **unquoted, not blanked** — `"…"`, and in SQLite `[…]` and backticks. It is an identifier,
+   * not a literal, so blanking it was what let `SELECT "_doc"` through the column check while `SELECT _doc` was
+   * refused. SQLite's fallback — a double-quoted string, where no such column exists — is read as an identifier too,
+   * which errs toward refusing a statement rather than toward reading the column.
+   *
+   * Postgres has string forms whose end the scan would have to guess: `$tag$…$tag$`, `E'…'` with backslash escapes,
+   * and a backslash in a plain literal, which ends the string elsewhere once `standard_conforming_strings` is off.
+   * An insight never needs one, so each is refused rather than read. SQLite has none of them, and reading one of them
+   * the Postgres way there would blank text SQLite treats as syntax, which is why the scan follows the connection.
    */
-  static #stripLiterals(sql: string) {
-    return sql
-      .replace(/\/\*[\s\S]*?(\*\/|$)/g, (match) => " ".repeat(match.length))
-      .replace(/--[^\n]*/g, (match) => " ".repeat(match.length))
-      .replace(/'(?:''|[^'])*'/g, (match) => " ".repeat(match.length))
-      .replace(/"(?:""|[^"])*"/g, (match) => ` ${match.slice(1, -1)} `);
+  static #stripLiterals(sql: string, postgres: boolean) {
+    const bare: string[] = [];
+    let at = 0;
+    const blankTo = (end: number) => {
+      bare.push(" ".repeat(end - at));
+      at = end;
+    };
+    const unquoteTo = (end: number) => {
+      bare.push(` ${sql.slice(at + 1, end - 1)} `);
+      at = end;
+    };
+    while (at < sql.length) {
+      const char = sql[at];
+      const next = sql[at + 1];
+      const joined = at > 0 && InsightQuery.#identifierChar.test(sql[at - 1]);
+      if (char === "-" && next === "-") {
+        const end = sql.indexOf("\n", at);
+        blankTo(end === -1 ? sql.length : end);
+      } else if (char === "/" && next === "*") {
+        const end = sql.indexOf("*/", at + 2);
+        blankTo(end === -1 ? sql.length : end + 2);
+      } else if (char === "'") {
+        const end = InsightQuery.#closing(sql, at, "'");
+        if (postgres && InsightQuery.#escapeStringPrefix(sql, at))
+          throw new Error("An insight query takes plain '…' strings: E'…' is refused.");
+        if (postgres && sql.slice(at, end).includes("\\"))
+          throw new Error("An insight query takes no backslash inside a string literal.");
+        blankTo(end);
+      } else if (char === '"') {
+        unquoteTo(InsightQuery.#closing(sql, at, '"'));
+      } else if (!postgres && char === "`") {
+        unquoteTo(InsightQuery.#closing(sql, at, "`"));
+      } else if (!postgres && char === "[") {
+        const end = sql.indexOf("]", at + 1);
+        unquoteTo(end === -1 ? sql.length : end + 1);
+      } else if (postgres && char === "$" && !joined && InsightQuery.#dollarQuote.test(sql.slice(at))) {
+        throw new Error("An insight query takes plain '…' strings: a $$-quoted string is refused.");
+      } else {
+        bare.push(char);
+        at += 1;
+      }
+    }
+    return bare.join("");
+  }
+
+  /** A doubled quote is the quote itself, in both dialects. Past the closing quote, or the end of an unclosed one. */
+  static #closing(sql: string, open: number, quote: string) {
+    for (let at = open + 1; at < sql.length; at += 1) {
+      if (sql[at] !== quote) continue;
+      if (sql[at + 1] !== quote) return at + 1;
+      at += 1;
+    }
+    return sql.length;
+  }
+
+  static #escapeStringPrefix(sql: string, quote: number) {
+    const prefix = sql[quote - 1];
+    if (prefix !== "E" && prefix !== "e") return false;
+    return quote < 2 || !InsightQuery.#identifierChar.test(sql[quote - 2]);
   }
 
   static #columnsOf(rows: Record<string, unknown>[]) {
@@ -147,11 +220,9 @@ export class InsightQuery {
   }
 
   /**
-   * Drops the document column and refuses anything else shaped like one.
-   *
-   * The column has to be dropped here as well as rejected in the statement, because `SELECT * FROM "user"` returns
-   * it without ever naming it. The JSON check is for the ways a dialect can hand back a whole row under another
-   * name — `row_to_json(u)` — which no list of forbidden function names would keep up with.
+   * Drops the document column and refuses anything else shaped like one — behind the connection, which should already
+   * have withheld both. A table the app created outside the model store is read as it is, so a JSON column of its own
+   * is refused here and nowhere else.
    */
   static #readable(row: Record<string, unknown>) {
     const readable: Record<string, unknown> = {};

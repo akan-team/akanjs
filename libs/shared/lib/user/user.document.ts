@@ -133,15 +133,14 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
     return user;
   }
   async setSignToken(userId: string, signToken = randomString(36), expireAt = dayjs().add(30, "minute")) {
-    await this.userCache.set("signToken", userId, signToken, { expireAt });
+    await this.userCache.hclear("signToken", userId);
+    await this.userCache.hset("signToken", userId, signToken, true, { expireAt });
     return signToken;
   }
+  // The token is the field name, so taking it is the check: a wrong guess spends nothing, and two requests presenting
+  // the right one cannot both pass.
   async verifySignToken(userId: string, signToken: string) {
-    const existingSignToken = await this.userCache.get<string>("signToken", userId);
-    const isVerified = signToken === existingSignToken;
-    if (!isVerified) return false;
-    await this.userCache.delete("signToken", userId);
-    return true;
+    return !!(await this.userCache.hgetDel("signToken", userId, signToken));
   }
   async createRefreshSession(
     userId: string,
@@ -269,28 +268,16 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
     return !userExists;
   }
   async registerPhoneCode(userId: string, phone: string, purpose: string, phoneCode: string) {
-    const existingPhoneCodesStr = await this.userCache.get<string>("phoneCodes", userId);
-    const existingPhoneCodes = existingPhoneCodesStr
-      ? existingPhoneCodesStr.split(",").map((str) => str.split(":") as [string, string, string])
-      : [];
-    if (existingPhoneCodes.length >= 5) throw new Err("user.error.tooManyPhoneCodes");
-    const newPhoneCodes = [...existingPhoneCodes, [phone, purpose, phoneCode]];
-    const newPhoneCodesStr = newPhoneCodes
-      .map(([phone, purpose, phoneCode]) => `${phone}:${purpose}:${phoneCode}`)
-      .join(",");
-    await this.userCache.set("phoneCodes", userId, newPhoneCodesStr, { expireAt: dayjs().add(3, "minute") });
+    if ((await this.userCache.hkeys("phoneCodes", userId)).length >= 5) throw new Err("user.error.tooManyPhoneCodes");
+    await this.userCache.hset("phoneCodes", userId, `${phone}:${purpose}:${phoneCode}`, true, {
+      expireAt: dayjs().add(3, "minute"),
+    });
     return phoneCode;
   }
+  // Taken by exact match like a sign token; a code that verifies spends every other code the user was sent.
   async isPhoneCodeValid(userId: string, phone: string, purpose: string, phoneCode: string) {
-    const existingPhoneCodesStr = await this.userCache.get<string>("phoneCodes", userId);
-    const existingPhoneCodes = existingPhoneCodesStr
-      ? existingPhoneCodesStr.split(",").map((str) => str.split(":") as [string, string, string])
-      : [];
-    const existingPhoneCode = existingPhoneCodes.find(
-      ([p, pu, code]) => p === phone && pu === purpose && code === phoneCode,
-    );
-    if (!existingPhoneCode) return false;
-    await this.userCache.delete("phoneCodes", userId);
+    if (!(await this.userCache.hgetDel("phoneCodes", userId, `${phone}:${purpose}:${phoneCode}`))) return false;
+    await this.userCache.hclear("phoneCodes", userId);
     return true;
   }
   async setPhoneInPrepareUser(userId: string, phone: string, resignupDays = 0) {

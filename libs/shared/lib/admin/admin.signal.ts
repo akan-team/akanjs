@@ -14,7 +14,7 @@ import { Err } from "../dict";
 import * as srv from "../srv";
 
 export class AdminInternal extends internal(srv.admin, ({ initialize, process, resolveField }) => ({
-  initializeAdmin: initialize().exec(async function () {
+  initializeAdmin: initialize({ once: true }).exec(async function () {
     await this.adminService.initializeAdmin();
   }),
 })) {}

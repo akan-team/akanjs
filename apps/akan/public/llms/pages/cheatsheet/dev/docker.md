@@ -12,6 +12,7 @@
 - Minimal Compose (#compose)
 - Container Env (#env)
 - Scale With AKAN_REPLICA (#replica)
+- Several Containers On One Host (#multiple-host)
 - Trim The Web Surface (#web-surface)
 - Customize The Image (#dockerfile)
 - Open Console (#console)
@@ -47,6 +48,10 @@ cloud in the image
 
 Where it runs. The on-premise box in this page's example is `edge`.
 
+the app's only declared mode
+
+Picks one of the modes `database.modes` declares. Required when the app declares several.
+
 The port the gateway or the solo process binds.
 
 /workspace/sqlite in the image
@@ -64,6 +69,36 @@ Where the rotating log files go when file logging is on.
 unset
 
 Required to open `console.js` in a production-like environment.
+
+The SQLite database file. In `multiple`, every container on the host opens this one file.
+
+The SQLite file that holds the cache, queue and pubsub.
+
+The Redis for the cache, queue and pubsub. Required; `rediss://` connects over TLS.
+
+The Postgres database. Pool size, SSL and prepared statements ride its query string.
+
+Says `/workspace/local`, where uploads land, is one volume every instance mounts.
+
+Mode
+
+Database
+
+Cache · queue · pubsub
+
+Runs on
+
+A SQLite file
+
+SQLite files
+
+One container
+
+One SQLite file on a host volume
+
+Several containers on one host
+
+Several servers
 
 One server process that serves requests, runs background work, or both.
 
@@ -131,6 +166,10 @@ Kubernetes
 
 The same image on a cluster, with the Helm chart and its probes.
 
+Move Data Between Modes
+
+Copy an app's data from one database mode into another with `db-export` and `db-import`.
+
 Server Console
 
 What you can do once the console is open.
@@ -158,6 +197,8 @@ Required — set by the build
 The app does not start without these three.
 
 Commonly changed
+
+Where the data lives
 
 Scale With AKAN_REPLICA
 
@@ -205,6 +246,8 @@ yes
 
 no · AKAN_SOLO=false · akan start
 
+Several Containers On One Host
+
 Trim The Web Surface
 
 A deployment that only answers API calls does not need the web half. Leave it out of the build to shrink the image, or turn it off at boot to shrink the processes.
@@ -245,6 +288,7 @@ services:
       AKAN_PUBLIC_SERVE_DOMAIN: example.com
       AKAN_PUBLIC_ENV: main
       AKAN_PUBLIC_OPERATION_MODE: edge
+      AKAN_DATABASE_MODE: single
       AKAN_REPLICA: "0,0,1"
       AKAN_SQLITE_DIR: /workspace/sqlite
       AKAN_LOG_TO_FILE: "1"
@@ -252,6 +296,29 @@ services:
     volumes:
       - ./sqlite:/workspace/sqlite
       - ./logs:/workspace/logs
+```
+
+### docker-compose.yaml
+
+```ts
+services:
+  redis:
+    image: redis:8
+  myapp:
+    image: registry.mydomain.com/myorg/myapp:latest
+    deploy:
+      replicas: 3
+    environment:
+      AKAN_DATABASE_MODE: multiple
+      REDIS_URI: redis://redis:6379
+      SQLITE_DATABASE_PATH: /data/myapp.db
+      AKAN_STORAGE_SHARED: "true"
+    volumes:
+      - app-data:/data
+      - app-files:/workspace/local
+volumes:
+  app-data:
+  app-files:
 ```
 
 ### Terminal

@@ -55,6 +55,21 @@ export const decodeDateValue = (value: unknown) => {
 
 export const jsonStr = (value: unknown) => JSON.stringify(sanitizeJson(value) ?? null);
 
+// JSON.stringify writes U+0000 as `\u0000`; behind an odd run of backslashes the same six characters are text.
+const nulEscape = /(?<!\\)(?:\\\\)*\\u0000/;
+
+/** Postgres refuses U+0000 inside jsonb, so every mode refuses it — one app stores the same thing in each. */
+export const assertStorableJson = (json: string, table: string) => {
+  if (nulEscape.test(json))
+    throw new Error(
+      `Cannot store a string holding U+0000 (NUL) in "${table}": Postgres refuses it inside jsonb, so no database mode stores one`,
+    );
+  return json;
+};
+
+// `%` and `_` in the searched text are the text, not wildcards; both dialects are told `\` escapes them.
+export const likePattern = (value: unknown) => `%${String(value).replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+
 export const BASE_COLUMN_LEAF: QueryLeafOps = {
   eq: (path, value) =>
     value === null
@@ -87,5 +102,5 @@ export const BASE_COLUMN_LEAF: QueryLeafOps = {
     sql: `EXISTS (SELECT 1 FROM json_each(${quoteIdent(path)}) WHERE json_each.value = ?)`,
     params: [encodeSqlValue(value)],
   }),
-  contains: (path, value) => ({ sql: `${quoteIdent(path)} LIKE ?`, params: [`%${String(value)}%`] }),
+  contains: (path, value) => ({ sql: `${quoteIdent(path)} LIKE ? ESCAPE '\\'`, params: [likePattern(value)] }),
 };

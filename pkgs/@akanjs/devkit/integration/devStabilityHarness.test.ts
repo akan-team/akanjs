@@ -42,8 +42,13 @@ describe("dev stability harness port allocation", () => {
 
     expect(new Set(ports).size).toBe(ports.length);
     // Forward-only, so a harness cannot be handed a port a previous host in this process may still be
-    // holding while it shuts down — which is the collision the random offset kept producing.
-    expect(ports).toEqual([...ports].sort((a, b) => a - b));
+    // holding while it shuts down — which is the collision the random offset kept producing. The cursor starts
+    // at a pid-seeded slot and wraps at the end of the band, so forward is measured around the band, and a step
+    // back would read as most of a lap.
+    const band = DevStabilityHarness.portOffsetMax - DevStabilityHarness.portOffsetMin;
+    const steps = ports.slice(1).map((port, idx) => (port - ports[idx] + band) % band);
+    expect(steps.every((step) => step > 0 && step % DevStabilityHarness.portOffsetStride === 0)).toBe(true);
+    expect(steps.reduce((sum, step) => sum + step, 0)).toBeLessThan(band);
   });
 
   test("returns the same port on every call instead of re-deriving it", async () => {

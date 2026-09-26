@@ -19,7 +19,9 @@ import { baseDocumentColumns, documentQueryHelper, getFilterSortByKey, type Quer
 import {
   type AkanJob,
   type AkanJobOptions,
+  type DocumentStore,
   type InjectRegistry,
+  type LiveChange,
   type LiveRegistry,
   type WebsocketAdaptor,
   WebsocketAdaptorRole,
@@ -44,6 +46,11 @@ import type { HttpRoutes, LocalPublish, SignalRoutes, WebsocketRoutes } from "..
 
 type HttpRouteHandler = (req: Bun.BunRequest) => Response | Promise<Response | undefined> | undefined;
 type LiveChangeListener = (doc: unknown, type: unknown, previous?: unknown) => void;
+type LiveRoute = (next: Record<string, unknown>, previous?: Record<string, unknown>) => Promise<LiveDelivery[]>;
+interface LiveDelivery {
+  roomId: string;
+  payload: LiveEventPayload;
+}
 type HttpMethodRoutes = Record<string, HttpRouteHandler>;
 
 export class SignalResolver {
@@ -56,6 +63,7 @@ export class SignalResolver {
     SignalResolver.logger.verbose(`Local publish is not initialized yet`);
   };
   static readonly #coalescingRooms = new Set<string>();
+  static readonly #liveRoutes = new Map<string, { store: DocumentStore; route: LiveRoute }>();
 
   static coalescesRoom(roomId: string): boolean {
     const separator = roomId.indexOf("-");
@@ -72,6 +80,19 @@ export class SignalResolver {
         localPublish(roomId, payload);
       }
     });
+    websocket.onChange?.((change) => {
+      void SignalResolver.#routeChange(change, live).catch((error: unknown) =>
+        SignalResolver.logger.warn(`Live routing failed for ${change.refName}: ${String(error)}`),
+      );
+    });
+  }
+  static async #routeChange({ refName, next, previous }: LiveChange, live?: LiveRegistry) {
+    const target = SignalResolver.#liveRoutes.get(refName);
+    if (!target || !live?.syncHub.roomCountOf(refName)) return;
+    await target.route(
+      target.store.deserialize(next) as Record<string, unknown>,
+      previous ? (target.store.deserialize(previous) as Record<string, unknown>) : undefined,
+    );
   }
   static resolveServerSignal(
     serverSignalCls: ServerSignalCls,
@@ -82,7 +103,6 @@ export class SignalResolver {
     const websocket = SignalResolver.#getWebsocket(registry);
     Object.entries(endpointMeta).forEach(([key, endpointInfo]) => {
       if (endpointInfo.type !== "pubsub") throw new Error(`Endpoint ${key} is not a pubsub endpoint`);
-      websocket.registerEndpoint(key, endpointInfo.returns.returnRef as Cls, endpointInfo.returns.arrDepth);
       const isBinaryFrame = endpointInfo.returns.returnRef === Binary && !endpointInfo.returns.arrDepth;
       if (isBinaryFrame && endpointInfo.signalOption.backpressure !== "queue") SignalResolver.#coalescingRooms.add(key);
       let warnedRawBytes = false;
@@ -104,7 +124,7 @@ export class SignalResolver {
           const roomId = SignalResolver.makeRoomId(key, roomArgs);
           if (isBinaryFrame) {
             const bytes = Binary._parse(resolvedData as Uint8Array) as Uint8Array;
-            websocket.publish(roomId, bytes);
+            websocket.publish(roomId, bytes, { coalesce: SignalResolver.coalescesRoom(roomId) });
             SignalResolver.#localPublish(roomId, bytes);
             return;
           }
@@ -142,6 +162,11 @@ export class SignalResolver {
    * `update<Filter>` / `remove<Filter>`, `updateById` / `removeById` — is one atomic statement that fires no
    * document hooks at all, exactly as it fires no cascade, so a model whose fields move that way will not push
    * those moves to a live list. It is the same blind spot cascade has and it cannot be closed from here.
+   *
+   * A write is routed where each room is held: the writer routes its own rooms and hands the write itself to every
+   * other server (`publishChange`), which routes the rooms it holds. A room lives only on the server its socket is
+   * on, so a writer routing for everyone would miss them — and a batch process holds no room at all. The documents
+   * cross whole, hidden and secret fields included, over the app's own channel.
    */
   static registerLiveSync(
     sliceCls: SliceCls,
@@ -156,16 +181,17 @@ export class SignalResolver {
       .map(([key]) => `${refName}Live${capitalize(key)}`);
     if (!liveKeys.length) return [];
     const service = live.service.get(refName) as
-      | { listenPost: (type: "create" | "update" | "remove", listener: LiveChangeListener) => unknown }
+      | {
+          listenPost: (type: "create" | "update" | "remove", listener: LiveChangeListener) => unknown;
+          __databaseModel: { __store: DocumentStore };
+        }
       | undefined;
     if (!service) throw new Error(`Live slice on "${refName}" has no service to listen to`);
+    const store = service.__databaseModel.__store;
     const websocket = SignalResolver.#getWebsocket(registry);
-    // The cross-server decoder is keyed by endpoint, and a live envelope rides `Any` — the Light inside it is
-    // masked and serialized before it is put there, not by the transport.
-    for (const liveKey of liveKeys) websocket.registerEndpoint(liveKey, Any, 0);
-    const publish = async (next: Record<string, unknown>, previous?: Record<string, unknown>) => {
+    const route: LiveRoute = async (next, previous) => {
       const targets = live.syncHub.route(refName, next, previous);
-      if (!targets.length) return;
+      if (!targets.length) return [];
       const id = String(next.id);
       const needsLight = targets.some((target) => !target.invalidate && target.payload === "light");
       // `resolveReturn` rather than `mask`: this value is rendered by a page, and `mask` also drops `visual`
@@ -180,13 +206,25 @@ export class SignalResolver {
           })) as object)
         : null;
       const lightData = light ? (serialize(cnst.light, 0, light, "object", {}) as object | null) : null;
-      for (const target of targets) {
+      return targets.map((target) => {
         const payload: LiveEventPayload = target.invalidate
           ? { op: "invalidate", id }
           : { op: target.op, id, light: target.payload === "light" ? lightData : null };
-        websocket.publish(target.roomId, payload);
         SignalResolver.#localPublish(target.roomId, payload);
-      }
+        return { roomId: target.roomId, payload };
+      });
+    };
+    SignalResolver.#liveRoutes.set(refName, { store, route });
+    const publish = async (next: Record<string, unknown>, previous?: Record<string, unknown>) => {
+      websocket.publishChange?.({
+        refName,
+        next: store.serialize(next),
+        previous: previous ? store.serialize(previous) : undefined,
+      });
+      const delivered = await route(next, previous);
+      // An adaptor that cannot carry the write carries each room's event instead, which reaches another server's
+      // sockets only in a room this one holds too.
+      if (!websocket.publishChange) for (const { roomId, payload } of delivered) websocket.publish(roomId, payload);
     };
     // Fire and forget: a live room is a courtesy on top of a write that has already committed, so a subscriber
     // that cannot be reached must not fail the write that reached everyone else.
@@ -227,6 +265,7 @@ export class SignalResolver {
           internal.schedule.registerInit(
             key,
             SignalResolver.#traced(key, () => internalInfo.execFn?.bind(internal)()),
+            { once: internalInfo.signalOption.once },
           );
           break;
         case "destroy":

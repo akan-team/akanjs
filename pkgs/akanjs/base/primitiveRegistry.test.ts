@@ -42,23 +42,24 @@ describe("PrimitiveRegistry", () => {
     expect(PrimitiveRegistry.getAll()).toContain(String);
   });
 
-  test("rejects duplicate primitive registration unless overwritten", () => {
+  test("lets a re-evaluated scalar replace its earlier registration", () => {
     class TestScalar extends PrimitiveScalar {
       static override refName = "TestScalar";
     }
 
     PrimitiveRegistry.register(TestScalar);
-
+    PrimitiveRegistry.register(TestScalar);
     expect(PrimitiveRegistry.get("TestScalar")).toBe(TestScalar);
-    expect(() => PrimitiveRegistry.register(TestScalar)).toThrow("Scalar TestScalar already registered");
 
     class ReplacementScalar extends PrimitiveScalar {
       static override refName = "TestScalar";
     }
 
-    PrimitiveRegistry.register(ReplacementScalar, { overwrite: true });
+    PrimitiveRegistry.register(ReplacementScalar);
     expect(PrimitiveRegistry.get("TestScalar")).toBe(ReplacementScalar);
     expect(PrimitiveRegistry.getName(ReplacementScalar)).toBe("TestScalar");
+    expect(PrimitiveRegistry.getName(TestScalar)).toBe("TestScalar");
+    expect(PrimitiveRegistry.getNames().filter((name) => name === "TestScalar")).toHaveLength(1);
   });
 
   test("throws for missing primitive lookups", () => {

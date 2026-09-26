@@ -12,6 +12,7 @@ import {
   type HostConfig,
   type HostConfigDto,
   type RemoteEnvServerConfig,
+  type TestTargetsConfig,
 } from "./constants";
 
 export class GlobalConfig {
@@ -27,6 +28,7 @@ export class GlobalConfig {
       ...akanConfig,
       cloudHost: akanConfig.cloudHost ?? defaultAkanGlobalConfig.cloudHost,
       remoteEnvServers: akanConfig.remoteEnvServers ?? defaultAkanGlobalConfig.remoteEnvServers,
+      testTargets: akanConfig.testTargets ?? defaultAkanGlobalConfig.testTargets,
     };
   }
   /**
@@ -69,6 +71,17 @@ export class GlobalConfig {
     await GlobalConfig.#setAkanGlobalConfig({
       ...akanConfig,
       remoteEnvServers,
+    });
+  }
+  static async getTestTargets(): Promise<TestTargetsConfig> {
+    const akanConfig = await GlobalConfig.#getAkanGlobalConfig();
+    return akanConfig.testTargets;
+  }
+  static async setTestTargets(testTargets: TestTargetsConfig) {
+    const akanConfig = await GlobalConfig.#getAkanGlobalConfig();
+    await GlobalConfig.#setAkanGlobalConfig({
+      ...akanConfig,
+      testTargets: { ...akanConfig.testTargets, ...testTargets },
     });
   }
   static needRefreshToken(accessToken: AccessToken): boolean {

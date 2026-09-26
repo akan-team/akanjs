@@ -1,12 +1,13 @@
 import { Any } from "akanjs/base";
 import type { AgentWireContext, AgentWireMessage, AgentWireTool, LlmTurnRequest } from "akanjs/service";
 import { srv } from "akanjs/service";
+import { AgentMeter } from "./agentMeter";
 import { AgentTurn } from "./agentTurn";
 import { AgentTurnStream } from "./agentTurnStream";
 import { endpoint } from "./endpoint";
 import { AgentRelayAccess } from "./guards";
 import { internal } from "./internal";
-import { Req } from "./internalArg";
+import { CallerAccount, Req } from "./internalArg";
 import { serverSignal } from "./serverSignal";
 import { SignalRegistry } from "./signalRegistry";
 
@@ -24,7 +25,8 @@ export class AgentEndpoint extends endpoint(srv.agent, ({ mutation }) => ({
     // `Req` binds the endpoint to the HTTP transport (a ws call has no request to inject) — which is what the
     // chat's runner speaks, and what SSE negotiation needs the Accept header for.
     .with(Req)
-    .exec(async function (messages, tools, context, instructions, request) {
+    .with(CallerAccount, { nullable: true })
+    .exec(async function (messages, tools, context, instructions, request, account) {
       const turn: LlmTurnRequest = {
         messages: messages as unknown as AgentWireMessage[],
         tools: tools as unknown as AgentWireTool[],
@@ -33,8 +35,10 @@ export class AgentEndpoint extends endpoint(srv.agent, ({ mutation }) => ({
       };
       if (AgentTurnStream.wants(request as Bun.BunRequest))
         // The signal layer sends a raw Response as-is, so the declared return stays the JSON path's contract.
-        return AgentTurnStream.response((onDelta) => this.agentService.runTurn(turn, onDelta)) as unknown as AgentTurn;
-      return await this.agentService.runTurn(turn);
+        return AgentTurnStream.response((onDelta) =>
+          AgentMeter.run(account, () => this.agentService.runTurn(turn, onDelta)),
+        ) as unknown as AgentTurn;
+      return await AgentMeter.run(account, () => this.agentService.runTurn(turn));
     }),
 })) {}
 

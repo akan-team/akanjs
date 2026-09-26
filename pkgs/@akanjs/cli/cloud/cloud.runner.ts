@@ -1,13 +1,27 @@
 import path from "node:path";
-import { CloudApi, GlobalConfig, getDefaultHostConfig, type RemoteEnvServerConfig } from "@akanjs/devkit/cloud";
+import {
+  CloudApi,
+  GlobalConfig,
+  getDefaultHostConfig,
+  type RemoteEnvServerConfig,
+  type WindowsTestTargetConfig,
+} from "@akanjs/devkit/cloud";
 import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
+import { PlatformTestRun } from "@akanjs/devkit/platformTest/PlatformTestRun";
+import type { RemoteTestPlatform } from "@akanjs/devkit/platformTest/PlatformTestTarget";
 import { confirm, input, select } from "@inquirer/prompts";
 import { Logger, sleep } from "akanjs/common";
 import chalk from "chalk";
 import * as QRcode from "qrcode";
 import { getLatestPackageVersion, getNpmRegistryUrl } from "../npmRegistry";
 import { openBrowser } from "../openBrowser";
+
+interface SettlePlatformTestsOptions {
+  interactive: boolean;
+  recordStreaks: boolean;
+  checkDrift: boolean;
+}
 
 interface RegistryOptions {
   registryUrl?: string;
@@ -231,6 +245,76 @@ export class CloudRunner extends runner("cloud") {
       Logger.rawLog(chalk.yellow.bold("\n⚠️  No active session found"));
       Logger.rawLog(chalk.dim("You were not logged in to begin with\n"));
     }
+  }
+  async startPlatformTests(workspace: Workspace, platforms: RemoteTestPlatform[], pkgs: string[]) {
+    const targets = await GlobalConfig.getTestTargets();
+    if (platforms.includes("windows") && !targets.windows) {
+      targets.windows = await this.#askWindowsTestTarget();
+      await GlobalConfig.setTestTargets({ windows: targets.windows });
+    }
+    Logger.info(`Testing ${pkgs.join(", ")} on ${platforms.join(", ")} in the background...`);
+    return await PlatformTestRun.start({
+      workspaceRoot: workspace.workspaceRoot,
+      platforms,
+      pkgs,
+      targets,
+      onProgress: (message) => Logger.info(message),
+    });
+  }
+  async settlePlatformTests(
+    run: PlatformTestRun,
+    { interactive, recordStreaks, checkDrift }: SettlePlatformTestsOptions,
+  ) {
+    const results = await run.results();
+    Logger.rawLog(`\n${run.format(results)}\n`);
+    if (recordStreaks) {
+      const streak = await PlatformTestRun.recordStreaks(results);
+      if (streak?.promoted)
+        Logger.info(`${streak.platform} passed ${streak.greenStreak} deploys in a row and now gates every deploy`);
+    }
+    const { blocking, warning } = PlatformTestRun.verdict(results);
+    const unreachable = blocking.filter((result) => result.infraError && !result.packages.length);
+    const failing = blocking.filter((result) => !unreachable.includes(result));
+    if (failing.length)
+      throw new Error(
+        `Platform tests failed on ${failing.map((result) => result.platform).join(", ")} — ${run.logDir}`,
+      );
+    for (const result of [...unreachable, ...warning]) {
+      const reason = result.infraError ?? "failing tests";
+      if (!interactive) continue;
+      const proceed = await confirm({
+        message: `${result.platform} did not pass (${reason}). Continue without it?`,
+        default: false,
+      });
+      if (!proceed) throw new Error(`Stopped after ${result.platform} platform tests — ${run.logDir}`);
+    }
+    if (!interactive && unreachable.length)
+      throw new Error(`Could not run ${unreachable.map((result) => result.platform).join(", ")} — ${run.logDir}`);
+    if (!checkDrift) return results;
+    const drift = await run.snapshot.drift();
+    const drifted = [...drift.changed, ...drift.added, ...drift.removed];
+    if (drifted.length)
+      throw new Error(
+        `The tree changed while it was being tested, so the results do not describe what would be published: ${drifted.slice(0, 20).join(", ")}${drifted.length > 20 ? ", …" : ""}`,
+      );
+    return results;
+  }
+  async #askWindowsTestTarget(): Promise<WindowsTestTargetConfig> {
+    Logger.info("No Windows test target is configured yet; it is saved to ~/.akan/config.json once entered.");
+    const host = (await input({ message: "Windows host (ip or name): ", validate: (value) => !!value.trim() })).trim();
+    const user = (await input({ message: "SSH user: ", validate: (value) => !!value.trim() })).trim();
+    const identityFile = (
+      await input({ message: "SSH private key path: ", validate: (value) => !!value.trim() })
+    ).trim();
+    const knownHostsFile = (await input({ message: "known_hosts file (optional): " })).trim();
+    const utmVm = (await input({ message: "UTM VM name, to start it and find its ip (optional): " })).trim();
+    return {
+      host,
+      user,
+      identityFile,
+      ...(knownHostsFile ? { knownHostsFile } : {}),
+      ...(utmVm ? { utmVm } : {}),
+    };
   }
   async getAkanPkgs(workspace: Workspace) {
     const pkgs = await workspace.getPkgs();

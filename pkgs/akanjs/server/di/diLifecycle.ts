@@ -1,4 +1,4 @@
-import { type BackendEnv, getEnv } from "akanjs/base";
+import { type BackendEnv, DatabaseModes, getEnv } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import {
   type Adaptor,
@@ -25,7 +25,7 @@ import { createDefaultAkanOption } from "../akanOption";
 import type { WebProxyRegistration } from "../proxy";
 import { CascadeRunner, DatabaseResolver, ServiceResolver, SignalResolver } from "../resolver";
 import type { SignalRoutes, WebsocketRoutes } from "../types";
-import { getPredefinedAdaptor, predefinedAdaptorRole } from "./predefinedAdaptor";
+import { collectPredefinedDependencies, getPredefinedAdaptor, predefinedAdaptorRole } from "./predefinedAdaptor";
 import { collectAdaptors, resolveAdaptorHierarchy } from "./resolveAdaptorHierarchy";
 import { resolveServiceHierarchy } from "./resolveServiceHierarchy";
 import {
@@ -107,14 +107,40 @@ export class DiLifecycle {
     };
   }
 
+  // The rule `getEnv()` settles on, run where a boot may fail: a mode that is misspelled, ambiguous or missing its
+  // drivers stops here and says what to fix, instead of surfacing as an import error inside an adaptor's init.
+  static #databaseMode() {
+    const { environment, operationMode } = getEnv();
+    const mode = DatabaseModes.resolve({
+      requested: process.env.AKAN_DATABASE_MODE,
+      declared: process.env.AKAN_DATABASE_MODES,
+      local: environment === "local" || operationMode === "local",
+    });
+    const missing = DatabaseModes.drivers[mode].filter((driver) => {
+      try {
+        import.meta.resolve(driver);
+        return false;
+      } catch {
+        return true;
+      }
+    });
+    if (missing.length)
+      throw new Error(
+        `The ${mode} database mode imports ${missing.join(", ")}, which this build does not carry. Declare "${mode}" in database.modes of akan.config.ts: akan build bundles the drivers of every declared mode, and akan start installs them.`,
+      );
+    return mode;
+  }
+
   static #envOn(...names: string[]) {
     return !names.some((name) => process.env[name] === "false" || process.env[name] === "0");
   }
 
   constructor({ env, modules = [], disableModules = [], disableLibs = [] }: DiLifecycleProps, ...libs: AkanLib[]) {
     this.#env = env;
+    const databaseMode = DiLifecycle.#databaseMode();
+    this.logger.info(`Database mode: ${DatabaseModes.describe(databaseMode)}`);
     // Copied: "single" mode hands back the shared module-scope object, and applyAdaptor overrides mutate per app.
-    this.#predefinedAdaptor = { ...getPredefinedAdaptor(getEnv().databaseMode ?? "single") };
+    this.#predefinedAdaptor = { ...getPredefinedAdaptor(databaseMode) };
     this.#libs = libs;
     this.#service.set("base", {
       service: srv.base,
@@ -196,6 +222,10 @@ export class DiLifecycle {
     };
     for (const [role, adaptorCls] of Object.entries(this.#predefinedAdaptor))
       claimAdaptor(adaptorCls, `predefined adaptor "${role}"`);
+    for (const adaptor of collectPredefinedDependencies(this.#predefinedAdaptor)) {
+      this.#adaptor.set(adaptor.refName, adaptor);
+      claimAdaptor(adaptor, "a predefined adaptor's dependency");
+    }
     this.#database.forEach((mod) => {
       const { adaptor, schema } = DatabaseResolver.resolveDatabase(mod.constant, mod.database);
       this.#adaptor.set(adaptor.refName, adaptor);

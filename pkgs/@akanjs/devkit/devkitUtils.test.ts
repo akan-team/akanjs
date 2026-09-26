@@ -40,7 +40,7 @@ describe("resolveSignalTestPreloadPath", () => {
     await write(path.join(root, "node_modules/akanjs/test/signalTest.preload.ts"), "export {};\n");
 
     await expect(resolveSignalTestPreloadPath({ cwdPath: libDir })).resolves.toContain(
-      "node_modules/akanjs/test/signalTest.preload.ts",
+      path.join("node_modules/akanjs/test/signalTest.preload.ts"),
     );
   });
 });

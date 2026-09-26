@@ -62,6 +62,42 @@ export const diagramDrafts: Record<string, DiagramPrompt> = {
   },
 };
 
+/**
+ * 블로그 목록 썸네일. `Docs.Figure` 가 아니라 페이지에서 읽을 프롬프트가 없으므로 여기가 원본이다.
+ * 180px 너비로 보이므로 라벨 없이 굵은 선의 큰 도형 몇 개로만 그린다.
+ */
+export const thumbnailPrompts: Record<string, DiagramPrompt> = {
+  "blog-production-stability": {
+    where: "script/diagramPrompts.ts — thumbnail for /blog/production-stability",
+    size: "1536x1024",
+    subject:
+      "A blog thumbnail, so draw only a few large shapes with thick bold lines, filling the middle of the frame. " +
+      "On the left, a big round stopwatch with its hand pointing straight up. To its right, a wide simple chart " +
+      "with one horizontal axis and one vertical axis; across the whole chart runs a single long line that stays " +
+      "perfectly flat and steady from left to right, like a calm heartbeat monitor with no spikes. The flat line " +
+      "is the red accent. No labels, no tick marks, no numbers.",
+  },
+  "blog-benchmark": {
+    where: "script/diagramPrompts.ts — thumbnail for /blog/benchmark",
+    size: "1536x1024",
+    subject:
+      "A blog thumbnail, so draw only a few large shapes with thick bold lines, filling the middle of the frame. " +
+      "In the centre, a big half-circle speedometer gauge with a few short tick marks along its arc and a needle " +
+      "pointing far to the right, near the maximum. To the right of the gauge, a small bar chart of four upright " +
+      "bars of rising height standing on one baseline. The needle is the red accent. No labels, no numbers.",
+  },
+  "blog-manifesto": {
+    where: "script/diagramPrompts.ts — thumbnail for /blog/manifesto",
+    size: "1536x1024",
+    subject:
+      "A blog thumbnail, so draw only a few large shapes with thick bold lines, filling the middle of the frame. " +
+      "A calm beach scene in simple outlines: a person seen from the side sits relaxed in a low folding beach " +
+      "chair with a laptop open on their lap, a palm tree leans in from the left edge, a straight horizon line " +
+      "of the sea runs behind them, and a half sun sits on the horizon to the right with a few short rays. The " +
+      "sun is the red accent. No labels, no words.",
+  },
+};
+
 const figureTag = "Docs.Figure";
 /** `Docs.Figure` 의 width/height 기본값과 같아야 한다 — 생략된 크기를 여기서 같은 값으로 읽는다. */
 const defaultFigureWidth = 1536;
@@ -85,7 +121,7 @@ const literalOf = (initializer: ts.JsxAttributeValue | undefined) => {
  * `image`·`prompt`·`width`·`height` 는 리터럴이어야 한다. `prompt` 의 줄바꿈과 들여쓰기는 공백 하나로 접는다.
  */
 export const loadDiagramPrompts = async (appRoot: string) => {
-  const prompts: Record<string, DiagramPrompt> = { ...diagramDrafts };
+  const prompts: Record<string, DiagramPrompt> = { ...diagramDrafts, ...thumbnailPrompts };
   const problems: string[] = [];
 
   for await (const file of new Bun.Glob("page/**/*.tsx").scan({ cwd: appRoot })) {

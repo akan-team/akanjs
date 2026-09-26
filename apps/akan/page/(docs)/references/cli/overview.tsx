@@ -316,6 +316,14 @@ export default page().render(() => {
           }),
         },
         {
+          name: ["db-export <app>", "db-import <app>"],
+          href: ["/references/cli/application#db-export", "/references/cli/application#db-import"],
+          desc: l.trans({
+            en: "Copies an app's data out of one database mode and into another.",
+            ko: "앱의 데이터를 한 데이터베이스 모드에서 꺼내 다른 모드로 옮깁니다.",
+          }),
+        },
+        {
           name: "configure-app <app>",
           desc: l.trans({ en: "Configures app settings interactively.", ko: "앱 설정을 대화형으로 구성합니다." }),
         },

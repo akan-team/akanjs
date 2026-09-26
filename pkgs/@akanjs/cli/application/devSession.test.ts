@@ -309,6 +309,9 @@ describe("DevPortReclaimer", () => {
       "bun apps/minimal/main.ts",
       "bun /repo/pkgs/@akanjs/devkit/incrementalBuilder/incrementalBuilder.proc.ts",
       "bun --conditions react-server /repo/node_modules/akanjs/server/rscWorker.tsx",
+      '"C:\\Users\\u\\.bun\\bin\\bun.exe" C:\\w\\dist\\pkgs\\@akanjs\\cli\\index.js start akan',
+      '"C:\\Users\\u\\.bun\\bin\\akan.exe" start akan',
+      "C:\\Users\\u\\.bun\\bin\\bun.exe C:\\w\\apps\\minimal\\main.ts",
     ])
       expect([command, DevPortReclaimer.isAkanCommand(command)]).toEqual([command, true]);
   });
@@ -384,7 +387,9 @@ describe("DevBootConcurrency", () => {
 
   test("start leaves the option unset rather than defaulting it, so the machine gets to answer", () => {
     const [argMetas] = getArgMetas(ApplicationCommand, "start");
-    const concurrency = argMetas.find((meta) => meta.type === "Option" && meta.name === "concurrency");
+    const concurrency = argMetas.find(
+      (meta): meta is Extract<typeof meta, { name: string }> => meta.type === "Option" && meta.name === "concurrency",
+    );
     expect(concurrency?.argsOption.default).toBeUndefined();
     expect(concurrency?.argsOption.nullable).toBe(true);
   });

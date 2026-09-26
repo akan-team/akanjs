@@ -4,6 +4,22 @@ import { Link } from "akanjs/ui";
 
 const posts = [
   {
+    href: "/blog/v3release",
+    eyebrow: { en: "Release Note", ko: "Release Note" },
+    title: {
+      en: "Akan.js v3: agents join the full stack",
+      ko: "Akan.js v3: 풀스택에 에이전트가 합류합니다",
+    },
+    desc: {
+      en: "Every app becomes an MCP server, an in-page agent works the screen, pages become prompts, the UI is rebuilt on native tokens and recipes — and it all runs faster, lighter and starts twice as fast.",
+      ko: "모든 앱이 MCP 서버가 되고, 인페이지 에이전트가 화면을 다루고, 페이지가 프롬프트가 되며, UI는 네이티브 토큰과 레시피로 새로 지었습니다. 그러면서도 더 빠르고, 가볍고, 두 배 빨리 시작합니다.",
+    },
+    meta: { en: "Product", ko: "제품" },
+    date: { en: "Sep 25, 2026", ko: "2026년 9월 25일" },
+    image: "/akanjsImage/diagrams/agent-runtime.png",
+    imageClassName: "object-cover mix-blend-multiply dark:mix-blend-screen dark:hue-rotate-180 dark:invert",
+  },
+  {
     href: "/blog/production-stability",
     eyebrow: { en: "Production Stability", ko: "Production Stability" },
     title: {
@@ -16,8 +32,8 @@ const posts = [
     },
     meta: { en: "Benchmark", ko: "벤치마크" },
     date: { en: "Jun 13, 2026", ko: "2026년 6월 13일" },
-    image: "/akanjsImage/stability.webp",
-    imageClassName: "object-cover",
+    image: "/akanjsImage/diagrams/blog-production-stability.png",
+    imageClassName: "object-cover mix-blend-multiply dark:mix-blend-screen dark:hue-rotate-180 dark:invert",
   },
   {
     href: "/blog/benchmark",
@@ -32,8 +48,8 @@ const posts = [
     },
     meta: { en: "Performance", ko: "성능" },
     date: { en: "May 30, 2026", ko: "2026년 5월 30일" },
-    image: "/akanjsImage/akan_benchmark.webp",
-    imageClassName: "object-cover",
+    image: "/akanjsImage/diagrams/blog-benchmark.png",
+    imageClassName: "object-cover mix-blend-multiply dark:mix-blend-screen dark:hue-rotate-180 dark:invert",
   },
   {
     href: "/blog/v2release",
@@ -64,8 +80,8 @@ const posts = [
     },
     meta: { en: "Essay", ko: "에세이" },
     date: { en: "May 14, 2026", ko: "2026년 5월 14일" },
-    image: "/akanjsImage/beach.webp",
-    imageClassName: "object-cover",
+    image: "/akanjsImage/diagrams/blog-manifesto.png",
+    imageClassName: "object-cover mix-blend-multiply dark:mix-blend-screen dark:hue-rotate-180 dark:invert",
   },
 ];
 

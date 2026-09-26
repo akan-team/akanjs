@@ -242,9 +242,18 @@ export interface AkanApiConfig {
   websocketPrefix: string;
 }
 
+export interface AkanDatabaseConfig {
+  /**
+   * The modes this app's build can run in. `akan build` bundles the drivers of each, the image lets a deployment
+   * pick one of them with `AKAN_DATABASE_MODE` and no other, and `akan start` runs the first unless the shell names
+   * another. A deployment of a build carrying several has to name one.
+   */
+  modes: DatabaseMode[];
+}
+
 export interface AppConfigResult {
   docker: DockerConfig;
-  defaultDatabaseMode: DatabaseMode;
+  database: AkanDatabaseConfig;
   /**
    * Where this app mounts its endpoints. Declared here rather than only in `main.ts` because the value is baked
    * into every client bundle: a prebuilt CSR shell or a mobile bundle never reaches the server that would tell

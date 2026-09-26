@@ -10,6 +10,7 @@ import {
   type StyleContractViolations,
 } from "@akanjs/devkit/frontendBuild/styleContract";
 import { ThemeValidator } from "@akanjs/devkit/frontendBuild/themeValidator";
+import { Linter } from "@akanjs/devkit/linter";
 import { collectRecipeSources, type RecipeSource, scanRecipes } from "@akanjs/devkit/recipeScanner";
 import type { PackageJson } from "@akanjs/devkit/types";
 import { getLatestPackageVersion, getNpmRegistryUrl } from "../npmRegistry";
@@ -200,7 +201,7 @@ export class WorkspaceRunner extends runner("workspace") {
     { fix = true, maxDiagnostics = defaultMaxDiagnostics }: { fix?: boolean; maxDiagnostics?: number } = {},
   ) {
     const configPath = await WorkspaceRunner.resolveBiomeConfigPath(workspace);
-    await workspace.spawn("./node_modules/.bin/biome", [
+    await workspace.spawn(`./node_modules/.bin/${Linter.biomeBinName}`, [
       "check",
       ...(fix ? ["--write"] : []),
       "--no-errors-on-unmatched",

@@ -1,3 +1,4 @@
+export { type ConformanceCacheKind, ConformanceEnv, type SqlDriver, type SqlDriverKind } from "./conformance";
 export { sample } from "./sample";
 export { sampleOf } from "./sampleOf";
 export {

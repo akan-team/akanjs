@@ -4,6 +4,7 @@ import { usePage } from "@apps/akan/client";
 import { cn } from "akanjs/client";
 import { Link, System } from "akanjs/ui";
 import { useEffect, useState } from "react";
+import { BsArrowUpRight } from "react-icons/bs";
 import { FaBars, FaDiscord, FaGithub } from "react-icons/fa";
 import { AkanLogo } from "./AkanLogo";
 
@@ -34,7 +35,10 @@ interface AkanjsHeaderProps {
 
 export const akanjsHomeHeaderLinks: AkanjsHeaderLink[] = [
   { href: "/docs", label: { en: "Docs", ko: "문서" } },
+  { href: "/showcase", label: { en: "Showcase", ko: "쇼케이스" } },
+  { href: "/roadmap", label: { en: "Roadmap", ko: "로드맵" } },
   { href: "/blog", label: { en: "Blog", ko: "블로그" } },
+  { href: "https://cloud.akanjs.com", label: { en: "Deploy", ko: "배포" }, target: "_blank" },
 ];
 
 export const akanjsDocsHeaderLinks: AkanjsHeaderLink[] = [
@@ -123,6 +127,7 @@ export const AkanjsHeader = ({
                 activeClassName="text-primary after:scale-x-100"
               >
                 {l.trans(link.label)}
+                {link.target === "_blank" ? <BsArrowUpRight className="-mt-0.5 ml-1 inline size-3" /> : null}
               </Link>
             ))}
           </div>
@@ -189,6 +194,7 @@ export const AkanjsHeader = ({
                 activeClassName="text-primary after:scale-x-100"
               >
                 {l.trans(link.label)}
+                {link.target === "_blank" ? <BsArrowUpRight className="-mt-0.5 ml-1 inline size-3" /> : null}
               </Link>
             ))}
           </div>
@@ -209,6 +215,7 @@ export const AkanjsHeader = ({
                     activeClassName="font-bold text-primary"
                   >
                     {l.trans(link.label)}
+                    {link.target === "_blank" ? <BsArrowUpRight className="-mt-0.5 ml-1 inline size-3" /> : null}
                   </Link>
                 ))}
               </div>

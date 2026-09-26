@@ -11,12 +11,9 @@ export const dayjs = dayjsLib;
 export class PrimitiveRegistry {
   static readonly #namePrimitiveMap = new Map<string, typeof PrimitiveScalar>();
   static readonly #primitiveNameMap = new Map<typeof PrimitiveScalar, string>();
-  static register(scalar: typeof PrimitiveScalar, { overwrite = false } = {}) {
-    if (
-      !overwrite &&
-      (PrimitiveRegistry.#namePrimitiveMap.has(scalar.refName) || PrimitiveRegistry.#primitiveNameMap.has(scalar))
-    )
-      throw new Error(`Scalar ${scalar.refName} already registered`);
+  //? A second registration of a refName replaces the first rather than throwing: HMR re-evaluates the module that
+  //? declared the scalar, and the registry cannot tell that apart from a clash. The old class keeps its name.
+  static register(scalar: typeof PrimitiveScalar) {
     PrimitiveRegistry.#namePrimitiveMap.set(scalar.refName, scalar);
     PrimitiveRegistry.#primitiveNameMap.set(scalar, scalar.refName);
   }
@@ -42,9 +39,29 @@ export class PrimitiveRegistry {
   static getAll(): (typeof PrimitiveScalar)[] {
     return [...PrimitiveRegistry.#namePrimitiveMap.values()];
   }
+  /** The agent face `modelRef` declares, or null for anything that is not a registered primitive declaring one. */
+  static agentOf(modelRef: unknown): PrimitiveAgentFace | null {
+    if (!PrimitiveRegistry.#primitiveNameMap.has(modelRef as typeof PrimitiveScalar)) return null;
+    return (modelRef as typeof PrimitiveScalar).agent ?? null;
+  }
 }
 
-export type PrimitiveValue = string | number | boolean | Dayjs | Date | Uint8Array | null | undefined;
+export interface PrimitiveJsonSchema {
+  [key: string]: unknown;
+}
+
+/**
+ * How an agent — an MCP client or the in-page one — sees a primitive whose stored shape is not the one a model
+ * should read or write: `schema` is what it is published as on both sides of a call, and `read` turns a stored or
+ * wire value into that shape. There is no `write`, because every argument and every input field already runs
+ * through `parseValue`; a primitive that accepts the agent's shape there has taken the write.
+ */
+export interface PrimitiveAgentFace<Value = unknown> {
+  schema: PrimitiveJsonSchema;
+  read(value: Value): unknown;
+}
+
+export type PrimitiveValue = string | number | boolean | Dayjs | Date | Uint8Array | object | null | undefined;
 export class PrimitiveScalar {
   static refName: string;
   static [SERVER_VALUE]: unknown;
@@ -52,6 +69,10 @@ export class PrimitiveScalar {
   static [DEFAULT_VALUE]: unknown = null;
   static [PURIFIED_VALUE]: unknown = null;
   static [EXAMPLE_VALUE]: unknown = null;
+  /** The wire shape, for a primitive the built-in schema table cannot know. Absent, it is published as a string. */
+  static jsonSchema?: PrimitiveJsonSchema;
+  /** Absent, an agent sees the wire shape. See `PrimitiveAgentFace`. */
+  static agent?: PrimitiveAgentFace;
 
   static validate(value: PrimitiveValue): boolean {
     return true;

@@ -6,7 +6,7 @@ import { configureSignalTest } from "akanjs/test";
 import type * as cnst from "../cnst";
 import type { AdminAgent } from "../user/user.signal.spec";
 
-configureSignalTest({ databaseMode: "tempFile" });
+configureSignalTest({ storage: "tempFile" });
 
 describe("File Signal", () => {
   describe("File Service", () => {

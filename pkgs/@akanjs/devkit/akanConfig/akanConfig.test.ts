@@ -249,31 +249,65 @@ describe("AkanAppConfig", () => {
       ...akanPackageJson.dependencies,
       ...akanPackageJson.peerDependencies,
     };
-    const singleConfig = new AkanAppConfig(app, [], packageJson, { defaultDatabaseMode: "single" }, baseDevEnv);
-    const multipleConfig = new AkanAppConfig(app, [], packageJson, { defaultDatabaseMode: "multiple" }, baseDevEnv);
-    const clusterConfig = new AkanAppConfig(app, [], packageJson, { defaultDatabaseMode: "cluster" }, baseDevEnv);
+    const configOf = (database: { modes: ("single" | "multiple" | "cluster")[] }) =>
+      new AkanAppConfig(app, [], packageJson, { database }, baseDevEnv);
+    const dependenciesOf = (config: AkanAppConfig) => config.getProductionPackageJson().dependencies ?? {};
+    const singleConfig = configOf({ modes: ["single"] });
+    const multipleConfig = configOf({ modes: ["multiple"] });
+    const clusterConfig = configOf({ modes: ["cluster"] });
+    const edgeAndCloud = configOf({ modes: ["single", "cluster"] });
 
-    expect(singleConfig.getProductionPackageJson().dependencies).not.toHaveProperty("ioredis");
-    expect(singleConfig.getProductionPackageJson().dependencies).not.toHaveProperty("bullmq");
-    expect(singleConfig.getProductionPackageJson().dependencies).not.toHaveProperty("@libsql/client");
-    expect(singleConfig.getProductionPackageJson().dependencies).not.toHaveProperty("postgres");
-    expect(singleConfig.getProductionPackageJson().dependencies).not.toHaveProperty("protobufjs");
-
-    expect(multipleConfig.getProductionPackageJson().dependencies).toMatchObject({
-      "@libsql/client": runtimeDependencies["@libsql/client"],
+    for (const driver of ["ioredis", "bullmq", "postgres", "@libsql/client", "protobufjs"])
+      expect(dependenciesOf(singleConfig)).not.toHaveProperty(driver);
+    expect(dependenciesOf(multipleConfig)).toMatchObject({
       bullmq: runtimeDependencies.bullmq,
       ioredis: runtimeDependencies.ioredis,
-      protobufjs: runtimeDependencies.protobufjs,
     });
-    expect(multipleConfig.getProductionPackageJson().dependencies).not.toHaveProperty("postgres");
-
-    expect(clusterConfig.getProductionPackageJson().dependencies).toMatchObject({
+    expect(dependenciesOf(clusterConfig)).toMatchObject({
       bullmq: runtimeDependencies.bullmq,
       ioredis: runtimeDependencies.ioredis,
       postgres: runtimeDependencies.postgres,
-      protobufjs: runtimeDependencies.protobufjs,
     });
-    expect(clusterConfig.getProductionPackageJson().dependencies).not.toHaveProperty("@libsql/client");
+    // multiple opens the same SQLite as single and Redis replaced protobuf on the wire, so neither ships by default.
+    for (const config of [multipleConfig, clusterConfig])
+      for (const driver of ["@libsql/client", "protobufjs"]) expect(dependenciesOf(config)).not.toHaveProperty(driver);
+    expect(dependenciesOf(multipleConfig)).not.toHaveProperty("postgres");
+    // One image for an edge site and a cloud cluster carries both modes' drivers, and says which it carries.
+    expect(dependenciesOf(edgeAndCloud)).toMatchObject({ postgres: runtimeDependencies.postgres });
+    expect(edgeAndCloud.dockerfile).toContain("ENV AKAN_DATABASE_MODES=single,cluster");
+    expect(singleConfig.dockerfile).toContain("ENV AKAN_DATABASE_MODES=single");
+  });
+
+  test("runs single when the app declares no mode", () => {
+    expect(new AkanAppConfig(app, [], packageJson, {}, baseDevEnv).database.modes).toEqual(["single"]);
+  });
+
+  test("refuses a mode name that is not one of the three, naming the file", () => {
+    expect(
+      () => new AkanAppConfig(app, [], packageJson, { database: { modes: ["clsuter" as "cluster"] } }, baseDevEnv),
+    ).toThrow("database.modes in apps/portal/akan.config.ts");
+  });
+
+  test("resolves a command's mode within the declared ones", () => {
+    const previous = process.env.AKAN_DATABASE_MODE;
+    try {
+      const config = new AkanAppConfig(
+        app,
+        [],
+        packageJson,
+        { database: { modes: ["single", "cluster"] } },
+        baseDevEnv,
+      );
+      delete process.env.AKAN_DATABASE_MODE;
+      expect(config.resolveDatabaseMode()).toBe("single");
+      process.env.AKAN_DATABASE_MODE = "cluster";
+      expect(config.resolveDatabaseMode()).toBe("cluster");
+      process.env.AKAN_DATABASE_MODE = "multiple";
+      expect(() => config.resolveDatabaseMode()).toThrow('Add "multiple" to database.modes');
+    } finally {
+      if (previous === undefined) delete process.env.AKAN_DATABASE_MODE;
+      else process.env.AKAN_DATABASE_MODE = previous;
+    }
   });
 
   test("resolves database mode runtime packages and missing install specs", () => {
@@ -300,20 +334,11 @@ describe("AkanAppConfig", () => {
     );
 
     expect(config.getDatabaseModeRuntimePackages("single")).toEqual([]);
-    expect(config.getDatabaseModeRuntimePackages("multiple")).toEqual([
-      "@libsql/client",
-      "bullmq",
-      "ioredis",
-      "protobufjs",
-    ]);
-    expect(config.getDatabaseModeRuntimePackages("cluster")).toEqual(["bullmq", "ioredis", "postgres", "protobufjs"]);
-    expect(config.getMissingDatabaseModeDependencySpecs("multiple")).toEqual([
-      `@libsql/client@${runtimeDependencies["@libsql/client"]}`,
-      `protobufjs@${runtimeDependencies.protobufjs}`,
-    ]);
+    expect(config.getDatabaseModeRuntimePackages("multiple")).toEqual(["bullmq", "ioredis"]);
+    expect(config.getDatabaseModeRuntimePackages("cluster")).toEqual(["bullmq", "ioredis", "postgres"]);
+    expect(config.getMissingDatabaseModeDependencySpecs("multiple")).toEqual([]);
     expect(config.getMissingDatabaseModeDependencySpecs("cluster")).toEqual([
       `postgres@${runtimeDependencies.postgres}`,
-      `protobufjs@${runtimeDependencies.protobufjs}`,
     ]);
     // The workspace-root install covers the toolchain/runtime plus every app Capacitor plugin
     // (deduped — "@capacitor/core" appears in both source lists).

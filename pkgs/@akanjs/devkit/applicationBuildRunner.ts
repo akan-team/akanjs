@@ -191,7 +191,27 @@ export class ApplicationBuildRunner {
     await Promise.all([
       this.#app.dist.writeJson("package.json", akanConfig.getProductionPackageJson()),
       this.#app.dist.writeFile(`${this.#app.dist.cwdPath}/Dockerfile`, akanConfig.dockerfile),
+      this.#app.dist.writeJson("akan.build.json", {
+        buildId: await this.#resolveBuildId(),
+        akanVersion: akanConfig.akanVersion,
+        builtAt: new Date().toISOString(),
+      }),
     ]);
+  }
+
+  //* Read back at runtime as `buildId` on the ops channel; a deployment's own AKAN_BUILD_ID still wins over it there.
+  async #resolveBuildId() {
+    const fromEnv = process.env.AKAN_BUILD_ID?.trim();
+    if (fromEnv) return fromEnv;
+    const root = this.#app.workspace.workspaceRoot;
+    const sha = Bun.spawnSync(["git", "rev-parse", "--short=12", "HEAD"], { cwd: root, stderr: "ignore" });
+    if (sha.exitCode !== 0) return null;
+    const dirty = Bun.spawnSync(["git", "status", "--porcelain", "--untracked-files=no"], {
+      cwd: root,
+      stderr: "ignore",
+    });
+    const suffix = dirty.exitCode === 0 && dirty.stdout.toString().trim() ? "-dirty" : "";
+    return `${sha.stdout.toString().trim()}${suffix}`;
   }
 
   async #buildBackend() {
@@ -204,15 +224,21 @@ export class ApplicationBuildRunner {
     for (const entrypoint of backendEntryPoints) {
       if (!(await Bun.file(entrypoint).exists())) throw new Error(`Backend entrypoint not found: ${entrypoint}`);
     }
-    const backendResult = await this.#buildOrThrow("backend", {
-      entrypoints: backendEntryPoints,
+    const backendConfig = {
       outdir: this.#app.dist.cwdPath,
       target: "bun",
       minify: AKAN_BACKEND_MINIFY,
       naming: { entry: "[name].[ext]", chunk: "chunk-[hash].[ext]" },
       define: { "process.env.NODE_ENV": JSON.stringify("production") },
       plugins: backendExternals.length > 0 ? [this.#createExternalSpecifiersPlugin(backendExternals)] : [],
-    });
+    } satisfies Omit<Bun.BuildConfig, "entrypoints">;
+    //* Built apart so main.js keeps its own module copies; splitting moves lazy vendor `import()`s out of the boot
+    //* parse (minimal: server.js import 79ms → 24ms, 59MB → 36MB RSS).
+    const [mainResult, serverResult] = [
+      await this.#buildOrThrow("backend", { ...backendConfig, entrypoints: [backendEntryPoints[0]] }),
+      await this.#buildOrThrow("backend", { ...backendConfig, entrypoints: [backendEntryPoints[1]], splitting: true }),
+    ];
+    const backendResult = { outputs: [...mainResult.outputs, ...serverResult.outputs] };
     // Nothing spawns the RSC worker without SSR, so an api-only image does not carry it.
     const rscWorkerResult = web.ssr
       ? await this.#buildOrThrow("rsc-worker", {

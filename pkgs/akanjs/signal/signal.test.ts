@@ -1050,6 +1050,26 @@ describe("SignalContext execution", () => {
     });
   });
 
+  test("answers null when a nullable endpoint returns nothing, and names an endpoint that may not", async () => {
+    const run = async (endpointInfo: EndpointInfo) => {
+      const adaptor = new (adapt("signalTestUndefinedAdaptor"))();
+      return (await SignalContext.try(adaptor, endpointInfo, "finishTime", async () => {
+        const context = makeSignalContext({ endpointInfo, adaptor });
+        await context.init();
+        return (await context.exec()) as Response;
+      })) as Response;
+    };
+    const nullablePrimitive = await run(buildEndpoint.query(Date, { nullable: true }).exec(() => undefined as never));
+    const nullableAny = await run(buildEndpoint.query(Any).exec(() => undefined as never));
+    const required = await run(buildEndpoint.query(Date).exec(() => undefined as never));
+
+    expect(nullablePrimitive.status).toBe(200);
+    expect(await nullablePrimitive.json()).toBeNull();
+    expect(nullableAny.status).toBe(200);
+    expect(await nullableAny.json()).toBeNull();
+    expect(required.status).toBe(500);
+  });
+
   test("passes through raw Response results", async () => {
     const endpointInfo = buildEndpoint.query(Response as never).exec(() => Response.json({ ok: true }) as never);
     const context = makeSignalContext({ endpointInfo });

@@ -1,6 +1,6 @@
 import type { BackendEnv, PromiseOrObject } from "akanjs/base";
 import type { Adaptor, AdaptorCls, LlmOption } from "akanjs/service";
-import type { CrossSiteOption, GuardCls, MiddlewareCls } from "akanjs/signal";
+import type { AgentQuotaHook, AgentUsageHook, CrossSiteOption, GuardCls, MiddlewareCls } from "akanjs/signal";
 import type { McpServerOption } from "./akanServer";
 import type { WebProxyRegistration } from "./proxy";
 import { HostBasePathWebProxy, LocaleWebProxy } from "./proxy";
@@ -22,6 +22,8 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
   readonly #getLlms: ((env: Env) => LlmOption)[] = [];
   #getMcp: ((env: Env) => boolean | McpServerOption) | undefined;
   #agentAccess: GuardCls | GuardCls[] | null | undefined;
+  #agentUsage: AgentUsageHook | null | undefined;
+  #agentQuota: AgentQuotaHook | null | undefined;
   #crossSite: CrossSiteOption | undefined;
   constructor() {
     this.#getUses = [];
@@ -65,6 +67,19 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
     return this;
   }
   /**
+   * Called once per relayed turn with the provider's token counts, after the answer is on its way — for a ledger
+   * or a bill. `null` clears what a library set.
+   */
+  setAgentUsage(hook: AgentUsageHook | null) {
+    this.#agentUsage = hook;
+    return this;
+  }
+  /** Asked before a turn spends the key; `false` refuses it with `agent.error.quotaExceeded`. */
+  setAgentQuota(hook: AgentQuotaHook | null) {
+    this.#agentQuota = hook;
+    return this;
+  }
+  /**
    * Which other origins may drive a mutation, on top of the one serving the request and the native shells.
    * Needed only by a browser client hosted somewhere else — a separate admin domain, a partner embed. The gate
    * itself is on by default and `{ enabled: false }` is for an API no browser reaches.
@@ -104,6 +119,12 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
   }
   getAgentAccess(): GuardCls | GuardCls[] | null | undefined {
     return this.#agentAccess;
+  }
+  getAgentUsage(): AgentUsageHook | null | undefined {
+    return this.#agentUsage;
+  }
+  getAgentQuota(): AgentQuotaHook | null | undefined {
+    return this.#agentQuota;
   }
   getCrossSite(): CrossSiteOption | undefined {
     return this.#crossSite;

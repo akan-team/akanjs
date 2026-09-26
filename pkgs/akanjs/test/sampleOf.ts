@@ -2,6 +2,8 @@ import {
   Any,
   Binary,
   type Cls,
+  DEFAULT_VALUE,
+  EXAMPLE_VALUE,
   FIELD_META,
   Float,
   ID,
@@ -11,7 +13,15 @@ import {
   Upload,
 } from "akanjs/base";
 import { randomPick } from "akanjs/common";
-import type { BaseObject, ConstantCls, ConstantField, DocumentModel, FieldObject, FieldPreset } from "akanjs/constant";
+import {
+  type BaseObject,
+  type ConstantCls,
+  type ConstantField,
+  type DocumentModel,
+  type FieldObject,
+  type FieldPreset,
+  freshPrimitiveValue,
+} from "akanjs/constant";
 
 import { sample } from "./sample";
 
@@ -40,8 +50,16 @@ const getPrimitiveSample = (ref: Cls, field: ConstantField) => {
   } else if (typeof field.max === "number") {
     return field.max;
   } else {
-    return (scalarSampleMap.get(ref)?.() ?? null) as string | null;
+    const sampler = scalarSampleMap.get(ref);
+    return (sampler ? sampler() : primitiveSampleOf(ref as unknown as typeof PrimitiveScalar)) as string | null;
   }
+};
+
+// An unlisted primitive samples its own example, parsed as an argument would be, so a required field still purifies.
+const primitiveSampleOf = (primitive: typeof PrimitiveScalar) => {
+  const example = primitive[EXAMPLE_VALUE];
+  if (example === null || example === undefined) return freshPrimitiveValue(primitive[DEFAULT_VALUE]) ?? null;
+  return primitive._parse(freshPrimitiveValue(example) as never);
 };
 
 const makeSample = (field: ConstantField): any => {

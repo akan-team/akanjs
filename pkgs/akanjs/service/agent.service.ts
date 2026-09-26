@@ -24,7 +24,14 @@ export class AgentService extends serve("agent" as const, ({ plug }) => ({
     );
     const answer = await this.llm.chat(prepared, onDelta);
     if (!answer) throw new Err("agent.error.llmUnavailable");
-    return { text: answer.text ?? "", toolCalls: names.decode(answer.toolCalls ?? []), stop: answer.stop };
+    return {
+      text: answer.text ?? "",
+      toolCalls: names.decode(answer.toolCalls ?? []),
+      stop: answer.stop,
+      ...(answer.usage ? { usage: answer.usage } : {}),
+      ...(answer.model ? { model: answer.model } : {}),
+      ...(this.llm.limits ? { limits: this.llm.limits } : {}),
+    };
   }
 
   /**

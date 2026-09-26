@@ -77,7 +77,7 @@ describe("LogControlSocket", () => {
     Logger.setLevel("info");
   });
 
-  test("binds 0600 in the runtime dir", async () => {
+  test.skipIf(process.platform === "win32")("binds 0600 in the runtime dir", async () => {
     const mode = (await stat(control.path)).mode & 0o777;
     expect(mode).toBe(0o600);
     expect(path.basename(control.path)).toBe("akan-control.sock");

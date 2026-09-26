@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { BackendEnv } from "akanjs/base";
+import { type BackendEnv, DatabaseModes } from "akanjs/base";
 import { adapt, type LlmAdaptor, LlmAdaptorRole, ServiceModel, SolidPubSub, serve } from "akanjs/service";
 import { endpoint } from "../../signal/endpoint";
 import { internal } from "../../signal/internal";
@@ -726,5 +726,62 @@ describe("DiLifecycle module selection", () => {
     expect(() => new DiLifecycle({ env, disableModules: ["selectionTypo"] }, buildSelectionLib())).toThrow(
       '[DI:disableModules] unknown module "selectionTypo"',
     );
+  });
+});
+
+// Ids are from `local/database-modes/05-mode-config.md`.
+describe("DiLifecycle database mode", () => {
+  const bootIn = async (env: Record<string, string | undefined>) => {
+    const keys = ["AKAN_PUBLIC_ENV", "AKAN_PUBLIC_OPERATION_MODE", "AKAN_DATABASE_MODE", "AKAN_DATABASE_MODES"];
+    const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    process.env.AKAN_PUBLIC_APP_NAME = "serverLifecycle";
+    process.env.AKAN_PUBLIC_REPO_NAME = "akan";
+    process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
+    for (const [key, value] of Object.entries(env)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    const { resetEnvCache, getEnv } = await import("akanjs/base");
+    resetEnvCache();
+    try {
+      const { DiLifecycle } = await import("./diLifecycle");
+      const lib = new AkanLib("databaseModeTest", {
+        databases: [],
+        services: [],
+        scalars: [],
+        option: new AkanOption(),
+      });
+      new DiLifecycle({ env: {} }, lib);
+      return getEnv().databaseMode;
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      resetEnvCache();
+    }
+  };
+  const deployed = { AKAN_PUBLIC_ENV: "main", AKAN_PUBLIC_OPERATION_MODE: "cloud" };
+
+  test("[CFG-1] boots a build's only mode without being told, and refuses to guess between several", async () => {
+    expect(await bootIn({ ...deployed, AKAN_DATABASE_MODE: undefined, AKAN_DATABASE_MODES: "cluster" })).toBe(
+      "cluster",
+    );
+    await expect(
+      bootIn({ ...deployed, AKAN_DATABASE_MODE: undefined, AKAN_DATABASE_MODES: "single,cluster" }),
+    ).rejects.toThrow("AKAN_DATABASE_MODE names neither");
+  });
+
+  test("[CFG-2] refuses a mode whose drivers the build does not carry, naming them", async () => {
+    const drivers = DatabaseModes.drivers as { cluster: readonly string[] };
+    const carried = drivers.cluster;
+    drivers.cluster = [...carried, "akan-driver-that-is-not-installed"];
+    try {
+      await expect(
+        bootIn({ ...deployed, AKAN_DATABASE_MODE: "cluster", AKAN_DATABASE_MODES: undefined }),
+      ).rejects.toThrow("imports akan-driver-that-is-not-installed, which this build does not carry");
+    } finally {
+      drivers.cluster = carried;
+    }
   });
 });

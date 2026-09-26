@@ -11,6 +11,7 @@ import type {
 } from "akanjs/document";
 import { baseDocumentColumns, queryOperatorKeys } from "akanjs/document";
 import type { SearchIndex } from "../searchIndex";
+import type { SqlDocumentStore } from "./SqlDocumentStore";
 
 export interface SqliteDatabaseConfig {
   filePath?: string;
@@ -34,6 +35,8 @@ export interface PostgresDatabaseConfig {
   database?: string;
   user?: string;
   password?: string;
+  /** A login role holding SELECT on base columns and nothing else — the one `InsightQuery` reads as. */
+  insightUrl?: string;
 }
 
 export interface SearchConfig {
@@ -42,7 +45,6 @@ export interface SearchConfig {
 }
 
 export interface DatabaseConfig {
-  driver?: "sqlite" | "libsql" | "postgres";
   sqlite?: SqliteDatabaseConfig;
   libsql?: LibsqlDatabaseConfig;
   postgres?: PostgresDatabaseConfig;
@@ -89,6 +91,9 @@ export interface DocumentStore {
   count(query?: DocumentQuery): Promise<number>;
   insight(query?: DocumentQuery): Promise<any>;
   hydrate(data: DocumentRecord, originalData?: DocumentRecord, options?: { track?: boolean }): any;
+  /** A document as text that another process turns back into the same document. */
+  serialize(doc: DocumentRecord): string;
+  deserialize(text: string): any;
 }
 
 export interface SqlResultRows<Row = Record<string, unknown>> {
@@ -107,13 +112,31 @@ export interface AkanSqlClient {
   close(): Promise<void>;
 }
 
+/** A connection on which the engine itself cannot reach `_doc`. See `InsightQuery`. */
+export interface InsightSession {
+  read(statement: string, timeoutMs: number): Promise<Record<string, unknown>[]>;
+  close(): Promise<void>;
+}
+
 export interface DatabaseAdaptor {
   getConnection(): AkanSqlClient;
   getStore(constant: ConstantModel, database: DatabaseModel, schema: DocumentSchema): DocumentStore;
+  /** Every model table this process has opened a store for. */
+  stores?(): SqlDocumentStore[];
   transaction<T>(fn: () => PromiseOrObject<T>): Promise<T>;
   // Declared here so a service holding `plug(DatabaseAdaptorRole)` can reach `suspend`/`resume` around a bulk
   // import without casting. `null` on adaptors that have no text search, which is how callers tell them apart.
   getSearchIndex(): SearchIndex | null;
+  openInsight?(): Promise<InsightSession>;
+}
+
+/** A model row as it is stored, `_doc` parsed — the unit a transfer between databases copies. */
+export interface TransferRow {
+  id: string;
+  createdAt: number;
+  updatedAt: number;
+  removedAt: number | null;
+  _doc: Record<string, unknown>;
 }
 
 export interface SqliteEnv {
@@ -153,12 +176,33 @@ export interface SqliteDocumentRow {
 }
 export type ProjectedSqliteDocumentRow = Omit<SqliteDocumentRow, "_doc"> & Record<string, unknown>;
 
+export interface ConcurrentIndexBuild {
+  name: string;
+  /** Where a replacement is built before it takes `name` over. */
+  next: string;
+  create: (name: string) => string;
+  /** The index exists under a different descriptor and is rebuilt; otherwise it is built only if missing. */
+  replace: boolean;
+}
+
 export interface DocumentDatabaseOwner {
   getConnection(): AkanSqlClient;
   getSearchIndex(): SearchIndex | null;
   getMeta(key: string): Promise<string | undefined> | string | undefined;
   setMeta(key: string, value: string): Promise<void>;
   afterCommit(fn: () => PromiseOrObject<void>): Promise<void>;
+  transaction?<T>(fn: () => PromiseOrObject<T>): Promise<T>;
+  /**
+   * Runs `fn` as the only schema change in the database. Postgres needs it: two `CREATE … IF NOT EXISTS` naming one
+   * table race to a duplicate-key error there instead of one of them skipping.
+   */
+  lockSchema?<T>(fn: () => Promise<T>): Promise<T>;
+  hasTable?(table: string): Promise<boolean>;
+  hasValidIndex?(name: string): Promise<boolean>;
+  /** Lets the role `InsightQuery` reads as see the table's base columns, and never `_doc`. */
+  grantInsight?(table: string): Promise<void>;
+  /** Builds an index on a table that already holds rows without blocking its writes; never inside a transaction. */
+  buildIndexConcurrently?(build: ConcurrentIndexBuild): Promise<void>;
 }
 
 export const QUERY_OPERATOR_KEYS = queryOperatorKeys;
@@ -166,14 +210,6 @@ export const QUERY_OPERATOR_KEYS = queryOperatorKeys;
 export interface SqlFrag {
   sql: string;
   params: unknown[];
-}
-
-// `ref` names both the model table and the `search_doc."ref"` value — the mirror keys rows by table name.
-export interface SearchJoinProps {
-  alias: string;
-  ref: string;
-  match: string;
-  weights: number[];
 }
 
 export interface SearchJoin extends SqlFrag {
@@ -191,6 +227,28 @@ export interface CompileContext {
   conjunctive: boolean;
 }
 
+/**
+ * What a document path holds, as far as the model declares it: `text` for a declared string — `String`, `ID`, a string
+ * enum, or a relation, which stores its target's id — and `json` for everything else, including any path the model
+ * does not type (inside an `Any`, a `Map`, an array of objects). SQLite reads both alike; Postgres compares them apart.
+ */
+export type PathKind = "text" | "json";
+
+export interface IndexColumn {
+  path: string;
+  expr: string;
+  isArray: boolean;
+}
+
+export interface CreateIndexProps {
+  name: string;
+  table: string;
+  unique: boolean;
+  columns: IndexColumn[];
+  /** Build without blocking writes to a table that already holds rows. Postgres only, and never in a transaction. */
+  concurrently?: boolean;
+}
+
 // A `SqlDialect` owns every dialect-specific SQL fragment so the compilers stay dialect-agnostic. Leaf query
 // operators and update operators are compiled fully here (SQL + params) — the accumulator string returned by
 // `applyUpdate` lets updates fold into a single nested JSON expression that the database applies atomically.
@@ -201,22 +259,26 @@ export interface SqlDialect {
   docColumnType(): string;
   docColumn(): string;
   docValuePlaceholder(): string;
-  extract(path: string): string;
+  extract(path: string, kind?: PathKind): string;
   projectExpr(path: string): string;
   decodeProjected(value: unknown): unknown;
-  eq(path: string, value: unknown): SqlFrag;
-  ne(path: string, value: unknown): SqlFrag;
-  compare(path: string, op: "gt" | "gte" | "lt" | "lte", value: unknown): SqlFrag;
-  between(path: string, from: unknown, to: unknown): SqlFrag;
-  inList(path: string, values: unknown[]): SqlFrag;
-  notInList(path: string, values: unknown[]): SqlFrag;
+  eq(path: string, value: unknown, kind?: PathKind): SqlFrag;
+  ne(path: string, value: unknown, kind?: PathKind): SqlFrag;
+  compare(path: string, op: "gt" | "gte" | "lt" | "lte", value: unknown, kind?: PathKind): SqlFrag;
+  between(path: string, from: unknown, to: unknown, kind?: PathKind): SqlFrag;
+  inList(path: string, values: unknown[], kind?: PathKind): SqlFrag;
+  notInList(path: string, values: unknown[], kind?: PathKind): SqlFrag;
   exists(path: string): SqlFrag;
   missing(path: string): SqlFrag;
   empty(path: string): SqlFrag;
   arrayHas(path: string, value: unknown): SqlFrag;
   contains(path: string, value: unknown): SqlFrag;
-  searchJoin(props: SearchJoinProps): SqlFrag;
+  orderTerm(expr: string, direction: 1 | -1): string;
+  indexName(name: string): string;
+  createIndex(props: CreateIndexProps): string;
   applyUpdate(acc: string, op: DocumentUpdateOperator, path: string, value: unknown): SqlFrag;
+  /** The stored document with these top-level fields replaced (value as JSON text) and these removed. */
+  mergeDocument(set: [field: string, json: string][], removed: string[]): SqlFrag;
   affectedRows(result: unknown): number;
 }
 

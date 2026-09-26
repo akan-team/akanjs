@@ -44,7 +44,7 @@ The id of one match, or `null`.
 
 The condition itself, not yet run. A slice's `exec` returns this.
 
-A JSON column holding every field the model declares, read with `json_extract(_doc, '$.field')`.
+A JSON column holding every declared field; SQLite reads one with `json_extract(_doc, '$.field')`.
 
 Four real columns, compared directly: `"updatedAt" >= ?`.
 
@@ -84,7 +84,7 @@ On an array field, a plain value or `q.oneOf` also checks the items.
 
 The text includes the value, bound as `%release%`.
 
-Full-text search over `text`-role fields, compiled to a JOIN. SQLite and libsql only.
+Full-text search over `text`-role fields, compiled to a JOIN. Works in every database mode.
 
 Every condition holds. `null`, `undefined` and `false` entries are skipped.
 
@@ -102,7 +102,7 @@ base column
 
 `id`, `createdAt`, `updatedAt` and `removedAt` are compared as real columns.
 
-Your own SQL fragment, wrapped in parentheses.
+Your own SQL fragment, wrapped in parentheses; write it in your database's dialect.
 
 Compare Values
 

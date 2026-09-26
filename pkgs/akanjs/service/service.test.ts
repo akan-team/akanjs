@@ -630,6 +630,15 @@ describe("dependency injection resolution", () => {
         map.set(key, value);
         hashValues.set(hashKey, map);
       },
+      async hsetIfAbsent(topic: string, prop: string, key: string, value: unknown, option?: CacheSetOptions) {
+        calls.push({ method: "hsetIfAbsent", args: [topic, prop, key, value, option] });
+        const hashKey = `${topic}:${prop}`;
+        const map = hashValues.get(hashKey) ?? new Map<string, unknown>();
+        if (map.has(key)) return false;
+        map.set(key, value);
+        hashValues.set(hashKey, map);
+        return true;
+      },
       async hdelete(topic: string, prop: string, key: string) {
         calls.push({ method: "hdelete", args: [topic, prop, key] });
         hashValues.get(`${topic}:${prop}`)?.delete(key);

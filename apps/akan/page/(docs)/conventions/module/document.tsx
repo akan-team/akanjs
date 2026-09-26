@@ -379,8 +379,8 @@ export default page().render(() => {
       type: "number[]",
       default: "[10, 1, 3, 0]",
       desc: l.trans({
-        en: "bm25 weights in the order title, desc, tag, filter. Four finite numbers.",
-        ko: "title, desc, tag, filter 순서의 bm25 가중치입니다. 유한한 숫자 네 개를 넘깁니다.",
+        en: "Ranking weights in the order title, desc, tag, filter: four finite, non-negative numbers.",
+        ko: "title, desc, tag, filter 순서의 순위 가중치입니다. 음수가 아닌 유한한 숫자 네 개를 넘깁니다.",
       }),
     },
   ];
@@ -1317,14 +1317,14 @@ const count = await this.countBySearch(text, statuses);`}
               {l.trans({
                 en: (
                   <span>
-                    <strong>SQLite and libSQL only.</strong> On Postgres, <code>q.search()</code> throws instead of
-                    returning every row.
+                    <strong>Works in every database mode.</strong> For the same text, SQLite, libSQL and Postgres match
+                    the same documents; only the order can differ on Postgres.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>SQLite와 libSQL에서만 됩니다.</strong> Postgres에서는 <code>q.search()</code>가 모든 행을
-                    돌려주는 대신 에러를 냅니다.
+                    <strong>모든 데이터베이스 모드에서 동작합니다.</strong> 같은 텍스트라면 SQLite, libSQL, Postgres가
+                    같은 document를 찾고, Postgres에서는 순서만 다를 수 있습니다.
                   </span>
                 ),
               })}

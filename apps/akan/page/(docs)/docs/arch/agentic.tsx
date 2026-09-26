@@ -798,16 +798,37 @@ export default page().render(() => {
     l.trans({
       en: (
         <>
-          <strong>When.</strong> Past <code>compact.at</code> estimated tokens, the history above the last{" "}
-          <code>keep</code> messages becomes one summary, before the turn that would overflow. A provider answers an
-          over-long request with a refusal, not a shorter answer.
+          <strong>When.</strong> Before every turn, on whichever comes first: the transcript passing{" "}
+          <code>compact.at</code> estimated tokens, a ceiling on what each turn costs, or the prompt nearing the window
+          the server reports. Then the history above the last <code>keep</code> messages becomes one summary. A provider
+          answers an over-long request with a refusal, not a shorter answer.
         </>
       ),
       ko: (
         <>
-          <strong>언제.</strong> 추정 토큰이 <code>compact.at</code>을 넘으면, 넘칠 턴이 나가기 전에 마지막{" "}
-          <code>keep</code>개 위의 히스토리가 요약 하나로 바뀝니다. 프로바이더는 너무 긴 요청에 짧은 답이 아니라 거절로
-          답합니다.
+          <strong>언제.</strong> 매 턴 직전, 둘 중 먼저 닿는 쪽에서 압축합니다. 하나는 대화 추정 토큰이{" "}
+          <code>compact.at</code>을 넘을 때로, 턴마다 드는 비용의 상한입니다. 다른 하나는 프롬프트가 서버가 알려 준
+          컨텍스트 창에 가까워질 때입니다. 그러면 마지막 <code>keep</code>개 위의 히스토리가 요약 하나로 바뀝니다.
+          프로바이더는 너무 긴 요청에 짧은 답이 아니라 거절로 답합니다.
+        </>
+      ),
+    }),
+    l.trans({
+      en: (
+        <>
+          <strong>The window.</strong> <code>{"option.setLlm({ contextWindow })"}</code> tells the chat how large it is.
+          The guard holds back the answer ceiling and a 13k buffer below it, and measures with the provider's own count
+          of the last turn, so a Korean conversation the character estimate reads as small is still caught. If the
+          provider refuses anyway, the chat compacts and sends the same turn once more, and learns the window from the
+          refusal.
+        </>
+      ),
+      ko: (
+        <>
+          <strong>컨텍스트 창.</strong> <code>{"option.setLlm({ contextWindow })"}</code>로 창 크기를 알려 줍니다.
+          가드는 그 아래로 답변 한도와 13k 버퍼를 비워 두고, 직전 턴에 프로바이더가 직접 센 토큰 수로 잽니다. 그래서
+          글자 수 추정이 작게 보는 한국어 대화도 놓치지 않습니다. 그래도 거절되면 압축한 뒤 같은 턴을 한 번 더 보내고,
+          거절 문구에서 창 크기를 알아 둡니다.
         </>
       ),
     }),
@@ -842,14 +863,16 @@ export default page().render(() => {
     l.trans({
       en: (
         <>
-          <strong>Tuning.</strong> <code>{"compact={{ at, keep }}"}</code> on Agent.Chat sets it per provider,{" "}
-          <code>{"{ at: 0 }"}</code> turns it off, and <code>/compact</code> runs it on demand keeping nothing.
+          <strong>Tuning.</strong> <code>{"compact={{ at, keep, buffer }}"}</code> on Agent.Chat sets it,{" "}
+          <code>{"{ at: Infinity }"}</code> leaves only the window guard, <code>{"{ at: 0 }"}</code> turns all of it
+          off, and <code>/compact</code> runs it on demand keeping nothing.
         </>
       ),
       ko: (
         <>
-          <strong>조절.</strong> Agent.Chat의 <code>{"compact={{ at, keep }}"}</code>로 프로바이더에 맞추고,{" "}
-          <code>{"{ at: 0 }"}</code>으로 끄며, <code>/compact</code>로 언제든 남기는 것 없이 실행합니다.
+          <strong>조절.</strong> Agent.Chat의 <code>{"compact={{ at, keep, buffer }}"}</code>로 정하고,{" "}
+          <code>{"{ at: Infinity }"}</code>이면 창 가드만 남기며, <code>{"{ at: 0 }"}</code>이면 전부 끕니다.{" "}
+          <code>/compact</code>로 언제든 남기는 것 없이 실행합니다.
         </>
       ),
     }),
@@ -1689,8 +1712,8 @@ st.expose("selectedWaypointId", ID)
         <Docs.Description>
           <div>
             {l.trans({
-              en: "The model is configured in option.ts, never in the environment. setLlm fills apiKey, model, host, accepts and maxTokens for whichever adaptor holds LlmAdaptorRole, so the settings survive a provider swap.",
-              ko: "모델은 환경변수가 아니라 option.ts에서 설정합니다. setLlm은 LlmAdaptorRole을 차지한 어댑터에 apiKey, model, host, accepts, maxTokens를 채우므로, 프로바이더를 바꿔도 설정은 그대로입니다.",
+              en: "The model is configured in option.ts, never in the environment. setLlm fills apiKey, model, host, accepts, maxTokens and contextWindow for whichever adaptor holds LlmAdaptorRole, so the settings survive a provider swap.",
+              ko: "모델은 환경변수가 아니라 option.ts에서 설정합니다. setLlm은 LlmAdaptorRole을 차지한 어댑터에 apiKey, model, host, accepts, maxTokens, contextWindow를 채우므로, 프로바이더를 바꿔도 설정은 그대로입니다.",
             })}
           </div>
           <div>

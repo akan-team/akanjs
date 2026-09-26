@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { Linter } from "../linter";
 
 /**
  * Fixture tests for the GritQL plugins in this folder.
@@ -21,7 +22,7 @@ import path from "node:path";
 const lintDir = import.meta.dir;
 const fixturesDir = path.join(lintDir, "__fixtures__");
 const workspaceRoot = path.resolve(lintDir, "../../../..");
-const biomeBin = path.join(workspaceRoot, "node_modules/.bin/biome");
+const biomeBin = path.join(workspaceRoot, "node_modules", ".bin", Linter.biomeBinName);
 
 interface BiomeDiagnostic {
   severity: string;

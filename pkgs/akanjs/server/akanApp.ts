@@ -19,6 +19,8 @@ import { LogControlSocket } from "./logging/logControlSocket";
 import { LogHub } from "./logging/logHub";
 import { LogStreamRoute } from "./logging/logStreamRoute";
 import { RotatingLogWriter } from "./logging/rotatingLogWriter";
+import { AppInfo } from "./ops/appInfo";
+import type { OpsRoute } from "./ops/opsRoute";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
 import { resolveStaticPath } from "./staticPath";
 import { getWebConfigFromEnv } from "./types";
@@ -174,6 +176,7 @@ export class AkanApp {
   #logControl: LogControlSocket | null = null;
   #hubFileSink: HubFileSink | null = null;
   #logStream: LogStreamRoute | null = null;
+  #ops: OpsRoute | null = null;
   static readonly #ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
   #gatewayMetrics: AkanMetricsReport = {};
   #proxyHopCount = 0;
@@ -294,11 +297,16 @@ export class AkanApp {
   }
 
   async start() {
+    if (process.argv[2] === "ops") {
+      const { OpsCommand } = await import("./ops/opsCommand");
+      process.exit(await OpsCommand.run(process.argv.slice(3)));
+    }
     if (this.#solo) return await this.#startSolo();
     Logger.role = "gateway";
     await this.#prepareRuntimeDir();
     await this.#startLogHub();
     this.#startFileLogging();
+    await this.#startOps();
     for (let idx = 0; idx < this.#replica.total; idx++) this.#spawn(idx);
     try {
       this.#listen();
@@ -418,7 +426,8 @@ export class AkanApp {
   #spawn(idx: number) {
     const role = this.#getRole(idx);
     const upstream = this.#getChildUpstream(idx, role);
-    const childCode = `import(${JSON.stringify(path.resolve(this.#serverPath))}).then((mod)=>{ const server = mod.server ?? mod.app; if (!server?.start) throw new Error("server.ts must export server or app with start()"); return server.start({ listen: process.env.SERVER_MODE !== "batch" }); }).catch((error)=>{ process.send?.({ type: "error", message: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined, pid: process.pid }); process.exit(1); });`;
+    //? Windows drops an ipc message sent right before `process.exit` (0/10 delivered); exit from its send callback.
+    const childCode = `import(${JSON.stringify(path.resolve(this.#serverPath))}).then((mod)=>{ const server = mod.server ?? mod.app; if (!server?.start) throw new Error("server.ts must export server or app with start()"); return server.start({ listen: process.env.SERVER_MODE !== "batch" }); }).catch((error)=>{ const exit = () => process.exit(1); setTimeout(exit, 2000); if (!process.send) return exit(); process.send({ type: "error", message: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined, pid: process.pid }, undefined, undefined, exit); });`;
     let proc!: Bun.Subprocess<"ignore", "pipe", "pipe">;
     proc = Bun.spawn(["bun", "-e", childCode], {
       cwd: process.cwd(),
@@ -675,6 +684,15 @@ export class AkanApp {
     }
   }
 
+  //* Loaded only when the key is set, so a gateway without an ops channel never evaluates the snapshot code.
+  async #startOps() {
+    if (!process.env.AKAN_OPS_PUBLIC_KEY?.trim()) return;
+    const { OpsRoute } = await import("./ops/opsRoute");
+    this.#ops = OpsRoute.fromEnv({
+      detail: () => AppInfo.detail({ serverMode: "gateway", solo: false, replicaIdx: null }),
+    });
+  }
+
   async #stopLogHub() {
     await this.#logControl?.stop();
     this.#logControl = null;
@@ -708,6 +726,8 @@ export class AkanApp {
     if (url.pathname === "/_akan/app/metrics") return Response.json(this.#getMetricsStatus());
     if (url.pathname === LogStreamRoute.path && this.#logStream) return this.#logStream.handle(req);
     if (url.pathname === "/_akan/bench/ping") return new Response("ok");
+    if (url.pathname === AppInfo.publicPath) return AppInfo.handlePublic();
+    if (this.#ops?.matches(url.pathname)) return await this.#ops.handle(req);
     if (this.#isWebSocketPath(url.pathname)) return this.#upgradeWebSocket(req, server);
     const assetResponse = await this.#serveImmutableArtifact(req, url);
     if (assetResponse) return assetResponse;
@@ -1183,6 +1203,9 @@ export class AkanApp {
       case "pubsub.snapshot":
         this.#replaceRoomSnapshot(idx, message.rooms);
         return;
+      case "live.change":
+        this.#fanoutLiveChange(idx, message);
+        return;
       case "metrics.report":
         this.#updateMetrics(idx, message.metrics);
         return;
@@ -1433,6 +1456,12 @@ export class AkanApp {
 
   #fanoutToAll(message: AkanIpcMessage) {
     for (const child of this.#children.values()) this.#sendToChild(child, message);
+  }
+
+  // Every replica that serves sockets routes a write to the live rooms it holds; the writer has routed its own.
+  #fanoutLiveChange(originIdx: number, message: Extract<AkanIpcMessage, { type: "live.change" }>) {
+    for (const child of this.#children.values())
+      if (child.idx !== originIdx && child.role !== "batch") this.#sendToChild(child, message);
   }
 
   #fanoutToBatch(message: AkanIpcMessage) {

@@ -92,12 +92,17 @@ export class BuilderRpc {
 
   async buildRoute(
     routeId: string,
-    { seeds, knownEntries, generation }: { seeds: string[]; knownEntries: Set<string>; generation?: number },
+    {
+      seeds,
+      graphSeeds,
+      knownEntries,
+      generation,
+    }: { seeds: string[]; graphSeeds?: string[]; knownEntries: Set<string>; generation?: number },
   ): Promise<BuildRouteClientResult> {
     if (this.#disposed) throw new Error("[builder] rpc is disposed");
     const id = this.#nextId++;
     const payload = await this.#request<BuildRouteResultPayload>(id, `build-route ${routeId}`, () =>
-      this.#send({ type: "build-route", id, routeId, seeds, knownEntries: [...knownEntries], generation }),
+      this.#send({ type: "build-route", id, routeId, seeds, graphSeeds, knownEntries: [...knownEntries], generation }),
     );
     return {
       manifestDelta: payload.manifestDelta,

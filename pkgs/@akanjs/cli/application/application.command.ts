@@ -1,3 +1,4 @@
+import type { DatabaseMode } from "@akanjs/devkit/akanConfig";
 import { App, Apps, command, Exec, Sys, Workspace } from "@akanjs/devkit/commandDecorators";
 import { getMobileTargetChoices } from "@akanjs/devkit/mobile";
 import { select } from "@inquirer/prompts";
@@ -273,12 +274,24 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
   dbup: target({ desc: "Start local database services for a database mode" })
     .with(Workspace)
     .option("mode", String, {
-      desc: "database mode",
-      default: "multiple",
+      desc: "database mode; left out, every mode the workspace's apps declare",
       enum: ["single", "multiple", "cluster"],
+      nullable: true,
     })
     .exec(async function (workspace, mode) {
-      await this.applicationScript.dbup(workspace, mode);
+      await this.applicationScript.dbupDeclared(workspace, mode as DatabaseMode | null);
+    }),
+  dbExport: target({ desc: "Write every model table of an app to one NDJSON file each" })
+    .with(App)
+    .option("dir", String, { desc: "directory under the workspace to write", default: "local/transfer" })
+    .exec(async function (app, dir) {
+      await this.applicationScript.transferDatabase(app, "export", dir);
+    }),
+  dbImport: target({ desc: "Read files db-export wrote into an app's database, in the mode the shell names" })
+    .with(App)
+    .option("dir", String, { desc: "directory under the workspace to read", default: "local/transfer" })
+    .exec(async function (app, dir) {
+      await this.applicationScript.transferDatabase(app, "import", dir);
     }),
   dbdown: target({ desc: "Stop local database services" })
     .with(Workspace)

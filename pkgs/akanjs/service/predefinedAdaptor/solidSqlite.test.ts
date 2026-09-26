@@ -1,5 +1,6 @@
 import { Database, type SQLQueryBindings, type Statement } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
+import path from "node:path";
 import { dayjs, Float, ID, Int, type PromiseOrObject } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import {
@@ -350,7 +351,7 @@ describe("solid sqlite utilities", () => {
           isProduction: false,
           workspaceRoot: "/workspace",
         }),
-      ).toBe("/tmp/akan-sqlite/demo.db");
+      ).toBe(path.join("/tmp/akan-sqlite", "demo.db"));
 
       delete process.env.AKAN_SQLITE_DIR;
       expect(
@@ -360,7 +361,7 @@ describe("solid sqlite utilities", () => {
           isProduction: false,
           workspaceRoot: "/workspace",
         }),
-      ).toBe("/workspace/local/apps/demo/demo.db");
+      ).toBe(path.join("/workspace", "local", "apps", "demo", "demo.db"));
 
       expect(
         resolveDefaultSqliteFile({
@@ -370,7 +371,7 @@ describe("solid sqlite utilities", () => {
           operationMode: "local",
           workspaceRoot: "/workspace",
         }),
-      ).toBe("/workspace/local/apps/demo/demo.db");
+      ).toBe(path.join("/workspace", "local", "apps", "demo", "demo.db"));
 
       process.env.AKAN_PUBLIC_OPERATION_MODE = "local";
       expect(
@@ -380,7 +381,7 @@ describe("solid sqlite utilities", () => {
           isProduction: true,
           workspaceRoot: "/workspace",
         }),
-      ).toBe("/workspace/local/apps/demo/demo.db");
+      ).toBe(path.join("/workspace", "local", "apps", "demo", "demo.db"));
 
       expect(
         resolveDefaultSqliteFile({
@@ -390,7 +391,7 @@ describe("solid sqlite utilities", () => {
           operationMode: "cloud",
           workspaceRoot: "/workspace",
         }),
-      ).toBe(`${process.cwd()}/sqlite/demo.db`);
+      ).toBe(path.join(process.cwd(), "sqlite", "demo.db"));
 
       process.env.AKAN_SOLID_DB_PATH = "/tmp/solid.db";
       expect(
@@ -1129,19 +1130,29 @@ describe("sql dialects", () => {
     const d = new PostgresDialect();
     expect(d.docColumnType()).toBe("jsonb");
     expect(d.timestampType()).toBe("BIGINT");
-    expect(d.docValuePlaceholder()).toBe("?::jsonb");
+    expect(d.docValuePlaceholder()).toBe("?::text::jsonb");
 
-    expect(d.eq("status", "active")).toEqual({ sql: `("_doc" #> '{status}') = ?::jsonb`, params: ['"active"'] });
-    expect(d.arrayHas("tags", "x")).toEqual({ sql: `("_doc" #> '{tags}') @> ?::jsonb`, params: ['"x"'] });
+    expect(d.eq("score", 5)).toEqual({
+      sql: `NULLIF(("_doc" #> '{score}'), 'null'::jsonb) = ?::text::jsonb`,
+      params: ["5"],
+    });
+    expect(d.eq("status", "active", "text")).toEqual({
+      sql: `(("_doc" #>> '{status}') COLLATE "C") = ?`,
+      params: ["active"],
+    });
+    expect(d.arrayHas("tags", "x")).toEqual({
+      sql: `(("_doc" #> '{tags}') @> ?::text::jsonb AND ("_doc" #> '{tags}') IS NOT NULL)`,
+      params: ['"x"'],
+    });
 
     const col = d.docColumn();
-    expect(d.applyUpdate(col, "set", "status", "done").sql).toBe(`jsonb_set("_doc", '{status}', ?::jsonb, true)`);
+    expect(d.applyUpdate(col, "set", "status", "done").sql).toBe(`akan_jsonb_set("_doc", '{status}', ?::text::jsonb)`);
     const incSql = d.applyUpdate(col, "inc", "score", 5).sql;
     expect(incSql).toContain(`#>> '{score}')::numeric, 0) + ?`);
     expect(incSql).toContain("to_jsonb(");
-    expect(d.applyUpdate(col, "push", "tags", "y").sql).toContain("jsonb_build_array(?::jsonb)");
+    expect(d.applyUpdate(col, "push", "tags", "y").sql).toContain("jsonb_build_array(?::text::jsonb)");
     expect(d.applyUpdate(col, "pull", "tags", "y").sql).toContain("jsonb_array_elements");
-    expect(d.applyUpdate(col, "addToSet", "tags", "y").sql).toContain("@> jsonb_build_array(?::jsonb)");
+    expect(d.applyUpdate(col, "addToSet", "tags", "y").sql).toContain("@> jsonb_build_array(?::text::jsonb)");
     expect(d.applyUpdate(col, "unset", "status", undefined).sql).toBe(`("_doc") #- '{status}'`);
   });
 

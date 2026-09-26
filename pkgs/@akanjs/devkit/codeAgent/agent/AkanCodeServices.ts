@@ -1,10 +1,13 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { type InlineExtension, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { CodeAgentProfile } from "akanjs/common";
 import { AkanEnvKeys } from "../tools/AkanEnvKeys";
 import { type AkanContextFile, AkanContextFiles } from "./AkanContextFiles";
 import { akanCodePaths } from "./akanCodePaths";
 import { akanSystemPrompt } from "./akanSystemPrompt";
+import type { CodeAgentProxy } from "./CodeAgentProxy";
 import { CodeSessionIndex } from "./CodeSessionIndex";
 
 export interface AkanCodeServicesOptions {
@@ -32,6 +35,10 @@ export class AkanCodeServices {
       enableInstallTelemetry: false,
       enableAnalytics: false,
       quietStartup: true,
+      // Twice the engine's 16,384. The reserve is all the room the response at the threshold gets — a request
+      // clamps its output to the window less the prompt less 4,096 — and 80% of it caps the summary. At 16k a
+      // reasoning model stops mid-thought there, and the recovery re-sends a near-full window to retry the turn.
+      compaction: { reserveTokens: 32_768 },
     });
   }
 
@@ -42,8 +49,18 @@ export class AkanCodeServices {
    * locks and rewrites that file itself, so a second `akan code` refreshing an OAuth token at the same moment
    * cannot clobber the first. Nothing lands in `~/.pi/`, and a user who removes akan takes their keys with them.
    */
-  static async runtime(workspaceRoot: string) {
+  static async runtime(workspaceRoot: string, proxy: CodeAgentProxy | null = null) {
     mkdirSync(akanCodePaths.globalDir(), { recursive: true, mode: 0o700 });
+    if (proxy) {
+      //* Behind a proxy neither `auth.json` nor an env key may reach a request, so credentials live in a throwaway
+      //* file and the only key the engine ever sends is the proxy token.
+      const runtime = await ModelRuntime.create({
+        authPath: path.join(mkdtempSync(path.join(tmpdir(), "akan-code-proxy-")), "auth.json"),
+        modelsPath: akanCodePaths.modelsFile(),
+      });
+      await proxy.apply(runtime);
+      return runtime;
+    }
     const runtime = await ModelRuntime.create({
       authPath: akanCodePaths.authFile(),
       modelsPath: akanCodePaths.modelsFile(),
@@ -53,7 +70,9 @@ export class AkanCodeServices {
   }
 
   static sessions(workspaceRoot: string, cwd: string, profile: CodeAgentProfile, resume?: string) {
-    if (profile.session.store !== "file") return SessionManager.inMemory(cwd);
+    //* `remote` has no store of its own yet, so it keeps a file session rather than none: a pod's worker is long-lived
+    //* and its suspended asks and resume need the file more than a laptop does.
+    if (profile.session.store === "memory") return SessionManager.inMemory(cwd);
     const dir = akanCodePaths.sessionsDir(workspaceRoot);
     mkdirSync(dir, { recursive: true });
     const manager = SessionManager.create(cwd, dir);

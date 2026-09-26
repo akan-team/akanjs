@@ -217,8 +217,13 @@ export class DocumentQueryEvaluator {
       case "has":
         return this.#has(read, operand);
       case "contains":
-        // SQLite's `LIKE` folds ASCII case; Postgres does not. Mirroring SQLite is the choice the parity test pins.
-        return read.value !== null && String(read.value).toLowerCase().includes(String(operand).toLowerCase());
+        // SQLite's `LIKE` folds ASCII letters only, so "É" and "é" stay apart; `%` and `_` are escaped, not wildcards.
+        return (
+          read.value !== null &&
+          DocumentQueryEvaluator.#foldAscii(String(read.value)).includes(
+            DocumentQueryEvaluator.#foldAscii(String(operand)),
+          )
+        );
     }
   }
 
@@ -313,6 +318,10 @@ export class DocumentQueryEvaluator {
       if (a !== b) return a < b ? -1 : 1;
     }
     return leftPoints.length === rightPoints.length ? 0 : leftPoints.length < rightPoints.length ? -1 : 1;
+  }
+
+  static #foldAscii(text: string) {
+    return text.replace(/[A-Z]/g, (char) => char.toLowerCase());
   }
 
   static #isNode(value: unknown): value is DocumentQueryNode {

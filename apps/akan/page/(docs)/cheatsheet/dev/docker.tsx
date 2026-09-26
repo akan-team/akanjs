@@ -88,6 +88,15 @@ export default page().render(() => {
       }),
     },
     {
+      key: "AKAN_DATABASE_MODE",
+      type: "single | multiple | cluster",
+      default: l.trans({ en: "the app's only declared mode", ko: "앱이 선언한 유일한 모드" }),
+      desc: l.trans({
+        en: "Picks one of the modes `database.modes` declares. Required when the app declares several.",
+        ko: "`database.modes`에 선언한 모드 중 하나를 고릅니다. 앱이 여러 모드를 선언했다면 꼭 줘야 합니다.",
+      }),
+    },
+    {
       key: "PORT",
       type: "number",
       default: "8282",
@@ -131,6 +140,84 @@ export default page().render(() => {
         en: "Required to open `console.js` in a production-like environment.",
         ko: "production 계열 환경에서 `console.js`를 열 때 필요합니다.",
       }),
+    },
+  ];
+
+  const dataEnvRows = [
+    {
+      key: "SQLITE_DATABASE_PATH",
+      type: "string",
+      default: "<AKAN_SQLITE_DIR>/<app>-<env>.db",
+      tags: ["single · multiple"],
+      desc: l.trans({
+        en: "The SQLite database file. In `multiple`, every container on the host opens this one file.",
+        ko: "SQLite 데이터베이스 파일입니다. `multiple`에서는 호스트의 모든 컨테이너가 이 파일 하나를 엽니다.",
+      }),
+    },
+    {
+      key: "AKAN_SOLID_DB_PATH",
+      type: "string",
+      default: "<AKAN_SQLITE_DIR>/<app>-<env>_solid.db",
+      tags: ["single"],
+      desc: l.trans({
+        en: "The SQLite file that holds the cache, queue and pubsub.",
+        ko: "캐시, 큐, pubsub을 담는 SQLite 파일입니다.",
+      }),
+    },
+    {
+      key: "REDIS_URI",
+      type: "string",
+      tags: ["multiple · cluster"],
+      desc: l.trans({
+        en: "The Redis for the cache, queue and pubsub. Required; `rediss://` connects over TLS.",
+        ko: "캐시, 큐, pubsub을 맡는 Redis입니다. 꼭 필요하며, `rediss://`로 쓰면 TLS로 연결합니다.",
+      }),
+    },
+    {
+      key: "POSTGRES_URL",
+      type: "string",
+      tags: ["cluster"],
+      desc: l.trans({
+        en: "The Postgres database. Pool size, SSL and prepared statements ride its query string.",
+        ko: "Postgres 데이터베이스입니다. 커넥션 풀 크기, SSL, prepared statement는 쿼리 문자열로 정합니다.",
+      }),
+      example: "postgres://app:secret@db:5432/app?max=20&ssl=require",
+    },
+    {
+      key: "AKAN_STORAGE_SHARED",
+      type: "true",
+      tags: ["multiple · cluster"],
+      desc: l.trans({
+        en: "Says `/workspace/local`, where uploads land, is one volume every instance mounts.",
+        ko: "업로드가 쌓이는 `/workspace/local`이 모든 인스턴스가 함께 마운트한 볼륨 하나라고 알립니다.",
+      }),
+    },
+  ];
+
+  const modeColumns = [
+    { key: "mode", label: l.trans({ en: "Mode", ko: "모드" }), code: true },
+    { key: "database", label: l.trans({ en: "Database", ko: "데이터베이스" }) },
+    { key: "services", label: l.trans({ en: "Cache · queue · pubsub", ko: "캐시 · 큐 · pubsub" }) },
+    { key: "runs", label: l.trans({ en: "Runs on", ko: "도는 곳" }) },
+  ];
+  const modeRows = [
+    {
+      mode: "single",
+      database: l.trans({ en: "A SQLite file", ko: "SQLite 파일" }),
+      services: l.trans({ en: "SQLite files", ko: "SQLite 파일" }),
+      runs: l.trans({ en: "One container", ko: "컨테이너 하나" }),
+    },
+    {
+      mode: "multiple",
+      database: l.trans({ en: "One SQLite file on a host volume", ko: "호스트 볼륨의 SQLite 파일 하나" }),
+      services: "Redis",
+      runs: l.trans({ en: "Several containers on one host", ko: "호스트 하나의 여러 컨테이너" }),
+    },
+    {
+      mode: "cluster",
+      database: "Postgres",
+      services: "Redis",
+      runs: l.trans({ en: "Several servers", ko: "여러 서버" }),
     },
   ];
 
@@ -370,6 +457,14 @@ export default page().render(() => {
       }),
     },
     {
+      href: "/references/cli/application#db-export",
+      title: l.trans({ en: "Move Data Between Modes", ko: "모드 사이에 데이터 옮기기" }),
+      desc: l.trans({
+        en: "Copy an app's data from one database mode into another with `db-export` and `db-import`.",
+        ko: "`db-export`와 `db-import`로 앱의 데이터를 한 데이터베이스 모드에서 다른 모드로 옮깁니다.",
+      }),
+    },
+    {
       href: "/cheatsheet/dev/console",
       title: l.trans({ en: "Server Console", ko: "서버 콘솔" }),
       desc: l.trans({
@@ -462,6 +557,7 @@ export default page().render(() => {
       AKAN_PUBLIC_SERVE_DOMAIN: example.com
       AKAN_PUBLIC_ENV: main
       AKAN_PUBLIC_OPERATION_MODE: edge
+      AKAN_DATABASE_MODE: single
       AKAN_REPLICA: "0,0,1"
       AKAN_SQLITE_DIR: /workspace/sqlite
       AKAN_LOG_TO_FILE: "1"
@@ -525,6 +621,27 @@ export default page().render(() => {
                 ),
               })}
             </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>
+                      <code>AKAN_DATABASE_MODE: single</code>
+                    </strong>{" "}
+                    keeps every piece of data in the SQLite files on the volume. You may leave it out when the app
+                    declares only <code>single</code>.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>
+                      <code>AKAN_DATABASE_MODE: single</code>
+                    </strong>
+                    은 모든 데이터를 볼륨의 SQLite 파일에 둡니다. 앱이 <code>single</code>만 선언했다면 빼도 됩니다.
+                  </span>
+                ),
+              })}
+            </li>
           </ul>
           <Docs.Alert type="warning">
             {l.trans({
@@ -569,6 +686,64 @@ export default page().render(() => {
           <Docs.OptionTable items={requiredEnvRows} />
           <Docs.SubSubTitle>{l.trans({ en: "Commonly changed", ko: "자주 바꾸는 값" })}</Docs.SubSubTitle>
           <Docs.OptionTable items={runtimeEnvRows} />
+          <Docs.SubSubTitle>{l.trans({ en: "Where the data lives", ko: "데이터가 있는 곳" })}</Docs.SubSubTitle>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  These say where the data and the uploads live. Set on the container, each wins over the same value
+                  bundled from <code>env.server.ts</code>, so one image serves every deployment.
+                </span>
+              ),
+              ko: (
+                <span>
+                  데이터와 업로드 파일이 어디 있는지 정합니다. 컨테이너에 주면 <code>env.server.ts</code>에서 번들된
+                  같은 값보다 우선하므로, 이미지 하나로 모든 배포를 돌릴 수 있습니다.
+                </span>
+              ),
+            })}
+          </div>
+          <Docs.OptionTable items={dataEnvRows} />
+          <ul className="my-4 list-disc space-y-2 pl-5">
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>
+                      Behind PgBouncer in transaction mode, also add <code>&amp;prepare=false</code>
+                    </strong>{" "}
+                    to that query string.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>
+                      transaction 모드의 PgBouncer 뒤에서는 <code>&amp;prepare=false</code>
+                    </strong>
+                    도 그 쿼리 문자열에 더합니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Postgres also takes separate parts.</strong> Without a URL it reads{" "}
+                    <code>POSTGRES_HOST</code>, <code>POSTGRES_PORT</code>, <code>POSTGRES_DATABASE</code> (or{" "}
+                    <code>POSTGRES_DB</code>), <code>POSTGRES_USER</code> and <code>POSTGRES_PASSWORD</code>.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>Postgres는 값을 나눠서 줄 수도 있습니다.</strong> URL이 없으면 <code>POSTGRES_HOST</code>,{" "}
+                    <code>POSTGRES_PORT</code>, <code>POSTGRES_DATABASE</code>(또는 <code>POSTGRES_DB</code>),{" "}
+                    <code>POSTGRES_USER</code>, <code>POSTGRES_PASSWORD</code>를 읽습니다.
+                  </span>
+                ),
+              })}
+            </li>
+          </ul>
           <Docs.Alert type="info">
             {l.trans({
               en: (
@@ -762,6 +937,164 @@ export default page().render(() => {
               })}
             </li>
           </ul>
+        </Docs.Description>
+      </Scroll.Slide>
+      <Divider />
+
+      <Scroll.Slide
+        id="multiple-host"
+        title={l.trans({ en: "Several Containers On One Host", ko: "한 호스트에 컨테이너 여러 개" })}
+      >
+        <Docs.Title>{l.trans({ en: "Several Containers On One Host", ko: "한 호스트에 컨테이너 여러 개" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  When one container is not enough, run several copies on the same host in the <code>multiple</code>{" "}
+                  database mode. They open one SQLite file on a host volume and share one Redis for the cache, queue and
+                  pubsub.
+                </span>
+              ),
+              ko: (
+                <span>
+                  컨테이너 하나로 모자라면 같은 호스트에서 여러 개를 <code>multiple</code> 데이터베이스 모드로 띄웁니다.
+                  호스트 볼륨의 SQLite 파일 하나를 함께 열고, 캐시·큐·pubsub은 Redis 하나를 같이 씁니다.
+                </span>
+              ),
+            })}
+          </div>
+          <Docs.Table columns={modeColumns} rows={modeRows} stacked />
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  The app's build has to declare the mode, as in <code>{'database: { modes: ["multiple"] }'}</code> in{" "}
+                  <code>akan.config.ts</code>. Then run the image with a compose file like this:
+                </span>
+              ),
+              ko: (
+                <span>
+                  앱의 빌드가 이 모드를 선언해야 합니다. 예를 들어 <code>akan.config.ts</code>에{" "}
+                  <code>{'database: { modes: ["multiple"] }'}</code>를 적습니다. 그다음 이런 compose 파일로 이미지를
+                  띄웁니다:
+                </span>
+              ),
+            })}
+          </div>
+        </Docs.Description>
+        <Code.Snippet
+          className="w-full"
+          title="docker-compose.yaml"
+          code={`services:
+  redis:
+    image: redis:8
+  myapp:
+    image: registry.mydomain.com/myorg/myapp:latest
+    deploy:
+      replicas: 3
+    environment:
+      AKAN_DATABASE_MODE: multiple
+      REDIS_URI: redis://redis:6379
+      SQLITE_DATABASE_PATH: /data/myapp.db
+      AKAN_STORAGE_SHARED: "true"
+    volumes:
+      - app-data:/data
+      - app-files:/workspace/local
+volumes:
+  app-data:
+  app-files:`}
+        />
+        <Docs.Description>
+          <ul className="my-4 list-disc space-y-2 pl-5">
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>One database file for every replica.</strong> <code>SQLITE_DATABASE_PATH</code> points each
+                    container at the same file on the <code>app-data</code> volume.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>모든 replica가 데이터베이스 파일 하나를 씁니다.</strong> <code>SQLITE_DATABASE_PATH</code>가
+                    컨테이너마다 <code>app-data</code> 볼륨의 같은 파일을 가리킵니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>
+                      <code>REDIS_URI</code> is required.
+                    </strong>{" "}
+                    The cache, queue and pubsub live in that Redis, and a deployed app has no fallback for it.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>
+                      <code>REDIS_URI</code>는 꼭 필요합니다.
+                    </strong>{" "}
+                    캐시, 큐, pubsub이 그 Redis에 있고, 배포된 앱에는 대신 쓸 기본값이 없습니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Uploads go on a volume every replica mounts.</strong> <code>app-files</code> sits on{" "}
+                    <code>/workspace/local</code>, and <code>AKAN_STORAGE_SHARED</code> says so. Without it or object
+                    storage, the app refuses to keep files on one container's disk.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>업로드 파일은 모든 replica가 마운트한 볼륨에 둡니다.</strong> <code>app-files</code>를{" "}
+                    <code>/workspace/local</code>에 붙이고 <code>AKAN_STORAGE_SHARED</code>로 알립니다. 이것도 오브젝트
+                    스토리지도 없으면 앱은 컨테이너 하나의 디스크에 파일을 두기를 거부합니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>A reverse proxy in front balances the replicas.</strong> They publish no port of their own.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>앞단의 리버스 프록시가 replica들에 요청을 나눕니다.</strong> replica는 따로 포트를 게시하지
+                    않습니다.
+                  </span>
+                ),
+              })}
+            </li>
+          </ul>
+          <Docs.Alert type="warning">
+            {l.trans({
+              en: (
+                <span>
+                  <strong>Keep the SQLite file on the host's own disk.</strong> Containers on one host share it through
+                  a named volume or a bind mount, but not over NFS or another network filesystem. Several hosts need{" "}
+                  <code>cluster</code>.
+                </span>
+              ),
+              ko: (
+                <span>
+                  <strong>SQLite 파일은 호스트 자신의 디스크에 둡니다.</strong> 같은 호스트의 컨테이너는 named
+                  volume이나 bind mount로 이 파일을 함께 쓸 수 있지만, NFS 같은 네트워크 파일시스템으로는 안 됩니다.
+                  호스트가 여럿이면 <code>cluster</code>를 씁니다.
+                </span>
+              ),
+            })}
+          </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />

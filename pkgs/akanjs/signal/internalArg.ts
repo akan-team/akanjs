@@ -21,6 +21,13 @@ export class Res implements InternalArg {
   }
 }
 
+/** Injects whatever the account middleware resolved for this call, or `null` for an anonymous one. */
+export class CallerAccount implements InternalArg<unknown> {
+  getArg(context: SignalContext): unknown {
+    return context.get("account") ?? null;
+  }
+}
+
 /**
  * Injects the caller's IP, as the nearest proxy recorded it rather than as the socket peer reports it.
  * Behind the federation gateway every peer is the gateway, so an endpoint that reads `remoteAddress` sees

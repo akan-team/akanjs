@@ -48,7 +48,10 @@ export default page().render(() => {
 
   const placeGroups = [
     {
-      label: l.trans({ en: "Draws JSX, bound to no model — ui/", ko: "JSX를 그리고 모델에 묶이지 않음 — ui/" }),
+      label: l.trans({
+        en: "Draws JSX or defines a look, bound to no model — ui/",
+        ko: "JSX를 그리거나 모양을 정의하고 모델에 묶이지 않음 — ui/",
+      }),
       rows: [
         {
           name: (
@@ -75,6 +78,14 @@ export default page().render(() => {
           desc: l.trans({
             en: "Wraps a third-party package that pages and module files may not import directly.",
             ko: "페이지와 모듈 파일이 직접 import할 수 없는 외부 패키지를 감쌉니다.",
+          }),
+          marks: inUi,
+        },
+        {
+          name: "cardRecipe · panelRecipe",
+          desc: l.trans({
+            en: "A look several screens share. Not a component or a hook, but it lives in `ui/Recipe/`.",
+            ko: "여러 화면이 함께 쓰는 모양입니다. 컴포넌트도 hook도 아니지만 `ui/Recipe/`에 둡니다.",
           }),
           marks: inUi,
         },
@@ -320,12 +331,12 @@ export default page().render(() => {
           <Docs.SubSubTitle>{l.trans({ en: "Does it belong in ui/?", ko: "ui/에 둘까요?" })}</Docs.SubSubTitle>
           <div>
             {l.trans({
-              en: "Ask two questions: does it draw JSX, and does it take one model? JSX with no model goes in ui/.",
-              ko: "두 가지를 물어보세요. JSX를 그리는가, 모델 하나를 받는가. JSX를 그리고 모델을 받지 않을 때만 ui/에 둡니다.",
+              en: "Ask two questions: does it draw JSX or define a look, and does it take one model? Yes, then no, means ui/.",
+              ko: "두 가지를 물어보세요. JSX를 그리거나 모양을 정의하는가, 모델 하나를 받는가. 앞은 예, 뒤는 아니오일 때만 ui/에 둡니다.",
             })}
           </div>
           <Docs.Matrix
-            type={l.trans({ en: "Component", ko: "컴포넌트" })}
+            type={l.trans({ en: "Code", ko: "코드" })}
             columns={placeColumns}
             groups={placeGroups}
             markLabel={l.trans({ en: "Goes here", ko: "여기에 둡니다" })}

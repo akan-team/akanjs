@@ -2,7 +2,7 @@ import type { CodeAgentCommand, CodeAgentEvent, CodeAgentReply, CodeAgentRequest
 import type { CodeAgent } from "./CodeAgent";
 
 /**
- * Serves one code agent over stdio as newline-delimited akan wire frames.
+ * Serves one code agent as newline-delimited akan wire frames, over stdio or whatever transport attaches.
  *
  * The protocol is **ours**, not the engine's: a host — the web relay, a pod runner, a test harness — reads the
  * same events the in-process API emits, so an engine upgrade stops at the core instead of reaching every
@@ -13,23 +13,41 @@ import type { CodeAgent } from "./CodeAgent";
  */
 export class CodeAgentRpcHost {
   readonly #agent: CodeAgent;
-  readonly #write: (line: string) => void;
+  #write: ((line: string) => void) | null;
   #buffer = "";
+  #started = false;
+  #resolveShutdown: () => void = () => {};
+  readonly shutdown = new Promise<void>((resolve) => {
+    this.#resolveShutdown = resolve;
+  });
 
-  constructor(agent: CodeAgent, write: (line: string) => void = (line) => process.stdout.write(line)) {
+  constructor(agent: CodeAgent, write: ((line: string) => void) | null = (line) => process.stdout.write(line)) {
     this.#agent = agent;
     this.#write = write;
   }
 
   async serve(input: AsyncIterable<Uint8Array> = process.stdin) {
-    this.#agent.on((event) => this.#emit(event));
-    this.#agent.announce();
+    this.start();
     const decoder = new TextDecoder();
-    for await (const chunk of input) await this.#push(decoder.decode(chunk, { stream: true }));
+    for await (const chunk of input) await this.feed(decoder.decode(chunk, { stream: true }));
     await this.#agent.abort().catch(() => {});
   }
 
-  async #push(text: string) {
+  start() {
+    if (this.#started) return;
+    this.#started = true;
+    this.#agent.on((event) => this.#emit(event));
+    this.#agent.announce();
+  }
+
+  //* Frames emitted while no client is attached are dropped here and kept in the agent's replay buffer; a client
+  //* that attaches catches up with `get_state { sinceSeq }` instead of receiving a burst it did not ask for.
+  attach(write: ((line: string) => void) | null) {
+    this.#write = write;
+    this.#buffer = "";
+  }
+
+  async feed(text: string) {
     this.#buffer += text;
     let index = this.#buffer.indexOf("\n");
     while (index >= 0) {
@@ -52,6 +70,8 @@ export class CodeAgentRpcHost {
     } catch (error) {
       this.#reply({ type: "reply", id: request.id, ok: false, error: String(error) });
     }
+    //* After the reply, so a socket transport that closes on shutdown has already written the acknowledgement.
+    if (request.command?.type === "shutdown") this.#resolveShutdown();
   }
 
   /**
@@ -87,10 +107,10 @@ export class CodeAgentRpcHost {
   }
 
   #emit(event: CodeAgentEvent) {
-    this.#write(`${JSON.stringify({ type: "event", event })}\n`);
+    this.#write?.(`${JSON.stringify({ type: "event", event })}\n`);
   }
 
   #reply(reply: CodeAgentReply) {
-    this.#write(`${JSON.stringify(reply)}\n`);
+    this.#write?.(`${JSON.stringify(reply)}\n`);
   }
 }

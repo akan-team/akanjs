@@ -30,7 +30,7 @@ sidecar
 
 A camelCase helper or type file that serves one component, like `swipeCard.util.ts`.
 
-Draws JSX, bound to no model — ui/
+Draws JSX or defines a look, bound to no model — ui/
 
 landing hero · admin header
 
@@ -39,6 +39,8 @@ Belongs to one app, so it lives in `apps/<app>/ui`.
 An auth gate or responsive wrapper several apps share, so it lives in `libs/<lib>/ui`.
 
 Wraps a third-party package that pages and module files may not import directly.
+
+A look several screens share. Not a component or a hook, but it lives in `ui/Recipe/`.
 
 Goes somewhere else
 
@@ -126,9 +128,9 @@ Term
 
 Does it belong in ui/?
 
-Ask two questions: does it draw JSX, and does it take one model? JSX with no model goes in ui/.
+Ask two questions: does it draw JSX or define a look, and does it take one model? Yes, then no, means ui/.
 
-Component
+Code
 
 Goes here
 

@@ -17,7 +17,7 @@ import type {
 } from "akanjs/signal";
 import type { Adaptor, AdaptorCls, Service, ServiceCls } from ".";
 import { LiveSyncHub } from "./liveSyncHub";
-import type { CacheAdaptor, CacheSetOptions } from "./predefinedAdaptor";
+import type { CacheAdaptor, CacheSetOptions, CacheValue } from "./predefinedAdaptor";
 
 export type InjectType = "database" | "service" | "use" | "signal" | "plug" | "env" | "memory";
 
@@ -271,7 +271,7 @@ export class InjectInfo<
     // Scoped by the owner's refName, so two services that each name a memory `token` hold two values.
     const topic = `akan:memory:${injectInfo.parentRefName}`;
     const getter = injectInfo.get as unknown as (value: unknown) => unknown;
-    const setter = injectInfo.set as unknown as (value: unknown) => string | number | Buffer;
+    const setter = injectInfo.set as unknown as (value: unknown) => CacheValue;
     const optionOf = (option?: CacheSetOptions): CacheSetOptions | undefined =>
       option ?? (injectInfo.ttl ? { expireAt: dayjs().add(injectInfo.ttl, "millisecond") } : undefined);
     if (!injectInfo.isMap) {
@@ -284,18 +284,27 @@ export class InjectInfo<
           delete: async () => {
             await cacheAdaptor.delete(topic, propKey);
           },
+          getDel: async () => getter((await cacheAdaptor.getDel(topic, propKey)) ?? undefined),
+          setIfAbsent: async (value: unknown, option?: CacheSetOptions) =>
+            await cacheAdaptor.setIfAbsent(topic, propKey, setter(value), optionOf(option)),
+          incr: async (by = 1, option?: CacheSetOptions) =>
+            await cacheAdaptor.incr(topic, propKey, by, optionOf(option)),
         },
         writable: false,
         enumerable: true,
       });
       return;
     }
-    const get = async (key: string) => {
-      const value = await cacheAdaptor.hget(topic, propKey, key);
-      return value === undefined || value === null ? undefined : getter(value);
-    };
+    const readEntry = (value: unknown) => (value === undefined || value === null ? undefined : getter(value));
+    const get = async (key: string) => readEntry(await cacheAdaptor.hget(topic, propKey, key));
     const set = async (key: string, value: unknown, option?: CacheSetOptions) => {
       await cacheAdaptor.hset(topic, propKey, key, setter(value), optionOf(option));
+    };
+    // First writer wins, so every caller racing to fill one key reads back the same value.
+    const insert = async (key: string, value: unknown, option?: CacheSetOptions) => {
+      if (await cacheAdaptor.hsetIfAbsent(topic, propKey, key, setter(value), optionOf(option))) return value;
+      const stored = await get(key);
+      return stored !== undefined ? stored : value;
     };
     Object.defineProperty(instance, propKey, {
       value: {
@@ -304,11 +313,14 @@ export class InjectInfo<
         delete: async (key: string) => {
           await cacheAdaptor.hdelete(topic, propKey, key);
         },
+        getDel: async (key: string) => readEntry(await cacheAdaptor.hgetDel(topic, propKey, key)),
+        setIfAbsent: async (key: string, value: unknown, option?: CacheSetOptions) =>
+          await cacheAdaptor.hsetIfAbsent(topic, propKey, key, setter(value), optionOf(option)),
+        incr: async (key: string, by = 1, option?: CacheSetOptions) =>
+          await cacheAdaptor.hincr(topic, propKey, key, by, optionOf(option)),
         getOrInsert: async (key: string, value: unknown, option?: CacheSetOptions) => {
           const existingValue = await get(key);
-          if (existingValue !== undefined) return existingValue;
-          await set(key, value, option);
-          return value;
+          return existingValue !== undefined ? existingValue : await insert(key, value, option);
         },
         getOrInsertComputed: async (
           key: string,
@@ -316,10 +328,7 @@ export class InjectInfo<
           option?: CacheSetOptions,
         ) => {
           const existingValue = await get(key);
-          if (existingValue !== undefined) return existingValue;
-          const value = await compute(key);
-          await set(key, value, option);
-          return value;
+          return existingValue !== undefined ? existingValue : await insert(key, await compute(key), option);
         },
         keys: async () => await cacheAdaptor.hkeys(topic, propKey),
         entries: async () => {
@@ -395,9 +404,8 @@ export const injectionBuilder = (parentRefName: string) => ({
     const isMap = modelRef === Map;
     if (isMap && !opts.of) throw new Error("of should be provided when modelRef is Map");
     const valueRef = (isMap ? opts.of : modelRef) as Cls;
-    // A cache holds a string, a number or a Buffer. A model or scalar class serializes to an object, which Redis
-    // coerces to "[object Object]" and only the sqlite-backed cache happens to JSON on its own — so the value
-    // travels as text either way and the two adaptors round-trip the same declaration.
+    // A model or scalar class serializes to an object and is stored as JSON text — the shape every entry written
+    // before the cache adaptors kept value types already has, so old and new entries read back the same way.
     const isStructured = Array.isArray(valueRef) || !PrimitiveRegistry.has(valueRef);
     const read = opts.get as ((value: unknown) => unknown) | undefined;
     const write = opts.set as ((value: unknown) => unknown) | undefined;
@@ -416,6 +424,12 @@ export const injectionBuilder = (parentRefName: string) => ({
               get: (key: string) => Promise<MapFieldValue | undefined>;
               set: (key: string, value: MapFieldValue, option?: CacheSetOptions) => Promise<void>;
               delete: (key: string) => Promise<void>;
+              /** Reads and removes the entry in one step: of two callers racing for it, one gets it. */
+              getDel: (key: string) => Promise<MapFieldValue | undefined>;
+              /** Writes only where no live entry is stored, and answers whether this call wrote. */
+              setIfAbsent: (key: string, value: MapFieldValue, option?: CacheSetOptions) => Promise<boolean>;
+              /** Adds to a numeric entry and answers the sum; an entry this call creates takes the expiry. */
+              incr: (key: string, by?: number, option?: CacheSetOptions) => Promise<number>;
               getOrInsert: (key: string, value: MapFieldValue, option?: CacheSetOptions) => Promise<MapFieldValue>;
               getOrInsertComputed: (
                 key: string,
@@ -431,6 +445,9 @@ export const injectionBuilder = (parentRefName: string) => ({
               get: () => Promise<UseValue>;
               set: (value: UseValue, option?: CacheSetOptions) => Promise<void>;
               delete: () => Promise<void>;
+              getDel: () => Promise<UseValue>;
+              setIfAbsent: (value: UseValue, option?: CacheSetOptions) => Promise<boolean>;
+              incr: (by?: number, option?: CacheSetOptions) => Promise<number>;
             },
       never,
       ValueRef

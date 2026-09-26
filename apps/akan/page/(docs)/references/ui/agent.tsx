@@ -193,10 +193,10 @@ export default page().render(() => {
     {
       key: "compact",
       type: "CompactOptions",
-      default: "{ at: 24_000, keep: 6 }",
+      default: "{ at: 24_000, keep: 6, buffer: 13_000 }",
       desc: l.trans({
-        en: "Summarizes past `at` estimated tokens, keeping the last `keep` messages. `{ at: 0 }` turns it off.",
-        ko: "추정 토큰이 `at`을 넘으면 요약하고, 마지막 `keep`개 메시지는 그대로 둡니다. `{ at: 0 }`이면 끕니다.",
+        en: "Summarizes past `at` estimated tokens or `buffer` short of the known window. `{ at: 0 }` turns it off.",
+        ko: "추정 토큰이 `at`을 넘거나 알려진 창까지 `buffer`만 남으면 요약합니다. `{ at: 0 }`이면 끕니다.",
       }),
     },
     {

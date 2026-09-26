@@ -135,7 +135,7 @@ export class CssImportResolver {
 
   async #firstExisting(basePath: string): Promise<string | null> {
     for (const suffix of CSS_IMPORT_EXTS) {
-      const candidate = `${basePath}${suffix}`;
+      const candidate = path.normalize(`${basePath}${suffix}`);
       if (await Bun.file(candidate).exists()) return candidate;
     }
     return null;

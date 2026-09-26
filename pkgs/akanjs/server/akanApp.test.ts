@@ -968,14 +968,15 @@ describe("AkanApp", () => {
       sendRawText(abnormal, "close-abnormally");
       expect(await abnormalClosed).toBe(1001);
       abnormal.destroy();
-      await expect(fetch(`http://127.0.0.1:${port}/`).then((res) => res.text())).resolves.toBe("ok");
+      //? `await expect(promise).resolves` after a relayed ws close crashes Bun 1.4.2 on Windows (oven-sh/bun#44025).
+      expect(await fetch(`http://127.0.0.1:${port}/`).then((res) => res.text())).toBe("ok");
 
       const legal = await connectRawWebSocket(port);
       const legalClosed = waitForRawCloseCode(legal);
       sendRawText(legal, "close-legally");
       expect(await legalClosed).toBe(4000);
       legal.destroy();
-      await expect(fetch(`http://127.0.0.1:${port}/`).then((res) => res.text())).resolves.toBe("ok");
+      expect(await fetch(`http://127.0.0.1:${port}/`).then((res) => res.text())).toBe("ok");
     } finally {
       await app.stop();
       await withTimeout(running, "timed out waiting for AkanApp to stop", 1_000);
@@ -1013,7 +1014,7 @@ describe("AkanApp", () => {
           abnormal?.resetAndDestroy();
         }),
       ).toBe("1001");
-      await expect(fetch(`http://127.0.0.1:${port}/`).then((res) => res.text())).resolves.toBe("ok");
+      expect(await fetch(`http://127.0.0.1:${port}/`).then((res) => res.text())).toBe("ok");
 
       let legal: WebSocket | undefined;
       expect(
@@ -1023,7 +1024,7 @@ describe("AkanApp", () => {
         }),
       ).toBe("open");
       expect(await observeNextRelayEvent(observedPath, () => legal?.close(4000))).toBe("4000");
-      await expect(fetch(`http://127.0.0.1:${port}/`).then((res) => res.text())).resolves.toBe("ok");
+      expect(await fetch(`http://127.0.0.1:${port}/`).then((res) => res.text())).toBe("ok");
     } finally {
       await app.stop();
       await withTimeout(running, "timed out waiting for AkanApp to stop", 1_000);

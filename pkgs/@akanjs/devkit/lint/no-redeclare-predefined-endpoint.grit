@@ -14,7 +14,8 @@ language js(typescript, jsx)
     $base <: contains `endpoint`,
     $className <: r"([A-Z][a-zA-Z0-9]*)Endpoint"($Cap)
   },
-  $filename <: r".*/([a-z][a-zA-Z0-9]*)\.signal\.ts"($model),
+  // `$filename` carries backslashes on Windows, so a separator here must accept both.
+  $filename <: r".*[/\\]([a-z][a-zA-Z0-9]*)\.signal\.ts"($model),
   or {
     $key <: $model,
     $key <: r"(?:light|create|update|remove|view|edit|merge)([A-Z][a-zA-Z0-9]*)"($keyCap) where {

@@ -235,7 +235,7 @@ describe("iOS native run helpers", () => {
     expect(deviceCommand.xcodebuildArgs).toContain("id=device-1");
     expect(deviceCommand.xcodebuildArgs).toContain("App QA");
     expect(deviceCommand.appPath).toBe(
-      "/repo/apps/minimal/ios/DerivedData/device-1/Build/Products/Debug-iphoneos/App.app",
+      path.join("/repo/apps/minimal/ios/DerivedData/device-1/Build/Products/Debug-iphoneos/App.app"),
     );
 
     const simulatorCommand = buildIosNativeRunCommand({
@@ -244,7 +244,7 @@ describe("iOS native run helpers", () => {
     });
     expect(simulatorCommand.xcodebuildArgs).toContain("platform=iOS Simulator,id=sim-1");
     expect(simulatorCommand.appPath).toBe(
-      "/repo/apps/minimal/ios/DerivedData/sim-1/Build/Products/Debug-iphonesimulator/App.app",
+      path.join("/repo/apps/minimal/ios/DerivedData/sim-1/Build/Products/Debug-iphonesimulator/App.app"),
     );
   });
 

@@ -12,7 +12,7 @@
 - Config File Shape (#config-shape)
 - routes (#routes)
 - mobile (#mobile)
-- defaultDatabaseMode (#default-database-mode)
+- database (#default-database-mode)
 - web (#web)
 - images (#images)
 - i18n (#i18n)
@@ -47,7 +47,7 @@ Mobile, data and env
 
 The native app's identity and one target per Capacitor package.
 
-`single`, `multiple` or `cluster`, used when `AKAN_DATABASE_MODE` is unset.
+The database modes the build can run in; a deployment picks one with `AKAN_DATABASE_MODE`.
 
 An allowlist of extra env names for browser code. The build does not read it yet.
 
@@ -159,7 +159,7 @@ The client this package opens. It must be a basePath declared in `routes`.
 
 Native permissions. Each one turns on the matching plugin's native setup.
 
-defaultDatabaseMode
+database
 
 Mode
 
@@ -167,11 +167,11 @@ Database, queue and cache
 
 SQLite for all three, so no extra server runs.
 
-libSQL for data, Redis for the queue and cache.
+One SQLite file on a host volume for data, Redis for the queue and cache.
 
 Postgres for data, Redis for the queue and cache.
 
-Set it only when the deployment needs a different mode by default:
+Declare every mode a deployment of the app may use. The first one is the default:
 
 web
 
@@ -345,7 +345,7 @@ export default config;
 import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
-  defaultDatabaseMode: "multiple",
+  database: { modes: ["single", "cluster"] },
 };
 
 export default config;

@@ -13,7 +13,8 @@ const errorKey = /^[a-zA-Z][A-Za-z0-9]*\.error\.[A-Za-z0-9_]+$/;
 const readable = (event: RunnerEvent): RunnerEvent => {
   if (event.type !== "error" || !errorKey.test(event.message)) return event;
   const text = Translator.translateByLocale(Translator.getActiveLocale() ?? "en", event.message, event.data);
-  return text === event.message ? event : { type: "error", message: text };
+  if (text === event.message) return event;
+  return { type: "error", message: text, ...(event.overflow ? { overflow: event.overflow } : {}) };
 };
 
 /**

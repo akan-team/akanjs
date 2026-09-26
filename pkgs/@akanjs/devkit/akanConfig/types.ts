@@ -2,6 +2,7 @@ export type {
   AkanApiConfig,
   AkanAssetsConfig,
   AkanConfigFile,
+  AkanDatabaseConfig,
   AkanExecutor,
   AkanMobileConfig,
   AkanMobileTargetConfig,

@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import path from "node:path";
 import { RouteSeedIndexStore } from "./routeSeedIndexStore";
 
 describe("route seed index artifact paths", () => {
   test("restores relative seed paths from the artifact directory", () => {
-    const artifactDir = "/repo/dist/apps/akan/.akan/artifact";
+    const artifactDir = path.resolve("/repo/dist/apps/akan/.akan/artifact");
     const normalized = RouteSeedIndexStore.normalize(
       {
         entries: [
@@ -19,10 +20,12 @@ describe("route seed index artifact paths", () => {
     );
 
     expect(normalized.entries[0]?.seeds).toEqual([
-      "/repo/dist/apps/akan/.akan/generated/implicit-root-layout.tsx",
-      "/repo/apps/akan/page/profile.tsx",
+      path.resolve("/repo/dist/apps/akan/.akan/generated/implicit-root-layout.tsx"),
+      path.resolve("/repo/apps/akan/page/profile.tsx"),
     ]);
-    expect(normalized.globalLayoutFiles).toEqual(["/repo/dist/apps/akan/.akan/generated/implicit-root-layout.tsx"]);
+    expect(normalized.globalLayoutFiles).toEqual([
+      path.resolve("/repo/dist/apps/akan/.akan/generated/implicit-root-layout.tsx"),
+    ]);
   });
 
   test("restores slim production seed index defaults", () => {

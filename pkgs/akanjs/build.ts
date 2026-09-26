@@ -30,6 +30,7 @@ const TEST_FILE_PATTERNS = [
   "**/*.spec.jsx",
   "**/*.fixture.ts",
   "**/*.fixture.tsx",
+  "**/*.instance.ts",
 ];
 
 const removeTestFiles = async () => {
@@ -41,7 +42,8 @@ const removeTestFiles = async () => {
   }
 };
 const COMMENT_FILE_PATTERNS = ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"];
-const testFilePattern = /\.(?:test|spec|fixture)\.[cm]?[tj]sx?$/;
+// `*.instance.ts` is a process a conformance test spawns, and it imports that test's fixture.
+const testFilePattern = /\.(?:test|spec|fixture|instance)\.[cm]?[tj]sx?$/;
 
 const isJSDocComment = (comment: string) => comment.startsWith("/**") && !comment.startsWith("/***/");
 

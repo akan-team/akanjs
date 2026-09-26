@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import path from "node:path";
 import type { AkanAppConfig, DatabaseMode } from "@akanjs/devkit/akanConfig";
 import { CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor, PkgExecutor } from "@akanjs/devkit/executors";
@@ -11,6 +12,7 @@ import {
   createTempPackage,
   writeText,
 } from "@akanjs/devkit/testHelpers";
+import { DatabaseModes } from "akanjs/base";
 import { ApplicationCommand } from "./application.command";
 import { ApplicationRunner } from "./application.runner";
 import { ApplicationScript } from "./application.script";
@@ -19,9 +21,11 @@ const tempRoots: string[] = [];
 
 const createStartApp = ({
   databaseMode = "single",
+  modes = [databaseMode],
   installSpecsByMode = {},
 }: {
   databaseMode?: DatabaseMode;
+  modes?: DatabaseMode[];
   installSpecsByMode?: Partial<Record<DatabaseMode, string[]>>;
 } = {}) => {
   const recorder = createCallRecorder();
@@ -37,7 +41,9 @@ const createStartApp = ({
   );
   const getMissingDatabaseModeDependencySpecs = mock((mode: DatabaseMode) => installSpecsByMode[mode] ?? []);
   const akanConfig = {
-    defaultDatabaseMode: databaseMode,
+    database: { modes },
+    resolveDatabaseMode: () =>
+      DatabaseModes.resolve({ requested: process.env.AKAN_DATABASE_MODE, declared: modes.join(","), local: true }),
     getMissingDatabaseModeDependencySpecs,
   } as unknown as AkanAppConfig;
   const app = createFakeExecutor(
@@ -192,7 +198,7 @@ describe("ApplicationScript", () => {
 
   test("startOne confirms and installs missing multiple-mode dependencies before dbup", async () => {
     const script = CommandContainer.get(ApplicationScript);
-    const installSpecs = ["@libsql/client@^0.17.3", "bullmq@^5.76.10", "ioredis@^5.10.1", "protobufjs@^8.4.0"];
+    const installSpecs = ["bullmq@^5.76.10", "ioredis@^5.10.1"];
     const { app, recorder } = createStartApp({
       databaseMode: "multiple",
       installSpecsByMode: { multiple: installSpecs },
@@ -232,7 +238,7 @@ describe("ApplicationScript", () => {
 
   test("startOne aborts before install and startup when dependency install is declined", async () => {
     const script = CommandContainer.get(ApplicationScript);
-    const installSpecs = ["@libsql/client@^0.17.3"];
+    const installSpecs = ["ioredis@^5.10.1"];
     const { app, recorder } = createStartApp({
       databaseMode: "multiple",
       installSpecsByMode: { multiple: installSpecs },
@@ -296,9 +302,9 @@ describe("ApplicationScript", () => {
     process.env.AKAN_DATABASE_MODE = "cluster";
     try {
       const script = CommandContainer.get(ApplicationScript);
-      const clusterSpecs = ["bullmq@^5.76.10", "ioredis@^5.10.1", "postgres@^3.4.9", "protobufjs@^8.4.0"];
+      const clusterSpecs = ["bullmq@^5.76.10", "ioredis@^5.10.1", "postgres@^3.4.9"];
       const { app, getMissingDatabaseModeDependencySpecs, recorder } = createStartApp({
-        databaseMode: "multiple",
+        modes: ["multiple", "cluster"],
         installSpecsByMode: { cluster: clusterSpecs },
       });
       script.confirmDatabaseModeDependencyInstall = async (...args: unknown[]) => {
@@ -327,6 +333,27 @@ describe("ApplicationScript", () => {
         name: "workspace.spawn",
         args: ["bun", ["add", ...clusterSpecs], { stdio: "inherit" }],
       });
+    } finally {
+      if (previousDatabaseMode === undefined) delete process.env.AKAN_DATABASE_MODE;
+      else process.env.AKAN_DATABASE_MODE = previousDatabaseMode;
+    }
+  });
+
+  test("startOne refuses a database mode the app does not declare", async () => {
+    const previousDatabaseMode = process.env.AKAN_DATABASE_MODE;
+    process.env.AKAN_DATABASE_MODE = "cluster";
+    try {
+      const script = CommandContainer.get(ApplicationScript);
+      const { app, recorder } = createStartApp({ databaseMode: "multiple" });
+      Object.assign(script.applicationRunner, {
+        start: async (...args: unknown[]) => {
+          recorder.record("runner.start", ...args);
+          return {};
+        },
+      });
+
+      await expect(script.startOne(app as never, { write: false })).rejects.toThrow('Add "cluster" to database.modes');
+      expect(recorder.names()).not.toContain("runner.start");
     } finally {
       if (previousDatabaseMode === undefined) delete process.env.AKAN_DATABASE_MODE;
       else process.env.AKAN_DATABASE_MODE = previousDatabaseMode;
@@ -548,6 +575,64 @@ describe("ApplicationScript", () => {
 });
 
 describe("ApplicationRunner", () => {
+  test("dbup brings up only what a mode runs on", async () => {
+    const { root, app } = await createTempApp("demo");
+    tempRoots.push(root);
+    const runner = new ApplicationRunner();
+    const calls: string[][] = [];
+    app.workspace.spawn = (async (_command: string, args: string[]) => {
+      calls.push(args);
+      return "";
+    }) as never;
+
+    expect(await runner.dbup(app.workspace, "multiple")).toBe(false);
+    expect(calls.at(-1)).toEqual(["compose", "up", "-d", "redis"]);
+    await runner.dbup(app.workspace, "cluster");
+    expect(calls.at(-1)).toEqual(["compose", "up", "-d", "redis", "postgres"]);
+  });
+
+  test("dbup names the service an older local compose file lacks instead of failing inside docker", async () => {
+    const { root, app } = await createTempApp("demo");
+    tempRoots.push(root);
+    await writeText(
+      `${app.workspace.workspaceRoot}/local/docker-compose.yaml`,
+      "services:\n  redis:\n    image: redis\n",
+    );
+    const runner = new ApplicationRunner();
+    const spawn = mock(async () => "");
+    app.workspace.spawn = spawn as never;
+
+    await expect(runner.dbup(app.workspace, "cluster")).rejects.toThrow(
+      "local/docker-compose.yaml declares no postgres service",
+    );
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  test("transfers a database by booting the app as a script in the mode the shell names", async () => {
+    const { root, app } = await createTempApp("demo");
+    tempRoots.push(root);
+    await writeText(`${app.cwdPath}/server.ts`, "export const server = {};\n");
+    const runner = new ApplicationRunner();
+    const spawn = mock(async () => "");
+    app.spawn = spawn as never;
+    app.getCommandEnv = (env: Record<string, string>) => ({ ...env, AKAN_PUBLIC_APP_NAME: "demo" });
+    app.getDatabaseModeEnv = async () => ({ AKAN_DATABASE_MODE: "cluster", AKAN_DATABASE_MODES: "single,cluster" });
+
+    await runner.transferDatabase(app, "import", "local/transfer");
+
+    const [command, args, options] = spawn.mock.calls[0] as unknown as [
+      string,
+      string[],
+      { env: Record<string, string> },
+    ];
+    expect(command).toBe("bun");
+    expect(args[1]).toContain(
+      `importFrom(${JSON.stringify(path.join(app.workspace.workspaceRoot, "local/transfer"))})`,
+    );
+    // As a script the server registers no cron and runs no init job, so nothing writes beside the import.
+    expect(options.env).toMatchObject({ AKAN_COMMAND_TYPE: "script", AKAN_DATABASE_MODE: "cluster" });
+  });
+
   test("validates app script filenames and spawns bun with command env", async () => {
     const { root, app } = await createTempApp("demo");
     tempRoots.push(root);
@@ -559,13 +644,19 @@ describe("ApplicationRunner", () => {
       ...env,
       AKAN_PUBLIC_APP_NAME: "demo",
     });
+    app.getDatabaseModeEnv = async () => ({ AKAN_DATABASE_MODE: "cluster", AKAN_DATABASE_MODES: "single,cluster" });
 
     await expect(runner.runScript(app, "../secret")).rejects.toThrow("Invalid script filename");
     await expect(runner.runScript(app, "missing")).rejects.toThrow("Script file not found");
 
     await runner.runScript(app, "hello.ts");
     expect(spawn).toHaveBeenCalledWith("bun", ["script/hello.ts"], {
-      env: { AKAN_COMMAND_TYPE: "script", AKAN_PUBLIC_APP_NAME: "demo" },
+      env: {
+        AKAN_COMMAND_TYPE: "script",
+        AKAN_DATABASE_MODE: "cluster",
+        AKAN_DATABASE_MODES: "single,cluster",
+        AKAN_PUBLIC_APP_NAME: "demo",
+      },
       stdio: "inherit",
     });
   });
@@ -603,7 +694,12 @@ describe("ApplicationRunner", () => {
 
     expect(spawn).toHaveBeenCalledWith(
       "bun",
-      ["test", "--isolate", "--preload", expect.stringContaining("node_modules/akanjs/test/signalTest.preload.ts")],
+      [
+        "test",
+        "--isolate",
+        "--preload",
+        expect.stringContaining(path.join("node_modules", "akanjs", "test", "signalTest.preload.ts")),
+      ],
       {
         env: {
           ...process.env,
@@ -650,7 +746,12 @@ describe("ApplicationRunner", () => {
 
     expect(spawn).toHaveBeenCalledWith(
       "bun",
-      ["test", "--isolate", "--preload", expect.stringContaining("node_modules/akanjs/test/signalTest.preload.ts")],
+      [
+        "test",
+        "--isolate",
+        "--preload",
+        expect.stringContaining(path.join("node_modules", "akanjs", "test", "signalTest.preload.ts")),
+      ],
       {
         env: {
           ...process.env,

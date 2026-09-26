@@ -76,7 +76,7 @@ export class McpDocument {
   readonly refusals: McpRefusal[];
   /** What is published with no description of its own, which is the field a model picks a tool by. */
   readonly undescribed: McpUndescribed[];
-  readonly #schema = new JsonSchemaBuilder({ refPrefix: "#/$defs/", nullable: "type" });
+  readonly #schema = new JsonSchemaBuilder({ refPrefix: "#/$defs/", nullable: "type", face: "agent" });
   readonly #modelSchemas = new Map<McpSchemaSide, Record<string, JsonSchema>>();
   readonly #options: McpDocumentOptions;
   readonly #catalogue: AgentCatalogue;

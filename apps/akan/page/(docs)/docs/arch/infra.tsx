@@ -69,6 +69,20 @@ export default page().render(() => {
       }),
     },
     {
+      name: "Secret",
+      desc: l.trans({
+        en: "A Kubernetes object that hands private values, such as database URLs, to pods as env vars.",
+        ko: "데이터베이스 URL 같은 비공개 값을 pod에 환경변수로 넘겨 주는 Kubernetes 객체입니다.",
+      }),
+    },
+    {
+      name: ["ReadWriteOnce", "ReadWriteMany"],
+      desc: l.trans({
+        en: "Volume access modes: one node mounts the first, pods on many nodes share the second.",
+        ko: "볼륨 접근 모드입니다. 앞의 것은 노드 하나만 마운트하고, 뒤의 것은 여러 노드의 pod가 함께 씁니다.",
+      }),
+    },
+    {
       name: "WAL",
       desc: l.trans({
         en: "SQLite's write-ahead log mode, which lets reads keep going while a write is in progress.",
@@ -98,8 +112,8 @@ export default page().render(() => {
       title: l.trans({ en: "Production service", ko: "운영 서비스" }),
       pick: l.trans({ en: "Cloud · main", ko: "클라우드 · main" }),
       desc: l.trans({
-        en: "Use the main branch of the same cloud deployment. The shipped chart runs one pod per app, so plan the database and cache layer before traffic outgrows it.",
-        ko: "같은 클라우드 배포의 main branch를 사용합니다. 제공되는 차트는 앱당 pod 하나를 실행하므로, 트래픽이 그 한계를 넘기 전에 데이터베이스와 캐시 계층을 먼저 계획해야 합니다.",
+        en: "Use the main branch of the same cloud deployment. The chart runs one pod in single mode; before traffic outgrows it, move that branch to cluster mode with your own Postgres and Redis.",
+        ko: "같은 클라우드 배포의 main branch를 사용합니다. 차트는 single 모드에서 pod 하나를 실행하므로, 트래픽이 그 한계를 넘기 전에 직접 준비한 Postgres와 Redis로 그 branch를 cluster 모드로 옮깁니다.",
       }),
     },
   ];
@@ -137,19 +151,35 @@ export default page().render(() => {
 
   const modeColumns = [
     { key: "mode", label: l.trans({ en: "Mode", ko: "모드" }), code: true },
-    { key: "database", label: l.trans({ en: "Database", ko: "데이터베이스" }), code: true },
-    { key: "queue", label: l.trans({ en: "Queue / PubSub", ko: "큐 / PubSub" }) },
-    { key: "cache", label: l.trans({ en: "Cache", ko: "캐시" }) },
+    { key: "database", label: l.trans({ en: "Database", ko: "데이터베이스" }) },
+    { key: "runs", label: l.trans({ en: "Where it runs", ko: "실행 위치" }) },
+    { key: "queue", label: l.trans({ en: "Cache · queue · pubsub", ko: "캐시 · 큐 · PubSub" }) },
   ];
   const modeRows = [
     {
       mode: "single",
-      database: "SQLite",
-      queue: l.trans({ en: "SQLite based, Bun IPC accelerated", ko: "SQLite 기반, Bun IPC 가속 처리" }),
-      cache: l.trans({ en: "SQLite key-value cache", ko: "SQLite 기반 키-값 캐시" }),
+      database: l.trans({ en: "One SQLite file", ko: "SQLite 파일 하나" }),
+      queue: l.trans({
+        en: "SQLite files: a key-value cache, and a queue and pubsub sped up by Bun IPC",
+        ko: "SQLite 파일 기반의 키-값 캐시, 그리고 Bun IPC로 가속한 큐와 PubSub",
+      }),
+      runs: l.trans({ en: "One container", ko: "컨테이너 하나" }),
     },
-    { mode: "multiple", database: "libsql", queue: "Redis", cache: "Redis" },
-    { mode: "cluster", database: "Postgres", queue: "Redis", cache: "Redis" },
+    {
+      mode: "multiple",
+      database: l.trans({
+        en: "One SQLite file (WAL) on a host volume that every container opens",
+        ko: "모든 컨테이너가 여는, 호스트 볼륨의 SQLite 파일(WAL) 하나",
+      }),
+      queue: "Redis",
+      runs: l.trans({ en: "Several containers on one host", ko: "호스트 한 대의 여러 컨테이너" }),
+    },
+    {
+      mode: "cluster",
+      database: "Postgres",
+      queue: "Redis",
+      runs: l.trans({ en: "Several servers", ko: "여러 서버" }),
+    },
   ];
   const modeUseRows = [
     {
@@ -178,15 +208,15 @@ export default page().render(() => {
         <>
           <div>
             {l.trans({
-              en: "When you need a separate cache, pub/sub, queue-like work, or realistic service boundaries.",
-              ko: "분리된 캐시, pub/sub, 큐성 작업, 더 현실적인 서비스 경계가 필요해질 때 씁니다.",
+              en: "When one host runs several containers that need a shared cache, pub/sub and queue.",
+              ko: "호스트 한 대에서 캐시, pub/sub, 큐를 함께 써야 하는 여러 컨테이너를 실행할 때 씁니다.",
             })}
           </div>
           <div className="font-medium text-foreground">
             →{" "}
             {l.trans({
-              en: "Cache and background work are separated, while staying lighter than cluster storage.",
-              ko: "클러스터형 저장소보다 가볍게 유지하면서 캐시와 백그라운드 작업을 분리합니다.",
+              en: "Lighter than cluster: cache and background work move to Redis, the data stays in one SQLite file.",
+              ko: "cluster보다 가볍습니다. 캐시와 백그라운드 작업은 Redis로 옮기고, 데이터는 SQLite 파일 하나에 그대로 둡니다.",
             })}
           </div>
         </>
@@ -198,8 +228,8 @@ export default page().render(() => {
         <>
           <div>
             {l.trans({
-              en: "When local runs should match the production cluster, or you need heavier relational storage.",
-              ko: "로컬 동작을 운영 클러스터와 비슷하게 맞추고 싶거나, 더 무거운 관계형 영속성이 필요할 때 씁니다.",
+              en: "For several servers, local runs that match production, or heavier relational storage.",
+              ko: "앱이 여러 서버에 걸치거나, 로컬 동작을 운영 클러스터와 맞추고 싶거나, 더 무거운 관계형 영속성이 필요할 때 씁니다.",
             })}
           </div>
           <div className="font-medium text-foreground">
@@ -306,17 +336,23 @@ export default page().render(() => {
             {l.trans({
               en: (
                 <span>
-                  <strong>There is no edge infrastructure to set up.</strong> edge is an operation mode an app can be
-                  built and run in, and an endpoint can be scoped to it, but Akan ships no edge infrastructure: infra/
-                  carries the cluster chart and the deployment control area only. An on-site deployment is yours to
-                  build.
+                  <strong>There is no edge infrastructure to set up.</strong> infra/ carries the cluster chart and the
+                  deployment control area only, so an edge site is one container you run yourself: set{" "}
+                  <code>AKAN_PUBLIC_OPERATION_MODE=edge</code> and <code>AKAN_DATABASE_MODE=single</code>, and point{" "}
+                  <code>AKAN_SQLITE_DIR</code> at a volume, which then holds its database and its cache and queue file.
+                  The operation mode is independent of the database mode, and only an <code>internal</code> job can be
+                  scoped to it (<code>{'operationMode: ["cloud"]'}</code>), never an endpoint.
                 </span>
               ),
               ko: (
                 <span>
-                  <strong>따로 준비된 엣지 인프라는 없습니다.</strong> edge는 앱을 빌드하고 실행할 수 있는 operation
-                  mode이고 endpoint를 그 모드로 한정할 수도 있지만, Akan이 제공하는 엣지 인프라는 없습니다. infra/에는
-                  클러스터 차트와 배포 제어 영역만 들어 있습니다. 현장 배포 구성은 직접 만들어야 합니다.
+                  <strong>따로 준비된 엣지 인프라는 없습니다.</strong> infra/에는 클러스터 차트와 배포 제어 영역만
+                  있으므로, 엣지 사이트는 직접 실행하는 컨테이너 하나입니다.{" "}
+                  <code>AKAN_PUBLIC_OPERATION_MODE=edge</code>와 <code>AKAN_DATABASE_MODE=single</code>을 설정하고,{" "}
+                  <code>AKAN_SQLITE_DIR</code>이 볼륨을 가리키게 하면 데이터베이스 파일과 캐시·큐 파일이 모두 그 볼륨에
+                  놓입니다. operation mode는 데이터베이스 모드와 별개이며, 이 모드로 한정할 수 있는 것은 endpoint가
+                  아니라 <code>internal</code> 작업뿐입니다(
+                  <code>{'operationMode: ["cloud"]'}</code>).
                 </span>
               ),
             })}
@@ -451,7 +487,7 @@ export default page().render(() => {
               ko: "처음에는 single 모드로 시작하세요. 대부분의 서비스는 첫날부터 별도 데이터베이스 클러스터가 필요하지 않습니다. 실제 성능 한계, 큐 처리, 다중 인스턴스 운영 요구가 생기면 앱의 비즈니스 구조를 바꾸지 않고 multiple 또는 cluster 모드로 올리면 됩니다.",
             })}
           </div>
-          <Docs.Table columns={modeColumns} rows={modeRows} />
+          <Docs.Table columns={modeColumns} rows={modeRows} stacked />
           <Docs.Alert type="info">
             {l.trans({
               en: (
@@ -476,32 +512,131 @@ export default page().render(() => {
             descLabel={l.trans({ en: "When → what you get", ko: "언제 → 얻는 것" })}
             items={modeUseRows}
           />
+          <Docs.SubSubTitle>{l.trans({ en: "Declaring the modes", ko: "모드 선언하기" })}</Docs.SubSubTitle>
           <div>
             {l.trans({
-              en: "The default mode lives in akan.config.ts:",
-              ko: "기본 모드는 akan.config.ts에 적습니다:",
+              en: (
+                <span>
+                  An app lists in <code>akan.config.ts</code> every mode a deployment of it may run in, and the first is
+                  the default:
+                </span>
+              ),
+              ko: (
+                <span>
+                  앱은 자기 배포가 쓸 수 있는 모드를 모두 <code>akan.config.ts</code>에 나열하고, 그중 첫 번째가
+                  기본값입니다:
+                </span>
+              ),
             })}
           </div>
           <Code.Snippet
             className="w-full"
-            title="akan.config.ts"
-            code={`const config: AppConfig = {
-  defaultDatabaseMode: "single",
-};`}
+            title="apps/myapp/akan.config.ts"
+            code={`import type { AppConfig } from "akanjs";
+
+const config: AppConfig = {
+  database: { modes: ["single", "cluster"] },
+};
+
+export default config;`}
           />
+          <ul className="my-4 list-disc space-y-2 pl-5">
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>A deployment names one of them.</strong> <code>AKAN_DATABASE_MODE</code> picks a declared
+                    mode; with one declared it may be left out, with several every deployment sets it.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>배포는 그중 하나를 고릅니다.</strong> <code>AKAN_DATABASE_MODE</code>로 선언된 모드 하나를
+                    고르며, 선언이 하나면 생략해도 되고 여럿이면 배포마다 적어야 합니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>One image serves every declared mode.</strong> The build carries each mode's drivers, so the
+                    same image runs an edge site in <code>single</code> and a cloud cluster in <code>cluster</code>.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>이미지 하나가 선언한 모든 모드를 실행합니다.</strong> 빌드가 모드마다 드라이버를 싣기
+                    때문에, 같은 이미지로 엣지 사이트는 <code>single</code>로, 클라우드 클러스터는 <code>cluster</code>
+                    로 실행합니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Your machine runs the first.</strong> <code>akan start</code> uses it unless the shell sets{" "}
+                    <code>AKAN_DATABASE_MODE</code> to another declared mode.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>내 PC에서는 첫 번째 모드로 실행합니다.</strong> 셸의 <code>AKAN_DATABASE_MODE</code>가
+                    선언된 다른 모드를 가리키지 않으면 <code>akan start</code>는 첫 번째 모드를 씁니다.
+                  </span>
+                ),
+              })}
+            </li>
+          </ul>
+
+          <Docs.SubSubTitle>{l.trans({ en: "Local services", ko: "로컬 서비스" })}</Docs.SubSubTitle>
           <div>
             {l.trans({
-              en: "multiple and cluster need their database and Redis running beside the app on your machine. akan dbup starts the local database for the mode you name:",
-              ko: "multiple과 cluster는 내 PC에서 앱 옆에 데이터베이스와 Redis가 떠 있어야 합니다. akan dbup은 지정한 모드의 로컬 데이터베이스를 띄웁니다:",
+              en: (
+                <span>
+                  On your machine, <code>multiple</code> needs Redis beside the app and <code>cluster</code> needs Redis
+                  and Postgres. <code>akan start</code> starts them for the mode it runs, and <code>akan dbup</code>{" "}
+                  starts them on their own:
+                </span>
+              ),
+              ko: (
+                <span>
+                  내 PC에서 <code>multiple</code>은 앱 옆에 Redis가, <code>cluster</code>는 Redis와 Postgres가 떠 있어야
+                  합니다. <code>akan start</code>는 실행하는 모드에 맞춰 이들을 띄우고, <code>akan dbup</code>은 따로
+                  띄웁니다:
+                </span>
+              ),
             })}
           </div>
           <Code.Snippet
             className="w-full"
-            title="Local database commands"
+            title="Terminal"
             language="bash"
-            code={`akan dbup --mode multiple
-akan dbup --mode cluster`}
+            code={`akan dbup                  # every mode the workspace's apps declare
+akan dbup --mode multiple  # Redis
+akan dbup --mode cluster   # Redis and Postgres 18`}
           />
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  The first run writes <code>local/docker-compose.yaml</code>, which is yours from then on. If an older
+                  file lacks a service, add it, or move the file aside so the next <code>akan dbup</code> writes the
+                  current one.
+                </span>
+              ),
+              ko: (
+                <span>
+                  처음 실행할 때 <code>local/docker-compose.yaml</code>을 만들고, 그 뒤로는 이 파일을 직접 관리합니다.
+                  예전 파일에 서비스가 빠져 있다면 직접 추가하거나, 파일을 다른 곳으로 옮겨 두면 다음{" "}
+                  <code>akan dbup</code>이 지금의 템플릿으로 다시 만듭니다.
+                </span>
+              ),
+            })}
+          </div>
           <Docs.Alert>
             {l.trans({
               en: (
@@ -519,6 +654,411 @@ akan dbup --mode cluster`}
               ),
             })}
           </Docs.Alert>
+
+          <Docs.SubSubTitle>
+            {l.trans({
+              en: "Deploying multiple: docker compose on one host",
+              ko: "multiple 배포: 호스트 한 대의 docker compose",
+            })}
+          </Docs.SubSubTitle>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  <code>multiple</code> is not a chart mode; it runs on one host with docker compose. Every replica
+                  opens the same SQLite file on a host volume and shares one Redis, and a reverse proxy in front
+                  balances them:
+                </span>
+              ),
+              ko: (
+                <span>
+                  <code>multiple</code>은 차트 모드가 아니며, 호스트 한 대에서 docker compose로 실행합니다. 모든
+                  replica가 호스트 볼륨의 같은 SQLite 파일을 열고 Redis 하나를 함께 쓰며, 앞단의 리버스 프록시가
+                  replica들에 요청을 나눕니다:
+                </span>
+              ),
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="docker-compose.yaml"
+            language="yaml"
+            code={`services:
+  redis:
+    image: redis:8
+  app:
+    image: <registry>/<repo>/<app>:<tag>
+    deploy:
+      replicas: 3
+    environment:
+      AKAN_DATABASE_MODE: multiple
+      REDIS_URI: redis://redis:6379
+      SQLITE_DATABASE_PATH: /data/app.db
+      AKAN_STORAGE_SHARED: "true"
+    volumes:
+      - app-data:/data
+      - app-files:/workspace/local
+volumes:
+  app-data:
+  app-files:`}
+          />
+          <ul className="my-4 list-disc space-y-2 pl-5">
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>The app's build declares multiple.</strong> With <code>multiple</code> in{" "}
+                    <code>database.modes</code>, the image carries the Redis drivers it needs.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>앱의 빌드가 multiple을 선언합니다.</strong> <code>database.modes</code>에{" "}
+                    <code>multiple</code>이 있어야 이미지에 필요한 Redis 드라이버가 실립니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Keep the SQLite file on the host's local disk.</strong> The <code>app-data</code> volume
+                    must live on the host's own filesystem, not on NFS.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>SQLite 파일은 호스트의 로컬 디스크에 둡니다.</strong> <code>app-data</code> 볼륨은 NFS가
+                    아니라 호스트 자체 파일시스템에 있어야 합니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Uploads share a volume too.</strong> <code>app-files</code> is mounted at{" "}
+                    <code>/workspace/local</code> in every replica, which <code>AKAN_STORAGE_SHARED</code> declares.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>업로드도 볼륨을 함께 씁니다.</strong> <code>app-files</code>는 모든 replica의{" "}
+                    <code>/workspace/local</code>에 마운트되며, <code>AKAN_STORAGE_SHARED</code>가 그 사실을 알립니다.
+                  </span>
+                ),
+              })}
+            </li>
+          </ul>
+
+          <Docs.SubSubTitle>
+            {l.trans({ en: "Deploying cluster: the Kubernetes chart", ko: "cluster 배포: Kubernetes 차트" })}
+          </Docs.SubSubTitle>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  The chart in <code>infra/app</code> runs a branch in <code>cluster</code> when that branch's values
+                  say so. Postgres and Redis are yours to run, and the chart reads their URLs from a Secret you create:
+                </span>
+              ),
+              ko: (
+                <span>
+                  <code>infra/app</code>의 차트는 branch 값에 적으면 그 branch를 <code>cluster</code>로 실행합니다.
+                  Postgres와 Redis는 직접 운영하고, 차트는 직접 만든 Secret에서 두 URL을 읽습니다:
+                </span>
+              ),
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="infra/app/values/myapp-values.yaml"
+            language="yaml"
+            code={`main:
+  database:
+    mode: cluster # single (default) or cluster
+    # A Secret holding POSTGRES_URL, REDIS_URI and, optionally,
+    # POSTGRES_INSIGHT_URL
+    secretName: app-database
+  app:
+    pods: 3 # cluster only; default 2
+  storage:
+    # Optional: a ReadWriteMany claim mounted at /workspace/local
+    sharedClaim: uploads`}
+          />
+          <ul className="my-4 list-disc space-y-2 pl-5">
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>single is unchanged.</strong> It always runs one pod on its SQLite volume, because that
+                    ReadWriteOnce volume cannot be mounted by a second pod.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>single은 그대로입니다.</strong> 항상 SQLite 볼륨 위의 pod 하나로 실행합니다. 그
+                    ReadWriteOnce 볼륨은 두 번째 pod가 마운트할 수 없기 때문입니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Tune Postgres in its URL.</strong> Pool size, SSL and prepared statements ride the query
+                    string: <code>{"?max=20&ssl=require"}</code>, and <code>prepare=false</code> behind a PgBouncer in
+                    transaction mode.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>Postgres 설정은 URL에 적습니다.</strong> 풀 크기, SSL, prepared statement는 쿼리 문자열로
+                    넘깁니다. <code>{"?max=20&ssl=require"}</code>처럼 쓰고, transaction 모드의 PgBouncer 뒤에서는{" "}
+                    <code>prepare=false</code>를 붙입니다.
+                  </span>
+                ),
+              })}
+            </li>
+          </ul>
+
+          <Docs.SubSubTitle>{l.trans({ en: "Uploaded files", ko: "업로드한 파일" })}</Docs.SubSubTitle>
+          <div>
+            {l.trans({
+              en: "A deployed multiple or cluster app runs several instances, and each must read the files the others wrote. Keep uploads in one of two places:",
+              ko: "배포된 multiple이나 cluster 앱은 인스턴스가 여럿이고, 각 인스턴스는 다른 인스턴스가 쓴 파일을 읽을 수 있어야 합니다. 업로드는 둘 중 한 곳에 둡니다:",
+            })}
+          </div>
+          <ul className="my-4 list-disc space-y-2 pl-5">
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Object storage.</strong> With <code>libs/util</code>, set <code>objectStorage</code> in the
+                    server env, and every instance reads the same bucket.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>오브젝트 스토리지.</strong> <code>libs/util</code>을 쓴다면 서버 env에{" "}
+                    <code>objectStorage</code>를 설정하고, 모든 인스턴스가 같은 버킷을 읽습니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>One shared volume.</strong> Mount it at <code>/workspace/local</code> on every instance and
+                    set <code>AKAN_STORAGE_SHARED=true</code>; the compose file and the chart's <code>sharedClaim</code>{" "}
+                    above do both.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>공유 볼륨 하나.</strong> 모든 인스턴스의 <code>/workspace/local</code>에 마운트하고{" "}
+                    <code>AKAN_STORAGE_SHARED=true</code>를 설정합니다. 위의 compose 파일과 차트의{" "}
+                    <code>sharedClaim</code>이 둘 다 해 줍니다.
+                  </span>
+                ),
+              })}
+            </li>
+          </ul>
+          <div>
+            {l.trans({
+              en: "Outside development, an upload to a local disk that only one instance can read is refused.",
+              ko: "개발 환경 밖에서는 인스턴스 하나만 읽을 수 있는 로컬 디스크로의 업로드가 거부됩니다.",
+            })}
+          </div>
+
+          <Docs.SubSubTitle>
+            {l.trans({ en: "Moving data between modes", ko: "모드 사이에서 데이터 옮기기" })}
+          </Docs.SubSubTitle>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  <code>akan db-export</code> writes each model table to its own NDJSON file (one JSON row per line),
+                  and <code>akan db-import</code> reads them back into a database. Both run in the mode the shell's{" "}
+                  <code>AKAN_DATABASE_MODE</code> names, the app's first declared mode by default, and the app must
+                  declare it:
+                </span>
+              ),
+              ko: (
+                <span>
+                  <code>akan db-export</code>는 모델 테이블마다 NDJSON 파일(한 줄에 JSON 행 하나) 하나씩을 쓰고,{" "}
+                  <code>akan db-import</code>는 그 파일을 데이터베이스로 다시 읽어 들입니다. 둘 다 셸의{" "}
+                  <code>AKAN_DATABASE_MODE</code>가 가리키는 모드(기본값은 앱이 선언한 첫 번째 모드)로 실행하며, 앱이 그
+                  모드를 선언해 두어야 합니다:
+                </span>
+              ),
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="Terminal"
+            language="bash"
+            code={`akan db-export myapp
+AKAN_DATABASE_MODE=cluster POSTGRES_URL=postgres://… REDIS_URI=redis://… \\
+  akan db-import myapp`}
+          />
+          <ul className="my-4 list-disc space-y-2 pl-5">
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Rows move exactly as stored.</strong> Removed rows come too, and a row whose id already
+                    exists is replaced, so an import can be rerun; text search is rebuilt afterwards.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>행은 저장된 그대로 옮겨집니다.</strong> 삭제된 행도 함께 가고, 이미 있는 id의 행은
+                    교체되므로 import를 다시 실행해도 됩니다. 텍스트 검색은 import 뒤에 다시 만들어집니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Sessions, queued jobs and files stay behind.</strong> Sessions and jobs live in the cache
+                    and the queue, so users sign in again; copy <code>local/</code> to the shared volume or object
+                    storage yourself.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>세션, 대기 중인 작업, 파일은 옮겨지지 않습니다.</strong> 세션과 작업은 캐시와 큐에 있으므로
+                    사용자는 다시 로그인합니다. 업로드한 파일은 <code>local/</code>을 공유 볼륨이나 오브젝트 스토리지로
+                    직접 복사합니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>From a deployed single app,</strong> copy its SQLite file, point{" "}
+                    <code>SQLITE_DATABASE_PATH</code> at the copy, and run <code>db-export</code>.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>배포된 single 앱에서 옮길 때는</strong> SQLite 파일을 복사하고,{" "}
+                    <code>SQLITE_DATABASE_PATH</code>가 그 복사본을 가리키게 한 뒤 <code>db-export</code>를 실행합니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Nothing else runs.</strong> Both boot the app without listening and without cron or init
+                    jobs, and use <code>local/transfer</code> unless <code>--dir</code> names another directory.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>다른 일은 하지 않습니다.</strong> 두 명령 모두 요청을 받지 않고 cron과 init 작업도 돌리지
+                    않은 채 앱을 띄우며, <code>--dir</code>로 다른 디렉터리를 주지 않으면 <code>local/transfer</code>를
+                    씁니다.
+                  </span>
+                ),
+              })}
+            </li>
+          </ul>
+
+          <Docs.SubSubTitle>{l.trans({ en: "The SQL console on cluster", ko: "cluster의 SQL 콘솔" })}</Docs.SubSubTitle>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  The SQL console (<code>runAdminSql</code>) needs no setup on SQLite. On Postgres it reads as its own
+                  login role, one that may read base columns and nothing else:
+                </span>
+              ),
+              ko: (
+                <span>
+                  SQL 콘솔(<code>runAdminSql</code>)은 SQLite에서는 설정할 것이 없습니다. Postgres에서는 기본 컬럼만
+                  읽을 수 있고 그 밖에는 아무것도 못 하는 전용 로그인 role로 읽습니다:
+                </span>
+              ),
+            })}
+          </div>
+          <ol className="my-4 list-decimal space-y-2 pl-5">
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    Create the role with <code>{"CREATE ROLE <name> LOGIN PASSWORD '…';"}</code> and grant it no other
+                    role.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <code>{"CREATE ROLE <name> LOGIN PASSWORD '…';"}</code>로 role을 만들고, 다른 role은 부여하지
+                    않습니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    Set <code>POSTGRES_INSIGHT_URL</code> (or <code>database.postgres.insightUrl</code>) to a URL that
+                    logs in as it.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <code>POSTGRES_INSIGHT_URL</code>(또는 <code>database.postgres.insightUrl</code>)에 그 role로
+                    로그인하는 URL을 설정합니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    Each model table grants it its base columns at boot. If the app does not own its schema, the DBA
+                    runs <code>{"GRANT USAGE ON SCHEMA <schema> TO <name>"}</code>.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    모델 테이블마다 부팅할 때 기본 컬럼 권한을 이 role에 줍니다. 앱이 스키마의 소유자가 아니라면 DBA가{" "}
+                    <code>{"GRANT USAGE ON SCHEMA <schema> TO <name>"}</code>을 실행합니다.
+                  </span>
+                ),
+              })}
+            </li>
+          </ol>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  Without the role the console refuses on cluster. <code>SELECT *</code> returns the base columns, and{" "}
+                  <code>_doc</code>, which holds every model field including secrets, is never readable.
+                </span>
+              ),
+              ko: (
+                <span>
+                  이 role이 없으면 cluster에서 콘솔은 실행을 거부합니다. <code>SELECT *</code>는 기본 컬럼을 돌려주며,
+                  secret을 포함한 모든 모델 필드가 담긴 <code>_doc</code>은 절대 읽을 수 없습니다.
+                </span>
+              ),
+            })}
+          </div>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -535,8 +1075,8 @@ akan dbup --mode cluster`}
           <Docs.Table columns={stageColumns} rows={stageRows} />
           <div>
             {l.trans({
-              en: "Stage 1 is stable. Stages 2 and 3 are experimental: they describe where the shape goes next, not a chart you can apply today.",
-              ko: "1단계는 안정화되어 있습니다. 2, 3단계는 실험적입니다. 구조가 어디로 가는지를 설명할 뿐, 지금 바로 적용할 수 있는 차트가 아닙니다.",
+              en: "Stage 1 is stable, and stages 2 and 3 are experimental. Both have a recipe under Database Mode above: docker compose on one host for stage 2, the chart's cluster mode for stage 3.",
+              ko: "1단계는 안정화되어 있고, 2, 3단계는 실험적입니다. 두 단계의 구성 방법은 위 데이터베이스 모드에 있습니다. 2단계는 호스트 한 대의 docker compose, 3단계는 차트의 cluster 모드입니다.",
             })}
           </div>
           <div className="my-4 space-y-3">
@@ -615,15 +1155,18 @@ akan dbup --mode cluster`}
                 prompt={`
                   A person at the far left labelled "Users", with an arrow into a small square labelled "Reverse Proxy".
                   One server drawn wide across the middle and right, labelled "Single Large Server" at its top. In the
-                  left half of the server, three containers stacked vertically, lettered "A", "B" and "C" inside, with a
-                  red accent bracket beside the stack labelled "Akan Runtime Containers". Three arrows fan out from the
-                  proxy, one into each container. In the right half of the server, a cache labelled "Redis" with a
-                  smaller second line "cache · pubsub · queue" above a database cylinder labelled "libsql / Postgres"; a
-                  thin line joins every container to both.
+                  left half of the server, three containers stacked vertically, lettered "A", "B" and "C" inside. A thin
+                  rounded outline traced as the red accent surrounds the three containers, with the red label "Akan
+                  Runtime Containers" written above that outline; nothing stands between the proxy and the containers.
+                  Three separate arrows start at the right edge of the proxy, and each one ends at its own container:
+                  one at "A", one at "B", one at "C". In the right half of the server, a cache labelled "Redis" with a
+                  smaller second line
+                  "cache · pubsub · queue" above a database cylinder labelled "SQLite / Postgres"; a thin line joins
+                  every container to both.
                 `}
                 alt={l.trans({
-                  en: "Users pass a reverse proxy into one large server running Akan runtime containers A, B and C, and every container shares Redis for cache, pubsub and queue plus libsql or Postgres on the same server.",
-                  ko: "사용자는 리버스 프록시를 거쳐 대형 서버 한 대로 들어오고, 그 안의 Akan 런타임 컨테이너 A, B, C가 같은 서버의 Redis(캐시, PubSub, 큐)와 libsql 또는 Postgres를 함께 씁니다.",
+                  en: "Users pass a reverse proxy into one large server running Akan runtime containers A, B and C, and every container shares one Redis for cache, pubsub and queue plus one database on the same server: a SQLite file every container opens, or Postgres.",
+                  ko: "사용자는 리버스 프록시를 거쳐 대형 서버 한 대로 들어오고, 그 안의 Akan 런타임 컨테이너 A, B, C가 같은 서버의 Redis(캐시, PubSub, 큐) 하나와 데이터베이스 하나를 함께 씁니다. 데이터베이스는 모든 컨테이너가 여는 SQLite 파일이거나 Postgres입니다.",
                 })}
               />
             </div>
@@ -644,17 +1187,17 @@ akan dbup --mode cluster`}
                   {l.trans({
                     en: (
                       <span>
-                        <strong>The chart in infra/app does not reach this stage.</strong> It deploys one pod behind
-                        Ingress and Service, with SQLite on a ReadWriteOnce volume, and there is no Redis or Postgres
-                        manifest under infra/. Fanning out to several pods means bringing your own database and cache
-                        first, because a ReadWriteOnce volume cannot be mounted by a second pod.
+                        <strong>Postgres and Redis are yours to run.</strong> The chart in infra/app reaches this stage
+                        when a branch sets <code>database.mode: cluster</code>, and reads both URLs from a Secret; there
+                        is no Redis or Postgres manifest under infra/. In single mode it keeps one pod, because a
+                        ReadWriteOnce volume cannot be mounted by a second pod.
                       </span>
                     ),
                     ko: (
                       <span>
-                        <strong>infra/app의 차트는 이 단계까지 가지 않습니다.</strong> Ingress와 Service 뒤에 pod 하나를
-                        배포하고 ReadWriteOnce 볼륨에 SQLite를 둘 뿐이며, infra/ 아래에 Redis나 Postgres 매니페스트는
-                        없습니다. pod를 여러 개로 늘리려면 먼저 데이터베이스와 캐시를 직접 준비해야 합니다.
+                        <strong>Postgres와 Redis는 직접 운영합니다.</strong> infra/app의 차트는 branch에{" "}
+                        <code>database.mode: cluster</code>를 설정하면 이 단계까지 가고, 두 URL은 Secret에서 읽습니다.
+                        infra/ 아래에 Redis나 Postgres 매니페스트는 없습니다. single 모드에서는 pod를 하나로 유지합니다.
                         ReadWriteOnce 볼륨은 두 번째 pod가 마운트할 수 없기 때문입니다.
                       </span>
                     ),
@@ -671,12 +1214,12 @@ akan dbup --mode cluster`}
                   "Ingress", then a small circle with three short spokes labelled "Service". Three arrows fan down from
                   the circle to three servers standing side by side, their outlines traced as the red accent, labelled
                   "Node A", "Node B" and "Node C". Inside each server one container lettered "Pod". Below the cloud,
-                  outside it, a cache labelled "Redis Cluster" and a database cylinder labelled "Postgres"; each server
-                  has a thin line down to both.
+                  outside it, a cache labelled "Redis" and a database cylinder labelled "Postgres"; each server has a
+                  thin line down to both.
                 `}
                 alt={l.trans({
-                  en: "Inside a cloud cluster, users enter through a Kubernetes Ingress and Service that fan out to cloud nodes A, B and C, each running one Akan runtime pod against a shared Redis cluster and Postgres database.",
-                  ko: "클라우드 클러스터 안에서 사용자는 Kubernetes Ingress와 Service를 거쳐 클라우드 노드 A, B, C로 분산되고, 각 노드의 Akan 런타임 Pod가 공유 Redis 클러스터와 Postgres 데이터베이스를 씁니다.",
+                  en: "Inside a cloud cluster, users enter through a Kubernetes Ingress and Service that fan out to cloud nodes A, B and C, each running one Akan runtime pod against one shared Redis and one Postgres database.",
+                  ko: "클라우드 클러스터 안에서 사용자는 Kubernetes Ingress와 Service를 거쳐 클라우드 노드 A, B, C로 분산되고, 각 노드의 Akan 런타임 Pod가 함께 쓰는 Redis 하나와 Postgres 데이터베이스 하나를 씁니다.",
                 })}
               />
             </div>

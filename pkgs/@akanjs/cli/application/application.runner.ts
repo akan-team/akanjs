@@ -77,7 +77,7 @@ export class ApplicationRunner extends runner("application") {
     const scriptPath = `script/${scriptName}.ts`;
     if (!(await app.exists(scriptPath))) throw new Error(`Script file not found: apps/${app.name}/${scriptPath}`);
     await app.spawn("bun", [scriptPath], {
-      env: app.getCommandEnv({ AKAN_COMMAND_TYPE: "script" }),
+      env: app.getCommandEnv({ AKAN_COMMAND_TYPE: "script", ...(await app.getDatabaseModeEnv()) }),
       stdio: "inherit",
     });
   }
@@ -176,7 +176,32 @@ try {
 }
 `;
     await app.spawn("bun", ["-e", code], {
-      env: app.getCommandEnv({ AKAN_COMMAND_TYPE: "console" }),
+      env: app.getCommandEnv({ AKAN_COMMAND_TYPE: "console", ...(await app.getDatabaseModeEnv()) }),
+      stdio: "inherit",
+    });
+  }
+  /**
+   * Boots the app as a script — no listener, no cron, no init job, so nothing writes beside the import — in the
+   * database mode the shell names, and copies its model tables to or from `dir`.
+   */
+  async transferDatabase(app: App, direction: "export" | "import", dir: string) {
+    const serverPath = `${app.cwdPath}/server.ts`;
+    if (!(await app.exists("server.ts"))) throw new Error(`Server file not found: apps/${app.name}/server.ts`);
+    const target = path.resolve(app.workspace.workspaceRoot, dir);
+    const code = `
+const { server } = await import(${JSON.stringify(serverPath)});
+const { DatabaseAdaptorRole, DocumentTransfer } = await import("akanjs/service");
+await server.start({ listen: false, web: false });
+try {
+  const transfer = new DocumentTransfer(server.get(DatabaseAdaptorRole));
+  const reports = await transfer.${direction === "export" ? "exportTo" : "importFrom"}(${JSON.stringify(target)});
+  for (const { table, rows } of reports) console.info(\`${direction === "export" ? "exported" : "imported"} \${table}: \${rows} rows\`);
+} finally {
+  await server.stop();
+}
+`;
+    await app.spawn("bun", ["-e", code], {
+      env: app.getCommandEnv({ AKAN_COMMAND_TYPE: "script", ...(await app.getDatabaseModeEnv()) }),
       stdio: "inherit",
     });
   }
@@ -381,10 +406,23 @@ try {
     // await this.release;
   }
 
+  // multiple keeps its data in the SQLite file single uses, so only Redis joins it; cluster adds Postgres.
   #getLocalDatabaseServices(mode: DatabaseMode): string[] {
     if (mode === "single") return [];
-    if (mode === "multiple") return ["redis", "libsql"];
+    if (mode === "multiple") return ["redis"];
     return ["redis", "postgres"];
+  }
+  // `local/docker-compose.yaml` is written once and then left to the developer, so a workspace older than a service
+  // would otherwise fail inside `docker compose` with "no such service".
+  async #assertComposeHas(workspace: Workspace, services: string[]) {
+    const compose = Bun.YAML.parse(await Bun.file(`${workspace.workspaceRoot}/local/docker-compose.yaml`).text()) as {
+      services?: Record<string, unknown>;
+    } | null;
+    const missing = services.filter((service) => !compose?.services?.[service]);
+    if (missing.length)
+      throw new Error(
+        `local/docker-compose.yaml declares no ${missing.join(" or ")} service. Add it, or move the file aside so the next akan dbup writes the current template.`,
+      );
   }
   async #isLocalDatabaseUp(workspace: Workspace, mode: DatabaseMode) {
     const requiredServices = this.#getLocalDatabaseServices(mode);
@@ -397,16 +435,18 @@ try {
   }
   async dbup(workspace: Workspace, mode: DatabaseMode = "multiple"): Promise<boolean> {
     if (mode === "single") return true;
+    const services = this.#getLocalDatabaseServices(mode);
+    await workspace.applyTemplate({
+      basePath: "local",
+      template: "localDev",
+      dict: { repoName: workspace.repoName },
+      overwrite: false,
+    });
+    await this.#assertComposeHas(workspace, services);
     try {
-      await workspace.applyTemplate({
-        basePath: "local",
-        template: "localDev",
-        dict: { repoName: workspace.repoName },
-        overwrite: false,
-      });
       const wasAlreadyUp = await this.#isLocalDatabaseUp(workspace, mode);
       if (!wasAlreadyUp)
-        await workspace.spawn(`docker`, ["compose", "up", "-d", ...this.#getLocalDatabaseServices(mode)], {
+        await workspace.spawn(`docker`, ["compose", "up", "-d", ...services], {
           cwd: `${workspace.workspaceRoot}/local`,
         });
       return wasAlreadyUp;

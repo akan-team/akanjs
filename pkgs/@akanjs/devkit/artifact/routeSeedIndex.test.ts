@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import path from "node:path";
 import { computeRouteSeedIndex, serializeRouteSeedIndexForArtifact } from "./routeSeedIndex";
 
 describe("computeRouteSeedIndex", () => {
@@ -19,10 +20,10 @@ describe("computeRouteSeedIndex", () => {
     ]);
 
     const leaf = index.entries.find((entry) => entry.routeId === "/:lang/foo");
-    expect(leaf?.seeds).toContain("/app/page/foo.tsx");
-    expect(leaf?.seeds).not.toContain("/app/page/foo/_layout.tsx");
-    expect(leaf?.seeds).toContain("/app/.akan/generated/root-layouts/__root_layout.tsx");
-    expect(leaf?.seeds).toContain("/app/page/_layout.tsx");
+    expect(leaf?.seeds).toContain(path.resolve("/app/page/foo.tsx"));
+    expect(leaf?.seeds).not.toContain(path.resolve("/app/page/foo/_layout.tsx"));
+    expect(leaf?.seeds).toContain(path.resolve("/app/.akan/generated/root-layouts/__root_layout.tsx"));
+    expect(leaf?.seeds).toContain(path.resolve("/app/page/_layout.tsx"));
 
     expect(() =>
       computeRouteSeedIndex([
@@ -42,8 +43,8 @@ describe("computeRouteSeedIndex", () => {
       { key: "./robots.txt.tsx", moduleAbsPath: "/app/page/robots.txt.tsx" },
     ]);
     const robots = index.entries.find((entry) => entry.routeId === "/robots.txt");
-    expect(robots?.seeds).not.toContain("/app/.akan/generated/root-layouts/__root_layout.tsx");
-    expect(robots?.seeds).not.toContain("/app/page/_layout.tsx");
+    expect(robots?.seeds).not.toContain(path.resolve("/app/.akan/generated/root-layouts/__root_layout.tsx"));
+    expect(robots?.seeds).not.toContain(path.resolve("/app/page/_layout.tsx"));
   });
 
   test("serializes seed paths relative to the artifact directory", () => {

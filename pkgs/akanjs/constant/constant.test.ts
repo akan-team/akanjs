@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   Binary,
+  CLIENT_VALUE,
   type Dayjs,
+  DEFAULT_VALUE,
   dayjs,
   type EnumInstance,
   enumOf,
@@ -9,7 +11,9 @@ import {
   Float,
   ID,
   Int,
-  type PrimitiveScalar,
+  PrimitiveRegistry,
+  PrimitiveScalar,
+  SERVER_VALUE,
 } from "akanjs/base";
 import { deepObjectify } from "akanjs/common";
 import { immerable, produce } from "immer";
@@ -22,6 +26,7 @@ import {
   type ExtractFieldInfoObject,
   type FieldBuilder,
   type FieldInfoObjectToFieldObject,
+  getDefault,
   immerify,
   type NonFunctionalKeys,
   type PurifiedModel,
@@ -682,5 +687,42 @@ describe("Binary as a model field", () => {
     expect(() => via((f) => ({ blob: f(Binary) }))).toThrow('Field "blob" is Binary, which is not storable');
     expect(() => via((f) => ({ blobs: f([Binary]) }))).toThrow('Field "blobs" is Binary, which is not storable');
     expect(() => via((f) => ({ blobs: f(Map, { of: Binary }) }))).toThrow("is Binary, which is not storable");
+  });
+});
+
+interface OutlineDoc {
+  root: { children: string[] };
+}
+class Outline extends PrimitiveScalar {
+  static override refName = "Outline";
+  static override [SERVER_VALUE]: OutlineDoc;
+  static override [CLIENT_VALUE]: OutlineDoc;
+  static override [DEFAULT_VALUE]: OutlineDoc = { root: { children: [] } };
+}
+PrimitiveRegistry.register(Outline);
+
+describe("a primitive with a structured default", () => {
+  const OutlinePage = via((f) => ({ title: f(String), outline: f(Outline) }));
+
+  test("hands every filled object its own copy, the way an array default is", () => {
+    const first = getDefault<{ outline: OutlineDoc }>(OutlinePage[FIELD_META]);
+    const second = getDefault<{ outline: OutlineDoc }>(OutlinePage[FIELD_META]);
+    first.outline.root.children.push("leaked");
+    expect(second.outline).toEqual({ root: { children: [] } });
+    expect(Outline[DEFAULT_VALUE]).toEqual({ root: { children: [] } });
+  });
+
+  test("a constructed instance does not share it either", () => {
+    const first = new OutlinePage() as unknown as { outline: OutlineDoc };
+    const second = new OutlinePage() as unknown as { outline: OutlineDoc };
+    expect(first.outline).toEqual({ root: { children: [] } });
+    expect(first.outline).not.toBe(second.outline);
+  });
+
+  test("an instance default such as a Dayjs is still shared, since only its own API changes it", () => {
+    const DatedPage = via((f) => ({ at: f(Date) }));
+    expect(getDefault<{ at: Dayjs }>(DatedPage[FIELD_META]).at).toBe(
+      getDefault<{ at: Dayjs }>(DatedPage[FIELD_META]).at,
+    );
   });
 });

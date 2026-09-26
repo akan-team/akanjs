@@ -40,16 +40,22 @@ describe("CloudCommand", () => {
       ]);
 
       const handler = getTargetMetas(CloudCommand).find((meta) => meta.key === "deployAkan")?.handler;
-      await handler?.call(command, true, "npm", workspace);
-      await handler?.call(command, false, "local", workspace);
+      await handler?.call(command, true, "npm", "linux,windows", workspace);
+      await handler?.call(command, false, "local", "none", workspace);
     } finally {
       if (previousRegistry === undefined) delete process.env.AKAN_NPM_REGISTRY;
       else process.env.AKAN_NPM_REGISTRY = previousRegistry;
     }
 
     expect(recorder.calls).toEqual([
-      { name: "deployAkan", args: [workspace, { test: true, registryUrl: undefined }] },
-      { name: "deployAkan", args: [workspace, { test: false, registryUrl: "http://127.0.0.1:4873" }] },
+      {
+        name: "deployAkan",
+        args: [workspace, { test: true, registryUrl: undefined, platforms: ["linux", "windows"] }],
+      },
+      {
+        name: "deployAkan",
+        args: [workspace, { test: false, registryUrl: "http://127.0.0.1:4873", platforms: [] }],
+      },
     ]);
   });
 });
@@ -101,6 +107,66 @@ describe("CloudScript", () => {
       ["akanjs", "@akanjs/cli"],
       { registryUrl: "http://127.0.0.1:4873" },
     ]);
+  });
+});
+
+describe("CloudScript platform tests", () => {
+  const stubDeploy = (recorder: ReturnType<typeof createCallRecorder>, { failLocalTest = false } = {}) => {
+    const script = CommandContainer.get(CloudScript);
+    script.cloudRunner.getAkanPkgs = async () => ["akanjs"];
+    script.packageScript.updateWorskpaceRootPackageJson = async () => undefined;
+    script.cloudRunner.startPlatformTests = async (...args) => {
+      recorder.record("startPlatformTests", ...args);
+      return "run" as never;
+    };
+    script.cloudRunner.settlePlatformTests = async (...args) => {
+      recorder.record("settlePlatformTests", ...args);
+      return [];
+    };
+    script.applicationScript.test = async () => {
+      recorder.record("test");
+      if (failLocalTest) throw new Error("local suite failed");
+    };
+    script.packageScript.buildPackage = async () => recorder.record("buildPackage");
+    script.packageScript.verifyAkanPublishPackages = async () => recorder.record("verify");
+    script.cloudRunner.deployAkan = async () => recorder.record("deployAkan");
+    return script;
+  };
+
+  test("starts the remote platforms before the local suites and settles them before anything is built", async () => {
+    const recorder = createCallRecorder();
+    const workspace = createFakeExecutor("workspace");
+    await stubDeploy(recorder).deployAkan(workspace as never, { platforms: ["linux", "windows"] });
+
+    expect(recorder.names()).toEqual([
+      "startPlatformTests",
+      "test",
+      "settlePlatformTests",
+      "buildPackage",
+      "verify",
+      "deployAkan",
+    ]);
+    expect(recorder.calls[0]?.args.slice(1)).toEqual([["linux", "windows"], ["akanjs"]]);
+    expect(recorder.calls[2]?.args[1]).toEqual({ interactive: true, recordStreaks: true, checkDrift: true });
+  });
+
+  test("still settles the remote run when a local suite fails, without prompting, then fails the deploy", async () => {
+    const recorder = createCallRecorder();
+    const workspace = createFakeExecutor("workspace");
+
+    await expect(
+      stubDeploy(recorder, { failLocalTest: true }).deployAkan(workspace as never, { platforms: ["linux"] }),
+    ).rejects.toThrow("local suite failed");
+    expect(recorder.names()).toEqual(["startPlatformTests", "test", "settlePlatformTests"]);
+    expect(recorder.calls[2]?.args[1]).toEqual({ interactive: false, recordStreaks: false, checkDrift: true });
+  });
+
+  test("runs no remote platform when none is asked for", async () => {
+    const recorder = createCallRecorder();
+    const workspace = createFakeExecutor("workspace");
+    await stubDeploy(recorder).deployAkan(workspace as never, { platforms: [] });
+
+    expect(recorder.names()).not.toContain("startPlatformTests");
   });
 });
 
@@ -190,7 +256,7 @@ describe("CloudRunner", () => {
           "--//127.0.0.1:4873/:_authToken=akan-local-registry",
         ],
         {
-          cwd: "/repo/dist/pkgs/akanjs",
+          cwd: path.join("/repo", "dist/pkgs", "akanjs"),
           env: expect.objectContaining({
             AKAN_NPM_REGISTRY: "http://127.0.0.1:4873",
             NPM_CONFIG_REGISTRY: "http://127.0.0.1:4873",
@@ -209,7 +275,7 @@ describe("CloudRunner", () => {
           "--//127.0.0.1:4873/:_authToken=akan-local-registry",
         ],
         {
-          cwd: "/repo/dist/pkgs/@akanjs/cli",
+          cwd: path.join("/repo", "dist/pkgs", "@akanjs/cli"),
           env: expect.objectContaining({
             AKAN_NPM_REGISTRY: "http://127.0.0.1:4873",
             NPM_CONFIG_REGISTRY: "http://127.0.0.1:4873",

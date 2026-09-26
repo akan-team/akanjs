@@ -171,6 +171,14 @@ export default page().render(() => {
           desc: l.trans({ en: "Stop the local database containers.", ko: "로컬 데이터베이스 컨테이너를 내립니다." }),
         },
         {
+          name: ["db-export", "db-import"],
+          href: ["#db-export", "#db-import"],
+          desc: l.trans({
+            en: "Copy an app's data out of one database mode and into another.",
+            ko: "앱의 데이터를 한 데이터베이스 모드에서 꺼내 다른 모드로 옮깁니다.",
+          }),
+        },
+        {
           name: "script",
           href: "#script",
           desc: l.trans({
@@ -452,8 +460,8 @@ akan plan-slice myapp --format json`,
           type: "Boolean",
           defaultValue: "true",
           desc: l.trans({
-            en: "Start the local database first, per mode the apps declare. On exit it stops only what it started.",
-            ko: "앱들이 선언한 모드마다 로컬 데이터베이스를 먼저 띄웁니다. 끝날 때는 자기가 띄운 것만 내립니다.",
+            en: "Start the local services of the mode each app runs in first. On exit it stops only what it started.",
+            ko: "앱마다 실행할 모드의 로컬 서비스를 먼저 띄웁니다. 끝날 때는 자기가 띄운 것만 내립니다.",
           }),
         },
         {
@@ -506,18 +514,17 @@ akan start myapp --share true`,
       name: "dbup",
       signature: "akan dbup [--mode <mode>]",
       desc: l.trans({
-        en: "Start the local database containers with Docker Compose, writing the compose file into `local/` on first use. `akan start` already runs it unless `--dbup false`.",
-        ko: "Docker Compose로 로컬 데이터베이스 컨테이너를 띄웁니다. 처음 실행하면 compose 파일을 `local/`에 만듭니다. `akan start`는 `--dbup false`가 아니면 이 작업을 알아서 합니다.",
+        en: "Start the local database services with Docker Compose: Redis for `multiple`, Redis and Postgres 18 for `cluster`. `akan start` already runs it unless `--dbup false`.",
+        ko: "Docker Compose로 로컬 데이터베이스 서비스를 띄웁니다. `multiple`에는 Redis를, `cluster`에는 Redis와 Postgres 18을 띄웁니다. `akan start`는 `--dbup false`가 아니면 이 작업을 알아서 합니다.",
       }),
       options: [
         {
           name: "--mode",
           type: "String",
-          defaultValue: "multiple",
           enumOrFlag: "single | multiple | cluster",
           desc: l.trans({
-            en: "`single` starts nothing, `multiple` starts Redis and libSQL, `cluster` Redis and Postgres.",
-            ko: "`single`은 아무것도 띄우지 않고, `multiple`은 Redis와 libSQL, `cluster`는 Redis와 Postgres를 띄웁니다.",
+            en: "Start one mode's services; `single` needs none. Left out, every mode the workspace's apps declare.",
+            ko: "한 모드의 서비스만 띄웁니다. `single`에는 필요한 서비스가 없습니다. 빼면 워크스페이스의 앱들이 선언한 모든 모드를 띄웁니다.",
           }),
         },
       ],
@@ -529,9 +536,23 @@ akan start myapp --share true`,
             ko: "Docker 데몬이 실행 중이어야 합니다. 이미 떠 있는 서비스는 그대로 둡니다.",
           }),
         },
+        {
+          name: l.trans({ en: "compose file", ko: "compose 파일" }),
+          desc: l.trans({
+            en: "`local/docker-compose.yaml` is written on first use and then left to you.",
+            ko: "`local/docker-compose.yaml`은 처음 실행할 때 만들어지고, 그 뒤로는 직접 관리합니다.",
+          }),
+        },
+        {
+          name: l.trans({ en: "missing service", ko: "빠진 서비스" }),
+          desc: l.trans({
+            en: "An older compose file may lack one. Add it, or move the file aside to get the current template.",
+            ko: "예전 compose 파일에는 서비스가 빠져 있을 수 있습니다. 직접 더하거나, 파일을 치워 두면 현재 템플릿으로 새로 만듭니다.",
+          }),
+        },
       ],
       examples: `akan dbup
-akan dbup --mode single
+akan dbup --mode multiple
 akan dbup --mode cluster`,
     },
     {
@@ -542,6 +563,105 @@ akan dbup --mode cluster`,
         ko: "`local/`에서 `docker compose down`을 실행해 로컬 데이터베이스를 내립니다. 어느 앱이 띄웠든 그 compose 프로젝트의 서비스가 모두 멈춥니다.",
       }),
       examples: "akan dbdown",
+    },
+    {
+      name: "db-export",
+      signature: "akan db-export <app> [--dir <dir>]",
+      desc: l.trans({
+        en: "Write every model table of the app to one NDJSON file each, from the database of the mode the shell names. Pair it with `db-import` to move data between modes, such as `single` to `cluster`.",
+        ko: "셸이 가리키는 모드의 데이터베이스에서 앱의 model 테이블마다 NDJSON 파일 하나씩을 씁니다. `db-import`와 짝지어 `single`에서 `cluster`처럼 모드 사이에 데이터를 옮깁니다.",
+      }),
+      options: [
+        {
+          name: "--dir",
+          type: "String",
+          defaultValue: "local/transfer",
+          desc: l.trans({
+            en: "Folder to write the files into, relative to the workspace root.",
+            ko: "파일을 쓸 폴더로, 워크스페이스 루트 기준입니다.",
+          }),
+        },
+      ],
+      notes: [
+        {
+          name: l.trans({ en: "mode", ko: "모드" }),
+          desc: l.trans({
+            en: "The shell's `AKAN_DATABASE_MODE`, or the app's first declared mode.",
+            ko: "셸의 `AKAN_DATABASE_MODE`, 없으면 앱이 처음으로 선언한 모드입니다.",
+          }),
+        },
+        {
+          name: l.trans({ en: "deployed data", ko: "배포된 데이터" }),
+          desc: l.trans({
+            en: "For a deployed `single` app, copy its SQLite file and point `SQLITE_DATABASE_PATH` at the copy.",
+            ko: "배포된 `single` 앱이라면 SQLite 파일을 복사하고 `SQLITE_DATABASE_PATH`가 그 복사본을 가리키게 합니다.",
+          }),
+        },
+        {
+          name: l.trans({ en: "no traffic", ko: "요청 없음" }),
+          desc: l.trans({
+            en: "Boots the app without listening and without running cron or init jobs.",
+            ko: "요청을 받지 않고 cron과 init 작업도 돌리지 않는 채로 앱을 띄웁니다.",
+          }),
+        },
+      ],
+      examples: `akan db-export myapp
+SQLITE_DATABASE_PATH=$PWD/backup/myapp-main.db \\
+  akan db-export myapp --dir local/transfer/main`,
+    },
+    {
+      name: "db-import",
+      signature: "akan db-import <app> [--dir <dir>]",
+      desc: l.trans({
+        en: "Read the files `db-export` wrote into the database of the mode the shell names. The app must declare that mode.",
+        ko: "`db-export`가 쓴 파일을 셸이 가리키는 모드의 데이터베이스로 읽어 들입니다. 앱이 그 모드를 선언해야 합니다.",
+      }),
+      options: [
+        {
+          name: "--dir",
+          type: "String",
+          defaultValue: "local/transfer",
+          desc: l.trans({
+            en: "Folder to read the files from, relative to the workspace root.",
+            ko: "파일을 읽을 폴더로, 워크스페이스 루트 기준입니다.",
+          }),
+        },
+      ],
+      notes: [
+        {
+          name: l.trans({ en: "rows", ko: "행" }),
+          desc: l.trans({
+            en: "Rows move as stored, removed ones included. An existing id is replaced, so a rerun is safe.",
+            ko: "행은 저장된 그대로, 삭제된 행까지 옮겨집니다. 이미 있는 id는 덮어쓰므로 다시 실행해도 됩니다.",
+          }),
+        },
+        {
+          name: l.trans({ en: "text search", ko: "텍스트 검색" }),
+          desc: l.trans({
+            en: "The search index is rebuilt after the import.",
+            ko: "가져오기가 끝나면 검색 인덱스를 다시 만듭니다.",
+          }),
+        },
+        {
+          name: l.trans({ en: "not moved", ko: "옮기지 않는 것" }),
+          desc: l.trans({
+            en: "Sessions and queued jobs stay behind, so users sign in again. Copy uploads in `local/` yourself.",
+            ko: "세션과 대기 중인 작업은 옮기지 않으므로 사용자는 다시 로그인합니다. `local/`의 업로드 파일은 직접 복사합니다.",
+          }),
+        },
+        {
+          name: l.trans({ en: "no traffic", ko: "요청 없음" }),
+          desc: l.trans({
+            en: "Boots the app without listening and without running cron or init jobs.",
+            ko: "요청을 받지 않고 cron과 init 작업도 돌리지 않는 채로 앱을 띄웁니다.",
+          }),
+        },
+      ],
+      examples: `akan db-import myapp
+AKAN_DATABASE_MODE=cluster \\
+  POSTGRES_URL=postgres://app:secret@db.example.com:5432/app \\
+  REDIS_URI=redis://redis.example.com:6379 \\
+  akan db-import myapp`,
     },
     {
       name: "script",
@@ -1148,6 +1268,26 @@ akan release-android myapp --assemble-type aab --target all --env main`,
                     </strong>{" "}
                     기본으로 켜져 있어 명령 전에 생성 파일이 최신이 됩니다. 건너뛰려면 <code>--write false</code>를
                     줍니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>The database mode.</strong> <code>start</code>, <code>build</code>, <code>script</code>,{" "}
+                    <code>console</code>, <code>db-export</code> and <code>db-import</code> use the shell's{" "}
+                    <code>AKAN_DATABASE_MODE</code>, which must be one the app declares, or else its first declared
+                    mode.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>데이터베이스 모드.</strong> <code>start</code>, <code>build</code>, <code>script</code>,{" "}
+                    <code>console</code>, <code>db-export</code>, <code>db-import</code>는 셸의{" "}
+                    <code>AKAN_DATABASE_MODE</code>를 쓰고, 없으면 앱이 처음으로 선언한 모드를 씁니다. 셸에서 고른
+                    모드는 앱이 선언한 것이어야 합니다.
                   </span>
                 ),
               })}

@@ -117,6 +117,8 @@ Examples
 
 Command
 
+Running in another database mode
+
 Which command to use
 
 Works
@@ -208,7 +210,7 @@ describe("Article Signal", () => {
 ```ts
 import { configureSignalTest } from "akanjs/test";
 
-configureSignalTest({ databaseMode: "tempFile" });
+configureSignalTest({ storage: "tempFile" });
 ```
 
 ### Terminal
@@ -217,6 +219,16 @@ configureSignalTest({ databaseMode: "tempFile" });
 akan test myapp
 akan test myapp --write false
 akan test shared
+```
+
+### Terminal
+
+```bash
+akan dbup --mode cluster
+AKAN_TEST_DATABASE_MODE=cluster \
+  AKAN_TEST_REDIS_URL=redis://localhost:6379 \
+  AKAN_TEST_POSTGRES_URL=postgres://akan:akan@localhost:5432/akan \
+  akan test myapp
 ```
 
 ## Agent Notes

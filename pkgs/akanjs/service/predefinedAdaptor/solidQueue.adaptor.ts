@@ -68,6 +68,8 @@ export class SolidQueue
   #db!: Database;
   #workers = new Map<string, SolidWorker>();
   #claimStmt!: Statement;
+  #cleanupTimer: Timer | null = null;
+  #closed = false;
   readonly #messageHandler = (message: unknown) => {
     if (!message || typeof message !== "object") return;
     if ((message as { type?: string }).type === "queue.wake") this.wake((message as { name?: string }).name);
@@ -107,13 +109,23 @@ export class SolidQueue
           "status" = 'pending'
           OR ("status" = 'running' AND "lockedUntil" IS NOT NULL AND "lockedUntil" <= ?)
          )
-       ORDER BY "priority" DESC, "createdAt" ASC
+       ORDER BY "priority" ASC, "createdAt" ASC
        LIMIT 1`,
     );
     process.on("message", this.#messageHandler);
+    this.#cleanupTimer = setInterval(() => this.#startCleanup(), this.config.cleanupIntervalMs);
+    this.#startCleanup();
+  }
+
+  #startCleanup() {
+    void this.#cleanup().catch((error: unknown) => {
+      this.logger.warn(`Solid job cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
+    });
   }
 
   override async onDestroy() {
+    this.#closed = true;
+    if (this.#cleanupTimer) clearInterval(this.#cleanupTimer);
     process.off("message", this.#messageHandler);
     await Promise.all([...this.#workers.values()].map((worker) => worker.close()));
     this.#db?.run("PRAGMA wal_checkpoint(TRUNCATE)");
@@ -176,18 +188,14 @@ export class SolidQueue
   async runJob(job: AkanJob, handler: (job: AkanJob) => Promise<unknown>) {
     try {
       await handler({ ...job, data: job.data });
-      this.#db
-        .query(
-          `UPDATE "_akan_solid_jobs" SET "status" = 'completed', "lockedBy" = NULL, "lockedUntil" = NULL, "updatedAt" = ? WHERE "id" = ?`,
-        )
-        .run(Date.now(), job.id);
+      this.#settle(job, "completed", job.opts?.removeOnComplete ?? true);
     } catch (error) {
       const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
       const row = this.#db
         .query(`SELECT "attempts", "maxAttempts" FROM "_akan_solid_jobs" WHERE "id" = ?`)
         .get(job.id) as { attempts: number; maxAttempts: number } | null;
       const failed = !row || row.attempts >= row.maxAttempts;
-      const delay = this.#getBackoffDelay(job.opts?.backoff);
+      const delay = this.#getBackoffDelay(job.opts?.backoff, row?.attempts ?? 1);
       this.#db
         .query(
           `UPDATE "_akan_solid_jobs"
@@ -195,13 +203,64 @@ export class SolidQueue
            WHERE "id" = ?`,
         )
         .run(failed ? "failed" : "pending", Date.now() + delay, message, Date.now(), job.id);
-      if (failed) this.logger.error(`Solid job failed ${job.name}/${job.id}: ${message}`);
+      if (!failed) return;
+      this.logger.error(`Solid job failed ${job.name}/${job.id}: ${message}`);
+      this.#settle(job, "failed", job.opts?.removeOnFail ?? false);
     }
   }
 
-  #getBackoffDelay(backoff: AkanJobOptions["backoff"]) {
+  // `removeOnComplete`/`removeOnFail` read the way bullmq reads them: `true` drops the row, a number keeps that many of
+  // the newest, `false` keeps it.
+  #settle(job: AkanJob, status: "completed" | "failed", remove: boolean | number) {
+    if (remove === true) {
+      this.#db.query(`DELETE FROM "_akan_solid_jobs" WHERE "id" = ?`).run(job.id);
+      return;
+    }
+    if (status === "completed")
+      this.#db
+        .query(
+          `UPDATE "_akan_solid_jobs" SET "status" = 'completed', "lockedBy" = NULL, "lockedUntil" = NULL, "updatedAt" = ? WHERE "id" = ?`,
+        )
+        .run(Date.now(), job.id);
+    if (typeof remove !== "number") return;
+    this.#db
+      .query(
+        `DELETE FROM "_akan_solid_jobs" WHERE "id" IN (
+           SELECT "id" FROM "_akan_solid_jobs" WHERE "queue" = ? AND "name" = ? AND "status" = ?
+           ORDER BY "updatedAt" DESC LIMIT -1 OFFSET ?
+         )`,
+      )
+      .run(this.queueName, job.name, status, Math.max(0, Math.floor(remove)));
+  }
+
+  /**
+   * Rows written before completed jobs were dropped on completion, and failed rows past their retention. Batched and
+   * yielding, because a queue that ran for months before this existed can hold millions of completed rows and
+   * bun:sqlite deletes synchronously.
+   */
+  async #cleanup() {
+    const expiredFailedAt = Date.now() - this.config.queueFailedRetentionMs;
+    for (let batch = 0; batch < 10 && !this.#closed; batch++) {
+      const { changes } = this.#db
+        .query(
+          `DELETE FROM "_akan_solid_jobs" WHERE rowid IN (
+             SELECT rowid FROM "_akan_solid_jobs"
+             WHERE ("status" = 'completed' AND COALESCE(json_type("payload", '$.opts.removeOnComplete'), 'true') = 'true')
+                OR ("status" = 'failed' AND "updatedAt" < ? AND COALESCE(json_type("payload", '$.opts.removeOnFail'), 'null') <> 'false')
+             LIMIT 1000
+           )`,
+        )
+        .run(expiredFailedAt);
+      if (changes < 1000) return;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+
+  // bullmq's own schedule, so a job retries at the same times whichever queue runs it.
+  #getBackoffDelay(backoff: AkanJobOptions["backoff"], attemptsMade: number) {
     if (!backoff) return 0;
     if (typeof backoff === "number") return backoff;
-    return Number(backoff.delay ?? 0);
+    const delay = Number(backoff.delay ?? 0);
+    return backoff.type === "exponential" ? Math.round(2 ** (attemptsMade - 1) * delay) : delay;
   }
 }

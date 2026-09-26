@@ -161,6 +161,19 @@ describe("transformSource — client role (package client entry)", () => {
     );
   });
 
+  test("never claims fetch from a file that calls the platform fetch", () => {
+    const globalOnly = `"use client";\n\nexport const toBlob = async (url: string) => await (await fetch(url)).blob();\n`;
+    const mixed = `"use client";\n\nexport const C = async (url: string) => (await fetch(url)).ok && fetch.me() && st.foo;\n`;
+    const passed = `"use client";\n\nexport const load = (get = fetch) => get("/a");\n`;
+
+    expect(transformSource(globalOnly, "CropImage.tsx", clientLibCtx)).toBeNull();
+    expect(transformSource(mixed, "C.Zone.tsx", clientLibCtx)).toBe(
+      `"use client";\nimport { st } from "@libs/shared/client";\n\nexport const C = async (url: string) => (await fetch(url)).ok && fetch.me() && st.foo;\n`,
+    );
+    expect(transformSource(passed, "load.ts", clientLibCtx)).toBeNull();
+    expect(transformSource(globalOnly, "x.store.ts", storeCtx)).toBeNull();
+  });
+
   test("handles webkit .ts files (no jsx) the same as tsx", () => {
     const source = `import { getEnv } from "akanjs/base";\n\nexport const load = () => fetch.me();\n`;
     const out = transformSource(source, "cookie.ts", clientLibCtx);

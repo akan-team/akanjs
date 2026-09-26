@@ -1,4 +1,6 @@
 import type { AkanChildRole, AkanMetricsReport } from "akanjs/service";
+import { AppInfo } from "../ops/appInfo";
+import type { OpsRoute } from "../ops/opsRoute";
 import type { HttpRoutes } from "../types";
 
 export interface SoloAppStatus {
@@ -17,6 +19,7 @@ export interface SoloAppStatus {
 export const createSoloAppRoutes = (
   read: () => SoloAppStatus,
   logStream: { handle(req: Request): Response } | null = null,
+  ops: OpsRoute | null = null,
 ): HttpRoutes => {
   const child = () => {
     const { role, running, status, port } = read();
@@ -44,7 +47,9 @@ export const createSoloAppRoutes = (
           children: [{ ...child(), metrics: read().metrics }],
         }),
     },
+    [AppInfo.publicPath]: { GET: () => AppInfo.handlePublic() },
     "/_akan/bench/ping": { GET: () => new Response("ok") },
     ...(logStream ? { "/_akan/app/logs": { GET: (req: Request) => logStream.handle(req) } } : {}),
+    ...(ops ? { "/_akan/ops/*": (req: Request) => ops.handle(req) } : {}),
   };
 };

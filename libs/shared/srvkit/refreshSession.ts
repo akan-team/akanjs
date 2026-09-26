@@ -7,9 +7,17 @@ interface RefreshSessionCache {
   set(
     namespace: string,
     key: string,
-    value: unknown,
-    option?: { expireAt?: Date | ReturnType<typeof dayjs> },
+    value: object,
+    option?: { expireAt?: ReturnType<typeof dayjs> },
   ): Promise<unknown>;
+  hset(
+    namespace: string,
+    key: string,
+    subKey: string,
+    value: number,
+    option?: { expireAt?: ReturnType<typeof dayjs> },
+  ): Promise<unknown>;
+  hkeys(namespace: string, key: string): Promise<string[]>;
 }
 
 export interface RefreshSession {
@@ -50,12 +58,24 @@ const setSession = async (cache: RefreshSessionCache, session: RefreshSession) =
   await cache.set(sessionNamespace, session.refreshTokenHash, session, { expireAt: dayjs(session.expiresAt) });
 };
 
+// One hash field per session, so two sign-ins at once cannot overwrite each other's entry in the owner's list.
 const addOwnerSessionHash = async (cache: RefreshSessionCache, session: RefreshSession) => {
   const ownerKey = getOwnerKey(session.subject, session.subjectId);
-  const sessionHashes = ((await cache.get(ownerNamespace, ownerKey)) as string[] | undefined) ?? [];
-  await cache.set(ownerNamespace, ownerKey, [...new Set([...sessionHashes, session.refreshTokenHash])], {
-    expireAt: dayjs(session.expiresAt),
-  });
+  await cache.hset(ownerNamespace, ownerKey, session.refreshTokenHash, 1, { expireAt: dayjs(session.expiresAt) });
+};
+
+const getOwnerSessionHashes = async (
+  cache: RefreshSessionCache,
+  subject: RefreshSession["subject"],
+  subjectId: string,
+) => {
+  const ownerKey = getOwnerKey(subject, subjectId);
+  const [hashes, listed] = await Promise.all([
+    cache.hkeys(ownerNamespace, ownerKey),
+    cache.get(ownerNamespace, ownerKey),
+  ]);
+  // Sessions signed in while the list was one array value; the array expires with the last session written to it.
+  return [...new Set([...hashes, ...(Array.isArray(listed) ? (listed as string[]) : [])])];
 };
 
 export const createRefreshSession = async (cache: RefreshSessionCache, input: CreateRefreshSessionInput) => {
@@ -88,8 +108,7 @@ export const listRefreshSessions = async (
   subjectId: string,
   now = dayjs(),
 ) => {
-  const ownerKey = getOwnerKey(subject, subjectId);
-  const sessionHashes = ((await cache.get(ownerNamespace, ownerKey)) as string[] | undefined) ?? [];
+  const sessionHashes = await getOwnerSessionHashes(cache, subject, subjectId);
   const sessions = await Promise.all(sessionHashes.map(async (sessionHash) => await getSession(cache, sessionHash)));
   return sessions.filter(
     (session): session is RefreshSession =>
@@ -162,8 +181,7 @@ export const revokeRefreshSessionBySid = async (
   sessionId?: string,
 ) => {
   if (!sessionId) return;
-  const ownerKey = getOwnerKey(subject, subjectId);
-  const sessionHashes = ((await cache.get(ownerNamespace, ownerKey)) as string[] | undefined) ?? [];
+  const sessionHashes = await getOwnerSessionHashes(cache, subject, subjectId);
   await Promise.all(
     sessionHashes.map(async (sessionHash) => {
       const session = await getSession(cache, sessionHash);
@@ -178,8 +196,7 @@ export const revokeRefreshSessions = async (
   subject: RefreshSession["subject"],
   subjectId: string,
 ) => {
-  const ownerKey = getOwnerKey(subject, subjectId);
-  const sessionHashes = ((await cache.get(ownerNamespace, ownerKey)) as string[] | undefined) ?? [];
+  const sessionHashes = await getOwnerSessionHashes(cache, subject, subjectId);
   await Promise.all(
     sessionHashes.map(async (sessionHash) => {
       const session = await getSession(cache, sessionHash);

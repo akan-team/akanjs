@@ -115,7 +115,7 @@ export class AdminService extends serve(db.admin, ({ use, service, memory, signa
     return await this._issueAdminToken(admin, account);
   }
   async runInsight(sql: string, limit?: number | null) {
-    return await new InsightQuery(this.database.getConnection()).run(sql, { limit: limit ?? undefined });
+    return await new InsightQuery(this.database).run(sql, { limit: limit ?? undefined });
   }
   async addRole(adminId: string, role: cnst.AdminRole["value"]) {
     const admin = await this.adminModel.getAdmin(adminId);

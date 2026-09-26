@@ -10,6 +10,7 @@
 
 - Akan Runtime (#akan-runtime)
 - Identity And Environment (#env-identity)
+- Database Variables (#env-database)
 - Text Search Variables (#env-search)
 - Logging Variables (#env-logging)
 - getEnv() (#get-env)
@@ -79,6 +80,34 @@ Where clients connect: local runtime, cloud, or edge paths; module is only in th
 
 In practice you move two of them together. Build a feature with ENV=local and OPERATION_MODE=local, switch ENV to debug or develop when you need shared data or shared services, and deploy with ENV=main against whichever operation mode the cluster serves:
 
+Database Variables
+
+the first declared mode
+
+One of `database.modes`; a deployment of a build that declares several must set it.
+
+/workspace/sqlite in the image
+
+The folder for any SQLite file no path names: the database, and `single`'s cache and queue file.
+
+Moves the database file alone, in `single` and `multiple`; it wins over `AKAN_SQLITE_DIR`.
+
+The SQLite file where `single` keeps its cache, queue and pubsub.
+
+The `cluster` database (alias `POSTGRES_URI`), with pool size and SSL in its query string.
+
+The URL in parts, with `POSTGRES_PORT`, `POSTGRES_DATABASE`, `POSTGRES_USER`, `POSTGRES_PASSWORD`.
+
+Logs the SQL console in on `cluster`, as a role that may read base columns only.
+
+Only for an app that applies `LibsqlDatabase` itself; `LIBSQL_AUTH_TOKEN` carries its token.
+
+required outside local
+
+The one Redis every instance of `multiple` or `cluster` shares; `rediss://` turns on TLS.
+
+Every instance mounts one upload volume; disk uploads in `multiple` and `cluster` need it.
+
 Text Search Variables
 
 Full-text search is on unless you switch it off, and both of its variables are deployment-wide decisions rather than per-process ones, so give every process in one deployment the same pair.
@@ -87,9 +116,9 @@ unset means on
 
 Turns the full-text index off, reversibly.
 
-The fts5 tokenizer; database.search.tokenizer in the app config takes precedence.
+fts5 tokenizer (Postgres: unicode61 or trigram); `database.search.tokenizer` in env.server.ts wins.
 
-Changing the tokenizer rebuilds the index from the mirror on the next boot, separately in every process that restarts, so stagger the restart when the mirror is large.
+Changing the tokenizer rebuilds the index from the mirror on the next boot. Of processes restarted at once, the first rebuilds and the rest wait for it; on SQLite a process waits only up to its busy timeout, so stagger the restart when the mirror is large.
 
 Logging Variables
 
@@ -268,6 +297,21 @@ AKAN_PUBLIC_LOG_LEVEL=info
 AKAN_PUBLIC_ENV=main
 AKAN_PUBLIC_OPERATION_MODE=edge
 AKAN_PUBLIC_LOG_LEVEL=info
+```
+
+### .env
+
+```bash
+# An edge site: one container, its SQLite files on a volume
+AKAN_PUBLIC_OPERATION_MODE=edge
+AKAN_DATABASE_MODE=single
+AKAN_SQLITE_DIR=/data
+
+# The same image on a cloud cluster
+AKAN_PUBLIC_OPERATION_MODE=cloud
+AKAN_DATABASE_MODE=cluster
+POSTGRES_URL=postgres://app:…@db.internal:5432/app?max=20&ssl=require
+REDIS_URI=redis://redis.internal:6379
 ```
 
 ### Using getEnv()

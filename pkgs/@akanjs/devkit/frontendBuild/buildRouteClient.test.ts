@@ -27,7 +27,7 @@ afterEach(async () => {
 
 describe("route client store bootstrap", () => {
   test("wraps client entries with app client bootstrap before re-exporting components", () => {
-    const original = "/repo/pkgs/akanjs/ui/Model/NewWrapper_Client.tsx";
+    const original = path.resolve("/repo/pkgs/akanjs/ui/Model/NewWrapper_Client.tsx");
     const source = RouteClientBuilder.createStoreBootstrapEntrySource({
       appName: "akan",
       originalEntry: original,
@@ -145,6 +145,57 @@ describe("route client store bootstrap", () => {
         "",
       ].join("\n"),
     );
+  });
+
+  test("bundles every route's entries into one graph so a page never loads a module twice", async () => {
+    const root = await makeTempRoot();
+    const appDir = path.join(root, "apps/demo");
+    const pageA = path.join(appDir, "page/a.tsx");
+    const pageB = path.join(appDir, "page/b.tsx");
+    const entryA = path.join(appDir, "ui/A.tsx");
+    const entryB = path.join(appDir, "ui/B.tsx");
+    const shared = path.join(appDir, "common/shared.ts");
+    await write(pageA, 'import { A } from "../ui/A";\nexport default A;\n');
+    await write(pageB, 'import { B } from "../ui/B";\nexport default B;\n');
+    await write(entryA, '"use client";\nimport { mark } from "../common/shared";\nexport const A = () => mark;\n');
+    await write(entryB, '"use client";\nimport { mark } from "../common/shared";\nexport const B = () => mark;\n');
+    await write(shared, 'export const mark = "shared-module-marker";\n');
+    const app = {
+      name: "demo",
+      cwdPath: appDir,
+      dist: { cwdPath: path.join(root, "dist/apps/demo") },
+      workspace: { workspaceRoot: root },
+      getConfig: async () => ({ barrelImports: [], optimizeImports: [] }),
+      getTsConfig: async () => ({ compilerOptions: { paths: {} } }),
+      getPublicEnv: () => ({}),
+    } as never;
+    const discovery = new GraphClientEntryDiscovery({ barrelImports: [] }, async () => null);
+    const build = (seeds: string[], knownEntries: Set<string>) =>
+      new RouteClientBuilder({
+        app,
+        seeds,
+        graphSeeds: [pageA, pageB],
+        knownEntries,
+        discovery,
+        artifact: {} as never,
+      }).build();
+
+    const first = await build([pageA], new Set());
+    const second = await build([pageB], new Set(first.newEntries));
+
+    expect(first.newEntries).toEqual([entryA, entryB]);
+    expect(first.discoveredEntries).toEqual([entryA]);
+    expect(first.clientDeps).not.toContain(entryB);
+    expect(Object.keys(first.clientDepsByEntry ?? {}).sort()).toEqual([entryA, entryB]);
+    expect(second.newEntries).toEqual([]);
+    expect(second.discoveredEntries).toEqual([entryB]);
+    expect(Object.keys(second.manifestDelta)).toEqual([]);
+    const clientOut = path.join(appDir, ".akan/artifact/client");
+    const outputs = [...new Bun.Glob("**/*.js").scanSync(clientOut)];
+    const carriers = await Promise.all(
+      outputs.map(async (file) => (await Bun.file(path.join(clientOut, file)).text()).includes("shared-module-marker")),
+    );
+    expect(carriers.filter(Boolean)).toHaveLength(1);
   });
 
   test("discovers client entries from installed akanjs package sources", async () => {
