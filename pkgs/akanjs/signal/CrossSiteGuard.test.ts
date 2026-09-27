@@ -47,7 +47,13 @@ describe("CrossSiteGuard", () => {
   });
 
   test("allows the native shells", () => {
-    expect(() => assert({ host: "app.example.com", origin: "capacitor://localhost" })).not.toThrow();
+    expect(() => assert({ host: "app.example.com", origin: "app://localhost" })).not.toThrow();
+    expect(() => assert({ host: "app.example.com", origin: "https://app.localhost" })).not.toThrow();
+  });
+
+  test("refuses the retired Capacitor shell origins", () => {
+    for (const origin of ["capacitor://localhost", "ionic://localhost", "http://localhost"])
+      expect(() => assert({ host: "app.example.com", origin })).toThrow("This request was not permitted.");
   });
 
   test("allows a configured origin and nothing else", () => {

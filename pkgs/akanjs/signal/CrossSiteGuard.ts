@@ -12,8 +12,9 @@ export interface CrossSiteOption {
 // fails) and `Origin` covers multipart and bodiless mutations. No `Origin` is a non-browser caller; `null` is refused.
 export class CrossSiteGuard {
   static readonly logger = new Logger("CrossSiteGuard");
-  /** iOS ships `capacitor://localhost`, Android `http://localhost`, older shells `ionic://localhost`. */
-  static readonly nativeOrigins = ["capacitor://localhost", "ionic://localhost", "http://localhost"] as const;
+  /** The native shell serves the page from `app://localhost` on iOS, macOS and Linux, `https://app.localhost` on
+   * Android and Windows; both WebViews send exactly that as `Origin`. */
+  static readonly nativeOrigins = ["app://localhost", "https://app.localhost"] as const;
   static #enabled = true;
   static #allowed = new Set<string>(CrossSiteGuard.nativeOrigins);
 
