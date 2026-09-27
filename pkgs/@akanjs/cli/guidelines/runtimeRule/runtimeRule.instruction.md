@@ -16,9 +16,9 @@ const config: AppConfig = { web: false }; // api only
 ```
 
 - **`web: { csr: false }`** drops the CSR build phase and the `/__csr` + `?csr=true` routes. The CSR bundle is
-  what the Capacitor mobile build ships, so a web-only deployment never needs it — and an app that declares a
+  what the native mobile build ships, so a web-only deployment never needs it — and an app that declares a
   `mobile` section is refused, because `akan build-ios` copies `dist/apps/<app>/csr/<target>.html` into the
-  native project.
+  target's web root, `.akan/mobile/<target>/web`.
 - **`web: false`** is an API-only build: no base artifact, no pages or client bundles, no RSC worker
   entrypoint, and no `public/` in the image (the web router's catch-all is its only reader). Nothing under
   `page/` is served, including routes a lib contributed through `syncPageLibs`.
@@ -68,7 +68,7 @@ const config: AppConfig = { api: { prefix: "/backend", websocketPrefix: "/socket
   origin when the module graph initializes, before any component renders, so a React prop — a `System.Provider`
   value, anything out of `implicitRootLayout` — is always too late. The value rides the SSR classic bootstrap
   script instead, the one thing guaranteed to run ahead of every module script, and is omitted when it matches
-  what the bundle already assumes. `akan.config.ts` is what a Capacitor bundle or a statically served CSR shell
+  what the bundle already assumes. `akan.config.ts` is what a native app bundle or a statically served CSR shell
   follows, because neither is rendered by a server that could tell it otherwise.
 - **A prefix is a path segment.** A blank value or a bare `/` is refused: `/` would be mounted ahead of the SSR
   catch-all and swallow every page route. A prefix whose first segment is a declared basePath is refused at

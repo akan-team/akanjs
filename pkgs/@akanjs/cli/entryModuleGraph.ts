@@ -8,7 +8,6 @@ export class EntryModuleGraph {
     "typescript",
     "ink",
     "ssh2",
-    "@trapezedev/project",
     "@tailwindcss/node",
     "tailwindcss",
     "fonteditor-core",

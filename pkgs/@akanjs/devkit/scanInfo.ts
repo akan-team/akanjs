@@ -1,4 +1,3 @@
-import { rm } from "node:fs/promises";
 import path from "node:path";
 import type {
   AppConfigResult,
@@ -11,7 +10,7 @@ import type {
 } from "./akanConfig";
 import { AkanAppConfig } from "./akanConfig";
 import { AppExecutor, LibExecutor, PkgExecutor, WorkspaceExecutor } from "./executors";
-import { isAllowedLibFacetRootFile, rootAllowedDirs, rootAllowedFiles } from "./workspaceLayout";
+import { isAllowedLibFacetRootFile, rootAllowedDirs, rootAllowedFiles, rootEntryHintOf } from "./workspaceLayout";
 
 const scalarFileTypes = ["constant", "dictionary", "document", "template", "unit", "util", "view", "zone"] as const;
 type ScalarFileType = (typeof scalarFileTypes)[number];
@@ -37,7 +36,6 @@ const fileTypeOf = (filename: string) =>
 
 type ModuleKind = "database" | "service" | "scalar";
 
-const generatedRootCapacitorConfigFiles = ["capacitor.config.js", "capacitor.config.json"] as const;
 const internalLibDirs = new Set(["__lib", "__scalar"]);
 const moduleNonUiFileTypes = {
   database: new Set(["constant", "dictionary", "document", "service", "signal", "store"]),
@@ -56,17 +54,12 @@ const createDependencyScanner = async (exec: AppExecutor | LibExecutor | PkgExec
 
 const getScanPath = (exec: AppExecutor | LibExecutor, relativePath: string) =>
   path.posix.join(`${exec.type}s`, exec.name, relativePath.split(path.sep).join("/"));
-async function clearGeneratedRootCapacitorConfigs(exec: AppExecutor | LibExecutor) {
-  if (exec.type !== "app") return;
-  await Promise.all(generatedRootCapacitorConfigFiles.map((filename) => rm(exec.getPath(filename), { force: true })));
-}
 const getModuleNameFromPath = (kind: ModuleKind, modulePath: string) => {
   const dirname = path.basename(modulePath);
   return kind === "service" ? dirname.replace(/^_+/, "") : dirname;
 };
 
 async function assertScanConvention(exec: AppExecutor | LibExecutor, libRoot: { files: string[]; dirs: string[] }) {
-  await clearGeneratedRootCapacitorConfigs(exec);
   const violations: string[] = [];
   const addViolation = (relativePath: string, reason: string) => {
     violations.push(`${getScanPath(exec, relativePath)}: ${reason}`);
@@ -76,9 +69,11 @@ async function assertScanConvention(exec: AppExecutor | LibExecutor, libRoot: { 
   const allowedRootDirs: ReadonlySet<string> = rootAllowedDirs[exec.type];
   const { files, dirs } = await exec.getFilesAndDirs(".");
   for (const filename of files)
-    if (!allowedRootFiles.has(filename)) addViolation(filename, `unsupported ${exec.type} root file`);
+    if (!allowedRootFiles.has(filename))
+      addViolation(filename, rootEntryHintOf(exec.type, filename) ?? `unsupported ${exec.type} root file`);
   for (const dirname of dirs)
-    if (!allowedRootDirs.has(dirname)) addViolation(dirname, `unsupported ${exec.type} root folder`);
+    if (!allowedRootDirs.has(dirname))
+      addViolation(dirname, rootEntryHintOf(exec.type, dirname) ?? `unsupported ${exec.type} root folder`);
 
   //* A lib has no `getPageKeys`, so its own route files are validated here.
   if (exec.type === "lib")

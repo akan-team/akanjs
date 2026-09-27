@@ -16,7 +16,7 @@ import {
   workflowRunArtifactPath,
   workflowSyncDir,
 } from "./workflow";
-import { isScannedRootEntry, rootAllowedDirs, rootAllowedFiles } from "./workspaceLayout";
+import { isScannedRootEntry, rootAllowedDirs, rootAllowedFiles, rootEntryHintOf } from "./workspaceLayout";
 
 export type AkanContextFormat = "json" | "markdown";
 export type AkanModuleKind = "domain" | "service" | "scalar";
@@ -657,13 +657,16 @@ export class AkanContextAnalyzer {
         const allowed = entry.isDirectory()
           ? rootAllowedDirs[sys.type].has(entry.name)
           : rootAllowedFiles[sys.type].has(entry.name);
+        const rootEntryHint = rootEntryHintOf(sys.type, entry.name);
         if (!allowed)
           report(
             {
               severity: "error",
               code: `${sys.type}-root-unknown-entry`,
               path: `${sys.path}/${entry.name}`,
-              message: `Unexpected ${entry.isDirectory() ? "folder" : "file"} in ${sys.type} root: ${sys.path}/${entry.name}`,
+              message: `Unexpected ${entry.isDirectory() ? "folder" : "file"} in ${sys.type} root: ${sys.path}/${entry.name}${
+                rootEntryHint ? ` (${rootEntryHint})` : ""
+              }`,
             },
             repairAction(
               "module-shape",

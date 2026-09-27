@@ -199,7 +199,6 @@ UI barrel import를 leaf import로 다시 써서 클라이언트 번들을 작�
 특수 public surface:
 
 - `akanjs/ui/styles.css`
-- `akanjs/capacitor.base.config`
 - `akanjs/server/rsc-worker`
 - `akanjs/package.json`
 

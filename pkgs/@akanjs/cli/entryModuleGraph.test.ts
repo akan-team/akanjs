@@ -36,7 +36,6 @@ describe("dev entry module graphs", () => {
     const neverEager = [
       "ink",
       "ssh2",
-      "@trapezedev/project",
       "@kubernetes/client-node",
       "puppeteer",
       "fonteditor-core",

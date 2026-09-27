@@ -43,7 +43,7 @@ await runner.build();
 - Frontend build transforms and RSC/SSR artifact builders.
 - Command/script decorators used by `@akanjs/cli`.
 - AI prompt, guideline, and code-generation support utilities.
-- Capacitor and mobile release helpers.
+- Native mobile builds on `@akanjs/native` (iOS, Android) and store release helpers.
 - The `akan code` agent engine, the tools it is given, and the shipped akan skills (`@akanjs/devkit/codeAgent`).
 
 ## Dev Server Sizing
@@ -63,7 +63,7 @@ defaults, the shares they derive from `AKAN_MEMORY_LIMIT`, and what a small cont
 
 - [Bun](https://bun.sh) `>=1.4.0`
 - TypeScript
-- Optional peers are only needed for the features that use them, such as Capacitor integration.
+- `react` is an optional peer, needed only by the features that render.
 
 ## License
 

@@ -7,7 +7,7 @@ import ts from "typescript";
 import { AbstractDoc } from "./abstractDoc";
 import { FormSetterScanner } from "./formSetterScanner";
 import { fileWarning, formatSsrBalance, type SsrBalanceEntry, SsrScanner } from "./ssrScanner";
-import { isAllowedLibFacetRootFile, rootAllowedDirs, rootAllowedFiles } from "./workspaceLayout";
+import { isAllowedLibFacetRootFile, rootAllowedDirs, rootAllowedFiles, rootEntryHintOf } from "./workspaceLayout";
 
 type QualitySeverity = "warning";
 type QualityScope = "global" | "file" | "convention" | "layout" | "ssr" | "agent";
@@ -425,7 +425,9 @@ export class AkanQualityScanner {
             `akan.layout.${type}-root-${kind}`,
             "layout",
             sourceFile.file,
-            `Unexpected ${type} root ${kind} "${name}". Keep ${type} code in conventional ${type} folders.`,
+            `Unexpected ${type} root ${kind} "${name}". ${
+              rootEntryHintOf(type, name) ?? `Keep ${type} code in conventional ${type} folders.`
+            }`,
           ),
         );
     }

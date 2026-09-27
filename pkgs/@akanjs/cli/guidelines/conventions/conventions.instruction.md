@@ -308,7 +308,7 @@ Full contract: `get_guideline` with `runtimeRule`, or `akan guideline show runti
   rotating log file; nothing supervises it but the orchestrator's probes.
 - **Route prefixes move together or not at all.** `new AkanApp({ prefix, websocketPrefix })` in `main.ts` moves
   the server's routes, the gateway's websocket upgrade and — through the SSR bootstrap script — the
-  `fetchClient` in every tab the server renders. A prebuilt CSR shell or a Capacitor bundle is never rendered by
+  `fetchClient` in every tab the server renders. A prebuilt CSR shell or a native app bundle is never rendered by
   a server, so `api: { prefix, websocketPrefix }` in `akan.config.ts` is what those follow; declare it there too
   when the app ships either. Read the value with `getApiPrefix()` / `getWsPrefix()` from `akanjs/base` — never
   write `/api` or `/ws` as a literal, and never try to hand it down as a React prop: `FetchClient` fixes its
@@ -902,10 +902,10 @@ export default page()
 
 ## Akan Sync Conventions (`apps/**`, `libs/**`)
 
-- `apps/<appName>` root may only contain these files: `AGENTS.md`, `CLAUDE.md`, `akan.app.json`, `akan.config.ts`, `capacitor.config.ts`, `client.ts`, `main.ts`, `package.json`, `server.ts`, `tsconfig.json`, `tsconfig.tsbuildinfo`.
-- `apps/<appName>` root may only contain these folders: `.akan`, `android`, `common`, `env`, `ios`, `lib`, `mobile`, `page`, `plugin`, `private`, `public`, `script`, `secrets`, `srvkit`, `ui`, `webkit`.
+- `apps/<appName>` root may only contain these files: `AGENTS.md`, `CLAUDE.md`, `akan.app.json`, `akan.config.ts`, `client.ts`, `main.ts`, `package.json`, `server.ts`, `tsconfig.json`, `tsconfig.tsbuildinfo`.
+- `apps/<appName>` root may only contain these folders: `.akan`, `common`, `env`, `lib`, `page`, `plugin`, `private`, `public`, `script`, `secrets`, `srvkit`, `ui`, `webkit`.
 - `libs/<libName>` root may only contain these files: `AGENTS.md`, `CLAUDE.md`, `README.md`, `akan.config.ts`, `akan.lib.json`, `client.ts`, `index.ts`, `package.json`, `server.ts`, `tsconfig.json`, `tsconfig.spec.json`, `tsconfig.tsbuildinfo`.
-- `libs/<libName>` root may only contain these folders: `common`, `env`, `lib`, `page`, `plugin`, `private`, `public`, `srvkit`, `ui`, `webkit`. A library is never booted or packaged as an app, so the run and mobile entries an app carries (`main.ts`, `capacitor.config.ts`, `.akan`, `android`, `ios`, `mobile`, `script`, `secrets`) are rejected there.
+- `libs/<libName>` root may only contain these folders: `common`, `env`, `lib`, `page`, `plugin`, `private`, `public`, `srvkit`, `ui`, `webkit`. A library is never booted or packaged as an app, so the run and mobile entries an app carries (`main.ts`, `.akan`, `script`, `secrets`) are rejected there. A Capacitor-era `ios` / `android` / `mobile` folder or `capacitor.config.*` is refused in an app root too, named as a leftover: the native runtime generates its projects under `.akan/mobile/<target>`.
 - Both allowlists have one source — `pkgs/@akanjs/devkit/workspaceLayout.ts`. `akan sync` (error), `akan doctor`
   (diagnostic), and `akan quality scan` (warning) all read it, so add a new root entry there and mirror it into this
   list, never into one of the three call sites.
@@ -929,7 +929,7 @@ export default page()
 | Folder | Admission test | Naming |
 |---|---|---|
 | `common/` | pure, isomorphic, zero-dependency; may import only sibling `common/*` and `akanjs/base`. Cannot import `Err`, so keep throwing code out of it. | camelCase file, filename equals the single export |
-| `webkit/` | touches `window` / `navigator` / Capacitor, or is a React hook | `use<Thing>.tsx` — `.tsx` even with no JSX |
+| `webkit/` | touches `window` / `navigator` / the native bridge (`akanjs/client/native`), or is a React hook | `use<Thing>.tsx` — `.tsx` even with no JSX |
 | `srvkit/` | touches `node:*`, `Bun`, `process.env`, a secret, or a server SDK | camelCase file, PascalCase class |
 | `ui/` | renders JSX, or defines a look (a recipe in `Recipe/`, a lib's `tokens.css`), and is not bound to one model | PascalCase component, camelCase sidecar (`swipeCard.util.ts`), `Recipe/<name>.ts` |
 | `plugin/` | build- or CLI-time `AkanPlugin` | `<name>.plugin.ts`, registered in `akan.config.ts` |

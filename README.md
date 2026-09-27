@@ -197,7 +197,6 @@ frontend build to rewrite UI barrel imports into leaf imports.
 Special public surfaces:
 
 - `akanjs/ui/styles.css`
-- `akanjs/capacitor.base.config`
 - `akanjs/server/rsc-worker`
 - `akanjs/package.json`
 

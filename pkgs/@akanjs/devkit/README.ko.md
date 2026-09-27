@@ -44,7 +44,7 @@ await runner.build();
 - Frontend build transform과 RSC/SSR artifact builder.
 - `@akanjs/cli`가 사용하는 command/script decorator.
 - AI prompt, guideline, code-generation 지원 utility.
-- Capacitor와 mobile release helper.
+- `@akanjs/native` 기반 네이티브 모바일 빌드(iOS, Android)와 스토어 release helper.
 
 ## 패키지 경계
 
@@ -58,7 +58,7 @@ await runner.build();
 
 - [Bun](https://bun.sh) `>=1.4.0`
 - TypeScript
-- Optional peer는 Capacitor integration처럼 해당 기능을 사용할 때만 필요합니다.
+- `react`는 optional peer이며, 렌더링하는 기능에서만 필요합니다.
 
 ## 라이선스
 

@@ -49,7 +49,6 @@ export class BaseStore extends store("base" as const, () => ({
     bottomSafeAreaColor: "var(--color-background, Canvas)",
   } as PageState,
   devMode: false,
-  deviceToken: "" as string,
   currentPath: "" as string,
 })) {
   setDevMode(value: boolean) {

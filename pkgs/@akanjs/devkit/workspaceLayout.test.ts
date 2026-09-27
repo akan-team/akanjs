@@ -6,6 +6,7 @@ import {
   isScannedRootEntry,
   libRootAllowedDirs,
   libRootAllowedFiles,
+  rootEntryHintOf,
 } from "./workspaceLayout";
 
 describe("app root layout allowlist", () => {
@@ -15,7 +16,7 @@ describe("app root layout allowlist", () => {
   });
 
   test("admits every documented app root folder", () => {
-    for (const dirname of ["mobile", "plugin", "secrets", "srvkit", "webkit"]) {
+    for (const dirname of [".akan", "plugin", "script", "secrets", "srvkit", "webkit"]) {
       expect(appRootAllowedDirs.has(dirname)).toBe(true);
     }
   });
@@ -23,6 +24,15 @@ describe("app root layout allowlist", () => {
   test("rejects an app root entry no facet owns", () => {
     expect(appRootAllowedFiles.has("helper.ts")).toBe(false);
     expect(appRootAllowedDirs.has("base")).toBe(false);
+  });
+
+  test("names what a Capacitor app kept in its root as a leftover, not an unknown entry", () => {
+    for (const name of ["android", "ios", "mobile", "capacitor.config.ts", "capacitor.config.json"]) {
+      expect(appRootAllowedFiles.has(name) || appRootAllowedDirs.has(name)).toBe(false);
+      expect(rootEntryHintOf("app", name)).toContain(".akan/mobile/<target>");
+    }
+    expect(rootEntryHintOf("app", "base")).toBeNull();
+    expect(rootEntryHintOf("lib", "ios")).toBeNull();
   });
 
   test("skips dotfile artifacts the sync glob never sees, but keeps .akan", () => {
@@ -48,10 +58,10 @@ describe("lib root layout allowlist", () => {
   });
 
   test("rejects the app-only run and mobile entries", () => {
-    for (const filename of ["main.ts", "capacitor.config.ts", "akan.app.json"]) {
+    for (const filename of ["main.ts", "akan.app.json"]) {
       expect(libRootAllowedFiles.has(filename)).toBe(false);
     }
-    for (const dirname of [".akan", "android", "ios", "mobile", "script", "secrets"]) {
+    for (const dirname of [".akan", "script", "secrets"]) {
       expect(libRootAllowedDirs.has(dirname)).toBe(false);
     }
   });

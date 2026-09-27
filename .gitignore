@@ -78,37 +78,9 @@ apps/*/android/keystore.properties
 
 **/vendor/bundle/
 
-# Capacitor generated native project outputs
-apps/*/ios/App/build/
-apps/*/ios/App/Pods/
-apps/*/ios/App/output/
-apps/*/ios/App/App/public/
-apps/*/ios/App/App/Podfile.lock
-apps/*/ios/App/App.pbxproj
-apps/*/ios/App/App/capacitor.config.json
-apps/*/ios/App/App/config.xml
-apps/*/ios/capacitor-cordova-ios-plugins/
-apps/*/ios/DerivedData/
-apps/*/ios/xcuserdata/
-apps/*/ios/**/*.xcuserstate
-apps/*/android/.gradle/
-apps/*/android/**/build/
-apps/*/android/local.properties
-apps/*/android/.cxx/
-apps/*/android/**/*.iml
-apps/*/android/**/*.hprof
-apps/*/android/.idea/
-apps/*/android/captures/
-apps/*/android/capacitor-cordova-android-plugins/
-apps/*/android/capacitor.settings.gradle
-apps/*/android/app/capacitor.build.gradle
-apps/*/android/app/debug.keystore
-apps/*/android/app/src/main/assets/
-apps/*/android/app/src/main/res/xml/config.xml
-apps/*/android/app/release/
-# Copied in from each app's secrets/ by the mobile build's `files` mapping
-apps/*/android/app/google-services.json
-apps/*/ios/App/**/GoogleService-Info.plist
+# The Firebase configs a Capacitor build copied out of secrets/; still ignored until those ios/android folders go
+apps/*/android/**/google-services.json
+apps/*/ios/**/GoogleService-Info.plist
 **/*-secret.yaml
 
 # Akanjs files
@@ -135,7 +107,6 @@ apps/*/lib/__scalar/*/index.ts
 apps/*/client.ts
 apps/*/server.ts
 apps/*/lib/*/index.tsx
-apps/*/capacitor.config.json
 libs/*/lib/cnst.ts
 libs/*/lib/dict.ts
 libs/*/lib/db.ts
