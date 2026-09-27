@@ -106,6 +106,9 @@ apps/*/android/app/debug.keystore
 apps/*/android/app/src/main/assets/
 apps/*/android/app/src/main/res/xml/config.xml
 apps/*/android/app/release/
+# Copied in from each app's secrets/ by the mobile build's `files` mapping
+apps/*/android/app/google-services.json
+apps/*/ios/App/**/GoogleService-Info.plist
 **/*-secret.yaml
 
 # Akanjs files
