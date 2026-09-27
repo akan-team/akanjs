@@ -193,7 +193,8 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
         mod != null && (typeof mod === "object" || typeof mod === "function") ? Object.getOwnPropertyNames(mod) : [];
       for (const to of secondTarget ? [target, secondTarget] : [target]) {
         for (const key of keys) {
-          if (key === "default" || key === "__esModule" || Object.hasOwn(to, key)) continue;
+          // biome-ignore lint/suspicious/noPrototypeBuiltins: Object.hasOwn needs Safari 15.4; native shells run older WebViews
+          if (key === "default" || key === "__esModule" || Object.prototype.hasOwnProperty.call(to, key)) continue;
           Object.defineProperty(to, key, { get: () => (mod as Record<string, unknown>)[key], enumerable: true });
         }
       }

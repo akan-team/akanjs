@@ -794,6 +794,16 @@ export default page().render(() => {
     },
     {
       symptom: l.trans({
+        en: "A save reloads the whole app instead of updating it in place",
+        ko: "저장하면 그 자리에서 바뀌지 않고 앱 전체가 다시 뜸",
+      }),
+      check: l.trans({
+        en: "A component or store edit applies in place and keeps state; a page, layout, `*.constant.ts`, route or npm dependency change reloads. `AKAN_DEV_CSR=artifact` on `akan start` brings back the single-file dev bundle, which reloads on every save.",
+        ko: "컴포넌트·store 수정은 state를 유지한 채 그 자리에서 바뀌고, 페이지·레이아웃·`*.constant.ts`·라우트·npm 의존성이 바뀌면 다시 뜹니다. `akan start`에 `AKAN_DEV_CSR=artifact`를 주면 저장할 때마다 다시 뜨는 예전 단일 파일 dev 번들로 돌아갑니다.",
+      }),
+    },
+    {
+      symptom: l.trans({
         en: "No permission prompt, or an iOS crash on first use",
         ko: "권한 창이 뜨지 않거나, iOS에서 처음 쓸 때 앱이 꺼짐",
       }),

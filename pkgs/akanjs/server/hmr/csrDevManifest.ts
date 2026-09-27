@@ -13,4 +13,4 @@ export interface CsrDevManifest {
 }
 
 export const resolveDevCsrMode = (env: Record<string, string | undefined> = process.env): DevCsrMode =>
-  env.AKAN_DEV_CSR === "registry" ? "registry" : "artifact";
+  env.AKAN_DEV_CSR === "artifact" ? "artifact" : "registry";

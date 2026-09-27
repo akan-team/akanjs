@@ -119,7 +119,7 @@ describe.skipIf(!CsrE2eHarness.enabled)("CSR Fast Refresh (minimal, AKAN_DEV_CSR
   }, 90_000);
 });
 
-describe.skipIf(!CsrE2eHarness.enabled)("CSR single-file artifact (minimal, AKAN_DEV_CSR unset)", () => {
+describe.skipIf(!CsrE2eHarness.enabled)("CSR single-file artifact (minimal, AKAN_DEV_CSR=artifact)", () => {
   let csr: CsrE2eHarness;
 
   beforeAll(async () => {
