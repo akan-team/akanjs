@@ -41,36 +41,21 @@ const baseTarget: AkanMobileTargetConfig = {
   assets: { icon: "mobile/icon.png" },
   permissions: ["camera"],
   deepLinks: { schemes: ["minimal"], domains: ["minimal.app"] },
-  files: { android: { "app/google-services.json": "private/google-services.json" } },
+  files: { "android/res/raw/chime.mp3": "private/chime.mp3" },
+  native: { android: { googleServices: "private/google-services.json" } },
 };
 
 describe("materializeCapacitorConfig", () => {
   test("writes only Capacitor fields for release config", () => {
-    const config = materializeCapacitorConfig(
-      {
-        ...baseTarget,
-        plugins: { CapacitorHttp: { enabled: true } },
-        android: { flavor: "qa" },
-        ios: { scheme: "App QA" },
-        cordova: { preferences: { ScrollEnabled: "false" } },
-        experimental: { ios: { spm: { swiftToolsVersion: "5.9" } } },
-      },
-      { operation: "release" },
-    );
+    const config = materializeCapacitorConfig(baseTarget, { operation: "release" });
 
-    expect(config).toMatchObject({
+    expect(config).toEqual({
       appId: "com.minimal.app",
       appName: "Minimal",
       webDir: ".akan/mobile/default/www",
-      plugins: {
-        CapacitorCookies: { enabled: true },
-        CapacitorHttp: { enabled: true },
-        Keyboard: { resize: "none" },
-      },
-      android: { flavor: "qa", path: "android" },
-      ios: { scheme: "App QA", path: "ios" },
-      cordova: { preferences: { ScrollEnabled: "false" } },
-      experimental: { ios: { spm: { swiftToolsVersion: "5.9" } } },
+      plugins: { CapacitorCookies: { enabled: true }, Keyboard: { resize: "none" } },
+      android: { path: "android" },
+      ios: { path: "ios" },
     });
     expect(config).not.toHaveProperty("name");
     expect(config).not.toHaveProperty("basePath");
@@ -81,46 +66,29 @@ describe("materializeCapacitorConfig", () => {
     expect(config).not.toHaveProperty("permissions");
     expect(config).not.toHaveProperty("deepLinks");
     expect(config).not.toHaveProperty("files");
+    expect(config).not.toHaveProperty("native");
     expect(config).not.toHaveProperty("server");
   });
 
   test("adds local server config without requiring env target switching", () => {
-    const config = materializeCapacitorConfig(
-      {
-        ...baseTarget,
-        server: {
-          hostname: "localhost",
-          allowNavigation: ["api.example.com"],
-        },
-      },
-      {
-        operation: "local",
-        localIp: "192.168.0.5",
-        localServerUrl: "http://192.168.0.5:8282/en/admin?csr=true&akanMobileTarget=default",
-      },
-    );
+    const config = materializeCapacitorConfig(baseTarget, {
+      operation: "local",
+      localIp: "192.168.0.5",
+      localServerUrl: "http://192.168.0.5:8282/en/admin?csr=true&akanMobileTarget=default",
+    });
 
     expect(config.server).toEqual({
-      hostname: "localhost",
       androidScheme: "http",
       url: "http://192.168.0.5:8282/en/admin?csr=true&akanMobileTarget=default",
       cleartext: true,
-      allowNavigation: ["api.example.com", "192.168.0.5", "localhost"],
+      allowNavigation: ["192.168.0.5", "localhost"],
     });
   });
 
-  test("allows mobile targets to override the default keyboard resize mode", () => {
-    const config = materializeCapacitorConfig(
-      {
-        ...baseTarget,
-        plugins: { Keyboard: { resize: "native" } },
-      },
-      { operation: "release" },
-    );
+  test("turns on push presentation only for a target that asks for push", () => {
+    const config = materializeCapacitorConfig({ ...baseTarget, permissions: ["push"] }, { operation: "release" });
 
-    expect(config.plugins).toMatchObject({
-      Keyboard: { resize: "native" },
-    });
+    expect(config.plugins).toMatchObject({ PushNotifications: { presentationOptions: ["badge", "sound", "alert"] } });
   });
 
   test("rejects non-json config values", () => {

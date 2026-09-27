@@ -21,7 +21,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import type { AkanPlugin, AkanSyncContext, PluginRuntimeContext } from "akanjs";
+import type { AkanPlugin, AkanSyncContext } from "akanjs";
 import {
   capitalize,
   getPageSourceFileViolation,
@@ -1479,17 +1479,6 @@ export class AppExecutor extends SysExecutor {
       seen.add(plugin.name);
       return true;
     });
-  }
-  async getPluginRuntimePackages(): Promise<string[]> {
-    const plugins = await this.collectPlugins();
-    const appConfig = await this.getConfig();
-    const ctx: PluginRuntimeContext = {
-      appName: this.name,
-      mobile: appConfig.mobile,
-      hasMobilePermission: (permission) =>
-        Object.values(appConfig.mobile.targets).some((target) => target.permissions?.includes(permission) ?? false),
-    };
-    return [...new Set(plugins.flatMap((plugin) => plugin.runtimePackages?.(ctx) ?? []))];
   }
   async increaseBuildNum() {
     await increaseBuildNum(this);

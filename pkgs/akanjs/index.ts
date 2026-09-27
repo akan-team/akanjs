@@ -39,7 +39,7 @@ export interface AkanRouteConfig {
   domains: AkanRouteDomains;
 }
 
-/** `ssr`: the RSC/SSR renderer with its bundles and RSC worker; `csr`: the SPA shell Capacitor ships and `/__csr` serves. */
+/** `ssr`: the RSC/SSR renderer with its bundles and RSC worker; `csr`: the SPA shell the native apps ship and `/__csr` serves. */
 export interface AkanWebConfig {
   ssr: boolean;
   csr: boolean;
@@ -82,45 +82,59 @@ export interface AkanMobileTargetDeepLinks {
   };
 }
 
-export interface AkanMobileTargetFiles {
-  ios?: Record<string, string>;
-  android?: Record<string, string>;
+/**
+ * Files copied into the app, keyed by where they land: `ios/<path>` (the app bundle), `android/res/<type>/<file>` or
+ * `android/assets/<path>`. The value is the source, relative to the app folder.
+ */
+export type AkanMobileTargetFiles = Record<string, string>;
+
+export type AkanNativeValue = string | number | boolean | AkanNativeValue[] | { [key: string]: AkanNativeValue };
+
+export interface AkanMobileNativeConfig {
+  /** Native runtime plugins beyond the ones the permissions bring, by builtin id (`"iap"`) or absolute folder. */
+  plugins?: string[];
+  ios?: {
+    infoPlist?: Record<string, AkanNativeValue>;
+    entitlements?: Record<string, AkanNativeValue>;
+  };
+  android?: {
+    /** XML at the `<manifest>` level; `${applicationId}` is replaced. */
+    manifest?: string[];
+    /** XML inside `<application>`. */
+    application?: string[];
+    /** XML inside the app's activity. */
+    activity?: string[];
+    /** The Firebase project's google-services.json, relative to the app folder, for FCM push on Android. */
+    googleServices?: string;
+  };
 }
 
-export interface AkanCapacitorLikeConfig {
-  plugins?: Record<string, unknown>;
-  android?: Record<string, unknown>;
-  ios?: Record<string, unknown>;
-  [key: string]: unknown;
-}
-
-export interface AkanMobileTargetConfig extends AkanCapacitorLikeConfig {
+export interface AkanMobileTargetConfig {
   name: string;
   basePath?: string;
   indexPath?: string;
   appName: string;
   appId: string;
+  /** Executables, archives and the Swift module; letters, digits, `.`, `_` and `-`. Default: the app's folder name. */
+  fileName?: string;
   version: string;
   buildNum: number;
   assets?: AkanMobileTargetAssets;
   permissions?: MobilePermission[];
   deepLinks?: AkanMobileTargetDeepLinks;
   files?: AkanMobileTargetFiles;
+  native?: AkanMobileNativeConfig;
 }
 
-export interface AkanMobileConfig extends AkanCapacitorLikeConfig {
+export interface AkanMobileConfig {
   appName: string;
   appId: string;
+  fileName?: string;
   version: string;
   buildNum: number;
+  files?: AkanMobileTargetFiles;
+  native?: AkanMobileNativeConfig;
   targets: Record<string, AkanMobileTargetConfig>;
-}
-
-export interface PluginRuntimeContext {
-  readonly appName: string;
-  readonly mobile: AkanMobileConfig;
-  /** True when any mobile target declares the given permission. */
-  hasMobilePermission(permission: MobilePermission): boolean;
 }
 
 // Structural, so the devkit scan classes (AppInfo/LibInfo) satisfy it without a dependency.
@@ -161,38 +175,25 @@ export interface AkanSyncContext {
   readEnvClient(): Promise<Record<string, unknown> | null>;
 }
 
-export interface AkanNativeContext {
-  readonly appPath: string;
-  readonly executor: AkanExecutor;
-  readonly target: AkanMobileTargetConfig;
-  readonly operation: "local" | "release";
-  readonly env: MobileEnv;
-  /** Set NS-prefixed usage descriptions in the iOS Info.plist (Debug + Release). */
-  setIosUsageDescriptions(descriptions: Record<string, string>): Promise<void>;
-  /** Merge raw key/values into the iOS Info.plist (Debug + Release). */
-  updateIosInfoPlist(values: Record<string, unknown>): Promise<void>;
-  /** Contribute entries to the iOS entitlements file (merged, then written once per prepare). */
-  addIosEntitlements(entitlements: Record<string, string | string[]>): void;
-  /** Transform `ios/App/App/AppDelegate.swift` in place (no-op when the file is absent). */
-  editIosAppDelegate(transform: (content: string) => string): Promise<void>;
-  /** Add `uses-permission` entries to the Android manifest (without the `android.permission.` prefix). */
-  addAndroidPermissions(permissions: string[]): void;
-  /** Add `uses-feature` entries to the Android manifest. */
-  addAndroidFeatures(features: string[]): void;
-}
-
-export interface AkanPluginCapacitorConfig {
-  /** Mobile permission that activates this plugin's native config (reuses the existing permission model). */
-  permission?: MobilePermission;
-  configureNative?: (ctx: AkanNativeContext) => Promise<void>;
+/** What a plugin adds to a mobile app whose target asks for its permission; the native build merges every one. */
+export interface AkanPluginNativeConfig {
+  permission: MobilePermission;
+  /** Native runtime plugins, by builtin id (`"camera"`). */
+  plugins?: string[];
+  /** iOS usage texts by description name (`cameraUsageDescription`); `$(PRODUCT_NAME)` becomes the app name. */
+  usageDescriptions?: Record<string, string>;
+  infoPlist?: Record<string, AkanNativeValue>;
+  entitlements?: Record<string, AkanNativeValue>;
+  /** `uses-permission` names, without the `android.permission.` prefix. */
+  androidPermissions?: string[];
+  /** `uses-feature` names, declared as not required. */
+  androidFeatures?: string[];
 }
 
 /** Read live by the CLI at build time; it carries functions, so it stays out of the serializable config results. */
 export interface AkanPlugin {
   name: string;
-  /** Runtime npm packages this plugin needs; installed on demand by the CLI (e.g. firebase for push). */
-  runtimePackages?: (ctx: PluginRuntimeContext) => string[];
-  capacitor?: AkanPluginCapacitorConfig;
+  native?: AkanPluginNativeConfig;
   /** Build-time asset generation (e.g. `public/firebase-messaging-sw.js`). */
   syncAssets?: (ctx: AkanSyncContext) => Promise<void>;
 }

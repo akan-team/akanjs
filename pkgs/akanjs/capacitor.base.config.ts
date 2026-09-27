@@ -97,20 +97,7 @@ export const withBase = (
   const ip = getLocalIP();
   if (!appInfo) throw new Error("withBase requires apps/<app>/akan.app.json metadata.");
   const target = resolveTarget(appInfo, targetName);
-  const {
-    name: _name,
-    basePath: _basePath,
-    indexPath: _indexPath,
-    version: _version,
-    buildNum: _buildNum,
-    assets: _assets,
-    permissions: _permissions,
-    deepLinks: _deepLinks,
-    files: _files,
-    ...capacitorTarget
-  } = target;
   const baseConfig: CapacitorConfig = {
-    ...capacitorTarget,
     appId: target.appId,
     appName: target.appName,
     webDir: "dist",
@@ -127,13 +114,6 @@ export const withBase = (
           },
     plugins: {
       CapacitorCookies: { enabled: true },
-      ...target.plugins,
-    },
-    android: {
-      ...target.android,
-    },
-    ios: {
-      ...target.ios,
     },
   };
   return configImp(baseConfig, target);

@@ -237,7 +237,7 @@ export class AkanAppConfig implements AppConfigResult {
     // `akan build-ios` / `build-android` copy `dist/apps/<app>/csr/<target>.html` into the native project.
     if (!resolved.csr && this.hasMobileConfig)
       throw new Error(
-        `apps/${this.app.name}/akan.config.ts turns the CSR bundle off but declares mobile targets; the Capacitor build ships that bundle. Drop the mobile section or leave CSR on.`,
+        `apps/${this.app.name}/akan.config.ts turns the CSR bundle off but declares mobile targets; the mobile apps ship that bundle. Drop the mobile section or leave CSR on.`,
       );
     return resolved;
   }
@@ -247,10 +247,14 @@ export class AkanAppConfig implements AppConfigResult {
       indexPath: _indexPath,
       ...rawMobile
     } = (mobile ?? {}) as DeepPartial<AkanMobileConfig> & { indexPath?: unknown };
+    const configPath = `apps/${this.app.name}/akan.config.ts`;
+    AkanAppConfig.#assertMobileKeys(rawMobile, AkanAppConfig.#mobileKeys, "mobile", configPath);
     const appName = rawMobile.appName ?? this.app.name;
     const appId = rawMobile.appId ?? deriveDefaultAppId(this.baseDevEnv.repoName, this.app.name);
     const version = rawMobile.version ?? "0.0.1";
     const buildNum = rawMobile.buildNum ?? 1;
+    const files = AkanAppConfig.#resolveMobileFiles(rawMobile.files as AkanMobileConfig["files"], "mobile", configPath);
+    const native = rawMobile.native as AkanMobileConfig["native"];
     const defaultTargetName = this.#defaultMobileTargetName(rawTargets);
     const targetEntries = Object.entries(
       rawTargets ?? {
@@ -259,52 +263,114 @@ export class AkanAppConfig implements AppConfigResult {
     );
     const targets = Object.fromEntries(
       targetEntries.map(([name, rawTarget]) => {
-        const target = rawTarget as DeepPartial<AkanMobileTargetConfig>;
+        const target = (rawTarget ?? {}) as DeepPartial<AkanMobileTargetConfig>;
+        const where = `mobile.targets.${name}`;
+        AkanAppConfig.#assertMobileKeys(target, AkanAppConfig.#targetKeys, where, configPath);
         const fallbackBasePath = !rawTargets && this.basePaths.has(name) ? name : undefined;
         const basePath = (target.basePath ?? fallbackBasePath)?.replace(/^\/+|\/+$/g, "") || undefined;
         const indexPath = normalizeIndexPath(target.indexPath as string | undefined);
         const deepLinks = normalizeDeepLinks(target.deepLinks);
         if (basePath && !this.basePaths.has(basePath)) {
-          throw new Error(
-            `Mobile target '${name}' uses unknown basePath '${basePath}' in apps/${this.app.name}/akan.config.ts`,
-          );
+          throw new Error(`Mobile target '${name}' uses unknown basePath '${basePath}' in ${configPath}`);
         }
+        const targetFiles = AkanAppConfig.#resolveMobileFiles(
+          target.files as AkanMobileTargetConfig["files"],
+          where,
+          configPath,
+        );
+        const fileName = (target.fileName ?? rawMobile.fileName) as string | undefined;
         const resolved = {
-          ...rawMobile,
-          ...target,
           name,
           basePath,
           indexPath,
           deepLinks,
           appName: target.appName ?? appName,
           appId: target.appId ?? appId,
+          ...(fileName ? { fileName } : {}),
           version: target.version ?? version,
           buildNum: target.buildNum ?? buildNum,
-          plugins: {
-            ...rawMobile.plugins,
-            ...target.plugins,
-          },
-          android: {
-            ...rawMobile.android,
-            ...target.android,
-          },
-          ios: {
-            ...rawMobile.ios,
-            ...target.ios,
-          },
+          ...(target.assets ? { assets: target.assets as AkanMobileTargetConfig["assets"] } : {}),
+          ...(target.permissions ? { permissions: target.permissions as AkanMobileTargetConfig["permissions"] } : {}),
+          ...(files || targetFiles ? { files: { ...files, ...targetFiles } } : {}),
+          ...(native || target.native
+            ? { native: AkanAppConfig.#mergeNative(native, target.native as AkanMobileTargetConfig["native"]) }
+            : {}),
         } satisfies AkanMobileTargetConfig;
         return [name, resolved];
       }),
     );
     return {
-      ...rawMobile,
       appName,
       appId,
+      ...(rawMobile.fileName ? { fileName: rawMobile.fileName as string } : {}),
       version,
       buildNum,
+      ...(files ? { files } : {}),
+      ...(native ? { native } : {}),
       targets,
-      plugins: rawMobile.plugins,
-    } as AkanMobileConfig;
+    };
+  }
+  static readonly #mobileKeys = ["appName", "appId", "fileName", "version", "buildNum", "files", "native"];
+  static readonly #targetKeys = [
+    "basePath",
+    "indexPath",
+    "appName",
+    "appId",
+    "fileName",
+    "version",
+    "buildNum",
+    "assets",
+    "permissions",
+    "deepLinks",
+    "files",
+    "native",
+  ];
+  //* The Capacitor keys used to pass straight through; the native runtime takes typed ones, so a leftover is refused.
+  static #assertMobileKeys(section: object, known: string[], where: string, configPath: string) {
+    for (const key of Object.keys(section)) {
+      if (known.includes(key)) continue;
+      if (key === "plugins" || key === "ios" || key === "android")
+        throw new Error(
+          `${where}.${key} in ${configPath} is a Capacitor setting. The native runtime reads native.plugins, native.ios.{infoPlist,entitlements} and native.android.{manifest,application,activity,googleServices} instead.`,
+        );
+      throw new Error(`${where}.${key} in ${configPath} is not a mobile setting. Known: ${known.join(", ")}.`);
+    }
+  }
+  static readonly #fileTargetPattern = /^(?:ios\/.+|android\/res\/[^/]+\/[^/]+|android\/assets\/.+)$/;
+  static #resolveMobileFiles(files: AkanMobileTargetConfig["files"] | undefined, where: string, configPath: string) {
+    if (!files) return undefined;
+    for (const [to, from] of Object.entries(files)) {
+      if (typeof from !== "string")
+        throw new Error(
+          `${where}.files in ${configPath} maps where a file lands to its source now, e.g. { "android/res/raw/chime.mp3": "assets/chime.mp3" }. google-services.json goes to native.android.googleServices, and GoogleService-Info.plist is no longer needed.`,
+        );
+      if (!AkanAppConfig.#fileTargetPattern.test(to))
+        throw new Error(
+          `${where}.files["${to}"] in ${configPath} must land under ios/<path>, android/res/<type>/<file> or android/assets/<path>.`,
+        );
+    }
+    return files;
+  }
+  static #mergeNative(
+    base: AkanMobileTargetConfig["native"],
+    override: AkanMobileTargetConfig["native"],
+  ): NonNullable<AkanMobileTargetConfig["native"]> {
+    const plugins = [...new Set([...(base?.plugins ?? []), ...(override?.plugins ?? [])])];
+    const ios = { ...base?.ios, ...override?.ios };
+    const android: NonNullable<NonNullable<AkanMobileTargetConfig["native"]>["android"]> = {
+      ...base?.android,
+      ...override?.android,
+    };
+    for (const key of ["manifest", "application", "activity"] as const) {
+      const merged = [...(base?.android?.[key] ?? []), ...(override?.android?.[key] ?? [])];
+      if (merged.length) android[key] = merged;
+      else delete android[key];
+    }
+    return {
+      ...(plugins.length ? { plugins } : {}),
+      ...(Object.keys(ios).length ? { ios } : {}),
+      ...(Object.keys(android).length ? { android } : {}),
+    };
   }
   #defaultMobileTargetName(rawTargets: DeepPartial<AkanMobileConfig>["targets"] | undefined) {
     if (rawTargets && Object.keys(rawTargets).length > 0) return Object.keys(rawTargets)[0] as string;

@@ -12,13 +12,8 @@ const config: AppConfig = {
       default: {
         indexPath: "/explore",
         permissions: ["push"],
-        files: {
-          android: {
-            "app/google-services.json": "secrets/google-services.json",
-          },
-          ios: {
-            "App/App/GoogleService-Info.plist": "secrets/GoogleService-Info.plist",
-          },
+        native: {
+          android: { googleServices: "secrets/google-services.json" },
         },
         deepLinks: {
           schemes: ["minimal"],

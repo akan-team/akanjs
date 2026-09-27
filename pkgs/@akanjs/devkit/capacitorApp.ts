@@ -6,9 +6,9 @@ import { select } from "@inquirer/prompts";
 import { MobileProject } from "@trapezedev/project";
 import type { AndroidProject } from "@trapezedev/project/dist/android/project";
 import type { IosProject } from "@trapezedev/project/dist/ios/project";
-import type { AkanNativeContext, AkanPlugin } from "akanjs";
+import type { AkanPlugin } from "akanjs";
 import { capitalize, isRecord } from "akanjs/common";
-import type { AkanMobileTargetConfig, MobilePermission } from "./akanConfig";
+import type { AkanMobileTargetConfig } from "./akanConfig";
 import { type AppExecutor, CommandExecutionError } from "./executors";
 import { FileEditor } from "./fileEditor";
 import { resolveMobilePath, targetHtmlFilename } from "./mobile";
@@ -599,83 +599,28 @@ export function materializeCapacitorConfig(
   target: AkanMobileTargetConfig,
   { operation, localServerUrl, localIp }: MaterializeCapacitorConfigOptions,
 ): CapacitorConfig {
-  const {
-    name,
-    basePath: _basePath,
-    indexPath: _indexPath,
-    version: _version,
-    buildNum: _buildNum,
-    assets: _assets,
-    permissions: _permissions,
-    deepLinks: _deepLinks,
-    files: _files,
-    appId,
-    appName,
-    webDir: _webDir,
-    plugins,
-    server,
-    android,
-    ios,
-    cordova,
-    experimental,
-    ...capacitorConfig
-  } = target;
-  const serverConfig = isRecord(server) ? server : undefined;
-  const cordovaConfig = isRecord(cordova) ? cordova : undefined;
-  const experimentalConfig = isRecord(experimental) ? experimental : undefined;
-  const pluginsConfig = isRecord(plugins) ? plugins : {};
-  const keyboardPluginConfig = isRecord(pluginsConfig.Keyboard) ? pluginsConfig.Keyboard : {};
-  const pushNotificationsPluginConfig = isRecord(pluginsConfig.PushNotifications)
-    ? pluginsConfig.PushNotifications
-    : {};
+  const { name, appId, appName } = target;
   const usesPushNotifications = target.permissions?.includes("push") ?? false;
   const config: CapacitorConfig = {
-    ...capacitorConfig,
     appId,
     appName,
     webDir: path.posix.join(".akan", "mobile", name, "www"),
     plugins: {
       CapacitorCookies: { enabled: true },
-      ...pluginsConfig,
-      ...(usesPushNotifications || isRecord(pluginsConfig.PushNotifications)
-        ? {
-            PushNotifications: {
-              ...(usesPushNotifications ? { presentationOptions: ["badge", "sound", "alert"] } : {}),
-              ...pushNotificationsPluginConfig,
-            },
-          }
-        : {}),
-      Keyboard: {
-        resize: "none",
-        ...keyboardPluginConfig,
-      },
+      ...(usesPushNotifications ? { PushNotifications: { presentationOptions: ["badge", "sound", "alert"] } } : {}),
+      Keyboard: { resize: "none" },
     },
-    android: {
-      ...(isRecord(android) ? android : {}),
-      path: "android",
-    },
-    ios: {
-      ...(isRecord(ios) ? ios : {}),
-      path: "ios",
-    },
+    android: { path: "android" },
+    ios: { path: "ios" },
   };
   if (operation === "local") {
     if (!localServerUrl) throw new Error(`Local server URL is required for mobile target '${name}'.`);
     config.server = {
-      ...serverConfig,
       androidScheme: "http",
       url: localServerUrl,
       cleartext: true,
-      allowNavigation: mergeAllowNavigation(serverConfig?.allowNavigation, localIp),
+      allowNavigation: mergeAllowNavigation(undefined, localIp),
     };
-  } else if (serverConfig && Object.keys(serverConfig).length > 0) {
-    config.server = serverConfig as never;
-  }
-  if (cordovaConfig && Object.keys(cordovaConfig).length > 0) {
-    config.cordova = cordovaConfig as never;
-  }
-  if (experimentalConfig && Object.keys(experimentalConfig).length > 0) {
-    config.experimental = experimentalConfig as never;
   }
   assertJsonSerializable(config);
   return config;
@@ -869,7 +814,7 @@ export class CapacitorApp {
     const command = buildIosNativeRunCommand({
       appRoot: this.app.cwdPath,
       device: runTarget,
-      scheme: isRecord(this.target.ios) && typeof this.target.ios.scheme === "string" ? this.target.ios.scheme : "App",
+      scheme: "App",
       configuration: operation === "release" ? "Release" : "Debug",
     });
     const xcodebuildArgs = noAllowProvisioningUpdates
@@ -1148,13 +1093,23 @@ export class CapacitorApp {
       if (source)
         await cp(path.join(this.app.cwdPath, source), path.join(this.targetAssetRoot, `${name}.png`), { force: true });
   }
+  //* The files' logical places, translated into the committed Capacitor projects until they are removed.
   async #prepareExternalFiles(platform: "ios" | "android") {
-    const files = this.target.files?.[platform];
-    if (!files) return;
-    const platformRoot = path.join(this.app.cwdPath, platform === "ios" ? this.iosRootPath : this.androidRootPath);
+    const placed: [string, string][] = Object.entries(this.target.files ?? {}).flatMap(
+      ([to, from]): [string, string][] => {
+        if (platform === "ios" && to.startsWith("ios/"))
+          return [[path.join(this.iosRootPath, "App", "App", to.slice("ios/".length)), from]];
+        if (platform === "android" && to.startsWith("android/"))
+          return [[path.join(this.androidRootPath, "app", "src", "main", to.slice("android/".length)), from]];
+        return [];
+      },
+    );
+    const googleServices = this.target.native?.android?.googleServices;
+    if (platform === "android" && googleServices)
+      placed.push([path.join(this.androidRootPath, "app", "google-services.json"), googleServices]);
     await Promise.all(
-      Object.entries(files).map(async ([to, from]) => {
-        const targetPath = path.join(platformRoot, to);
+      placed.map(async ([to, from]) => {
+        const targetPath = path.join(this.app.cwdPath, to);
         await mkdir(path.dirname(targetPath), { recursive: true });
         await cp(path.join(this.app.cwdPath, from), targetPath, { force: true });
       }),
@@ -1199,42 +1154,27 @@ export class CapacitorApp {
     await writeFile(variablesGradlePath, updated);
     this.app.verbose(`Raised Android minSdkVersion to ${ANDROID_MIN_SDK_VERSION} in variables.gradle`);
   }
-  async #applyPermissions({ operation, env }: Pick<RunConfig, "operation" | "env">) {
+  async #applyPermissions({ operation }: Pick<RunConfig, "operation" | "env">) {
     const plugins = await this.app.collectPlugins();
-    const nativePlugins = new Map<MobilePermission, AkanPlugin[]>();
-    for (const plugin of plugins) {
-      const permission = plugin.capacitor?.permission;
-      if (!permission || !plugin.capacitor?.configureNative) continue;
-      const claimants = nativePlugins.get(permission) ?? [];
-      claimants.push(plugin);
-      nativePlugins.set(permission, claimants);
-    }
     for (const permission of this.target.permissions ?? []) {
-      const claimants = nativePlugins.get(permission);
-      if (claimants?.length) {
-        const ctx = this.#makeNativeContext({ operation, env });
-        for (const plugin of claimants) await plugin.capacitor?.configureNative?.(ctx);
-        continue;
-      }
       if (permission === "camera") await this.addCamera();
       else if (permission === "contacts") await this.addContact();
       else if (permission === "location") await this.addLocation();
+      else if (permission === "push") {
+        await this.#updateIosInfoPlist({ UIBackgroundModes: ["remote-notification"] });
+        this.#addIosEntitlements({ "aps-environment": operation === "release" ? "production" : "development" });
+        this.#setPermissionsInAndroid(["POST_NOTIFICATIONS"]);
+      }
+      for (const native of plugins.flatMap((plugin: AkanPlugin) =>
+        plugin.native?.permission === permission ? [plugin.native] : [],
+      )) {
+        if (native.usageDescriptions) await this.#setPermissionInIos(native.usageDescriptions);
+        if (native.infoPlist) await this.#updateIosInfoPlist(native.infoPlist);
+        if (native.entitlements) this.#addIosEntitlements(native.entitlements as Record<string, string | string[]>);
+        if (native.androidPermissions) this.#setPermissionsInAndroid(native.androidPermissions);
+        if (native.androidFeatures) this.#setFeaturesInAndroid(native.androidFeatures);
+      }
     }
-  }
-  #makeNativeContext({ operation, env }: Pick<RunConfig, "operation" | "env">): AkanNativeContext {
-    return {
-      appPath: this.app.cwdPath,
-      executor: this.app,
-      target: this.target,
-      operation,
-      env,
-      setIosUsageDescriptions: (descriptions) => this.#setPermissionInIos(descriptions),
-      updateIosInfoPlist: (values) => this.#updateIosInfoPlist(values),
-      addIosEntitlements: (entitlements) => this.#addIosEntitlements(entitlements),
-      editIosAppDelegate: (transform) => this.#editIosAppDelegate(transform),
-      addAndroidPermissions: (permissions) => this.#setPermissionsInAndroid(permissions),
-      addAndroidFeatures: (features) => this.#setFeaturesInAndroid(features),
-    };
   }
   async #applyDeepLinks(platform: "ios" | "android", { operation, env }: Pick<RunConfig, "operation" | "env">) {
     const deepLinks = this.target.deepLinks;
@@ -1364,15 +1304,6 @@ export class CapacitorApp {
   }
   #addIosEntitlements(entitlements: Record<string, string | string[]>) {
     Object.assign(this.#iosEntitlements, entitlements);
-  }
-  //* Feature-specific native wiring (e.g. Firebase) lives in plugins, not the framework.
-  async #editIosAppDelegate(transform: (content: string) => string) {
-    const appDelegatePath = path.join(this.app.cwdPath, this.iosProjectPath, "App/AppDelegate.swift");
-    if (!(await Bun.file(appDelegatePath).exists())) return;
-    const editor = await FileEditor.create(appDelegatePath);
-    const content = editor.getContent();
-    const next = transform(content);
-    if (next !== content) await editor.setContent(next).save();
   }
   async #updateIosInfoPlist(values: Record<string, unknown>) {
     await Promise.all(

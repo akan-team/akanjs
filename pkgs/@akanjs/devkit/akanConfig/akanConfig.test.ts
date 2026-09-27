@@ -175,7 +175,7 @@ describe("AkanAppConfig", () => {
   test("refuses a csr-less build that ships a mobile app", () => {
     expect(
       () => new AkanAppConfig(app, [], packageJson, { web: { csr: false }, mobile: { appName: "portal" } }, baseDevEnv),
-    ).toThrow("the Capacitor build ships that bundle");
+    ).toThrow("the mobile apps ship that bundle");
   });
 
   test("installs only ca-certificates and tzdata in the default image", () => {
@@ -457,6 +457,63 @@ describe("AkanAppConfig", () => {
           baseDevEnv,
         ),
     ).toThrow("unknown basePath");
+  });
+
+  test("merges the mobile-wide files and native settings into each target, the target winning", () => {
+    const config = new AkanAppConfig(
+      app,
+      [],
+      packageJson,
+      {
+        mobile: {
+          fileName: "portal",
+          files: { "android/res/raw/chime.mp3": "assets/chime.mp3" },
+          native: {
+            plugins: ["iap"],
+            ios: { infoPlist: { ITSAppUsesNonExemptEncryption: false } },
+            android: { manifest: ["<queries/>"], googleServices: "secrets/google-services.json" },
+          },
+          targets: {
+            default: {
+              files: { "ios/sound.caf": "assets/sound.caf" },
+              native: { plugins: ["iap", "share"], android: { manifest: ["<uses-feature/>"] } },
+            },
+          },
+        },
+      },
+      baseDevEnv,
+    );
+
+    expect(config.mobile.targets.default).toMatchObject({
+      fileName: "portal",
+      files: { "android/res/raw/chime.mp3": "assets/chime.mp3", "ios/sound.caf": "assets/sound.caf" },
+      native: {
+        plugins: ["iap", "share"],
+        ios: { infoPlist: { ITSAppUsesNonExemptEncryption: false } },
+        android: { manifest: ["<queries/>", "<uses-feature/>"], googleServices: "secrets/google-services.json" },
+      },
+    });
+  });
+
+  test("refuses the Capacitor-era keys with the setting that replaces them", () => {
+    const make = (mobile: Record<string, unknown>) => () =>
+      new AkanAppConfig(app, [], packageJson, { mobile } as never, baseDevEnv);
+
+    expect(make({ plugins: { Keyboard: { resize: "none" } } })).toThrow(
+      "mobile.plugins in apps/portal/akan.config.ts is a Capacitor setting",
+    );
+    expect(make({ targets: { default: { ios: { scheme: "App" } } } })).toThrow(
+      "mobile.targets.default.ios in apps/portal/akan.config.ts is a Capacitor setting",
+    );
+    expect(make({ targets: { default: { files: { android: { "app/google-services.json": "x.json" } } } } })).toThrow(
+      "google-services.json goes to native.android.googleServices",
+    );
+    expect(make({ files: { "App/App/Info.plist": "x.plist" } })).toThrow(
+      "must land under ios/<path>, android/res/<type>/<file> or android/assets/<path>",
+    );
+    expect(make({ server: { url: "http://x" } })).toThrow(
+      "mobile.server in apps/portal/akan.config.ts is not a mobile setting",
+    );
   });
 
   test("derives a repo-scoped default appId and records explicit-mobile intent", () => {
