@@ -45,12 +45,12 @@ export default page().render(() => {
     {
       name: "webkit/",
       desc: l.trans({
-        en: "Touches `window`, `navigator` or Capacitor, or is a React hook.",
-        ko: "`window`, `navigator`, Capacitor를 건드리거나 React hook인 코드입니다.",
+        en: "Touches `window`, `navigator` or the native bridge (`akanjs/client/native`), or is a React hook.",
+        ko: "`window`, `navigator`, 네이티브 브리지(`akanjs/client/native`)를 건드리거나 React hook인 코드입니다.",
       }),
       example: l.trans({
-        en: "libs/util/webkit/useGeoLocation.tsx\n// use<Thing>.tsx — .tsx even with no JSX",
-        ko: "libs/util/webkit/useGeoLocation.tsx\n// use<Thing>.tsx — JSX가 없어도 .tsx",
+        en: "libs/util/webkit/useSpeech.tsx\n// use<Thing>.tsx — .tsx even with no JSX",
+        ko: "libs/util/webkit/useSpeech.tsx\n// use<Thing>.tsx — JSX가 없어도 .tsx",
       }),
     },
     {
@@ -158,7 +158,7 @@ export default page().render(() => {
         en: "A React hook. The file is `.tsx` even when it holds no JSX.",
         ko: "React hook입니다. JSX가 없어도 확장자는 `.tsx`입니다.",
       }),
-      example: "libs/util/webkit/useGeoLocation.tsx",
+      example: "libs/util/webkit/useSpeech.tsx",
     },
     {
       name: "<camelName>.ts",
@@ -638,18 +638,18 @@ export const useViewportWidth = () => {
                   <span>
                     <strong>Check the hooks that already exist.</strong> <code>akanjs/webkit</code> ships{" "}
                     <code>useDebounce</code>, <code>useThrottle</code>, <code>useInterval</code> and{" "}
-                    <code>useEscapeKey</code>. <code>@libs/util/webkit</code> wraps Capacitor and browser APIs in{" "}
-                    <code>useCamera</code>, <code>useContact</code>, <code>useGeoLocation</code>,{" "}
-                    <code>usePushNotification</code>, <code>useSpeech</code> and <code>useCodepush</code>.
+                    <code>useEscapeKey</code>, and wraps the native runtime and browser APIs in <code>useCamera</code>{" "}
+                    and <code>useGeoLocation</code>. <code>@libs/util/webkit</code> adds{" "}
+                    <code>usePushNotification</code> and <code>useSpeech</code>.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>이미 있는 hook부터 확인하세요.</strong> <code>akanjs/webkit</code>에는{" "}
                     <code>useDebounce</code>, <code>useThrottle</code>, <code>useInterval</code>,{" "}
-                    <code>useEscapeKey</code>가 있습니다. <code>@libs/util/webkit</code>은 <code>useCamera</code>,{" "}
-                    <code>useContact</code>, <code>useGeoLocation</code>, <code>usePushNotification</code>,{" "}
-                    <code>useSpeech</code>, <code>useCodepush</code>로 Capacitor와 브라우저 API를 감싸 둡니다.
+                    <code>useEscapeKey</code>가 있고, <code>useCamera</code>, <code>useGeoLocation</code>으로 네이티브
+                    런타임과 브라우저 API를 감싸 둡니다. <code>@libs/util/webkit</code>에는{" "}
+                    <code>usePushNotification</code>, <code>useSpeech</code>가 더 있습니다.
                   </span>
                 ),
               })}

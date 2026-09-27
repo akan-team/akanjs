@@ -128,10 +128,8 @@ export default page().render(() => {
                       <BiLinkExternal /> React
                     </button>
                   </Link>
-                  <Link href="https://capacitorjs.com/" target="_blank">
-                    <button className={buttonRecipe({ variant: "outline", size: "xs" })}>
-                      <BiLinkExternal /> Capacitor
-                    </button>
+                  <Link href="/docs/arch/mobile">
+                    <button className={buttonRecipe({ variant: "outline", size: "xs" })}>@akanjs/native</button>
                   </Link>
                   <Link href="https://tailwindcss.com/" target="_blank">
                     <button className={buttonRecipe({ variant: "outline", size: "xs" })}>

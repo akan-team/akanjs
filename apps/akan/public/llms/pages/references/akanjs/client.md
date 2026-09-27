@@ -276,7 +276,7 @@ Reads a request header on the server. Empty in the browser.
 
 The app's JWT from the cookie jar.
 
-The JWT from client storage: localStorage on the web, Capacitor Preferences in the app.
+The JWT from client storage: localStorage on the web, the native runtime's secure storage (iOS Keychain, Android Keystore) in the app.
 
 The cookie name: `jwt:<appName>`.
 

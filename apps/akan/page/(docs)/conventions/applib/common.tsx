@@ -18,10 +18,10 @@ export default page().render(() => {
     {
       name: "webkit/",
       desc: l.trans({
-        en: "Touches window, navigator or Capacitor, or is a React hook.",
-        ko: "window, navigator, Capacitor를 건드리거나 React hook입니다.",
+        en: "Touches window, navigator or the native bridge (akanjs/client/native), or is a React hook.",
+        ko: "window, navigator, 네이티브 브리지(akanjs/client/native)를 건드리거나 React hook입니다.",
       }),
-      example: "libs/util/webkit/useGeoLocation.tsx\n// use<Thing>.tsx — .tsx even with no JSX",
+      example: "libs/util/webkit/useSpeech.tsx\n// use<Thing>.tsx — .tsx even with no JSX",
     },
     {
       name: "srvkit/",
@@ -177,7 +177,7 @@ export class RichEditor {
           marks: inWebkit,
         },
         {
-          name: "Capacitor · React hook",
+          name: "akanjs/client/native · React hook",
           desc: l.trans({
             en: "The native-app bridge is browser-only, and a React hook needs a client component.",
             ko: "네이티브 앱 브리지는 브라우저에만 있고, React hook은 클라이언트 컴포넌트에서만 씁니다.",

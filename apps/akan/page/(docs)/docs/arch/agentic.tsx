@@ -220,14 +220,16 @@ export default page().render(() => {
     l.trans({
       en: (
         <>
-          <strong>The engine is useSpeech</strong> from <code>@libs/util/webkit</code>: the browser's own recognition on
-          the web, and Capacitor plugins in a WebView, which has neither.
+          <strong>The engine is useSpeech</strong> from <code>@libs/util/webkit</code>: the browser's own recognition
+          and synthesis. An app's WebView has neither on Android or iOS and <code>@akanjs/native</code> ships no speech
+          plugin yet, so the chat draws no microphone there.
         </>
       ),
       ko: (
         <>
-          <strong>엔진은 useSpeech입니다.</strong> <code>@libs/util/webkit</code>에 있고, 웹에서는 브라우저 내장 인식을,
-          둘 다 없는 WebView에서는 Capacitor 플러그인을 씁니다.
+          <strong>엔진은 useSpeech입니다.</strong> <code>@libs/util/webkit</code>에 있고 브라우저 내장 인식과 합성을
+          씁니다. Android·iOS 앱의 WebView에는 둘 다 없고 <code>@akanjs/native</code>에는 아직 음성 플러그인이 없으므로,
+          앱에서는 채팅에 마이크가 그려지지 않습니다.
         </>
       ),
     }),

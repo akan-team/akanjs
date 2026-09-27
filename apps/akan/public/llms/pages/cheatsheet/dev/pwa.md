@@ -113,7 +113,7 @@ How one app serves several services under separate page folders.
 
 Mobile Setup
 
-Wrap the same app as a native iOS and Android app with Capacitor.
+Build the same app as a native iOS and Android app with the @akanjs/native runtime.
 
 A PWA (Progressive Web App) runs in the browser but can be installed and launched like an app. The browser adds the icon, the app window without a toolbar, and the install prompt.
 

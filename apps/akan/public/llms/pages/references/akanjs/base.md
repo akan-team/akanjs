@@ -123,7 +123,7 @@ Who follows it
 
 The server's routes, and every page the server renders.
 
-A prebuilt CSR shell and a Capacitor app, which no server renders.
+A prebuilt CSR shell and a native app bundle, which no server renders.
 
 (nothing set)
 

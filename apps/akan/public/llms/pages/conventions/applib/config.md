@@ -45,7 +45,7 @@ Which libraries' page folders this app serves as its own routes.
 
 Mobile, data and env
 
-The native app's identity and one target per Capacitor package.
+The native app's identity and one target per native package.
 
 The database modes the build can run in; a deployment picks one with `AKAN_DATABASE_MODE`.
 
@@ -71,7 +71,7 @@ Signal endpoints and the websocket. Always served; `web` does not switch it.
 
 Server-rendered pages: the route renderer, its pages and client bundles, and the RSC worker.
 
-The single-file SPA shell that the Capacitor mobile build ships.
+The single-file SPA shell that the native mobile build ships.
 
 What each value builds
 

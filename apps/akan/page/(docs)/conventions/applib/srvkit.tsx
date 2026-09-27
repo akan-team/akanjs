@@ -18,10 +18,10 @@ export default page().render(() => {
     {
       name: "webkit/",
       desc: l.trans({
-        en: "Touches window, navigator or Capacitor, or is a React hook.",
-        ko: "window, navigator, Capacitor를 건드리거나 React hook입니다.",
+        en: "Touches window, navigator or the native bridge (akanjs/client/native), or is a React hook.",
+        ko: "window, navigator, 네이티브 브리지(akanjs/client/native)를 건드리거나 React hook입니다.",
       }),
-      example: "libs/util/webkit/useGeoLocation.tsx\n// use<Thing>.tsx — .tsx even with no JSX",
+      example: "libs/util/webkit/useSpeech.tsx\n// use<Thing>.tsx — .tsx even with no JSX",
     },
     {
       name: "srvkit/",

@@ -328,8 +328,8 @@ export default page().render(() => {
       href: "/cheatsheet/mobile/setup",
       title: l.trans({ en: "Mobile Setup", ko: "모바일 설정" }),
       desc: l.trans({
-        en: "Wrap the same app as a native iOS and Android app with Capacitor.",
-        ko: "같은 앱을 Capacitor로 감싸 iOS·Android 네이티브 앱으로 만듭니다.",
+        en: "Build the same app as a native iOS and Android app with the @akanjs/native runtime.",
+        ko: "같은 앱을 @akanjs/native 런타임으로 iOS·Android 네이티브 앱으로 만듭니다.",
       }),
     },
   ];

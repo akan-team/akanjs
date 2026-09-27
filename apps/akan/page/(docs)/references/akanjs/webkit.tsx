@@ -54,11 +54,11 @@ export default page().render(() => {
       }),
     },
     {
-      name: ["useCamera", "useContact", "useGeoLocation"],
-      href: ["#useCamera", "#useContact", "#useGeoLocation"],
+      name: ["useCamera", "useGeoLocation"],
+      href: ["#useCamera", "#useGeoLocation"],
       desc: l.trans({
-        en: "Camera, contacts and location through Capacitor plugins, permission prompts included.",
-        ko: "Capacitor 플러그인으로 카메라, 연락처, 위치를 씁니다. 권한 요청까지 처리합니다.",
+        en: "Camera and location through the native runtime's plugins, with a browser fallback and the permission prompts.",
+        ko: "네이티브 런타임의 플러그인으로 카메라와 위치를 씁니다. 브라우저 대체 경로와 권한 요청까지 처리합니다.",
       }),
     },
     {
@@ -67,6 +67,14 @@ export default page().render(() => {
       desc: l.trans({
         en: "Not in this module: the push hook lives in `@libs/util/webkit`.",
         ko: "이 모듈에는 없습니다. 푸시 hook은 `@libs/util/webkit`에 있습니다.",
+      }),
+    },
+    {
+      name: "usePurchase",
+      href: "#usePurchase",
+      desc: l.trans({
+        en: "In-app purchase on the native iap plugin, verified by your server. Imported from `akanjs/webkit/usePurchase`.",
+        ko: "네이티브 iap 플러그인으로 인앱 결제를 하고, 서버가 검증합니다. `akanjs/webkit/usePurchase`에서 가져옵니다.",
       }),
     },
     {
@@ -107,13 +115,6 @@ export default page().render(() => {
       desc: l.trans({
         en: "Show a pager and on-screen items to the in-page agent. `Load.Units` and `Load.View` call them.",
         ko: "페이지 넘김과 화면 속 항목을 인페이지 에이전트에게 알립니다. `Load.Units`와 `Load.View`가 이미 부릅니다.",
-      }),
-    },
-    {
-      name: "useCodepush({ serverUrl })",
-      desc: l.trans({
-        en: "Asks a release server for a newer web bundle and applies it with Capacitor Updater.",
-        ko: "릴리스 서버에 새 웹 번들이 있는지 묻고, Capacitor Updater로 받아 적용합니다.",
       }),
     },
     {
@@ -353,29 +354,29 @@ export default page().render(() => {
     {
       name: 'getPhoto(src = "prompt")',
       desc: l.trans({
-        en: 'Takes or picks one photo as a data URL. `"prompt"` lets the user choose; cancel returns `undefined`.',
-        ko: '사진 한 장을 찍거나 골라 data URL로 돌려줍니다. `"prompt"`는 사용자가 고르고, 취소하면 `undefined`입니다.',
+        en: 'Takes or picks one photo as `{ dataUrl }`, an upright JPEG. `"prompt"` shows a camera-or-library sheet in the native app; cancel returns `undefined`.',
+        ko: '사진 한 장을 찍거나 골라 똑바로 선 JPEG `{ dataUrl }`로 돌려줍니다. `"prompt"`는 네이티브 앱에서 카메라·앨범 선택 시트를 띄우고, 취소하면 `undefined`입니다.',
       }),
     },
     {
-      name: "pickImage()",
+      name: "pickImage({ limit })",
       desc: l.trans({
-        en: "Picks several images from the photo library.",
-        ko: "앨범에서 여러 장을 고릅니다.",
+        en: "Picks several images from the library, each as `{ dataUrl }`.",
+        ko: "앨범에서 여러 장을 골라 각각 `{ dataUrl }`로 돌려줍니다.",
       }),
     },
     {
       name: "permissions",
       desc: l.trans({
-        en: '`{ camera, photos }`. Read on mount on a mobile device, `"prompt"` until then.',
-        ko: '`{ camera, photos }` 권한 상태입니다. 모바일 기기에서 마운트할 때 읽고, 그 전에는 `"prompt"`입니다.',
+        en: '`{ camera }`. Read on mount in the native app, `"prompt"` until then.',
+        ko: '`{ camera }` 권한 상태입니다. 네이티브 앱에서 마운트할 때 읽고, 그 전에는 `"prompt"`입니다.',
       }),
     },
     {
-      name: "checkPermission(type)",
+      name: "checkPermission()",
       desc: l.trans({
-        en: '`"photos" | "camera" | "all"`. Asks when unasked, opens app settings when denied.',
-        ko: '`"photos" | "camera" | "all"`입니다. 아직 묻지 않았으면 요청하고, 거부됐으면 앱 설정을 엽니다.',
+        en: "Asks for the camera, and opens the app settings when it is denied.",
+        ko: "카메라 권한을 요청하고, 거부됐으면 앱 설정을 엽니다.",
       }),
     },
   ];
@@ -392,43 +393,19 @@ export default page().render(() => {
     },
   ];
 
-  const contactRows = [
-    {
-      name: "getContacts()",
-      desc: l.trans({
-        en: "Checks the permission, then returns the contacts with names and phone numbers.",
-        ko: "권한을 확인한 뒤, 이름과 전화번호가 담긴 연락처 목록을 돌려줍니다.",
-      }),
-    },
-    {
-      name: "permissions",
-      desc: l.trans({
-        en: '`{ contacts }`. Read on mount in the native app, `"prompt"` until then.',
-        ko: '`{ contacts }` 권한 상태입니다. 네이티브 앱에서 마운트할 때 읽고, 그 전에는 `"prompt"`입니다.',
-      }),
-    },
-    {
-      name: "checkPermission()",
-      desc: l.trans({
-        en: "Asks when unasked, opens app settings when denied.",
-        ko: "아직 묻지 않았으면 요청하고, 거부됐으면 앱 설정을 엽니다.",
-      }),
-    },
-  ];
-
   const geoRows = [
     {
-      name: "getPosition()",
+      name: "getPosition({ enableHighAccuracy })",
       desc: l.trans({
-        en: "Returns the current position. If a permission is denied, opens settings and returns `undefined`.",
-        ko: "현재 위치를 돌려줍니다. 권한이 하나라도 거부되면 앱 설정을 열고 `undefined`를 돌려줍니다.",
+        en: "Returns a `Position`. When the permission is denied, opens the settings and returns `undefined`.",
+        ko: "`Position`을 돌려줍니다. 권한이 거부되면 앱 설정을 열고 `undefined`를 돌려줍니다.",
       }),
     },
     {
       name: "checkPermission()",
       desc: l.trans({
-        en: "Requests permission and returns `{ geolocation, coarseLocation }`.",
-        ko: "권한을 요청하고 `{ geolocation, coarseLocation }`을 돌려줍니다.",
+        en: "Requests permission and returns `{ location, precise }`.",
+        ko: "권한을 요청하고 `{ location, precise }`를 돌려줍니다.",
       }),
     },
   ];
@@ -437,15 +414,15 @@ export default page().render(() => {
     {
       name: "register()",
       desc: l.trans({
-        en: "Asks for permission when needed and returns a `PushToken`, or `undefined`.",
-        ko: "필요하면 권한을 요청하고 `PushToken`을 돌려줍니다. 받지 못하면 `undefined`입니다.",
+        en: "Asks for permission, then returns a `PushToken`, or `undefined` when refused or unsupported.",
+        ko: "권한을 요청한 뒤 `PushToken`을 돌려줍니다. 거부되거나 지원하지 않으면 `undefined`입니다.",
       }),
     },
     {
       name: "getToken()",
       desc: l.trans({
-        en: "Returns the current token without asking for permission.",
-        ko: "권한을 묻지 않고 현재 토큰을 돌려줍니다.",
+        en: "Returns the token without asking. Registering shows no prompt, so check the permission first.",
+        ko: "묻지 않고 토큰을 돌려줍니다. 등록 자체는 창을 띄우지 않으므로 먼저 권한을 확인합니다.",
       }),
     },
     {
@@ -463,10 +440,94 @@ export default page().render(() => {
       }),
     },
     {
+      name: "onTokenChange(listener)",
+      desc: l.trans({
+        en: "Hands each token a native shell rotates to the listener. Returns the unsubscribe.",
+        ko: "네이티브 셸이 바꾼 토큰을 리스너에 넘깁니다. 해제 함수를 돌려줍니다.",
+      }),
+    },
+    {
       name: "initClickBridge()",
       desc: l.trans({
-        en: "Routes notification clicks. The hook already runs it on mount.",
-        ko: "알림 클릭을 앱 안 이동으로 잇습니다. 훅이 마운트될 때 이미 실행합니다.",
+        en: "Routes the browser's notification clicks. The hook runs it on mount; native taps need nothing.",
+        ko: "브라우저의 알림 클릭을 앱 안 이동으로 잇습니다. 훅이 마운트될 때 실행하며, 네이티브 탭은 할 일이 없습니다.",
+      }),
+    },
+  ];
+
+  const purchaseOptionRows = [
+    {
+      key: "platform",
+      type: '"ios" | "android" | "all"',
+      tags: [required],
+      desc: l.trans({
+        en: "The stores the app sells in. A native shell on another platform shows no products.",
+        ko: "앱이 판매하는 스토어입니다. 다른 플랫폼의 네이티브 셸에서는 상품을 보여 주지 않습니다.",
+      }),
+    },
+    {
+      key: "productInfo",
+      type: '{ id, type: "consumable" | "nonConsumable" | "subscription" }[]',
+      tags: [required],
+      desc: l.trans({
+        en: "The store product ids and what each one is. A product not listed is finished without being consumed.",
+        ko: "스토어 상품 id와 그 종류입니다. 목록에 없는 상품은 소비하지 않고 완료만 합니다.",
+      }),
+    },
+    {
+      key: "url",
+      type: "string",
+      tags: [required],
+      desc: l.trans({
+        en: "The verification server's origin. It answers `POST <url>/billing/verifyBilling`.",
+        ko: "검증 서버의 origin입니다. `POST <url>/billing/verifyBilling`에 답해야 합니다.",
+      }),
+    },
+    {
+      key: "onPay",
+      type: "(transaction, verified) => void | Promise<void>",
+      desc: l.trans({
+        en: "Credits a consumable or non-consumable. `verified` is the server's JSON answer.",
+        ko: "소비성·비소비성 상품을 지급합니다. `verified`는 서버가 돌려준 JSON입니다.",
+      }),
+    },
+    {
+      key: "onSubscribe",
+      type: "(transaction, verified) => void | Promise<void>",
+      desc: l.trans({
+        en: "The same, for a subscription.",
+        ko: "구독 상품에 대해 같은 일을 합니다.",
+      }),
+    },
+  ];
+
+  const purchaseRows = [
+    {
+      name: "products",
+      desc: l.trans({
+        en: "The store's `IapProduct`s for `productInfo`: title, `displayPrice`, price, currency and offers.",
+        ko: "`productInfo`에 대한 스토어의 `IapProduct` 목록입니다. 제목, `displayPrice`, 가격, 통화, 할인 조건이 들어 있습니다.",
+      }),
+    },
+    {
+      name: "isLoading",
+      desc: l.trans({
+        en: "`true` until the products and the unfinished transactions are loaded.",
+        ko: "상품과 완료되지 않은 거래를 불러올 때까지 `true`입니다.",
+      }),
+    },
+    {
+      name: "purchaseProduct(product, offerToken?)",
+      desc: l.trans({
+        en: 'Opens the store sheet and answers `"purchased"`, `"pending"`, `"cancelled"` or `"unverified"`.',
+        ko: '스토어 결제 창을 열고 `"purchased"`, `"pending"`, `"cancelled"`, `"unverified"` 중 하나로 답합니다.',
+      }),
+    },
+    {
+      name: "restorePurchases()",
+      desc: l.trans({
+        en: "Returns what the person owns now, finishing an Android purchase still unacknowledged on the way.",
+        ko: "지금 가진 구매 목록을 돌려주고, 아직 확인되지 않은 Android 구매는 그 김에 검증하고 완료합니다.",
       }),
     },
   ];
@@ -1186,8 +1247,8 @@ export default StorageUsage;`}
         <Docs.Description>
           <div>
             {l.trans({
-              en: "`useCamera` takes a photo or picks one from the library through the Capacitor Camera plugin. It asks for permission first, and opens the app settings when the user has denied it.",
-              ko: "`useCamera`는 Capacitor Camera 플러그인으로 사진을 찍거나 앨범에서 고릅니다. 먼저 권한을 요청하고, 사용자가 거부한 상태면 앱 설정 화면을 엽니다.",
+              en: "`useCamera` takes a photo or picks one from the library through the native runtime's camera plugin. In the native app it asks for the camera first and opens the app settings when the user has denied it; in a browser it picks from files.",
+              ko: "`useCamera`는 네이티브 런타임의 camera 플러그인으로 사진을 찍거나 앨범에서 고릅니다. 네이티브 앱에서는 먼저 카메라 권한을 요청하고, 거부된 상태면 앱 설정 화면을 엽니다. 브라우저에서는 파일에서 고릅니다.",
             })}
           </div>
           <code className={chip}>
@@ -1243,16 +1304,14 @@ export const TakePhoto = ({ className }: TakePhotoProps) => {
               {l.trans({
                 en: (
                   <span>
-                    <strong>Declare the plugin and the permission.</strong> Add <code>@capacitor/camera</code> to the
-                    app&apos;s <code>package.json</code> and <code>"camera"</code> to <code>permissions</code> in the
-                    mobile config.
+                    <strong>Declare the permission.</strong> <code>"camera"</code> in the mobile target&apos;s{" "}
+                    <code>permissions</code> adds the camera plugin and its usage texts. There is no package to install.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>플러그인과 권한을 선언합니다.</strong> 앱 <code>package.json</code>에{" "}
-                    <code>@capacitor/camera</code>를, mobile 설정의 <code>permissions</code>에 <code>"camera"</code>를
-                    넣습니다.
+                    <strong>권한을 선언합니다.</strong> 모바일 타깃의 <code>permissions</code>에 <code>"camera"</code>를
+                    넣으면 camera 플러그인과 사용 목적 문구가 들어갑니다. 설치할 패키지는 없습니다.
                   </span>
                 ),
               })}
@@ -1261,144 +1320,47 @@ export const TakePhoto = ({ className }: TakePhotoProps) => {
               {l.trans({
                 en: (
                   <span>
-                    <strong>
-                      <code>@libs/util/webkit</code> has a hook of the same name.
-                    </strong>{" "}
-                    The <code>promptLabels</code> option exists only in this one.
+                    <strong>The browser picks from files.</strong> Outside the native app every source becomes the
+                    library, so the same call works on the web without a check of your own.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>
-                      <code>@libs/util/webkit</code>에도 같은 이름의 hook이 있습니다.
-                    </strong>{" "}
-                    <code>promptLabels</code> 옵션은 이쪽에만 있습니다.
+                    <strong>브라우저에서는 파일에서 고릅니다.</strong> 네이티브 앱 밖에서는 어떤 source든 앨범 선택이
+                    되므로, 따로 확인하지 않아도 같은 호출이 웹에서 동작합니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>The photo is read once.</strong> The runtime hands over a file reference, and the hook turns
+                    it into a data URL and releases it, so there is nothing to clean up.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>사진은 한 번만 읽습니다.</strong> 런타임이 넘긴 파일 참조를 hook이 data URL로 바꾸고 바로
+                    놓아 주므로, 따로 정리할 것이 없습니다.
                   </span>
                 ),
               })}
             </li>
           </ul>
-          <Docs.Alert type="warning">
-            {l.trans({
-              en: (
-                <span>
-                  <strong>
-                    <code>useCamera</code>, <code>useContact</code> and <code>useGeoLocation</code> work only inside the
-                    native app.
-                  </strong>{" "}
-                  The plugin comes from the Capacitor runtime, so in a plain browser the call fails with{" "}
-                  <code>Capacitor plugin "Camera" is not available.</code> On the web, check{" "}
-                  <code>Device.getDevice().info.platform</code> first and fall back to a file input.
-                </span>
-              ),
-              ko: (
-                <span>
-                  <strong>
-                    <code>useCamera</code>, <code>useContact</code>, <code>useGeoLocation</code>은 네이티브 앱 안에서만
-                    동작합니다.
-                  </strong>{" "}
-                  플러그인은 Capacitor 런타임이 넣어 주므로, 일반 브라우저에서 부르면{" "}
-                  <code>Capacitor plugin "Camera" is not available.</code> 오류로 실패합니다. 웹에서는{" "}
-                  <code>Device.getDevice().info.platform</code>을 먼저 확인하고 파일 입력으로 대신합니다.
-                </span>
-              ),
-            })}
-          </Docs.Alert>
           <Docs.LinkGrid
             items={[
               {
-                href: "/cheatsheet/mobile/setup#capacitor-plugins",
-                title: l.trans({ en: "Capacitor Plugins", ko: "Capacitor 플러그인" }),
+                href: "/cheatsheet/mobile/setup#native-plugins",
+                title: l.trans({ en: "Native Plugins", ko: "네이티브 플러그인" }),
                 desc: l.trans({
-                  en: "Which plugin each device feature needs, and how to add it.",
-                  ko: "기기 기능마다 필요한 플러그인과 추가하는 방법입니다.",
+                  en: "The mobile target, its permissions, and the plugins they add.",
+                  ko: "모바일 타깃과 권한, 그리고 권한이 넣는 플러그인입니다.",
                 }),
               },
             ]}
           />
-        </Docs.Description>
-      </Scroll.Slide>
-      <Divider />
-
-      <Scroll.Slide id="useContact" title="useContact">
-        <Docs.Title>useContact</Docs.Title>
-        <Docs.Description>
-          <div>
-            {l.trans({
-              en: "`useContact` reads the device address book through the Capacitor Contacts plugin. Use it for mobile sign-up or friend-invite flows.",
-              ko: "`useContact`는 Capacitor Contacts 플러그인으로 기기의 연락처를 읽습니다. 모바일 가입이나 친구 초대 흐름에 씁니다.",
-            })}
-          </div>
-          <code className={chip}>useContact()</code>
-          <Docs.IntroTable type={memberLabel} items={contactRows} />
-          <div>
-            {l.trans({
-              en: "An app hook that turns the address book into invite candidates, for a button to call:",
-              ko: "연락처를 초대 후보 목록으로 바꾸는 앱 hook입니다. 버튼에서 부릅니다:",
-            })}
-          </div>
-        </Docs.Description>
-        <Code.Snippet
-          className="w-full"
-          title="apps/myapp/webkit/useInvitees.tsx"
-          language="tsx"
-          code={`"use client";
-import { useContact } from "akanjs/webkit";
-
-interface ContactEntry {
-  name?: { display?: string | null };
-  phones?: { number?: string | null }[];
-}
-
-export const useInvitees = () => {
-  const { getContacts } = useContact();
-  const getInvitees = async () => {
-    const contacts = (await getContacts()) as ContactEntry[];
-    return contacts.flatMap((contact) =>
-      (contact.phones ?? []).map((phone) => ({
-        name: contact.name?.display ?? "",
-        phone: phone.number ?? "",
-      })),
-    );
-  };
-  return { getInvitees };
-};`}
-        />
-        <Docs.Description>
-          <ul className={bulletList}>
-            <li>
-              {l.trans({
-                en: (
-                  <span>
-                    <strong>Only names and phone numbers are read.</strong> The list is typed <code>unknown[]</code>, so
-                    declare the shape you read, as <code>ContactEntry</code> does above.
-                  </span>
-                ),
-                ko: (
-                  <span>
-                    <strong>이름과 전화번호만 읽습니다.</strong> 목록의 타입은 <code>unknown[]</code>이므로, 위의{" "}
-                    <code>ContactEntry</code>처럼 읽을 모양을 직접 선언합니다.
-                  </span>
-                ),
-              })}
-            </li>
-            <li>
-              {l.trans({
-                en: (
-                  <span>
-                    <strong>Native app only, like the camera.</strong> Add <code>@capacitor-community/contacts</code>{" "}
-                    and the <code>"contacts"</code> permission.
-                  </span>
-                ),
-                ko: (
-                  <span>
-                    <strong>카메라처럼 네이티브 앱에서만 동작합니다.</strong> <code>@capacitor-community/contacts</code>
-                    와 <code>"contacts"</code> 권한을 추가합니다.
-                  </span>
-                ),
-              })}
-            </li>
-          </ul>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -1408,8 +1370,8 @@ export const useInvitees = () => {
         <Docs.Description>
           <div>
             {l.trans({
-              en: "`useGeoLocation` reads the current position through the Capacitor Geolocation plugin. It requests permission on every call and sends the user to the app settings when it is denied.",
-              ko: "`useGeoLocation`은 Capacitor Geolocation 플러그인으로 현재 위치를 읽습니다. 부를 때마다 권한을 요청하고, 거부되면 사용자를 앱 설정으로 보냅니다.",
+              en: "`useGeoLocation` reads the current position through the native runtime's geolocation plugin, and through `navigator.geolocation` in a browser. It sends the user to the app settings when the permission is denied.",
+              ko: "`useGeoLocation`은 네이티브 런타임의 geolocation 플러그인으로, 브라우저에서는 `navigator.geolocation`으로 현재 위치를 읽습니다. 권한이 거부되면 사용자를 앱 설정으로 보냅니다.",
             })}
           </div>
           <code className={chip}>useGeoLocation()</code>
@@ -1431,9 +1393,9 @@ import { useGeoLocation } from "akanjs/webkit";
 export const useMapCenter = () => {
   const { getPosition } = useGeoLocation();
   const getCenter = async () => {
-    const position = (await getPosition()) as GeolocationPosition | undefined;
+    const position = await getPosition();
     if (!position) return null;
-    return { lat: position.coords.latitude, lng: position.coords.longitude };
+    return { lat: position.latitude, lng: position.longitude };
   };
   return { getCenter };
 };`}
@@ -1464,18 +1426,16 @@ export const useMapCenter = () => {
               {l.trans({
                 en: (
                   <span>
-                    <strong>
-                      The position is typed <code>unknown</code>.
-                    </strong>{" "}
-                    Cast it to the shape you read, as <code>GeolocationPosition</code> does above.
+                    <strong>The position is flat.</strong> <code>latitude</code>, <code>longitude</code>,{" "}
+                    <code>accuracy</code>, <code>altitude</code>, <code>heading</code>, <code>speed</code> and{" "}
+                    <code>timestamp</code> sit on the value itself, not under <code>coords</code>.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>
-                      위치 값의 타입은 <code>unknown</code>입니다.
-                    </strong>{" "}
-                    위의 <code>GeolocationPosition</code>처럼 읽을 모양으로 캐스팅합니다.
+                    <strong>위치 값은 평평합니다.</strong> <code>latitude</code>, <code>longitude</code>,{" "}
+                    <code>accuracy</code>, <code>altitude</code>, <code>heading</code>, <code>speed</code>,{" "}
+                    <code>timestamp</code>가 <code>coords</code> 아래가 아니라 값 자체에 있습니다.
                   </span>
                 ),
               })}
@@ -1485,17 +1445,18 @@ export const useMapCenter = () => {
                 en: (
                   <span>
                     <strong>
-                      There is no <code>permissions</code> state.
+                      <code>precise</code> says whether the fix is exact.
                     </strong>{" "}
-                    Unlike the camera and contacts hooks, read the state from <code>checkPermission()</code>.
+                    <code>false</code> means the user granted approximate location only; the web answers{" "}
+                    <code>null</code>.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>
-                      <code>permissions</code> 상태는 없습니다.
+                      <code>precise</code>는 정확한 위치인지 알려 줍니다.
                     </strong>{" "}
-                    카메라, 연락처 hook과 달리 권한 상태는 <code>checkPermission()</code>의 반환값으로 읽습니다.
+                    <code>false</code>면 사용자가 대략적인 위치만 허용한 것이고, 웹은 <code>null</code>로 답합니다.
                   </span>
                 ),
               })}
@@ -1504,14 +1465,14 @@ export const useMapCenter = () => {
               {l.trans({
                 en: (
                   <span>
-                    <strong>Native app only.</strong> Add <code>@capacitor/geolocation</code> and the{" "}
-                    <code>"location"</code> permission.
+                    <strong>Declare the permission.</strong> <code>"location"</code> in the mobile target&apos;s{" "}
+                    <code>permissions</code> adds the geolocation plugin and its usage texts.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>네이티브 앱에서만 동작합니다.</strong> <code>@capacitor/geolocation</code>과{" "}
-                    <code>"location"</code> 권한을 추가합니다.
+                    <strong>권한을 선언합니다.</strong> 모바일 타깃의 <code>permissions</code>에 <code>"location"</code>
+                    을 넣으면 geolocation 플러그인과 사용 목적 문구가 들어갑니다.
                   </span>
                 ),
               })}
@@ -1526,8 +1487,8 @@ export const useMapCenter = () => {
         <Docs.Description>
           <div>
             {l.trans({
-              en: "Push moved out of the framework: the hook lives in `@libs/util/webkit`, not `akanjs/webkit`. The hook itself is unchanged, and an app reaches it through the util library it already depends on.",
-              ko: "푸시는 프레임워크에서 빠졌습니다. hook은 `akanjs/webkit`이 아니라 `@libs/util/webkit`에 있습니다. hook 자체는 그대로이고, 앱은 이미 의존하는 util 라이브러리에서 가져옵니다.",
+              en: "Push lives in `@libs/util/webkit`, not `akanjs/webkit`. In a native shell the hook calls the runtime's push plugin (APNs on iOS, FCM on Android); in a browser it calls Firebase. Either way it hands back one `PushToken` shape.",
+              ko: "푸시는 `akanjs/webkit`이 아니라 `@libs/util/webkit`에 있습니다. 네이티브 셸에서는 런타임의 push 플러그인(iOS는 APNs, Android는 FCM)을, 브라우저에서는 Firebase를 부르고, 어느 쪽이든 같은 모양의 `PushToken`을 돌려줍니다.",
             })}
           </div>
           <code className={chip}>{'import { type PushToken, usePushNotification } from "@libs/util/webkit";'}</code>
@@ -1541,18 +1502,19 @@ export const useMapCenter = () => {
         </Docs.Description>
         <Code.Snippet
           className="w-full"
-          title="apps/myapp/lib/userDevice/UserDevice.Util.tsx"
+          title="apps/myapp/ui/EnablePush.tsx"
           language="tsx"
           code={`"use client";
-import { st, usePage } from "@apps/myapp/client";
+import { st } from "@apps/myapp/client";
 import { type PushToken, usePushNotification } from "@libs/util/webkit";
 import { buttonRecipe } from "akanjs/ui";
+import type { ReactNode } from "react";
 
-interface RegisterPushTokenProps {
+interface EnablePushProps {
   className?: string;
+  children: ReactNode;
 }
-export const RegisterPushToken = ({ className }: RegisterPushTokenProps) => {
-  const { l } = usePage();
+export const EnablePush = ({ className, children }: EnablePushProps) => {
   const push = usePushNotification();
   return (
     <button
@@ -1563,7 +1525,7 @@ export const RegisterPushToken = ({ className }: RegisterPushTokenProps) => {
       }}
       type="button"
     >
-      {l("userDevice.signal.registerPushToken")}
+      {children}
     </button>
   );
 };`}
@@ -1578,8 +1540,8 @@ export const RegisterPushToken = ({ className }: RegisterPushTokenProps) => {
                       A <code>PushToken</code> is the address of one install.
                     </strong>{" "}
                     It holds <code>token</code>, <code>platform</code> (<code>web</code> | <code>ios</code> |{" "}
-                    <code>android</code>), <code>provider</code> (<code>fcm</code>) and an optional{" "}
-                    <code>deviceId</code>.
+                    <code>android</code>), <code>provider</code> (<code>apns</code> | <code>fcm</code>) and{" "}
+                    <code>deviceId</code>, the installation id kept in the app&apos;s storage.
                   </span>
                 ),
                 ko: (
@@ -1588,7 +1550,8 @@ export const RegisterPushToken = ({ className }: RegisterPushTokenProps) => {
                       <code>PushToken</code>은 앱 설치 하나의 주소입니다.
                     </strong>{" "}
                     <code>token</code>, <code>platform</code>(<code>web</code> | <code>ios</code> | <code>android</code>
-                    ), <code>provider</code>(<code>fcm</code>), 선택 값인 <code>deviceId</code>를 담습니다.
+                    ), <code>provider</code>(<code>apns</code> | <code>fcm</code>), 앱 저장소에 두는 설치 id인{" "}
+                    <code>deviceId</code>를 담습니다.
                   </span>
                 ),
               })}
@@ -1598,17 +1561,18 @@ export const RegisterPushToken = ({ className }: RegisterPushTokenProps) => {
                 en: (
                   <span>
                     <strong>
-                      A click opens the notification&apos;s <code>data.url</code>.
+                      A tap opens the push&apos;s <code>url</code>.
                     </strong>{" "}
-                    Only a same-origin URL, or one starting with <code>/</code>, is routed inside the app.
+                    In a native shell the framework routes it from boot, the launching tap included; only a path inside
+                    the app is followed.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>
-                      알림을 누르면 <code>data.url</code>로 이동합니다.
+                      알림을 누르면 푸시의 <code>url</code>로 이동합니다.
                     </strong>{" "}
-                    같은 origin이거나 <code>/</code>로 시작하는 주소만 앱 안에서 이동합니다.
+                    네이티브 셸에서는 앱을 띄운 탭까지 프레임워크가 부팅 때부터 라우팅하며, 앱 안의 경로만 따라갑니다.
                   </span>
                 ),
               })}
@@ -1618,17 +1582,19 @@ export const RegisterPushToken = ({ className }: RegisterPushTokenProps) => {
                 en: (
                   <span>
                     <strong>
-                      <code>registerPushToken</code> is yours to write.
+                      <code>registerPushToken</code> comes with <code>libs/shared</code>.
                     </strong>{" "}
-                    It is the app&apos;s own endpoint for saving the token, not an Akan built-in.
+                    Its notification store keeps the token on the signed-in user;{" "}
+                    <code>Notification.Zone.Initialize</code> keeps it current.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>
-                      <code>registerPushToken</code>은 앱이 직접 만듭니다.
+                      <code>registerPushToken</code>은 <code>libs/shared</code>에 들어 있습니다.
                     </strong>{" "}
-                    토큰을 저장하는 앱의 엔드포인트이며, Akan이 제공하는 것이 아닙니다.
+                    notification 스토어가 토큰을 로그인한 사용자에게 저장하고, <code>Notification.Zone.Initialize</code>
+                    가 최신으로 유지합니다.
                   </span>
                 ),
               })}
@@ -1640,8 +1606,8 @@ export const RegisterPushToken = ({ className }: RegisterPushTokenProps) => {
                 href: "/cheatsheet/mobile/push#client-registration",
                 title: l.trans({ en: "Client Registration", ko: "클라이언트 등록" }),
                 desc: l.trans({
-                  en: "The full register flow, and the endpoint that stores the token.",
-                  ko: "등록 흐름 전체와 토큰을 저장하는 엔드포인트입니다.",
+                  en: "The full register flow, and where the token is stored.",
+                  ko: "등록 흐름 전체와 토큰을 저장하는 곳입니다.",
                 }),
               },
               {
@@ -1654,6 +1620,145 @@ export const RegisterPushToken = ({ className }: RegisterPushTokenProps) => {
               },
             ]}
           />
+        </Docs.Description>
+      </Scroll.Slide>
+      <Divider />
+
+      <Scroll.Slide id="usePurchase" title="usePurchase">
+        <Docs.Title>usePurchase</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "`usePurchase` sells in-app products through the native runtime's iap plugin: StoreKit 2 on iOS, Play Billing on Android. Your server verifies every transaction before the app credits it, and a browser sells nothing.",
+              ko: "`usePurchase`는 네이티브 런타임의 iap 플러그인으로 인앱 상품을 팝니다. iOS는 StoreKit 2, Android는 Play Billing입니다. 앱이 지급하기 전에 서버가 거래마다 검증하고, 브라우저에서는 팔지 않습니다.",
+            })}
+          </div>
+          <code className={chip}>{'import { usePurchase } from "akanjs/webkit/usePurchase";'}</code>
+          <Docs.SubSubTitle>{l.trans({ en: "Options", ko: "옵션" })}</Docs.SubSubTitle>
+          <Docs.OptionTable items={purchaseOptionRows} />
+          <Docs.IntroTable type={memberLabel} items={purchaseRows} />
+          <div>
+            {l.trans({
+              en: "A buy button that credits coins once the server has accepted the purchase:",
+              ko: "서버가 구매를 받아 준 뒤에 코인을 지급하는 구매 버튼입니다:",
+            })}
+          </div>
+        </Docs.Description>
+        <Code.Snippet
+          className="w-full"
+          title="apps/myapp/ui/BuyCoins.tsx"
+          language="tsx"
+          code={`"use client";
+import { st } from "@apps/myapp/client";
+import { buttonRecipe } from "akanjs/ui";
+import { usePurchase } from "akanjs/webkit/usePurchase";
+
+interface BuyCoinsProps {
+  className?: string;
+}
+export const BuyCoins = ({ className }: BuyCoinsProps) => {
+  const { products, purchaseProduct } = usePurchase({
+    platform: "all",
+    productInfo: [{ id: "coins_100", type: "consumable" }],
+    url: "https://billing.myapp.com",
+    onPay: async () => {
+      await st.do.refreshWallet();
+    },
+  });
+  const [coins] = products;
+  if (!coins) return null;
+  return (
+    <button
+      className={buttonRecipe({ variant: "primary" }, className)}
+      onClick={() => void purchaseProduct(coins)}
+      type="button"
+    >
+      {coins.title} · {coins.displayPrice}
+    </button>
+  );
+};`}
+        />
+        <Docs.Description>
+          <ul className={bulletList}>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Add the plugin to the target.</strong> The iap plugin is not a permission: name it with{" "}
+                    <code>native: {'{ plugins: ["iap"] }'}</code> on the mobile target.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>타깃에 플러그인을 넣습니다.</strong> iap 플러그인은 권한이 아니므로, 모바일 타깃에{" "}
+                    <code>native: {'{ plugins: ["iap"] }'}</code>로 적습니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>
+                      The server gets one body: <code>{"{ data }"}</code>.
+                    </strong>{" "}
+                    <code>data</code> is <code>{"{ platform, packageName, productId, receipt, transactionId }"}</code>.
+                    On iOS <code>receipt</code> is the transaction&apos;s signed JWS (no app receipt, no account id), on
+                    Android the purchase token with its package name. Any 2xx accepts it, and its JSON reaches{" "}
+                    <code>onPay</code> or <code>onSubscribe</code> as <code>verified</code>.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>
+                      서버는 본문 하나를 받습니다: <code>{"{ data }"}</code>.
+                    </strong>{" "}
+                    <code>data</code>는 <code>{"{ platform, packageName, productId, receipt, transactionId }"}</code>
+                    입니다. iOS의 <code>receipt</code>는 거래의 서명된 JWS이고(app receipt와 account id는 없습니다),
+                    Android는 purchase token과 패키지 이름입니다. 2xx면 받아 준 것이고, 그 JSON이 <code>onPay</code>나{" "}
+                    <code>onSubscribe</code>에 <code>verified</code>로 옵니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Finished only once it is credited.</strong> A transaction is finished after the server
+                    accepted it and your callback resolved. A refusal or a throw leaves it unfinished, and the store
+                    hands it over again: iOS at the next launch, while Google refunds an unacknowledged purchase after
+                    three days.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>지급한 뒤에만 완료합니다.</strong> 서버가 받아 주고 콜백이 끝난 뒤에 거래를 완료합니다.
+                    거절되거나 콜백이 던지면 완료하지 않고, 스토어가 다시 넘겨줍니다. iOS는 다음 실행 때 다시 오고,
+                    Google은 확인하지 않은 구매를 3일 뒤 환불합니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Leftovers settle at mount.</strong> The hook loads the unfinished transactions and listens
+                    for later ones (Ask to Buy, a pending payment), and one transaction is credited once even when it
+                    arrives twice.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>남은 거래는 마운트할 때 정리합니다.</strong> hook이 완료되지 않은 거래를 불러오고 나중에
+                    오는 거래(Ask to Buy, 보류된 결제)도 듣습니다. 같은 거래가 두 번 와도 한 번만 지급합니다.
+                  </span>
+                ),
+              })}
+            </li>
+          </ul>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />

@@ -329,11 +329,11 @@ Mobile App Architecture
 
 Client-side rendering: the app draws every screen itself from JavaScript on the device.
 
-An open-source runtime that wraps a web app in a real Android and iOS project.
+@akanjs/native, shipped inside akanjs. It builds your CSR client into iOS, Android, macOS, Windows and Linux apps, with no Xcode project, Gradle files or CocoaPods to keep.
 
-The Android and iOS project around your web client. It holds the app icon, ID and signing.
+The small native app around your web client. The build generates it under .akan/mobile/<target>/native; it holds the app icon, ID and signing.
 
-A Capacitor package that exposes one device feature to JavaScript. This is the native bridge.
+A native runtime plugin that exposes one device feature to JavaScript, such as camera, push or iap. This is the native bridge.
 
 One native package built from an Akan app, with its own name and app ID.
 
@@ -345,7 +345,7 @@ Web and mobile share the same Akan page tree, client router, generated fetch cal
 
 Native shell boundary
 
-The Capacitor project
+What the native runtime generates
 
 Native code owns packaging, signing, app capabilities, plugin linking, and store distribution.
 
@@ -363,19 +363,19 @@ Reserves room in px for app chrome such as navbars, tabs and fixed actions; true
 
 Permissions describe which native capabilities a mobile target intends to use.
 
-Native config files such as Firebase config live in the app folder.
+Native files such as google-services.json or a notification sound live in the app folder; the config names where each one lands.
 
 Native schemes, universal links, and app links enter the Akan CSR router as normalized routes.
 
-Push delivery uses Firebase/FCM setup, while click routing uses a standard data.url field.
+Push goes out through APNs on iOS and FCM on Android and the web, while click routing uses a standard data.url field.
 
 Akan ships the same product to the web and to the app stores, and you do not write a second app for mobile. The screens you already built for the web run inside a thin native app; only the parts that truly need the phone, such as packaging, signing and device features, are native.
 
-Concretely, Akan mobile apps are CSR web clients running inside a Capacitor native shell. The product screen is still built with Akan page, UI, state, and service patterns; Capacitor supplies the native project, app identity, store package, and device bridge.
+Concretely, Akan mobile apps are CSR web clients running inside a native shell that akanjs's own runtime, @akanjs/native, generates. The product screen is still built with Akan page, UI, state, and service patterns; the runtime supplies the shell, app identity, store package, and device bridge from what akan.config.ts declares.
 
 Akan mobile architecture
 
-The Akan app builds a CSR client that runs inside the Capacitor native shell, which is packaged for Android and iOS and talks to the shared Akan backend.
+The Akan app builds a CSR client that runs inside the Akan native shell, which is packaged for Android and iOS and talks to the shared Akan backend.
 
 Words used on this page
 
@@ -1827,9 +1827,9 @@ Headings:
 - useThrottle
 - useFetch / useFetchFn
 - useCamera
-- useContact
 - useGeoLocation
 - usePushNotification
+- usePurchase
 - useLocation / useHistory
 - LoginForm
 
@@ -1851,9 +1851,11 @@ Runs a callback at once, then ignores calls for a while.
 
 Tells a client component whether a promise has resolved, and its value.
 
-Camera, contacts and location through Capacitor plugins, permission prompts included.
+Camera and location through the native runtime's plugins, with a browser fallback and the permission prompts.
 
 Not in this module: the push hook lives in `@libs/util/webkit`.
+
+In-app purchase on the native iap plugin, verified by your server. Imported from `akanjs/webkit/usePurchase`.
 
 The CSR router's location parser and history stack.
 
@@ -1864,8 +1866,6 @@ Locks `document.body` scrolling while `active`. Overlays share one count.
 Calls `onEscape` on Escape while `active`. Only the topmost open surface gets the key.
 
 Show a pager and on-screen items to the in-page agent. `Load.Units` and `Load.View` call them.
-
-Asks a release server for a newer web bundle and applies it with Capacitor Updater.
 
 Build robots rules (`disallow: "/admin/"` by default) and a list of sitemap entries.
 
@@ -1981,11 +1981,15 @@ A key of `mobile.targets` in `akan.config.ts`, or `all`. Asked for when there ar
 
 Backend environment the app connects to.
 
-Delete the native project folder and generate it again.
+Make a debug build instead of a release one.
+
+The simulator, emulator or device to run on: its id or name, such as `iPhone 17` or `Pixel_10`. A paired iPhone's name makes a signed iPhone build. Left out, a booted iPhone simulator (else the newest one) or a connected Android device (else the first emulator, started) is used.
+
+The Apple team id the signing is narrowed to, when the Mac holds profiles of several teams.
 
 Allow a release built with `--env local`.
 
-Bundle a production web build into the app instead of loading the dev server.
+Run a release build that carries its own production web build instead of loading the dev server.
 
 alias
 
@@ -1993,15 +1997,19 @@ alias
 
 dev server
 
-Without `--release` the app loads from the dev server, so keep `akan start <app>` running.
+Without `--release` the app loads its pages from `akan start <app>` through the dev gateway, so every save shows up; keep the dev server running, or the command stops and says so.
 
 one target
 
-Works only when the app has one mobile target, since it takes no `--target`.
+Runs one mobile target at a time; with several, pass `--target <name>`.
+
+output
+
+Written under \`apps/<app>/.akan/mobile/<target>/native/${platform}\`; the command prints each file's path.
 
 signing
 
-Needs release signing keys in `android/gradle.properties` or `ORG_GRADLE_PROJECT_*` env vars.
+Signed with the upload key the environment names: `MYAPP_RELEASE_STORE_FILE`, `MYAPP_RELEASE_STORE_PASSWORD` and `MYAPP_RELEASE_KEY_ALIAS`, plus `MYAPP_RELEASE_KEY_PASSWORD` when the key has its own. A missing one stops the command before it builds.
 
 Manage Apps
 
@@ -2024,14 +2032,6 @@ Stop the local database containers.
 Copy an app's data out of one database mode and into another.
 
 Run a file from the app's `script/` folder.
-
-Open an interactive server console.
-
-Follow a running app's logs, filtered.
-
-Check and Build
-
-Typecheck the app.
 
 ## Cloud CLI
 
@@ -2497,7 +2497,7 @@ Run every command except `create-workspace` from the folder that holds these thr
 
 Short Aliases
 
-Seven commands also answer to the first letter of each dashed word. The table below lists all of them.
+Eight commands also answer to the first letter of each dashed word. The table below lists all of them.
 
 A value with a default
 
@@ -3138,7 +3138,7 @@ Common Utils (common/)
 
 Pure, isomorphic, zero-dependency; imports only sibling common/* and akanjs/base, not Err.
 
-Touches window, navigator or Capacitor, or is a React hook.
+Touches window, navigator or the native bridge (akanjs/client/native), or is a React hook.
 
 Touches node:*, Bun, process.env, a secret, or a server SDK.
 
@@ -3200,7 +3200,7 @@ Which libraries' page folders this app serves as its own routes.
 
 Mobile, data and env
 
-The native app's identity and one target per Capacitor package.
+The native app's identity and one target per native package.
 
 The database modes the build can run in; a deployment picks one with `AKAN_DATABASE_MODE`.
 
@@ -3225,7 +3225,7 @@ Server Utils (srvkit/)
 
 Pure, isomorphic, zero-dependency; imports only sibling common/* and akanjs/base, not Err.
 
-Touches window, navigator or Capacitor, or is a React hook.
+Touches window, navigator or the native bridge (akanjs/client/native), or is a React hook.
 
 Touches node:*, Bun, process.env, a secret, or a server SDK.
 
@@ -3308,9 +3308,9 @@ Pure, isomorphic, zero-dependency; imports only sibling `common/*` and `akanjs/b
 
 libs/util/common/isHttpUri.ts // camelCase file, filename equals the single export
 
-Touches `window`, `navigator` or Capacitor, or is a React hook.
+Touches `window`, `navigator` or the native bridge (`akanjs/client/native`), or is a React hook.
 
-libs/util/webkit/useGeoLocation.tsx // use<Thing>.tsx — .tsx even with no JSX
+libs/util/webkit/useSpeech.tsx // use<Thing>.tsx — .tsx even with no JSX
 
 Touches `node:*`, `Bun`, `process.env`, a secret, or a server SDK.
 
@@ -5888,24 +5888,28 @@ Priority: P2
 
 Headings:
 - Push Setup
-- Why Two Plugins
+- One Native Plugin
 - Web Push
 - Android Push
 - iOS Push
 - Which APNs Environment You Built
 - Client Registration
-- Store The Token
+- Where Tokens Live
 - Send And Retire Dead Tokens
 
 Push Notifications
 
-Firebase Cloud Messaging. Akan sends to web, Android and iOS through it.
+Firebase Cloud Messaging. Akan sends to Android apps and browsers through it.
 
-Apple's push service. FCM hands iOS messages to it, so Firebase needs an Apple key.
+Apple's push service. The server sends to iOS apps through it directly; Firebase is not involved.
 
 push token
 
-The address of one app install. `register()` returns it, and the server sends to it.
+The address of one app install. `register()` returns it with the `provider` that delivers to it.
+
+`apns` on iOS, `fcm` on Android and the web. The server picks the sender by it.
+
+A random id the app keeps in its own storage, so a rotated token replaces the old one.
 
 VAPID key
 
@@ -5913,13 +5917,9 @@ The web push key pair. Its public half goes in the client env as `vapidKey`.
 
 service account
 
-The Firebase Admin credential the server sends with. It never reaches the client.
+The Firebase Admin credential the server sends to FCM with. It never reaches the client.
 
-The iOS entitlement that picks the APNs development or production path.
-
-Web
-
-In the consoles
+APNs auth key
 
 ## Setup
 
@@ -5930,14 +5930,17 @@ Priority: P2
 Headings:
 - Mobile Setup Flow
 - Mobile Config
-- Capacitor Plugins
+- Native Plugins
 - Android Setup
 - iOS Setup
+- Desktop
 - Verify Setup
 
 Setup
 
-The native shell that runs your web app in a WebView and reaches device APIs through plugins.
+native runtime
+
+@akanjs/native, shipped inside akanjs. It runs your web app in a WebView and reaches device APIs through plugins.
 
 CSR bundle
 
@@ -5947,17 +5950,15 @@ One native app built from your Akan app. Its key in `mobile.targets` is the `--t
 
 The app's permanent ID: the package name on Android and the bundle ID on iOS.
 
-The Android Studio and Xcode projects, created inside the app folder on the first run.
+Where each run writes the target's web root and native builds. It is generated and ignored by git: there is no Xcode or Android Studio project to edit.
 
 plugin
 
-A native module such as camera or push. It works only when the app's `package.json` lists it.
+A native runtime module such as camera or push. The app ships it when a permission or `native.plugins` names it.
 
 1. Mobile config
 
-2. Capacitor plugins
-
-Install the toolchains, run the app on a device, then set up signing and store builds.
+2. Native plugins
 
 ## UI & Keyboard
 

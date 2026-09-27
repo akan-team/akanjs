@@ -98,8 +98,8 @@ export default page().render(() => {
       title: l.trans({ en: "Short Aliases", ko: "짧은 별칭" }),
       code: "akan ba  =  akan build-android",
       desc: l.trans({
-        en: "Seven commands also answer to the first letter of each dashed word. The table below lists all of them.",
-        ko: "명령 일곱 개는 `-`로 나뉜 단어의 첫 글자만으로도 실행됩니다. 아래 표에 모두 있습니다.",
+        en: "Eight commands also answer to the first letter of each dashed word. The table below lists all of them.",
+        ko: "명령 여덟 개는 `-`로 나뉜 단어의 첫 글자만으로도 실행됩니다. 아래 표에 모두 있습니다.",
       }),
     },
   ];
@@ -112,6 +112,7 @@ export default page().render(() => {
     { alias: "akan ba", command: "akan build-android" },
     { alias: "akan si", command: "akan start-ios" },
     { alias: "akan sa", command: "akan start-android" },
+    { alias: "akan sd", command: "akan start-desktop" },
   ];
 
   const omittedRows = [
@@ -324,10 +325,6 @@ export default page().render(() => {
           }),
         },
         {
-          name: "configure-app <app>",
-          desc: l.trans({ en: "Configures app settings interactively.", ko: "앱 설정을 대화형으로 구성합니다." }),
-        },
-        {
           name: "plan-slice <app>",
           href: "/references/cli/application#plan-slice",
           desc: l.trans({
@@ -372,16 +369,16 @@ export default page().render(() => {
       title: l.trans({ en: "Application: Mobile", ko: "애플리케이션: 모바일" }),
       href: "/references/cli/application",
       desc: l.trans({
-        en: "Build, run and release the iOS and Android apps with Capacitor.",
-        ko: "Capacitor로 iOS와 Android 앱을 빌드하고, 실행하고, 출시합니다.",
+        en: "Build, run and release the iOS, Android and desktop apps on the native runtime.",
+        ko: "네이티브 런타임으로 iOS, Android, 데스크톱 앱을 빌드하고, 실행하고, 출시합니다.",
       }),
       commands: [
         {
           name: ["build-ios <app>", "build-android <app>"],
           href: ["/references/cli/application#build-ios", "/references/cli/application#build-android"],
           desc: l.trans({
-            en: "Builds the iOS or Android app with Capacitor. Aliases `bi` and `ba`.",
-            ko: "Capacitor로 iOS나 Android 앱을 빌드합니다. 별칭은 `bi`, `ba`입니다.",
+            en: "Builds the iOS or Android app on the native runtime. Aliases `bi` and `ba`.",
+            ko: "네이티브 런타임으로 iOS나 Android 앱을 빌드합니다. 별칭은 `bi`, `ba`입니다.",
           }),
         },
         {
@@ -393,25 +390,19 @@ export default page().render(() => {
           }),
         },
         {
+          name: "start-desktop <app>",
+          href: "/references/cli/application#start-desktop",
+          desc: l.trans({
+            en: "Runs the app as a desktop app on this computer (macOS, Windows or Linux). Alias `sd`.",
+            ko: "이 컴퓨터(macOS, Windows, Linux)에서 앱을 데스크톱 앱으로 실행합니다. 별칭은 `sd`입니다.",
+          }),
+        },
+        {
           name: ["release-ios <app>", "release-android <app>"],
           href: ["/references/cli/application#release-ios", "/references/cli/application#release-android"],
           desc: l.trans({
             en: "Builds and packages a release for the App Store or the Play Store.",
             ko: "App Store나 Play Store에 낼 릴리스를 빌드하고 패키징합니다.",
-          }),
-        },
-        {
-          name: "release-source <app>",
-          desc: l.trans({
-            en: "Releases the app source with over-the-air (OTA) update support.",
-            ko: "OTA(무선) 업데이트를 받을 수 있도록 앱 소스를 릴리스합니다.",
-          }),
-        },
-        {
-          name: "codepush <app>",
-          desc: l.trans({
-            en: "Over-the-air (OTA) deploy, still in development: it deploys nothing yet and exits with an error.",
-            ko: "개발 중인 OTA 배포 명령입니다. 아직 아무것도 배포하지 않고 오류로 끝납니다.",
           }),
         },
       ],

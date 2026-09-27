@@ -857,8 +857,8 @@ export default page().render(() => {
     {
       name: "getStoredAuthToken()",
       desc: l.trans({
-        en: "The JWT from client storage: localStorage on the web, Capacitor Preferences in the app.",
-        ko: "클라이언트 storage의 JWT입니다. 웹은 localStorage, 앱은 Capacitor Preferences에서 읽습니다.",
+        en: "The JWT from client storage: localStorage on the web, the native runtime's secure storage (iOS Keychain, Android Keystore) in the app.",
+        ko: "클라이언트 storage의 JWT입니다. 웹은 localStorage, 앱은 네이티브 런타임의 secure storage(iOS Keychain, Android Keystore)에서 읽습니다.",
       }),
     },
     {
@@ -2299,8 +2299,8 @@ export const refreshToken = async () => {
         <Docs.Description>
           <div>
             {l.trans({
-              en: "`Device` wraps what Capacitor exposes on a phone: platform, safe area, keyboard, haptics and scroll. The framework loads it once in the browser; read it with `Device.getDevice()`.",
-              ko: "`Device`는 Capacitor가 폰에서 제공하는 platform, safe area, 키보드, 햅틱, 스크롤을 감쌉니다. 프레임워크가 브라우저에서 한 번 불러 두므로 `Device.getDevice()`로 꺼내 씁니다.",
+              en: "`Device` wraps what the native runtime exposes on a phone: platform, safe area, keyboard, haptics and scroll. The framework loads it once in the browser; read it with `Device.getDevice()`.",
+              ko: "`Device`는 네이티브 런타임이 폰에서 제공하는 platform, safe area, 키보드, 햅틱, 스크롤을 감쌉니다. 프레임워크가 브라우저에서 한 번 불러 두므로 `Device.getDevice()`로 꺼내 씁니다.",
             })}
           </div>
           <Docs.IntroTable type={l.trans({ en: "Member", ko: "멤버" })} items={deviceRows} />

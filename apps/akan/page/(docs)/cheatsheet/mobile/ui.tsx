@@ -199,8 +199,8 @@ export default page().render(() => {
     {
       name: "native",
       desc: l.trans({
-        en: "The Capacitor Keyboard plugin reported the exact height as the keyboard began to open.",
-        ko: "Capacitor Keyboard 플러그인이 키보드가 열리기 시작할 때 정확한 높이를 알려 준 경우입니다.",
+        en: "The native runtime's keyboard plugin reported the exact height as the keyboard began to open.",
+        ko: "네이티브 런타임의 keyboard 플러그인이 키보드가 열리기 시작할 때 정확한 높이를 알려 준 경우입니다.",
       }),
     },
     {

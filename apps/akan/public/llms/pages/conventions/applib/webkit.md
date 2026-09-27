@@ -29,9 +29,9 @@ Pure, isomorphic, zero-dependency; imports only sibling `common/*` and `akanjs/b
 
 libs/util/common/isHttpUri.ts // camelCase file, filename equals the single export
 
-Touches `window`, `navigator` or Capacitor, or is a React hook.
+Touches `window`, `navigator` or the native bridge (`akanjs/client/native`), or is a React hook.
 
-libs/util/webkit/useGeoLocation.tsx // use<Thing>.tsx — .tsx even with no JSX
+libs/util/webkit/useSpeech.tsx // use<Thing>.tsx — .tsx even with no JSX
 
 Touches `node:*`, `Bun`, `process.env`, a secret, or a server SDK.
 

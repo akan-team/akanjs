@@ -13,22 +13,36 @@ export default page().render(() => {
     {
       name: "FCM",
       desc: l.trans({
-        en: "Firebase Cloud Messaging. Akan sends to web, Android and iOS through it.",
-        ko: "Firebase Cloud Messaging입니다. Akan은 웹, Android, iOS 모두 이것으로 보냅니다.",
+        en: "Firebase Cloud Messaging. Akan sends to Android apps and browsers through it.",
+        ko: "Firebase Cloud Messaging입니다. Akan은 Android 앱과 브라우저에 이것으로 보냅니다.",
       }),
     },
     {
       name: "APNs",
       desc: l.trans({
-        en: "Apple's push service. FCM hands iOS messages to it, so Firebase needs an Apple key.",
-        ko: "Apple의 푸시 서비스입니다. FCM이 iOS 메시지를 여기로 넘기므로 Firebase에 Apple 키가 필요합니다.",
+        en: "Apple's push service. The server sends to iOS apps through it directly; Firebase is not involved.",
+        ko: "Apple의 푸시 서비스입니다. 서버가 iOS 앱에 이것으로 직접 보내며, Firebase는 거치지 않습니다.",
       }),
     },
     {
       name: l.trans({ en: "push token", ko: "푸시 토큰" }),
       desc: l.trans({
-        en: "The address of one app install. `register()` returns it, and the server sends to it.",
-        ko: "앱 설치 하나의 주소입니다. `register()`가 돌려주고, 서버는 이 주소로 보냅니다.",
+        en: "The address of one app install. `register()` returns it with the `provider` that delivers to it.",
+        ko: "앱 설치 하나의 주소입니다. `register()`가 이 주소로 배달하는 `provider`와 함께 돌려줍니다.",
+      }),
+    },
+    {
+      name: "provider",
+      desc: l.trans({
+        en: "`apns` on iOS, `fcm` on Android and the web. The server picks the sender by it.",
+        ko: "iOS는 `apns`, Android와 웹은 `fcm`입니다. 서버는 이 값으로 발송기를 고릅니다.",
+      }),
+    },
+    {
+      name: "deviceId",
+      desc: l.trans({
+        en: "A random id the app keeps in its own storage, so a rotated token replaces the old one.",
+        ko: "앱이 자기 저장소에 두는 임의의 설치 id입니다. 토큰이 바뀌면 이전 토큰을 대신합니다.",
       }),
     },
     {
@@ -41,15 +55,22 @@ export default page().render(() => {
     {
       name: l.trans({ en: "service account", ko: "서비스 계정" }),
       desc: l.trans({
-        en: "The Firebase Admin credential the server sends with. It never reaches the client.",
-        ko: "서버가 발송할 때 쓰는 Firebase Admin 인증 정보입니다. 클라이언트로 가지 않습니다.",
+        en: "The Firebase Admin credential the server sends to FCM with. It never reaches the client.",
+        ko: "서버가 FCM에 발송할 때 쓰는 Firebase Admin 인증 정보입니다. 클라이언트로 가지 않습니다.",
+      }),
+    },
+    {
+      name: l.trans({ en: "APNs auth key", ko: "APNs 인증 키" }),
+      desc: l.trans({
+        en: "The `.p8` key the server signs its APNs requests with. One key serves both APNs environments.",
+        ko: "서버가 APNs 요청에 서명하는 `.p8` 키입니다. 키 하나로 두 APNs 환경을 모두 씁니다.",
       }),
     },
     {
       name: "aps-environment",
       desc: l.trans({
-        en: "The iOS entitlement that picks the APNs development or production path.",
-        ko: "APNs development와 production 중 어느 경로를 쓸지 정하는 iOS entitlement입니다.",
+        en: "The iOS entitlement that says whether the app's tokens belong to APNs development or production.",
+        ko: "앱의 토큰이 APNs development와 production 중 어느 쪽 것인지 정하는 iOS entitlement입니다.",
       }),
     },
   ];
@@ -67,10 +88,10 @@ export default page().render(() => {
         {
           name: <span className="font-sans">{l.trans({ en: "Firebase app", ko: "Firebase 앱" })}</span>,
           desc: l.trans({
-            en: "One Firebase project, with a web, Android or iOS app registered in it.",
-            ko: "Firebase 프로젝트 하나에 웹, Android, iOS 앱을 각각 등록합니다.",
+            en: "One Firebase project, with the web app and the Android app registered in it.",
+            ko: "Firebase 프로젝트 하나에 웹 앱과 Android 앱을 등록합니다.",
           }),
-          marks: { web: true, android: true, ios: true },
+          marks: { web: true, android: true },
         },
         {
           name: <span className="font-sans">{l.trans({ en: "VAPID key", ko: "VAPID 키" })}</span>,
@@ -81,10 +102,18 @@ export default page().render(() => {
           marks: { web: true },
         },
         {
+          name: <span className="font-sans">{l.trans({ en: "Push capability", ko: "Push 기능" })}</span>,
+          desc: l.trans({
+            en: "Push Notifications turned on for the App ID in Apple Developer, so its profiles carry the entitlement.",
+            ko: "Apple Developer의 App ID에서 Push Notifications를 켭니다. 그래야 프로파일에 entitlement가 들어갑니다.",
+          }),
+          marks: { ios: true },
+        },
+        {
           name: <span className="font-sans">{l.trans({ en: "APNs auth key (.p8)", ko: "APNs 인증 키 (.p8)" })}</span>,
           desc: l.trans({
-            en: "Created in Apple Developer, then uploaded to Firebase for development and production.",
-            ko: "Apple Developer에서 만들어 Firebase에 development용과 production용으로 올립니다.",
+            en: "Created under Keys in Apple Developer, with its Key ID and your Team ID. It goes to your server.",
+            ko: "Apple Developer의 Keys에서 만들고, Key ID와 Team ID를 함께 적어 둡니다. 서버에 넣습니다.",
           }),
           marks: { ios: true },
         },
@@ -104,32 +133,16 @@ export default page().render(() => {
         {
           name: "google-services.json",
           desc: l.trans({
-            en: "The Android Firebase config, copied into the native project by `mobile.files`.",
-            ko: "Android용 Firebase 설정 파일이며, `mobile.files`로 네이티브 프로젝트에 복사됩니다.",
+            en: "The Android Firebase config, named by `native.android.googleServices` in the mobile target.",
+            ko: "Android용 Firebase 설정 파일이며, 모바일 타깃의 `native.android.googleServices`로 지정합니다.",
           }),
           marks: { android: true },
         },
         {
-          name: "GoogleService-Info.plist",
-          desc: l.trans({
-            en: "The iOS Firebase config, copied the same way.",
-            ko: "iOS용 Firebase 설정 파일이며, 같은 방식으로 복사됩니다.",
-          }),
-          marks: { ios: true },
-        },
-        {
-          name: "package.json",
-          desc: l.trans({
-            en: "`@capacitor/push-notifications` and `@capacitor-community/fcm` as app dependencies.",
-            ko: "`@capacitor/push-notifications`와 `@capacitor-community/fcm`을 앱 의존성으로 둡니다.",
-          }),
-          marks: { android: true, ios: true },
-        },
-        {
           name: 'permissions: ["push"]',
           desc: l.trans({
-            en: "Turns on native push for the mobile target in `akan.config.ts`.",
-            ko: "`akan.config.ts`의 모바일 타깃에서 네이티브 푸시를 켭니다.",
+            en: "Adds the native push plugin to the mobile target in `akan.config.ts`.",
+            ko: "`akan.config.ts`의 모바일 타깃에 네이티브 푸시 플러그인을 넣습니다.",
           }),
           marks: { android: true, ios: true },
         },
@@ -139,12 +152,20 @@ export default page().render(() => {
       label: l.trans({ en: "On the server", ko: "서버에" }),
       rows: [
         {
-          name: "env.server.*",
+          name: "pushNoti.firebase",
           desc: l.trans({
-            en: "`pushNoti.firebase`: the service account the server sends with, for every platform.",
-            ko: "`pushNoti.firebase`: 서버가 모든 플랫폼에 발송할 때 쓰는 서비스 계정입니다.",
+            en: "In `env.server.*`: the service account the server sends to FCM with.",
+            ko: "`env.server.*`에 둡니다. 서버가 FCM에 발송할 때 쓰는 서비스 계정입니다.",
           }),
-          marks: { web: true, android: true, ios: true },
+          marks: { web: true, android: true },
+        },
+        {
+          name: "pushNoti.apns",
+          desc: l.trans({
+            en: "In `env.server.*`: the APNs key, its Key ID, your Team ID and the app's bundle id.",
+            ko: "`env.server.*`에 둡니다. APNs 키와 Key ID, Team ID, 앱의 bundle id입니다.",
+          }),
+          marks: { ios: true },
         },
       ],
     },
@@ -152,19 +173,19 @@ export default page().render(() => {
 
   const pluginCards = [
     {
-      title: "@capacitor/push-notifications",
-      chip: "PushNotifications.requestPermissions()",
+      title: "iOS · APNs",
+      chip: 'push.register() → { provider: "apns" }',
       desc: l.trans({
-        en: "The OS push bridge: permission, native registration, click and action listeners, delivered notifications and Android channels.",
-        ko: "OS 푸시 브리지입니다. 알림 권한, 네이티브 등록, 알림 클릭·액션 리스너, 표시된 알림, Android 채널을 맡습니다.",
+        en: "Registers with APNs directly, with no Firebase SDK. A tap, and a message that arrives in front, come through the shell's notification router.",
+        ko: "Firebase SDK 없이 APNs에 직접 등록합니다. 알림 탭과 앱이 앞에 있을 때 온 메시지는 셸의 알림 라우터로 들어옵니다.",
       }),
     },
     {
-      title: "@capacitor-community/fcm",
-      chip: "FCM.getToken()",
+      title: "Android · FCM",
+      chip: 'push.register() → { provider: "fcm" }',
       desc: l.trans({
-        en: "Firebase token access. It keeps Android and iOS on the same Firebase Admin send({ token }) contract.",
-        ko: "Firebase 토큰 접근을 맡습니다. 덕분에 Android와 iOS 발송이 같은 Firebase Admin send({ token }) 계약을 따릅니다.",
+        en: "An FCM module pinned with the runtime. The build reads `google-services.json` itself, so no Gradle plugin is involved.",
+        ko: "런타임과 함께 고정된 FCM 모듈입니다. 빌드가 `google-services.json`을 직접 읽으므로 Gradle 플러그인이 필요 없습니다.",
       }),
     },
   ];
@@ -214,20 +235,35 @@ export default page().render(() => {
         </>
       ),
     }),
+    l.trans({
+      en: (
+        <>
+          <strong>The service worker is generated.</strong> With <code>firebase</code> in the client env,{" "}
+          <code>akan sync</code> writes <code>public/firebase-messaging-sw.js</code> for each environment.
+        </>
+      ),
+      ko: (
+        <>
+          <strong>서비스 워커는 생성됩니다.</strong> client env에 <code>firebase</code>가 있으면 <code>akan sync</code>
+          가 환경마다 <code>public/firebase-messaging-sw.js</code>를 써 줍니다.
+        </>
+      ),
+    }),
   ];
 
   const androidFileNotes = [
     l.trans({
       en: (
         <>
-          <strong>The key is the destination, the value the source.</strong> The key is a path inside the generated{" "}
-          <code>android/</code> project, and the value a path inside the app folder.
+          <strong>The build converts the file itself.</strong> It picks the client whose package name is the
+          target&apos;s <code>appId</code> (a debug build falls back to it too), and a file without that app fails the
+          build with the names it has.
         </>
       ),
       ko: (
         <>
-          <strong>키가 목적지, 값이 원본입니다.</strong> 키는 생성된 <code>android/</code> 프로젝트 안의 경로이고, 값은
-          앱 폴더 안의 경로입니다.
+          <strong>빌드가 파일을 직접 변환합니다.</strong> 패키지 이름이 타깃의 <code>appId</code>인 client를
+          고르고(디버그 빌드도 그것을 씁니다), 그 앱이 없는 파일이면 들어 있는 이름을 알려 주며 빌드를 멈춥니다.
         </>
       ),
     }),
@@ -257,7 +293,7 @@ export default page().render(() => {
           <strong>
             <code>permissions: ["push"]</code>
           </strong>{" "}
-          turns on native push for this target.
+          adds the push plugin and <code>POST_NOTIFICATIONS</code> to this target.
         </>
       ),
       ko: (
@@ -265,7 +301,7 @@ export default page().render(() => {
           <strong>
             <code>permissions: ["push"]</code>
           </strong>
-          가 이 타깃의 네이티브 푸시를 켭니다.
+          가 이 타깃에 푸시 플러그인과 <code>POST_NOTIFICATIONS</code> 권한을 넣습니다.
         </>
       ),
     }),
@@ -275,38 +311,42 @@ export default page().render(() => {
     l.trans({
       en: (
         <>
-          <strong>Channels.</strong> Create one per stable category, such as order updates or chat messages.
+          <strong>Foreground.</strong> The framework asks the plugin to show a push that arrives while the app is open
+          (banner, list, sound, badge), so it can be tapped like any other.
         </>
       ),
       ko: (
         <>
-          <strong>채널.</strong> 주문 업데이트나 채팅 메시지처럼 고정된 카테고리마다 하나씩 만듭니다.
+          <strong>포그라운드.</strong> 앱이 열려 있을 때 온 푸시도 보이도록 프레임워크가 플러그인에 요청합니다(배너,
+          목록, 소리, 배지). 그래서 다른 알림처럼 누를 수 있습니다.
         </>
       ),
     }),
     l.trans({
       en: (
         <>
-          <strong>Icon and color.</strong> Set a default in the native project when the launcher icon does not suit a
-          notification.
+          <strong>Background.</strong> FCM draws the notification itself while the app is not in front. A tap opens the
+          app and routes the push&apos;s <code>url</code>.
         </>
       ),
       ko: (
         <>
-          <strong>아이콘과 색.</strong> 런처 아이콘이 알림 아이콘으로 맞지 않으면 네이티브 프로젝트에서 기본값을
-          설정합니다.
+          <strong>백그라운드.</strong> 앱이 앞에 없으면 FCM이 알림을 직접 그립니다. 누르면 앱이 열리고 푸시의{" "}
+          <code>url</code>로 이동합니다.
         </>
       ),
     }),
     l.trans({
       en: (
         <>
-          <strong>Foreground.</strong> Decide in app code how a notification shows while the app is open.
+          <strong>Channel, icon and color.</strong> Firebase posts into its default channel with the launcher icon;{" "}
+          <code>akan.config.ts</code> does not name a channel, icon or color of its own yet.
         </>
       ),
       ko: (
         <>
-          <strong>포그라운드.</strong> 앱이 열려 있을 때 알림을 어떻게 보여 줄지는 앱 코드에서 정합니다.
+          <strong>채널, 아이콘, 색.</strong> Firebase는 기본 채널에 런처 아이콘으로 올립니다. 채널, 아이콘, 색을 정하는
+          설정은 아직 <code>akan.config.ts</code>에 없습니다.
         </>
       ),
     }),
@@ -317,47 +357,31 @@ export default page().render(() => {
       en: (
         <>
           <strong>
-            The key is relative to <code>ios/</code>.
+            No <code>GoogleService-Info.plist</code>, no firebase-ios-sdk.
           </strong>{" "}
-          <code>App/App/</code> is the App target folder, next to <code>Info.plist</code>; a file copied to{" "}
-          <code>ios/App/</code> is never bundled.
+          The push plugin adds <code>UIBackgroundModes</code> and <code>aps-environment</code> to the app itself.
         </>
       ),
       ko: (
         <>
           <strong>
-            키는 <code>ios/</code> 기준 경로입니다.
+            <code>GoogleService-Info.plist</code>도, firebase-ios-sdk도 필요 없습니다.
           </strong>{" "}
-          <code>App/App/</code>가 <code>Info.plist</code>가 있는 App 타깃 폴더이고, <code>ios/App/</code>에 복사된
-          파일은 앱에 포함되지 않습니다.
+          <code>UIBackgroundModes</code>와 <code>aps-environment</code>는 푸시 플러그인이 앱에 직접 넣습니다.
         </>
       ),
     }),
     l.trans({
       en: (
         <>
-          <strong>Add the plist to the App target once in Xcode.</strong> The Xcode project is committed, so the
-          membership stays; afterwards <code>mobile.files</code> only refreshes the file.
+          <strong>An iOS token is an APNs device token</strong>, with <code>provider: "apns"</code>. FCM does not accept
+          it, so the server sends it to APNs itself.
         </>
       ),
       ko: (
         <>
-          <strong>Xcode에서 plist를 App 타깃에 한 번 추가합니다.</strong> Xcode 프로젝트는 커밋되므로 이 설정은
-          유지되고, 이후에는 <code>mobile.files</code>가 파일 내용만 갱신합니다.
-        </>
-      ),
-    }),
-    l.trans({
-      en: (
-        <>
-          <strong>Keep the plist in the app folder</strong> and let <code>mobile.files</code> copy it. The native
-          project can be regenerated, and anything placed there by hand goes with it.
-        </>
-      ),
-      ko: (
-        <>
-          <strong>plist는 앱 폴더에 두고</strong> <code>mobile.files</code>로 복사합니다. 네이티브 프로젝트는 다시
-          생성될 수 있고, 그 안에 손으로 넣은 파일은 함께 사라집니다.
+          <strong>iOS 토큰은 APNs 기기 토큰입니다.</strong> <code>provider: "apns"</code>로 오며, FCM은 이 토큰을 받지
+          않으므로 서버가 직접 APNs로 보냅니다.
         </>
       ),
     }),
@@ -365,17 +389,19 @@ export default page().render(() => {
       en: (
         <>
           <strong>
-            <code>simctl push</code> arrives but a Firebase send does not?
+            <code>xcrun simctl push</code> needs no server.
           </strong>{" "}
-          Check the APNs credential that matches the built <code>aps-environment</code>, covered in the next section.
+          It hands a payload to a simulator, which tests the tap and the routing. Put <code>url</code> at the top level,
+          beside <code>aps</code>, as the server does.
         </>
       ),
       ko: (
         <>
           <strong>
-            <code>simctl push</code>는 오는데 Firebase 발송은 안 온다면
+            <code>xcrun simctl push</code>에는 서버가 필요 없습니다.
           </strong>{" "}
-          빌드된 <code>aps-environment</code>에 맞는 APNs 인증 정보를 확인하세요. 다음 섹션에서 다룹니다.
+          시뮬레이터에 payload를 바로 넘겨 탭과 라우팅을 시험합니다. 서버처럼 <code>url</code>은 <code>aps</code> 옆,
+          최상위에 둡니다.
         </>
       ),
     }),
@@ -385,28 +411,44 @@ export default page().render(() => {
     l.trans({
       en: (
         <>
-          <strong>A mismatch fails silently.</strong> A build signed for one environment and sent through the other's
-          credential fails on Apple's side, with nothing on yours.
+          <strong>The server tries both.</strong> With <code>environment</code> unset, a send goes to production first
+          and, when APNs answers <code>BadDeviceToken</code> (a development build&apos;s token), to the sandbox. Set{" "}
+          <code>environment</code> to pin one.
         </>
       ),
       ko: (
         <>
-          <strong>어긋나면 조용히 실패합니다.</strong> 한쪽 환경으로 서명된 빌드에 다른 쪽 인증 정보로 보내면 Apple
-          쪽에서 실패하고, 내 쪽에는 아무 흔적도 남지 않습니다.
+          <strong>서버가 두 곳을 모두 시도합니다.</strong> <code>environment</code>를 비워 두면 production에 먼저
+          보내고, APNs가 <code>BadDeviceToken</code>으로 답하면(development 빌드의 토큰) 샌드박스로 보냅니다. 하나로
+          고정하려면 <code>environment</code>를 적습니다.
         </>
       ),
     }),
     l.trans({
       en: (
         <>
-          <strong>Upload both credentials.</strong> The same project serves a simulator run and a TestFlight build, and
-          the two reach Apple through different doors.
+          <strong>One key serves both.</strong> An APNs auth key is not tied to an environment, so a development run and
+          a TestFlight build need nothing different on the server.
         </>
       ),
       ko: (
         <>
-          <strong>두 인증 정보를 모두 올립니다.</strong> 같은 프로젝트가 시뮬레이터 실행과 TestFlight 빌드를 함께
-          감당하고, 둘은 서로 다른 문으로 Apple에 닿습니다.
+          <strong>키 하나로 둘 다 됩니다.</strong> APNs 인증 키는 환경에 묶이지 않으므로, development 실행과 TestFlight
+          빌드에 서버 설정을 따로 둘 필요가 없습니다.
+        </>
+      ),
+    }),
+    l.trans({
+      en: (
+        <>
+          <strong>A token no environment knows is dropped.</strong> A <code>410</code>, or <code>BadDeviceToken</code>{" "}
+          from the last environment tried, removes the token from its owner.
+        </>
+      ),
+      ko: (
+        <>
+          <strong>어느 환경도 모르는 토큰은 지웁니다.</strong> <code>410</code>이나, 마지막으로 시도한 환경의{" "}
+          <code>BadDeviceToken</code>이면 그 토큰을 주인에게서 지웁니다.
         </>
       ),
     }),
@@ -416,15 +458,15 @@ export default page().render(() => {
     {
       name: "register()",
       desc: l.trans({
-        en: "Asks for permission when needed and returns a `PushToken`, or `undefined`.",
-        ko: "필요하면 권한을 요청하고 `PushToken`을 돌려줍니다. 받지 못하면 `undefined`입니다.",
+        en: "Asks for permission, then returns a `PushToken`, or `undefined` when refused or unsupported.",
+        ko: "권한을 요청한 뒤 `PushToken`을 돌려줍니다. 거부되거나 지원하지 않으면 `undefined`입니다.",
       }),
     },
     {
       name: "getToken()",
       desc: l.trans({
-        en: "Returns the current token without asking for permission.",
-        ko: "권한을 묻지 않고 현재 토큰을 돌려줍니다.",
+        en: "Returns the token without asking. Registering shows no prompt, so check `getPermission()` first.",
+        ko: "묻지 않고 토큰을 돌려줍니다. 등록 자체는 창을 띄우지 않으므로 먼저 `getPermission()`을 확인합니다.",
       }),
     },
     {
@@ -444,15 +486,22 @@ export default page().render(() => {
     {
       name: "isSupported()",
       desc: l.trans({
-        en: "Tells whether push can work in this runtime.",
-        ko: "지금 런타임에서 푸시를 쓸 수 있는지 알려 줍니다.",
+        en: "Whether push can work here: the native plugin in a shell, the Firebase web config in a browser.",
+        ko: "지금 푸시를 쓸 수 있는지 알려 줍니다. 셸에서는 네이티브 플러그인, 브라우저에서는 Firebase 웹 설정을 봅니다.",
+      }),
+    },
+    {
+      name: "onTokenChange(listener)",
+      desc: l.trans({
+        en: "A native token rotates on its own; the listener gets each new `PushToken`. Returns the unsubscribe.",
+        ko: "네이티브 토큰은 저절로 바뀝니다. 바뀔 때마다 새 `PushToken`을 리스너에 넘기고, 해제 함수를 돌려줍니다.",
       }),
     },
     {
       name: "initClickBridge()",
       desc: l.trans({
-        en: "Routes notification clicks. The hook already runs it on mount.",
-        ko: "알림 클릭을 라우팅합니다. 훅이 마운트될 때 이미 실행합니다.",
+        en: "Routes the browser's notification clicks. The hook runs it on mount; a native shell needs nothing.",
+        ko: "브라우저의 알림 클릭을 라우팅합니다. 훅이 마운트될 때 실행하며, 네이티브 셸에서는 할 일이 없습니다.",
       }),
     },
   ];
@@ -462,43 +511,46 @@ export default page().render(() => {
       en: (
         <>
           <strong>PushToken</strong> holds <code>token</code>, <code>platform</code> (<code>web</code> |{" "}
-          <code>android</code> | <code>ios</code>), <code>provider</code> (<code>fcm</code>) and an optional{" "}
-          <code>deviceId</code>.
+          <code>android</code> | <code>ios</code>), <code>provider</code> (<code>apns</code> | <code>fcm</code>) and{" "}
+          <code>deviceId</code>, the installation id <code>getPushDeviceId()</code> keeps in the app&apos;s storage.
         </>
       ),
       ko: (
         <>
           <strong>PushToken</strong>에는 <code>token</code>, <code>platform</code>(<code>web</code> |{" "}
-          <code>android</code> | <code>ios</code>), <code>provider</code>(<code>fcm</code>), 그리고 선택값{" "}
-          <code>deviceId</code>가 들어 있습니다.
+          <code>android</code> | <code>ios</code>), <code>provider</code>(<code>apns</code> | <code>fcm</code>), 그리고{" "}
+          <code>getPushDeviceId()</code>가 앱 저장소에 두는 설치 id인 <code>deviceId</code>가 들어 있습니다.
         </>
       ),
     }),
     l.trans({
       en: (
         <>
-          <strong>App storage.</strong> Store the token through an app-level user/device API. Akan does not decide where
-          your user domain keeps device tokens.
+          <strong>Built-in storage.</strong> With <code>libs/shared</code>,{" "}
+          <code>st.do.registerPushToken(pushToken)</code> stores it on the signed-in user. The next section shows where.
         </>
       ),
       ko: (
         <>
-          <strong>앱의 저장소.</strong> 토큰은 앱 레벨의 user/device API로 저장합니다. user 도메인이 기기 토큰을 어디에
-          둘지는 Akan이 대신 정하지 않습니다.
+          <strong>저장은 내장입니다.</strong> <code>libs/shared</code>를 쓰면{" "}
+          <code>st.do.registerPushToken(pushToken)</code>이 로그인한 사용자에게 저장합니다. 어디에 두는지는 다음
+          섹션에서 봅니다.
         </>
       ),
     }),
     l.trans({
       en: (
         <>
-          <strong>Click routing.</strong> Send a <code>url</code> from the server and it arrives as{" "}
-          <code>data.url</code>. A click opens that path through the CSR router instead of reloading the app.
+          <strong>Click routing.</strong> Send a <code>url</code> and a tap opens it through the CSR router. In a native
+          shell the framework routes it from boot, the tap that launched the app included; in a browser the service
+          worker hands it to the open tab. Only a path inside the app is followed.
         </>
       ),
       ko: (
         <>
-          <strong>클릭 라우팅.</strong> 서버에서 <code>url</code>을 보내면 <code>data.url</code>로 도착합니다. 알림을
-          누르면 앱을 새로 불러오지 않고 CSR router로 그 경로를 엽니다.
+          <strong>클릭 라우팅.</strong> <code>url</code>을 보내면 탭했을 때 CSR router로 그 경로를 엽니다. 네이티브
+          셸에서는 앱을 띄운 탭까지 포함해 프레임워크가 부팅 때부터 라우팅하고, 브라우저에서는 서비스 워커가 열린 탭에
+          넘깁니다. 앱 안의 경로만 따라갑니다.
         </>
       ),
     }),
@@ -508,18 +560,14 @@ export default page().render(() => {
     l.trans({
       en: (
         <>
-          <strong>
-            <code>UserDeviceInput</code> mirrors <code>PushToken</code>,
-          </strong>{" "}
-          so the value <code>register()</code> returned goes to the endpoint unchanged.
+          <strong>One entry per installation.</strong> Registering again with the same <code>token</code> or the same{" "}
+          <code>deviceId</code> replaces that entry, so a rotated token does not pile up.
         </>
       ),
       ko: (
         <>
-          <strong>
-            <code>UserDeviceInput</code>은 <code>PushToken</code>과 모양이 같습니다.
-          </strong>{" "}
-          그래서 <code>register()</code>가 돌려준 값을 그대로 엔드포인트에 넘깁니다.
+          <strong>설치 하나에 항목 하나입니다.</strong> 같은 <code>token</code>이나 같은 <code>deviceId</code>로 다시
+          등록하면 그 항목을 바꾸므로, 바뀐 토큰이 쌓이지 않습니다.
         </>
       ),
     }),
@@ -527,59 +575,72 @@ export default page().render(() => {
       en: (
         <>
           <strong>
-            <code>userId</code> and <code>disabledAt</code> are the server's.
+            <code>updatedAt</code> is the server&apos;s.
           </strong>{" "}
-          The owner comes from the signed-in account, and <code>disabledAt</code> retires a token FCM rejected.
+          It is written when the token is registered; the value a client sends is not used.
         </>
       ),
       ko: (
         <>
           <strong>
-            <code>userId</code>와 <code>disabledAt</code>은 서버가 채웁니다.
+            <code>updatedAt</code>은 서버가 씁니다.
           </strong>{" "}
-          소유자는 로그인한 계정에서 오고, <code>disabledAt</code>은 FCM이 거절한 토큰을 비활성화한 시각입니다.
+          토큰을 등록할 때 기록하며, 클라이언트가 보낸 값은 쓰지 않습니다.
+        </>
+      ),
+    }),
+    l.trans({
+      en: (
+        <>
+          <strong>Signing out drops this device.</strong> <code>signoutUser</code> sends the installation&apos;s{" "}
+          <code>deviceId</code>, so a handed-down phone does not get the previous person&apos;s notifications.
+        </>
+      ),
+      ko: (
+        <>
+          <strong>로그아웃하면 이 기기를 지웁니다.</strong> <code>signoutUser</code>가 설치의 <code>deviceId</code>를
+          보내므로, 물려받은 폰이 앞 사람의 알림을 받지 않습니다.
+        </>
+      ),
+    }),
+    l.trans({
+      en: (
+        <>
+          <strong>Older tokens are skipped.</strong> A token stored as a plain string before this shape is not read;{" "}
+          <code>Notification.Zone.Initialize</code> registers the device again on its next visit.
+        </>
+      ),
+      ko: (
+        <>
+          <strong>예전 토큰은 건너뜁니다.</strong> 이 모양 이전에 문자열로 저장된 토큰은 읽지 않으며,{" "}
+          <code>Notification.Zone.Initialize</code>가 다음 방문 때 기기를 다시 등록합니다.
         </>
       ),
     }),
   ];
 
-  const documentNotes = [
-    l.trans({
-      en: (
-        <>
-          <strong>
-            <code>byToken</code>
-          </strong>{" "}
-          gives the service <code>findByToken</code> and <code>updateByToken</code>.
-        </>
-      ),
-      ko: (
-        <>
-          <strong>
-            <code>byToken</code>
-          </strong>
-          으로 서비스에서 <code>findByToken</code>과 <code>updateByToken</code>을 쓸 수 있습니다.
-        </>
-      ),
-    }),
-    l.trans({
-      en: (
-        <>
-          <strong>
-            <code>ofUser</code>
-          </strong>{" "}
-          gives <code>listOfUser</code>, which skips retired tokens through <code>q.empty("disabledAt")</code>.
-        </>
-      ),
-      ko: (
-        <>
-          <strong>
-            <code>ofUser</code>
-          </strong>
-          로 <code>listOfUser</code>를 쓸 수 있고, <code>q.empty("disabledAt")</code>로 비활성화된 토큰은 건너뜁니다.
-        </>
-      ),
-    }),
+  const endpointRows = [
+    {
+      name: "addNotiDeviceTokenOfSelf(deviceToken)",
+      desc: l.trans({
+        en: "Stores this device's `DeviceToken` on the caller, replacing its earlier entry.",
+        ko: "이 기기의 `DeviceToken`을 호출한 사용자에게 저장하고, 이전 항목을 바꿉니다.",
+      }),
+    },
+    {
+      name: "subNotiDeviceTokenOfSelf(token)",
+      desc: l.trans({
+        en: "Removes one token from the caller: the push switch turned off.",
+        ko: "호출한 사용자에게서 토큰 하나를 지웁니다. 푸시 스위치를 끈 경우입니다.",
+      }),
+    },
+    {
+      name: "hasNotiDeviceTokenOfSelf(token)",
+      desc: l.trans({
+        en: "Whether this device is registered, which is what the switch shows.",
+        ko: "이 기기가 등록되어 있는지 알려 줍니다. 스위치가 보여 주는 상태입니다.",
+      }),
+    },
   ];
 
   const signalNotes = [
@@ -587,27 +648,9 @@ export default page().render(() => {
       en: (
         <>
           <strong>
-            <code>User</code> registers, <code>Admin</code> retires.
-          </strong>{" "}
-          Every custom endpoint names its own guards.
-        </>
-      ),
-      ko: (
-        <>
-          <strong>
-            등록은 <code>User</code>, 비활성화는 <code>Admin</code>입니다.
-          </strong>{" "}
-          커스텀 엔드포인트는 모두 자기 가드를 직접 적습니다.
-        </>
-      ),
-    }),
-    l.trans({
-      en: (
-        <>
-          <strong>
             <code>Self</code> supplies the owner,
           </strong>{" "}
-          so a client cannot register a token under someone else's account.
+          so a client cannot register a token under someone else&apos;s account.
         </>
       ),
       ko: (
@@ -619,20 +662,39 @@ export default page().render(() => {
         </>
       ),
     }),
+    l.trans({
+      en: (
+        <>
+          <strong>Kept off MCP.</strong> An agent has no device, so the token endpoints are <code>mcp: false</code>.
+        </>
+      ),
+      ko: (
+        <>
+          <strong>MCP에는 올리지 않습니다.</strong> 에이전트에게는 기기가 없으므로 토큰 엔드포인트는{" "}
+          <code>mcp: false</code>입니다.
+        </>
+      ),
+    }),
   ];
 
   const credentialNotes = [
     l.trans({
       en: (
         <>
-          <strong>Get it from Firebase Console</strong> under Project settings, then Service accounts. Copy the five
-          fields above from the downloaded JSON.
+          <strong>
+            <code>firebase</code> is the service account
+          </strong>{" "}
+          from Firebase Console, under Project settings, then Service accounts. Copy the five fields above from the
+          downloaded JSON. Android and the web need it.
         </>
       ),
       ko: (
         <>
-          <strong>Firebase Console</strong>의 프로젝트 설정 → 서비스 계정에서 받습니다. 내려받은 JSON에서 위 다섯 필드를
-          옮겨 적습니다.
+          <strong>
+            <code>firebase</code>는 서비스 계정입니다.
+          </strong>{" "}
+          Firebase Console의 프로젝트 설정 → 서비스 계정에서 받고, 내려받은 JSON에서 위 다섯 필드를 옮겨 적습니다.
+          Android와 웹에 필요합니다.
         </>
       ),
     }),
@@ -640,17 +702,39 @@ export default page().render(() => {
       en: (
         <>
           <strong>
-            It is not <code>google-services.json</code>.
+            <code>apns</code> is the <code>.p8</code> key.
           </strong>{" "}
-          That file is the native app's config; this one signs every send.
+          <code>privateKey</code> is the file&apos;s text (<code>\n</code> escapes are fine), <code>keyId</code> and{" "}
+          <code>teamId</code> come from Apple Developer, and <code>bundleId</code> is the app&apos;s{" "}
+          <code>mobile.appId</code>. iOS needs it.
         </>
       ),
       ko: (
         <>
           <strong>
-            <code>google-services.json</code>과는 다른 파일입니다.
+            <code>apns</code>는 <code>.p8</code> 키입니다.
           </strong>{" "}
-          그 파일은 네이티브 앱 설정이고, 이것은 모든 발송에 서명합니다.
+          <code>privateKey</code>는 파일의 텍스트이고(<code>\n</code> 이스케이프도 됩니다), <code>keyId</code>와{" "}
+          <code>teamId</code>는 Apple Developer에서, <code>bundleId</code>는 앱의 <code>mobile.appId</code>입니다. iOS에
+          필요합니다.
+        </>
+      ),
+    }),
+    l.trans({
+      en: (
+        <>
+          <strong>
+            Neither is <code>google-services.json</code>.
+          </strong>{" "}
+          That file is the Android app&apos;s config; these sign every send.
+        </>
+      ),
+      ko: (
+        <>
+          <strong>
+            어느 것도 <code>google-services.json</code>이 아닙니다.
+          </strong>{" "}
+          그 파일은 Android 앱 설정이고, 이것들은 모든 발송에 서명합니다.
         </>
       ),
     }),
@@ -660,54 +744,68 @@ export default page().render(() => {
     l.trans({
       en: (
         <>
-          <strong>Why retire.</strong> FCM answers a token the device no longer holds with{" "}
-          <code>messaging/registration-token-not-registered</code>, and keeps answering it forever. A send loop that
-          never retires the token keeps a permanent share of guaranteed failures.
+          <strong>The settings gate is one function.</strong> <code>NotificationService.accepts</code>:{" "}
+          <code>block</code> and <code>disagree</code> stop everything, <code>fewer</code> lets only{" "}
+          <code>actionRequired</code> and <code>essential</code> through, a future <code>pauseUntil</code> stops
+          everything, and a user without tokens is skipped.
         </>
       ),
       ko: (
         <>
-          <strong>왜 정리하나.</strong> 기기가 더 이상 갖고 있지 않은 토큰에 FCM은{" "}
-          <code>messaging/registration-token-not-registered</code>로 답하고, 이 답을 영원히 반복합니다. 토큰을 정리하지
-          않는 발송 루프는 실패가 확정된 몫을 계속 안고 갑니다.
+          <strong>수신 설정은 함수 하나가 판정합니다.</strong> <code>NotificationService.accepts</code>입니다.{" "}
+          <code>block</code>과 <code>disagree</code>는 전부 막고, <code>fewer</code>는 <code>actionRequired</code>와{" "}
+          <code>essential</code>만 통과시키며, <code>pauseUntil</code>이 미래면 전부 막고, 토큰이 없는 사용자는
+          건너뜁니다.
         </>
       ),
     }),
     l.trans({
       en: (
         <>
-          <strong>Other errors still throw.</strong> Only that one code becomes a retirement; everything else reaches
-          the caller.
+          <strong>Dead tokens go at once.</strong> APNs <code>410</code> or <code>BadDeviceToken</code>, and FCM{" "}
+          <code>messaging/registration-token-not-registered</code>, remove the token from its owner in the same call.
         </>
       ),
       ko: (
         <>
-          <strong>다른 오류는 그대로 던집니다.</strong> 그 코드 하나만 토큰 비활성화로 바꾸고, 나머지는 호출한 쪽으로
-          전달됩니다.
+          <strong>죽은 토큰은 바로 지웁니다.</strong> APNs의 <code>410</code>이나 <code>BadDeviceToken</code>, FCM의{" "}
+          <code>messaging/registration-token-not-registered</code>를 받으면 같은 호출 안에서 주인에게서 지웁니다.
         </>
       ),
     }),
     l.trans({
       en: (
         <>
-          <strong>
-            <code>notifyUser</code> sends only to live devices,
-          </strong>{" "}
-          because <code>listOfUser</code> already skips retired tokens.
+          <strong>It never throws.</strong> A push is best effort: <code>push()</code> answers what it reached (
+          <code>targetUserIds</code>, <code>tokenNum</code>, <code>successCount</code>, <code>prunedTokens</code>), and
+          a failed send never fails the caller&apos;s own work.
         </>
       ),
       ko: (
         <>
-          <strong>
-            <code>notifyUser</code>는 살아 있는 기기에만 보냅니다.
-          </strong>{" "}
-          <code>listOfUser</code>가 이미 비활성화된 토큰을 건너뛰기 때문입니다.
+          <strong>오류를 던지지 않습니다.</strong> 푸시는 최선을 다할 뿐입니다. <code>push()</code>는 닿은 범위(
+          <code>targetUserIds</code>, <code>tokenNum</code>, <code>successCount</code>, <code>prunedTokens</code>)를
+          돌려주고, 발송 실패가 호출한 쪽의 일을 실패시키지 않습니다.
+        </>
+      ),
+    }),
+    l.trans({
+      en: (
+        <>
+          <strong>A megaphone takes the same gate.</strong> An admin notification of <code>type: "all"</code> goes to
+          every active user, 500 at a time, through <code>accepts</code> like any other push.
+        </>
+      ),
+      ko: (
+        <>
+          <strong>전체 발송도 같은 판정을 거칩니다.</strong> 관리자가 쓴 <code>type: "all"</code> 알림은 모든 활성
+          사용자에게 500명씩 나가며, 다른 푸시처럼 <code>accepts</code>를 거칩니다.
         </>
       ),
     }),
   ];
 
-  const sendOptionRows = [
+  const payloadRows = [
     {
       key: "title",
       type: "string",
@@ -715,33 +813,41 @@ export default page().render(() => {
       desc: l.trans({ en: "The notification title.", ko: "알림 제목입니다." }),
     },
     {
-      key: "body",
-      type: "string",
+      key: "level",
+      type: "cnst.NotiLevel",
       tags: [l.trans({ en: "required", ko: "필수" })],
-      desc: l.trans({ en: "The notification body.", ko: "알림 본문입니다." }),
-    },
-    {
-      key: "token",
-      type: "string",
       desc: l.trans({
-        en: "One device's push token. Send either `token` or `topic`.",
-        ko: "기기 하나의 푸시 토큰입니다. `token`과 `topic` 중 하나를 보냅니다.",
+        en: "`actionRequired`, `notice`, `essential`, `suggestion` or `advertise`. The settings gate reads it.",
+        ko: "`actionRequired`, `notice`, `essential`, `suggestion`, `advertise` 중 하나입니다. 수신 설정 판정이 읽습니다.",
       }),
     },
     {
-      key: "topic",
+      key: "content",
+      type: "string",
+      desc: l.trans({ en: "The notification body.", ko: "알림 본문입니다." }),
+    },
+    {
+      key: "contentKey",
       type: "string",
       desc: l.trans({
-        en: "An FCM topic. Every device subscribed to it receives the message.",
-        ko: "FCM 토픽입니다. 이 토픽을 구독한 모든 기기가 받습니다.",
+        en: "A dictionary key for the body instead, resolved in the app's default locale.",
+        ko: "본문 대신 쓰는 사전 키입니다. 앱의 기본 로케일로 풀어 씁니다.",
       }),
     },
     {
       key: "url",
       type: "string",
       desc: l.trans({
-        en: "Where a click lands. It arrives in the message as `data.url`.",
-        ko: "알림을 눌렀을 때 열 경로입니다. 메시지에는 `data.url`로 실립니다.",
+        en: "Where a tap lands: a path inside the app.",
+        ko: "알림을 눌렀을 때 열 경로입니다. 앱 안의 경로를 씁니다.",
+      }),
+    },
+    {
+      key: "tag",
+      type: "string",
+      desc: l.trans({
+        en: "A collapse key: a second push with the same tag replaces the first.",
+        ko: "합치기 키입니다. 같은 tag의 두 번째 푸시가 첫 번째를 대신합니다.",
       }),
     },
     {
@@ -750,12 +856,9 @@ export default page().render(() => {
       desc: l.trans({ en: "An image shown in the notification.", ko: "알림에 보여 줄 이미지입니다." }),
     },
     {
-      key: "data",
-      type: "Record<string, string>",
-      desc: l.trans({
-        en: "Extra key-value pairs delivered with the message.",
-        ko: "메시지와 함께 전달할 추가 키-값입니다.",
-      }),
+      key: "badge",
+      type: "number",
+      desc: l.trans({ en: "The app icon's badge count.", ko: "앱 아이콘의 배지 숫자입니다." }),
     },
   ];
 
@@ -766,24 +869,24 @@ export default page().render(() => {
         <Docs.Description>
           <div>
             {l.trans({
-              en: "The browser prompt appears, a token comes back, and the server logs a successful send. Nothing arrives on the phone.",
-              ko: "브라우저 권한 창이 뜨고, 토큰이 돌아오고, 서버 로그에는 발송 성공이 찍힙니다. 그런데 폰에는 아무것도 오지 않습니다.",
+              en: "The prompt appears, a token comes back, and the server logs a send. Nothing arrives on the phone.",
+              ko: "권한 창이 뜨고, 토큰이 돌아오고, 서버 로그에는 발송이 찍힙니다. 그런데 폰에는 아무것도 오지 않습니다.",
             })}
           </div>
           <div>
             {l.trans({
               en: (
                 <span>
-                  Push is one client API, <code>usePushNotification()</code>, backed by three separate setups: web,
-                  Android and iOS. A send against the wrong credential looks exactly like one that worked, so prepare
-                  every row that applies to you.
+                  Push is one client API, <code>usePushNotification()</code>, and two senders on the server: APNs for
+                  iOS, FCM for Android and the web. A token sent without its sender&apos;s credential is skipped with
+                  one log line, so prepare every row that applies to you.
                 </span>
               ),
               ko: (
                 <span>
-                  푸시는 클라이언트 API <code>usePushNotification()</code> 하나 뒤에 웹, Android, iOS 설정이 따로 붙어
-                  있습니다. 잘못된 인증 정보로 보낸 발송도 정상 발송과 똑같아 보이니, 아래 표에서 해당하는 줄을 빠짐없이
-                  준비하세요.
+                  푸시는 클라이언트 API <code>usePushNotification()</code> 하나와 서버의 발송기 둘로 이루어집니다. iOS는
+                  APNs, Android와 웹은 FCM입니다. 발송기 인증 정보가 없는 토큰은 로그 한 줄만 남기고 건너뛰니, 아래
+                  표에서 해당하는 줄을 빠짐없이 준비하세요.
                 </span>
               ),
             })}
@@ -802,13 +905,25 @@ export default page().render(() => {
       </Scroll.Slide>
       <Divider />
 
-      <Scroll.Slide id="push-plugins" title={l.trans({ en: "Why Two Plugins", ko: "플러그인이 두 개인 이유" })}>
-        <Docs.Title>{l.trans({ en: "Why Two Plugins", ko: "플러그인이 두 개인 이유" })}</Docs.Title>
+      <Scroll.Slide id="push-plugins" title={l.trans({ en: "One Native Plugin", ko: "네이티브 플러그인 하나" })}>
+        <Docs.Title>{l.trans({ en: "One Native Plugin", ko: "네이티브 플러그인 하나" })}</Docs.Title>
         <Docs.Description>
           <div>
             {l.trans({
-              en: "Akan uses FCM as its push provider, so a native app needs two Capacitor plugins: one for the OS push bridge and one for the FCM token.",
-              ko: "Akan은 FCM을 푸시 제공자로 쓰기 때문에, 네이티브 앱에는 Capacitor 플러그인이 두 개 필요합니다. 하나는 OS 푸시 브리지용, 하나는 FCM 토큰용입니다.",
+              en: (
+                <span>
+                  A native app gets push from the runtime&apos;s <code>push</code> plugin, and{" "}
+                  <code>permissions: ["push"]</code> on the mobile target is all that adds it. There is no package to
+                  install. The plugin speaks each platform&apos;s own service:
+                </span>
+              ),
+              ko: (
+                <span>
+                  네이티브 앱의 푸시는 런타임의 <code>push</code> 플러그인이 맡고, 모바일 타깃의{" "}
+                  <code>permissions: ["push"]</code>만으로 들어갑니다. 설치할 패키지는 없습니다. 플러그인은 플랫폼마다
+                  그 플랫폼의 서비스를 씁니다:
+                </span>
+              ),
             })}
           </div>
           <div className={cardGridRecipe({ cols: "mdTwo" }, "my-4")}>
@@ -826,9 +941,10 @@ export default page().render(() => {
             {l.trans({
               en: (
                 <span>
-                  Declare both in <code>apps/myapp/package.json</code>, not only in the workspace root: Capacitor links
-                  native plugins from the app package. The dependency block itself is on{" "}
-                  <Link href="/cheatsheet/mobile/setup#capacitor-plugins" className="text-primary">
+                  <code>usePushNotification()</code> hides which is which: it calls the plugin in a native shell and
+                  Firebase in a browser, and hands back one <code>PushToken</code> shape either way. Which permission
+                  adds which plugin is on{" "}
+                  <Link href="/cheatsheet/mobile/setup#native-plugins" className="text-primary">
                     Setup
                   </Link>
                   .
@@ -836,9 +952,10 @@ export default page().render(() => {
               ),
               ko: (
                 <span>
-                  둘 다 워크스페이스 루트가 아니라 <code>apps/myapp/package.json</code>에 선언합니다. Capacitor는 앱
-                  패키지에 선언된 네이티브 플러그인을 링크하기 때문입니다. 의존성 블록 자체는{" "}
-                  <Link href="/cheatsheet/mobile/setup#capacitor-plugins" className="text-primary">
+                  <code>usePushNotification()</code>이 그 차이를 감춥니다. 네이티브 셸에서는 플러그인을, 브라우저에서는
+                  Firebase를 부르고, 어느 쪽이든 같은 모양의 <code>PushToken</code>을 돌려줍니다. 어떤 권한이 어떤
+                  플러그인을 넣는지는{" "}
+                  <Link href="/cheatsheet/mobile/setup#native-plugins" className="text-primary">
                     설정
                   </Link>{" "}
                   문서에서 다룹니다.
@@ -950,13 +1067,13 @@ export default page().render(() => {
               en: (
                 <span>
                   Android push is a Firebase Android app whose package name matches <code>mobile.appId</code> exactly,
-                  plus one config file copied into the generated native project.
+                  plus one config file the mobile target names.
                 </span>
               ),
               ko: (
                 <span>
                   Android 푸시는 패키지 이름이 <code>mobile.appId</code>와 정확히 같은 Firebase Android 앱 등록, 그리고
-                  생성된 네이티브 프로젝트로 복사되는 설정 파일 하나로 끝납니다.
+                  모바일 타깃이 지정하는 설정 파일 하나로 끝납니다.
                 </span>
               ),
             })}
@@ -1030,12 +1147,12 @@ export default page().render(() => {
             {l.trans({
               en: (
                 <span>
-                  Then copy it into the native project from <code>akan.config.ts</code>:
+                  Then name it in the target&apos;s native config in <code>akan.config.ts</code>:
                 </span>
               ),
               ko: (
                 <span>
-                  그리고 <code>akan.config.ts</code>에서 네이티브 프로젝트로 복사합니다:
+                  그리고 <code>akan.config.ts</code>의 타깃 native 설정에서 지정합니다:
                 </span>
               ),
             })}
@@ -1053,10 +1170,8 @@ const config: AppConfig = {
     targets: {
       default: {
         permissions: ["push"],
-        files: {
-          android: {
-            "app/google-services.json": "secrets/google-services.json",
-          },
+        native: {
+          android: { googleServices: "secrets/google-services.json" },
         },
       },
     },
@@ -1078,7 +1193,7 @@ export default config;`}
                   <strong>
                     <code>google-services.json</code> is not the server credential.
                   </strong>{" "}
-                  It is the client/native Firebase config, not the Firebase Admin service account JSON. The server
+                  It is the Android app&apos;s Firebase config, not the Firebase Admin service account JSON. The server
                   credential goes in <code>env.server.*</code>, as the last section shows.
                 </span>
               ),
@@ -1087,8 +1202,8 @@ export default config;`}
                   <strong>
                     <code>google-services.json</code>은 서버 인증 정보가 아닙니다.
                   </strong>{" "}
-                  클라이언트·네이티브 앱용 Firebase 설정 파일이지, Firebase Admin 서비스 계정 JSON이 아닙니다. 서버 인증
-                  정보는 마지막 섹션처럼 <code>env.server.*</code>에 둡니다.
+                  Android 앱용 Firebase 설정 파일이지, Firebase Admin 서비스 계정 JSON이 아닙니다. 서버 인증 정보는
+                  마지막 섹션처럼 <code>env.server.*</code>에 둡니다.
                 </span>
               ),
             })}
@@ -1098,14 +1213,14 @@ export default config;`}
           </Docs.SubSubTitle>
           <div>
             {l.trans({
-              en: "Android can need display settings beyond token registration. Three of them are yours to decide:",
-              ko: "Android는 토큰 등록과 별개로 알림 표시 설정이 더 필요할 수 있습니다. 다음 세 가지는 직접 정합니다:",
+              en: "How a notification shows depends on whether the app is in front:",
+              ko: "알림이 어떻게 보이는지는 앱이 앞에 있는지에 따라 다릅니다:",
             })}
             <ExternalLink
-              href="https://capacitorjs.com/docs/apis/push-notifications#push-notification-channel"
+              href="https://developer.android.com/develop/ui/views/notifications/channels"
               label={l.trans({
-                en: "Open Capacitor push notification channel docs",
-                ko: "Capacitor 푸시 알림 채널 문서 열기",
+                en: "Open Android notification channel docs",
+                ko: "Android 알림 채널 문서 열기",
               })}
             />
           </div>
@@ -1123,8 +1238,8 @@ export default config;`}
         <Docs.Description>
           <div>
             {l.trans({
-              en: "iOS push is the same Firebase registration plus an Apple credential, and it is where most silent failures live. What you own is which APNs credential Firebase holds.",
-              ko: "iOS 푸시는 같은 Firebase 등록에 Apple 인증 정보가 하나 더 붙는 구조이고, 조용한 실패가 가장 많이 생기는 곳입니다. 직접 챙길 부분은 Firebase에 어떤 APNs 인증 정보가 올라가 있느냐입니다.",
+              en: "iOS push needs no Firebase at all: the app registers with APNs, and the server sends to APNs itself. What you own is the capability on the App ID and the key the server signs with.",
+              ko: "iOS 푸시에는 Firebase가 전혀 필요 없습니다. 앱은 APNs에 등록하고, 서버도 APNs로 직접 보냅니다. 직접 챙길 것은 App ID의 기능 설정과 서버가 서명할 키입니다.",
             })}
           </div>
           <ol className={stepList}>
@@ -1132,54 +1247,14 @@ export default config;`}
               {l.trans({
                 en: (
                   <span>
-                    Register an iOS app in Firebase with the same bundle ID as <code>mobile.appId</code>.
+                    In Apple Developer, open Identifiers, pick the App ID that matches <code>mobile.appId</code>, and
+                    turn on Push Notifications.
                   </span>
                 ),
                 ko: (
                   <span>
-                    Firebase에서 <code>mobile.appId</code>와 같은 bundle ID로 iOS 앱을 등록합니다.
-                  </span>
-                ),
-              })}
-              <ExternalLink
-                href="https://firebase.google.com/docs/ios/setup"
-                label={l.trans({ en: "Open Firebase iOS setup docs", ko: "Firebase iOS 설정 문서 열기" })}
-              />
-            </li>
-            <li>
-              {l.trans({
-                en: (
-                  <span>
-                    Download <code>GoogleService-Info.plist</code> into <code>apps/myapp/secrets/</code>.
-                  </span>
-                ),
-                ko: (
-                  <span>
-                    <code>GoogleService-Info.plist</code>를 <code>apps/myapp/secrets/</code>에 내려받습니다.
-                  </span>
-                ),
-              })}
-              <ExternalLink
-                href="https://firebase.google.com/docs/ios/setup#add-config-file"
-                label={l.trans({ en: "Open GoogleService-Info.plist docs", ko: "GoogleService-Info.plist 문서 열기" })}
-              />
-            </li>
-            <li>
-              {l.trans({
-                en: "Copy it into the generated App target and confirm its target membership in Xcode.",
-                ko: "생성된 App 타깃에 복사하고, Xcode에서 Target Membership을 확인합니다.",
-              })}
-            </li>
-            <li>
-              {l.trans({
-                en: (
-                  <span>
-                    Add <code>permissions: ["push"]</code> to the mobile target.
-                  </span>
-                ),
-                ko: (
-                  <span>
-                    모바일 타깃에 <code>permissions: ["push"]</code>를 추가합니다.
+                    Apple Developer의 Identifiers에서 <code>mobile.appId</code>와 같은 App ID를 골라 Push
+                    Notifications를 켭니다.
                   </span>
                 ),
               })}
@@ -1195,35 +1270,55 @@ export default config;`}
               {l.trans({
                 en: (
                   <span>
-                    Create an APNs auth key under Keys in Apple Developer, and upload the <code>.p8</code> in Firebase
-                    Console → Cloud Messaging. Prefer this; a Certificates page offering only Apple Push Notification
-                    service SSL is the older certificate-based setup.
+                    Under Keys, create a key with Apple Push Notifications service enabled and download its{" "}
+                    <code>.p8</code>. Apple lets you download it once; note its Key ID and your Team ID.
                   </span>
                 ),
                 ko: (
                   <span>
-                    Apple Developer의 Keys에서 APNs 인증 키를 만들어 Firebase Console → Cloud Messaging에{" "}
-                    <code>.p8</code> 키를 올립니다(권장). Certificates에 Apple Push Notification service SSL만 보인다면
-                    예전 방식인 인증서 기반 설정입니다.
+                    Keys에서 Apple Push Notifications service를 켠 키를 만들고 <code>.p8</code>을 내려받습니다. 한 번만
+                    받을 수 있으니, Key ID와 Team ID도 함께 적어 둡니다.
                   </span>
                 ),
               })}
               <ExternalLink
-                href="https://firebase.google.com/docs/cloud-messaging/ios/certs"
-                label={l.trans({ en: "Open Firebase APNs certificate docs", ko: "Firebase APNs 인증서 문서 열기" })}
+                href="https://developer.apple.com/documentation/usernotifications/establishing-a-token-based-connection-to-apns"
+                label={l.trans({ en: "Open APNs token-based connection docs", ko: "APNs 토큰 기반 연결 문서 열기" })}
               />
             </li>
             <li>
               {l.trans({
-                en: "Upload APNs credentials for both development and production. Development serves simulator and debug builds; production serves TestFlight and the App Store.",
-                ko: "development와 production APNs 인증 정보를 모두 올립니다. 시뮬레이터와 디버그 빌드는 development로, TestFlight와 App Store 빌드는 production으로 받습니다.",
+                en: (
+                  <span>
+                    Put the three into <code>pushNoti.apns</code> on the server, as the last section shows.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    셋을 서버의 <code>pushNoti.apns</code>에 넣습니다. 마지막 섹션에서 봅니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    Add <code>permissions: ["push"]</code> to the mobile target.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    모바일 타깃에 <code>permissions: ["push"]</code>를 추가합니다.
+                  </span>
+                ),
               })}
             </li>
           </ol>
           <div>
             {l.trans({
-              en: "Copy the plist the same way Android copies its file:",
-              ko: "plist도 Android 파일과 같은 방식으로 복사합니다:",
+              en: "The target needs nothing else:",
+              ko: "타깃에는 그 밖에 더 넣을 것이 없습니다:",
             })}
           </div>
         </Docs.Description>
@@ -1233,16 +1328,11 @@ export default config;`}
           code={`import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
-  secrets: ["secrets/**"],
   mobile: {
+    appId: "com.myapp.app",
     targets: {
       default: {
         permissions: ["push"],
-        files: {
-          ios: {
-            "App/App/GoogleService-Info.plist": "secrets/GoogleService-Info.plist",
-          },
-        },
       },
     },
   },
@@ -1260,16 +1350,20 @@ export default config;`}
             {l.trans({
               en: (
                 <span>
-                  <strong>Do not add firebase-ios-sdk in Xcode yourself.</strong> With{" "}
-                  <code>@capacitor-community/fcm</code>, a Firebase Swift Package product added directly can conflict
-                  with the Firebase version the plugin requires.
+                  <strong>
+                    Keep the <code>.p8</code> on the server.
+                  </strong>{" "}
+                  It signs pushes to every app of your team. It belongs in <code>env.server.*</code>, never in{" "}
+                  <code>env.client.*</code> or <code>public/</code>.
                 </span>
               ),
               ko: (
                 <span>
-                  <strong>Xcode에 firebase-ios-sdk를 직접 추가하지 마세요.</strong>{" "}
-                  <code>@capacitor-community/fcm</code>을 쓰는 동안 직접 추가한 Firebase Swift Package product는
-                  플러그인이 요구하는 Firebase 버전과 충돌할 수 있습니다.
+                  <strong>
+                    <code>.p8</code>은 서버에만 둡니다.
+                  </strong>{" "}
+                  이 키는 팀의 모든 앱에 푸시를 서명합니다. <code>env.server.*</code>에 두고, <code>env.client.*</code>
+                  나 <code>public/</code>에는 절대 두지 않습니다.
                 </span>
               ),
             })}
@@ -1288,15 +1382,16 @@ export default config;`}
             {l.trans({
               en: (
                 <span>
-                  You never write <code>aps-environment</code>: Akan sets it in the entitlement from the command that
-                  produced the build. That one string decides which of the two APNs credentials in Firebase can reach
-                  the device.
+                  You never write <code>aps-environment</code>: the push plugin declares <code>development</code>, and a
+                  build signed with a provisioning profile takes the profile&apos;s value. It decides which APNs
+                  environment the device&apos;s token belongs to.
                 </span>
               ),
               ko: (
                 <span>
-                  <code>aps-environment</code>는 직접 쓰지 않습니다. 빌드를 만든 명령에 따라 Akan이 entitlement에 써
-                  넣습니다. 이 문자열 하나가 Firebase에 올린 두 APNs 인증 정보 중 어느 쪽이 기기에 닿을지를 정합니다.
+                  <code>aps-environment</code>는 직접 쓰지 않습니다. 푸시 플러그인이 <code>development</code>를
+                  선언하고, 프로비저닝 프로파일로 서명한 빌드는 프로파일의 값을 씁니다. 이 값이 기기 토큰이 어느 APNs
+                  환경의 것인지를 정합니다.
                 </span>
               ),
             })}
@@ -1312,27 +1407,27 @@ export default config;`}
                 command: "akan start-ios",
                 env: "development",
                 desc: l.trans({
-                  en: "Local simulator and device runs, through the APNs sandbox.",
-                  ko: "로컬 시뮬레이터·기기 실행이며, APNs 샌드박스 경로를 씁니다.",
-                }),
-              },
-              {
-                command: "akan start-ios --release",
-                env: "production",
-                desc: l.trans({
-                  en: "A local run in release mode.",
-                  ko: "릴리스 모드로 하는 로컬 실행입니다.",
+                  en: "Simulator and development-signed iPhone runs, through the APNs sandbox.",
+                  ko: "시뮬레이터와 development로 서명한 iPhone 실행이며, APNs 샌드박스를 씁니다.",
                 }),
               },
               {
                 command: "akan build-ios",
-                env: "production",
-                desc: l.trans({ en: "Release build generation.", ko: "릴리스 빌드 생성입니다." }),
+                env: "development",
+                desc: l.trans({ en: "A simulator build.", ko: "시뮬레이터 빌드입니다." }),
               },
               {
                 command: "akan release-ios",
                 env: "production",
-                desc: l.trans({ en: "Store and TestFlight releases.", ko: "스토어·TestFlight 릴리스입니다." }),
+                desc: l.trans({
+                  en: "The App Store profile: TestFlight and the App Store.",
+                  ko: "App Store 프로파일입니다. TestFlight와 App Store에 씁니다.",
+                }),
+              },
+              {
+                command: "akan release-ios --adHoc",
+                env: "production",
+                desc: l.trans({ en: "An ad hoc profile.", ko: "ad hoc 프로파일입니다." }),
               },
             ]}
           />
@@ -1352,15 +1447,16 @@ export default config;`}
             {l.trans({
               en: (
                 <span>
-                  Call <code>register()</code> from a user action, such as a settings toggle or an enable-notifications
-                  button, because it may ask for permission. Pass the <code>PushToken</code> it returns straight to your
-                  app's storage API:
+                  An app that mounts <code>libs/shared</code> needs no code of its own. Mount{" "}
+                  <code>Notification.Zone.Initialize</code> once in a signed-in layout: it registers the device again on
+                  every visit and on every token a native shell rotates, and never asks for permission.
                 </span>
               ),
               ko: (
                 <span>
-                  <code>register()</code>는 권한을 요청할 수 있으므로, 설정 토글이나 알림 켜기 버튼처럼 사용자가 이해할
-                  수 있는 동작에서 호출합니다. 돌려받은 <code>PushToken</code>은 바로 앱의 저장 API로 넘깁니다:
+                  <code>libs/shared</code>를 쓰는 앱은 직접 짤 코드가 없습니다. 로그인한 사용자의 레이아웃에{" "}
+                  <code>Notification.Zone.Initialize</code>를 한 번 둡니다. 방문할 때마다, 그리고 네이티브 셸이 토큰을
+                  바꿀 때마다 기기를 다시 등록하며, 권한은 묻지 않습니다.
                 </span>
               ),
             })}
@@ -1368,17 +1464,51 @@ export default config;`}
         </Docs.Description>
         <Code.Snippet
           className="w-full"
-          title="apps/myapp/lib/userDevice/UserDevice.Util.tsx"
+          title="apps/myapp/page/(user)/_layout.tsx"
+          code={`import { Notification } from "@libs/shared/client";
+import { layout } from "akanjs/client";
+
+export default layout().render(({ children }) => (
+  <>
+    <Notification.Zone.Initialize />
+    {children}
+  </>
+));`}
+        />
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  The permission prompt belongs to a user action, because Chrome ignores a request with no gesture
+                  behind it and iOS refuses one. <code>Notification.Util.PushSetting</code> is that switch. A button of
+                  your own calls <code>register()</code> and hands the <code>PushToken</code> to the store:
+                </span>
+              ),
+              ko: (
+                <span>
+                  권한 요청은 사용자 동작에서 해야 합니다. 동작 없이 요청하면 Chrome은 무시하고 iOS는 거절합니다.{" "}
+                  <code>Notification.Util.PushSetting</code>이 그 스위치입니다. 직접 만든 버튼이라면{" "}
+                  <code>register()</code>를 부르고 받은 <code>PushToken</code>을 스토어에 넘깁니다:
+                </span>
+              ),
+            })}
+          </div>
+        </Docs.Description>
+        <Code.Snippet
+          className="w-full"
+          title="apps/myapp/ui/EnablePush.tsx"
           code={`"use client";
-import { st, usePage } from "@apps/myapp/client";
+import { st } from "@apps/myapp/client";
 import { usePushNotification } from "@libs/util/webkit";
 import { buttonRecipe } from "akanjs/ui";
+import type { ReactNode } from "react";
 
-interface RegisterPushTokenProps {
+interface EnablePushProps {
   className?: string;
+  children: ReactNode;
 }
-export const RegisterPushToken = ({ className }: RegisterPushTokenProps) => {
-  const { l } = usePage();
+export const EnablePush = ({ className, children }: EnablePushProps) => {
   const push = usePushNotification();
   return (
     <button
@@ -1389,7 +1519,7 @@ export const RegisterPushToken = ({ className }: RegisterPushTokenProps) => {
       }}
       type="button"
     >
-      {l("userDevice.signal.registerPushToken")}
+      {children}
     </button>
   );
 };`}
@@ -1400,19 +1530,19 @@ export const RegisterPushToken = ({ className }: RegisterPushTokenProps) => {
               en: (
                 <span>
                   <strong>
-                    <code>registerPushToken</code> is not an Akan built-in.
+                    <code>registerPushToken</code> comes with <code>libs/shared</code>.
                   </strong>{" "}
-                  It is the app-level API built in the next two sections. Name and shape it to match your own
-                  user/device domain.
+                  Without it, hand the <code>PushToken</code> to an endpoint of your own; its fields map one to one onto
+                  the <code>DeviceToken</code> shown next.
                 </span>
               ),
               ko: (
                 <span>
                   <strong>
-                    <code>registerPushToken</code>은 Akan 내장 API가 아닙니다.
+                    <code>registerPushToken</code>은 <code>libs/shared</code>에 들어 있습니다.
                   </strong>{" "}
-                  다음 두 섹션에서 만드는 앱 레벨 API 예시입니다. 실제 앱의 user/device 도메인에 맞게 이름과 구조를
-                  정하세요.
+                  쓰지 않는다면 <code>PushToken</code>을 직접 만든 엔드포인트에 넘기면 됩니다. 필드는 다음 섹션의{" "}
+                  <code>DeviceToken</code>과 하나씩 맞습니다.
                 </span>
               ),
             })}
@@ -1445,13 +1575,25 @@ export const RegisterPushToken = ({ className }: RegisterPushTokenProps) => {
       </Scroll.Slide>
       <Divider />
 
-      <Scroll.Slide id="token-store" title={l.trans({ en: "Store The Token", ko: "토큰 저장하기" })}>
-        <Docs.Title>{l.trans({ en: "Store The Token", ko: "토큰 저장하기" })}</Docs.Title>
+      <Scroll.Slide id="token-store" title={l.trans({ en: "Where Tokens Live", ko: "토큰이 저장되는 곳" })}>
+        <Docs.Title>{l.trans({ en: "Where Tokens Live", ko: "토큰이 저장되는 곳" })}</Docs.Title>
         <Docs.Description>
           <div>
             {l.trans({
-              en: "Each device's token is yours to keep, not Akan's. This section shows one way to store tokens in the database and send only to active ones; shape yours to fit your app.",
-              ko: "기기별 토큰은 Akan이 아니라 앱이 관리합니다. 이 섹션은 토큰을 데이터베이스에 저장하고 활성 토큰에만 보내는 한 가지 예시이니, 앱 구조에 맞게 바꿔 쓰세요.",
+              en: (
+                <span>
+                  <code>libs/shared</code> keeps every device&apos;s token on its owner:{" "}
+                  <code>user.notiInfo.deviceTokens</code>, one <code>DeviceToken</code> per installation. The field is
+                  secret, so it never leaves the server.
+                </span>
+              ),
+              ko: (
+                <span>
+                  <code>libs/shared</code>는 기기마다의 토큰을 그 주인에게 둡니다.{" "}
+                  <code>user.notiInfo.deviceTokens</code>에 설치 하나당 <code>DeviceToken</code> 하나씩입니다. secret
+                  필드라 서버 밖으로 나가지 않습니다.
+                </span>
+              ),
             })}
           </div>
           <Docs.Flow
@@ -1459,43 +1601,46 @@ export const RegisterPushToken = ({ className }: RegisterPushTokenProps) => {
             direction="TB"
             nodes={{
               register: { label: l.trans({ en: "Client: register()", ko: "클라이언트: register()" }) },
-              serverRegister: {
-                label: l.trans({ en: "Server: registerPushToken", ko: "서버: registerPushToken" }),
-              },
-              db: { label: "DB: UserDevice", tone: "muted" },
-              load: { label: l.trans({ en: "Server: load active tokens", ko: "서버: 활성 토큰 로드" }) },
-              send: { label: l.trans({ en: "Server: send(token)", ko: "서버: send(token)" }) },
+              add: { label: l.trans({ en: "Server: addNotiDeviceTokenOfSelf", ko: "서버: addNotiDeviceTokenOfSelf" }) },
+              db: { label: "user.notiInfo.deviceTokens", tone: "muted" },
+              push: { label: l.trans({ en: "Server: push(userIds)", ko: "서버: push(userIds)" }) },
+              gate: { label: l.trans({ en: "Settings accept it?", ko: "수신 설정이 받는가?" }), tone: "info" },
+              send: { label: l.trans({ en: "sendEach by provider", ko: "provider별 sendEach" }) },
+              apns: { label: "APNs" },
               fcm: { label: "FCM" },
               device: { label: l.trans({ en: "User device", ko: "사용자 기기" }) },
-              invalid: { label: l.trans({ en: "Invalid?", ko: "유효하지 않은가?" }), tone: "info" },
-              cleanup: {
-                label: l.trans({ en: "Server: retire the token", ko: "서버: 토큰 비활성화" }),
+              gone: { label: l.trans({ en: "Gone?", ko: "사라진 토큰인가?" }), tone: "info" },
+              prune: {
+                label: l.trans({ en: "Server: drop the token", ko: "서버: 토큰 삭제" }),
                 tone: "muted",
               },
             }}
             edges={[
-              ["register", "serverRegister"],
-              ["serverRegister", "db"],
-              ["db", "load"],
-              ["load", "send"],
+              ["register", "add"],
+              ["add", "db"],
+              ["db", "push"],
+              ["push", "gate"],
+              ["gate", "send", { label: l.trans({ en: "yes", ko: "예" }) }],
+              ["send", "apns"],
               ["send", "fcm"],
+              ["apns", "device"],
               ["fcm", "device"],
-              ["send", "invalid"],
-              ["invalid", "cleanup", { label: l.trans({ en: "yes", ko: "예" }) }],
-              ["cleanup", "db", { dashed: true }],
+              ["send", "gone"],
+              ["gone", "prune", { label: l.trans({ en: "yes", ko: "예" }) }],
+              ["prune", "db", { dashed: true }],
             ]}
           />
-          <Docs.SubSubTitle>userDevice.constant.ts</Docs.SubSubTitle>
+          <Docs.SubSubTitle>deviceToken.constant.ts</Docs.SubSubTitle>
           <div>
             {l.trans({
               en: (
                 <span>
-                  The model holds what <code>register()</code> returned, plus the owner and a retirement date:
+                  The scalar holds what <code>register()</code> returned, plus when the server stored it:
                 </span>
               ),
               ko: (
                 <span>
-                  모델에는 <code>register()</code>가 돌려준 값과, 소유자와 비활성화 시각을 담습니다:
+                  스칼라에는 <code>register()</code>가 돌려준 값과, 서버가 저장한 시각을 담습니다:
                 </span>
               ),
             })}
@@ -1503,41 +1648,21 @@ export const RegisterPushToken = ({ className }: RegisterPushTokenProps) => {
         </Docs.Description>
         <Code.Snippet
           className="w-full"
-          title="apps/myapp/lib/userDevice/userDevice.constant.ts"
-          code={`import { enumOf, ID } from "akanjs/base";
+          title="libs/shared/lib/__scalar/deviceToken/deviceToken.constant.ts"
+          code={`import { dayjs, enumOf } from "akanjs/base";
 import { via } from "akanjs/constant";
 
-export class PushProvider extends enumOf("pushProvider", ["fcm"] as const) {}
-export class PushPlatform extends enumOf(
-  "pushPlatform",
-  ["web", "android", "ios"] as const,
-) {}
+export class PushProvider extends enumOf("pushProvider", ["apns", "fcm"] as const) {}
 
-export class UserDeviceInput extends via((field) => ({
+export class DevicePlatform extends enumOf("devicePlatform", ["ios", "android", "web"] as const) {}
+
+export class DeviceToken extends via((field) => ({
   token: field(String),
-  platform: field(PushPlatform),
-  provider: field(PushProvider),
+  provider: field(PushProvider, { default: "fcm" }),
+  platform: field(DevicePlatform, { default: "web" }),
   deviceId: field(String).optional(),
-})) {}
-
-export class UserDeviceObject extends via(UserDeviceInput, (field) => ({
-  userId: field(ID, { ref: "user" }),
-  disabledAt: field(Date).optional(), // set when FCM rejects the token
-})) {}
-
-export class LightUserDevice extends via(
-  UserDeviceObject,
-  ["platform", "disabledAt"] as const,
-  (resolve) => ({}),
-) {}
-
-export class UserDevice extends via(
-  UserDeviceObject,
-  LightUserDevice,
-  (resolve) => ({}),
-) {}
-
-export class UserDeviceInsight extends via(UserDevice, (field) => ({})) {}`}
+  updatedAt: field(Date, { default: () => dayjs() }),
+})) {}`}
         />
         <Docs.Description>
           <ul className={bulletList}>
@@ -1545,131 +1670,32 @@ export class UserDeviceInsight extends via(UserDevice, (field) => ({})) {}`}
               <li key={idx}>{note}</li>
             ))}
           </ul>
-          <Docs.SubSubTitle>userDevice.document.ts</Docs.SubSubTitle>
-          <div>
-            {l.trans({
-              en: "Two filters find one token and a user's live devices:",
-              ko: "필터 두 개로 토큰 하나와, 사용자의 살아 있는 기기를 찾습니다:",
-            })}
-          </div>
-        </Docs.Description>
-        <Code.Snippet
-          className="w-full"
-          title="apps/myapp/lib/userDevice/userDevice.document.ts"
-          code={`import { ID } from "akanjs/base";
-import { by, from, into } from "akanjs/document";
-import * as cnst from "../cnst";
-
-export class UserDeviceFilter extends from(cnst.UserDevice, (filter) => ({
-  query: {
-    byToken: filter()
-      .arg("token", String)
-      .query((token) => ({ token })),
-    ofUser: filter()
-      .arg("userId", ID)
-      .query((userId, q) => q.all({ userId }, q.empty("disabledAt"))),
-  },
-  sort: {},
-})) {}
-
-export class UserDevice extends by(cnst.UserDevice) {}
-
-export class UserDeviceModel extends into(
-  UserDevice,
-  UserDeviceFilter,
-  cnst.userDevice,
-  () => ({}),
-) {}`}
-        />
-        <Docs.Description>
-          <ul className={bulletList}>
-            {documentNotes.map((note, idx) => (
-              <li key={idx}>{note}</li>
-            ))}
-          </ul>
-          <Docs.SubSubTitle>userDevice.signal.ts</Docs.SubSubTitle>
+          <Docs.SubSubTitle>{l.trans({ en: "The endpoints", ko: "엔드포인트" })}</Docs.SubSubTitle>
           <div>
             {l.trans({
               en: (
                 <span>
-                  The endpoint takes the owner from <code>Self</code>, never from the body:
+                  All three are <code>User</code>-guarded mutations and queries on the <code>user</code> signal, called
+                  through the notification store&apos;s <code>registerPushToken</code>, <code>unregisterPushToken</code>{" "}
+                  and <code>loadPushState</code>:
                 </span>
               ),
               ko: (
                 <span>
-                  엔드포인트는 소유자를 body가 아니라 <code>Self</code>에서 받습니다:
+                  셋 모두 <code>user</code> 시그널에 있는 <code>User</code> 가드 엔드포인트이며, notification 스토어의{" "}
+                  <code>registerPushToken</code>, <code>unregisterPushToken</code>, <code>loadPushState</code>가
+                  부릅니다:
                 </span>
               ),
             })}
           </div>
-        </Docs.Description>
-        <Code.Snippet
-          className="w-full"
-          title="apps/myapp/lib/userDevice/userDevice.signal.ts"
-          code={`import { Admin, Self, User } from "@libs/shared/srvkit";
-import { endpoint, internal, slice } from "akanjs/signal";
-import * as cnst from "../cnst";
-import * as srv from "../srv";
-
-export class UserDeviceInternal extends internal(srv.userDevice, () => ({})) {}
-
-export class UserDeviceSlice extends slice(
-  srv.userDevice,
-  { guards: { root: Admin, get: Admin, cru: Admin } },
-  () => ({}),
-) {}
-
-export class UserDeviceEndpoint extends endpoint(
-  srv.userDevice,
-  ({ mutation }) => ({
-    registerPushToken: mutation(Boolean, { guards: [User] })
-      .body("pushToken", cnst.UserDeviceInput)
-      .with(Self)
-      .exec(async function (pushToken, self) {
-        await this.userDeviceService.registerPushToken(self.id, pushToken);
-        return true;
-      }),
-    invalidatePushToken: mutation(Boolean, { guards: [Admin] })
-      .body("token", String)
-      .exec(async function (token) {
-        await this.userDeviceService.invalidatePushToken(token);
-        return true;
-      }),
-  }),
-) {}`}
-        />
-        <Docs.Description>
+          <Docs.IntroTable type={l.trans({ en: "Endpoint", ko: "엔드포인트" })} items={endpointRows} />
           <ul className={bulletList}>
             {signalNotes.map((note, idx) => (
               <li key={idx}>{note}</li>
             ))}
           </ul>
-          <Docs.SubSubTitle>userDevice.store.ts</Docs.SubSubTitle>
-          <div>
-            {l.trans({
-              en: "The store action is the ordinary one: call the endpoint, then toast. Nothing here is push-specific; the token is just an argument.",
-              ko: "스토어 액션은 평범합니다. 엔드포인트를 부르고 토스트를 띄웁니다. 푸시만의 특별한 점은 없고, 토큰은 인자 하나일 뿐입니다.",
-            })}
-          </div>
         </Docs.Description>
-        <Code.Snippet
-          className="w-full"
-          title="apps/myapp/lib/userDevice/userDevice.store.ts"
-          code={`import { msg } from "@apps/myapp/client";
-import type { PushToken } from "@libs/util/webkit";
-import { store } from "akanjs/store";
-import { fetch, sig } from "../useClient";
-
-export class UserDeviceStore extends store(sig.userDevice, () => ({
-  // state
-})) {
-  // action
-  async registerPushToken(pushToken: PushToken) {
-    await fetch.registerPushToken(pushToken);
-    msg.success("userDevice.pushTokenRegistered");
-  }
-}`}
-        />
       </Scroll.Slide>
       <Divider />
 
@@ -1683,30 +1709,31 @@ export class UserDeviceStore extends store(sig.userDevice, () => ({
             {l.trans({
               en: (
                 <span>
-                  The server sends through <code>PushNotificationServer</code> from <code>@libs/util/srvkit</code>. It
-                  needs a Firebase Admin credential, and the service that calls it is where a device that uninstalled
-                  the app gets cleaned up.
+                  <code>notificationService.push(userIds, payload)</code> is the one call a domain service makes. It
+                  reads each recipient&apos;s settings, sends every accepted device through its own provider, and drops
+                  the tokens APNs or FCM call gone.
                 </span>
               ),
               ko: (
                 <span>
-                  서버는 <code>@libs/util/srvkit</code>의 <code>PushNotificationServer</code>로 보냅니다. 여기에는
-                  Firebase Admin 인증 정보가 필요하고, 앱을 지운 기기의 토큰을 정리하는 곳도 이것을 부르는 서비스입니다.
+                  도메인 서비스가 부르는 것은 <code>notificationService.push(userIds, payload)</code> 하나입니다. 받는
+                  사람마다 수신 설정을 읽고, 받아 준 기기마다 그 기기의 provider로 보내며, APNs나 FCM이 사라졌다고 답한
+                  토큰을 지웁니다.
                 </span>
               ),
             })}
           </div>
-          <Docs.SubSubTitle>{l.trans({ en: "Server credential", ko: "서버 인증 정보" })}</Docs.SubSubTitle>
+          <Docs.SubSubTitle>{l.trans({ en: "Server credentials", ko: "서버 인증 정보" })}</Docs.SubSubTitle>
           <div>
             {l.trans({
               en: (
                 <span>
-                  Put the service account under <code>pushNoti.firebase</code> in each server env file:
+                  Put both senders&apos; credentials under <code>pushNoti</code> in each server env file:
                 </span>
               ),
               ko: (
                 <span>
-                  서비스 계정을 각 서버 env 파일의 <code>pushNoti.firebase</code> 아래에 넣습니다:
+                  두 발송기의 인증 정보를 각 서버 env 파일의 <code>pushNoti</code> 아래에 넣습니다:
                 </span>
               ),
             })}
@@ -1732,6 +1759,12 @@ export const env: ModulesOptions = {
       private_key: "...",
       client_email: "...",
     },
+    apns: {
+      teamId: "...",
+      keyId: "...",
+      privateKey: "-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----",
+      bundleId: "com.myapp.app",
+    },
   },
 };`}
         />
@@ -1745,78 +1778,49 @@ export const env: ModulesOptions = {
             {l.trans({
               en: (
                 <span>
-                  <strong>
-                    Without <code>pushNoti.firebase</code>, <code>send()</code> sends nothing and throws nothing.
-                  </strong>{" "}
-                  It returns <code>undefined</code>, which a caller easily mistakes for success.
+                  <strong>A sender without credentials sends nothing and throws nothing.</strong> Its tokens are skipped
+                  with one <code>warn</code> line, such as <code>pushNoti.apns is not configured</code>, and counted as
+                  failures.
                 </span>
               ),
               ko: (
                 <span>
-                  <strong>
-                    <code>pushNoti.firebase</code>가 없으면 <code>send()</code>는 아무것도 보내지 않고, 오류도 던지지
-                    않습니다.
-                  </strong>{" "}
-                  <code>undefined</code>만 돌려주므로 호출한 쪽에서 성공으로 착각하기 쉽습니다.
+                  <strong>인증 정보가 없는 발송기는 아무것도 보내지 않고, 오류도 던지지 않습니다.</strong>{" "}
+                  <code>pushNoti.apns is not configured</code> 같은 <code>warn</code> 로그 한 줄만 남기고 그 토큰들을
+                  건너뛰며, 실패로 셉니다.
                 </span>
               ),
             })}
           </Docs.Alert>
-          <Docs.SubSubTitle>userDevice.service.ts</Docs.SubSubTitle>
+          <Docs.SubSubTitle>{l.trans({ en: "Sending from a service", ko: "서비스에서 보내기" })}</Docs.SubSubTitle>
           <div>
             {l.trans({
-              en: "The service registers, retires and sends, and turns FCM's dead-token answer into a retirement:",
-              ko: "서비스는 토큰을 등록하고, 비활성화하고, 발송합니다. FCM이 죽은 토큰이라고 답하면 그 토큰을 비활성화합니다:",
+              en: "Load, save, then notify, with the push fire-and-forget:",
+              ko: "불러오고, 저장한 뒤 알립니다. 푸시는 기다리지 않고 보냅니다:",
             })}
           </div>
         </Docs.Description>
         <Code.Snippet
           className="w-full"
-          title="apps/myapp/lib/userDevice/userDevice.service.ts"
-          code={`import { PushNotificationServer } from "@libs/util/srvkit";
-import { dayjs } from "akanjs/base";
-import { serve } from "akanjs/service";
+          title="apps/myapp/lib/order/order.service.ts"
+          code={`import { serve } from "akanjs/service";
 import * as db from "../db";
+import type * as srv from "../srv";
 
-interface PushMessage {
-  title: string;
-  body: string;
-  url?: string;
-}
-
-export class UserDeviceService extends serve(db.userDevice, ({ plug }) => ({
-  pushNotificationServer: plug(PushNotificationServer),
+export class OrderService extends serve(db.order, ({ service }) => ({
+  notificationService: service<srv.NotificationService>(),
 })) {
-  async registerPushToken(userId: string, pushToken: db.UserDeviceInput) {
-    const { token } = pushToken;
-    const userDevice = await this.userDeviceModel.findByToken(token);
-    if (userDevice) return await userDevice.set({ userId }).save();
-    return await this.userDeviceModel.createUserDevice({
-      ...pushToken,
-      userId,
+  async shipOrder(orderId: string) {
+    const order = await this.orderModel.pickById(orderId);
+    await order.ship().save();
+    void this.notificationService.push([order.buyerId], {
+      title: order.title,
+      contentKey: "order.pushShipped",
+      level: "notice",
+      url: \`/order/\${order.id}\`,
+      tag: \`order-\${order.id}\`,
     });
-  }
-  async invalidatePushToken(token: string) {
-    await this.userDeviceModel
-      .updateByToken(token)
-      .set({ disabledAt: dayjs() });
-  }
-  async notifyUser(userId: string, message: PushMessage) {
-    const userDevices = await this.userDeviceModel.listOfUser(userId);
-    return await Promise.all(
-      userDevices.map((userDevice) => this.notify(userDevice.token, message)),
-    );
-  }
-  async notify(token: string, message: PushMessage) {
-    try {
-      return await this.pushNotificationServer.send({ token, ...message });
-    } catch (error) {
-      // FCM answers a token the device dropped with this code, forever.
-      const { code } = error as { code?: string };
-      if (code !== "messaging/registration-token-not-registered") throw error;
-      await this.invalidatePushToken(token);
-      return null;
-    }
+    return order;
   }
 }`}
         />
@@ -1826,25 +1830,26 @@ export class UserDeviceService extends serve(db.userDevice, ({ plug }) => ({
               <li key={idx}>{note}</li>
             ))}
           </ul>
-          <Docs.SubSubTitle>{l.trans({ en: "What send() takes", ko: "send()가 받는 값" })}</Docs.SubSubTitle>
-          <Docs.OptionTable items={sendOptionRows} />
+          <Docs.SubSubTitle>{l.trans({ en: "What push() takes", ko: "push()가 받는 값" })}</Docs.SubSubTitle>
+          <Docs.OptionTable items={payloadRows} />
           <div>
             {l.trans({
               en: (
                 <span>
-                  <strong>Topics instead of stored tokens.</strong> <code>subscribeToTopic(token, topic)</code> and{" "}
-                  <code>unsubscribeFromTopic(token, topic)</code> put a device on a topic, and{" "}
-                  <code>{"send({ topic })"}</code> reaches every device on it. The <code>notification</code> module in{" "}
-                  <code>libs/shared</code> uses <code>{"user-<userId>"}</code> and <code>all_users</code> this way.
+                  <strong>No topics.</strong> A topic cannot hold an APNs token, cannot ask a person&apos;s settings and
+                  never reports a dead token, so every send goes to stored tokens. Without <code>libs/shared</code>,
+                  call <code>PushNotificationServer.sendEach(targets, message)</code> from{" "}
+                  <code>@libs/util/srvkit</code> with <code>{"{ token, provider }"}</code> targets, and stop storing the{" "}
+                  <code>invalidTokens</code> it returns.
                 </span>
               ),
               ko: (
                 <span>
-                  <strong>토큰을 저장하는 대신 토픽을 쓸 수도 있습니다.</strong>{" "}
-                  <code>subscribeToTopic(token, topic)</code>과 <code>unsubscribeFromTopic(token, topic)</code>으로
-                  기기를 토픽에 넣고 빼며, <code>{"send({ topic })"}</code>는 그 토픽의 모든 기기에 닿습니다.{" "}
-                  <code>libs/shared</code>의 <code>notification</code> 모듈이 <code>{"user-<userId>"}</code>와{" "}
-                  <code>all_users</code> 토픽을 이렇게 씁니다.
+                  <strong>토픽은 쓰지 않습니다.</strong> 토픽은 APNs 토큰을 담지 못하고, 사람마다의 수신 설정을 물을 수
+                  없으며, 죽은 토큰도 알려 주지 않습니다. 그래서 모든 발송은 저장된 토큰으로 나갑니다.{" "}
+                  <code>libs/shared</code> 없이 쓴다면 <code>@libs/util/srvkit</code>의{" "}
+                  <code>PushNotificationServer.sendEach(targets, message)</code>를 <code>{"{ token, provider }"}</code>{" "}
+                  목록으로 부르고, 돌려받은 <code>invalidTokens</code>는 더 이상 저장하지 않습니다.
                 </span>
               ),
             })}

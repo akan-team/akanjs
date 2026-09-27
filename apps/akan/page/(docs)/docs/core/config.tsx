@@ -180,9 +180,9 @@ const mobileFields = [
   },
   {
     key: "targets.*.files",
-    type: "{ ios, android }",
-    en: "Native file copy map from a path in the generated project to an app-relative source file.",
-    ko: "생성된 네이티브 프로젝트 안의 경로를 앱 기준 원본 파일에 매핑하는 복사 맵입니다.",
+    type: "Record<string, string>",
+    en: "Files copied into the app, keyed by where they land (ios/<path>, android/res/<type>/<file> or android/assets/<path>), valued by an app-relative source; merged target over root.",
+    ko: "앱에 복사할 파일이며, 도착 위치(ios/<path>, android/res/<type>/<file>, android/assets/<path>)를 키로, 앱 기준 원본 경로를 값으로 둡니다. root 위에 target을 얹어 병합합니다.",
   },
   {
     key: "targets.*.deepLinks",
@@ -215,22 +215,22 @@ const mobileFields = [
     ko: "assetlinks.json에 쓰는 서명 인증서 fingerprint이며, debug는 로컬 빌드, release는 Play Store 빌드용입니다.",
   },
   {
-    key: "plugins",
-    type: "Record<string, unknown>",
-    en: "Passthrough Capacitor plugins config, merged target over root.",
-    ko: "Capacitor plugins config로 그대로 전달되며, root 위에 target을 얹어 병합합니다.",
+    key: "native.plugins",
+    type: "string[]",
+    en: "Native runtime plugins beyond the ones the permissions bring, by builtin id (iap) or absolute folder; root and target lists are joined.",
+    ko: "권한이 가져오는 것 외에 더 싣는 네이티브 런타임 플러그인이며, 내장 id(iap)나 절대 경로 폴더로 적습니다. root와 target 목록을 합칩니다.",
   },
   {
-    key: "android",
-    type: "Record<string, unknown>",
-    en: "Passthrough Capacitor android config, merged target over root.",
-    ko: "Capacitor android config로 그대로 전달되며, root 위에 target을 얹어 병합합니다.",
+    key: "native.ios",
+    type: "{ infoPlist, entitlements }",
+    en: "Info.plist keys and entitlements for the iOS app, merged target over root.",
+    ko: "iOS 앱의 Info.plist 키와 entitlements이며, root 위에 target을 얹어 병합합니다.",
   },
   {
-    key: "ios",
-    type: "Record<string, unknown>",
-    en: "Passthrough Capacitor ios config, merged target over root.",
-    ko: "Capacitor ios config로 그대로 전달되며, root 위에 target을 얹어 병합합니다.",
+    key: "native.android",
+    type: "{ manifest, application, activity, googleServices }",
+    en: "XML added at <manifest>, inside <application> and inside the activity (root and target joined, the applicationId placeholder filled in), and the google-services.json path FCM push reads.",
+    ko: "<manifest> 수준, <application> 안, activity 안에 넣을 XML(root와 target을 합치고 applicationId 자리표시자를 채움)과 FCM 푸시가 읽는 google-services.json 경로입니다.",
   },
 ];
 
@@ -737,12 +737,7 @@ export default config;`}
           splash: "public/splash.png",
         },
         files: {
-          android: {
-            "app/google-services.json": "public/google-services.json",
-          },
-          ios: {
-            "App/App/GoogleService-Info.plist": "public/GoogleService-Info.plist",
-          },
+          "android/res/raw/chime.mp3": "public/chime.mp3",
         },
         deepLinks: {
           schemes: ["example"],
@@ -756,11 +751,10 @@ export default config;`}
             ],
           },
         },
-      },
-    },
-    android: {
-      buildOptions: {
-        releaseType: "APK",
+        native: {
+          plugins: ["iap"],
+          android: { googleServices: "secrets/google-services.json" },
+        },
       },
     },
   },
@@ -783,8 +777,8 @@ export default config;`}
         <Docs.Alert type="info">
           <span>
             {l.trans({
-              en: "files maps native target paths to app-relative source files. It is useful for Firebase push config files such as google-services.json and GoogleService-Info.plist. Keep server service account JSON out of client/native file mappings. For platform setup steps, see ",
-              ko: "files는 네이티브 target path를 앱 기준 source file에 매핑합니다. google-services.json, GoogleService-Info.plist 같은 Firebase push 설정 파일에 유용합니다. 서버 service account JSON은 client/native file mapping에 넣지 마세요. 플랫폼별 설정 절차는 ",
+              en: "files copies app-relative source files into the native app, keyed by where they land, such as a notification sound under android/res/raw. Android FCM push reads google-services.json from native.android.googleServices instead, and iOS needs no GoogleService-Info.plist because its push goes to APNs. The Capacitor-era plugins, ios and android keys are refused with the native setting that replaces them. Keep server service account JSON out of client/native file mappings. For platform setup steps, see ",
+              ko: "files는 앱 기준 원본 파일을 네이티브 앱 안으로 복사하며, android/res/raw 아래 알림음처럼 도착 위치를 키로 씁니다. Android FCM 푸시는 google-services.json을 native.android.googleServices에서 읽고, iOS 푸시는 APNs로 가므로 GoogleService-Info.plist가 필요 없습니다. Capacitor 시절의 plugins, ios, android 키는 대신할 native 설정을 알려 주며 거부됩니다. 서버 service account JSON은 client/native file mapping에 넣지 마세요. 플랫폼별 설정 절차는 ",
             })}
           </span>
           <Link

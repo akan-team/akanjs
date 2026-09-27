@@ -19,11 +19,11 @@ Mobile App Architecture
 
 Client-side rendering: the app draws every screen itself from JavaScript on the device.
 
-An open-source runtime that wraps a web app in a real Android and iOS project.
+@akanjs/native, shipped inside akanjs. It builds your CSR client into iOS, Android, macOS, Windows and Linux apps, with no Xcode project, Gradle files or CocoaPods to keep.
 
-The Android and iOS project around your web client. It holds the app icon, ID and signing.
+The small native app around your web client. The build generates it under .akan/mobile/<target>/native; it holds the app icon, ID and signing.
 
-A Capacitor package that exposes one device feature to JavaScript. This is the native bridge.
+A native runtime plugin that exposes one device feature to JavaScript, such as camera, push or iap. This is the native bridge.
 
 One native package built from an Akan app, with its own name and app ID.
 
@@ -35,7 +35,7 @@ Web and mobile share the same Akan page tree, client router, generated fetch cal
 
 Native shell boundary
 
-The Capacitor project
+What the native runtime generates
 
 Native code owns packaging, signing, app capabilities, plugin linking, and store distribution.
 
@@ -53,19 +53,19 @@ Reserves room in px for app chrome such as navbars, tabs and fixed actions; true
 
 Permissions describe which native capabilities a mobile target intends to use.
 
-Native config files such as Firebase config live in the app folder.
+Native files such as google-services.json or a notification sound live in the app folder; the config names where each one lands.
 
 Native schemes, universal links, and app links enter the Akan CSR router as normalized routes.
 
-Push delivery uses Firebase/FCM setup, while click routing uses a standard data.url field.
+Push goes out through APNs on iOS and FCM on Android and the web, while click routing uses a standard data.url field.
 
 Akan ships the same product to the web and to the app stores, and you do not write a second app for mobile. The screens you already built for the web run inside a thin native app; only the parts that truly need the phone, such as packaging, signing and device features, are native.
 
-Concretely, Akan mobile apps are CSR web clients running inside a Capacitor native shell. The product screen is still built with Akan page, UI, state, and service patterns; Capacitor supplies the native project, app identity, store package, and device bridge.
+Concretely, Akan mobile apps are CSR web clients running inside a native shell that akanjs's own runtime, @akanjs/native, generates. The product screen is still built with Akan page, UI, state, and service patterns; the runtime supplies the shell, app identity, store package, and device bridge from what akan.config.ts declares.
 
 Akan mobile architecture
 
-The Akan app builds a CSR client that runs inside the Capacitor native shell, which is packaged for Android and iOS and talks to the shared Akan backend.
+The Akan app builds a CSR client that runs inside the Akan native shell, which is packaged for Android and iOS and talks to the shared Akan backend.
 
 Words used on this page
 
@@ -107,13 +107,13 @@ The frame settings a page can declare in .config():
 
 Native Bridge
 
-Web code alone cannot reach the camera, push notifications or the file system. Device capabilities are accessed through Capacitor plugins, and Akan keeps the app-level API small. Using one takes three steps:
+Web code alone cannot reach the camera, push notifications or the file system. Device capabilities are accessed through the native runtime's plugins, and Akan keeps the app-level API small. Using one takes three steps:
 
-Declare the native capability the app needs.
+Declare the native capability the app needs: a permission in mobile.targets, or a plugin in native.plugins.
 
-Sync and build the native project.
+Build or run the app (akan build-ios, akan start-android, …); the shell is generated with those plugins in it.
 
-Call the matching client hook or plugin wrapper from the CSR app.
+Call the matching client hook or plugin wrapper (akanjs/client/native) from the CSR app.
 
 What the bridge covers
 
@@ -123,13 +123,13 @@ The concrete setup steps live in the mobile cheatsheets:
 
 Setup
 
-Mobile config, Capacitor plugins, and the Android and iOS projects.
+Mobile config, native plugins, and building and running the iOS, Android and desktop apps.
 
 Page transitions, the back gesture, the frame config and the keyboard inset.
 
 Custom schemes, universal links and app links.
 
-Firebase/FCM setup, registering the device and storing its token.
+APNs and FCM setup, registering the device and storing its token.
 
 ## Code Examples
 

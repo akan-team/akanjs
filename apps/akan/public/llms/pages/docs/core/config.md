@@ -118,7 +118,7 @@ mobile describes the native app identity used by Android and iOS commands. Think
 
 indexPath is read per target only, so one written at the mobile root is dropped. Firebase app registration must use the same appId.
 
-files maps native target paths to app-relative source files. It is useful for Firebase push config files such as google-services.json and GoogleService-Info.plist. Keep server service account JSON out of client/native file mappings. For platform setup steps, see
+files copies app-relative source files into the native app, keyed by where they land, such as a notification sound under android/res/raw. Android FCM push reads google-services.json from native.android.googleServices instead, and iOS needs no GoogleService-Info.plist because its push goes to APNs. The Capacitor-era plugins, ios and android keys are refused with the native setting that replaces them. Keep server service account JSON out of client/native file mappings. For platform setup steps, see
 
 Mobile Development
 
@@ -309,12 +309,7 @@ const config: AppConfig = {
           splash: "public/splash.png",
         },
         files: {
-          android: {
-            "app/google-services.json": "public/google-services.json",
-          },
-          ios: {
-            "App/App/GoogleService-Info.plist": "public/GoogleService-Info.plist",
-          },
+          "android/res/raw/chime.mp3": "public/chime.mp3",
         },
         deepLinks: {
           schemes: ["example"],
@@ -328,11 +323,10 @@ const config: AppConfig = {
             ],
           },
         },
-      },
-    },
-    android: {
-      buildOptions: {
-        releaseType: "APK",
+        native: {
+          plugins: ["iap"],
+          android: { googleServices: "secrets/google-services.json" },
+        },
       },
     },
   },

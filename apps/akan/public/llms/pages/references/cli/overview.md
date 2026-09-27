@@ -49,7 +49,7 @@ Run every command except `create-workspace` from the folder that holds these thr
 
 Short Aliases
 
-Seven commands also answer to the first letter of each dashed word. The table below lists all of them.
+Eight commands also answer to the first letter of each dashed word. The table below lists all of them.
 
 A value with a default
 
@@ -121,8 +121,6 @@ Starts or stops the local database services.
 
 Copies an app's data out of one database mode and into another.
 
-Configures app settings interactively.
-
 Lists the exact files an app needs to live in a workspace of its own.
 
 Application: Check And Build
@@ -137,17 +135,15 @@ Builds the app for production, frontend and backend together. Alias `b`.
 
 Application: Mobile
 
-Build, run and release the iOS and Android apps with Capacitor.
+Build, run and release the iOS, Android and desktop apps on the native runtime.
 
-Builds the iOS or Android app with Capacitor. Aliases `bi` and `ba`.
+Builds the iOS or Android app on the native runtime. Aliases `bi` and `ba`.
 
 Runs the app in a simulator, an emulator or on a device. Aliases `si` and `sa`.
 
+Runs the app as a desktop app on this computer (macOS, Windows or Linux). Alias `sd`.
+
 Builds and packages a release for the App Store or the Play Store.
-
-Releases the app source with over-the-air (OTA) update support.
-
-Over-the-air (OTA) deploy, still in development: it deploys nothing yet and exits with an error.
 
 Library
 
@@ -334,6 +330,8 @@ Reports, not gates
 These three only print a report, so they never fail the run. Read them before a review.
 
 Command Index
+
+Internal and development-only commands are left out on purpose.
 
 ## Code Examples
 

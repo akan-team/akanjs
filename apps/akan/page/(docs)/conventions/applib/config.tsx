@@ -72,8 +72,8 @@ export default page().render(() => {
         {
           name: "mobile",
           desc: l.trans({
-            en: "The native app's identity and one target per Capacitor package.",
-            ko: "네이티브 앱 정보와 Capacitor 패키지별 target입니다.",
+            en: "The native app's identity and one target per native package.",
+            ko: "네이티브 앱 정보와 네이티브 패키지별 target입니다.",
           }),
           marks: appOnly,
         },
@@ -176,8 +176,8 @@ export default page().render(() => {
     {
       name: "CSR",
       desc: l.trans({
-        en: "The single-file SPA shell that the Capacitor mobile build ships.",
-        ko: "Capacitor 모바일 빌드가 싣고 나가는 단일 파일 SPA 셸입니다.",
+        en: "The single-file SPA shell that the native mobile build ships.",
+        ko: "네이티브 모바일 빌드가 싣고 나가는 단일 파일 SPA 셸입니다.",
       }),
     },
   ];
@@ -692,14 +692,14 @@ export default config;`}
             {l.trans({
               en: (
                 <span>
-                  <code>mobile</code> defines the native app Capacitor builds from this app's web surface: its name,
-                  bundle id, version, and one target per package.
+                  <code>mobile</code> defines the native app the <code>@akanjs/native</code> runtime builds from this
+                  app's web surface: its name, bundle id, version, and one target per package.
                 </span>
               ),
               ko: (
                 <span>
-                  <code>mobile</code>은 Capacitor가 이 앱의 웹 화면으로 만드는 네이티브 앱을 정의합니다. 앱 이름, 번들
-                  ID, 버전, 그리고 패키지별 target을 여기에 적습니다.
+                  <code>mobile</code>은 <code>@akanjs/native</code> 런타임이 이 앱의 웹 화면으로 만드는 네이티브 앱을
+                  정의합니다. 앱 이름, 번들 ID, 버전, 그리고 패키지별 target을 여기에 적습니다.
                 </span>
               ),
             })}
@@ -802,7 +802,8 @@ export default config;`}
                 en: (
                   <span>
                     <strong>More target fields.</strong> <code>indexPath</code>, <code>assets</code>,{" "}
-                    <code>deepLinks</code>, <code>files</code> and the Capacitor passthrough keys are listed in the{" "}
+                    <code>deepLinks</code>, <code>files</code> and <code>native</code> (extra runtime plugins,
+                    Info.plist and entitlements, Android manifest XML, google-services.json) are listed in the{" "}
                     <Link href="/docs/core/config#mobile" className={inlineLink}>
                       config reference
                     </Link>
@@ -812,7 +813,8 @@ export default config;`}
                 ko: (
                   <span>
                     <strong>target 필드는 더 있습니다.</strong> <code>indexPath</code>, <code>assets</code>,{" "}
-                    <code>deepLinks</code>, <code>files</code>, Capacitor로 그대로 넘기는 키는{" "}
+                    <code>deepLinks</code>, <code>files</code>, <code>native</code>(추가 런타임 플러그인, Info.plist와
+                    entitlements, Android manifest XML, google-services.json)는{" "}
                     <Link href="/docs/core/config#mobile" className={inlineLink}>
                       설정 레퍼런스
                     </Link>

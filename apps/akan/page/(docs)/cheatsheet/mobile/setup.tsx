@@ -12,10 +12,10 @@ export default page().render(() => {
 
   const termRows = [
     {
-      name: "Capacitor",
+      name: l.trans({ en: "native runtime", ko: "네이티브 런타임" }),
       desc: l.trans({
-        en: "The native shell that runs your web app in a WebView and reaches device APIs through plugins.",
-        ko: "웹 앱을 WebView 안에서 실행하고, 플러그인으로 기기 기능을 쓰게 해 주는 네이티브 셸입니다.",
+        en: "@akanjs/native, shipped inside akanjs. It runs your web app in a WebView and reaches device APIs through plugins.",
+        ko: "akanjs 안에 들어 있는 @akanjs/native입니다. 웹 앱을 WebView 안에서 실행하고, 플러그인으로 기기 기능을 쓰게 해 줍니다.",
       }),
     },
     {
@@ -40,17 +40,17 @@ export default page().render(() => {
       }),
     },
     {
-      name: ["android/", "ios/"],
+      name: ".akan/mobile/<target>",
       desc: l.trans({
-        en: "The Android Studio and Xcode projects, created inside the app folder on the first run.",
-        ko: "첫 실행 때 앱 폴더 안에 만들어지는 Android Studio 프로젝트와 Xcode 프로젝트입니다.",
+        en: "Where each run writes the target's web root and native builds. It is generated and ignored by git: there is no Xcode or Android Studio project to edit.",
+        ko: "실행할 때마다 target의 웹 루트와 네이티브 빌드를 쓰는 곳입니다. 생성되는 폴더이고 git에서 제외되며, 고칠 Xcode나 Android Studio 프로젝트는 없습니다.",
       }),
     },
     {
       name: l.trans({ en: "plugin", ko: "플러그인" }),
       desc: l.trans({
-        en: "A native module such as camera or push. It works only when the app's `package.json` lists it.",
-        ko: "카메라, 푸시 같은 네이티브 모듈입니다. 앱의 `package.json`에 적혀 있어야 동작합니다.",
+        en: "A native runtime module such as camera or push. The app ships it when a permission or `native.plugins` names it.",
+        ko: "카메라, 푸시 같은 네이티브 런타임 모듈입니다. 권한이나 `native.plugins`가 이름을 대면 앱에 들어갑니다.",
       }),
     },
   ];
@@ -72,22 +72,22 @@ export default page().render(() => {
       }),
     },
     {
-      title: l.trans({ en: "2. Capacitor plugins", ko: "2. Capacitor 플러그인" }),
+      title: l.trans({ en: "2. Native plugins", ko: "2. 네이티브 플러그인" }),
       desc: l.trans({
         en: (
           <span>
-            List the native plugins the app uses in its own <code>package.json</code>.
+            Permissions bring their plugin; name any other one in <code>native.plugins</code>.
           </span>
         ),
         ko: (
           <span>
-            앱이 쓰는 네이티브 플러그인을 앱의 <code>package.json</code>에 적습니다.
+            권한이 제 플러그인을 가져오고, 그 밖의 플러그인은 <code>native.plugins</code>에 적습니다.
           </span>
         ),
       }),
     },
     {
-      title: "3. Android · iOS",
+      title: "3. Android · iOS · Desktop",
       desc: l.trans({
         en: "Install the toolchains, run the app on a device, then set up signing and store builds.",
         ko: "개발 도구를 설치하고 기기에서 앱을 띄운 뒤, 서명과 스토어 빌드를 준비합니다.",
@@ -126,8 +126,8 @@ export default page().render(() => {
       type: "string",
       default: "0.0.1",
       desc: l.trans({
-        en: "The version users see: Android `versionName` and iOS `MARKETING_VERSION`.",
-        ko: "사용자에게 보이는 버전입니다. Android `versionName`과 iOS `MARKETING_VERSION`에 들어갑니다.",
+        en: "The version users see: Android `versionName` and iOS `CFBundleShortVersionString`.",
+        ko: "사용자에게 보이는 버전입니다. Android `versionName`과 iOS `CFBundleShortVersionString`에 들어갑니다.",
       }),
     },
     {
@@ -135,8 +135,8 @@ export default page().render(() => {
       type: "number",
       default: "1",
       desc: l.trans({
-        en: "Store build number: Android `versionCode`, iOS build. Raise it for every store upload.",
-        ko: "스토어 빌드 번호입니다. Android `versionCode`와 iOS build에 들어가며, 스토어에 올릴 때마다 올립니다.",
+        en: "Store build number: Android `versionCode`, iOS `CFBundleVersion`. Raise it for every store upload.",
+        ko: "스토어 빌드 번호입니다. Android `versionCode`와 iOS `CFBundleVersion`에 들어가며, 스토어에 올릴 때마다 올립니다.",
       }),
     },
     {
@@ -174,19 +174,27 @@ export default page().render(() => {
       }),
     },
     {
-      key: "targets.*.files",
-      type: "{ ios?, android? }",
+      key: "targets.*.native",
+      type: "{ plugins?, ios?, android? }",
       desc: l.trans({
-        en: "Copies app files into the native project. Key: a path in `ios/` or `android/`. Value: the source.",
-        ko: "앱 파일을 네이티브 프로젝트로 복사합니다. 키는 `ios/`·`android/` 안의 경로, 값은 원본 경로입니다.",
+        en: "Native settings: more `plugins`, `ios.infoPlist` and `ios.entitlements` keys, `android.manifest` / `application` / `activity` XML, and `android.googleServices` for FCM.",
+        ko: "네이티브 설정입니다. 추가 `plugins`, `ios.infoPlist`·`ios.entitlements` 키, `android.manifest`·`application`·`activity` XML, FCM용 `android.googleServices`를 적습니다.",
+      }),
+    },
+    {
+      key: "targets.*.files",
+      type: "Record<string, string>",
+      desc: l.trans({
+        en: "Copies app files into the app. Key: where it lands, `ios/<path>`, `android/res/<type>/<file>` or `android/assets/<path>`. Value: the source, relative to the app folder.",
+        ko: "앱 파일을 앱 안으로 복사합니다. 키는 들어갈 자리로 `ios/<path>`, `android/res/<type>/<file>`, `android/assets/<path>` 중 하나이고, 값은 앱 폴더 기준 원본 경로입니다.",
       }),
     },
     {
       key: "targets.*.appId",
       type: "string",
       desc: l.trans({
-        en: "Per-target override, like `appName`, `version`, `buildNum`. A different `appId` is a separate app.",
-        ko: "`appName`, `version`, `buildNum`처럼 target별로 루트 값을 덮어씁니다. `appId`가 다르면 별개의 앱입니다.",
+        en: "Per-target override, like `appName`, `version`, `buildNum`. A different `appId` is a separate app. `files` and `native` at the `mobile` root merge into every target.",
+        ko: "`appName`, `version`, `buildNum`처럼 target별로 루트 값을 덮어씁니다. `appId`가 다르면 별개의 앱입니다. `mobile` 루트의 `files`와 `native`는 모든 target에 합쳐집니다.",
       }),
     },
   ];
@@ -194,37 +202,45 @@ export default page().render(() => {
   const permissionRows = [
     {
       permission: "camera",
-      ios: l.trans({ en: "Camera and photo library usage text", ko: "카메라·사진 보관함 사용 안내 문구" }),
+      plugin: "`camera`",
+      ios: l.trans({ en: "Camera and photo library usage texts", ko: "카메라·사진 보관함 사용 안내 문구" }),
       android: l.trans({
-        en: "`READ_MEDIA_IMAGES`, storage read and write",
-        ko: "`READ_MEDIA_IMAGES`, 저장소 읽기·쓰기",
+        en: "None: the system camera and photo picker need no permission",
+        ko: "없음. 시스템 카메라와 사진 선택기는 권한이 필요 없습니다",
       }),
     },
     {
       permission: "contacts",
-      ios: l.trans({ en: "Contacts usage text", ko: "연락처 사용 안내 문구" }),
-      android: "`READ_CONTACTS`, `WRITE_CONTACTS`",
+      plugin: l.trans({ en: "None yet: the app ships without it", ko: "아직 없음. 없이 빌드됩니다" }),
+      ios: l.trans({ en: "What a lib's plugin declares", ko: "lib 플러그인이 선언한 것" }),
+      android: l.trans({ en: "What a lib's plugin declares", ko: "lib 플러그인이 선언한 것" }),
     },
     {
       permission: "location",
+      plugin: "`geolocation`",
       ios: l.trans({
-        en: "Location usage text, for always and while in use",
+        en: "Location usage texts, for always and while in use",
         ko: "위치 사용 안내 문구 (항상 / 사용 중)",
       }),
-      android: "`ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, GPS",
+      android: "`ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`",
     },
     {
       permission: "push",
+      plugin: "`push`",
       ios: l.trans({
-        en: "Remote-notification background mode, `aps-environment`, Firebase in `AppDelegate`",
-        ko: "원격 알림 백그라운드 모드, `aps-environment`, `AppDelegate`의 Firebase 연결",
+        en: "Remote-notification background mode and the `aps-environment` entitlement",
+        ko: "원격 알림 백그라운드 모드와 `aps-environment` entitlement",
       }),
-      android: "`POST_NOTIFICATIONS`",
+      android: l.trans({
+        en: "`POST_NOTIFICATIONS` and the FCM module (needs `native.android.googleServices`)",
+        ko: "`POST_NOTIFICATIONS`와 FCM 모듈 (`native.android.googleServices`가 필요합니다)",
+      }),
     },
     {
       permission: "speech",
-      ios: l.trans({ en: "Speech recognition and microphone usage text", ko: "음성 인식·마이크 사용 안내 문구" }),
-      android: "`RECORD_AUDIO`",
+      plugin: l.trans({ en: "None yet: the app ships without it", ko: "아직 없음. 없이 빌드됩니다" }),
+      ios: l.trans({ en: "What a lib's plugin declares", ko: "lib 플러그인이 선언한 것" }),
+      android: l.trans({ en: "What a lib's plugin declares", ko: "lib 플러그인이 선언한 것" }),
     },
   ];
 
@@ -259,76 +275,101 @@ export default page().render(() => {
         </>
       ),
     }),
+    l.trans({
+      en: (
+        <>
+          <strong>Capacitor keys are refused.</strong> <code>plugins</code>, <code>ios</code> and <code>android</code>{" "}
+          directly under <code>mobile</code> or a target stop the build; they live under <code>native</code> now.
+        </>
+      ),
+      ko: (
+        <>
+          <strong>Capacitor 시절 키는 거부됩니다.</strong> <code>mobile</code>이나 target 바로 아래의{" "}
+          <code>plugins</code>, <code>ios</code>, <code>android</code>는 빌드를 멈춥니다. 이제는 <code>native</code>{" "}
+          아래에 둡니다.
+        </>
+      ),
+    }),
   ];
 
   const pluginColumns = [
-    { key: "auto", label: l.trans({ en: "Added for you", ko: "자동 추가" }), caption: "start-*" },
-    { key: "manual", label: l.trans({ en: "Add by hand", ko: "직접 추가" }) },
+    { key: "base", label: l.trans({ en: "Always", ko: "항상" }) },
+    { key: "permission", label: l.trans({ en: "By a permission", ko: "권한으로" }), caption: "permissions" },
+    { key: "config", label: l.trans({ en: "By name", ko: "이름으로" }), caption: "native.plugins" },
   ];
-  const auto = { auto: true, manual: false };
-  const manual = { auto: false, manual: true };
+  const base = { base: true, permission: false, config: false };
+  const byPermission = { base: false, permission: true, config: false };
+  const byName = { base: false, permission: false, config: true };
 
   const pluginGroups = [
     {
-      label: l.trans({ en: "Used by the app shell itself", ko: "앱 셸이 직접 쓰는 것" }),
+      label: l.trans({ en: "What every Akan page may call", ko: "모든 Akan 페이지가 쓰는 것" }),
       rows: [
         {
-          name: "@capacitor/core",
-          desc: l.trans({ en: "The Capacitor runtime itself.", ko: "Capacitor 런타임 자체입니다." }),
-          marks: auto,
-        },
-        {
-          name: "@capacitor/app",
+          name: "app",
           desc: l.trans({
-            en: "Android back button, deep-link events and app exit.",
-            ko: "Android 뒤로 가기, 딥링크 이벤트, 앱 종료를 다룹니다.",
+            en: "App info, the Android back button, deep-link events and app exit.",
+            ko: "앱 정보, Android 뒤로 가기, 딥링크 이벤트, 앱 종료를 다룹니다.",
           }),
-          marks: auto,
+          marks: base,
         },
         {
-          name: "@capacitor/device",
+          name: "app-state",
+          desc: l.trans({ en: "Foreground and background changes.", ko: "앱이 앞·뒤로 오가는 변화를 알립니다." }),
+          marks: base,
+        },
+        {
+          name: "device",
           desc: l.trans({
-            en: "Reads the platform and device language at startup.",
-            ko: "시작할 때 플랫폼과 기기 언어를 읽습니다.",
+            en: "The platform, model and device language.",
+            ko: "플랫폼, 기종, 기기 언어를 읽습니다.",
           }),
-          marks: auto,
+          marks: base,
         },
         {
-          name: "@capacitor/keyboard",
+          name: "keyboard",
           desc: l.trans({
             en: "Reports the keyboard height so the screen can move with it.",
             ko: "키보드 높이를 알려 주어 화면이 따라 움직이게 합니다.",
           }),
-          marks: auto,
+          marks: base,
         },
         {
-          name: "@capacitor/haptics",
-          desc: l.trans({ en: "Haptic feedback, loaded at startup.", ko: "진동 피드백이며, 시작할 때 불러옵니다." }),
-          marks: auto,
-        },
-        {
-          name: "capacitor-plugin-safe-area",
-          desc: l.trans({
-            en: "Reads the notch and home-indicator insets at startup.",
-            ko: "시작할 때 노치와 홈 인디케이터 영역을 읽습니다.",
-          }),
-          marks: auto,
-        },
-        {
-          name: "@capacitor/preferences",
+          name: "preferences",
           desc: l.trans({
             en: "On-device storage, where the sign-in token is kept.",
             ko: "기기 저장소이며, 로그인 토큰을 여기에 둡니다.",
           }),
-          marks: auto,
+          marks: base,
         },
         {
-          name: "@capacitor/browser",
+          name: "secure-storage",
+          desc: l.trans({ en: "The keychain or keystore, for secrets.", ko: "비밀 값을 두는 키체인·키스토어입니다." }),
+          marks: base,
+        },
+        {
+          name: "browser · opener",
           desc: l.trans({
-            en: "Opens an external `Link` in the system browser.",
-            ko: "`Link`의 외부 주소를 시스템 브라우저로 엽니다.",
+            en: "Opens a page in an in-app browser, or a link in the system.",
+            ko: "앱 안 브라우저로 페이지를 열거나, 링크를 시스템에 넘깁니다.",
           }),
-          marks: auto,
+          marks: base,
+        },
+        {
+          name: "auth-session",
+          desc: l.trans({
+            en: "The system sign-in sheet an OAuth flow opens.",
+            ko: "OAuth 로그인이 여는 시스템 로그인 창입니다.",
+          }),
+          marks: base,
+        },
+        {
+          name: "dialog · haptics",
+          desc: l.trans({
+            en: "System alerts and action sheets, and haptic feedback.",
+            ko: "시스템 알림창·액션 시트와 진동 피드백입니다.",
+          }),
+          marks: base,
         },
       ],
     },
@@ -336,59 +377,44 @@ export default page().render(() => {
       label: l.trans({ en: "Per feature", ko: "기능별" }),
       rows: [
         {
-          name: "@capacitor/camera",
+          name: "camera",
           desc: l.trans({
-            en: "Camera and photo picker. Pair with `camera`.",
-            ko: "카메라와 사진 선택입니다. `camera`와 짝입니다.",
+            en: "Camera and photo picker. Brought by `camera`.",
+            ko: "카메라와 사진 선택입니다. `camera`가 가져옵니다.",
           }),
-          marks: auto,
+          marks: byPermission,
         },
         {
-          name: "@capacitor/geolocation",
+          name: "geolocation",
           desc: l.trans({
-            en: "Current location. Pair with `location`.",
-            ko: "현재 위치입니다. `location`과 짝입니다.",
+            en: "Current and watched location. Brought by `location`.",
+            ko: "현재 위치와 위치 추적입니다. `location`이 가져옵니다.",
           }),
-          marks: auto,
+          marks: byPermission,
         },
         {
-          name: "@capacitor/push-notifications",
+          name: "push",
           desc: l.trans({
-            en: "The OS push bridge. Pair with `push`.",
-            ko: "OS 푸시 브리지입니다. `push`와 짝입니다.",
+            en: "APNs on iOS, FCM on Android. Brought by `push`.",
+            ko: "iOS는 APNs, Android는 FCM입니다. `push`가 가져옵니다.",
           }),
-          marks: auto,
+          marks: byPermission,
         },
         {
-          name: "@capacitor/inappbrowser",
-          desc: l.trans({ en: "Shows web pages inside the app.", ko: "앱 안에서 웹 페이지를 띄웁니다." }),
-          marks: auto,
-        },
-        {
-          name: "@capacitor-community/fcm",
+          name: "iap",
           desc: l.trans({
-            en: "The FCM token for native push. Pair with `push`.",
-            ko: "네이티브 푸시용 FCM 토큰입니다. `push`와 짝입니다.",
+            en: "In-app purchase: StoreKit 2 and Play Billing.",
+            ko: "인앱 결제입니다. StoreKit 2와 Play Billing을 씁니다.",
           }),
-          marks: manual,
+          marks: byName,
         },
         {
-          name: "@capacitor-community/contacts",
+          name: "share · biometric · …",
           desc: l.trans({
-            en: "Address book access. Pair with `contacts`.",
-            ko: "연락처 접근입니다. `contacts`와 짝입니다.",
+            en: "The runtime's other plugins, by id, or a plugin folder by its absolute path.",
+            ko: "런타임의 다른 플러그인은 id로, 직접 만든 플러그인 폴더는 절대 경로로 적습니다.",
           }),
-          marks: manual,
-        },
-        {
-          name: "@capacitor-community/speech-recognition",
-          desc: l.trans({ en: "Voice input. Pair with `speech`.", ko: "음성 입력입니다. `speech`와 짝입니다." }),
-          marks: manual,
-        },
-        {
-          name: "@capacitor-community/text-to-speech",
-          desc: l.trans({ en: "Spoken output. Pair with `speech`.", ko: "음성 출력입니다. `speech`와 짝입니다." }),
-          marks: manual,
+          marks: byName,
         },
       ],
     },
@@ -398,62 +424,46 @@ export default page().render(() => {
     l.trans({
       en: (
         <>
-          <strong>
-            Why <code>*</code>.
-          </strong>{" "}
-          The app declares only that it uses a plugin. The workspace root and its lockfile pin the version.
+          <strong>Nothing goes in package.json.</strong> The plugins ship inside akanjs, so the app installs no native
+          package and pins no version of its own.
         </>
       ),
       ko: (
         <>
-          <strong>
-            <code>*</code>를 쓰는 이유.
-          </strong>{" "}
-          앱은 플러그인을 쓴다는 사실만 선언합니다. 실제 버전은 워크스페이스 루트와 lockfile이 정합니다.
+          <strong>package.json에는 아무것도 적지 않습니다.</strong> 플러그인은 akanjs 안에 들어 있으므로, 앱이 네이티브
+          패키지를 설치하거나 버전을 따로 고정하지 않습니다.
         </>
       ),
     }),
     l.trans({
       en: (
         <>
-          <strong>Small bridges need nothing else.</strong> Plugins such as haptics or device work once listed and
-          synced.
+          <strong>A lib can claim a permission.</strong> A <code>{"<name>.plugin.ts"}</code> with a <code>native</code>{" "}
+          block names the permission, its plugins, usage texts and Android permissions; every app that mounts the lib
+          gets them, and it replaces the builtin entry for that permission.
         </>
       ),
       ko: (
         <>
-          <strong>작은 브리지는 이것으로 끝입니다.</strong> haptics, device 같은 플러그인은 적고 sync하면 바로
-          동작합니다.
+          <strong>lib가 권한을 맡을 수 있습니다.</strong> <code>native</code> 블록을 가진{" "}
+          <code>{"<name>.plugin.ts"}</code>가 권한, 그 플러그인, 사용 안내 문구, Android 권한을 적으면 그 lib를 쓰는
+          모든 앱이 이를 받고, 그 권한의 기본 항목을 대신합니다.
         </>
       ),
     }),
     l.trans({
       en: (
         <>
-          <strong>Device features need native settings too.</strong> Camera, contacts, location, push and speech take
-          their <code>permissions</code> entry. Background work, file access or sign-in SDKs may need Info.plist,
-          AndroidManifest, Xcode capability, Gradle or console credentials, per the plugin's docs.
+          <strong>Rerun after a change.</strong> After changing permissions or <code>native</code>, run{" "}
+          <code>start-ios</code>, <code>start-android</code> or a build command again; the app is generated anew each
+          time.
         </>
       ),
       ko: (
         <>
-          <strong>기기 기능은 네이티브 설정도 필요합니다.</strong> 카메라, 연락처, 위치, 푸시, 음성은{" "}
-          <code>permissions</code>에 이름을 적습니다. 백그라운드 작업, 파일 접근, 로그인 SDK는 플러그인 문서에 따라
-          Info.plist, AndroidManifest, Xcode capability, Gradle, 콘솔 인증 정보가 필요할 수 있습니다.
-        </>
-      ),
-    }),
-    l.trans({
-      en: (
-        <>
-          <strong>Rerun after a change.</strong> After adding or removing a plugin, run <code>start-ios</code>,{" "}
-          <code>start-android</code> or a build command again so Capacitor relinks it.
-        </>
-      ),
-      ko: (
-        <>
-          <strong>바꾼 뒤에는 다시 실행하세요.</strong> 플러그인을 추가하거나 뺀 뒤에는 <code>start-ios</code>,{" "}
-          <code>start-android</code>, 빌드 명령 중 하나를 다시 실행해야 Capacitor가 다시 링크합니다.
+          <strong>바꾼 뒤에는 다시 실행하세요.</strong> 권한이나 <code>native</code>를 바꾼 뒤에는{" "}
+          <code>start-ios</code>, <code>start-android</code>, 빌드 명령 중 하나를 다시 실행합니다. 앱은 매번 새로
+          만들어집니다.
         </>
       ),
     }),
@@ -472,16 +482,16 @@ export default page().render(() => {
       command: "build-android",
       env: "debug",
       result: l.trans({
-        en: "A release APK, to check that the project builds.",
-        ko: "프로젝트가 빌드되는지 확인하는 릴리스 APK를 만듭니다.",
+        en: "An APK signed with a local debug key, to check that the app builds.",
+        ko: "앱이 빌드되는지 확인하는, 로컬 debug 키로 서명한 APK를 만듭니다.",
       }),
     },
     {
       command: "release-android",
       env: "main",
       result: l.trans({
-        en: "An APK or an AAB (`--assemble-type`) for the Play Store.",
-        ko: "Play Store용 APK나 AAB(`--assemble-type`)를 만듭니다.",
+        en: "An AAB for the Play Store, or an APK with `--assemble-type apk`, signed with your upload key.",
+        ko: "업로드 키로 서명한 Play Store용 AAB를 만듭니다. `--assemble-type apk`면 APK입니다.",
       }),
     },
   ];
@@ -499,16 +509,16 @@ export default page().render(() => {
       command: "build-ios",
       env: "debug",
       result: l.trans({
-        en: "Builds the iOS app with Capacitor, to check that the project builds.",
-        ko: "Capacitor로 iOS 앱을 빌드해, 프로젝트가 빌드되는지 확인합니다.",
+        en: "A simulator app, to check that the app builds.",
+        ko: "앱이 빌드되는지 확인하는 시뮬레이터용 앱을 만듭니다.",
       }),
     },
     {
       command: "release-ios",
       env: "main",
       result: l.trans({
-        en: "The same build against the `main` backend, for an App Store release.",
-        ko: "같은 빌드를 `main` 백엔드로 만들어 App Store에 냅니다.",
+        en: "An iPhone app and its `.ipa`, signed for the App Store.",
+        ko: "App Store용으로 서명한 iPhone 앱과 그 `.ipa`를 만듭니다.",
       }),
     },
   ];
@@ -524,8 +534,8 @@ export default page().render(() => {
       key: "--target",
       type: "string",
       desc: l.trans({
-        en: "A key of `mobile.targets`, or `all`. With a single target it is picked for you.",
-        ko: "`mobile.targets`의 키나 `all`입니다. target이 하나뿐이면 자동으로 고릅니다.",
+        en: "A key of `mobile.targets`, or `all`. With a single target it is picked for you; `start-*` runs one at a time.",
+        ko: "`mobile.targets`의 키나 `all`입니다. target이 하나뿐이면 자동으로 고르며, `start-*`는 한 번에 하나만 실행합니다.",
       }),
     },
     {
@@ -542,33 +552,49 @@ export default page().render(() => {
       default: "false",
       tags: ["start-*"],
       desc: l.trans({
-        en: "Run a bundled web build, so no dev server is needed.",
-        ko: "웹 빌드를 앱에 넣어 실행하므로 개발 서버가 필요 없습니다.",
+        en: "Run a release build with the web build inside, so no dev server is needed.",
+        ko: "웹 빌드를 담은 릴리스 빌드로 실행하므로 개발 서버가 필요 없습니다.",
       }),
     },
     {
-      key: "--open",
-      type: "boolean",
-      default: "false",
-      tags: ["start-*"],
+      key: "--device",
+      type: "string",
+      tags: ["start-ios", "start-android"],
       desc: l.trans({
-        en: "Also open the native project in Android Studio or Xcode.",
-        ko: "네이티브 프로젝트를 Android Studio나 Xcode로도 엽니다.",
+        en: "A simulator, emulator or device by id or name. A paired iPhone's name makes a signed phone build.",
+        ko: "시뮬레이터, 에뮬레이터, 기기의 id나 이름입니다. 페어링한 iPhone 이름을 주면 서명한 폰 빌드를 만듭니다.",
       }),
     },
     {
-      key: "-g, --regenerate",
+      key: "-T, --team",
+      type: "string",
+      tags: ["start-ios", "release-ios"],
+      desc: l.trans({
+        en: "The Apple team id to sign with, when the Mac holds profiles of several teams.",
+        ko: "Mac에 여러 팀의 프로필이 있을 때 서명에 쓸 Apple 팀 id입니다.",
+      }),
+    },
+    {
+      key: "--debug",
       type: "boolean",
       default: "false",
+      tags: ["build-*"],
+      desc: l.trans({ en: "A debug build instead of a release one.", ko: "릴리스 대신 디버그 빌드를 만듭니다." }),
+    },
+    {
+      key: "--ad-hoc",
+      type: "boolean",
+      default: "false",
+      tags: ["release-ios"],
       desc: l.trans({
-        en: "Delete and recreate the native project. Hand edits in `android/` or `ios/` are lost.",
-        ko: "네이티브 프로젝트를 지우고 다시 만듭니다. `android/`·`ios/`에서 직접 고친 내용은 사라집니다.",
+        en: "Sign with an ad-hoc profile instead of an App Store one.",
+        ko: "App Store 프로필 대신 ad-hoc 프로필로 서명합니다.",
       }),
     },
     {
       key: "--assemble-type",
-      type: "apk | aab",
-      default: "apk",
+      type: "aab | apk",
+      default: "aab",
       tags: ["release-android"],
       desc: l.trans({
         en: "`aab` for a Play Store upload, `apk` to install the file directly.",
@@ -592,79 +618,83 @@ export default page().render(() => {
       en: (
         <>
           <strong>
-            <code>MYAPP_RELEASE_STORE_FILE</code> is relative to <code>android/app</code>.
+            <code>MYAPP_RELEASE_STORE_FILE</code> is relative to the app folder.
           </strong>{" "}
-          Keep the keystore itself out of <code>public/</code>.
+          Keep the keystore under <code>secrets/</code>, never in <code>public/</code>.
         </>
       ),
       ko: (
         <>
           <strong>
-            <code>MYAPP_RELEASE_STORE_FILE</code>은 <code>android/app</code> 기준 경로입니다.
+            <code>MYAPP_RELEASE_STORE_FILE</code>은 앱 폴더 기준 경로입니다.
           </strong>{" "}
-          keystore 파일은 <code>public/</code>에 두지 마세요.
+          keystore 파일은 <code>secrets/</code>에 두고, <code>public/</code>에는 두지 마세요.
         </>
       ),
     }),
     l.trans({
       en: (
         <>
-          <strong>Keep passwords out of git.</strong> In CI, set the same four names as environment variables with the{" "}
-          <code>ORG_GRADLE_PROJECT_</code> prefix instead.
+          <strong>Keep passwords out of git.</strong> A CI sets the same names as secrets. The passwords reach the
+          signer through the environment, never the command line or the log.
         </>
       ),
       ko: (
         <>
-          <strong>비밀번호는 git에 올리지 마세요.</strong> CI에서는 같은 네 이름 앞에 <code>ORG_GRADLE_PROJECT_</code>를
-          붙여 환경 변수로 넣습니다.
+          <strong>비밀번호는 git에 올리지 마세요.</strong> CI에서는 같은 이름을 secret으로 넣습니다. 비밀번호는
+          명령줄이나 로그가 아니라 환경 변수로만 서명 도구에 전달됩니다.
         </>
       ),
     }),
     l.trans({
       en: (
         <>
-          <strong>Where the file lands.</strong> <code>apps/myapp/android/app/build/outputs/apk/release</code> or{" "}
-          <code>…/bundle/release</code>. <code>release-android</code> prints the path.
+          <strong>Where the file lands.</strong> <code>apps/myapp/.akan/mobile/default/native/android</code>.{" "}
+          <code>release-android</code> prints the path.
         </>
       ),
       ko: (
         <>
-          <strong>결과물 위치.</strong> <code>apps/myapp/android/app/build/outputs/apk/release</code>나{" "}
-          <code>…/bundle/release</code>에 생기며, <code>release-android</code>가 경로를 출력합니다.
+          <strong>결과물 위치.</strong> <code>apps/myapp/.akan/mobile/default/native/android</code>에 생기며,{" "}
+          <code>release-android</code>가 경로를 출력합니다.
         </>
       ),
     }),
   ];
 
-  const xcodeChecks = [
+  const signingChecks = [
     l.trans({
       en: (
         <>
-          Open the generated project, <code>apps/myapp/ios/App</code>, after the first run (or pass <code>--open</code>
-          ).
+          Sign in to your team in Xcode (Settings › Accounts) and download its profiles, so the Mac holds an Apple
+          Development certificate and a profile for the app ID. The runtime reads Xcode's profile folders; there is no
+          project to open.
         </>
       ),
       ko: (
         <>
-          첫 실행 뒤 생성된 프로젝트 <code>apps/myapp/ios/App</code>을 엽니다. <code>--open</code>을 줘도 됩니다.
+          Xcode(Settings › Accounts)에서 팀에 로그인하고 프로필을 내려받아, Mac에 Apple Development 인증서와 이 App ID의
+          프로필이 있게 합니다. 런타임은 Xcode의 프로필 폴더를 읽으며, 따로 열 프로젝트는 없습니다.
         </>
       ),
     }),
     l.trans({
       en: (
         <>
-          Check that the Bundle Identifier matches <code>mobile.appId</code>.
+          The profile's App ID is <code>mobile.appId</code>. A wildcard ID is used only when the app asks for neither
+          push nor associated domains.
         </>
       ),
       ko: (
         <>
-          Bundle Identifier가 <code>mobile.appId</code>와 같은지 확인합니다.
+          프로필의 App ID가 <code>mobile.appId</code>와 같아야 합니다. 와일드카드 ID는 앱이 푸시도 associated domains도
+          요청하지 않을 때만 씁니다.
         </>
       ),
     }),
     l.trans({
-      en: "For a phone, pick your team under Signing & Capabilities and check provisioning.",
-      ko: "폰에서 실행한다면 Signing & Capabilities에서 팀을 고르고 provisioning을 확인합니다.",
+      en: "For a phone run, the development profile lists that phone: register it once (build to it from Xcode, or add it on the developer site) and download the profile again. A release needs an Apple Distribution certificate and an App Store (or ad-hoc) profile.",
+      ko: "폰에서 실행하려면 development 프로필에 그 폰이 들어 있어야 합니다. 폰을 한 번 등록하고(Xcode에서 그 폰으로 빌드하거나 개발자 사이트에서 추가) 프로필을 다시 내려받습니다. 출시에는 Apple Distribution 인증서와 App Store(또는 ad-hoc) 프로필이 필요합니다.",
     }),
     l.trans({
       en: "Run on a simulator first, then move to a phone for device-only features.",
@@ -677,63 +707,89 @@ export default page().render(() => {
       en: (
         <>
           <strong>
-            <code>--device</code> skips the question.
+            <code>--device</code> picks the device.
           </strong>{" "}
-          It takes a UDID, a device name, or a runtime such as <code>iOS 18</code>.
+          It takes a simulator's name or UDID, or a paired iPhone's name. Left out, a booted iPhone simulator is used,
+          else the newest one is started.
         </>
       ),
       ko: (
         <>
           <strong>
-            <code>--device</code>를 주면 묻지 않습니다.
+            <code>--device</code>로 기기를 고릅니다.
           </strong>{" "}
-          UDID, 기기 이름, <code>iOS 18</code> 같은 런타임을 받습니다.
+          시뮬레이터 이름이나 UDID, 페어링한 iPhone 이름을 받습니다. 생략하면 켜져 있는 iPhone 시뮬레이터를 쓰고, 없으면
+          가장 최신 것을 띄웁니다.
         </>
       ),
     }),
     l.trans({
       en: (
         <>
-          <strong>Xcode makes the profile for you.</strong> A phone run passes <code>-allowProvisioningUpdates</code>,
-          so once a team is set, Xcode creates the provisioning profile.
+          <strong>The signing is found, not made.</strong> A phone run and a release pick the certificate and profile
+          that fit, and print the one they used. <code>--team</code> chooses when several teams fit.
         </>
       ),
       ko: (
         <>
-          <strong>프로필은 Xcode가 만듭니다.</strong> 폰 실행에는 <code>-allowProvisioningUpdates</code>가 붙으므로,
-          팀만 정하면 Xcode가 provisioning profile을 만듭니다.
+          <strong>서명은 만들지 않고 찾습니다.</strong> 폰 실행과 출시는 맞는 인증서와 프로필을 골라 쓰고, 무엇을 썼는지
+          출력합니다. 여러 팀이 맞으면 <code>--team</code>으로 고릅니다.
         </>
       ),
     }),
     l.trans({
       en: (
         <>
-          <strong>"cannot be registered to your development team".</strong> Someone already owns that bundle ID. Change{" "}
-          <code>mobile.appId</code> to a unique one.
+          <strong>When nothing fits.</strong> The error lists every profile for the bundle ID and why it does not fit:
+          expired, another team, a missing capability such as push, or the phone not in it.
         </>
       ),
       ko: (
         <>
-          <strong>"cannot be registered to your development team".</strong> 그 bundle ID를 이미 누군가 쓰고 있다는
-          뜻입니다. <code>mobile.appId</code>를 고유한 값으로 바꿉니다.
+          <strong>맞는 것이 없을 때.</strong> 오류가 그 bundle ID의 프로필마다 맞지 않는 이유를 보여 줍니다. 만료, 다른
+          팀, 푸시 같은 capability 누락, 폰이 빠진 프로필 등입니다.
         </>
       ),
     }),
   ];
 
-  const symptomRows = [
+  const desktopPrereqs = [
     {
-      symptom: '`Capacitor plugin "Camera" is not available.`',
-      check: l.trans({
-        en: "Add the plugin to `apps/myapp/package.json`, then rerun `start-ios` or `start-android`.",
-        ko: "`apps/myapp/package.json`에 플러그인을 적고 `start-ios`나 `start-android`를 다시 실행합니다.",
+      name: "macOS",
+      desc: l.trans({
+        en: "Xcode command line tools (`xcode-select --install`).",
+        ko: "Xcode command line tools (`xcode-select --install`).",
       }),
     },
     {
-      symptom: l.trans({ en: "Blank screen on a phone", ko: "폰에서 빈 화면만 보임" }),
+      name: "Windows",
+      desc: l.trans({
+        en: 'Visual Studio 2022 Build Tools with "Desktop development with C++".',
+        ko: 'Visual Studio 2022 Build Tools의 "Desktop development with C++".',
+      }),
+    },
+    {
+      name: "Linux",
+      desc: l.trans({
+        en: "A C compiler, pkg-config, and the WebKitGTK 4.1, GTK 3 and libsoup 3 development packages.",
+        ko: "C 컴파일러, pkg-config, WebKitGTK 4.1·GTK 3·libsoup 3 개발 패키지.",
+      }),
+    },
+  ];
+
+  const symptomRows = [
+    {
+      symptom: "`camera.takePhoto() is not supported on ios`",
       check: l.trans({
-        en: "The phone cannot reach your dev server. Use the same Wi-Fi, or set `AKAN_PUBLIC_CLIENT_HOST=<ip>`.",
-        ko: "폰이 개발 서버에 닿지 못합니다. 같은 Wi-Fi를 쓰거나 `AKAN_PUBLIC_CLIENT_HOST=<ip>`를 지정합니다.",
+        en: "The target does not ship that plugin. Add its permission, or name it in `native.plugins`, then run again.",
+        ko: "target에 그 플러그인이 들어 있지 않습니다. 권한을 적거나 `native.plugins`에 이름을 적고 다시 실행합니다.",
+      }),
+    },
+    {
+      symptom: l.trans({ en: "`No dev server answers on …`", ko: "`No dev server answers on …`" }),
+      check: l.trans({
+        en: "A dev build loads its pages from `akan start myapp`. Start it first, or pass `--release`.",
+        ko: "개발 빌드는 `akan start myapp`에서 화면을 불러옵니다. 먼저 켜거나 `--release`를 줍니다.",
       }),
     },
     {
@@ -742,15 +798,15 @@ export default page().render(() => {
         ko: "권한 창이 뜨지 않거나, iOS에서 처음 쓸 때 앱이 꺼짐",
       }),
       check: l.trans({
-        en: "Add the feature to `permissions` and rerun, so the native entries are written.",
-        ko: "`permissions`에 기능을 적고 다시 실행해, 네이티브 설정이 들어가게 합니다.",
+        en: "Add the feature to `permissions` and rerun, so the usage text and native entries are written.",
+        ko: "`permissions`에 기능을 적고 다시 실행해, 사용 안내 문구와 네이티브 설정이 들어가게 합니다.",
       }),
     },
     {
       symptom: l.trans({ en: "A native file is missing", ko: "네이티브 파일이 없음" }),
       check: l.trans({
-        en: "A `files` key is a path inside `android/` or `ios/`, not inside the app folder.",
-        ko: "`files`의 키는 앱 폴더가 아니라 `android/`·`ios/` 안의 경로입니다.",
+        en: "A `files` key is where the file lands (`ios/…`, `android/res/…`, `android/assets/…`); the value is the path in the app folder.",
+        ko: "`files`의 키는 파일이 들어갈 자리(`ios/…`, `android/res/…`, `android/assets/…`)이고, 값이 앱 폴더 안의 경로입니다.",
       }),
     },
     {
@@ -773,13 +829,12 @@ export default page().render(() => {
         l.trans({
           en: (
             <>
-              <code>app/google-services.json</code> exists: the Google Services Gradle plugin applies only then.
+              <code>native.android.googleServices</code> points at that app's <code>google-services.json</code>.
             </>
           ),
           ko: (
             <>
-              <code>app/google-services.json</code>이 있습니다. Google Services Gradle 플러그인은 이 파일이 있을 때만
-              적용됩니다.
+              <code>native.android.googleServices</code>가 그 앱의 <code>google-services.json</code>을 가리킵니다.
             </>
           ),
         }),
@@ -788,8 +843,8 @@ export default page().render(() => {
           ko: "폰에서 알림 권한을 허용했습니다.",
         }),
         l.trans({
-          en: "The Firebase project is the one the server sends with.",
-          ko: "Firebase 프로젝트가 서버가 발송에 쓰는 프로젝트와 같습니다.",
+          en: "The server's Firebase credentials are for the same project.",
+          ko: "서버의 Firebase 인증 정보가 같은 프로젝트의 것입니다.",
         }),
       ],
     },
@@ -800,32 +855,20 @@ export default page().render(() => {
         l.trans({
           en: (
             <>
-              <code>aps-environment</code> is <code>development</code> on a dev-server run, and <code>production</code>{" "}
-              with <code>--release</code> or a build command.
+              The profile allows push; <code>aps-environment</code> follows it, <code>development</code> for a phone run
+              and <code>production</code> for a release.
             </>
           ),
           ko: (
             <>
-              <code>aps-environment</code>가 개발 서버 실행에서는 <code>development</code>, <code>--release</code>나
-              빌드 명령에서는 <code>production</code>입니다.
+              프로필이 푸시를 허용합니다. <code>aps-environment</code>는 프로필을 따라 폰 실행에서는{" "}
+              <code>development</code>, 출시에서는 <code>production</code>입니다.
             </>
           ),
         }),
         l.trans({
-          en: "The APNs key is uploaded to Firebase, and the provisioning profile allows push.",
-          ko: "APNs 키를 Firebase에 올렸고, provisioning profile이 푸시를 허용합니다.",
-        }),
-        l.trans({
-          en: (
-            <>
-              <code>GoogleService-Info.plist</code> is a member of the App target.
-            </>
-          ),
-          ko: (
-            <>
-              <code>GoogleService-Info.plist</code>가 App 타깃에 포함되어 있습니다.
-            </>
-          ),
+          en: "The server holds an APNs key (team ID, key ID, the .p8 file) for this bundle ID; iOS push does not go through Firebase.",
+          ko: "서버에 이 bundle ID의 APNs 키(팀 ID, 키 ID, .p8 파일)가 있습니다. iOS 푸시는 Firebase를 거치지 않습니다.",
         }),
       ],
     },
@@ -836,8 +879,8 @@ export default page().render(() => {
       href: "/cheatsheet/mobile/push",
       title: l.trans({ en: "Push Notifications", ko: "푸시 알림" }),
       desc: l.trans({
-        en: "Firebase, APNs and the client API, per platform.",
-        ko: "플랫폼별 Firebase, APNs 설정과 클라이언트 API입니다.",
+        en: "APNs, FCM and the client API, per platform.",
+        ko: "플랫폼별 APNs, FCM 설정과 클라이언트 API입니다.",
       }),
     },
     {
@@ -852,8 +895,8 @@ export default page().render(() => {
       href: "/docs/core/config#mobile",
       title: l.trans({ en: "Every Mobile Field", ko: "mobile 필드 전체" }),
       desc: l.trans({
-        en: "Icons, splash images and passthrough Capacitor config.",
-        ko: "아이콘, 스플래시 이미지, Capacitor 설정 전달까지 모두 봅니다.",
+        en: "Icons, splash images, native files and the native block.",
+        ko: "아이콘, 스플래시 이미지, 네이티브 파일, native 블록까지 모두 봅니다.",
       }),
     },
     {
@@ -873,8 +916,8 @@ export default page().render(() => {
         <Docs.Description>
           <div>
             {l.trans({
-              en: "An Akan mobile app is your CSR web app running inside a Capacitor shell for Android and iOS. The web app owns the pages and business logic. The shell owns the package ID, device permissions, plugin linking, native files, signing and store builds.",
-              ko: "Akan 모바일 앱은 CSR 웹 앱을 Android·iOS용 Capacitor 셸 안에서 실행한 것입니다. 페이지와 비즈니스 로직은 웹 앱이 맡습니다. 패키지 ID, 기기 권한, 플러그인 연결, 네이티브 파일, 서명, 스토어 빌드는 셸이 맡습니다.",
+              en: "An Akan mobile app is your CSR web app running inside a native shell that akanjs's own runtime generates for iOS and Android, and for macOS, Windows and Linux too. The web app owns the pages and business logic. The shell owns the package ID, device permissions, plugins, native files, signing and store builds, all declared in akan.config.ts.",
+              ko: "Akan 모바일 앱은 akanjs의 자체 런타임이 iOS·Android용으로, 그리고 macOS·Windows·Linux용으로도 만들어 내는 네이티브 셸 안에서 CSR 웹 앱을 실행한 것입니다. 페이지와 비즈니스 로직은 웹 앱이 맡습니다. 패키지 ID, 기기 권한, 플러그인, 네이티브 파일, 서명, 스토어 빌드는 셸이 맡으며, 모두 akan.config.ts에 선언합니다.",
             })}
           </div>
           <Docs.SubSubTitle>{l.trans({ en: "Words used on this page", ko: "이 페이지에서 쓰는 말" })}</Docs.SubSubTitle>
@@ -932,7 +975,11 @@ const config: AppConfig = {
     buildNum: 1,
     targets: {
       default: {
-        permissions: ["camera"],
+        indexPath: "/home",
+        permissions: ["camera", "push"],
+        native: {
+          android: { googleServices: "secrets/google-services.json" },
+        },
       },
     },
   },
@@ -977,13 +1024,14 @@ export default config;`}
           </Docs.SubSubTitle>
           <div>
             {l.trans({
-              en: "A permission writes that feature's native settings on the next run. It does not install the plugin; that is the next section.",
-              ko: "권한을 적으면 다음 실행 때 그 기능의 네이티브 설정이 들어갑니다. 플러그인은 따로 설치하며, 다음 섹션에서 다룹니다.",
+              en: "A permission brings the feature's plugin and writes its native settings on the next run. For contacts and speech the runtime has no plugin yet: the build says so and ships without it, and a lib that claims the permission adds only its own entries.",
+              ko: "권한을 적으면 다음 실행 때 그 기능의 플러그인이 들어가고 네이티브 설정이 쓰입니다. 연락처와 음성은 런타임에 아직 플러그인이 없어, 빌드가 그렇게 알리고 없이 빌드합니다. 그 권한을 맡은 lib는 자기 항목만 더합니다.",
             })}
           </div>
           <Docs.Table
             columns={[
               { key: "permission", label: l.trans({ en: "Permission", ko: "권한" }), code: true },
+              { key: "plugin", label: l.trans({ en: "Plugin", ko: "플러그인" }) },
               { key: "android", label: "Android" },
               { key: "ios", label: "iOS" },
             ]}
@@ -1087,23 +1135,24 @@ export default config;`}
       </Scroll.Slide>
       <Divider />
 
-      <Scroll.Slide id="capacitor-plugins" title={l.trans({ en: "Capacitor Plugins", ko: "Capacitor 플러그인" })}>
-        <Docs.Title>{l.trans({ en: "Capacitor Plugins", ko: "Capacitor 플러그인" })}</Docs.Title>
+      <Scroll.Slide id="native-plugins" title={l.trans({ en: "Native Plugins", ko: "네이티브 플러그인" })}>
+        <Docs.Title>{l.trans({ en: "Native Plugins", ko: "네이티브 플러그인" })}</Docs.Title>
         <Docs.Description>
           <div>
             {l.trans({
               en: (
                 <span>
-                  Capacitor links a native plugin only when <code>apps/myapp/package.json</code> lists it; a dependency
-                  at the workspace root is not enough. <code>akan start-ios</code> and <code>akan start-android</code>{" "}
-                  add the default set for you, and offer to install the Capacitor toolchain at the workspace root.
+                  The runtime ships a plugin only when the target asks for it. A base set every Akan page relies on is
+                  always in; <code>permissions</code> bring their feature's plugin; anything else is named in{" "}
+                  <code>native.plugins</code>. Calling a plugin the app does not ship rejects with{" "}
+                  <code>UNSUPPORTED</code>.
                 </span>
               ),
               ko: (
                 <span>
-                  Capacitor는 <code>apps/myapp/package.json</code>에 적힌 네이티브 플러그인만 링크합니다. 워크스페이스
-                  루트에만 있으면 부족합니다. <code>akan start-ios</code>와 <code>akan start-android</code>가 기본
-                  플러그인을 알아서 채우고, 워크스페이스 루트에 Capacitor 도구가 없으면 설치할지 묻습니다.
+                  런타임은 target이 요청한 플러그인만 앱에 넣습니다. 모든 Akan 페이지가 쓰는 기본 묶음은 항상 들어가고,{" "}
+                  <code>permissions</code>가 그 기능의 플러그인을 가져오며, 그 밖의 것은 <code>native.plugins</code>에
+                  적습니다. 앱에 없는 플러그인을 호출하면 <code>UNSUPPORTED</code>로 거부됩니다.
                 </span>
               ),
             })}
@@ -1117,44 +1166,27 @@ export default config;`}
           />
           <div>
             {l.trans({
-              en: "Beyond the default set, add only the plugins the app actually calls. Native push, for example, needs the FCM plugin next to the push plugin:",
-              ko: "기본 묶음 밖의 플러그인은 앱이 실제로 호출하는 것만 넣습니다. 예를 들어 네이티브 푸시에는 푸시 플러그인 옆에 FCM 플러그인이 필요합니다:",
+              en: "Beyond the base set and the permissions, name only the plugins the app actually calls. In-app purchase, for example, has no permission of its own:",
+              ko: "기본 묶음과 권한 밖의 플러그인은 앱이 실제로 호출하는 것만 적습니다. 예를 들어 인앱 결제에는 따로 권한이 없습니다:",
             })}
           </div>
           <Code.Snippet
             className="w-full"
-            title="apps/myapp/package.json"
-            language="json"
-            code={`{
-  "dependencies": {
-    "@capacitor/push-notifications": "*",
-    "@capacitor-community/fcm": "*"
-  }
-}`}
+            title="apps/myapp/akan.config.ts"
+            code={`mobile: {
+  targets: {
+    default: {
+      permissions: ["push"],
+      native: { plugins: ["iap"] },
+    },
+  },
+},`}
           />
           <ul className={bulletList}>
             {pluginNotes.map((note, idx) => (
               <li key={idx}>{note}</li>
             ))}
           </ul>
-          <Docs.Alert type="warning">
-            {l.trans({
-              en: (
-                <span>
-                  <strong>Only start-ios and start-android fill in the default set.</strong> <code>build-*</code> and{" "}
-                  <code>release-*</code> add nothing, so commit the <code>package.json</code> change before a CI machine
-                  builds the app.
-                </span>
-              ),
-              ko: (
-                <span>
-                  <strong>기본 묶음은 start-ios와 start-android만 채웁니다.</strong> <code>build-*</code>와{" "}
-                  <code>release-*</code>는 아무것도 추가하지 않으므로, CI가 빌드하기 전에 바뀐 <code>package.json</code>
-                  을 커밋해 두세요.
-                </span>
-              ),
-            })}
-          </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -1166,13 +1198,13 @@ export default config;`}
             {l.trans({
               en: (
                 <span>
-                  This gets the generated Android project running on an emulator or a phone. Keep one value consistent:{" "}
+                  This gets the Android app running on an emulator or a phone. Keep one value consistent:{" "}
                   <code>mobile.appId</code> becomes the Android <code>applicationId</code>.
                 </span>
               ),
               ko: (
                 <span>
-                  생성된 Android 프로젝트를 에뮬레이터나 폰에서 띄우는 과정입니다. 꼭 맞춰야 할 값은 하나입니다.{" "}
+                  Android 앱을 에뮬레이터나 폰에서 띄우는 과정입니다. 꼭 맞춰야 할 값은 하나입니다.{" "}
                   <code>mobile.appId</code>가 Android의 <code>applicationId</code>가 됩니다.
                 </span>
               ),
@@ -1181,18 +1213,20 @@ export default config;`}
           <Docs.SubSubTitle>{l.trans({ en: "Prerequisites", ko: "준비물" })}</Docs.SubSubTitle>
           <ul className={bulletList}>
             <li>
-              {l.trans({ en: "Android Studio with the Android SDK.", ko: "Android SDK가 설치된 Android Studio." })}
+              {l.trans({
+                en: "The Android SDK with build-tools 35 or newer, and an emulator or a phone with USB debugging. Android Studio installs both.",
+                ko: "build-tools 35 이상이 설치된 Android SDK, 그리고 에뮬레이터나 USB 디버깅을 켠 폰. Android Studio가 둘 다 설치해 줍니다.",
+              })}
               <ExternalLink
                 href="https://developer.android.com/studio"
                 label={l.trans({ en: "Open the Android Studio download", ko: "Android Studio 다운로드 열기" })}
               />
             </li>
             <li>
-              {l.trans({ en: "JDK 21, reachable from your shell.", ko: "터미널에서 쓸 수 있는 JDK 21." })}
-              <ExternalLink
-                href="https://formulae.brew.sh/formula/openjdk@21"
-                label={l.trans({ en: "Open Homebrew openjdk@21", ko: "Homebrew openjdk@21 열기" })}
-              />
+              {l.trans({
+                en: "A JDK 17 or newer. Android Studio bundles one; `JAVA_HOME` picks another. The Kotlin compiler is fetched on the first build.",
+                ko: "JDK 17 이상. Android Studio에 들어 있는 것을 쓰며, 다른 JDK는 `JAVA_HOME`으로 고릅니다. Kotlin 컴파일러는 첫 빌드 때 받아 옵니다.",
+              })}
             </li>
             <li>
               {l.trans({
@@ -1218,18 +1252,14 @@ export default config;`}
           <ol className={stepList}>
             <li>
               {l.trans({
-                en: "Point your shell at JDK 21 and the Android SDK:",
-                ko: "터미널이 JDK 21과 Android SDK를 쓰도록 설정합니다:",
+                en: "When the SDK is not at ~/Library/Android/sdk, point your shell at it:",
+                ko: "SDK가 ~/Library/Android/sdk에 없다면 터미널이 그 위치를 쓰도록 설정합니다:",
               })}
               <Code.Snippet
                 className="w-full"
                 title="Terminal"
                 language="bash"
-                code={`brew install openjdk@21
-JDK_PREFIX="$(brew --prefix openjdk@21)"
-export JAVA_HOME="$JDK_PREFIX/libexec/openjdk.jdk/Contents/Home"
-export PATH="$JAVA_HOME/bin:$PATH"
-export ANDROID_HOME="$HOME/Library/Android/sdk"
+                code={`export ANDROID_HOME="$HOME/Android/Sdk"
 export PATH="$ANDROID_HOME/platform-tools:$PATH"`}
               />
             </li>
@@ -1261,13 +1291,14 @@ export PATH="$ANDROID_HOME/platform-tools:$PATH"`}
               {l.trans({
                 en: (
                   <>
-                    Success looks like this: the app opens, and the generated <code>applicationId</code> matches{" "}
-                    <code>mobile.appId</code>.
+                    Success looks like this: the app opens on the target's <code>indexPath</code>, and a save in the app
+                    shows up without a rebuild. A phone reaches the dev server over its USB connection.
                   </>
                 ),
                 ko: (
                   <>
-                    앱이 열리고, 생성된 <code>applicationId</code>가 <code>mobile.appId</code>와 같으면 성공입니다.
+                    앱이 target의 <code>indexPath</code>로 열리고, 저장하면 다시 빌드하지 않아도 반영되면 성공입니다.
+                    폰은 USB 연결로 개발 서버에 닿습니다.
                   </>
                 ),
               })}
@@ -1280,12 +1311,12 @@ export PATH="$ANDROID_HOME/platform-tools:$PATH"`}
             {l.trans({
               en: (
                 <span>
-                  Check that the project builds, then make the Play Store AAB against the <code>main</code> backend:
+                  Check that the app builds, then make the Play Store AAB against the <code>main</code> backend:
                 </span>
               ),
               ko: (
                 <span>
-                  프로젝트가 빌드되는지 확인한 뒤, Play Store에 올릴 AAB를 <code>main</code> 백엔드로 만듭니다:
+                  앱이 빌드되는지 확인한 뒤, Play Store에 올릴 AAB를 <code>main</code> 백엔드로 만듭니다:
                 </span>
               ),
             })}
@@ -1295,20 +1326,21 @@ export PATH="$ANDROID_HOME/platform-tools:$PATH"`}
             title="Terminal"
             language="bash"
             code={`akan build-android myapp --target default
-akan release-android myapp --target default --env main --assemble-type aab`}
+akan release-android myapp --target default --env main`}
           />
           <div>
             {l.trans({
               en: (
                 <span>
-                  Both commands build the release variant, so they need your upload key. Put four values in{" "}
-                  <code>apps/myapp/android/gradle.properties</code>:
+                  <code>release-android</code> signs with your upload key, which it reads from the environment. Set
+                  three names, and a fourth when the key has its own password; a missing one stops the command before it
+                  builds:
                 </span>
               ),
               ko: (
                 <span>
-                  두 명령 모두 릴리스 빌드를 만들므로 업로드 키가 있어야 합니다.{" "}
-                  <code>apps/myapp/android/gradle.properties</code>에 값 네 개를 넣습니다:
+                  <code>release-android</code>는 환경 변수에서 읽은 업로드 키로 서명합니다. 이름 세 개를 두고, 키에
+                  비밀번호가 따로 있으면 네 번째도 둡니다. 하나라도 없으면 빌드 전에 멈춥니다:
                 </span>
               ),
             })}
@@ -1319,12 +1351,12 @@ akan release-android myapp --target default --env main --assemble-type aab`}
           </div>
           <Code.Snippet
             className="w-full"
-            title="apps/myapp/android/gradle.properties"
-            language="yaml"
-            code={`MYAPP_RELEASE_STORE_FILE=release.keystore
-MYAPP_RELEASE_STORE_PASSWORD=<store password>
-MYAPP_RELEASE_KEY_ALIAS=upload
-MYAPP_RELEASE_KEY_PASSWORD=<key password>`}
+            title="Terminal"
+            language="bash"
+            code={`export MYAPP_RELEASE_STORE_FILE=secrets/release.keystore
+export MYAPP_RELEASE_STORE_PASSWORD=<store password>
+export MYAPP_RELEASE_KEY_ALIAS=upload
+export MYAPP_RELEASE_KEY_PASSWORD=<key password>`}
           />
           <ul className={bulletList}>
             {signingNotes.map((note, idx) => (
@@ -1343,14 +1375,17 @@ MYAPP_RELEASE_KEY_PASSWORD=<key password>`}
         <Docs.Description>
           <div>
             {l.trans({
-              en: "This prepares the Xcode project: bundle ID, signing, simulator runs and store builds. Run on a simulator first, then on a phone for device-only features.",
-              ko: "Xcode 프로젝트의 bundle ID, 서명, 시뮬레이터 실행, 스토어 빌드를 준비하는 과정입니다. 먼저 시뮬레이터에서 실행하고, 기기 전용 기능은 폰에서 확인합니다.",
+              en: "This prepares the bundle ID, signing, simulator runs and store builds. There is no Xcode project: the runtime compiles the app with Xcode's tools and reads the signing Xcode keeps. Run on a simulator first, then on a phone for device-only features.",
+              ko: "bundle ID, 서명, 시뮬레이터 실행, 스토어 빌드를 준비하는 과정입니다. Xcode 프로젝트는 없습니다. 런타임이 Xcode의 도구로 앱을 컴파일하고, Xcode가 둔 서명을 읽습니다. 먼저 시뮬레이터에서 실행하고, 기기 전용 기능은 폰에서 확인합니다.",
             })}
           </div>
           <Docs.SubSubTitle>{l.trans({ en: "Prerequisites", ko: "준비물" })}</Docs.SubSubTitle>
           <ul className={bulletList}>
             <li>
-              {l.trans({ en: "Xcode.", ko: "Xcode." })}
+              {l.trans({
+                en: "Xcode 26 or newer, with an iOS 26 simulator runtime (Xcode › Settings › Components).",
+                ko: "Xcode 26 이상과 iOS 26 시뮬레이터 런타임 (Xcode › Settings › Components).",
+              })}
               <ExternalLink
                 href="https://developer.apple.com/xcode/"
                 label={l.trans({ en: "Open the Xcode download", ko: "Xcode 다운로드 열기" })}
@@ -1391,14 +1426,13 @@ MYAPP_RELEASE_KEY_PASSWORD=<key password>`}
             {l.trans({
               en: (
                 <span>
-                  With <code>akan start myapp</code> running, launch the app. Akan lists the simulators and connected
-                  phones to pick from:
+                  With <code>akan start myapp</code> running, launch the app on a simulator, or name a paired iPhone:
                 </span>
               ),
               ko: (
                 <span>
-                  <code>akan start myapp</code>을 켜 둔 채 앱을 실행합니다. Akan이 시뮬레이터와 연결된 폰 목록을 보여
-                  주고 고르게 합니다:
+                  <code>akan start myapp</code>을 켜 둔 채 시뮬레이터에서 앱을 실행하거나, 페어링한 iPhone 이름을
+                  줍니다:
                 </span>
               ),
             })}
@@ -1408,7 +1442,8 @@ MYAPP_RELEASE_KEY_PASSWORD=<key password>`}
             title="Terminal"
             language="bash"
             code={`akan start-ios myapp
-akan start-ios myapp --device "iPhone 16"`}
+akan start-ios myapp --device "iPhone 17"
+akan start-ios myapp --device "Jane's iPhone" --team ABCDE12345`}
           />
           <ul className={bulletList}>
             {iosNotes.map((note, idx) => (
@@ -1416,9 +1451,9 @@ akan start-ios myapp --device "iPhone 16"`}
             ))}
           </ul>
 
-          <Docs.SubSubTitle>{l.trans({ en: "Xcode checks", ko: "Xcode에서 확인할 것" })}</Docs.SubSubTitle>
+          <Docs.SubSubTitle>{l.trans({ en: "Signing checks", ko: "서명에서 확인할 것" })}</Docs.SubSubTitle>
           <ol className={stepList}>
-            {xcodeChecks.map((check, idx) => (
+            {signingChecks.map((check, idx) => (
               <li key={idx}>{check}</li>
             ))}
           </ol>
@@ -1429,13 +1464,13 @@ akan start-ios myapp --device "iPhone 16"`}
             {l.trans({
               en: (
                 <span>
-                  Check that the project builds, then make the App Store build against the <code>main</code> backend,
-                  which <code>release-ios</code> uses by default:
+                  Check that the app builds, then make the App Store build against the <code>main</code> backend, which{" "}
+                  <code>release-ios</code> uses by default:
                 </span>
               ),
               ko: (
                 <span>
-                  프로젝트가 빌드되는지 확인한 뒤, App Store용 빌드를 <code>main</code> 백엔드로 만듭니다.{" "}
+                  앱이 빌드되는지 확인한 뒤, App Store용 빌드를 <code>main</code> 백엔드로 만듭니다.{" "}
                   <code>release-ios</code>는 기본으로 <code>main</code>을 씁니다:
                 </span>
               ),
@@ -1448,6 +1483,53 @@ akan start-ios myapp --device "iPhone 16"`}
             code={`akan build-ios myapp --target default
 akan release-ios myapp --target default --env main`}
           />
+        </Docs.Description>
+      </Scroll.Slide>
+      <Divider />
+
+      <Scroll.Slide id="desktop" title={l.trans({ en: "Desktop", ko: "데스크톱" })}>
+        <Docs.Title>{l.trans({ en: "Desktop", ko: "데스크톱" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  The same target also runs as a desktop app, which is the quickest way to try a change outside the
+                  browser. <code>akan start-desktop</code> builds for this computer's own OS, since a desktop app builds
+                  only there, and loads its pages from <code>akan start</code> like the phone commands:
+                </span>
+              ),
+              ko: (
+                <span>
+                  같은 target은 데스크톱 앱으로도 실행되며, 브라우저 밖에서 변경을 가장 빨리 확인하는 방법입니다.{" "}
+                  <code>akan start-desktop</code>은 데스크톱 앱이 자기 OS에서만 빌드되므로 지금 컴퓨터의 OS용으로
+                  빌드하고, 폰 명령처럼 <code>akan start</code>에서 화면을 불러옵니다:
+                </span>
+              ),
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="Terminal"
+            language="bash"
+            code={`akan start myapp
+akan start-desktop myapp
+akan start-desktop myapp --release true --env debug`}
+          />
+          <div>
+            {l.trans({
+              en: "It needs Rust through rustup, which installs the toolchain the build pins, plus this OS's native build tools:",
+              ko: "rustup으로 설치한 Rust(빌드가 고정한 toolchain을 rustup이 받습니다)와 OS별 네이티브 빌드 도구가 필요합니다:",
+            })}
+            <ExternalLink href="https://rustup.rs" label={l.trans({ en: "Open rustup", ko: "rustup 열기" })} />
+          </div>
+          <Docs.IntroTable type="OS" items={desktopPrereqs} />
+          <Docs.Alert type="info">
+            {l.trans({
+              en: "start-desktop is for development and testing. A signed desktop package for distribution is not one of the akan commands yet.",
+              ko: "start-desktop은 개발과 테스트용입니다. 배포용으로 서명한 데스크톱 패키지는 아직 akan 명령에 없습니다.",
+            })}
+          </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />

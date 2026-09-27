@@ -22,7 +22,7 @@ Server Utils (srvkit/)
 
 Pure, isomorphic, zero-dependency; imports only sibling common/* and akanjs/base, not Err.
 
-Touches window, navigator or Capacitor, or is a React hook.
+Touches window, navigator or the native bridge (akanjs/client/native), or is a React hook.
 
 Touches node:*, Bun, process.env, a secret, or a server SDK.
 

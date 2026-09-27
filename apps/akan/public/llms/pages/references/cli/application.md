@@ -22,11 +22,15 @@ A key of `mobile.targets` in `akan.config.ts`, or `all`. Asked for when there ar
 
 Backend environment the app connects to.
 
-Delete the native project folder and generate it again.
+Make a debug build instead of a release one.
+
+The simulator, emulator or device to run on: its id or name, such as `iPhone 17` or `Pixel_10`. A paired iPhone's name makes a signed iPhone build. Left out, a booted iPhone simulator (else the newest one) or a connected Android device (else the first emulator, started) is used.
+
+The Apple team id the signing is narrowed to, when the Mac holds profiles of several teams.
 
 Allow a release built with `--env local`.
 
-Bundle a production web build into the app instead of loading the dev server.
+Run a release build that carries its own production web build instead of loading the dev server.
 
 alias
 
@@ -34,15 +38,19 @@ alias
 
 dev server
 
-Without `--release` the app loads from the dev server, so keep `akan start <app>` running.
+Without `--release` the app loads its pages from `akan start <app>` through the dev gateway, so every save shows up; keep the dev server running, or the command stops and says so.
 
 one target
 
-Works only when the app has one mobile target, since it takes no `--target`.
+Runs one mobile target at a time; with several, pass `--target <name>`.
+
+output
+
+Written under \`apps/<app>/.akan/mobile/<target>/native/${platform}\`; the command prints each file's path.
 
 signing
 
-Needs release signing keys in `android/gradle.properties` or `ORG_GRADLE_PROJECT_*` env vars.
+Signed with the upload key the environment names: `MYAPP_RELEASE_STORE_FILE`, `MYAPP_RELEASE_STORE_PASSWORD` and `MYAPP_RELEASE_KEY_ALIAS`, plus `MYAPP_RELEASE_KEY_PASSWORD` when the key has its own. A missing one stops the command before it builds.
 
 Manage Apps
 
@@ -82,7 +90,9 @@ Mobile
 
 Run the app on a simulator, an emulator or a connected device.
 
-Build the native app with Capacitor.
+Run the app as a desktop app on this computer.
+
+Build the native app on the native runtime.
 
 Build the app for an App Store or Play Store release.
 
@@ -278,31 +288,27 @@ web surfaces
 
 The SSR and CSR steps follow `web` in `akan.config.ts`; a surface turned off is skipped.
 
-Run the iOS app on a simulator or a connected device. By default it loads from your local dev server; `--release` bundles a production web build instead.
+Run the iOS app on a simulator or a paired iPhone. By default it is a debug build whose pages come from your local dev server; `--release` runs a release build of its own bundle instead.
 
-Also open the native project in Xcode.
+Run the Android app on an emulator or a connected device. It works like `start-ios`: the dev server by default, a bundled release build with `--release`.
 
-Lets Xcode make or update device provisioning profiles; `--no-allow-provisioning-updates` stops it.
+Run a mobile target as a desktop app on this computer: macOS, Windows or Linux, whichever it is, since a desktop app builds only on its own OS. It works like `start-ios`, with no device or team to pick.
 
-Pick the run target without a prompt: a UDID, a device name, or a runtime such as `iOS 18`.
+Build the iOS app on the native runtime. It first makes a production web build against `--env`, then builds a simulator app for each target.
 
-Run the Android app on an emulator or a connected device. It works like `start-ios`: the dev server by default, a bundled build with `--release`.
+Build an APK of the Android app on the native runtime. Like `build-ios`, it makes a production web build against `--env` first.
 
-Also open the native project in Android Studio.
+Signed with `~/.akan/native/debug.keystore`, which is fine for testing; a Play Store file comes from `release-android`.
 
-Build the iOS app with Capacitor. It first makes a production web build against `--env`, then runs the native build for each target.
+Build and sign the iOS app for an App Store release: an iPhone app and its `.ipa`. It defaults to the `main` backend and refuses `--env local` unless `--allow-local-release` is passed.
 
-Build a release APK of the Android app with Capacitor. Like `build-ios`, it makes a production web build against `--env` first.
+Sign with an ad-hoc profile instead of an App Store one.
 
-Build the iOS app for an App Store release. It defaults to the `main` backend and refuses `--env local` unless `--allow-local-release` is passed.
+The certificate and profile are found among the ones Xcode keeps on this Mac: the profile must cover the app id and every capability the app asks for. The command prints the one it used.
 
-Build the Android app for a Play Store release, as an APK or an AAB. Like `release-ios`, it defaults to `main` and refuses `--env local` without `--allow-local-release`.
+Build and sign the Android app for a Play Store release, as an AAB or an APK. Like `release-ios`, it defaults to `main` and refuses `--env local` without `--allow-local-release`.
 
-`apk` for direct installs, `aab` for a Play Store upload.
-
-output
-
-Written under `apps/<app>/android/app/build/outputs/`; the command prints the path.
+`aab` for a Play Store upload, `apk` for direct installs.
 
 Application CLI
 

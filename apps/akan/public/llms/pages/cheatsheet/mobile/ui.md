@@ -88,7 +88,7 @@ Top safe area plus top inset: the top padding a page body needs.
 
 Bottom safe area plus bottom inset: the bottom padding a page body needs.
 
-The Capacitor Keyboard plugin reported the exact height as the keyboard began to open.
+The native runtime's keyboard plugin reported the exact height as the keyboard began to open.
 
 How much the visible viewport shrank; Android prefers it, elsewhere it fills in for the plugin.
 

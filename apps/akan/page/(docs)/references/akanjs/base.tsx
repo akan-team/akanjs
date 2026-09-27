@@ -332,8 +332,8 @@ export default page().render(() => {
       file: "akan.config.ts",
       setting: "api: { prefix, websocketPrefix }",
       follows: l.trans({
-        en: "A prebuilt CSR shell and a Capacitor app, which no server renders.",
-        ko: "서버가 렌더링하지 않는 미리 빌드한 CSR 셸과 Capacitor 앱입니다.",
+        en: "A prebuilt CSR shell and a native app bundle, which no server renders.",
+        ko: "서버가 렌더링하지 않는 미리 빌드한 CSR 셸과 네이티브 앱 번들입니다.",
       }),
     },
     {

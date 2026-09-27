@@ -15,9 +15,9 @@
 - useThrottle (#useThrottle)
 - useFetch / useFetchFn (#useFetch / useFetchFn)
 - useCamera (#useCamera)
-- useContact (#useContact)
 - useGeoLocation (#useGeoLocation)
 - usePushNotification (#usePushNotification)
+- usePurchase (#usePurchase)
 - useLocation / useHistory (#useLocation / useHistory)
 - LoginForm (#LoginForm)
 
@@ -41,9 +41,11 @@ Runs a callback at once, then ignores calls for a while.
 
 Tells a client component whether a promise has resolved, and its value.
 
-Camera, contacts and location through Capacitor plugins, permission prompts included.
+Camera and location through the native runtime's plugins, with a browser fallback and the permission prompts.
 
 Not in this module: the push hook lives in `@libs/util/webkit`.
+
+In-app purchase on the native iap plugin, verified by your server. Imported from `akanjs/webkit/usePurchase`.
 
 The CSR router's location parser and history stack.
 
@@ -54,8 +56,6 @@ Locks `document.body` scrolling while `active`. Overlays share one count.
 Calls `onEscape` on Escape while `active`. Only the topmost open surface gets the key.
 
 Show a pager and on-screen items to the in-page agent. `Load.Units` and `Load.View` call them.
-
-Asks a release server for a newer web bundle and applies it with Capacitor Updater.
 
 Build robots rules (`disallow: "/admin/"` by default) and a list of sitemap entries.
 
@@ -121,35 +121,49 @@ The current promise's resolved value, `null` until it resolves.
 
 Option. Called with `"Error: <message>"` when the promise rejects.
 
-Takes or picks one photo as a data URL. `"prompt"` lets the user choose; cancel returns `undefined`.
+Takes or picks one photo as `{ dataUrl }`, an upright JPEG. `"prompt"` shows a camera-or-library sheet in the native app; cancel returns `undefined`.
 
-Picks several images from the photo library.
+Picks several images from the library, each as `{ dataUrl }`.
 
-`{ camera, photos }`. Read on mount on a mobile device, `"prompt"` until then.
+`{ camera }`. Read on mount in the native app, `"prompt"` until then.
 
-`"photos" | "camera" | "all"`. Asks when unasked, opens app settings when denied.
+Asks for the camera, and opens the app settings when it is denied.
 
 Text of the native picker sheet. A missing one comes from the `base` dictionary.
 
-Checks the permission, then returns the contacts with names and phone numbers.
+Returns a `Position`. When the permission is denied, opens the settings and returns `undefined`.
 
-`{ contacts }`. Read on mount in the native app, `"prompt"` until then.
+Requests permission and returns `{ location, precise }`.
 
-Asks when unasked, opens app settings when denied.
+Asks for permission, then returns a `PushToken`, or `undefined` when refused or unsupported.
 
-Returns the current position. If a permission is denied, opens settings and returns `undefined`.
-
-Requests permission and returns `{ geolocation, coarseLocation }`.
-
-Asks for permission when needed and returns a `PushToken`, or `undefined`.
-
-Returns the current token without asking for permission.
+Returns the token without asking. Registering shows no prompt, so check the permission first.
 
 Read the permission state, or show the prompt and return the answer.
 
 Tells whether push can work in this runtime.
 
-Routes notification clicks. The hook already runs it on mount.
+Hands each token a native shell rotates to the listener. Returns the unsubscribe.
+
+Routes the browser's notification clicks. The hook runs it on mount; native taps need nothing.
+
+The stores the app sells in. A native shell on another platform shows no products.
+
+The store product ids and what each one is. A product not listed is finished without being consumed.
+
+The verification server's origin. It answers `POST <url>/billing/verifyBilling`.
+
+Credits a consumable or non-consumable. `verified` is the server's JSON answer.
+
+The same, for a subscription.
+
+The store's `IapProduct`s for `productInfo`: title, `displayPrice`, price, currency and offers.
+
+`true` until the products and the unfinished transactions are loaded.
+
+Opens the store sheet and answers `"purchased"`, `"pending"`, `"cancelled"` or `"unverified"`.
+
+Returns what the person owns now, finishing an Android purchase still unacknowledged on the way.
 
 Returns `getLocation(href)`, which matches an href against the route tree.
 
@@ -221,41 +235,43 @@ Result And Option
 
 useCamera
 
-`useCamera` takes a photo or picks one from the library through the Capacitor Camera plugin. It asks for permission first, and opens the app settings when the user has denied it.
+`useCamera` takes a photo or picks one from the library through the native runtime's camera plugin. In the native app it asks for the camera first and opens the app settings when the user has denied it; in a browser it picks from files.
 
 Option
 
 A button that takes a photo and previews it:
 
-Capacitor Plugins
+Native Plugins
 
-Which plugin each device feature needs, and how to add it.
-
-useContact
-
-`useContact` reads the device address book through the Capacitor Contacts plugin. Use it for mobile sign-up or friend-invite flows.
-
-An app hook that turns the address book into invite candidates, for a button to call:
+The mobile target, its permissions, and the plugins they add.
 
 useGeoLocation
 
-`useGeoLocation` reads the current position through the Capacitor Geolocation plugin. It requests permission on every call and sends the user to the app settings when it is denied.
+`useGeoLocation` reads the current position through the native runtime's geolocation plugin, and through `navigator.geolocation` in a browser. It sends the user to the app settings when the permission is denied.
 
 An app hook that finds where to center a map:
 
 usePushNotification
 
-Push moved out of the framework: the hook lives in `@libs/util/webkit`, not `akanjs/webkit`. The hook itself is unchanged, and an app reaches it through the util library it already depends on.
+Push lives in `@libs/util/webkit`, not `akanjs/webkit`. In a native shell the hook calls the runtime's push plugin (APNs on iOS, FCM on Android); in a browser it calls Firebase. Either way it hands back one `PushToken` shape.
 
 Registering from a button, because `register()` may show a permission prompt:
 
 Client Registration
 
-The full register flow, and the endpoint that stores the token.
+The full register flow, and where the token is stored.
 
 Web Push
 
 The Firebase settings `register()` needs in the browser.
+
+usePurchase
+
+`usePurchase` sells in-app products through the native runtime's iap plugin: StoreKit 2 on iOS, Play Billing on Android. Your server verifies every transaction before the app credits it, and a browser sells nothing.
+
+Options
+
+A buy button that credits coins once the server has accepted the purchase:
 
 useLocation / useHistory
 
@@ -436,32 +452,6 @@ export const TakePhoto = ({ className }: TakePhotoProps) => {
 };
 ```
 
-### apps/myapp/webkit/useInvitees.tsx
-
-```tsx
-"use client";
-import { useContact } from "akanjs/webkit";
-
-interface ContactEntry {
-  name?: { display?: string | null };
-  phones?: { number?: string | null }[];
-}
-
-export const useInvitees = () => {
-  const { getContacts } = useContact();
-  const getInvitees = async () => {
-    const contacts = (await getContacts()) as ContactEntry[];
-    return contacts.flatMap((contact) =>
-      (contact.phones ?? []).map((phone) => ({
-        name: contact.name?.display ?? "",
-        phone: phone.number ?? "",
-      })),
-    );
-  };
-  return { getInvitees };
-};
-```
-
 ### apps/myapp/webkit/useMapCenter.tsx
 
 ```tsx
@@ -471,27 +461,28 @@ import { useGeoLocation } from "akanjs/webkit";
 export const useMapCenter = () => {
   const { getPosition } = useGeoLocation();
   const getCenter = async () => {
-    const position = (await getPosition()) as GeolocationPosition | undefined;
+    const position = await getPosition();
     if (!position) return null;
-    return { lat: position.coords.latitude, lng: position.coords.longitude };
+    return { lat: position.latitude, lng: position.longitude };
   };
   return { getCenter };
 };
 ```
 
-### apps/myapp/lib/userDevice/UserDevice.Util.tsx
+### apps/myapp/ui/EnablePush.tsx
 
 ```tsx
 "use client";
-import { st, usePage } from "@apps/myapp/client";
+import { st } from "@apps/myapp/client";
 import { type PushToken, usePushNotification } from "@libs/util/webkit";
 import { buttonRecipe } from "akanjs/ui";
+import type { ReactNode } from "react";
 
-interface RegisterPushTokenProps {
+interface EnablePushProps {
   className?: string;
+  children: ReactNode;
 }
-export const RegisterPushToken = ({ className }: RegisterPushTokenProps) => {
-  const { l } = usePage();
+export const EnablePush = ({ className, children }: EnablePushProps) => {
   const push = usePushNotification();
   return (
     <button
@@ -502,7 +493,41 @@ export const RegisterPushToken = ({ className }: RegisterPushTokenProps) => {
       }}
       type="button"
     >
-      {l("userDevice.signal.registerPushToken")}
+      {children}
+    </button>
+  );
+};
+```
+
+### apps/myapp/ui/BuyCoins.tsx
+
+```tsx
+"use client";
+import { st } from "@apps/myapp/client";
+import { buttonRecipe } from "akanjs/ui";
+import { usePurchase } from "akanjs/webkit/usePurchase";
+
+interface BuyCoinsProps {
+  className?: string;
+}
+export const BuyCoins = ({ className }: BuyCoinsProps) => {
+  const { products, purchaseProduct } = usePurchase({
+    platform: "all",
+    productInfo: [{ id: "coins_100", type: "consumable" }],
+    url: "https://billing.myapp.com",
+    onPay: async () => {
+      await st.do.refreshWallet();
+    },
+  });
+  const [coins] = products;
+  if (!coins) return null;
+  return (
+    <button
+      className={buttonRecipe({ variant: "primary" }, className)}
+      onClick={() => void purchaseProduct(coins)}
+      type="button"
+    >
+      {coins.title} · {coins.displayPrice}
     </button>
   );
 };
