@@ -62,11 +62,6 @@
       "types": "./client/index.ts",
       "default": "./client/index.ts"
     },
-    "./client/capacitor": {
-      "import": "./client/capacitor.ts",
-      "types": "./client/capacitor.ts",
-      "default": "./client/capacitor.ts"
-    },
     "./client/native": {
       "import": "./client/native.ts",
       "types": "./client/native.ts",

@@ -9,6 +9,7 @@ import {
 } from "@libs/shared/srvkit";
 import { randomString } from "@libs/util/common";
 import { dayjs } from "akanjs/base";
+import { plainFieldsOf } from "akanjs/common";
 import { by, documentQueryHelper, from, into, type SchemaOf } from "akanjs/document";
 
 import * as cnst from "../cnst";
@@ -463,37 +464,58 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
    * reports a modified row anyway, because the search triggers on this table inflate `modifiedCount`. That
    * combination is why a registered device token was silently never stored.
    */
-  private async writeNotiInfo(userId: string, patch: Partial<cnst.NotiInfo>) {
-    const notiInfo = (await this.getNotiInfo(userId)) ?? new cnst.NotiInfo();
-    await this.User.updateOne({ id: userId }, { notiInfo: { ...notiInfo, ...patch } });
+  private async writeNotiInfo(userId: string, patch: Partial<db.NotiInfo>) {
+    //? `pauseUntil` is a prototype accessor on a hydrated scalar, which a spread alone would drop.
+    const current = plainFieldsOf((await this.getNotiInfo(userId)) ?? new cnst.NotiInfo());
+    const notiInfo = { ...current, ...patch };
+    await this.User.updateOne({ id: userId }, { notiInfo });
     const written = await this.getNotiInfo(userId);
     return !!written;
   }
   async setNotiSetting(userId: string, notiSetting: cnst.NotiSetting["value"]) {
     return await this.writeNotiInfo(userId, { setting: notiSetting });
   }
-  async addNotiDeviceToken(userId: string, token: string) {
+  // The same token, or a new token from the same installation, replaces the entry it had.
+  async addNotiDeviceToken(userId: string, { token, provider, platform, deviceId }: db.DeviceToken) {
     const notiInfo = await this.getNotiInfo(userId);
-    const deviceTokens = [...new Set([...(notiInfo?.deviceTokens ?? []), token])];
-    return await this.writeNotiInfo(userId, { deviceTokens });
+    const others = (notiInfo?.deviceTokens ?? []).filter(
+      (each) => each.token !== token && !(deviceId && each.deviceId === deviceId),
+    );
+    const registered: db.DeviceToken = { token, provider, platform, deviceId, updatedAt: dayjs() };
+    return await this.writeNotiInfo(userId, { deviceTokens: [...others, registered] });
   }
   async subNotiDeviceToken(userId: string, token: string) {
     const notiInfo = await this.getNotiInfo(userId);
-    const deviceTokens = (notiInfo?.deviceTokens ?? []).filter((each) => each !== token);
+    const deviceTokens = (notiInfo?.deviceTokens ?? []).filter((each) => each.token !== token);
     return await this.writeNotiInfo(userId, { deviceTokens });
+  }
+  async subNotiDevice(userId: string, deviceId: string) {
+    const notiInfo = await this.getNotiInfo(userId);
+    const deviceTokens = (notiInfo?.deviceTokens ?? []).filter((each) => each.deviceId !== deviceId);
+    return await this.writeNotiInfo(userId, { deviceTokens });
+  }
+  //? Rows written before tokens carried a provider hold bare strings, which no sender can route. They are dropped
+  //? here, and the next write stores the list without them; the device registers again on its next visit.
+  static withRoutableTokens(notiInfo: db.NotiInfo | undefined) {
+    if (!notiInfo) return notiInfo;
+    notiInfo.deviceTokens = (notiInfo.deviceTokens ?? []).filter(
+      (each) => typeof each?.token === "string" && !!each.token,
+    );
+    return notiInfo;
   }
   // `notiInfo` is a secret field, so every read of it names itself explicitly — it carries the device tokens
   // and must never ride along in an ordinary user response.
   async getNotiInfo(userId: string) {
     const { notiInfo } = (await this.User.pickById(userId, { notiInfo: true })) as { notiInfo?: db.NotiInfo };
-    return notiInfo;
+    return UserModel.withRoutableTokens(notiInfo);
   }
   async listNotiInfos(userIds: string[]) {
     if (!userIds.length) return [];
-    return (await this.User.find({ id: { oneOf: userIds } }, { notiInfo: true })) as unknown as {
+    const users = (await this.User.find({ id: { oneOf: userIds } }, { notiInfo: true })) as unknown as {
       id: string;
       notiInfo?: db.NotiInfo;
     }[];
+    return users.map(({ id, notiInfo }) => ({ id, notiInfo: UserModel.withRoutableTokens(notiInfo) }));
   }
   async getRestrictInfo(userId: string) {
     const { restrictInfo } = (await this.User.pickById(userId, { restrictInfo: true })) as {

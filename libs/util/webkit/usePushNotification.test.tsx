@@ -7,29 +7,25 @@ import type { PushNotificationGlobals } from "./usePushNotification";
 
 const pushGlobals = globalThis as unknown as PushNotificationGlobals;
 
-type RenderHookResult<T> = {
-  get current(): T;
-  unmount: () => void;
-};
-
 const originalWindow = globalThis.window;
-const originalDocument = globalThis.document;
 const effectCleanups: Array<() => void> = [];
 
-const pushState = {
-  platform: "web",
-  receive: "granted" as "granted" | "denied",
+const shell = {
+  native: false,
+  display: "granted" as "granted" | "denied" | "prompt",
+  requested: 0,
   registered: 0,
-  autoInit: 0,
-  actionListeners: [] as Array<(event: { notification?: { data?: Record<string, unknown> } }) => void>,
-  registrationListeners: [] as Array<(event: { value?: string }) => void>,
+  tokenListeners: [] as Array<
+    (token: { token: string; provider: "apns" | "fcm"; platform: "ios" | "android" }) => void
+  >,
 };
+const stored = new Map<string, string>();
 const deepLinks: string[] = [];
 const swMessageListeners: Array<(event: { data: unknown }) => void> = [];
+let firebaseImports = 0;
 
 beforeAll(() => {
   mock.module("react", () => ({
-    Fragment: ({ children }: { children: unknown }) => children,
     useEffect: (fn: () => (() => undefined) | undefined) => {
       const cleanup = fn();
       if (cleanup) effectCleanups.push(cleanup);
@@ -42,57 +38,51 @@ beforeAll(() => {
         return true;
       },
     },
+    storage: {
+      getItem: async (key: string) => stored.get(key) ?? null,
+      setItem: async (key: string, value: string) => {
+        stored.set(key, value);
+      },
+    },
+  }));
+  mock.module("akanjs/client/native", () => ({
+    isNativeApp: () => shell.native,
+    push: {
+      isSupported: () => shell.native,
+      checkPermission: async () => ({ display: shell.display }),
+      requestPermission: async () => {
+        shell.requested += 1;
+        return { display: shell.display };
+      },
+      register: async () => {
+        shell.registered += 1;
+        return { token: "apns-token", provider: "apns", platform: "ios" };
+      },
+      listen: (_event: "token", listener: (typeof shell.tokenListeners)[number]) => {
+        shell.tokenListeners.push(listener);
+        return () => {
+          shell.tokenListeners = shell.tokenListeners.filter((each) => each !== listener);
+        };
+      },
+    },
+  }));
+  mock.module("firebase/app", () => {
+    firebaseImports += 1;
+    return { getApps: () => [], initializeApp: () => ({}) };
+  });
+  mock.module("firebase/messaging", () => ({
+    getMessaging: () => ({}),
+    getToken: async () => "",
+    onMessage: () => undefined,
   }));
 });
 
-const installCapacitorBridge = () => {
-  Object.defineProperty(globalThis, "Capacitor", {
-    value: {
-      Plugins: {
-        Device: {
-          getInfo: async () => ({ platform: pushState.platform }),
-        },
-        PushNotifications: {
-          requestPermissions: async () => ({ receive: pushState.receive }),
-          checkPermissions: async () => ({ receive: pushState.receive }),
-          register: async () => {
-            pushState.registered += 1;
-            pushState.registrationListeners.forEach((listener) => {
-              listener({ value: "native-token" });
-            });
-          },
-          addListener: async (
-            eventName: string,
-            listener: (event: { value?: string; notification?: { data?: Record<string, unknown> } }) => void,
-          ) => {
-            if (eventName === "registration") pushState.registrationListeners.push(listener);
-            else if (eventName === "pushNotificationActionPerformed") pushState.actionListeners.push(listener);
-            return { remove: () => undefined };
-          },
-        },
-        FCM: {
-          setAutoInit: async () => {
-            pushState.autoInit += 1;
-          },
-          getToken: async () => ({ token: "token-1" }),
-        },
-      },
-    },
-    configurable: true,
-  });
-};
-
-const installWindow = ({ native = true }: { native?: boolean } = {}) => {
+const installWindow = () => {
   const window = {
     location: { origin: "https://example.test" },
-    Capacitor: (globalThis as typeof globalThis & { Capacitor?: unknown }).Capacitor,
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
   } as unknown as Window & typeof globalThis;
-  if (native) installCapacitorBridge();
-  (window as unknown as { Capacitor: unknown }).Capacitor = (
-    globalThis as typeof globalThis & { Capacitor?: unknown }
-  ).Capacitor;
   Object.defineProperty(globalThis, "window", { value: window, configurable: true });
   Object.defineProperty(globalThis, "navigator", {
     value: {
@@ -105,93 +95,102 @@ const installWindow = ({ native = true }: { native?: boolean } = {}) => {
     },
     configurable: true,
   });
-  Object.defineProperty(globalThis, "location", { value: window.location, configurable: true });
 };
 
-const renderHook = <T,>(hook: () => T): RenderHookResult<T> => {
-  const current = hook();
-  return {
-    get current() {
-      return current;
-    },
-    unmount: () =>
-      effectCleanups.splice(0).forEach((cleanup) => {
-        cleanup();
-      }),
-  };
+const hookOf = async () => {
+  const { usePushNotification } = await import("./usePushNotification");
+  return usePushNotification();
 };
 
 afterEach(() => {
   Object.defineProperty(globalThis, "window", { value: originalWindow, configurable: true });
-  Object.defineProperty(globalThis, "document", { value: originalDocument, configurable: true });
-  Object.defineProperty(globalThis, "location", { value: originalWindow?.location, configurable: true });
-  Object.defineProperty(globalThis, "Capacitor", { value: undefined, configurable: true });
-  pushState.platform = "web";
-  pushState.receive = "granted";
-  pushState.registered = 0;
-  pushState.autoInit = 0;
-  pushState.actionListeners = [];
-  pushState.registrationListeners = [];
+  Object.assign(shell, { native: false, display: "granted", requested: 0, registered: 0, tokenListeners: [] });
+  stored.clear();
   deepLinks.length = 0;
   swMessageListeners.length = 0;
-  pushGlobals.__AKAN_PUSH_CLICK_BRIDGE__ = undefined;
+  firebaseImports = 0;
   pushGlobals.__AKAN_PUSH_WEB_CLICK__ = undefined;
   pushGlobals.__AKAN_PUSH_FOREGROUND__ = undefined;
   pushGlobals.__AKAN_CLIENT_ENV__ = undefined;
-  effectCleanups.splice(0);
+  effectCleanups.splice(0).forEach((cleanup) => {
+    cleanup();
+  });
 });
 
 describe("usePushNotification", () => {
-  test("returns PushToken, no-ops on web, and bridges native push clicks", async () => {
+  test("registers a native shell with its provider and one installation id, and never loads firebase", async () => {
     installWindow();
-    const { usePushNotification } = await import("./usePushNotification");
-    const hook = renderHook(() => usePushNotification());
+    shell.native = true;
+    const push = await hookOf();
 
-    expect(await hook.current.register()).toBeUndefined();
-    expect(pushState.registered).toBe(0);
+    const first = await push.register();
+    const again = await push.getToken();
 
-    pushState.platform = "ios";
-    await hook.current.initClickBridge();
-    const pushToken = await hook.current.register();
-    expect(pushState.autoInit).toBe(1);
-    expect(pushState.registered).toBe(1);
-    expect(pushToken).toEqual({ token: "token-1", platform: "ios", provider: "fcm" });
-    expect(await hook.current.getToken()).toEqual({ token: "token-1", platform: "ios", provider: "fcm" });
-    pushState.actionListeners[0]?.({ notification: { data: { url: "/push-target" } } });
-    expect(deepLinks).toEqual(["/push-target"]);
+    expect(first).toMatchObject({ token: "apns-token", provider: "apns", platform: "ios" });
+    expect(first?.deviceId).toHaveLength(32);
+    expect(again?.deviceId).toBe(first?.deviceId);
+    expect(stored.get("akan:pushDeviceId")).toBe(first?.deviceId);
+    expect([shell.requested, shell.registered]).toEqual([1, 2]);
+    expect(firebaseImports).toBe(0);
+  });
 
-    pushState.receive = "denied";
-    expect(await hook.current.register()).toBeUndefined();
-    hook.unmount();
+  test("hands back nothing when the person refuses, and asks for nothing just to read the token", async () => {
+    installWindow();
+    shell.native = true;
+    shell.display = "denied";
+    const push = await hookOf();
+
+    expect(await push.register()).toBeUndefined();
+    expect(shell.registered).toBe(0);
+    expect(await push.getPermission()).toBe("denied");
+    expect(shell.requested).toBe(1);
+  });
+
+  test("passes each rotated native token on with the same installation id", async () => {
+    installWindow();
+    shell.native = true;
+    const push = await hookOf();
+    const { deviceId } = (await push.getToken()) ?? {};
+    const received: unknown[] = [];
+
+    const stop = push.onTokenChange((pushToken) => received.push(pushToken));
+    shell.tokenListeners[0]?.({ token: "fcm-token", provider: "fcm", platform: "android" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    stop();
+
+    expect(received).toEqual([{ token: "fcm-token", provider: "fcm", platform: "android", deviceId }]);
+    expect(shell.tokenListeners).toHaveLength(0);
+  });
+
+  test("leaves a native shell's taps to the framework and watches no service worker", async () => {
+    installWindow();
+    shell.native = true;
+    const push = await hookOf();
+
+    expect(await push.initClickBridge()).toBe(true);
+    expect(swMessageListeners).toHaveLength(0);
   });
 
   test("routes a worker's notification-click handover through the client router", async () => {
     installWindow();
-    const { usePushNotification } = await import("./usePushNotification");
-    const hook = renderHook(() => usePushNotification());
+    const push = await hookOf();
 
-    await hook.current.initClickBridge();
+    expect(await push.initClickBridge()).toBe(true);
     expect(swMessageListeners).toHaveLength(1);
 
     swMessageListeners[0]?.({ data: { type: pushNavigateMessage, url: "/notified" } });
-    expect(deepLinks).toEqual(["/notified"]);
-
     swMessageListeners[0]?.({ data: { type: "unrelated", url: "/ignored" } });
     swMessageListeners[0]?.({ data: { type: pushNavigateMessage } });
+    swMessageListeners[0]?.({ data: { type: pushNavigateMessage, url: "https://elsewhere.test/x" } });
     expect(deepLinks).toEqual(["/notified"]);
-    hook.unmount();
   });
 
-  test("installs the worker's click bridge on a page with no native bridge at all", async () => {
-    globalThis.__AKAN_CAPACITOR_IMPORTS__ = undefined;
-    installWindow({ native: false });
-    const { usePushNotification } = await import("./usePushNotification");
-    const hook = renderHook(() => usePushNotification());
+  test("offers no web push without the firebase config", async () => {
+    installWindow();
+    const push = await hookOf();
 
-    expect(await hook.current.initClickBridge()).toBe(true);
-    expect(swMessageListeners).toHaveLength(1);
-    swMessageListeners[0]?.({ data: { type: pushNavigateMessage, url: "/from-worker" } });
-    expect(deepLinks).toEqual(["/from-worker"]);
-    hook.unmount();
+    expect(await push.isSupported()).toBe(false);
+    expect(await push.getToken()).toBeUndefined();
+    expect(push.onTokenChange(() => undefined)()).toBeUndefined();
   });
 });

@@ -47,7 +47,7 @@ export const PushSetting = ({ className, notiSetting: initialNotiSetting }: Push
         await st.do.loadPushState(null, await pushNotification.getPermission());
         return;
       }
-      await st.do.registerPushToken(pushToken.token);
+      await st.do.registerPushToken(pushToken);
     } finally {
       setIsBusy(false);
     }

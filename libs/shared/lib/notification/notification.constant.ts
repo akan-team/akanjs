@@ -1,4 +1,4 @@
-import { enumOf } from "akanjs/base";
+import { enumOf, ID } from "akanjs/base";
 import { via } from "akanjs/constant";
 
 import { File } from "../file/file.constant";
@@ -11,16 +11,16 @@ export class NotiLevel extends enumOf("notiLevel", [
   "advertise",
 ]) {}
 
-export class NotificationType extends enumOf("notificationType", ["topic", "token"]) {}
+export class NotificationType extends enumOf("notificationType", ["user", "all"]) {}
 
 export class NotificationInput extends via((field) => ({
-  token: field(String).optional(),
+  userId: field(ID).optional(), // the one recipient of a `user` notification; an `all` one reaches every active user
   title: field(String, { text: "title" }),
   content: field(String, { text: "desc" }),
   url: field(String).optional(),
   field: field(String).optional(),
   image: field(File, { text: "thumb" }).optional(),
-  type: field(NotificationType, { default: "token" }),
+  type: field(NotificationType, { default: "user" }),
   level: field(NotiLevel, { default: "notice", text: "filter" }),
 })) {}
 

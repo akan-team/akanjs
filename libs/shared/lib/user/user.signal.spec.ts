@@ -1,5 +1,6 @@
 import { expect } from "bun:test";
 import type * as adminSpec from "@libs/shared/lib/admin/admin.signal.spec";
+import { dayjs } from "akanjs/base";
 import type { DocumentModel } from "akanjs/constant";
 import { getOrSetupSignalTestFetch, sample, sampleOf } from "akanjs/test";
 
@@ -50,7 +51,13 @@ export const getUserAgentWithPhone = async <Fetch = SharedFetch, User = cnst.Use
   expect(await fetch.getUserIdHasPhone(phone)).toBeTruthy();
 
   // 7. 디바이스 토큰 추가
-  const deviceToken = "dummy";
+  const deviceToken = {
+    token: "dummy",
+    provider: "fcm",
+    platform: "web",
+    deviceId: "dummy-device",
+    updatedAt: dayjs(),
+  } as const;
   expect(await userFetch.addNotiDeviceTokenOfSelf(deviceToken)).toBeTruthy();
 
   // 8. 유저 정보 확인

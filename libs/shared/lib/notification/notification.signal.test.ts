@@ -23,14 +23,31 @@ describe("Notification Signal", () => {
       expect(notification.id).toBeTruthy();
     });
 
-    // The record names the device token or topic it was addressed to, and that field is not secret — a public
-    // read would hand out the push address of whoever it was sent to.
+    // The record names the user it was addressed to, and that field is not secret.
     it("does not answer a notification record to a signed-in non-admin", async () => {
       await expect(userAgent.fetch.notification(notification.id)).rejects.toThrow();
+    });
+
+    it("records a notification an admin sends to one user", async () => {
+      const sent = await adminAgent.fetch.sendPushNotification({
+        title: "Maintenance tonight",
+        content: "The service pauses at 2am.",
+        level: "notice",
+        type: "user",
+        userId: userAgent.user.id,
+      });
+      expect(sent).toMatchObject({ type: "user", userId: userAgent.user.id });
     });
   });
 
   describe("Device Registration", () => {
+    const dummyDevice = {
+      token: "dummy",
+      provider: "fcm",
+      platform: "web",
+      deviceId: "dummy-device",
+      updatedAt: dayjs(),
+    } as const;
     let userAgent: userSpec.UserAgent;
     beforeAll(async () => {
       userAgent = await userSpec.getUserAgentWithPhone(1);
@@ -45,7 +62,14 @@ describe("Notification Signal", () => {
     it("stops telling once the token is removed", async () => {
       expect(await userAgent.fetch.subNotiDeviceTokenOfSelf("dummy")).toBeTruthy();
       expect(await userAgent.fetch.hasNotiDeviceTokenOfSelf("dummy")).toBe(false);
-      expect(await userAgent.fetch.addNotiDeviceTokenOfSelf("dummy")).toBeTruthy();
+      expect(await userAgent.fetch.addNotiDeviceTokenOfSelf(dummyDevice)).toBeTruthy();
+    });
+
+    // A rotated token comes from the same installation; keeping both would push twice to one phone.
+    it("replaces the token an installation had when it registers a new one", async () => {
+      expect(await userAgent.fetch.addNotiDeviceTokenOfSelf({ ...dummyDevice, token: "rotated" })).toBeTruthy();
+      expect(await userAgent.fetch.hasNotiDeviceTokenOfSelf("rotated")).toBe(true);
+      expect(await userAgent.fetch.hasNotiDeviceTokenOfSelf("dummy")).toBe(false);
     });
 
     it("answers the caller's own noti setting, and reflects a change to it", async () => {
@@ -58,17 +82,13 @@ describe("Notification Signal", () => {
       const anonFetch = await getOrSetupSignalTestFetch<typeof userAgent.fetch>();
       await expect(anonFetch.hasNotiDeviceTokenOfSelf("dummy")).rejects.toThrow();
       await expect(anonFetch.notiSettingOfSelf()).rejects.toThrow();
-      await expect(anonFetch.subscribeToMegaphone("dummy")).rejects.toThrow();
-    });
-
-    it("subscribes a signed-in caller to the megaphone topic", async () => {
-      expect(await userAgent.fetch.subscribeToMegaphone("dummy")).toBe(true);
+      await expect(anonFetch.addNotiDeviceTokenOfSelf(dummyDevice)).rejects.toThrow();
     });
   });
 
   /**
-   * The recipient gate, read without a push adaptor: with no firebase credentials a send is a no-op, which
-   * would prove nothing about who it would have reached.
+   * The recipient gate, read without a push adaptor: with no APNs or firebase credentials a send is a no-op,
+   * which would prove nothing about who it would have reached.
    */
   describe("Recipient Gate", () => {
     const { notiInfoOf } = notificationSpec;

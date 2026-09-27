@@ -14,6 +14,11 @@ export const createNotification = async (
 
 export const notiInfoOf = (
   setting: cnst.NotiSetting["value"],
-  deviceTokens: string[],
+  tokens: string[],
   pauseUntil?: cnst.NotiInfo["pauseUntil"],
-): cnst.NotiInfo => new cnst.NotiInfo().set({ setting, deviceTokens, pauseUntil });
+): cnst.NotiInfo =>
+  new cnst.NotiInfo().set({
+    setting,
+    deviceTokens: tokens.map((token) => new cnst.DeviceToken().set({ token })),
+    pauseUntil,
+  });

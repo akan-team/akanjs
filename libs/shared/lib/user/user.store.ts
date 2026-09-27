@@ -58,16 +58,6 @@ export class UserStore extends store(sig.user, () => ({
     setAppBadge(user.badgeCount);
   }
 
-  async addNotiDeviceTokenOfSelf(notiDeviceToken: string) {
-    const { self } = this.get();
-    if (!self.id) return;
-    await fetch.addNotiDeviceTokenOfSelf(notiDeviceToken);
-  }
-  async subNotiDeviceTokenOfSelf(notiDeviceToken: string) {
-    const { self } = this.get();
-    if (!self.id) return;
-    await fetch.subNotiDeviceTokenOfSelf(notiDeviceToken);
-  }
   async setLeaveInfoOfSelf() {
     const { leaveInfo } = this.get();
     // voc 는 선택 항목이고 satisfaction 은 1이 유효한 값이라, 빈 값 검사로 설문 전체를 버리면 안 된다.

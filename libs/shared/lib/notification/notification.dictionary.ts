@@ -12,7 +12,10 @@ export const dictionary = modelDictionary(["en", "ko"])
     ]),
   )
   .model<Notification>((t) => ({
-    token: t(["Token", "토큰"]).desc(["Token of the notification", "알림의 토큰"]),
+    userId: t(["Recipient", "받는 사람"]).desc([
+      "The user a single-recipient notification goes to",
+      "한 사람에게 보내는 알림의 받는 사람",
+    ]),
     title: t(["Title", "제목"]).desc(["Title of the notification", "알림의 제목"]),
     content: t(["Content", "내용"]).desc(["Content of the notification", "알림의 내용"]),
     url: t(["URL", "URL"]).desc(["URL of the notification", "알림의 URL"]),
@@ -31,16 +34,11 @@ export const dictionary = modelDictionary(["en", "ko"])
     advertise: t(["Advertise", "광고"]).desc(["Advertise notification", "광고 알림"]),
   }))
   .enum<NotificationType>("notificationType", (t) => ({
-    topic: t(["Topic", "토픽"]).desc(["Topic notification", "토픽 알림"]),
-    token: t(["Token", "토큰"]).desc(["Token notification", "토큰 알림"]),
+    user: t(["One User", "한 사람"]).desc(["Sent to one user's devices", "한 사람의 기기로 보내는 알림"]),
+    all: t(["All Users", "전체"]).desc(["Sent to every active user", "모든 활성 사용자에게 보내는 알림"]),
   }))
   .slice<NotificationSlice>((fn) => ({}))
   .endpoint<NotificationEndpoint>((fn) => ({
-    subscribeToMegaphone: fn(["Subscribe to all users", "전체 사용자 구독"])
-      .desc(["Subscribe to all users", "전체 사용자 구독"])
-      .arg((t) => ({
-        token: t(["Token", "토큰"]).desc(["Token of the notification", "알림의 토큰"]),
-      })),
     sendPushNotification: fn(["Send push notification", "푸시 알림 전송"])
       .desc(["Send push notification", "푸시 알림 전송"])
       .arg((t) => ({

@@ -18,31 +18,29 @@ export default page().render(() => (
 
       <GuideSection title="Native">
         <ol className="list-decimal space-y-2 pl-5">
-          <li>Add `@capacitor/push-notifications` and `@capacitor-community/fcm` to the app package dependencies.</li>
-          <li>Keep `permissions: ["push"]` in `akan.config.ts`.</li>
+          <li>Keep `permissions: ["push"]` on the mobile target in `akan.config.ts`.</li>
           <li>
-            Put Android `google-services.json` at `public/google-services.json`. Akan copies it to
-            `android/app/google-services.json`.
+            Android: point `native.android.googleServices` at `google-services.json` (here `secrets/`). The app gets FCM
+            tokens.
           </li>
+          <li>iOS needs no Firebase file: the app gets an APNs device token and the server sends to APNs itself.</li>
           <li>
-            Put iOS `GoogleService-Info.plist` at `public/GoogleService-Info.plist`. Akan copies it to
-            `ios/App/App/GoogleService-Info.plist`.
+            Give the server `pushNoti.apns` (team id, key id, the .p8 key, bundle id) for iOS and `pushNoti.firebase`
+            for Android and the web.
           </li>
-          <li>Configure Firebase Console and upload APNs development/production credentials for iOS delivery.</li>
           <li>Run the mobile target and open `/push-notification`.</li>
         </ol>
       </GuideSection>
 
       <GuideSection title="Send Test Push">
-        <pre className="overflow-auto rounded-2xl bg-border p-4 text-xs">{`await pushNotificationServer.send({
-  token,
+        <pre className="overflow-auto rounded-2xl bg-border p-4 text-xs">{`await pushNotificationServer.sendEach([{ token, provider }], {
   title: "Push demo",
   body: "Open the landing page",
   url: "/push-notification/landing",
 });`}</pre>
         <p className="mt-3 text-foreground/70 text-sm">
-          `PushNotificationServer` only sends through FCM. Token storage, notification records, and invalid-token
-          cleanup belong to the app.
+          `PushNotificationServer` sends each token through its provider: APNs for the iOS app, FCM for Android and the
+          web. Token storage, notification records, and invalid-token cleanup belong to the app.
         </p>
       </GuideSection>
 

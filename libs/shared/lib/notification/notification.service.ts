@@ -11,6 +11,8 @@ import type * as srv from "../srv";
 // `fewer` keeps only what the person has to act on. Every other level is silenced for that setting.
 const levelsSurvivingFewer: cnst.NotiLevel["value"][] = ["actionRequired", "essential"];
 
+const megaphonePageSize = 500;
+
 export interface PushPayload {
   title: string;
   content?: string;
@@ -42,19 +44,12 @@ export class NotificationService extends serve(db.notification, ({ service, plug
 })) {
   private dictionaryLookup: DictionaryLookup | null = null;
 
-  async subscribeToMegaphone(token: string) {
-    return await this.pushNotificationServer.subscribeToTopic(token, "all_users");
-  }
-  async unsubscribeToMegaphone(token: string) {
-    return await this.pushNotificationServer.unsubscribeFromTopic(token, "all_users");
-  }
-
   /**
    * Whether one person's own settings accept one notification. Static so the rule can be read and tested
-   * without a push adaptor: with no firebase credentials a send is a no-op, which proves nothing about who
-   * would have been reached.
+   * without a push adaptor: with no APNs or firebase credentials a send is a no-op, which proves nothing about
+   * who would have been reached.
    */
-  static accepts(notiInfo: db.NotiInfo | undefined, level: cnst.NotiLevel["value"], now = dayjs()) {
+  static accepts(notiInfo: db.NotiInfo | cnst.NotiInfo | undefined, level: cnst.NotiLevel["value"], now = dayjs()) {
     if (!notiInfo) return false;
     if (notiInfo.setting === "block" || notiInfo.setting === "disagree") return false;
     if (notiInfo.setting === "fewer" && !levelsSurvivingFewer.includes(level)) return false;
@@ -82,16 +77,17 @@ export class NotificationService extends serve(db.notification, ({ service, plug
 
     const notiInfos = await this.userService.listNotiInfosOfUsers(uniqueIds);
     const now = dayjs();
-    const tokenOwners = new Map<string, string>();
+    const tokenOwners = new Map<string, { ownerId: string; provider: cnst.PushProvider["value"] }>();
     for (const { id, notiInfo } of notiInfos) {
       if (!NotificationService.accepts(notiInfo, payload.level, now)) continue;
       outcome.targetUserIds.push(id);
-      for (const token of notiInfo?.deviceTokens ?? []) tokenOwners.set(token, id);
+      for (const { token, provider } of notiInfo?.deviceTokens ?? []) tokenOwners.set(token, { ownerId: id, provider });
     }
     outcome.tokenNum = tokenOwners.size;
     if (!tokenOwners.size) return outcome;
 
-    const { successCount, invalidTokens } = await this.pushNotificationServer.sendEach([...tokenOwners.keys()], {
+    const targets = [...tokenOwners].map(([token, { provider }]) => ({ token, provider }));
+    const { successCount, invalidTokens } = await this.pushNotificationServer.sendEach(targets, {
       title: payload.title,
       body: this.resolveContent(payload),
       url: payload.url,
@@ -102,8 +98,23 @@ export class NotificationService extends serve(db.notification, ({ service, plug
     outcome.successCount = successCount;
     outcome.prunedTokens = invalidTokens;
     for (const token of invalidTokens) {
-      const ownerId = tokenOwners.get(token);
+      const ownerId = tokenOwners.get(token)?.ownerId;
       if (ownerId) void this.userService.subNotiDeviceTokenOfUser(ownerId, token);
+    }
+    return outcome;
+  }
+
+  // The megaphone: every active user, a page at a time, each through the same recipient gate as `push()`.
+  async pushToAll(payload: PushPayload): Promise<PushOutcome> {
+    const outcome: PushOutcome = { targetUserIds: [], tokenNum: 0, successCount: 0, prunedTokens: [] };
+    for (let skip = 0; ; skip += megaphonePageSize) {
+      const userIds = await this.userService.listActiveUserIds({ skip, limit: megaphonePageSize });
+      const page = await this.push(userIds, payload);
+      outcome.targetUserIds.push(...page.targetUserIds);
+      outcome.tokenNum += page.tokenNum;
+      outcome.successCount += page.successCount;
+      outcome.prunedTokens.push(...page.prunedTokens);
+      if (userIds.length < megaphonePageSize) break;
     }
     return outcome;
   }
@@ -111,15 +122,17 @@ export class NotificationService extends serve(db.notification, ({ service, plug
   async sendPushNotification(notificationInput: db.NotificationInput) {
     const notification = await this.notificationModel.createNotification(notificationInput);
     const image = notification.image ? await this.fileService.getFile(notification.image) : null;
-
-    await this.pushNotificationServer.send({
+    const payload: PushPayload = {
       title: notification.title,
-      body: notification.content,
-      imageUrl: image ? image.url : undefined,
+      content: notification.content,
+      level: notification.level,
       url: notification.url,
-      ...(notification.type === "token" ? { token: notification.token } : { topic: notification.token }),
-    });
-
+      imageUrl: image?.url,
+    };
+    // A megaphone outlives the admin's request, so it runs on its own and the record is answered at once.
+    if (notification.type === "all")
+      void this.pushToAll(payload).catch((error: unknown) => this.logger.error(`Megaphone push failed: ${error}`));
+    else await this.push([notification.userId], payload);
     return notification;
   }
 }

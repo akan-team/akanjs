@@ -1,4 +1,6 @@
 import { msg } from "@libs/shared/client";
+import type { PushToken } from "@libs/util/webkit";
+import { dayjs } from "akanjs/base";
 import { store } from "akanjs/store";
 
 import type * as cnst from "../cnst";
@@ -15,7 +17,7 @@ export class NotificationStore extends store(sig.notification, () => ({
 })) {
   // action
 
-  // Capacitor answers `"prompt"` where the browser answers `"default"`, so the caller hands over whatever its
+  // A native shell answers `"prompt"` where the browser answers `"default"`, so the caller hands over whatever its
   // platform said and the mapping happens once, here. `notiSetting` rides along because the screen has one
   // mount-time read it cannot avoid — the push token only exists in the browser — and this keeps it to one.
   async loadPushState(token: string | null, permission: string, notiSetting?: cnst.NotiSetting["value"]) {
@@ -30,9 +32,8 @@ export class NotificationStore extends store(sig.notification, () => ({
     this.set({ deviceToken: token, pushPermission, pushRegistered, ...setting });
   }
 
-  async registerPushToken(token: string) {
-    await fetch.addNotiDeviceTokenOfSelf(token);
-    await fetch.subscribeToMegaphone(token);
+  async registerPushToken({ token, provider, platform, deviceId }: PushToken) {
+    await fetch.addNotiDeviceTokenOfSelf({ token, provider, platform, deviceId, updatedAt: dayjs() });
     this.set({ deviceToken: token, pushPermission: "granted", pushRegistered: true });
   }
 

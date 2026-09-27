@@ -129,7 +129,14 @@ export const dictionary = modelDictionary(["en", "ko"])
         userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
         signToken: t(["Sign Token", "서명 토큰"]).desc(["Sign Token", "서명 토큰"]),
       })),
-    signoutUser: fn(["Sign out", "로그아웃"]).desc(["API to sign out", "로그아웃하는 API"]),
+    signoutUser: fn(["Sign out", "로그아웃"])
+      .desc(["API to sign out", "로그아웃하는 API"])
+      .arg((t) => ({
+        pushDeviceId: t(["Push Device ID", "푸시 기기 ID"]).desc([
+          "The installation whose push token leaves with the session",
+          "세션과 함께 푸시 토큰을 지울 설치본",
+        ]),
+      })),
     activateUser: fn(["Activate User", "유저 활성화"])
       .desc(["API to activate a user", "유저를 활성화하는 API"])
       .arg((t) => ({
@@ -377,9 +384,9 @@ export const dictionary = modelDictionary(["en", "ko"])
     addNotiDeviceTokenOfSelf: fn(["Add Noti Device Tokens of Self", "유저 알림 디바이스 토큰 추가"])
       .desc(["API to add the noti device tokens of a self", "유저의 알림 디바이스 토큰을 추가하는 API"])
       .arg((t) => ({
-        notiDeviceToken: t(["Noti Device Token", "알림 디바이스 토큰"]).desc([
-          "Noti Device Token",
-          "알림 디바이스 토큰",
+        deviceToken: t(["Device Token", "디바이스 토큰"]).desc([
+          "This device's push token and the service it goes through",
+          "이 기기의 푸시 토큰과 발송 경로",
         ]),
       })),
     subNotiDeviceTokenOfSelf: fn(["Subtract Noti Device Tokens of Self", "유저 알림 디바이스 토큰 제거"])

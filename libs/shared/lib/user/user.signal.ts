@@ -72,9 +72,10 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
       return makeAccessTokenResponse(await this.userService.signinWithSignToken(userId, signToken)) as never;
     }),
   signoutUser: mutation(cnst.util.AccessToken)
+    .body("pushDeviceId", String, { nullable: true })
     .with(Account)
-    .exec(async function (account) {
-      return makeSignoutResponse(await this.userService.signoutUser(account)) as never;
+    .exec(async function (pushDeviceId, account) {
+      return makeSignoutResponse(await this.userService.signoutUser(account, pushDeviceId)) as never;
     }),
   activateUser: mutation(cnst.util.AccessToken)
     .param("userId", ID)
@@ -393,10 +394,10 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     }),
   // A device's push token, registered by the running client. There is no device on the other end of an MCP call.
   addNotiDeviceTokenOfSelf: mutation(Boolean, { guards: [User], mcp: false })
-    .body("notiDeviceToken", String)
+    .body("deviceToken", cnst.DeviceToken)
     .with(Self)
-    .exec(async function (notiDeviceToken, self) {
-      return await this.userService.addNotiDeviceTokenOfUser(self.id, notiDeviceToken);
+    .exec(async function (deviceToken, self) {
+      return await this.userService.addNotiDeviceTokenOfUser(self.id, deviceToken);
     }),
   subNotiDeviceTokenOfSelf: mutation(Boolean, { guards: [User], mcp: false })
     .body("notiDeviceToken", String)

@@ -744,7 +744,7 @@ export const PushNotificationSwitch = ({ className }: PushNotificationSwitchProp
       await st.do.loadPushState(null, await pushNotification.getPermission());
       return;
     }
-    await st.do.registerPushToken(pushToken.token);
+    await st.do.registerPushToken(pushToken);
   };
 
   st.tool("setPushNotification", {

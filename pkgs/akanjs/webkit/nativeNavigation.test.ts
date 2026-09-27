@@ -8,6 +8,7 @@ const routerState = {
   fallbacks: [] as string[],
 };
 const events = { exits: 0, backs: 0, dismissed: 0 };
+const presentations: unknown[] = [];
 let host: MockHost | null = null;
 
 beforeAll(() => {
@@ -29,7 +30,7 @@ beforeAll(() => {
   }));
 });
 
-const installShell = (platform: "ios" | "android" = "android") => {
+const installShell = (platform: "ios" | "android" = "android", { withPush = false } = {}) => {
   host = installMockHost({
     platform,
     plugins: {
@@ -41,6 +42,18 @@ const installShell = (platform: "ios" | "android" = "android") => {
         },
         events: ["urlOpen", "backButton"],
       },
+      ...(withPush
+        ? {
+            push: {
+              methods: {
+                setForegroundPresentation: (args: unknown) => {
+                  presentations.push(args);
+                },
+              },
+              events: ["action"],
+            },
+          }
+        : {}),
     },
   });
   Object.defineProperty(globalThis, "window", {
@@ -81,6 +94,7 @@ afterEach(() => {
   routerState.entered.length = 0;
   routerState.fallbacks.length = 0;
   Object.assign(events, { exits: 0, backs: 0, dismissed: 0 });
+  presentations.length = 0;
   Object.defineProperty(globalThis, "window", { value: undefined, configurable: true });
 });
 
@@ -137,6 +151,29 @@ describe("NativeNavigation", () => {
 
     expect(events.exits).toBe(1);
     expect(routerState.fallbacks).toEqual([]);
+  });
+
+  test("a push tap opens the route it names, the one that launched the app on a fresh stack", async () => {
+    const shell = installShell("ios", { withPush: true });
+    const stop = (await navigationOf()).listen();
+    await settle();
+
+    shell.emit("push", "action", { actionId: "tap", message: { data: { url: "/en/orders/3" } } });
+    shell.emit("push", "action", { actionId: "tap", message: { data: { url: "https://elsewhere.test/en/x" } } });
+    shell.emit("push", "action", { actionId: "tap", message: { data: {} } });
+    await settle();
+
+    expect(routerState.entered).toEqual([{ href: "/en/orders/3", resetStack: true }]);
+    expect(presentations).toEqual([{ banner: true, list: true, sound: true, badge: true }]);
+    stop();
+  });
+
+  test("a shell built without push is asked nothing about it", async () => {
+    installShell("android");
+    const stop = (await navigationOf()).listen();
+    await settle();
+    expect(presentations).toEqual([]);
+    stop();
   });
 
   test("a page outside a native shell listens to nothing", async () => {

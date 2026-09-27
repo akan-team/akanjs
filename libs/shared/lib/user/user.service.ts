@@ -189,8 +189,11 @@ export class UserService extends serve(db.user, ({ use, service, env }) => ({
     if (user.status !== "active") throw new Err("user.error.userNotActivated");
     return await this._issueUserToken(user, account);
   }
-  async signoutUser(account: Account<{ self?: Self; sid?: string }>) {
-    if (account.self) await this.userModel.revokeRefreshSession(account.self.id, account.sid);
+  // The device leaves with the session: a phone handed to the next person must not keep this account's pushes.
+  async signoutUser(account: Account<{ self?: Self; sid?: string }>, pushDeviceId: string | null = null) {
+    if (!account.self) return { jwt: "" };
+    await this.userModel.revokeRefreshSession(account.self.id, account.sid);
+    if (pushDeviceId) await this.userModel.subNotiDevice(account.self.id, pushDeviceId);
     return { jwt: "" };
   }
   async changePassword(userId: string, password: string, prevPassword: string) {
@@ -470,14 +473,17 @@ export class UserService extends serve(db.user, ({ use, service, env }) => ({
   }
   async hasNotiDeviceTokenOfUser(userId: string, notiDeviceToken: string) {
     const notiInfo = await this.userModel.getNotiInfo(userId);
-    return !!notiInfo?.deviceTokens.includes(notiDeviceToken);
+    return !!notiInfo?.deviceTokens.some(({ token }) => token === notiDeviceToken);
   }
   async listNotiInfosOfUsers(userIds: string[]) {
     return await this.userModel.listNotiInfos(userIds);
   }
-  async addNotiDeviceTokenOfUser(userId: string, notiDeviceToken: string) {
+  async listActiveUserIds({ skip, limit }: { skip: number; limit: number }) {
+    return await this.userModel.listIdsByStatuses(["active"], { skip, limit, sort: "oldest" });
+  }
+  async addNotiDeviceTokenOfUser(userId: string, deviceToken: db.DeviceToken) {
     const user = await this.getUser(userId);
-    return await this.userModel.addNotiDeviceToken(user.id, notiDeviceToken);
+    return await this.userModel.addNotiDeviceToken(user.id, deviceToken);
   }
   async subNotiDeviceTokenOfUser(userId: string, notiDeviceToken: string) {
     const user = await this.getUser(userId);

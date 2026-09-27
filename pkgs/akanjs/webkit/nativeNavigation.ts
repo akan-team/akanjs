@@ -1,6 +1,6 @@
 "use client";
 import { router as clientRouter, debugFrame, normalizeDeepLinkHref } from "akanjs/client";
-import { app, isNativeApp } from "akanjs/client/native";
+import { app, isNativeApp, push } from "akanjs/client/native";
 
 export interface NativeBackState {
   path: string;
@@ -16,7 +16,7 @@ interface NativeNavigationOptions {
   dismissKeyboard: () => unknown;
 }
 
-/** A native shell's deep links and Android back button, for the CSR frame that owns the history. */
+/** A native shell's deep links, push taps and Android back button, for the CSR frame that owns the history. */
 export class NativeNavigation {
   #mountedAt = Date.now();
   #handled: { href: string; handledAt: number } | null = null;
@@ -26,12 +26,20 @@ export class NativeNavigation {
 
   listen() {
     if (!isNativeApp()) return () => undefined;
+    //? The runtime hides a push that arrives with the app in front unless asked; shown, it can be tapped like any other.
+    if (push.isSupported("setForegroundPresentation"))
+      void push
+        .setForegroundPresentation({ banner: true, list: true, sound: true, badge: true })
+        .catch(() => undefined);
     const stops = [
       app.listen("urlOpen", ({ url }) => {
         this.openDeepLink(url);
       }),
       app.listen("backButton", () => {
         this.back();
+      }),
+      push.listen("action", ({ message }) => {
+        this.openPushLink(message.data.url);
       }),
     ];
     return () => {
@@ -57,6 +65,15 @@ export class NativeNavigation {
     });
     if (resetStack) this.#didResetStack = true;
     this.#enterWhenReady(href, resetStack);
+  }
+
+  //? Only an in-app path is followed: a push names a route, and an absolute URL would be read as one on any host.
+  openPushLink(url: unknown) {
+    if (typeof url !== "string" || !url.startsWith("/") || url.startsWith("//")) {
+      debugFrame("native.pushLink.skipped", { url: typeof url === "string" ? url : null });
+      return;
+    }
+    this.openDeepLink(url);
   }
 
   back() {

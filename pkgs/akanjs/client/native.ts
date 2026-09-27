@@ -13,6 +13,13 @@ export type { Position } from "@akanjs/native/plugins/geolocation";
 export { haptics } from "@akanjs/native/plugins/haptics";
 export { keyboard } from "@akanjs/native/plugins/keyboard";
 export { preferences } from "@akanjs/native/plugins/preferences";
+export type {
+  PushAction,
+  PushMessage,
+  PushPermissionState,
+  PushToken as NativePushToken,
+} from "@akanjs/native/plugins/push";
+export { push } from "@akanjs/native/plugins/push";
 export { secureStorage } from "@akanjs/native/plugins/secure-storage";
 export { browser, opener };
 
