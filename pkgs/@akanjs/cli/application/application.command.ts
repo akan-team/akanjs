@@ -9,6 +9,11 @@ const mobileTargetOption = {
   ask: "Select mobile target",
   enum: async ({ app }: { app: App }) => await getMobileTargetChoices(app),
 };
+const deviceOption = {
+  desc: "simulator, emulator or device to run on: its id or name (e.g. 'iPhone 17' or 'Pixel_10')",
+  default: "",
+};
+const teamOption = { desc: "Apple team id the signing is narrowed to", default: "" };
 const devEnvs = ["local", "debug", "develop", "main"] as const;
 const buildEnvOption = { enum: devEnvs, desc: "backend environment", default: "debug" } as const;
 const startEnvOption = { enum: devEnvs, desc: "backend environment", default: "local" } as const;
@@ -121,23 +126,23 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .exec(async function (exec, write) {
       await this.applicationScript.test(exec, { write });
     }),
-  buildIos: target({ short: true, desc: "Build iOS app with Capacitor" })
+  buildIos: target({ short: true, desc: "Build the iOS app on the native runtime" })
     .with(App)
     .option("target", String, mobileTargetOption)
     .option("env", String, buildEnvOption)
+    .option("debug", Boolean, { desc: "debug build instead of release", default: false })
     .option("write", Boolean, { desc: "write code generation", default: true })
-    .option("regenerate", Boolean, { flag: "g", desc: "delete and regenerate native project", default: false })
-    .exec(async function (app, target, env, write, regenerate) {
-      await this.applicationScript.buildIos(app, { target, env, write, regenerate });
+    .exec(async function (app, target, env, debug, write) {
+      await this.applicationScript.buildIos(app, { target, env, profile: debug ? "debug" : "release", write });
     }),
-  buildAndroid: target({ short: true, desc: "Build Android app with Capacitor" })
+  buildAndroid: target({ short: true, desc: "Build the Android app (apk) on the native runtime" })
     .with(App)
     .option("target", String, mobileTargetOption)
     .option("env", String, buildEnvOption)
+    .option("debug", Boolean, { desc: "debug build instead of release", default: false })
     .option("write", Boolean, { desc: "write code generation", default: true })
-    .option("regenerate", Boolean, { flag: "g", desc: "delete and regenerate native project", default: false })
-    .exec(async function (app, target, env, write, regenerate) {
-      await this.applicationScript.buildAndroid(app, { target, env, write, regenerate });
+    .exec(async function (app, target, env, debug, write) {
+      await this.applicationScript.buildAndroid(app, { target, env, profile: debug ? "debug" : "release", write });
     }),
   start: target({ short: true, desc: "Start development server(s) (frontend SSR + backend)" })
     .with(Apps)
@@ -154,92 +159,75 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .exec(async function (apps, plain, kill, concurrency, dbup, open, share, write) {
       await this.applicationScript.start(apps, { plain, kill, concurrency, dbup, open, share, write });
     }),
-  startIos: target({ short: true, desc: "Start iOS app in simulator or device" })
+  startIos: target({ short: true, desc: "Run the iOS app in a simulator or on an iPhone, following `akan start`" })
     .with(App)
     .option("target", String, mobileTargetOption)
     .option("env", String, startEnvOption)
-    .option("open", Boolean, { desc: "open ios simulator", default: false })
-    .option("release", Boolean, { desc: "release mode", default: false })
+    .option("release", Boolean, { desc: "run a release build of its own bundle instead", default: false })
+    .option("device", String, deviceOption)
+    .option("team", String, teamOption)
     .option("write", Boolean, { desc: "write code generation", default: true })
-    .option("regenerate", Boolean, { flag: "g", desc: "delete and regenerate native project", default: false })
-    .option("allowProvisioningUpdates", Boolean, {
-      desc: "let Xcode create or update provisioning profiles for a physical device",
-      default: true,
-    })
-    .option("device", String, {
-      desc: "run target to select non-interactively: udid, device name, or runtime (e.g. 'iPhone 16' or 'iOS 18')",
-      default: "",
-    })
-    .exec(async function (app, target, env, open, release, write, regenerate, allowProvisioningUpdates, device) {
+    .exec(async function (app, target, env, release, device, team, write) {
       await this.applicationScript.startIos(app, {
         target,
         env,
-        open,
         operation: release ? "release" : "local",
-        write,
-        regenerate,
-        noAllowProvisioningUpdates: !allowProvisioningUpdates,
         device: device || undefined,
+        teamId: team || undefined,
+        write,
       });
     }),
-  startAndroid: target({ short: true, desc: "Start Android app in emulator or device" })
+  startAndroid: target({
+    short: true,
+    desc: "Run the Android app in an emulator or on a device, following `akan start`",
+  })
     .with(App)
     .option("target", String, mobileTargetOption)
     .option("env", String, startEnvOption)
-    .option("release", Boolean, { desc: "release mode", default: false })
-    .option("open", Boolean, { desc: "open android simulator", default: false })
+    .option("release", Boolean, { desc: "run a release build of its own bundle instead", default: false })
+    .option("device", String, deviceOption)
     .option("write", Boolean, { desc: "write code generation", default: true })
-    .option("regenerate", Boolean, { flag: "g", desc: "delete and regenerate native project", default: false })
-    .exec(async function (app, target, env, release, open, write, regenerate) {
+    .exec(async function (app, target, env, release, device, write) {
       await this.applicationScript.startAndroid(app, {
         target,
         env,
-        open,
         operation: release ? "release" : "local",
+        device: device || undefined,
         write,
-        regenerate,
       });
     }),
-  releaseIos: target({ desc: "Build and package iOS app for release (App Store)" })
+  releaseIos: target({ desc: "Build and sign the iOS app for the App Store (.ipa)" })
     .with(App)
     .option("target", String, mobileTargetOption)
     .option("env", String, releaseEnvOption)
+    .option("team", String, teamOption)
+    .option("adHoc", Boolean, { desc: "sign with an ad-hoc profile instead of app-store", default: false })
     .option("write", Boolean, { desc: "write code generation", default: true })
-    .option("regenerate", Boolean, { flag: "g", desc: "delete and regenerate native project", default: false })
     .option("allowLocalRelease", Boolean, { flag: "l", desc: "allow release with --env local", default: false })
-    .exec(async function (app, target, env, write, regenerate, allowLocalRelease) {
-      await this.applicationScript.releaseIos(app, { target, env, write, regenerate, allowLocalRelease });
-    }),
-  releaseAndroid: target({ desc: "Build and package Android app for release (Play Store)" })
-    .with(App)
-    .option("assembleType", String, { enum: ["apk", "aab"], default: "apk" })
-    .option("target", String, mobileTargetOption)
-    .option("env", String, releaseEnvOption)
-    .option("write", Boolean, { desc: "write code generation", default: true })
-    .option("regenerate", Boolean, { flag: "g", desc: "delete and regenerate native project", default: false })
-    .option("allowLocalRelease", Boolean, { flag: "l", desc: "allow release with --env local", default: false })
-    .exec(async function (app, assembleType, target, env, write, regenerate, allowLocalRelease) {
-      await this.applicationScript.releaseAndroid(app, assembleType, {
+    .exec(async function (app, target, env, team, adHoc, write, allowLocalRelease) {
+      await this.applicationScript.releaseIos(app, {
         target,
         env,
+        teamId: team || undefined,
+        adHoc,
         write,
-        regenerate,
         allowLocalRelease,
       });
     }),
-  releaseSource: target({ desc: "Release app source code with OTA update support" })
+  releaseAndroid: target({ desc: "Build and sign the Android app for the Play Store (aab, or apk)" })
     .with(App)
-    .option("rebuild", Boolean, { desc: "rebuild", default: false })
-    .option("buildNum", Number, { desc: "build number", default: 0 })
-    .option("environment", String, { desc: "environment", default: "debug" })
-    .option("local", Boolean, { desc: "local", default: true })
-    .exec(async function (app, rebuild, buildNum, environment, local) {
-      await this.applicationScript.releaseSource(app, { rebuild, buildNum, environment, local });
-    }),
-  codepush: target({ desc: "Over-the-air (OTA) update for a mobile app — in development, deploys nothing yet" })
-    .with(App)
-    .exec(async function (app) {
-      await this.applicationScript.codepush(app);
+    .option("assembleType", String, { enum: ["aab", "apk"], default: "aab" })
+    .option("target", String, mobileTargetOption)
+    .option("env", String, releaseEnvOption)
+    .option("write", Boolean, { desc: "write code generation", default: true })
+    .option("allowLocalRelease", Boolean, { flag: "l", desc: "allow release with --env local", default: false })
+    .exec(async function (app, assembleType, target, env, write, allowLocalRelease) {
+      await this.applicationScript.releaseAndroid(app, assembleType as "aab" | "apk", {
+        target,
+        env,
+        write,
+        allowLocalRelease,
+      });
     }),
   dbup: target({ desc: "Start local database services for a database mode" })
     .with(Workspace)
@@ -267,10 +255,5 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .with(Workspace)
     .exec(async function (workspace) {
       await this.applicationScript.dbdown(workspace);
-    }),
-  configureApp: target({ desc: "Configure application settings interactively" })
-    .with(App)
-    .exec(async function (app) {
-      await this.applicationScript.configureApp(app);
     }),
 })) {}

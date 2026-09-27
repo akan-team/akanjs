@@ -356,43 +356,6 @@ describe("AkanAppConfig", () => {
     expect(config.getMissingDatabaseModeDependencySpecs("cluster")).toEqual([
       `postgres@${runtimeDependencies.postgres}`,
     ]);
-    // The workspace-root install covers the toolchain plus every app Capacitor plugin, deduped (`@capacitor/core`).
-    const expectedMobilePackages: string[] = [
-      "@capacitor/cli",
-      "@capacitor/core",
-      "@capacitor/ios",
-      "@capacitor/android",
-      "@capacitor/assets",
-      "@capacitor/app",
-      "@capacitor/browser",
-      "@capacitor/camera",
-      "@capacitor/device",
-      "@capacitor/geolocation",
-      "@capacitor/haptics",
-      "@capacitor/inappbrowser",
-      "@capacitor/keyboard",
-      "@capacitor/preferences",
-      "@capacitor/push-notifications",
-      "capacitor-plugin-safe-area",
-    ];
-    expect(config.getMobileRuntimePackages() as string[]).toEqual(expectedMobilePackages);
-    expect(config.getMissingMobileDependencySpecs()).toEqual(
-      expectedMobilePackages.map((lib) => `${lib}@${runtimeDependencies[lib as keyof typeof runtimeDependencies]}`),
-    );
-    expect(config.getMobileAppCapacitorPlugins()).toEqual([
-      "@capacitor/app",
-      "@capacitor/browser",
-      "@capacitor/camera",
-      "@capacitor/core",
-      "@capacitor/device",
-      "@capacitor/geolocation",
-      "@capacitor/haptics",
-      "@capacitor/inappbrowser",
-      "@capacitor/keyboard",
-      "@capacitor/preferences",
-      "@capacitor/push-notifications",
-      "capacitor-plugin-safe-area",
-    ]);
   });
 
   test("normalizes multiple mobile targets and validates base paths", () => {

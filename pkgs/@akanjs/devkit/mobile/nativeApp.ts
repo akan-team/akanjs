@@ -10,7 +10,7 @@ import { NativeWebDir } from "./nativeWebDir";
 type TaskOptions = Parameters<NativeBuildApiModule["build"]>[0];
 type DeviceSelector = NonNullable<Parameters<NativeBuildApiModule["run"]>[0]["device"]>;
 type ReleaseOptions = Parameters<NativeBuildApiModule["release"]>[0];
-type Signing = Pick<ReleaseOptions, "signing">["signing"];
+type AndroidSigning = Extract<ReleaseOptions, { platform: "android" }>["signing"];
 
 export interface NativeRunOptions {
   device?: DeviceSelector;
@@ -129,10 +129,40 @@ export class NativeApp {
     });
   }
 
-  async release(platform: MobilePlatform, signing: Signing) {
+  async releaseIos({ teamId, adHoc = false }: { teamId?: string; adHoc?: boolean } = {}) {
     await this.assembleWeb();
     const { api, config } = await this.prepare();
-    return await api.release({ ...this.#task(platform, config), signing } as ReleaseOptions);
+    return await api.release({
+      ...this.#task("ios", config),
+      platform: "ios",
+      signing: { ...(teamId ? { teamId } : {}), ...(adHoc ? { distribution: "ad-hoc" as const } : {}) },
+    });
+  }
+
+  async releaseAndroid({ formats = ["aab"] }: { formats?: ("aab" | "apk")[] } = {}) {
+    const signing = NativeApp.androidSigning();
+    await this.assembleWeb();
+    const { api, config } = await this.prepare();
+    return await api.release({ ...this.#task("android", config), platform: "android", signing, formats });
+  }
+
+  //* The names the Gradle build read, so a CI that already holds these secrets keeps working.
+  static androidSigning(env: Record<string, string | undefined> = process.env): AndroidSigning {
+    const keystore = env.MYAPP_RELEASE_STORE_FILE;
+    const storePassword = env.MYAPP_RELEASE_STORE_PASSWORD;
+    const alias = env.MYAPP_RELEASE_KEY_ALIAS;
+    const keyPassword = env.MYAPP_RELEASE_KEY_PASSWORD;
+    if (!keystore || !storePassword || !alias) {
+      const missing = Object.entries({
+        MYAPP_RELEASE_STORE_FILE: keystore,
+        MYAPP_RELEASE_STORE_PASSWORD: storePassword,
+        MYAPP_RELEASE_KEY_ALIAS: alias,
+      }).flatMap(([key, value]) => (value ? [] : [key]));
+      throw new Error(
+        `An Android release is signed with the upload key; set ${missing.join(", ")} in the environment.`,
+      );
+    }
+    return { keystore, storePassword, alias, ...(keyPassword ? { keyPassword } : {}) };
   }
 
   /** The first page of a dev build: the dev server answers the CSR shell only for `?csr=true`. */

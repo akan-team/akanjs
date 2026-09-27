@@ -48,19 +48,6 @@ const stubStart = (script: ApplicationScript, recorder: CallRecorder, { confirme
   });
 };
 
-const stubMobileStart = (script: ApplicationScript, recorder: CallRecorder, { confirmed = true } = {}) => {
-  script.confirmMobileDependencyInstall = async (...args: unknown[]) => {
-    recorder.record("confirmMobileInstall", ...args);
-    return confirmed;
-  };
-  script.applicationRunner.startIos = async (...args: unknown[]) => {
-    recorder.record("runner.startIos", ...args);
-  };
-  script.applicationRunner.startAndroid = async (...args: unknown[]) => {
-    recorder.record("runner.startAndroid", ...args);
-  };
-};
-
 const createStartApp = ({
   databaseMode = "single",
   modes = [databaseMode],
@@ -97,52 +84,6 @@ const createStartApp = ({
   };
 };
 
-const createMobileApp = ({
-  missingMobileSpecs = [],
-  appPlugins = [],
-  appDependencies = {},
-}: {
-  missingMobileSpecs?: string[];
-  appPlugins?: string[];
-  appDependencies?: Record<string, string>;
-} = {}) => {
-  const recorder = createCallRecorder();
-  const workspace = createRecordedWorkspace(recorder);
-  const getMissingMobileDependencySpecs = mock(() => missingMobileSpecs);
-  const getMobileAppCapacitorPlugins = mock(() => appPlugins);
-  const akanConfig = {
-    getMissingMobileDependencySpecs,
-    getMobileAppCapacitorPlugins,
-  } as unknown as AkanAppConfig;
-  let appPackageJson: Record<string, unknown> = { name: "app", version: "1.0.0", dependencies: { ...appDependencies } };
-  const app = createFakeExecutor(
-    "app",
-    {
-      scanSync: async (...args: unknown[]) => recorder.record("scanSync", ...args),
-      getConfig: async () => akanConfig,
-      getPackageJson: async (...args: unknown[]) => {
-        recorder.record("app.getPackageJson", ...args);
-        return appPackageJson;
-      },
-      setPackageJson: async (packageJson: Record<string, unknown>) => {
-        recorder.record("app.setPackageJson", packageJson);
-        appPackageJson = packageJson;
-      },
-      workspace,
-    },
-    recorder,
-  );
-  return {
-    app,
-    akanConfig,
-    getMissingMobileDependencySpecs,
-    getMobileAppCapacitorPlugins,
-    recorder,
-    workspace,
-    getAppPackageJson: () => appPackageJson,
-  };
-};
-
 afterEach(() => {
   CommandContainer.clear();
   mock.restore();
@@ -166,17 +107,16 @@ describe("ApplicationCommand", () => {
     expect(calls).toEqual([["my-app", { name: "workspace" }, { start: true }]]);
   });
 
-  test("codepush says it deploys nothing yet and fails, without asking for an os", async () => {
-    const prompts = await import("@inquirer/prompts");
-    const select = mock(async () => "ios");
-    mock.module("@inquirer/prompts", () => ({ ...prompts, select }));
-    const { app } = track(await createTempApp("demo"));
-    const command = CommandContainer.get(ApplicationCommand);
-    const handler = getTargetMetas(ApplicationCommand).find((meta) => meta.key === "codepush")?.handler;
-
-    await expect(handler?.call(command, app)).rejects.toThrow("akan codepush is still in development");
-    expect(select).not.toHaveBeenCalled();
-    expect(await Bun.file(path.join(app.cwdPath, "capacitor.config.ts")).exists()).toBe(false);
+  test("the Capacitor-era commands and flags are gone", () => {
+    const keys = getTargetMetas(ApplicationCommand).map((meta) => meta.key);
+    for (const removed of ["codepush", "configureApp", "releaseSource"]) expect(keys).not.toContain(removed);
+    const optionNames = (key: string) => getArgMetas(ApplicationCommand, key)[1].map((meta) => meta.name);
+    for (const key of ["buildIos", "buildAndroid", "startIos", "startAndroid", "releaseIos", "releaseAndroid"])
+      for (const removed of ["regenerate", "open", "allowProvisioningUpdates"])
+        expect(optionNames(key)).not.toContain(removed);
+    expect(optionNames("startIos")).toEqual(expect.arrayContaining(["device", "team"]));
+    expect(optionNames("startAndroid")).toContain("device");
+    expect(optionNames("releaseIos")).toEqual(expect.arrayContaining(["team", "adHoc"]));
   });
 
   test("uses the same mobile target selector metadata across mobile commands", async () => {
@@ -390,133 +330,65 @@ describe("ApplicationScript", () => {
     expect(recorder.names()).toEqual(["scanSync"]);
   });
 
-  test("passes iOS provisioning opt-out from script to runner", async () => {
+  test("startIos hands the device and team to the runner for iOS", async () => {
     const script = CommandContainer.get(ApplicationScript);
     const recorder = createCallRecorder();
     const app = createFakeExecutor(
       "demo",
-      {
-        scanSync: async (...args: unknown[]) => recorder.record("scanSync", ...args),
-        getConfig: async () =>
-          ({
-            getMissingMobileDependencySpecs: () => [],
-            getMobileAppCapacitorPlugins: () => [],
-          }) as unknown as AkanAppConfig,
-      },
+      { scanSync: async (...args: unknown[]) => recorder.record("scanSync", ...args) },
       recorder,
     );
-    script.applicationRunner.startIos = async (...args: unknown[]) => {
-      recorder.record("runner.startIos", ...args);
+    script.applicationRunner.startMobile = async (...args: unknown[]) => {
+      recorder.record("runner.startMobile", ...args);
     };
 
-    await script.startIos(app as never, {
-      target: "default",
-      env: "local",
-      write: false,
-      noAllowProvisioningUpdates: true,
-    });
+    await script.startIos(app as never, { target: "default", device: "iPhone 17", teamId: "TEAM1", write: false });
 
     expect(recorder.calls).toContainEqual({ name: "scanSync", args: [{ write: false }] });
     expect(recorder.calls).toContainEqual({
-      name: "runner.startIos",
-      args: [
-        app,
-        {
-          open: false,
-          operation: "local",
-          env: "local",
-          target: "default",
-          regenerate: false,
-          noAllowProvisioningUpdates: true,
-        },
-      ],
+      name: "runner.startMobile",
+      args: [app, "ios", { target: "default", device: "iPhone 17", teamId: "TEAM1" }],
     });
   });
+});
 
-  test("startIos skips mobile dependency install when nothing is missing", async () => {
-    const script = CommandContainer.get(ApplicationScript);
-    const { app, getMissingMobileDependencySpecs, recorder } = createMobileApp();
-    stubMobileStart(script, recorder);
+describe("ApplicationRunner mobile", () => {
+  const mobileApp = (targets: Record<string, object>) =>
+    ({
+      name: "demo",
+      cwdPath: "/repo/apps/demo",
+      getDevPort: async () => 1,
+      getConfig: async () => ({
+        basePaths: new Set<string>(),
+        i18n: { defaultLocale: "en", locales: ["en"] },
+        mobile: { targets },
+      }),
+    }) as unknown as AppExecutor;
+  const target = (name: string) => ({ name, appName: "Demo", appId: "com.demo.app", version: "1.0.0", buildNum: 1 });
 
-    await script.startIos(app as never, { write: false });
-
-    expect(getMissingMobileDependencySpecs).toHaveBeenCalled();
-    expect(recorder.names()).not.toContain("confirmMobileInstall");
-    expect(recorder.names()).not.toContain("workspace.spawn");
-    expect(recorder.names()).toContain("runner.startIos");
-  });
-
-  test("startAndroid confirms and installs missing mobile dependencies before launch", async () => {
-    const script = CommandContainer.get(ApplicationScript);
-    const installSpecs = ["firebase@^12.13.0"];
-    const { app, recorder } = createMobileApp({ missingMobileSpecs: installSpecs });
-    stubMobileStart(script, recorder);
-
-    await script.startAndroid(app as never, { write: false });
-
-    expect(recorder.calls).toContainEqual({ name: "confirmMobileInstall", args: [installSpecs] });
-    expect(recorder.calls).toContainEqual({
-      name: "workspace.spawn",
-      args: ["bun", ["add", ...installSpecs], { stdio: "inherit" }],
-    });
-    expect(recorder.calls).toContainEqual({ name: "workspace.getPackageJson", args: [{ refresh: true }] });
-    expect(recorder.names().indexOf("workspace.spawn")).toBeLessThan(recorder.names().indexOf("runner.startAndroid"));
-  });
-
-  test("startIos declares missing default Capacitor plugins in the app package.json before launch", async () => {
-    const script = CommandContainer.get(ApplicationScript);
-    const { app, recorder, getAppPackageJson } = createMobileApp({
-      appPlugins: ["@capacitor/core", "@capacitor/device", "@capacitor/browser"],
-      appDependencies: { "@capacitor/core": "^8.3.4" },
-    });
-    stubMobileStart(script, recorder);
-
-    await script.startIos(app as never, { write: false });
-
-    expect(getAppPackageJson().dependencies as Record<string, string>).toEqual({
-      "@capacitor/core": "^8.3.4",
-      "@capacitor/device": "*",
-      "@capacitor/browser": "*",
-    });
-    expect(recorder.calls).toContainEqual({ name: "app.setPackageJson", args: [getAppPackageJson()] });
-    expect(recorder.calls).toContainEqual({
-      name: "workspace.spawn",
-      args: ["bun", ["install"], { stdio: "inherit" }],
-    });
-    expect(recorder.names().indexOf("workspace.spawn")).toBeLessThan(recorder.names().indexOf("runner.startIos"));
-  });
-
-  test("startIos leaves the app package.json untouched when all default Capacitor plugins are present", async () => {
-    const script = CommandContainer.get(ApplicationScript);
-    const { app, recorder } = createMobileApp({
-      appPlugins: ["@capacitor/core", "@capacitor/device"],
-      appDependencies: { "@capacitor/core": "*", "@capacitor/device": "*" },
-    });
-    stubMobileStart(script, recorder);
-
-    await script.startIos(app as never, { write: false });
-
-    expect(recorder.names()).not.toContain("app.setPackageJson");
-    expect(recorder.calls).not.toContainEqual({
-      name: "workspace.spawn",
-      args: ["bun", ["install"], { stdio: "inherit" }],
-    });
-    expect(recorder.names()).toContain("runner.startIos");
-  });
-
-  test("startIos aborts before launch when mobile dependency install is declined", async () => {
-    const script = CommandContainer.get(ApplicationScript);
-    const installSpecs = ["firebase@^12.13.0"];
-    const { app, recorder } = createMobileApp({ missingMobileSpecs: installSpecs });
-    stubMobileStart(script, recorder, { confirmed: false });
-
-    await expect(script.startIos(app as never, { write: false })).rejects.toThrow(
-      "Mobile builds require missing dependencies",
+  test("a dev build needs `akan start` answering first", async () => {
+    await expect(new ApplicationRunner().startMobile(mobileApp({ default: target("default") }), "ios")).rejects.toThrow(
+      "No dev server answers on http://localhost:1; run `akan start demo` first.",
     );
+  });
 
-    expect(recorder.calls).toContainEqual({ name: "confirmMobileInstall", args: [installSpecs] });
-    expect(recorder.names()).not.toContain("workspace.spawn");
-    expect(recorder.names()).not.toContain("runner.startIos");
+  test("a dev build runs one target at a time", async () => {
+    const app = mobileApp({ store: target("store"), admin: target("admin") });
+    await expect(new ApplicationRunner().startMobile(app, "android", { target: "all" })).rejects.toThrow(
+      "start-android runs one mobile target at a time",
+    );
+  });
+
+  test("an Android release says which signing keys are missing before it builds anything", async () => {
+    const saved = { ...process.env };
+    for (const key of Object.keys(process.env)) if (key.startsWith("MYAPP_RELEASE_")) delete process.env[key];
+    try {
+      await expect(
+        new ApplicationRunner().releaseAndroid(mobileApp({ default: target("default") }), "aab"),
+      ).rejects.toThrow("set MYAPP_RELEASE_STORE_FILE, MYAPP_RELEASE_STORE_PASSWORD, MYAPP_RELEASE_KEY_ALIAS");
+    } finally {
+      Object.assign(process.env, saved);
+    }
   });
 });
 

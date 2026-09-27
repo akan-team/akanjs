@@ -3,4 +3,5 @@ export * from "./nativeApi";
 export * from "./nativeApp";
 export * from "./nativeConfig";
 export * from "./nativeWebDir";
+export * from "./placeholderAppId";
 export * from "./usageDescriptions";

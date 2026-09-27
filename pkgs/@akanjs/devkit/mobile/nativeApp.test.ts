@@ -57,4 +57,17 @@ describe("NativeApp", () => {
     expect(config.plugins).toEqual([...NativeConfig.basePlugins, "push"]);
     expect(config.web.dir).toBe("/repo/apps/portal/.akan/mobile/default/web");
   });
+
+  test("signs an Android release with the upload key the environment names, and says which part is missing", () => {
+    expect(
+      NativeApp.androidSigning({
+        MYAPP_RELEASE_STORE_FILE: "keys/upload.jks",
+        MYAPP_RELEASE_STORE_PASSWORD: "store",
+        MYAPP_RELEASE_KEY_ALIAS: "upload",
+      }),
+    ).toEqual({ keystore: "keys/upload.jks", storePassword: "store", alias: "upload" });
+    expect(() => NativeApp.androidSigning({ MYAPP_RELEASE_STORE_FILE: "keys/upload.jks" })).toThrow(
+      "set MYAPP_RELEASE_STORE_PASSWORD, MYAPP_RELEASE_KEY_ALIAS in the environment",
+    );
+  });
 });

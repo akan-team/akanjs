@@ -40,22 +40,6 @@ const DEFAULT_OPTIMIZE_IMPORTS = [
 const WORKSPACE_BARREL_FACETS = ["ui", "webkit", "common", "client", "server"] as const;
 const DEFAULT_DOCKER_IMAGE = "oven/bun:1-slim";
 const SSR_RUNTIME_PACKAGES = ["react", "react-dom", "react-server-dom-webpack"] as const;
-// Optional peers only, so a fresh workspace never installs them; the mobile preflight adds them at the root.
-const MOBILE_RUNTIME_PACKAGES = [
-  "@capacitor/cli",
-  "@capacitor/core",
-  "@capacitor/ios",
-  "@capacitor/android",
-  "@capacitor/assets",
-] as const;
-// `npx cap sync` registers only plugins the app's own package.json declares (else the bridge throws `Capacitor plugin
-// "Device" is not available.`), so they are declared there with "*" and deduped to the root-installed version.
-const MOBILE_APP_CAPACITOR_PLUGINS = [
-  ..."app browser camera core device geolocation haptics inappbrowser keyboard preferences push-notifications"
-    .split(" ")
-    .map((name) => `@capacitor/${name}`),
-  "capacitor-plugin-safe-area",
-];
 const DEFAULT_AKAN_IMAGE_CONFIG: AkanImageConfig = {
   deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
   imageSizes: [32, 48, 64, 96, 128, 256, 384],
@@ -545,16 +529,6 @@ CMD [${command.map((c) => `"${c}"`).join(",")}]`;
     const declared = config?.database?.modes?.filter((mode): mode is DatabaseMode => !!mode);
     const modes = declared?.length ? declared : ["single"];
     return { modes: DatabaseModes.parseList(modes.join(","), `database.modes in apps/${app.name}/akan.config.ts`) };
-  }
-  getMobileRuntimePackages() {
-    // Installed at the root too, so the app's "*" declarations resolve to the hoisted, peer-pinned version.
-    return [...new Set([...MOBILE_RUNTIME_PACKAGES, ...MOBILE_APP_CAPACITOR_PLUGINS])];
-  }
-  getMissingMobileDependencySpecs() {
-    return this.#getMissingDependencySpecs(this.getMobileRuntimePackages());
-  }
-  getMobileAppCapacitorPlugins() {
-    return [...MOBILE_APP_CAPACITOR_PLUGINS];
   }
   #getMissingDependencySpecs(libs: readonly string[]) {
     const rootDependencies = {

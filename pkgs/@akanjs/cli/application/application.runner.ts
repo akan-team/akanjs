@@ -2,12 +2,11 @@ import path from "node:path";
 import { AkanAppHost, type DevHostEvent } from "@akanjs/devkit/akanApp";
 import type { DatabaseMode, MobileEnv } from "@akanjs/devkit/akanConfig";
 import type { BuildProgressReporter, BuildResult, TypecheckOptions } from "@akanjs/devkit/applicationBuildRunner";
-import type { ReleaseSourceOptions } from "@akanjs/devkit/applicationReleasePackager";
 import { resolveSignalTestPreloadPath } from "@akanjs/devkit/applicationTestPreload";
 import { type App, type Exec, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor } from "@akanjs/devkit/executors";
 import type { DevStdioMode } from "@akanjs/devkit/incrementalBuilder";
-import { type ResolvedMobileTarget, resolveMobileTargets } from "@akanjs/devkit/mobile";
+import { type MobilePlatform, NativeApp, type ResolvedMobileTarget, resolveMobileTargets } from "@akanjs/devkit/mobile";
 import { SlicePlanner } from "@akanjs/devkit/slicePlanner";
 import { Logger, type LogRecord } from "akanjs/common";
 import { openBrowser } from "../openBrowser";
@@ -29,22 +28,24 @@ export interface LogsOptions {
 export interface MobileTargetOptions {
   target?: string;
   env?: MobileEnv;
-  regenerate?: boolean;
+}
+export interface MobileBuildOptions extends MobileTargetOptions {
+  profile?: "debug" | "release";
 }
 export interface MobileStartOptions extends MobileTargetOptions {
-  open?: boolean;
   operation?: "local" | "release";
-}
-export interface IosStartOptions extends MobileStartOptions {
+  /** A simulator, emulator or device: its id or name, as `akan-native devices` lists them. */
   device?: string;
-  noAllowProvisioningUpdates?: boolean;
+  /** Narrows an iPhone's signing to one Apple team. */
+  teamId?: string;
+}
+export interface IosReleaseOptions extends MobileTargetOptions {
+  teamId?: string;
+  adHoc?: boolean;
 }
 
 // Lazy, so the `akan start` hot path never loads the build, mobile and prompt stacks.
 const loadBuildRunner = async () => (await import("@akanjs/devkit/applicationBuildRunner")).ApplicationBuildRunner;
-const loadReleasePackager = async () =>
-  (await import("@akanjs/devkit/applicationReleasePackager")).ApplicationReleasePackager;
-const loadCapacitorApp = async () => (await import("@akanjs/devkit/capacitorApp")).CapacitorApp;
 const loadPrompts = async () => await import("@inquirer/prompts");
 
 export class ApplicationRunner extends runner("application") {
@@ -258,74 +259,84 @@ try {
     return appHost;
   }
 
-  async buildIos(app: App, { target, env = "debug", regenerate = false }: MobileTargetOptions = {}) {
-    const targets = await resolveMobileTargets(app, target);
-    await this.#buildMobileCsr(app, env);
-    await this.#runMobileTargets(targets, async (mobileTarget) => {
-      await new (await loadCapacitorApp())(app, mobileTarget.config).buildIos({ env, regenerate });
-    });
-  }
-  async startIos(
+  async buildMobile(
     app: App,
-    {
-      open = false,
-      operation = "local",
-      env = "local",
-      target,
-      device,
-      regenerate = false,
-      noAllowProvisioningUpdates = false,
-    }: IosStartOptions = {},
+    platform: MobilePlatform,
+    { target, env = "debug", profile = "release" }: MobileBuildOptions = {},
   ) {
     const targets = await resolveMobileTargets(app, target);
-    if (operation === "release") await this.#buildMobileCsr(app, env);
+    await this.#buildMobileCsr(app, env);
     await this.#runMobileTargets(targets, async (mobileTarget) => {
-      const capacitorApp = new (await loadCapacitorApp())(app, mobileTarget.config);
-      await capacitorApp.runIos({ operation, env, regenerate, noAllowProvisioningUpdates, iosDeviceId: device });
-      if (open) await capacitorApp.openIos();
+      this.#reportBuild(app, mobileTarget, await new NativeApp(app, mobileTarget).build(platform, { profile }));
     });
   }
-  async releaseIos(app: App, { target, env = "main", regenerate = false }: MobileTargetOptions = {}) {
+
+  //* A dev build loads its pages from `akan start`, so it follows every save; a release build carries its own bundle.
+  async startMobile(
+    app: App,
+    platform: MobilePlatform,
+    { target, env = "local", operation = "local", device, teamId }: MobileStartOptions = {},
+  ) {
     const targets = await resolveMobileTargets(app, target);
-    await this.#buildMobileCsr(app, env);
-    for (const mobileTarget of targets) {
-      await new (await loadCapacitorApp())(app, mobileTarget.config).buildIos({ env, regenerate });
+    const [mobileTarget] = targets;
+    if (!mobileTarget || targets.length > 1)
+      throw new Error(`start-${platform} runs one mobile target at a time; pass --target <name>.`);
+    const nativeApp = new NativeApp(app, mobileTarget);
+    const selection = { ...(device ? { device } : {}), ...(teamId ? { teamId } : {}) };
+    if (operation === "release") {
+      await this.#buildMobileCsr(app, env);
+      const running = await nativeApp.run(platform, { ...selection, profile: "release" });
+      await running.exited;
+      return;
+    }
+    const upstream = `http://localhost:${await app.getDevPort()}`;
+    if (!(await ApplicationRunner.#answers(upstream)))
+      throw new Error(`No dev server answers on ${upstream}; run \`akan start ${app.name}\` first.`);
+    const { i18n } = await app.getConfig();
+    const session = await nativeApp.dev(platform, { upstream, lang: i18n.defaultLocale, ...selection });
+    app.log(`${app.name}/${mobileTarget.name} on ${platform} follows ${upstream} through ${session.gateway}.`);
+    process.once("SIGINT", () => {
+      void session.stop().finally(() => process.exit(130));
+    });
+    await session.exited;
+  }
+  static async #answers(url: string) {
+    try {
+      await fetch(url, { signal: AbortSignal.timeout(3_000) });
+      return true;
+    } catch {
+      // Nothing listening, which the caller turns into what to run.
+      return false;
     }
   }
 
-  async buildAndroid(app: App, { target, env = "debug", regenerate = false }: MobileTargetOptions = {}) {
+  async releaseIos(app: App, { target, env = "main", teamId, adHoc = false }: IosReleaseOptions = {}) {
     const targets = await resolveMobileTargets(app, target);
     await this.#buildMobileCsr(app, env);
-    await this.#runMobileTargets(targets, async (mobileTarget) => {
-      await new (await loadCapacitorApp())(app, mobileTarget.config).buildAndroid("apk", { env, regenerate });
-    });
+    for (const mobileTarget of targets)
+      this.#reportBuild(app, mobileTarget, await new NativeApp(app, mobileTarget).releaseIos({ teamId, adHoc }));
   }
 
-  async startAndroid(
-    app: App,
-    { open = false, operation = "local", env = "local", target, regenerate = false }: MobileStartOptions = {},
-  ) {
+  async releaseAndroid(app: App, format: "apk" | "aab", { target, env = "main" }: MobileTargetOptions = {}) {
     const targets = await resolveMobileTargets(app, target);
-    if (operation === "release") await this.#buildMobileCsr(app, env);
-    await this.#runMobileTargets(targets, async (mobileTarget) => {
-      const capacitorApp = new (await loadCapacitorApp())(app, mobileTarget.config);
-      await capacitorApp.runAndroid({ operation, env, regenerate });
-      if (open) await capacitorApp.openAndroid();
-    });
-  }
-
-  async releaseAndroid(
-    app: App,
-    assembleType: "apk" | "aab",
-    { target, env = "main", regenerate = false }: MobileTargetOptions = {},
-  ) {
-    const targets = await resolveMobileTargets(app, target);
+    NativeApp.androidSigning();
     await this.#buildMobileCsr(app, env);
-    for (const mobileTarget of targets) {
-      await new (await loadCapacitorApp())(app, mobileTarget.config).buildAndroid(assembleType, { env, regenerate });
-      app.log(`Release Android ${app.name}/${mobileTarget.name} ${assembleType} Completed.`);
-      app.log(`Path : ${app.cwdPath}/android/app/build/outputs/${assembleType === "apk" ? "apk" : "bundle"}/release`);
-    }
+    for (const mobileTarget of targets)
+      this.#reportBuild(
+        app,
+        mobileTarget,
+        await new NativeApp(app, mobileTarget).releaseAndroid({ formats: [format] }),
+      );
+  }
+
+  #reportBuild(
+    app: App,
+    mobileTarget: ResolvedMobileTarget,
+    { artifacts, warnings, signing }: Awaited<ReturnType<NativeApp["build"]>>,
+  ) {
+    for (const warning of warnings) app.logger.warn(warning);
+    if (signing) app.log(`Signed with ${signing.identity} (${signing.profile}, team ${signing.teamId})`);
+    for (const artifact of artifacts) app.log(`${app.name}/${mobileTarget.name} ${artifact.kind}: ${artifact.path}`);
   }
 
   async #buildMobileCsr(app: App, env: MobileEnv) {
@@ -365,21 +376,6 @@ try {
       Logger.rawLog(`Mobile target ${failure.target} failed: ${message}`, undefined, "error");
     }
     throw new Error(`${failures.length}/${results.length} mobile targets failed`);
-  }
-
-  // TODO: implement the OTA deploy; until then this refuses rather than exit 0 having deployed nothing.
-  async codepush(app: App) {
-    throw new Error(
-      `akan codepush is still in development and deploys nothing yet, so ${app.name} was not updated. ` +
-        `To release the app's source with OTA update support, run \`akan release-source ${app.name}\`.`,
-    );
-  }
-  async #initCapacitorApp(app: App) {
-    const [target] = await resolveMobileTargets(app, undefined);
-    if (!target) throw new Error(`No mobile target configured for ${app.name}`);
-    const capacitorApp = new (await loadCapacitorApp())(app, target.config);
-    await capacitorApp.init();
-    return capacitorApp;
   }
 
   // multiple keeps its data in the SQLite file single uses, so only Redis joins it; cluster adds Postgres.
@@ -442,25 +438,5 @@ try {
   }
   async dbdown(workspace: Workspace) {
     await workspace.spawn(`docker`, ["compose", "down"], { cwd: `${workspace.workspaceRoot}/local` });
-  }
-
-  async configureApp(app: App) {
-    const capacitorApp = await this.#initCapacitorApp(app);
-    // TODO: 이미 있으면 패스하는 로직 추가 필요
-    if (await (await loadPrompts()).confirm({ message: "want to add camera permission?" }))
-      await capacitorApp.addCamera();
-    if (await (await loadPrompts()).confirm({ message: "want to add contact permission?" }))
-      await capacitorApp.addContact();
-    if (await (await loadPrompts()).confirm({ message: "want to add location permission?" }))
-      await capacitorApp.addLocation();
-    await capacitorApp.save();
-  }
-
-  async releaseSource(
-    app: App,
-    { rebuild, buildNum = 0, environment = "debug", local = true }: ReleaseSourceOptions = {},
-  ) {
-    const packager = new (await loadReleasePackager())(app, { build: () => this.build(app).then(() => undefined) });
-    await packager.releaseSource({ rebuild, buildNum, environment, local });
   }
 }

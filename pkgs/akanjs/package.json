@@ -72,11 +72,6 @@
       "types": "./client/native.ts",
       "default": "./client/native.ts"
     },
-    "./capacitor.base.config": {
-      "import": "./capacitor.base.config.ts",
-      "types": "./capacitor.base.config.ts",
-      "default": "./capacitor.base.config.ts"
-    },
     "./webkit": {
       "import": "./webkit/index.ts",
       "types": "./webkit/index.ts",
