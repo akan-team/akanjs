@@ -14,7 +14,7 @@ import {
 } from "akanjs/client";
 import { st } from "akanjs/store";
 import { animated } from "akanjs/ui";
-import { type ComponentProps, type ReactNode, type RefObject, useEffect, useMemo } from "react";
+import { Activity, type ComponentProps, type ReactNode, type RefObject, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { RenderLayer } from "../../webkit/RenderLayer";
 
@@ -455,8 +455,13 @@ const CSRPageContainer = ({ pathRoute, prefix, layoutStyle }: CSRPageContainerPr
               zIndex: 0,
             };
   if (!location) return null;
+  //? A page nobody sees keeps its state and DOM but not its effects: a cached page, and the page a transition-less
+  //? switch left once it settled. The page under an animated transition stays live, since a swipe back shows it.
+  const paused =
+    pageType === "cached" ||
+    (pageType === "prev" && currentLocation.pathRoute.pageState.transition === "none" && csr.phase === "idle");
   return (
-    <>
+    <Activity mode={paused ? "hidden" : "visible"}>
       {createPortal(
         <animated.div
           id={`pageContainer-${pathRoute.path}`}
@@ -496,7 +501,7 @@ const CSRPageContainer = ({ pathRoute, prefix, layoutStyle }: CSRPageContainerPr
         </animated.div>,
         pageContainers,
       )}
-    </>
+    </Activity>
   );
 };
 

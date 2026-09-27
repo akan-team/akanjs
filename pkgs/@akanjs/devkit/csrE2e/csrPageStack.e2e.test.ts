@@ -52,6 +52,16 @@ describe.skipIf(!CsrE2eHarness.enabled)("CSR page stack (minimal, /e2e/stack)", 
     expect(await csr.ticksOver("tab-a")).toBeGreaterThan(0);
   }, 60_000);
 
+  test("the page a transition-less switch left pauses at once, and runs again when switched back", async () => {
+    await csr.open(TAB_A);
+    const mountedAs = (await csr.probe("tab-a"))?.mountId;
+    await csr.navigate(TAB_B);
+    expect(await csr.ticksOver("tab-a")).toBe(0);
+    await csr.navigate(TAB_A);
+    expect((await csr.probe("tab-a"))?.mountId).toBe(mountedAs);
+    expect(await csr.ticksOver("tab-a")).toBeGreaterThan(0);
+  }, 60_000);
+
   test("every page container but the current one is inert and hidden from assistive tech", async () => {
     await csr.open(TAB_A);
     await csr.navigate(TAB_B);
