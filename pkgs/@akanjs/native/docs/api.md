@@ -18,7 +18,7 @@
 | 기기 | `devices()`, `DeviceSelector`(문자열 또는 `{ id }`·`{ name }`·`{ kind }`), `RunningApp.device`, `DevSession.device`와 `reload()`. `doctor()`는 CLI doctor와 같은 검사를 구조화해 돌려준다 |
 | `release` | Android(O1-5): `signing`(keystore, alias, 비밀번호), `formats`(기본 `["aab"]`, APK도 함께 나온다). iOS(O1-3): `signing`(모두 선택, 없으면 키체인과 Xcode 프로파일에서 찾는다, §3 "서명 찾기"), 결과에 iPhone .app과 .ipa, 고른 서명은 `BuildResult.signing`. 서명 실패는 `SIGNING_FAILED` |
 | iPhone | `build({ ios: { device: true, signing } })`, `run({ device })`·`dev({ device })`에 페어링한 iPhone 이름을 주면 iPhone 빌드로 설치·실행한다. 서명은 찾고, `ios: { signing: { teamId } }`처럼 좁힐 수 있다 |
-| `dev` | 구현(O4): `upstream`, `hmrPath`, `startPath`, `lan`, `device`, `onLine`. 반환 `DevSession { gateway, build, rebuild(config?), exited, stop() }`. 파일 감시는 호출하는 쪽이 한다(설정이 바뀌면 `rebuild`) |
+| `dev` | 구현(O4): `upstream`, `hmrPath`, `startPath`, `lan`(`device`가 페어링된 iPhone이면 기본으로 켠다. Mac에 사설 IPv4가 없으면 `DEVICE_FAILED`), `device`, `onLine`. 반환 `DevSession { gateway, build, rebuild(config?), exited, stop() }`. 파일 감시는 호출하는 쪽이 한다(설정이 바뀌면 `rebuild`) |
 | `doctor`, `devices`, `upload` | 아직 |
 | CLI | 같은 내부 함수(`prepare`, 플랫폼 빌더)를 부른다. `akan-native` 명령을 이 API 위로 옮기는 것은 dev·release가 붙은 뒤에 한다 |
 | O2-3 서버 쪽 import | 구현. `packages/core/test/ssr-import.test.ts`가 모든 패키지를 DOM 없는 새 프로세스에서, react-server 조건으로도 import한다. 훅은 `import * as React`로 부른다(react-server의 react에는 훅이 없어서 이름 있는 import가 링크 단계에서 실패했다) |

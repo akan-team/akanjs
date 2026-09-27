@@ -257,7 +257,8 @@ export interface DevSession {
  * Development on a simulator, emulator or device (akanjs readiness O4, docs/api.md): a debug build
  * whose pages come from the dev gateway, which proxies an external dev server (`upstream`) or runs
  * Bun's own for web.devEntry. The pages keep the app's origin; only the HMR socket (`hmrPath`) goes to
- * the gateway. `startPath` is the first page; `lan` lets a real iPhone reach the Mac.
+ * the gateway. `startPath` is the first page; `lan` lets a real iPhone reach the Mac, and is on by
+ * default when `device` is a paired iPhone.
  */
 export function dev(
   options: TaskOptions & {
@@ -289,7 +290,18 @@ export function dev(
     } catch (error) {
       throw toAkanNativeError(error, "CONFIG_INVALID");
     }
-    const lan = options.lan && options.platform === "ios" ? lanAddress() : undefined;
+    // O4-3: a paired iPhone reaches the gateway only over the LAN, so choosing one asks for it.
+    const iphone =
+      options.platform === "ios" && options.lan !== false
+        ? await selectDevice("ios", options.device).then((chosen) => (chosen ? physicalIosDevice(chosen) : null))
+        : null;
+    const wantsLan = options.platform === "ios" && (options.lan ?? iphone !== null);
+    const lan = wantsLan ? lanAddress() : undefined;
+    if (wantsLan && !lan)
+      throw new AkanNativeError(
+        "DEVICE_FAILED",
+        `${iphone ? `${iphone.name} loads a dev build's pages from this Mac over the LAN, and` : "lan:"} this Mac has no private IPv4 address on a network`,
+      );
     const context: HmrContext = { project };
     const gateway = await startHmrServer({
       platform: options.platform,
