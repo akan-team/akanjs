@@ -14,9 +14,9 @@ const envState = {
 };
 const preferenceStore = new Map<string, string>();
 const localStore = new Map<string, string>();
-const cookieStore: Record<string, string> = {};
 const documentCookies = new Map<string, string>();
 const fetchJwtCalls: Array<string | null> = [];
+const fetchState = { jwt: null as string | null };
 const requestState = {
   request: undefined as Request | undefined,
 };
@@ -100,7 +100,15 @@ beforeAll(() => {
       error: () => undefined,
     },
     fetch: {
-      setJwt: (jwt: string | null) => fetchJwtCalls.push(jwt),
+      setJwt: (jwt: string | null) => {
+        fetchJwtCalls.push(jwt);
+        fetchState.jwt = jwt;
+      },
+      instance: {
+        get jwt() {
+          return fetchState.jwt;
+        },
+      },
     },
   }));
 });
@@ -116,11 +124,6 @@ const installCapacitorBridge = () => {
           },
           remove: async ({ key }: { key: string }) => {
             preferenceStore.delete(key);
-          },
-        },
-        CapacitorCookies: {
-          setCookie: async ({ key, value }: { key: string; value: string }) => {
-            cookieStore[key] = value;
           },
         },
       },
@@ -179,15 +182,14 @@ afterEach(() => {
   preferenceStore.clear();
   localStore.clear();
   documentCookies.clear();
-  Object.keys(cookieStore).forEach((key) => {
-    delete cookieStore[key];
-  });
   fetchJwtCalls.length = 0;
+  fetchState.jwt = null;
   requestState.request = undefined;
   globalThis.__AKAN_CAPACITOR_IMPORTS__ = undefined;
   Object.defineProperty(globalThis, "localStorage", { value: undefined, configurable: true });
   Object.defineProperty(globalThis, "document", { value: undefined, configurable: true });
   Object.defineProperty(globalThis, "Capacitor", { value: undefined, configurable: true });
+  Object.defineProperty(globalThis, "location", { value: undefined, configurable: true });
 });
 
 describe("storage", () => {
@@ -361,5 +363,57 @@ describe("cookies, headers, and auth", () => {
 
     installBrowserGlobals(`jwt=${makeJwt({ appName: "other", environment: "debug" })}`);
     expect(getAccount<Record<string, unknown>>()).toEqual({ appName: "test-app", environment: "debug" });
+  });
+
+  test("a CSR client is signed in by the token fetch sends, with no cookie anywhere", async () => {
+    envState.side = "client";
+    envState.renderMode = "csr";
+    installBrowserGlobals();
+    const { getAccount, getAuthToken, initAuth, resetAuth, setAuth } = await import("./cookie");
+    const jwt = makeJwt({ appName: "test-app", environment: "debug", userId: "u1" });
+
+    expect(getAuthToken()).toBeUndefined();
+    setAuth({ jwt });
+    expect(getAuthToken()).toBe(jwt);
+    expect(getAccount<{ userId?: string }>().userId).toBe("u1");
+    expect(document.cookie).toBe("");
+
+    initAuth();
+    expect(fetchJwtCalls.at(-1)).toBe(jwt);
+
+    resetAuth();
+    expect(getAuthToken()).toBeUndefined();
+    expect(getAccount<Record<string, unknown>>()).toEqual({ appName: "test-app", environment: "debug" });
+  });
+
+  test("a custom-scheme page keeps its cookies in localStorage", async () => {
+    envState.side = "client";
+    envState.renderMode = "csr";
+    installBrowserGlobals();
+    Object.defineProperty(globalThis, "location", { value: { protocol: "app:" }, configurable: true });
+    const { getCookie, removeCookie, setCookie } = await import("./cookie");
+
+    setCookie("theme", "dark");
+    setCookie("prepareUserId", "p1");
+    expect(getCookie("theme")).toBe("dark");
+    expect(JSON.parse(localStore.get("akan:cookies") ?? "{}")).toEqual({ theme: "dark", prepareUserId: "p1" });
+    expect(document.cookie).toBe("");
+
+    removeCookie("theme");
+    expect(getCookie("theme")).toBeUndefined();
+    expect(getCookie("prepareUserId")).toBe("p1");
+  });
+
+  test("any other page keeps using the browser's cookie jar", async () => {
+    envState.side = "client";
+    envState.renderMode = "csr";
+    installBrowserGlobals();
+    Object.defineProperty(globalThis, "location", { value: { protocol: "https:" }, configurable: true });
+    const { getCookie, setCookie } = await import("./cookie");
+
+    setCookie("theme", "dark");
+    expect(document.cookie).toBe("theme=dark");
+    expect(getCookie("theme")).toBe("dark");
+    expect(localStore.has("akan:cookies")).toBe(false);
   });
 });
