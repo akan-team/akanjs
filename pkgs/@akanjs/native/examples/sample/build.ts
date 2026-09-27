@@ -1,6 +1,16 @@
 // The sample's own SPA build. akan-native does not care which bundler produced dist/,
 // only that dist/index.html has its JS inlined (IN-1).
-import { cpSync, rmSync } from "node:fs";
+import { cpSync, existsSync, rmSync, writeFileSync } from "node:fs";
+
+//? The repo ignores every .env, so a fresh clone has none; the self-test needs one (ENV-6: .env over the config's
+//? defaults, and a non-PUBLIC key that must not reach the page). akan-native reads the .env files after this build.
+if (!existsSync(".env"))
+  writeFileSync(
+    ".env",
+    ["PUBLIC_GREETING=Hello from .env", "PUBLIC_API_URL=http://localhost:8080", "SAMPLE_SECRET=sample-only", ""].join(
+      "\n",
+    ),
+  );
 
 const mode = process.env.AKAN_NATIVE_MODE ?? "production";
 // The build profile (akan-native build: release, akan-native run / dev / test: debug), not the env mode:
