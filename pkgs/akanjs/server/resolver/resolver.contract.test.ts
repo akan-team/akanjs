@@ -5,6 +5,7 @@ import path from "node:path";
 import { type Dayjs, dayjs, ENDPOINT_META, ID } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import { assertFilterFitsCrud, DocumentSchema, type SchemaOf } from "akanjs/document";
+import { FetchClient } from "akanjs/fetch";
 import {
   type AkanJob,
   adapt,
@@ -20,6 +21,7 @@ import { endpoint } from "../../signal/endpoint";
 import { Public } from "../../signal/guards";
 import { type Internal, internal } from "../../signal/internal";
 import { Ws } from "../../signal/internalArg";
+import { FetchSerializer } from "../../signal/serializer";
 import type { SignalContext } from "../../signal/signalContext";
 import { slice } from "../../signal/slice";
 import { CascadeRunner } from "./CascadeRunner";
@@ -793,6 +795,39 @@ describe("ServiceResolver declaration contracts", () => {
 });
 
 describe("SignalResolver declaration contracts", () => {
+  test("the fetch client calls the route the server mounts, whatever the endpoint's routing options", () => {
+    class RoutedEndpoint extends endpoint(serverResolverTestServiceModel, (builder) => ({
+      ingest: builder.mutation(Boolean, { guards: [Public], path: "itemDrop" }).exec(() => true),
+      rooted: builder
+        .query(String, { guards: [Public], path: "/rooted/:id" })
+        .param("id", ID)
+        .exec((id) => id),
+      aliased: builder
+        .query(String, { guards: [Public], prefix: "custom" })
+        .param("id", ID)
+        .exec((id) => id),
+      token: builder
+        .mutation(String, { guards: [Public], prefix: false, globalPrefix: false, path: "oauth/token" })
+        .exec(() => "token"),
+      plain: builder.query(String, { guards: [Public] }).exec(() => "plain"),
+    })) {}
+    for (const [Endpoint, instance] of [
+      [ServerResolverTestEndpoint, makeTestEndpoint()],
+      [RoutedEndpoint, new RoutedEndpoint()],
+    ] as const) {
+      const resolved = resolveWith(Endpoint, instance as never);
+      const signal = FetchSerializer.serializeDatabaseSignal(ServerResolverTestSlice, Endpoint);
+      const clientRoutes = Object.entries(signal.endpoint)
+        .filter(([, serialized]) => serialized.type === "query" || serialized.type === "mutation")
+        .map(([key, serialized]) => {
+          const path = FetchClient.makeHttpUrl(key, serialized, signal.prefix, new Map());
+          return [path, serialized.globalPrefix === false ? { globalPrefix: false as const } : undefined] as const;
+        });
+      expect(clientRoutes.map(([path]) => path).sort()).toEqual(Object.keys(resolved.routes ?? {}).sort());
+      for (const [path, option] of clientRoutes) expect(resolved.routeOptions?.[path]).toEqual(option);
+    }
+  });
+
   test("turns endpoint declarations into HTTP and websocket route handlers", async () => {
     resetResolverOrder();
     const { registry, websocket } = withFakeWebsocket();

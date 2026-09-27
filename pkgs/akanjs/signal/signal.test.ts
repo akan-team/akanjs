@@ -501,6 +501,42 @@ describe("signal class factories and composition", () => {
     expect(Object.keys(MainSlice.srv.srvMap).sort()).toEqual(["signalTestAuxService", "signalTestItemService"]);
     expect(() => slice(ServiceModel.from(SignalTestAuxService), {}, () => ({}))).toThrow("cnst and db are required");
   });
+
+  test("keeps an app's own root and named slices over a lib's, so the app's filter keys resolve", () => {
+    class AppFilter extends from(
+      SignalTestFull,
+      (filter) => ({
+        query: { inReview: filter().query(() => ({ title: "review" })) },
+        sort: {},
+      }),
+      SignalTestFilter,
+    ) {}
+    const appServiceModel = ServiceModel.fromModel(SignalTestService, signalTestConstant, {
+      ...signalTestDatabase,
+      filter: AppFilter as unknown as typeof SignalTestFilter,
+    });
+    const libInOwner = (ownerId: string) => ({ ownerId, from: "lib" });
+    const appInOwner = (ownerId: string) => ({ ownerId, from: "app" });
+    class LibSlice extends slice(signalTestServiceModel, { guards: { root: Public } }, (init) => ({
+      inOwner: init().param("ownerId", ID).exec(libInOwner),
+      libOnly: init().exec(() => ({})),
+    })) {}
+    class AppSlice extends slice(
+      appServiceModel,
+      { guards: { root: TestAdmin } },
+      (init) => ({
+        inOwner: init().param("ownerId", ID).exec(appInOwner),
+      }),
+      LibSlice,
+    ) {}
+
+    const resolveRoot = AppSlice[SLICE_META][""]?.execFn as (queryKey: string, args: unknown[]) => unknown;
+    expect(resolveRoot("inReview", [])).toEqual({ title: "review" });
+    expect(resolveRoot("byOwner", ["507f1f77bcf86cd799439011"])).toEqual({ ownerId: "507f1f77bcf86cd799439011" });
+    expect(AppSlice[SLICE_META][""]?.signalOption.guards?.map((guard) => guard.name)).toEqual(["TestAdmin"]);
+    expect(AppSlice[SLICE_META].inOwner?.execFn).toBe(appInOwner);
+    expect(Object.keys(AppSlice[SLICE_META]).sort()).toEqual(["", "inOwner", "libOnly"]);
+  });
 });
 
 describe("signal serialization and registry", () => {
@@ -561,7 +597,7 @@ describe("signal serialization and registry", () => {
     expect(databaseSignal.slice?.byOwner?.args[0]).toMatchObject({ type: "param", name: "ownerId", refName: "ID" });
     expect(databaseSignal.endpoint.list).toMatchObject({
       type: "query",
-      path: "items/list",
+      path: "/signalTestItem/items/list",
       guards: ["Public"],
       returns: { refName: "signalTestItem", modelType: "light", arrDepth: 1, partial: ["title"] },
     });

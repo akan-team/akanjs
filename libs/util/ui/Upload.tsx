@@ -1,9 +1,9 @@
 "use client";
 import { usePage } from "@libs/util/client";
+import { useCamera } from "@libs/util/webkit";
 import { cn, Device } from "akanjs/client";
 import type { ProtoLightFile } from "akanjs/constant";
 import { BottomSheet, type BottomSheetRef, Image } from "akanjs/ui";
-import { useCamera } from "akanjs/webkit";
 import { type ChangeEvent, useRef, useState } from "react";
 import { AiFillFileImage, AiFillFileText, AiOutlineDelete, AiOutlineLoading } from "react-icons/ai";
 import { GiFiles } from "react-icons/gi";
@@ -412,7 +412,8 @@ const UploadImage = ({
     setImage(undefined);
   };
   const onSelectImage = async () => {
-    if (Device.getDevice().info.platform === "web") inputRef.current?.click();
+    const device = await Device.getDevice();
+    if (Object.keys(device.info).length === 0 || device.info.platform === "web") inputRef.current?.click();
     else {
       const photo = await getPhoto();
       setImage(photo?.dataUrl);
@@ -433,7 +434,7 @@ const UploadImage = ({
 
   return (
     <>
-      <div>
+      <div className={wrapperClassName}>
         <input
           ref={inputRef}
           multiple={false}
@@ -461,7 +462,7 @@ const UploadImage = ({
               onClick={() => {
                 onRemove(protoFile as unknown as File);
               }}
-              className="group relative flex size-56"
+              className={cn("group relative flex size-56", className)}
             >
               <Image
                 className={cn(
@@ -491,6 +492,7 @@ const UploadImage = ({
                 styleType === "circle" && "rounded-full",
                 styleType === "square" && "rounded-md",
                 !isAccepted && "cursor-not-allowed",
+                className,
               )}
             >
               <div

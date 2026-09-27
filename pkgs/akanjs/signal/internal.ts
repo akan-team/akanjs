@@ -50,12 +50,16 @@ export function internal<
     ...Object.fromEntries(srvKeys.map((srvRefName) => [srvRefName, service()])),
   })) {
     static srv = srv;
-    static [INTERNAL_META] = internalBuilder(buildInternal as any);
+    static [INTERNAL_META] = Object.assign(
+      {},
+      ...libInternals.map((libInternal) => libInternal[INTERNAL_META]),
+      internalBuilder(buildInternal as any),
+    );
   };
-  libInternals.forEach((libInternal) => {
-    Object.assign(internalCls[INTERNAL_META], libInternal[INTERNAL_META]);
-    Object.assign(internalCls.srv.srvMap, libInternal.srv.srvMap);
-  });
+  Object.assign(
+    srv.srvMap,
+    Object.assign({}, ...libInternals.map((libInternal) => libInternal.srv.srvMap), srv.srvMap),
+  );
   applyMixins(internalCls, libInternals);
   return internalCls as any; // the declared return is a generic instantiation built from this call's own type arguments, so there is no `T` to name
 }

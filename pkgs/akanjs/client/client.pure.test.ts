@@ -3,7 +3,7 @@ import { interpolateTranslation } from "../common/interpolateTranslation";
 import { pathGetLoose } from "../common/objectPath";
 import { cn } from "./cn";
 import { createFont, Inter, Nanum_Gothic_Coding, Noto_Sans_KR, Roboto } from "./createFont";
-import { clearRscNavigationCache, isRscNavigationFromCache, navigateRsc } from "./rscNavigation";
+import { clearRscNavigationCache, isRscNavigationFromCache, navigateRsc, refreshRsc } from "./rscNavigation";
 import { Translator } from "./translator";
 import {
   getFontFaces,
@@ -37,6 +37,7 @@ afterEach(() => {
   globalThis.__AKAN_RSC_CLEAR_CACHE__ = undefined;
   globalThis.__AKAN_RSC_IS_FROM_CACHE__ = undefined;
   globalThis.__AKAN_RSC_NAVIGATE__ = undefined;
+  globalThis.__AKAN_RSC_REFRESH__ = undefined;
 });
 
 describe("client pure exports and utilities", () => {
@@ -109,6 +110,24 @@ describe("client pure exports and utilities", () => {
     await navigateRsc("/next", { replace: true, scrollToTop: false });
 
     expect(calls).toEqual(["clear", { href: "/next", options: { replace: true, scrollToTop: false } }]);
+  });
+
+  test("refreshRsc refetches through the rsc refresh, never the cache-restoring clear", async () => {
+    const calls: unknown[] = [];
+
+    expect(refreshRsc()).toBeUndefined();
+
+    globalThis.__AKAN_RSC_CLEAR_CACHE__ = () => calls.push("clear");
+    globalThis.__AKAN_RSC_NAVIGATE__ = async (href) => {
+      calls.push({ navigate: href });
+    };
+    globalThis.__AKAN_RSC_REFRESH__ = async (options) => {
+      calls.push({ refresh: options });
+    };
+
+    await refreshRsc();
+
+    expect(calls).toEqual([{ refresh: undefined }]);
   });
 
   test("reports a replayed page tree only when the rsc client says so", () => {

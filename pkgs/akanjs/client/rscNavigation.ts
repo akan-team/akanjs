@@ -1,6 +1,7 @@
 declare global {
   var __AKAN_RSC_CLEAR_CACHE__: (() => void) | undefined;
   var __AKAN_RSC_IS_FROM_CACHE__: (() => boolean) | undefined;
+  var __AKAN_RSC_REFRESH__: ((options?: { buildId?: number }) => Promise<void>) | undefined;
   var __AKAN_RSC_NAVIGATE__:
     | ((href: string, options?: { replace?: boolean; scrollToTop?: boolean }) => Promise<void>)
     | undefined;
@@ -18,6 +19,10 @@ export const isRscNavigationFromCache = () => globalThis.__AKAN_RSC_IS_FROM_CACH
 
 export const navigateRsc = (href: string, options?: { replace?: boolean; scrollToTop?: boolean }) => {
   return globalThis.__AKAN_RSC_NAVIGATE__?.(href, options);
+};
+
+export const refreshRsc = () => {
+  return globalThis.__AKAN_RSC_REFRESH__?.();
 };
 
 export const useRscNavigation = () => ({

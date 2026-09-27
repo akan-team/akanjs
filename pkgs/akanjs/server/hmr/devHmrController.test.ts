@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
-import type { DevBuildStatus } from "../artifact";
+import { type DevBuildStatus, ROUTE_SEED_INDEX_JSON, type RouteSeedIndex } from "../artifact";
 import type { RscWorker } from "../rscWorkerHost";
 import {
   DevHmrController,
@@ -9,6 +11,12 @@ import {
   manifestClientEntriesForFiles,
 } from "./devHmrController";
 import type { HmrMessage } from "./wsHub";
+
+const artifactDirWith = async (seedIndex: RouteSeedIndex) => {
+  const artifactDir = await mkdtemp(path.join(os.tmpdir(), "akan-dev-hmr-"));
+  await Bun.write(path.join(artifactDir, ROUTE_SEED_INDEX_JSON), JSON.stringify(seedIndex));
+  return artifactDir;
+};
 
 describe("DevHmrController runtime metadata detection", () => {
   test("detects generated app client runtime metadata files", () => {
@@ -119,6 +127,7 @@ describe("DevHmrController pages-updated broadcast", () => {
     const originalSend = process.send;
     process.send = ((): boolean => true) as typeof process.send;
     const controller = new DevHmrController({
+      artifactDir: await artifactDirWith({ entries: [], globalLayoutFiles: [] }),
       renderState: { buildId: 0, cssAssets: {}, cssBytesByUrl: {} },
       rsc: { reload: async () => undefined, updateCssAssets: () => undefined } as unknown as RscWorker,
       seedIndex: { entries: [], globalLayoutFiles: [] },
@@ -161,18 +170,78 @@ describe("DevHmrController route ensure", () => {
       queueMicrotask(() => process.emit("message", { type: "build-route-res", id: message.id, ok: true, data }));
       return true;
     }) as typeof process.send;
+    const seedIndex: RouteSeedIndex = {
+      entries: [{ routeId: "/:lang/blog", pattern: "/:lang/blog", seeds: ["/repo/apps/demo/page/blog/_layout.tsx"] }],
+      globalLayoutFiles: [],
+    };
     const controller = new DevHmrController({
+      artifactDir: await artifactDirWith(seedIndex),
       renderState: { buildId: 0, cssAssets: {}, cssBytesByUrl: {} },
       rsc: { reload: async () => undefined, updateCssAssets: () => undefined } as unknown as RscWorker,
-      seedIndex: {
-        entries: [{ routeId: "/:lang/blog", pattern: "/:lang/blog", seeds: ["/repo/apps/demo/page/blog/_layout.tsx"] }],
-        globalLayoutFiles: [],
-      },
+      seedIndex,
       upgradeHmrWs: () => true,
     });
     try {
       await controller.ensureRoute(new URL("https://example.test/ko/blog/missing"));
       expect(requestedRouteIds).toEqual(["/:lang/blog"]);
+    } finally {
+      controller.dispose();
+      process.send = originalSend;
+    }
+  });
+});
+
+describe("DevHmrController route tree changes", () => {
+  test("adopts the rebuilt seed index so a moved override seeds route builds from where it went", async () => {
+    const page = "/repo/apps/demo/page";
+    const wrapperOf = (dir: string) => `/repo/apps/demo/.akan/generated/overrides/${dir}_overrides_tsx.tsx`;
+    const bootIndex: RouteSeedIndex = {
+      entries: [
+        { routeId: "/:lang/a/x", pattern: "/:lang/a/x", seeds: [wrapperOf("a"), `${page}/a/x.tsx`] },
+        { routeId: "/:lang/b/y", pattern: "/:lang/b/y", seeds: [`${page}/b/y.tsx`] },
+      ],
+      globalLayoutFiles: [],
+    };
+    const movedIndex: RouteSeedIndex = {
+      entries: [
+        { routeId: "/:lang/a/x", pattern: "/:lang/a/x", seeds: [`${page}/a/x.tsx`] },
+        { routeId: "/:lang/b/y", pattern: "/:lang/b/y", seeds: [wrapperOf("b"), `${page}/b/y.tsx`] },
+      ],
+      globalLayoutFiles: [],
+    };
+    const artifactDir = await artifactDirWith(bootIndex);
+    const originalSend = process.send;
+    const buildRequests: { seeds: string[]; graphSeeds: string[] }[] = [];
+    process.send = ((message: { type?: string; id?: number; seeds?: string[]; graphSeeds?: string[] }): boolean => {
+      if (message.type !== "build-route") return true;
+      buildRequests.push({ seeds: message.seeds ?? [], graphSeeds: message.graphSeeds ?? [] });
+      const data = { manifestDelta: {}, ssrManifestDelta: {}, newEntries: [], clientDeps: [] };
+      queueMicrotask(() => process.emit("message", { type: "build-route-res", id: message.id, ok: true, data }));
+      return true;
+    }) as typeof process.send;
+    const controller = new DevHmrController({
+      artifactDir,
+      renderState: { buildId: 0, cssAssets: {}, cssBytesByUrl: {} },
+      rsc: { reload: async () => undefined, updateCssAssets: () => undefined } as unknown as RscWorker,
+      seedIndex: structuredClone(bootIndex),
+      upgradeHmrWs: () => true,
+    });
+    const messages: HmrMessage[] = [];
+    controller.hub.setPublisher((_topic, payload) => messages.push(JSON.parse(payload) as HmrMessage));
+    try {
+      await Bun.write(path.join(artifactDir, ROUTE_SEED_INDEX_JSON), JSON.stringify(movedIndex));
+      process.emit("message", {
+        type: "pages-updated",
+        data: { bundlePath: "/repo/pages.js", buildId: 8, changedFiles: [`${page}/b/_overrides.tsx`] },
+      });
+      for (let tick = 0; tick < 100 && messages.length === 0; tick++) await Bun.sleep(1);
+      await controller.ensureRoute(new URL("https://example.test/en/b/y"));
+
+      expect(messages.map((message) => message.type)).toEqual(["reload"]);
+      expect(controller.routeIdsForPath("/en/b/y")).toEqual(["/:lang/b/y"]);
+      expect(buildRequests).toHaveLength(1);
+      expect(buildRequests[0]?.seeds).toContain(wrapperOf("b"));
+      expect(buildRequests[0]?.graphSeeds).not.toContain(wrapperOf("a"));
     } finally {
       controller.dispose();
       process.send = originalSend;

@@ -215,8 +215,7 @@ export class SignalSerializer {
   }
 
   static #httpPath(key: string, info: EndpointInfo, defaultPrefix: string | undefined, apiPrefix: string): string {
-    const servicePrefix = SignalResolver.resolveServicePrefix(info.signalOption.prefix, defaultPrefix);
-    return ApiRouter.applyGlobalPrefix(apiPrefix, `${servicePrefix}${info.getPath(key)}`, info.signalOption);
+    return ApiRouter.applyGlobalPrefix(apiPrefix, info.getRoutePath(key, defaultPrefix), info.signalOption);
   }
 
   static #serializeInternals(

@@ -426,6 +426,33 @@ describe("RouteTreeBuilder _overrides", () => {
     expect(html).not.toContain('data-skin="default"');
   });
 
+  test("crossing a nested _overrides.tsx keeps every render above it, so only the new branch remounts", async () => {
+    const routes = new RouteTreeBuilder({
+      "./__root_layout.tsx": async () => shellLayoutModule("SHELL"),
+      "./_overrides.tsx": async () => overridesWrapperModule({ Modal: BrandModal }),
+      "./(ws)/_layout.tsx": async () => ({ default: ({ children }: { children: ReactNode }) => children }),
+      "./(ws)/chat.tsx": async () => ({ default: () => <Widget open onCancel={() => {}} title="CHAT" /> }),
+      "./(ws)/pageBlock/_overrides.tsx": async () => overridesWrapperModule({ Modal: InnerModal }),
+      "./(ws)/pageBlock/edit.tsx": async () => ({ default: () => <Widget open onCancel={() => {}} title="EDIT" /> }),
+    }).build();
+    const stackOf = (pathname: string) => {
+      const matched = RouteTreeBuilder.match(pathname, routes);
+      if (!matched) throw new Error(`route did not match: ${pathname}`);
+      return [...matched.pathRoute.renderRootLayouts, ...matched.pathRoute.renderLayouts];
+    };
+    const chatStack = stackOf("/ko/chat");
+    const editStack = stackOf("/ko/pageBlock/edit");
+    expect(editStack.slice(0, chatStack.length)).toEqual(chatStack);
+    expect(editStack).toHaveLength(chatStack.length + 1);
+
+    const chatHtml = await renderMatched(routes, "/ko/chat");
+    expect(chatHtml).toContain('data-skin="brand"');
+    expect(chatHtml).not.toContain('data-skin="inner"');
+    const editHtml = await renderMatched(routes, "/ko/pageBlock/edit");
+    expect(editHtml).toMatch(/data-skin="brand">SHELL/);
+    expect(editHtml).toMatch(/data-skin="inner">EDIT/);
+  });
+
   test("a route-group layout is a root layout too, and its UI resolves the same way", async () => {
     const routes = new RouteTreeBuilder({
       "./__root_layout.tsx": async () => ({ default: ({ children }: { children: ReactNode }) => children }),

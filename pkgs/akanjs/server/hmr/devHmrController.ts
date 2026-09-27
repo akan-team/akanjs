@@ -73,6 +73,7 @@ export function devBuildStatusToHmrMessage(
 }
 
 export interface DevHmrControllerOptions {
+  artifactDir: string;
   renderState: RenderState;
   rsc: RscWorker;
   seedIndex: RouteSeedIndex;
@@ -81,6 +82,7 @@ export interface DevHmrControllerOptions {
 
 export class DevHmrController {
   readonly #logger = new Logger("DevHmrController");
+  readonly #artifactDir: string;
   readonly #renderState: RenderState;
   readonly #rsc: RscWorker;
   readonly #seedIndex: RouteSeedIndex;
@@ -98,13 +100,14 @@ export class DevHmrController {
   readonly #dirty = new Set<Exclude<ChangeKind, "ignore">>();
   readonly #dirtyFiles = new Set<string>();
   readonly #buildStatusByPhase = new Map<DevBuildStatus["phase"], DevBuildStatus>();
-  readonly #graphSeeds: string[];
+  #graphSeeds: string[];
 
-  constructor({ renderState, rsc, seedIndex, upgradeHmrWs }: DevHmrControllerOptions) {
+  constructor({ artifactDir, renderState, rsc, seedIndex, upgradeHmrWs }: DevHmrControllerOptions) {
+    this.#artifactDir = artifactDir;
     this.#renderState = renderState;
     this.#rsc = rsc;
     this.#seedIndex = seedIndex;
-    this.#graphSeeds = [...new Set([...seedIndex.globalLayoutFiles, ...seedIndex.entries.flatMap((e) => e.seeds)])];
+    this.#graphSeeds = DevHmrController.#graphSeedsOf(seedIndex);
     this.#upgradeHmrWs = upgradeHmrWs;
     this.#builderRpc = this.#createBuilderRpc();
     this.routeCache = this.#createRouteCache();
@@ -213,16 +216,16 @@ export class DevHmrController {
       onPagesUpdated: async ({ bundlePath, buildId, generation, changedFiles }) => {
         const started = Date.now();
         const files = changedFiles ?? [];
+        const routeTreeChanged = await this.#reloadSeedIndex();
         const runtimeMetadataChanged = files.some(isAkanRuntimeMetadataFile);
-        const staleClientEntries = runtimeMetadataChanged ? new Set<string>() : this.#staleClientEntriesForFiles(files);
-        const routeIds = runtimeMetadataChanged ? undefined : this.#routeIdsForFiles(files, staleClientEntries);
-        const fastRefreshCandidate = !runtimeMetadataChanged && this.#isFastRefreshCandidate(files);
+        const clearAll = routeTreeChanged || runtimeMetadataChanged;
+        const staleClientEntries = clearAll ? new Set<string>() : this.#staleClientEntriesForFiles(files);
+        const routeIds = clearAll ? undefined : this.#routeIdsForFiles(files, staleClientEntries);
+        const fastRefreshCandidate = !clearAll && this.#isFastRefreshCandidate(files);
         this.#logger.verbose(
-          `[SSR] pages-updated bundlePath=${bundlePath} buildId=${buildId} generation=${generation ?? "(unknown)"} files=${files.length} routes=${routeIds?.length ?? 0} fastRefresh=${fastRefreshCandidate} staleEntries=${staleClientEntries.size} runtimeMetadata=${runtimeMetadataChanged}`,
+          `[SSR] pages-updated bundlePath=${bundlePath} buildId=${buildId} generation=${generation ?? "(unknown)"} files=${files.length} routes=${routeIds?.length ?? 0} fastRefresh=${fastRefreshCandidate} staleEntries=${staleClientEntries.size} runtimeMetadata=${runtimeMetadataChanged} routeTree=${routeTreeChanged}`,
         );
-        const dropped = this.#invalidateRoutes(files, routeIds, staleClientEntries, {
-          forceClear: runtimeMetadataChanged,
-        });
+        const dropped = this.#invalidateRoutes(files, routeIds, staleClientEntries, { forceClear: clearAll });
         this.#renderState.buildId = buildId;
         const manifest = this.routeCache.snapshot();
         const reloadStarted = Date.now();
@@ -233,7 +236,7 @@ export class DevHmrController {
           pagesBundlePath: bundlePath,
         });
         this.#logger.verbose(`[SSR] rsc reload buildId=${buildId} in ${Date.now() - reloadStarted}ms`);
-        const shouldReload = runtimeMetadataChanged || this.#shouldFullReloadForFiles(files, routeIds);
+        const shouldReload = clearAll || this.#shouldFullReloadForFiles(files, routeIds);
         if (shouldReload) this.#hub.broadcast({ type: "reload", buildId });
         else if (fastRefreshCandidate)
           this.#hub.broadcast({ type: "client-refresh", buildId, generation, changedFiles, routeIds });
@@ -243,6 +246,22 @@ export class DevHmrController {
         );
       },
     });
+  }
+
+  // Adopted in place: WebRouter matches requests against this same object.
+  async #reloadSeedIndex(): Promise<boolean> {
+    const next = await RouteSeedIndexStore.load(this.#artifactDir).catch((err: unknown) => {
+      this.#logger.warn(`[hmr] route seed index unreadable; keeping the boot one: ${String(err)}`);
+      return null;
+    });
+    if (!next || JSON.stringify(next) === JSON.stringify(this.#seedIndex)) return false;
+    Object.assign(this.#seedIndex, next);
+    this.#graphSeeds = DevHmrController.#graphSeedsOf(next);
+    return true;
+  }
+
+  static #graphSeedsOf(seedIndex: RouteSeedIndex): string[] {
+    return [...new Set([...seedIndex.globalLayoutFiles, ...seedIndex.entries.flatMap((e) => e.seeds)])];
   }
 
   #recordBuildStatus(status: DevBuildStatus): void {
@@ -451,7 +470,7 @@ export class DevHmrController {
     if (files.some((file) => runtimeRoots.some((needle) => path.resolve(file).includes(needle)))) return true;
     if (files.some((file) => path.basename(file).endsWith(".signal.ts"))) return true;
 
-    // An unindexed page file is likely a new route, and the seed index is fixed for this process: reload fully.
+    // An unindexed page file is likely a route the seed index has not picked up (its reload failed): reload fully.
     return (
       routeIds === undefined &&
       files.some((file) => path.resolve(file).includes(`${path.sep}page${path.sep}`) && /\.(tsx|ts|jsx|js)$/.test(file))

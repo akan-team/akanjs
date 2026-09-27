@@ -42,7 +42,6 @@ declare global {
   var __RSC_PUSH__: ((type: InlineRscChunk[0], data: string) => void) | undefined;
   var __RSC_CLOSE__: (() => void) | undefined;
   var __AKAN_RSC_INITIAL_STATE__: string | undefined;
-  var __AKAN_RSC_REFRESH__: ((options?: { buildId?: number }) => Promise<void>) | undefined;
 }
 
 function decodeInlineRscChunk([type, data]: InlineRscChunk): Uint8Array {
@@ -341,7 +340,7 @@ function Root(): ReactNode {
   globalThis.__AKAN_RSC_REFRESH__ = async (options = {}) => {
     const navId = ++navigationSeq;
     const target = normalizeHref(window.location.href);
-    rscCache.delete(target);
+    rscCache.clear();
     rscPatchCache.clear();
     try {
       const next = await fetchRsc(target, {

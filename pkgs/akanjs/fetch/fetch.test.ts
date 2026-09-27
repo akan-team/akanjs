@@ -1210,6 +1210,48 @@ describe("FetchClient HTTP generation", () => {
     ]);
   });
 
+  test("calls a globalPrefix: false endpoint at the origin's root, and every other endpoint under the API prefix", async () => {
+    setMockFetch();
+    jsonResponses.push("token", "revoked", "item");
+    const client = new FetchClient(
+      "https://api.example/api",
+      {},
+      {
+        oauth: {
+          endpoint: {
+            oauthMetadata: {
+              type: "query",
+              path: "/.well-known/oauth",
+              globalPrefix: false,
+              args: [],
+              returns: { refName: "String" },
+            },
+            exchangeToken: {
+              type: "mutation",
+              path: "/oauth/token",
+              globalPrefix: false,
+              args: [],
+              returns: { refName: "String" },
+            },
+            getItem: { type: "query", path: "/itemDrop/itemDrop", args: [], returns: { refName: "String" } },
+          },
+        },
+      },
+    );
+
+    await client.handler.oauthMetadata();
+    await client.handler.exchangeToken();
+    await client.handler.getItem();
+    await client.handler.exchangeToken({ origin: "https://other.example/api/" });
+
+    expect(fetchCalls.map((call) => call.url)).toEqual([
+      "https://api.example/.well-known/oauth",
+      "https://api.example/oauth/token",
+      "https://api.example/api/itemDrop/itemDrop",
+      "https://other.example/oauth/token",
+    ]);
+  });
+
   test("refreshes cached handlers when a serialized signal is applied again", async () => {
     setMockFetch();
     jsonResponses.push("before", "after");

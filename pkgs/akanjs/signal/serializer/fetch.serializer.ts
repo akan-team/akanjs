@@ -61,13 +61,15 @@ export class FetchSerializer {
     };
   }
 
-  static #serializeEndpoint(endpointInfo: EndpointInfo): SerializedEndpoint {
+  static #serializeEndpoint(key: string, endpointInfo: EndpointInfo, defaultPrefix?: string): SerializedEndpoint {
     const guards = endpointInfo.signalOption.guards?.map((g) => g.name);
+    const { path, name, prefix, globalPrefix } = endpointInfo.signalOption;
     return {
       type: endpointInfo.type,
       args: endpointInfo.args.map(FetchSerializer.#serializeArg),
       returns: FetchSerializer.#serializeReturns(endpointInfo),
-      ...(endpointInfo.signalOption.path ? { path: endpointInfo.signalOption.path } : {}),
+      ...(path || name || prefix !== undefined ? { path: endpointInfo.getRoutePath(key, defaultPrefix) } : {}),
+      ...(globalPrefix === false ? { globalPrefix } : {}),
       ...(endpointInfo.signalOption.method ? { method: endpointInfo.signalOption.method } : {}),
       ...(endpointInfo.signalOption.fileUpload ? { fileUpload: true } : {}),
       ...(endpointInfo.signalOption.timeout ? { timeout: endpointInfo.signalOption.timeout } : {}),
@@ -167,8 +169,9 @@ export class FetchSerializer {
 
   static #serializeEndpoints(endpointCls: EndpointCls) {
     const endpoint: { [key: string]: SerializedEndpoint } = {};
+    const defaultPrefix = endpointCls.srv.cnst?.refName;
     for (const [key, endpointInfo] of Object.entries(endpointCls[ENDPOINT_META] as { [key: string]: EndpointInfo }))
-      endpoint[key] = FetchSerializer.#serializeEndpoint(endpointInfo);
+      endpoint[key] = FetchSerializer.#serializeEndpoint(key, endpointInfo, defaultPrefix);
     return endpoint;
   }
 

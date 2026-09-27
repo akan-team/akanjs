@@ -1,7 +1,6 @@
 "use client";
 import { type ClientEnv, dayjs, getEnv, logo } from "akanjs/base";
 import {
-  clearRscNavigationCache,
   cn,
   Device,
   debugFrame,
@@ -15,6 +14,7 @@ import {
   type PageState,
   type PathRoute,
   pathContext,
+  refreshRsc,
   router,
   setCookie,
   type TransitionStyle,
@@ -377,12 +377,8 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
           window.history.back();
         },
         refresh: () => {
-          clearRscNavigationCache();
           syncHref(window.location.href);
-          void navigateRsc(window.location.href, {
-            replace: true,
-            scrollToTop: false,
-          });
+          void refreshRsc();
         },
       },
     });

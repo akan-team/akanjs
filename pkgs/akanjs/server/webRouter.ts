@@ -328,6 +328,7 @@ export class WebRouter {
       });
     } else {
       this.#devHmr = new DevHmrController({
+        artifactDir: this.#artifactDir,
         renderState: this.renderState,
         rsc: this.#rsc,
         seedIndex: this.#seedIndex,

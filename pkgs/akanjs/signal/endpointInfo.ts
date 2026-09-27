@@ -326,6 +326,19 @@ export class EndpointInfo<
         ...this.args.filter((arg) => arg.type === "param").map((arg) => `:${arg.name}`),
       ].join("/")}`;
   }
+
+  /** The route the server mounts, below the global prefix; the fetch client is handed it to call the same one. */
+  getRoutePath(key: string, defaultPrefix?: string) {
+    return `${EndpointInfo.resolveServicePrefix(this.signalOption.prefix, defaultPrefix)}${this.getPath(key)}`;
+  }
+
+  static resolveServicePrefix(prefix: false | string | undefined, defaultPrefix?: string): string {
+    if (prefix === false || prefix === "") return "";
+    const resolved = prefix ?? defaultPrefix;
+    if (!resolved) return "";
+    const trimmed = resolved.trim().replace(/^\/+|\/+$/g, "");
+    return trimmed ? `/${trimmed}` : "";
+  }
 }
 
 // TODO: assign the default internal args per endpoint type, so a `pubsub` need not name `Ws` by hand

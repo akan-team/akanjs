@@ -1,5 +1,7 @@
 import path from "node:path";
 import { ApplicationBuildReporter } from "@akanjs/devkit/applicationBuildReporter";
+import { resolveSsrPageEntriesForApp } from "@akanjs/devkit/artifact/implicitRootLayout";
+import { computeRouteSeedIndex, saveRouteSeedIndex } from "@akanjs/devkit/artifact/routeSeedIndex";
 import type { App } from "@akanjs/devkit/commandDecorators";
 // Subpath imports only, as few as possible: spawned per generation, this process pays every import on every save.
 import { AppExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
@@ -86,10 +88,14 @@ class BuildBatch {
     }
   }
 
+  // Rewritten with the bundle: the backend rereads it on `pages-updated` to pick up added, moved or deleted routes.
   async #buildPages(): Promise<void> {
     const started = Date.now();
     try {
-      const next = await new PagesBundleBuilder(this.#app).build();
+      const pageEntries = await resolveSsrPageEntriesForApp(this.#app, await this.#app.getPageKeys());
+      const seedIndex = computeRouteSeedIndex(pageEntries);
+      const next = await new PagesBundleBuilder(this.#app, "start", pageEntries).build();
+      await saveRouteSeedIndex(this.#request.artifactDir, seedIndex);
       this.#emit({
         type: "pages-updated",
         data: {

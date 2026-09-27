@@ -97,6 +97,30 @@ type ExtendSliceInfoObj<
     : never;
 };
 
+type RootSliceInfoObj<
+  SrvModule extends ServiceModel,
+  _Input,
+  _Full,
+  _Light,
+  _Insight,
+  _Filter extends FilterInstance,
+  _QueryKey extends string,
+> = {
+  [""]: SliceInfo<
+    SrvRefName<SrvModule>,
+    _Input,
+    _Full,
+    _Light,
+    _Insight,
+    _Filter,
+    SrvMap<SrvModule>,
+    ["queryKey", "args"],
+    [queryKey?: _QueryKey | null, args?: unknown[] | null],
+    [],
+    [_QueryKey | undefined, unknown[] | undefined]
+  >;
+};
+
 export function slice<
   SrvModule extends ServiceModel,
   BuildSlice extends SliceBuilder<SrvModule>,
@@ -114,26 +138,12 @@ export function slice<
   ...libSlices: LibSlices
 ): SliceCls<
   SrvModule,
-  Assign<
-    ReturnType<BuildSlice>,
-    LibSlices extends []
-      ? {
-          [""]: SliceInfo<
-            SrvRefName<SrvModule>,
-            _Input,
-            _Full,
-            _Light,
-            _Insight,
-            _Filter,
-            SrvMap<SrvModule>,
-            ["queryKey", "args"],
-            [queryKey?: _QueryKey | null, args?: unknown[] | null],
-            [],
-            [_QueryKey | undefined, unknown[] | undefined]
-          >;
-        }
-      : ExtendSliceInfoObj<SrvModule, LibSlices>
-  >
+  LibSlices extends []
+    ? Assign<ReturnType<BuildSlice>, RootSliceInfoObj<SrvModule, _Input, _Full, _Light, _Insight, _Filter, _QueryKey>>
+    : Assign<
+        ExtendSliceInfoObj<SrvModule, LibSlices>,
+        Assign<ReturnType<BuildSlice>, RootSliceInfoObj<SrvModule, _Input, _Full, _Light, _Insight, _Filter, _QueryKey>>
+      >
 > {
   if (!srv.cnst || !srv.db) throw new Error("cnst and db are required");
   const filterRef = srv.db.filter;
@@ -169,7 +179,10 @@ export function slice<
     static updateGuards = updateGuards;
     static removeGuards = removeGuards;
     static mcp = mcp;
+    // The app's own slices go last: its root slice resolves its own filter, which already includes the lib's filters.
     static [SLICE_META] = Object.assign(
+      {},
+      ...libSlices.map((libSlice) => libSlice[SLICE_META]),
       {
         // Names one of the model's filters rather than taking a raw query, which would let a caller compose any query.
         [""]: init({ guards: rootGuards, ...(mcpOption?.root === false ? { mcp: false } : {}) })
@@ -188,10 +201,7 @@ export function slice<
       sliceBuilder(init as Parameters<BuildSlice>[0]),
     );
   };
-  libSlices.forEach((libSlice) => {
-    Object.assign(sliceCls[SLICE_META], libSlice[SLICE_META]);
-    Object.assign(sliceCls.srv.srvMap, libSlice.srv.srvMap);
-  });
+  Object.assign(srv.srvMap, Object.assign({}, ...libSlices.map((libSlice) => libSlice.srv.srvMap), srv.srvMap));
   applyMixins(sliceCls, libSlices);
   return sliceCls as any; // the declared return is a generic instantiation built from this call's own type arguments, so there is no `T` to name
 }

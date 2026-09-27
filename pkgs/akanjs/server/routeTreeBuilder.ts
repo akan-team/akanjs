@@ -184,7 +184,7 @@ export class RouteTreeBuilder {
     parentLayouts: RouteRender[] = [],
     parentPaths: string[] = [],
     parentHead?: ResolveHead,
-    parentOverrides: RouteRender[] = [],
+    parentRootRenders: RouteRender[] = [],
   ): PathRoute[] {
     const parentPath = parentPaths.filter((p) => p !== "/").join("");
     const currentPathSegment = /^\/\(.*\)$/.test(route.path) ? "" : route.path;
@@ -192,14 +192,13 @@ export class RouteTreeBuilder {
     const routePath = parentPath + currentPathSegment;
     const pathSegments = [...parentPaths, ...(currentPathSegment ? [currentPathSegment] : [])];
     const currentRootLayout = isRoot && route.renderLayout ? route.renderLayout : null;
-    const currentLayout = !isRoot && route.renderLayout ? route.renderLayout : null;
-    // Overrides wrap root layouts too, or a root layout's own UI (the overlay host portalled Modals use) misses them.
-    // `parentRootLayouts` stays override-free: the isRoot test counts its length.
+    // A manifest sits just outside its own directory's layout, never higher: hoisted above shared layouts, it would
+    // change the tree's top on crossing its boundary and remount the whole app. `parentRootLayouts` counts real layouts.
     const currentOverrideRenders = route.renderOverrides ? [route.renderOverrides] : [];
-    const overrideRenders = [...parentOverrides, ...currentOverrideRenders];
+    const nodeRenders = [...currentOverrideRenders, ...(route.renderLayout ? [route.renderLayout] : [])];
     const rootLayoutStack = [...parentRootLayouts, ...(currentRootLayout ? [currentRootLayout] : [])];
-    const renderRootLayouts = [...overrideRenders, ...rootLayoutStack];
-    const renderLayouts = [...parentLayouts, ...(currentLayout ? [currentLayout] : [])];
+    const renderRootLayouts = isRoot ? [...parentRootRenders, ...nodeRenders] : parentRootRenders;
+    const renderLayouts = isRoot ? parentLayouts : [...parentLayouts, ...nodeRenders];
     if (route.renderLayout) {
       this.#fallbackRoutes.push({
         path: routePath,
@@ -209,11 +208,9 @@ export class RouteTreeBuilder {
       });
     }
     const routeHead = RouteTreeBuilder.#composeHeadResolvers(route.renderLayout?.resolveHead, parentHead);
-    const pageRenderRootLayouts =
-      route.pageIncludesOwnLayout === false && currentRootLayout
-        ? [...overrideRenders, ...parentRootLayouts]
-        : renderRootLayouts;
-    const pageRenderLayouts = route.pageIncludesOwnLayout === false && currentLayout ? parentLayouts : renderLayouts;
+    const pageNodeRenders = route.pageIncludesOwnLayout === false ? currentOverrideRenders : nodeRenders;
+    const pageRenderRootLayouts = isRoot ? [...parentRootRenders, ...pageNodeRenders] : parentRootRenders;
+    const pageRenderLayouts = isRoot ? parentLayouts : [...parentLayouts, ...pageNodeRenders];
     const pageHead = route.pageIncludesOwnLayout === false ? parentHead : routeHead;
     return [
       ...(route.renderPage
@@ -232,7 +229,7 @@ export class RouteTreeBuilder {
         : []),
       ...(route.children.size
         ? [...route.children.values()].flatMap((child) =>
-            this.#getPathRoutes(child, rootLayoutStack, renderLayouts, pathSegments, routeHead, overrideRenders),
+            this.#getPathRoutes(child, rootLayoutStack, renderLayouts, pathSegments, routeHead, renderRootLayouts),
           )
         : []),
     ];

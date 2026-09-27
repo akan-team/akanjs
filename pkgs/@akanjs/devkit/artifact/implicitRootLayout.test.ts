@@ -150,4 +150,27 @@ describe("resolveSsrPageEntries", () => {
     expect(generatedSource).toContain("? await UserLayout({ params, searchParams, children })");
     expect(generatedSource).toContain("  return layout;\n}");
   });
+
+  test("prunes generated wrappers whose route file moved away", async () => {
+    const appRoot = await makeTempRoot();
+    const pageRoot = path.join(appRoot, "page");
+    await write(path.join(appRoot, "env", "env.client.ts"), "export const env = {};\n");
+    await write(path.join(pageRoot, "a", "_overrides.tsx"), "export default {};\n");
+    await write(path.join(pageRoot, "b", "_overrides.tsx"), "export default {};\n");
+    await write(path.join(pageRoot, "(home)", "_layout.tsx"), "export default ({ children }) => children;\n");
+    const resolve = async (pageKeys: string[]) =>
+      await resolveSsrPageEntries({ appCwdPath: appRoot, appName: "demo", pageKeys });
+    const generatedPaths = async (pageKeys: string[]) =>
+      (await resolve(pageKeys))
+        .filter((entry) => entry.moduleAbsPath.includes(`${path.sep}.akan${path.sep}`))
+        .map((entry) => entry.moduleAbsPath);
+
+    const before = await generatedPaths(["./(home)/_layout.tsx", "./a/_overrides.tsx", "./a/x.tsx"]);
+    const after = await generatedPaths(["./b/_overrides.tsx", "./b/y.tsx"]);
+
+    expect(before).toHaveLength(2);
+    for (const stale of before) expect(await Bun.file(stale).exists()).toBe(false);
+    expect(after).toHaveLength(2);
+    for (const fresh of after) expect(await Bun.file(fresh).exists()).toBe(true);
+  });
 });

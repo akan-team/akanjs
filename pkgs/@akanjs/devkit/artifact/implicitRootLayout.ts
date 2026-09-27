@@ -1,3 +1,4 @@
+import { readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import type { App } from "../commandDecorators";
 import { AsyncDefaultExportDetector } from "../transforms/asyncDefaultExportDetector";
@@ -39,6 +40,17 @@ export default function AkanUiOverridesLayout({ children }: { children?: ReactNo
 `;
   await Bun.write(absPath, source);
   return absPath;
+}
+
+async function pruneGeneratedFiles(dirAbsPath: string, keepAbsPaths: string[]): Promise<void> {
+  const keep = new Set(keepAbsPaths);
+  const names = await readdir(dirAbsPath).catch(() => [] as string[]);
+  await Promise.all(
+    names
+      .map((name) => path.join(dirAbsPath, name))
+      .filter((absPath) => !keep.has(absPath))
+      .map((absPath) => rm(absPath, { force: true })),
+  );
 }
 
 interface RootBoundary {
@@ -283,6 +295,18 @@ export async function resolveSsrPageEntries(opts: {
       seedAbsPaths: [...new Set([boundary.sourceAbsPath, rootSourceAbsPath].filter((absPath) => absPath !== null))],
     })),
   );
+  //? A moved `_overrides.tsx` or root layout leaves a wrapper importing a file that is gone.
+  const appCwdAbsPath = path.resolve(opts.appCwdPath);
+  await Promise.all([
+    pruneGeneratedFiles(
+      path.join(appCwdAbsPath, IMPLICIT_OVERRIDES_DIR),
+      base.filter(({ key }) => OVERRIDES_KEY_RE.test(key)).map(({ moduleAbsPath }) => moduleAbsPath),
+    ),
+    pruneGeneratedFiles(
+      path.join(appCwdAbsPath, IMPLICIT_LAYOUT_DIR),
+      generated.map(({ moduleAbsPath }) => moduleAbsPath),
+    ),
+  ]);
   return [...base, ...generated].sort((a, b) => a.key.localeCompare(b.key));
 }
 

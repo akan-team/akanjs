@@ -818,16 +818,18 @@ export default override({
               {l.trans({
                 en: (
                   <span>
-                    <strong>Layouts are covered too.</strong> Every layout on those routes, the root layout included,
-                    renders inside the manifest, so a <code>{"<Modal>"}</code> or <code>{"<Agent.Chat />"}</code>{" "}
-                    mounted in a <code>_layout.tsx</code> gets the replacement.
+                    <strong>Layouts are covered too.</strong> The <code>_layout.tsx</code> beside the manifest and every
+                    layout below it render inside it, root layout or not, so a <code>{"<Modal>"}</code> or{" "}
+                    <code>{"<Agent.Chat />"}</code> mounted there gets the replacement. A layout above the manifest's
+                    folder is shared with routes outside it, so it keeps the bindings from above.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>레이아웃도 적용됩니다.</strong> 루트 레이아웃을 포함해 그 라우트의 모든 레이아웃이
-                    매니페스트 안에서 그려지므로, <code>_layout.tsx</code>에 마운트한 <code>{"<Modal>"}</code>이나{" "}
-                    <code>{"<Agent.Chat />"}</code>도 교체본으로 바뀝니다.
+                    <strong>레이아웃도 적용됩니다.</strong> 매니페스트와 같은 폴더의 <code>_layout.tsx</code>와 그
+                    아래의 모든 레이아웃은 루트 레이아웃이든 아니든 매니페스트 안에서 그려지므로, 거기에 마운트한{" "}
+                    <code>{"<Modal>"}</code>이나 <code>{"<Agent.Chat />"}</code>도 교체본으로 바뀝니다. 매니페스트
+                    폴더보다 위의 레이아웃은 바깥 라우트와 함께 쓰이므로 위의 연결을 그대로 씁니다.
                   </span>
                 ),
               })}

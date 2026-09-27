@@ -600,8 +600,7 @@ export class SignalResolver {
     const wsRoutes: WebsocketRoutes = {};
     const defaultPrefix = endpointCls.srv.cnst?.refName;
     Object.entries(endpointMeta).forEach(([key, endpointInfo]) => {
-      const servicePrefix = SignalResolver.resolveServicePrefix(endpointInfo.signalOption.prefix, defaultPrefix);
-      const path = `${servicePrefix}${endpointInfo.getPath(key)}`;
+      const path = endpointInfo.getRoutePath(key, defaultPrefix);
       if (endpointInfo.signalOption.globalPrefix !== undefined) {
         routeOptions[path] = { globalPrefix: endpointInfo.signalOption.globalPrefix };
       }
@@ -731,14 +730,6 @@ export class SignalResolver {
       SignalResolver.logger.verbose(`Resolved endpoint ${endpointInfo.type} ${path} for ${key}`);
     });
     return { routes, wsRoutes, routeOptions };
-  }
-
-  static resolveServicePrefix(prefix: false | string | undefined, defaultPrefix?: string): string {
-    if (prefix === false || prefix === "") return "";
-    const resolved = prefix ?? defaultPrefix;
-    if (!resolved) return "";
-    const trimmed = resolved.trim().replace(/^\/+|\/+$/g, "");
-    return trimmed ? `/${trimmed}` : "";
   }
 
   static #selectCache = new WeakMap<Cls, Record<string, true>>();

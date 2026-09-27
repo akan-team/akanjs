@@ -22,6 +22,10 @@ export const dictionary = serviceDictionary(["en", "ko"])
   })
   .error({
     arrayWeightLengthMismatch: ["Array and weight length should be equal", "배열과 가중치의 길이가 같아야 합니다"],
+    jwtSecretRequired: [
+      "JWT_SECRET is not configured. Outside local a derived secret can be forged by anyone who knows the app, environment and repo names; set JWT_SECRET or security.jwtSecret, or AKAN_ALLOW_DERIVED_JWT_SECRET=1 to accept the risk",
+      "JWT_SECRET 이 설정되지 않았다. local 밖에서 파생 시크릿은 앱·환경·레포 이름을 아는 누구나 위조할 수 있다. JWT_SECRET 또는 security.jwtSecret 을 설정하거나, AKAN_ALLOW_DERIVED_JWT_SECRET=1 로 위험을 감수한다.",
+    ],
     cloudflareDnsRecordsLoadFailed: [
       "Failed to load Cloudflare DNS records: {errors}",
       "Cloudflare DNS 레코드를 불러오지 못했습니다: {errors}",

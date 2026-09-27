@@ -53,7 +53,7 @@ export function endpoint<
   ...libEndpoints: LibEndpoints
 ): EndpointCls<
   SrvModule,
-  LibEndpoints extends readonly [] ? ReturnType<Builder> : Assign<ReturnType<Builder>, MergeEndpointMetas<LibEndpoints>>
+  LibEndpoints extends readonly [] ? ReturnType<Builder> : Assign<MergeEndpointMetas<LibEndpoints>, ReturnType<Builder>>
 > {
   const srvKeys = [
     ...new Set([
@@ -61,18 +61,23 @@ export function endpoint<
       ...libEndpoints.flatMap((libEndpoint) => Object.keys(libEndpoint.srv.srvMap)),
     ]),
   ];
+  const ownEndpointMeta = builder(buildEndpoint);
   const endpointCls = class Endpoint extends dangerouslyAdapt(`${srv.srv.refName}Endpoint`, ({ service }) => ({
     ...Object.fromEntries(srvKeys.map((srvRefName) => [srvRefName, service()])),
   })) {
     static baseName = srv.srv.refName;
     static srv = srv;
-    static [ENDPOINT_META] = builder(buildEndpoint);
+    static [ENDPOINT_META] = Object.assign(
+      {},
+      ...libEndpoints.map((libEndpoint) => libEndpoint[ENDPOINT_META]),
+      ownEndpointMeta,
+    );
   };
-  warnQueryBodyArgs(srv.srv.refName, endpointCls[ENDPOINT_META]);
-  libEndpoints.forEach((libEndpoint) => {
-    Object.assign(endpointCls[ENDPOINT_META], libEndpoint[ENDPOINT_META]);
-    Object.assign(endpointCls.srv.srvMap, libEndpoint.srv.srvMap);
-  });
+  warnQueryBodyArgs(srv.srv.refName, ownEndpointMeta);
+  Object.assign(
+    srv.srvMap,
+    Object.assign({}, ...libEndpoints.map((libEndpoint) => libEndpoint.srv.srvMap), srv.srvMap),
+  );
   applyMixins(endpointCls, [...libEndpoints]);
   return endpointCls as any; // the declared return is a generic instantiation built from this call's own type arguments, so there is no `T` to name
 }

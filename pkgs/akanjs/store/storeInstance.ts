@@ -56,6 +56,8 @@ export type ReactAPI = {
 
 export class StoreInstance {
   #state: StoreStateRecord = {};
+  // What the server rendered: initializers only, since nothing on the server ever calls `set`.
+  #serverState: StoreStateRecord = {};
   #listeners = new Set<() => void>();
   #derivedMeta: StateDerivedMeta = { drafts: {}, persistSession: {}, search: {}, computed: {}, derivedKeys: new Set() };
   #draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -146,6 +148,7 @@ export class StoreInstance {
 
   #sel = <U>(selector: (state: StoreStateRecord) => U, equals?: (a: U, b: U) => boolean) => {
     const eq = equals ?? Object.is;
+    let serverSnapshot: { value: U } | null = null;
     return useSyncExternalStore(
       (onStoreChange: () => void) => {
         let prev = selector(this.#state);
@@ -159,7 +162,11 @@ export class StoreInstance {
         return this.subscribe(listener);
       },
       () => selector(this.#state),
-      () => selector(this.#state),
+      // React hydrates each Suspense boundary in its own pass, after earlier boundaries' effects already wrote the store.
+      () => {
+        serverSnapshot ??= { value: selector(this.#serverState) };
+        return serverSnapshot.value;
+      },
     );
   };
 
@@ -295,22 +302,27 @@ export class StoreInstance {
   addStore(store: RootStoreCls) {
     this.#mergeDerivedMeta(store[STATE_DERIVED_META]);
     const newState = evaluateInitializers(store[STATE_INIT_META] ?? {});
+    this.#serverState = this.#withNewKeys(
+      this.#serverState,
+      this.#materializeDerived({ ...this.#serverState, ...newState }, this.#serverState, true),
+    );
     const hydratedState = this.#hydratePersistSession(newState);
     const derivedState = this.#materializeDerived({ ...this.#state, ...hydratedState }, this.#state);
-    let hasNewStateKey = false;
-    const nextState = { ...this.#state };
-    for (const [key, value] of Object.entries(derivedState)) {
-      if (key in nextState) continue;
-      nextState[key] = value;
-      hasNewStateKey = true;
-    }
-    if (hasNewStateKey) this.#state = nextState;
+    const nextState = this.#withNewKeys(this.#state, derivedState);
+    const hasNewStateKey = nextState !== this.#state;
+    this.#state = nextState;
     for (const [key, owner] of Object.entries(store[ACTION_OWNER_META] ?? {})) this.#actionOwners.set(key, owner);
     this.#mergeActions(store[ACTION_META]);
     this.#extendAccessors(derivedState, store[ACTION_META]);
     this.#buildSlices(store);
     if (hasNewStateKey) this.#notify();
     return this;
+  }
+
+  #withNewKeys(state: StoreStateRecord, additions: StoreStateRecord) {
+    const newKeys = Object.keys(additions).filter((key) => !(key in state));
+    if (!newKeys.length) return state;
+    return { ...state, ...Object.fromEntries(newKeys.map((key) => [key, additions[key]])) };
   }
 
   static #formRefNameOf(key: string) {
@@ -571,12 +583,12 @@ export class StoreInstance {
       });
   }
 
-  #materializeDerived(next: StoreStateRecord, prev: StoreStateRecord) {
+  #materializeDerived(next: StoreStateRecord, prev: StoreStateRecord, server = typeof window === "undefined") {
     const materialized = { ...next };
     const changedKeys = new Set(Object.keys(materialized).filter((key) => !Object.is(materialized[key], prev[key])));
     const searchParams = (materialized.searchParams ?? {}) as SearchParamsState;
     for (const [key, meta] of Object.entries(this.#derivedMeta.search)) {
-      const value = typeof window === "undefined" ? meta.getDefault() : meta.parseSearch(searchParams);
+      const value = server ? meta.getDefault() : meta.parseSearch(searchParams);
       if (!Object.is(materialized[key], value)) {
         materialized[key] = value;
         changedKeys.add(key);

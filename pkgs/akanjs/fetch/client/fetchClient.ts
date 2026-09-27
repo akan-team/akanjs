@@ -1,4 +1,4 @@
-import { getEnv, getWsPrefix, PrimitiveRegistry, type PromiseOrObject } from "akanjs/base";
+import { getApiPrefix, getEnv, getWsPrefix, PrimitiveRegistry, type PromiseOrObject } from "akanjs/base";
 import {
   capitalize,
   type FetchPolicy,
@@ -279,6 +279,12 @@ export class FetchClient {
     }
     return this.jwt ? { Authorization: `Bearer ${this.jwt}` } : {};
   }
+  #baseUrlOf(endpoint: SerializedEndpoint, origin?: string) {
+    if (endpoint.globalPrefix !== false) return origin;
+    const base = (origin ?? this.origin).replace(/\/$/, "");
+    const apiPrefix = getApiPrefix();
+    return base.endsWith(apiPrefix) ? base.slice(0, -apiPrefix.length) : base;
+  }
   #makeHttpFn(key: string, endpoint: SerializedEndpoint, prefix?: string) {
     const argLength = endpoint.args.length;
     const serializerMap = this.#makeArgSerializer(endpoint.args);
@@ -295,7 +301,7 @@ export class FetchClient {
         return async (...argData: unknown[]) => {
           const { option, argMap, url } = requestOf(argData);
           const headers = this.#makeAuthHeaders(option);
-          const baseUrl = option?.origin;
+          const baseUrl = this.#baseUrlOf(endpoint, option?.origin);
           const timeout = option?.timeout ?? endpoint.timeout;
           // An origin override targets another server, so it bypasses the request-query cache keyed by this origin.
           const requestQuery = () => this.http.get(url, { headers, baseUrl, timeout });
@@ -315,7 +321,7 @@ export class FetchClient {
           const body = HttpClient.makeBody(bodyArgs, uploadArgs, argMap);
           const response = await this.http.send(endpoint.method ?? "POST", url, body, {
             headers: this.#makeAuthHeaders(option),
-            baseUrl: option?.origin,
+            baseUrl: this.#baseUrlOf(endpoint, option?.origin),
             timeout: option?.timeout ?? endpoint.timeout,
           });
           return parseReturn(response, { crystalize: option?.crystalize ?? true });
@@ -543,7 +549,10 @@ export class FetchClient {
           formData.append(fields.type, refName);
           if (parentId) formData.append(fields.parentId, parentId);
           const url = FetchClient.makeHttpUrl(cap.endpointKey, endpoint, cap.prefix, new Map());
-          return await this.http.post(url, formData, { headers: this.#makeAuthHeaders(option) });
+          return await this.http.post(url, formData, {
+            headers: this.#makeAuthHeaders(option),
+            baseUrl: this.#baseUrlOf(endpoint),
+          });
         }) as FetchHandler,
     );
   }

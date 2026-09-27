@@ -155,7 +155,7 @@ export const bootCsr = async (context: Record<string, CsrRouteModuleEntry>) => {
     parentLayouts: RouteRender[] = [],
     parentPaths: string[] = [],
     parentPageConfigChain: PageConfig[] = [],
-    parentOverrides: RouteRender[] = [],
+    parentRootRenders: RouteRender[] = [],
   ): PathRoute[] => {
     const parentPath = parentPaths.filter((path) => path !== "/").join("");
     const isRouteGroup = /^\/\(.*\)$/.test(route.path);
@@ -166,21 +166,19 @@ export const bootCsr = async (context: Record<string, CsrRouteModuleEntry>) => {
     const currentRootLayout = isRoot && route.renderLayout ? route.renderLayout : null;
     const currentLayout = !isRoot && route.renderLayout ? route.renderLayout : null;
     const currentLayoutConfig = route.renderLayout && route.layoutPageConfig ? route.layoutPageConfig : null;
-    // Overrides wrap the whole stack, root layouts included, so a layout's JSX and its overlay host sit in the provider.
+    // Mirrors RouteTreeBuilder: a manifest sits just outside its own directory's layout, so crossing it keeps the tree.
     const currentOverrideRenders = route.renderOverrides ? [route.renderOverrides] : [];
-    const overrideRenders = [...parentOverrides, ...currentOverrideRenders];
+    const nodeRenders = [...currentOverrideRenders, ...(route.renderLayout ? [route.renderLayout] : [])];
     const rootLayoutStack = [...parentRootLayouts, ...(currentRootLayout ? [currentRootLayout] : [])];
-    const renderRootLayouts = [...overrideRenders, ...rootLayoutStack];
-    const renderLayouts = [...parentLayouts, ...(currentLayout ? [currentLayout] : [])];
+    const renderRootLayouts = isRoot ? [...parentRootRenders, ...nodeRenders] : parentRootRenders;
+    const renderLayouts = isRoot ? parentLayouts : [...parentLayouts, ...nodeRenders];
     const pageConfigChain = [
       ...parentPageConfigChain,
       ...(currentRootLayout || currentLayout ? (currentLayoutConfig ? [currentLayoutConfig] : []) : []),
     ];
-    const pageRenderRootLayouts =
-      route.pageIncludesOwnLayout === false && currentRootLayout
-        ? [...overrideRenders, ...parentRootLayouts]
-        : renderRootLayouts;
-    const pageRenderLayouts = route.pageIncludesOwnLayout === false && currentLayout ? parentLayouts : renderLayouts;
+    const pageNodeRenders = route.pageIncludesOwnLayout === false ? currentOverrideRenders : nodeRenders;
+    const pageRenderRootLayouts = isRoot ? [...parentRootRenders, ...pageNodeRenders] : parentRootRenders;
+    const pageRenderLayouts = isRoot ? parentLayouts : [...parentLayouts, ...pageNodeRenders];
     const pageRenderConfigChain =
       route.pageIncludesOwnLayout === false && (currentRootLayout || currentLayout)
         ? parentPageConfigChain
@@ -213,7 +211,7 @@ export const bootCsr = async (context: Record<string, CsrRouteModuleEntry>) => {
         : []),
       ...(route.children.size
         ? [...route.children.values()].flatMap((child) =>
-            getPathRoutes(child, rootLayoutStack, renderLayouts, pathSegments, pageConfigChain, overrideRenders),
+            getPathRoutes(child, rootLayoutStack, renderLayouts, pathSegments, pageConfigChain, renderRootLayouts),
           )
         : []),
     ];

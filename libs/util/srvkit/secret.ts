@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { type BackendEnv, type BaseEnv, type Environment, getEnv } from "akanjs/base";
 import { Logger } from "akanjs/common";
+import { Err } from "../lib/dict";
 import { jwtVerify } from "./jwt";
 
 interface ResolvedToken {
@@ -55,6 +56,20 @@ export const resolveJwtSecret = (
   process.env.JWT_SECRET ??
   configuredSecret ??
   generateJwtSecret(appName, environment, repoWideSeed ?? getEnv().repoName);
+
+// The derived fallback is seeded from names anyone can read off a URL or a repo, so outside a developer's machine
+// it is a forgeable admin token, not a secret. Refused at boot rather than warned: a warning is read after the leak.
+export const assertJwtSecretConfigured = ({
+  operationMode,
+  configuredSecret,
+}: {
+  operationMode: BaseEnv["operationMode"];
+  configuredSecret?: string;
+}) => {
+  if (operationMode === "local" || process.env.JWT_SECRET || configuredSecret) return;
+  if (process.env.AKAN_ALLOW_DERIVED_JWT_SECRET === "1") return;
+  throw new Err("util.error.jwtSecretRequired");
+};
 
 export const generateAeskey = (appName: string, environment: BaseEnv["environment"], repoWideSeed = "aes-key") => {
   const seed = `${appName}-${environment}-${repoWideSeed}`;

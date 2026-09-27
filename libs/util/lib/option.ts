@@ -8,6 +8,7 @@ import type {
   PushNotificationServerOptions,
 } from "@libs/util/srvkit";
 import {
+  assertJwtSecretConfigured,
   BlobStorageApi,
   CloudflareApi,
   DiscordApi,
@@ -50,7 +51,7 @@ export type SSOOptions = {
 };
 
 export interface SecurityOptions {
-  jwtSecret?: string;
+  jwtSecret: string;
   aeskey?: string;
   verifies: ("wallet" | "password" | "phone" | "kakao" | "naver" | "email")[][];
   sso: SSOOptions;
@@ -77,7 +78,7 @@ export interface GoogleAccount {
 
 export type ModulesOptions = LibOptions & {
   hostname?: string | null;
-  security?: SecurityOptions;
+  security: SecurityOptions;
   objectStorage?: ObjectStorageOptions;
   privateStorage?: ObjectStorageOptions;
   ipfs?: IpfsApiOptions;
@@ -109,6 +110,7 @@ export const option = new AkanOption<ModulesOptions>().use((options) => {
   const privStorageApi = options.privateStorage
     ? new ObjectStorageApi(env.appName, options.privateStorage)
     : storageApi;
+  assertJwtSecretConfigured({ operationMode: env.operationMode, configuredSecret: options.security?.jwtSecret });
   return {
     cloudflareApi: options.cloudflare ? new CloudflareApi(options.cloudflare) : null,
     emailApi: options.mailer ? new EmailApi(options.mailer) : null,
