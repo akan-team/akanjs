@@ -36,6 +36,8 @@ import {
 } from "./cachePolicy";
 import { encodedFileResponse } from "./contentEncoding";
 import { HMR_CLIENT_SCRIPT } from "./hmr/clientScript";
+import { CSR_DEV_ROUTE_PREFIX, resolveDevCsrMode } from "./hmr/csrDevManifest";
+import { CsrDevShell } from "./hmr/csrDevShell";
 import { DevHmrController } from "./hmr/devHmrController";
 import type { HmrWsData, HmrWsHub } from "./hmr/wsHub";
 import { ImageOptimizer } from "./imageOptimizer";
@@ -272,6 +274,7 @@ export class WebRouter {
   #builderRpc: BuilderRpc | null;
   #routeCache: RouteClientCache;
   #devHmr: DevHmrController | null = null;
+  #csrDevShell: CsrDevShell | null = null;
   #csrArmed = false;
   #csrOnDemandBuild: Promise<unknown> | null = null;
   readonly #requestStats = {
@@ -337,6 +340,7 @@ export class WebRouter {
       this.#builderRpc = this.#devHmr.builderRpc;
       this.#routeCache = this.#devHmr.routeCache;
       this.#hub = this.#devHmr.hub;
+      if (resolveDevCsrMode() === "registry") this.#csrDevShell = new CsrDevShell(this.#artifactDir);
     }
   }
 
@@ -368,8 +372,9 @@ export class WebRouter {
     const renderEnvRoutes: HttpRoutes = {
       ...(this.web.csr
         ? {
-            "/__csr": async () => {
+            "/__csr": async (req) => {
               this.#requestStats.csr += 1;
+              if (this.#csrDevShell) return await this.#serveCsrDevShell(req, "/", this.#csrDevShell);
               const csrHtml = await this.#resolveCsrHtml(csrOutputDir, "/");
               const csrFile = csrHtml ? Bun.file(csrHtml) : null;
               const htmlText =
@@ -390,6 +395,14 @@ export class WebRouter {
 </html>`;
               return new Response(this.#withCsrHmr(htmlText), { headers: WebRouter.#htmlResponseHeaders(200) });
             },
+            ...(this.#csrDevShell
+              ? {
+                  [`${CSR_DEV_ROUTE_PREFIX}*`]: async (req: Request) => {
+                    this.#requestStats.staticAsset += 1;
+                    return (await this.#csrDevShell?.serve(req)) ?? new Response("Not Found", { status: 404 });
+                  },
+                }
+              : {}),
           }
         : {}),
       [`${clientServePrefix}/*`]: async (req) => {
@@ -522,6 +535,7 @@ export class WebRouter {
           const isCsr = url.searchParams.get("csr") === "true";
           if (isCsr) {
             this.#requestStats.csr += 1;
+            if (this.#csrDevShell) return await this.#serveCsrDevShell(req, url.pathname, this.#csrDevShell);
             const csrHtml = await this.#resolveCsrHtml(csrOutputDir, url.pathname);
             if (!csrHtml) return this.#csrUnavailableResponse(url.pathname);
             const html = await Bun.file(csrHtml).text();
@@ -943,7 +957,23 @@ export class WebRouter {
   }
   #withCsrHmr(html: string): string {
     if (this.#prodMode) return html;
-    return WebRouter.#injectBeforeBodyEnd(html, `<script>${HMR_CLIENT_SCRIPT}</script>`);
+    const csrGeneration = this.renderState.csrGeneration ?? null;
+    const flags = `self.__AKAN_HMR_CLIENT__="csr";self.__AKAN_CSR_GENERATION__=${csrGeneration};`;
+    return WebRouter.#injectBeforeBodyEnd(html, `<script>${flags}${HMR_CLIENT_SCRIPT}</script>`);
+  }
+  // Armed before the first render: the builder keeps the registry bundle current only after something asked for it.
+  async #serveCsrDevShell(req: Request, pathname: string, shell: CsrDevShell): Promise<Response> {
+    await this.#armCsrArtifact(pathname);
+    const basePath =
+      getBasePathFromPathname(pathname, { basePaths: this.#artifact.basePaths, i18n: this.#artifact.i18n }) ?? "";
+    const html = await shell.render({
+      basePath,
+      lang: "en",
+      title: process.env.AKAN_PUBLIC_APP_NAME ?? "akan",
+      cssHref: this.#getStylesheetHref(req, pathname),
+    });
+    if (!html) return this.#csrUnavailableResponse(pathname);
+    return new Response(this.#withCsrHmr(html), { headers: WebRouter.#htmlResponseHeaders(200) });
   }
   async #resolveCsrHtml(csrOutputDir: string, pathname: string): Promise<string | null> {
     const resolved = WebRouter.#resolveCsrHtmlPath(csrOutputDir, pathname, this.#artifact);

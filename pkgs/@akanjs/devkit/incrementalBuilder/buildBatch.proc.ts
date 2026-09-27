@@ -7,6 +7,7 @@ import type { App } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
 import {
   CsrArtifactBuilder,
+  CsrDevBundler,
   CssCompiler,
   FontOptimizer,
   PagesBundleBuilder,
@@ -14,6 +15,7 @@ import {
 } from "@akanjs/devkit/frontendBuild";
 import { Logger } from "akanjs/common";
 import type { BuilderMessage, BuildPhase } from "akanjs/server";
+import { resolveDevCsrMode } from "akanjs/server/hmr/csrDevManifest";
 import type { BuildBatchRequest, BuildBatchResult, OptimizedFonts, PagesBatchCssAssets } from "./buildBatchProtocol";
 
 // `Bun.build` keeps native bundler arenas that `Bun.gc(true)` cannot reclaim; only exiting returns them.
@@ -80,12 +82,45 @@ class BuildBatch {
   async #buildCsr(): Promise<void> {
     const started = Date.now();
     try {
-      await new CsrArtifactBuilder(this.#app).build();
-      this.#logger.verbose(`csr-rebundle ok (${Date.now() - started}ms)`);
+      if (resolveDevCsrMode() === "registry") await this.#updateCsrRegistry(started);
+      else await this.#rebuildCsrArtifact(started);
       this.#emitStatus("csr");
     } catch (err) {
       this.#fail("csr", "csr-rebundle", err);
     }
+  }
+
+  async #rebuildCsrArtifact(started: number): Promise<void> {
+    await new CsrArtifactBuilder(this.#app).build();
+    this.#logger.verbose(`csr-rebundle ok (${Date.now() - started}ms)`);
+    // A CSR tab takes none of the SSR refresh messages, so a rebuilt artifact reaches it only as this reload.
+    if (this.#request.changedFiles.length === 0) return;
+    this.#emit({
+      type: "csr-updated",
+      data: { generation: Date.now(), mode: "artifact", reload: true, reason: "the CSR artifact was rebuilt" },
+    });
+  }
+
+  async #updateCsrRegistry(started: number): Promise<void> {
+    const update = await new CsrDevBundler(this.#app).update(this.#request.changedFiles);
+    if (!update) {
+      this.#logger.verbose(`csr-dev unchanged (${Date.now() - started}ms)`);
+      return;
+    }
+    this.#logger.verbose(
+      `csr-dev generation=${update.generation} ${update.reload ? `reload (${update.reason})` : `patch modules=${update.changedIds.length}`} graph=${update.moduleCount} (${Date.now() - started}ms)`,
+    );
+    this.#emit({
+      type: "csr-updated",
+      data: {
+        generation: update.generation,
+        mode: "registry",
+        reload: update.reload,
+        reason: update.reason,
+        patchUrl: update.patchUrl,
+        changedIds: update.changedIds,
+      },
+    });
   }
 
   // Rewritten with the bundle: the backend rereads it on `pages-updated` to pick up added, moved or deleted routes.

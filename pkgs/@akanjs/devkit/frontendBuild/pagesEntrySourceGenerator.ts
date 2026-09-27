@@ -21,13 +21,16 @@ export class PagesEntrySourceGenerator {
     return `export const pages = {\n${lines.join("\n")}\n};\n`;
   }
 
-  static async generateStatic(pageEntries: PageEntry[]): Promise<string> {
-    return await new PagesEntrySourceGenerator(pageEntries).generateStatic();
+  static async generateStatic(pageEntries: PageEntry[], { fromDir }: { fromDir?: string } = {}): Promise<string> {
+    return await new PagesEntrySourceGenerator(pageEntries).generateStatic({ fromDir });
   }
 
-  async generateStatic(): Promise<string> {
+  // `fromDir` makes the specifiers relative: Bun inlines an absolute import of a file that is also an entrypoint.
+  async generateStatic({ fromDir }: { fromDir?: string } = {}): Promise<string> {
     const imports = this.#pageEntries.map(({ moduleAbsPath }, index) => {
-      const specifier = PagesEntrySourceGenerator.#toImportSpecifier(moduleAbsPath);
+      const specifier = fromDir
+        ? PagesEntrySourceGenerator.#toRelativeSpecifier(fromDir, moduleAbsPath)
+        : PagesEntrySourceGenerator.#toImportSpecifier(moduleAbsPath);
       return `import * as page${index} from ${JSON.stringify(specifier)};`;
     });
     const entries = await Promise.all(
@@ -41,5 +44,10 @@ export class PagesEntrySourceGenerator {
 
   static #toImportSpecifier(moduleAbsPath: string): string {
     return path.resolve(moduleAbsPath).split(path.sep).join("/");
+  }
+
+  static #toRelativeSpecifier(fromDir: string, moduleAbsPath: string): string {
+    const relative = path.relative(fromDir, path.resolve(moduleAbsPath)).split(path.sep).join("/");
+    return relative.startsWith(".") ? relative : `./${relative}`;
   }
 }

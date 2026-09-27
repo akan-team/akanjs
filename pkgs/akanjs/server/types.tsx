@@ -140,4 +140,6 @@ export interface RenderState {
   buildId: number;
   cssAssets: Record<string, CssAsset>;
   cssBytesByUrl: Record<string, Uint8Array>;
+  /** The newest CSR dev bundle generation; a CSR tab whose own generation differs has missed an update. */
+  csrGeneration?: number;
 }

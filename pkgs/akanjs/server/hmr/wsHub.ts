@@ -9,9 +9,12 @@ export interface ChangeBatch {
   kinds: Set<Exclude<ChangeKind, "ignore">>;
 }
 
+export type HmrClientKind = "ssr" | "csr";
+
 export interface HmrWsData {
   kind: "akan-hmr";
   openedAt: number;
+  client?: HmrClientKind;
 }
 
 export type HmrMessage =
@@ -19,8 +22,17 @@ export type HmrMessage =
       type: "hello";
       buildId: number;
       cssAssets?: Record<string, { cssUrl: string; cssRelPath: string }>;
+      csrGeneration?: number;
     }
   | { type: "reload"; buildId: number }
+  | {
+      type: "csr-update";
+      generation: number;
+      url?: string;
+      changedIds?: string[];
+      reload?: boolean;
+      reason?: string;
+    }
   | { type: "rsc-refresh"; buildId: number; generation?: number; changedFiles?: string[]; routeIds?: string[] }
   | {
       type: "client-refresh";
@@ -43,6 +55,7 @@ export type HmrMessage =
   | { type: "error"; message: string };
 
 export const HMR_WS_TOPIC = "__akan_hmr";
+export const HMR_CSR_WS_TOPIC = "__akan_hmr_csr";
 
 export class HmrWsHub {
   readonly #logger = new Logger("HmrWsHub");
@@ -54,18 +67,32 @@ export class HmrWsHub {
   }
 
   attach(ws: Bun.ServerWebSocket<HmrWsData>): void {
-    ws.subscribe(HMR_WS_TOPIC);
+    ws.subscribe(HmrWsHub.#topicOf(ws.data?.client));
     this.#conns.add(ws);
-    this.#logger.verbose(`[hmr] ws connected (total=${this.#conns.size})`);
+    this.#logger.verbose(`[hmr] ws connected client=${ws.data?.client ?? "ssr"} (total=${this.#conns.size})`);
   }
 
   detach(ws: Bun.ServerWebSocket<HmrWsData>): void {
-    ws.unsubscribe(HMR_WS_TOPIC);
+    ws.unsubscribe(HmrWsHub.#topicOf(ws.data?.client));
     if (this.#conns.delete(ws)) this.#logger.verbose(`[hmr] ws disconnected (total=${this.#conns.size})`);
   }
 
   broadcast(msg: HmrMessage): void {
-    this.#publish?.(HMR_WS_TOPIC, JSON.stringify(msg));
+    const payload = JSON.stringify(msg);
+    const audience = HmrWsHub.#audienceOf(msg);
+    if (audience !== "csr") this.#publish?.(HMR_WS_TOPIC, payload);
+    if (audience !== "ssr") this.#publish?.(HMR_CSR_WS_TOPIC, payload);
+  }
+
+  // A CSR tab renders no RSC and loads its own bundle, which its builder answers with `csr-update` when it changes.
+  static #audienceOf(msg: HmrMessage): HmrClientKind | "all" {
+    if (msg.type === "csr-update") return "csr";
+    if (msg.type === "reload" || msg.type === "rsc-refresh" || msg.type === "client-refresh") return "ssr";
+    return "all";
+  }
+
+  static #topicOf(client: HmrClientKind | undefined): string {
+    return client === "csr" ? HMR_CSR_WS_TOPIC : HMR_WS_TOPIC;
   }
 
   handleMessage(message: string): void {

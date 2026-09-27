@@ -4,6 +4,7 @@ export * from "./clientBuildTypes";
 export * from "./clientEntriesBundler";
 export * from "./clientEntryDiscovery";
 export * from "./csrArtifactBuilder";
+export * from "./csrDevBundler";
 export * from "./cssCompiler";
 export * from "./cssImportResolver";
 export * from "./devChangePlanner";

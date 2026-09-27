@@ -7,8 +7,9 @@ export const HMR_CLIENT_SCRIPT = `(function(){
   self.__AKAN_HMR_INSTALLED__ = true;
   var syncNavigationEnabled = ${JSON.stringify(isSyncNavigationEnabled())};
   var syncNavigationClientId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  var clientKind = self.__AKAN_HMR_CLIENT__ === "csr" ? "csr" : "ssr";
   var proto = location.protocol === "https:" ? "wss:" : "ws:";
-  var url = proto + "//" + location.host + "/_akan/hmr";
+  var url = proto + "//" + location.host + "/_akan/hmr" + (clientKind === "csr" ? "?client=csr" : "");
   var attempts = 0;
   var socket = null;
   var lastBuildId = null;
@@ -49,7 +50,8 @@ export const HMR_CLIENT_SCRIPT = `(function(){
   self.$RefreshSig$ = self.$RefreshSig$ || function(){ return function(type){ return type; }; };
   // Start installing React Refresh before the application module graph loads.
   // Injecting the runtime only on the first update is too late for React's renderer hook.
-  ensureRefreshRuntime().catch(function(err){
+  // A CSR page has no import map to load it from; the registry dev bundle installs its own.
+  if (clientKind === "ssr") ensureRefreshRuntime().catch(function(err){
     console.warn("[akan-hmr] React Refresh runtime preload failed", err);
   });
 
@@ -62,6 +64,10 @@ export const HMR_CLIENT_SCRIPT = `(function(){
       try { msg = JSON.parse(ev.data); } catch (e){ return; }
       if (!msg || typeof msg.type !== "string") return;
       if (msg.type === "hello") {
+        if (clientKind === "csr") {
+          if (csrGenerationMoved(msg.csrGeneration)) reloadForCsr("missed a CSR update while disconnected");
+          return;
+        }
         if (lastBuildId !== null && msg.buildId !== lastBuildId) {
           location.reload();
           return;
@@ -81,6 +87,10 @@ export const HMR_CLIENT_SCRIPT = `(function(){
       }
       if (msg.type === "client-refresh") {
         refreshClient(msg);
+        return;
+      }
+      if (msg.type === "csr-update") {
+        applyCsrUpdate(msg);
         return;
       }
       if (msg.type === "css-update") {
@@ -116,6 +126,27 @@ export const HMR_CLIENT_SCRIPT = `(function(){
     });
     socket.addEventListener("close", function(){ socket = null; schedule(); });
     socket.addEventListener("error", function(){ try { socket && socket.close(); } catch(e){} });
+  }
+
+  function csrGenerationMoved(generation){
+    if (typeof generation !== "number") return false;
+    var current = self.__akan ? self.__akan.generation : self.__AKAN_CSR_GENERATION__;
+    return typeof current === "number" && current !== generation;
+  }
+
+  function reloadForCsr(reason){
+    console.warn("[akan-hmr] reloading the CSR page: " + reason);
+    beginHmrOverlay("Reloading...", true);
+    setTimeout(function(){ location.reload(); }, 30);
+  }
+
+  // A registry page (self.__akan) patches itself; a single-file CSR artifact can only reload.
+  function applyCsrUpdate(msg){
+    if (msg.reload || !self.__akan || typeof self.__akan.hot !== "function") {
+      reloadForCsr(msg.reason || "the CSR bundle was rebuilt");
+      return;
+    }
+    self.__akan.hot(msg);
   }
 
   function schedule(){
