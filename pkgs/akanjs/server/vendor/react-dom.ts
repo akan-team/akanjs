@@ -6,6 +6,7 @@ import * as m from "react-dom";
 export default m;
 export const {
   __DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
+  browser,
   createPortal,
   flushSync,
   preconnect,

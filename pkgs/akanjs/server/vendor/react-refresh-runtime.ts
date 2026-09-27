@@ -3,4 +3,16 @@
 import * as m from "react-refresh/runtime";
 
 export default m;
-export const { injectIntoGlobalHook, performReactRefresh, register, createSignatureFunctionForTransform } = m;
+export const {
+  _getMountedRootCount,
+  collectCustomHooksForSignature,
+  createSignatureFunctionForTransform,
+  getFamilyByID,
+  getFamilyByType,
+  hasUnrecoverableErrors,
+  injectIntoGlobalHook,
+  isLikelyComponentType,
+  performReactRefresh,
+  register,
+  setSignature,
+} = m;
