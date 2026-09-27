@@ -151,6 +151,18 @@ const installWindow = ({
       hash: url.hash,
       replace: replace ?? (() => undefined),
     },
+    history: {
+      state: null,
+      replaceState: (_state: unknown, _unused: string, next: string) => {
+        const nextUrl = new URL(next, url);
+        Object.assign(window.location, {
+          href: nextUrl.href,
+          pathname: nextUrl.pathname,
+          search: nextUrl.search,
+          hash: nextUrl.hash,
+        });
+      },
+    },
   } as unknown as Window & typeof globalThis;
   Object.defineProperty(globalThis, "window", { value: window, configurable: true });
   Object.defineProperty(globalThis, "document", { value: document, configurable: true });
@@ -211,5 +223,36 @@ describe("bootCsr", () => {
 
     expect(window.__AKAN_MOBILE_TARGET__).toEqual({ name: "default", basePath: "minimal", indexPath: "/explore" });
     expect(replacements).toEqual([]);
+  });
+
+  test("starts a release bundle opened at / on the target's home, without a reload", async () => {
+    const cases = [
+      { target: { name: "default", indexPath: "/explore" }, home: "/en/explore" },
+      { target: { name: "default", basePath: "minimal" }, home: "/en/minimal" },
+      { target: { name: "default", basePath: "/minimal/", indexPath: "explore" }, home: "/en/minimal/explore" },
+      { target: { name: "default" }, home: "/en" },
+    ];
+    for (const { target, home } of cases) {
+      const replacements: string[] = [];
+      installWindow({ href: "app://localhost/", replace: (href) => replacements.push(href) });
+      window.__AKAN_MOBILE_TARGET__ = target;
+      const { bootCsr } = await import("./bootCsr");
+
+      await bootCsr({ "./_index.tsx": async () => ({ default: () => null }) });
+
+      expect(window.location.pathname).toBe(home);
+      expect(replacements).toEqual([]);
+    }
+  });
+
+  test("leaves a path the shell opened below / to the router", async () => {
+    installWindow({ href: "app://localhost/en/inbox?tab=1" });
+    window.__AKAN_MOBILE_TARGET__ = { name: "default", indexPath: "/explore" };
+    const { bootCsr } = await import("./bootCsr");
+
+    await bootCsr({ "./_index.tsx": async () => ({ default: () => null }) });
+
+    expect(window.location.pathname).toBe("/en/inbox");
+    expect(window.location.search).toBe("?tab=1");
   });
 });

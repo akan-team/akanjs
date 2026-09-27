@@ -45,12 +45,19 @@ export const bootCsr = async (context: Record<string, CsrRouteModuleEntry>) => {
   const i18n = parseAkanI18nEnv();
   window.document.body.style.overflow = "hidden";
   initializeMobileTargetFromSearch();
-  const mobileBasePath = window.__AKAN_MOBILE_TARGET__?.basePath?.replace(/^\/+|\/+$/g, "");
-  const pathname = mobileBasePath && window.location.pathname === "/" ? `/${mobileBasePath}` : window.location.pathname;
-  if (pathname === "/404") return;
+  if (window.location.pathname === "/404") return;
 
   const [device, jwt] = await Promise.all([Device.load({ supportLanguages: i18n.locales }), getStoredAuthToken()]);
-  if (!window.__AKAN_MOBILE_TARGET__ && !pathname.startsWith(`/${device.lang}`))
+  const mobileTarget = window.__AKAN_MOBILE_TARGET__;
+  // A native shell opens its bundle at `/`, but every route sits under `/:lang`; a reload would parse the bundle twice.
+  if (mobileTarget && window.location.pathname === "/")
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${mobileHomePath(device.lang, mobileTarget)}${window.location.search}${window.location.hash}`,
+    );
+  const pathname = window.location.pathname;
+  if (!mobileTarget && !pathname.startsWith(`/${device.lang}`))
     window.location.replace(`/${device.lang}${pathname}${window.location.search}${window.location.hash}`);
 
   if (jwt) initAuth({ jwt });
@@ -262,6 +269,14 @@ function initializeMobileTargetFromSearch() {
   const basePath = params.get("akanMobileBasePath")?.replace(/^\/+|\/+$/g, "") ?? "";
   const indexPath = params.get("akanMobileIndexPath") ?? undefined;
   window.__AKAN_MOBILE_TARGET__ = { name, basePath, ...(indexPath ? { indexPath } : {}) };
+}
+
+// `indexPath` is relative to the basePath, as the router's own stack root is.
+function mobileHomePath(lang: string, target: { basePath?: string; indexPath?: string }) {
+  const segments = [lang, target.basePath, target.indexPath]
+    .flatMap((part) => (part ?? "").split("/"))
+    .filter((segment) => segment.length > 0);
+  return `/${segments.join("/")}`;
 }
 
 function validateRouteModuleExports(key: string, mod: RouteModule) {
