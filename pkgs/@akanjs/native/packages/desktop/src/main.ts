@@ -31,6 +31,8 @@ interface ShellConfig {
   height?: number;
   /** akan-native dev --hmr (dev builds): the dev gateway every page request outside /__akan_native/* goes to. */
   devServer?: string;
+  /** With devServer: the main window's first page (akan-native dev --start), else "/". */
+  startPath?: string;
   /** security.shell.externalSchemes (L0): schemes links may also hand to the OS. */
   externalSchemes?: string[];
 }
@@ -123,6 +125,7 @@ export async function startMain(workerUrl: string): Promise<never> {
     activation: process.env.AKAN_NATIVE_ACTIVATION ?? "regular",
     // Only a dev build may load its pages from elsewhere.
     ...(dev && shell.devServer ? { devServer: shell.devServer } : {}),
+    ...(dev && shell.devServer && shell.startPath ? { startPath: shell.startPath } : {}),
     // Windows and Linux: the webview's storage (paths.ts) and the window icon (CLI icons.ts windowIcon).
     ...(appId && webviewDataDir(appId) ? { dataDir: webviewDataDir(appId) } : {}),
     ...(existsSync(join(paths.resources, "icon.rgba")) ? { icon: join(paths.resources, "icon.rgba") } : {}),

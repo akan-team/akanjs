@@ -236,6 +236,7 @@ export function writeDesktopResources(
       externalSchemes: config.security?.shell?.externalSchemes ?? [],
       // akan-native dev --hmr: pages come from the dev gateway (lib/hmr.ts). Never in release builds.
       ...(ctx.dev && ctx.devServer ? { devServer: ctx.devServer } : {}),
+      ...(ctx.dev && ctx.devServer && ctx.startPath ? { startPath: ctx.startPath } : {}),
       ...shellExtra,
     }),
   );

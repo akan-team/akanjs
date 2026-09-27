@@ -749,6 +749,8 @@ struct Config {
   maximized: bool,
   /// akan-native dev --hmr (dev builds only, main.ts): pages come from this gateway (devproxy.rs).
   dev_server: Option<String>,
+  /// The main window's first page (dev builds only, main.ts), e.g. the page a framework's dev server answers.
+  start_path: String,
   /// Where the webview keeps its storage and cache (Windows, Linux; WKWebView picks its own).
   data_dir: Option<PathBuf>,
   /// Window icon (Windows, Linux): [u32 width LE][u32 height LE][RGBA], written by the CLI.
@@ -807,6 +809,11 @@ fn parse_config(s: &str) -> Result<Config, String> {
     },
     maximized: get_b("maximized", false),
     dev_server: get_s("devServer"),
+    start_path: match get_s("startPath") {
+      Some(path) if is_app_path(&path) => path,
+      Some(path) => return Err(format!("startPath must be an app path like /settings, not {path:?}")),
+      None => "/".into(),
+    },
     data_dir: get_s("dataDir").map(PathBuf::from),
     icon: get_s("icon").map(PathBuf::from),
     app_id: get_s("appId").unwrap_or_default(),
@@ -901,8 +908,18 @@ fn ipc_allowed(req: &Request<Vec<u8>>) -> bool {
   origin_ok && req.headers().contains_key("x-akan-native-ipc")
 }
 
-/// Request headers worth passing to the dev gateway (no validators: the answer is never a 304).
-const DEV_FORWARD: [&str; 4] = ["accept", "accept-language", "content-type", "range"];
+/// Request headers the dev gateway does not get: devproxy writes the framing ones itself, and no validators, since
+/// the answer is never a 304. Everything else goes, authorization included, as the iOS and Android hosts pass it.
+const DEV_SKIP: [&str; 8] = [
+  "host",
+  "connection",
+  "keep-alive",
+  "content-length",
+  "transfer-encoding",
+  "accept-encoding",
+  "if-none-match",
+  "if-modified-since",
+];
 /// Hop-by-hop and framing headers of the gateway's reply: WebKit gets the decoded body as it is.
 const DEV_DROP: [&str; 5] = ["connection", "keep-alive", "transfer-encoding", "content-length", "content-encoding"];
 static DEV_WARNED: AtomicBool = AtomicBool::new(false);
@@ -915,7 +932,7 @@ fn dev_fetch(base: &str, req: &Request<Vec<u8>>) -> Result<Response<Vec<u8>>, St
   let headers: Vec<(String, String)> = req
     .headers()
     .iter()
-    .filter(|(name, _)| DEV_FORWARD.contains(&name.as_str()))
+    .filter(|(name, _)| !DEV_SKIP.contains(&name.as_str()))
     .filter_map(|(name, value)| Some((name.as_str().to_string(), value.to_str().ok()?.to_string())))
     .collect();
   let reply = devproxy::fetch(authority, req.method().as_str(), target, &headers, req.body())?;
@@ -1436,10 +1453,14 @@ fn window_arg(cmd: &json::V) -> Result<Option<u32>, String> {
 fn app_path(cmd: &json::V) -> Result<String, String> {
   let Some(v) = cmd.get("path") else { return Ok("/".into()) };
   let path = v.as_str().ok_or("path must be a string")?;
-  if !path.starts_with('/') || path.starts_with("//") || path.contains('\\') || path.chars().any(char::is_control) {
+  if !is_app_path(path) {
     return Err(format!("path must be an app path like /settings, not {path:?}"));
   }
   Ok(path.to_string())
+}
+
+fn is_app_path(path: &str) -> bool {
+  path.starts_with('/') && !path.starts_with("//") && !path.contains('\\') && !path.chars().any(char::is_control)
 }
 
 impl Windows {
@@ -1762,7 +1783,7 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
     focus: Vec::new(),
     next: 2,
   };
-  let main = WindowOptions { path: "/".into(), title: None, size: None, position: cfg.position, maximized: cfg.maximized };
+  let main = WindowOptions { path: cfg.start_path.clone(), title: None, size: None, position: cfg.position, maximized: cfg.maximized };
   match open_window(&event_loop, &windows.shell, &mut windows.web_context, 1, main) {
     Ok(win) => windows.insert(1, win),
     Err(e) => {
@@ -2100,7 +2121,7 @@ mod range_tests {
 
 #[cfg(test)]
 mod window_arg_tests {
-  use super::{app_path, json, window_arg};
+  use super::{app_path, json, parse_config, window_arg};
 
   #[test]
   fn window_ids() {
@@ -2120,6 +2141,14 @@ mod window_arg_tests {
     for bad in [r#"{"path":"settings"}"#, r#"{"path":"//evil.com/x"}"#, r#"{"path":"https://example.com"}"#, r#"{"path":"/a\\b"}"#, r#"{"path":"/a\nb"}"#, r#"{"path":3}"#] {
       assert!(path(bad).is_err(), "{bad}");
     }
+  }
+
+  #[test]
+  fn start_paths() {
+    let start = |extra: &str| parse_config(&format!(r#"{{"appDir":"/a","initJs":""{extra}}}"#)).map(|c| c.start_path);
+    assert_eq!(start(""), Ok("/".into()));
+    assert_eq!(start(r#","startPath":"/en/home?csr=true""#), Ok("/en/home?csr=true".into()));
+    assert!(start(r#","startPath":"//evil.com/x""#).is_err());
   }
 }
 

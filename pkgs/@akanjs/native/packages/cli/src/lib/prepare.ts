@@ -197,8 +197,9 @@ export async function prepare(project: Project, platform: Platform, options: Bui
   if (existsSync(indexPath)) source = readFileSync(indexPath, "utf8");
   else if (options.devServer && options.profile === "debug") {
     // A dev build whose pages come from a dev server (akanjs's, or Bun's with --hmr) needs no built
-    // SPA: the bundled page only shows while the dev server cannot be reached.
-    pageDir = join(outDir, "dev-web");
+    // SPA: the bundled page only shows while the dev server cannot be reached. Beside outDir, not in it:
+    // the desktop builders empty outDir before they copy the page into the app.
+    pageDir = `${outDir}.dev-web`;
     rmSync(pageDir, { recursive: true, force: true });
     mkdirSync(pageDir, { recursive: true });
     source = DEV_SERVER_PAGE;

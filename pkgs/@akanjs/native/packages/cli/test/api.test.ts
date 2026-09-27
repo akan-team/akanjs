@@ -172,7 +172,7 @@ describe("programmatic API", () => {
       outDir,
       api: true,
     });
-    expect(ctx.webDir).toBe(join(outDir, "dev-web"));
+    expect(ctx.webDir).toBe(`${outDir}.dev-web`);
     expect(ctx.html).toContain("loads its pages from the dev server");
     expect(ctx.html).toContain("/__akan_native/init.js");
     await expect(
