@@ -110,6 +110,74 @@ describe("dev WebSocket shim", () => {
   });
 });
 
+describe("dev request relay (Android)", () => {
+  //? A page on https://app.localhost, with a recording fetch and XMLHttpRequest in place of the WebView's.
+  const pageWithRelay = (relayBodies: boolean) => {
+    const sent: string[] = [];
+    class Request {
+      constructor(
+        readonly url: string,
+        readonly init?: { method?: string } | Request,
+      ) {}
+      get method(): string {
+        return this.init instanceof Request ? this.init.method : (this.init?.method ?? "GET");
+      }
+    }
+    class XMLHttpRequest {
+      open(method: string, url: string) {
+        sent.push(`xhr ${method} ${url}`);
+      }
+    }
+    const window: Record<string, unknown> = {
+      WebSocket: class {},
+      Request,
+      XMLHttpRequest,
+      fetch: (input: string | Request, init?: { method?: string }) => {
+        const url = typeof input === "string" ? input : input.url;
+        const method = init?.method ?? (typeof input === "string" ? "GET" : input.method);
+        sent.push(`fetch ${method} ${url}`);
+      },
+    };
+    new Function("window", "location", "URL", "Element", devShim({ origin: "ws://localhost:5000", relayBodies }))(
+      window,
+      new URL("https://app.localhost/en/"),
+      URL,
+      class {},
+    );
+    return { window, sent, Request, XMLHttpRequest };
+  };
+
+  test("a call with a body leaves for the gateway; GET, other origins and the host's paths stay", () => {
+    const { window, sent, Request, XMLHttpRequest } = pageWithRelay(true);
+    const fetch = window.fetch as (input: unknown, init?: { method?: string }) => void;
+    fetch("/api/createUser", { method: "post" });
+    fetch(new Request("https://app.localhost/api/removeUser?x=1", { method: "DELETE" }));
+    fetch("/api/getSelf");
+    fetch("https://example.com/api/x", { method: "POST" });
+    fetch("/__akan_native/ipc", { method: "POST" });
+    new XMLHttpRequest().open("PUT", "/api/upload");
+    new XMLHttpRequest().open("GET", "/api/list");
+
+    expect(sent).toEqual([
+      "fetch post http://localhost:5000/api/createUser",
+      "fetch DELETE http://localhost:5000/api/removeUser?x=1",
+      "fetch GET /api/getSelf",
+      "fetch POST https://example.com/api/x",
+      "fetch POST /__akan_native/ipc",
+      "xhr PUT http://localhost:5000/api/upload",
+      "xhr GET /api/list",
+    ]);
+    expect(window.__AKAN_NATIVE_DEV__).toEqual({ gateway: "http://localhost:5000" });
+  });
+
+  test("iOS carries every call itself: nothing is rewritten, the page is only marked", () => {
+    const { window, sent } = pageWithRelay(false);
+    (window.fetch as (input: string, init: { method: string }) => void)("/api/createUser", { method: "POST" });
+    expect(sent).toEqual(["fetch POST /api/createUser"]);
+    expect(window.__AKAN_NATIVE_DEV__).toEqual({ gateway: "http://localhost:5000" });
+  });
+});
+
 describe("dev overlay style", () => {
   test("Bun's overlay host gets its style through CSSOM (allowed by style-src-attr), other elements unchanged", () => {
     const calls: string[] = [];
@@ -147,7 +215,14 @@ describe("dev CSP additions", () => {
       ),
     );
     expect(map.get("script-src")).toEqual(["'self'", "'sha256-x'", "blob:"]);
-    expect(map.get("connect-src")).toEqual(["'self'", "blob:", "ws://localhost:4321", "ws://127.0.0.1:4321"]);
+    expect(map.get("connect-src")).toEqual([
+      "'self'",
+      "blob:",
+      "ws://localhost:4321",
+      "ws://127.0.0.1:4321",
+      "http://localhost:4321",
+      "http://127.0.0.1:4321",
+    ]);
     expect(map.get("default-src")).toEqual(["'self'"]);
   });
 
@@ -155,7 +230,12 @@ describe("dev CSP additions", () => {
     const map = parseCsp(devCspSources("default-src 'none'; script-src-elem 'self'", "ws://localhost:1"));
     expect(map.get("script-src")).toEqual(["blob:"]);
     expect(map.get("script-src-elem")).toEqual(["'self'", "blob:"]);
-    expect(map.get("connect-src")).toEqual(["ws://localhost:1", "ws://127.0.0.1:1"]);
+    expect(map.get("connect-src")).toEqual([
+      "ws://localhost:1",
+      "ws://127.0.0.1:1",
+      "http://localhost:1",
+      "http://127.0.0.1:1",
+    ]);
     expect(devCspSources("img-src 'self'", "ws://localhost:1")).toBe("img-src 'self'");
   });
 });
@@ -213,7 +293,7 @@ describe("dev page rewrite", () => {
       port: 2,
     });
     expect(html).toBe(
-      `<html><head><script src="/__akan_native/init.js"></script><title>t</title><script>${devShim({ origin: "ws://localhost:2" })}</script></head><body></body></html>`,
+      `<html><head><script src="/__akan_native/init.js"></script><title>t</title><script>${devShim({ origin: "ws://localhost:2", relayBodies: true })}</script></head><body></body></html>`,
     );
   });
 });

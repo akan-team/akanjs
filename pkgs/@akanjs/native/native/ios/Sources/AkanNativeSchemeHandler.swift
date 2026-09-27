@@ -87,8 +87,9 @@ final class AkanNativeSchemeHandler: NSObject, WKURLSchemeHandler {
 
     // MARK: akan-native dev --hmr
 
-    /// Request headers passed on (no validators: the gateway never answers 304).
-    private static let devForward: Set<String> = ["accept", "accept-language", "content-type", "range"]
+    /// Request headers not passed on: hop-by-hop, the gateway's own host, and validators (the gateway never
+    /// answers 304). Everything else goes, Authorization included, so the page's API calls work through it.
+    private static let devSkip: Set<String> = ["host", "connection", "keep-alive", "content-length", "accept-encoding", "if-none-match", "if-modified-since"]
     /// Framing headers of the gateway's reply; respond() sets Content-Type and Content-Length itself.
     private static let devDrop: Set<String> = ["connection", "keep-alive", "transfer-encoding", "content-length", "content-encoding", "content-type"]
 
@@ -103,8 +104,8 @@ final class AkanNativeSchemeHandler: NSObject, WKURLSchemeHandler {
         guard let target = components.url else { return serveLocal(task, key, url: url) }
         var request = URLRequest(url: target)
         request.httpMethod = task.request.httpMethod ?? "GET"
-        request.httpBody = task.request.httpBody
-        for (name, value) in task.request.allHTTPHeaderFields ?? [:] where Self.devForward.contains(name.lowercased()) {
+        request.httpBody = Self.bodyOf(task.request)
+        for (name, value) in task.request.allHTTPHeaderFields ?? [:] where !Self.devSkip.contains(name.lowercased()) {
             request.setValue(value, forHTTPHeaderField: name)
         }
         let box = UncheckedBox(task)
@@ -130,6 +131,22 @@ final class AkanNativeSchemeHandler: NSObject, WKURLSchemeHandler {
                 }
             }
         }.resume()
+    }
+
+    /// WebKit hands a Blob or FormData body to the handler as a stream instead of `httpBody`.
+    private static func bodyOf(_ request: URLRequest) -> Data? {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+        while true {
+            let read = stream.read(&buffer, maxLength: buffer.count)
+            if read <= 0 { break }
+            data.append(buffer, count: read)
+        }
+        return data
     }
 
     private func notFound(_ task: any WKURLSchemeTask, _ key: ObjectIdentifier) {

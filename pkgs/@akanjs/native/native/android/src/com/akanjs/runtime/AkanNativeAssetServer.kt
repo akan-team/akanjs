@@ -18,6 +18,8 @@ import java.io.InputStream
  * fetched from the dev gateway (packages/cli/src/lib/hmr.ts; the CLI runs `adb reverse`, and the
  * dev network security config allows cleartext to 127.0.0.1) and answered on https://app.localhost,
  * so the bridge, storage and CSP see the usual origin. Without the gateway the bundled files are served.
+ * A request with a body never arrives here (WebResourceRequest has none): the dev page sends those to
+ * the gateway itself (devShim relayBodies).
  */
 class AkanNativeAssetServer(
     private val assets: AssetManager,
@@ -49,8 +51,12 @@ class AkanNativeAssetServer(
         )
 
         private val DEV_SERVER = Regex("http://(127\\.0\\.0\\.1|localhost):[0-9]{1,5}")
-        /** Request headers passed to the gateway (no validators: it never answers 304, which WebResourceResponse rejects). */
-        private val DEV_FORWARD = setOf("accept", "accept-language", "range")
+        /**
+         * Request headers not passed to the gateway: hop-by-hop, its own host, validators (it never answers 304,
+         * which WebResourceResponse rejects) and Accept-Encoding (HttpURLConnection only unpacks what it asked
+         * for). Everything else goes, Authorization included, so the page's API calls work through it.
+         */
+        private val DEV_SKIP = setOf("host", "connection", "keep-alive", "content-length", "accept-encoding", "if-none-match", "if-modified-since")
         /** Framing headers of the gateway's reply; the stream is handed over as it is. */
         private val DEV_DROP = setOf("connection", "keep-alive", "transfer-encoding", "content-length", "content-encoding", "content-type")
 
@@ -187,7 +193,7 @@ class AkanNativeAssetServer(
             connection.readTimeout = 60_000 // Bun bundles on the first request
             connection.useCaches = false
             connection.instanceFollowRedirects = true
-            for ((name, value) in request.requestHeaders) if (name.lowercase() in DEV_FORWARD) connection.setRequestProperty(name, value)
+            for ((name, value) in request.requestHeaders) if (name.lowercase() !in DEV_SKIP) connection.setRequestProperty(name, value)
             val status = connection.responseCode // connects; IOException when nothing listens
             val type = connection.contentType ?: AkanNativeKernel.assetMime(url.path ?: "")
             val charset = Regex("charset=\"?([^;\"]+)", RegexOption.IGNORE_CASE).find(type)?.groupValues?.get(1)?.trim()

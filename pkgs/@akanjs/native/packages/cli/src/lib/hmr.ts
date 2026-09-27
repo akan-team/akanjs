@@ -59,9 +59,14 @@ export function resolveDevEntry(project: Project): string {
  *   refuses (style-src-attr); the same text through CSSOM (style.cssText) is allowed. Only that
  *   element: the app's own style attributes meet the policy as in a build.
  * - `socket` (native hosts): WebSockets the page opens on its own origin to the HMR path (or one of
- *   `paths`, the app's own sockets relayed by the gateway) go to the gateway's origin instead.
+ *   `paths`, the app's own sockets relayed by the gateway) go to the gateway's origin instead, and
+ *   `window.__AKAN_NATIVE_DEV__.gateway` tells the app its page came through the gateway.
+ * - `socket.relayBodies` (Android): fetch and XMLHttpRequest calls on the page's origin with a method
+ *   other than GET or HEAD go to the gateway's http origin instead. shouldInterceptRequest hands the
+ *   shell no request body, so the host cannot carry them; http://localhost is a trustworthy origin
+ *   there, so the call is not mixed content, and the dev server answers the app origin's CORS.
  */
-export function devShim(socket?: { origin: string; path?: string; paths?: string[] }): string {
+export function devShim(socket?: { origin: string; path?: string; paths?: string[]; relayBodies?: boolean }): string {
   const overlay =
     "var A=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){" +
     'if(n==="style"&&this.localName==="bun-hmr"){this.style.cssText=v;return}return A.call(this,n,v)};';
@@ -74,7 +79,19 @@ export function devShim(socket?: { origin: string; path?: string; paths?: string
         JSON.stringify([socket.path ?? HMR_PATH, ...(socket.paths ?? [])]) +
         ";function S(u,p){try{var x=new URL(String(u),location.href);if(P.indexOf(x.pathname)>=0&&x.host===location.host)u=T+x.pathname+x.search}catch(e){}return p===undefined?new W(u):new W(u,p)}" +
         "S.prototype=W.prototype;S.CONNECTING=0;S.OPEN=1;S.CLOSING=2;S.CLOSED=3;window.WebSocket=S;";
-  return `(function(){${overlay}${redirect}})();`;
+  const gateway = socket?.origin.replace(/^ws/, "http");
+  const marker = gateway === undefined ? "" : `window.__AKAN_NATIVE_DEV__={gateway:${JSON.stringify(gateway)}};`;
+  const bodies = !socket?.relayBodies
+    ? ""
+    : "var G=" +
+      JSON.stringify(gateway) +
+      ';function R(u,m){try{var x=new URL(String(u),location.href);m=String(m||"GET").toUpperCase();' +
+      'if(x.origin===location.origin&&m!=="GET"&&m!=="HEAD"&&x.pathname.indexOf("/__akan_native/")!==0)return G+x.pathname+x.search}catch(e){}return null}' +
+      "var F=window.fetch;if(F)window.fetch=function(i,o){var q=window.Request&&i instanceof window.Request," +
+      'r=R(q?i.url:i,(o&&o.method)||(q?i.method:"GET"));return r?F.call(this,q?new window.Request(r,i):r,o):F.apply(this,arguments)};' +
+      "var X=window.XMLHttpRequest&&window.XMLHttpRequest.prototype,N=X&&X.open;" +
+      "if(N)X.open=function(m,u){var r=R(u,m);if(r)arguments[1]=r;return N.apply(this,arguments)};";
+  return `(function(){${overlay}${redirect}${marker}${bodies}})();`;
 }
 
 /**
@@ -98,7 +115,9 @@ export function devCspSources(policy: string, wsOrigin: string): string {
   add("script-src", ["blob:"]);
   if (map.has("script-src-elem")) add("script-src-elem", ["blob:"]);
   const local = /^ws:\/\/localhost:(\d+)$/.exec(wsOrigin);
-  add("connect-src", local ? [wsOrigin, `ws://127.0.0.1:${local[1]}`] : [wsOrigin]);
+  const origins = local ? [wsOrigin, `ws://127.0.0.1:${local[1]}`] : [wsOrigin];
+  //? The same origins over http: Android sends the page's calls that carry a body there (devShim relayBodies).
+  add("connect-src", [...origins, ...origins.map((origin) => origin.replace(/^ws/, "http"))]);
   return serializeCsp(map);
 }
 
@@ -132,6 +151,7 @@ export function rewriteDevHtml(html: string, opts: DevHtmlOptions): { html: stri
           origin: opts.wsOrigin ?? `ws://localhost:${opts.port}`,
           path: opts.hmrPath ?? HMR_PATH,
           paths: opts.wsPaths ?? [],
+          relayBodies: opts.platform === "android",
         };
   const tag = `<script>${devShim(socket)}</script>`;
   // Before Bun's client, else before the page's first script after init.js (an app's module script

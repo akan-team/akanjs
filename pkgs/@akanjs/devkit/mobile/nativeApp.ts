@@ -122,14 +122,14 @@ export class NativeApp {
   //* which an Android device reaches through the reversed port.
   async dev(platform: MobilePlatform, { upstream, lang, device, teamId }: NativeDevOptions) {
     await mkdir(this.web.dir, { recursive: true });
-    const { api, config } = await this.prepare();
-    const serverPort = Number(new URL(upstream).port || 80);
+    const [{ api, config }, { api: routes }] = await Promise.all([this.prepare(), this.app.getConfig()]);
     return await api.dev({
       ...this.#task(platform, config),
       upstream,
       hmrPath: "/_akan/hmr",
+      //? A dev page calls its own origin (akanjs baseEnv), so the gateway relays the socket it opens for the API too.
+      wsPaths: [`${routes.prefix}${routes.websocketPrefix}`],
       onLine: this.#appLine,
-      reversePorts: [serverPort],
       startPath: this.startPath(lang),
       ...(device ? { device } : {}),
       ...(teamId ? { ios: { signing: { teamId } } } : {}),

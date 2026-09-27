@@ -121,8 +121,15 @@ const csrServerUrl = (): URL | null => {
   return url;
 };
 
-//* The dev gateway serves a native shell's page on the app origin but cannot carry its API calls (Android answers
-//* only GET there, iOS forwards no auth header), so a local build calls the dev server itself; Android via adb reverse.
+//* A native dev build's page comes from the akan-native dev gateway on the app origin, and the gateway carries its API
+//* calls and sockets to the dev server as well, so the page calls its own origin: the path a phone on Wi-Fi takes too.
+//* The gateway's page shim marks the page; a debug build with no gateway behind it is not marked.
+const nativeDevGatewayOrigin = (): string | null =>
+  (globalThis as { __AKAN_NATIVE_DEV__?: { gateway?: string } }).__AKAN_NATIVE_DEV__?.gateway
+    ? `${window.location.protocol}//${window.location.host}`
+    : null;
+
+//* A release build has no gateway behind it, so in local mode it calls the dev server itself.
 const nativeDevServerUrl = (operationMode: BaseEnv["operationMode"]): URL | null => {
   const platform = (globalThis as { __AKAN_NATIVE__?: { platform?: string } }).__AKAN_NATIVE__?.platform;
   if (operationMode !== "local" || !platform || platform === "web") return null;
@@ -176,12 +183,14 @@ export const getEnv = (): ClientEnv => {
         ? "http:"
         : "https:";
   const clientHttpUri = `${clientHttpProtocol}//${clientHost}${clientPort === 443 ? "" : `:${clientPort}`}`;
-  const serverUrl =
-    side === "client" && renderMode === "csr" ? (csrServerUrl() ?? nativeDevServerUrl(operationMode)) : null;
+  const csrClient = side === "client" && renderMode === "csr";
+  const pageOrigin = csrClient && !process.env.AKAN_PUBLIC_SERVER_URL ? nativeDevGatewayOrigin() : null;
+  const serverUrl = csrClient && !pageOrigin ? (csrServerUrl() ?? nativeDevServerUrl(operationMode)) : null;
   // The port belongs to whoever named the host: a cloud CSR bundle's host is not the page's.
-  const hostFromPage = side === "client" && !serverUrl && (operationMode === "local" || renderMode !== "csr");
+  const hostFromPage =
+    side === "client" && !serverUrl && (!!pageOrigin || operationMode === "local" || renderMode !== "csr");
   const serverHost =
-    serverUrl?.hostname ??
+    (pageOrigin ? window.location.hostname : serverUrl?.hostname) ??
     process.env.SERVER_HOST ??
     (operationMode === "local"
       ? typeof window === "undefined"
@@ -206,7 +215,7 @@ export const getEnv = (): ClientEnv => {
           : 443;
 
   const serverHttpProtocol: "http:" | "https:" =
-    (serverUrl?.protocol as "http:" | "https:" | undefined) ??
+    ((pageOrigin ? window.location.protocol : serverUrl?.protocol) as "http:" | "https:" | undefined) ??
     (process.env.SERVER_HTTP_PROTOCOL as "http:" | "https:" | undefined) ??
     (operationMode === "local"
       ? side === "client"
@@ -219,9 +228,14 @@ export const getEnv = (): ClientEnv => {
           : ("http:" as const));
   const apiPrefix = getApiPrefix();
   const wsPrefix = getWsPrefix();
-  const serverHttpUri = `${serverHttpProtocol}//${serverHost}${serverPort === 443 ? "" : `:${serverPort}`}${apiPrefix}`;
+  //? iOS serves the page on app://localhost, which has no default port to leave out, so the origin is taken whole.
+  const serverHttpUri = pageOrigin
+    ? `${pageOrigin}${apiPrefix}`
+    : `${serverHttpProtocol}//${serverHost}${serverPort === 443 ? "" : `:${serverPort}`}${apiPrefix}`;
   const serverWsProtocol = serverHttpProtocol === "http:" ? "ws:" : "wss:";
-  const serverWsUri = `${serverWsProtocol}//${serverHost}${serverPort === 443 ? "" : `:${serverPort}`}`;
+  const serverWsUri = pageOrigin
+    ? pageOrigin.replace(/^http/, "ws")
+    : `${serverWsProtocol}//${serverHost}${serverPort === 443 ? "" : `:${serverPort}`}`;
 
   const env: ClientEnv = {
     ...baseEnv,

@@ -225,7 +225,40 @@ describe("getEnv", () => {
     });
   });
 
-  test("a local CSR bundle in a native shell calls the dev server on localhost", async () => {
+  test("a page the dev gateway served calls its own origin, which the shell and the gateway carry", async () => {
+    const holder = globalThis as { __AKAN_NATIVE__?: { platform: string }; __AKAN_NATIVE_DEV__?: { gateway: string } };
+    try {
+      for (const [platform, href, http, ws] of [
+        ["ios", "app://localhost/en?csr=true", "app://localhost/api", "app://localhost"],
+        ["android", "https://app.localhost/en?csr=true", "https://app.localhost/api", "wss://app.localhost"],
+      ] as const) {
+        for (const environment of ["local", "develop"]) {
+          resetEnv();
+          Object.assign(process.env, { AKAN_PUBLIC_ENV: environment, AKAN_PUBLIC_SERVER_PORT: "8283" });
+          holder.__AKAN_NATIVE__ = { platform };
+          holder.__AKAN_NATIVE_DEV__ = { gateway: "http://localhost:52011" };
+          const env = await asPage(href, async () => (await loadBaseEnv()).getEnv());
+          expect([platform, environment, env.serverHttpUri, env.serverWsUri]).toEqual([
+            platform,
+            environment,
+            http,
+            ws,
+          ]);
+        }
+      }
+
+      resetEnv();
+      Object.assign(process.env, { AKAN_PUBLIC_ENV: "local", AKAN_PUBLIC_SERVER_URL: "https://api.example.com" });
+      const pinned = await asPage("app://localhost/", async () => (await loadBaseEnv()).getEnv());
+      expect(pinned.serverHttpUri).toBe("https://api.example.com/api");
+    } finally {
+      delete holder.__AKAN_NATIVE__;
+      delete holder.__AKAN_NATIVE_DEV__;
+      delete process.env.AKAN_PUBLIC_SERVER_URL;
+    }
+  });
+
+  test("a local release bundle in a native shell calls the dev server on localhost", async () => {
     const holder = globalThis as { __AKAN_NATIVE__?: { platform: string } };
     try {
       for (const [platform, href] of [
