@@ -181,7 +181,6 @@
     "bullmq": "^5.76.10",
     "capacitor-plugin-safe-area": "^5.0.0",
     "chance": "^1.1.13",
-    "cordova-plugin-purchase": "^13.16.0",
     "firebase": "^12.13.0",
     "happy-dom": "^20.11.2",
     "ioredis": "^5.10.1",
@@ -271,9 +270,6 @@
       "optional": true
     },
     "chance": {
-      "optional": true
-    },
-    "cordova-plugin-purchase": {
       "optional": true
     },
     "firebase": {

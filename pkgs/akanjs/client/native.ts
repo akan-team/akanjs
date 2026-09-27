@@ -11,6 +11,7 @@ export { device } from "@akanjs/native/plugins/device";
 export { dialog } from "@akanjs/native/plugins/dialog";
 export type { Position } from "@akanjs/native/plugins/geolocation";
 export { haptics } from "@akanjs/native/plugins/haptics";
+export type { IapProduct, IapTransaction } from "@akanjs/native/plugins/iap";
 export { keyboard } from "@akanjs/native/plugins/keyboard";
 export { preferences } from "@akanjs/native/plugins/preferences";
 export type {
@@ -23,12 +24,15 @@ export { push } from "@akanjs/native/plugins/push";
 export { secureStorage } from "@akanjs/native/plugins/secure-storage";
 export { browser, opener };
 
-//* Kept out of the page's first chunk: a photo is re-encoded in the page on the web, and few screens ask for either.
+//* Kept out of the page's first chunk: a photo is re-encoded in the page on the web, and few screens ask for any.
 export const loadCamera = () => import("@akanjs/native/plugins/camera");
 export const loadGeolocation = () => import("@akanjs/native/plugins/geolocation");
+export const loadIap = () => import("@akanjs/native/plugins/iap");
 
 /** Inside an iOS or Android shell of the native runtime; a mobile target opened in a browser is not. */
 export const isNativeApp = () => isNative && (platform === "ios" || platform === "android");
+
+export const nativePlatform = () => (isNativeApp() ? (platform as "ios" | "android") : null);
 
 /** http(s) in the in-app browser, anything else (mailto:, tel:) in the app the system picks. */
 export const openExternalUrl = async (url: string) => {
