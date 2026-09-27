@@ -1,0 +1,17 @@
+{
+  "about": "Retained events (plugins.md C2; Capacitor retainUntilConsumed, 36564ef): links and taps that come before the page listens. ops: [listen, name, whether the listener accepts], [unlisten, name], [emit, value, retain]; log: \"name:value\" for each delivery a listener accepted. A live event goes to every listener; one no listener accepted is kept when retained (at most 16, the oldest go) and replayed, in order, to the next listener, once.",
+  "cases": [
+    {"name": "an active listener gets the event", "ops": [["listen", "a", true], ["emit", "x", true]], "log": ["a:x"]},
+    {"name": "after unlisten nothing is delivered; a retained event waits", "ops": [["listen", "a", true], ["unlisten", "a"], ["emit", "x", true], ["listen", "b", true]], "log": ["b:x"]},
+    {"name": "an event that is not retained is dropped without a listener", "ops": [["emit", "x", false], ["listen", "a", true]], "log": []},
+    {"name": "the first listen replays in order", "ops": [["emit", "x", true], ["emit", "y", true], ["listen", "a", true]], "log": ["a:x", "a:y"]},
+    {"name": "a retained event is replayed once", "ops": [["listen", "a", true], ["unlisten", "a"], ["emit", "x", true], ["listen", "b", true], ["unlisten", "b"], ["listen", "c", true]], "log": ["b:x"]},
+    {"name": "a listener that refuses counts as none (and is dropped)", "ops": [["listen", "a", false], ["emit", "x", true], ["listen", "b", true], ["emit", "y", true]], "log": ["b:x", "b:y"]},
+    {"name": "every active listener gets a live event", "ops": [["listen", "a", true], ["listen", "b", true], ["emit", "x", true]], "log": ["a:x", "b:x"]},
+    {"name": "replay, then live events", "ops": [["emit", "x", true], ["listen", "a", true], ["emit", "y", false]], "log": ["a:x", "a:y"]},
+    {"name": "a refusal during replay keeps the rest", "ops": [["emit", "x", true], ["emit", "y", true], ["listen", "a", false], ["listen", "b", true]], "log": ["b:x", "b:y"]},
+    {"name": "at most 16 wait: the oldest go", "ops": [["emit", "0", true], ["emit", "1", true], ["emit", "2", true], ["emit", "3", true], ["emit", "4", true], ["emit", "5", true], ["emit", "6", true], ["emit", "7", true], ["emit", "8", true], ["emit", "9", true], ["emit", "10", true], ["emit", "11", true], ["emit", "12", true], ["emit", "13", true], ["emit", "14", true], ["emit", "15", true], ["emit", "16", true], ["emit", "17", true], ["listen", "a", true]], "log": ["a:2", "a:3", "a:4", "a:5", "a:6", "a:7", "a:8", "a:9", "a:10", "a:11", "a:12", "a:13", "a:14", "a:15", "a:16", "a:17"]},
+    {"name": "unlisten of a name that never listened changes nothing", "ops": [["unlisten", "z"], ["emit", "x", true], ["listen", "a", true]], "log": ["a:x"]},
+    {"name": "a second listen of the same name replaces it", "ops": [["listen", "a", true], ["listen", "a", true], ["emit", "x", true]], "log": ["a:x"]}
+  ]
+}

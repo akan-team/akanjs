@@ -1,0 +1,18 @@
+{
+  "id": "share",
+  "apiVersion": 1,
+  "methods": ["share", "canShare"],
+  "events": [],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": "web",
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "SharePlugin"
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.share.SharePlugin",
+    "manifestXml": "<permission android:name=\"${applicationId}.AKAN_NATIVE_INTERNAL_BROADCAST\" android:protectionLevel=\"signature\" />\n    <uses-permission android:name=\"${applicationId}.AKAN_NATIVE_INTERNAL_BROADCAST\" />"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "id": "app",
+  "apiVersion": 1,
+  "methods": ["getInfo", "getLaunchUrl", "exit", "minimize", "answerBeforeQuit"],
+  "events": ["urlOpen", "backButton", "beforeQuit"],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": "./src/desktop.ts",
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "AppPlugin",
+    "methods": ["getInfo", "getLaunchUrl", "exit", "minimize"],
+    "events": ["urlOpen", "backButton"]
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.app.AppPlugin",
+    "methods": ["getInfo", "getLaunchUrl", "exit", "minimize"],
+    "events": ["urlOpen", "backButton"]
+  }
+}

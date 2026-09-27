@@ -1,0 +1,19 @@
+{
+  "id": "auth-session",
+  "apiVersion": 1,
+  "methods": ["start"],
+  "events": [],
+  "codegen": true,
+  "web": null,
+  "desktop": "./src/desktop.ts",
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "AuthSessionPlugin",
+    "frameworks": ["AuthenticationServices"]
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.authsession.AuthSessionPlugin",
+    "manifestXml": "<queries><intent><action android:name=\"android.support.customtabs.action.CustomTabsService\" /></intent><intent><action android:name=\"android.intent.action.VIEW\" /><category android:name=\"android.intent.category.BROWSABLE\" /><data android:scheme=\"https\" /></intent></queries>"
+  }
+}

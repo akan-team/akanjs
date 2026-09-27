@@ -1,0 +1,7 @@
+# Pinned Rust for the desktop shell (requirements CLI-10). rustup reads this file in this folder
+# and installs the version on first use; the akan-native CLI runs cargo here. Keep it in sync with
+# TOOLCHAIN.rust in packages/cli/src/lib/toolchains.ts (a test checks it). wry 0.57 / tao 0.37
+# need 1.85 or newer.
+[toolchain]
+channel = "1.98.1"
+profile = "minimal"

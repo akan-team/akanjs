@@ -1,0 +1,18 @@
+{
+  "id": "device",
+  "apiVersion": 1,
+  "methods": ["getInfo", "getId", "getLanguage", "getBattery"],
+  "events": [],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": "./src/desktop.ts",
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "DevicePlugin",
+    "frameworks": ["UIKit"]
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.device.DevicePlugin"
+  }
+}

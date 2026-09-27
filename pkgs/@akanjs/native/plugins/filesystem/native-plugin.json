@@ -1,0 +1,45 @@
+{
+  "id": "filesystem",
+  "apiVersion": 1,
+  "methods": ["readFile", "writeFile", "readDir", "stat", "exists", "mkdir", "remove", "rename", "copy", "paths"],
+  "events": [],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": "./src/desktop.ts",
+  "macos": {
+    "infoPlist": {
+      "NSDocumentsFolderUsageDescription": "Save and open documents in your Documents folder."
+    }
+  },
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "FilesystemPlugin",
+    "privacyApis": { "FileTimestamp": ["C617.1"] },
+    "frameworks": ["UniformTypeIdentifiers"]
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.filesystem.FilesystemPlugin"
+  },
+  "permissionSets": {
+    "read": {
+      "description": "Read files and folders, and the base paths.",
+      "permissions": ["allow-readFile", "allow-readDir", "allow-stat", "allow-exists", "allow-paths"]
+    },
+    "write": {
+      "description": "Create, change, move and remove files and folders.",
+      "permissions": ["allow-writeFile", "allow-mkdir", "allow-remove", "allow-rename", "allow-copy"]
+    }
+  },
+  "scope": {
+    "description": "Which files a call may touch. Both fields are optional globs.",
+    "fields": {
+      "base": "base directory: data, cache, documents or temp (glob)",
+      "path": "path relative to the base, \"/\" separated; * stays in a folder, ** crosses folders, \"dir/**\" includes dir itself; in allow no wildcard matches a name starting with \".\" (write \".config/**\"), in deny they do"
+    },
+    "pathFields": ["path"]
+  },
+  "defaultScope": {
+    "allow": [{ "base": "data" }, { "base": "cache" }, { "base": "temp" }]
+  }
+}

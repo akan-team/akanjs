@@ -1,0 +1,17 @@
+{
+  "id": "app-state",
+  "apiVersion": 1,
+  "methods": ["getState"],
+  "events": ["change"],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": "web",
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "AppStatePlugin"
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.appstate.AppStatePlugin"
+  }
+}

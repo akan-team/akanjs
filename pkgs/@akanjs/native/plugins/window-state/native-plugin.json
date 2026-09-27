@@ -1,0 +1,10 @@
+{
+  "id": "window-state",
+  "apiVersion": 1,
+  "methods": ["getSaved", "save", "clear"],
+  "events": [],
+  "web": null,
+  "desktop": "./src/desktop.ts",
+  "ios": null,
+  "android": null
+}

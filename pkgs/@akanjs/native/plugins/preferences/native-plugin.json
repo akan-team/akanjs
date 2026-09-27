@@ -1,0 +1,18 @@
+{
+  "id": "preferences",
+  "apiVersion": 1,
+  "methods": ["get", "set", "remove", "keys", "clear"],
+  "events": [],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": "./src/desktop.ts",
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "PreferencesPlugin",
+    "privacyApis": { "UserDefaults": ["CA92.1"] }
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.preferences.PreferencesPlugin"
+  }
+}

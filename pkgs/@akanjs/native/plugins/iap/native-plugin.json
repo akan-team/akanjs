@@ -1,0 +1,28 @@
+{
+  "id": "iap",
+  "apiVersion": 1,
+  "methods": [
+    "canMakePayments",
+    "getProducts",
+    "purchase",
+    "finish",
+    "getUnfinished",
+    "getEntitlements",
+    "restore",
+    "manageSubscriptions"
+  ],
+  "events": ["transaction"],
+  "codegen": true,
+  "web": null,
+  "desktop": null,
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "IapPlugin",
+    "frameworks": ["StoreKit"]
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.iap.IapPlugin",
+    "maven": ["com.android.billingclient:billing:9.1.0"]
+  }
+}

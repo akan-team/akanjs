@@ -1,0 +1,10 @@
+{
+  "id": "global-shortcut",
+  "apiVersion": 1,
+  "methods": ["register", "unregister", "unregisterAll", "isRegistered", "list"],
+  "events": ["pressed"],
+  "web": null,
+  "desktop": "./src/desktop.ts",
+  "ios": null,
+  "android": null
+}

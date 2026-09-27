@@ -1,0 +1,32 @@
+{
+  "id": "camera",
+  "apiVersion": 1,
+  "methods": ["takePhoto", "pickImages", "saveToGallery", "checkPermission", "requestPermission"],
+  "events": [],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": {
+    "module": "./src/desktop.ts",
+    "methods": ["checkPermission", "requestPermission"],
+    "events": [],
+    "web": true
+  },
+  "macos": {
+    "infoPlist": {
+      "NSCameraUsageDescription": "Take photos with the camera."
+    }
+  },
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "CameraPlugin",
+    "frameworks": ["AVFoundation", "Photos", "PhotosUI"],
+    "infoPlist": {
+      "NSCameraUsageDescription": "Take photos with the camera.",
+      "NSPhotoLibraryAddUsageDescription": "Save photos to your library."
+    }
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.camera.CameraPlugin"
+  }
+}

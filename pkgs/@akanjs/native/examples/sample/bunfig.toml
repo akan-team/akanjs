@@ -1,0 +1,4 @@
+# `akan-native dev --hmr`: Bun's dev server bundles the pages itself and does not run build.ts, so the
+# build-time constants build.ts defines are given to it here (docs/architecture.md, HMR).
+[serve.static]
+define = { "__BUILD_TIME__" = "\"dev server\"", "__BUILD_MODE__" = "\"development\"" }

@@ -1,0 +1,15 @@
+{
+  "id": "badge",
+  "apiVersion": 1,
+  "methods": ["set", "clear", "checkPermission", "requestPermission"],
+  "events": [],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": "./src/desktop.ts",
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "BadgePlugin",
+    "frameworks": ["UserNotifications"]
+  },
+  "android": null
+}

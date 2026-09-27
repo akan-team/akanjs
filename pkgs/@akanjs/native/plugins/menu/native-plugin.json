@@ -1,0 +1,10 @@
+{
+  "id": "menu",
+  "apiVersion": 1,
+  "methods": ["setAppMenu", "resetAppMenu", "getAppMenu", "popupContextMenu", "triggerItem"],
+  "events": ["click"],
+  "web": null,
+  "desktop": "./src/desktop.ts",
+  "ios": null,
+  "android": null
+}

@@ -1,0 +1,10 @@
+{
+  "id": "single-instance",
+  "apiVersion": 1,
+  "methods": [],
+  "events": ["secondInstance"],
+  "web": null,
+  "desktop": "./src/desktop.ts",
+  "ios": null,
+  "android": null
+}

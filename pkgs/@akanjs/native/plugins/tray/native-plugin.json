@@ -1,0 +1,10 @@
+{
+  "id": "tray",
+  "apiVersion": 1,
+  "methods": ["create", "update", "setIcon", "setTitle", "setTooltip", "setMenu", "remove", "list", "trigger"],
+  "events": ["click", "menuClick"],
+  "web": null,
+  "desktop": "./src/desktop.ts",
+  "ios": null,
+  "android": null
+}

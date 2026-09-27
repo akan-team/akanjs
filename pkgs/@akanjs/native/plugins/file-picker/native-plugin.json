@@ -1,0 +1,18 @@
+{
+  "id": "file-picker",
+  "apiVersion": 1,
+  "methods": ["pickFiles", "saveFile", "pickDirectory"],
+  "events": [],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": "./src/desktop.ts",
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "FilePickerPlugin",
+    "frameworks": ["UniformTypeIdentifiers"]
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.filepicker.FilePickerPlugin"
+  }
+}

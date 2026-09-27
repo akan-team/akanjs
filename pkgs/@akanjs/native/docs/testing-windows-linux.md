@@ -1,0 +1,111 @@
+# Windows·Linux 빌드와 테스트
+
+데스크톱 앱은 그 OS에서만 빌드한다(`packages/cli/src/platforms/desktop.ts` `requireHost`). WebView2와 WebKitGTK SDK, MSVC와 GTK 툴체인이 그 OS에 있기 때문이다. Mac에서는 이렇게 한다.
+
+| OS | 어디서 | 누가 준비 | 창을 볼 수 있나 |
+|---|---|---|---|
+| Linux | 이 Mac의 Docker 컨테이너 (Ubuntu 24.04 ARM64, Xvfb) | 자동 (`scripts/vm/linux.ts`가 처음에 이미지를 만든다) | 아니요. 가상 화면(Xvfb)에서 돈다 |
+| Windows | UTM·Parallels의 Windows 11 ARM VM, SSH | 사람이 한 번 (아래) | 예. VM 화면에 뜬다 |
+| 실제 PC (x64) | 그 PC | 사람 | 예 |
+
+## Linux: Docker 컨테이너
+
+```sh
+bun scripts/vm/linux.ts bun run akan-native test linux --app examples/sample
+bun scripts/vm/linux.ts bash -c 'cd native/desktop && cargo check'
+bun scripts/vm/linux.ts --shell        # 컨테이너 안의 셸
+```
+
+- 이미지: `scripts/vm/linux.Dockerfile`에 정의한다.
+  - WebKitGTK 4.1, GTK 3, libsoup 3
+  - Xvfb, D-Bus, gnome-keyring(Secret Service), dunst(알림 서버. 처음 쓸 때 D-Bus가 띄운다)
+  - rustup(툴체인 없이 설치하고, `rust-toolchain.toml`이 고정한다), Bun
+- 저장소 복사: 저장소는 읽기 전용으로 마운트하고, 볼륨(`akan-native-linux-work`)에 rsync로 복사한다.
+  - 복사하지 않는 것: `node_modules`, `target`, `.akan`, `dist`. 이것들은 컨테이너가 따로 가진다. 그래서 Mac 쪽 트리에 Linux 빌드 결과가 섞이지 않는다.
+  - 여러 작업을 동시에 돌릴 때는 `AKAN_NATIVE_LINUX_WORK=<이름>`으로 복사본을 나눈다.
+- 캐시: cargo registry, rustup, `~/.akan/native`도 볼륨이라 두 번째 실행부터 증분 빌드다.
+- 세션: 명령마다 데스크톱 세션과 비슷한 환경을 만든다.
+  - `DISPLAY=:99`에 Xvfb
+  - `dbus-launch`로 세션 버스
+  - 빈 비밀번호로 잠금을 푼 gnome-keyring. 로그인 키링이 "default" 컬렉션이 된다.
+    - 비밀번호는 한 줄(개행 포함)로 넘긴다. 개행이 없으면 로그인 키링이 생기지 않고, 비밀을 저장하면 오지 않을 비밀번호 창을 기다린다.
+- 가상 화면 조작: 이미지에 `xdotool`(클릭·키)과 ImageMagick `import`(화면 캡처)가 있다. 예: `xdotool mousemove 900 400 click 3; import -window root /tmp/shot.png`. 창 관리자가 없으므로 창 위치는 `xdotool windowmove`로 정한다.
+- 이미지는 Dockerfile의 해시를 라벨로 가진다. Dockerfile이 바뀌면 `linux.ts`가 다시 빌드한다.
+- 화면을 직접 보고 싶으면: UTM에 Ubuntu 24.04 데스크톱 VM을 만들어 같은 명령을 실행하면 된다. 그 VM에 필요한 패키지는 Dockerfile의 apt 목록과 같다.
+
+## Windows: VM
+
+### 한 번만: VM 준비 (사람이 할 일)
+
+1. UTM(무료)을 설치한다: https://mac.getutm.app. Parallels도 된다.
+2. Windows 11 ARM64 ISO를 받는다: https://www.microsoft.com/software-download/windows11arm64
+3. UTM에서 **Virtualize → Windows**를 고른다.
+   - ISO를 선택하고 "Install drivers and SPICE tools"를 체크한다.
+   - 메모리 8GB 이상, CPU 4코어 이상, 디스크 80GB.
+4. Windows를 설치한다. 사용자 이름은 영문으로 한다.
+5. Mac에서 `bun scripts/vm/serve-setup.ts`를 실행한다. 출력된 한 줄을 VM의 **관리자 PowerShell**에서 실행한다. 한 줄은 스크립트를 파일로 받아 `-File`로 실행한다. `irm … | iex`로 직접 실행하면 스크립트 안의 `Select-Object -First`가 바깥 파이프라인을 멈춰 스크립트가 말없이 끝났다. 로그는 VM의 `C:\ProgramData\akan-native-setup.log`에 남는다.
+   ```
+   irm http://192.168.64.1:8799/<token> | iex
+   ```
+   `scripts/vm/windows-setup.ps1`이 하는 일:
+   - 설치 목록을 보여 주고 라이선스 동의를 받는다.
+   - OpenSSH 서버를 켠다. 기본 셸은 PowerShell이다. `~/.akan/native/vm/id_ed25519.pub` 키만 관리자 키로 등록한다.
+   - 전원 설정에서 절전과 화면 끄기를 없앤다.
+   - Visual Studio 2022 Build Tools(C++, ARM64·x64, Windows SDK), rustup, Bun을 설치한다.
+   - 결과를 Mac에 보낸다. `~/.akan/native/vm/windows.json`에 주소와 사용자 이름이 저장된다.
+6. VM은 로그인한 상태로 켜 둔다.
+
+### 사용
+
+```sh
+bun scripts/vm/windows.ts sync                          # 저장소를 C:\akan-native-work\akan-native로 (빌드 결과는 유지)
+bun scripts/vm/windows.ts ssh 'cd native/desktop; cargo check'
+bun scripts/vm/windows.ts test                          # sync 후 akan-native test windows
+bun scripts/vm/windows.ts desktop 'bun run akan-native run windows --app examples/sample'
+bun scripts/vm/windows.ts screenshot shot.png           # VM 화면을 Mac으로 가져온다
+```
+
+- `ssh` 세션에는 데스크톱이 없다. 여기서 연 창은 보이지 않고, WebView2도 그리지 않는다.
+- 그래서 창을 띄우는 명령(`desktop`, `test`, `screenshot`)은 로그인한 사용자 세션에서만 도는 예약 작업(`schtasks /IT`)으로 실행한다.
+  - 출력은 로그 파일에 쓴다. 스크립트는 그 파일을 따라가며 보여 주고, 끝나면 종료 코드를 돌려준다.
+  - 작업은 콘솔 창 없이(`conhost --headless`), 관리자 권한 없이(`/RL LIMITED`) 돈다. 콘솔 창이 앱을 가리지 않고, 사용자가 앱을 여는 것과 같은 권한이 된다.
+  - 단, UAC가 꺼진 VM(`EnableLUA=0`)에서는 모든 프로세스가 관리자 권한(High)으로 돈다. 확인한 VM이 그랬다.
+- `ssh` 명령은 SSH 셸(PowerShell)이 직접 실행한다. `powershell -EncodedCommand`를 한 번 더 거치면 오류가 CLIXML로 나오고 종료 코드가 1로 바뀐다.
+- 페이지 안에서 코드 실행하기(개발 빌드): 앱을 `AKAN_NATIVE_WEBVIEW2_DEBUG_PORT=9222`로 띄우면 WebView2가 그 포트에 Chrome DevTools Protocol을 연다.
+  - `http://127.0.0.1:9222/json`의 `webSocketDebuggerUrl`에 `Runtime.evaluate`를 보내면 된다.
+  - 브리지는 `window.__AKAN_NATIVE__.__runtime.transport.send({ v: 1, id, plugin, method, args })`로 부른다.
+  - `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`는 듣지 않는다. wry가 자기 브라우저 인자를 넘기기 때문이다.
+
+## 업데이트(UP-1) 확인
+
+```sh
+bun scripts/vm/linux.ts bun scripts/vm/update-check.ts linux
+bun scripts/vm/windows.ts desktop 'bun scripts/vm/update-check.ts windows'
+```
+
+1. 샘플을 debug로 빌드해(`--debug`, 페이지 로그와 `PUBLIC_UPDATE_PROBE`가 필요하다) 임시 "설치" 폴더에 복사한다. 릴리스도 `--debug`로 게시한다. 경로는 `<os>-<arch>/`다.
+2. 릴리스 A를 게시하고 앱을 `PUBLIC_UPDATE_PROBE=apply`로 실행한다. check → download(전체) → apply → trial → 확정까지 간다.
+3. 릴리스 B(A에서의 delta)를 `no-ready`로 실행한다. B는 확정하지 않으므로 A로 롤백되고, B를 다시 받지 않아야 한다.
+4. 앱 옆에 남은 폴더가 없는지 본다.
+
+서명에는 일회용 키를 쓴다. 그 공개 키를 샘플 설정 사본에 넣으므로 실제 업데이트 키는 필요 없다.
+
+확인 결과(2026-09-25): Windows 11 ARM VM과 Linux 컨테이너 모두 통과했다(A 전체 → 확정, B delta → 롤백, 남은 폴더 없음). 2026-09-26 검토 반영 뒤에도 macOS·Linux·Windows 모두 통과했다.
+
+주의: 확인이 도중에 실패하면 임시 폴더에 설치한 앱이 남아 있을 수 있다. 그러면 다음 실행의 앱이 single-instance로 넘기고 바로 끝나서 확인이 멈춘다. Windows에서는 `bun scripts/vm/windows.ts ssh 'Get-Process | Where-Object { $_.Path -like "*akan-native-update-check*" } | Stop-Process -Force'`로 먼저 끝낸다.
+
+## 공통 벡터 (architecture.md §5)
+
+`packages/core/vectors/`에 있는 파일들이다: scope, routes, ranges, ids, bridge, navigation, acl. 모든 구현이 통과해야 한다.
+- TS 기준 구현은 `bun test`, Rust는 `cargo test`(`vectors.rs`)가 돌린다.
+- `bun scripts/native-vectors.ts`는 Swift 커널(`AkanNativeKernel.swift`, `AkanNativeAcl.swift`, swiftc)과 Kotlin 커널(`AkanNativeKernel.kt`, `AkanNativeAcl.kt`, akan-native가 쓰는 kotlinc의 JVM, 벡터는 생성한 리터럴)을 Mac에서 돌린다. http 플러그인의 URL 정규화 사례(`plugins/http/test/vectors/canonical.json`)도 함께 돌린다.
+- 기기에서도 같은 러너가 돈다. dev 빌드의 셀프 테스트 "shared vectors on this device"가 `$host.vectors`로 부른다(iOS 시뮬레이터, Android 에뮬레이터).
+- 표와 상수는 `packages/core/contract.json`에서 `bun scripts/contract.ts`로 생성한다. 손으로 고치지 않는다.
+
+## 실제 PC에서
+
+- Windows: `akan-native build windows` 결과 폴더(`<앱 이름>\`)를 통째로 복사해 `.exe`를 실행한다.
+  - WebView2 Runtime이 필요하다. Windows 11에는 기본으로 들어 있다.
+  - 서명하지 않은 exe라서 SmartScreen 경고가 뜰 수 있다(배포 서명은 CLI-9).
+- Linux: 결과 폴더(`<앱>/`)를 복사해 실행한다.
+  - 필요한 시스템 라이브러리: `libwebkit2gtk-4.1-0`, `libgtk-3-0`. Ubuntu 22.04 이상 데스크톱에는 기본으로 들어 있다.

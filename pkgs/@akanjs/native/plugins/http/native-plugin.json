@@ -1,0 +1,27 @@
+{
+  "id": "http",
+  "apiVersion": 1,
+  "methods": ["request"],
+  "events": [],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": "./src/desktop.ts",
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "HttpPlugin"
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.http.HttpPlugin"
+  },
+  "scope": {
+    "description": "Which URLs request may reach, checked for the first URL and every redirect.",
+    "fields": {
+      "url": "URL pattern: scheme, host, port and path compared separately (* in the host spans dots, in the path crosses /; no port = the default port in allow and any port in deny, :* = any port, no path = any path; query ignored), on the normalized URL"
+    },
+    "urlFields": ["url"]
+  },
+  "defaultScope": {
+    "allow": []
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "about": "The capabilities a host enforces (PL-11) as boot.json carries them. cases: { acl (absent: boot.json has none, and everything is allowed), problem (the ACL is not one hosts can enforce: then every call is denied, fail-closed), checks: [plugin, item, window, allowed, scope or null ({ allow: entries or null, deny: entries })] }.",
+  "cases": [
+    {
+      "problem": false,
+      "checks": [["fs", "readFile", 1, true, null], ["anything", "at-all", 7, true, null]]
+    },
+    {
+      "acl": {
+        "grants": [
+          { "plugin": "fs", "windows": "*", "items": ["readFile", "stat"] },
+          { "plugin": "fs", "windows": [1], "items": ["writeFile"], "allow": [{ "base": "data", "path": "notes/**" }], "deny": [{ "path": "notes/secret/**" }] },
+          { "plugin": "fs", "windows": [2], "items": ["writeFile"], "allow": [{ "base": "cache", "path": "**" }] },
+          { "plugin": "fs", "windows": "*", "items": ["remove"], "deny": [{ "path": "keep/**" }] },
+          { "plugin": "win", "windows": "*", "items": "*" }
+        ],
+        "denied": { "win": ["close"], "fs": ["listen:change"] }
+      },
+      "problem": false,
+      "checks": [
+        ["fs", "readFile", 1, true, null],
+        ["fs", "readFile", 3, true, null],
+        ["fs", "writeFile", 1, true, { "allow": [{ "base": "data", "path": "notes/**" }], "deny": [{ "path": "notes/secret/**" }] }],
+        ["fs", "writeFile", 2, true, { "allow": [{ "base": "cache", "path": "**" }], "deny": [] }],
+        ["fs", "writeFile", 3, false, null],
+        ["fs", "remove", 1, true, { "allow": null, "deny": [{ "path": "keep/**" }] }],
+        ["fs", "listen:change", 1, false, null],
+        ["fs", "mkdir", 1, false, null],
+        ["win", "setTitle", 5, true, null],
+        ["win", "close", 1, false, null],
+        ["other", "x", 1, false, null]
+      ]
+    },
+    { "acl": { "grants": [] }, "problem": false, "checks": [["fs", "readFile", 1, false, null]] },
+    { "acl": { "grants": [{ "plugin": "fs", "windows": "*", "items": ["readFile"] }], "denied": {} }, "problem": false, "checks": [["fs", "readFile", 1, true, null]] },
+    { "acl": null, "problem": true, "checks": [["fs", "readFile", 1, false, null]] },
+    { "acl": "all", "problem": true, "checks": [["fs", "readFile", 1, false, null]] },
+    { "acl": {}, "problem": true, "checks": [["fs", "readFile", 1, false, null]] },
+    { "acl": { "grants": "all" }, "problem": true, "checks": [["fs", "readFile", 1, false, null]] },
+    { "acl": { "grants": [{ "plugin": "fs", "windows": "*", "items": ["readFile"] }, 3] }, "problem": true, "checks": [["fs", "readFile", 1, false, null]] },
+    { "acl": { "grants": [{ "windows": "*", "items": ["readFile"] }] }, "problem": true, "checks": [["fs", "readFile", 1, false, null]] },
+    { "acl": { "grants": [{ "plugin": "", "windows": "*", "items": ["readFile"] }] }, "problem": true, "checks": [["fs", "readFile", 1, false, null]] },
+    { "acl": { "grants": [{ "plugin": "fs", "items": ["readFile"] }] }, "problem": true, "checks": [["fs", "readFile", 1, false, null]] },
+    { "acl": { "grants": [{ "plugin": "fs", "windows": "*" }] }, "problem": true, "checks": [["fs", "readFile", 1, false, null]] },
+    { "acl": { "grants": [{ "plugin": "fs", "windows": "*", "items": "readFile" }] }, "problem": true, "checks": [["fs", "readFile", 1, false, null]] },
+    { "acl": { "grants": [{ "plugin": "fs", "windows": "*", "items": ["readFile", 1] }] }, "problem": true, "checks": [["fs", "readFile", 1, false, null]] },
+    { "acl": { "grants": [{ "plugin": "fs", "windows": [0], "items": ["readFile"] }] }, "problem": true, "checks": [["fs", "readFile", 1, false, null]] },
+    { "acl": { "grants": [{ "plugin": "fs", "windows": [1.5], "items": ["readFile"] }] }, "problem": true, "checks": [["fs", "readFile", 1, false, null]] },
+    { "acl": { "grants": [{ "plugin": "fs", "windows": "main", "items": ["readFile"] }] }, "problem": true, "checks": [["fs", "readFile", 1, false, null]] },
+    { "acl": { "grants": [{ "plugin": "fs", "windows": "*", "items": ["readFile"], "allow": { "path": "x" } }] }, "problem": true, "checks": [["fs", "readFile", 1, false, null]] },
+    { "acl": { "grants": [{ "plugin": "fs", "windows": "*", "items": ["readFile"], "allow": [{ "path": 1 }] }] }, "problem": true, "checks": [["fs", "readFile", 1, false, null]] },
+    { "acl": { "grants": [{ "plugin": "fs", "windows": "*", "items": ["readFile"], "deny": ["x"] }] }, "problem": true, "checks": [["fs", "readFile", 1, false, null]] },
+    { "acl": { "grants": [{ "plugin": "fs", "windows": "*", "items": ["readFile"] }], "denied": [] }, "problem": true, "checks": [["fs", "readFile", 1, false, null]] },
+    { "acl": { "grants": [{ "plugin": "fs", "windows": "*", "items": ["readFile"] }], "denied": { "fs": "remove" } }, "problem": true, "checks": [["fs", "readFile", 1, false, null]] },
+    { "acl": { "grants": [{ "plugin": "fs", "windows": "*", "items": ["readFile"] }], "denied": { "fs": [1] } }, "problem": true, "checks": [["fs", "readFile", 1, false, null]] }
+  ]
+}

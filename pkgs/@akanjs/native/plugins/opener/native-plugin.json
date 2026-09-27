@@ -1,0 +1,25 @@
+{
+  "id": "opener",
+  "apiVersion": 1,
+  "methods": ["openUrl", "canOpenUrl", "openSettings"],
+  "events": [],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": "./src/desktop.ts",
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "OpenerPlugin"
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.opener.OpenerPlugin",
+    "methods": ["openUrl", "openSettings"]
+  },
+  "scope": {
+    "description": "Which URLs openUrl may open (canOpenUrl and openSettings are not scoped).",
+    "fields": {
+      "url": "URL pattern: scheme, host, port and path compared separately (* in the host spans dots, in the path crosses /; no port = the default port in allow and any port in deny, :* = any port, no path = any path; query ignored), on the normalized URL"
+    },
+    "urlFields": ["url"]
+  }
+}

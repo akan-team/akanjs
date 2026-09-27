@@ -1,0 +1,49 @@
+[package]
+name = "akan_native_desktop"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "akan-native desktop shell: TAO window + WRY webview behind a C ABI for bun:ffi"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# macOS: wry's default features (os-webview, x11) only enable Linux dependencies.
+# devtools: allow Web Inspector in release builds too (isInspectable).
+wry = { version = "=0.57.0", default-features = false, features = ["devtools"] }
+# tao defaults = rwh_06 + x11 + dbus. macOS needs only rwh_06 (wry uses raw-window-handle 0.6).
+tao = { version = "=0.37.0", default-features = false, features = ["rwh_06"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Already in the wry/tao dependency tree; we only enable more features (menu, appearance, workspace,
+# the quit Apple event for D4, status items for the tray plugin, screens and the Dock tile for the
+# screen and dock plugins).
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSURL", "NSObject", "NSAppleEventManager", "NSAppleEventDescriptor", "NSData", "NSGeometry", "NSArray", "NSRunLoop", "NSTimer", "NSDate", "NSObjCRuntime", "NSNotification", "NSDictionary", "NSValue"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSMenu", "NSMenuItem", "NSResponder", "NSEvent", "NSWorkspace", "NSAppearance", "NSView", "block2", "NSAlert", "NSButton", "NSControl", "NSTextField", "NSWindow", "NSPanel", "NSSavePanel", "NSOpenPanel", "NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSImage", "NSCell", "NSUserInterfaceItemIdentification", "NSScreen", "NSDockTile"] }
+# Objective-C blocks (sheet completion handlers); also in the tao/wry tree.
+block2 = "0.6"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# windows-rs (Microsoft's Win32 bindings), already in the wry/tao tree; we only enable features.
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Globalization", "Win32_System_Com", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_Power", "Win32_System_Registry", "Win32_System_Threading", "Data_Xml_Dom", "Foundation", "UI_Notifications", "Win32_Security_Credentials", "Win32_System_Time", "Win32_UI_Controls", "Win32_UI_Shell_Common", "Win32_Graphics_Gdi", "Win32_System_ApplicationInstallationAndServicing", "Win32_System_LibraryLoader", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_HiDpi"] }
+# WebView2's COM API, the version wry uses: ScriptDialogOpening (D7 under tests, win/dialogs.rs).
+webview2-com = "0.39"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# WebKitGTK is wry's Linux webview (os-webview). linux-body: request bodies reach the custom
+# protocol handler (IPC posts), WebKitGTK 2.40 or newer.
+wry = { version = "=0.57.0", default-features = false, features = ["devtools", "os-webview", "linux-body"] }
+# gtk-rs, already in the wry/tao tree: GTK, GLib and GIO for the Linux parts of the shell.
+gtk = "0.18"
+# WebKitGTK's API, the version wry pins: the script-dialog signal (D7 under tests, linux/dialogs.rs);
+# v2_40 (already on through wry's linux-body) for the response's main-frame flag (navigation.rs).
+webkit2gtk = { version = "=2.0.2", features = ["v2_40"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

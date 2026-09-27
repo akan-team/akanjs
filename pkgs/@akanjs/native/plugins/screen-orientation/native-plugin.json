@@ -1,0 +1,17 @@
+{
+  "id": "screen-orientation",
+  "apiVersion": 1,
+  "methods": ["get", "lock", "unlock"],
+  "events": ["change"],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": null,
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "ScreenOrientationPlugin"
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.screenorientation.ScreenOrientationPlugin"
+  }
+}

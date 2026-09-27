@@ -1,0 +1,21 @@
+{
+  "id": "accessibility",
+  "apiVersion": 1,
+  "methods": ["getState", "announce"],
+  "events": ["change"],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": "web",
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "AccessibilityPlugin",
+    "frameworks": ["UIKit"]
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.accessibility.AccessibilityPlugin",
+    "methods": ["getState"],
+    "events": ["change"],
+    "web": true
+  }
+}

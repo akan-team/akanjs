@@ -1,0 +1,17 @@
+{
+  "id": "splash-screen",
+  "apiVersion": 1,
+  "methods": ["hide"],
+  "events": [],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": "web",
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "SplashScreenPlugin"
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.splashscreen.SplashScreenPlugin"
+  }
+}

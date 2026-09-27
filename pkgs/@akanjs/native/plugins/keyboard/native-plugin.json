@@ -1,0 +1,18 @@
+{
+  "id": "keyboard",
+  "apiVersion": 1,
+  "methods": ["getState", "hide", "setResizeMode"],
+  "events": ["change", "willShow", "didShow", "willHide", "didHide"],
+  "coalesce": ["change"],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": null,
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "KeyboardPlugin"
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.keyboard.KeyboardPlugin"
+  }
+}

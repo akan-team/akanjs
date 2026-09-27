@@ -1,0 +1,10 @@
+{
+  "id": "screen",
+  "apiVersion": 1,
+  "methods": ["getDisplays", "getCursorPoint"],
+  "events": ["change"],
+  "web": "./src/web.ts",
+  "desktop": "./src/desktop.ts",
+  "ios": null,
+  "android": null
+}

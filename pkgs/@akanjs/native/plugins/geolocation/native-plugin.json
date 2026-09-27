@@ -1,0 +1,23 @@
+{
+  "id": "geolocation",
+  "apiVersion": 1,
+  "methods": ["getCurrentPosition", "checkPermission", "requestPermission"],
+  "events": ["position", "highAccuracyPosition", "error"],
+  "coalesce": ["position", "highAccuracyPosition"],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": null,
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "GeolocationPlugin",
+    "frameworks": ["CoreLocation"],
+    "infoPlist": {
+      "NSLocationWhenInUseUsageDescription": "Show where you are."
+    }
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.geolocation.GeolocationPlugin",
+    "permissions": ["android.permission.ACCESS_COARSE_LOCATION", "android.permission.ACCESS_FINE_LOCATION"]
+  }
+}

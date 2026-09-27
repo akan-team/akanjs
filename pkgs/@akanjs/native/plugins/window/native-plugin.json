@@ -1,0 +1,32 @@
+{
+  "id": "window",
+  "apiVersion": 1,
+  "methods": [
+    "getState",
+    "setTitle",
+    "setSize",
+    "setPosition",
+    "center",
+    "minimize",
+    "maximize",
+    "unmaximize",
+    "restore",
+    "setFullscreen",
+    "setAlwaysOnTop",
+    "show",
+    "hide",
+    "focus",
+    "close",
+    "startDragging",
+    "toggleMaximize",
+    "answerCloseRequested",
+    "create",
+    "list"
+  ],
+  "events": ["resize", "move", "focus", "closeRequested", "created", "destroyed", "dragDrop"],
+  "coalesce": ["resize", "move"],
+  "web": "./src/web.ts",
+  "desktop": "./src/desktop.ts",
+  "ios": null,
+  "android": null
+}

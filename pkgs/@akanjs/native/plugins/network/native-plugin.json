@@ -1,0 +1,19 @@
+{
+  "id": "network",
+  "apiVersion": 1,
+  "methods": ["getStatus"],
+  "events": ["change"],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": "web",
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "NetworkPlugin",
+    "frameworks": ["Network"]
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.network.NetworkPlugin",
+    "permissions": ["android.permission.ACCESS_NETWORK_STATE"]
+  }
+}

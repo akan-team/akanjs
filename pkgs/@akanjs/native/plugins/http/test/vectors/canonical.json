@@ -1,0 +1,31 @@
+{
+  "about": "The form the http plugin matches the app's scope against and sends a URL in (plugins/http/src/common.ts canonicalUrl; HttpUrl.swift, HttpUrl.kt, run by scripts/native-vectors.ts): [input, canonical URL or null when refused]. A host never holds a percent escape (a deny of a host must not be passed by escaping a letter).",
+  "cases": [
+    ["HTTPS://Example.COM", "https://example.com/"],
+    ["https://example.com:443/a?b=1#frag", "https://example.com/a?b=1"],
+    ["http://example.com:80", "http://example.com/"],
+    ["http://example.com:8080/x", "http://example.com:8080/x"],
+    ["https://x/?q", "https://x/?q"],
+    ["https://[::1]:8443/p", "https://[::1]:8443/p"],
+    ["https://x/{a}|^`?q={b}|\\", "https://x/%7Ba%7D%7C%5E%60?q=%7Bb%7D%7C%5C"],
+    ["https://x/a b/한", "https://x/a%20b/%ED%95%9C"],
+    ["https://x/100%/%41", "https://x/100%25/%41"],
+    ["https://x/a%2eb", "https://x/a%2eb"],
+    ["https://x/a/../b", null],
+    ["https://x/a/%2E%2e/b", null],
+    ["https://x/./b", null],
+    ["https://user:pw@x/", null],
+    ["ftp://x/", null],
+    ["https://", null],
+    ["https://x:99999/", null],
+    ["https://x:12a/", null],
+    ["https://ex ample.com/", null],
+    ["https://[::1/", null],
+    ["https://ex%61mple.com/", null],
+    ["https://internal.example.com%2F/", null],
+    ["https://x:0080/", "https://x:80/"],
+    ["http://x:0080/", "http://x/"],
+    ["https://x", "https://x/"],
+    ["https://x/#", "https://x/"]
+  ]
+}

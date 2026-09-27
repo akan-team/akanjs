@@ -1,0 +1,18 @@
+{
+  "id": "sqlite",
+  "apiVersion": 1,
+  "methods": ["open", "execute", "query", "close"],
+  "events": [],
+  "codegen": true,
+  "web": null,
+  "desktop": "./src/desktop.ts",
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "SqlitePlugin"
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.sqlite.SqlitePlugin",
+    "minSdk": 35
+  }
+}

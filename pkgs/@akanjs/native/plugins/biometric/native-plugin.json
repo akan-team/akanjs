@@ -1,0 +1,22 @@
+{
+  "id": "biometric",
+  "apiVersion": 1,
+  "methods": ["isAvailable", "authenticate"],
+  "events": [],
+  "codegen": true,
+  "web": null,
+  "desktop": null,
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "BiometricPlugin",
+    "frameworks": ["LocalAuthentication"],
+    "infoPlist": {
+      "NSFaceIDUsageDescription": "Confirm that it is you with Face ID."
+    }
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.biometric.BiometricPlugin",
+    "permissions": ["android.permission.USE_BIOMETRIC"]
+  }
+}

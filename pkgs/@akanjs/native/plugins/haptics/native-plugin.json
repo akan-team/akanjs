@@ -1,0 +1,19 @@
+{
+  "id": "haptics",
+  "apiVersion": 1,
+  "methods": ["impact", "notification", "selection", "vibrate"],
+  "events": [],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": null,
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "HapticsPlugin",
+    "frameworks": ["AudioToolbox", "CoreHaptics", "UIKit"]
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.haptics.HapticsPlugin",
+    "permissions": ["android.permission.VIBRATE"]
+  }
+}

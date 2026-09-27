@@ -15,6 +15,10 @@
       "!!**/dump",
       "!!**/local",
       "!!**/ios/DerivedData",
+      "!!pkgs/@akanjs/native/native/android/maven.lock.json",
+      "!!pkgs/@akanjs/native/packages/core/contract.json",
+      "!!pkgs/@akanjs/native/packages/core/src/contract.ts",
+      "!!pkgs/@akanjs/native/packages/core/vectors",
       "!benchmarks/sample-app-productivity/tmp",
       "!benchmarks/sample-app-productivity/workspaces"
     ]
@@ -37,6 +41,22 @@
         "./node_modules/@akanjs/devkit/lint/no-interpolated-arbitrary-class.grit",
         "./node_modules/@akanjs/devkit/lint/no-deprecated-log-level.grit"
       ]
+    },
+    {
+      "includes": ["pkgs/@akanjs/native/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noAssignInExpressions": "warn",
+            "useIterableCallbackReturn": "warn",
+            "noControlCharactersInRegex": "warn",
+            "noImplicitAnyLet": "warn"
+          },
+          "correctness": {
+            "noVoidTypeReturn": "warn"
+          }
+        }
+      }
     }
   ]
 }

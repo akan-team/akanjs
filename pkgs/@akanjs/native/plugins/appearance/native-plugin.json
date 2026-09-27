@@ -1,0 +1,18 @@
+{
+  "id": "appearance",
+  "apiVersion": 1,
+  "methods": ["get", "set"],
+  "events": ["change"],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": "./src/desktop.ts",
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "AppearancePlugin",
+    "privacyApis": { "UserDefaults": ["CA92.1"] }
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.appearance.AppearancePlugin"
+  }
+}

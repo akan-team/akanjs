@@ -1,0 +1,19 @@
+{
+  "id": "updates",
+  "apiVersion": 1,
+  "methods": ["getState", "check", "download", "apply", "notifyReady", "reset"],
+  "events": ["progress"],
+  "coalesce": ["progress"],
+  "codegen": true,
+  "web": null,
+  "desktop": "./src/desktop.ts",
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "UpdatesPlugin",
+    "frameworks": ["CryptoKit"]
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.updates.UpdatesPlugin"
+  }
+}

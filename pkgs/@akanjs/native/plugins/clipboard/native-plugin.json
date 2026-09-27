@@ -1,0 +1,17 @@
+{
+  "id": "clipboard",
+  "apiVersion": 1,
+  "methods": ["writeText", "readText"],
+  "events": [],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": "./src/desktop.ts",
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "ClipboardPlugin"
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.clipboard.ClipboardPlugin"
+  }
+}

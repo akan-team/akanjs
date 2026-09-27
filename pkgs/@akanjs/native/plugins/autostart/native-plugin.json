@@ -1,0 +1,10 @@
+{
+  "id": "autostart",
+  "apiVersion": 1,
+  "methods": ["enable", "disable", "isEnabled", "openSettings"],
+  "events": [],
+  "web": null,
+  "desktop": "./src/desktop.ts",
+  "ios": null,
+  "android": null
+}

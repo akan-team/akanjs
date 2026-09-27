@@ -1,0 +1,136 @@
+// Process main thread of a desktop app: load the native library, start the plugin host
+// Worker, then hand the main thread to the TAO event loop (docs/architecture.md §3.3).
+//
+// After akan_native_run no JavaScript runs on this thread again (not even worker.onerror), so every
+// failure that can be reported must be reported before that call.
+
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { renderInitScript } from "../../core/src/protocol.ts";
+import { ABI_MAJOR, cstr, lastError, openNative, resolvePaths } from "./ffi.ts";
+import { webviewDataDir } from "./paths.ts";
+import type { Launch, LaunchWindow } from "./plugin.ts";
+
+const ENV_OVERRIDE_PREFIX = "AKAN_NATIVE_PUBLIC_";
+
+/** env.runtime.json, overlaid with AKAN_NATIVE_PUBLIC_* process variables (ENV-1, highest precedence). */
+function runtimeEnv(resources: string): Record<string, string> {
+  const env = JSON.parse(readFileSync(join(resources, "env.runtime.json"), "utf8")) as Record<string, string>;
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.startsWith(ENV_OVERRIDE_PREFIX) && value !== undefined) env[key.slice("AKAN_NATIVE_".length)] = value;
+  }
+  return env;
+}
+
+interface ShellConfig {
+  title: string;
+  backgroundColor: string;
+  backgroundColorDark: string;
+  devtools: boolean;
+  width?: number;
+  height?: number;
+  /** akan-native dev --hmr (dev builds): the dev gateway every page request outside /__akan_native/* goes to. */
+  devServer?: string;
+  /** security.shell.externalSchemes (L0): schemes links may also hand to the OS. */
+  externalSchemes?: string[];
+}
+
+const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+/** The launch phase's window bounds that akan_native_run understands (x and y only together). */
+export function launchBounds(window: LaunchWindow): LaunchWindow {
+  const out: LaunchWindow = {};
+  if (finite(window.x) && finite(window.y)) Object.assign(out, { x: window.x, y: window.y });
+  if (finite(window.width) && window.width >= 1) out.width = window.width;
+  if (finite(window.height) && window.height >= 1) out.height = window.height;
+  if (window.maximized === true) out.maximized = true;
+  return out;
+}
+
+function fail(message: string, error?: unknown): never {
+  console.error(`[akan-native] ${message}`, error ?? "");
+  process.exit(1);
+}
+
+export async function startMain(workerUrl: string): Promise<never> {
+  const paths = resolvePaths();
+  let shell: ShellConfig;
+  let initJs: string;
+  let dev = false;
+  let appId = "";
+  try {
+    shell = JSON.parse(readFileSync(join(paths.resources, "shell.json"), "utf8"));
+    const boot = readFileSync(join(paths.resources, "boot.json"), "utf8");
+    initJs = renderInitScript(boot.trim(), JSON.stringify(runtimeEnv(paths.resources)));
+    const parsed = JSON.parse(boot) as { dev?: boolean; app?: { id?: string } };
+    dev = parsed.dev === true;
+    appId = parsed.app?.id ?? "";
+  } catch (error) {
+    fail(`cannot read app resources in ${paths.resources}`, error);
+  }
+
+  let lib;
+  try {
+    lib = openNative(paths.lib);
+  } catch (error) {
+    fail(`cannot load ${paths.lib}`, error);
+  }
+  // A library of another C ABI major version (a mismatched prebuilt one) is not used at all.
+  const abi = lib.symbols.akan_native_abi();
+  if (abi >>> 16 !== ABI_MAJOR)
+    fail(`${paths.lib} speaks C ABI ${abi >>> 16}.${abi & 0xffff}; this app needs ${ABI_MAJOR}.x`);
+  // Before the Worker exists: release builds drop the engines' debugging variables (akan_native_init).
+  lib.symbols.akan_native_init(dev ? 1 : 0);
+  if (!dev)
+    for (const key of Object.keys(process.env))
+      if (/^(WEBVIEW2_|WEBKIT_INSPECTOR|WEBKIT_DISABLE_SANDBOX)|^SSLKEYLOGFILE$/.test(key)) delete process.env[key];
+
+  // A Worker's process.argv has no launch arguments unless they are passed (single-instance reads them).
+  const worker = new Worker(workerUrl, { argv: process.argv.slice(2) } as WorkerOptions);
+  // "ready" ends the plugins' launch phase (DesktopContext.launch): initial bounds, or exit.
+  const launch = await new Promise<Launch>((resolve) => {
+    const timer = setTimeout(() => fail("plugin host did not start within 10 s"), 10_000);
+    worker.addEventListener("error", (event) =>
+      fail("plugin host failed to start", (event as ErrorEvent).message ?? event),
+    );
+    worker.addEventListener("message", (event) => {
+      const data = (event as MessageEvent).data as { type?: string } & Partial<Launch>;
+      if (data?.type === "ready") {
+        clearTimeout(timer);
+        resolve({ window: data.window ?? {}, exit: data.exit });
+      }
+    });
+  });
+  if (typeof launch.exit === "number") {
+    worker.terminate();
+    process.exit(launch.exit);
+  }
+  const bounds = launchBounds(launch.window);
+
+  const config = {
+    title: shell.title,
+    width: shell.width ?? 1024,
+    height: shell.height ?? 720,
+    ...bounds,
+    appDir: paths.appDir,
+    initJs,
+    devtools: shell.devtools,
+    menu: true,
+    backgroundColor: shell.backgroundColor,
+    backgroundColorDark: shell.backgroundColorDark,
+    externalSchemes: shell.externalSchemes ?? [],
+    // Tests start the app without stealing focus from the user.
+    activation: process.env.AKAN_NATIVE_ACTIVATION ?? "regular",
+    // Only a dev build may load its pages from elsewhere.
+    ...(dev && shell.devServer ? { devServer: shell.devServer } : {}),
+    // Windows and Linux: the webview's storage (paths.ts) and the window icon (CLI icons.ts windowIcon).
+    ...(appId && webviewDataDir(appId) ? { dataDir: webviewDataDir(appId) } : {}),
+    ...(existsSync(join(paths.resources, "icon.rgba")) ? { icon: join(paths.resources, "icon.rgba") } : {}),
+    // Linux: the desktop entry the dock plugin's launcher badge names (<app id>.desktop).
+    ...(appId ? { appId } : {}),
+  };
+  const code = lib.symbols.akan_native_run(cstr(JSON.stringify(config)));
+  // akan_native_run only returns on failure: -1 not the main thread, -2 bad config, -3 window, -4 webview.
+  // -5: no webview engine on this system (lib.rs); the last error says how to get one.
+  fail(`${code === -5 ? "cannot start: " : `akan_native_run failed with ${code}: `}${lastError(lib)}`);
+}

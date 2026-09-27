@@ -1,0 +1,17 @@
+{
+  "id": "keep-awake",
+  "apiVersion": 1,
+  "methods": ["keepAwake", "allowSleep", "isKeptAwake"],
+  "events": [],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": "./src/desktop.ts",
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "KeepAwakePlugin"
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.keepawake.KeepAwakePlugin"
+  }
+}

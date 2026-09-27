@@ -1,0 +1,6 @@
+node_modules/
+.akan/
+dist/
+native/desktop/target/
+*.log
+.DS_Store

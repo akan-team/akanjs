@@ -1,0 +1,22 @@
+{
+  "id": "browser",
+  "apiVersion": 1,
+  "methods": ["open", "close"],
+  "events": ["finished"],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": {
+    "module": "./src/desktop.ts",
+    "methods": ["open"]
+  },
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "BrowserPlugin",
+    "frameworks": ["SafariServices"]
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.browser.BrowserPlugin",
+    "manifestXml": "<queries><intent><action android:name=\"android.support.customtabs.action.CustomTabsService\" /></intent><intent><action android:name=\"android.intent.action.VIEW\" /><category android:name=\"android.intent.category.BROWSABLE\" /><data android:scheme=\"https\" /></intent></queries>"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "id": "dock",
+  "apiVersion": 1,
+  "methods": ["setBadge", "setProgress", "setVisible", "getState"],
+  "events": [],
+  "web": null,
+  "desktop": "./src/desktop.ts",
+  "ios": null,
+  "android": null
+}

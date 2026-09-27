@@ -1,0 +1,18 @@
+{
+  "id": "secure-storage",
+  "apiVersion": 1,
+  "methods": ["get", "set", "remove", "keys", "clear"],
+  "events": [],
+  "codegen": true,
+  "web": null,
+  "desktop": "./src/desktop.ts",
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "SecureStoragePlugin",
+    "frameworks": ["Security"]
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.securestorage.SecureStoragePlugin"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "id": "local-notifications",
+  "apiVersion": 1,
+  "methods": [
+    "schedule",
+    "cancel",
+    "getPending",
+    "getDelivered",
+    "removeDelivered",
+    "removeAllDelivered",
+    "createChannel",
+    "checkPermission",
+    "requestPermission"
+  ],
+  "events": ["received", "action"],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": "./src/desktop.ts",
+  "macos": {
+    "infoPlist": {
+      "AkanNativeUserNotifications": true
+    }
+  },
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "LocalNotificationsPlugin",
+    "frameworks": ["UserNotifications"]
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.localnotifications.LocalNotificationsPlugin",
+    "permissions": ["android.permission.POST_NOTIFICATIONS", "android.permission.RECEIVE_BOOT_COMPLETED"],
+    "applicationXml": "<receiver android:name=\"com.akanjs.plugins.localnotifications.LocalNotificationReceiver\" android:exported=\"false\"><intent-filter><action android:name=\"android.intent.action.BOOT_COMPLETED\" /><action android:name=\"android.intent.action.MY_PACKAGE_REPLACED\" /></intent-filter></receiver>"
+  }
+}

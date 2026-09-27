@@ -1,0 +1,14 @@
+{
+  "id": "toast",
+  "apiVersion": 1,
+  "methods": ["show"],
+  "events": [],
+  "codegen": true,
+  "web": "./src/web.ts",
+  "desktop": "web",
+  "ios": "web",
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.toast.ToastPlugin"
+  }
+}
