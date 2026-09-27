@@ -7,17 +7,46 @@ const PACKAGE_DIR = import.meta.dir;
 const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT ?? process.cwd();
 const OUT_DIR = process.env.DIST_DIR ?? `${WORKSPACE_ROOT}/dist/pkgs/akanjs`;
 const TYPES_OUT_DIR = `${OUT_DIR}/types`;
-//* Not published, so the dist embeds its source instead of naming a dependency no registry can resolve.
-const EMBEDDED_PACKAGE_NAME = "use-agentic";
-const EMBEDDED_PACKAGE_DIR = path.resolve(PACKAGE_DIR, `../${EMBEDDED_PACKAGE_NAME}`);
-const EMBEDDED_SUBPATH = `vendor/${EMBEDDED_PACKAGE_NAME}`;
-const EMBEDDED_OUT_DIR = `${OUT_DIR}/${EMBEDDED_SUBPATH}`;
-const EMBEDDED_TYPES_OUT_DIR = `${TYPES_OUT_DIR}/${EMBEDDED_SUBPATH}`;
-const EMBEDDED_NON_SOURCE_ENTRIES = ["bunfig.toml", "package.json", "test", "tsconfig.json"];
-const embeddedSpecifierPattern = new RegExp(
-  `(\\bfrom\\s*|\\brequire\\s*\\(\\s*|\\bimport\\s*\\(\\s*|\\bimport\\s+)(["'])${EMBEDDED_PACKAGE_NAME}((?:/[^"']*)?)\\2`,
-  "g",
-);
+interface EmbeddedPackage {
+  name: string;
+  /** Top-level entries the copy leaves out: workspace and tooling files nothing reads at runtime. */
+  nonSourceEntries: string[];
+  /** Every `test/` folder is left out, not only a top-level one. */
+  nestedTests: boolean;
+  /** `name/<subpath>` resolves through the package's `exports`, whose subpaths do not follow its folders. */
+  viaExports: boolean;
+}
+
+//* Not published, so the dist embeds their source instead of naming dependencies no registry can resolve.
+const EMBEDDED_PACKAGES = (
+  [
+    {
+      name: "use-agentic",
+      nonSourceEntries: ["bunfig.toml", "package.json", "test", "tsconfig.json"],
+      nestedTests: false,
+      viaExports: false,
+    },
+    {
+      name: "@akanjs/native",
+      nonSourceEntries: ["bunfig.toml", "docs", "examples", "package.json", "scripts", "tsconfig.json"],
+      nestedTests: true,
+      viaExports: true,
+    },
+  ] satisfies EmbeddedPackage[]
+).map((embedded) => ({
+  ...embedded,
+  dir: path.resolve(PACKAGE_DIR, `../${embedded.name}`),
+  outDir: `${OUT_DIR}/vendor/${embedded.name}`,
+  typesOutDir: `${TYPES_OUT_DIR}/vendor/${embedded.name}`,
+}));
+type Embedded = (typeof EMBEDDED_PACKAGES)[number];
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+const specifierPatternOf = (name: string) =>
+  new RegExp(
+    `(\\bfrom\\s*|\\brequire\\s*\\(\\s*|\\bimport\\s*\\(\\s*|\\bimport\\s+)(["'])${escapeRegExp(name)}((?:/[^"']*)?)\\2`,
+    "g",
+  );
 const SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"];
 const TEST_FILE_PATTERNS = ["**/*.{test,spec}.{ts,tsx,js,jsx}", "**/*.fixture.{ts,tsx}", "**/*.instance.ts"];
 
@@ -135,32 +164,69 @@ const rewriteDeclarationRelativeSpecifiers = (targetDir: string) =>
     return rewritten + source.slice(cursor);
   });
 
-const embedPackageSource = async () => {
-  await $`mkdir -p ${EMBEDDED_OUT_DIR}`;
-  await $`cp -R ${EMBEDDED_PACKAGE_DIR}/. ${EMBEDDED_OUT_DIR}`;
-  for (const entry of ["node_modules", ...EMBEDDED_NON_SOURCE_ENTRIES])
-    await rm(`${EMBEDDED_OUT_DIR}/${entry}`, { recursive: true, force: true });
+const embedPackageSource = async (embedded: Embedded) => {
+  await $`mkdir -p ${embedded.outDir}`;
+  await $`cp -R ${embedded.dir}/. ${embedded.outDir}`;
+  for (const entry of ["node_modules", ...embedded.nonSourceEntries])
+    await rm(`${embedded.outDir}/${entry}`, { recursive: true, force: true });
+  if (!embedded.nestedTests) return;
+  const testDirs = await Array.fromAsync(new Bun.Glob("**/test").scan({ cwd: embedded.outDir, onlyFiles: false }));
+  for (const testDir of testDirs) await rm(`${embedded.outDir}/${testDir}`, { recursive: true, force: true });
 };
 
-const rewriteEmbeddedSpecifiers = (targetDir: string, embeddedDir: string) =>
-  rewriteFiles(targetDir, "**/*.{ts,tsx,js,jsx}", (source, filePath) => {
+const exportTargetOf = (exportsMap: Record<string, unknown>, subpath: string) => {
+  const key = `.${subpath}`;
+  const direct = exportsMap[key];
+  if (typeof direct === "string") return direct;
+  for (const [pattern, target] of Object.entries(exportsMap)) {
+    const [prefix = "", suffix = ""] = pattern.split("*");
+    if (!pattern.includes("*") || typeof target !== "string") continue;
+    if (key.length > prefix.length + suffix.length && key.startsWith(prefix) && key.endsWith(suffix))
+      return target.replace("*", key.slice(prefix.length, key.length - suffix.length));
+  }
+  return null;
+};
+
+//* A declaration names the target without its extension, so the relative-specifier pass finds its `.d.ts`.
+const rewriteEmbeddedSpecifiers = async (targetDir: string, embedded: Embedded, embeddedDir: string) => {
+  const forTypes = embeddedDir === embedded.typesOutDir;
+  const exportsMap = embedded.viaExports
+    ? (((await Bun.file(`${embedded.dir}/package.json`).json()) as { exports?: Record<string, unknown> }).exports ?? {})
+    : {};
+  const toSubpath = (subpath: string) => {
+    if (!embedded.viaExports) return subpath;
+    const target = exportTargetOf(exportsMap, subpath);
+    if (!target) throw new Error(`${embedded.name}${subpath} is not exported by ${embedded.name}`);
+    const relative = target.replace(/^\.\//, "/");
+    return forTypes ? relative.replace(/\.tsx?$/, "") : relative;
+  };
+  const pattern = specifierPatternOf(embedded.name);
+  await rewriteFiles(targetDir, "**/*.{ts,tsx,js,jsx}", (source, filePath) => {
     if (filePath.startsWith(`${embeddedDir}/`)) return source;
     const relativeDir = path.relative(path.dirname(filePath), embeddedDir);
     const embeddedSpecifier = relativeDir.startsWith(".") ? relativeDir : `./${relativeDir}`;
     return source.replace(
-      embeddedSpecifierPattern,
+      pattern,
       (_match, prefix: string, quote: string, subpath: string) =>
-        `${prefix}${quote}${embeddedSpecifier}${subpath}${quote}`,
+        `${prefix}${quote}${embeddedSpecifier}${toSubpath(subpath)}${quote}`,
     );
   });
+};
 
 const isSourceFile = (filePath: string) => SOURCE_EXTENSIONS.some((ext) => filePath.endsWith(ext));
 
-const isEmittableSourceFile = (packageDir: string, filePath: string, excludedEntries: string[]) => {
+const isEmittableSourceFile = (
+  packageDir: string,
+  filePath: string,
+  excludedEntries: string[],
+  nestedTests: boolean,
+) => {
   const relativePath = path.relative(packageDir, filePath);
   if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) return false;
-  const [topLevelEntry] = relativePath.split(path.sep);
+  const segments = relativePath.split(path.sep);
+  const [topLevelEntry] = segments;
   if (["build.ts", "build", "node_modules", ...excludedEntries].includes(topLevelEntry ?? "")) return false;
+  if (nestedTests && segments.includes("test")) return false;
   return isSourceFile(filePath) && !testFilePattern.test(filePath);
 };
 
@@ -171,16 +237,21 @@ const formatDiagnosticMessages = (diagnostics: ts.Diagnostic[]) =>
     getNewLine: () => ts.sys.newLine,
   });
 
-const collectSourceFiles = async (packageDir: string, excludedEntries: string[] = []) => {
+const collectSourceFiles = async (packageDir: string, excludedEntries: string[] = [], nestedTests = false) => {
   const files: string[] = [];
   for await (const file of new Bun.Glob("**/*.{ts,tsx,js,jsx}").scan({ cwd: packageDir, onlyFiles: true })) {
     const filePath = path.join(packageDir, file);
-    if (isEmittableSourceFile(packageDir, filePath, excludedEntries)) files.push(filePath);
+    if (isEmittableSourceFile(packageDir, filePath, excludedEntries, nestedTests)) files.push(filePath);
   }
   return files;
 };
 
-const emitDeclarations = async (packageDir: string, typesOutDir: string, excludedEntries: string[] = []) => {
+const emitDeclarations = async (
+  packageDir: string,
+  typesOutDir: string,
+  excludedEntries: string[] = [],
+  nestedTests = false,
+) => {
   const configPath = path.join(packageDir, "tsconfig.json");
   const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
   if (configFile.error) throw new Error(formatDiagnosticMessages([configFile.error]));
@@ -204,7 +275,7 @@ const emitDeclarations = async (packageDir: string, typesOutDir: string, exclude
   );
   if (parsedConfig.errors.length > 0) throw new Error(formatDiagnosticMessages(parsedConfig.errors));
 
-  const fileNames = await collectSourceFiles(packageDir, excludedEntries);
+  const fileNames = await collectSourceFiles(packageDir, excludedEntries, nestedTests);
   const program = ts.createProgram({ rootNames: fileNames, options: parsedConfig.options });
   const emitResult = program.emit();
   const diagnostics = ts.getPreEmitDiagnostics(program).concat(emitResult.diagnostics);
@@ -288,16 +359,18 @@ const build = async () => {
     //* `local/` is where test runs leave their databases and logs; gitignored, but `cp -R` would ship it.
     for (const entry of ["build.ts", "build", "tsconfig.json", "local"])
       await rm(`${OUT_DIR}/${entry}`, { recursive: true, force: true });
-    await embedPackageSource();
+    for (const embedded of EMBEDDED_PACKAGES) await embedPackageSource(embedded);
     await removeTestFiles();
-    await rewriteEmbeddedSpecifiers(OUT_DIR, EMBEDDED_OUT_DIR);
+    for (const embedded of EMBEDDED_PACKAGES) await rewriteEmbeddedSpecifiers(OUT_DIR, embedded, embedded.outDir);
 
     await emitDeclarations(PACKAGE_DIR, TYPES_OUT_DIR);
-    await emitDeclarations(EMBEDDED_PACKAGE_DIR, EMBEDDED_TYPES_OUT_DIR, EMBEDDED_NON_SOURCE_ENTRIES);
+    for (const embedded of EMBEDDED_PACKAGES)
+      await emitDeclarations(embedded.dir, embedded.typesOutDir, embedded.nonSourceEntries, embedded.nestedTests);
     await copyExistingDeclarationFiles();
     await writeDirectoryDeclarationFacades(TYPES_OUT_DIR);
     await stripDeclarationAssetImports(TYPES_OUT_DIR);
-    await rewriteEmbeddedSpecifiers(TYPES_OUT_DIR, EMBEDDED_TYPES_OUT_DIR);
+    for (const embedded of EMBEDDED_PACKAGES)
+      await rewriteEmbeddedSpecifiers(TYPES_OUT_DIR, embedded, embedded.typesOutDir);
     await rewriteDeclarationRelativeSpecifiers(TYPES_OUT_DIR);
     await stripNonJsdocComments(OUT_DIR);
 

@@ -288,8 +288,16 @@ export class CloudRunner extends runner("cloud") {
     };
   }
   async getAkanPkgs(workspace: Workspace) {
-    const pkgs = await workspace.getPkgs();
-    return pkgs.filter((pkg) => pkg === "akanjs" || pkg === "create-akan-workspace" || pkg.startsWith("@akanjs/"));
+    const pkgs = (await workspace.getPkgs()).filter(
+      (pkg) => pkg === "akanjs" || pkg === "create-akan-workspace" || pkg.startsWith("@akanjs/"),
+    );
+    // A private package ships inside another one's dist (akanjs vendors @akanjs/native) and has no registry entry.
+    const isPrivate = await Promise.all(
+      pkgs.map(
+        async (pkg) => ((await workspace.readJson(`pkgs/${pkg}/package.json`)) as { private?: boolean }).private,
+      ),
+    );
+    return pkgs.filter((_, idx) => isPrivate[idx] !== true);
   }
   async deployAkan(
     workspace: Workspace,

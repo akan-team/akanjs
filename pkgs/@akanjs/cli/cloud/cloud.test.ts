@@ -195,12 +195,22 @@ describe("CloudRunner", () => {
   test("filters Akan packages from workspace package list", async () => {
     const workspace = {
       getPkgs: async () => ["akanjs", "create-akan-workspace", "@sample/tool"],
+      readJson: async () => ({}),
     };
 
     await expect(new CloudRunner().getAkanPkgs(workspace as never)).resolves.toEqual([
       "akanjs",
       "create-akan-workspace",
     ]);
+  });
+
+  test("leaves out a private Akan package, which ships inside another one's dist", async () => {
+    const workspace = {
+      getPkgs: async () => ["akanjs", "@akanjs/cli", "@akanjs/native"],
+      readJson: async (filePath: string) => (filePath === "pkgs/@akanjs/native/package.json" ? { private: true } : {}),
+    };
+
+    await expect(new CloudRunner().getAkanPkgs(workspace as never)).resolves.toEqual(["akanjs", "@akanjs/cli"]);
   });
 
   test("update installs the package that ships the akan binary at the requested tag", async () => {
