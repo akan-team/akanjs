@@ -77,7 +77,7 @@ beforeAll(() => {
     storage: {
       getItem: async () => null,
     },
-    isMobileDevice: () => true,
+    isNativeTarget: () => true,
     // The real one, so the assertion below is that the dictionary key is what reaches the native picker.
     Translator,
   }));

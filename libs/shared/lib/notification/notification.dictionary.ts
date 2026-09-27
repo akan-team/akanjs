@@ -36,19 +36,9 @@ export const dictionary = modelDictionary(["en", "ko"])
   }))
   .slice<NotificationSlice>((fn) => ({}))
   .endpoint<NotificationEndpoint>((fn) => ({
-    subscribeToMegaphone: fn(["Subscribe to all users", "전체 사용자 구독"])
-      .desc(["Subscribe to all users", "전체 사용자 구독"])
-      .arg((t) => ({
-        token: t(["Token", "토큰"]).desc(["Token of the notification", "알림의 토큰"]),
-      })),
     sendPushNotification: fn(["Send push notification", "푸시 알림 전송"])
       .desc(["Send push notification", "푸시 알림 전송"])
       .arg((t) => ({
         notificationInput: t(["Notification input", "알림 입력"]).desc(["Notification input", "알림 입력"]),
-      })),
-    subscribeToSelf: fn(["Subscribe to self", "자신 구독"])
-      .desc(["Subscribe to self", "자신 구독"])
-      .arg((t) => ({
-        token: t(["Token", "토큰"]).desc(["Token of the notification", "알림의 토큰"]),
       })),
   }));

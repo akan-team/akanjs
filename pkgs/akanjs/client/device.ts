@@ -77,7 +77,7 @@ const getRenderMode = () => globalWithProcess.process?.env?.AKAN_PUBLIC_RENDER_E
 
 const getBrowserLanguage = () => globalThis.navigator?.language?.split("-")[0] ?? "en";
 
-const isNativeTarget = () => {
+export const isNativeTarget = () => {
   if (typeof window === "undefined") return false;
   return Boolean((window as typeof window & { __AKAN_MOBILE_TARGET__?: unknown }).__AKAN_MOBILE_TARGET__);
 };

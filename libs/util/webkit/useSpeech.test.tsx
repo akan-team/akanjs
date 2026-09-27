@@ -56,7 +56,7 @@ beforeAll(async () => {
     useEffect: () => {},
     useMemo: <T,>(factory: () => T) => factory(),
   }));
-  mock.module("akanjs/client", () => ({ isMobileDevice: () => false }));
+  mock.module("akanjs/client", () => ({ isNativeTarget: () => false }));
   mock.module("akanjs/client/capacitor", () => ({
     loadCapacitorSpeechRecognition: async () => ({}),
     loadCapacitorTextToSpeech: async () => ({}),

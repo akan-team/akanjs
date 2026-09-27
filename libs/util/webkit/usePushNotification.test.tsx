@@ -82,14 +82,14 @@ const installCapacitorBridge = () => {
   });
 };
 
-const installWindow = () => {
+const installWindow = ({ native = true }: { native?: boolean } = {}) => {
   const window = {
     location: { origin: "https://example.test" },
     Capacitor: (globalThis as typeof globalThis & { Capacitor?: unknown }).Capacitor,
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
   } as unknown as Window & typeof globalThis;
-  installCapacitorBridge();
+  if (native) installCapacitorBridge();
   (window as unknown as { Capacitor: unknown }).Capacitor = (
     globalThis as typeof globalThis & { Capacitor?: unknown }
   ).Capacitor;
@@ -179,6 +179,19 @@ describe("usePushNotification", () => {
     swMessageListeners[0]?.({ data: { type: "unrelated", url: "/ignored" } });
     swMessageListeners[0]?.({ data: { type: pushNavigateMessage } });
     expect(deepLinks).toEqual(["/notified"]);
+    hook.unmount();
+  });
+
+  test("installs the worker's click bridge on a page with no native bridge at all", async () => {
+    globalThis.__AKAN_CAPACITOR_IMPORTS__ = undefined;
+    installWindow({ native: false });
+    const { usePushNotification } = await import("./usePushNotification");
+    const hook = renderHook(() => usePushNotification());
+
+    expect(await hook.current.initClickBridge()).toBe(true);
+    expect(swMessageListeners).toHaveLength(1);
+    swMessageListeners[0]?.({ data: { type: pushNavigateMessage, url: "/from-worker" } });
+    expect(deepLinks).toEqual(["/from-worker"]);
     hook.unmount();
   });
 });

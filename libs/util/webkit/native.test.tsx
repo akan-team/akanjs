@@ -129,7 +129,7 @@ beforeAll(() => {
     storage: {
       getItem: async () => null,
     },
-    isMobileDevice: () => true,
+    isNativeTarget: () => true,
   }));
 });
 

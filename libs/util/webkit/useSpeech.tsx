@@ -1,5 +1,5 @@
 "use client";
-import { isMobileDevice } from "akanjs/client";
+import { isNativeTarget } from "akanjs/client";
 import { loadCapacitorSpeechRecognition, loadCapacitorTextToSpeech } from "akanjs/client/capacitor";
 import type { VoiceEngine, VoiceHandlers, VoiceListener, VoiceSpeech } from "akanjs/ui";
 import { useEffect, useMemo, useState } from "react";
@@ -204,7 +204,7 @@ const nativeEngine = (lang: string, ready: boolean): VoiceEngine => ({
  */
 export const useSpeech = ({ lang }: { lang?: string } = {}) => {
   const [nativeReady, setNativeReady] = useState(false);
-  const native = isMobileDevice();
+  const native = isNativeTarget();
   const locale = lang ?? (typeof navigator === "undefined" ? "en-US" : navigator.language);
   useEffect(() => {
     if (!native) return;

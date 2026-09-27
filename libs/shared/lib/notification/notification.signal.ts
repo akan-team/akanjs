@@ -1,4 +1,4 @@
-import { Admin, Self } from "@libs/shared/srvkit";
+import { Admin } from "@libs/shared/srvkit";
 import { endpoint, internal, Public, slice } from "akanjs/signal";
 
 import * as cnst from "../cnst";
@@ -14,19 +14,6 @@ export class NotificationSlice extends slice(
 ) {}
 
 export class NotificationEndpoint extends endpoint(srv.notification, ({ mutation }) => ({
-  subscribeToMegaphone: mutation(Boolean)
-    .param("token", String)
-    .exec(async function (token) {
-      await this.notificationService.subscribeToMegaphone(token);
-      return true;
-    }),
-  subscribeToSelf: mutation(Boolean)
-    .param("token", String)
-    .with(Self)
-    .exec(async function (token, self) {
-      await this.notificationService.subscribeToSelf(token, self.id);
-      return true;
-    }),
   // `mcp: false`: this reaches every device that ever subscribed, and a push cannot be recalled.
   sendPushNotification: mutation(cnst.Notification, { guards: [Admin], mcp: false })
     .body("notificationInput", cnst.NotificationInput)

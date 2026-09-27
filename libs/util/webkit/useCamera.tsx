@@ -1,5 +1,5 @@
 "use client";
-import { Device, isMobileDevice } from "akanjs/client";
+import { Device, isNativeTarget } from "akanjs/client";
 import { type CapacitorPermissionState, loadCapacitorCamera } from "akanjs/client/capacitor";
 import { useEffect, useState } from "react";
 
@@ -93,7 +93,7 @@ export const useCamera = () => {
 
   useEffect(() => {
     void (async () => {
-      if (isMobileDevice()) {
+      if (isNativeTarget()) {
         const { Camera } = await loadCapacitorCamera();
         const permissions = await Camera.checkPermissions();
         setPermissions(permissions);

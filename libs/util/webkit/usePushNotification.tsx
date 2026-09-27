@@ -232,7 +232,8 @@ export const initPushNotificationClickBridge = async () => {
   if (globals.__AKAN_PUSH_CLICK_BRIDGE__) return await globals.__AKAN_PUSH_CLICK_BRIDGE__;
 
   try {
-    const platform = await getNativePlatform();
+    // A page with no native bridge is the web: the Device loader rejects there rather than answering "web".
+    const platform = await getNativePlatform().catch(() => "web" as const);
     if (!platform || platform === "web") {
       initWebClickBridge();
       await restoreForegroundDisplay();
