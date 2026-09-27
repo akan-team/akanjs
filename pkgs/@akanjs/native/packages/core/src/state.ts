@@ -8,7 +8,8 @@ import { runtime } from "./runtime.ts";
  * The PUBLIC_ keys the app's config and .env files define. `akan-native build` writes akan-native-env.d.ts next
  * to akan-native.config.ts, which adds them to this interface (ENV-7).
  */
-export type AkanNativeEnv = {};
+// biome-ignore lint/suspicious/noEmptyInterface: an interface, so the generated akan-native-env.d.ts can add to it; a type alias cannot be augmented.
+export interface AkanNativeEnv {}
 /**
  * Known keys from AkanNativeEnv; other keys (set only at run time through AKAN_NATIVE_PUBLIC_*) stay a plain
  * index signature, so with noUncheckedIndexedAccess they read as string | undefined.
