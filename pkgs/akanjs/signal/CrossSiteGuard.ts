@@ -9,7 +9,8 @@ export interface CrossSiteOption {
 }
 
 // The `SameSite=None` auth cookie rides every cross-site request, so JSON-only bodies force a CORS preflight (which
-// fails) and `Origin` covers multipart and bodiless mutations. No `Origin` is a non-browser caller; `null` is refused.
+// only an allowlisted origin passes) and `Origin` covers multipart and bodiless mutations. No `Origin` is a
+// non-browser caller; `null` is refused.
 export class CrossSiteGuard {
   static readonly logger = new Logger("CrossSiteGuard");
   /** The native shell serves the page from `app://localhost` on iOS, macOS and Linux, `https://app.localhost` on
@@ -47,6 +48,39 @@ export class CrossSiteGuard {
       `Refused "${key}" from cross-site origin ${origin} (request host ${hostFromRequest(req.headers, url)})`,
     );
     throw new Exception.Forbidden("This request was not permitted.");
+  }
+
+  /** The origin a cross-origin caller may read answers from: an allowlisted one, never the serving host's neighbours. */
+  static corsOrigin(req: Request): string | null {
+    const origin = req.headers.get("origin");
+    return origin !== null && CrossSiteGuard.#allowed.has(origin) ? origin : null;
+  }
+
+  // A native shell's page is cross-origin to the API, and its bearer header and JSON bodies always preflight.
+  static preflight(req: Request, methods: string[]): Response {
+    const origin = CrossSiteGuard.corsOrigin(req);
+    if (!origin) return new Response(null, { status: 403 });
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "access-control-allow-origin": origin,
+        "access-control-allow-methods": [...methods, "OPTIONS"].join(", "),
+        // Echoed, not fixed: the origin is the decision, and a fixed list only breaks a caller sending one more header.
+        "access-control-allow-headers":
+          req.headers.get("access-control-request-headers") ?? "authorization, content-type",
+        "access-control-max-age": "600",
+        vary: "origin",
+      },
+    });
+  }
+
+  // Never `access-control-allow-credentials`: the `SameSite=None` cookie would let an allowed origin ride a session.
+  static withCors(req: Request, res: Response): Response {
+    const origin = CrossSiteGuard.corsOrigin(req);
+    if (!origin) return res;
+    res.headers.set("access-control-allow-origin", origin);
+    res.headers.append("vary", "origin");
+    return res;
   }
 
   // Host, not full origin: a TLS-terminating edge loses the scheme, and matching our own host over plaintext

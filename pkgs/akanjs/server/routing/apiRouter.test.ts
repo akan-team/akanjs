@@ -94,6 +94,36 @@ describe("ApiRouter.buildRoutes", () => {
     );
     expect(await renderResponse.json()).toEqual({ url: "http://localhost/rendered", proxy: "1" });
   });
+
+  test("answers a native shell's preflight on a signal path and labels the answer", async () => {
+    type MethodRoutes = Partial<Record<string, RouteFn>>;
+    const routes = await buildRoutes({
+      routes: { "/user/me": { GET: () => Response.json({ id: "u1" }) } } as unknown as HttpRoutes,
+    });
+    const route = routes["/api/user/me"] as unknown as MethodRoutes;
+    const origin = { origin: "app://localhost" };
+
+    const preflight = await route.OPTIONS?.(new Request("http://localhost/api/user/me", { headers: origin }));
+    expect(preflight?.status).toBe(204);
+    expect(preflight?.headers.get("access-control-allow-methods")).toBe("GET, OPTIONS");
+
+    const answer = await route.GET?.(new Request("http://localhost/api/user/me", { headers: origin }));
+    expect(answer?.headers.get("access-control-allow-origin")).toBe("app://localhost");
+    expect(await answer?.json()).toEqual({ id: "u1" });
+  });
+
+  test("keeps a route's own preflight and leaves builtin routes alone", async () => {
+    type MethodRoutes = Partial<Record<string, RouteFn>>;
+    const routes = await buildRoutes({
+      routes: {
+        "/custom": { POST: () => new Response("ok"), OPTIONS: () => new Response("own", { status: 200 }) },
+      } as unknown as HttpRoutes,
+      builtinRoutes: { "/mcp": { POST: () => new Response("mcp") } } as unknown as HttpRoutes,
+    });
+    const own = await (routes["/api/custom"] as unknown as MethodRoutes).OPTIONS?.(get("/api/custom"));
+    expect(await own?.text()).toBe("own");
+    expect((routes["/mcp"] as unknown as MethodRoutes).OPTIONS).toBeUndefined();
+  });
 });
 
 describe("ApiRouter.buildWebsocketHandlers", () => {

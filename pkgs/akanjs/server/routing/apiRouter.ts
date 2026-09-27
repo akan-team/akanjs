@@ -1,7 +1,7 @@
 import { dayjs } from "akanjs/base";
 import { type Logger, websocketAuthContract, websocketHeartbeatContract } from "akanjs/common";
 import type { InjectRegistry, LiveRegistry } from "akanjs/service";
-import { isExceptionLike, SignalContext, SignalFailure, type WebsocketReqData } from "akanjs/signal";
+import { CrossSiteGuard, isExceptionLike, SignalContext, SignalFailure, type WebsocketReqData } from "akanjs/signal";
 import { compressResponse } from "../contentEncoding";
 import type { HmrWsData, HmrWsHub } from "../hmr/wsHub";
 import { copyBunRequestFields, type WebProxyRunner } from "../proxy";
@@ -58,7 +58,10 @@ export class ApiRouter {
   }: ApiRouteInputs): NonNullHttpRoutes {
     const endpointEntries = Object.entries(routes ?? {}).map(
       ([p, handler]) =>
-        [ApiRouter.applyGlobalPrefix(prefix, p, routeOptions?.[p]), ApiRouter.#compressRoute(handler)] as const,
+        [
+          ApiRouter.applyGlobalPrefix(prefix, p, routeOptions?.[p]),
+          ApiRouter.#corsRoute(ApiRouter.#compressRoute(handler)),
+        ] as const,
     );
     const builtinEntries = Object.entries(builtinRoutes ?? {}).map(
       ([path, handler]) => [path, ApiRouter.#compressRoute(handler)] as const,
@@ -213,6 +216,17 @@ export class ApiRouter {
       const response = await handler(req);
       return response ? await compressResponse(req, response) : response;
     });
+  }
+
+  // Signal routes are method maps, so the preflight answers with exactly the verbs the path serves.
+  static #corsRoute(route: RouteValue): RouteValue {
+    if (!route || typeof route !== "object" || route instanceof Response || "OPTIONS" in route) return route;
+    const methods = Object.keys(route);
+    const answered = ApiRouter.#mapRoute(route, (handler) => async (req) => {
+      const response = await handler(req);
+      return response ? CrossSiteGuard.withCors(req, response) : response;
+    });
+    return { ...(answered as object), OPTIONS: (req: Request) => CrossSiteGuard.preflight(req, methods) } as RouteValue;
   }
 
   static #mapRoute(route: RouteValue, wrap: (handler: RouteHandler) => RouteHandler): RouteValue {
