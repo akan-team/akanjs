@@ -1,5 +1,6 @@
 import { msg } from "@libs/shared/client";
 import { withRedirectQuery } from "@libs/shared/common";
+import { loadRefreshToken, saveRefreshToken } from "@libs/shared/webkit";
 import { type Dayjs, dayjs } from "akanjs/base";
 import { getCookie, router, setAuth, setCookie } from "akanjs/client";
 import { formatPhone, isPhoneNumber } from "akanjs/common";
@@ -107,6 +108,7 @@ export class UserStore extends store(sig.user, () => ({
     if (agreePolicies?.length) await fetch.setAgreePoliciesOfPrepareUser(userId, agreePolicies);
     const accessToken = await fetch.activateUser(userId);
     setAuth(accessToken);
+    await saveRefreshToken("user", accessToken.refreshToken);
     await this.getSelf(accessToken);
     if (redirect) router.push(redirect);
   }
@@ -211,6 +213,7 @@ export class UserStore extends store(sig.user, () => ({
       const { accountId, password } = this.pick("accountId", "password");
       const accessToken = await fetch.signinWithPassword(accountId, password, turnstileToken ?? "dummy");
       setAuth(accessToken);
+      await saveRefreshToken("user", accessToken.refreshToken);
       await this.getSelf(accessToken);
       if (replace) router.replace(redirect);
       else router.push(redirect);
@@ -285,6 +288,7 @@ export class UserStore extends store(sig.user, () => ({
     this.set({ signToken });
     const accessToken = await fetch.signinWithSignToken(userId, signToken);
     setAuth(accessToken);
+    await saveRefreshToken("user", accessToken.refreshToken);
     await this.getSelf(accessToken);
     this.set({ signToken: null });
     router.push(redirect);
@@ -306,8 +310,9 @@ export class UserStore extends store(sig.user, () => ({
   //*================================================================*//
 
   async refreshJwt() {
-    const accessToken = await fetch.refreshJwt(null);
+    const accessToken = await fetch.refreshJwt(await loadRefreshToken("user"));
     setAuth(accessToken);
+    await saveRefreshToken("user", accessToken.refreshToken);
   }
 
   //*======================================================*//

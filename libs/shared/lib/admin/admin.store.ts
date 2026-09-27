@@ -1,4 +1,5 @@
 import { msg } from "@libs/shared/client";
+import { saveRefreshToken } from "@libs/shared/webkit";
 import { setAuth } from "akanjs/client";
 import { store } from "akanjs/store";
 
@@ -30,8 +31,9 @@ export class AdminStore extends store(sig.admin, () => ({
   async signinAdmin({ redirect }: { redirect?: string } = {}) {
     try {
       const { accountId, password } = this.get().adminForm;
-      const jwt = (await fetch.signinAdmin(accountId, password ?? "")).jwt;
-      await (this as unknown as RootStore).login({ auth: "admin", jwt, redirect });
+      const accessToken = await fetch.signinAdmin(accountId, password ?? "");
+      await saveRefreshToken("admin", accessToken.refreshToken);
+      await (this as unknown as RootStore).login({ auth: "admin", jwt: accessToken.jwt, redirect });
     } catch (_e) {
       //
     }
@@ -39,6 +41,7 @@ export class AdminStore extends store(sig.admin, () => ({
   async signoutAdmin() {
     const { jwt } = await fetch.signoutAdmin();
     setAuth({ jwt });
+    await saveRefreshToken("admin", null);
     this.set({ me: new cnst.Admin(), adminForm: new cnst.Admin() });
   }
 }
