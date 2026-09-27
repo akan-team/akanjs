@@ -34,7 +34,7 @@ export class NativeWebDir {
   }
   static readonly #targetTag = "<script>window.__AKAN_MOBILE_TARGET__=";
 
-  /** Rebuilds the folder from scratch and answers its files, relative and sorted. */
+  /** Rebuilds the folder from scratch and answers its files as web paths: relative, `/`-separated and sorted. */
   async assemble(target: AkanMobileTargetConfig, { html, publicDir, fontsDir }: NativeWebDirSources) {
     if (!(await Bun.file(html).exists()))
       throw new Error(`CSR html for mobile target '${target.name}' not found: ${html}`);
@@ -46,7 +46,9 @@ export class NativeWebDir {
     if (await NativeWebDir.#isDir(path.join(this.dir, NativeWebDir.reservedEntry)))
       throw new Error(`public/${NativeWebDir.reservedEntry} is reserved for the native runtime.`);
     await Bun.write(path.join(this.dir, "index.html"), NativeWebDir.injectTarget(await Bun.file(html).text(), target));
-    return (await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: this.dir, onlyFiles: true, dot: true }))).sort();
+    const files = await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: this.dir, onlyFiles: true, dot: true }));
+    //? Bun.Glob answers with the platform's separator, so a Windows scan reads `_akan\fonts\…`.
+    return files.map((file) => file.split(path.sep).join("/")).sort();
   }
 
   static async #isDir(dir: string) {

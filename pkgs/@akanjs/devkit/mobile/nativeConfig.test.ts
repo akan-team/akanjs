@@ -68,7 +68,10 @@ describe("NativeConfig.build", () => {
         },
       ],
       deepLinks: { schemes: ["minimal"], domains: ["example.com"] },
-      android: { debugAppIdSuffix: ".debug", googleServices: "/repo/apps/minimal/secrets/google-services.json" },
+      android: {
+        debugAppIdSuffix: ".debug",
+        googleServices: path.resolve("/repo/apps/minimal", "secrets/google-services.json"),
+      },
       keyboard: { resize: "none" },
     });
   });
@@ -109,12 +112,12 @@ describe("NativeConfig.build", () => {
       native: {
         ios: { infoPlist: { ITSAppUsesNonExemptEncryption: false } },
         android: { manifest: ['<queries><package android:name="com.kakao.talk" /></queries>'] },
-        resources: [{ from: "/repo/apps/portal/assets/chime.mp3", to: "android/res/raw/chime.mp3" }],
+        resources: [{ from: path.resolve("/repo/apps/portal", "assets/chime.mp3"), to: "android/res/raw/chime.mp3" }],
       },
       android: { debugAppIdSuffix: ".debug" },
       keyboard: { resize: "none" },
-      icon: "/repo/apps/portal/assets/icon.png",
-      splash: { image: "/repo/apps/portal/assets/splash.png" },
+      icon: path.resolve("/repo/apps/portal", "assets/icon.png"),
+      splash: { image: path.resolve("/repo/apps/portal", "assets/splash.png") },
     });
   });
 

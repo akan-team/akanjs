@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import path from "node:path";
 import type { AkanPlugin } from "akanjs";
 import type { AkanMobileTargetConfig } from "../akanConfig";
 import type { App } from "../commandDecorators";
@@ -17,9 +18,11 @@ const target = (config: Partial<AkanMobileTargetConfig> = {}) => ({
   },
 });
 
+const appDir = "/repo/apps/portal";
+
 const fakeApp = (plugins: AkanPlugin[] = []) =>
   ({
-    cwdPath: "/repo/apps/portal",
+    cwdPath: appDir,
     dist: { cwdPath: "/repo/dist/apps/portal" },
     getConfig: async () => ({ i18n: { locales: ["en", "ko"] }, api: { prefix: "/api", websocketPrefix: "/ws" } }),
     collectPlugins: async () => plugins,
@@ -30,9 +33,9 @@ describe("NativeApp", () => {
   test("keeps each target's web root and each platform's output apart", () => {
     const admin = new NativeApp(fakeApp(), target({ name: "admin", basePath: "admin" }));
 
-    expect(admin.web.dir).toBe("/repo/apps/portal/.akan/mobile/admin/web");
-    expect(admin.outDir("ios")).toBe("/repo/apps/portal/.akan/mobile/admin/native/ios");
-    expect(admin.outDir("android")).toBe("/repo/apps/portal/.akan/mobile/admin/native/android");
+    expect(admin.web.dir).toBe(path.join(appDir, ".akan/mobile/admin/web"));
+    expect(admin.outDir("ios")).toBe(path.join(appDir, ".akan/mobile/admin/native/ios"));
+    expect(admin.outDir("android")).toBe(path.join(appDir, ".akan/mobile/admin/native/android"));
   });
 
   test("opens a dev build on its target's home, the CSR shell under the locale", () => {
@@ -55,7 +58,7 @@ describe("NativeApp", () => {
 
     expect(warnings).toEqual([]);
     expect(config.plugins).toEqual([...NativeConfig.basePlugins, "push"]);
-    expect(config.web.dir).toBe("/repo/apps/portal/.akan/mobile/default/web");
+    expect(config.web.dir).toBe(path.join(appDir, ".akan/mobile/default/web"));
   });
 
   test("signs an Android release with the upload key the environment names, and says which part is missing", () => {
