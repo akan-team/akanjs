@@ -14,7 +14,7 @@ import {
 } from "akanjs/client";
 import { st } from "akanjs/store";
 import { animated } from "akanjs/ui";
-import { type ComponentProps, type ReactNode, type RefObject, useEffect } from "react";
+import { type ComponentProps, type ReactNode, type RefObject, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { RenderLayer } from "../../webkit/RenderLayer";
 
@@ -317,7 +317,7 @@ const CSRFrameSlotTargets = ({ slot }: { slot: FrameSlotTarget }) => {
           pageType === "current"
             ? history.current.idx
             : pageType === "prev"
-              ? (history.current.idxMap.get(prevLocation?.pathname ?? "") ?? 0)
+              ? (history.current.idxMap.get(prevLocation?.href ?? "") ?? 0)
               : pageType === "pending"
                 ? history.current.idx + 1
                 : 0;
@@ -333,6 +333,8 @@ const CSRFrameSlotTargets = ({ slot }: { slot: FrameSlotTarget }) => {
           <animated.div
             key={id}
             id={id}
+            inert={pageType !== "current"}
+            aria-hidden={pageType === "current" ? undefined : true}
             className={cn(
               slot === "topInset" && "absolute top-0 left-0 isolate size-full",
               slot === "topLeftAction" && "absolute left-0 isolate flex h-full items-center justify-center",
@@ -411,6 +413,7 @@ const CSRPageContainer = ({ pathRoute, prefix, layoutStyle }: CSRPageContainerPr
     prevPage,
     prevPageContentRef,
   } = csr;
+  const renders = useMemo(() => [...pathRoute.renderLayouts, pathRoute.renderPage], [pathRoute]);
   const pageType = pageTypeOf(csr, pathRoute);
   if (!pageType) return null;
   const pageContainers = document.getElementById("pageContainers");
@@ -432,7 +435,7 @@ const CSRPageContainer = ({ pathRoute, prefix, layoutStyle }: CSRPageContainerPr
             pageContentRef: prevPageContentRef,
             pageClassName: "",
             pageBind: () => ({}),
-            zIndex: history.current.idxMap.get(prevLocation?.pathname ?? "") ?? 0,
+            zIndex: history.current.idxMap.get(prevLocation?.href ?? "") ?? 0,
           }
         : pageType === "pending"
           ? {
@@ -457,6 +460,8 @@ const CSRPageContainer = ({ pathRoute, prefix, layoutStyle }: CSRPageContainerPr
       {createPortal(
         <animated.div
           id={`pageContainer-${pathRoute.path}`}
+          inert={pageType !== "current"}
+          aria-hidden={pageType === "current" ? undefined : true}
           style={{
             ...(page?.containerStyle ?? {}),
             ...(pageType === "pending"
@@ -486,13 +491,7 @@ const CSRPageContainer = ({ pathRoute, prefix, layoutStyle }: CSRPageContainerPr
             location={location}
             prefix={prefix}
           >
-            <RenderLayer
-              renders={[...pathRoute.renderLayouts, pathRoute.renderPage]}
-              index={0}
-              params={location.params}
-              searchParams={location.searchParams}
-              leaf={<></>}
-            />
+            <RenderLayer renders={renders} index={0} params={location.params} searchParams={location.searchParams} />
           </ClientPathWrapper>
         </animated.div>,
         pageContainers,

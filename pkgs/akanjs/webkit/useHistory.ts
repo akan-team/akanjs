@@ -20,9 +20,14 @@ export const useHistory = (locations: Location[] = []) => {
   const history = useRef<History>({
     type: "initial",
     locations,
-    scrollMap: new Map([[window.location.pathname, 0]]),
-    idxMap: new Map([[window.location.pathname, 0]]),
-    cachedLocationMap: new Map(),
+    scrollMap: new Map(locations.map((location) => [location.href, 0])),
+    idxMap: new Map(locations.map((location, idx) => [location.href, idx])),
+    //? The page a session opens on is cached like any page reached later; left out, it unmounts two steps away.
+    cachedLocationMap: new Map(
+      locations
+        .filter((location) => location.pathRoute.pageState.cache)
+        .map((location) => [location.pathRoute.path, location]),
+    ),
     idx: 0,
   });
   const setHistoryForward = useCallback(({ type, location, scrollTop = 0, scrollToTop = false }: setForwardOptions) => {
@@ -40,7 +45,7 @@ export const useHistory = (locations: Location[] = []) => {
   }, []);
   const setHistoryBack = useCallback(({ location, scrollTop = 0, scrollToTop = false }: setBackOptions) => {
     const prevLocation = history.current.locations[history.current.idx - 1] as Location | undefined;
-    if (prevLocation && scrollToTop) history.current.scrollMap.set(prevLocation.pathname, 0);
+    if (prevLocation && scrollToTop) history.current.scrollMap.set(prevLocation.href, 0);
     history.current.type = "back";
     history.current.scrollMap.set(location.href, scrollTop);
     history.current.idxMap.set(location.href, history.current.idx);

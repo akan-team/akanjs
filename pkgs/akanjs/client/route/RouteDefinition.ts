@@ -17,6 +17,8 @@ export type RouteArgsShape = Record<string, unknown>;
 export type RouteKind = "page" | "layout" | "rootLayout";
 /** Interned: a definition built inside the pages bundle must be recognised by a loader bundled apart from it. */
 export const routeDefinitionMarker = Symbol.for("akan.routeDefinition");
+/** Interned like the marker: the declared args ride on the module's render function, read by the CSR render cache. */
+export const routeArgsMarker = Symbol.for("akan.routeArgs");
 
 type HeadStage<Args> = Head | ((args: Args) => PromiseOrObject<Head | null | undefined>);
 
@@ -122,8 +124,12 @@ export abstract class RouteDefinition<
       throw new Error(`[route-convention] a ${this.kind}() chain ends with .render(), and this one has none`);
     const head = this.#head;
     const loading = this.#loading;
+    const renderRoute = async (props: RouteRenderProps) => await render(this.#argsOf(props) as never);
+    Object.defineProperty(renderRoute, routeArgsMarker, {
+      value: this.args.map(({ kind, name }) => ({ kind, name })),
+    });
     const module: PageModule & LayoutModule = {
-      default: (async (props: RouteRenderProps) => await render(this.#argsOf(props) as never)) as never,
+      default: renderRoute as never,
       ...(this.#config ? { pageConfig: this.#config } : {}),
       ...(head === undefined
         ? {}
@@ -142,6 +148,30 @@ export abstract class RouteDefinition<
 
   protected extendModule(module: PageModule & LayoutModule): PageModule & LayoutModule {
     return module;
+  }
+
+  /**
+   * What a route's render output depends on: a chain's declared args plus `lang`. A legacy module declares nothing,
+   * so it depends on the params of its own path (`paramNames`, every param when unknown) and, for a page, every
+   * search value — a layout reads no query.
+   */
+  static renderArgsKey(
+    render: unknown,
+    props: { params: Record<string, string>; searchParams?: Record<string, string | string[]> },
+    { isPage, paramNames }: { isPage: boolean; paramNames?: string[] },
+  ): string {
+    const declared = (render as { [routeArgsMarker]?: Pick<RouteArgInfo, "kind" | "name">[] } | null)?.[
+      routeArgsMarker
+    ];
+    const searchParams = props.searchParams ?? {};
+    if (!declared) {
+      const params = paramNames ? paramNames.map((name) => props.params[name]) : props.params;
+      return JSON.stringify([params, isPage ? searchParams : null]);
+    }
+    return JSON.stringify([
+      props.params.lang,
+      ...declared.map(({ kind, name }) => (kind === "param" ? props.params[name] : searchParams[name])),
+    ]);
   }
 
   #argsOf(props: RouteRenderProps): RouteBaseArgs & Args & Extra {

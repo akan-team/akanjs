@@ -118,6 +118,8 @@ export const bootCsr = async (context: Record<string, CsrRouteModuleEntry>) => {
       const overridesRender: RouteRender = {
         render: page.default as never,
         isAsync: asyncDefaultMap[filePath] || page.default?.constructor.name === "AsyncFunction",
+        kind: "layout",
+        paramNames: paramNamesOf(parsed.pattern),
       };
       targetRouteMap.set(targetPath, {
         ...(targetRouteMap.get(targetPath) ?? { path: targetPath, children: new Map<string, Route>() }),
@@ -129,6 +131,8 @@ export const bootCsr = async (context: Record<string, CsrRouteModuleEntry>) => {
     const routeRender: RouteRender = {
       render: page.default as never,
       isAsync: asyncDefaultMap[filePath] || page.default?.constructor.name === "AsyncFunction",
+      kind: parsed.kind === "layout" ? "layout" : "page",
+      paramNames: paramNamesOf(parsed.pattern),
       Loading: page.Loading as never,
       NotFound: layoutPage?.NotFound,
       Error: layoutPage?.Error,
@@ -256,6 +260,13 @@ export const bootCsr = async (context: Record<string, CsrRouteModuleEntry>) => {
   const root = ReactDOM.createRoot(el);
   root.render(<RouterProvider />);
 };
+
+function paramNamesOf(pattern: string) {
+  return pattern
+    .split("/")
+    .filter((part) => part.startsWith(":"))
+    .map((part) => part.slice(1).replace(/[?*+]$/, ""));
+}
 
 function initializeMobileTargetFromSearch() {
   if (window.__AKAN_MOBILE_TARGET__) return;

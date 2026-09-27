@@ -103,6 +103,9 @@ export type LayoutErrorRender = (props: LayoutErrorProps) => PromiseOrObject<Rea
 export interface RouteRender {
   render: LayoutRender | PageRender;
   isAsync?: boolean;
+  /** CSR: a page's render reads the query; a layout's reads only the params of its own path (`paramNames`). */
+  kind?: "page" | "layout";
+  paramNames?: string[];
   Loading?: LayoutLoadingRender | PageLoadingRender;
   /** Loads the module and fills `Loading` without running `render`/`resolveHead` (the suffix compose path). */
   resolveLoading?: () => void | Promise<void>;
