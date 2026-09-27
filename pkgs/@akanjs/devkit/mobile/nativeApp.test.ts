@@ -61,6 +61,15 @@ describe("NativeApp", () => {
     expect(config.web.dir).toBe(path.join(appDir, ".akan/mobile/default/web"));
   });
 
+  test("a desktop app is this computer's platform", () => {
+    expect(["darwin", "win32", "linux"].map((host) => NativeApp.desktopPlatform(host as NodeJS.Platform))).toEqual([
+      "macos",
+      "windows",
+      "linux",
+    ]);
+    expect(() => NativeApp.desktopPlatform("freebsd")).toThrow("A desktop app builds on macOS, Windows or Linux");
+  });
+
   test("signs an Android release with the upload key the environment names, and says which part is missing", () => {
     expect(
       NativeApp.androidSigning({

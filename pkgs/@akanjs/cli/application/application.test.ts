@@ -3,6 +3,7 @@ import path from "node:path";
 import type { AkanAppConfig, DatabaseMode } from "@akanjs/devkit/akanConfig";
 import { CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor, PkgExecutor } from "@akanjs/devkit/executors";
+import { NativeApp } from "@akanjs/devkit/mobile";
 import {
   createCallRecorder,
   createFakeExecutor,
@@ -129,7 +130,15 @@ describe("ApplicationCommand", () => {
   });
 
   test("uses the same mobile target selector metadata across mobile commands", async () => {
-    const mobileCommandKeys = ["buildIos", "buildAndroid", "startIos", "startAndroid", "releaseIos", "releaseAndroid"];
+    const mobileCommandKeys = [
+      "buildIos",
+      "buildAndroid",
+      "startIos",
+      "startAndroid",
+      "startDesktop",
+      "releaseIos",
+      "releaseAndroid",
+    ];
     const app = {
       getConfig: async () => ({
         basePaths: new Set(["store", "admin"]),
@@ -361,6 +370,35 @@ describe("ApplicationScript", () => {
   });
 });
 
+describe("ApplicationScript desktop", () => {
+  test("startDesktop runs the target on this computer's desktop platform, with no device or team to pick", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const recorder = createCallRecorder();
+    const app = createFakeExecutor(
+      "demo",
+      { scanSync: async (...args: unknown[]) => recorder.record("scanSync", ...args) },
+      recorder,
+    );
+    const startMobile = script.applicationRunner.startMobile;
+    script.applicationRunner.startMobile = async (...args: unknown[]) => {
+      recorder.record("runner.startMobile", ...args);
+    };
+    try {
+      await script.startDesktop(app as never, { target: "default", operation: "release", write: false });
+    } finally {
+      script.applicationRunner.startMobile = startMobile;
+    }
+
+    expect(recorder.calls).toContainEqual({ name: "scanSync", args: [{ write: false }] });
+    expect(recorder.calls).toContainEqual({
+      name: "runner.startMobile",
+      args: [app, NativeApp.desktopPlatform(), { target: "default", operation: "release" }],
+    });
+    const optionNames = getArgMetas(ApplicationCommand, "startDesktop")[1].map((meta) => meta.name);
+    expect(optionNames).toEqual(["target", "env", "release", "write"]);
+  });
+});
+
 describe("ApplicationRunner mobile", () => {
   const mobileApp = (targets: Record<string, object>) =>
     ({
@@ -385,6 +423,13 @@ describe("ApplicationRunner mobile", () => {
     const app = mobileApp({ store: target("store"), admin: target("admin") });
     await expect(new ApplicationRunner().startMobile(app, "android", { target: "all" })).rejects.toThrow(
       "start-android runs one mobile target at a time",
+    );
+  });
+
+  test("a desktop dev build names its own command when it is handed several targets", async () => {
+    const app = mobileApp({ store: target("store"), admin: target("admin") });
+    await expect(new ApplicationRunner().startDesktop(app, { target: "all" })).rejects.toThrow(
+      "start-desktop runs one mobile target at a time",
     );
   });
 

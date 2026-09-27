@@ -6,7 +6,13 @@ import { resolveSignalTestPreloadPath } from "@akanjs/devkit/applicationTestPrel
 import { type App, type Exec, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor } from "@akanjs/devkit/executors";
 import type { DevStdioMode } from "@akanjs/devkit/incrementalBuilder";
-import { type MobilePlatform, NativeApp, type ResolvedMobileTarget, resolveMobileTargets } from "@akanjs/devkit/mobile";
+import {
+  type MobilePlatform,
+  NativeApp,
+  type NativePlatform,
+  type ResolvedMobileTarget,
+  resolveMobileTargets,
+} from "@akanjs/devkit/mobile";
 import { SlicePlanner } from "@akanjs/devkit/slicePlanner";
 import { Logger, type LogRecord } from "akanjs/common";
 import { openBrowser } from "../openBrowser";
@@ -274,13 +280,15 @@ try {
   //* A dev build loads its pages from `akan start`, so it follows every save; a release build carries its own bundle.
   async startMobile(
     app: App,
-    platform: MobilePlatform,
+    platform: NativePlatform,
     { target, env = "local", operation = "local", device, teamId }: MobileStartOptions = {},
   ) {
     const targets = await resolveMobileTargets(app, target);
     const [mobileTarget] = targets;
     if (!mobileTarget || targets.length > 1)
-      throw new Error(`start-${platform} runs one mobile target at a time; pass --target <name>.`);
+      throw new Error(
+        `start-${platform === "ios" || platform === "android" ? platform : "desktop"} runs one mobile target at a time; pass --target <name>.`,
+      );
     const nativeApp = new NativeApp(app, mobileTarget);
     const selection = { ...(device ? { device } : {}), ...(teamId ? { teamId } : {}) };
     if (operation === "release") {
@@ -299,6 +307,9 @@ try {
       void session.stop().finally(() => process.exit(130));
     });
     await session.exited;
+  }
+  async startDesktop(app: App, options: Omit<MobileStartOptions, "device" | "teamId"> = {}) {
+    await this.startMobile(app, NativeApp.desktopPlatform(), options);
   }
   static async #answers(url: string) {
     try {

@@ -2,6 +2,8 @@ import type { AkanMobileTargetConfig, MobileEnv } from "../akanConfig";
 import type { App } from "../commandDecorators";
 
 export type MobilePlatform = "ios" | "android";
+export type DesktopPlatform = "macos" | "windows" | "linux";
+export type NativePlatform = MobilePlatform | DesktopPlatform;
 export type MobileTargetSelection = string | "all" | undefined;
 
 export interface ResolvedMobileTarget {

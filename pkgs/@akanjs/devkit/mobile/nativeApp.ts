@@ -2,7 +2,13 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { AkanNativeConfig } from "@akanjs/native/config";
 import type { App } from "../commandDecorators";
-import { type MobilePlatform, type ResolvedMobileTarget, targetHtmlFilename } from "./mobileTarget";
+import {
+  type DesktopPlatform,
+  type MobilePlatform,
+  type NativePlatform,
+  type ResolvedMobileTarget,
+  targetHtmlFilename,
+} from "./mobileTarget";
 import { NativeApi, type NativeBuildApiModule } from "./nativeApi";
 import { NativeConfig } from "./nativeConfig";
 import { NativeWebDir } from "./nativeWebDir";
@@ -24,7 +30,8 @@ export interface NativeDevOptions extends NativeRunOptions {
   lang: string;
 }
 
-/** One mobile target of an app on the native runtime: where it builds, what it ships, and the calls into the API. */
+/** One mobile target of an app on the native runtime (a phone, or this computer as a desktop app): where it builds,
+ * what it ships, and the calls into the API. */
 export class NativeApp {
   readonly targetRoot: string;
   readonly web: NativeWebDir;
@@ -37,7 +44,7 @@ export class NativeApp {
     this.web = new NativeWebDir(path.join(this.targetRoot, "web"));
   }
 
-  outDir(platform: MobilePlatform) {
+  outDir(platform: NativePlatform) {
     return path.join(this.targetRoot, "native", platform);
   }
 
@@ -80,7 +87,7 @@ export class NativeApp {
   };
 
   //* `AKAN_PUBLIC_*` is already inlined into the CSR bundle, so the runtime reads no .env file of its own.
-  #task(platform: MobilePlatform, config: AkanNativeConfig): TaskOptions {
+  #task(platform: NativePlatform, config: AkanNativeConfig): TaskOptions {
     return {
       appDir: this.app.cwdPath,
       config,
@@ -97,14 +104,14 @@ export class NativeApp {
     };
   }
 
-  async build(platform: MobilePlatform, { profile = "release" }: { profile?: "debug" | "release" } = {}) {
+  async build(platform: NativePlatform, { profile = "release" }: { profile?: "debug" | "release" } = {}) {
     await this.assembleWeb();
     const { api, config } = await this.prepare();
     return await api.build({ ...this.#task(platform, config), profile });
   }
 
   async run(
-    platform: MobilePlatform,
+    platform: NativePlatform,
     { device, teamId, profile = "debug" }: NativeRunOptions & { profile?: "debug" | "release" } = {},
   ) {
     await this.assembleWeb();
@@ -120,7 +127,7 @@ export class NativeApp {
 
   //* The gateway serves the page and its HMR socket on the app origin; API calls go to the dev server itself (baseEnv),
   //* which an Android device reaches through the reversed port.
-  async dev(platform: MobilePlatform, { upstream, lang, device, teamId }: NativeDevOptions) {
+  async dev(platform: NativePlatform, { upstream, lang, device, teamId }: NativeDevOptions) {
     await mkdir(this.web.dir, { recursive: true });
     const [{ api, config }, { api: routes }] = await Promise.all([this.prepare(), this.app.getConfig()]);
     return await api.dev({
@@ -185,11 +192,19 @@ export class NativeApp {
     return `/${home.join("/")}?${params}`;
   }
 
+  //* A desktop app builds only on its own OS, so the platform is this computer's.
+  static desktopPlatform(host: NodeJS.Platform = process.platform): DesktopPlatform {
+    if (host === "darwin") return "macos";
+    if (host === "win32") return "windows";
+    if (host === "linux") return "linux";
+    throw new Error(`A desktop app builds on macOS, Windows or Linux, not on ${host}.`);
+  }
+
   static async devices(appDir: string, platform: MobilePlatform) {
     return await (await NativeApi.load(appDir)).devices({ platform });
   }
 
-  static async doctor(appDir: string, platforms: MobilePlatform[]) {
+  static async doctor(appDir: string, platforms: NativePlatform[]) {
     return await (await NativeApi.load(appDir)).doctor({ platforms });
   }
 }

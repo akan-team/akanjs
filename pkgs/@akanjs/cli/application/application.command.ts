@@ -196,6 +196,18 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
         write,
       });
     }),
+  startDesktop: target({
+    short: true,
+    desc: "Run the desktop app on this computer (macOS, Windows or Linux), following `akan start`",
+  })
+    .with(App)
+    .option("target", String, mobileTargetOption)
+    .option("env", String, startEnvOption)
+    .option("release", Boolean, { desc: "run a release build of its own bundle instead", default: false })
+    .option("write", Boolean, { desc: "write code generation", default: true })
+    .exec(async function (app, target, env, release, write) {
+      await this.applicationScript.startDesktop(app, { target, env, operation: release ? "release" : "local", write });
+    }),
   releaseIos: target({ desc: "Build and sign the iOS app for the App Store (.ipa)" })
     .with(App)
     .option("target", String, mobileTargetOption)

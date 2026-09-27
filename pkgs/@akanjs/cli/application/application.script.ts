@@ -305,6 +305,13 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     await app.scanSync({ write });
     await this.applicationRunner.startMobile(app, "android", options);
   }
+  async startDesktop(
+    app: App,
+    { write = true, ...options }: Omit<MobileStartOptions, "device" | "teamId"> & MobileWriteOptions = {},
+  ) {
+    await app.scanSync({ write });
+    await this.applicationRunner.startDesktop(app, options);
+  }
   async releaseIos(
     app: App,
     {
