@@ -52,14 +52,7 @@ let useSpeech: typeof import("./useSpeech").useSpeech;
 
 beforeAll(async () => {
   mock.module("react", () => ({
-    useState: <T,>(initial: T) => [initial, () => {}],
-    useEffect: () => {},
     useMemo: <T,>(factory: () => T) => factory(),
-  }));
-  mock.module("akanjs/client", () => ({ isNativeTarget: () => false }));
-  mock.module("akanjs/client/capacitor", () => ({
-    loadCapacitorSpeechRecognition: async () => ({}),
-    loadCapacitorTextToSpeech: async () => ({}),
   }));
   const scope = globalThis as unknown as Record<string, unknown>;
   scope.window = {

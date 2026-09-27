@@ -1,6 +1,6 @@
-import { ACTION_META, ACTION_OWNER_META, getEnv, STATE_DERIVED_META, STATE_INIT_META } from "akanjs/base";
+import { ACTION_META, ACTION_OWNER_META, STATE_DERIVED_META, STATE_INIT_META } from "akanjs/base";
 import { Translator } from "akanjs/client";
-import { loadCapacitorApp } from "akanjs/client/capacitor";
+import { appState, isNativeApp } from "akanjs/client/native";
 import { capitalize, type DynamicRecord, isRecord, Logger, parseAkanI18nEnv } from "akanjs/common";
 import { ConstantRegistry } from "akanjs/constant";
 import type { SerializedArg } from "akanjs/signal";
@@ -565,10 +565,10 @@ export class StoreInstance {
     window.addEventListener("pagehide", this.flushDrafts);
     document.addEventListener("visibilitychange", onHide);
     // iOS can suspend a webview without ever firing a page event, so the native lifecycle is the only warning.
-    if (getEnv().renderMode === "csr")
-      void loadCapacitorApp()
-        .then(({ App }) => App.addListener("pause", this.flushDrafts))
-        .catch(() => undefined);
+    if (isNativeApp())
+      appState.listen("change", ({ state }) => {
+        if (state === "background") this.flushDrafts();
+      });
   }
 
   #materializeDerived(next: StoreStateRecord, prev: StoreStateRecord) {

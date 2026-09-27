@@ -241,8 +241,8 @@ export function readCssSafeAreaInsets(): SafeAreaInsets {
   if (typeof window === "undefined") return { top: 0, bottom: 0 };
   const style = window.getComputedStyle?.(document.documentElement);
   return {
-    top: readCssPixel(style?.getPropertyValue("--safe-area-inset-top")) || readCssEnvProbe("top"),
-    bottom: readCssPixel(style?.getPropertyValue("--safe-area-inset-bottom")) || readCssEnvProbe("bottom"),
+    top: readCssPixel(style?.getPropertyValue("--akan-native-safe-area-top")) || readCssEnvProbe("top"),
+    bottom: readCssPixel(style?.getPropertyValue("--akan-native-safe-area-bottom")) || readCssEnvProbe("bottom"),
   };
 }
 

@@ -1,7 +1,7 @@
 "use client";
 import "cordova-plugin-purchase/www/store";
 
-import { loadCapacitorApp } from "akanjs/client/capacitor";
+import { app as nativeApp } from "akanjs/client/native";
 import { useEffect, useRef, useState } from "react";
 
 export type PlatformType = "android" | "ios" | "all";
@@ -36,8 +36,7 @@ export const usePurchase = ({
 
         return;
       }
-      const { App } = await loadCapacitorApp();
-      const app = await App.getInfo();
+      const app = await nativeApp.getInfo();
       const storePlatforms =
         platform === "all"
           ? [CdvPurchase.Platform.GOOGLE_PLAY, CdvPurchase.Platform.APPLE_APPSTORE]

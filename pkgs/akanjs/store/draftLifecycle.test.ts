@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { installMockHost } from "@akanjs/native/core/testing";
 import { Int, resetEnvCache, SLICE_META, STATE_DERIVED_META } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import type { ClientSignal } from "akanjs/fetch";
@@ -139,6 +140,27 @@ describe("form draft lifecycle", () => {
     await settle();
     expect(second.get().draftNoteForm.title).toBe("");
     expect(second.get().draftNoteFormDraft.appliedAt).toBeNull();
+  });
+
+  test("writes a pending draft when the native shell goes to the background", async () => {
+    const host = installMockHost({ platform: "ios", plugins: { "app-state": { events: ["change"] } } });
+    try {
+      const instance = makeInstance();
+      instance.do.newDraftNote({}, { draftScope: "new:scope-bg" });
+      await settle();
+      instance.do.setTitleOnDraftNote("typed before the app left");
+      await settle();
+      expect(draftCount()).toBe(0);
+
+      host.emit("app-state", "change", { state: "inactive" });
+      await settle();
+      expect(draftCount()).toBe(0);
+      host.emit("app-state", "change", { state: "background" });
+      await settle();
+      expect(draftCount()).toBe(1);
+    } finally {
+      host.uninstall();
+    }
   });
 
   test("saves nothing when no scope is armed", async () => {

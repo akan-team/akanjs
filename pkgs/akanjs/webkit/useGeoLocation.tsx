@@ -1,23 +1,21 @@
 "use client";
-import { loadCapacitorGeolocation } from "akanjs/client/capacitor";
+import { AkanNativeError, loadGeolocation, opener } from "akanjs/client/native";
 
 /** `getPosition` opens the app settings instead of resolving when location permission is denied. */
 export const useGeoLocation = () => {
-  const checkPermission = async (): Promise<{ geolocation: string; coarseLocation: string }> => {
-    const { Geolocation } = await loadCapacitorGeolocation();
-    const { location: geolocation, coarseLocation } = await Geolocation.requestPermissions();
-    return { geolocation, coarseLocation };
+  const checkPermission = async () => {
+    const { geolocation } = await loadGeolocation();
+    return await geolocation.requestPermission();
   };
 
-  const getPosition = async () => {
-    const { geolocation, coarseLocation } = await checkPermission();
-    if (geolocation === "denied" || coarseLocation === "denied") {
-      location.assign("app-settings:");
-      return;
+  const getPosition = async (options: { enableHighAccuracy?: boolean } = {}) => {
+    const { geolocation } = await loadGeolocation();
+    try {
+      return await geolocation.getCurrentPosition(options);
+    } catch (error) {
+      if (AkanNativeError.from(error).code !== "PERMISSION_DENIED") throw error;
+      await opener.openSettings().catch(() => undefined);
     }
-    const { Geolocation } = await loadCapacitorGeolocation();
-    const coordinates = await Geolocation.getCurrentPosition();
-    return coordinates;
   };
 
   return { checkPermission, getPosition };

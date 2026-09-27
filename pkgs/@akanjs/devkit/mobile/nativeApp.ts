@@ -112,15 +112,17 @@ export class NativeApp {
     });
   }
 
-  //* The gateway proxies the akan dev server, so the page keeps the app's origin and its HMR and API sockets relay.
+  //* The gateway serves the page and its HMR socket on the app origin; API calls go to the dev server itself (baseEnv),
+  //* which an Android device reaches through the reversed port.
   async dev(platform: MobilePlatform, { upstream, lang, device, teamId }: NativeDevOptions) {
     await mkdir(this.web.dir, { recursive: true });
-    const [{ api, config }, appConfig] = await Promise.all([this.prepare(), this.app.getConfig()]);
+    const { api, config } = await this.prepare();
+    const serverPort = Number(new URL(upstream).port || 80);
     return await api.dev({
       ...this.#task(platform, config),
       upstream,
       hmrPath: "/_akan/hmr",
-      wsPaths: [`${appConfig.api.prefix}${appConfig.api.websocketPrefix}`],
+      reversePorts: [serverPort],
       startPath: this.startPath(lang),
       ...(device ? { device } : {}),
       ...(teamId ? { ios: { signing: { teamId } } } : {}),

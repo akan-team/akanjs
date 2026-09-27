@@ -4,8 +4,6 @@ export { createRobotPage, createSitemapPage } from "./seoPages";
 export type * from "./types";
 export { useBodyScrollLock } from "./useBodyScrollLock";
 export { useCamera } from "./useCamera";
-export { useCodepush } from "./useCodepush";
-export { useContact } from "./useContact";
 export { useCsrValues } from "./useCsrValues";
 export { useDebounce } from "./useDebounce";
 export { useEscapeKey } from "./useEscapeKey";

@@ -1,5 +1,5 @@
 import { getEnv } from "akanjs/base";
-import { storage } from "akanjs/client";
+import { secretStorage } from "akanjs/client";
 
 type RefreshScope = "user" | "admin";
 
@@ -14,11 +14,11 @@ const refreshTokenKey = (scope: RefreshScope) => `${scope}RefreshToken:${getEnv(
 
 export const saveRefreshToken = async (scope: RefreshScope, refreshToken?: string | null) => {
   if (!isCsrClient()) return;
-  if (refreshToken) await storage.setItem(refreshTokenKey(scope), refreshToken);
-  else await storage.removeItem(refreshTokenKey(scope));
+  if (refreshToken) await secretStorage.setItem(refreshTokenKey(scope), refreshToken);
+  else await secretStorage.removeItem(refreshTokenKey(scope));
 };
 
 export const loadRefreshToken = async (scope: RefreshScope): Promise<string | null> => {
   if (!isCsrClient()) return null;
-  return (await storage.getItem(refreshTokenKey(scope))) ?? null;
+  return (await secretStorage.getItem(refreshTokenKey(scope))) ?? null;
 };

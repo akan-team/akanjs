@@ -216,20 +216,38 @@ describe("getEnv", () => {
     expect(env.serverHttpUri).toBe("https://minimal.example.com/api");
   });
 
-  test("a local CSR bundle outside an http(s) page must name its server", async () => {
-    resetEnv();
-    process.env.AKAN_PUBLIC_ENV = "local";
-    await asPage("app://localhost/", async () => {
-      const { getEnv } = await loadBaseEnv();
-      expect(() => getEnv()).toThrow("set AKAN_PUBLIC_SERVER_URL");
-    });
-
+  test("AKAN_PUBLIC_SERVER_URL must be an http(s) URL", async () => {
     resetEnv();
     Object.assign(process.env, { AKAN_PUBLIC_ENV: "local", AKAN_PUBLIC_SERVER_URL: "app://localhost" });
     await asPage("app://localhost/", async () => {
       const { getEnv } = await loadBaseEnv();
       expect(() => getEnv()).toThrow("AKAN_PUBLIC_SERVER_URL must be an http(s) URL");
     });
+  });
+
+  test("a local CSR bundle in a native shell calls the dev server on localhost", async () => {
+    const holder = globalThis as { __AKAN_NATIVE__?: { platform: string } };
+    try {
+      for (const [platform, href] of [
+        ["ios", "app://localhost/en?csr=true"],
+        ["android", "https://app.localhost/en?csr=true"],
+      ] as const) {
+        resetEnv();
+        Object.assign(process.env, { AKAN_PUBLIC_ENV: "local", AKAN_PUBLIC_SERVER_PORT: "8283" });
+        holder.__AKAN_NATIVE__ = { platform };
+        const env = await asPage(href, async () => (await loadBaseEnv()).getEnv());
+        expect(env.serverHttpUri).toBe("http://localhost:8283/api");
+        expect(env.serverWsUri).toBe("ws://localhost:8283");
+      }
+
+      resetEnv();
+      process.env.AKAN_PUBLIC_ENV = "main";
+      holder.__AKAN_NATIVE__ = { platform: "ios" };
+      const cloud = await asPage("app://localhost/", async () => (await loadBaseEnv()).getEnv());
+      expect(cloud.serverHttpUri).toBe("https://minimal-main.example.com/api");
+    } finally {
+      delete holder.__AKAN_NATIVE__;
+    }
   });
 
   test("a local CSR bundle on an http page keeps following the page", async () => {

@@ -1,9 +1,9 @@
 "use client";
 import { usePage } from "@libs/util/client";
-import { useCamera } from "@libs/util/webkit";
 import { cn, Device } from "akanjs/client";
 import type { ProtoLightFile } from "akanjs/constant";
 import { BottomSheet, type BottomSheetRef, Image } from "akanjs/ui";
+import { useCamera } from "akanjs/webkit";
 import { type ChangeEvent, useRef, useState } from "react";
 import { AiFillFileImage, AiFillFileText, AiOutlineDelete, AiOutlineLoading } from "react-icons/ai";
 import { GiFiles } from "react-icons/gi";
@@ -412,8 +412,7 @@ const UploadImage = ({
     setImage(undefined);
   };
   const onSelectImage = async () => {
-    const device = await Device.getDevice();
-    if (Object.keys(device.info).length === 0 || device.info.platform === "web") inputRef.current?.click();
+    if (Device.getDevice().info.platform === "web") inputRef.current?.click();
     else {
       const photo = await getPhoto();
       setImage(photo?.dataUrl);

@@ -1,7 +1,7 @@
 "use client";
 import { getEnv } from "akanjs/base";
 import { cn, getPathInfo, router, usePage, usePathCtx } from "akanjs/client";
-import { loadCapacitorBrowser } from "akanjs/client/capacitor";
+import { openExternalUrl } from "akanjs/client/native";
 import { Logger } from "akanjs/common";
 import { st } from "akanjs/store";
 import type { AnchorHTMLAttributes } from "react";
@@ -49,10 +49,7 @@ export const CsrLink = ({
         if (event.defaultPrevented) return;
         const isExternal = href.startsWith("http") || href.startsWith("mailto:") || href.startsWith("tel:");
         const url = href.startsWith("#") ? `${window.location.pathname}#${hash}` : href;
-        if (isExternal)
-          void loadCapacitorBrowser()
-            .then(({ Browser }) => Browser.open({ url: href, presentationStyle: "popover" }))
-            .catch(() => window.open(href, "_blank", "noopener,noreferrer"));
+        if (isExternal) void openExternalUrl(href).catch(() => window.open(href, "_blank", "noopener,noreferrer"));
         else if (replace) router.replace(url, { scrollToTop });
         else router.push(url, { scrollToTop });
       }}

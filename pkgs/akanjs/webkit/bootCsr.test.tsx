@@ -112,11 +112,6 @@ beforeAll(() => {
   mock.module("react-dom/client", () => ({
     createRoot: () => ({ render: () => undefined }),
   }));
-  mock.module("@capacitor/app", () => ({
-    App: {
-      addListener: () => ({ remove: () => undefined }),
-    },
-  }));
   mock.module("@react-spring/web", () => ({
     useSpringValue: () => ({ to: () => 0, start: async () => undefined }),
   }));
@@ -209,7 +204,7 @@ describe("bootCsr", () => {
     expect(replacements).toEqual(["/en/home?a=1#top"]);
   });
 
-  test("initializes mobile target from local Capacitor CSR URL", async () => {
+  test("initializes mobile target from the dev start URL", async () => {
     const replacements: string[] = [];
     installWindow({
       href: "https://example.test/en/?csr=true&akanMobileTarget=default&akanMobileBasePath=minimal&akanMobileIndexPath=/explore",

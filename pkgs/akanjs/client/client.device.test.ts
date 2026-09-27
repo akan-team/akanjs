@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { installMockHost, type MockHost } from "@akanjs/native/core/testing";
 import type { Device } from "./device";
 
 const deviceState = {
@@ -7,62 +8,58 @@ const deviceState = {
   safeArea: { top: 11, bottom: 22 },
   infoCalls: 0,
   languageCalls: 0,
-  safeAreaCalls: 0,
 };
 const calls: unknown[] = [];
+let host: MockHost | null = null;
 
-const testCapacitor = () => ({
-  Plugins: {
-    Device: {
-      getInfo: async () => {
-        deviceState.infoCalls += 1;
-        return { platform: deviceState.platform, model: "test-device" };
+const installNativeHost = (platform: "ios" | "android") => {
+  host = installMockHost({
+    platform,
+    plugins: {
+      device: {
+        methods: {
+          getInfo: () => {
+            deviceState.infoCalls += 1;
+            return { platform, model: "test-device", osName: "iOS", osVersion: "26.0", isVirtual: true };
+          },
+          getLanguage: () => {
+            deviceState.languageCalls += 1;
+            return { tag: `${deviceState.language}-KR`, code: deviceState.language };
+          },
+        },
       },
-      getLanguageCode: async () => {
-        deviceState.languageCalls += 1;
-        return { value: deviceState.language };
+      keyboard: {
+        methods: { hide: () => calls.push("keyboard.hide") },
+        events: ["willShow", "didShow", "willHide", "didHide"],
       },
-    },
-    Keyboard: {
-      show: async () => calls.push("keyboard.show"),
-      hide: async () => calls.push("keyboard.hide"),
-      addListener: async (event: string, callback: (info: { keyboardHeight: number }) => void) => {
-        calls.push(["keyboard.addListener", event]);
-        if (event === "keyboardWillShow") callback({ keyboardHeight: 320 });
-        if (event === "keyboardWillHide") callback({ keyboardHeight: 0 });
-      },
-      removeAllListeners: async () => calls.push("keyboard.removeAllListeners"),
-    },
-    Haptics: {
-      vibrate: async (options: { duration: number }) => calls.push(["haptics.vibrate", options]),
-      impact: async (options: { style: string }) => calls.push(["haptics.impact", options]),
-      selectionStart: async () => calls.push("haptics.selectionStart"),
-      selectionChanged: async () => calls.push("haptics.selectionChanged"),
-      selectionEnd: async () => calls.push("haptics.selectionEnd"),
-    },
-    SafeArea: {
-      getSafeAreaInsets: async () => {
-        deviceState.safeAreaCalls += 1;
-        return { insets: deviceState.safeArea };
+      haptics: {
+        methods: {
+          impact: (options: unknown) => calls.push(["haptics.impact", options]),
+          vibrate: (options: unknown) => calls.push(["haptics.vibrate", options]),
+        },
       },
     },
-  },
-});
+  });
+  return host;
+};
 
 const installWindow = (pathname = "/ko/home", options: { nativeTarget?: boolean } = {}) => {
   const scrollCalls: unknown[] = [];
-  const capacitor = options.nativeTarget ? testCapacitor() : undefined;
+  const insets = {
+    "--akan-native-safe-area-top": `${deviceState.safeArea.top}px`,
+    "--akan-native-safe-area-bottom": `${deviceState.safeArea.bottom}px`,
+  };
+  Object.defineProperty(globalThis, "document", { value: { documentElement: {} }, configurable: true });
   Object.defineProperty(globalThis, "window", {
     value: {
       ...(options.nativeTarget ? { __AKAN_MOBILE_TARGET__: { name: "test" } } : {}),
-      ...(capacitor ? { Capacitor: capacitor } : {}),
       location: { pathname },
       scrollY: 42,
       scrollTo: (options: unknown) => scrollCalls.push(options),
+      getComputedStyle: () => ({ getPropertyValue: (name: keyof typeof insets) => insets[name] ?? "" }),
     },
     configurable: true,
   });
-  Object.defineProperty(globalThis, "Capacitor", { value: capacitor, configurable: true });
   return { scrollCalls };
 };
 
@@ -73,27 +70,26 @@ const expectWebDevice = (device: Device) => {
   expect(device.bottomSafeArea).toBe(0);
   expect(deviceState.infoCalls).toBe(0);
   expect(deviceState.languageCalls).toBe(0);
-  expect(deviceState.safeAreaCalls).toBe(0);
 };
 
 afterEach(async () => {
   const { Device } = await import("./device");
   Device.instance = null;
+  host?.uninstall();
+  host = null;
   deviceState.platform = "web";
   deviceState.language = "en";
   deviceState.safeArea = { top: 11, bottom: 22 };
   deviceState.infoCalls = 0;
   deviceState.languageCalls = 0;
-  deviceState.safeAreaCalls = 0;
   calls.length = 0;
-  globalThis.__AKAN_CAPACITOR_IMPORTS__ = undefined;
   delete process.env.AKAN_PUBLIC_RENDER_ENV;
   Object.defineProperty(globalThis, "window", { value: undefined, configurable: true });
-  Object.defineProperty(globalThis, "Capacitor", { value: undefined, configurable: true });
+  Object.defineProperty(globalThis, "document", { value: undefined, configurable: true });
 });
 
 describe("Device", () => {
-  test("regular web creates fallback device without loading Capacitor modules", async () => {
+  test("regular web creates fallback device without asking the native runtime", async () => {
     installWindow("/ko/profile");
     const { Device } = await import("./device");
 
@@ -106,24 +102,42 @@ describe("Device", () => {
     expect(Device.getDevice()).toBe(device);
   });
 
-  test("native target loads Capacitor info, URL language prefix, and safe-area insets", async () => {
+  test("a mobile target opened in a browser is a web device", async () => {
+    installWindow("/ko/profile", { nativeTarget: true });
+    const { Device } = await import("./device");
+
+    expectWebDevice(await Device.load({ supportLanguages: ["en", "ko"] }));
+  });
+
+  test("native shell loads device info, URL language prefix, and the shell's safe-area insets", async () => {
+    installNativeHost("ios");
     installWindow("/ko/profile", { nativeTarget: true });
     const { Device } = await import("./device");
 
     const device = await Device.load({ supportLanguages: ["en", "ko"] });
 
     expect(device.lang).toBe("ko");
-    expect(device.info.platform).toBe("web");
+    expect(device.info.platform).toBe("ios");
+    expect(device.info.model).toBe("test-device");
     expect(device.topSafeArea).toBe(11);
     expect(device.bottomSafeArea).toBe(22);
     expect(deviceState.infoCalls).toBe(1);
     expect(deviceState.languageCalls).toBe(1);
-    expect(deviceState.safeAreaCalls).toBe(1);
   });
 
-  test("ssr render mode creates a web device without loading Capacitor modules", async () => {
+  test("native shell falls back to the device language outside a language path", async () => {
+    deviceState.language = "ko";
+    installNativeHost("android");
+    installWindow("/profile", { nativeTarget: true });
+    const { Device } = await import("./device");
+
+    expect((await Device.load({ supportLanguages: ["en", "ko"] })).lang).toBe("ko");
+  });
+
+  test("ssr render mode creates a web device without asking the native runtime", async () => {
     process.env.AKAN_PUBLIC_RENDER_ENV = "ssr";
-    installWindow("/ko/profile");
+    installNativeHost("ios");
+    installWindow("/ko/profile", { nativeTarget: true });
     const { Device } = await import("./device");
 
     const device = await Device.load({ supportLanguages: ["en", "ko"] });
@@ -136,8 +150,8 @@ describe("Device", () => {
     const { Device } = await import("./device");
     const device = await Device.load({ supportLanguages: ["en"] });
 
-    await device.showKeyboard();
     await device.hideKeyboard();
+    await device.vibrate("light");
     device.listenKeyboardChanged(() => calls.push("keyboard.changed"));
     device.unlistenKeyboardChanged();
     expect(calls).toEqual([]);
@@ -147,7 +161,7 @@ describe("Device", () => {
   });
 
   test("native platform calls keyboard, haptics, and page content scrolling", async () => {
-    deviceState.platform = "ios";
+    const nativeHost = installNativeHost("ios");
     installWindow("/en/home", { nativeTarget: true });
     const { Device } = await import("./device");
     const device = await Device.load({ supportLanguages: ["en"] });
@@ -160,19 +174,23 @@ describe("Device", () => {
       } as unknown as HTMLDivElement,
     });
 
-    await device.showKeyboard();
     await device.hideKeyboard();
     device.listenKeyboardChanged((height) => changed.push(height));
+    await Bun.sleep(0);
+    nativeHost.emit("keyboard", "willShow", { height: 320, duration: 250 });
+    nativeHost.emit("keyboard", "didShow", { height: 320, duration: 0 });
+    nativeHost.emit("keyboard", "willHide", { height: 0, duration: 250 });
+    await Bun.sleep(0);
     device.unlistenKeyboardChanged();
+    await Bun.sleep(0);
     await device.vibrate("light");
     await device.vibrate(250);
 
-    expect(calls).toContain("keyboard.show");
     expect(calls).toContain("keyboard.hide");
-    expect(calls).toContain("keyboard.removeAllListeners");
-    expect(calls).toContainEqual(["haptics.impact", { style: "LIGHT" }]);
+    expect(calls).toContainEqual(["haptics.impact", { style: "light" }]);
     expect(calls).toContainEqual(["haptics.vibrate", { duration: 250 }]);
     expect(changed).toEqual([320, 0]);
+    expect(nativeHost.subscriptions("keyboard", "willShow")).toBe(0);
     expect(device.getScrollTop()).toBe(55);
     device.setScrollTop(10);
     expect(scrollCalls).toEqual([{ top: 10 }]);

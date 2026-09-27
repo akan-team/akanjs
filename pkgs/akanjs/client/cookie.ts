@@ -9,7 +9,7 @@ import {
 } from "akanjs/common";
 import type { Account } from "akanjs/fetch";
 import { parseCookieHeader, cookies as serverCookies, headers as serverHeaders } from "akanjs/fetch";
-import { storage } from "./storage";
+import { secretStorage } from "./storage";
 import { fetch } from "./useClient";
 
 interface CookieOptions {
@@ -101,11 +101,11 @@ const sentAuthToken = (): string | undefined => {
 export const getAuthToken = (): string | undefined =>
   (isCsrClient() ? sentAuthToken() : undefined) ?? readAuthToken(getCookie);
 
-/** The auth token this app holds in client storage — localStorage under SSR, Capacitor Preferences on CSR. */
+/** The auth token this app holds in client storage — the OS credential store in a native app, localStorage elsewhere. */
 export const getStoredAuthToken = async (): Promise<string | undefined> => {
-  const scoped = await storage.getItem(authTokenKey());
+  const scoped = await secretStorage.getItem(authTokenKey());
   if (scoped) return scoped;
-  const legacy = await storage.getItem(legacyAuthTokenKey);
+  const legacy = await secretStorage.getItem(legacyAuthTokenKey);
   return legacy && isOwnAuthToken(legacy) ? legacy : undefined;
 };
 
@@ -131,10 +131,10 @@ export const setAuth = ({ jwt }: SetAuthOption) => {
   fetch.setJwt(jwt);
   // A CSR client authenticates with the bearer header alone; a cookie copy would only leave the token in a jar.
   if (!isCsrClient()) setCookie(authTokenKey(), jwt);
-  void storage.setItem(authTokenKey(), jwt);
+  void secretStorage.setItem(authTokenKey(), jwt);
   // The global key is shared by every app on this host; ours would keep feeding the migration fallback a stale token.
   removeCookie(legacyAuthTokenKey);
-  void storage.removeItem(legacyAuthTokenKey);
+  void secretStorage.removeItem(legacyAuthTokenKey);
 };
 
 interface InitAuthOption {
@@ -158,6 +158,6 @@ export const resetAuth = () => {
   fetch.setJwt(null);
   removeCookie(authTokenKey());
   removeCookie(legacyAuthTokenKey);
-  void storage.removeItem(authTokenKey());
-  void storage.removeItem(legacyAuthTokenKey);
+  void secretStorage.removeItem(authTokenKey());
+  void secretStorage.removeItem(legacyAuthTokenKey);
 };

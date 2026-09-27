@@ -10,7 +10,6 @@ import {
   getPathInfo,
   type LocationState,
   type NavigationIntent,
-  normalizeDeepLinkHref,
   type PageState,
   type PageTransition,
   type PathRoute,
@@ -21,9 +20,9 @@ import {
   type TransitionType,
   type UseCsrTransition,
 } from "akanjs/client";
-import { loadCapacitorApp } from "akanjs/client/capacitor";
 import { clamp, parseAkanI18nEnv, parseBasePaths } from "akanjs/common";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { NativeNavigation } from "./nativeNavigation";
 import {
   createFrameSnapshot,
   createTransitionPlan,
@@ -1157,8 +1156,6 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
     keyboardVisible: keyboardFrame.visible,
     router,
   });
-  const handledDeepLinkRef = useRef<{ href: string; handledAt: number; resetStack: boolean } | null>(null);
-  const didResetDeepLinkStackRef = useRef(false);
 
   useEffect(() => {
     if (pageContentRef.current) pageContentRef.current.scrollTop = getScrollTop(location);
@@ -1175,126 +1172,15 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
     };
   }, [keyboardFrame.height, keyboardFrame.visible, resolvedLocation.pathRoute.path, router]);
 
-  useEffect(() => {
-    const isMobileTarget = Boolean(window.__AKAN_MOBILE_TARGET__);
-    if (Device.getDevice().info.platform === "web" && !isMobileTarget) return;
-    let removeListener: (() => void) | undefined;
-    let disposed = false;
-    const mountedAt = Date.now();
-
-    const enterDeepLinkWhenReady = (href: string, resetStack: boolean, attempt = 0) => {
-      if (!clientRouter.isInitialized) {
-        if (attempt < 40) window.setTimeout(() => enterDeepLinkWhenReady(href, resetStack, attempt + 1), 50);
-        else debugFrame("native.deepLink.skipped", { href, reason: "router-not-ready" });
-        return;
-      }
-      clientRouter.enterDeepLink(href, { resetStack, scrollToTop: true });
-    };
-
-    const handleDeepLink = (url: string | null | undefined, resetStack: boolean) => {
-      if (!url) return;
-      const href = normalizeDeepLinkHref(url);
-      const now = Date.now();
-      const lastHandled = handledDeepLinkRef.current;
-      const shouldResetStack = resetStack || (!lastHandled && now - mountedAt < 5000);
-      if (
-        lastHandled?.href === href &&
-        now - lastHandled.handledAt < 1000 &&
-        (!shouldResetStack || lastHandled.resetStack)
-      )
-        return;
-      handledDeepLinkRef.current = { href, handledAt: now, resetStack: shouldResetStack };
-      debugFrame("native.deepLink", {
-        href,
-        resetStack: shouldResetStack,
-        sourceResetStack: resetStack,
-        historyIdx: history.current.idx,
-        mountedForMs: now - mountedAt,
-        routerReady: clientRouter.isInitialized,
-      });
-      if (shouldResetStack) didResetDeepLinkStackRef.current = true;
-      enterDeepLinkWhenReady(href, shouldResetStack);
-    };
-
-    void loadCapacitorApp()
-      .then(({ App }) => {
-        debugFrame("native.deepLink.listener", { platform: Device.getDevice().info.platform, isMobileTarget });
-        const listener = App.addListener("appUrlOpen", (event: unknown) => {
-          handleDeepLink((event as { url?: string | null } | undefined)?.url, false);
-        });
-
-        void Promise.resolve(listener).then((handle) => {
-          const remove =
-            typeof (handle as { remove?: unknown } | undefined)?.remove === "function"
-              ? () => void (handle as { remove: () => Promise<void> | void }).remove()
-              : undefined;
-          if (disposed) remove?.();
-          else removeListener = remove;
-        });
-
-        void App.getLaunchUrl?.()
-          .then((launch) => {
-            debugFrame("native.deepLink.launchUrl", { url: launch?.url ?? null });
-            handleDeepLink(launch?.url, true);
-          })
-          .catch((error) => debugFrame("native.deepLink.launchUrlError", { error: String(error) }));
-      })
-      .catch((error) => debugFrame("native.deepLink.listenerError", { error: String(error) }));
-
-    return () => {
-      disposed = true;
-      removeListener?.();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (Device.getDevice().info.platform === "web") return;
-    let removeListener: (() => void) | undefined;
-    let disposed = false;
-
-    void loadCapacitorApp().then(({ App }) => {
-      const listener = App.addListener("backButton", () => {
-        const nativeBackState = nativeBackStateRef.current;
-        debugFrame("native.backButton", {
-          historyIdx: history.current.idx,
-          path: nativeBackState.path,
-          keyboardHeight: nativeBackState.keyboardHeight,
-        });
-        if (nativeBackState.keyboardVisible) {
-          void prepareForFrameTransition();
-          return;
-        }
-        if (history.current.idx > 0) {
-          nativeBackState.router.back();
-          return;
-        }
-        const fallbackPath = window.__AKAN_MOBILE_TARGET__?.indexPath ?? "/";
-        if (didResetDeepLinkStackRef.current) {
-          void App.exitApp?.();
-          return;
-        }
-        if (nativeBackState.path !== fallbackPath) {
-          clientRouter.backOrFallback(fallbackPath, { scrollToTop: false });
-          return;
-        }
-        void App.exitApp?.();
-      });
-
-      void Promise.resolve(listener).then((handle) => {
-        const remove =
-          typeof (handle as { remove?: unknown } | undefined)?.remove === "function"
-            ? () => void (handle as { remove: () => Promise<void> | void }).remove()
-            : undefined;
-        if (disposed) remove?.();
-        else removeListener = remove;
-      });
-    });
-
-    return () => {
-      disposed = true;
-      removeListener?.();
-    };
-  }, []);
+  useEffect(
+    () =>
+      new NativeNavigation({
+        historyIdx: () => history.current.idx,
+        backState: () => nativeBackStateRef.current,
+        dismissKeyboard: prepareForFrameTransition,
+      }).listen(),
+    [],
+  );
 
   return {
     ...routeState,

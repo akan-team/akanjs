@@ -1,43 +1,25 @@
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import { AkanNativeError } from "@akanjs/native/core";
+import { installMockHost, type MockHost } from "@akanjs/native/core/testing";
 import { Translator } from "../client/translator";
-import { csrClientBase, fakeElement, fakeReact, hooks } from "./hookHarness.fixture";
+import { csrClientBase, fakeReact, hooks } from "./hookHarness.fixture";
 
 type RenderHookResult<T> = {
   get current(): T;
   unmount: () => void;
 };
 
-type Permission = "prompt" | "granted" | "denied";
-
-const originalWindow = globalThis.window;
-const originalDocument = globalThis.document;
-
-const cameraState = {
-  permissions: { camera: "prompt" as Permission, photos: "prompt" as Permission },
-  requested: 0,
-  photoSource: "",
-  promptLabels: {} as Record<string, string>,
-  cancelled: false,
+const photoUrl = "data:image/jpeg;base64,/9j/";
+const state = {
+  sheetIndex: 0,
+  sheetTitles: [] as string[],
+  sources: [] as string[],
+  photoError: null as AkanNativeError | null,
+  permission: "granted" as "granted" | "denied" | "prompt",
+  settingsOpened: 0,
+  positionError: null as AkanNativeError | null,
 };
-const contactsState = {
-  platform: "web",
-  permissions: { contacts: "prompt" as Permission },
-  checked: 0,
-  requested: 0,
-};
-const geolocationState = {
-  permissions: { location: "granted", coarseLocation: "granted" },
-};
-const pushState = {
-  platform: "web",
-  receive: "granted" as "granted" | "denied",
-  registered: 0,
-  autoInit: 0,
-  actionListeners: [] as Array<(event: { notification?: { data?: Record<string, unknown> } }) => void>,
-  registrationListeners: [] as Array<(event: { value?: string }) => void>,
-};
-const assigned: string[] = [];
-const deepLinks: string[] = [];
+let host: MockHost | null = null;
 
 beforeAll(() => {
   mock.module("react", () =>
@@ -51,136 +33,54 @@ beforeAll(() => {
   );
   mock.module("akanjs/client", () => ({
     ...csrClientBase(),
-    Device: {
-      load: async () => ({
-        lang: "en",
-        info: { platform: contactsState.platform },
-        topSafeArea: 11,
-        bottomSafeArea: 22,
-      }),
-      getDevice: () => ({
-        info: { platform: contactsState.platform },
-      }),
-    },
-    initAuth: () => undefined,
-    router: {
-      state: {},
-      set: () => undefined,
-      emit: () => undefined,
-      on: () => undefined,
-      off: () => undefined,
-      enterDeepLink: (href: string) => {
-        deepLinks.push(href);
-        return true;
-      },
-    },
-    storage: {
-      getItem: async () => null,
-    },
-    isNativeTarget: () => true,
-    // The real one, so the assertion below is that the dictionary key is what reaches the native picker.
+    // The real one, so the assertion below is that the dictionary key is what reaches the native sheet.
     Translator,
   }));
 });
 
-const installCapacitorBridge = () => {
-  Object.defineProperty(globalThis, "Capacitor", {
-    value: {
-      Plugins: {
-        Camera: {
-          checkPermissions: async () => cameraState.permissions,
-          requestPermissions: async () => {
-            cameraState.requested += 1;
-            return cameraState.permissions;
-          },
-          getPhoto: async (options: { source: string } & Record<string, string>) => {
-            cameraState.photoSource = options.source;
-            cameraState.promptLabels = {
-              promptLabelHeader: options.promptLabelHeader,
-              promptLabelPhoto: options.promptLabelPhoto,
-              promptLabelPicture: options.promptLabelPicture,
-              promptLabelCancel: options.promptLabelCancel,
-            };
-            if (cameraState.cancelled) throw "User cancelled photos app";
-            return { dataUrl: "data:image/png;base64,test" };
-          },
-          pickImages: async () => ({ photos: [{ webPath: "image.png" }] }),
-        },
-        Contacts: {
-          checkPermissions: async () => {
-            contactsState.checked += 1;
-            return contactsState.permissions;
-          },
-          requestPermissions: async () => {
-            contactsState.requested += 1;
-            return contactsState.permissions;
-          },
-          getContacts: async () => ({ contacts: [{ name: { display: "Ada" }, phones: [{ number: "123" }] }] }),
-        },
-        Geolocation: {
-          requestPermissions: async () => geolocationState.permissions,
-          getCurrentPosition: async () => ({ coords: { latitude: 37, longitude: 127 } }),
-        },
-        Device: {
-          getInfo: async () => ({ platform: pushState.platform }),
-        },
-        PushNotifications: {
-          requestPermissions: async () => ({ receive: pushState.receive }),
-          checkPermissions: async () => ({ receive: pushState.receive }),
-          register: async () => {
-            pushState.registered += 1;
-            pushState.registrationListeners.forEach((listener) => {
-              listener({ value: "native-token" });
-            });
-          },
-          addListener: async (
-            eventName: string,
-            listener: (event: { value?: string; notification?: { data?: Record<string, unknown> } }) => void,
-          ) => {
-            if (eventName === "registration") pushState.registrationListeners.push(listener);
-            else if (eventName === "pushNotificationActionPerformed") pushState.actionListeners.push(listener);
-            return { remove: () => undefined };
+const installNativeHost = () => {
+  host = installMockHost({
+    platform: "ios",
+    plugins: {
+      dialog: {
+        methods: {
+          actionSheet: ({ title, options }: { title: string; options: { title: string }[] }) => {
+            state.sheetTitles = [title, ...options.map((option) => option.title)];
+            return { index: state.sheetIndex, cancelled: state.sheetIndex < 0 };
           },
         },
-        FCM: {
-          setAutoInit: async () => {
-            pushState.autoInit += 1;
+      },
+      camera: {
+        methods: {
+          takePhoto: ({ source }: { source: string }) => {
+            state.sources.push(source);
+            if (state.photoError) throw state.photoError;
+            return { url: photoUrl, mime: "image/jpeg", size: 3 };
           },
-          getToken: async () => ({ token: "token-1" }),
+          pickImages: () => ({ photos: [{ url: photoUrl, mime: "image/jpeg", size: 3 }] }),
+          checkPermission: () => ({ camera: state.permission }),
+          requestPermission: () => ({ camera: state.permission }),
+        },
+      },
+      geolocation: {
+        methods: {
+          requestPermission: () => ({ location: state.permission, precise: true }),
+          getCurrentPosition: () => {
+            if (state.positionError) throw state.positionError;
+            return { latitude: 37, longitude: 127, accuracy: 5 };
+          },
+        },
+      },
+      opener: {
+        methods: {
+          openSettings: () => {
+            state.settingsOpened += 1;
+          },
         },
       },
     },
-    configurable: true,
   });
-};
-
-const installWindow = () => {
-  const document = {
-    nodeType: 9,
-    documentElement: fakeElement("html"),
-    defaultView: null,
-    createElement: fakeElement,
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
-  } as unknown as Document;
-  (document.documentElement as unknown as { ownerDocument: Document }).ownerDocument = document;
-  const window = {
-    location: { assign: (href: string) => assigned.push(href), origin: "https://example.test" },
-    document,
-    Capacitor: (globalThis as typeof globalThis & { Capacitor?: unknown }).Capacitor,
-    HTMLIFrameElement: class HTMLIFrameElement {},
-    Node: class Node {},
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
-  } as unknown as Window & typeof globalThis;
-  (document as unknown as { defaultView: Window }).defaultView = window;
-  installCapacitorBridge();
-  (window as unknown as { Capacitor: unknown }).Capacitor = (
-    globalThis as typeof globalThis & { Capacitor?: unknown }
-  ).Capacitor;
-  Object.defineProperty(globalThis, "window", { value: window, configurable: true });
-  Object.defineProperty(globalThis, "document", { value: document, configurable: true });
-  Object.defineProperty(globalThis, "location", { value: window.location, configurable: true });
+  return host;
 };
 
 const renderHook = <T,>(hook: () => T): RenderHookResult<T> => {
@@ -198,28 +98,17 @@ const renderHook = <T,>(hook: () => T): RenderHookResult<T> => {
 };
 
 afterEach(() => {
-  Object.defineProperty(globalThis, "window", { value: originalWindow, configurable: true });
-  Object.defineProperty(globalThis, "document", { value: originalDocument, configurable: true });
-  Object.defineProperty(globalThis, "location", { value: originalWindow?.location, configurable: true });
-  Object.defineProperty(globalThis, "Capacitor", { value: undefined, configurable: true });
-  globalThis.__AKAN_CAPACITOR_IMPORTS__ = undefined;
-  cameraState.permissions = { camera: "prompt", photos: "prompt" };
-  cameraState.requested = 0;
-  cameraState.photoSource = "";
-  cameraState.cancelled = false;
-  contactsState.platform = "web";
-  contactsState.permissions = { contacts: "prompt" };
-  contactsState.checked = 0;
-  contactsState.requested = 0;
-  geolocationState.permissions = { location: "granted", coarseLocation: "granted" };
-  pushState.platform = "web";
-  pushState.receive = "granted";
-  pushState.registered = 0;
-  pushState.autoInit = 0;
-  pushState.actionListeners = [];
-  pushState.registrationListeners = [];
-  assigned.length = 0;
-  deepLinks.length = 0;
+  host?.uninstall();
+  host = null;
+  Object.assign(state, {
+    sheetIndex: 0,
+    sheetTitles: [],
+    sources: [],
+    photoError: null,
+    permission: "granted",
+    settingsOpened: 0,
+    positionError: null,
+  });
   hooks.cleanups.splice(0);
   hooks.index = 0;
   hooks.states.length = 0;
@@ -227,57 +116,69 @@ afterEach(() => {
 });
 
 describe("native hooks", () => {
-  test("useCamera requests permissions, uses web photo source, opens settings, and handles cancellation", async () => {
-    installWindow();
+  test("useCamera asks camera or library on the native sheet and answers a data URL", async () => {
+    const nativeHost = installNativeHost();
     const { useCamera } = await import("./useCamera");
     const hook = renderHook(() => useCamera());
 
-    expect(await hook.current.getPhoto("prompt")).toEqual({ dataUrl: "data:image/png;base64,test" });
-    expect(cameraState.promptLabels).toEqual({
-      promptLabelHeader: "base.cameraPromptHeader",
-      promptLabelPhoto: "base.cameraPromptPhoto",
-      promptLabelPicture: "base.cameraPromptPicture",
-      promptLabelCancel: "base.cameraPromptCancel",
-    });
-    expect(cameraState.photoSource).toBe("PHOTOS");
-    expect(cameraState.requested).toBe(1);
+    expect(await hook.current.getPhoto()).toEqual({ dataUrl: photoUrl });
+    expect(state.sheetTitles).toEqual([
+      "base.cameraPromptHeader",
+      "base.cameraPromptPhoto",
+      "base.cameraPromptPicture",
+      "base.cameraPromptCancel",
+    ]);
+    expect(state.sources).toEqual(["library"]);
+    expect(nativeHost.releases).toEqual([photoUrl]);
 
-    cameraState.permissions = { camera: "denied", photos: "denied" };
-    await hook.current.checkPermission("all");
-    await hook.current.checkPermission("all");
-    expect(assigned).toEqual(["app-settings:"]);
+    state.sheetIndex = 1;
+    await hook.current.getPhoto();
+    await hook.current.getPhoto("photos");
+    await hook.current.getPhoto("camera");
+    expect(state.sources).toEqual(["library", "camera", "library", "camera"]);
 
-    cameraState.cancelled = true;
-    expect(await hook.current.getPhoto("photos")).toBeUndefined();
+    state.sheetIndex = -1;
+    expect(await hook.current.getPhoto()).toBeUndefined();
+    expect(state.sources).toHaveLength(4);
     hook.unmount();
   });
 
-  test("useContact skips web initial check, requests permission, opens settings, and returns contacts", async () => {
-    installWindow();
-    const { useContact } = await import("./useContact");
-    const hook = renderHook(() => useContact());
+  test("useCamera treats a cancelled capture as no photo and a denied one as a trip to the settings", async () => {
+    installNativeHost();
+    const { useCamera } = await import("./useCamera");
+    const hook = renderHook(() => useCamera());
 
-    expect(contactsState.checked).toBe(0);
-    expect(await hook.current.getContacts()).toEqual([{ name: { display: "Ada" }, phones: [{ number: "123" }] }]);
-    expect(contactsState.requested).toBe(1);
+    state.photoError = new AkanNativeError("CANCELLED", "cancelled");
+    expect(await hook.current.getPhoto("camera")).toBeUndefined();
+    expect(state.settingsOpened).toBe(0);
 
-    contactsState.permissions = { contacts: "denied" };
-    await hook.current.checkPermission();
-    await hook.current.checkPermission();
-    expect(assigned).toEqual(["app-settings:"]);
+    state.photoError = new AkanNativeError("PERMISSION_DENIED", "camera access was denied");
+    expect(await hook.current.getPhoto("camera")).toBeUndefined();
+    expect(state.settingsOpened).toBe(1);
+
+    state.photoError = null;
+    state.permission = "denied";
+    expect(await hook.current.checkPermission()).toBe("denied");
+    expect(state.settingsOpened).toBe(2);
+
+    expect(await hook.current.pickImage()).toEqual([{ dataUrl: photoUrl }]);
     hook.unmount();
   });
 
-  test("useGeoLocation returns permission and current position or opens settings", async () => {
-    installWindow();
+  test("useGeoLocation answers the position or opens the settings when location is denied", async () => {
+    installNativeHost();
     const { useGeoLocation } = await import("./useGeoLocation");
     const hook = renderHook(() => useGeoLocation());
 
-    expect(await hook.current.checkPermission()).toEqual({ geolocation: "granted", coarseLocation: "granted" });
-    expect(await hook.current.getPosition()).toEqual({ coords: { latitude: 37, longitude: 127 } });
-    geolocationState.permissions = { location: "denied", coarseLocation: "granted" };
+    expect(await hook.current.checkPermission()).toEqual({ location: "granted", precise: true });
+    expect(await hook.current.getPosition()).toMatchObject({ latitude: 37, longitude: 127, accuracy: 5 });
+
+    state.positionError = new AkanNativeError("PERMISSION_DENIED", "denied");
     expect(await hook.current.getPosition()).toBeUndefined();
-    expect(assigned).toEqual(["app-settings:"]);
+    expect(state.settingsOpened).toBe(1);
+
+    state.positionError = new AkanNativeError("NOT_FOUND", "no fix");
+    await expect(hook.current.getPosition()).rejects.toThrow("no fix");
     hook.unmount();
   });
 });

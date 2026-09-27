@@ -22,7 +22,8 @@ export interface NativeConfigResult {
 type NativeIos = NonNullable<NonNullable<AkanNativeConfig["native"]>["ios"]>;
 
 export class NativeConfig {
-  //* What every akanjs page may call: routing, lifecycle, links, storage and the device facts the runtime reads.
+  //* What every akanjs page may call: routing, lifecycle, links, storage, the device facts the runtime reads, and the
+  //* system sheet useCamera asks camera-or-library with.
   static readonly basePlugins = [
     "app",
     "app-state",
@@ -30,6 +31,7 @@ export class NativeConfig {
     "opener",
     "auth-session",
     "device",
+    "dialog",
     "keyboard",
     "preferences",
     "secure-storage",

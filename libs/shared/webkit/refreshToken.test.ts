@@ -8,7 +8,7 @@ beforeAll(() => {
     getEnv: () => ({ ...envState, appName: "shop" }),
   }));
   mock.module("akanjs/client", () => ({
-    storage: {
+    secretStorage: {
       getItem: async (key: string) => stored.get(key) ?? null,
       setItem: async (key: string, value: string) => {
         stored.set(key, value);

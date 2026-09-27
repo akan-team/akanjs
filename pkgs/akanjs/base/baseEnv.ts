@@ -121,6 +121,14 @@ const csrServerUrl = (): URL | null => {
   return url;
 };
 
+//* The dev gateway serves a native shell's page on the app origin but cannot carry its API calls (Android answers
+//* only GET there, iOS forwards no auth header), so a local build calls the dev server itself; Android via adb reverse.
+const nativeDevServerUrl = (operationMode: BaseEnv["operationMode"]): URL | null => {
+  const platform = (globalThis as { __AKAN_NATIVE__?: { platform?: string } }).__AKAN_NATIVE__?.platform;
+  if (operationMode !== "local" || !platform || platform === "web") return null;
+  return new URL(`http://localhost:${process.env.AKAN_PUBLIC_SERVER_PORT ?? "8282"}`);
+};
+
 const missingPublicEnv = (key: string) =>
   `getEnv() cannot run at build time: akan build does not inject ${key}. Call it from a runtime function instead of at module scope (e.g. env(() => getEnv()) in adapt(), a method body, or a default thunk).`;
 
@@ -168,12 +176,8 @@ export const getEnv = (): ClientEnv => {
         ? "http:"
         : "https:";
   const clientHttpUri = `${clientHttpProtocol}//${clientHost}${clientPort === 443 ? "" : `:${clientPort}`}`;
-  const serverUrl = side === "client" && renderMode === "csr" ? csrServerUrl() : null;
-  const pageProtocol = side === "client" ? window.location.protocol : undefined;
-  if (operationMode === "local" && !serverUrl && pageProtocol && !/^https?:$/.test(pageProtocol))
-    throw new Error(
-      `A CSR bundle served from ${pageProtocol}// cannot reach its server through the page origin; set AKAN_PUBLIC_SERVER_URL.`,
-    );
+  const serverUrl =
+    side === "client" && renderMode === "csr" ? (csrServerUrl() ?? nativeDevServerUrl(operationMode)) : null;
   // The port belongs to whoever named the host: a cloud CSR bundle's host is not the page's.
   const hostFromPage = side === "client" && !serverUrl && (operationMode === "local" || renderMode !== "csr");
   const serverHost =

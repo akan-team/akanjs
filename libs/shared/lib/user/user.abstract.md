@@ -10,7 +10,8 @@
   프로세스가 쥐는 호출자(클라우드 CLI)만 `refreshUserToken`에 `{ graceMs, reuseRevokes: "lineage" }`를 넘겨, 창 안의
   재사용은 새 세션으로 받고 창 밖의 재사용은 그 토큰의 lineage만 끊는다.
 - CSR 클라이언트(네이티브 셸)는 API와 오리진이 달라 HttpOnly refresh 쿠키를 받지도 보내지도 못한다. 로그인·refresh 응답
-  본문의 refresh token을 user·admin 범위별로 저장해 refresh 본문으로 보내고, 같은 범위의 refresh는 한 번에 하나만 보낸다.
+  본문의 refresh token을 user·admin 범위별로 OS 자격 증명 저장소(`secretStorage`)에 두고 refresh 본문으로 보내며, 같은
+  범위의 refresh는 한 번에 하나만 보낸다. 재설치한 앱은 첫 실행에서 그 저장소를 비우므로 이전 설치의 로그인을 이어받지 않는다.
 
 ## Workflow
 - prepare user 생성 후 nickname/profile/auth 정보를 채우고 activate한다.
