@@ -60,6 +60,13 @@ describe("NativeConfig.build", () => {
       app: { id: "com.minimal.dev.app", name: "minimal", fileName: "minimal", version: "0.0.1", build: 1 },
       web: { dir: "/repo/apps/minimal/.akan/mobile/default/web" },
       plugins: [...NativeConfig.basePlugins, "push"],
+      capabilities: [
+        {
+          identifier: "app",
+          description: "The plugins minimal ships, each with its default permissions",
+          permissions: [...NativeConfig.basePlugins, "push"].map((plugin) => `${plugin}:default`),
+        },
+      ],
       deepLinks: { schemes: ["minimal"], domains: ["example.com"] },
       android: { debugAppIdSuffix: ".debug", googleServices: "/repo/apps/minimal/secrets/google-services.json" },
       keyboard: { resize: "none" },
@@ -80,6 +87,15 @@ describe("NativeConfig.build", () => {
       app: { id: "com.portal.admin", name: "Portal Admin", fileName: "portal-admin", version: "2.1.0", build: 42 },
       web: { dir: "/repo/apps/portal/.akan/mobile/admin/web" },
       plugins: [...NativeConfig.basePlugins, "camera", "geolocation", "iap"],
+      capabilities: [
+        {
+          identifier: "app",
+          description: "The plugins Portal Admin ships, each with its default permissions",
+          permissions: [...NativeConfig.basePlugins, "camera", "geolocation", "iap"].map(
+            (plugin) => `${plugin}:default`,
+          ),
+        },
+      ],
       usageDescriptions: {
         NSCameraUsageDescription: "Portal Admin requires access to the camera to take photos.",
         NSPhotoLibraryAddUsageDescription: "Portal Admin requires access to the photo library to take photos.",

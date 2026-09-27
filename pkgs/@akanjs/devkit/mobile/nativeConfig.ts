@@ -123,6 +123,15 @@ export class NativeConfig {
       },
       web: { dir: webDir },
       plugins,
+      //? PL-11: named, not implied: every plugin with its own default permissions, which is what a build without
+      //? capabilities grants too, so a release states what it allows.
+      capabilities: [
+        {
+          identifier: "app",
+          description: `The plugins ${target.appName} ships, each with its default permissions`,
+          permissions: plugins.map((plugin) => `${plugin}:default`),
+        },
+      ],
       ...(Object.keys(usageDescriptions).length ? { usageDescriptions } : {}),
       ...(target.deepLinks?.schemes?.length || target.deepLinks?.domains?.length
         ? { deepLinks: NativeConfig.#deepLinks(target, locales) }
