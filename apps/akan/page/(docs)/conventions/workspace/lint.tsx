@@ -57,8 +57,8 @@ export default page().render(() => {
     {
       name: l.trans({ en: "grit plugin", ko: "grit 플러그인" }),
       desc: l.trans({
-        en: "A lint rule written in GritQL for Akan and run by Biome. There are 22.",
-        ko: "Akan을 위해 GritQL로 쓴 린트 규칙이며, Biome이 실행합니다. 모두 22개입니다.",
+        en: "A lint rule written in GritQL for Akan and run by Biome. There are 25.",
+        ko: "Akan을 위해 GritQL로 쓴 린트 규칙이며, Biome이 실행합니다. 모두 25개입니다.",
       }),
     },
     {
@@ -394,6 +394,33 @@ async refreshStock() {
       desc: l.trans({
         en: "A `//!` or `/*!` comment survives minification and ships. Use `// FIXME:` instead.",
         ko: "`//!`나 `/*!` 주석은 minify 뒤에도 남아 배포됩니다. 대신 `// FIXME:`를 씁니다.",
+      }),
+    },
+    {
+      rule: "no-document-cookie",
+      scope: l.trans({ en: "`apps/**` `libs/**`, except tests", ko: "`apps/**` `libs/**` (테스트 제외)" }),
+      desc: l.trans({
+        en: "An `app://` page on iOS, macOS and Linux keeps no cookies, so `document.cookie` reads empty in the app. Use `getCookie` / `setCookie` / `removeCookie` from `akanjs/client`.",
+        ko: "iOS·macOS·Linux의 `app://` 페이지는 쿠키를 보관하지 않아 앱에서 `document.cookie`가 비어 있습니다. `akanjs/client`의 `getCookie` / `setCookie` / `removeCookie`를 씁니다.",
+      }),
+    },
+    {
+      rule: "no-web-storage",
+      scope: l.trans({ en: "`apps/**` `libs/**`, except tests", ko: "`apps/**` `libs/**` (테스트 제외)" }),
+      desc: l.trans({
+        en: "`localStorage` / `sessionStorage` bypass the store akanjs picks per platform and throw during SSR. Use `storage` from `akanjs/client`, or `secretStorage` for credentials.",
+        ko: "`localStorage` / `sessionStorage`는 akanjs가 플랫폼별로 고르는 저장소를 우회하고 SSR에서 예외가 납니다. `akanjs/client`의 `storage`를, 자격 증명은 `secretStorage`를 씁니다.",
+      }),
+    },
+    {
+      rule: "no-web-only-api-outside-webkit",
+      scope: l.trans({
+        en: "`apps/**` `libs/**` outside `webkit/`, except tests — a warning",
+        ko: "`webkit/` 밖의 `apps/**` `libs/**` (테스트 제외) — 경고",
+      }),
+      desc: l.trans({
+        en: "`navigator.share`, `navigator.serviceWorker`, `Notification.*`, `navigator.geolocation` and `navigator.vibrate` are missing in some app WebViews. Keep them in a `webkit/` hook that branches on `isNativeApp()`.",
+        ko: "`navigator.share`, `navigator.serviceWorker`, `Notification.*`, `navigator.geolocation`, `navigator.vibrate`는 일부 앱 WebView에 없습니다. `isNativeApp()`으로 분기하는 `webkit/` 훅 안에 둡니다.",
       }),
     },
   ];

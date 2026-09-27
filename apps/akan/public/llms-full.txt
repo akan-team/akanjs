@@ -4415,7 +4415,7 @@ The formatter and linter this workspace uses. `akan lint` runs it for you.
 
 grit plugin
 
-A lint rule written in GritQL for Akan and run by Biome. There are 22.
+A lint rule written in GritQL for Akan and run by Biome. There are 25.
 
 ## Structure
 

@@ -38,7 +38,7 @@ The formatter and linter this workspace uses. `akan lint` runs it for you.
 
 grit plugin
 
-A lint rule written in GritQL for Akan and run by Biome. There are 22.
+A lint rule written in GritQL for Akan and run by Biome. There are 25.
 
 diagnostic
 
@@ -131,6 +131,16 @@ A thrown `Error`. Throw `new Err("<module>.error.<key>")` and register the key.
 `ui/` `webkit/` `common/` `page/`, `*.constant.ts` `*.store.ts`, module components
 
 A `//!` or `/*!` comment survives minification and ships. Use `// FIXME:` instead.
+
+`apps/**` `libs/**`, except tests
+
+An `app://` page on iOS, macOS and Linux keeps no cookies, so `document.cookie` reads empty in the app. Use `getCookie` / `setCookie` / `removeCookie` from `akanjs/client`.
+
+`localStorage` / `sessionStorage` bypass the store akanjs picks per platform and throw during SSR. Use `storage` from `akanjs/client`, or `secretStorage` for credentials.
+
+`apps/**` `libs/**` outside `webkit/`, except tests — a warning
+
+`navigator.share`, `navigator.serviceWorker`, `Notification.*`, `navigator.geolocation` and `navigator.vibrate` are missing in some app WebViews. Keep them in a `webkit/` hook that branches on `isNativeApp()`.
 
 `st.do.<action>()` is typed `void`. Write the value into state with `this.set({ ... })`.
 

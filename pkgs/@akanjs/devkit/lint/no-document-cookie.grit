@@ -1,0 +1,29 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// A native shell serves the page from app://localhost on iOS, macOS and Linux, a custom scheme WebKit keeps no
+// cookie jar for: `document.cookie` reads "" and a write is dropped without an error, so the value exists in the
+// browser and silently vanishes in the app. akanjs/client's cookie helpers keep an app:// page's cookies in a
+// storage-backed jar, which is the only spelling that works in every shell.
+//
+// Pinned to the member nodes: a bare snippet also matches JSX text that spells the same words (a docs page), and a
+// write is its own node (JsStaticMemberAssignment) that the expression form does not match.
+or {
+  JsStaticMemberExpression() as $access where {
+    $access <: or { `document.cookie`, `window.document.cookie`, `globalThis.document.cookie`, `self.document.cookie` },
+    register_diagnostic(
+      span = $access,
+      message = "`document.cookie` is always empty on a native app page (app://localhost keeps no cookies), so this value vanishes in the app. Use `getCookie` / `setCookie` / `removeCookie` from `akanjs/client`.",
+      severity = "error"
+    )
+  },
+  JsStaticMemberAssignment(object = $object, member = $member) as $access where {
+    $member <: `cookie`,
+    $object <: or { `document`, `window.document`, `globalThis.document`, `self.document` },
+    register_diagnostic(
+      span = $access,
+      message = "`document.cookie` is always empty on a native app page (app://localhost keeps no cookies), so this value vanishes in the app. Use `getCookie` / `setCookie` / `removeCookie` from `akanjs/client`.",
+      severity = "error"
+    )
+  }
+}

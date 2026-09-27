@@ -76,6 +76,18 @@ back.
   `*.constant.ts`, `*.store.ts`, and the five module component suffixes (`no-bang-comment-in-client.grit`). Bun
   classifies `//!` and `/*!` as legal comments and keeps them through minification, so the note ships to every
   visitor. Use `// FIXME:` there; `//!` stays legal in server, `srvkit/`, and CLI files.
+- **Never touch `document.cookie`, `localStorage` or `sessionStorage` in app or lib code** (`no-document-cookie.grit`,
+  `no-web-storage.grit`). A native shell serves the page from `app://localhost` on iOS, macOS and Linux, which keeps
+  no cookies: `document.cookie` reads `""` and a write is dropped, so the value exists in the browser and vanishes in
+  the app. Web Storage does work in the shells, but it bypasses the store akanjs picks per platform (the shell's
+  Preferences in an app) and throws during SSR. Use `getCookie` / `setCookie` / `removeCookie`, `storage`, and
+  `secretStorage` for tokens and credentials, all from `akanjs/client`.
+- **Browser APIs an app WebView lacks live in `webkit/`** (`no-web-only-api-outside-webkit.grit`, a warning):
+  `navigator.share` / `canShare` (Android's WebView has none), `navigator.serviceWorker` and
+  `Notification.requestPermission` / `.permission` (no app page has them), `navigator.geolocation` (use
+  `useGeoLocation` from `akanjs/webkit`) and `navigator.vibrate` (iOS has none; use `haptics`). They are legal on the
+  web, so the rule does not ban them: it keeps them in a `webkit/` hook that branches on `isNativeApp()` from
+  `akanjs/client/native`, which is where the app side goes too.
 - **Never return a value from a store action** (`no-return-in-store-action.grit`). Every method of a `store(...)`
   class dispatches through `st.do.<action>()`, typed `void` / `Promise<void>`, so the value is unreachable — write
   it into state with `this.set({ ... })`. A bare `return;` guard, a `return` inside a nested callback, a getter,

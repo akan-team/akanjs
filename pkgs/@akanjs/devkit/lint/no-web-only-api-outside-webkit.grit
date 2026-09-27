@@ -1,0 +1,44 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Browser APIs a native shell's WebView lacks: Android's WebView has no Web Share, an app:// page on iOS has no
+// service worker, no WebView has the Notification API, and iOS has no vibration. They stay legal on the web, so the
+// rule does not ban them — it keeps them in `webkit/`, the layer whose hooks branch on the platform (and is
+// excluded from this rule's scope in biome.base.json), and names the native side where one exists.
+//
+// Pinned to member access, so JSX text naming an API does not match; `Notification` only through its static entry
+// points, because the name is also the libs/shared model (`Notification.View`, `cnst.Notification`).
+or {
+  JsStaticMemberExpression() as $access where {
+    $access <: or { `navigator.share`, `navigator.canShare` },
+    register_diagnostic(
+      span = $access,
+      message = "Android's WebView has no Web Share, so this does nothing in the app. Move it into a `webkit/` hook that branches on `isNativeApp()` from `akanjs/client/native`; the runtime's `share` plugin is the app side.",
+      severity = "warn"
+    )
+  },
+  JsStaticMemberExpression() as $access where {
+    $access <: or { `navigator.serviceWorker`, `Notification.requestPermission`, `Notification.permission` },
+    register_diagnostic(
+      span = $access,
+      message = "A native app page has no service worker or Notification API. Keep this in a `webkit/` hook behind `isNativeApp()`; native push is `push` from `akanjs/client/native`, and `usePushNotification` in libs/util wraps both.",
+      severity = "warn"
+    )
+  },
+  JsStaticMemberExpression() as $access where {
+    $access <: `navigator.geolocation`,
+    register_diagnostic(
+      span = $access,
+      message = "`navigator.geolocation` skips the app's location plugin and its permission flow. Use `useGeoLocation` from `akanjs/webkit`.",
+      severity = "warn"
+    )
+  },
+  JsStaticMemberExpression() as $access where {
+    $access <: `navigator.vibrate`,
+    register_diagnostic(
+      span = $access,
+      message = "iOS has no `navigator.vibrate`. Use `haptics` from `akanjs/client/native` in a `webkit/` hook.",
+      severity = "warn"
+    )
+  }
+}

@@ -1,0 +1,30 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Web Storage works inside the native shells, so this is not about a crash: akanjs/client's `storage` is where the
+// backend is chosen per platform (the shell's Preferences — UserDefaults, SharedPreferences, a JSON file on the
+// desktop — in an app, localStorage on the web), `secretStorage` keeps credentials in the Keychain/Keystore and
+// clears them on a reinstall, and both answer nothing on the server where a bare `localStorage` read during SSR
+// throws.
+//
+// Only the global is matched — a reference, or a member of window/globalThis/self — pinned to those node kinds: a
+// bare snippet matches the name in any position, a field, an object key or JSX text included.
+or {
+  JsIdentifierExpression() as $access where {
+    $access <: or { `localStorage`, `sessionStorage` },
+    register_diagnostic(
+      span = $access,
+      message = "Web Storage bypasses the store akanjs picks per platform (the shell's Preferences in an app) and throws during SSR. Use `storage` from `akanjs/client`, or `secretStorage` for tokens and credentials; a value that may be lost with the tab belongs in component state or the store.",
+      severity = "error"
+    )
+  },
+  JsStaticMemberExpression(object = $root, member = $name) as $access where {
+    $root <: or { `window`, `globalThis`, `self` },
+    $name <: or { `localStorage`, `sessionStorage` },
+    register_diagnostic(
+      span = $access,
+      message = "Web Storage bypasses the store akanjs picks per platform (the shell's Preferences in an app) and throws during SSR. Use `storage` from `akanjs/client`, or `secretStorage` for tokens and credentials; a value that may be lost with the tab belongs in component state or the store.",
+      severity = "error"
+    )
+  }
+}
