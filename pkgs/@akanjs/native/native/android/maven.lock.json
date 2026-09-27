@@ -1,12 +1,13 @@
 {
   "format": "akan-native-maven-lock/1",
   "generated": "2026-09-26",
-  "note": "Pinned Maven closures for the opt-in Android modules (akanjs readiness O8): FCM for the push plugin, Play Billing for iap. Resolved like Gradle (highest version wins, Gradle module metadata where published); every file is checked against its SHA-256. The kotlin-stdlib family is left out: akan-native's own kotlin-stdlib replaces it. Research: docs/research/android-aar-closure.md.",
+  "note": "Pinned Maven closures for the opt-in Android modules (akanjs readiness O8): FCM for the push plugin, Play Billing for iap. Resolved like Gradle (highest version wins, Gradle module metadata where published); every file is checked against its SHA-256. The kotlin-stdlib family is left out: akan-native's own kotlin-stdlib replaces it. Research: docs/research/android-aar-closure.md. androidx.core:core:1.10.0 is a root of every closure with FCM: play-services-basement 18.9.0 calls PendingIntentCompat (core 1.10.0+) but declares core 1.2.0, and the rest of the FCM graph resolves core only to 1.9.0.",
   "closures": [
     {
       "name": "fcm",
       "roots": [
-        "com.google.firebase:firebase-messaging:25.1.3"
+        "com.google.firebase:firebase-messaging:25.1.3",
+        "androidx.core:core:1.10.0"
       ],
       "artifacts": [
         "androidx.activity:activity:1.0.0",
@@ -16,7 +17,7 @@
         "androidx.arch.core:core-runtime:2.1.0",
         "androidx.collection:collection:1.1.0",
         "androidx.concurrent:concurrent-futures:1.1.0",
-        "androidx.core:core:1.9.0",
+        "androidx.core:core:1.10.0",
         "androidx.customview:customview:1.0.0",
         "androidx.datastore:datastore-core-okio:1.1.7",
         "androidx.datastore:datastore-core:1.1.7",
@@ -27,6 +28,7 @@
         "androidx.datastore:datastore:1.1.7",
         "androidx.documentfile:documentfile:1.0.0",
         "androidx.fragment:fragment:1.1.0",
+        "androidx.interpolator:interpolator:1.0.0",
         "androidx.legacy:legacy-support-core-utils:1.0.0",
         "androidx.lifecycle:lifecycle-common:2.3.1",
         "androidx.lifecycle:lifecycle-livedata-core:2.0.0",
@@ -124,7 +126,8 @@
       "name": "union",
       "roots": [
         "com.google.firebase:firebase-messaging:25.1.3",
-        "com.android.billingclient:billing:9.1.0"
+        "com.android.billingclient:billing:9.1.0",
+        "androidx.core:core:1.10.0"
       ],
       "artifacts": [
         "androidx.activity:activity:1.2.3",
@@ -438,6 +441,23 @@
         }
       ]
     },
+    "androidx.core:core:1.10.0": {
+      "url": "https://dl.google.com/dl/android/maven2/androidx/core/core/1.10.0/core-1.10.0.aar",
+      "sha256": "384f05dddec745390c0a0cc44c18292494759fdf1e07a28071a7095bb544c3f5",
+      "size": 1248659,
+      "packaging": "aar",
+      "pom": {
+        "url": "https://dl.google.com/dl/android/maven2/androidx/core/core/1.10.0/core-1.10.0.pom",
+        "sha256": "ede824ee4dbee7a75d0880c2e7950a2bbfcabb98d2ffcbd14a7a5443f237ba83",
+        "size": 3457
+      },
+      "licenses": [
+        {
+          "name": "The Apache Software License, Version 2.0",
+          "url": "http://www.apache.org/licenses/LICENSE-2.0.txt"
+        }
+      ]
+    },
     "androidx.core:core:1.15.0": {
       "url": "https://dl.google.com/dl/android/maven2/androidx/core/core/1.15.0/core-1.15.0.aar",
       "sha256": "432b85a1974076e14b487ece4a28c59a84f1b9efc3fc8be72cd7f05d32055e51",
@@ -447,23 +467,6 @@
         "url": "https://dl.google.com/dl/android/maven2/androidx/core/core/1.15.0/core-1.15.0.pom",
         "sha256": "e168ae56064b8e5a40bce415ef95ffd5a813abb5456d2775f0fef426ed49e35a",
         "size": 3853
-      },
-      "licenses": [
-        {
-          "name": "The Apache Software License, Version 2.0",
-          "url": "http://www.apache.org/licenses/LICENSE-2.0.txt"
-        }
-      ]
-    },
-    "androidx.core:core:1.9.0": {
-      "url": "https://dl.google.com/dl/android/maven2/androidx/core/core/1.9.0/core-1.9.0.aar",
-      "sha256": "8bda3ee3a88887d54f6679fb6b6cd788629f73234ac91c8bbed924e721ec85b8",
-      "size": 1115684,
-      "packaging": "aar",
-      "pom": {
-        "url": "https://dl.google.com/dl/android/maven2/androidx/core/core/1.9.0/core-1.9.0.pom",
-        "sha256": "9da661085bb2a3ca44c07125d0cefbdd4a00d65b841a53bdb2d5600b6421e0ea",
-        "size": 3245
       },
       "licenses": [
         {

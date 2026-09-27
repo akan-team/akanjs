@@ -115,8 +115,7 @@ describe("iap", () => {
     const lock = loadMavenLock();
     expect(closureFor(lock, manifest.android.maven)!.name).toBe("billing");
     // push and iap together use the union closure
-    expect(closureFor(lock, [...manifest.android.maven, "com.google.firebase:firebase-messaging:25.1.3"])!.name).toBe(
-      "union",
-    );
+    const push = ["com.google.firebase:firebase-messaging:25.1.3", "androidx.core:core:1.10.0"];
+    expect(closureFor(lock, [...manifest.android.maven, ...push])!.name).toBe("union");
   });
 });

@@ -24,12 +24,17 @@ describe("maven lock", () => {
 
   test("one closure per root set: FCM, Billing, both; the kotlin-stdlib family is left out", () => {
     expect(closureFor(lock, [])).toBeNull();
-    const fcm = closureFor(lock, ["com.google.firebase:firebase-messaging:25.1.3"])!;
+    const fcm = closureFor(lock, ["com.google.firebase:firebase-messaging:25.1.3", "androidx.core:core:1.10.0"])!;
     const both = closureFor(lock, [
       "com.android.billingclient:billing:9.1.0",
       "com.google.firebase:firebase-messaging:25.1.3",
+      "androidx.core:core:1.10.0",
     ])!;
     expect([fcm.name, both.name]).toEqual(["fcm", "union"]);
+    //? play-services-basement 18.9.0 calls androidx.core's PendingIntentCompat, added in core 1.10.0; R8 stops without it.
+    expect(
+      fcm.artifacts.filter((a) => a.coordinate.startsWith("androidx.core:core:")).map((a) => a.coordinate),
+    ).toEqual(["androidx.core:core:1.10.0"]);
     expect(both.artifacts.some((a) => a.coordinate.startsWith("org.jetbrains.kotlin:kotlin-stdlib"))).toBe(false);
     expect(both.artifacts.every((a) => /^[0-9a-f]{64}$/.test(a.sha256) && a.url.startsWith("https://"))).toBe(true);
     expect(() => closureFor(lock, ["com.example:other:1.0"])).toThrow(/no locked Maven closure/);

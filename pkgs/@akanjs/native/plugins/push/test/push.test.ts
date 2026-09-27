@@ -47,7 +47,11 @@ describe("push", () => {
   test("the manifest: APNs entitlement and background mode on iOS, the FCM module and its service on Android", () => {
     expect(manifest.ios.entitlements).toEqual({ "aps-environment": "development" });
     expect(manifest.ios.infoPlist.UIBackgroundModes).toEqual(["remote-notification"]);
-    expect(manifest.android.maven).toEqual(["com.google.firebase:firebase-messaging:25.1.3"]);
+    //? core 1.10.0 is pinned beside FCM: play-services-basement calls PendingIntentCompat, which core 1.9.0 lacks.
+    expect(manifest.android.maven).toEqual([
+      "com.google.firebase:firebase-messaging:25.1.3",
+      "androidx.core:core:1.10.0",
+    ]);
     expect(manifest.android.applicationXml).toContain("com.google.firebase.MESSAGING_EVENT");
   });
 });

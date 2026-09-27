@@ -155,8 +155,8 @@ Apps that enable the push plugin's FCM module or the iap plugin also contain the
 | androidx.collection:collection:1.4.2 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
 | androidx.concurrent:concurrent-futures:1.1.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together |
 | androidx.core:core-ktx:1.15.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
+| androidx.core:core:1.10.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM) |
 | androidx.core:core:1.15.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
-| androidx.core:core:1.9.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM) |
 | androidx.customview:customview:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together |
 | androidx.datastore:datastore-core-okio:1.1.7 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
 | androidx.datastore:datastore-core:1.1.7 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
@@ -167,7 +167,7 @@ Apps that enable the push plugin's FCM module or the iap plugin also contain the
 | androidx.datastore:datastore:1.1.7 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
 | androidx.documentfile:documentfile:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
 | androidx.fragment:fragment:1.1.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together |
-| androidx.interpolator:interpolator:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
+| androidx.interpolator:interpolator:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together |
 | androidx.legacy:legacy-support-core-utils:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
 | androidx.lifecycle:lifecycle-common:2.3.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM) |
 | androidx.lifecycle:lifecycle-common:2.6.2 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
