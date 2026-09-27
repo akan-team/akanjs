@@ -85,10 +85,6 @@ export const dictionary = serviceDictionary(["en", "ko"])
       "GitHub App private key is not configured",
       "GitHub 앱 개인 키가 설정되지 않았습니다",
     ],
-    pushNotificationTargetRequired: [
-      "Push notification target token or topic is required.",
-      "푸시 알림 대상 토큰 또는 토픽이 필요합니다.",
-    ],
     invalidBaseUrlForDelete: [
       "Invalid base URL, unable to delete data",
       "잘못된 기본 URL로 데이터를 삭제할 수 없습니다",
