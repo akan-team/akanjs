@@ -44,7 +44,7 @@ const installShell = (platform: "ios" | "android" = "android") => {
     },
   });
   Object.defineProperty(globalThis, "window", {
-    value: { __AKAN_MOBILE_TARGET__: { name: "default", indexPath: "/en/explore" }, setTimeout },
+    value: { __AKAN_MOBILE_TARGET__: { name: "default", basePath: "admin", indexPath: "/explore" }, setTimeout },
     configurable: true,
   });
   return host;
@@ -53,7 +53,7 @@ const installShell = (platform: "ios" | "android" = "android") => {
 const navigationOf = async (state: Partial<NativeBackState> & { historyIdx?: number } = {}) => {
   const { NativeNavigation } = await import("./nativeNavigation");
   const backState: NativeBackState = {
-    path: "/en/explore",
+    path: "/:lang/admin/explore",
     keyboardHeight: 0,
     keyboardVisible: false,
     router: {
@@ -120,17 +120,17 @@ describe("NativeNavigation", () => {
     installShell();
     (await navigationOf({ keyboardVisible: true, historyIdx: 2 })).back();
     (await navigationOf({ historyIdx: 2 })).back();
-    (await navigationOf({ path: "/en/orders/1" })).back();
+    (await navigationOf({ path: "/:lang/admin/orders/1" })).back();
     (await navigationOf()).back();
     await settle();
 
     expect(events).toEqual({ dismissed: 1, backs: 1, exits: 1 });
-    expect(routerState.fallbacks).toEqual(["/en/explore"]);
+    expect(routerState.fallbacks).toEqual(["/explore"]);
   });
 
   test("back on a stack a deep link started leaves the app", async () => {
     installShell();
-    const navigation = await navigationOf({ path: "/en/orders/1" });
+    const navigation = await navigationOf({ path: "/:lang/admin/orders/1" });
     navigation.openDeepLink("minimal://en/orders/1");
     navigation.back();
     await settle();

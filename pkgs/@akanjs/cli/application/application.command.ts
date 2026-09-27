@@ -13,7 +13,7 @@ const deviceOption = {
   desc: "simulator, emulator or device to run on: its id or name (e.g. 'iPhone 17' or 'Pixel_10')",
   default: "",
 };
-const teamOption = { desc: "Apple team id the signing is narrowed to", default: "" };
+const teamOption = { flag: "T", desc: "Apple team id the signing is narrowed to", default: "" };
 const devEnvs = ["local", "debug", "develop", "main"] as const;
 const buildEnvOption = { enum: devEnvs, desc: "backend environment", default: "debug" } as const;
 const startEnvOption = { enum: devEnvs, desc: "backend environment", default: "local" } as const;

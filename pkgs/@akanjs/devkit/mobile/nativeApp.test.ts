@@ -35,9 +35,9 @@ describe("NativeApp", () => {
     expect(admin.outDir("android")).toBe("/repo/apps/portal/.akan/mobile/admin/native/android");
   });
 
-  test("opens a dev build on the CSR shell of its target, under the locale", () => {
+  test("opens a dev build on its target's home, the CSR shell under the locale", () => {
     expect(new NativeApp(fakeApp(), target({ indexPath: "/explore" })).startPath("en")).toBe(
-      "/en?csr=true&akanMobileTarget=default&akanMobileIndexPath=%2Fexplore",
+      "/en/explore?csr=true&akanMobileTarget=default&akanMobileIndexPath=%2Fexplore",
     );
     expect(new NativeApp(fakeApp(), target({ name: "admin", basePath: "/admin/" })).startPath("ko")).toBe(
       "/ko/admin?csr=true&akanMobileTarget=admin&akanMobileBasePath=admin",

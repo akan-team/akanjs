@@ -76,11 +76,20 @@ export class NativeNavigation {
     }
     const fallbackPath = window.__AKAN_MOBILE_TARGET__?.indexPath ?? "/";
     //? a stack a deep link started has nothing under it, so back leaves the app rather than inventing a history
-    if (this.#didResetStack || backState.path === fallbackPath) {
+    if (this.#didResetStack || NativeNavigation.#homeRelative(backState.path) === fallbackPath) {
       void app.exit().catch(() => undefined);
       return;
     }
     clientRouter.backOrFallback(fallbackPath, { scrollToTop: false });
+  }
+
+  //* The frame reports its route pattern (`/:lang/<basePath>/…`); the target's indexPath is relative to the basePath.
+  static #homeRelative(routePath: string) {
+    const basePath = window.__AKAN_MOBILE_TARGET__?.basePath?.replace(/^\/+|\/+$/g, "");
+    const segments = routePath.split("/").filter(Boolean);
+    if (segments[0] === ":lang") segments.shift();
+    if (basePath && segments[0] === basePath) segments.shift();
+    return `/${segments.join("/")}`;
   }
 
   #enterWhenReady(href: string, resetStack: boolean, attempt = 0) {

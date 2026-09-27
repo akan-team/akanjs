@@ -23,11 +23,12 @@ const write = async (file: string, content: string) => {
 };
 
 describe("NativeWebDir", () => {
-  test("injects the target global once, before </head>", () => {
-    const html = NativeWebDir.injectTarget("<html><head><title>x</title></HEAD><body></body></html>", target);
+  test("injects the target global once, first in <head>, even when the inlined bundle names it", () => {
+    const bundle = '<script type="module">if(!window.__AKAN_MOBILE_TARGET__)boot("</head>")</script>';
+    const html = NativeWebDir.injectTarget(`<html><HEAD lang="en">${bundle}</head><body></body></html>`, target);
 
-    expect(html).toContain(
-      '<script>window.__AKAN_MOBILE_TARGET__={"name":"admin","basePath":"admin","indexPath":"/home"};</script>\n</head>',
+    expect(html).toBe(
+      `<html><HEAD lang="en">\n<script>window.__AKAN_MOBILE_TARGET__={"name":"admin","basePath":"admin","indexPath":"/home"};</script>${bundle}</head><body></body></html>`,
     );
     expect(NativeWebDir.injectTarget(html, target)).toBe(html);
   });

@@ -17,16 +17,22 @@ export class NativeWebDir {
 
   constructor(readonly dir: string) {}
 
+  //* The bundle is inlined into this page and its own code names the global, so only the tag marks an injection;
+  //* it goes first in <head>, ahead of every script, because the page reads it as it boots.
   static injectTarget(html: string, target: Pick<AkanMobileTargetConfig, "name" | "basePath" | "indexPath">) {
-    if (html.includes("window.__AKAN_MOBILE_TARGET__")) return html;
+    if (html.includes(NativeWebDir.#targetTag)) return html;
     const basePath = target.basePath?.replace(/^\/+|\/+$/g, "") ?? "";
-    const script = `<script>window.__AKAN_MOBILE_TARGET__=${JSON.stringify({
+    const script = `${NativeWebDir.#targetTag}${JSON.stringify({
       name: target.name,
       basePath,
       indexPath: target.indexPath,
     })};</script>`;
-    return html.replace(/<\/head\s*>/i, `${script}\n</head>`);
+    const head = /<head(?:\s[^>]*)?>/i.exec(html);
+    if (!head) return `${script}\n${html}`;
+    const at = head.index + head[0].length;
+    return `${html.slice(0, at)}\n${script}${html.slice(at)}`;
   }
+  static readonly #targetTag = "<script>window.__AKAN_MOBILE_TARGET__=";
 
   /** Rebuilds the folder from scratch and answers its files, relative and sorted. */
   async assemble(target: AkanMobileTargetConfig, { html, publicDir, fontsDir }: NativeWebDirSources) {

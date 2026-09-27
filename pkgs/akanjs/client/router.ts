@@ -111,6 +111,8 @@ export const normalizeDeepLinkHref = (
   href: string,
   origin = globalThis.window?.location?.origin ?? "http://localhost",
 ) => {
+  //? Already a path: resolving it against a native shell's `app://localhost` would read the host into it.
+  if (href.startsWith("/") && !href.startsWith("//")) return normalizeRoutePath(href) ?? "/";
   const url = new URL(href, origin);
   if (url.protocol === "http:" || url.protocol === "https:") return `${url.pathname}${url.search}${url.hash}`;
   const hostPath = url.hostname ? `/${url.hostname}` : "";
@@ -317,10 +319,18 @@ class Router {
       .map((_, index) => `/${segments.slice(0, index + 1).join("/")}`)
       .filter((candidate) => this.#routePaths.has(candidate));
   }
+  //? A universal link carries the page's own path, locale and basePath included; the manifest keeps neither.
+  #routePathOfLink(path: string) {
+    const segments = path.split("/").filter(Boolean);
+    if (segments[0] && (parseAkanI18nEnv().locales as readonly string[]).includes(segments[0])) segments.shift();
+    if (this.#prefix && segments[0] === this.#prefix) segments.shift();
+    return segments.length ? `/${segments.join("/")}` : "/";
+  }
   resolveDeepLinkStack(href: string) {
     this.#checkInitialized();
     const normalizedHref = normalizeDeepLinkHref(href);
-    const { path, search, hash } = splitHref(normalizedHref);
+    const { path: linkPath, search, hash } = splitHref(normalizedHref);
+    const path = this.#routePathOfLink(linkPath);
     if (this.#routePaths.size > 0 && !this.#routePaths.has(path)) {
       Logger.info(`[router] deep link target '${path}' was not found in route manifest.`);
       return [];

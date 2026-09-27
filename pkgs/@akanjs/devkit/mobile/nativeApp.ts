@@ -74,6 +74,11 @@ export class NativeApp {
     return { api, config };
   }
 
+  //? The app's own output: its console (mirrored by a dev build), the simulator log stream or logcat.
+  #appLine = (line: string) => {
+    this.app.logger.info(`[${this.target.name}] ${line}`);
+  };
+
   //* `AKAN_PUBLIC_*` is already inlined into the CSR bundle, so the runtime reads no .env file of its own.
   #task(platform: MobilePlatform, config: AkanNativeConfig): TaskOptions {
     return {
@@ -107,6 +112,7 @@ export class NativeApp {
     return await api.run({
       ...this.#task(platform, config),
       profile,
+      onLine: this.#appLine,
       ...(device ? { device } : {}),
       ...(teamId ? { ios: { signing: { teamId } } } : {}),
     });
@@ -122,6 +128,7 @@ export class NativeApp {
       ...this.#task(platform, config),
       upstream,
       hmrPath: "/_akan/hmr",
+      onLine: this.#appLine,
       reversePorts: [serverPort],
       startPath: this.startPath(lang),
       ...(device ? { device } : {}),
@@ -165,13 +172,17 @@ export class NativeApp {
     return { keystore, storePassword, alias, ...(keyPassword ? { keyPassword } : {}) };
   }
 
-  /** The first page of a dev build: the dev server answers the CSR shell only for `?csr=true`. */
+  /** The first page of a dev build, the target's home as a release bundle opens it; the dev server answers the CSR
+   * shell only for `?csr=true`. */
   startPath(lang: string) {
     const basePath = this.target.config.basePath?.replace(/^\/+|\/+$/g, "");
     const params = new URLSearchParams({ csr: "true", akanMobileTarget: this.target.name });
     if (basePath) params.set("akanMobileBasePath", basePath);
     if (this.target.config.indexPath) params.set("akanMobileIndexPath", this.target.config.indexPath);
-    return `/${basePath ? `${lang}/${basePath}` : lang}?${params}`;
+    const home = [lang, basePath, this.target.config.indexPath]
+      .flatMap((part) => (part ?? "").split("/"))
+      .filter((segment) => segment.length > 0);
+    return `/${home.join("/")}?${params}`;
   }
 
   static async devices(appDir: string, platform: MobilePlatform) {

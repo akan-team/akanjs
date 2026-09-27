@@ -119,6 +119,15 @@ describe("ApplicationCommand", () => {
     expect(optionNames("releaseIos")).toEqual(expect.arrayContaining(["team", "adHoc"]));
   });
 
+  test("no command gives two options the same short flag", () => {
+    for (const { key } of getTargetMetas(ApplicationCommand)) {
+      const flags = getArgMetas(ApplicationCommand, key)[1].map(
+        (meta) => (meta.argsOption as { flag?: string } | undefined)?.flag ?? meta.name.slice(0, 1).toLowerCase(),
+      );
+      expect({ key, flags: [...new Set(flags)] }).toEqual({ key, flags });
+    }
+  });
+
   test("uses the same mobile target selector metadata across mobile commands", async () => {
     const mobileCommandKeys = ["buildIos", "buildAndroid", "startIos", "startAndroid", "releaseIos", "releaseAndroid"];
     const app = {

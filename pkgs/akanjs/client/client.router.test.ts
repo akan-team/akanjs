@@ -162,6 +162,7 @@ describe("router", () => {
       "/wishlists/camera?deepLink=true#preview",
     );
     expect(normalizeDeepLinkHref("https://localhost:8283/orders/detail")).toBe("/orders/detail");
+    expect(normalizeDeepLinkHref("/en/orders/detail?tab=a", "app://localhost")).toBe("/en/orders/detail?tab=a");
   });
 
   test("resolves deep link stacks with route manifest and indexPath fallback", async () => {
@@ -210,6 +211,11 @@ describe("router", () => {
       "/profile/self/edit",
     ]);
     expect(router.resolveDeepLinkStack("/missing")).toEqual([]);
+    expect(router.resolveDeepLinkStack("https://example.test/ko/admin/orders/detail")).toEqual([
+      "/explore",
+      "/orders/detail",
+    ]);
+    expect(router.resolveDeepLinkStack("/en/wishlists/camera")).toEqual(["/wishlists", "/wishlists/camera"]);
 
     expect(router.enterDeepLink("minimal://profile/self/edit", { resetStack: true })).toBe(true);
     expect(calls).toEqual([]);
