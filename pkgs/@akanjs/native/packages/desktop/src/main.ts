@@ -69,7 +69,7 @@ export async function startMain(workerUrl: string): Promise<never> {
     fail(`cannot read app resources in ${paths.resources}`, error);
   }
 
-  let lib;
+  let lib: ReturnType<typeof openNative>;
   try {
     lib = openNative(paths.lib);
   } catch (error) {

@@ -96,7 +96,10 @@ export function icns(image: Image): Uint8Array {
   const pngs = new Map<number, Uint8Array>();
   const chunks = ICNS_TYPES.map(([type, size]) => {
     let png = pngs.get(size);
-    if (!png) pngs.set(size, (png = encodePng(resize(image, size, size))));
+    if (!png) {
+      png = encodePng(resize(image, size, size));
+      pngs.set(size, png);
+    }
     const chunk = new Uint8Array(8 + png.length);
     chunk.set(new TextEncoder().encode(type));
     new DataView(chunk.buffer).setUint32(4, chunk.length);

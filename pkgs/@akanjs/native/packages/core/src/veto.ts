@@ -28,7 +28,9 @@ export function vetoable<E extends object>(
     let prevented = false;
     const event = {
       ...(data as unknown as E),
-      preventDefault: () => void (prevented = true),
+      preventDefault: () => {
+        prevented = true;
+      },
       get defaultPrevented() {
         return prevented;
       },

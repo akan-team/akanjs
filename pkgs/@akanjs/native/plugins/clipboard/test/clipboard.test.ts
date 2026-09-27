@@ -90,7 +90,9 @@ describe("clipboard web implementation", () => {
     host = installMockHost({ platform: "web" });
     let stored = "";
     stubNavigator("clipboard", {
-      writeText: async (text: string) => void (stored = text),
+      writeText: async (text: string) => {
+        stored = text;
+      },
       readText: async () => stored,
     });
     const writing = clipboard.writeText({ text: "copied" });

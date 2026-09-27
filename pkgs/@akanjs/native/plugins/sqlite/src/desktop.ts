@@ -111,7 +111,8 @@ export function createDesktopSqlite(dir: (ctx: DesktopContext) => string = (ctx)
           db.run("PRAGMA journal_mode = WAL");
           db.run("PRAGMA foreign_keys = ON");
           if (!open) {
-            pages.set(page, (open = new Map()));
+            open = new Map();
+            pages.set(page, open);
             ctx.document?.own(() => closePage(page));
           }
           open.set(name, db);
@@ -134,7 +135,7 @@ export function createDesktopSqlite(dir: (ctx: DesktopContext) => string = (ctx)
           const columns = statement.columnNames;
           const rows = (statement.values(...values) as unknown[][]).map((row) => {
             const out: Record<string, unknown> = {};
-            columns.forEach((name, i) => (out[name] = columnValue(row[i])));
+            for (const [i, name] of columns.entries()) out[name] = columnValue(row[i]);
             return out;
           });
           return { columns, rows };

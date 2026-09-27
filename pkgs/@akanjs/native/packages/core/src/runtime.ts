@@ -239,12 +239,18 @@ function receive(rt: Runtime, message: unknown): "delivered" | "held" | "ignored
  */
 function deliver(rt: Runtime, msg: BridgeResponse | BridgeEvent): void {
   const order = rt.order;
-  if (order.later.length === 0 && !("event" in msg && order.answered)) return deliverNow(rt, msg);
+  if (order.later.length === 0 && !("event" in msg && order.answered)) {
+    deliverNow(rt, msg);
+    return;
+  }
   if (order.later.push(msg) === 1) rt.timers.set(() => drainLater(rt), 0);
 }
 
 function deliverNow(rt: Runtime, msg: BridgeResponse | BridgeEvent): void {
-  if ("event" in msg) return dispatchEvent(rt, msg.plugin, msg.event, msg.data);
+  if ("event" in msg) {
+    dispatchEvent(rt, msg.plugin, msg.event, msg.data);
+    return;
+  }
   const pending = rt.pending.get(msg.id);
   if (!pending) return;
   rt.pending.delete(msg.id);

@@ -33,8 +33,7 @@ export function parseXml(source: string): XmlElement {
   const tag = /<(\/?)([\w:.-]+)((?:\s+[\w:.-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>/g;
   const stack: XmlElement[] = [];
   let root: XmlElement | null = null;
-  let m: RegExpExecArray | null;
-  while ((m = tag.exec(text))) {
+  for (let m = tag.exec(text); m; m = tag.exec(text)) {
     const [, closing, name, attrText, selfClosing] = m;
     if (closing) {
       const open = stack.pop();

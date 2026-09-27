@@ -524,7 +524,8 @@ export function generateSwift(model: GenModel): string {
     const cases = caseNames(model, e, "camel");
     out.push(...docLines(e.doc, "", "///"));
     out.push(`enum ${e.name}: String, Sendable, CaseIterable {`);
-    e.values.forEach((value, i) => out.push(`    case ${swiftName(cases[i]!)} = ${JSON.stringify(value)}`));
+    for (const [i, value] of e.values.entries())
+      out.push(`    case ${swiftName(cases[i]!)} = ${JSON.stringify(value)}`);
     out.push(
       "",
       "    init(akanNative value: Any?, at path: String) throws {",
@@ -780,9 +781,8 @@ export function generateKotlin(model: GenModel, pkg: string): string {
     const cases = caseNames(model, e, "snake");
     out.push(...docLines(e.doc, "", "*"));
     out.push(`enum class ${e.name}(val json: String) {`);
-    e.values.forEach((value, i) =>
-      out.push(`    ${kotlinName(cases[i]!)}(${JSON.stringify(value)})${i === e.values.length - 1 ? ";" : ","}`),
-    );
+    for (const [i, value] of e.values.entries())
+      out.push(`    ${kotlinName(cases[i]!)}(${JSON.stringify(value)})${i === e.values.length - 1 ? ";" : ","}`);
     out.push(
       "",
       "    companion object {",

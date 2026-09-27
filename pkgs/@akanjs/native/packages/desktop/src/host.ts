@@ -237,7 +237,10 @@ export function startHost(plugins: DesktopPlugin[]): void {
       openLinks,
       onNativeEvent(type, listener) {
         let set = nativeListeners.get(type);
-        if (!set) nativeListeners.set(type, (set = new Set()));
+        if (!set) {
+          set = new Set();
+          nativeListeners.set(type, set);
+        }
         set.add(listener);
         return () => set!.delete(listener);
       },

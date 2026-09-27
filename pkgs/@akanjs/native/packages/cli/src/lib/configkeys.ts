@@ -75,7 +75,7 @@ export function unknownConfigKeys(config: unknown): string[] {
     if (shape === true) return;
     if (Array.isArray(value)) {
       const items = shape["[]"];
-      if (items) value.forEach((item, i) => walk(item, items, `${path}[${i}]`));
+      if (items) for (const [i, item] of value.entries()) walk(item, items, `${path}[${i}]`);
       return;
     }
     if (!isObject(value)) return;

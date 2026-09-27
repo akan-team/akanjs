@@ -98,8 +98,8 @@ export function appNameProblem(name: unknown): string | null {
   if (typeof name !== "string" || !name.trim()) return "app.name is required";
   if (name !== name.trim()) return `app.name must not start or end with spaces (got ${JSON.stringify(name)})`;
   if (name.endsWith(".")) return `app.name must not end with a dot (got ${JSON.stringify(name)})`;
-  // eslint-disable-next-line no-control-regex
-  if (/[\u0000-\u001f\u007f]/.test(name)) return "app.name must not contain control characters";
+  if ([...name].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f))
+    return "app.name must not contain control characters";
   const bad = [...name].find((c) => '/\\:*?"<>|'.includes(c));
   if (bad)
     return `app.name must not contain ${JSON.stringify(bad)}: it names folders and shortcuts (got ${JSON.stringify(name)})`;

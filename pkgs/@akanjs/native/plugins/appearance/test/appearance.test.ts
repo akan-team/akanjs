@@ -57,7 +57,9 @@ describe("appearance routing", () => {
         appearance: {
           methods: {
             get: () => state,
-            set: ({ mode }: { mode: "dark" }) => void (state = { mode, setting: mode }),
+            set: ({ mode }: { mode: "dark" }) => {
+              state = { mode, setting: mode };
+            },
           },
           events: ["change"],
         },

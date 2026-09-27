@@ -15,7 +15,9 @@ export const web = defineWebPlugin<AppStateApi, AppStateEvents>({
       let last = read();
       const check = () => {
         const next = read();
-        if (next !== last) emit({ state: (last = next) });
+        if (next === last) return;
+        last = next;
+        emit({ state: next });
       };
       // capacitor-plugins/app/src/web.ts only watches visibilitychange; focus and
       // blur add the "inactive" state for a visible window without focus.

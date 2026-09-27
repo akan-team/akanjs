@@ -252,7 +252,12 @@ describe("page veto across windows", () => {
   test("one window asked; nobody listening there allows at once; a page that goes away drops the request", async () => {
     let documentEnded: ((doc: { window: number; id: string }) => void) | null = null;
     const ctx = {
-      onDocumentEnd: (fn: typeof documentEnded) => ((documentEnded = fn), () => (documentEnded = null)),
+      onDocumentEnd: (fn: typeof documentEnded) => {
+        documentEnded = fn;
+        return () => {
+          documentEnded = null;
+        };
+      },
     } as never;
     const sent: unknown[] = [];
     const veto = createPageVeto(1000);

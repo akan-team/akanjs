@@ -81,7 +81,10 @@ const status = createLiveValue<BiometricStatus | null>(
         .catch((error) => console.warn("[akan-native] biometric.isAvailable failed", error));
     };
     refresh();
-    if (typeof window === "undefined") return () => void (live = false);
+    if (typeof window === "undefined")
+      return () => {
+        live = false;
+      };
     document.addEventListener("visibilitychange", refresh);
     window.addEventListener("focus", refresh);
     return () => {

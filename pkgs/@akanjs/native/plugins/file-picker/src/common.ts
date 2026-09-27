@@ -43,7 +43,12 @@ export function checkFlag(value: unknown, key: string): boolean {
 export function checkName(name: unknown): string {
   if (typeof name !== "string" || name.trim().length === 0) throw invalid("name must be a non-empty file name");
   if (name.length > 255) throw invalid("name is longer than 255 characters");
-  if (/[/\\\u0000-\u001f\u007f]/.test(name) || name === "." || name === "..")
+  if (
+    /[/\\]/.test(name) ||
+    [...name].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f) ||
+    name === "." ||
+    name === ".."
+  )
     throw invalid(`name must be a file name, not a path (got ${name})`);
   return name;
 }

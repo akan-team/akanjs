@@ -36,6 +36,8 @@ export function fakeHost(
   });
   const call = (method: string, args?: unknown, window = 1) =>
     dispatcher.handle(JSON.stringify({ v: 1, id: 1, plugin: plugin.id, method, args }), window);
-  const fire = (type: string, e: Record<string, unknown>) => listeners.get(type)?.forEach((l) => l({ type, ...e }));
+  const fire = (type: string, e: Record<string, unknown>) => {
+    for (const l of listeners.get(type) ?? []) l({ type, ...e });
+  };
   return { shell, emitted, call, fire };
 }

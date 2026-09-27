@@ -1274,7 +1274,10 @@ export async function runAndroid(ctx: BuildContext, apk: string, args: ParsedArg
 /** Fails the build when compiled code reaches a framework API above minSdk outside an ApiN class (lib/apilevel.ts). */
 function checkApis(jar: string, plugins: NativePlugin<AndroidManifest>[], androidJar: string): void {
   const xml = apiVersionsFor(androidJar);
-  if (!xml) return log.warn(`no data/api-versions.xml next to ${androidJar}: API levels are not checked`);
+  if (!xml) {
+    log.warn(`no data/api-versions.xml next to ${androidJar}: API levels are not checked`);
+    return;
+  }
   const packageLevels = plugins.map(({ plugin, native }): [string, number] => [
     native.class.slice(0, native.class.lastIndexOf(".") + 1).replace(/\./g, "/"),
     pluginMinSdk(plugin.manifest.id, native, MIN_SDK, TOOLCHAIN.android.compileSdk),

@@ -173,7 +173,8 @@ export interface ApkInput {
 
 export function assembleApk({ base, dex, assetsDir, extra = [] }: ApkInput): Uint8Array {
   const entries = readZip(base);
-  dex.forEach((bytes, i) => entries.push(fileEntry(i === 0 ? "classes.dex" : `classes${i + 1}.dex`, bytes, true)));
+  for (const [i, bytes] of dex.entries())
+    entries.push(fileEntry(i === 0 ? "classes.dex" : `classes${i + 1}.dex`, bytes, true));
   for (const e of extra) entries.push(fileEntry(e.name, e.bytes, false));
   for (const file of walk(assetsDir).sort()) {
     const rel = relative(assetsDir, file).split("\\").join("/");
@@ -193,9 +194,8 @@ export function assembleBundleModule({ base, dex, assetsDir, extra = [] }: ApkIn
   const entries = readZip(base).map((e) =>
     e.name === "AndroidManifest.xml" ? { ...e, name: "manifest/AndroidManifest.xml" } : e,
   );
-  dex.forEach((bytes, i) =>
-    entries.push(fileEntry(`dex/${i === 0 ? "classes.dex" : `classes${i + 1}.dex`}`, bytes, false)),
-  );
+  for (const [i, bytes] of dex.entries())
+    entries.push(fileEntry(`dex/${i === 0 ? "classes.dex" : `classes${i + 1}.dex`}`, bytes, false));
   // Native libraries keep their lib/<abi>/ path; other files of the APK root go under root/.
   for (const e of extra) entries.push(fileEntry(e.name.startsWith("lib/") ? e.name : `root/${e.name}`, e.bytes, false));
   for (const file of walk(assetsDir).sort()) {

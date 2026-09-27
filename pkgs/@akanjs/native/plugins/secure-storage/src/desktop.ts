@@ -93,7 +93,8 @@ async function run(argv: string[], input?: string): Promise<{ code: number; out:
 
 /** A word for `security -i`, whose tokenizer takes "…" with \" and \\ escapes. Lines cannot hold control characters. */
 export function quoteForSecurity(text: string): string {
-  return `"${text.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/[\\"]/g, "\\$&")}"`;
+  const printable = [...text].map((c) => (c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f ? " " : c)).join("");
+  return `"${printable.replace(/[\\"]/g, "\\$&")}"`;
 }
 
 const hexKey = (store: Store, hex: string) => {
@@ -199,7 +200,8 @@ function entries(store: Store): Map<string, string> {
       console.error(`[akan-native] ${store.file} is unreadable, starting empty`, error);
     }
   }
-  return (store.entries = map);
+  store.entries = map;
+  return map;
 }
 
 function save(store: Store): void {
@@ -227,13 +229,21 @@ function dataKey(store: Store, create: boolean): Promise<Buffer | null> {
           save(store);
         }
       }
-      return (store.key = key);
-    })().finally(() => (store.creating = null));
+      store.key = key;
+      return key;
+    })().finally(() => {
+      store.creating = null;
+    });
     return store.creating;
   }
   store.reading ??= readKey(store)
-    .then((key) => (key ? (store.key = key) : null))
-    .finally(() => (store.reading = null));
+    .then((key) => {
+      if (key) store.key = key;
+      return key;
+    })
+    .finally(() => {
+      store.reading = null;
+    });
   return store.reading;
 }
 

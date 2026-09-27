@@ -143,7 +143,8 @@ function watch(high: boolean): LiveValue<GeolocationState> {
         });
       },
     );
-    watches.set(high, (live = created));
+    live = created;
+    watches.set(high, created);
   }
   return live;
 }

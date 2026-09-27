@@ -69,7 +69,9 @@ export const web = defineWebPlugin<ScreenApi, ScreenEvents>({
       let last = readWebDisplays();
       const check = () => {
         const next = readWebDisplays();
-        if (!sameDisplays(last, next)) emit({ displays: (last = next) });
+        if (sameDisplays(last, next)) return;
+        last = next;
+        emit({ displays: next });
       };
       // devicePixelRatio changes (another display, zoom): a resolution query for the current value.
       let query: MediaQueryList | null = null;

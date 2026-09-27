@@ -396,7 +396,10 @@ export function createDispatcher(
   const flushOutbox = (window: number, doc: PageDocument) => {
     if (doc.outboxTimer) clearTimeout(doc.outboxTimer);
     doc.outboxTimer = null;
-    if (!doc.outbox.length || documents.get(window) !== doc) return void (doc.outbox = []);
+    if (!doc.outbox.length || documents.get(window) !== doc) {
+      doc.outbox = [];
+      return;
+    }
     for (const { message } of doc.outbox.splice(0)) services.emit(window, stamp(window, doc, message));
   };
 

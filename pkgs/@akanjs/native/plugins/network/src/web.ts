@@ -31,7 +31,9 @@ export const web = defineWebPlugin<NetworkApi, NetworkEvents>({
       let last = readStatus();
       const check = () => {
         const next = readStatus();
-        if (next.connected !== last.connected || next.type !== last.type) emit((last = next));
+        if (next.connected === last.connected && next.type === last.type) return;
+        last = next;
+        emit(next);
       };
       const info = connection();
       window.addEventListener("online", check);

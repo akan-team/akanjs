@@ -38,7 +38,7 @@ function clean(element: XmlElement, applicationId: string): XmlElement {
   element.attrs = element.attrs
     .filter(([n]) => !n.startsWith("tools:") && n !== "xmlns:tools")
     .map(([n, v]) => [n, v.replaceAll("${applicationId}", applicationId)]);
-  element.children.forEach((c) => clean(c, applicationId));
+  for (const c of element.children) clean(c, applicationId);
   return element;
 }
 

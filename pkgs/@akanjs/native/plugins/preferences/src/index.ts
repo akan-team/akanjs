@@ -44,7 +44,8 @@ function entry(key: string): LiveValue<Entry> {
           });
       }
     });
-    entries.set(key, (live = created));
+    live = created;
+    entries.set(key, created);
   }
   return live;
 }

@@ -140,7 +140,7 @@ export function loadEnv(
         continue;
       }
       env[key] = String(value);
-      (sources[key] ??= []).push(source);
+      sources[key] = [...(sources[key] ?? []), source];
     }
   }
   return { env, files, dropped: [...dropped].sort(), sources };

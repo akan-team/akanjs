@@ -70,8 +70,12 @@ describe("screen-orientation routing", () => {
         "screen-orientation": {
           methods: {
             get: () => ({ type: "portrait-primary" }),
-            lock: ({ orientation }: { orientation: string }) => void (locked = orientation),
-            unlock: () => void (locked = null),
+            lock: ({ orientation }: { orientation: string }) => {
+              locked = orientation;
+            },
+            unlock: () => {
+              locked = null;
+            },
           },
           events: ["change"],
         },

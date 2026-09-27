@@ -529,7 +529,9 @@ class FakeFile {
           : new Uint8Array(data as ArrayBuffer);
     return Object.assign(stream, {
       write: async (data: unknown) => put(await toBytes(data)),
-      seek: async (at: number) => void (position = at),
+      seek: async (at: number) => {
+        position = at;
+      },
       close: async () => commit(),
       abort: async () => {},
     });

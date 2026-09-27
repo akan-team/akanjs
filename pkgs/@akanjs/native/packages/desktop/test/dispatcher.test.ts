@@ -543,7 +543,10 @@ describe("windows (SH-6)", () => {
     >({
       id: "p",
       methods: {
-        whoami: (_args, ctx) => ((caller = ctx), ctx.window),
+        whoami: (_args, ctx) => {
+          caller = ctx;
+          return ctx.window;
+        },
         poke: async (args, ctx) => void (await ctx.shell("window.focus", args ?? {})),
       },
       events: {

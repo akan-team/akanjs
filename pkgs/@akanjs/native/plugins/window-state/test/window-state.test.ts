@@ -126,8 +126,9 @@ describe("window-state desktop plugin", () => {
       launch: { setWindow: (b: Partial<SavedWindowState>) => void launch.push(b), exit() {} },
       onQuit: (fn: () => void | Promise<void>) => (quitHooks.push(fn), () => {}),
     } as unknown as DesktopContext;
-    const fire = (type: string, event: Record<string, unknown>) =>
-      listeners.get(type)?.forEach((l) => l({ type, ...event }));
+    const fire = (type: string, event: Record<string, unknown>) => {
+      for (const l of listeners.get(type) ?? []) l({ type, ...event });
+    };
     return { ctx, launch, quitHooks, fire };
   }
 

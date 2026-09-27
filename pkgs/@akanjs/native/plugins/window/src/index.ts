@@ -300,8 +300,16 @@ const state = createLiveValue<WindowState | null>(null, (set) => {
       })
       .catch(() => {});
   const stops = [
-    appWindow.listen("resize", ({ width, height }) => last && set((last = { ...last, width, height }))),
-    appWindow.listen("move", ({ x, y }) => last && set((last = { ...last, x, y }))),
+    appWindow.listen("resize", ({ width, height }) => {
+      if (!last) return;
+      last = { ...last, width, height };
+      set(last);
+    }),
+    appWindow.listen("move", ({ x, y }) => {
+      if (!last) return;
+      last = { ...last, x, y };
+      set(last);
+    }),
     // Focus changes often come with (un)minimize and fullscreen: re-read everything.
     appWindow.listen("focus", () => void refresh()),
   ];

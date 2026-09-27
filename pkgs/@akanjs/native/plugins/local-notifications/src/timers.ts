@@ -58,7 +58,10 @@ export class NotificationTimers {
   private fire(n: ScheduledNotification): void {
     if (this.pending.get(n.id)?.notification !== n) return; // cancelled or replaced meanwhile
     const now = this.host.now();
-    if (n.at > now) return this.arm(n); // a long wait in steps, or the clock moved back
+    if (n.at > now) {
+      this.arm(n); // a long wait in steps, or the clock moved back
+      return;
+    }
     this.host.show(n);
     if (!n.every) {
       this.pending.delete(n.id);

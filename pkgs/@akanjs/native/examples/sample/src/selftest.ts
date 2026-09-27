@@ -363,7 +363,9 @@ export async function runSelftest(): Promise<{ pass: boolean; platform: string; 
         `headers: csp ${csp}, nosniff ${res.headers.get("x-content-type-options")}`,
       );
       let ran = false;
-      const onMessage = (e: MessageEvent) => e.data === "n1 ran" && (ran = true);
+      const onMessage = (e: MessageEvent) => {
+        if (e.data === "n1 ran") ran = true;
+      };
       window.addEventListener("message", onMessage);
       const frame = document.createElement("iframe");
       frame.style.display = "none";

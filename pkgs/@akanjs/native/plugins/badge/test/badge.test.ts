@@ -63,8 +63,12 @@ describe("badge routing", () => {
       plugins: {
         badge: {
           methods: {
-            set: (args: { count: number }) => void (count = args.count),
-            clear: () => void (count = 0),
+            set: (args: { count: number }) => {
+              count = args.count;
+            },
+            clear: () => {
+              count = 0;
+            },
             checkPermission: () => ({ badge: "prompt" }),
             requestPermission: () => ({ badge: "granted" }),
           },

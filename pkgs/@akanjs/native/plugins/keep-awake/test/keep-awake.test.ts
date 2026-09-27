@@ -33,8 +33,12 @@ describe("keep-awake routing", () => {
       plugins: {
         "keep-awake": {
           methods: {
-            keepAwake: () => void (on = true),
-            allowSleep: () => void (on = false),
+            keepAwake: () => {
+              on = true;
+            },
+            allowSleep: () => {
+              on = false;
+            },
             isKeptAwake: () => ({ value: on }),
           },
         },

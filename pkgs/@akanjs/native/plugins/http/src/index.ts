@@ -147,7 +147,7 @@ const NULL_BODY = new Set([101, 103, 204, 205, 304]);
  */
 export async function fetch(input: string | URL, init: FetchOptions = {}): Promise<Response> {
   const headers: Record<string, string> = {};
-  new Headers(init.headers).forEach((value, name) => (headers[name] = value));
+  for (const [name, value] of new Headers(init.headers)) headers[name] = value;
   const method = (init.method ?? "GET").toUpperCase() as HttpMethod;
   const options: HttpRequestOptions = { url: String(input), method, headers, responseType: "base64" };
   const body = init.body;

@@ -106,7 +106,13 @@ describe("web implementation", () => {
       clearWatch: (id: number) => void watches.delete(id),
     };
     stubNavigator("geolocation", geo);
-    return { watches, calls, answerWith: (fn: typeof answer) => void (answer = fn) };
+    return {
+      watches,
+      calls,
+      answerWith: (fn: typeof answer) => {
+        answer = fn;
+      },
+    };
   }
 
   test("without navigator.geolocation every method rejects UNSUPPORTED", async () => {

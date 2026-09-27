@@ -11,7 +11,15 @@
 
 import { aclCheck, type CallScope, listenItem } from "./acl.ts";
 import { AkanNativeError } from "./errors.ts";
-import { type BridgeRequest, type CancelReason, LISTEN, MEMBER_NAME, RESERVED_MEMBERS, UNLISTEN } from "./protocol.ts";
+import {
+  type BridgeRequest,
+  type BridgeResponse,
+  type CancelReason,
+  LISTEN,
+  MEMBER_NAME,
+  RESERVED_MEMBERS,
+  UNLISTEN,
+} from "./protocol.ts";
 import { cancelCall, dispatchEvent, eventKey, runtime } from "./runtime.ts";
 
 export type Implementation = "native" | "web" | "none";
@@ -136,7 +144,7 @@ export function definePlugin<Api extends object, Events extends object = {}>(
       if (problem)
         throw new AkanNativeError("INVALID_ARGS", `${id}.${method}(): ${problem}`, { name: "DataCloneError" });
     }
-    let response;
+    let response: BridgeResponse;
     try {
       const sent = rt.transport.send(request);
       response = signal ? await untilAborted(sent, signal, (reason) => cancelCall(rt, request.id, reason)) : await sent;
@@ -228,7 +236,10 @@ export function definePlugin<Api extends object, Events extends object = {}>(
     const rt = runtime();
     const key = eventKey(id, event);
     let set = rt.listeners.get(key);
-    if (!set) rt.listeners.set(key, (set = new Set()));
+    if (!set) {
+      set = new Set();
+      rt.listeners.set(key, set);
+    }
     const entry = (data: unknown) => {
       if (options?.once) unsubscribe();
       (listener as (d: unknown) => void)(data);

@@ -40,20 +40,29 @@ export const cyan = paint("36");
 
 function emit(level: LogLevel, message: string, tool?: string): void {
   const sink = sinks.getStore();
-  if (sink) return sink({ level, message, ...(tool ? { tool } : {}), time: Date.now() });
+  if (sink) {
+    sink({ level, message, ...(tool ? { tool } : {}), time: Date.now() });
+    return;
+  }
   switch (level) {
     case "step":
-      return console.info(`${cyan("›")} ${message}`);
+      console.info(`${cyan("›")} ${message}`);
+      return;
     case "info":
-      return console.info(`  ${message}`);
+      console.info(`  ${message}`);
+      return;
     case "ok":
-      return console.info(`${green("✓")} ${message}`);
+      console.info(`${green("✓")} ${message}`);
+      return;
     case "warn":
-      return console.warn(`${yellow("!")} ${message}`);
+      console.warn(`${yellow("!")} ${message}`);
+      return;
     case "error":
-      return console.error(`${red("✗")} ${message}`);
+      console.error(`${red("✗")} ${message}`);
+      return;
     case "tool":
-      return console.info(message);
+      console.info(message);
+      return;
   }
 }
 

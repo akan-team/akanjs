@@ -26,36 +26,40 @@ export function parseUserAgent(ua: string, touchPoints = 0): UserAgentFields {
     null;
   const safari = ua.match(/\bVersion\/([\d.]+)/)?.[1]; // Safari's version tracks iOS / iPadOS
 
-  let m: RegExpMatchArray | null;
-  if ((m = ua.match(/\b(iPhone|iPad|iPod)\b[^)]*? OS ([\d_]+)/))) {
+  const apple = ua.match(/\b(iPhone|iPad|iPod)\b[^)]*? OS ([\d_]+)/);
+  if (apple) {
     return {
-      osName: m[1] === "iPad" ? "iPadOS" : "iOS",
-      osVersion: safari ?? version(m[2]),
-      model: m[1]!,
+      osName: apple[1] === "iPad" ? "iPadOS" : "iOS",
+      osVersion: safari ?? version(apple[2]),
+      model: apple[1]!,
       manufacturer: "Apple",
       browserVersion,
     };
   }
-  if ((m = ua.match(/\bAndroid ([\d.]+)(?:; ([^;)]+))?/))) {
-    const model = (m[2] ?? "").replace(/\s*Build\/.*$/, "").trim();
+  const android = ua.match(/\bAndroid ([\d.]+)(?:; ([^;)]+))?/);
+  if (android) {
+    const model = (android[2] ?? "").replace(/\s*Build\/.*$/, "").trim();
     return {
       osName: "Android",
-      osVersion: m[1]!,
+      osVersion: android[1]!,
       model: model && model !== "K" ? model : "unknown",
       manufacturer: "unknown",
       browserVersion,
     };
   }
-  if ((m = ua.match(/\bCrOS \S+ ([\d.]+)/))) {
-    return { osName: "ChromeOS", osVersion: m[1]!, model: "unknown", manufacturer: "unknown", browserVersion };
+  const chromeOs = ua.match(/\bCrOS \S+ ([\d.]+)/);
+  if (chromeOs) {
+    return { osName: "ChromeOS", osVersion: chromeOs[1]!, model: "unknown", manufacturer: "unknown", browserVersion };
   }
-  if ((m = ua.match(/\bMac OS X ([\d_.]+)/))) {
+  const mac = ua.match(/\bMac OS X ([\d_.]+)/);
+  if (mac) {
     if (touchPoints > 1)
       return { osName: "iPadOS", osVersion: safari ?? "", model: "iPad", manufacturer: "Apple", browserVersion };
-    return { osName: "macOS", osVersion: version(m[1]), model: "Macintosh", manufacturer: "Apple", browserVersion };
+    return { osName: "macOS", osVersion: version(mac[1]), model: "Macintosh", manufacturer: "Apple", browserVersion };
   }
-  if ((m = ua.match(/\bWindows NT ([\d.]+)/))) {
-    return { osName: "Windows", osVersion: m[1]!, model: "unknown", manufacturer: "unknown", browserVersion };
+  const windows = ua.match(/\bWindows NT ([\d.]+)/);
+  if (windows) {
+    return { osName: "Windows", osVersion: windows[1]!, model: "unknown", manufacturer: "unknown", browserVersion };
   }
   if (/\b(Linux|X11)\b/.test(ua))
     return { osName: "Linux", osVersion: "", model: "unknown", manufacturer: "unknown", browserVersion };
@@ -133,7 +137,8 @@ function getId(): { identifier: string } {
     return { identifier: id };
   } catch {
     // Blocked storage (private mode, disabled site data): stable for this page only.
-    return { identifier: (sessionId ??= uuid()) };
+    sessionId ??= uuid();
+    return { identifier: sessionId };
   }
 }
 

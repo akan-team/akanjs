@@ -41,7 +41,7 @@ function serve(): Server {
       if (path === "/echo") {
         const body = new Uint8Array(await req.arrayBuffer());
         const headers: Record<string, string> = {};
-        req.headers.forEach((v, k) => (headers[k] = v));
+        for (const [k, v] of req.headers) headers[k] = v;
         return Response.json({
           method: req.method,
           headers,

@@ -58,7 +58,9 @@ export const web = defineWebPlugin<ScreenOrientationApi, ScreenOrientationEvents
       let last = readWebOrientation().type;
       const check = () => {
         const next = readWebOrientation();
-        if (next.type !== last) emit({ type: (last = next.type) });
+        if (next.type === last) return;
+        last = next.type;
+        emit({ type: next.type });
       };
       const o = orientation();
       if (o) {
