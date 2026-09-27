@@ -6,7 +6,11 @@ import * as cnst from "../cnst";
 import type * as db from "../db";
 import * as srv from "../srv";
 
-export class FileInternal extends internal(srv.file, () => ({})) {}
+export class FileInternal extends internal(srv.file, ({ interval }) => ({
+  failStaleUploads: interval(5 * 60 * 1000).exec(async function () {
+    await this.fileService.failStaleUploads();
+  }),
+})) {}
 
 export class FileSlice extends slice(srv.file, { guards: { root: None, get: Public, cru: None } }, (init) => ({
   inIds: init({ guards: [Public], mcp: false })
@@ -17,7 +21,7 @@ export class FileSlice extends slice(srv.file, { guards: { root: None, get: Publ
 })) {}
 
 export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
-  addFiles: mutation([cnst.File], { fileUpload: true })
+  addFiles: mutation([cnst.File], { guards: [Every], fileUpload: true, mcp: false })
     .body("files", [Upload])
     .body("metas", String, { example: `[{"lastModifiedAt":"2024-01-14T15:32:47.766Z","size":0}]` })
     .body("type", String, { example: "user" })

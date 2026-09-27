@@ -14,7 +14,7 @@ export class BannerInput extends via((field) => ({
   image: field(File, { text: "thumb" }).optional(),
   href: field(String),
   target: field(BannerTarget, { default: "_self" }),
-  from: field(Date, { default: dayjs() }),
+  from: field(Date, { default: () => dayjs() }),
   to: field(Date).optional(),
 })) {}
 

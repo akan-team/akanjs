@@ -33,6 +33,18 @@ describe("Admin Signal", () => {
       expect(adminAgent.admin.roles).toContain("admin");
     });
 
+    it("finds an admin to mention by any word of the account id, and by its start", async () => {
+      const { accountId } = adminAgent.admin;
+      const [localPart = "", domain = ""] = accountId.split("@");
+      const mentioned = async (text: string) =>
+        (await rootAdminAgent.fetch.adminListInMention(text, 0, 50, "relevance")).map((admin) => admin.id);
+      expect(await mentioned(accountId)).toContain(adminAgent.admin.id);
+      expect(await mentioned(localPart)).toContain(adminAgent.admin.id);
+      expect(await mentioned(domain.split(".")[0] ?? "")).toContain(adminAgent.admin.id);
+      expect(await mentioned(localPart.slice(0, Math.max(1, localPart.length - 1)))).toContain(adminAgent.admin.id);
+      expect(await mentioned("zzqqxxnomatch")).not.toContain(adminAgent.admin.id);
+    });
+
     it("can signout admin", async () => {
       // 1. Admin 로그인
       const decodedAdminJwt = decodeJwtPayload<(Account & { exp?: number; tokenType?: string }) | null>(

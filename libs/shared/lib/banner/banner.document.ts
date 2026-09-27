@@ -6,7 +6,7 @@ export class BannerFilter extends from(cnst.Banner, (filter) => ({
   query: {
     inCategory: filter()
       .opt("category", String)
-      .query((category) => ({ category })),
+      .query((category) => (category ? { category } : {})),
   },
   sort: {},
 })) {}

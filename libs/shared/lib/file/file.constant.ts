@@ -1,7 +1,7 @@
 import { dayjs, enumOf, Int } from "akanjs/base";
 import { type ProtoFile, via } from "akanjs/constant";
 
-export class FileStatus extends enumOf("fileStatus", ["active", "uploading"]) {}
+export class FileStatus extends enumOf("fileStatus", ["active", "uploading", "failed"]) {}
 
 export class FileInput extends via((field) => ({
   filename: field(String, { text: "title" }),

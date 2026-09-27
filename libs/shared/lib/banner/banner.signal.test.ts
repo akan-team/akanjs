@@ -10,7 +10,7 @@ import * as adminSpec from "../admin/admin.signal.spec";
 import * as cnst from "../cnst";
 import type { AdminAgent, UserAgent } from "../user/user.signal.spec";
 
-configureSignalTest({ databaseMode: "tempFile" });
+configureSignalTest({ storage: "tempFile" });
 
 describe("banner signal test", () => {
   describe("banner service test", () => {
@@ -44,7 +44,7 @@ describe("banner signal test", () => {
     });
 
     it("admin can create banners with images", async () => {
-      const [image] = await fileSpec.getActiveFiles();
+      const [image] = await fileSpec.getActiveFiles(1, adminAgent.fetch);
       const bannerInput = { ...sampleOf(cnst.BannerInput), image: image.id };
       banner = await adminAgent.fetch.createBanner(bannerInput);
       expect(banner.image).toBeTruthy();

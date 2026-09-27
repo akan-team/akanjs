@@ -73,16 +73,15 @@ export class OauthService extends serve("oauth" as const, ({ use, service, memor
   async register(body: unknown, ip: string | null): Promise<Response> {
     if (!this.oauthOption.enabled || !this.oauthOption.dynamicRegistration) return this.disabled();
     const address = ip ?? "unknown";
-    const count = (await this.registrations.get(address)) ?? 0;
+    const count = await this.registrations.incr(address, 1, { expireAt: dayjs().add(1, "hour") });
     // Callers whose address could not be resolved share one bucket, so it is wider: a deployment whose proxy
     // headers are misconfigured should degrade to a looser limit, not lock every client out at once.
     const limit = ip ? this.registrationsPerHour : this.registrationsPerHour * 5;
-    if (count >= limit)
+    if (count > limit)
       return Response.json(
         { error: "invalid_client_metadata", error_description: "Too many registrations from this address." },
         { status: 429, headers: OAuthErrors.noStore },
       );
-    await this.registrations.set(address, count + 1, { expireAt: dayjs().add(1, "hour") });
     const parsed = OAuthRegistration.parse(body, { allowedSchemes: this.oauthOption.allowedRedirectSchemes });
     if (!parsed.ok) return parsed.response;
     const clientSecret = parsed.client.tokenEndpointAuthMethod === "none" ? undefined : createOpaqueToken(32);
@@ -183,7 +182,9 @@ export class OauthService extends serve("oauth" as const, ({ use, service, memor
   ): Promise<Response> {
     const request = await this.viewRequest(requestId, account);
     if (!request.subjectId) throw new Err("oauth.error.requestNotFound");
-    // Written before the code exists, so a second decision on the same request finds it already decided.
+    // Taken before the code exists, so of two decisions racing on one request only one finds it to decide, and the
+    // decided request written back turns every later one away.
+    if (!(await this.requests.getDel(requestId))) throw new Err("oauth.error.requestNotFound");
     request.status = approved ? "approved" : "denied";
     await this.requests.set(requestId, request, { expireAt: this.requestExpiry(request) });
     const { issuer } = this.oauthOption;
@@ -345,10 +346,9 @@ export class OauthService extends serve("oauth" as const, ({ use, service, memor
 
   private async exchangeCode(client: OAuthClientRecord, params: CodeGrantParams): Promise<Response> {
     const codeHash = hashToken(params.code);
-    const grant = await this.grants.get(codeHash);
     // Consumed before it is judged: a code that fails any check below is spent, so a second attempt cannot fish for
-    // the one thing it lacked.
-    if (grant) await this.grants.delete(codeHash);
+    // the one thing it lacked — and of two exchanges racing on one code, only one receives it.
+    const grant = await this.grants.getDel(codeHash);
     const invalid = (description: string) => OAuthErrors.token("invalid_grant", description, params.client);
     if (!grant || dayjs(grant.expiresAt).isBefore(dayjs()))
       return invalid("The authorization code is unknown, expired or already used.");
