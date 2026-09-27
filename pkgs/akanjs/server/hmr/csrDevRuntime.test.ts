@@ -237,6 +237,64 @@ describe("installCsrDevRuntime", () => {
     expect(harness.reloads).toBe(0);
   });
 
+  describe("an importer that accepts its dependencies", () => {
+    const pageModule =
+      (version: string): CsrModuleFactory =>
+      (require, record) => {
+        const recipe = require("akan-module:app/recipe.ts") as { tone: string };
+        record.exports = { default: { render: () => `${version}:${recipe.tone}` } };
+      };
+    const routeModules = (updates: string[][]): Record<string, CsrModuleFactory> => ({
+      "app/entry.ts": (require, record) => {
+        require("akan-module:app/page.tsx");
+        record.hot.accept(["akan-module:app/page.tsx"], (updated) => updates.push(updated));
+      },
+      "app/page.tsx": pageModule("v1"),
+      "app/recipe.ts": (_require, record) => {
+        record.exports = { tone: "calm" };
+      },
+    });
+
+    test("takes a changed dependency without re-running itself", () => {
+      const updates: string[][] = [];
+      const harness = createHarness(routeModules(updates));
+      harness.api.start({ generation: 1, refresh: REFRESH_ID });
+      harness.api.update(2, { "app/page.tsx": pageModule("v2") });
+      expect(harness.executed()).toEqual(["app/page.tsx"]);
+      expect(updates).toEqual([["app/page.tsx"]]);
+      expect(harness.reloads).toBe(0);
+    });
+
+    test("is told when a module below the dependency changed", () => {
+      const updates: string[][] = [];
+      const harness = createHarness(routeModules(updates));
+      harness.api.start({ generation: 1, refresh: REFRESH_ID });
+      harness.api.update(2, {
+        "app/recipe.ts": (_require, record) => {
+          record.exports = { tone: "bold" };
+        },
+      });
+      expect(harness.executed()).toEqual(["app/recipe.ts", "app/page.tsx"]);
+      expect(updates).toEqual([["app/page.tsx"]]);
+      expect(harness.reloads).toBe(0);
+    });
+
+    test("reloads when its callback throws", () => {
+      const modules = routeModules([]);
+      modules["app/entry.ts"] = (require, record) => {
+        require("akan-module:app/page.tsx");
+        record.hot.accept(["app/page.tsx"], () => {
+          throw new Error("route table rejected");
+        });
+      };
+      const harness = createHarness(modules);
+      harness.api.start({ generation: 1, refresh: REFRESH_ID });
+      harness.api.update(2, { "app/page.tsx": pageModule("v2") });
+      expect(harness.reloads).toBe(1);
+      expect(harness.warnings[0]).toContain("route table rejected");
+    });
+  });
+
   test("a module never loaded takes its new factory without running", () => {
     const harness = createHarness({ ...baseModules(), "app/Lazy.tsx": component("Lazy") });
     harness.api.start({ generation: 1, refresh: REFRESH_ID });

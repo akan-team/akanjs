@@ -272,11 +272,15 @@ export class CsrDevBundler {
     const changed: string[] = [];
     for (const basePath of context.htmlBasePaths) {
       const file = path.join(this.#entryDir, CsrArtifactBuilder.entryFilename(basePath));
-      const pages = await PagesEntrySourceGenerator.generateStatic(
-        CsrArtifactBuilder.pageEntriesForBasePath(context.pageEntries, basePath, context.basePaths),
-        { fromDir: this.#entryDir },
-      );
-      const source = `import { bootCsr } from "akanjs/webkit";\n${pages}\nvoid bootCsr(pages);\n`;
+      const entryPages = CsrArtifactBuilder.pageEntriesForBasePath(context.pageEntries, basePath, context.basePaths);
+      const generator = new PagesEntrySourceGenerator(entryPages);
+      const pages = await generator.generateStatic({ fromDir: this.#entryDir });
+      const hot = await generator.generateHotReplace({
+        fromDir: this.#entryDir,
+        ownerId: this.#idOf(file),
+        moduleIds: entryPages.map(({ moduleAbsPath }) => this.#idOf(moduleAbsPath)),
+      });
+      const source = `import * as akanWebkit from "akanjs/webkit";\n${pages}\nvoid akanWebkit.bootCsr(pages);\n${hot}`;
       if ((await Bun.file(file).exists()) && (await Bun.file(file).text()) === source) {
         files[basePath] = CsrDevBundler.#realpath(file);
         continue;

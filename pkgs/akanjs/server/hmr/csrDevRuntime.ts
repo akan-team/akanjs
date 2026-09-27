@@ -9,7 +9,7 @@ interface RefreshRuntime {
 
 export interface CsrHotContext {
   readonly data: Record<string, unknown> | undefined;
-  accept(): void;
+  accept(deps?: string | string[], callback?: (updated: string[]) => void): void;
   dispose(callback: (data: Record<string, unknown>) => void): void;
   invalidate(): void;
 }
@@ -42,6 +42,7 @@ export interface CsrDevRuntimeApi {
   define(id: string, factory: CsrModuleFactory): void;
   start(options: { generation: number; refresh: string }): void;
   update(generation: number, factories: Record<string, CsrModuleFactory>): void;
+  accept(ownerId: string, deps: string[], callback: (updated: string[]) => void): void;
   hot(message: CsrUpdateMessage): void;
   toESM(mod: unknown, isNodeMode?: number): unknown;
   reExport(target: object, mod: unknown, secondTarget?: object): object | undefined;
@@ -80,9 +81,15 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
     selfAccepted = false;
     invalidated = false;
     readonly disposers: ((data: Record<string, unknown>) => void)[] = [];
+    readonly acceptedDeps = new Map<string, (updated: string[]) => void>();
     constructor(readonly data: Record<string, unknown> | undefined) {}
-    accept() {
-      this.selfAccepted = true;
+    accept(deps?: string | string[], callback: (updated: string[]) => void = () => undefined) {
+      if (deps === undefined) {
+        this.selfAccepted = true;
+        return;
+      }
+      for (const dep of Array.isArray(deps) ? deps : [deps])
+        this.acceptedDeps.set(dep.startsWith(modulePrefix) ? dep.slice(modulePrefix.length) : dep, callback);
     }
     dispose(callback: (data: Record<string, unknown>) => void) {
       this.disposers.push(callback);
@@ -153,6 +160,13 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
         );
       }
       host.__AKAN_CSR_LAST_UPDATE__ = { generation, executed: this.#executed.slice() };
+    }
+
+    // For generated ESM: Bun renames a free `module` in an ESM file to a `module_<name>` it never defines.
+    accept(ownerId: string, deps: string[], callback: (updated: string[]) => void) {
+      const owner = this.#cache.get(ownerId);
+      if (!owner) throw new Error(`[akan-csr] ${ownerId} accepts updates before it is loaded`);
+      owner.hot.accept(deps, callback);
     }
 
     hot(message: CsrUpdateMessage) {
@@ -349,6 +363,7 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
           for (const parent of parentsOf.get(id) ?? []) this.#link(parent, record);
           if (record.hot.invalidated) invalidated.push(id);
         }
+        this.#runAcceptedDeps(plan.accepted);
         pending = [];
         for (const id of invalidated) {
           const parents = [...(this.#cache.get(id)?.parents ?? [])];
@@ -361,9 +376,29 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       }
     }
 
-    #collectOutdated(start: string[]): { outdated: Set<string>; boundaries: Set<string> } | { reload: string } {
+    //? A parent that accepts a dependency stops the bubbling on that edge: the dependency re-runs and the parent is told,
+    //? instead of re-running itself. That is how the dev entry takes a page module without rebooting the router.
+    #runAcceptedDeps(accepted: Map<string, Set<string>>) {
+      for (const [parentId, deps] of accepted) {
+        const parent = this.#cache.get(parentId);
+        if (!parent) continue;
+        const updatedBy = new Map<(updated: string[]) => void, string[]>();
+        for (const dep of deps) {
+          this.#link(parentId, this.#load(dep));
+          const callback = parent.hot.acceptedDeps.get(dep);
+          if (callback) updatedBy.set(callback, [...(updatedBy.get(callback) ?? []), dep]);
+        }
+        for (const [callback, updated] of updatedBy) callback(updated);
+      }
+      if (accepted.size > 0) this.#scheduleRefresh();
+    }
+
+    #collectOutdated(
+      start: string[],
+    ): { outdated: Set<string>; boundaries: Set<string>; accepted: Map<string, Set<string>> } | { reload: string } {
       const outdated = new Set<string>();
       const boundaries = new Set<string>();
+      const accepted = new Map<string, Set<string>>();
       const queue = [...start];
       while (queue.length > 0) {
         const id = queue.shift() as string;
@@ -376,9 +411,17 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
           continue;
         }
         if (record.parents.size === 0) return { reload: `no component boundary above ${id}` };
-        queue.push(...record.parents);
+        for (const parentId of record.parents) {
+          if (!this.#cache.get(parentId)?.hot.acceptedDeps.has(id)) {
+            queue.push(parentId);
+            continue;
+          }
+          const deps = accepted.get(parentId) ?? new Set<string>();
+          accepted.set(parentId, deps.add(id));
+        }
       }
-      return { outdated, boundaries };
+      for (const parentId of accepted.keys()) if (outdated.has(parentId)) accepted.delete(parentId);
+      return { outdated, boundaries, accepted };
     }
 
     #dispose(ids: Set<string>) {

@@ -42,6 +42,34 @@ export class PagesEntrySourceGenerator {
     return `${imports.join("\n")}\nexport const pages = {\n${entries.join("\n")}\n};\n`;
   }
 
+  // Route HMR in the dev registry bundle: `akanWebkit` is the entry's namespace import of `akanjs/webkit`, and the
+  // block stays inert until the frame exports `replacePages`, so a page edit reloads before then.
+  async generateHotReplace({
+    fromDir,
+    ownerId,
+    moduleIds,
+  }: {
+    fromDir: string;
+    ownerId: string;
+    moduleIds: string[];
+  }): Promise<string> {
+    const entries = await Promise.all(
+      this.#pageEntries.map(async ({ key, moduleAbsPath }) => {
+        const specifier = PagesEntrySourceGenerator.#toRelativeSpecifier(fromDir, moduleAbsPath);
+        const isAsyncDefault = await AsyncDefaultExportDetector.detect(moduleAbsPath);
+        return `      ${JSON.stringify(key)}: { loader: async () => require(${JSON.stringify(specifier)}), isAsyncDefault: ${isAsyncDefault} },`;
+      }),
+    );
+    return `if (typeof akanWebkit.replacePages === "function")
+  __akan.accept(${JSON.stringify(ownerId)}, ${JSON.stringify(moduleIds)}, () => {
+    const replaced = akanWebkit.replacePages({
+${entries.join("\n")}
+    });
+    if (replaced === false) throw new Error("the route table no longer matches the pages it was built from");
+  });
+`;
+  }
+
   static #toImportSpecifier(moduleAbsPath: string): string {
     return path.resolve(moduleAbsPath).split(path.sep).join("/");
   }
