@@ -13,7 +13,7 @@ interface ChatBubbleProps {
   isMe?: boolean;
   name?: string;
   at?: Dayjs | null;
-  children: any;
+  children: ReactNode;
 }
 export const ChatBubble = ({
   className,

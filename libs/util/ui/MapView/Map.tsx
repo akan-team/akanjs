@@ -1,7 +1,7 @@
 "use client";
 import { type cnst, st } from "@libs/util/client";
 import { cn } from "akanjs/client";
-
+import type { ReactNode } from "react";
 import Google from "./Google";
 
 const darkStyle = [
@@ -64,7 +64,7 @@ interface MapProps {
   onRightClick?: (coordinate: cnst.Coordinate) => void;
   onMouseMove?: (coordinate: cnst.Coordinate) => void;
   mapKey: string;
-  children: any;
+  children: ReactNode;
 }
 export default function Map({ className, children, onLoad, onClick, onRightClick, onMouseMove, mapKey }: MapProps) {
   const theme = st.use.theme();

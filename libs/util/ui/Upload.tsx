@@ -54,7 +54,7 @@ interface FileProps {
   file: ProtoLightFile | null;
   render?: (file: ProtoLightFile) => React.ReactNode;
   onChange?: (e: File | FileList) => void | Promise<void>;
-  onRemove?: (e: any) => void;
+  onRemove?: (file: ProtoLightFile) => void;
   children?: React.ReactNode;
   disabled?: boolean;
   maxCount?: number;
@@ -178,7 +178,7 @@ interface FileListProps {
   fileList?: ProtoLightFile[];
   render?: (file: ProtoLightFile) => React.ReactNode;
   onChange?: (e: File | File[]) => void | Promise<void>;
-  onRemove?: (e: any) => void;
+  onRemove?: (file: ProtoLightFile) => void;
   children?: React.ReactNode;
   disabled?: boolean;
   maxCount?: number;

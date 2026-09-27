@@ -63,4 +63,7 @@ export interface StorageApi {
   copyData(request: CopyRequest): Promise<string>;
   deleteData(url: string): Promise<boolean>;
   deleteDataByPath(path: string): Promise<boolean>;
+  /** A URL that lets its holder PUT exactly this object without credentials, or null where the backend cannot sign one. */
+  presignUpload(path: string, expiresInSec: number): string | null;
+  getDataSize(path: string): Promise<number | null>;
 }

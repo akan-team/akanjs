@@ -30,7 +30,7 @@
 export { type BadgeVariants, badgeRecipe } from "./badge";
 export { type ButtonVariants, buttonRecipe } from "./button";
 export { type CheckboxVariants, checkboxRecipe } from "./checkbox";
-export { collapseContentRecipe, collapseRecipe, collapseTitleRecipe } from "./collapse";
+export { collapseClass, collapseContentClass, collapseTitleRecipe } from "./collapse";
 export { type InputVariants, inputRecipe } from "./input";
 export { type RangeVariants, rangeRecipe } from "./range";
 export {

@@ -1,6 +1,8 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { createEditor, type Klass, type LexicalNode } from "lexical";
 
+import { RichMarkdownReader } from "../../../common/richMarkdownReader";
+
 // `./config` reaches the client barrel (excalidrawNode.util imports `Err`), which reads getEnv() at module
 // scope, so the import has to happen after these are set — hence the dynamic import below.
 process.env.AKAN_PUBLIC_APP_NAME ??= "test";
@@ -36,6 +38,11 @@ describe("registered editor nodes", () => {
 
   test("every node survives `new klass()`, which is how @lexical/yjs learns what to sync", () => {
     expect(ownKeysOf().broken).toEqual([]);
+  });
+
+  test("every registered node may travel as an akan-node island, so markdown can carry what it cannot spell", () => {
+    const missing = nodes.map((klass) => klass.getType()).filter((type) => !RichMarkdownReader.islandTypes.has(type));
+    expect(missing).toEqual([]);
   });
 
   test("a default-constructed node still declares every field it stores", () => {

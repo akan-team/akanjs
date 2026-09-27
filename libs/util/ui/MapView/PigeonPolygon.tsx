@@ -8,9 +8,6 @@ import { PigeonMapPropsContext } from "./context";
 interface PigeonPolygonProps extends PigeonProps {
   className?: string;
   coordinates: cnst.Coordinate[];
-  styleCallback?: any;
-  hover?: any;
-  feature?: any;
   style?: CSSProperties;
   onClick?: () => void;
 }

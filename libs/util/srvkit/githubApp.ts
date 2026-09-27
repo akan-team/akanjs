@@ -378,10 +378,40 @@ export class GithubApp {
     return hooks;
   }
 
+  async updateWebhookConfig({
+    owner,
+    repo,
+    accessToken,
+    hookId,
+    webhookUrl,
+    webhookSecret,
+  }: {
+    owner: string;
+    repo: string;
+    accessToken: string;
+    hookId: number;
+    webhookUrl: string;
+    webhookSecret?: string;
+  }) {
+    const config = await this.#api<{ url?: string } | GithubApiError>(
+      `/repos/${owner}/${repo}/hooks/${hookId}/config`,
+      {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ url: webhookUrl, content_type: "json", secret: webhookSecret }),
+      },
+    );
+    if ((config as { url?: string }).url !== webhookUrl)
+      throw new Err("util.error.githubWebhookUpdateFailed", { reason: this.#formatApiError(config) });
+  }
+
   /**
    * Register the push webhook only when the repository does not already carry one for this URL.
    * Re-importing a repository used to POST a second identical hook, which made GitHub deliver every push
    * twice — two builds racing on the same scheduler key.
+   *
+   * An existing hook still gets its config rewritten: GitHub never returns a hook's secret, so the only way to
+   * know it matches the one the receiver verifies with is to set it, and a rotated secret has no other way in.
    */
   async ensureWebhook({
     owner,
@@ -399,7 +429,10 @@ export class GithubApp {
     const existing = (await this.listWebhooks({ owner, repo, accessToken })).find(
       (hook) => hook.config?.url === webhookUrl,
     );
-    if (existing) return { id: existing.id, created: false };
+    if (existing) {
+      await this.updateWebhookConfig({ owner, repo, accessToken, hookId: existing.id, webhookUrl, webhookSecret });
+      return { id: existing.id, created: false };
+    }
     const created = await this.registerWebhook({ owner, repo, accessToken, webhookUrl, webhookSecret });
     return { id: created.id, created: true };
   }

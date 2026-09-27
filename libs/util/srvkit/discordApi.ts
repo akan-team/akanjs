@@ -2,6 +2,7 @@ import type * as discord from "discord.js";
 import { Err } from "../lib/dict";
 import type {
   DiscordBot,
+  DiscordButton,
   DiscordToken,
   SendMessageWithEmbedType,
   SendWebhookMessageWithEmbedType,
@@ -140,7 +141,7 @@ export class DiscordApi {
     if (!role || !user) throw new Err("util.error.discordRoleOrUserNotFound");
     return await user.roles.remove(role);
   }
-  async sendEmbed(botId: string, channelId: string, embed: discord.APIEmbed, button?: any[]) {
+  async sendEmbed(botId: string, channelId: string, embed: discord.APIEmbed, button?: DiscordButton[]) {
     const channel = this.bot(botId).server.channels.cache.get(channelId);
     return await (channel as discord.TextChannel).send({
       embeds: [embed],

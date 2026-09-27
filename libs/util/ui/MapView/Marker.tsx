@@ -1,11 +1,12 @@
 "use client";
 import type { cnst } from "@libs/util/client";
 import { OVERLAY_MOUSE_TARGET, OverlayViewF } from "@react-google-maps/api";
+import type { ReactNode } from "react";
 
 interface MarkerProps {
   coordinate: cnst.Coordinate;
   zIndex?: number;
-  children?: any;
+  children?: ReactNode;
 }
 export default function Marker({ coordinate, zIndex, children }: MarkerProps) {
   const [lng, lat] = coordinate.coordinates;

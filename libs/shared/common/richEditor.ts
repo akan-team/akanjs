@@ -1,3 +1,8 @@
+import { MentionGrammar } from "./mentionGrammar";
+import { RichMarkdownReader } from "./richMarkdownReader";
+import { RichMarkdownWriter } from "./richMarkdownWriter";
+import { RichNode } from "./richNode";
+
 export interface MentionRef {
   refName: string;
   refId: string;
@@ -7,6 +12,11 @@ export interface MentionTarget {
   refName: string;
   id: string;
   name: string;
+}
+
+/** A mention as the editor's markdown writes it: `@[label](mention:refName/refId)`. */
+export interface MentionToken extends MentionRef {
+  label: string;
 }
 
 export interface EditorNode {
@@ -21,12 +31,13 @@ export interface EditorContent {
 interface ContentNode {
   type?: string;
   text?: string;
+  label?: unknown;
   refName?: unknown;
   refId?: unknown;
   children?: unknown;
 }
 
-const MENTION = "akan-mention";
+type MentionMode = "keep" | "skip" | "token";
 
 export class RichEditor {
   static collectMentions(content: unknown): MentionRef[] {
@@ -63,18 +74,54 @@ export class RichEditor {
     };
   }
 
+  /**
+   * The same lines as `contentFromText`, with `@[label](mention:refName/refId)` tokens turned into chips.
+   *
+   * A write an agent makes has no live editor behind it, so this is the read half of the token grammar
+   * `mentionToken` writes — the editor's other markdown (emphasis, lists, …) is not this field's
+   * vocabulary and stays literal text.
+   */
+  static contentFromMentionText(text: string) {
+    return RichNode.root(text.split("\n").map((line) => RichEditor.#lineParagraph(line)));
+  }
+
+  static contentFromMarkdown(markdown: string) {
+    return RichMarkdownReader.read(markdown);
+  }
+
+  static markdownFromContent(content: unknown) {
+    return RichMarkdownWriter.write(content);
+  }
+
+  static mentionToken(mention: MentionToken) {
+    return MentionGrammar.token(mention);
+  }
+
+  /** The pattern `markdownMention` builds its transformer from, so both directions read one grammar. */
+  static readonly mentionPattern = MentionGrammar.pattern;
+
+  static unescapeMentionLabel(label: string) {
+    return MentionGrammar.unescape(label);
+  }
+
   static extractTextFromContent(content: unknown): string {
-    if (!content || typeof content !== "object") return "";
-    if (Array.isArray(content)) return content.map((node) => RichEditor.#nodeText(node as ContentNode)).join("");
-    const root = (content as { root?: ContentNode }).root;
-    return root ? RichEditor.#nodeText(root) : "";
+    return RichEditor.#extract(content, "keep");
   }
 
   static extractTextWithoutMentions(content: unknown): string {
+    return RichEditor.#extract(content, "skip");
+  }
+
+  /** The inverse of `contentFromMentionText`: chips come back as tokens, so the text round-trips through both. */
+  static extractMentionText(content: unknown): string {
+    return RichEditor.#extract(content, "token");
+  }
+
+  static #extract(content: unknown, mode: MentionMode): string {
     if (!content || typeof content !== "object") return "";
-    if (Array.isArray(content)) return content.map((node) => RichEditor.#nodeText(node as ContentNode, true)).join("");
+    if (Array.isArray(content)) return content.map((node) => RichEditor.#nodeText(node as ContentNode, mode)).join("");
     const root = (content as { root?: ContentNode }).root;
-    return root ? RichEditor.#nodeText(root, true) : "";
+    return root ? RichEditor.#nodeText(root, mode) : "";
   }
 
   static richText(text: string) {
@@ -99,43 +146,37 @@ export class RichEditor {
       string,
       unknown
     >;
-    const nodes = [RichEditor.#mentionNode(asset), RichEditor.#textNode(" ")];
+    const nodes = [RichNode.mention(asset), RichNode.text(" ")];
     const children = Array.isArray(doc.root?.children) ? [...doc.root.children] : [];
     const last = children.at(-1) as { type?: string; children?: unknown[] } | undefined;
     if (last?.type === "paragraph" && Array.isArray(last.children))
       children[children.length - 1] = { ...last, children: [...last.children, ...nodes] };
-    else children.push(RichEditor.#paragraphNode(nodes));
-    return { ...doc, root: { ...RichEditor.#emptyRoot, ...doc.root, children } };
+    else children.push(RichNode.paragraph(nodes));
+    return { ...doc, root: { ...RichNode.root([]).root, ...doc.root, children } };
   }
 
-  static #emptyRoot = { type: "root", format: "", indent: 0, version: 1, direction: null };
-
-  static #textNode(text: string) {
-    return { type: "text", text, format: 0, detail: 0, mode: "normal", style: "", version: 1 };
+  /** A chip whose stored `text` is `@name`; the label is that minus the trigger when the node carries none. */
+  static #nodeToken(node: ContentNode): string {
+    const label = typeof node.label === "string" ? node.label : (node.text ?? "").replace(/^@/, "");
+    if (typeof node.refName !== "string" || typeof node.refId !== "string") return label;
+    return RichEditor.mentionToken({ refName: node.refName, refId: node.refId, label });
   }
 
-  static #mentionNode(asset: MentionTarget) {
-    return {
-      type: MENTION,
-      text: `@${asset.name}`,
-      refName: asset.refName,
-      refId: asset.id,
-      label: asset.name,
-      href: `/${asset.refName}/${asset.id}`,
-      format: 0,
-      detail: 1,
-      mode: "token",
-      style: "",
-      version: 1,
-    };
-  }
-
-  static #paragraphNode(children: object[]) {
-    return { type: "paragraph", format: "", indent: 0, version: 1, direction: null, children };
+  /** One line as a paragraph of text and chips. `split` yields the text around each match plus its captures. */
+  static #lineParagraph(line: string) {
+    const parts = line.split(MentionGrammar.pattern);
+    const children: object[] = [];
+    for (let at = 0; at < parts.length; at += 4) {
+      const [text, label, refName, refId] = [parts[at], parts[at + 1], parts[at + 2], parts[at + 3]];
+      if (text) children.push(RichNode.text(text));
+      if (refName && refId)
+        children.push(RichNode.mention({ refName, id: refId, name: MentionGrammar.unescape(label) }));
+    }
+    return RichNode.paragraph(children);
   }
 
   static #walkMentions(node: ContentNode, refs: Map<string, MentionRef>) {
-    if (node.type === MENTION && typeof node.refName === "string" && typeof node.refId === "string") {
+    if (node.type === RichNode.mentionType && typeof node.refName === "string" && typeof node.refId === "string") {
       refs.set(`${node.refName}:${node.refId}`, { refName: node.refName, refId: node.refId });
     }
     if (!Array.isArray(node.children)) return;
@@ -144,11 +185,12 @@ export class RichEditor {
     }
   }
 
-  static #nodeText(node: ContentNode, skipMentions = false): string {
-    if (skipMentions && node.type === MENTION) return "";
+  static #nodeText(node: ContentNode, mode: MentionMode = "keep"): string {
+    if (node.type === RichNode.mentionType && mode !== "keep")
+      return mode === "skip" ? "" : RichEditor.#nodeToken(node);
     if (typeof node.text === "string") return node.text;
     const children = Array.isArray(node.children) ? (node.children as ContentNode[]) : [];
-    const childText = children.map((child) => RichEditor.#nodeText(child, skipMentions)).join("");
+    const childText = children.map((child) => RichEditor.#nodeText(child, mode)).join("");
     switch (node.type) {
       case "quote":
       case "blockquote":

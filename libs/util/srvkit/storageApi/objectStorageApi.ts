@@ -203,6 +203,18 @@ export class ObjectStorageApi implements StorageApi {
     await this.#s3.file(Key).delete();
     return true;
   }
+  // Only `host` is signed, so the uploader may send any content-type; Bun's `type` option would sign a GET-only
+  // response-content-type instead.
+  presignUpload(path: string, expiresInSec: number) {
+    return this.#s3.file(`${this.root}/${path}`).presign({ method: "PUT", expiresIn: expiresInSec });
+  }
+  // Listed, not stat()ed: R2 answers HEAD for a compressible type (application/json) gzip-encoded with no
+  // Content-Length, so stat() reports 0 for an object that is there.
+  async getDataSize(path: string) {
+    const Key = `${this.root}/${path}`;
+    const result = await this.#s3.list({ prefix: Key, maxKeys: 1 });
+    return result.contents?.find((object) => object.key === Key)?.size ?? null;
+  }
   #getCloudFront(): Promise<CloudFrontClient> {
     this.#cloudFrontLoad ??= loadCloudFront().then(({ CloudFrontClient }) => new CloudFrontClient());
     return this.#cloudFrontLoad;

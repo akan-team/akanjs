@@ -1,12 +1,12 @@
 "use client";
 import { type cnst, st } from "@libs/util/client";
-import { useEffect } from "react";
+import { type ReactNode, useEffect } from "react";
 
 import Marker from "./Marker";
 
 interface AimCenterProps {
   className?: string;
-  children: any;
+  children: ReactNode;
   onChangeCenter?: (center: cnst.Coordinate) => void;
 }
 export default function AimCenter({ className, children, onChangeCenter }: AimCenterProps) {

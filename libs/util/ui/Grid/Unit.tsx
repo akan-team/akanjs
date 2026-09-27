@@ -1,6 +1,6 @@
 "use client";
 import { cn } from "akanjs/client";
-import { useContext, useRef } from "react";
+import { type ReactNode, useContext, useRef } from "react";
 import { BiX } from "react-icons/bi";
 
 import { GridContext, GridUnitContext } from "./context";
@@ -8,7 +8,7 @@ import { GridContext, GridUnitContext } from "./context";
 interface UnitProps {
   className?: string;
   closeClassName?: string;
-  children: any;
+  children: ReactNode;
 }
 export const Unit = ({ className, closeClassName, children }: UnitProps) => {
   const ref = useRef<HTMLDivElement>(null);

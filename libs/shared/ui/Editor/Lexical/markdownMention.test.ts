@@ -8,6 +8,7 @@ import {
   type Transformer,
 } from "@lexical/markdown";
 import { $getRoot, createEditor, type LexicalEditor } from "lexical";
+import { RichEditor } from "../../../common/richEditor";
 
 import { MENTION, mentionToken } from "./markdownMention";
 import { rememberMention } from "./mentionCache";
@@ -115,6 +116,38 @@ describe("markdown mention", () => {
       const once = importMarkdown("@[Old title](mention:bizDoc/b3)");
       const twice = importMarkdown(exportMarkdown(once));
       expect(mentionIn(twice)).toMatchObject({ refName: "bizDoc", refId: "b3" });
+    });
+  });
+
+  /**
+   * The store-side write of a field with no live editor behind it — an agent filling a row's body through
+   * `writeOnVideoCut` rather than through the editor's own setter. Both directions have to agree with the
+   * transformer, or a token the agent pasted would come back as literal text.
+   */
+  describe("RichEditor.contentFromMentionText", () => {
+    const fromStore = (markdown: string) => makeEditor().parseEditorState(RichEditor.contentFromMentionText(markdown));
+
+    it("parses to the same markdown the transformer writes", () => {
+      const markdown = "cc @[Kangmin](mention:user/u1) please review";
+      expect(fromStore(markdown).read(() => $convertToMarkdownString(transformers))).toBe(markdown);
+    });
+
+    it("puts the chip where the token sat", () => {
+      const state = fromStore("바닥의 @[운동화](mention:videoObj/o1) 클로즈업");
+      expect(state.read(() => $getRoot().getTextContent())).toBe("바닥의 운동화 클로즈업");
+      expect(
+        state.read(() =>
+          $getRoot()
+            .getAllTextNodes()
+            .find((node): node is MentionNode => node instanceof MentionNode)
+            ?.getPayload(),
+        ),
+      ).toMatchObject({ refName: "videoObj", refId: "o1", label: "운동화" });
+    });
+
+    it("leaves a token it cannot read as text", () => {
+      const markdown = "@[x](mention:broken) 그리고 @일반";
+      expect(fromStore(markdown).read(() => $convertToMarkdownString(transformers))).toBe(markdown);
     });
   });
 });

@@ -10,6 +10,13 @@ import * as cnst from "../cnst";
 import type { RootStore } from "../st";
 import { fetch, sig } from "../useClient";
 
+// Firefox and desktop Safari ship no Badging API, and reading a missing method off `navigator` and calling it
+// throws synchronously — which would take the whole badge action down with it.
+const setAppBadge = (count: number) => {
+  if (!("setAppBadge" in navigator)) return;
+  void navigator.setAppBadge(count);
+};
+
 export class UserStore extends store(sig.user, () => ({
   self: new cnst.User(),
   // prepareUser: new cnst.User(),
@@ -23,6 +30,7 @@ export class UserStore extends store(sig.user, () => ({
   phoneCode: "",
   phoneCodeAt: null as Dayjs | null,
   phoneVerifiedAt: null as Dayjs | null,
+  emailCode: "",
   turnstileToken: null as string | null,
   sameAccountIdExists: "unknown" as "unknown" | boolean,
   sameNicknameExists: "unknown" as "unknown" | boolean,
@@ -39,7 +47,7 @@ export class UserStore extends store(sig.user, () => ({
     if (!self.id) return;
     const user = await fetch.addBadgeCount(self.id);
     this.set({ self: user });
-    void navigator.setAppBadge(user.badgeCount);
+    setAppBadge(user.badgeCount);
   }
 
   async subBadgeCount() {
@@ -47,7 +55,7 @@ export class UserStore extends store(sig.user, () => ({
     if (!self.id) return;
     const user = await fetch.subBadgeCount(self.id);
     this.set({ self: user });
-    void navigator.setAppBadge(user.badgeCount);
+    setAppBadge(user.badgeCount);
   }
 
   async addNotiDeviceTokenOfSelf(notiDeviceToken: string) {
@@ -190,7 +198,13 @@ export class UserStore extends store(sig.user, () => ({
     await fetch.setAccountIdInPrepareUser(userId, accountId);
     router.push(withRedirectQuery(redirect, { userId }));
   }
-  async generatePrepareUserWithAccountId({ redirect }: { redirect: string }) {
+  async generatePrepareUserWithAccountId({
+    redirect,
+    requestEmailCode = false,
+  }: {
+    redirect: string;
+    requestEmailCode?: boolean;
+  }) {
     const { accountId } = this.get();
     if (!accountId) return;
     const accountIdExists = await fetch.userExistsHasAccountId(accountId);
@@ -199,7 +213,25 @@ export class UserStore extends store(sig.user, () => ({
       return;
     }
     const prepareUser = await fetch.generatePrepareUser(null, "dummy");
-    await this.setAccountIdInPrepareUser(prepareUser.id, { redirect });
+    if (!requestEmailCode) {
+      await this.setAccountIdInPrepareUser(prepareUser.id, { redirect });
+      return;
+    }
+    await fetch.setAccountIdInPrepareUser(prepareUser.id, accountId);
+    await this.requestEmailCodeInPrepareUser(prepareUser.id);
+    router.push(withRedirectQuery(redirect, { userId: prepareUser.id }));
+  }
+  async requestEmailCodeInPrepareUser(userId: string) {
+    await fetch.requestEmailCodeInPrepareUser(userId);
+    this.set({ emailCode: "" });
+    msg.success("user.emailCodeSentSuccess", { key: "emailCode" });
+  }
+  async verifyEmailInPrepareUser(userId: string, { redirect }: { redirect?: string } = {}) {
+    const { emailCode } = this.get();
+    if (emailCode.length !== 6) return;
+    await fetch.verifyEmailInPrepareUser(userId, emailCode);
+    this.set({ emailCode: "" });
+    if (redirect) router.push(withRedirectQuery(redirect, { userId }));
   }
   async setPasswordInPrepareUser(userId: string, { redirect }: { redirect: string }) {
     const { accountId, password, passwordConfirm } = this.get();

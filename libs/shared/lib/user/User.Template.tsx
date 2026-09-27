@@ -113,6 +113,18 @@ export const PhoneCode = ({ className, autoComplete = true }: PhoneCodeProps) =>
   );
 };
 
+interface EmailCodeProps {
+  className?: string;
+}
+export const EmailCode = ({ className }: EmailCodeProps) => {
+  const emailCode = st.use.emailCode();
+  return (
+    <div className={cn("w-full pb-4", className)}>
+      <CodeInput unitStyle="underline" value={emailCode} onChange={st.do.setEmailCode} maxNum={6} />
+    </div>
+  );
+};
+
 interface NameProps {
   className?: string;
   inputClassName?: string;
@@ -166,6 +178,7 @@ interface AccountIdProps {
   inputClassName?: string;
   placeholder?: string;
   redirect: string;
+  requestEmailCode?: boolean;
 }
 
 export const AccountId = ({
@@ -174,6 +187,7 @@ export const AccountId = ({
   inputClassName,
   placeholder,
   redirect,
+  requestEmailCode,
 }: AccountIdProps) => {
   const accountId = st.use.accountId();
   return (
@@ -187,7 +201,7 @@ export const AccountId = ({
       onChange={st.do.setAccountId}
       onPressEnter={() => {
         if (!accountId || !isEmail(accountId)) return;
-        void st.do.generatePrepareUserWithAccountId({ redirect });
+        void st.do.generatePrepareUserWithAccountId({ redirect, requestEmailCode });
       }}
       validate={(value) => isEmail(value)}
     />
@@ -196,8 +210,12 @@ export const AccountId = ({
 
 interface GeneratePrepareUserWithAccountIdProps {
   redirect: string;
+  requestEmailCode?: boolean;
 }
-export const GeneratePrepareUserWithAccountId = ({ redirect }: GeneratePrepareUserWithAccountIdProps) => {
+export const GeneratePrepareUserWithAccountId = ({
+  redirect,
+  requestEmailCode,
+}: GeneratePrepareUserWithAccountIdProps) => {
   const accountId = st.use.accountId();
   return (
     <button
@@ -205,7 +223,7 @@ export const GeneratePrepareUserWithAccountId = ({ redirect }: GeneratePrepareUs
       disabled={!accountId || !isEmail(accountId)}
       onClick={() => {
         if (!accountId || !isEmail(accountId)) return;
-        void st.do.generatePrepareUserWithAccountId({ redirect });
+        void st.do.generatePrepareUserWithAccountId({ redirect, requestEmailCode });
       }}
     >
       다음

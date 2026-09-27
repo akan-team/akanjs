@@ -24,9 +24,8 @@ export const addAndWaitActiveFiles = async (
   metas: cnst.FileMeta[],
   type = "test",
   parentId?: string,
-  uploaderFetch?: SharedFetch,
 ) => {
-  const fetch = uploaderFetch ?? (await getFetch());
+  const fetch = await getFetch();
   // 1. 파일 업로드
   const files = await fetch.addFiles(fileList, JSON.stringify(metas), type, parentId ?? null);
 
@@ -52,8 +51,8 @@ export const addAndWaitActiveFiles = async (
   return activeFiles;
 };
 
-export const getActiveFiles = async (num = 1, uploaderFetch?: SharedFetch): Promise<cnst.LightFile[]> => {
+export const getActiveFiles = async (num = 1): Promise<cnst.LightFile[]> => {
   const [fileList, metas] = getFileInputSamples(num);
-  const files = await addAndWaitActiveFiles(fileList, metas, "test", undefined, uploaderFetch);
+  const files = await addAndWaitActiveFiles(fileList, metas);
   return files;
 };

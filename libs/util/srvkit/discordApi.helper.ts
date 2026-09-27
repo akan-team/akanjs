@@ -15,7 +15,7 @@ export interface DiscordBot {
 
 export type DiscordEmbed = discord.APIEmbed;
 export type DiscordMessage = discord.MessageCreateOptions;
-export type DiscordButton = discord.APIActionRowComponent<any>;
+export type DiscordButton = discord.APIActionRowComponent<discord.APIComponentInMessageActionRow>;
 export type DiscordMember = discord.GuildMember;
 
 export interface DiscordBotInfo {

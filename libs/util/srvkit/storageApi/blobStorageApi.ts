@@ -107,6 +107,13 @@ export class BlobStorageApi implements StorageApi {
     await Bun.file(this.#resolveFilePath(path)).delete();
     return true;
   }
+  presignUpload(_path: string, _expiresInSec: number) {
+    return null;
+  }
+  async getDataSize(path: string) {
+    const file = Bun.file(this.#resolveFilePath(path));
+    return (await file.exists()) ? file.size : null;
+  }
   @Try()
   async deleteData(url: string) {
     const basePath = this.#localPathToUrl("");

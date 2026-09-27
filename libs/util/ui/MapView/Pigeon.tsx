@@ -6,6 +6,7 @@ import {
   type CSSProperties,
   type MouseEventHandler,
   type PropsWithChildren,
+  type ReactNode,
   useContext,
   useRef,
   useState,
@@ -32,7 +33,7 @@ export interface PigeonProps {
   mouseEvents?: boolean;
   onMouseMove?: (coordinate: cnst.Coordinate) => void;
   mapTiler?: (x: number, y: number, z: number, dpr?: number) => string;
-  children?: any;
+  children?: ReactNode;
   zoomControlStyle?: CSSProperties;
   showZoomControl?: boolean;
   showScaleBar?: boolean;

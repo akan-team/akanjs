@@ -28,6 +28,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     })),
   }))
   .enum<AdminRole>("adminRole", (t) => ({
+    viewer: t(["Viewer", "뷰어"]).desc(["Read-only access", "조회 전용"]),
     manager: t(["Manager", "매니저"]).desc(["Manager Description", "매니저 설명"]),
     admin: t(["Admin", "관리자"]).desc(["Admin Description", "관리자 설명"]),
     superAdmin: t(["Super Admin", "최고 관리자"]).desc(["Super Admin Description", "최고 관리자 설명"]),

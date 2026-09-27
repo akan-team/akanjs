@@ -52,4 +52,9 @@ export const dictionary = modelDictionary(["en", "ko"])
   .endpoint<PrivFileEndpoint>((fn) => ({}))
   .error({
     privateFilePathEmpty: ["Private file path is empty", "비공개 파일 경로가 비어 있습니다"],
+    presignUnsupported: [
+      "This storage backend cannot issue upload URLs",
+      "이 저장소 백엔드는 업로드 URL을 발급할 수 없습니다.",
+    ],
+    uploadNotFound: ["The uploaded object was not found", "업로드된 객체를 찾을 수 없습니다."],
   });

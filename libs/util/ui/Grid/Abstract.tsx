@@ -1,8 +1,9 @@
 import { cn } from "akanjs/client";
+import type { ReactNode } from "react";
 
 interface AbstractProps {
   className?: string;
-  children: any;
+  children: ReactNode;
 }
 export const Abstract = ({ className, children }: AbstractProps) => {
   return (

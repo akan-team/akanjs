@@ -1,6 +1,7 @@
 "use client";
 import type { cnst } from "@libs/util/client";
 import { st } from "@libs/util/client";
+import type { ReactNode } from "react";
 
 interface FocusProps {
   className?: string;
@@ -9,7 +10,7 @@ interface FocusProps {
     | { minLat: number; maxLat: number; minLng: number; maxLng: number }
     | null
     | (() => { minLat: number; maxLat: number; minLng: number; maxLng: number } | null | undefined);
-  children: any;
+  children: ReactNode;
   stopPropagation?: boolean;
 }
 export const Focus = ({ className, coordinate, mapBounds, children, stopPropagation = true }: FocusProps) => {

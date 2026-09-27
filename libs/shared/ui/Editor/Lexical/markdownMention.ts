@@ -1,6 +1,7 @@
 import type { TextMatchTransformer } from "@lexical/markdown";
+import { RichEditor } from "@libs/shared/common";
 
-import { type RememberedMention, recallMention } from "./mentionCache";
+import { recallMention } from "./mentionCache";
 import { MentionNode } from "./nodes/MentionNode";
 import { $createMentionNode, $isMentionNode } from "./nodes/mentionNode.util";
 
@@ -12,19 +13,14 @@ import { $createMentionNode, $isMentionNode } from "./nodes/mentionNode.util";
  * `edit<Field>BlocksOn<Model>` reach it with no new tool, and it can sit mid-sentence, which is the whole
  * point of a mention and is what a dedicated insert-at-block tool could never do.
  *
- * The `refId` comes from `searchMentions`, which returns the token ready to paste.
+ * The grammar itself lives on `RichEditor`, because a write that never reaches a live editor — an agent
+ * writing a row's body through the store — has to parse the same token. The `refId` comes from
+ * `searchMentions`, which returns the token ready to paste.
  */
 
-/** A `]` inside a label would close the token early, and a document title may well contain one. */
-const escapeLabel = (label: string) => label.replace(/\s+/g, " ").replace(/([\\\]])/g, "\\$1");
-const unescapeLabel = (label: string) => label.replace(/\\([\\\]])/g, "$1");
+const TOKEN = RichEditor.mentionPattern;
 
-// Only `]` and `\` are escaped, so only those are excluded from the label — a bare `[` is ordinary text
-// in a document title and must round-trip as one.
-const TOKEN = /@\[((?:[^\]\\]|\\.)+)\]\(mention:([^()\s/]+)\/([^()\s]+)\)/;
-
-export const mentionToken = (mention: RememberedMention) =>
-  `@[${escapeLabel(mention.label)}](mention:${mention.refName}/${mention.refId})`;
+export const mentionToken = RichEditor.mentionToken;
 
 /**
  * Must sit **before** `LINK` in the transformer list. `findOutermostTextMatchTransformer` prefers the
@@ -42,7 +38,9 @@ export const MENTION: TextMatchTransformer = {
   replace: (textNode, match) => {
     const [, label, refName, refId] = match;
     textNode.replace(
-      $createMentionNode(recallMention(refName, refId) ?? { refName, refId, label: unescapeLabel(label) }),
+      $createMentionNode(
+        recallMention(refName, refId) ?? { refName, refId, label: RichEditor.unescapeMentionLabel(label) },
+      ),
     );
   },
   export: (node) => ($isMentionNode(node) ? mentionToken(node.getPayload()) : null),

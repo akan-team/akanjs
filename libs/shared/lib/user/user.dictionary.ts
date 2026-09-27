@@ -225,6 +225,23 @@ export const dictionary = modelDictionary(["en", "ko"])
       .arg((t) => ({
         accountId: t(["Account ID", "아이디"]).desc(["Account ID", "아이디"]),
       })),
+    requestEmailCodeInPrepareUser: fn(["Request Email Code in Prepare User", "준비 유저 이메일 인증번호 요청"])
+      .desc([
+        "Mail a six-digit code to the email address of a user who is still signing up",
+        "가입 중인 유저의 이메일로 6자리 인증번호를 보내는 API",
+      ])
+      .arg((t) => ({
+        userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
+      })),
+    verifyEmailInPrepareUser: fn(["Verify Email in Prepare User", "준비 유저 이메일 인증"])
+      .desc([
+        "Confirm a signing-up user's email address with the code mailed to it",
+        "메일로 받은 인증번호로 가입 중인 유저의 이메일을 인증하는 API",
+      ])
+      .arg((t) => ({
+        userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
+        emailCode: t(["Email Code", "이메일 인증번호"]).desc(["Email Code", "이메일 인증번호"]),
+      })),
     getUserIdHasPhone: fn(["Get User ID Has Phone", "휴대폰 번호를 가진 유저 ID 조회"])
       .desc(["API to get the user ID with a given phone number", "주어진 휴대폰 번호를 가진 유저 ID를 조회하는 API"])
       .arg((t) => ({
@@ -373,6 +390,21 @@ export const dictionary = modelDictionary(["en", "ko"])
           "알림 디바이스 토큰",
         ]),
       })),
+    hasNotiDeviceTokenOfSelf: fn(["Push Registered on This Device", "이 기기 푸시 등록 여부"])
+      .desc([
+        "API to tell whether this device's push token is registered for the signed-in user",
+        "이 기기의 푸시 토큰이 로그인한 유저에게 등록되어 있는지 알려주는 API",
+      ])
+      .arg((t) => ({
+        notiDeviceToken: t(["Noti Device Token", "알림 디바이스 토큰"]).desc([
+          "Noti Device Token",
+          "알림 디바이스 토큰",
+        ]),
+      })),
+    notiSettingOfSelf: fn(["Noti Setting of Self", "내 알림 설정"]).desc([
+      "API to read the noti setting of the signed-in user",
+      "로그인한 유저의 알림 설정을 조회하는 API",
+    ]),
     github: fn(["Github", "깃허브"]).desc(["Github", "깃허브"]),
     githubCallback: fn(["Github Callback", "깃허브 콜백"]).desc(["Github Callback", "깃허브 콜백"]),
     google: fn(["Google", "구글"]).desc(["Google", "구글"]),
@@ -430,6 +462,12 @@ export const dictionary = modelDictionary(["en", "ko"])
     invalidPhoneCode: ["Invalid phone code", "유효하지 않은 인증번호입니다"],
     invalidSignToken: ["Invalid sign token", "유효하지 않은 서명 토큰입니다"],
     resetRetryLater: ["Retry after 3 minutes", "3분 후에 다시 시도해주세요"],
+    tooManyEmailCodes: [
+      "Too many codes were sent to this email. Try again in an hour.",
+      "이 이메일로 인증번호를 너무 많이 요청했습니다. 1시간 뒤에 다시 시도해주세요.",
+    ],
+    invalidEmailCode: ["Invalid or expired email code", "인증번호가 틀렸거나 만료되었습니다."],
+    signupNotVerified: ["Finish verifying your account before starting", "인증을 마친 뒤에 시작할 수 있습니다."],
     noRefreshToken: ["No refresh token", "리프레시 토큰이 없습니다"],
     unauthorized: ["Unauthorized", "권한이 없습니다"],
   })
@@ -486,6 +524,8 @@ export const dictionary = modelDictionary(["en", "ko"])
     ],
     expiredPhoneCodeError: ["Expired phone code. Please try again.", "만료된 인증번호입니다. 다시 시도해주세요."],
     emailSentSuccess: ["Email Sent", "이메일이 발송되었습니다."],
+    emailCodeSentSuccess: ["Code sent to your email", "이메일로 인증번호를 보냈습니다."],
+    resendEmailCode: ["Resend code", "인증번호 다시받기"],
     deleteLoading: ["Deleting...", "삭제중..."],
     deleteSuccess: ["Deleted", "삭제되었습니다."],
     leaveSuccess: ["Leaved", "탈퇴되었습니다."],

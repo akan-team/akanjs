@@ -2,6 +2,7 @@ import { cn } from "akanjs/client";
 
 import { ContentHtml } from "./contentHtml.util";
 import { RichContent } from "./index_";
+import { toSerializedEditorState } from "./Lexical/softGuard";
 
 interface StaticContentProps {
   className?: string;
@@ -16,8 +17,9 @@ interface StaticContentProps {
  * editor and built its markup in the browser.
  */
 export const StaticContent = ({ className, content, disableHref }: StaticContentProps) => {
-  const html = ContentHtml.render(content);
-  if (html === null) return <RichContent className={className} content={content} disableHref={disableHref} />;
+  const state = toSerializedEditorState(content);
+  const html = state ? ContentHtml.render(state) : "";
+  if (html === null) return <RichContent className={className} content={state} disableHref={disableHref} />;
   return (
     <div
       className={cn("akan-editor akan-editor-readonly relative w-full", className)}

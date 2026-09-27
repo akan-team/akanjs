@@ -3,7 +3,7 @@
 import type { cnst } from "@libs/util";
 import { st } from "@libs/util/client";
 import { Float, Int } from "akanjs/base";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import Pigeon from "./Pigeon";
 
@@ -19,7 +19,7 @@ export interface PigeonMapProps {
   onMouseMove?: (coordinate: cnst.Coordinate) => void;
   mapTiler?: (x: number, y: number, z: number, dpr?: number) => string;
   zoomControlStyle?: CSSProperties;
-  children?: any;
+  children?: ReactNode;
   showZoomControl?: boolean;
   showScaleBar?: boolean;
   scaleBarClassName?: string;

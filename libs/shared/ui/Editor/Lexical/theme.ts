@@ -15,8 +15,10 @@ export const CALLOUT_VARIANTS: Record<CalloutVariant, string> = {
 
 /** Mention chip skin. Same reason as the callout variants: `EditorThemeClasses`
  *  has no index signature, so `MentionNode.createDOM` applies it directly. */
-export const MENTION_CHIP =
-  "cursor-pointer rounded-sm bg-primary/10 px-1 font-medium text-primary transition-colors hover:bg-primary/20";
+export const MENTION_CHIP = "rounded-sm bg-primary/10 px-1 font-medium text-primary transition-colors";
+
+/** The pressable half, added only by a chip that carries an href — a bare reference must not look clickable. */
+export const MENTION_CHIP_LINK = "cursor-pointer hover:bg-primary/20";
 
 /** Avatar half of the chip, added only when the mention carries an `imageUrl`.
  *  A `::before` rather than a child element: the chip is a `TextNode`, so any real

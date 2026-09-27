@@ -8,7 +8,6 @@ import type {
   PushNotificationServerOptions,
 } from "@libs/util/srvkit";
 import {
-  assertJwtSecretConfigured,
   BlobStorageApi,
   CloudflareApi,
   DiscordApi,
@@ -21,7 +20,6 @@ import {
 } from "@libs/util/srvkit";
 import { getEnv, type SshOptions } from "akanjs/base";
 import { AkanOption } from "akanjs/server";
-import { BlobStorage } from "akanjs/service";
 import type { LibOptions } from "./srv";
 
 export interface RedisOptions {
@@ -102,7 +100,6 @@ export const option = new AkanOption<ModulesOptions>().use((options) => {
         ? `http://localhost:${process.env.PORT ?? options.port ?? 8282}/api/localFile/getBlob`
         : "/api/localFile/getBlob",
   });
-  if (!options.objectStorage) BlobStorage.assertShared("Without `objectStorage`, libs/util storage");
   const storageApi = options.objectStorage ? new ObjectStorageApi(env.appName, options.objectStorage) : blobStorageApi;
   // Private-only storage. On R2/S3 access control is bucket-level (R2 ignores per-object ACL),
   // so private files must live in a separate bucket that has NO public access configured.
@@ -110,7 +107,6 @@ export const option = new AkanOption<ModulesOptions>().use((options) => {
   const privStorageApi = options.privateStorage
     ? new ObjectStorageApi(env.appName, options.privateStorage)
     : storageApi;
-  assertJwtSecretConfigured({ operationMode: env.operationMode, configuredSecret: options.security?.jwtSecret });
   return {
     cloudflareApi: options.cloudflare ? new CloudflareApi(options.cloudflare) : null,
     emailApi: options.mailer ? new EmailApi(options.mailer) : null,

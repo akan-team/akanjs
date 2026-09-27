@@ -5,7 +5,7 @@ import { cn } from "akanjs/client";
 import { capitalize, pathGet } from "akanjs/common";
 import type { ProtoFile, ProtoLightFile } from "akanjs/constant";
 import type { SliceMeta } from "akanjs/fetch";
-import { actionTagOf, useFieldTool } from "akanjs/store";
+import { actionTagOf, useFieldTool, useFileFieldTool } from "akanjs/store";
 import { Field as AkanField, Modal } from "akanjs/ui";
 import { lazy, useInterval } from "akanjs/webkit";
 import { memo, type ReactNode, useCallback, useState } from "react";
@@ -254,6 +254,11 @@ interface ImgProps<T extends cnst.LightFile> {
   value: T | null;
   render?: (file: T) => ReactNode;
   onChange: (file: T | null) => void;
+  /**
+   * 대화가 이 칸에 넣을 수 있는 그림. 넘기지 않으면 에이전트 도구가 아예 안 선다 — 후보가 없는 칸에
+   * 모든 id 를 거절하는 도구가 서면 안 된다(`useFileFieldTool`).
+   */
+  read?: () => readonly T[];
   disabled?: boolean;
   aspectRatio?: number[];
 }
@@ -269,10 +274,12 @@ export const Img = <T extends cnst.LightFile = cnst.File>({
   value,
   slice,
   onChange,
+  read,
   disabled,
   aspectRatio,
 }: ImgProps<T>) => {
   useFieldTool(onChange);
+  useFileFieldTool(onChange, { read, label: (file) => file.filename, disabled });
   const { sliceName } = slice;
   const names = {
     addModelFiles: `add${capitalize(sliceName)}Files`,
@@ -315,6 +322,11 @@ interface ImgsProps<T extends cnst.LightFile> {
   render?: (file: T) => ReactNode;
   value: T[];
   onChange: (files: T[]) => void;
+  /**
+   * 대화가 이 칸에 넣을 수 있는 그림. 넘기지 않으면 에이전트 도구가 아예 안 선다 — 후보가 없는 칸에
+   * 모든 id 를 거절하는 도구가 서면 안 된다(`useFileFieldTool`).
+   */
+  read?: () => readonly T[];
   disabled?: boolean;
   minlength?: number;
   maxlength?: number;
@@ -329,11 +341,13 @@ export const Imgs = <T extends cnst.LightFile = cnst.File>({
   value,
   onChange,
   slice,
-  minlength = 1,
-  maxlength = 30,
+  read,
+  minlength,
+  maxlength,
   disabled,
 }: ImgsProps<T>) => {
   useFieldTool(onChange);
+  useFileFieldTool(onChange, { read, label: (file) => file.filename, min: minlength, max: maxlength, disabled });
   const { sliceName } = slice;
   const names = {
     addModelFiles: `add${capitalize(sliceName)}Files`,
@@ -351,7 +365,9 @@ export const Imgs = <T extends cnst.LightFile = cnst.File>({
   }, 1000);
   return (
     <div className={cn("flex flex-col", className)}>
-      {label ? <AkanField.Label className={labelClassName} nullable={!!minlength} label={label} desc={desc} /> : null}
+      {label ? (
+        <AkanField.Label className={labelClassName} nullable={!!(minlength ?? 1)} label={label} desc={desc} />
+      ) : null}
       <Upload.Images
         multiple
         fileList={value}

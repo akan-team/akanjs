@@ -36,18 +36,16 @@ export const CropImage = forwardRef<CropRef, CropImageProps>(
       setCroppedAreaPixels(croppedAreaPixels);
     };
 
-    const clientHeight = window.document.body.clientHeight;
     const divRef = useRef<HTMLDivElement | null>(null);
     const cropperRef = useRef<Cropper | null>(null);
     const [maxZoom, setMaxZoom] = useState<number>(1);
     const aspect = aspectRatio[0] / aspectRatio[1];
-    const height = clientHeight * 0.6;
 
     const getCropImage = async () => {
       if (!croppedAreaPixels) return;
       const image = await createImage(src);
       // if (!image) return null;
-      //! TODO:회전 처리인데 IOS에서 4096 넘어가는 것 때매 안됨
+      // FIXME: 회전 처리인데 IOS에서 4096 넘어가는 것 때매 안됨
 
       // const canvas = document.createElement("canvas");
       // const ctx = canvas.getContext("2d");
@@ -155,13 +153,7 @@ export const CropImage = forwardRef<CropRef, CropImageProps>(
 
     if (!src) return null;
     return (
-      <div
-        ref={divRef}
-        className="relative flex w-full items-center justify-center bg-black"
-        style={{
-          height,
-        }}
-      >
+      <div ref={divRef} className="relative flex h-[60vh] w-full items-center justify-center bg-black">
         <Cropper
           ref={cropperRef}
           image={src}

@@ -1,4 +1,10 @@
-import { akanEditorTheme, CALLOUT_VARIANTS, type CalloutVariant, MENTION_CHIP } from "./Lexical/theme";
+import {
+  akanEditorTheme,
+  CALLOUT_VARIANTS,
+  type CalloutVariant,
+  MENTION_CHIP,
+  MENTION_CHIP_LINK,
+} from "./Lexical/theme";
 
 interface ContentNode {
   type?: string;
@@ -46,7 +52,13 @@ export class ContentHtml {
   #failed = false;
 
   static render(content: unknown): string | null {
-    return new ContentHtml().#run(content);
+    try {
+      return new ContentHtml().#run(content);
+    } catch {
+      // Stored content is an `Any` column, so a node can be anything a writer put there. Null is the
+      // caller's fallback path; a throw here is a 500 on a page that is otherwise fine.
+      return null;
+    }
   }
 
   static escape(text: string) {
@@ -82,6 +94,8 @@ export class ContentHtml {
 
   #node(node: ContentNode): string {
     if (this.#failed) return "";
+    // The type is a claim about stored JSON, not a check on it — a null or scalar child reaches here.
+    if (!node || typeof node !== "object") return this.#fail();
     switch (node.type) {
       case "text":
         return this.#text(node);
@@ -207,6 +221,6 @@ export class ContentHtml {
     const href = node.href ?? "";
     if (!href) return this.#tag("span", MENTION_CHIP, label);
     if (!/^(https?:|\/)/i.test(href)) return this.#fail();
-    return this.#tag("a", MENTION_CHIP, label, ` href="${ContentHtml.escape(href)}"`);
+    return this.#tag("a", `${MENTION_CHIP} ${MENTION_CHIP_LINK}`, label, ` href="${ContentHtml.escape(href)}"`);
   }
 }

@@ -2,7 +2,7 @@ import { validate } from "@libs/util/common";
 import { dayjs, enumOf } from "akanjs/base";
 import { via } from "akanjs/constant";
 
-export class AdminRole extends enumOf("adminRole", ["manager", "admin", "superAdmin"] as const) {}
+export class AdminRole extends enumOf("adminRole", ["viewer", "manager", "admin", "superAdmin"] as const) {}
 
 export class AdminInput extends via((field) => ({
   accountId: field(String, { validate: validate.email, type: "email", example: "hello@naver.com", text: "title" }),

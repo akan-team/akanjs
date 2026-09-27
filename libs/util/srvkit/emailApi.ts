@@ -29,7 +29,16 @@ export class EmailApi {
     );
     return this.#mailerLoad;
   }
-  static getHtmlContent(id: string, password: string, serviceName: string) {
+  static #escapeHtml(value: string) {
+    return value.replace(
+      /[&<>"']/g,
+      (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char,
+    );
+  }
+  static getHtmlContent(rawId: string, rawPassword: string, rawServiceName: string) {
+    const id = EmailApi.#escapeHtml(rawId);
+    const password = EmailApi.#escapeHtml(rawPassword);
+    const serviceName = EmailApi.#escapeHtml(rawServiceName);
     return `<!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -68,6 +77,8 @@ export class EmailApi {
                                 </table>
                             </div>
 
+                            <p style="margin: 0 0 20px 0;">This password works once and expires in 30 minutes. Your current password keeps working until you sign in with this one, so you can ignore this mail if you did not ask for it.</p>
+
                             <p style="margin: 0 0 20px 0; color: #dc3545; font-weight: bold;">⚠️ Please change your password immediately after logging in.</p>
 
                             <div style="text-align: center; margin: 30px 0;">
@@ -103,7 +114,7 @@ export class EmailApi {
       const mailer = await this.#getMailer();
       const res = await mailer.sendMail({ from: this.#options.auth.user, ...mail });
       const toAddresses = Array.isArray(mail.to)
-        ? mail.to.map((t: any) => (typeof t === "string" ? t : t.address)).join(",")
+        ? mail.to.map((t) => (typeof t === "string" ? t : t.address)).join(",")
         : typeof mail.to === "string"
           ? mail.to
           : mail.to?.address;
@@ -118,5 +129,32 @@ export class EmailApi {
     const html = EmailApi.getHtmlContent(to, password, serviceName);
     await this.sendMail({ to, subject: "Password Reset", html, from });
     return true;
+  }
+  static getVerificationCodeHtml(rawCode: string, rawServiceName: string) {
+    const code = EmailApi.#escapeHtml(rawCode);
+    const serviceName = EmailApi.#escapeHtml(rawServiceName);
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>Email Verification - ${serviceName}</title>
+</head>
+<body style="margin: 0; padding: 40px 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #444444; background-color: #f7f7f7;">
+    <table width="600" align="center" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px;">
+        <tr>
+            <td style="padding: 40px 30px;">
+                <p style="margin: 0 0 20px 0;">Enter this code to verify your email for ${serviceName}. 아래 인증번호를 입력해 이메일을 인증해주세요.</p>
+                <p style="margin: 0 0 20px 0; font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #2B6CB0;">${code}</p>
+                <p style="margin: 0; font-size: 14px; color: #666;">The code expires in 10 minutes. If you did not sign up, ignore this mail. 인증번호는 10분 뒤 만료됩니다.</p>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+      `;
+  }
+  async sendVerificationCodeMail(to: string, code: string, serviceName: string, from = this.#options.auth.user) {
+    const html = EmailApi.getVerificationCodeHtml(code, serviceName);
+    return await this.sendMail({ to, subject: `[${serviceName}] Email verification code`, html, from });
   }
 }

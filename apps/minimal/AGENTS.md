@@ -30,10 +30,8 @@ Import from `@libs/util/ui`:
 - `buttonRecipe`(variant: default*|primary|secondary|accent|neutral|outline|ghost|destructive|success|warning|info|link · size: xs|sm|md*|lg|xl|icon · shape: default*|square|circle · outline: true|false*) — Workspace button look. Extends akanjs's `buttonRecipe` vocabulary with the two axes daisyUI had and
 - `cardRecipe`(surface: none*|bordered|filled · size: sm|md*|lg) — Card shell. daisyUI's `.card` was `border-radius: var(--radius-box)` plus `relative; display:flex;
 - `checkboxRecipe`(size: xs|sm|md*|lg · tone: default*|primary|secondary|accent|success|warning|error) — Checkbox. daisyUI drew its own box with `appearance: none` plus a clip-path tick; this keeps the
-- `collapseContentRecipe`
-- `collapseRecipe` — Disclosure built on a peer checkbox, so both states stay server-rendered — the shape daisyUI's
 - `collapseTitleRecipe`(arrow: true|false*)
-- `inputRecipe`(kind: field*|area · size: xs|sm|md*|lg|xl · tone: default*|primary) — Input surface — the shell shared by `<input>`, `<textarea>` and `<select>`.
+- `inputRecipe`(kind: field*|area|select · size: xs|sm|md*|lg|xl · tone: default*|primary) — Input surface — the shell shared by `<input>`, `<textarea>` and `<select>`.
 - `rangeRecipe`(size: xs|sm|md*|lg · tone: default*|primary|secondary|accent|success|warning|error)
 - `tableRecipe`(size: sm|md*) — Table. daisyUI styled cells through descendant selectors, which a utility recipe can only reach with
 - `tabRecipe`(active: true|false*)

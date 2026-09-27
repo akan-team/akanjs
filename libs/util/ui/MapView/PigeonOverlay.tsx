@@ -1,7 +1,7 @@
 "use client";
 import { cn } from "akanjs/client";
 import { Overlay } from "pigeon-maps";
-import { useContext } from "react";
+import { type ReactNode, useContext } from "react";
 
 import { PigeonMapPropsContext } from "./context";
 
@@ -13,7 +13,7 @@ interface Props {
     north: number;
     south: number;
   };
-  children?: any;
+  children?: ReactNode;
   onClick?: () => void;
 }
 

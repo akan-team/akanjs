@@ -3,7 +3,7 @@ export type DndContextItemType<T> = T extends (infer U)[] ? U : never;
 export interface DndContextType {
   [key: string]: {
     id: string;
-    items: any[];
+    items: { id: string }[];
   };
 }
 

@@ -2,7 +2,7 @@
 import { cnst } from "@libs/util";
 import { GoogleMap, type Libraries, useJsApiLoader } from "@react-google-maps/api";
 import { cn } from "akanjs/client";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { MapViewContext } from "./context";
 
@@ -20,7 +20,7 @@ export interface GoogleProps {
   onLoad?: () => void;
   onMouseMove?: (coordinate: cnst.Coordinate, e: google.maps.MapMouseEvent) => void;
   options?: google.maps.MapOptions;
-  children: any;
+  children: ReactNode;
 }
 const libraries: Libraries = ["core", "maps", "marker"];
 export default function Google({

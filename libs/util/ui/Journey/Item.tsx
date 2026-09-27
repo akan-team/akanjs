@@ -1,7 +1,8 @@
 import { cn } from "akanjs/client";
+import type { ReactNode } from "react";
 
 interface ItemProps {
-  children: any;
+  children: ReactNode;
   direction?: "left" | "right";
 }
 export const Item = ({ children, direction = "right" }: ItemProps) => {

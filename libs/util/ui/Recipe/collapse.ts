@@ -12,11 +12,8 @@ import { recipe, tv } from "akanjs/ui";
  *
  * Server-safe: never add "use client" here.
  */
-export const collapseRecipe = recipe(
-  tv({
-    base: "relative grid grid-rows-[auto_0fr] overflow-hidden transition-[grid-template-rows] duration-200 has-[:checked]:grid-rows-[auto_1fr] [&>input]:col-start-1 [&>input]:row-start-1 [&>input]:size-full [&>input]:cursor-pointer [&>input]:appearance-none [&>input]:opacity-0",
-  }),
-);
+export const collapseClass =
+  "relative grid grid-rows-[auto_0fr] overflow-hidden transition-[grid-template-rows] duration-200 has-[:checked]:grid-rows-[auto_1fr] [&>input]:col-start-1 [&>input]:row-start-1 [&>input]:size-full [&>input]:cursor-pointer [&>input]:appearance-none [&>input]:opacity-0";
 
 export const collapseTitleRecipe = recipe(
   tv({
@@ -31,4 +28,4 @@ export const collapseTitleRecipe = recipe(
   }),
 );
 
-export const collapseContentRecipe = recipe(tv({ base: "col-start-1 row-start-2 min-h-0 overflow-hidden px-4" }));
+export const collapseContentClass = "col-start-1 row-start-2 min-h-0 overflow-hidden px-4";

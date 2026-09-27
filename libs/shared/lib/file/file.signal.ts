@@ -6,14 +6,10 @@ import * as cnst from "../cnst";
 import type * as db from "../db";
 import * as srv from "../srv";
 
-export class FileInternal extends internal(srv.file, ({ interval }) => ({
-  failStaleUploads: interval(5 * 60 * 1000).exec(async function () {
-    await this.fileService.failStaleUploads();
-  }),
-})) {}
+export class FileInternal extends internal(srv.file, () => ({})) {}
 
 export class FileSlice extends slice(srv.file, { guards: { root: None, get: Public, cru: None } }, (init) => ({
-  inIds: init({ guards: [Public] })
+  inIds: init({ guards: [Public], mcp: false })
     .search("ids", [ID])
     .exec(async function (ids) {
       return await this.fileService.queryByIds(ids ?? []);
@@ -21,15 +17,16 @@ export class FileSlice extends slice(srv.file, { guards: { root: None, get: Publ
 })) {}
 
 export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
-  addFiles: mutation([cnst.File], { guards: [Every], fileUpload: true, mcp: false })
+  addFiles: mutation([cnst.File], { fileUpload: true })
     .body("files", [Upload])
     .body("metas", String, { example: `[{"lastModifiedAt":"2024-01-14T15:32:47.766Z","size":0}]` })
     .body("type", String, { example: "user" })
     .body("parentId", ID, { nullable: true })
     .exec(async function (files, metas, type, parentId) {
-      const parsedMetas = (global.JSON.parse(metas) as db.FileMeta[]).map((meta) => ({
-        ...meta,
+      // Only the two fields the upload client sends are read: `generateFile` overwrites any File whose id is passed.
+      const parsedMetas = (global.JSON.parse(metas) as Partial<db.FileMeta>[]).map((meta) => ({
         lastModifiedAt: dayjs(meta.lastModifiedAt),
+        size: Number.isFinite(Number(meta.size)) ? Math.max(0, Math.floor(Number(meta.size))) : 0,
       }));
       return await this.fileService.addFiles(files, parsedMetas, type, parentId);
     }),

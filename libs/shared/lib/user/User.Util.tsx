@@ -543,6 +543,56 @@ export const ResendPhoneCodeForSetPhoneInPrepareUser = ({
   );
 };
 
+interface ResendEmailCodeInPrepareUserProps {
+  className?: string;
+  userId: string;
+}
+export const ResendEmailCodeInPrepareUser = ({ className, userId }: ResendEmailCodeInPrepareUserProps) => {
+  const { l } = usePage();
+  return (
+    <div className={cn("mt-2 flex justify-center", className)}>
+      <button
+        className="cursor-pointer border-b border-dashed text-sm opacity-60 duration-300 hover:opacity-100"
+        onClick={() => {
+          void st.do.requestEmailCodeInPrepareUser(userId);
+        }}
+      >
+        {l("user.resendEmailCode")}
+      </button>
+    </div>
+  );
+};
+
+interface VerifyEmailInPrepareUserProps {
+  userId: string;
+  redirect: string;
+  className?: string;
+}
+export const VerifyEmailInPrepareUser = ({ userId, redirect, className = "" }: VerifyEmailInPrepareUserProps) => {
+  const { l } = usePage();
+  const emailCode = st.use.emailCode();
+  const handleClick = async () => {
+    await st.do.verifyEmailInPrepareUser(userId, { redirect });
+  };
+  st.tool("verifyEmailCode", {
+    guard: () => (emailCode.length === 6 ? true : "The six-digit code from the mail goes in first."),
+  })
+    .desc("Confirm the email address with the six-digit code that was mailed to it, once it is typed in.")
+    .exec(handleClick);
+  useEffect(() => {
+    if (emailCode.length === 6) void handleClick();
+  }, [emailCode]);
+  return (
+    <button
+      className={cn(buttonRecipe({ variant: "primary" }), className)}
+      disabled={emailCode.length !== 6}
+      onClick={handleClick}
+    >
+      {l("util.next")}
+    </button>
+  );
+};
+
 interface ActivateProps {
   className?: string;
   userId: string;
@@ -670,34 +720,42 @@ interface PushNotificationSwitchProps {
 export const PushNotificationSwitch = ({ className }: PushNotificationSwitchProps) => {
   const pushNotification = usePushNotification();
   const deviceToken = st.use.deviceToken();
-  //! TODO: 추후 수정필요
-  // const checked = self.notiDeviceTokens?.includes(deviceToken) ?? false;
-  const checked = false as boolean;
+  const pushRegistered = st.use.pushRegistered();
+  const checked = pushRegistered === true;
+
+  // The token list is on a secret field, so the switch cannot read its own state off `self` — it asks the
+  // server once for this one device.
   useEffect(() => {
-    const getToken = async () => {
-      const pushToken = await pushNotification.getToken();
-      if (!pushToken) return;
-      st.do.setDeviceToken(pushToken.token);
+    const load = async () => {
+      const permission = await pushNotification.getPermission();
+      const pushToken = permission === "granted" ? await pushNotification.getToken() : undefined;
+      await st.do.loadPushState(pushToken?.token ?? null, permission);
     };
-    void getToken();
+    void load();
   }, []);
 
+  const toggle = async (on: boolean) => {
+    if (!on) {
+      if (deviceToken) await st.do.unregisterPushToken(deviceToken);
+      return;
+    }
+    const pushToken = await pushNotification.register();
+    if (!pushToken) {
+      await st.do.loadPushState(null, await pushNotification.getPermission());
+      return;
+    }
+    await st.do.registerPushToken(pushToken.token);
+  };
+
   st.tool("setPushNotification", {
-    guard: ({ on }) =>
-      !deviceToken ? "This device has no push token yet." : on === checked ? `Already ${on ? "on" : "off"}.` : true,
+    guard: ({ on }) => (on === checked ? `Already ${on ? "on" : "off"}.` : true),
   })
     .desc("Turn push notifications on or off for this device.")
     .arg("on", Boolean)
-    .exec((on) => (on ? st.do.addNotiDeviceTokenOfSelf(deviceToken) : st.do.subNotiDeviceTokenOfSelf(deviceToken)));
+    .exec(toggle);
   return (
-    <div>
-      <Switch
-        checked={checked}
-        onChange={() => {
-          if (checked) void st.do.subNotiDeviceTokenOfSelf(deviceToken);
-          else void st.do.addNotiDeviceTokenOfSelf(deviceToken);
-        }}
-      />
+    <div className={className}>
+      <Switch checked={checked} onChange={toggle} />
     </div>
   );
 };

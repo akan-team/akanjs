@@ -16,10 +16,10 @@ import { ImageNode } from "./nodes/ImageNode";
 import { MentionNode } from "./nodes/MentionNode";
 import { MermaidNode } from "./nodes/MermaidNode";
 import { VideoNode } from "./nodes/VideoNode";
-import { isSerializedEditorState } from "./softGuard";
+import { toSerializedEditorState } from "./softGuard";
 import { akanEditorTheme } from "./theme";
 
-export { isSerializedEditorState } from "./softGuard";
+export { hasEditorContent, isSerializedEditorState, toSerializedEditorState } from "./softGuard";
 
 /**
  * Custom node classes registered with every Akan editor instance.
@@ -72,7 +72,7 @@ const EDITOR_NAMESPACE = "akan";
 export interface CreateEditorConfigOptions {
   /** Whether the editor accepts input. `false` yields a read-only render. */
   editable: boolean;
-  /** Persisted content — a Lexical `SerializedEditorState`, or legacy/garbage that fails safe to empty. */
+  /** Persisted content — a Lexical `SerializedEditorState`, plain text, or garbage that fails safe to empty. */
   initialJson?: unknown;
   /** Extra node classes contributed by `plugins` (must be known at creation). */
   extraNodes?: readonly Klass<LexicalNode>[];
@@ -109,13 +109,14 @@ export const createEditorConfig = ({
 
 /**
  * Returns a lazy initializer for `initialConfig.editorState`, or `null` (empty
- * document) when `initialJson` is absent or not a valid Lexical state.
+ * document) when `initialJson` holds nothing to show.
  */
 const resolveEditorState = (initialJson: unknown): InitialConfigType["editorState"] => {
-  if (!isSerializedEditorState(initialJson)) return null;
+  const state = toSerializedEditorState(initialJson);
+  if (!state) return null;
   return (editor: LexicalEditor) => {
     try {
-      editor.setEditorState(editor.parseEditorState(initialJson));
+      editor.setEditorState(editor.parseEditorState(state));
     } catch {
       // Corrupt but root-shaped JSON — leave the editor at its empty default.
     }

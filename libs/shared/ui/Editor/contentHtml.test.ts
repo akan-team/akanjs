@@ -125,6 +125,16 @@ describe("ContentHtml", () => {
     expect(html).toContain('href="/user/1"');
   });
 
+  // A chip with no href is a reference, and an anchor would invent a link the model never had.
+  test("renders a mention that carries no href as a plain span", () => {
+    const html = ContentHtml.render(
+      doc(paragraph({ type: "akan-mention", version: 1, text: "@ada", label: "@ada", format: 0 })),
+    );
+    expect(html).toContain("<span");
+    expect(html).not.toContain("href=");
+    expect(html).not.toContain("cursor-pointer");
+  });
+
   // The whole document falls back, never part of it: a page rendered with its diagram missing is worse
   // than one rendered by the client editor.
   test("returns null for a node it cannot draw", () => {
@@ -137,5 +147,14 @@ describe("ContentHtml", () => {
     expect(ContentHtml.render(null)).toBeNull();
     expect(ContentHtml.render([])).toBeNull();
     expect(ContentHtml.render({ nope: true })).toBeNull();
+  });
+
+  // A throw here is a 500 on the page that embeds the document, so a malformed node falls back like any
+  // other node it cannot draw.
+  test("returns null rather than throwing on a malformed node", () => {
+    expect(ContentHtml.render(doc(null))).toBeNull();
+    expect(ContentHtml.render(doc("a string where a node belongs"))).toBeNull();
+    expect(ContentHtml.render(doc(paragraph(null, text("after"))))).toBeNull();
+    expect(ContentHtml.render({ root: { type: "root", version: 1, children: "not an array" } })).toBe("");
   });
 });

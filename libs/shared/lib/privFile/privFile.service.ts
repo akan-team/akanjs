@@ -68,6 +68,44 @@ export class PrivFileService extends serve(db.privFile, ({ use }) => ({
     return privFile.set({ privatePath, size: uploaded.size, progress: 100, status: "active" });
   }
 
+  /**
+   * A privFile row plus a URL a remote uploader PUTs the object to directly, so the bytes never pass through
+   * this server and the uploader holds no storage credential. `finishUploadTarget` activates it once the upload
+   * is known to have landed.
+   */
+  async createUploadTarget(
+    file: { filename: string; mimetype: string; encoding: string },
+    purpose: string,
+    group = "default",
+    { alias = file.filename, expiresInSec = 3600 }: { alias?: string; expiresInSec?: number } = {},
+  ) {
+    const privFile = await this.privFileModel.generatePrivFile({
+      alias,
+      filename: file.filename,
+      mimetype: file.mimetype,
+      encoding: file.encoding,
+      privatePath: "",
+      size: 0,
+      progress: 0,
+      status: "uploading",
+    });
+    const privatePath = this._getPrivatePath(privFile, purpose, group);
+    const uploadUrl = this.privStorageApi.presignUpload(privatePath, expiresInSec);
+    if (!uploadUrl) throw new Err("privFile.error.presignUnsupported");
+    await privFile.set({ privatePath }).save();
+    return { privFile, uploadUrl };
+  }
+
+  async finishUploadTarget(privFileId: string) {
+    const privFile = await this.getPrivFile(privFileId);
+    const privatePath = privFile.privatePath;
+    if (!privatePath) throw new Err("privFile.error.privateFilePathEmpty");
+    const size = await this.privStorageApi.getDataSize(privatePath);
+    if (size === null) throw new Err("privFile.error.uploadNotFound");
+    await this.privFileModel.finishUpload(privFile.id, privatePath, { size });
+    return privFile.set({ size, progress: 100, status: "active" });
+  }
+
   async readPrivFile(privFileOrId: db.PrivFile | string) {
     const privFile = typeof privFileOrId === "string" ? await this.getPrivFile(privFileOrId) : privFileOrId;
     return await this.readData(privFile);

@@ -40,7 +40,7 @@ export class UserObject extends via(UserInput, (field) => ({
   accountId: field.secret(String).optional(),
   password: field.secret(String).optional(),
   phone: field.secret(String).optional(),
-  notiInfo: field.secret(NotiInfo),
+  notiInfo: field.secret(NotiInfo, { default: () => new NotiInfo() }),
   imageNum: field.secret(Int, { default: 0 }),
   encourageInfo: field.secret(EncourageInfo, { default: () => new EncourageInfo() }),
   restrictInfo: field.secret(RestrictInfo).optional(),

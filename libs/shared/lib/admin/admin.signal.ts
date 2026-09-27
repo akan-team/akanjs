@@ -14,7 +14,7 @@ import { Err } from "../dict";
 import * as srv from "../srv";
 
 export class AdminInternal extends internal(srv.admin, ({ initialize, process, resolveField }) => ({
-  initializeAdmin: initialize({ once: true }).exec(async function () {
+  initializeAdmin: initialize().exec(async function () {
     await this.adminService.initializeAdmin();
   }),
 })) {}
@@ -37,7 +37,9 @@ export class AdminEndpoint extends endpoint(srv.admin, ({ query, mutation, pubsu
   isAdminSystemInitialized: query(Boolean).exec(async function () {
     return await this.adminService.isAdminSystemInitialized();
   }),
-  createAdminWithInitialize: mutation(cnst.Admin)
+  // The root admin is seeded at boot from env, so adding the next one is a superAdmin act; left open, this call
+  // mints a superAdmin for anyone while no other admin exists.
+  createAdminWithInitialize: mutation(cnst.Admin, { guards: [SuperAdmin], mcp: false })
     .body("data", cnst.AdminInput)
     .exec(async function (data) {
       return await this.adminService.createAdminWithInitialize(data);

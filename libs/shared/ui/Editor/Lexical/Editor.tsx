@@ -54,7 +54,7 @@ import { PlainPastePlugin } from "./plugins/PlainPastePlugin";
 import { SlashMenuPlugin } from "./plugins/SlashMenuPlugin";
 import { TableActionsPlugin } from "./plugins/TableActionsPlugin";
 import { UploadPlugin } from "./plugins/UploadPlugin";
-import { isSerializedEditorState } from "./softGuard";
+import { isSerializedEditorState, toSerializedEditorState } from "./softGuard";
 import { type EditorUpload, EditorUploadProvider } from "./UploadContext";
 import { normalizeUploadPolicy, type UploadPolicy, validateUploadFile } from "./upload";
 
@@ -172,17 +172,22 @@ export const FlushOnBlurPlugin = ({ onBlur }: { onBlur: () => void }) => {
  * onChange→setState→value feedback loop by (a) skipping while the editor is
  * focused (never clobber active typing) and (b) skipping when the incoming
  * content already equals the current document.
+ *
+ * The value is normalized, not just guarded: a form that loads after mount is the usual way a field
+ * whose stored value is plain text reaches the editor, and dropping it here would open the form empty
+ * and let the first save overwrite what was written.
  */
 export const ExternalValuePlugin = ({ value }: { value: unknown }) => {
   const [editor] = useLexicalComposerContext();
   useEffect(() => {
-    if (!isSerializedEditorState(value)) return;
+    const state = toSerializedEditorState(value);
+    if (!state) return;
     const root = editor.getRootElement();
     if (root && root.ownerDocument.activeElement === root) return;
     const current = editor.getEditorState().toJSON();
-    if (JSON.stringify(current) === JSON.stringify(value)) return;
+    if (JSON.stringify(current) === JSON.stringify(state)) return;
     try {
-      editor.setEditorState(editor.parseEditorState(value));
+      editor.setEditorState(editor.parseEditorState(state));
     } catch {
       // Corrupt but root-shaped JSON — keep the current document.
     }

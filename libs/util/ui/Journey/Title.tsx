@@ -1,7 +1,8 @@
 import { cn } from "akanjs/client";
+import type { ReactNode } from "react";
 
 interface TitleProps {
-  children: any;
+  children: ReactNode;
   className?: string;
   direction?: "left" | "right";
 }

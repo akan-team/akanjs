@@ -1,12 +1,12 @@
 "use client";
 import { cn } from "akanjs/client";
-import { type RefObject, useState } from "react";
+import { type ReactNode, type RefObject, useState } from "react";
 
 import { GridContext } from "./context";
 
 export interface ProviderProps {
   className?: string;
-  children?: any;
+  children?: ReactNode;
 }
 export const Provider = ({ className, children }: ProviderProps) => {
   const [viewRef, setViewRef] = useState<RefObject<HTMLDivElement | null> | null>(null);

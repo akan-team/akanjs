@@ -6,14 +6,15 @@ import {
   type SsoCookie,
   ssoSessionCookies,
 } from "@libs/shared/srvkit";
-import { randomCode, randomString } from "@libs/util/common";
 import type { EmailApi, PurpleApi } from "@libs/util/srvkit";
 import type { Dayjs } from "akanjs/base";
+import { isEmail } from "akanjs/common";
 import type { Account } from "akanjs/fetch";
 import { serve } from "akanjs/service";
 import type * as cnst from "../cnst";
 import * as db from "../db";
 import { Err } from "../dict";
+import type * as option from "../option";
 import type * as srv from "../srv";
 
 export class UserService extends serve(db.user, ({ use, service, env }) => ({
@@ -25,8 +26,10 @@ export class UserService extends serve(db.user, ({ use, service, env }) => ({
   host: use<string>(),
   emailApi: use<EmailApi>(),
   purpleApi: use<PurpleApi>(),
+  signupPolicy: use<option.SignupPolicy>(),
   masterPhones: env(() => process.env.MASTER_PHONES?.split(",") ?? []),
   masterPhoneCode: env(() => process.env.MASTER_PHONECODE),
+  masterEmailCode: env(() => process.env.MASTER_EMAILCODE),
 })) {
   override async _postRemove(user: db.User) {
     await this.userModel.revokeRefreshSessions(user.id);
@@ -180,7 +183,9 @@ export class UserService extends serve(db.user, ({ use, service, env }) => ({
     await this.userModel.setPasswordInPrepareUser(user.id, accountId, password);
   }
   async signinWithPassword(accountId: string, password: string, account: Account): Promise<db.util.AccessToken> {
-    const user = await this.userModel.getUserByPassword(accountId, password);
+    const user =
+      (await this.userModel.consumeResetPassword(accountId, password)) ??
+      (await this.userModel.getUserByPassword(accountId, password));
     if (user.status !== "active") throw new Err("user.error.userNotActivated");
     return await this._issueUserToken(user, account);
   }
@@ -197,10 +202,12 @@ export class UserService extends serve(db.user, ({ use, service, env }) => ({
   }
   async requestPhoneCodeForSetPassword(userId: string, phone: string, hash: string) {
     const user = await this.getActiveUser(userId);
+    await this.userModel.assertPhoneOfUser(user.id, phone);
     await this._registerPhoneCode(user.id, phone, "setPasswordWithSignToken", hash);
   }
   async getSignTokenForSetPassword(userId: string, phone: string, phoneCode: string) {
     const user = await this.userModel.getUser(userId);
+    await this.userModel.assertPhoneOfUser(user.id, phone);
     const isValid = await this.userModel.isPhoneCodeValid(user.id, phone, "setPasswordWithSignToken", phoneCode);
     if (!isValid) throw new Err("user.error.invalidPhoneCode");
     const signToken = await this.userModel.setSignToken(user.id);
@@ -213,15 +220,37 @@ export class UserService extends serve(db.user, ({ use, service, env }) => ({
     await this.userModel.revokeRefreshSessions(userId);
   }
   async resetPassword(accountId: string): Promise<boolean> {
-    const isResetable = await this.userModel.isResetable(accountId);
-    if (!isResetable) throw new Err("user.error.resetRetryLater");
     const user = await this.userModel.pickByAccountId(accountId, ["active"]);
-    const password = randomString();
-    await this.userModel.setPasswordInActiveUser(user.id, password);
-    await this.userModel.revokeRefreshSessions(user.id);
+    const isResetable = await this.userModel.isResetable(user.id);
+    if (!isResetable) throw new Err("user.error.resetRetryLater");
+    const password = crypto.randomUUID().replaceAll("-", "").slice(0, 16);
+    await this.userModel.setResetPassword(user.id, password);
     await this.emailApi.sendPasswordResetMail(accountId, password, this.host);
     await this.userModel.logResetTime(user.id);
     return true;
+  }
+  async requestEmailCodeInPrepareUser(userId: string) {
+    const user = await this.getPrepareUser(userId);
+    const accountId = await this.userModel.getAccountId(user.id);
+    if (!isEmail(accountId)) throw new Err("user.error.invalidAccountId");
+    const dryrun = this._isMasterEmail(accountId);
+    const emailCode = dryrun && this.masterEmailCode ? this.masterEmailCode : this._generateCode();
+    await this.userModel.registerEmailCode(user.id, accountId, emailCode);
+    if (!dryrun) await this.emailApi.sendVerificationCodeMail(accountId, emailCode, this.host);
+  }
+  async verifyEmailInPrepareUser(userId: string, emailCode: string) {
+    const user = await this.getPrepareUser(userId);
+    const accountId = await this.userModel.getAccountId(user.id);
+    const isValid = await this.userModel.isEmailCodeValid(user.id, accountId, emailCode);
+    if (!isValid) throw new Err("user.error.invalidEmailCode");
+    await this.userModel.verifyEmailInPrepareUser(user.id, accountId);
+  }
+  // Reserved test domains (RFC 2606) cannot receive mail, so the master code can never vouch for a real mailbox.
+  private _isMasterEmail(accountId: string) {
+    return !!this.masterEmailCode && /\.(test|example|invalid|localhost)$/i.test(accountId.split("@")[1] ?? "");
+  }
+  private _generateCode() {
+    return String((crypto.getRandomValues(new Uint32Array(1))[0] ?? 0) % 1_000_000).padStart(6, "0");
   }
   //*====================== Password Signing Area ======================*//
   //*===================================================================*//
@@ -247,12 +276,15 @@ export class UserService extends serve(db.user, ({ use, service, env }) => ({
     const user = await this.getActiveUser(userId);
     return await this.userModel.setPhoneInActiveUser(user.id, phone);
   }
+  // The code goes only to the number already on the account; a caller-chosen number would sign in as anyone.
   async requestPhoneCodeForSignin(userId: string, phone: string, hash: string) {
     const user = await this.getActiveUser(userId);
+    await this.userModel.assertPhoneOfUser(user.id, phone);
     await this._registerPhoneCode(user.id, phone, "signinWithSignToken", hash);
   }
   async getSignTokenForSignin(userId: string, phone: string, phoneCode: string) {
-    const user = await this.userModel.getUser(userId);
+    const user = await this.getActiveUser(userId);
+    await this.userModel.assertPhoneOfUser(user.id, phone);
     const isValid = await this.userModel.isPhoneCodeValid(user.id, phone, "signinWithSignToken", phoneCode);
     if (!isValid) throw new Err("user.error.invalidPhoneCode");
     const signToken = await this.userModel.setSignToken(user.id);
@@ -266,9 +298,11 @@ export class UserService extends serve(db.user, ({ use, service, env }) => ({
   private async _registerPhoneCode(userId: string, phone: string, purpose: string, hash: string) {
     const user = await this.userModel.getUser(userId);
     const dryrun = this.masterPhones.includes(phone);
-    const phoneCode = dryrun && this.masterPhoneCode ? this.masterPhoneCode : randomCode(6);
+    const phoneCode = dryrun && this.masterPhoneCode ? this.masterPhoneCode : this._generateCode();
     await this.userModel.registerPhoneCode(user.id, phone, purpose, phoneCode);
-    if (!dryrun) await this.purpleApi.sendPhoneCode(phone, phoneCode, hash);
+    // `hash` is appended to the text as-is for Android's SMS Retriever, which only ever needs an 11-char app hash.
+    const appHash = /^[A-Za-z0-9+/]{1,11}$/.test(hash) ? hash : "";
+    if (!dryrun) await this.purpleApi.sendPhoneCode(phone, phoneCode, appHash);
   }
   async signinWithSignToken(userId: string, signToken: string, account?: Account) {
     const user = await this.userModel.getUser(userId);
@@ -326,7 +360,9 @@ export class UserService extends serve(db.user, ({ use, service, env }) => ({
 
   async activateUser(userId: string, account?: Account) {
     const user = await this.getPrepareUser(userId);
-    // TODO: check minimum verification levels
+    const { activateVerifies } = this.signupPolicy;
+    if (activateVerifies.length && !user.verifies.some((verify) => activateVerifies.includes(verify)))
+      throw new Err("user.error.signupNotVerified");
     await user.set({ status: "active" }).save();
     await this.summaryService.moveValue("prepareUser", "activeUser");
     return await this._issueUserToken(user, account);
@@ -422,17 +458,30 @@ export class UserService extends serve(db.user, ({ use, service, env }) => ({
     const user = await this.getPrepareUser(userId);
     await this.userModel.setDiscord(user.id, discord);
   }
+  // Returns whether a row was written. The caller reports it, because a silent no-op is how a notification
+  // preference ends up ignored with nothing to look at.
   async setNotiSettingOfUser(userId: string, notiSetting: cnst.NotiSetting["value"]) {
     const user = await this.getUser(userId);
-    await this.userModel.setNotiSetting(user.id, notiSetting);
+    return await this.userModel.setNotiSetting(user.id, notiSetting);
+  }
+  async getNotiSettingOfUser(userId: string) {
+    const notiInfo = await this.userModel.getNotiInfo(userId);
+    return notiInfo?.setting ?? "normal";
+  }
+  async hasNotiDeviceTokenOfUser(userId: string, notiDeviceToken: string) {
+    const notiInfo = await this.userModel.getNotiInfo(userId);
+    return !!notiInfo?.deviceTokens.includes(notiDeviceToken);
+  }
+  async listNotiInfosOfUsers(userIds: string[]) {
+    return await this.userModel.listNotiInfos(userIds);
   }
   async addNotiDeviceTokenOfUser(userId: string, notiDeviceToken: string) {
     const user = await this.getUser(userId);
-    await this.userModel.addNotiDeviceToken(user.id, notiDeviceToken);
+    return await this.userModel.addNotiDeviceToken(user.id, notiDeviceToken);
   }
   async subNotiDeviceTokenOfUser(userId: string, notiDeviceToken: string) {
     const user = await this.getUser(userId);
-    await this.userModel.subNotiDeviceToken(user.id, notiDeviceToken);
+    return await this.userModel.subNotiDeviceToken(user.id, notiDeviceToken);
   }
   //*====================== Secret Setup Area ======================*//
   //*================================================================*//

@@ -1,5 +1,4 @@
 import { Crawler, FileManager, getImageAbstract, getImageSize, IpfsApi, type StorageApi } from "@libs/util/srvkit";
-import { dayjs } from "akanjs/base";
 import { sleep } from "akanjs/common";
 import { createDocumentId } from "akanjs/document";
 import type { LocalFile } from "akanjs/server";
@@ -7,6 +6,30 @@ import { serve } from "akanjs/service";
 
 import * as db from "../db";
 import { Err } from "../dict";
+
+export interface SaveImageFromUriOptions {
+  cache?: boolean;
+  rename?: string;
+  header?: { [key: string]: string };
+  /** 받은 바이트가 늘어날 때마다 호출된다. total 은 content-length 를 모르면 0 */
+  onProgress?: (loaded: number, total: number) => void;
+  /** 다운로드를 중간에 끊기 위한 신호 */
+  signal?: AbortSignal;
+  /** 무응답 한도(ms) */
+  stallTimeout?: number;
+}
+export interface AddFileFromUriOptions extends SaveImageFromUriOptions {
+  fileId?: string;
+  /** 이미 받아둔 파일이 있어도 다시 받는다 */
+  force?: boolean;
+  /** 실패를 삼키지 않고 그대로 던진다. 기본값은 기존 동작인 null 반환 */
+  throwOnError?: boolean;
+  /**
+   * 스토리지로 옮긴 뒤 임시 다운로드 파일을 지운다.
+   * 큰 파일은 임시 경로와 스토리지에 두 번 남아 디스크를 두 배로 먹는다.
+   */
+  cleanupLocalFile?: boolean;
+}
 
 export class FileService extends serve(db.file, ({ use, plug }) => ({
   storageApi: use<StorageApi>(),
@@ -17,9 +40,6 @@ export class FileService extends serve(db.file, ({ use, plug }) => ({
   override async _postRemove(file: db.File) {
     await this.storageApi.deleteData(file.url);
     return file;
-  }
-  async failStaleUploads() {
-    return await this.fileModel.failStaleUploads(dayjs().subtract(15, "minute"));
   }
   async generate(): Promise<db.File> {
     return (
@@ -56,19 +76,43 @@ export class FileService extends serve(db.file, ({ use, plug }) => ({
     uri: string,
     purpose: string,
     group: string,
-    { header, rename, fileId }: { header?: { [key: string]: string }; rename?: string; fileId?: string } = {},
+    {
+      header,
+      rename,
+      fileId,
+      force = false,
+      onProgress,
+      signal,
+      stallTimeout,
+      throwOnError = false,
+      cleanupLocalFile = false,
+    }: AddFileFromUriOptions = {},
   ): Promise<db.File | null> {
     try {
       const requestedFile = fileId ? await this.loadFile(fileId) : null;
-      if (requestedFile) return requestedFile;
+      if (requestedFile && !force) return requestedFile;
       const isDataUri = uri.startsWith("data:");
       const file = isDataUri ? null : await this.fileModel.findByOrigin(uri);
-      if (file && (!fileId || file.id === fileId)) return file;
-      const localFile = await this.saveImageFromUri(uri, { header, rename });
-      return await this.addFileFromLocal(localFile, purpose, group, { origin: uri, fileId });
-    } catch (_err) {
+      if (file && !force && (!fileId || file.id === fileId)) return file;
+      const localFile = await this.saveImageFromUri(uri, { header, rename, onProgress, signal, stallTimeout });
+      try {
+        return await this.addFileFromLocal(localFile, purpose, group, { origin: uri, fileId });
+      } finally {
+        if (cleanupLocalFile) await this.removeLocalFile(localFile);
+      }
+    } catch (err) {
       this.logger.warn(`Failed to add file from URI - ${uri}`);
+      // 큰 파일을 받는 호출자는 실패를 조용히 넘기면 안 된다. 파일 없는 문서가 만들어지기 때문이다
+      if (throwOnError) throw err;
       return null;
+    }
+  }
+  /** 스토리지로 옮긴 뒤 남은 임시 파일을 지운다. 정리 실패가 원래 작업을 망치지는 않게 한다 */
+  async removeLocalFile(localFile: LocalFile) {
+    try {
+      await FileManager.removeFile(localFile);
+    } catch {
+      this.logger.warn(`Failed to remove local file - ${localFile.localPath}`);
     }
   }
   async getJsonFromUri<T = unknown>(uri: string): Promise<T | undefined> {
@@ -103,17 +147,18 @@ export class FileService extends serve(db.file, ({ use, plug }) => ({
   async _addFileFromStream(fileStream: File, fileMeta: db.FileMeta, purpose: string, group: string | null) {
     const resolvedFileStream = await (fileStream as unknown as Promise<File>);
     const file = await this.fileModel.generateFile({
-      id: fileMeta.fileId,
       progress: 0,
       url: "",
       imageSize: [0, 0],
       filename: fileStream.name,
       mimetype: fileStream.type,
       encoding: "7bit",
-      ...fileMeta,
+      lastModifiedAt: fileMeta.lastModifiedAt,
+      size: fileMeta.size,
     });
     const rename = this._convertFileName(file);
-    const path = `${purpose.length ? purpose : "default"}/${group?.length ? group : "default"}/${rename}`;
+    const pathSegment = (value: string | null) => value?.replace(/[^A-Za-z0-9_-]/g, "") || "default";
+    const path = `${pathSegment(purpose)}/${pathSegment(group)}/${rename}`;
     this.storageApi.uploadDataFromStream({
       path: path,
       body: resolvedFileStream.stream(),
@@ -155,16 +200,24 @@ export class FileService extends serve(db.file, ({ use, plug }) => ({
   }
   async saveImageFromUri(
     uri: string,
-    { cache, rename, header }: { cache?: boolean; rename?: string; header?: { [key: string]: string } } = {},
+    { cache, rename, header, onProgress, signal, stallTimeout }: SaveImageFromUriOptions = {},
   ): Promise<LocalFile> {
     const dirname = `${this.localDir}/uriDownload`;
     if (uri.startsWith("data:")) return await FileManager.saveEncodedData(uri, dirname);
-    const readStream = uri.startsWith("ipfs://")
-      ? await FileManager.readUrlAsStream(this.ipfsApi.getHttpsUri(uri), { headers: header })
-      : await FileManager.readUrlAsStream(uri, { headers: header });
+    const { readStream, totalBytes } = await FileManager.readUrlAsStreamWithSize(
+      uri.startsWith("ipfs://") ? this.ipfsApi.getHttpsUri(uri) : uri,
+      { headers: header, signal },
+    );
     const filename = rename ?? this._filenameFromUri(uri);
     const localPath = `${dirname}/${filename}`;
-    return await FileManager.writeStreamToFile(readStream, localPath, { cache, rename: filename });
+    return await FileManager.writeStreamToFile(readStream, localPath, {
+      cache,
+      rename: filename,
+      onProgress,
+      totalBytes,
+      signal,
+      stallTimeout,
+    });
   }
   private _filenameFromUri(uri: string) {
     let basename = "";

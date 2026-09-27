@@ -11,3 +11,9 @@ export const createNotification = async (
   const notification = await adminAgent.fetch.createNotification(notificationInput);
   return notification;
 };
+
+export const notiInfoOf = (
+  setting: cnst.NotiSetting["value"],
+  deviceTokens: string[],
+  pauseUntil?: cnst.NotiInfo["pauseUntil"],
+): cnst.NotiInfo => new cnst.NotiInfo().set({ setting, deviceTokens, pauseUntil });

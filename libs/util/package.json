@@ -19,7 +19,7 @@
     "firebase": "^12.13.0",
     "firebase-admin": "^13.10.0",
     "jose": "^6.2.3",
-    "nodemailer": "^8.0.7",
+    "nodemailer": "^8.0.10",
     "pigeon-maps": "^0.22.1",
     "puppeteer": "^24.43.1",
     "qrcode.react": "^4.2.0",

@@ -36,9 +36,33 @@ export const dictionary = modelDictionary(["en", "ko"])
   }))
   .slice<NotificationSlice>((fn) => ({}))
   .endpoint<NotificationEndpoint>((fn) => ({
+    subscribeToMegaphone: fn(["Subscribe to all users", "전체 사용자 구독"])
+      .desc(["Subscribe to all users", "전체 사용자 구독"])
+      .arg((t) => ({
+        token: t(["Token", "토큰"]).desc(["Token of the notification", "알림의 토큰"]),
+      })),
     sendPushNotification: fn(["Send push notification", "푸시 알림 전송"])
       .desc(["Send push notification", "푸시 알림 전송"])
       .arg((t) => ({
         notificationInput: t(["Notification input", "알림 입력"]).desc(["Notification input", "알림 입력"]),
       })),
-  }));
+  }))
+  .error({})
+  .translate({
+    pushOnThisDevice: ["Push on this device", "이 기기에서 푸시 받기"],
+    pushOnThisDeviceDesc: [
+      "Ticket, chat and mention notifications arrive on this browser.",
+      "티켓·채팅·멘션 알림을 이 브라우저로 받습니다.",
+    ],
+    pushUnsupported: ["This browser cannot receive push notifications.", "이 브라우저는 푸시 알림을 받을 수 없습니다."],
+    pushDenied: [
+      "Notifications are blocked. Allow them in the browser's site settings, then reload.",
+      "알림이 차단되어 있습니다. 브라우저의 사이트 설정에서 허용한 뒤 새로고침하세요.",
+    ],
+    pushInstallForIos: [
+      "On iPhone and iPad, add this site to the Home Screen first — Safari only delivers notifications to an installed app.",
+      "아이폰·아이패드에서는 홈 화면에 먼저 추가해야 합니다. Safari 는 설치된 앱에만 알림을 보냅니다.",
+    ],
+    notiSetting: ["How much to notify", "알림 수신 범위"],
+    setNotiSettingSuccess: ["Notification setting saved.", "알림 설정을 저장했습니다."],
+  });

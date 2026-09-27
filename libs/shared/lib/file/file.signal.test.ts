@@ -4,20 +4,18 @@ import * as fileSpec from "@libs/shared/lib/file/file.signal.spec";
 import { configureSignalTest } from "akanjs/test";
 
 import type * as cnst from "../cnst";
-import type { AdminAgent } from "../user/user.signal.spec";
 
-configureSignalTest({ storage: "tempFile" });
+configureSignalTest({ databaseMode: "tempFile" });
 
 describe("File Signal", () => {
   describe("File Service", () => {
     let file: cnst.LightFile;
-    let adminAgent: AdminAgent;
     beforeAll(async () => {
-      adminAgent = await adminSpec.getAdminAgentWithInitialize();
+      await adminSpec.getAdminAgentWithInitialize();
     });
 
     it("can upload file", async () => {
-      [file] = await fileSpec.getActiveFiles(1, adminAgent.fetch);
+      [file] = await fileSpec.getActiveFiles();
       expect(file.status).toBe("active");
       expect(file.url.length).toBeGreaterThan(0);
     });

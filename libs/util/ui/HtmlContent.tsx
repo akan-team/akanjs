@@ -1,9 +1,10 @@
 import { cn } from "akanjs/client";
+import type { ReactNode } from "react";
 
 interface HtmlContentProps {
   className?: string;
   content?: string;
-  children?: any;
+  children?: ReactNode;
 }
 export const HtmlContent = ({ className, content, children }: HtmlContentProps) => {
   const proseClassName = "p-5 prose md:prose-sm lg:prose-base  w-full";

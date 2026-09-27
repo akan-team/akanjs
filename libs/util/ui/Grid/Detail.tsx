@@ -1,8 +1,9 @@
 import { cn } from "akanjs/client";
+import type { ReactNode } from "react";
 
 interface DetailProps {
   className?: string;
-  children: any;
+  children: ReactNode;
 }
 export const Detail = ({ className, children }: DetailProps) => {
   return (

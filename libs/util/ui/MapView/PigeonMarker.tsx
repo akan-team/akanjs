@@ -2,7 +2,7 @@
 import type { cnst } from "@libs/util/client";
 import { cn } from "akanjs/client";
 import { Overlay as PigeonMarker, type PigeonProps } from "pigeon-maps";
-import { type MouseEvent, useContext, useEffect, useRef } from "react";
+import { type MouseEvent, type ReactNode, useContext, useEffect, useRef } from "react";
 
 import { PigeonMapPropsContext } from "./context";
 
@@ -10,7 +10,7 @@ interface MarkerProps extends PigeonProps {
   className?: string;
   coordinate: cnst.Coordinate;
   style?: React.CSSProperties;
-  children?: any;
+  children?: ReactNode;
   onClick?: () => void;
   onDrag?: (event: MouseEvent<HTMLDivElement>) => void;
 }
