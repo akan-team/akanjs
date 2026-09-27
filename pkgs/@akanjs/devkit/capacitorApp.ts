@@ -7,11 +7,11 @@ import { MobileProject } from "@trapezedev/project";
 import type { AndroidProject } from "@trapezedev/project/dist/android/project";
 import type { IosProject } from "@trapezedev/project/dist/ios/project";
 import type { AkanPlugin } from "akanjs";
-import { capitalize, isRecord } from "akanjs/common";
+import { isRecord } from "akanjs/common";
 import type { AkanMobileTargetConfig } from "./akanConfig";
 import { type AppExecutor, CommandExecutionError } from "./executors";
 import { FileEditor } from "./fileEditor";
-import { resolveMobilePath, targetHtmlFilename } from "./mobile";
+import { resolveMobilePath, targetHtmlFilename, toIosInfoPlistUsageDescriptions } from "./mobile";
 
 interface RunConfig {
   operation: "local" | "release";
@@ -540,29 +540,6 @@ export function raiseGradleMinSdkVersion(content: string, floor: number = ANDROI
   if (Number.isNaN(current) || current >= floor) return null;
   return content.replace(/(minSdkVersion\s*=\s*)\d+/, `$1${floor}`);
 }
-
-//* Apple's Info.plist keys do not follow the description names (photo → NSPhotoLibrary…), so each one is spelled out.
-const iosUsageDescriptionKeys = {
-  cameraUsageDescription: ["NSCameraUsageDescription"],
-  photoAddUsageDescription: ["NSPhotoLibraryAddUsageDescription"],
-  photoUsageDescription: ["NSPhotoLibraryUsageDescription"],
-  contactsUsageDescription: ["NSContactsUsageDescription"],
-  //? iOS 11+ reads the AlwaysAndWhenInUse key; the Always key only serves iOS 10 and below.
-  locationAlwaysUsageDescription: ["NSLocationAlwaysAndWhenInUseUsageDescription", "NSLocationAlwaysUsageDescription"],
-  locationWhenInUseUsageDescription: ["NSLocationWhenInUseUsageDescription"],
-  microphoneUsageDescription: ["NSMicrophoneUsageDescription"],
-  speechRecognitionUsageDescription: ["NSSpeechRecognitionUsageDescription"],
-} as const;
-
-export const toIosInfoPlistUsageDescriptions = (descriptions: { [key: string]: string }) =>
-  Object.fromEntries(
-    Object.entries(descriptions).flatMap(([key, value]) => {
-      const plistKeys: readonly string[] = Object.hasOwn(iosUsageDescriptionKeys, key)
-        ? iosUsageDescriptionKeys[key as keyof typeof iosUsageDescriptionKeys]
-        : [`NS${capitalize(key)}`];
-      return plistKeys.map((plistKey) => [plistKey, value]);
-    }),
-  );
 
 const mergeAllowNavigation = (configured: unknown, localIp: string | undefined) => {
   const values = Array.isArray(configured)

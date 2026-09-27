@@ -23,7 +23,6 @@ import {
   sanitizeIosNativeRunEnv,
   selectLocalDevHost,
   sortIosRunTargets,
-  toIosInfoPlistUsageDescriptions,
   writeRootCapacitorConfig,
 } from "./capacitorApp";
 import { tempDirs } from "./testHelpers";
@@ -327,30 +326,5 @@ describe("raiseGradleMinSdkVersion", () => {
   test("honors an explicit floor and leaves higher user values untouched", () => {
     expect(raiseGradleMinSdkVersion("minSdkVersion = 21", 23)).toBe("minSdkVersion = 23");
     expect(raiseGradleMinSdkVersion("minSdkVersion = 28", 26)).toBeNull();
-  });
-});
-
-describe("toIosInfoPlistUsageDescriptions", () => {
-  test("writes Apple's real Info.plist keys, not NS + the description name", () => {
-    expect(
-      toIosInfoPlistUsageDescriptions({
-        cameraUsageDescription: "camera",
-        photoAddUsageDescription: "add",
-        photoUsageDescription: "read",
-        locationAlwaysUsageDescription: "always",
-      }),
-    ).toEqual({
-      NSCameraUsageDescription: "camera",
-      NSPhotoLibraryAddUsageDescription: "add",
-      NSPhotoLibraryUsageDescription: "read",
-      NSLocationAlwaysAndWhenInUseUsageDescription: "always",
-      NSLocationAlwaysUsageDescription: "always",
-    });
-  });
-
-  test("keeps the NS prefix convention for a key it does not know", () => {
-    expect(toIosInfoPlistUsageDescriptions({ bluetoothAlwaysUsageDescription: "ble" })).toEqual({
-      NSBluetoothAlwaysUsageDescription: "ble",
-    });
   });
 });

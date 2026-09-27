@@ -86,8 +86,9 @@ export class PackageRunner extends runner("package") {
     }
     // Embedded into the dist, so naming them as dependencies would point a consumer at a missing registry entry.
     const packageBundledRuntimeDependencies: Record<string, string[]> = {
-      "@akanjs/cli": ["@akanjs/devkit"],
-      akanjs: ["use-agentic"],
+      "@akanjs/cli": ["@akanjs/devkit", "@akanjs/native"],
+      "@akanjs/devkit": ["@akanjs/native"],
+      akanjs: ["use-agentic", "@akanjs/native"],
     };
     const bundledRuntimeDeps = new Set(packageBundledRuntimeDependencies[pkg.name] ?? []);
     const forcedRuntimeDeps = packageRuntimeDependencies[pkg.name] ?? [];
