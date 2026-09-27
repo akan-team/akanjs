@@ -111,6 +111,16 @@ export const resetEnvCache = () => {
   cachedEnv = undefined;
 };
 
+// Read by a CSR bundle only: an SSR tab calls the origin that rendered it, and a server calls itself.
+const csrServerUrl = (): URL | null => {
+  const value = process.env.AKAN_PUBLIC_SERVER_URL;
+  if (!value) return null;
+  const url = new URL(value);
+  if (url.protocol !== "http:" && url.protocol !== "https:")
+    throw new Error(`AKAN_PUBLIC_SERVER_URL must be an http(s) URL, got "${value}".`);
+  return url;
+};
+
 const missingPublicEnv = (key: string) =>
   `getEnv() cannot run at build time: akan build does not inject ${key}. Call it from a runtime function instead of at module scope (e.g. env(() => getEnv()) in adapt(), a method body, or a default thunk).`;
 
@@ -158,7 +168,16 @@ export const getEnv = (): ClientEnv => {
         ? "http:"
         : "https:";
   const clientHttpUri = `${clientHttpProtocol}//${clientHost}${clientPort === 443 ? "" : `:${clientPort}`}`;
+  const serverUrl = side === "client" && renderMode === "csr" ? csrServerUrl() : null;
+  const pageProtocol = side === "client" ? window.location.protocol : undefined;
+  if (operationMode === "local" && !serverUrl && pageProtocol && !/^https?:$/.test(pageProtocol))
+    throw new Error(
+      `A CSR bundle served from ${pageProtocol}// cannot reach its server through the page origin; set AKAN_PUBLIC_SERVER_URL.`,
+    );
+  // The port belongs to whoever named the host: a cloud CSR bundle's host is not the page's.
+  const hostFromPage = side === "client" && !serverUrl && (operationMode === "local" || renderMode !== "csr");
   const serverHost =
+    serverUrl?.hostname ??
     process.env.SERVER_HOST ??
     (operationMode === "local"
       ? typeof window === "undefined"
@@ -176,9 +195,14 @@ export const getEnv = (): ClientEnv => {
   const serverPort =
     side === "server"
       ? parseInt(process.env.AKAN_PUBLIC_SERVER_PORT ?? selfServerPort ?? "8282")
-      : parseInt(window.location.port || (window.location.protocol === "https:" ? "443" : "80"));
+      : serverUrl
+        ? parseInt(serverUrl.port || (serverUrl.protocol === "https:" ? "443" : "80"))
+        : hostFromPage
+          ? parseInt(window.location.port || (window.location.protocol === "https:" ? "443" : "80"))
+          : 443;
 
   const serverHttpProtocol: "http:" | "https:" =
+    (serverUrl?.protocol as "http:" | "https:" | undefined) ??
     (process.env.SERVER_HTTP_PROTOCOL as "http:" | "https:" | undefined) ??
     (operationMode === "local"
       ? side === "client"

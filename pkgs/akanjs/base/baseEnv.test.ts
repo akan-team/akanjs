@@ -24,7 +24,19 @@ const envKeys = [
   "AKAN_WS_PREFIX",
   "AKAN_PUBLIC_API_PREFIX",
   "AKAN_PUBLIC_WS_PREFIX",
+  "AKAN_PUBLIC_SERVER_URL",
 ] as const;
+
+// `getEnv` reads `window.location` on the client side; a URL object carries the same fields.
+const asPage = async <T>(href: string, run: () => Promise<T>): Promise<T> => {
+  const holder = globalThis as unknown as { window?: { location: URL } };
+  holder.window = { location: new URL(href) };
+  try {
+    return await run();
+  } finally {
+    delete holder.window;
+  }
+};
 
 const resetEnv = () => {
   for (const key of envKeys) delete process.env[key];
@@ -166,6 +178,66 @@ describe("getEnv", () => {
 
     const remote = await loadBaseEnv();
     expect(remote.getEnv().serverPort).toBe(8282);
+  });
+
+  test("a cloud CSR bundle in a native shell calls its cloud host on 443, whatever the page origin", async () => {
+    for (const href of ["app://localhost/", "https://app.localhost/"]) {
+      resetEnv();
+      process.env.AKAN_PUBLIC_ENV = "main";
+      const env = await asPage(href, async () => (await loadBaseEnv()).getEnv());
+
+      expect(env.serverHttpUri).toBe("https://minimal-main.example.com/api");
+      expect(env.serverWsUri).toBe("wss://minimal-main.example.com");
+    }
+  });
+
+  test("AKAN_PUBLIC_SERVER_URL names a CSR bundle's server, websocket included", async () => {
+    resetEnv();
+    Object.assign(process.env, { AKAN_PUBLIC_ENV: "local", AKAN_PUBLIC_SERVER_URL: "http://localhost:8282" });
+    const local = await asPage("app://localhost/en?csr=true", async () => (await loadBaseEnv()).getEnv());
+    expect(local.serverHttpUri).toBe("http://localhost:8282/api");
+    expect(local.serverWsUri).toBe("ws://localhost:8282");
+
+    resetEnv();
+    Object.assign(process.env, { AKAN_PUBLIC_ENV: "main", AKAN_PUBLIC_SERVER_URL: "https://api.example.com" });
+    const cloud = await asPage("https://app.localhost/", async () => (await loadBaseEnv()).getEnv());
+    expect(cloud.serverHttpUri).toBe("https://api.example.com/api");
+    expect(cloud.serverWsUri).toBe("wss://api.example.com");
+  });
+
+  test("an SSR tab ignores AKAN_PUBLIC_SERVER_URL and calls the origin that rendered it", async () => {
+    resetEnv();
+    Object.assign(process.env, {
+      AKAN_PUBLIC_ENV: "main",
+      AKAN_PUBLIC_RENDER_ENV: "ssr",
+      AKAN_PUBLIC_SERVER_URL: "https://api.example.com",
+    });
+    const env = await asPage("https://minimal.example.com/en", async () => (await loadBaseEnv()).getEnv());
+    expect(env.serverHttpUri).toBe("https://minimal.example.com/api");
+  });
+
+  test("a local CSR bundle outside an http(s) page must name its server", async () => {
+    resetEnv();
+    process.env.AKAN_PUBLIC_ENV = "local";
+    await asPage("app://localhost/", async () => {
+      const { getEnv } = await loadBaseEnv();
+      expect(() => getEnv()).toThrow("set AKAN_PUBLIC_SERVER_URL");
+    });
+
+    resetEnv();
+    Object.assign(process.env, { AKAN_PUBLIC_ENV: "local", AKAN_PUBLIC_SERVER_URL: "app://localhost" });
+    await asPage("app://localhost/", async () => {
+      const { getEnv } = await loadBaseEnv();
+      expect(() => getEnv()).toThrow("AKAN_PUBLIC_SERVER_URL must be an http(s) URL");
+    });
+  });
+
+  test("a local CSR bundle on an http page keeps following the page", async () => {
+    resetEnv();
+    process.env.AKAN_PUBLIC_ENV = "local";
+    const env = await asPage("http://localhost:8282/en?csr=true", async () => (await loadBaseEnv()).getEnv());
+    expect(env.serverHttpUri).toBe("http://localhost:8282/api");
+    expect(env.serverWsUri).toBe("ws://localhost:8282");
   });
 
   test("caches the computed environment per module instance", async () => {
