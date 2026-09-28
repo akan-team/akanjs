@@ -124,12 +124,14 @@ export abstract class DevRegistryBundler {
       metadata,
     };
     this.merge(graph, resolver, compiled);
+    await this.writer.markBuilding();
     await this.writer.writeModules(compiled);
     const vendorFile = await this.writer.writeVendor(graph);
     await this.writer.writeApp(graph, generation);
     const epoch = Date.now();
     await this.writer.writeState(graph, { version: 1, generation, vendorFile, entries: graph.entries, epoch });
     await this.writer.pruneAfterFullBuild(graph, vendorFile, { generation, startedAt });
+    await this.writer.clearBuilding();
     return { generation, reload: true, reason, changedIds: [], moduleCount: Object.keys(graph.modules).length, epoch };
   }
 

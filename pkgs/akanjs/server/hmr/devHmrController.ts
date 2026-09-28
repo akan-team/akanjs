@@ -122,14 +122,24 @@ export class DevHmrController {
   }
 
   //? For every hello, not only at boot: a registry build that lands while this backend is still starting reaches it as
-  //? an update the dev host drops, and a tab must still learn which registry and generation are current. The disk is
-  //? never behind what was sent: a manifest is written before its update is announced.
+  //? an update the dev host drops, and a tab must still learn which registry and generation are current. While a patch
+  //? is held the disk is ahead of the tabs, and a tab reconnecting then would catch up past the hold: it gets the last
+  //? generation sent instead.
   refreshRegistryState(): void {
     const csr = DevHmrController.#readManifest(this.#artifactDir, CSR_DEV_DIRNAME);
     if (typeof csr?.generation === "number") this.#renderState.csrGeneration = csr.generation;
     const ssr = DevHmrController.#readManifest(this.#artifactDir, SSR_DEV_DIRNAME);
-    if (typeof ssr?.generation === "number") this.#renderState.ssrGeneration = ssr.generation;
+    if (typeof ssr?.generation === "number" && this.#ssrUpdates.size === 0)
+      this.#renderState.ssrGeneration = ssr.generation;
     if (typeof ssr?.epoch === "number") this.#renderState.ssrEpoch = ssr.epoch;
+  }
+
+  /** The phases failing now, for a socket that connects after their status went out (a page opened after a failed boot). */
+  buildErrorMessages(): HmrMessage[] {
+    return [...this.#buildStatusByPhase.values()].flatMap((status) => {
+      const message = status.ok ? null : devBuildStatusToHmrMessage(status);
+      return message ? [message] : [];
+    });
   }
 
   get hub(): HmrWsHub {

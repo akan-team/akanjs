@@ -727,6 +727,9 @@ export class WebRouter {
   refreshHmrState(): void {
     this.#devHmr?.refreshRegistryState();
   }
+  hmrBuildErrors(): unknown[] {
+    return this.#devHmr?.buildErrorMessages() ?? [];
+  }
   dispose() {
     this.#devHmr?.dispose();
     this.#devHmr = null;

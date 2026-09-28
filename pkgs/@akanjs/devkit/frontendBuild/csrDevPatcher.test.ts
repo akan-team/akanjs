@@ -89,6 +89,16 @@ describe("CsrDevPatcher", () => {
     expect(result).toMatchObject({ kind: "delegate", reason: "user.signal.ts changed" });
   });
 
+  test("a whole build cut short between its writes goes to another whole build, not to a patch", async () => {
+    const { bundler, dir } = await makeRegistry("same");
+    await Bun.write(path.join(dir, ".building"), "123");
+    expect(await new CsrDevPatcher(bundler, { resident: true }).update([])).toMatchObject({
+      kind: "delegate",
+      reason: "the last whole build was cut short",
+      generation: 5,
+    });
+  });
+
   test("a registry with no manifest is a first build, which no tab holds a module of", async () => {
     const { bundler, dir } = await makeRegistry("same");
     await rm(path.join(dir, CSR_DEV_MANIFEST_FILE), { force: true });

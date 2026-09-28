@@ -279,24 +279,36 @@ describe("HMR_CLIENT_SCRIPT", () => {
       };
     };
     const behindRegistry = registry(3);
-    const behind = createHmrHarness({ selfOverrides: { __akan: behindRegistry }, runTimers: true });
-    behind.ws?.sendMessage({ type: "hello", buildId: 1, ssrGeneration: 5 });
+    const behind = createHmrHarness({
+      selfOverrides: { __akan: behindRegistry, __AKAN_SSR_EPOCH__: 100 },
+      runTimers: true,
+    });
+    behind.ws?.sendMessage({ type: "hello", buildId: 1, ssrGeneration: 5, ssrEpoch: 100 });
     expect(behind.reloadCount).toBe(0);
     expect(behindRegistry.caughtUp).toEqual([[5, "/_akan/ssr-dev/"]]);
 
     const loadingRegistry = registry(3, 5);
-    createHmrHarness({ selfOverrides: { __akan: loadingRegistry }, runTimers: true }).ws?.sendMessage({
-      type: "hello",
-      buildId: 1,
-      ssrGeneration: 5,
-    });
+    createHmrHarness({
+      selfOverrides: { __akan: loadingRegistry, __AKAN_SSR_EPOCH__: 100 },
+      runTimers: true,
+    }).ws?.sendMessage({ type: "hello", buildId: 1, ssrGeneration: 5, ssrEpoch: 100 });
     expect(loadingRegistry.caughtUp).toEqual([]);
 
     const aheadRegistry = registry(6);
-    const ahead = createHmrHarness({ selfOverrides: { __akan: aheadRegistry }, runTimers: true });
-    ahead.ws?.sendMessage({ type: "hello", buildId: 1, ssrGeneration: 5 });
+    const ahead = createHmrHarness({
+      selfOverrides: { __akan: aheadRegistry, __AKAN_SSR_EPOCH__: 100 },
+      runTimers: true,
+    });
+    ahead.ws?.sendMessage({ type: "hello", buildId: 1, ssrGeneration: 5, ssrEpoch: 100 });
     expect(ahead.reloadCount).toBe(0);
     expect(aheadRegistry.caughtUp).toEqual([]);
+
+    const unnamedRegistry = registry(3);
+    createHmrHarness({
+      selfOverrides: { __akan: unnamedRegistry, __AKAN_SSR_EPOCH__: 100 },
+      runTimers: true,
+    }).ws?.sendMessage({ type: "hello", buildId: 1, ssrGeneration: 5 });
+    expect(unnamedRegistry.caughtUp).toEqual([]);
 
     const replaced = createHmrHarness({
       selfOverrides: { __akan: registry(6), __AKAN_SSR_EPOCH__: 100 },
@@ -306,10 +318,11 @@ describe("HMR_CLIENT_SCRIPT", () => {
     expect(replaced.reloadCount).toBe(1);
   });
 
-  test("an SSR tab that reconnects to the same build stays, and to a newer one refetches its payload", async () => {
+  test("an SSR tab that reconnects to the same build stays, and to a newer one of its registry refetches its payload", async () => {
     const refreshed: unknown[] = [];
     const harness = createHmrHarness({
       selfOverrides: {
+        __AKAN_SSR_EPOCH__: 5,
         __AKAN_RSC_REFRESH__: (options: unknown) => {
           refreshed.push(options);
           return Promise.resolve();
@@ -317,10 +330,10 @@ describe("HMR_CLIENT_SCRIPT", () => {
       },
       runTimers: true,
     });
-    harness.ws?.sendMessage({ type: "hello", buildId: 7 });
-    harness.ws?.sendMessage({ type: "hello", buildId: 7 });
+    harness.ws?.sendMessage({ type: "hello", buildId: 7, ssrEpoch: 5 });
+    harness.ws?.sendMessage({ type: "hello", buildId: 7, ssrEpoch: 5 });
     expect(refreshed).toEqual([]);
-    harness.ws?.sendMessage({ type: "hello", buildId: 8 });
+    harness.ws?.sendMessage({ type: "hello", buildId: 8, ssrEpoch: 5 });
     await Promise.resolve();
     expect(refreshed).toEqual([{ buildId: 8 }]);
     expect(harness.reloadCount).toBe(0);
@@ -329,6 +342,22 @@ describe("HMR_CLIENT_SCRIPT", () => {
     systemPage.ws?.sendMessage({ type: "hello", buildId: 7 });
     systemPage.ws?.sendMessage({ type: "hello", buildId: 8 });
     expect(systemPage.reloadCount).toBe(1);
+  });
+
+  test("a tab holding a registry reloads when the dev server has none, as after a new session or a config restart", () => {
+    // Every backend starts at build id 0, so the build id alone cannot tell a restart that cleared .akan.
+    const gone = createHmrHarness({ selfOverrides: { __AKAN_SSR_EPOCH__: 5 }, runTimers: true });
+    gone.ws?.sendMessage({ type: "hello", buildId: 0, ssrEpoch: 5 });
+    expect(gone.reloadCount).toBe(0);
+    gone.ws?.sendMessage({ type: "hello", buildId: 0 });
+    expect(gone.reloadCount).toBe(1);
+
+    const neverBooted = createHmrHarness({ runTimers: true });
+    neverBooted.ws?.sendMessage({ type: "hello", buildId: 0 });
+    neverBooted.ws?.sendMessage({ type: "hello", buildId: 0 });
+    expect(neverBooted.reloadCount).toBe(0);
+    neverBooted.ws?.sendMessage({ type: "hello", buildId: 8 });
+    expect(neverBooted.reloadCount).toBe(1);
   });
 
   test("a tab whose registry failed to boot reloads once a newer registry exists, and only then", () => {

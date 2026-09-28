@@ -82,4 +82,25 @@ describe("CsrDevShell", () => {
     expect(await served.text()).toBe("generation 8");
     expect(Date.now() - started).toBeGreaterThanOrEqual(55);
   });
+
+  test("holds a boot.json ask no longer than it asked to wait, and never past the boot wait", async () => {
+    const empty = await mkdtemp(path.join(os.tmpdir(), "akan-csr-dev-boot-"));
+    try {
+      const shell = new CsrDevShell(empty, { bootWaitMs: 150, appPollMs: 10 });
+      const timed = async (url: string) => {
+        const started = Date.now();
+        const response = await shell.serve(new Request(url));
+        return { status: response.status, ms: Date.now() - started };
+      };
+      const short = await timed("http://localhost/_akan/csr-dev/boot.json?wait=40");
+      expect(short.status).toBe(503);
+      expect(short.ms).toBeLessThan(140);
+      const capped = await timed("http://localhost/_akan/csr-dev/boot.json?wait=60000");
+      expect(capped.status).toBe(503);
+      expect(capped.ms).toBeGreaterThanOrEqual(140);
+      expect(capped.ms).toBeLessThan(1_000);
+    } finally {
+      await rm(empty, { recursive: true, force: true });
+    }
+  });
 });

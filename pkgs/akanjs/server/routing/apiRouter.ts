@@ -19,6 +19,8 @@ export interface HmrStateSource {
   };
   /** Called before each hello: brings what the state says about the dev registries up to what is on disk. */
   refresh?: () => void;
+  /** Sent right after hello: the build statuses failing now, which the socket connected too late to hear. */
+  errors?: () => unknown[];
 }
 
 export type NonNullHttpRoutes = NonNullable<HttpRoutes>;
@@ -115,6 +117,7 @@ export class ApiRouter {
               ssrEpoch: hmrState.state.ssrEpoch,
             }),
           );
+          for (const status of hmrState.errors?.() ?? []) ws.send(JSON.stringify(status));
           return;
         }
         SignalResolver.handleWsOpen(ws, registry);

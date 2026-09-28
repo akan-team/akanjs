@@ -550,6 +550,11 @@ describe("installCsrDevRuntime", () => {
       ]);
       expect(harness.api.generation).toBe(5);
       expect(harness.reloads).toBe(0);
+      harness.api.hot({ generation: 5, url: "/_akan/ssr-dev/patch-5.js" });
+      harness.api.catchUp(7, "/_akan/ssr-dev/");
+      harness.api.hot({ generation: 6, url: "/_akan/ssr-dev/patch-6.js" });
+      await settle();
+      expect(harness.scripts.slice(3).map((script) => script.src)).toEqual(["/_akan/ssr-dev/patch-6.js"]);
     });
 
     test("an update that arrives before the start waits for it, and one the app already holds is dropped", async () => {

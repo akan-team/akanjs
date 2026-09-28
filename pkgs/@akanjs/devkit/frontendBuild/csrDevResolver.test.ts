@@ -57,6 +57,21 @@ describe("CsrDevResolver before its resolution build", () => {
     expect(withFallback.serializeRuntimeResolved()).toEqual({ "node_modules/pkg/a.js": ["dep"] });
   });
 
+  test("the resolution build clears a runtime resolution it records itself, so a sibling may reuse it again", async () => {
+    await Bun.write(
+      file("apps/demo/ui/Fresh.tsx"),
+      'import * as fresh from "fresh";\nexport const Fresh = () => fresh;\n',
+    );
+    const prepassed = new CsrDevResolver({
+      paths,
+      context,
+      entryFiles: [file("apps/demo/ui/Fresh.tsx")],
+      runtimeResolved: { "apps/demo/ui/Fresh.tsx": ["fresh"] },
+    });
+    await prepassed.prepass();
+    expect(prepassed.serializeRuntimeResolved()).toEqual({});
+  });
+
   test("a new package in the user's code asks for the resolution build, and a typo fails like a missing file", () => {
     expect(resolver().resolve(file("apps/demo/ui/Card.tsx"), "fresh")).toBeNull();
     expect(() => resolver().resolve(file("apps/demo/ui/Card.tsx"), "frseh")).toThrow('cannot resolve "frseh"');

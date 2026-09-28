@@ -518,6 +518,9 @@ class IncrementalBuilder {
   //* The boot build of the SSR registry runs beside the slow lane, holding only the SSR lock: the first page's route
   //* build bundles meanwhile instead of queueing behind it (on apps/akan it cost the first page about a second).
   async armSsrRegistry(): Promise<void> {
+    //? `AKAN_DEV_SSR_ARM_DELAY_MS` is a test hook: an E2E has a tab reconnect before the boot build has run.
+    const delayMs = Number(process.env.AKAN_DEV_SSR_ARM_DELAY_MS);
+    if (Number.isInteger(delayMs) && delayMs > 0) await Bun.sleep(delayMs);
     const arming = this.#withSsrLock(async () => {
       if (this.#ssrPatcher && !(await this.#runSsrPatcher(this.#ssrPatcher, []))) return;
       await this.#runSsrWorker(this.#generation);
@@ -801,8 +804,10 @@ class IncrementalBuilder {
     if (!IncrementalBuilder.#csrArmedByEnv()) return;
     this.#csrActive = true;
     const rearmed = this.#workQueue.enqueue("build-csr-rearm", async () => {
+      //? Relayed, unlike an on-demand build: a rebuild for a metadata save must reach the CSR tabs as their reload.
       const result = await this.#batchRunner.run(
         await this.#batchRequest({ generation: this.#generation, needs: ["csr"], changedFiles: [] }),
+        (msg) => BuilderChannel.emit(msg),
       );
       this.#patcher?.forget();
       if (result.errors.csr) this.#logger.error(`csr-rearm failed: ${result.errors.csr}`);

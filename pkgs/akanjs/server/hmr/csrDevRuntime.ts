@@ -300,6 +300,8 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
         );
         return;
       }
+      // Queued already: catchUp loaded it before the update itself came round.
+      if (message.generation <= this.#target) return;
       const url = message.url;
       if (!url) {
         this.#reload(`generation ${message.generation} arrived without a patch`);

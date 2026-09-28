@@ -79,15 +79,25 @@ export const HMR_CLIENT_SCRIPT = `(function(){
           reloadForUpdate("the dev server rebuilt the SSR registry while this tab held the previous one");
           return;
         }
+        if (ssrRegistryGone(msg.ssrEpoch)) {
+          reloadForUpdate("the dev server has no SSR registry yet: a new session or a config restart is building one");
+          return;
+        }
         if (ssrBootFailedBefore(msg.ssrGeneration, msg.ssrEpoch)) {
           reloadForUpdate("the SSR registry this tab failed to load was rebuilt");
           return;
         }
         if (typeof msg.ssrGeneration === "number") self.__AKAN_SSR_HELLO_GENERATION__ = msg.ssrGeneration;
-        catchUpSsrRegistry(msg.ssrGeneration);
-        // A restarted backend dropped whatever was sent meanwhile: the patches just caught up, then the refresh.
-        if (lastBuildId !== null && msg.buildId !== lastBuildId) refreshRsc({ buildId: msg.buildId });
-        else lastBuildId = msg.buildId;
+        var sameRegistry = holdsSsrRegistry(msg.ssrEpoch);
+        if (sameRegistry) catchUpSsrRegistry(msg.ssrGeneration);
+        if (lastBuildId === null || msg.buildId === lastBuildId) {
+          lastBuildId = msg.buildId;
+          return;
+        }
+        // A restarted backend dropped whatever was sent meanwhile: the patches just caught up, then the refresh. Only
+        // onto the registry this tab holds: a new dev session or a config restart builds another from generation 1.
+        if (sameRegistry) refreshRsc({ buildId: msg.buildId });
+        else location.reload();
         return;
       }
       if (msg.type === "reload") {
@@ -175,6 +185,17 @@ export const HMR_CLIENT_SCRIPT = `(function(){
   function ssrRegistryReplaced(epoch){
     var own = self.__AKAN_SSR_EPOCH__;
     return typeof epoch === "number" && typeof own === "number" && own !== epoch;
+  }
+
+  // Certain, not assumed: a hello from a backend whose registry is not built yet names no epoch at all.
+  function holdsSsrRegistry(epoch){
+    return typeof epoch === "number" && self.__AKAN_SSR_EPOCH__ === epoch;
+  }
+
+  // No manifest on disk means .akan was cleared (a new akan start, a config restart): the registry this tab holds is
+  // gone, the next starts over from generation 1, and its first build is announced to no tab. A new document waits for it.
+  function ssrRegistryGone(epoch){
+    return typeof self.__AKAN_SSR_EPOCH__ === "number" && typeof epoch !== "number";
   }
 
   // Behind only, counting patches still loading: a tab that booted from an app.js newer than the last update sent is

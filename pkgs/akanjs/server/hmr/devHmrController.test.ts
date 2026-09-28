@@ -285,6 +285,25 @@ describe("DevHmrController registry state for hello", () => {
       await Bun.write(path.join(artifactDir, "csr-dev/manifest.json"), JSON.stringify({ generation: 2 }));
       controller.refreshRegistryState();
       expect(renderState).toMatchObject({ ssrGeneration: 7, ssrEpoch: 3, csrGeneration: 2 });
+
+      // A held patch is on disk already: a tab reconnecting now is told the last generation sent, not that one.
+      process.emit("message", {
+        type: "ssr-updated",
+        data: { generation: 8, reload: false, patchUrl: "/p8.js", hold: true, batchGeneration: 4 },
+      } as never);
+      await Bun.write(path.join(artifactDir, "ssr-dev/manifest.json"), JSON.stringify({ generation: 8, epoch: 3 }));
+      await Bun.sleep(5);
+      controller.refreshRegistryState();
+      expect(renderState.ssrGeneration).toBe(7);
+
+      process.emit("message", {
+        type: "build-status",
+        data: { generation: 4, phase: "ssr", ok: false, files: [], message: "Unexpected ;" },
+      } as never);
+      await Bun.sleep(5);
+      expect(controller.buildErrorMessages()).toEqual([
+        { type: "build-status", status: "error", generation: 4, phase: "ssr", message: "Unexpected ;", files: 0 },
+      ]);
     } finally {
       controller.dispose();
       process.send = originalSend;

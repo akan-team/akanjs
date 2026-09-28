@@ -124,4 +124,17 @@ describe("CsrDevArtifactWriter", () => {
     expect(existsSync(path.join(dir, "assets/new-def.png"))).toBe(true);
     expect(existsSync(path.join(dir, ".patching"))).toBe(false);
   });
+
+  test("a reload drops a patch file left under its generation, and a whole build is marked while it writes", async () => {
+    const { writer, dir } = await makeWriter();
+    await writer.writePatch(6, [module]);
+    await writer.forgetPatch(6);
+    expect(existsSync(path.join(dir, "patch-6.js"))).toBe(false);
+    expect(existsSync(path.join(dir, "patch-6.js.layout.json"))).toBe(false);
+    expect(await writer.isBuilding()).toBe(false);
+    await writer.markBuilding();
+    expect(await writer.isBuilding()).toBe(true);
+    await writer.clearBuilding();
+    expect(await writer.isBuilding()).toBe(false);
+  });
 });

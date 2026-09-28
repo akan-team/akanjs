@@ -92,7 +92,7 @@ ${stylesheet}  </head>
     const url = new URL(req.url);
     const name = url.pathname.slice(this.#routePrefix.length);
     if (name === "runtime.js") return CsrDevShell.#js(CSR_DEV_RUNTIME_SCRIPT, "public, max-age=31536000, immutable");
-    if (name === "boot.json") return await this.#serveBoot();
+    if (name === "boot.json") return await this.#serveBoot(url.searchParams.get("wait"));
     if (CsrDevShell.#sourceMapFile.test(name)) return await this.#serveSourceMap(name);
     if (!CsrDevShell.#servedFile.test(name)) return new Response("Not Found", { status: 404 });
     if (name === CSR_DEV_APP_FILE) await this.#waitForApp(Number(url.searchParams.get("g")));
@@ -117,9 +117,12 @@ ${stylesheet}  </head>
     }
   }
 
-  //? An SSR page rendered before the boot build of its registry finished asks here what to load; held until it exists.
-  async #serveBoot(): Promise<Response> {
-    const deadline = Date.now() + this.#bootWaitMs;
+  //? An SSR page rendered before the boot build of its registry finished asks here what to load; held until it exists,
+  //? or for the `wait` it asked (at most the boot wait), since a held request takes one of the browser's six sockets.
+  async #serveBoot(wait: string | null): Promise<Response> {
+    const asked = wait === null ? Number.NaN : Number(wait);
+    const waitMs = Number.isInteger(asked) && asked >= 0 ? Math.min(asked, this.#bootWaitMs) : this.#bootWaitMs;
+    const deadline = Date.now() + waitMs;
     for (;;) {
       const manifest = await this.readManifest();
       if (manifest) {

@@ -16,6 +16,7 @@ const valueFile = uiFile("registryValue.constant.ts");
 //? Read only by client code (the probe), so breaking it fails the registry's builds and no server bundle.
 const contextFile = uiFile("registryContext.ts");
 const registryManifest = path.join(workspaceRoot, "apps/minimal/.akan/artifact/ssr-dev/manifest.json");
+const configFile = path.join(workspaceRoot, "apps/minimal/akan.config.ts");
 const sharedFile = path.join(workspaceRoot, "apps/minimal/common/registrySharedText.ts");
 const signalFile = path.join(workspaceRoot, "apps/minimal/lib/_minimal/minimal.signal.ts");
 const workerEntry = path.join(workspaceRoot, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts");
@@ -55,7 +56,7 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
   let ssr: CsrE2eHarness;
 
   beforeAll(async () => {
-    ssr = await CsrE2eHarness.start({ app: "minimal", port });
+    ssr = await CsrE2eHarness.start({ app: "minimal", port, env: { AKAN_DEV_SSR_ARM_DELAY_MS: "3000" } });
   }, 240_000);
 
   afterAll(async () => {
@@ -453,6 +454,35 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
       },
     );
     await reopenUntil(async () => !(await fetchHas("e2eRegistryPing")) && (await fetchHas("benchPing")));
+  }, 300_000);
+
+  test("a tab that reconnects to a restarted dev host before its registry exists reloads onto the new one", async () => {
+    await open();
+    //? A config save restarts the dev host, which clears `.akan`: the next registry starts over from generation 1,
+    //? and the boot build is held back (AKAN_DEV_SSR_ARM_DELAY_MS) so the tab's hello comes before it.
+    await ssr.editSource(
+      configFile,
+      (source) => `${source}\n`,
+      async () => {
+        const deadline = Date.now() + 90_000;
+        while (!(await ssr.reloaded())) {
+          if (Date.now() > deadline) throw new Error("[ssr-registry-e2e] the tab never reloaded after the restart");
+          await Bun.sleep(250);
+        }
+        await ssr.waitFor(
+          () => {
+            const w = window as unknown as RegistryWindow & { __AKAN_RSC_REFRESH__?: unknown };
+            const state = w.__akan?.inspect();
+            return typeof w.__AKAN_RSC_REFRESH__ === "function" && !!state?.started && !state.failed;
+          },
+          { timeout: 90_000 },
+        );
+        await ssr.editSource(probeFile, markProbe, async () => {
+          await probeMarked(true);
+        });
+      },
+    );
+    await reopenUntil(async () => await fetchHas("benchPing"));
   }, 300_000);
 
   test("a build error shows the overlay, and the fix patches the page without a reload", async () => {

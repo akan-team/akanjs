@@ -56,7 +56,11 @@ export class CsrDevPatcher {
     const state = resident ?? (await this.#load());
     if (!state) {
       const manifest = await this.#bundler.writer.readJson<CsrDevManifest>(CSR_DEV_MANIFEST_FILE);
-      const reason = manifest ? "the dev bundle config changed" : "first build";
+      const reason = !manifest
+        ? "first build"
+        : (await this.#bundler.writer.isBuilding())
+          ? "the last whole build was cut short"
+          : "the dev bundle config changed";
       return this.#handBack(reason, (manifest?.generation ?? 0) + 1, context, { first: !manifest });
     }
     const generation = state.manifest.generation + 1;
@@ -166,6 +170,7 @@ export class CsrDevPatcher {
     });
     // A reload rewrites app.js first: the tabs are about to boot from it.
     if (reason) {
+      await writer.forgetPatch(generation);
       await writer.writeModules(compiled);
       const vendorFile = vendorJoined ? await writer.writeVendor(graph) : previous.vendorFile;
       await writer.writeApp(graph, generation, await this.#code(state));
@@ -205,7 +210,7 @@ export class CsrDevPatcher {
   async #load(): Promise<CsrDevPatcherState | null> {
     const manifest = await this.#bundler.writer.readJson<CsrDevManifest>(CSR_DEV_MANIFEST_FILE);
     const graph = await this.#bundler.writer.readJson<CsrDevGraph>("graph.json");
-    if (!manifest || !graph || graph.version !== 1) return null;
+    if (!manifest || !graph || graph.version !== 1 || (await this.#bundler.writer.isBuilding())) return null;
     return { graph, manifest, code: null };
   }
 

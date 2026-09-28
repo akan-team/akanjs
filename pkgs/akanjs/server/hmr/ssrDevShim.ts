@@ -27,11 +27,11 @@ export class SsrDevShim {
     });
   }
   // Asked until a registry exists: a boot build the user's code broke leaves none until the save that fixes it, and
-  // giving up would fail this document for good (RSDW keeps a rejected chunk and never loads it again).
+  // giving up would fail this document for good (RSDW keeps a rejected chunk and never loads it again). In short holds
+  // with a gap, so waiting tabs do not keep every socket the browser opens to this host.
   function state() {
-    return fetch(c.prefix + "boot.json", { cache: "no-store" }).then(function (res) {
-      if (res.ok) return res.json();
-      return wait(res.status === 503 ? 0 : 1000).then(state);
+    return fetch(c.prefix + "boot.json?wait=10000", { cache: "no-store" }).then(function (res) {
+      return res.ok ? res.json() : wait(1000).then(state);
     }, function () {
       return wait(1000).then(state);
     });

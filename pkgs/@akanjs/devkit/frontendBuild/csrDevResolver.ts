@@ -84,7 +84,9 @@ export class CsrDevResolver {
           continue;
         }
         const target = path.resolve(record.path);
-        if (fs.existsSync(target)) this.#remember(importer, record.original, CsrDevPaths.realpath(target));
+        if (!fs.existsSync(target)) continue;
+        this.#remember(importer, record.original, CsrDevPaths.realpath(target));
+        this.#runtimeResolved.get(importer)?.delete(record.original);
       }
     }
     this.#prepassDone = true;
@@ -113,7 +115,9 @@ export class CsrDevResolver {
 
   serializeRuntimeResolved(): Record<string, string[]> {
     return Object.fromEntries(
-      [...this.#runtimeResolved].map(([importer, specifiers]) => [this.#paths.idOf(importer), [...specifiers].sort()]),
+      [...this.#runtimeResolved]
+        .filter(([, specifiers]) => specifiers.size > 0)
+        .map(([importer, specifiers]) => [this.#paths.idOf(importer), [...specifiers].sort()]),
     );
   }
 

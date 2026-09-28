@@ -23,6 +23,7 @@ export interface CsrDevArtifactWriterOptions {
 export class CsrDevArtifactWriter {
   static readonly #keptPatches = 40;
   static readonly #keptVendors = 3;
+  static readonly #buildingMarker = ".building";
   readonly #outDir: string;
   readonly #routePrefix: string;
   readonly #library: boolean;
@@ -31,6 +32,30 @@ export class CsrDevArtifactWriter {
     this.#outDir = outDir;
     this.#routePrefix = routePrefix;
     this.#library = library;
+  }
+
+  //? Set between a whole build's first write and its last: module files are named by id and overwritten in place, so a
+  //? build cut short there leaves new modules under the previous graph and app.js, which no patch may read.
+  async markBuilding(): Promise<void> {
+    await Bun.write(path.join(this.#outDir, CsrDevArtifactWriter.#buildingMarker), String(process.pid));
+  }
+
+  async clearBuilding(): Promise<void> {
+    await rm(path.join(this.#outDir, CsrDevArtifactWriter.#buildingMarker), { force: true });
+  }
+
+  async isBuilding(): Promise<boolean> {
+    return await Bun.file(path.join(this.#outDir, CsrDevArtifactWriter.#buildingMarker)).exists();
+  }
+
+  //? A reload's generation has no patch: one an attempt cut short left under that number would be applied by a tab
+  //? catching up (catchUp reloads only when the file is missing).
+  async forgetPatch(generation: number): Promise<void> {
+    await Promise.all(
+      [`patch-${generation}.js`, `patch-${generation}.js.layout.json`].map((name) =>
+        rm(path.join(this.#outDir, name), { force: true }),
+      ),
+    );
   }
 
   async readJson<T>(name: string): Promise<T | null> {
