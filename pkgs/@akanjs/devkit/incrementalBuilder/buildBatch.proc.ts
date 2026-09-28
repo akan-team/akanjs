@@ -108,7 +108,21 @@ class BuildBatch {
   }
 
   async #updateCsrRegistry(started: number): Promise<void> {
-    const update = await new CsrDevBundler(this.#app).update(this.#request.changedFiles);
+    const update = await new CsrDevBundler(this.#app).update(this.#request.changedFiles, {
+      announce: (announced) =>
+        this.#emit({
+          type: "csr-updated",
+          data: {
+            generation: announced.generation,
+            mode: "registry",
+            reload: announced.reload,
+            reason: announced.reason,
+            patchUrl: announced.patchUrl,
+            changedIds: announced.changedIds,
+            trace: this.#sentTrace(),
+          },
+        }),
+    });
     if (!update) {
       this.#logger.verbose(`csr-dev unchanged (${Date.now() - started}ms)`);
       return;
@@ -116,18 +130,6 @@ class BuildBatch {
     this.#logger.verbose(
       `csr-dev generation=${update.generation} ${update.reload ? `reload (${update.reason})` : `patch modules=${update.changedIds.length}`} graph=${update.moduleCount} (${Date.now() - started}ms)`,
     );
-    this.#emit({
-      type: "csr-updated",
-      data: {
-        generation: update.generation,
-        mode: "registry",
-        reload: update.reload,
-        reason: update.reason,
-        patchUrl: update.patchUrl,
-        changedIds: update.changedIds,
-        trace: this.#sentTrace(),
-      },
-    });
   }
 
   // Rewritten with the bundle: the backend rereads it on `pages-updated` to pick up added, moved or deleted routes.

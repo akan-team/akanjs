@@ -8,9 +8,13 @@ export type DevCsrMode = "registry" | "artifact";
 export interface CsrDevManifest {
   version: 1;
   generation: number;
+  /** The generation `app.js` holds; a patch is announced before `app.js` catches up, so it may trail `generation`. */
+  appGeneration?: number;
   vendorFile: string;
   entries: Record<string, string>;
 }
+
+export const appGenerationOf = (manifest: CsrDevManifest): number => manifest.appGeneration ?? manifest.generation;
 
 /** Where each module's generated code starts in a combined file (`app.js`, a patch), for its source map. */
 export interface CsrDevLayout {

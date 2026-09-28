@@ -1,7 +1,12 @@
 import fs from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import { CSR_DEV_DIRNAME, CSR_DEV_MANIFEST_FILE, type CsrDevManifest } from "akanjs/server/hmr/csrDevManifest";
+import {
+  appGenerationOf,
+  CSR_DEV_DIRNAME,
+  CSR_DEV_MANIFEST_FILE,
+  type CsrDevManifest,
+} from "akanjs/server/hmr/csrDevManifest";
 import { isAkanRuntimeMetadataFile } from "akanjs/server/hmr/runtimeMetadataFile";
 import { resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import type { App } from "../commandDecorators";
@@ -23,6 +28,11 @@ export interface CsrDevUpdate {
   moduleCount: number;
 }
 
+export interface CsrDevUpdateOptions {
+  /** Called once an update exists: for a patch before app.js is rewritten, for a reload after everything is on disk. */
+  announce?: (update: CsrDevUpdate) => void;
+}
+
 //* Dev-only CSR as a module registry. The build worker is a fresh process per save, so the graph, every module's
 //* factory and the resolutions live on disk under `.akan/artifact/csr-dev`.
 export class CsrDevBundler {
@@ -41,18 +51,26 @@ export class CsrDevBundler {
     this.#writer = new CsrDevArtifactWriter(this.#outDir);
   }
 
-  async update(changedFiles: string[] = []): Promise<CsrDevUpdate | null> {
+  async update(changedFiles: string[] = [], { announce }: CsrDevUpdateOptions = {}): Promise<CsrDevUpdate | null> {
     const context = await this.#context();
     if (context.pageEntries.length === 0) return null;
     const manifest = await this.#writer.readJson<CsrDevManifest>(CSR_DEV_MANIFEST_FILE);
     const graph = await this.#writer.readJson<CsrDevGraph>("graph.json");
     const generation = (manifest?.generation ?? 0) + 1;
+    const announced = (update: CsrDevUpdate) => {
+      announce?.(update);
+      return update;
+    };
     if (!manifest || !graph || graph.version !== 1 || graph.configKey !== context.configKey)
-      return await this.#fullBuild(context, generation, manifest ? "the dev bundle config changed" : "first build");
+      return announced(
+        await this.#fullBuild(context, generation, manifest ? "the dev bundle config changed" : "first build"),
+      );
     const metadataFile = changedFiles.find(isAkanRuntimeMetadataFile);
     // `lib/useClient.ts` inlines signal and dictionary metadata through a macro at build time.
-    if (metadataFile) return await this.#fullBuild(context, generation, `${path.basename(metadataFile)} changed`);
-    return await this.#incrementalBuild(context, graph, manifest, changedFiles, generation);
+    if (metadataFile)
+      return announced(await this.#fullBuild(context, generation, `${path.basename(metadataFile)} changed`));
+    const current = await this.#writer.healApp(graph, manifest);
+    return await this.#incrementalBuild(context, graph, current, changedFiles, generation, announced);
   }
 
   async #context(): Promise<CsrDevContext> {
@@ -121,6 +139,7 @@ export class CsrDevBundler {
     manifest: CsrDevManifest,
     changedFiles: string[],
     generation: number,
+    announced: (update: CsrDevUpdate) => CsrDevUpdate,
   ): Promise<CsrDevUpdate | null> {
     const entries = await this.#writeEntries(context);
     const entryIds = this.#entryIds(entries.files);
@@ -153,7 +172,6 @@ export class CsrDevBundler {
     graph.entries = entryIds;
     await this.#writer.writeModules(compiled);
     const vendorFile = vendorJoined ? await this.#writer.writeVendor(graph) : manifest.vendorFile;
-    await this.#writer.writeApp(graph, generation);
     const changedIds = compiled.filter((module) => !module.vendor).map((module) => module.id);
     const constantId = changedIds.find((id) => id.endsWith(".constant.ts"));
     // A model class swapped under live store state would mix old and new instances; reload instead.
@@ -164,22 +182,32 @@ export class CsrDevBundler {
         : constantId
           ? `${path.basename(constantId)} changed`
           : undefined;
-    const patchUrl = reason
-      ? undefined
-      : await this.#writer.writePatch(
-          generation,
-          compiled.filter((module) => !module.vendor),
-        );
-    await this.#writer.writeState(graph, { ...manifest, generation, vendorFile, entries: entryIds });
-    await this.#writer.prune(vendorFile, generation);
-    return {
+    const next: CsrDevManifest = { ...manifest, generation, vendorFile, entries: entryIds };
+    const update = (patchUrl?: string): CsrDevUpdate => ({
       generation,
       reload: !!reason,
       reason,
       patchUrl,
       changedIds,
       moduleCount: Object.keys(graph.modules).length,
-    };
+    });
+    // A reload rewrites app.js first: the tabs are about to boot from it.
+    if (reason) {
+      await this.#writer.writeApp(graph, generation);
+      await this.#writer.writeState(graph, { ...next, appGeneration: generation });
+      await this.#writer.prune(vendorFile, generation);
+      return announced(update());
+    }
+    const patchUrl = await this.#writer.writePatch(
+      generation,
+      compiled.filter((module) => !module.vendor),
+    );
+    const patched = update(patchUrl);
+    await this.#writer.commitPatch(graph, { ...next, appGeneration: appGenerationOf(manifest) }, () =>
+      announced(patched),
+    );
+    await this.#writer.prune(vendorFile, generation);
+    return patched;
   }
 
   async #changedModules(graph: CsrDevGraph, changedFiles: string[]): Promise<Set<string>> {

@@ -1,6 +1,7 @@
 import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import {
+  appGenerationOf,
   CSR_DEV_APP_FILE,
   CSR_DEV_MANIFEST_FILE,
   CSR_DEV_ROUTE_PREFIX,
@@ -109,6 +110,25 @@ export class CsrDevArtifactWriter {
     await this.writeJson(CSR_DEV_MANIFEST_FILE, manifest);
   }
 
+  //? The open tabs need only the patch, so they hear of it before app.js (a full rewrite) catches up; the manifest says
+  //? which generation app.js holds, and the shell holds a tab booting in that gap until it does.
+  async commitPatch(graph: CsrDevGraph, manifest: CsrDevManifest, announce: () => void): Promise<void> {
+    await this.writeState(graph, manifest);
+    announce();
+    await CsrDevArtifactWriter.#appWriteDelay();
+    await this.writeApp(graph, manifest.generation);
+    await this.writeJson(CSR_DEV_MANIFEST_FILE, { ...manifest, appGeneration: manifest.generation });
+  }
+
+  // A process that died between announcing a patch and rewriting app.js left every booting tab one generation behind.
+  async healApp(graph: CsrDevGraph, manifest: CsrDevManifest): Promise<CsrDevManifest> {
+    if (appGenerationOf(manifest) >= manifest.generation) return manifest;
+    await this.writeApp(graph, manifest.generation);
+    const healed = { ...manifest, appGeneration: manifest.generation };
+    await this.writeJson(CSR_DEV_MANIFEST_FILE, healed);
+    return healed;
+  }
+
   async prune(vendorFile: string, generation: number): Promise<void> {
     const names = await readdir(this.#outDir);
     const stale = names.filter((name) => {
@@ -157,6 +177,12 @@ export class CsrDevArtifactWriter {
     const temp = `${target}.${process.pid}.tmp`;
     await Bun.write(temp, content);
     await rename(temp, target);
+  }
+
+  //? A test-only hook that widens the gap between the patch and app.js, so an E2E can boot a tab inside it.
+  static async #appWriteDelay(): Promise<void> {
+    const ms = Number(process.env.AKAN_CSR_DEV_APP_WRITE_DELAY_MS);
+    if (Number.isInteger(ms) && ms > 0) await Bun.sleep(ms);
   }
 
   #modulePath(id: string, extension: ".js" | ".js.map"): string {

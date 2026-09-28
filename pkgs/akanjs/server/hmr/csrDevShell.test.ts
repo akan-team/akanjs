@@ -60,4 +60,26 @@ describe("CsrDevShell", () => {
     expect((await shell.serve(new Request("http://localhost/_akan/csr-dev/manifest.json"))).status).toBe(404);
     expect((await shell.serve(new Request("http://localhost/_akan/csr-dev/..%2Fbase-artifact.json"))).status).toBe(404);
   });
+
+  test("holds a booting tab's app.js until the file holds the generation it asked for", async () => {
+    const waiting = new CsrDevShell(artifactDir, { appWaitMs: 2_000, appPollMs: 10 });
+    const appFile = path.join(artifactDir, CSR_DEV_DIRNAME, "app.js");
+    await writeManifest({ version: 1, generation: 8, appGeneration: 7, vendorFile: "vendor-abc.js", entries: {} });
+    await Bun.write(appFile, "generation 7");
+    const served = waiting.serve(new Request("http://localhost/_akan/csr-dev/app.js?g=8"));
+    await Bun.sleep(100);
+    await Bun.write(appFile, "generation 8");
+    await writeManifest({ version: 1, generation: 8, appGeneration: 8, vendorFile: "vendor-abc.js", entries: {} });
+    expect(await (await served).text()).toBe("generation 8");
+  });
+
+  test("serves the app.js it has once the wait runs out", async () => {
+    const impatient = new CsrDevShell(artifactDir, { appWaitMs: 60, appPollMs: 10 });
+    await writeManifest({ version: 1, generation: 9, appGeneration: 8, vendorFile: "vendor-abc.js", entries: {} });
+    await Bun.write(path.join(artifactDir, CSR_DEV_DIRNAME, "app.js"), "generation 8");
+    const started = Date.now();
+    const served = await impatient.serve(new Request("http://localhost/_akan/csr-dev/app.js?g=9"));
+    expect(await served.text()).toBe("generation 8");
+    expect(Date.now() - started).toBeGreaterThanOrEqual(55);
+  });
 });

@@ -1,6 +1,7 @@
 import path from "node:path";
 import { resolveStaticPath } from "../staticPath";
 import {
+  appGenerationOf,
   CSR_DEV_APP_FILE,
   CSR_DEV_DIRNAME,
   CSR_DEV_MANIFEST_FILE,
@@ -19,14 +20,23 @@ export interface CsrDevShellRenderOptions {
   cssHref: string | null;
 }
 
+export interface CsrDevShellOptions {
+  appWaitMs?: number;
+  appPollMs?: number;
+}
+
 export class CsrDevShell {
   static readonly #runtimeHash = Bun.hash(CSR_DEV_RUNTIME_SCRIPT).toString(36);
   static readonly #servedFile = /^(app\.js|vendor-[\w-]+\.js|patch-\d+\.js|assets\/[\w.-]+)$/;
   static readonly #sourceMapFile = /^(app\.js|patch-\d+\.js)\.map$/;
   readonly #dir: string;
+  readonly #appWaitMs: number;
+  readonly #appPollMs: number;
 
-  constructor(artifactDir: string) {
+  constructor(artifactDir: string, { appWaitMs = 2_000, appPollMs = 20 }: CsrDevShellOptions = {}) {
     this.#dir = path.join(artifactDir, CSR_DEV_DIRNAME);
+    this.#appWaitMs = appWaitMs;
+    this.#appPollMs = appPollMs;
   }
 
   async readManifest(): Promise<CsrDevManifest | null> {
@@ -62,10 +72,12 @@ ${stylesheet}  </head>
 
   // Only the vendor file is content-hashed; generations restart at 1 when `.akan` is wiped, so a cached patch could lie.
   async serve(req: Request): Promise<Response> {
-    const name = new URL(req.url).pathname.slice(CSR_DEV_ROUTE_PREFIX.length);
+    const url = new URL(req.url);
+    const name = url.pathname.slice(CSR_DEV_ROUTE_PREFIX.length);
     if (name === "runtime.js") return CsrDevShell.#js(CSR_DEV_RUNTIME_SCRIPT, "public, max-age=31536000, immutable");
     if (CsrDevShell.#sourceMapFile.test(name)) return await this.#serveSourceMap(name);
     if (!CsrDevShell.#servedFile.test(name)) return new Response("Not Found", { status: 404 });
+    if (name === CSR_DEV_APP_FILE) await this.#waitForApp(Number(url.searchParams.get("g")));
     const filePath = resolveStaticPath(this.#dir, name);
     const file = filePath ? Bun.file(filePath) : null;
     if (!file || !(await file.exists())) return new Response("Not Found", { status: 404 });
@@ -73,6 +85,18 @@ ${stylesheet}  </head>
     if (name.startsWith("assets/"))
       return new Response(file, { headers: CsrDevShell.#headers(file.type, cacheControl) });
     return CsrDevShell.#js(file, cacheControl);
+  }
+
+  //? A patch is announced before app.js is rewritten, so a tab booting in that gap asks for a generation app.js does not
+  //? hold yet. Held until it does, or until the wait runs out: then it boots behind, and hello's generation reloads it.
+  async #waitForApp(generation: number): Promise<void> {
+    if (!Number.isInteger(generation) || generation <= 0) return;
+    const deadline = Date.now() + this.#appWaitMs;
+    for (;;) {
+      const manifest = await this.readManifest();
+      if (!manifest || appGenerationOf(manifest) >= generation || Date.now() >= deadline) return;
+      await Bun.sleep(this.#appPollMs);
+    }
   }
 
   // Composed when DevTools asks, not on every save: most saves are never debugged.
