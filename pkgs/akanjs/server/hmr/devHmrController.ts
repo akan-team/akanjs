@@ -327,6 +327,7 @@ export class DevHmrController {
   }
 
   #recordInvalidate(files: string[], kinds: Set<Exclude<ChangeKind, "ignore">>, generation?: number) {
+    if (kinds.has("code")) this.#invalidateClientEntriesEarly(files);
     for (const k of kinds) this.#dirty.add(k);
     for (const file of files) this.#dirtyFiles.add(file);
     if (this.#dirty.has("config")) {
@@ -350,6 +351,18 @@ export class DevHmrController {
     );
     this.#dirty.clear();
     this.#dirtyFiles.clear();
+  }
+
+  //? The registry patches a tab long before this save's pages build lands; a page loaded in between must not render
+  //? its HTML from client-ssr chunks older than the registry it hydrates with, so its route builds again first.
+  #invalidateClientEntriesEarly(files: string[]): void {
+    const staleClientEntries = this.#staleClientEntriesForFiles(files);
+    if (staleClientEntries.size === 0) return;
+    const routeIds = this.#routeIdsForFiles(files, staleClientEntries);
+    this.routeCache.invalidateClientEntries({
+      routePredicate: (routeId) => !routeIds || routeIds.includes(routeId),
+      staleEntries: this.#clientEntryManifestKeys(staleClientEntries),
+    });
   }
 
   #invalidateRoutes(

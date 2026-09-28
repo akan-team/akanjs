@@ -129,6 +129,8 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
   class CsrDevRegistry implements CsrDevRuntimeApi {
     #factories = new Map<string, CsrModuleFactory>();
     #waiters = new Map<string, (() => void)[]>();
+    //? Modules RSDW required for a payload's client references: nothing in the registry imports them.
+    #roots = new Set<string>();
     #started = false;
     #early: CsrUpdateMessage[] = [];
     #helperFactories = new Map<string, () => Record<string, unknown>>();
@@ -204,6 +206,7 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
     }
 
     require(id: string) {
+      this.#roots.add(id);
       return this.#load(id).exports;
     }
 
@@ -331,7 +334,9 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       return secondTarget;
     };
 
-    #loadPatch(url: string) {
+    //? A navigation away cancels an in-flight patch load, and reloading from its error would cancel that navigation:
+    //? the retry runs only if this document is still alive by then, and only a second failure reloads.
+    #loadPatch(url: string, retried = false): Promise<void> {
       return new Promise<void>((resolve) => {
         const script = host.document.createElement("script");
         script.src = url;
@@ -340,8 +345,13 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
           resolve();
         };
         script.onerror = () => {
-          this.#reload(`patch ${url} failed to load`);
-          resolve();
+          script.remove();
+          if (retried) {
+            this.#reload(`patch ${url} failed to load`);
+            resolve();
+            return;
+          }
+          host.setTimeout(() => resolve(this.#loadPatch(url, true)), 300);
         };
         host.document.head.appendChild(script);
       });
@@ -475,6 +485,9 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
           [...plan.boundaries].map((id) => [id, [...(this.#cache.get(id)?.parents ?? [])]] as const),
         );
         this.#dispose(plan.outdated);
+        //? A payload root's other exports reach no module outside the registry (the server holds references by name),
+        //? so re-running it and refreshing its component families is the whole update even when it is no boundary.
+        if ([...plan.boundaries].some((id) => this.#roots.has(id))) this.#scheduleRefresh();
         const invalidated: string[] = [];
         for (const id of plan.boundaries) {
           const record = this.#load(id);
@@ -485,6 +498,7 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
         pending = [];
         for (const id of invalidated) {
           const parents = [...(this.#cache.get(id)?.parents ?? [])];
+          if (parents.length === 0 && this.#roots.has(id)) continue;
           if (parents.length === 0) {
             this.#reload(`${id} changed its exports and nothing above it can take the update`);
             return [];
@@ -534,7 +548,11 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
           boundaries.add(id);
           continue;
         }
-        if (record.parents.size === 0) return { reload: `no component boundary above ${id}` };
+        if (record.parents.size === 0) {
+          if (!this.#roots.has(id)) return { reload: `no component boundary above ${id}` };
+          boundaries.add(id);
+          continue;
+        }
         for (const parentId of record.parents) {
           if (!this.#cache.get(parentId)?.hot.acceptedDeps.has(id)) {
             queue.push(parentId);

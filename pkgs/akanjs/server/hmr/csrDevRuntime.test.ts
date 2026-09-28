@@ -388,6 +388,22 @@ describe("installCsrDevRuntime", () => {
     expect(harness.warnings.at(-1)).toContain("the route table changed");
   });
 
+  test("a patch that fails to load is retried once before the page reloads", async () => {
+    const harness = createHarness(baseModules());
+    harness.api.start({ generation: 1, refresh: REFRESH_ID });
+    harness.api.hot({ generation: 2, url: "/_akan/csr-dev/patch-2.js" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    harness.scripts[0]?.onerror?.();
+    expect(harness.reloads).toBe(0);
+    harness.flushTimers();
+    expect(harness.scripts.map((script) => script.src)).toEqual([
+      "/_akan/csr-dev/patch-2.js",
+      "/_akan/csr-dev/patch-2.js",
+    ]);
+    harness.scripts[1]?.onerror?.();
+    expect(harness.reloads).toBe(1);
+  });
+
   test("whenSettled waits for the patch it was handed to load and apply", async () => {
     const harness = createHarness(baseModules());
     harness.api.start({ generation: 1, refresh: REFRESH_ID });
@@ -444,6 +460,41 @@ describe("installCsrDevRuntime", () => {
       harness.api.update(3, { "app/New.tsx": component("New") });
       await defined;
       expect(Object.keys(harness.api.require("app/New.tsx") as object)).toEqual(["New"]);
+    });
+
+    test("a payload root that also exports non-components re-runs in place and refreshes its components", () => {
+      const harness = createHarness({
+        "app/boot.ts": () => undefined,
+        "app/Header.tsx": component("Header", { headerLinks: ["a"] }),
+      });
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" });
+      harness.api.require("app/Header.tsx");
+      harness.api.update(3, { "app/Header.tsx": component("Header", { headerLinks: ["a", "b"] }) });
+      harness.flushTimers();
+      expect(harness.reloads).toBe(0);
+      expect(harness.executed()).toEqual(["app/Header.tsx"]);
+      expect((harness.api.require("app/Header.tsx") as { headerLinks: string[] }).headerLinks).toEqual(["a", "b"]);
+      expect(harness.refresh.calls.refresh).toBe(1);
+    });
+
+    test("a module outside the registry's graph and the payload still reloads when nothing can take it", () => {
+      const harness = createHarness({
+        "app/boot.ts": (require) => {
+          require("akan-module:app/config.ts");
+        },
+        "app/config.ts": (_require, record) => {
+          record.exports = { value: 1 };
+        },
+      });
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" });
+      harness.api.update(3, {
+        "app/config.ts": (_require, record) => {
+          record.exports = { value: 2 };
+        },
+      });
+      expect(harness.reloads).toBe(1);
     });
 
     test("an update that arrives before the start waits for it, and one the app already holds is dropped", async () => {

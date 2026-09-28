@@ -142,6 +142,42 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
     expect(await ssr.reloaded()).toBe(false);
   }, 90_000);
 
+  test("a client entry that also exports a non-component patches in place, keeping state", async () => {
+    await open();
+    await ssr.evaluate(() => document.querySelector<HTMLButtonElement>('[data-e2e="bump"]')?.click());
+    await textIs('[data-e2e="count"]', "1");
+    await ssr.editSource(
+      probeFile,
+      (source) => `${markProbe(source)}\nexport const registryProbeVersion = 1;\n`,
+      async () => {
+        await probeMarked(true);
+        expect((await snapshot()).count).toBe("1");
+      },
+    );
+    const restoredAt = Date.now();
+    await probeMarked(false);
+    //? Dropping an export changes what the server holds, so an RSC refresh follows; leaving mid-fetch hard-navigates.
+    await ssr.waitFor(
+      (since: number) =>
+        (
+          (window as unknown as { __AKAN_HMR_TRACES__?: { kind: string; receivedAt: number }[] }).__AKAN_HMR_TRACES__ ??
+          []
+        ).some((entry) => entry.kind === "rsc-refresh" && entry.receivedAt >= since),
+      { args: [restoredAt], timeout: 20_000 },
+    );
+    expect(await ssr.reloaded()).toBe(false);
+  }, 90_000);
+
+  test("a page loaded right after a save renders the saved client code, so hydration matches", async () => {
+    await open();
+    await ssr.editSource(probeFile, markProbe, async () => {
+      await Bun.sleep(150);
+      await ssr.open(REGISTRY, { csr: false });
+      await probeMarked(true);
+    });
+    await probeMarked(false);
+  }, 90_000);
+
   test("a build error shows the overlay, and the fix patches the page without a reload", async () => {
     await open();
     await ssr.editSource(
