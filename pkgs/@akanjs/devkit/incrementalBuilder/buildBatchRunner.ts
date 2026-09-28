@@ -3,7 +3,8 @@ import { Logger } from "akanjs/common";
 import type { BuilderMessage } from "akanjs/server";
 import type { BuildBatchMessage, BuildBatchRequest, BuildBatchResult } from "./buildBatchProtocol";
 
-// No pool on purpose: one worker at a time, exiting after its batch, returns the arenas `Bun.build` never frees.
+// No pool on purpose: a worker exiting after its batch returns the arenas `Bun.build` never frees. The callers order
+// their own work (the slow lane, the css queue, the SSR registry's boot build beside them), so a few can overlap.
 // A worker that dies without reporting must not take the watcher down; its needs come back as errors.
 export class BuildBatchRunner {
   #logger = new Logger("BuildBatchRunner");

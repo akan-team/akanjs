@@ -12,6 +12,10 @@ export class SsrDevShim {
   static readonly #body = `var baseLoad = self.__webpack_chunk_load__;
   var baseRequire = self.__webpack_require__;
   var booting = null;
+  var built = null;
+  function wait(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, ms); });
+  }
   function script(src) {
     return new Promise(function (resolve, reject) {
       var el = document.createElement("script");
@@ -22,11 +26,28 @@ export class SsrDevShim {
       document.head.appendChild(el);
     });
   }
+  // Asked until a registry exists: a boot build the user's code broke leaves none until the save that fixes it, and
+  // giving up would fail this document for good (RSDW keeps a rejected chunk and never loads it again).
   function state() {
-    if (c.vendorFile) return Promise.resolve(c);
     return fetch(c.prefix + "boot.json", { cache: "no-store" }).then(function (res) {
-      if (!res.ok) throw new Error("[akan-ssr-dev] the registry is not built yet (" + res.status + ")");
-      return res.json();
+      if (res.ok) return res.json();
+      return wait(res.status === 503 ? 0 : 1000).then(state);
+    }, function () {
+      return wait(1000).then(state);
+    });
+  }
+  // app.js starts the bootstrap, which requires the import map's vendors. A whole build between the render (or
+  // boot.json) and these loads pruned the files it named: ask again what to load.
+  function load(vendors, attempt) {
+    self.__AKAN_SSR_EPOCH__ = built.epoch;
+    return Promise.all([vendors, script(c.prefix + built.vendorFile)]).then(function () {
+      return script(c.prefix + "app.js?g=" + built.generation);
+    }).catch(function (error) {
+      if (attempt >= 3) throw error;
+      return wait(500).then(state).then(function (next) {
+        built = next;
+        return load(vendors, attempt + 1);
+      });
     });
   }
   function boot() {
@@ -35,19 +56,21 @@ export class SsrDevShim {
         var early = self.__AKAN_SSR_EARLY_UPDATES__ || [];
         self.__AKAN_SSR_EARLY_UPDATES__ = null;
         for (var i = 0; i < early.length; i++) self.__akan.hot(early[i]);
-      }).then(state).then(function (built) {
-        self.__AKAN_SSR_EPOCH__ = built.epoch;
-        return Promise.all([
-          Promise.all(c.vendors.map(function (specifier) {
-            return import(specifier).then(function (ns) { self.__akan.provide("vendor:" + specifier, ns); });
-          })),
-          script(c.prefix + built.vendorFile)
-        ]).then(function () { return script(c.prefix + "app.js?g=" + built.generation); }).then(function () {
-          // A patch broadcast before this tab's WebSocket connected reached only hello's generation.
-          var hello = self.__AKAN_SSR_HELLO_GENERATION__;
-          var state = self.__akan.inspect();
-          if (typeof hello === "number" && state.started && !state.failed && state.target < hello) location.reload();
-        });
+        return c.vendorFile ? c : state();
+      }).then(function (current) {
+        built = current;
+        return load(Promise.all(c.vendors.map(function (specifier) {
+          return import(specifier).then(function (ns) { self.__akan.provide("vendor:" + specifier, ns); });
+        })), 0);
+      }).then(function () {
+        // A patch broadcast before this tab's WebSocket connected reached only hello's generation.
+        var hello = self.__AKAN_SSR_HELLO_GENERATION__;
+        if (typeof hello === "number") self.__akan.catchUp(hello, c.prefix);
+      }).catch(function (error) {
+        // What clientScript compares a newer registry against: this document reloads onto one, and only onto one.
+        var failed = built || c;
+        self.__AKAN_SSR_BOOT_FAILED__ = { generation: failed.generation || 0, epoch: failed.epoch };
+        throw error;
       });
     return booting;
   }

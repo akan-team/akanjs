@@ -12,13 +12,15 @@ interface FakeRegistry {
   modules: Map<string, unknown>;
   inspect: () => { generation: number; target: number; started: boolean; failed: boolean };
   hot: (message: unknown) => void;
+  catchUp: (generation: number, prefix: string) => void;
+  caughtUp: [number, string][];
   provide: (id: string, namespace: unknown) => void;
   has: (id: string) => boolean;
   require: (id: string) => unknown;
   whenDefined: (id: string) => Promise<void>;
 }
 
-const createPage = () => {
+const createPage = (pageFetch: typeof fetch = fetch) => {
   const scripts: FakeScript[] = [];
   const baseLoads: string[] = [];
   const baseRequire = Object.assign((id: string) => `base:${id}`, { u: (chunkId: string) => chunkId });
@@ -36,7 +38,7 @@ const createPage = () => {
       },
     },
   };
-  const install = (script: string) => new Function("self", "document", "fetch", script)(self, document, fetch);
+  const install = (script: string) => new Function("self", "document", "fetch", script)(self, document, pageFetch);
   //? The runtime script defines the registry when it runs; later scripts only register into it.
   const load = (index: number) => {
     const script = scripts[index];
@@ -44,10 +46,13 @@ const createPage = () => {
     if (index === 0) {
       const modules = new Map<string, unknown>();
       const waiters = new Map<string, () => void>();
+      const caughtUp: [number, string][] = [];
       const registry: FakeRegistry = {
         modules,
         inspect: () => ({ generation: 7, target: 7, started: true, failed: false }),
         hot: () => undefined,
+        catchUp: (generation, prefix) => caughtUp.push([generation, prefix]),
+        caughtUp,
         provide: (id, namespace) => modules.set(id, namespace),
         has: (id) => modules.has(id),
         require: (id) => modules.get(id),
@@ -111,20 +116,10 @@ describe("SsrDevShim", () => {
     expect(await pending).toEqual({ New: "new" });
   });
 
-  test("a tab whose app.js is behind the generation hello named reloads once it has started", async () => {
+  test("a tab whose app.js is behind the generation hello named catches up once it has started", async () => {
     const page = createPage();
-    let reloads = 0;
-    page.self.location = { reload: () => (reloads += 1) };
     page.self.__AKAN_SSR_HELLO_GENERATION__ = 9;
-    new Function("self", "document", "fetch", "location", SsrDevShim.script(manifest, []))(
-      page.self,
-      {
-        createElement: () => ({ src: "", async: true, onload: null, onerror: null }),
-        head: { appendChild: (s: FakeScript) => page.scripts.push(s) },
-      },
-      fetch,
-      page.self.location,
-    );
+    page.install(SsrDevShim.script(manifest, []));
     const boot = (page.self.__webpack_chunk_load__ as (id: string) => Promise<void>)("ssr-dev");
     page.load(0);
     await page.settle();
@@ -132,8 +127,54 @@ describe("SsrDevShim", () => {
     await page.settle();
     page.load(2);
     await boot;
-    expect(reloads).toBe(1);
+    expect((page.self.__akan as FakeRegistry).caughtUp).toEqual([[9, "/_akan/ssr-dev/"]]);
   });
+
+  test("a page rendered before any registry existed keeps asking for one, and boots from it once it does", async () => {
+    let asked = 0;
+    const booted = { generation: 3, vendorFile: "vendor-new.js", epoch: 99 };
+    const page = createPage((async () => {
+      asked += 1;
+      return asked < 3 ? new Response("Service Unavailable", { status: 503 }) : Response.json(booted);
+    }) as unknown as typeof fetch);
+    page.install(SsrDevShim.script(null, []));
+    const boot = (page.self.__webpack_chunk_load__ as (id: string) => Promise<void>)("ssr-dev");
+    page.load(0);
+    while (page.scripts.length < 2) await page.settle();
+    expect(asked).toBe(3);
+    expect(page.scripts[1]?.src).toBe("/_akan/ssr-dev/vendor-new.js");
+    page.load(1);
+    while (page.scripts.length < 3) await page.settle();
+    expect(page.scripts[2]?.src).toBe("/_akan/ssr-dev/app.js?g=3");
+    page.load(2);
+    await boot;
+    expect(page.self.__AKAN_SSR_EPOCH__).toBe(99);
+  });
+
+  test("a vendor file a whole build pruned is asked for again, and a boot that keeps failing is marked", async () => {
+    const next = { generation: 8, vendorFile: "vendor-next.js", epoch: 43 };
+    const page = createPage((async () => Response.json(next)) as unknown as typeof fetch);
+    page.install(SsrDevShim.script(manifest, []));
+    const boot = (page.self.__webpack_chunk_load__ as (id: string) => Promise<void>)("ssr-dev");
+    page.load(0);
+    const fail = async (index: number) => {
+      while (page.scripts.length <= index) await page.settle();
+      page.scripts[index]?.onerror?.();
+    };
+    await fail(1);
+    while (page.scripts.length < 3) await Bun.sleep(50);
+    expect(page.scripts[2]?.src).toBe("/_akan/ssr-dev/vendor-next.js");
+    await fail(2);
+    await fail(3);
+    await fail(4);
+    expect(
+      await boot.then(
+        () => "booted",
+        () => "failed",
+      ),
+    ).toBe("failed");
+    expect(page.self.__AKAN_SSR_BOOT_FAILED__).toEqual({ generation: 8, epoch: 43 });
+  }, 10_000);
 
   test("updates that arrived before the runtime loaded are handed to it", async () => {
     const page = createPage();

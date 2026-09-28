@@ -83,8 +83,8 @@ export class DevHmrController {
   readonly #builderRpc: BuilderRpc;
   readonly routeCache: RouteClientCache;
   readonly #recentClientEntries = new Set<string>();
-  /** Files whose routes a save invalidated already; their pages build must not drop the rebuilt routes again. */
-  readonly #earlyInvalidated = new Set<string>();
+  /** File to the newest save that invalidated its routes already: that save's pages build must not drop them again. */
+  readonly #earlyInvalidated = new Map<string, number>();
   readonly #clientFileRouteIds = new Map<string, Set<string>>();
   readonly #clientFileEntries = new Map<string, Set<string>>();
   readonly #clientEntryRouteIds = new Map<string, Set<string>>();
@@ -119,6 +119,17 @@ export class DevHmrController {
       // No registry bundle has been built yet.
       return undefined;
     }
+  }
+
+  //? For every hello, not only at boot: a registry build that lands while this backend is still starting reaches it as
+  //? an update the dev host drops, and a tab must still learn which registry and generation are current. The disk is
+  //? never behind what was sent: a manifest is written before its update is announced.
+  refreshRegistryState(): void {
+    const csr = DevHmrController.#readManifest(this.#artifactDir, CSR_DEV_DIRNAME);
+    if (typeof csr?.generation === "number") this.#renderState.csrGeneration = csr.generation;
+    const ssr = DevHmrController.#readManifest(this.#artifactDir, SSR_DEV_DIRNAME);
+    if (typeof ssr?.generation === "number") this.#renderState.ssrGeneration = ssr.generation;
+    if (typeof ssr?.epoch === "number") this.#renderState.ssrEpoch = ssr.epoch;
   }
 
   get hub(): HmrWsHub {
@@ -225,7 +236,9 @@ export class DevHmrController {
         const runtimeMetadataChanged = files.some(isAkanRuntimeMetadataFile);
         const clearAll = routeTreeChanged || runtimeMetadataChanged;
         const lateFiles = files.filter((file) => !this.#earlyInvalidated.has(path.resolve(file)));
-        for (const file of files) this.#earlyInvalidated.delete(path.resolve(file));
+        //? Every save up to this generation is in the bundle, a failed build's included; a newer one keeps its entry.
+        for (const [file, early] of this.#earlyInvalidated)
+          if (generation === undefined || early <= generation) this.#earlyInvalidated.delete(file);
         const staleClientEntries = clearAll ? new Set<string>() : this.#staleClientEntriesForFiles(lateFiles);
         const routeIds = clearAll ? undefined : this.#routeIdsForFiles(files, staleClientEntries);
         this.#logger.verbose(
@@ -351,7 +364,7 @@ export class DevHmrController {
   }
 
   #recordInvalidate(files: string[], kinds: Set<Exclude<ChangeKind, "ignore">>, generation?: number) {
-    if (kinds.has("code")) this.#invalidateClientEntriesEarly(files);
+    if (kinds.has("code")) this.#invalidateClientEntriesEarly(files, generation ?? 0);
     for (const k of kinds) this.#dirty.add(k);
     for (const file of files) this.#dirtyFiles.add(file);
     if (this.#dirty.has("config")) {
@@ -379,10 +392,10 @@ export class DevHmrController {
 
   //? The registry patches a tab long before this save's pages build lands; a page loaded in between must not render
   //? its HTML from client-ssr chunks older than the registry it hydrates with, so its route builds again first.
-  #invalidateClientEntriesEarly(files: string[]): void {
+  #invalidateClientEntriesEarly(files: string[], generation: number): void {
     const staleClientEntries = this.#staleClientEntriesForFiles(files);
     if (staleClientEntries.size === 0) return;
-    for (const file of files) this.#earlyInvalidated.add(path.resolve(file));
+    for (const file of files) this.#earlyInvalidated.set(path.resolve(file), generation);
     const routeIds = this.#routeIdsForFiles(files, staleClientEntries);
     this.routeCache.invalidateClientEntries({
       routePredicate: (routeId) => !routeIds || routeIds.includes(routeId),

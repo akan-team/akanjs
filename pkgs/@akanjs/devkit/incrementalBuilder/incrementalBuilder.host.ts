@@ -173,7 +173,7 @@ export class IncrementalBuilderHost {
     if (afterCrash && !this.#patcherOff) {
       this.#patcherOff = true;
       this.logger.warn(
-        "the builder died while patching a dev module registry; registry saves go to a build worker for the rest of this session (AKAN_DEV_CSR_PATCHER=off)",
+        "the builder died while patching a dev module registry; registry saves go to a build worker until the next config or metadata restart (AKAN_DEV_CSR_PATCHER=off)",
       );
     }
     for (const marker of markers) fs.rmSync(marker, { force: true });

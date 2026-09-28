@@ -294,8 +294,13 @@ class BuildBatch {
     const app = AppExecutor.from(workspace, request.appName);
     // Seeded, not rediscovered: route discovery would be the largest cost of spawning this process.
     if (request.pageKeys) app.setPageKeys(request.pageKeys);
+    //? Exits with the builder that spawned it (a kill, a crash, a restart for a metadata save): left running, it would
+    //? write a registry its replacement is rebuilding. Removed before returning, since the listener keeps Bun's IPC open.
+    const orphaned = () => process.exit(1);
+    process.on("disconnect", orphaned);
     const result = await new BuildBatch(request, app).run();
     process.send?.({ type: "build-batch-result", data: result });
+    process.off("disconnect", orphaned);
   }
 }
 

@@ -1,4 +1,5 @@
 "use client";
+import { registrySharedText } from "@apps/minimal/common";
 import { useContext, useEffect, useState } from "react";
 import { RegistryLabel } from "./RegistryLabel";
 import { RegistryContext } from "./registryContext";
@@ -33,6 +34,7 @@ export const RegistryProbe = ({ className }: RegistryProbeProps) => {
         bump
       </button>
       <RegistryLabel where="client" />
+      <output data-e2e="shared-client">{registrySharedText}</output>
     </section>
   );
 };

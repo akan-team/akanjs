@@ -58,6 +58,8 @@ export interface CsrDevRuntimeApi {
   update(generation: number, factories: Record<string, CsrModuleFactory>): void;
   accept(ownerId: string, deps: string[], callback: CsrAcceptCallback): void;
   hot(message: CsrUpdateMessage): void;
+  /** Loads every patch after the newest generation handed to `hot` up to `generation`, from `<prefix>patch-<n>.js`. */
+  catchUp(generation: number, prefix: string): void;
   toESM(mod: unknown, isNodeMode?: number): unknown;
   reExport(target: object, mod: unknown, secondTarget?: object): object | undefined;
   /** `target` is the newest generation handed to `hot`, applied or still loading. */
@@ -306,6 +308,14 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       this.#target = Math.max(this.#target, message.generation);
       //? The next patch waits for the last one's async accept callbacks, so the route table is never swapped twice at once.
       this.#patchQueue = this.#patchQueue.then(() => this.#loadPatch(url)).then(() => this.#settling);
+    }
+
+    //? For updates sent while the tab had no WebSocket (a backend restart drops them): every patch stays on disk under
+    //? its generation, and a generation that was a reload or a whole build has none, so loading it reloads the tab.
+    catchUp(generation: number, prefix: string) {
+      if (!this.#started) return;
+      for (let next = Math.max(this.#generation, this.#target) + 1; next <= generation; next += 1)
+        this.hot({ generation: next, url: `${prefix}patch-${next}.js` });
     }
 
     inspect() {

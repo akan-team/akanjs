@@ -31,7 +31,6 @@ const makeWriter = async (
   const dir = await mkdtemp(path.join(os.tmpdir(), "akan-csr-dev-writer-"));
   dirs.push(dir);
   const writer = new CsrDevArtifactWriter(dir, options);
-  await writer.reset();
   const graph: CsrDevGraph = {
     version: 1,
     configKey: "key",
@@ -104,5 +103,25 @@ describe("CsrDevArtifactWriter", () => {
       '__akan.startLibrary({"generation":2,"refresh":"refresh.js","bootstrap":"boot.ts"});',
     );
     expect(await writer.writePatch(3, [module])).toBe("/_akan/ssr-dev/patch-3.js");
+  });
+
+  test("after a whole build, clears what the registry before it left and keeps what the build wrote", async () => {
+    const { writer, graph, dir } = await makeWriter();
+    const gone = { ...module, id: "gone.ts" };
+    await writer.writeModules([gone]);
+    await writer.writePatch(7, [module]);
+    await Bun.write(path.join(dir, "assets/old-abc.png"), "old");
+    await Bun.write(path.join(dir, ".patching"), "123");
+    const startedAt = Date.now() + 5;
+    await Bun.sleep(10);
+    await Bun.write(path.join(dir, "assets/new-def.png"), "new");
+    await writer.pruneAfterFullBuild(graph, "vendor-a.js", { generation: 8, startedAt });
+    expect(existsSync(path.join(dir, csrDevModuleFile("a.ts", ".js")))).toBe(true);
+    expect(existsSync(path.join(dir, csrDevModuleFile("gone.ts", ".js")))).toBe(false);
+    expect(existsSync(path.join(dir, "patch-7.js"))).toBe(false);
+    expect(existsSync(path.join(dir, "patch-7.js.layout.json"))).toBe(false);
+    expect(existsSync(path.join(dir, "assets/old-abc.png"))).toBe(false);
+    expect(existsSync(path.join(dir, "assets/new-def.png"))).toBe(true);
+    expect(existsSync(path.join(dir, ".patching"))).toBe(false);
   });
 });

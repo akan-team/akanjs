@@ -20,6 +20,8 @@ export interface CsrDevResolverOptions {
   context: CsrDevContext;
   entryFiles: string[];
   resolution?: Record<string, Record<string, string>>;
+  /** Specifiers per importer id whose recorded resolution came from Bun's runtime resolver, not the browser build. */
+  runtimeResolved?: Record<string, string[]>;
 }
 
 //* Resolution comes from a plain browser build: Bun's runtime resolver ignores the `browser` condition and picks Node
@@ -31,12 +33,15 @@ export class CsrDevResolver {
   readonly #entryFiles: string[];
   readonly #resolution = new Map<string, Map<string, string>>();
   readonly #fallbacks = new Set<string>();
+  readonly #runtimeResolved = new Map<string, Set<string>>();
   #prepassDone = false;
 
-  constructor({ paths, context, entryFiles, resolution = {} }: CsrDevResolverOptions) {
+  constructor({ paths, context, entryFiles, resolution = {}, runtimeResolved = {} }: CsrDevResolverOptions) {
     this.#paths = paths;
     this.#context = context;
     this.#entryFiles = entryFiles;
+    for (const [importer, specifiers] of Object.entries(runtimeResolved))
+      this.#runtimeResolved.set(paths.fileOf(importer), new Set(specifiers));
     for (const [importer, bySpecifier] of Object.entries(resolution))
       this.#resolution.set(
         paths.fileOf(importer),
@@ -106,6 +111,12 @@ export class CsrDevResolver {
     });
   }
 
+  serializeRuntimeResolved(): Record<string, string[]> {
+    return Object.fromEntries(
+      [...this.#runtimeResolved].map(([importer, specifiers]) => [this.#paths.idOf(importer), [...specifiers].sort()]),
+    );
+  }
+
   serialize(): Record<string, Record<string, string>> {
     return Object.fromEntries(
       [...this.#resolution].map(([importer, bySpecifier]) => [
@@ -128,22 +139,30 @@ export class CsrDevResolver {
     if (!relative) {
       const sibling = this.#resolvedBySibling(importer, specifier);
       if (sibling) return sibling;
-      if (!this.#prepassDone) return null;
+      //? A specifier no resolver finds in the user's own code is a typo, failed here like a missing relative file: the
+      //? resolution build a worker would run for it fails the same way. A package's `browser` field may map one away.
+      const typo = !CsrDevPaths.isVendorFile(importer) && !CsrDevPaths.tryResolve(specifier, path.dirname(importer));
+      if (!this.#prepassDone && !typo) return null;
     }
     const resolved = CsrDevPaths.tryResolve(specifier, path.dirname(importer));
     if (!resolved) throw new Error(`[csr-dev] cannot resolve "${specifier}" from ${this.#paths.idOf(importer)}`);
     if (!path.isAbsolute(resolved)) return `${CsrDevPaths.stubPrefix}${specifier}`;
-    if (!relative) this.#fallbacks.add(specifier);
+    if (!relative) {
+      this.#fallbacks.add(specifier);
+      this.#runtimeResolved.set(importer, (this.#runtimeResolved.get(importer) ?? new Set<string>()).add(specifier));
+    }
     return CsrDevPaths.realpath(resolved);
   }
 
   //? The browser build tree-shakes the unused re-exports of a side-effect-free barrel, so their imports have no
   //? recorded resolution; a file of the same package resolves a bare specifier to the same target, conditions included.
+  //? Not one the runtime resolver found: it ignores the `browser` condition the prepass exists to honour.
   #resolvedBySibling(importer: string, specifier: string): string | null {
     const scope = CsrDevResolver.#packageScopeOf(importer);
     for (const [other, bySpecifier] of this.#resolution) {
       const target = bySpecifier.get(specifier);
-      if (target && CsrDevResolver.#packageScopeOf(other) === scope) return target;
+      if (!target || this.#runtimeResolved.get(other)?.has(specifier)) continue;
+      if (CsrDevResolver.#packageScopeOf(other) === scope) return target;
     }
     return null;
   }

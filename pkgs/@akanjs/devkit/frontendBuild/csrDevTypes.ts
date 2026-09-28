@@ -15,7 +15,11 @@ export interface CsrDevGraph {
   entries: Record<string, string>;
   modules: Record<string, CsrDevGraphModule>;
   resolution: Record<string, Record<string, string>>;
+  /** Specifiers per importer id `resolution` holds from Bun's runtime resolver rather than the browser build. */
+  runtimeResolved?: Record<string, string[]>;
   pending: string[];
+  /** The stamp of the signal and dictionary sources the last whole build inlined; see `RegistryMetadataFingerprint`. */
+  metadata?: string;
 }
 
 export interface CsrDevContext {

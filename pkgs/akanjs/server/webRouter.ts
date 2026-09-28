@@ -724,6 +724,9 @@ export class WebRouter {
     };
     return { renderEnvRoutes, hmrHub: this.#hub, builderRpc: this.#builderRpc };
   }
+  refreshHmrState(): void {
+    this.#devHmr?.refreshRegistryState();
+  }
   dispose() {
     this.#devHmr?.dispose();
     this.#devHmr = null;

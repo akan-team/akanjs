@@ -81,6 +81,8 @@ class IncrementalBuilder {
   readonly #delegations = new Map<string, number>();
   /** The boot build of the SSR registry while it runs; it holds every entry the routes reach once it lands. */
   #ssrArming: Promise<void> | null = null;
+  /** The save generation a build worker last failed to update ssr-dev at: until a newer save, it would fail again. */
+  #ssrFailedAt: number | null = null;
   //* Two lanes: a save's codegen and CSR patch in the fast one, which the watcher waits for; build workers, route
   //* builds and discovery in the slow one, which folds queued batches. A save no longer waits behind pages and css.
   #fastQueue: Promise<void> = Promise.resolve();
@@ -144,7 +146,7 @@ class IncrementalBuilder {
         discovery: this.#discovery,
         browser: "registry",
       }).build();
-      await this.#ensureSsrEntries(delta.registryEntries ?? [], msg.generation);
+      await this.#ensureSsrEntries(delta.registryEntries ?? []);
       this.#logger.verbose(`build-route ok routeId=${msg.routeId} newEntries=${delta.newEntries.length}`);
       this.#sendBuildStatus("route", { generation: msg.generation, ok: true, files: msg.seeds });
       return {
@@ -493,21 +495,23 @@ class IncrementalBuilder {
   }
 
   // A route build answers only once the registry holds every entry its rows name: the tab requires them by id.
-  async #ensureSsrEntries(entries: string[], generation?: number): Promise<void> {
+  async #ensureSsrEntries(entries: string[]): Promise<void> {
     if (entries.length === 0) return;
     //? The boot build takes every entry the routes reach, so the first page answers now and its tab waits for the
     //? registry (boot.json) instead; whatever that build missed is added right after it lands.
     const arming = this.#ssrArming;
     if (arming) {
-      void arming
-        .then(async () => await this.#ensureSsrEntries(entries, generation))
-        .catch(this.#slowLaneFailed("ssr-ensure"));
+      void arming.then(async () => await this.#ensureSsrEntries(entries)).catch(this.#slowLaneFailed("ssr-ensure"));
       return;
     }
     await this.#withSsrLock(async () => {
       if (this.#ssrPatcher && !(await this.#runSsrPatcher(this.#ssrPatcher, [], { roots: entries, onlyRoots: true })))
         return;
-      await this.#runSsrWorker(generation ?? this.#generation);
+      //? Not retried per route build: the page answers, its tab waits for the registry, and the save that fixes the
+      //? error rebuilds it, where each route build retrying held the SSR lock that save's patch waits on.
+      if (this.#ssrFailedAt === this.#generation) return;
+      // The builder's generation, not the request's: the worker's build-status joins the saves' `ssr` ones.
+      await this.#runSsrWorker(this.#generation);
     });
   }
 
@@ -562,7 +566,12 @@ class IncrementalBuilder {
   async #runSsrWorker(generation: number): Promise<void> {
     const result = await this.#runBatch({ generation, needs: ["ssr"], changedFiles: [] });
     this.#ssrPatcher?.forget();
+    this.#noteSsrWorker(result);
     if (result.errors.ssr) throw new Error(result.errors.ssr);
+  }
+
+  #noteSsrWorker(result: BuildBatchResult): void {
+    this.#ssrFailedAt = result.errors.ssr ? this.#generation : null;
   }
 
   async #runSsrPatcher(
@@ -632,7 +641,8 @@ class IncrementalBuilder {
   async #runQueuedBatch({ discovery, ...work }: BatchJob): Promise<void> {
     if (discovery) await this.#refreshDiscovery(discovery);
     // A worker writing ssr-dev must not overlap the boot build, which no longer runs in this lane.
-    if (work.needs.includes("ssr")) await this.#withSsrLock(async () => await this.#runBatch(work));
+    if (work.needs.includes("ssr"))
+      await this.#withSsrLock(async () => this.#noteSsrWorker(await this.#runBatch(work)));
     else await this.#runBatch(work);
   }
 

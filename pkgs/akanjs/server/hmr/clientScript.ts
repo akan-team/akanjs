@@ -1,3 +1,4 @@
+import { SSR_DEV_ROUTE_PREFIX } from "./csrDevManifest";
 import { isSyncNavigationEnabled } from "./wsHub";
 
 // A classic inline script that runs before any module script, so it stays dependency-free. swapCss must drop both the
@@ -69,20 +70,24 @@ export const HMR_CLIENT_SCRIPT = `(function(){
           if (csrGenerationMoved(msg.csrGeneration)) reloadForUpdate("missed a CSR update while disconnected");
           return;
         }
-        if (lastBuildId !== null && msg.buildId !== lastBuildId) {
-          location.reload();
+        if (systemPage) {
+          if (lastBuildId !== null && msg.buildId !== lastBuildId) location.reload();
+          lastBuildId = msg.buildId;
           return;
         }
         if (ssrRegistryReplaced(msg.ssrEpoch)) {
           reloadForUpdate("the dev server rebuilt the SSR registry while this tab held the previous one");
           return;
         }
-        if (typeof msg.ssrGeneration === "number") self.__AKAN_SSR_HELLO_GENERATION__ = msg.ssrGeneration;
-        if (ssrRegistryBehind(msg.ssrGeneration)) {
-          reloadForUpdate("missed an SSR registry update while disconnected");
+        if (ssrBootFailedBefore(msg.ssrGeneration, msg.ssrEpoch)) {
+          reloadForUpdate("the SSR registry this tab failed to load was rebuilt");
           return;
         }
-        lastBuildId = msg.buildId;
+        if (typeof msg.ssrGeneration === "number") self.__AKAN_SSR_HELLO_GENERATION__ = msg.ssrGeneration;
+        catchUpSsrRegistry(msg.ssrGeneration);
+        // A restarted backend dropped whatever was sent meanwhile: the patches just caught up, then the refresh.
+        if (lastBuildId !== null && msg.buildId !== lastBuildId) refreshRsc({ buildId: msg.buildId });
+        else lastBuildId = msg.buildId;
         return;
       }
       if (msg.type === "reload") {
@@ -173,11 +178,17 @@ export const HMR_CLIENT_SCRIPT = `(function(){
   }
 
   // Behind only, counting patches still loading: a tab that booted from an app.js newer than the last update sent is
-  // ahead, not stale. A registry that has not started compares in the shim, once it has.
-  function ssrRegistryBehind(generation){
-    if (typeof generation !== "number" || !self.__akan || typeof self.__akan.inspect !== "function") return false;
-    var state = self.__akan.inspect();
-    return state.started && !state.failed && state.target < generation;
+  // ahead, not stale. A registry that has not started catches up in the shim, once it has.
+  function catchUpSsrRegistry(generation){
+    var registry = self.__akan;
+    if (typeof generation !== "number" || !registry || typeof registry.catchUp !== "function") return;
+    if (registry.inspect().target < generation) registry.catchUp(generation, ${JSON.stringify(SSR_DEV_ROUTE_PREFIX)});
+  }
+
+  function ssrBootFailedBefore(generation, epoch){
+    var failed = self.__AKAN_SSR_BOOT_FAILED__;
+    if (!failed || typeof generation !== "number") return false;
+    return generation > failed.generation || (typeof epoch === "number" && typeof failed.epoch === "number" && epoch !== failed.epoch);
   }
 
   // An SSR page in registry mode. One that has not loaded its registry yet keeps the update for the registry's start.
@@ -185,6 +196,10 @@ export const HMR_CLIENT_SCRIPT = `(function(){
     recordTrace("ssr", msg, Date.now(), null);
     if (systemPage) {
       reloadForUpdate("a save changed the client code of the page that failed to render");
+      return;
+    }
+    if (ssrBootFailedBefore(msg.generation)) {
+      reloadForUpdate("the SSR registry this tab failed to load was updated");
       return;
     }
     // Directly: a registry whose app.js never started would only queue it.

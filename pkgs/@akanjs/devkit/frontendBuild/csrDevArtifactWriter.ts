@@ -4,6 +4,7 @@ import {
   appGenerationOf,
   CSR_DEV_APP_FILE,
   CSR_DEV_MANIFEST_FILE,
+  CSR_DEV_PATCHING_MARKER,
   type CsrDevLayout,
   type CsrDevManifest,
   csrDevModuleFile,
@@ -30,11 +31,6 @@ export class CsrDevArtifactWriter {
     this.#outDir = outDir;
     this.#routePrefix = routePrefix;
     this.#library = library;
-  }
-
-  async reset(): Promise<void> {
-    await rm(this.#outDir, { recursive: true, force: true });
-    await mkdir(path.join(this.#outDir, "modules"), { recursive: true });
   }
 
   async readJson<T>(name: string): Promise<T | null> {
@@ -174,6 +170,38 @@ export class CsrDevArtifactWriter {
       .slice(CsrDevArtifactWriter.#keptVendors - 1)
       .map(({ name }) => name);
     await Promise.all([...stale, ...vendors].map((name) => rm(path.join(this.#outDir, name), { force: true })));
+  }
+
+  //? A whole build writes over the registry before it instead of clearing it first, so it clears what that one left:
+  //? the modules and helpers it no longer holds, every patch (each was made against the previous registry), the assets
+  //? no module wrote this time, temp files of a write cut short, and the marker of a builder that died mid-patch.
+  async pruneAfterFullBuild(
+    graph: CsrDevGraph,
+    vendorFile: string,
+    { generation, startedAt }: { generation: number; startedAt: number },
+  ): Promise<void> {
+    const kept = new Set(
+      Object.keys(graph.modules).flatMap((id) => [this.#modulePath(id, ".js"), this.#modulePath(id, ".js.map")]),
+    );
+    for (const module of Object.values(graph.modules)) if (module.helpers) kept.add(this.#helpersPath(module.helpers));
+    const listed = async (dir: string) =>
+      (await readdir(path.join(this.#outDir, dir)).catch(() => [] as string[])).map((name) =>
+        path.join(this.#outDir, dir, name),
+      );
+    const stale = [
+      ...(await listed("modules")).filter((file) => !kept.has(file)),
+      ...(await listed("assets")).filter((file) => CsrDevPaths.mtimeOf(file) < startedAt),
+      ...(await listed(".")).filter((file) => {
+        const name = path.basename(file);
+        return (
+          /^patch-\d+\.js(?:\.layout\.json)?$/.test(name) ||
+          (name.endsWith(".tmp") && CsrDevPaths.mtimeOf(file) < startedAt)
+        );
+      }),
+      path.join(this.#outDir, CSR_DEV_PATCHING_MARKER),
+    ];
+    await Promise.all(stale.map((file) => rm(file, { force: true })));
+    await this.prune(vendorFile, generation);
   }
 
   async #helperDefinitions(graph: CsrDevGraph, ids: string[], code?: CsrDevCode): Promise<string> {

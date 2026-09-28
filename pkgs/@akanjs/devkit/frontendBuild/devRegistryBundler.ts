@@ -1,4 +1,6 @@
+import fs from "node:fs";
 import path from "node:path";
+import { isAkanRuntimeMetadataFile } from "akanjs/server/hmr/runtimeMetadataFile";
 import type { App } from "../commandDecorators";
 import { CsrDevArtifactWriter } from "./csrDevArtifactWriter";
 import { CsrDevModuleCompiler } from "./csrDevModuleCompiler";
@@ -6,6 +8,8 @@ import { CsrDevPatcher } from "./csrDevPatcher";
 import { CsrDevPaths } from "./csrDevPaths";
 import { CsrDevResolver } from "./csrDevResolver";
 import type { CsrDevCompiledModule, CsrDevContext, CsrDevGraph } from "./csrDevTypes";
+import { RegistryMetadataFingerprint } from "./registryMetadataFingerprint";
+import { WatchRootResolver } from "./watchRootResolver";
 
 export interface CsrDevUpdate {
   generation: number;
@@ -77,8 +81,28 @@ export abstract class DevRegistryBundler {
     return update;
   }
 
+  /** A save of one goes to a whole build: `lib/useClient.ts` inlines what they declare through macros. */
+  isMetadataFile(file: string): boolean {
+    return isAkanRuntimeMetadataFile(file);
+  }
+
+  async metadataFingerprint(): Promise<string> {
+    const libsContainer = path.resolve(this.app.workspace.workspaceRoot, "libs");
+    const roots = await new WatchRootResolver(this.app).resolve();
+    // The whole container comes back when the lib dependencies are unknown (before the first sync).
+    const libRoots = roots.includes(libsContainer)
+      ? fs.readdirSync(libsContainer).map((name) => path.join(libsContainer, name))
+      : roots.filter((root) => path.dirname(root) === libsContainer);
+    return await RegistryMetadataFingerprint.of([path.resolve(this.app.cwdPath), ...libRoots], (file) =>
+      this.isMetadataFile(file),
+    );
+  }
+
+  //? Compiled before anything is written: a build that fails (a module the user broke) leaves the registry the tabs
+  //? and the next patch read as it was, where clearing the directory first left no registry at all.
   async fullBuild(context: CsrDevContext, generation: number, reason: string): Promise<CsrDevUpdate> {
-    await this.writer.reset();
+    const startedAt = Date.now();
+    const metadata = await this.metadataFingerprint();
     const entries = await this.writeEntries(context);
     const roots = await this.rootFiles(Object.values(entries.files));
     const resolver = new CsrDevResolver({ paths: this.paths, context, entryFiles: roots });
@@ -97,6 +121,7 @@ export abstract class DevRegistryBundler {
       modules: {},
       resolution: {},
       pending: [],
+      metadata,
     };
     this.merge(graph, resolver, compiled);
     await this.writer.writeModules(compiled);
@@ -104,7 +129,7 @@ export abstract class DevRegistryBundler {
     await this.writer.writeApp(graph, generation);
     const epoch = Date.now();
     await this.writer.writeState(graph, { version: 1, generation, vendorFile, entries: graph.entries, epoch });
-    await this.writer.prune(vendorFile, generation);
+    await this.writer.pruneAfterFullBuild(graph, vendorFile, { generation, startedAt });
     return { generation, reload: true, reason, changedIds: [], moduleCount: Object.keys(graph.modules).length, epoch };
   }
 
@@ -130,6 +155,7 @@ export abstract class DevRegistryBundler {
       };
     graph.pending = [];
     graph.resolution = resolver.serialize();
+    graph.runtimeResolved = resolver.serializeRuntimeResolved();
   }
 
   entryIds(files: Record<string, string>): Record<string, string> {

@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { appGenerationOf, CSR_DEV_MANIFEST_FILE, type CsrDevManifest } from "akanjs/server/hmr/csrDevManifest";
-import { isAkanRuntimeMetadataFile } from "akanjs/server/hmr/runtimeMetadataFile";
 import type { CsrDevCompileResult } from "./csrDevModuleCompiler";
 import { CsrDevPaths } from "./csrDevPaths";
 import { CsrDevResolver } from "./csrDevResolver";
@@ -53,7 +52,8 @@ export class CsrDevPatcher {
   ): Promise<CsrDevPatchResult> {
     const context = await this.#bundler.context();
     if (!context) return { kind: "unchanged" };
-    const state = this.#state ?? (await this.#load());
+    const resident = this.#state;
+    const state = resident ?? (await this.#load());
     if (!state) {
       const manifest = await this.#bundler.writer.readJson<CsrDevManifest>(CSR_DEV_MANIFEST_FILE);
       const reason = manifest ? "the dev bundle config changed" : "first build";
@@ -62,9 +62,12 @@ export class CsrDevPatcher {
     const generation = state.manifest.generation + 1;
     if (state.graph.configKey !== context.configKey)
       return this.#handBack("the dev bundle config changed", generation, context);
-    const metadataFile = changedFiles.find(isAkanRuntimeMetadataFile);
+    const metadataFile = changedFiles.find((file) => this.#bundler.isMetadataFile(file));
     // `lib/useClient.ts` inlines signal and dictionary metadata through a macro at build time.
     if (metadataFile) return this.#handBack(`${path.basename(metadataFile)} changed`, generation, context);
+    //? Only a registry read from disk: one held in memory saw every save since, and a metadata save was handed back.
+    if (!resident && state.graph.metadata !== (await this.#bundler.metadataFingerprint()))
+      return this.#handBack("signal or dictionary metadata changed since the registry was built", generation, context);
     this.#state = this.#resident ? state : null;
     if (appGenerationOf(state.manifest) < state.manifest.generation)
       state.manifest = await this.#bundler.writer.healApp(state.graph, state.manifest, await this.#code(state));
@@ -104,6 +107,7 @@ export class CsrDevPatcher {
       context,
       entryFiles: rootFiles.map((file) => CsrDevPaths.realpath(file)),
       resolution: graph.resolution,
+      runtimeResolved: graph.runtimeResolved,
     });
     const known = new Set(Object.keys(graph.modules).map((id) => paths.fileOf(id)));
     let result: CsrDevCompileResult;

@@ -6,8 +6,8 @@
 fix(dev): the SSR dev registry recovers from failed builds and startups, and keeps a save's order through a build worker
 
 - A save that creates the module a failed server import was waiting for now refreshes the page: a failed pages build
-  clears what the dev server knew about the server graph, and a file the next build reads for the first time counts
-  as a server change.
+  carries its saved files over to the next one, and a file the next build reads for the first time counts as a server
+  change.
 - A client-side startup error (a store that throws in the browser) no longer leaves the tab deaf: the next update
   reloads it onto the fixed code. A registry reload now reaches a tab whose registry never started, and the dev
   server's error page carries the HMR client, so a server error page reloads once the save that fixes it lands.

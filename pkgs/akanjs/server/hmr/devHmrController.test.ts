@@ -266,6 +266,32 @@ describe("DevHmrController SSR registry updates", () => {
   });
 });
 
+describe("DevHmrController registry state for hello", () => {
+  test("reads the registries on disk, so a build this backend never heard of still reaches a reconnecting tab", async () => {
+    const originalSend = process.send;
+    process.send = ((): boolean => true) as typeof process.send;
+    const artifactDir = await artifactDirWith({ entries: [], globalLayoutFiles: [] });
+    const renderState: RenderState = { buildId: 0, cssAssets: {}, cssBytesByUrl: {} };
+    const controller = new DevHmrController({
+      artifactDir,
+      renderState,
+      rsc: { reload: async () => undefined, updateCssAssets: () => undefined } as unknown as RscWorker,
+      seedIndex: { entries: [], globalLayoutFiles: [] },
+      upgradeHmrWs: () => true,
+    });
+    try {
+      expect(renderState.ssrGeneration).toBeUndefined();
+      await Bun.write(path.join(artifactDir, "ssr-dev/manifest.json"), JSON.stringify({ generation: 7, epoch: 3 }));
+      await Bun.write(path.join(artifactDir, "csr-dev/manifest.json"), JSON.stringify({ generation: 2 }));
+      controller.refreshRegistryState();
+      expect(renderState).toMatchObject({ ssrGeneration: 7, ssrEpoch: 3, csrGeneration: 2 });
+    } finally {
+      controller.dispose();
+      process.send = originalSend;
+    }
+  });
+});
+
 describe("DevHmrController route ensure", () => {
   test("builds the nearest layout route for a path only a route prefix matches", async () => {
     const originalSend = process.send;

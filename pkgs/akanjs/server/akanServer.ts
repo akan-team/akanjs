@@ -380,7 +380,7 @@ export class AkanServer {
         registry: this.#di.registry,
         live: this.#di.live,
         hmrHub,
-        hmrState: webRouter ? { state: webRouter.renderState } : null,
+        hmrState: webRouter ? { state: webRouter.renderState, refresh: () => webRouter.refreshHmrState() } : null,
         logger: this.logger,
         onDrain: () => this.#binaryPubsub.flush(),
       }),

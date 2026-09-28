@@ -17,6 +17,8 @@ export interface HmrStateSource {
     ssrGeneration?: number;
     ssrEpoch?: number;
   };
+  /** Called before each hello: brings what the state says about the dev registries up to what is on disk. */
+  refresh?: () => void;
 }
 
 export type NonNullHttpRoutes = NonNullable<HttpRoutes>;
@@ -102,6 +104,7 @@ export class ApiRouter {
         const data = ws.data as WsTaggedData | undefined;
         if (data?.kind === "akan-hmr" && hmrHub && hmrState) {
           hmrHub.attach(ws as unknown as Bun.ServerWebSocket<HmrWsData>);
+          hmrState.refresh?.();
           ws.send(
             JSON.stringify({
               type: "hello",

@@ -526,6 +526,32 @@ describe("installCsrDevRuntime", () => {
       expect(harness.reloads).toBe(1);
     });
 
+    test("catching up loads each missed generation's patch in order, from after the newest one handed over", async () => {
+      const harness = createHarness({ "app/boot.ts": () => undefined });
+      harness.api.catchUp(5, "/_akan/ssr-dev/");
+      expect(harness.api.inspect().target).toBe(0);
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" });
+      harness.api.hot({ generation: 3, url: "/_akan/ssr-dev/patch-3.js" });
+      harness.api.catchUp(5, "/_akan/ssr-dev/");
+      harness.api.catchUp(5, "/_akan/ssr-dev/");
+      expect(harness.api.inspect().target).toBe(5);
+      const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+      await settle();
+      for (const generation of [3, 4, 5]) {
+        harness.api.update(generation, {});
+        harness.scripts.at(-1)?.onload?.();
+        await settle();
+      }
+      expect(harness.scripts.map((script) => script.src)).toEqual([
+        "/_akan/ssr-dev/patch-3.js",
+        "/_akan/ssr-dev/patch-4.js",
+        "/_akan/ssr-dev/patch-5.js",
+      ]);
+      expect(harness.api.generation).toBe(5);
+      expect(harness.reloads).toBe(0);
+    });
+
     test("an update that arrives before the start waits for it, and one the app already holds is dropped", async () => {
       const harness = createHarness({ "app/boot.ts": () => undefined });
       harness.api.hot({ generation: 2, url: "/_akan/ssr-dev/patch-2.js" });

@@ -13,7 +13,36 @@ const serverPartFile = uiFile("RegistryServerPart.tsx");
 const pageFile = path.join(workspaceRoot, "apps/minimal/page/(home)/e2e/registry.tsx");
 const storeFile = path.join(workspaceRoot, "apps/minimal/lib/_minimal/minimal.store.ts");
 const valueFile = uiFile("registryValue.constant.ts");
+//? Read only by client code (the probe), so breaking it fails the registry's builds and no server bundle.
+const contextFile = uiFile("registryContext.ts");
+const registryManifest = path.join(workspaceRoot, "apps/minimal/.akan/artifact/ssr-dev/manifest.json");
+const sharedFile = path.join(workspaceRoot, "apps/minimal/common/registrySharedText.ts");
+const signalFile = path.join(workspaceRoot, "apps/minimal/lib/_minimal/minimal.signal.ts");
+const workerEntry = path.join(workspaceRoot, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts");
 const port = Number(process.env.AKAN_CSR_E2E_SSR_REGISTRY_PORT ?? 8494);
+
+//? Build workers of this workspace that outlived the builder that spawned them (reparented to init), sampled until
+//? stopped: one left running would keep writing a registry the replacement builder is rebuilding. Seen twice, so a
+//? worker caught in the moment between its builder's exit and its own is not counted.
+const sampleOrphanWorkers = () => {
+  const seen = new Map<string, number>();
+  let sampling = true;
+  const loop = (async () => {
+    while (sampling) {
+      const listing = Bun.spawnSync(["ps", "-axo", "pid=,ppid=,command="]).stdout.toString();
+      for (const line of listing.split("\n")) {
+        const [pid, ppid] = line.trim().split(/\s+/);
+        if (ppid === "1" && pid && line.includes(workerEntry)) seen.set(pid, (seen.get(pid) ?? 0) + 1);
+      }
+      await Bun.sleep(200);
+    }
+  })();
+  return async () => {
+    sampling = false;
+    await loop;
+    return [...seen].filter(([, count]) => count > 1).map(([pid]) => pid);
+  };
+};
 
 interface RegistryWindow {
   __akan?: { generation: number; inspect(): { started: boolean; failed: boolean } };
@@ -311,7 +340,7 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
     await pageRecovered();
   }, 120_000);
 
-  test("a constant both copies render reaches the server and the client copy", async () => {
+  test("a constant both copies render reaches the server and the client copy, in one reload", async () => {
     await open();
     await ssr.editSource(
       valueFile,
@@ -325,6 +354,14 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
           );
         const html = await fetch(new URL("/en/e2e/registry", ssr.origin)).then((res) => res.text());
         expect(html).toContain('data-e2e-value="value-1"');
+        expect(await ssr.reloaded()).toBe(true);
+        await ssr.evaluate(() => {
+          (window as unknown as { __akanE2eAfterReload?: boolean }).__akanE2eAfterReload = true;
+        });
+        await Bun.sleep(3_000);
+        expect(
+          await ssr.evaluate(() => (window as unknown as { __akanE2eAfterReload?: boolean }).__akanE2eAfterReload),
+        ).toBe(true);
       },
     );
     for (const where of ["server", "client"])
@@ -335,6 +372,88 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
       );
     await pageRecovered();
   }, 150_000);
+
+  test("a common/ helper both copies render patches the client and refreshes the server across a backend restart", async () => {
+    await open();
+    await ssr.evaluate(() => document.querySelector<HTMLButtonElement>('[data-e2e="bump"]')?.click());
+    await textIs('[data-e2e="count"]', "1");
+    await ssr.editSource(
+      sharedFile,
+      (source) => source.replace("shared-0", "shared-1"),
+      async () => {
+        await textIs('[data-e2e="shared-client"]', "shared-1");
+        await textIs('[data-e2e="shared-server"]', "shared-1");
+      },
+    );
+    await textIs('[data-e2e="shared-client"]', "shared-0");
+    await textIs('[data-e2e="shared-server"]', "shared-0");
+    expect(await ssr.evaluate(() => document.querySelector('[data-e2e="count"]')?.textContent)).toBe("1");
+    expect(await ssr.reloaded()).toBe(false);
+  }, 150_000);
+
+  const fetchHas = async (endpoint: string) =>
+    await ssr
+      .evaluate((name: string) => {
+        const runtime = (globalThis as unknown as Record<symbol, { runtime?: { fetch?: Record<string, unknown> } }>)[
+          Symbol.for("akanjs.client.runtime")
+        ];
+        return typeof runtime?.runtime?.fetch?.[name] === "function";
+      }, endpoint)
+      .catch(() => false);
+  //? A tab opened after the restart a metadata save causes: reopened until the dev server is back with the registry
+  //? its builder rebuilt, since the one before stays served until that build lands.
+  const reopenUntil = async (check: () => Promise<boolean>, timeout = 120_000) => {
+    const deadline = Date.now() + timeout;
+    while (!(await ssr.open(REGISTRY, { csr: false }).then(check, () => false))) {
+      if (Date.now() > deadline) throw new Error("[ssr-registry-e2e] the registry never took the metadata save");
+      await Bun.sleep(1_000);
+    }
+  };
+
+  const addEndpoint = (source: string) =>
+    source.replace(
+      "  benchPing: query(",
+      '  e2eRegistryPing: query(String, { guards: [Public], mcp: false }).exec(() => "pong"),\n  benchPing: query(',
+    );
+
+  test("a signal save restarts the builder, and a tab opened afterwards has the new endpoint", async () => {
+    await open();
+    const orphans = sampleOrphanWorkers();
+    //? The component save first keeps the slow lane busy, so the restart lands while a batch is in flight.
+    await ssr.editSource(probeFile, markProbe, async () => {
+      await Bun.sleep(200);
+      await ssr.editSource(signalFile, addEndpoint, async () => {
+        await reopenUntil(async () => await fetchHas("e2eRegistryPing"));
+      });
+    });
+    await reopenUntil(async () => !(await fetchHas("e2eRegistryPing")) && (await fetchHas("benchPing")));
+    expect(await orphans()).toEqual([]);
+  }, 300_000);
+
+  test("a whole build that fails on a broken client module keeps the registry, and the fix brings the endpoint", async () => {
+    await open();
+    const { epoch } = (await Bun.file(registryManifest).json()) as { epoch: number };
+    await ssr.editSource(
+      contextFile,
+      (source) => `${source}\nexport const registryBroken = ;\n`,
+      async () => {
+        await ssr.waitFor(() => document.querySelector(".__akan_hmr_overlay[data-status=error]") !== null, {
+          timeout: 20_000,
+        });
+        await ssr.editSource(signalFile, addEndpoint, async () => {
+          //? Time for the restart and the replacement builder's whole build, which fails on the broken module.
+          await Bun.sleep(8_000);
+          expect(((await Bun.file(registryManifest).json()) as { epoch: number }).epoch).toBe(epoch);
+          await Bun.write(
+            contextFile,
+            (await Bun.file(contextFile).text()).replace("\nexport const registryBroken = ;\n", ""),
+          );
+          await reopenUntil(async () => await fetchHas("e2eRegistryPing"));
+        });
+      },
+    );
+    await reopenUntil(async () => !(await fetchHas("e2eRegistryPing")) && (await fetchHas("benchPing")));
+  }, 300_000);
 
   test("a build error shows the overlay, and the fix patches the page without a reload", async () => {
     await open();

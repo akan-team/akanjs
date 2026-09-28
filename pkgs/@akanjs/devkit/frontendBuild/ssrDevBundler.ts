@@ -45,6 +45,12 @@ export class SsrDevBundler extends DevRegistryBundler {
     };
   }
 
+  //? The client runtime of an SSR page inlines no dictionary (`useClient.ts` reads one only when rendering csr), so
+  //? a dictionary save is none of this registry's business.
+  override isMetadataFile(file: string): boolean {
+    return super.isMetadataFile(file) && !file.endsWith(".dictionary.ts") && path.basename(file) !== "dict.ts";
+  }
+
   // Run first in the tab, before any client module the payload names: the store registry must exist by then.
   async writeEntries(): Promise<{ files: Record<string, string>; changed: string[] }> {
     await mkdir(this.entryDir, { recursive: true });
