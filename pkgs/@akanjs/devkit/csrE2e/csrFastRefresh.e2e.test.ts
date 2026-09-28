@@ -34,15 +34,15 @@ describe.skipIf(!CsrE2eHarness.enabled)("CSR Fast Refresh (minimal, AKAN_DEV_CSR
   }, 60_000);
 
   const lastUpdate = async () =>
-    await csr.page.evaluate(() => (window as unknown as CsrWindow).__AKAN_CSR_LAST_UPDATE__ ?? null);
-  const generation = async () => await csr.page.evaluate(() => (window as unknown as CsrWindow).__akan?.generation);
+    await csr.evaluate(() => (window as unknown as CsrWindow).__AKAN_CSR_LAST_UPDATE__ ?? null);
+  const generation = async () => await csr.evaluate(() => (window as unknown as CsrWindow).__akan?.generation);
   const generationPasses = async (previous: number) =>
     await csr.waitFor((last: number) => ((window as unknown as CsrWindow).__akan?.generation ?? 0) > last, {
       args: [previous],
       timeout: 20_000,
     });
   const inputValue = async () =>
-    await csr.page.evaluate(
+    await csr.evaluate(
       () => (document.querySelector('[data-e2e-probe="tab-a"] input') as HTMLInputElement | null)?.value,
     );
   const tabAItemIdIs = async (itemId: string) =>
@@ -54,7 +54,7 @@ describe.skipIf(!CsrE2eHarness.enabled)("CSR Fast Refresh (minimal, AKAN_DEV_CSR
 
   test("the page boots from the registry dev bundle", async () => {
     await csr.open(TAB_A);
-    const booted = await csr.page.evaluate(() => {
+    const booted = await csr.evaluate(() => {
       const runtime = (window as unknown as CsrWindow).__akan;
       return { generation: runtime?.generation, modules: runtime?.inspect().modules ?? 0 };
     });
@@ -64,7 +64,7 @@ describe.skipIf(!CsrE2eHarness.enabled)("CSR Fast Refresh (minimal, AKAN_DEV_CSR
 
   test("a component edit applies in place, keeping hook state and the DOM", async () => {
     await csr.open(TAB_A);
-    await csr.page.type('[data-e2e-probe="tab-a"] input', "typed");
+    await csr.type('[data-e2e-probe="tab-a"] input', "typed");
     const mountId = (await csr.probe("tab-a"))?.mountId;
     await csr.editSource(probeFile, markProbe, async () => {
       await csr.waitFor(() => document.querySelector('[data-e2e-hot="1"]') !== null, { timeout: 20_000 });
@@ -79,7 +79,7 @@ describe.skipIf(!CsrE2eHarness.enabled)("CSR Fast Refresh (minimal, AKAN_DEV_CSR
 
   test("a store edit re-runs the store root and nothing above it", async () => {
     await csr.open(TAB_A);
-    await csr.page.type('[data-e2e-probe="tab-a"] input', "kept");
+    await csr.type('[data-e2e-probe="tab-a"] input', "kept");
     const before = (await generation()) ?? 0;
     const edited = await csr.editSource(
       storeFile,
@@ -119,7 +119,7 @@ describe.skipIf(!CsrE2eHarness.enabled)("CSR Fast Refresh (minimal, AKAN_DEV_CSR
 
   test("a page edit swaps the route in place, keeping the page's state", async () => {
     await csr.open(TAB_A);
-    await csr.page.type('[data-e2e-probe="tab-a"] input', "kept");
+    await csr.type('[data-e2e-probe="tab-a"] input', "kept");
     const mountId = (await csr.probe("tab-a"))?.mountId;
     await csr.editSource(
       tabAFile,
@@ -157,7 +157,7 @@ describe.skipIf(!CsrE2eHarness.enabled)("CSR Fast Refresh (minimal, AKAN_DEV_CSR
 
   test("a layout edit swaps the layout in place, keeping the page under it", async () => {
     await csr.open(TAB_A);
-    await csr.page.type('[data-e2e-probe="tab-a"] input', "kept");
+    await csr.type('[data-e2e-probe="tab-a"] input', "kept");
     const mountId = (await csr.probe("tab-a"))?.mountId;
     await csr.editSource(
       layoutFile,
@@ -177,7 +177,7 @@ describe.skipIf(!CsrE2eHarness.enabled)("CSR Fast Refresh (minimal, AKAN_DEV_CSR
 
   test("a page edit keeps the stack: the page it covers comes back with its state", async () => {
     await csr.open(TAB_A);
-    await csr.page.type('[data-e2e-probe="tab-a"] input', "under");
+    await csr.type('[data-e2e-probe="tab-a"] input', "under");
     const mountId = (await csr.probe("tab-a"))?.mountId;
     await csr.navigate("/e2e/stack/item?id=1");
     const currentItemId = async () =>

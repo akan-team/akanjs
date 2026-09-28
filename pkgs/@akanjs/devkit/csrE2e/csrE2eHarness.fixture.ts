@@ -1,7 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import type { Browser, Page } from "puppeteer";
 
 export interface CsrE2eOptions {
   app: string;
@@ -15,6 +14,8 @@ export interface CsrE2eOptions {
   workspaceRoot?: string;
   startTimeoutMs?: number;
   viewport?: { width: number; height: number };
+  /** `webkit` is macOS only; elsewhere, or with `AKAN_CSR_E2E_BACKEND=chrome`, an installed Chrome is driven. */
+  backend?: "webkit" | "chrome";
 }
 
 export interface CsrE2ePageContainer {
@@ -45,11 +46,10 @@ const RELOAD_MARKER = "__akanE2eBootMarker";
 //? Longer than the frame's navigation lock (360ms after a transition commits, `webkit/useCsrValues.ts`).
 const SETTLE_MS = 450;
 
-/** Drives a CSR page (`?csr=true` + a mobile target) of a running `akan start` in headless Chrome. */
+/** Drives a CSR page (`?csr=true` + a mobile target) of a running `akan start` in a headless `Bun.WebView`. */
 export class CsrE2eHarness {
   readonly origin: string;
-  readonly page: Page;
-  readonly #browser: Browser;
+  readonly #view: Bun.WebView;
   readonly #server: CsrE2eServer | null;
   readonly #lang: string;
   readonly #mobileTarget: string;
@@ -58,15 +58,13 @@ export class CsrE2eHarness {
 
   private constructor(options: {
     origin: string;
-    page: Page;
-    browser: Browser;
+    view: Bun.WebView;
     server: CsrE2eServer | null;
     lang: string;
     mobileTarget: string;
   }) {
     this.origin = options.origin;
-    this.page = options.page;
-    this.#browser = options.browser;
+    this.#view = options.view;
     this.#server = options.server;
     this.#lang = options.lang;
     this.#mobileTarget = options.mobileTarget;
@@ -85,14 +83,13 @@ export class CsrE2eHarness {
     const origin = new URL(url ?? `http://localhost:${port}`).origin;
     try {
       await CsrE2eHarness.#waitForHealth(origin, server, options.startTimeoutMs ?? 180_000);
-      const puppeteer = (await import("puppeteer")).default;
-      const browser = await puppeteer.launch({ headless: true });
-      const page = await browser.newPage();
-      await page.setViewport({ width: 390, height: 844, ...options.viewport });
+      const { width, height } = { width: 390, height: 844, ...options.viewport };
+      const backend = options.backend ?? CsrE2eHarness.#defaultBackend();
+      //? `url: false` spawns a fresh Chrome instead of attaching to one the developer runs with remote debugging on.
+      const view = new Bun.WebView({ width, height, backend: backend === "chrome" ? { type: "chrome", url: false } : backend });
       return new CsrE2eHarness({
         origin,
-        page,
-        browser,
+        view,
         server,
         lang: options.lang ?? "en",
         mobileTarget: options.mobileTarget ?? "e2e",
@@ -108,21 +105,21 @@ export class CsrE2eHarness {
     const url = new URL(`/${this.#lang}${path === "/" ? "" : path}`, this.origin);
     url.searchParams.set("csr", "true");
     url.searchParams.set("akanMobileTarget", this.#mobileTarget);
-    await this.page.goto(url.toString(), { waitUntil: "load" });
+    await this.#view.navigate(url.toString());
     await this.#markBoot();
   }
 
   /** Reloads the page where it is, as a WebView does after its content process died, and marks the new boot. */
   async reload() {
-    await this.page.reload({ waitUntil: "load" });
+    await this.#view.reload();
     await this.#markBoot();
   }
 
   async #markBoot() {
     await this.waitFor(() => document.querySelector('[id^="pageContainer-"]') !== null, { timeout: 30_000 });
     this.#marker = Math.random().toString(36).slice(2);
-    await this.page.evaluate(
-      (key, value) => {
+    await this.evaluate(
+      (key: string, value: string) => {
         (window as unknown as Record<string, string>)[key] = value;
       },
       RELOAD_MARKER,
@@ -132,7 +129,7 @@ export class CsrE2eHarness {
 
   /** Reports the document as `state` and tells the page, as an app moving to or from the background does. */
   async setVisibility(state: "hidden" | "visible") {
-    await this.page.evaluate((next) => {
+    await this.evaluate((next: string) => {
       Object.defineProperty(document, "visibilityState", { value: next, configurable: true });
       document.dispatchEvent(new Event("visibilitychange"));
     }, state);
@@ -143,8 +140,8 @@ export class CsrE2eHarness {
   //? The frame drops a navigation that starts while a transition runs, so each one waits the transition out.
   async navigate(href: string, kind: "push" | "replace" = "push", { settleMs = SETTLE_MS } = {}) {
     const target = new URL(href, this.origin);
-    await this.page.evaluate(
-      (next, how) => {
+    await this.evaluate(
+      (next: string, how: string) => {
         window.dispatchEvent(new CustomEvent("akan:sync-navigation", { detail: { href: next, kind: how } }));
       },
       href,
@@ -168,7 +165,7 @@ export class CsrE2eHarness {
 
   async go(delta: number, { settleMs = SETTLE_MS } = {}) {
     const before = await this.currentPath();
-    await this.page.evaluate((steps) => {
+    await this.evaluate((steps: number) => {
       window.history.go(steps);
     }, delta);
     await this.waitFor((path: string) => window.location.pathname + window.location.search !== path, {
@@ -178,19 +175,39 @@ export class CsrE2eHarness {
     await Bun.sleep(settleMs);
   }
 
+  /**
+   * Runs `fn` in the page. Only its source crosses, so it closes over nothing; `args` and the result travel as JSON.
+   */
+  async evaluate<Args extends unknown[], Result>(fn: (...args: Args) => Result, ...args: Args) {
+    return await this.#view.evaluate<Awaited<Result>>(`(${fn.toString()})(...${JSON.stringify(args)})`);
+  }
+
+  //? A poll that lands while the page reloads rejects; it is retried, so a wait spans a reload as puppeteer's did.
   async waitFor<Args extends unknown[]>(
     predicate: (...args: Args) => unknown,
     { timeout = 5_000, args = [] as unknown as Args }: { timeout?: number; args?: Args } = {},
   ) {
-    await this.page.waitForFunction(predicate as (...values: unknown[]) => unknown, { timeout, polling: 50 }, ...args);
+    const deadline = Date.now() + timeout;
+    let lastError: unknown = null;
+    for (;;) {
+      try {
+        if (await this.evaluate(predicate, ...args)) return;
+        lastError = null;
+      } catch (error) {
+        lastError = error;
+      }
+      if (Date.now() >= deadline) break;
+      await Bun.sleep(50);
+    }
+    throw new Error(`[csr-e2e] waitFor timed out after ${timeout}ms: ${predicate.toString()}`, { cause: lastError });
   }
 
   async currentPath() {
-    return await this.page.evaluate(() => window.location.pathname + window.location.search);
+    return await this.evaluate(() => window.location.pathname + window.location.search);
   }
 
   async containers(): Promise<CsrE2ePageContainer[]> {
-    return await this.page.evaluate(() =>
+    return await this.evaluate(() =>
       [...document.querySelectorAll<HTMLElement>('[id^="pageContainer-"]')].map((element) => ({
         key: element.id.slice("pageContainer-".length),
         path: element.dataset.path ?? element.id.slice("pageContainer-".length),
@@ -202,8 +219,8 @@ export class CsrE2eHarness {
   }
 
   async probe(name: string): Promise<CsrE2eProbe | null> {
-    return await this.page.evaluate(
-      (probeName) =>
+    return await this.evaluate(
+      (probeName: string) =>
         (window as unknown as { __akanE2eProbes?: Record<string, CsrE2eProbe> }).__akanE2eProbes?.[probeName] ?? null,
       name,
     );
@@ -218,7 +235,7 @@ export class CsrE2eHarness {
 
   /** The tool names the in-page agent is offered right now, built-ins included. */
   async agentTools(): Promise<string[]> {
-    return await this.page.evaluate(() => {
+    return await this.evaluate(() => {
       const holder = globalThis as unknown as {
         [key: symbol]: { snapshot: () => { tools: { name: string }[] } } | undefined;
       };
@@ -228,8 +245,8 @@ export class CsrE2eHarness {
 
   /** Text of every rendered match; `{ mounted: true }` reads hidden ones too, which is how a parked page is seen. */
   async text(selector: string, { mounted = false }: { mounted?: boolean } = {}) {
-    return await this.page.evaluate(
-      (target, all) =>
+    return await this.evaluate(
+      (target: string, all: boolean) =>
         [...document.querySelectorAll<HTMLElement>(target)]
           .filter((element) => all || element.checkVisibility())
           .map((element) => element.textContent ?? ""),
@@ -252,21 +269,29 @@ export class CsrE2eHarness {
   }
 
   async values(selector: string) {
-    return await this.page.evaluate(
-      (target) => [...document.querySelectorAll<HTMLInputElement>(target)].map((element) => element.value),
+    return await this.evaluate(
+      (target: string) => [...document.querySelectorAll<HTMLInputElement>(target)].map((element) => element.value),
       selector,
     );
   }
 
+  //? `Bun.WebView.type` inserts into the focused element as a paste does: `input` fires, `keydown` does not.
   async type(selector: string, text: string) {
-    await this.page.type(selector, text);
+    const focused = await this.evaluate((target: string) => {
+      const element = document.querySelector<HTMLElement>(target);
+      element?.focus();
+      return element !== null && document.activeElement === element;
+    }, selector);
+    if (!focused) throw new Error(`[csr-e2e] type: ${selector} is not a focusable element on the page`);
+    await this.#view.type(text);
   }
 
   /** Whether the page reloaded since `open()`: the boot marker lives only in the page `open()` loaded. */
   async reloaded() {
-    const marker = await this.page
-      .evaluate((key) => (window as unknown as Record<string, string | undefined>)[key] ?? "", RELOAD_MARKER)
-      .catch(() => "");
+    const marker = await this.evaluate(
+      (key: string) => (window as unknown as Record<string, string | undefined>)[key] ?? "",
+      RELOAD_MARKER,
+    ).catch(() => "");
     return marker !== this.#marker;
   }
 
@@ -289,8 +314,14 @@ export class CsrE2eHarness {
   async close() {
     for (const [file, original] of this.#edited) await Bun.write(file, original);
     this.#edited.clear();
-    await this.#browser.close().catch(() => undefined);
+    this.#view.close();
     await CsrE2eHarness.#stopServer(this.#server);
+  }
+
+  static #defaultBackend() {
+    const requested = process.env.AKAN_CSR_E2E_BACKEND;
+    if (requested === "webkit" || requested === "chrome") return requested;
+    return process.platform === "darwin" ? "webkit" : "chrome";
   }
 
   static #findWorkspaceRoot() {
