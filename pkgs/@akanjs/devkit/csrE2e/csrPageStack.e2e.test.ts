@@ -74,6 +74,31 @@ describe.skipIf(!CsrE2eHarness.enabled)("CSR page stack (minimal, /e2e/stack)", 
     );
   }, 60_000);
 
+  test("only the current page offers the agent its tools, not the page kept under it for a swipe back", async () => {
+    await csr.open(TAB_A);
+    expect(await csr.agentTools()).toContain("bumpTabA");
+    await csr.navigate(item("7"));
+    const tools = await csr.agentTools();
+    expect(tools).toContain("bumpItem");
+    expect(tools).not.toContain("bumpTabA");
+    expect(await csr.ticksOver("tab-a")).toBeGreaterThan(0);
+    await csr.back();
+    const back = await csr.agentTools();
+    expect(back).toContain("bumpTabA");
+    expect(back).not.toContain("bumpItem");
+  }, 60_000);
+
+  test("a page is focused while current and settled; the page under it stays live but unfocused", async () => {
+    await csr.open(TAB_A);
+    expect((await csr.probe("tab-a"))?.focused).toBe(true);
+    const focusCount = (await csr.probe("tab-a"))?.focusCount ?? 0;
+    await csr.navigate(item("8"));
+    expect(await csr.probe("tab-a")).toMatchObject({ activity: "prev", focused: false, mounted: true });
+    expect(await csr.probe("item")).toMatchObject({ activity: "current", focused: true });
+    await csr.back();
+    expect(await csr.probe("tab-a")).toMatchObject({ activity: "current", focused: true, focusCount: focusCount + 1 });
+  }, 60_000);
+
   test("back returns to the previous entry without a reload", async () => {
     await csr.open(TAB_A);
     await csr.navigate(item("6"));

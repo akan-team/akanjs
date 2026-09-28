@@ -311,6 +311,17 @@ export const usePathCtx = () => {
   return contextValues;
 };
 
+//? `prev` is shown under the current page for a swipe back; `hidden` is parked, its effects stopped.
+export type PageActivity = "current" | "prev" | "pending" | "hidden";
+export interface PageActivityState {
+  activity: PageActivity;
+  focused: boolean;
+}
+export const pageActivityContext = sharedContext<PageActivityState>("pageActivity", {
+  activity: "current",
+  focused: true,
+});
+
 export interface PathRoute {
   path: string;
   pathSegments: string[];

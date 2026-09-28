@@ -1,4 +1,6 @@
 "use client";
+import { st } from "@apps/minimal/client";
+import { usePageActivity, usePageFocusEffect } from "akanjs/webkit";
 import { useEffect, useRef, useState } from "react";
 
 interface StackProbeRecord {
@@ -6,13 +8,24 @@ interface StackProbeRecord {
   ticks: number;
   mountId: string;
   mounted: boolean;
+  activity: string;
+  focused: boolean;
+  focusCount: number;
 }
 
 //? The devOnly `/e2e/stack/*` fixture that `pkgs/@akanjs/devkit/csrE2e` reads to tell a paused page from a live one.
 const probeRecordOf = (name: string): StackProbeRecord => {
   const host = window as unknown as { __akanE2eProbes?: Record<string, StackProbeRecord> };
   host.__akanE2eProbes ??= {};
-  host.__akanE2eProbes[name] ??= { renders: 0, ticks: 0, mountId: "", mounted: false };
+  host.__akanE2eProbes[name] ??= {
+    renders: 0,
+    ticks: 0,
+    mountId: "",
+    mounted: false,
+    activity: "",
+    focused: false,
+    focusCount: 0,
+  };
   return host.__akanE2eProbes[name];
 };
 
@@ -28,6 +41,7 @@ export const StackProbe = ({ className, name, itemId = "" }: StackProbeProps) =>
   const record = probeRecordOf(name);
   record.mountId = mountId;
   record.renders = renders.current;
+  record.activity = usePageActivity();
   useEffect(() => {
     record.mounted = true;
     const timer = setInterval(() => {
@@ -38,10 +52,30 @@ export const StackProbe = ({ className, name, itemId = "" }: StackProbeProps) =>
       record.mounted = false;
     };
   }, [record]);
+  usePageFocusEffect(() => {
+    record.focused = true;
+    record.focusCount += 1;
+    return () => {
+      record.focused = false;
+    };
+  }, [record]);
+  const toolName = `bump${name
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join("")}`;
+  const bump = st
+    .tool(toolName)
+    .desc(`Bump the ${name} probe.`)
+    .exec(() => {
+      record.ticks += 1;
+    });
   return (
     <section className={className} data-e2e-probe={name}>
       <output data-e2e="item-id">{itemId}</output>
       <input aria-label={name} data-e2e="input" className="rounded-xl border border-border bg-background p-2" />
+      <button type="button" data-e2e="bump" onClick={bump}>
+        {toolName}
+      </button>
     </section>
   );
 };

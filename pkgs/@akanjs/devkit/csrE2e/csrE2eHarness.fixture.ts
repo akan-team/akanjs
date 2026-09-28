@@ -29,6 +29,9 @@ export interface CsrE2eProbe {
   ticks: number;
   mountId: string;
   mounted: boolean;
+  activity: string;
+  focused: boolean;
+  focusCount: number;
 }
 
 interface CsrE2eServer {
@@ -186,6 +189,16 @@ export class CsrE2eHarness {
     const before = (await this.probe(name))?.ticks ?? 0;
     await Bun.sleep(ms);
     return ((await this.probe(name))?.ticks ?? 0) - before;
+  }
+
+  /** The tool names the in-page agent is offered right now, built-ins included. */
+  async agentTools(): Promise<string[]> {
+    return await this.page.evaluate(() => {
+      const holder = globalThis as unknown as {
+        [key: symbol]: { snapshot: () => { tools: { name: string }[] } } | undefined;
+      };
+      return holder[Symbol.for("useAgentic.sharedSurface")]?.snapshot().tools.map((tool) => tool.name) ?? [];
+    });
   }
 
   async text(selector: string) {

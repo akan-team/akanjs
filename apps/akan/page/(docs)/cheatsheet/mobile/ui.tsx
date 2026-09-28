@@ -644,8 +644,8 @@ export default page()
                 type: "boolean",
                 default: l.trans({ en: "true at depth ≤ 1, else false", ko: "깊이 ≤ 1이면 true, 그 외 false" }),
                 desc: l.trans({
-                  en: "Keeps the page mounted in a hidden cache layer after you navigate away.",
-                  ko: "다른 화면으로 나가도 페이지를 숨은 캐시 레이어에 마운트된 채로 둡니다.",
+                  en: "Keeps the page mounted in a hidden cache layer after you navigate away; its effects stop until it is shown again.",
+                  ko: "다른 화면으로 나가도 페이지를 숨은 캐시 레이어에 마운트된 채로 두며, 다시 보일 때까지 effect는 멈춥니다.",
                 }),
               },
               {
@@ -697,6 +697,30 @@ export default page()
                   <>
                     <strong>최상위 라우트는 움직이지 않습니다.</strong> 깊이 1 이하에서는 모든 플랫폼이{" "}
                     <code>none</code>, 제스처 없음, <code>cache: true</code>가 기본이라 탭이 즉시 바뀝니다.
+                  </>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <>
+                    <strong>A page nobody sees runs no effects.</strong> A cached page, and the page a transition-less
+                    switch left, keep their state and DOM but stop their effects until shown again. The page under a{" "}
+                    <code>stack</code> transition stays live for a swipe back, so bind a camera, a poll or a key handler
+                    with <code>usePageFocusEffect</code> from <code>akanjs/webkit</code>; <code>usePageActivity()</code>{" "}
+                    says whether the page is <code>current</code>, <code>prev</code>, <code>pending</code> or{" "}
+                    <code>hidden</code>. Only the current page offers its tools and state to the in-page agent.
+                  </>
+                ),
+                ko: (
+                  <>
+                    <strong>아무도 보지 않는 페이지는 effect를 돌리지 않습니다.</strong> 캐시된 페이지와 전환 없이 떠난
+                    페이지는 state와 DOM을 그대로 두고, 다시 보일 때까지 effect를 멈춥니다. <code>stack</code> 전환 아래
+                    페이지는 스와이프 뒤로가기를 위해 살아 있으므로, 카메라·폴링·키 입력은 <code>akanjs/webkit</code>의{" "}
+                    <code>usePageFocusEffect</code>로 묶으세요. <code>usePageActivity()</code>는 페이지가{" "}
+                    <code>current</code>·<code>prev</code>·<code>pending</code>·<code>hidden</code> 중 어디에 있는지
+                    알려 줍니다. 페이지 안 에이전트에는 현재 페이지의 도구와 state만 보입니다.
                   </>
                 ),
               })}

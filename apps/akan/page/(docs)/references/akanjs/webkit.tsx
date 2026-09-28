@@ -111,6 +111,20 @@ export default page().render(() => {
       }),
     },
     {
+      name: "usePageFocusEffect(effect, deps)",
+      desc: l.trans({
+        en: "Runs `effect` while the user is on this page and cleans it up when they leave. A page kept under the current one for a swipe back stays mounted, so a plain effect there keeps running.",
+        ko: "사용자가 이 페이지에 있는 동안 `effect`를 돌리고, 떠나면 정리합니다. 스와이프 뒤로가기를 위해 현재 페이지 아래 남은 페이지는 마운트된 채라 평범한 effect는 계속 돕니다.",
+      }),
+    },
+    {
+      name: "usePageActivity()",
+      desc: l.trans({
+        en: '`"current" | "prev" | "pending" | "hidden"` — where this page stands in the CSR stack; always `current` outside one.',
+        ko: '`"current" | "prev" | "pending" | "hidden"` — CSR 스택에서 이 페이지의 위치이며, CSR 밖에서는 늘 `current`입니다.',
+      }),
+    },
+    {
       name: ["usePageTool", "useScreenScope"],
       desc: l.trans({
         en: "Show a pager and on-screen items to the in-page agent. `Load.Units` and `Load.View` call them.",

@@ -1,3 +1,4 @@
+import { AgentGate } from "./AgentGate";
 import type {
   AgentCall,
   PublishedResource,
@@ -12,6 +13,11 @@ import type {
 } from "./types";
 
 const SHARED_KEY = Symbol.for("useAgentic.sharedSurface");
+
+interface Registration<E> {
+  entry: E;
+  gate: AgentGate | null;
+}
 
 /**
  * The live registry of what the mounted screen offers an agent: tools, readable resources, and scopes.
@@ -41,10 +47,10 @@ export class AgenticSurface {
     return [...scope.map((part) => AgenticSurface.sanitize(part)), AgenticSurface.sanitize(name)].join(".");
   }
 
-  #tools = new Map<string, ToolEntry[]>();
-  #resources = new Map<string, ResourceEntry[]>();
-  #scopes = new Map<string, ScopeEntry[]>();
-  #guides: { scope: string; text: string }[] = [];
+  #tools = new Map<string, Registration<ToolEntry>[]>();
+  #resources = new Map<string, Registration<ResourceEntry>[]>();
+  #scopes = new Map<string, Registration<ScopeEntry>[]>();
+  #guides: { scope: string; text: string; gate: AgentGate | null }[] = [];
   readonly #calls: AgentCall[] = [];
   #sources = new Set<SurfaceSource>();
   #listeners = new Set<() => void>();
@@ -62,34 +68,37 @@ export class AgenticSurface {
    * argument rather than closing over it: every registration is then interchangeable and last-wins picks an
    * equivalent one. The description is what says so — two registrations that describe the same action to a model
    * are the same declaration twice, and fifty rows are one entry rather than fifty collisions. Two that describe
-   * different actions under one name are a real clash whichever of them mounted last, and warn.
+   * different actions under one name are a real clash whichever of them mounted last, and warn. A clash needs both
+   * published at once, so a registration behind a parked gate, or over only parked ones, never warns.
    */
-  registerTool(scope: string[], entry: ToolEntry) {
+  registerTool(scope: string[], entry: ToolEntry, gate: AgentGate | null = null) {
     const key = AgenticSurface.fullName(scope, entry.name);
-    const stack = this.#tools.get(key);
-    const interchangeable = !stack?.length || stack[stack.length - 1].description === entry.description;
+    const shown = AgenticSurface.#shown(this.#tools.get(key));
+    const clashes = !!shown && AgenticSurface.#isActive(gate) && shown.description !== entry.description;
     return this.#stack(
       this.#tools,
       key,
-      entry,
-      interchangeable ? null : "is registered by two declarations that describe it differently",
+      { entry, gate },
+      clashes ? "is registered by two declarations that describe it differently" : null,
     );
   }
 
-  registerResource(scope: string[], entry: ResourceEntry) {
-    return this.#stack(this.#resources, AgenticSurface.fullName(scope, entry.name), entry);
+  registerResource(scope: string[], entry: ResourceEntry, gate: AgentGate | null = null) {
+    const key = AgenticSurface.fullName(scope, entry.name);
+    return this.#stack(this.#resources, key, { entry, gate }, this.#duplicate(this.#resources, key, gate));
   }
 
-  openScope(parent: string[], scope: ScopeEntry) {
-    return this.#stack(this.#scopes, AgenticSurface.childPath(parent, scope.id).join("."), scope);
+  openScope(parent: string[], scope: ScopeEntry, gate: AgentGate | null = null) {
+    const key = AgenticSurface.childPath(parent, scope.id).join(".");
+    return this.#stack(this.#scopes, key, { entry: scope, gate }, this.#duplicate(this.#scopes, key, gate));
   }
 
   /**
    * Standing guidance for the agent while the registrant is mounted — instructions, not context data. Kept in
    * registration order rather than sorted: guides are prose, and each one must stay a coherent block.
    */
-  registerGuide(scope: string[], text: string) {
-    const entry = { scope: scope.join("."), text };
+  registerGuide(scope: string[], text: string, gate: AgentGate | null = null) {
+    const entry = { scope: scope.join("."), text, gate };
     this.#guides.push(entry);
     this.#notify();
     return () => {
@@ -110,6 +119,36 @@ export class AgenticSurface {
     };
   }
 
+  /** A gate whose every flip re-publishes this surface. Under `parent`, it is active only while the parent is. */
+  gate(active: boolean, parent: AgentGate | null = null) {
+    return new AgentGate(active, () => this.#notify(), parent);
+  }
+
+  /**
+   * This surface for a subtree behind `gate`: what registers through it is published only while the gate is active,
+   * and every other call reaches this surface untouched. A proxy rather than a wrapper class, so a method added to the
+   * surface later is forwarded instead of missing.
+   */
+  gated(gate: AgentGate): AgenticSurface {
+    const registrations: Partial<Record<PropertyKey, unknown>> = {
+      registerTool: (scope: string[], entry: ToolEntry) => this.registerTool(scope, entry, gate),
+      registerResource: (scope: string[], entry: ResourceEntry) => this.registerResource(scope, entry, gate),
+      openScope: (parent: string[], scope: ScopeEntry) => this.openScope(parent, scope, gate),
+      registerGuide: (scope: string[], text: string) => this.registerGuide(scope, text, gate),
+    };
+    // Bound once: a method is read on every render, and a fresh function each time would resubscribe its readers.
+    const bound = new Map<PropertyKey, unknown>();
+    return new Proxy(this, {
+      get: (target, key) => {
+        if (Object.hasOwn(registrations, key)) return registrations[key];
+        const value = Reflect.get(target, key, target);
+        if (typeof value !== "function") return value;
+        if (!bound.has(key)) bound.set(key, value.bind(target));
+        return bound.get(key);
+      },
+    });
+  }
+
   snapshot(view: string[] = []): SurfaceSnapshot {
     const viewKey = view.join(".");
     const tools = [...this.#activeTools(view)].map(([name, entry]) => AgenticSurface.#publishTool(name, entry));
@@ -118,16 +157,19 @@ export class AgenticSurface {
     );
     const scopes = [...this.#scopes.entries()]
       .filter(([path]) => AgenticSurface.#within(viewKey, path))
-      .map(([path, stack]) => {
-        const scope = stack[stack.length - 1];
-        return { path, ...(scope.label ? { label: scope.label } : {}), ...(scope.kind ? { kind: scope.kind } : {}) };
+      .flatMap(([path, stack]) => {
+        const scope = AgenticSurface.#shown(stack);
+        if (!scope) return [];
+        return [{ path, ...(scope.label ? { label: scope.label } : {}), ...(scope.kind ? { kind: scope.kind } : {}) }];
       });
     // Sorted so the published order never depends on mount order — clients and prompt caches key on the exact text.
     return {
       tools: tools.sort((a, b) => (a.name < b.name ? -1 : 1)),
       resources: resources.sort((a, b) => (a.name < b.name ? -1 : 1)),
       scopes: scopes.sort((a, b) => (a.path < b.path ? -1 : 1)),
-      guides: this.#guides.filter((guide) => AgenticSurface.#guideApplies(viewKey, guide.scope)).map((g) => g.text),
+      guides: this.#guides
+        .filter((guide) => AgenticSurface.#isActive(guide.gate) && AgenticSurface.#guideApplies(viewKey, guide.scope))
+        .map((g) => g.text),
     };
   }
 
@@ -150,8 +192,8 @@ export class AgenticSurface {
 
   tool(name: string, view: string[] = []): ToolEntry | null {
     const viewKey = view.join(".");
-    const stack = this.#tools.get(name);
-    if (stack?.length && AgenticSurface.#within(viewKey, name)) return stack[stack.length - 1];
+    const shown = AgenticSurface.#shown(this.#tools.get(name));
+    if (shown && AgenticSurface.#within(viewKey, name)) return shown;
     for (const source of this.#sources) {
       const found = source.tools?.(view).find((candidate) => candidate.name === name);
       if (found) return found;
@@ -164,8 +206,7 @@ export class AgenticSurface {
    * what lets a host drop the built-in tools without dropping a screen's own tool that deliberately shadows one.
    */
   declares(name: string, view: string[] = []): boolean {
-    const stack = this.#tools.get(name);
-    return !!stack?.length && AgenticSurface.#within(view.join("."), name);
+    return !!AgenticSurface.#shown(this.#tools.get(name)) && AgenticSurface.#within(view.join("."), name);
   }
 
   /** Every call made through this surface, oldest first. What the dock shows the user to check against the screen. */
@@ -234,9 +275,10 @@ export class AgenticSurface {
     const viewKey = view.join(".");
     const seen = new Set<string>();
     for (const [name, stack] of this.#tools) {
-      if (!AgenticSurface.#within(viewKey, name)) continue;
+      const shown = AgenticSurface.#shown(stack);
+      if (!shown || !AgenticSurface.#within(viewKey, name)) continue;
       seen.add(name);
-      yield [name, stack[stack.length - 1]];
+      yield [name, shown];
     }
     for (const source of this.#sources) {
       for (const entry of source.tools?.(view) ?? []) {
@@ -251,9 +293,10 @@ export class AgenticSurface {
     const viewKey = view.join(".");
     const seen = new Set<string>();
     for (const [name, stack] of this.#resources) {
-      if (!AgenticSurface.#within(viewKey, name)) continue;
+      const shown = AgenticSurface.#shown(stack);
+      if (!shown || !AgenticSurface.#within(viewKey, name)) continue;
       seen.add(name);
-      yield [name, stack[stack.length - 1]];
+      yield [name, shown];
     }
     for (const source of this.#sources) {
       for (const entry of source.resources?.(view) ?? []) {
@@ -266,8 +309,8 @@ export class AgenticSurface {
 
   #resource(name: string, view: string[] = []): ResourceEntry | null {
     const viewKey = view.join(".");
-    const stack = this.#resources.get(name);
-    if (stack?.length && AgenticSurface.#within(viewKey, name)) return stack[stack.length - 1];
+    const shown = AgenticSurface.#shown(this.#resources.get(name));
+    if (shown && AgenticSurface.#within(viewKey, name)) return shown;
     for (const source of this.#sources) {
       const found = source.resources?.(view).find((candidate) => candidate.name === name);
       if (found) return found;
@@ -286,21 +329,36 @@ export class AgenticSurface {
     return viewKey.startsWith(`${scopeKey}.`) || scopeKey.startsWith(`${viewKey}.`);
   }
 
-  #stack<E>(map: Map<string, E[]>, key: string, entry: E, clash: string | null = "is registered more than once") {
+  #duplicate<E>(map: Map<string, Registration<E>[]>, key: string, gate: AgentGate | null) {
+    return AgenticSurface.#shown(map.get(key)) && AgenticSurface.#isActive(gate)
+      ? "is registered more than once"
+      : null;
+  }
+
+  #stack<E>(map: Map<string, Registration<E>[]>, key: string, registration: Registration<E>, clash: string | null) {
     const stack = map.get(key) ?? [];
-    if (stack.length && clash && !this.#warned.has(key)) {
+    if (clash && !this.#warned.has(key)) {
       this.#warned.add(key);
       console.warn(`[use-agentic] "${key}" ${clash}; the newest registration wins.`);
     }
-    stack.push(entry);
+    stack.push(registration);
     map.set(key, stack);
     this.#notify();
     return () => {
-      const idx = stack.indexOf(entry);
+      const idx = stack.indexOf(registration);
       if (idx >= 0) stack.splice(idx, 1);
       if (!stack.length) map.delete(key);
       this.#notify();
     };
+  }
+
+  /** The newest registration whose gate is active: a parked subtree keeps its place without shadowing anything. */
+  static #shown<E>(stack: Registration<E>[] | undefined): E | undefined {
+    return stack?.findLast((registration) => AgenticSurface.#isActive(registration.gate))?.entry;
+  }
+
+  static #isActive(gate: AgentGate | null) {
+    return gate?.active ?? true;
   }
 
   #notify() {

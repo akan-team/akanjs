@@ -6,6 +6,7 @@ import {
   Device,
   debugFrame,
   getPathInfo,
+  type PageActivity,
   type PathRoute,
   type ReactFont,
   router,
@@ -457,11 +458,13 @@ const CSRPageContainer = ({ pathRoute, prefix, layoutStyle }: CSRPageContainerPr
   if (!location) return null;
   //? A page nobody sees keeps its state and DOM but not its effects: a cached page, and the page a transition-less
   //? switch left once it settled. The page under an animated transition stays live, since a swipe back shows it.
-  const paused =
+  const activity: PageActivity =
     pageType === "cached" ||
-    (pageType === "prev" && currentLocation.pathRoute.pageState.transition === "none" && csr.phase === "idle");
+    (pageType === "prev" && currentLocation.pathRoute.pageState.transition === "none" && csr.phase === "idle")
+      ? "hidden"
+      : pageType;
   return (
-    <Activity mode={paused ? "hidden" : "visible"}>
+    <Activity mode={activity === "hidden" ? "hidden" : "visible"}>
       {createPortal(
         <animated.div
           id={`pageContainer-${pathRoute.path}`}
@@ -493,6 +496,7 @@ const CSRPageContainer = ({ pathRoute, prefix, layoutStyle }: CSRPageContainerPr
             )}
             style={page?.contentStyle}
             pageType={pageType}
+            activity={activity}
             location={location}
             prefix={prefix}
           >

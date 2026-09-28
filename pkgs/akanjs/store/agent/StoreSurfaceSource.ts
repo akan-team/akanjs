@@ -178,7 +178,9 @@ export class StoreSurfaceSource implements SurfaceSource {
 
   static #zoneRoot(viewKey: string): HTMLElement | undefined {
     if (!viewKey || typeof document === "undefined") return undefined;
-    return document.querySelector<HTMLElement>(`[data-agent-zone="${CSS.escape(viewKey)}"]`) ?? undefined;
+    return [...document.querySelectorAll<HTMLElement>(`[data-agent-zone="${CSS.escape(viewKey)}"]`)].find(
+      ScreenTarget.visible,
+    );
   }
 }
 

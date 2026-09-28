@@ -27,6 +27,19 @@ describe("ScreenTarget", () => {
     expect(ScreenTarget.find("titleOnTask")?.getAttribute("value")).toBe("Draft");
   });
 
+  test("a page kept mounted under the current one is off screen, so nothing inside it is a target", () => {
+    render(`
+      <div id="pageContainer-/tasks" inert aria-hidden="true">
+        <button data-akan-action="submitTask">Old</button>
+        <button data-akan-action="removeTask">Remove</button>
+      </div>
+      <div id="pageContainer-/task"><button data-akan-action="submitTask">Save</button></div>
+    `);
+    expect(ScreenTarget.find("submitTask")?.textContent).toBe("Save");
+    expect(ScreenTarget.find("removeTask")).toBeNull();
+    expect(ScreenTarget.targetNames()).toEqual(["submitTask"]);
+  });
+
   test("finds a container by zone path, scope path, or element id", () => {
     expect(ScreenTarget.container("comments")?.getAttribute("data-agent-zone")).toBe("comments");
     expect(ScreenTarget.container("taskInOrg")?.tagName).toBe("SECTION");

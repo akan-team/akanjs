@@ -85,3 +85,38 @@ describe("StoreInstance zone liveness", () => {
     expect(instance.liveKeys.size).toBe(0);
   });
 });
+
+describe("StoreInstance gated liveness", () => {
+  test("a key read only behind an inactive gate is off the screen until the gate opens", async () => {
+    const { AgenticSurface } = await import("use-agentic");
+    const gate = new AgenticSurface().gate(false);
+    instance.retainLive("beta", "", gate);
+    instance.retainLive("gamma", "", gate);
+    instance.retainLive("gamma");
+    expect(instance.liveKeys.has("beta")).toBe(false);
+    expect(instance.liveKeys.get("gamma")).toBe(1);
+    gate.set(true);
+    expect(instance.liveKeys.get("beta")).toBe(1);
+    expect(instance.liveKeys.get("gamma")).toBe(2);
+    instance.releaseLive("beta", "", gate);
+    instance.releaseLive("gamma", "", gate);
+    instance.releaseLive("gamma");
+    expect(instance.liveKeys.size).toBe(0);
+  });
+
+  test("st.use under an inactive AgentActivity subscribes without lending the screen its key", async () => {
+    const { AgentActivity } = await import("use-agentic");
+    const Reader = () => <span>{String(instance.use.alpha())}</span>;
+    const unmount = mount(
+      <AgentActivity active={false}>
+        <Reader />
+      </AgentActivity>,
+    );
+    expect(instance.liveKeys.has("alpha")).toBe(false);
+    act(() => instance.set({ alpha: 7 }));
+    expect(document.body.textContent).toContain("7");
+    unmount();
+    act(() => instance.set({ alpha: 1 }));
+    expect(instance.liveKeys.size).toBe(0);
+  });
+});

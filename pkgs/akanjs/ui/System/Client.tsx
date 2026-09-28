@@ -11,8 +11,10 @@ import {
   initAuth,
   type Location,
   navigateRsc,
+  type PageActivity,
   type PageState,
   type PathRoute,
+  pageActivityContext,
   pathContext,
   refreshRsc,
   router,
@@ -34,9 +36,11 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
+import { AgentActivity } from "use-agentic";
 import { getFrameCssVars } from "./Common";
 import { Messages } from "./Messages";
 import { Reconnect } from "./Reconnect";
@@ -88,6 +92,7 @@ interface ClientPathWrapperProps extends Omit<HTMLAttributes<HTMLDivElement>, "s
   bind?: () => HTMLAttributes<HTMLDivElement>;
   wrapperRef?: RefObject<HTMLDivElement | null> | null;
   pageType?: "current" | "prev" | "cached" | "pending";
+  activity?: PageActivity;
   location?: Location;
   initialHref?: string;
   initialPath?: string;
@@ -107,6 +112,7 @@ export const ClientPathWrapper = ({
   bind,
   wrapperRef,
   pageType = "current",
+  activity = "current",
   location,
   initialHref,
   initialPath,
@@ -148,6 +154,9 @@ export const ClientPathWrapper = ({
   );
 
   const [gestureEnabled, setGestureEnabled] = useState(true);
+  //? A page that became current is focused once its entrance settles; one leaving loses focus as it starts to go.
+  const focused = activity === "current" && csr.phase !== "transitioning";
+  const pageActivity = useMemo(() => ({ activity, focused }), [activity, focused]);
   const frameCssVars = getFrameCssVars(pathRoute.pageState);
   const bindProps = bind && pageType !== "pending" && pathRoute.pageState.gesture && gestureEnabled ? bind() : {};
   useEffect(() => {
@@ -173,18 +182,20 @@ export const ClientPathWrapper = ({
         registerFrameSlot,
       }}
     >
-      <animated.div
-        {...bindProps}
-        {...props}
-        className={cn("group/path", className)}
-        ref={wrapperRef}
-        style={{ ...frameCssVars, ...(bindProps.style ?? {}), ...(style ?? {}) } as TransitionStyle}
-        data-lang={lang}
-        data-basepath={prefix}
-        data-firstpath={firstPath}
-      >
-        {children}
-      </animated.div>
+      <pageActivityContext.Provider value={pageActivity}>
+        <animated.div
+          {...bindProps}
+          {...props}
+          className={cn("group/path", className)}
+          ref={wrapperRef}
+          style={{ ...frameCssVars, ...(bindProps.style ?? {}), ...(style ?? {}) } as TransitionStyle}
+          data-lang={lang}
+          data-basepath={prefix}
+          data-firstpath={firstPath}
+        >
+          <AgentActivity active={activity === "current"}>{children}</AgentActivity>
+        </animated.div>
+      </pageActivityContext.Provider>
     </pathContext.Provider>
   );
 };
