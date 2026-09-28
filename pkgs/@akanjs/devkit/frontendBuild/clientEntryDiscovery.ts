@@ -28,6 +28,9 @@ interface DiscoveryWalk {
   visiting: Set<string>;
   //? Walked below a file the walk was already inside (an import cycle): their result lacks what that file reaches.
   partial: Set<string>;
+  //? Every file's result within this walk, partial ones included: the file the cycle went back to is an ancestor here
+  //? and brings the rest itself, and re-walking each path through a dense cycle grows exponentially.
+  memo: Map<string, Set<string>>;
 }
 
 const shouldSkipNodeModule = (absPath: string) => NODE_MODULES_RE.test(absPath) && !AKANJS_NODE_MODULE_RE.test(absPath);
@@ -62,7 +65,7 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   async discover(seeds: string[]): Promise<string[]> {
     const entries = new Set<string>();
     for (const seed of seeds) {
-      const walk: DiscoveryWalk = { visiting: new Set(), partial: new Set() };
+      const walk: DiscoveryWalk = { visiting: new Set(), partial: new Set(), memo: new Map() };
       for (const entry of await this.#discoverFromFile(seed, walk)) entries.add(entry);
     }
     return Array.from(entries).sort();
@@ -197,6 +200,12 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
     const absPath = path.resolve(file);
     const cached = this.#reachableEntriesCache.get(absPath);
     if (cached) return new Set(cached);
+    const memo = walk.memo.get(absPath);
+    if (memo) {
+      //? Reused from another path: whatever this path is walking now inherits its gap and stays out of the cache.
+      if (walk.partial.has(absPath)) for (const onPath of walk.visiting) walk.partial.add(onPath);
+      return new Set(memo);
+    }
     if (walk.visiting.has(absPath)) {
       let below = false;
       for (const onPath of walk.visiting) {
@@ -233,6 +242,7 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
 
   #finishDiscovery(absPath: string, walk: DiscoveryWalk, entries: Set<string>, epoch: number): Set<string> {
     walk.visiting.delete(absPath);
+    walk.memo.set(absPath, entries);
     if (epoch === this.#epoch && !walk.partial.has(absPath)) this.#reachableEntriesCache.set(absPath, entries);
     return new Set(entries);
   }

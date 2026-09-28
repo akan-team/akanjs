@@ -1068,6 +1068,65 @@ export const pages = {
     }
   }, 20_000);
 
+  test("a render queued through a crash loop fails instead of waiting forever", async () => {
+    await withBundles(async (rsc, { a }, body) => {
+      const dir = path.dirname(a);
+      const marker = path.join(dir, "CRASH");
+      const crashy = path.join(dir, "crashy-worker.ts");
+      fs.writeFileSync(
+        crashy,
+        `import fs from "node:fs";\nif (fs.existsSync(${JSON.stringify(marker)})) process.exit(1);\nconst { RscRenderer } = await import(${JSON.stringify(path.join(import.meta.dir, "rscWorker.tsx"))});\nnew RscRenderer().start();\n`,
+      );
+      process.env.AKAN_RSC_WORKER_PATH = crashy;
+      fs.writeFileSync(marker, "1");
+      process.kill(Number(rsc.getMetrics().rscWorkerPid), "SIGKILL");
+      await until(() => rsc.getMetrics().rscWorkerStatus !== "ready");
+      const queued = body().then(
+        () => "served",
+        (e: Error) => `failed: ${e.message}`,
+      );
+      expect(await Promise.race([queued, Bun.sleep(8_000).then(() => "still waiting")])).toContain("failed");
+    });
+  }, 20_000);
+
+  test("a reload sent while another is still importing goes in place, so no replacement leaves that one unheard", async () => {
+    await withBundles(
+      async (rsc, { a, b, broken }, body) => {
+        expect(await rsc.reload({ clientManifest: {}, buildId: 2, pagesBundlePath: a })).toMatchObject({ buildId: 2 });
+        const importing = rsc.reload({ clientManifest: {}, buildId: 3, pagesBundlePath: b }).catch((e) => e);
+        await Bun.sleep(50);
+        const failed = await rsc.reload({ clientManifest: {}, buildId: 4, pagesBundlePath: broken }).catch((e) => e);
+        expect(await importing).toMatchObject({ adopted: failed.adopted });
+        expect(rsc.getMetrics().rscWorkerRecycleCount).toBe(0);
+        const served = await body();
+        process.kill(Number(rsc.getMetrics().rscWorkerPid), "SIGKILL");
+        await until(() => rsc.getMetrics().rscWorkerStatus !== "ready");
+        await until(() => rsc.getMetrics().rscWorkerStatus === "ready");
+        expect(await body()).toBe(served);
+      },
+      { maxReloads: 2, minRecycleIntervalMs: 1 },
+    );
+  }, 30_000);
+
+  test("a reload the worker took, answered late, is what a respawn goes back to when the next bundle exits", async () => {
+    await withBundles(async (rsc, { c, exiting }, body) => {
+      const taken = rsc.reload({ clientManifest: {}, buildId: 2, pagesBundlePath: c }).catch((e) => e);
+      Bun.sleepSync(600);
+      const failed = await rsc.reload({ clientManifest: {}, buildId: 3, pagesBundlePath: exiting }).catch((e) => e);
+      expect(failed).toMatchObject({ adopted: { pagesBundlePath: c, buildId: 2 } });
+      expect(await taken).toMatchObject({ adopted: { pagesBundlePath: c, buildId: 2 } });
+      await until(() => rsc.getMetrics().rscWorkerStatus === "ready");
+      expect(await body()).toBe("C");
+    });
+  }, 20_000);
+
+  test("a reload after kill() rejects at once", async () => {
+    await withBundles(async (rsc) => {
+      rsc.kill();
+      expect(String(await rsc.reload({ clientManifest: {}, buildId: 2 }).catch((e) => e))).toContain("stopped");
+    });
+  }, 20_000);
+
   test("a recycle waits for a page prompt call in flight, whose answer the worker being replaced would carry", async () => {
     await withBundles(async (rsc) => {
       const call = rsc.listPagePrompts();

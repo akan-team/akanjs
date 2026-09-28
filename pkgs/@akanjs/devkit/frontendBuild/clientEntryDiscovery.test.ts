@@ -83,6 +83,23 @@ describe("GraphClientEntryDiscovery", () => {
     expect(await discovery.discover([file("S.tsx")])).toEqual([file("C.tsx")]);
   });
 
+  test("a dense import cycle is walked once per file, not once per path", async () => {
+    const file = await tempDir();
+    const names = Array.from({ length: 12 }, (_, idx) => `M${idx}.tsx`);
+    for (const name of names)
+      await Bun.write(file(name), names.map((other) => `import "./${other.replace(".tsx", "")}";\n`).join(""));
+    await Bun.write(file("C.tsx"), '"use client";\nexport const C = () => null;\n');
+    await Bun.write(
+      file("M11.tsx"),
+      `${names.map((other) => `import "./${other.replace(".tsx", "")}";\n`).join("")}import "./C";\n`,
+    );
+    const discovery = new GraphClientEntryDiscovery({ barrelImports: [] }, (async () => null) as never);
+    const started = performance.now();
+    expect(await discovery.discover([file("M0.tsx")])).toEqual([file("C.tsx")]);
+    expect(performance.now() - started).toBeLessThan(2_000);
+    expect(await discovery.discover([file("M5.tsx")])).toEqual([file("C.tsx")]);
+  });
+
   test("a file walked inside an import cycle keeps no partial result for a walk that starts at it", async () => {
     const file = await tempDir();
     await Bun.write(file("A.tsx"), 'import "./B";\nimport "./C";\n');

@@ -384,6 +384,9 @@ export class RscWorker {
     buildId: number;
   } | null = null;
   #nextReloadId = 1;
+  #answeredReloadId = 0;
+  //? Sends a booting replacement could not take: a worker the host falls back to gets them again.
+  #droppedWhileBooting = false;
   #reloadState = 0;
   #init: RscAdoptedBundle & { reloadState: number } = { pagesBundlePath: "", buildId: 0, reloadState: 0 };
   /** What the worker runs: a respawn falls back to it when the bundle a reload named failed to import. */
@@ -408,6 +411,7 @@ export class RscWorker {
   #booting: RscProcess | null = null;
 
   readonly #failBeforeReady: boolean;
+  static readonly #queuedRespawns = 2;
 
   constructor(artifact: BaseBuildArtifact, { failBeforeReady = false }: { failBeforeReady?: boolean } = {}) {
     this.#failBeforeReady = failBeforeReady;
@@ -489,7 +493,10 @@ export class RscWorker {
   }
 
   invalidateRouteResultCache(invalidation?: string | RouteCacheInvalidation): void {
-    if (this.#status !== "ready") return;
+    if (this.#status !== "ready") {
+      this.#droppedWhileBooting = true;
+      return;
+    }
     try {
       this.#proc.send(createRscWorkerInvalidateCacheMessage(invalidation));
     } catch (error) {
@@ -513,6 +520,7 @@ export class RscWorker {
 
   setLogLevel(minSev: number | null) {
     this.#logLevel = minSev;
+    if (this.#status !== "ready") this.#droppedWhileBooting = true;
     this.#sendLogLevel();
   }
 
@@ -564,7 +572,10 @@ export class RscWorker {
 
   updateCssAssets(cssAssets: Record<string, CssAsset>): void {
     this.#cssAssets = cssAssets;
-    if (this.#status !== "ready") return;
+    if (this.#status !== "ready") {
+      this.#droppedWhileBooting = true;
+      return;
+    }
     try {
       this.#proc.send({ type: "updateCssAssets", cssAssets });
     } catch {
@@ -599,7 +610,11 @@ export class RscWorker {
     if (!pending) return;
     // Bun's ESM registry never evicts an old `?v=<buildId>` import, so in-place reloads ratchet RSS; recycle (rolling)
     // past a threshold — recycling on every reload would throw away every lazily-warmed route module.
-    if (this.#shouldRecycleForReloadAccumulation() && this.restartWhenIdle("pages-reload-accumulation")) return;
+    //? Not while a reload sent to this worker is unanswered: it may still adopt that one after a replacement took over,
+    //? unheard, so this one goes in place and a later reload recycles.
+    const answering = this.#answeredReloadId < this.#nextReloadId - 1;
+    if (!answering && this.#shouldRecycleForReloadAccumulation() && this.restartWhenIdle("pages-reload-accumulation"))
+      return;
     this.#reloadsSinceSpawn += 1;
     pending.reloadId = this.#nextReloadId++;
     try {
@@ -735,6 +750,8 @@ export class RscWorker {
       case "ready":
         this.#booting = null;
         this.#status = "ready";
+        this.#answeredReloadId = this.#nextReloadId - 1;
+        this.#droppedWhileBooting = false;
         this.#restartAttempts = 0;
         this.#resolveReady();
         this.#finishRollingRecycle();
@@ -748,11 +765,18 @@ export class RscWorker {
         else this.#sendPendingReload();
         return;
       case "reloaded": {
-        //? The worker adopts in the order it was sent, so its latest answer is what it runs, even one a newer reload
-        //? overtook on the way here: a failure of that newer one goes back to it, not to the bundle before.
-        if (proc === this.#proc && message.pagesBundlePath)
-          this.#adopted = { pagesBundlePath: message.pagesBundlePath, buildId: message.buildId };
         const pending = this.#pendingReload;
+        //? The worker adopts in the order it was sent, so its latest answer is what it runs, even one a newer reload
+        //? overtook on the way here: a failure of that newer one goes back to it, not to the bundle before. With no
+        //? reload waiting, the host's own state follows too, so a crash respawn boots it.
+        if (proc === this.#proc && message.pagesBundlePath) {
+          this.#adopted = { pagesBundlePath: message.pagesBundlePath, buildId: message.buildId };
+          this.#answeredReloadId = Math.max(this.#answeredReloadId, message.reloadId ?? 0);
+          if (!pending) {
+            this.#pagesBundlePath = message.pagesBundlePath;
+            this.#pagesBundleBuildId = message.buildId;
+          }
+        }
         if (pending && pending.reloadId !== null && pending.reloadId === message.reloadId)
           this.#resolveReload({ pagesBundlePath: pending.pagesBundlePath, buildId: pending.buildId });
         return;
@@ -804,6 +828,7 @@ export class RscWorker {
           return;
         }
         if (message.requestId === "__reload__") {
+          if (proc === this.#proc) this.#answeredReloadId = Math.max(this.#answeredReloadId, message.reloadId ?? 0);
           if (proc === this.#proc && message.running) this.#adopted = message.running;
           const pending = this.#pendingReload;
           if (pending && pending.reloadId !== null && pending.reloadId === message.reloadId)
@@ -895,6 +920,12 @@ export class RscWorker {
     this.#proc = rolling.oldProc;
     this.#status = "ready";
     this.#reloadsSinceSpawn = rolling.reloadsSinceSpawn;
+    if (this.#droppedWhileBooting) {
+      this.#droppedWhileBooting = false;
+      this.updateCssAssets(this.#cssAssets);
+      this.#sendLogLevel();
+      this.invalidateRouteResultCache();
+    }
     this.#flushQueuedSends();
     if (!covered) this.#sendPendingReload();
     return true;
@@ -924,8 +955,9 @@ export class RscWorker {
     // A replaced proc's late exit must not schedule a second restart.
     if (proc !== this.#proc) return;
     //? Exiting while it imports the pages bundle (a `process.exit` at a module's top level) fails the boot like a throw:
-    //? a first boot rejects `ready`, as its init error would, instead of restarting into the same exit forever.
-    if (proc === this.#booting && !this.#killed) {
+    //? a first boot rejects `ready`, as its init error would, instead of restarting into the same exit forever. A kill
+    //? from outside (an OOM) is a crash, not the bundle's.
+    if (proc === this.#booting && !this.#killed && proc.signalCode === null) {
       const message = `rsc worker exited with code ${code} while loading the pages bundle`;
       if (this.#readyResolved && this.#bootFailed(proc, message)) return;
       if (!this.#readyResolved) {
@@ -939,9 +971,11 @@ export class RscWorker {
     }
 
     const err = new Error(`rsc worker exited with code ${code}`);
-    //? Only what this worker was sent: a request still queued never reached it, and the respawn takes it.
+    //? Only what this worker was sent: a request still queued never reached it, and the respawn takes it. That holds
+    //? across a crash and a respawn that failed to boot, not a crash loop, where it would wait forever.
     const queued = new Set(this.#queuedSends.map((entry) => entry.requestId));
-    this.#failRequests(err, (requestId) => !queued.has(requestId));
+    const keepsQueue = this.#restartAttempts < RscWorker.#queuedRespawns;
+    this.#failRequests(err, (requestId) => !keepsQueue || !queued.has(requestId));
 
     if (this.#killed) {
       this.#status = "stopped";

@@ -602,7 +602,7 @@ describe("dev resource budgets", () => {
     if ((settled?.rssBytes ?? 0) >= 200 * MB && !warned)
       await host.waitForLogSince(
         settledFrom,
-        /ceiling costs about one boot build per interval|recycling builder pid=\d+/,
+        /ceiling costs about one boot build per interval|recycling builder pid=\d+|skipped: the builder fell to/,
         WAIT_MS,
       );
     expect(host.logs.join("").slice(start)).not.toMatch(/no longer enforcing it this session/);

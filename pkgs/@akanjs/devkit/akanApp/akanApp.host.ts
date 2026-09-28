@@ -106,7 +106,12 @@ export class AkanAppHost {
     message: Extract<BuilderMessage, { type: "invalidate" }>;
     refreshConfig: boolean;
     failed?: boolean;
+    failedGeneration?: number;
   } | null = null;
+  //? A restart that failed after its change applied (the builder or backend did not come up): the builder's return is
+  //? its recovery, reported past the failure's generation so the scan overlay clears.
+  #restartFailedAfterApply: number | null = null;
+  #stopping = false;
   #builderRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
   #builderRecoveryAttempts = 0;
   #backendStartStatus: { generation?: number; files: string[] } | null = null;
@@ -168,6 +173,9 @@ export class AkanAppHost {
     return this;
   }
   async stop() {
+    //? Nothing reapplies once it stops: a pages ok received meanwhile would bring children back after it.
+    this.#stopping = true;
+    this.#pendingRecycle = null;
     this.#cancelIdleSuspend();
     this.#stopIdleWatcher();
     this.#clearRestartTimers();
@@ -435,6 +443,7 @@ export class AkanAppHost {
       });
   }
   async #handleBuilderMessage(message: BuilderMessage) {
+    if (this.#stopping) return;
     this.#markDevActivity();
     this.#trackBuilderGeneration(message);
     if (message.type === "build-status") {
@@ -784,12 +793,8 @@ export class AkanAppHost {
       this.logger.verbose("[idle-suspend] config changed while suspended; restarting the dev host");
       // Replaces the backend too, and a baseline kept past its own gap costs a restart at the next one.
       this.#discardBuilderGap("config change replaces the backend anyway");
-      await this.#recycleDevChildren(
-        { type: "invalidate", kinds: [...(batch?.kinds ?? [])], files },
-        {
-          refreshConfig: true,
-        },
-      );
+      //? Through the same path as a save's: a failure is reported and stays pending, as one would be awake.
+      await this.#applyRecycle({ type: "invalidate", kinds: [...(batch?.kinds ?? [])], files }, true);
       return;
     }
     // Refresh before deciding: a file created while suspended is not in the graph yet.
@@ -914,15 +919,19 @@ export class AkanAppHost {
     this.#sendToBackend(message);
   }
   async #applyRecycle(message: Extract<BuilderMessage, { type: "invalidate" }>, refreshConfig: boolean): Promise<void> {
+    if (this.#stopping) return;
     this.#pendingRecycle = null;
+    const progress = { applied: !refreshConfig };
     try {
-      if (refreshConfig) await this.#restartDevHost(message);
+      if (refreshConfig) await this.#restartDevHost(message, progress);
       else await this.#restartDevChildren(message);
     } catch (err) {
-      this.#recordDevHostRestartFailure(message, err, refreshConfig ? "Config" : "Runtime metadata");
-      //? Kept: a builder that booted degraded (a broken akan.config.ts) takes the fixing save itself and sends no
-      //? invalidate, so without this the old config would keep running after the fix.
-      this.#pendingRecycle = { message, refreshConfig, failed: true };
+      const kind = refreshConfig ? "Config" : "Runtime metadata";
+      const generation = this.#recordDevHostRestartFailure(message, err, kind, { applied: progress.applied });
+      //? Kept only when the change itself did not apply: a builder that booted degraded (a broken akan.config.ts)
+      //? takes the fixing save itself and sends no invalidate, so without this the old config would keep running.
+      if (progress.applied) this.#restartFailedAfterApply = generation;
+      else this.#pendingRecycle = { message, refreshConfig, failed: true, failedGeneration: generation };
       this.#resurrectDevChildren(message);
     }
   }
@@ -931,6 +940,8 @@ export class AkanAppHost {
   async #resumeFailedRecycle(status: DevBuildStatus): Promise<void> {
     const pending = this.#pendingRecycle;
     if (!pending?.failed || !status.ok || status.phase !== "pages" || !this.#touchesFailedRecycle(status.files)) return;
+    //? Newer than the failure: the batch that carried the change reports its own pages ok while the restart runs.
+    if (status.generation <= (pending.failedGeneration ?? -1)) return;
     await this.#applyRecycle(pending.message, pending.refreshConfig);
   }
   #touchesFailedRecycle(files: string[]): boolean {
@@ -989,8 +1000,13 @@ export class AkanAppHost {
     this.#builderRecoveryAttempts = 0;
     this.logger.info("[builder-recovery] builder recovered");
     void this.#restartBackendForGapChanges();
+    const failedAfterApply = this.#restartFailedAfterApply;
+    this.#restartFailedAfterApply = null;
     const status: DevBuildStatus = {
-      generation: reason.generation ?? this.#nextBackendBuildStatusGeneration(),
+      generation:
+        failedAfterApply !== null
+          ? this.#nextBackendBuildStatusGeneration(failedAfterApply + 1)
+          : (reason.generation ?? this.#nextBackendBuildStatusGeneration()),
       phase: "scan",
       ok: true,
       files: reason.files,
@@ -1017,16 +1033,19 @@ export class AkanAppHost {
   }
   // The config is re-imported with a cache-busting query, but modules it imports stay cached: a change inside an
   // imported plugin file still needs a manual `akan start` restart.
-  async #restartDevHost(message: Extract<BuilderMessage, { type: "invalidate" }>): Promise<void> {
+  async #restartDevHost(
+    message: Extract<BuilderMessage, { type: "invalidate" }>,
+    progress?: { applied: boolean },
+  ): Promise<void> {
     const generation = message.devPlan?.generation ?? message.generation;
     this.logger.warn(
       `[dev-host] config change detected; restarting dev host generation=${generation ?? "(unknown)"} files=${message.files.length}`,
     );
-    await this.#recycleDevChildren(message, { refreshConfig: true });
+    await this.#recycleDevChildren(message, { refreshConfig: true, progress });
   }
   async #recycleDevChildren(
     message: Extract<BuilderMessage, { type: "invalidate" }>,
-    { refreshConfig = false }: { refreshConfig?: boolean } = {},
+    { refreshConfig = false, progress }: { refreshConfig?: boolean; progress?: { applied: boolean } } = {},
   ): Promise<void> {
     const generation = message.devPlan?.generation ?? message.generation;
     this.#clearRestartTimers();
@@ -1042,6 +1061,7 @@ export class AkanAppHost {
       // Merge, not replace: `start()` added values prepare does not produce (REDIS_HOST from the tunnel).
       const { env } = await this.app.prepareCommand("start");
       Object.assign(this.env, env);
+      if (progress) progress.applied = true;
     }
     await this.#backendGraph.refresh();
     await this.#startBuilder();
@@ -1070,7 +1090,8 @@ export class AkanAppHost {
     message: Extract<BuilderMessage, { type: "invalidate" }>,
     err: unknown,
     kind: "Config" | "Runtime metadata",
-  ): void {
+    { applied }: { applied: boolean },
+  ): number {
     const generation = message.devPlan?.generation ?? message.generation ?? this.#nextBackendBuildStatusGeneration();
     const detail = err instanceof Error ? err.message : String(err);
     this.logger.warn(`[dev-host] ${kind.toLowerCase()} restart failed generation=${generation}: ${detail}`);
@@ -1081,10 +1102,13 @@ export class AkanAppHost {
       phase: "scan",
       ok: false,
       files: message.files,
-      message: `${kind} change failed to apply: ${detail}. The dev server keeps running on the previous ${kind.toLowerCase()}; once it is fixed, save ${saved} again or restart the dev server to apply it.`,
+      message: applied
+        ? `${kind} change applied, but the dev server failed to restart: ${detail}. It is recovering on its own.`
+        : `${kind} change failed to apply: ${detail}. The dev server keeps running on the previous ${kind.toLowerCase()}; once it is fixed, save ${saved} again or restart the dev server to apply it.`,
     };
     this.#recordBuildStatus(status);
     this.#sendOrQueueBuildStatus(status);
+    return generation;
   }
   #recordBuildStatus(status: DevBuildStatus): void {
     const recovered = shouldMarkBuildPhaseRecovered(this.#buildStatusByPhase, status);

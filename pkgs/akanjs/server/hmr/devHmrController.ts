@@ -297,11 +297,14 @@ export class DevHmrController {
               this.#renderState.buildId = failure.adopted.buildId;
               this.#runningBundlePath = path.resolve(failure.adopted.pagesBundlePath);
             } else if (this.#renderState.buildId === buildId) this.#renderState.buildId = previousBuildId;
-            //? A newer pages bundle failed in this one's place and reports it; this batch's patches still go out. A route
-            //? merge that rode along carries this bundle, so this one reports.
-            if (failure && failure.failed.buildId !== buildId) this.#ssrUpdates.release(generation);
-            else this.#failPagesReload(generation, files, error);
-            return;
+            //? The worker took this bundle before a later one failed: the tabs refresh onto it as on success.
+            if (failure?.adopted.buildId !== buildId) {
+              //? A newer pages bundle failed in this one's place and reports it; this batch's patches still go out. A
+              //? route merge that rode along carries this bundle, so this one reports.
+              if (failure && failure.failed.buildId !== buildId) this.#ssrUpdates.release(generation);
+              else this.#failPagesReload(generation, files, error);
+              return;
+            }
           }
           this.#logger.verbose(`[SSR] rsc reload buildId=${buildId} in ${Date.now() - reloadStarted}ms`);
         }

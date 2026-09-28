@@ -175,6 +175,7 @@ describe("DevHmrController SSR registry updates", () => {
       types: () => string[],
       renderState: RenderState,
       reloads: { pagesBundlePath?: string }[],
+      sent: () => HmrMessage[],
     ) => Promise<void>,
     {
       pagesBundlePath = "/repo/pages.js",
@@ -209,6 +210,7 @@ describe("DevHmrController SSR registry updates", () => {
           ),
         renderState,
         reloads,
+        () => messages,
       );
     } finally {
       controller.dispose();
@@ -369,7 +371,7 @@ describe("DevHmrController SSR registry updates", () => {
       fail = resolve;
     });
     await withRegistryController(
-      async (emit, types, renderState) => {
+      async (emit, types, renderState, _reloads, sent) => {
         const pages = (generation: number, buildId: number) =>
           emit({
             type: "pages-updated",
@@ -381,6 +383,7 @@ describe("DevHmrController SSR registry updates", () => {
         fail({ pagesBundlePath: "/repo/pages-boot.js", buildId: 1 });
         await settle();
         expect(types()).toEqual(["build-status"]);
+        expect(sent()).toMatchObject([{ type: "build-status", status: "error", phase: "pages", generation: 10 }]);
         expect(renderState.buildId).toBe(1);
       },
       {
@@ -394,6 +397,44 @@ describe("DevHmrController SSR registry updates", () => {
           });
         },
       },
+    );
+  });
+
+  test("a batch whose bundle the worker took before a later one failed refreshes the tabs onto it", async () => {
+    await withRegistryController(
+      async (emit, _types, renderState, _reloads, sent) => {
+        emit({
+          type: "pages-updated",
+          data: { bundlePath: "/repo/pages-9.js", buildId: 2, generation: 9, changedFiles: ["/repo/a.ts"] },
+        });
+        await settle();
+        expect(sent().filter((message) => message.type === "rsc-refresh")).toMatchObject([{ buildId: 2 }]);
+        expect(sent().some((message) => message.type === "build-status")).toBe(false);
+        expect(renderState.buildId).toBe(2);
+      },
+      {
+        pagesBundlePath: "/repo/pages-boot.js",
+        reload: async () => {
+          throw Object.assign(new Error("broken at import"), {
+            adopted: { pagesBundlePath: "/repo/pages-9.js", buildId: 2 },
+            failed: { pagesBundlePath: "/repo/pages-10.js", buildId: 3 },
+          });
+        },
+      },
+    );
+  });
+
+  test("a batch a later pages build superseded tells the tabs the build the worker runs", async () => {
+    await withRegistryController(
+      async (emit, _types, _renderState, _reloads, sent) => {
+        emit({
+          type: "pages-updated",
+          data: { bundlePath: "/repo/pages-9.js", buildId: 2, generation: 9, changedFiles: ["/repo/a.ts"] },
+        });
+        await settle();
+        expect(sent().filter((message) => message.type === "rsc-refresh")).toMatchObject([{ buildId: 3 }]);
+      },
+      { reload: async () => ({ pagesBundlePath: "/repo/pages-10.js", buildId: 3 }) },
     );
   });
 
@@ -436,12 +477,13 @@ describe("DevHmrController SSR registry updates", () => {
     });
   });
 
-  test("a route built again at the failure's generation clears it, and another route's ok does not", async () => {
+  test("a route built again at the failure's generation clears it, and another route's ok never does", async () => {
     await withRegistryController(async (emit, types) => {
-      const route = (scope: string, ok: boolean) =>
-        emit({ type: "build-status", data: { generation: 4, phase: "route", ok, files: [], message: "x", scope } });
+      const route = (scope: string, ok: boolean, generation = 4) =>
+        emit({ type: "build-status", data: { generation, phase: "route", ok, files: [], message: "x", scope } });
       route("/:lang/a", false);
       route("/:lang/b", true);
+      route("/:lang/b", true, 5);
       await settle();
       expect(types()).toEqual(["build-status"]);
       route("/:lang/a", true);

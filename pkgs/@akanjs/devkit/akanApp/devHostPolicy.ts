@@ -128,9 +128,10 @@ export const shouldMarkBuildPhaseRecovered = (
   const previous = previousByPhase.get(status.phase);
   if (!previous || previous.ok || !status.ok) return false;
   const generation = generationValue(status.generation);
+  if (status.phase === "route" && status.scope !== undefined && previous.scope !== undefined)
+    return status.scope === previous.scope && generation >= previous.generation;
   if (generation !== previous.generation) return generation > previous.generation;
-  if (status.phase === "backend") return true;
-  return status.phase === "route" && status.scope !== undefined && status.scope === previous.scope;
+  return status.phase === "backend";
 };
 
 /** An ok that recovers nothing leaves the failure standing, for hello and for whatever waits on a clean build. */
@@ -291,8 +292,9 @@ export const resolveIdleSuspendMs = (raw: string | undefined): number | null => 
   return Math.round(parsed);
 };
 
+//? Not a route's: a broken route builds again on its next request, which wakes a suspended builder anyway.
 export const hasAnyBuildFailure = (statusByPhase: ReadonlyMap<BuildPhase, DevBuildStatus>): boolean =>
-  [...statusByPhase.values()].some((status) => !status.ok);
+  [...statusByPhase.values()].some((status) => !status.ok && status.phase !== "route");
 
 export const shouldRefreshConfigOnIdleWake = (batch: ChangeBatch | null): boolean =>
   !!batch && batch.kinds.has("config");

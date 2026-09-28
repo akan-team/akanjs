@@ -284,8 +284,9 @@ describe("dev idle suspend", () => {
     expect(resolveIdleSuspendMs("1500")).toBe(1_500);
   });
 
-  test("blocks a suspend on a failure in any phase, not just the newest generation", () => {
+  test("blocks a suspend on a failure in any phase but a route's, not just the newest generation", () => {
     expect(hasAnyBuildFailure(new Map())).toBe(false);
+    expect(hasAnyBuildFailure(new Map([["route", status("route", 1, false)]]))).toBe(false);
     expect(hasAnyBuildFailure(new Map([["scan", status("scan", 1, true)]]))).toBe(false);
     expect(
       hasAnyBuildFailure(
@@ -370,7 +371,7 @@ describe("build status helpers", () => {
     expect(shouldMarkBuildPhaseRecovered(previousByPhase, status("backend", 7, true))).toBe(true);
   });
 
-  test("the same route built again recovers on the failure's own generation, and another route's ok does not", () => {
+  test("the same route built again recovers at the failure's generation or later, and another route's ok never does", () => {
     const routeA = (ok: boolean, generation = 4) => ({ ...status("route", generation, ok), scope: "/:lang/a" });
     const routeB = (ok: boolean, generation = 4) => ({ ...status("route", generation, ok), scope: "/:lang/b" });
     const previousByPhase = new Map<DevBuildStatus["phase"], DevBuildStatus>([["route", routeA(false)]]);
@@ -378,7 +379,8 @@ describe("build status helpers", () => {
     expect(shouldKeepBuildFailure(previousByPhase, routeA(true))).toBe(false);
     expect(shouldMarkBuildPhaseRecovered(previousByPhase, routeB(true))).toBe(false);
     expect(shouldKeepBuildFailure(previousByPhase, routeB(true))).toBe(true);
-    expect(shouldMarkBuildPhaseRecovered(previousByPhase, routeB(true, 5))).toBe(true);
+    expect(shouldMarkBuildPhaseRecovered(previousByPhase, routeB(true, 5))).toBe(false);
+    expect(shouldMarkBuildPhaseRecovered(previousByPhase, routeA(true, 5))).toBe(true);
     expect(shouldKeepBuildFailure(previousByPhase, routeA(true, 3))).toBe(true);
   });
 
