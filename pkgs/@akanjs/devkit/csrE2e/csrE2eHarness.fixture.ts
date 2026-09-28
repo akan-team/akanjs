@@ -86,7 +86,11 @@ export class CsrE2eHarness {
       const { width, height } = { width: 390, height: 844, ...options.viewport };
       const backend = options.backend ?? CsrE2eHarness.#defaultBackend();
       //? `url: false` spawns a fresh Chrome instead of attaching to one the developer runs with remote debugging on.
-      const view = new Bun.WebView({ width, height, backend: backend === "chrome" ? { type: "chrome", url: false } : backend });
+      const view = new Bun.WebView({
+        width,
+        height,
+        backend: backend === "chrome" ? { type: "chrome", url: false } : backend,
+      });
       return new CsrE2eHarness({
         origin,
         view,
@@ -112,11 +116,17 @@ export class CsrE2eHarness {
   /** Reloads the page where it is, as a WebView does after its content process died, and marks the new boot. */
   async reload() {
     await this.#view.reload();
+    //? On the WebKit backend `reload()` resolves before the old document is gone; its marker going is the reload.
+    await this.waitFor(
+      (key: string, previous: string) => (window as unknown as Record<string, string | undefined>)[key] !== previous,
+      { args: [RELOAD_MARKER, this.#marker], timeout: 30_000 },
+    );
     await this.#markBoot();
   }
 
   async #markBoot() {
     await this.waitFor(() => document.querySelector('[id^="pageContainer-"]') !== null, { timeout: 30_000 });
+    await Bun.sleep(SETTLE_MS);
     this.#marker = Math.random().toString(36).slice(2);
     await this.evaluate(
       (key: string, value: string) => {
@@ -182,7 +192,7 @@ export class CsrE2eHarness {
     return await this.#view.evaluate<Awaited<Result>>(`(${fn.toString()})(...${JSON.stringify(args)})`);
   }
 
-  //? A poll that lands while the page reloads rejects; it is retried, so a wait spans a reload as puppeteer's did.
+  //? A poll that lands while the page reloads rejects; it is retried, so a wait spans a reload.
   async waitFor<Args extends unknown[]>(
     predicate: (...args: Args) => unknown,
     { timeout = 5_000, args = [] as unknown as Args }: { timeout?: number; args?: Args } = {},
