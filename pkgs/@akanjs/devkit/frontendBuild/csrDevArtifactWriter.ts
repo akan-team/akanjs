@@ -10,7 +10,7 @@ import {
   csrDevModuleFile,
 } from "akanjs/server/hmr/csrDevManifest";
 import { CsrDevPaths } from "./csrDevPaths";
-import type { CsrDevCompiledModule, CsrDevGraph } from "./csrDevTypes";
+import type { CsrDevCode, CsrDevCompiledModule, CsrDevGraph } from "./csrDevTypes";
 
 export class CsrDevArtifactWriter {
   static readonly #keptPatches = 40;
@@ -50,6 +50,16 @@ export class CsrDevArtifactWriter {
     ]);
   }
 
+  async readCode(graph: CsrDevGraph): Promise<CsrDevCode> {
+    const ids = Object.keys(graph.modules).filter((id) => !graph.modules[id]?.vendor);
+    const hashes = [...new Set(ids.flatMap((id) => graph.modules[id]?.helpers ?? []))];
+    const [modules, helpers] = await Promise.all([
+      Promise.all(ids.map(async (id) => [id, await Bun.file(this.#modulePath(id, ".js")).text()] as const)),
+      Promise.all(hashes.map(async (hash) => [hash, await Bun.file(this.#helpersPath(hash)).text()] as const)),
+    ]);
+    return { modules: new Map(modules), helpers: new Map(helpers) };
+  }
+
   async forgetModules(ids: string[]): Promise<void> {
     await Promise.all(
       ids.flatMap((id) => [
@@ -77,14 +87,14 @@ export class CsrDevArtifactWriter {
     return vendorFile;
   }
 
-  async writeApp(graph: CsrDevGraph, generation: number): Promise<void> {
+  async writeApp(graph: CsrDevGraph, generation: number, code?: CsrDevCode): Promise<void> {
     const ids = Object.keys(graph.modules)
       .filter((id) => !graph.modules[id]?.vendor)
       .sort();
-    const lines = await this.#defineLines(ids);
+    const lines = await this.#defineLines(ids, code);
     const blocks = ids.map((id, index) => [id, lines[index] ?? ""] as [string, string]);
     const start = `__akan.start(${JSON.stringify({ generation, refresh: graph.refresh })});\n`;
-    await this.#writeWithSourceMap(CSR_DEV_APP_FILE, await this.#helperDefinitions(graph, ids), blocks, start);
+    await this.#writeWithSourceMap(CSR_DEV_APP_FILE, await this.#helperDefinitions(graph, ids, code), blocks, start);
   }
 
   async writePatch(generation: number, modules: CsrDevCompiledModule[]): Promise<string> {
@@ -112,18 +122,23 @@ export class CsrDevArtifactWriter {
 
   //? The open tabs need only the patch, so they hear of it before app.js (a full rewrite) catches up; the manifest says
   //? which generation app.js holds, and the shell holds a tab booting in that gap until it does.
-  async commitPatch(graph: CsrDevGraph, manifest: CsrDevManifest, announce: () => void): Promise<void> {
+  async commitPatch(
+    graph: CsrDevGraph,
+    manifest: CsrDevManifest,
+    announce: () => void,
+    code?: CsrDevCode,
+  ): Promise<void> {
     await this.writeState(graph, manifest);
     announce();
     await CsrDevArtifactWriter.#appWriteDelay();
-    await this.writeApp(graph, manifest.generation);
+    await this.writeApp(graph, manifest.generation, code);
     await this.writeJson(CSR_DEV_MANIFEST_FILE, { ...manifest, appGeneration: manifest.generation });
   }
 
   // A process that died between announcing a patch and rewriting app.js left every booting tab one generation behind.
-  async healApp(graph: CsrDevGraph, manifest: CsrDevManifest): Promise<CsrDevManifest> {
+  async healApp(graph: CsrDevGraph, manifest: CsrDevManifest, code?: CsrDevCode): Promise<CsrDevManifest> {
     if (appGenerationOf(manifest) >= manifest.generation) return manifest;
-    await this.writeApp(graph, manifest.generation);
+    await this.writeApp(graph, manifest.generation, code);
     const healed = { ...manifest, appGeneration: manifest.generation };
     await this.writeJson(CSR_DEV_MANIFEST_FILE, healed);
     return healed;
@@ -144,16 +159,19 @@ export class CsrDevArtifactWriter {
     await Promise.all([...stale, ...vendors].map((name) => rm(path.join(this.#outDir, name), { force: true })));
   }
 
-  async #helperDefinitions(graph: CsrDevGraph, ids: string[]): Promise<string> {
+  async #helperDefinitions(graph: CsrDevGraph, ids: string[], code?: CsrDevCode): Promise<string> {
     const hashes = [...new Set(ids.flatMap((id) => graph.modules[id]?.helpers ?? []))].sort();
-    return (await Promise.all(hashes.map((hash) => Bun.file(this.#helpersPath(hash)).text()))).join("");
+    return (
+      await Promise.all(hashes.map(async (hash) => code?.helpers.get(hash) ?? Bun.file(this.#helpersPath(hash)).text()))
+    ).join("");
   }
 
-  async #defineLines(ids: string[]): Promise<string[]> {
+  async #defineLines(ids: string[], code?: CsrDevCode): Promise<string[]> {
     return await Promise.all(
-      ids.map(
-        async (id) => `__akan.define(${JSON.stringify(id)}, ${await Bun.file(this.#modulePath(id, ".js")).text()});\n`,
-      ),
+      ids.map(async (id) => {
+        const factory = code?.modules.get(id) ?? (await Bun.file(this.#modulePath(id, ".js")).text());
+        return `__akan.define(${JSON.stringify(id)}, ${factory});\n`;
+      }),
     );
   }
 

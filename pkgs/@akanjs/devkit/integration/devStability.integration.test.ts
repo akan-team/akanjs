@@ -487,7 +487,8 @@ describe("dev resource budgets", () => {
         `csr-armed-marker-${attempt}`,
       ),
     );
-    await host.waitForLogSince(resyncMark, /csr-rebundle ok|csr-dev generation=\d+ patch/, WAIT_MS);
+    // A worker logs `csr-dev generation=N patch`; the resident builder's patcher logs `csr-patch generation=N patch`.
+    await host.waitForLogSince(resyncMark, /csr-rebundle ok|csr-(?:dev|patch) generation=\d+ patch/, WAIT_MS);
   });
 
   budgetTest("bounds the rsc worker and the tree across repeated saves", async () => {

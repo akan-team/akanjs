@@ -25,6 +25,19 @@ export interface CsrDevModuleCompilerOptions {
   outDir: string;
 }
 
+export interface CsrDevCompileOptions {
+  /** Stop before building an npm module the graph does not know yet, and name it instead. */
+  refuseNewVendor?: boolean;
+  /** Stop at an import no recorded resolution answers, instead of running the resolution build (a whole-app build). */
+  refusePrepass?: boolean;
+}
+
+export interface CsrDevCompileResult {
+  modules: CsrDevCompiledModule[];
+  refusedVendors: string[];
+  unresolved: string[];
+}
+
 //* Every module becomes its own CJS factory: one Bun.build with each import external, so a save re-runs only the
 //* modules it changed instead of reloading one scope-hoisted file.
 export class CsrDevModuleCompiler {
@@ -49,12 +62,20 @@ export class CsrDevModuleCompiler {
     this.#outDir = outDir;
   }
 
-  async compile(startFiles: string[], known: Set<string>): Promise<CsrDevCompiledModule[]> {
+  async compile(
+    startFiles: string[],
+    known: Set<string>,
+    { refuseNewVendor = false, refusePrepass = false }: CsrDevCompileOptions = {},
+  ): Promise<CsrDevCompileResult> {
     const compiled = new Map<string, CsrDevCompiledModule>();
     const seen = new Set([...known, ...startFiles]);
     let frontier = [...new Set(startFiles)];
     while (frontier.length > 0) {
+      const refusedVendors = refuseNewVendor ? frontier.filter((file) => CsrDevPaths.isVendorFile(file)) : [];
+      if (refusedVendors.length > 0) return { modules: [...compiled.values()], refusedVendors, unresolved: [] };
       const round = await this.#compileRound(frontier);
+      if (round.misses.length > 0 && !this.#resolver.prepassDone && refusePrepass)
+        return { modules: [...compiled.values()], refusedVendors: [], unresolved: round.misses };
       if (round.misses.length > 0 && !this.#resolver.prepassDone) {
         this.#app.verbose(`[csr-dev] ${round.misses.length} unresolved import(s); rerunning the resolution build`);
         await this.#resolver.prepass();
@@ -76,7 +97,7 @@ export class CsrDevModuleCompiler {
       this.#app.verbose(
         `[csr-dev] ${fallbacks.size} import(s) outside the browser build's graph resolved with Bun's runtime resolver: ${[...fallbacks].slice(0, 5).join(", ")}${fallbacks.size > 5 ? ", ..." : ""}`,
       );
-    return [...compiled.values()];
+    return { modules: [...compiled.values()], refusedVendors: [], unresolved: [] };
   }
 
   async #compileRound(files: string[]): Promise<Omit<BuildRound, "tangled">> {

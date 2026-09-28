@@ -44,3 +44,9 @@ export interface CsrDevCompiledModule {
   mtimeMs: number;
   hash: string;
 }
+
+/** Module factories by id and helper definitions by hash, kept in memory so app.js is written without a pass over the disk. */
+export interface CsrDevCode {
+  modules: Map<string, string>;
+  helpers: Map<string, string>;
+}

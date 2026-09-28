@@ -32,10 +32,10 @@ class BuildBatch {
 
   async run(): Promise<BuildBatchResult> {
     if (this.#request.needs.includes("base")) await this.#buildBase();
-    // Order kept from the in-process build: csr before pages, css last because it depends on the rebuilt client.
     if (this.#request.needs.includes("csr")) await this.#buildCsr();
-    if (this.#request.needs.includes("pages")) await this.#buildPages();
+    // Css before pages: it scans the sources and reads nothing pages produces, so a class edit need not wait for pages.
     if (this.#request.needs.includes("css")) await this.#buildCss();
+    if (this.#request.needs.includes("pages")) await this.#buildPages();
     return this.#result;
   }
 

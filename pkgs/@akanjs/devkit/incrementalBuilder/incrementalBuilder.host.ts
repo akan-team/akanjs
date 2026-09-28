@@ -1,6 +1,8 @@
+import fs from "node:fs";
 import path from "node:path";
 import { Logger } from "akanjs/common";
 import type { BuilderMessage } from "akanjs/server";
+import { CSR_DEV_DIRNAME, CSR_DEV_PATCHING_MARKER } from "akanjs/server/hmr/csrDevManifest";
 import { MemoryLimit } from "akanjs/server/memoryLimit";
 import type { App } from "../commandDecorators";
 
@@ -62,6 +64,7 @@ export class IncrementalBuilderHost {
   #recycleTimer: ReturnType<typeof setTimeout> | null = null;
   #recycleRequested: boolean = false;
   #spawnAfterRecycle: boolean = false;
+  #patcherOff: boolean = false;
   #manualStop = false;
   // Nothing else answers a request whose builder exits holding it: a crash or kill sends nothing, and a drain races
   // its own exit, so an unanswered page request would spin forever.
@@ -95,10 +98,16 @@ export class IncrementalBuilderHost {
     this.ready = false;
     const afterRecycle = this.#spawnAfterRecycle;
     this.#spawnAfterRecycle = false;
+    this.#checkPatchingMarker(isRestart && !afterRecycle);
     let proc!: Bun.Subprocess<"ignore", "inherit" | "pipe", "inherit" | "pipe">;
     proc = Bun.spawn(["bun", this.entry], {
       cwd: this.app.cwdPath,
-      env: { ...this.env, AKAN_WATCH: "1", ...(afterRecycle ? { AKAN_BUILDER_ANNOUNCE_BOOT: "1" } : {}) },
+      env: {
+        ...this.env,
+        AKAN_WATCH: "1",
+        ...(afterRecycle ? { AKAN_BUILDER_ANNOUNCE_BOOT: "1" } : {}),
+        ...(this.#patcherOff ? { AKAN_DEV_CSR_PATCHER: "off" } : {}),
+      },
       stdio: ["ignore", this.#stdio, this.#stdio],
       ipc: (msg: BuilderMessage) => {
         if (this.#proc !== proc) return;
@@ -152,6 +161,21 @@ export class IncrementalBuilderHost {
     }
     this.logger.verbose(`builder spawned pid=${proc.pid} entry=${this.entry}${isRestart ? " restart=1" : ""}`);
   }
+  //? The resident builder patches the dev CSR bundle in its own process, so a bundler crash there takes the file watcher
+  //? with it. A builder that died holding the marker hands every later CSR save to build workers for this session;
+  //? a marker any other exit left behind (Ctrl-C mid-patch) is cleared so it cannot turn the patcher off next session.
+  #checkPatchingMarker(afterCrash: boolean): void {
+    const marker = path.join(this.app.cwdPath, ".akan/artifact", CSR_DEV_DIRNAME, CSR_DEV_PATCHING_MARKER);
+    if (!fs.existsSync(marker)) return;
+    if (afterCrash && !this.#patcherOff) {
+      this.#patcherOff = true;
+      this.logger.warn(
+        "the builder died while patching the dev CSR bundle; CSR saves go to a build worker for the rest of this session (AKAN_DEV_CSR_PATCHER=off)",
+      );
+    }
+    fs.rmSync(marker, { force: true });
+  }
+
   async #drain(stream: ReadableStream<Uint8Array> | undefined | null, kind: "stdout" | "stderr") {
     if (!stream) return;
     const decoder = new TextDecoder();

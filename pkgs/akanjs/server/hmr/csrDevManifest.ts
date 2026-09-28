@@ -2,6 +2,8 @@ export const CSR_DEV_DIRNAME = "csr-dev";
 export const CSR_DEV_ROUTE_PREFIX = "/_akan/csr-dev/";
 export const CSR_DEV_APP_FILE = "app.js";
 export const CSR_DEV_MANIFEST_FILE = "manifest.json";
+/** Present only while the resident builder patches: a builder that dies holding it takes the patcher off. */
+export const CSR_DEV_PATCHING_MARKER = ".patching";
 
 export type DevCsrMode = "registry" | "artifact";
 
