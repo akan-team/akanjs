@@ -767,6 +767,28 @@ export default page()
                 ),
               })}
             </li>
+            <li>
+              {l.trans({
+                en: (
+                  <>
+                    <strong>On Android, back is the page's only while it has somewhere to go.</strong> At the index with
+                    nothing under it, the system takes back and shows its own back-to-home animation, and the app stays
+                    warm instead of quitting. On Android 14+ a back swipe moves the page with the finger before it
+                    commits. When the system runs low on memory, on either platform, the hidden pages are released and
+                    mount again when visited.
+                  </>
+                ),
+                ko: (
+                  <>
+                    <strong>Android에서 뒤로가기는 갈 곳이 있을 때만 페이지의 것입니다.</strong> 아래에 아무것도 없는
+                    인덱스에서는 시스템이 뒤로가기를 가져가 홈으로 가는 자체 애니메이션을 보여 주고, 앱은 종료되지 않고
+                    살아 있습니다. Android 14 이상에서는 뒤로가기 스와이프를 하는 동안 페이지가 손가락을 따라 움직인 뒤
+                    확정됩니다. 두 플랫폼 모두 시스템 메모리가 부족해지면 숨은 페이지를 해제하고, 다시 방문할 때
+                    마운트합니다.
+                  </>
+                ),
+              })}
+            </li>
           </ul>
 
           <Docs.SubSubTitle>{l.trans({ en: "The frame as CSS variables", ko: "CSS 변수로 쓰기" })}</Docs.SubSubTitle>

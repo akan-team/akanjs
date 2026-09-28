@@ -1,8 +1,8 @@
 {
   "id": "app",
   "apiVersion": 1,
-  "methods": ["getInfo", "getLaunchUrl", "exit", "minimize", "answerBeforeQuit"],
-  "events": ["urlOpen", "backButton", "beforeQuit"],
+  "methods": ["getInfo", "getLaunchUrl", "exit", "minimize", "answerBeforeQuit", "setBackEnabled"],
+  "events": ["urlOpen", "backButton", "beforeQuit", "backProgress"],
   "codegen": true,
   "web": "./src/web.ts",
   "desktop": "./src/desktop.ts",
@@ -15,7 +15,7 @@
   "android": {
     "sources": ["android/*.kt"],
     "class": "com.akanjs.plugins.app.AppPlugin",
-    "methods": ["getInfo", "getLaunchUrl", "exit", "minimize"],
-    "events": ["urlOpen", "backButton"]
+    "methods": ["getInfo", "getLaunchUrl", "exit", "minimize", "setBackEnabled"],
+    "events": ["urlOpen", "backButton", "backProgress"]
   }
 }

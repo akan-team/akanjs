@@ -28,7 +28,14 @@ export interface AppApi {
   minimize(): Promise<void>;
   /** Internal: the page's answer to a beforeQuit event. Use onBeforeQuit(). */
   answerBeforeQuit(args: { id: number; allow?: boolean }): Promise<void>;
+  /**
+   * Android: whether back belongs to the page right now, for a page that listens to backButton. false hands it to
+   * the system, which then shows its own back-to-home animation; each new listener starts at true.
+   */
+  setBackEnabled(args: { enabled: boolean }): Promise<void>;
 }
+
+export type BackProgressPhase = "started" | "progressed" | "cancelled";
 
 export interface AppEvents {
   /** A deep link arrived while running. URLs that arrive before anyone listens are delivered to the first listener. */
@@ -37,11 +44,16 @@ export interface AppEvents {
   backButton: { canGoBack: boolean };
   /** Internal: the app is about to quit (desktop). Use onBeforeQuit(). */
   beforeQuit: { id: number; reason: QuitReason };
+  /**
+   * Android 14+: a back swipe in progress, for a page that animates it. `progress` runs 0–1; a committed swipe then
+   * arrives as backButton, and one let go early as `cancelled`.
+   */
+  backProgress: { phase: BackProgressPhase; progress: number; swipeEdge: "left" | "right" };
 }
 
 export const app = definePlugin<AppApi, AppEvents>("app", {
-  methods: ["getInfo", "getLaunchUrl", "exit", "minimize", "answerBeforeQuit"],
-  events: ["urlOpen", "backButton", "beforeQuit"],
+  methods: ["getInfo", "getLaunchUrl", "exit", "minimize", "answerBeforeQuit", "setBackEnabled"],
+  events: ["urlOpen", "backButton", "beforeQuit", "backProgress"],
   web,
 });
 

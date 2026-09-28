@@ -39,6 +39,8 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.window.BackEvent
+import android.window.OnBackAnimationCallback
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import com.akanjs.generated.AkanNativeGeneratedPlugins
@@ -675,13 +677,16 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
     // ---------------------------------------------------------------- back (SH-5)
 
     private var backInterceptor: (() -> Unit)? = null
+    private var backEnabled = true
+    private var backProgressListener: ((AkanNativeBackProgress) -> Unit)? = null
 
-    /** What back does inside the app. false: nothing to do here (the root page without a listener). */
+    /** What back does inside the app. false: nothing to do here (the root, or a listener that gave back up). */
     private fun handleBack(): Boolean {
         val interceptor = backInterceptor
         when {
             fullscreenView != null -> exitFullscreen()
-            interceptor != null -> interceptor()
+            interceptor != null && backEnabled -> interceptor()
+            interceptor != null -> return false
             webView.canGoBack() -> webView.goBack()
             else -> return false
         }
@@ -689,18 +694,24 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
         return true
     }
 
+    /** A swipe reaches the page only when the page will take the back it ends in; a full-screen view's is its own. */
+    private fun reportBackProgress(progress: AkanNativeBackProgress) {
+        if (fullscreenView == null && backInterceptor != null && backEnabled) backProgressListener?.invoke(progress)
+    }
+
     /** API 33+: the registered OnBackInvokedCallback (created only there: the interface is API 33). */
     private var backCallback: Any? = null
     private var backRegistered = false
 
     /**
-     * API 33+: intercept back only while there is history, a page listener or a full-screen view, so
-     * the system back-to-home animation stays at the root. Below 33 onBackPressed() does the same.
+     * API 33+: intercept back only while a full-screen view is up, a page listener wants it, or (with no listener)
+     * there is history, so the system back-to-home animation stays at the root. Below 33 onBackPressed() does the same.
      */
     private fun updateBackCallback() {
         if (Build.VERSION.SDK_INT < 33) return
-        val want = fullscreenView != null || backInterceptor != null || webView.canGoBack()
-        if (want != backRegistered) backCallback = Api33.setBackCallback(this, backCallback, want) { handleBack() }
+        val want = fullscreenView != null || if (backInterceptor != null) backEnabled else webView.canGoBack()
+        if (want != backRegistered)
+            backCallback = Api33.setBackCallback(this, backCallback, want, { handleBack() }, ::reportBackProgress)
         backRegistered = want
     }
 
@@ -810,7 +821,17 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
 
     override fun setBackInterceptor(interceptor: (() -> Unit)?) {
         backInterceptor = interceptor
+        backEnabled = true
         updateBackCallback()
+    }
+
+    override fun setBackEnabled(enabled: Boolean) {
+        backEnabled = enabled
+        updateBackCallback()
+    }
+
+    override fun setBackProgressListener(listener: ((AkanNativeBackProgress) -> Unit)?) {
+        backProgressListener = listener
     }
 
     // ---------------------------------------------------------------- web bundle updates (UP-2)
@@ -915,13 +936,36 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
             settings.isAlgorithmicDarkeningAllowed = false
         }
 
-        /** Registers or unregisters the back callback; returns the callback to keep. */
-        fun setBackCallback(activity: Activity, current: Any?, register: Boolean, onBack: () -> Unit): Any {
-            val callback = (current as? OnBackInvokedCallback) ?: OnBackInvokedCallback { onBack() }
+        /** Registers or unregisters the back callback; returns the callback to keep. API 34+ also reports the swipe. */
+        fun setBackCallback(
+            activity: Activity,
+            current: Any?,
+            register: Boolean,
+            onBack: () -> Unit,
+            onProgress: (AkanNativeBackProgress) -> Unit,
+        ): Any {
+            val callback = (current as? OnBackInvokedCallback)
+                ?: if (Build.VERSION.SDK_INT >= 34) Api34.animatedBackCallback(onBack, onProgress) else OnBackInvokedCallback { onBack() }
             if (register) activity.onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback)
             else activity.onBackInvokedDispatcher.unregisterOnBackInvokedCallback(callback)
             return callback
         }
+    }
+
+    private object Api34 {
+        fun animatedBackCallback(onBack: () -> Unit, onProgress: (AkanNativeBackProgress) -> Unit): OnBackInvokedCallback =
+            object : OnBackAnimationCallback {
+                override fun onBackStarted(backEvent: BackEvent) = onProgress(progressOf(AkanNativeBackProgress.Phase.STARTED, backEvent))
+
+                override fun onBackProgressed(backEvent: BackEvent) = onProgress(progressOf(AkanNativeBackProgress.Phase.PROGRESSED, backEvent))
+
+                override fun onBackCancelled() = onProgress(AkanNativeBackProgress(AkanNativeBackProgress.Phase.CANCELLED, 0f, false))
+
+                override fun onBackInvoked() = onBack()
+            }
+
+        private fun progressOf(phase: AkanNativeBackProgress.Phase, event: BackEvent) =
+            AkanNativeBackProgress(phase, event.progress, event.swipeEdge == BackEvent.EDGE_RIGHT)
     }
 
     companion object {

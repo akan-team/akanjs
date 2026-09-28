@@ -2,7 +2,7 @@
   "id": "app-state",
   "apiVersion": 1,
   "methods": ["getState"],
-  "events": ["change"],
+  "events": ["change", "memoryWarning"],
   "codegen": true,
   "web": "./src/web.ts",
   "desktop": "web",

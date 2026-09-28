@@ -52,6 +52,8 @@ export default defineDesktopPlugin<AppApi, AppEvents>({
     minimize: async (_args, ctx) => {
       await ctx.shell("window.minimize");
     },
+    // Android's back ownership: a desktop window has no system back to hand it to.
+    setBackEnabled: () => undefined,
   },
   events: {
     urlOpen(send) {
@@ -62,7 +64,8 @@ export default defineDesktopPlugin<AppApi, AppEvents>({
       return () => links.unlisten("pages");
     },
     beforeQuit: (send, ctx) => quitVeto.source(send, ctx),
-    // Android's back button: never fires here, but listening works on every platform.
+    // Android's back button and its swipe: never fire here, but listening works on every platform.
     backButton: () => () => {},
+    backProgress: () => () => {},
   },
 });

@@ -13,13 +13,18 @@ export interface AppStateApi {
   getState(): Promise<{ state: AppStateValue }>;
 }
 
+/** moderate: the system is running low; critical: it is about to end processes, likely this one. */
+export type MemoryWarningLevel = "moderate" | "critical";
+
 export interface AppStateEvents {
   change: { state: AppStateValue };
+  /** The system asked the app to give memory back: iOS's memory warning, Android's onTrimMemory and onLowMemory. */
+  memoryWarning: { level: MemoryWarningLevel };
 }
 
 export const appState = definePlugin<AppStateApi, AppStateEvents>("app-state", {
   methods: ["getState"],
-  events: ["change"],
+  events: ["change", "memoryWarning"],
   web,
 });
 

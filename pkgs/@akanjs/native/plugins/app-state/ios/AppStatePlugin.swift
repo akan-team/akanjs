@@ -8,6 +8,7 @@ final class AppStatePlugin: AppStatePluginSpec {
     static let id = "app-state"
     private let context: AkanNativePluginContext
     private var observers: [NSObjectProtocol] = []
+    private var memoryObserver: NSObjectProtocol?
     private var last: AppStateValue?
 
     init(context: AkanNativePluginContext) {
@@ -27,6 +28,15 @@ final class AppStatePlugin: AppStatePluginSpec {
     }
 
     func startListening(_ event: String) {
+        if event == "memoryWarning" {
+            guard memoryObserver == nil else { return }
+            memoryObserver = NotificationCenter.default.addObserver(
+                forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.memoryWarned() }
+            }
+            return
+        }
         guard event == "change", observers.isEmpty else { return }
         last = Self.state(context.windowScene?.activationState)
         let transitions: [(Notification.Name, AppStateValue)] = [
@@ -44,9 +54,18 @@ final class AppStatePlugin: AppStatePluginSpec {
     }
 
     func stopListening(_ event: String) {
+        if event == "memoryWarning" {
+            if let memoryObserver { NotificationCenter.default.removeObserver(memoryObserver) }
+            memoryObserver = nil
+            return
+        }
         guard event == "change" else { return }
         observers.forEach(NotificationCenter.default.removeObserver)
         observers.removeAll()
+    }
+
+    private func memoryWarned() {
+        AppStateEvents(context).memoryWarning(AppStateMemoryWarningEvent(level: .critical))
     }
 
     private func changed(_ scene: UIScene?, _ state: AppStateValue) {

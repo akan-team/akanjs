@@ -71,10 +71,15 @@ describe("app desktop implementation", () => {
 describe("beforeQuit (plugins.md D4)", () => {
   test("declared on macOS only", () => {
     const plugin = { spec: "app", dir: `${import.meta.dir}/..`, manifest: manifest as never };
-    expect(pluginDecls([plugin], "macos").app).toMatchObject({ events: ["urlOpen", "backButton", "beforeQuit"] });
-    for (const platform of ["ios", "android"] as const) {
+    expect(pluginDecls([plugin], "macos").app).toMatchObject({
+      events: ["urlOpen", "backButton", "beforeQuit", "backProgress"],
+    });
+    for (const [platform, events] of [
+      ["ios", ["urlOpen", "backButton"]],
+      ["android", ["urlOpen", "backButton", "backProgress"]],
+    ] as const) {
       const decl = pluginDecls([plugin], platform).app as { methods: string[]; events: string[] };
-      expect(decl.events).toEqual(["urlOpen", "backButton"]);
+      expect(decl.events).toEqual([...events]);
       expect(decl.methods).not.toContain("answerBeforeQuit");
     }
   });

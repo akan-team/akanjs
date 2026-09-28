@@ -24,7 +24,7 @@ import {
 import { clamp, parseAkanI18nEnv, parseBasePaths } from "akanjs/common";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CsrStack } from "./CsrStack";
-import { NativeNavigation } from "./nativeNavigation";
+import { type NativeBackProgress, NativeNavigation } from "./nativeNavigation";
 import {
   createFrameSnapshot,
   createTransitionPlan,
@@ -1202,6 +1202,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
     contentResizeStyle && csrTransition.page
       ? { ...csrTransition.page, contentStyle: { ...csrTransition.page.contentStyle, ...contentResizeStyle } }
       : csrTransition.page;
+  const nativeNavigation = useRef<NativeNavigation | null>(null);
   const nativeBackStateRef = useRef({
     path: resolvedLocation.pathRoute.path,
     keyboardHeight: keyboardFrame.height,
@@ -1233,17 +1234,49 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
       keyboardVisible: keyboardFrame.visible,
       router,
     };
+    nativeNavigation.current?.syncBack();
   }, [keyboardFrame.height, keyboardFrame.visible, resolvedLocation.pathRoute.path, router]);
 
-  useEffect(
-    () =>
-      new NativeNavigation({
-        historyIdx: () => history.current.idx,
-        backState: () => nativeBackStateRef.current,
-        dismissKeyboard: prepareForFrameTransition,
-      }).listen(),
-    [],
-  );
+  const backFollow = useRef(csrTransition);
+  backFollow.current = csrTransition;
+  const followBack = useCallback(({ phase, progress }: NativeBackProgress) => {
+    const { transUnit, transUnitRange } = backFollow.current;
+    const transition = getCurrentLocation().pathRoute.pageState.transition;
+    if (transition === "none" || history.current.idx === 0 || nativeBackStateRef.current.keyboardVisible) return;
+    const [hidden, shown] = transUnitRange;
+    if (phase === "cancelled") {
+      void transUnit.start(shown);
+      return;
+    }
+    //? A slide follows the finger all the way; a fade only half, as the system's own back preview just hints.
+    const follow = transition === "stack" || transition === "bottomUp" ? progress : progress / 2;
+    void transUnit.start(shown + (hidden - shown) * follow, { immediate: true });
+  }, []);
+  const [, setReleased] = useState(0);
+  const latestStackEntries = useRef(stackEntries);
+  latestStackEntries.current = stackEntries;
+  const releaseHidden = useCallback(() => {
+    history.current.dormant ??= new Set();
+    for (const { pageType, location: hidden } of latestStackEntries.current)
+      if (pageType === "cached" && hidden.entryId) history.current.dormant.add(hidden.entryId);
+    setReleased((count) => count + 1);
+  }, []);
+
+  useEffect(() => {
+    const navigation = new NativeNavigation({
+      historyIdx: () => history.current.idx,
+      backState: () => nativeBackStateRef.current,
+      dismissKeyboard: prepareForFrameTransition,
+      onBackProgress: followBack,
+      onMemoryWarning: releaseHidden,
+    });
+    nativeNavigation.current = navigation;
+    const stop = navigation.listen();
+    return () => {
+      stop();
+      nativeNavigation.current = null;
+    };
+  }, []);
 
   return {
     ...routeState,
