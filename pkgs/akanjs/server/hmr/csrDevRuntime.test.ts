@@ -388,6 +388,157 @@ describe("installCsrDevRuntime", () => {
     expect(harness.warnings.at(-1)).toContain("the route table changed");
   });
 
+  test("a patch that fails to load asks the server: gone reloads, there retries once, no answer leaves the page", async () => {
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const run = async (answer: () => Promise<{ ok: boolean }>) => {
+      const harness = createHarness(baseModules());
+      harness.host.fetch = answer;
+      harness.api.start({ generation: 1, refresh: REFRESH_ID });
+      harness.api.hot({ generation: 2, url: "/_akan/csr-dev/patch-2.js" });
+      await settle();
+      harness.scripts[0]?.onerror?.();
+      await settle();
+      return harness;
+    };
+    expect((await run(async () => ({ ok: false }))).reloads).toBe(1);
+    const leaving = await run(async () => {
+      throw new Error("cancelled");
+    });
+    expect(leaving.reloads).toBe(0);
+    const there = await run(async () => ({ ok: true }));
+    expect(there.reloads).toBe(0);
+    expect(there.scripts.map((script) => script.src)).toEqual([
+      "/_akan/csr-dev/patch-2.js",
+      "/_akan/csr-dev/patch-2.js",
+    ]);
+    there.scripts[1]?.onerror?.();
+    await settle();
+    expect(there.reloads).toBe(1);
+  });
+
+  test("whenSettled waits for the patch it was handed to load and apply", async () => {
+    const harness = createHarness(baseModules());
+    harness.api.start({ generation: 1, refresh: REFRESH_ID });
+    harness.api.hot({ generation: 2, url: "/_akan/csr-dev/patch-2.js" });
+    let settled = false;
+    const done = harness.api.whenSettled().then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(settled).toBe(false);
+    harness.api.update(2, { "app/Counter.tsx": component("Counter") });
+    harness.scripts[0]?.onload?.();
+    await done;
+    expect(settled).toBe(true);
+  });
+
+  describe("library mode (an SSR page)", () => {
+    const REFRESH_VENDOR = "vendor:react-refresh/runtime";
+
+    test("startLibrary runs the bootstrap with the provided refresh runtime and injects nothing", () => {
+      const order: string[] = [];
+      const harness = createHarness({
+        "app/boot.ts": () => {
+          order.push("boot");
+        },
+        "app/Counter.tsx": component("Counter"),
+      });
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" });
+      expect(order).toEqual(["boot"]);
+      expect(harness.refresh.calls.inject).toBe(0);
+      expect(harness.api.generation).toBe(2);
+      expect(Object.keys(harness.api.require("app/Counter.tsx") as object)).toEqual(["Counter"]);
+    });
+
+    test("a provided namespace reads as a compiled ESM module", () => {
+      const harness = createHarness({});
+      const useState = () => undefined;
+      const namespace = { default: { useState }, useState };
+      harness.api.provide("vendor:react", namespace);
+      const view = harness.api.require("vendor:react") as Record<string, unknown>;
+      expect(view.__esModule).toBe(true);
+      expect(view.default).toBe(namespace.default);
+      expect(view.useState).toBe(useState);
+      expect(harness.api.toESM(view, 1)).toBe(view);
+    });
+
+    test("whenDefined settles once a patch defines the module", async () => {
+      const harness = createHarness({ "app/boot.ts": () => undefined });
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" });
+      const defined = harness.api.whenDefined("app/New.tsx");
+      expect(harness.api.has("app/New.tsx")).toBe(false);
+      harness.api.update(3, { "app/New.tsx": component("New") });
+      await defined;
+      expect(Object.keys(harness.api.require("app/New.tsx") as object)).toEqual(["New"]);
+    });
+
+    test("a bootstrap that throws leaves the page to reload on the next newer update, not to queue it", () => {
+      const harness = createHarness({
+        "app/boot.ts": () => {
+          throw new Error("store top-level error");
+        },
+      });
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      expect(() =>
+        harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" }),
+      ).toThrow("store top-level error");
+      harness.api.hot({ generation: 2, url: "/_akan/ssr-dev/patch-2.js" });
+      expect(harness.reloads).toBe(0);
+      harness.api.hot({ generation: 3, url: "/_akan/ssr-dev/patch-3.js" });
+      expect(harness.reloads).toBe(1);
+      expect(harness.warnings.at(-1)).toContain("failed to start");
+    });
+
+    test("a payload root that also exports non-components re-runs in place and refreshes its components", () => {
+      const harness = createHarness({
+        "app/boot.ts": () => undefined,
+        "app/Header.tsx": component("Header", { headerLinks: ["a"] }),
+      });
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" });
+      harness.api.require("app/Header.tsx");
+      harness.api.update(3, { "app/Header.tsx": component("Header", { headerLinks: ["a", "b"] }) });
+      harness.flushTimers();
+      expect(harness.reloads).toBe(0);
+      expect(harness.executed()).toEqual(["app/Header.tsx"]);
+      expect((harness.api.require("app/Header.tsx") as { headerLinks: string[] }).headerLinks).toEqual(["a", "b"]);
+      expect(harness.refresh.calls.refresh).toBe(1);
+    });
+
+    test("a module outside the registry's graph and the payload still reloads when nothing can take it", () => {
+      const harness = createHarness({
+        "app/boot.ts": (require) => {
+          require("akan-module:app/config.ts");
+        },
+        "app/config.ts": (_require, record) => {
+          record.exports = { value: 1 };
+        },
+      });
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" });
+      harness.api.update(3, {
+        "app/config.ts": (_require, record) => {
+          record.exports = { value: 2 };
+        },
+      });
+      expect(harness.reloads).toBe(1);
+    });
+
+    test("an update that arrives before the start waits for it, and one the app already holds is dropped", async () => {
+      const harness = createHarness({ "app/boot.ts": () => undefined });
+      harness.api.hot({ generation: 2, url: "/_akan/ssr-dev/patch-2.js" });
+      harness.api.hot({ generation: 3, url: "/_akan/ssr-dev/patch-3.js" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(harness.scripts).toEqual([]);
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(harness.scripts.map((script) => script.src)).toEqual(["/_akan/ssr-dev/patch-3.js"]);
+    });
+  });
+
   test("the serialized script installs the runtime with nothing from this module in scope", () => {
     const host = { document: {}, location: {}, console: {} } as unknown as CsrDevRuntimeHost;
     new Function("self", CSR_DEV_RUNTIME_SCRIPT)(host);

@@ -36,9 +36,10 @@ import {
 } from "./cachePolicy";
 import { encodedFileResponse } from "./contentEncoding";
 import { HMR_CLIENT_SCRIPT } from "./hmr/clientScript";
-import { CSR_DEV_ROUTE_PREFIX, resolveDevCsrMode } from "./hmr/csrDevManifest";
+import { CSR_DEV_ROUTE_PREFIX, resolveDevCsrMode, SSR_DEV_DIRNAME, SSR_DEV_ROUTE_PREFIX } from "./hmr/csrDevManifest";
 import { CsrDevShell } from "./hmr/csrDevShell";
 import { DevHmrController } from "./hmr/devHmrController";
+import { SsrDevShim } from "./hmr/ssrDevShim";
 import type { HmrWsData, HmrWsHub } from "./hmr/wsHub";
 import { ImageOptimizer } from "./imageOptimizer";
 import { normalizeHost, resolveArtifactDir, warnIgnoredSubRouteBasePaths } from "./proxy/hostBasePathWebProxy";
@@ -275,6 +276,8 @@ export class WebRouter {
   #routeCache: RouteClientCache;
   #devHmr: DevHmrController | null = null;
   #csrDevShell: CsrDevShell | null = null;
+  /** Dev only: SSR pages load their client code from the dev module registry it serves. */
+  #ssrDevShell: CsrDevShell | null = null;
   #csrArmed = false;
   #csrOnDemandBuild: Promise<unknown> | null = null;
   readonly #requestStats = {
@@ -341,6 +344,10 @@ export class WebRouter {
       this.#routeCache = this.#devHmr.routeCache;
       this.#hub = this.#devHmr.hub;
       if (resolveDevCsrMode() === "registry") this.#csrDevShell = new CsrDevShell(this.#artifactDir);
+      this.#ssrDevShell = new CsrDevShell(this.#artifactDir, {
+        dirName: SSR_DEV_DIRNAME,
+        routePrefix: SSR_DEV_ROUTE_PREFIX,
+      });
     }
   }
 
@@ -405,6 +412,14 @@ export class WebRouter {
               : {}),
           }
         : {}),
+      ...(this.#ssrDevShell
+        ? {
+            [`${SSR_DEV_ROUTE_PREFIX}*`]: async (req: Request) => {
+              this.#requestStats.staticAsset += 1;
+              return (await this.#ssrDevShell?.serve(req)) ?? new Response("Not Found", { status: 404 });
+            },
+          }
+        : {}),
       [`${clientServePrefix}/*`]: async (req) => {
         this.#requestStats.staticAsset += 1;
         const url = new URL(req.url);
@@ -456,8 +471,6 @@ export class WebRouter {
         ? {
             "/_akan/hmr": (req: Request) =>
               this.#devHmr?.handleWs(req) ?? new Response("HMR unavailable", { status: 404 }),
-            "/_akan/hmr/client-refresh": (req: Request) =>
-              this.#devHmr?.handleClientRefresh(req) ?? new Response("HMR unavailable", { status: 404 }),
           }
         : {}),
       "/__rsc": async (req) => {
@@ -615,6 +628,9 @@ export class WebRouter {
           const extraBootstrapInline = [
             rscResult.trace?.routeState
               ? `self.__AKAN_RSC_INITIAL_STATE__=${JSON.stringify(rscResult.trace.routeState)};`
+              : "",
+            this.#ssrDevShell
+              ? SsrDevShim.script(await this.#ssrDevShell.readManifest(), Object.keys(this.#artifact.vendorMap))
               : "",
             !this.#prodMode ? HMR_CLIENT_SCRIPT : "",
           ]
@@ -901,6 +917,7 @@ export class WebRouter {
       stylesheetHref: this.#getStylesheetHref(req, new URL(req.url).pathname),
       showDetails: !this.#prodMode,
       error: err,
+      ...(this.#prodMode ? {} : { script: `self.__AKAN_HMR_SYSTEM_PAGE__=true;${HMR_CLIENT_SCRIPT}` }),
     });
   }
 

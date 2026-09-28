@@ -19,7 +19,7 @@ describe("HmrWsHub", () => {
   test("RSC and SSR client refreshes stay with SSR tabs", () => {
     expect(topicsOf({ type: "reload", buildId: 1 })).toEqual([HMR_WS_TOPIC]);
     expect(topicsOf({ type: "rsc-refresh", buildId: 1 })).toEqual([HMR_WS_TOPIC]);
-    expect(topicsOf({ type: "client-refresh", buildId: 1 })).toEqual([HMR_WS_TOPIC]);
+    expect(topicsOf({ type: "ssr-update", generation: 2, url: "/_akan/ssr-dev/patch-2.js" })).toEqual([HMR_WS_TOPIC]);
   });
 
   test("styles and build status reach every tab", () => {

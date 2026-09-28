@@ -162,6 +162,7 @@ describe("route client store bootstrap", () => {
         knownEntries,
         discovery,
         artifact: {} as never,
+        browser: "chunks",
       }).build();
 
     const first = await build([pageA], new Set());
@@ -232,5 +233,65 @@ describe("route client store bootstrap", () => {
       entryFile: clientEntry,
       preserveFilePath: true,
     });
+  });
+});
+
+describe("fast refresh named default function", () => {
+  test("hoists a named default function into a declaration plus a trailing default export", () => {
+    const source = `export default async function Page<T>(props: T) {\n  return null;\n}\n`;
+    const next = RouteClientBuilder.normalizeNamedDefaultFunctionForFastRefresh(source, { path: "/app/page.tsx" });
+    expect(next).toBe(`async function Page<T>(props: T) {\n  return null;\n}\n\nexport default Page;\n`);
+  });
+
+  test("leaves code quoted in a template literal or a comment alone", () => {
+    const source = [
+      `import { page } from "akanjs/client";`,
+      `const snippet = \``,
+      `export default function Page() {`,
+      `  return <div />;`,
+      `}\`;`,
+      `/*`,
+      `export default function Commented() {}`,
+      `*/`,
+      `export default page().render(() => <pre>{snippet}</pre>);`,
+      "",
+    ].join("\n");
+    expect(
+      RouteClientBuilder.normalizeNamedDefaultFunctionForFastRefresh(source, { path: "/app/page.tsx" }),
+    ).toBeNull();
+  });
+
+  test("rewrites only the real declaration when the same name is also quoted", () => {
+    const source = [
+      "const snippet = `",
+      "export default function Page() {}",
+      "`;",
+      "export default function Page() {",
+      "  return snippet;",
+      "}",
+      "",
+    ].join("\n");
+    const next = RouteClientBuilder.normalizeNamedDefaultFunctionForFastRefresh(source, { path: "/app/page.tsx" });
+    expect(next).toBe(
+      [
+        "const snippet = `",
+        "export default function Page() {}",
+        "`;",
+        "function Page() {",
+        "  return snippet;",
+        "}",
+        "",
+        "export default Page;",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  test("leaves a file it cannot parse to the bundler", () => {
+    expect(
+      RouteClientBuilder.normalizeNamedDefaultFunctionForFastRefresh("export default function Page( {", {
+        path: "/app/page.tsx",
+      }),
+    ).toBeNull();
   });
 });

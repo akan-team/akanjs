@@ -50,6 +50,57 @@ const makeRoot = tempDirs("akan-hmr-watcher-");
 
 describe("HmrWatcher", () => {
   test(
+    "marks when a batch's window opened and when it was handed over",
+    async () => {
+      const root = await makeRoot();
+      const source = await seed(root, "lib/a.ts");
+      const { batches } = await watch(root);
+
+      const writtenAt = Date.now();
+      await writeFile(source, "export const x = 2;\n");
+      await sleep(SETTLE_MS);
+
+      const trace = batches.filter((batch) => batch.files.includes(source)).at(-1)?.trace;
+      expect(trace?.eventAt).toBeGreaterThanOrEqual(writtenAt);
+      expect(trace?.flushAt).toBeGreaterThanOrEqual(trace?.eventAt ?? Number.POSITIVE_INFINITY);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  test(
+    "takes its debounce window from AKAN_DEV_WATCH_DEBOUNCE_MS when no option names one",
+    async () => {
+      const previous = process.env.AKAN_DEV_WATCH_DEBOUNCE_MS;
+      process.env.AKAN_DEV_WATCH_DEBOUNCE_MS = "400";
+      try {
+        const root = await makeRoot();
+        const source = await seed(root, "lib/a.ts");
+        const batches: ChangeBatch[] = [];
+        // Without the verification scan, which would otherwise hand the batch over at 250ms.
+        const watcher = new HmrWatcher({
+          roots: [root],
+          logger: silentLogger,
+          verifyDelayMs: 0,
+          onBatch: (batch) => void batches.push(batch),
+        });
+        started.push(watcher);
+        await watcher.start();
+        await sleep(STREAM_WARMUP_MS);
+
+        await writeFile(source, "export const x = 3;\n");
+        await sleep(SETTLE_MS);
+
+        const trace = batches.find((batch) => batch.files.includes(source))?.trace;
+        expect((trace?.flushAt ?? 0) - (trace?.eventAt ?? 0)).toBeGreaterThanOrEqual(395);
+      } finally {
+        if (previous === undefined) delete process.env.AKAN_DEV_WATCH_DEBOUNCE_MS;
+        else process.env.AKAN_DEV_WATCH_DEBOUNCE_MS = previous;
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  test(
     "reports every file of a save-all",
     async () => {
       const root = await makeRoot();

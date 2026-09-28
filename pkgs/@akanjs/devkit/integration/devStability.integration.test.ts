@@ -24,7 +24,7 @@ const isRefreshMessage = (msg: unknown): boolean =>
   typeof msg === "object" &&
   msg !== null &&
   "type" in msg &&
-  (msg.type === "client-refresh" || msg.type === "rsc-refresh" || msg.type === "reload");
+  (msg.type === "ssr-update" || msg.type === "rsc-refresh" || msg.type === "reload");
 
 const isBuildStatus =
   (status: "error" | "ok") =>
@@ -148,7 +148,7 @@ describe("dev stability integration harness", () => {
     await host.waitForLogSince(mark, /\[backend-reload\]|Shutting down gracefully|stopping backend/);
     await host.waitForLogSince(mark, /backend ready pid=(\d+)|AkanApp gateway is running on port/);
     expect(host.proc.killed).toBe(false);
-    expect(host.logs.join("").slice(mark)).not.toMatch(/\[hmr\].*(client-refresh|rsc-refresh)/);
+    expect(host.logs.join("").slice(mark)).not.toMatch(/\[hmr\].*rsc-refresh|\[ssr\] registry generation/);
     await hmr?.waitForNoMessageSince(hmrMark, isRefreshMessage);
     hmr?.close();
   });
@@ -179,7 +179,10 @@ describe("dev stability integration harness", () => {
     if (hmr) {
       await expectHmrMessage(hmr, hmrMark, isRefreshMessage, "a client refresh");
     } else {
-      await host.waitForLogSince(mark, /\[hmr\].*(client-refresh|rsc-refresh|reload)|\[SSR\] pages-updated/);
+      await host.waitForLogSince(
+        mark,
+        /\[hmr\].*(rsc-refresh|reload)|\[ssr\] registry generation|\[SSR\] pages-updated/,
+      );
     }
     expect(host.logs.join("").slice(mark)).not.toMatch(/\[backend-reload\]/);
     hmr?.close();
@@ -487,7 +490,8 @@ describe("dev resource budgets", () => {
         `csr-armed-marker-${attempt}`,
       ),
     );
-    await host.waitForLogSince(resyncMark, /csr-rebundle ok|csr-dev generation=\d+ patch/, WAIT_MS);
+    // A worker logs `csr-dev generation=N patch`; the resident builder's patcher logs `csr-patch generation=N patch`.
+    await host.waitForLogSince(resyncMark, /csr-rebundle ok|csr-(?:dev|patch) generation=\d+ patch/, WAIT_MS);
   });
 
   budgetTest("bounds the rsc worker and the tree across repeated saves", async () => {
@@ -498,6 +502,8 @@ describe("dev resource budgets", () => {
       env: { AKAN_RSC_WORKER_MAX_RELOADS: "1", AKAN_RSC_WORKER_MIN_RECYCLE_INTERVAL_MS: "1" },
     });
     await harness.waitForHttpText("initial-client-marker", WAIT_MS);
+    // The first page no longer waits for the SSR registry's boot build, whose worker is idle only once it lands.
+    await host.waitForLogSince(0, /\[ssr\] registry built generation=\d+/, WAIT_MS);
 
     const idleTotal = await DevStabilityHarness.processTreeRssBytes(host.proc.pid);
     const idleWithoutBuilder = await DevStabilityHarness.processTreeRssBytes(host.proc.pid, { excludeBuilder: true });

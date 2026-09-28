@@ -45,12 +45,30 @@ export interface CsrDevRuntimeApi {
   defineHelpers(hash: string, factory: () => Record<string, unknown>): void;
   helpers(hash: string): Record<string, unknown>;
   start(options: { generation: number; refresh: string }): void;
+  /** No entry to run: an SSR page requires the modules its RSC payload names, after the bootstrap has run. */
+  startLibrary(options: { generation: number; refresh: string; bootstrap: string }): void;
+  /** Registers a module the page already loaded outside the registry (an import map vendor). */
+  provide(id: string, namespace: unknown): void;
+  require(id: string): unknown;
+  has(id: string): boolean;
+  /** Settles once a patch defines `id`: the RSC payload can name a module whose patch is still on its way. */
+  whenDefined(id: string): Promise<void>;
+  /** Settles once every update handed to `hot` so far is applied, its accept callbacks included. */
+  whenSettled(): Promise<void>;
   update(generation: number, factories: Record<string, CsrModuleFactory>): void;
   accept(ownerId: string, deps: string[], callback: CsrAcceptCallback): void;
   hot(message: CsrUpdateMessage): void;
   toESM(mod: unknown, isNodeMode?: number): unknown;
   reExport(target: object, mod: unknown, secondTarget?: object): object | undefined;
-  inspect(): { generation: number; executed: string[]; modules: number };
+  /** `target` is the newest generation handed to `hot`, applied or still loading. */
+  inspect(): {
+    generation: number;
+    target: number;
+    started: boolean;
+    failed: boolean;
+    executed: string[];
+    modules: number;
+  };
 }
 
 interface CsrScriptElement {
@@ -63,7 +81,7 @@ interface CsrScriptElement {
 
 export interface CsrDevRuntimeHost {
   __akan?: CsrDevRuntimeApi;
-  __AKAN_CSR_LAST_UPDATE__?: { generation: number; executed: string[] };
+  __AKAN_CSR_LAST_UPDATE__?: { generation: number; executed: string[]; appliedAt?: number; refreshedAt?: number };
   document: {
     currentScript: unknown;
     head: { appendChild(node: unknown): unknown };
@@ -71,6 +89,7 @@ export interface CsrDevRuntimeHost {
   };
   location: { reload(): void };
   console: { warn(...args: unknown[]): void };
+  fetch?(url: string, init: { method: string; cache: "no-store" }): Promise<{ ok: boolean }>;
   setTimeout(callback: () => void, ms: number): unknown;
   clearTimeout(handle: unknown): void;
 }
@@ -118,6 +137,13 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
 
   class CsrDevRegistry implements CsrDevRuntimeApi {
     #factories = new Map<string, CsrModuleFactory>();
+    #waiters = new Map<string, (() => void)[]>();
+    //? Modules RSDW required for a payload's client references: nothing in the registry imports them.
+    #roots = new Set<string>();
+    #started = false;
+    #startFailed = false;
+    #target = 0;
+    #early: CsrUpdateMessage[] = [];
     #helperFactories = new Map<string, () => Record<string, unknown>>();
     #helperValues = new Map<string, Record<string, unknown>>();
     #cache = new Map<string, ModuleRecord>();
@@ -136,6 +162,7 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
 
     define(id: string, factory: CsrModuleFactory) {
       this.#factories.set(id, factory);
+      this.#settleWaiters([id]);
     }
 
     //? Bun repeats its interop helpers in every module; the bundle defines each distinct set once and modules share it.
@@ -161,7 +188,67 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       this.#refresh = this.#load(refresh).exports as RefreshRuntime;
       // Before the entry runs: react-dom looks for the DevTools hook once, when it is first evaluated.
       this.#refresh.injectIntoGlobalHook(host);
-      this.#load(entry);
+      this.#run(entry);
+    }
+
+    //? The page's own HMR script already put this refresh runtime into React's hook; a second inject would wrap it.
+    startLibrary({ generation, refresh, bootstrap }: { generation: number; refresh: string; bootstrap: string }) {
+      this.#generation = generation;
+      this.#refresh = this.#load(refresh).exports as RefreshRuntime;
+      this.#run(bootstrap);
+    }
+
+    //? An entry that throws leaves no module to patch, so any newer update then reloads onto the fixed code.
+    #run(entry: string) {
+      try {
+        this.#load(entry);
+      } catch (error) {
+        this.#startFailed = true;
+        throw error;
+      } finally {
+        this.#begin();
+      }
+    }
+
+    //? Seen as a compiled ESM module: named exports read through, and `default` stays the package's own default.
+    provide(id: string, namespace: unknown) {
+      if (this.#cache.has(id)) return;
+      const view: Record<string, unknown> = {};
+      Object.defineProperty(view, "__esModule", { value: true });
+      if (namespace != null && (typeof namespace === "object" || typeof namespace === "function"))
+        for (const key of Object.keys(namespace))
+          Object.defineProperty(view, key, {
+            get: () => (namespace as Record<string, unknown>)[key],
+            enumerable: true,
+          });
+      const record = new ModuleRecord(id, undefined);
+      record.exports = view;
+      this.#cache.set(id, record);
+    }
+
+    require(id: string) {
+      this.#roots.add(id);
+      return this.#load(id).exports;
+    }
+
+    has(id: string) {
+      return this.#cache.has(id) || this.#factories.has(id);
+    }
+
+    whenDefined(id: string) {
+      if (this.has(id)) return Promise.resolve();
+      return new Promise<void>((resolve, reject) => {
+        const timer = host.setTimeout(
+          () => reject(new Error(`[akan-csr] no module registered as ${id}, and no update brought one`)),
+          20_000,
+        );
+        const waiters = this.#waiters.get(id) ?? [];
+        waiters.push(() => {
+          host.clearTimeout(timer);
+          resolve();
+        });
+        this.#waiters.set(id, waiters);
+      });
     }
 
     update(generation: number, factories: Record<string, CsrModuleFactory>) {
@@ -172,6 +259,7 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       }
       const ids = Object.keys(factories);
       for (const id of ids) this.#factories.set(id, factories[id] as CsrModuleFactory);
+      this.#settleWaiters(ids);
       this.#generation = generation;
       this.#executed = [];
       const threw = (error: unknown) =>
@@ -184,7 +272,7 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       } catch (error) {
         threw(error);
       }
-      host.__AKAN_CSR_LAST_UPDATE__ = { generation, executed: this.#executed.slice() };
+      host.__AKAN_CSR_LAST_UPDATE__ = { generation, executed: this.#executed.slice(), appliedAt: Date.now() };
       if (pending.length > 0) this.#settling = Promise.all(pending).then(() => this.#scheduleRefresh(), threw);
     }
 
@@ -196,22 +284,59 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
     }
 
     hot(message: CsrUpdateMessage) {
-      if (message.reload) {
-        this.#reload(message.reason ?? "the dev server asked for a reload");
+      //? An SSR page loads the registry after its WebSocket may already carry updates; they wait for the start.
+      if (!this.#started) {
+        this.#early.push(message);
         return;
       }
       if (message.generation <= this.#generation) return;
+      if (message.reload || this.#startFailed) {
+        this.#reload(
+          this.#startFailed
+            ? `the app failed to start, and generation ${message.generation} arrived`
+            : (message.reason ?? "the dev server asked for a reload"),
+        );
+        return;
+      }
       const url = message.url;
       if (!url) {
         this.#reload(`generation ${message.generation} arrived without a patch`);
         return;
       }
+      this.#target = Math.max(this.#target, message.generation);
       //? The next patch waits for the last one's async accept callbacks, so the route table is never swapped twice at once.
       this.#patchQueue = this.#patchQueue.then(() => this.#loadPatch(url)).then(() => this.#settling);
     }
 
     inspect() {
-      return { generation: this.#generation, executed: this.#executed.slice(), modules: this.#cache.size };
+      return {
+        generation: this.#generation,
+        target: Math.max(this.#generation, this.#target),
+        started: this.#started,
+        failed: this.#startFailed,
+        executed: this.#executed.slice(),
+        modules: this.#cache.size,
+      };
+    }
+
+    whenSettled() {
+      return this.#patchQueue.then(() => this.#settling);
+    }
+
+    #begin() {
+      this.#started = true;
+      const early = this.#early;
+      this.#early = [];
+      for (const message of early) this.hot(message);
+    }
+
+    #settleWaiters(ids: string[]) {
+      for (const id of ids) {
+        const waiters = this.#waiters.get(id);
+        if (!waiters) continue;
+        this.#waiters.delete(id);
+        for (const settle of waiters) settle();
+      }
     }
 
     readonly toESM = (mod: unknown, _isNodeMode?: number): unknown => {
@@ -242,7 +367,10 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       return secondTarget;
     };
 
-    #loadPatch(url: string) {
+    //? A navigation away cancels every load this document starts, and reloading from that error would cancel the
+    //? navigation too: so a failed patch asks the server first. A cancelled probe means the page is leaving (or the
+    //? server is gone) and the next document or the reconnect decides; an answer says whether a reload is due.
+    #loadPatch(url: string, retried = false): Promise<void> {
       return new Promise<void>((resolve) => {
         const script = host.document.createElement("script");
         script.src = url;
@@ -251,8 +379,17 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
           resolve();
         };
         script.onerror = () => {
-          this.#reload(`patch ${url} failed to load`);
-          resolve();
+          script.remove();
+          const failed = () => {
+            this.#reload(`patch ${url} failed to load`);
+            resolve();
+          };
+          const probe = host.fetch?.(url, { method: "HEAD", cache: "no-store" });
+          if (!probe) return failed();
+          probe.then(
+            (response) => (response.ok && !retried ? resolve(this.#loadPatch(url, true)) : failed()),
+            () => resolve(),
+          );
         };
         host.document.head.appendChild(script);
       });
@@ -365,6 +502,7 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       this.#refreshTimer = host.setTimeout(() => {
         this.#refreshTimer = null;
         this.#refresh?.performReactRefresh();
+        if (host.__AKAN_CSR_LAST_UPDATE__) host.__AKAN_CSR_LAST_UPDATE__.refreshedAt = Date.now();
       }, 16);
     }
 
@@ -385,6 +523,9 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
           [...plan.boundaries].map((id) => [id, [...(this.#cache.get(id)?.parents ?? [])]] as const),
         );
         this.#dispose(plan.outdated);
+        //? A payload root's other exports reach no module outside the registry (the server holds references by name),
+        //? so re-running it and refreshing its component families is the whole update even when it is no boundary.
+        if ([...plan.boundaries].some((id) => this.#roots.has(id))) this.#scheduleRefresh();
         const invalidated: string[] = [];
         for (const id of plan.boundaries) {
           const record = this.#load(id);
@@ -395,6 +536,7 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
         pending = [];
         for (const id of invalidated) {
           const parents = [...(this.#cache.get(id)?.parents ?? [])];
+          if (parents.length === 0 && this.#roots.has(id)) continue;
           if (parents.length === 0) {
             this.#reload(`${id} changed its exports and nothing above it can take the update`);
             return [];
@@ -444,7 +586,11 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
           boundaries.add(id);
           continue;
         }
-        if (record.parents.size === 0) return { reload: `no component boundary above ${id}` };
+        if (record.parents.size === 0) {
+          if (!this.#roots.has(id)) return { reload: `no component boundary above ${id}` };
+          boundaries.add(id);
+          continue;
+        }
         for (const parentId of record.parents) {
           if (!this.#cache.get(parentId)?.hot.acceptedDeps.has(id)) {
             queue.push(parentId);

@@ -1,5 +1,4 @@
 import path from "node:path";
-import { CSR_DEV_ROUTE_PREFIX } from "akanjs/server/hmr/csrDevManifest";
 import type { BunPlugin } from "bun";
 import type { App } from "../commandDecorators";
 import { CsrDevPaths } from "./csrDevPaths";
@@ -23,6 +22,21 @@ export interface CsrDevModuleCompilerOptions {
   resolver: CsrDevResolver;
   context: CsrDevContext;
   outDir: string;
+  /** Where the dev server serves `outDir`: an imported asset's URL starts with it. */
+  routePrefix: string;
+}
+
+export interface CsrDevCompileOptions {
+  /** Stop before building an npm module the graph does not know yet, and name it instead. */
+  refuseNewVendor?: boolean;
+  /** Stop at an import no recorded resolution answers, instead of running the resolution build (a whole-app build). */
+  refusePrepass?: boolean;
+}
+
+export interface CsrDevCompileResult {
+  modules: CsrDevCompiledModule[];
+  refusedVendors: string[];
+  unresolved: string[];
 }
 
 //* Every module becomes its own CJS factory: one Bun.build with each import external, so a save re-runs only the
@@ -40,21 +54,31 @@ export class CsrDevModuleCompiler {
   readonly #resolver: CsrDevResolver;
   readonly #context: CsrDevContext;
   readonly #outDir: string;
+  readonly #routePrefix: string;
 
-  constructor({ app, paths, resolver, context, outDir }: CsrDevModuleCompilerOptions) {
+  constructor({ app, paths, resolver, context, outDir, routePrefix }: CsrDevModuleCompilerOptions) {
     this.#app = app;
     this.#paths = paths;
     this.#resolver = resolver;
     this.#context = context;
     this.#outDir = outDir;
+    this.#routePrefix = routePrefix;
   }
 
-  async compile(startFiles: string[], known: Set<string>): Promise<CsrDevCompiledModule[]> {
+  async compile(
+    startFiles: string[],
+    known: Set<string>,
+    { refuseNewVendor = false, refusePrepass = false }: CsrDevCompileOptions = {},
+  ): Promise<CsrDevCompileResult> {
     const compiled = new Map<string, CsrDevCompiledModule>();
     const seen = new Set([...known, ...startFiles]);
     let frontier = [...new Set(startFiles)];
     while (frontier.length > 0) {
+      const refusedVendors = refuseNewVendor ? frontier.filter((file) => CsrDevPaths.isVendorFile(file)) : [];
+      if (refusedVendors.length > 0) return { modules: [...compiled.values()], refusedVendors, unresolved: [] };
       const round = await this.#compileRound(frontier);
+      if (round.misses.length > 0 && !this.#resolver.prepassDone && refusePrepass)
+        return { modules: [...compiled.values()], refusedVendors: [], unresolved: round.misses };
       if (round.misses.length > 0 && !this.#resolver.prepassDone) {
         this.#app.verbose(`[csr-dev] ${round.misses.length} unresolved import(s); rerunning the resolution build`);
         await this.#resolver.prepass();
@@ -76,7 +100,7 @@ export class CsrDevModuleCompiler {
       this.#app.verbose(
         `[csr-dev] ${fallbacks.size} import(s) outside the browser build's graph resolved with Bun's runtime resolver: ${[...fallbacks].slice(0, 5).join(", ")}${fallbacks.size > 5 ? ", ..." : ""}`,
       );
-    return [...compiled.values()];
+    return { modules: [...compiled.values()], refusedVendors: [], unresolved: [] };
   }
 
   async #compileRound(files: string[]): Promise<Omit<BuildRound, "tangled">> {
@@ -113,7 +137,7 @@ export class CsrDevModuleCompiler {
       reactFastRefresh: !vendor,
       sourcemap: vendor ? "none" : "external",
       naming: { entry: "[dir]/[name].[ext]", asset: "assets/[name]-[hash].[ext]" },
-      publicPath: CSR_DEV_ROUTE_PREFIX,
+      publicPath: this.#routePrefix,
       metafile: true,
       env: "AKAN_PUBLIC_*",
       define: this.#context.define,
@@ -167,11 +191,14 @@ export class CsrDevModuleCompiler {
             if (CsrDevPaths.isVendorFile(args.path)) return undefined;
             const normalized = RouteClientBuilder.normalizeNamedDefaultFunctionForFastRefresh(
               await Bun.file(args.path).text(),
+              { path: args.path },
             );
             return normalized ? { contents: normalized, loader: "tsx" } : undefined;
           });
         build.onResolve({ filter: /.*/ }, (args) => {
           if (args.kind === "entry-point-build" || !args.importer) return undefined;
+          if (this.#context.externals?.includes(args.path))
+            return { path: `${CsrDevPaths.vendorPrefix}${args.path}`, external: true };
           const importer = CsrDevPaths.realpath(args.importer);
           const target = this.#resolver.resolve(importer, args.path);
           if (target === CsrDevResolver.inline) return undefined;

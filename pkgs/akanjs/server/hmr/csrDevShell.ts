@@ -1,6 +1,7 @@
 import path from "node:path";
 import { resolveStaticPath } from "../staticPath";
 import {
+  appGenerationOf,
   CSR_DEV_APP_FILE,
   CSR_DEV_DIRNAME,
   CSR_DEV_MANIFEST_FILE,
@@ -19,14 +20,40 @@ export interface CsrDevShellRenderOptions {
   cssHref: string | null;
 }
 
+export interface CsrDevShellOptions {
+  /** The registry this serves: the CSR one by default, `ssr-dev` for the client code of SSR pages. */
+  dirName?: string;
+  routePrefix?: string;
+  appWaitMs?: number;
+  appPollMs?: number;
+  bootWaitMs?: number;
+}
+
 export class CsrDevShell {
   static readonly #runtimeHash = Bun.hash(CSR_DEV_RUNTIME_SCRIPT).toString(36);
   static readonly #servedFile = /^(app\.js|vendor-[\w-]+\.js|patch-\d+\.js|assets\/[\w.-]+)$/;
   static readonly #sourceMapFile = /^(app\.js|patch-\d+\.js)\.map$/;
   readonly #dir: string;
+  readonly #routePrefix: string;
+  readonly #appWaitMs: number;
+  readonly #appPollMs: number;
+  readonly #bootWaitMs: number;
 
-  constructor(artifactDir: string) {
-    this.#dir = path.join(artifactDir, CSR_DEV_DIRNAME);
+  constructor(
+    artifactDir: string,
+    {
+      dirName = CSR_DEV_DIRNAME,
+      routePrefix = CSR_DEV_ROUTE_PREFIX,
+      appWaitMs = 2_000,
+      appPollMs = 20,
+      bootWaitMs = 60_000,
+    }: CsrDevShellOptions = {},
+  ) {
+    this.#dir = path.join(artifactDir, dirName);
+    this.#routePrefix = routePrefix;
+    this.#appWaitMs = appWaitMs;
+    this.#appPollMs = appPollMs;
+    this.#bootWaitMs = bootWaitMs;
   }
 
   async readManifest(): Promise<CsrDevManifest | null> {
@@ -52,9 +79,9 @@ export class CsrDevShell {
 ${stylesheet}  </head>
   <body>
     <div id="root"></div>
-    <script src="${CSR_DEV_ROUTE_PREFIX}runtime.js?v=${CsrDevShell.#runtimeHash}"></script>
-    <script src="${CSR_DEV_ROUTE_PREFIX}${CsrDevShell.#attr(manifest.vendorFile)}"></script>
-    <script src="${CSR_DEV_ROUTE_PREFIX}${CSR_DEV_APP_FILE}?g=${manifest.generation}" data-akan-csr-entry="${CsrDevShell.#attr(entry)}"></script>
+    <script src="${this.#routePrefix}runtime.js?v=${CsrDevShell.#runtimeHash}"></script>
+    <script src="${this.#routePrefix}${CsrDevShell.#attr(manifest.vendorFile)}"></script>
+    <script src="${this.#routePrefix}${CSR_DEV_APP_FILE}?g=${manifest.generation}" data-akan-csr-entry="${CsrDevShell.#attr(entry)}"></script>
   </body>
 </html>
 `;
@@ -62,10 +89,13 @@ ${stylesheet}  </head>
 
   // Only the vendor file is content-hashed; generations restart at 1 when `.akan` is wiped, so a cached patch could lie.
   async serve(req: Request): Promise<Response> {
-    const name = new URL(req.url).pathname.slice(CSR_DEV_ROUTE_PREFIX.length);
+    const url = new URL(req.url);
+    const name = url.pathname.slice(this.#routePrefix.length);
     if (name === "runtime.js") return CsrDevShell.#js(CSR_DEV_RUNTIME_SCRIPT, "public, max-age=31536000, immutable");
+    if (name === "boot.json") return await this.#serveBoot();
     if (CsrDevShell.#sourceMapFile.test(name)) return await this.#serveSourceMap(name);
     if (!CsrDevShell.#servedFile.test(name)) return new Response("Not Found", { status: 404 });
+    if (name === CSR_DEV_APP_FILE) await this.#waitForApp(Number(url.searchParams.get("g")));
     const filePath = resolveStaticPath(this.#dir, name);
     const file = filePath ? Bun.file(filePath) : null;
     if (!file || !(await file.exists())) return new Response("Not Found", { status: 404 });
@@ -73,6 +103,36 @@ ${stylesheet}  </head>
     if (name.startsWith("assets/"))
       return new Response(file, { headers: CsrDevShell.#headers(file.type, cacheControl) });
     return CsrDevShell.#js(file, cacheControl);
+  }
+
+  //? A patch is announced before app.js is rewritten, so a tab booting in that gap asks for a generation app.js does not
+  //? hold yet. Held until it does, or until the wait runs out: then it boots behind, and hello's generation reloads it.
+  async #waitForApp(generation: number): Promise<void> {
+    if (!Number.isInteger(generation) || generation <= 0) return;
+    const deadline = Date.now() + this.#appWaitMs;
+    for (;;) {
+      const manifest = await this.readManifest();
+      if (!manifest || appGenerationOf(manifest) >= generation || Date.now() >= deadline) return;
+      await Bun.sleep(this.#appPollMs);
+    }
+  }
+
+  //? An SSR page rendered before the boot build of its registry finished asks here what to load; held until it exists.
+  async #serveBoot(): Promise<Response> {
+    const deadline = Date.now() + this.#bootWaitMs;
+    for (;;) {
+      const manifest = await this.readManifest();
+      if (manifest) {
+        const body = JSON.stringify({
+          generation: manifest.generation,
+          vendorFile: manifest.vendorFile,
+          epoch: manifest.epoch ?? null,
+        });
+        return new Response(body, { headers: CsrDevShell.#headers("application/json", "no-store") });
+      }
+      if (Date.now() >= deadline) return new Response("Service Unavailable", { status: 503 });
+      await Bun.sleep(this.#appPollMs * 5);
+    }
   }
 
   // Composed when DevTools asks, not on every save: most saves are never debugged.

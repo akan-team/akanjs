@@ -31,6 +31,7 @@ export class HmrWatcher {
   readonly #index: SourceMtimeIndex;
   #timer: ReturnType<typeof setTimeout> | null = null;
   #verifyTimer: ReturnType<typeof setTimeout> | null = null;
+  #windowStartedAt: number | null = null;
   #stopped = false;
   #flushing = false;
   #unreportedChanges = 0;
@@ -39,7 +40,7 @@ export class HmrWatcher {
 
   constructor(opts: WatcherOptions) {
     this.#roots = [...new Set(opts.roots.map((r) => path.resolve(r)))];
-    this.#debounceMs = opts.debounceMs ?? 80;
+    this.#debounceMs = opts.debounceMs ?? HmrWatcher.#envDebounceMs() ?? 30;
     this.#verifyDelayMs = opts.verifyDelayMs ?? 250;
     this.#onBatch = opts.onBatch;
     this.#logger = opts.logger;
@@ -119,6 +120,7 @@ export class HmrWatcher {
   }
 
   #scheduleFlush(): void {
+    this.#windowStartedAt ??= Date.now();
     if (this.#flushing) return;
     if (this.#timer) clearTimeout(this.#timer);
     this.#timer = setTimeout(() => this.#flush(), this.#debounceMs);
@@ -135,13 +137,19 @@ export class HmrWatcher {
     try {
       while (!this.#stopped) {
         await this.#mergeDetectedChanges();
-        if (this.#pending.size === 0) break;
+        if (this.#pending.size === 0) {
+          this.#windowStartedAt = null;
+          break;
+        }
         const files = Array.from(this.#pending.keys());
         const kinds = new Set(this.#pending.values());
+        const flushAt = Date.now();
+        const trace = { eventAt: this.#windowStartedAt ?? flushAt, flushAt };
+        this.#windowStartedAt = null;
         this.#pending.clear();
         this.#hinted.clear();
         try {
-          await this.#onBatch({ files, kinds });
+          await this.#onBatch({ files, kinds, trace });
         } catch (e) {
           this.#logger.error(`[hmr] onBatch error: ${(e as Error).message}`);
         }
@@ -199,6 +207,12 @@ export class HmrWatcher {
     this.#logger.warn(
       `[hmr] cannot read ${gaps.length} path(s), so edits underneath them will not rebuild: ${shown}${rest}`,
     );
+  }
+
+  static #envDebounceMs(): number | null {
+    const raw = process.env.AKAN_DEV_WATCH_DEBOUNCE_MS;
+    const ms = raw ? Number(raw) : Number.NaN;
+    return Number.isInteger(ms) && ms >= 0 ? ms : null;
   }
 
   // A write in the same window as a delivered event raises no event of its own, so one scan follows each window.

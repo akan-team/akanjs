@@ -1,4 +1,4 @@
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import dayjs from "dayjs";
 import { FileSys } from "../fileSys";
 import { ConfigLock } from "./configLock";
@@ -39,25 +39,11 @@ export class GlobalConfig {
     const temp = `${configPath}.${process.pid}.${crypto.randomUUID()}.tmp`;
     try {
       await writeFile(temp, JSON.stringify(akanConfig, null, 2), { mode: 0o600 });
-      await GlobalConfig.#replace(temp, configPath);
+      // Every CLI reads this file outside the lock, which on Windows makes the rename wait for the reader.
+      await FileSys.replace(temp, configPath);
     } catch (error) {
       await rm(temp, { force: true });
       throw error;
-    }
-  }
-  static readonly #replaceAttempts = 100;
-  // Windows refuses to rename over a file another process has open (EPERM, or EACCES/EBUSY), and every CLI reads this
-  // one outside the lock. A reader holds it for one read, so the rename is retried for a few seconds instead of failing.
-  static async #replace(temp: string, target: string) {
-    for (let attempt = 1; ; attempt++) {
-      try {
-        return await rename(temp, target);
-      } catch (error) {
-        const code = (error as NodeJS.ErrnoException).code;
-        const busy = process.platform === "win32" && (code === "EPERM" || code === "EACCES" || code === "EBUSY");
-        if (!busy || attempt >= GlobalConfig.#replaceAttempts) throw error;
-        await Bun.sleep(Math.min(10 * attempt, 50));
-      }
     }
   }
   static readonly #lockPath = `${configPath}.lock`;

@@ -8,6 +8,8 @@ export const HMR_CLIENT_SCRIPT = `(function(){
   var syncNavigationEnabled = ${JSON.stringify(isSyncNavigationEnabled())};
   var syncNavigationClientId = Math.random().toString(36).slice(2) + Date.now().toString(36);
   var clientKind = self.__AKAN_HMR_CLIENT__ === "csr" ? "csr" : "ssr";
+  // The dev error page a failed render served: it runs no app, so any sign of a fixed build reloads it.
+  var systemPage = !!self.__AKAN_HMR_SYSTEM_PAGE__;
   var proto = location.protocol === "https:" ? "wss:" : "ws:";
   var url = proto + "//" + location.host + "/_akan/hmr" + (clientKind === "csr" ? "?client=csr" : "");
   var attempts = 0;
@@ -16,7 +18,6 @@ export const HMR_CLIENT_SCRIPT = `(function(){
   var refreshRuntimePromise = null;
   var refreshRuntime = null;
   var pendingRefreshRegistrations = [];
-  var refreshQueue = Promise.resolve();
   var overlayEl = null;
   var overlayLabelEl = null;
   var overlayDetailEl = null;
@@ -26,7 +27,7 @@ export const HMR_CLIENT_SCRIPT = `(function(){
   var overlayNextToken = 1;
   var overlayJobs = {};
   var buildErrorStates = {};
-  self.__AKAN_HMR_PHASE__ = null;
+  var traces = self.__AKAN_HMR_TRACES__ = self.__AKAN_HMR_TRACES__ || [];
   self.__AKAN_DEV_SYNC_NAVIGATION__ = function(href, kind){
     if (self.__AKAN_DEV_SYNC_NAVIGATION_APPLYING__ || !syncNavigationEnabled || !socket || socket.readyState !== WebSocket.OPEN) return;
     try {
@@ -51,7 +52,7 @@ export const HMR_CLIENT_SCRIPT = `(function(){
   // Start installing React Refresh before the application module graph loads.
   // Injecting the runtime only on the first update is too late for React's renderer hook.
   // A CSR page has no import map to load it from; the registry dev bundle installs its own.
-  if (clientKind === "ssr") ensureRefreshRuntime().catch(function(err){
+  if (clientKind === "ssr" && !systemPage) ensureRefreshRuntime().catch(function(err){
     console.warn("[akan-hmr] React Refresh runtime preload failed", err);
   });
 
@@ -65,11 +66,20 @@ export const HMR_CLIENT_SCRIPT = `(function(){
       if (!msg || typeof msg.type !== "string") return;
       if (msg.type === "hello") {
         if (clientKind === "csr") {
-          if (csrGenerationMoved(msg.csrGeneration)) reloadForCsr("missed a CSR update while disconnected");
+          if (csrGenerationMoved(msg.csrGeneration)) reloadForUpdate("missed a CSR update while disconnected");
           return;
         }
         if (lastBuildId !== null && msg.buildId !== lastBuildId) {
           location.reload();
+          return;
+        }
+        if (ssrRegistryReplaced(msg.ssrEpoch)) {
+          reloadForUpdate("the dev server rebuilt the SSR registry while this tab held the previous one");
+          return;
+        }
+        if (typeof msg.ssrGeneration === "number") self.__AKAN_SSR_HELLO_GENERATION__ = msg.ssrGeneration;
+        if (ssrRegistryBehind(msg.ssrGeneration)) {
+          reloadForUpdate("missed an SSR registry update while disconnected");
           return;
         }
         lastBuildId = msg.buildId;
@@ -85,12 +95,12 @@ export const HMR_CLIENT_SCRIPT = `(function(){
         refreshRsc(msg);
         return;
       }
-      if (msg.type === "client-refresh") {
-        refreshClient(msg);
-        return;
-      }
       if (msg.type === "csr-update") {
         applyCsrUpdate(msg);
+        return;
+      }
+      if (msg.type === "ssr-update") {
+        applySsrUpdate(msg);
         return;
       }
       if (msg.type === "css-update") {
@@ -134,19 +144,61 @@ export const HMR_CLIENT_SCRIPT = `(function(){
     return typeof current === "number" && current !== generation;
   }
 
-  function reloadForCsr(reason){
-    console.warn("[akan-hmr] reloading the CSR page: " + reason);
+  function reloadForUpdate(reason){
+    console.warn("[akan-hmr] reloading the page: " + reason);
     beginHmrOverlay("Reloading...", true);
     setTimeout(function(){ location.reload(); }, 30);
   }
 
+  // Kept in the page so a latency probe can line up the build side's marks with when the page took the update.
+  function recordTrace(kind, msg, receivedAt, appliedAt){
+    traces.push({ kind: kind, generation: msg.generation, trace: msg.trace || null, receivedAt: receivedAt, appliedAt: appliedAt });
+    if (traces.length > 64) traces.shift();
+  }
+
   // A registry page (self.__akan) patches itself; a single-file CSR artifact can only reload.
   function applyCsrUpdate(msg){
+    recordTrace("csr", msg, Date.now(), null);
     if (msg.reload || !self.__akan || typeof self.__akan.hot !== "function") {
-      reloadForCsr(msg.reason || "the CSR bundle was rebuilt");
+      reloadForUpdate(msg.reason || "the CSR bundle was rebuilt");
       return;
     }
     self.__akan.hot(msg);
+  }
+
+  // A new dev server builds its registry from scratch, restarting the generations a tab would compare.
+  function ssrRegistryReplaced(epoch){
+    var own = self.__AKAN_SSR_EPOCH__;
+    return typeof epoch === "number" && typeof own === "number" && own !== epoch;
+  }
+
+  // Behind only, counting patches still loading: a tab that booted from an app.js newer than the last update sent is
+  // ahead, not stale. A registry that has not started compares in the shim, once it has.
+  function ssrRegistryBehind(generation){
+    if (typeof generation !== "number" || !self.__akan || typeof self.__akan.inspect !== "function") return false;
+    var state = self.__akan.inspect();
+    return state.started && !state.failed && state.target < generation;
+  }
+
+  // An SSR page in registry mode. One that has not loaded its registry yet keeps the update for the registry's start.
+  function applySsrUpdate(msg){
+    recordTrace("ssr", msg, Date.now(), null);
+    if (systemPage) {
+      reloadForUpdate("a save changed the client code of the page that failed to render");
+      return;
+    }
+    // Directly: a registry whose app.js never started would only queue it.
+    if (msg.reload && self.__akan && !(msg.generation <= self.__akan.generation)) {
+      reloadForUpdate(msg.reason || "the SSR registry was rebuilt");
+      return;
+    }
+    if (self.__akan && typeof self.__akan.hot === "function") {
+      self.__akan.hot(msg);
+      return;
+    }
+    var early = self.__AKAN_SSR_EARLY_UPDATES__ = self.__AKAN_SSR_EARLY_UPDATES__ || [];
+    early.push(msg);
+    if (early.length > 64) early.shift();
   }
 
   function schedule(){
@@ -267,6 +319,10 @@ export const HMR_CLIENT_SCRIPT = `(function(){
       showBuildErrorOverlay(msg);
       return;
     }
+    if (msg.status === "ok" && systemPage) {
+      reloadForUpdate("the build that failed to render this page recovered");
+      return;
+    }
     if (msg.status === "ok") clearBuildErrorOverlay(msg);
   }
 
@@ -368,7 +424,18 @@ export const HMR_CLIENT_SCRIPT = `(function(){
     return prefix ? prefix + "\\n" + msg.message : msg.message;
   }
 
+  // After the registry applied every patch it was handed: the payload names the client modules those patches brought.
   function refreshRsc(msg){
+    var receivedAt = Date.now();
+    var settled = self.__akan && typeof self.__akan.whenSettled === "function" ? self.__akan.whenSettled() : null;
+    if (!settled) {
+      doRefreshRsc(msg, receivedAt);
+      return;
+    }
+    settled.then(function(){ doRefreshRsc(msg, receivedAt); }, function(){ doRefreshRsc(msg, receivedAt); });
+  }
+
+  function doRefreshRsc(msg, receivedAt){
     var started = performance.now();
     var overlayToken = beginHmrOverlay("Refreshing page...");
     try { self.__AKAN_RSC_CLEAR_CACHE__ && self.__AKAN_RSC_CLEAR_CACHE__(); } catch(e){}
@@ -380,6 +447,7 @@ export const HMR_CLIENT_SCRIPT = `(function(){
     }
     Promise.resolve(self.__AKAN_RSC_REFRESH__({ buildId: msg.buildId })).then(function(){
       lastBuildId = msg.buildId;
+      recordTrace("rsc-refresh", msg, receivedAt, Date.now());
       endHmrOverlay(overlayToken);
       console.debug && console.debug("[akan-hmr] RSC refreshed", {
         buildId: msg.buildId,
@@ -414,75 +482,6 @@ export const HMR_CLIENT_SCRIPT = `(function(){
       return runtime;
     });
     return refreshRuntimePromise;
-  }
-
-  function refreshClient(msg){
-    refreshQueue = refreshQueue.then(function(){ return doRefreshClient(msg); }, function(){ return doRefreshClient(msg); });
-  }
-
-  function setHmrPhase(phase){
-    self.__AKAN_HMR_PHASE__ = phase;
-  }
-
-  function doRefreshClient(msg){
-    var started = performance.now();
-    var metadataAt = started;
-    var importAt = started;
-    var refreshAt = started;
-    var overlayToken = beginHmrOverlay("Updating...");
-    var fallbackToRsc = false;
-    return ensureRefreshRuntime().then(function(runtime){
-      setHmrOverlayLabel(overlayToken, "Fetching update...");
-      var endpoint = new URL("/_akan/hmr/client-refresh", location.origin);
-      endpoint.searchParams.set("url", location.href);
-      if (msg.buildId != null) endpoint.searchParams.set("buildId", String(msg.buildId));
-      return fetch(endpoint, { credentials: "same-origin", cache: "no-store" })
-        .then(function(res){
-          if (!res.ok) throw new Error("client-refresh metadata failed " + res.status + " " + res.statusText);
-          return res.json();
-        })
-        .then(function(info){
-          metadataAt = performance.now();
-          var chunks = Array.isArray(info.chunks) ? info.chunks : [];
-          if (chunks.length === 0) throw new Error("no client chunks returned");
-          setHmrPhase("refresh-import");
-          setHmrOverlayLabel(overlayToken, "Importing update...");
-          return Promise.all(chunks.map(function(chunk){ return import(chunk); })).then(function(){
-            importAt = performance.now();
-            setHmrPhase("react-refresh");
-            setHmrOverlayLabel(overlayToken, "Applying update...");
-            try {
-              runtime.performReactRefresh();
-            } finally {
-              setHmrPhase(null);
-            }
-            refreshAt = performance.now();
-            lastBuildId = msg.buildId;
-            console.debug && console.debug("[akan-hmr] React Fast Refresh applied", {
-              buildId: msg.buildId,
-              generation: msg.generation,
-              chunks: chunks.length,
-              routeIds: info.routeIds || msg.routeIds,
-              changedFiles: msg.changedFiles && msg.changedFiles.length,
-              metadataMs: Math.round(metadataAt - started),
-              importMs: Math.round(importAt - metadataAt),
-              refreshMs: Math.round(refreshAt - importAt),
-              durationMs: Math.round(refreshAt - started)
-            });
-            endHmrOverlay(overlayToken);
-          }, function(err){
-            setHmrPhase(null);
-            throw err;
-          });
-        });
-    }).catch(function(err){
-      console.warn("[akan-hmr] React Fast Refresh failed, falling back to RSC refresh", err);
-      fallbackToRsc = true;
-      endHmrOverlay(overlayToken);
-      refreshRsc(msg);
-    }).finally(function(){
-      if (!fallbackToRsc) endHmrOverlay(overlayToken);
-    });
   }
 
   function swapCss(href){

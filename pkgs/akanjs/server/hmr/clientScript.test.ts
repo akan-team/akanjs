@@ -154,7 +154,8 @@ const createHmrHarness = ({
 describe("HMR_CLIENT_SCRIPT", () => {
   test("routes incremental refresh messages without forcing a document reload", () => {
     expect(HMR_CLIENT_SCRIPT).toContain('if (msg.type === "rsc-refresh") {\n        refreshRsc(msg);');
-    expect(HMR_CLIENT_SCRIPT).toContain('if (msg.type === "client-refresh") {\n        refreshClient(msg);');
+    expect(HMR_CLIENT_SCRIPT).toContain('if (msg.type === "ssr-update") {\n        applySsrUpdate(msg);');
+    expect(HMR_CLIENT_SCRIPT).not.toContain("client-refresh");
     expect(HMR_CLIENT_SCRIPT).toContain('if (msg.type === "build-status") { handleBuildStatus(msg); return; }');
     expect(HMR_CLIENT_SCRIPT).toContain("pendingRefreshRegistrations.push([type, id]);");
     expect(HMR_CLIENT_SCRIPT).toContain("React Refresh runtime preload failed");
@@ -264,6 +265,65 @@ describe("HMR_CLIENT_SCRIPT", () => {
     const artifact = createHmrHarness({ selfOverrides: { __AKAN_HMR_CLIENT__: "csr" }, runTimers: true });
     artifact.ws.sendMessage({ type: "csr-update", generation: 1_700_000_000_000, reload: true });
     expect(artifact.reloadCount).toBe(1);
+  });
+
+  test("an SSR tab reloads on reconnect when its registry is behind or from another epoch, never when it is ahead", () => {
+    const registry = (generation: number, target = generation) => ({
+      generation,
+      hot: () => undefined,
+      inspect: () => ({ generation, target, started: true, failed: false }),
+    });
+    const behind = createHmrHarness({ selfOverrides: { __akan: registry(3) }, runTimers: true });
+    behind.ws?.sendMessage({ type: "hello", buildId: 1, ssrGeneration: 5 });
+    expect(behind.reloadCount).toBe(1);
+
+    const loading = createHmrHarness({ selfOverrides: { __akan: registry(3, 5) }, runTimers: true });
+    loading.ws?.sendMessage({ type: "hello", buildId: 1, ssrGeneration: 5 });
+    expect(loading.reloadCount).toBe(0);
+
+    const ahead = createHmrHarness({ selfOverrides: { __akan: registry(6) }, runTimers: true });
+    ahead.ws?.sendMessage({ type: "hello", buildId: 1, ssrGeneration: 5 });
+    expect(ahead.reloadCount).toBe(0);
+
+    const replaced = createHmrHarness({
+      selfOverrides: { __akan: registry(6), __AKAN_SSR_EPOCH__: 100 },
+      runTimers: true,
+    });
+    replaced.ws?.sendMessage({ type: "hello", buildId: 1, ssrGeneration: 6, ssrEpoch: 200 });
+    expect(replaced.reloadCount).toBe(1);
+  });
+
+  test("an SSR tab that reconnects to the same build stays", () => {
+    const harness = createHmrHarness({ runTimers: true });
+    harness.ws?.sendMessage({ type: "hello", buildId: 7 });
+    harness.ws?.sendMessage({ type: "hello", buildId: 7 });
+    expect(harness.reloadCount).toBe(0);
+  });
+
+  test("an SSR registry reload reloads the tab itself, even when its runtime never started", () => {
+    const hot: unknown[] = [];
+    const harness = createHmrHarness({
+      selfOverrides: { __akan: { generation: 0, hot: (message: unknown) => hot.push(message) } },
+      runTimers: true,
+    });
+    harness.ws?.sendMessage({
+      type: "ssr-update",
+      generation: 4,
+      reload: true,
+      reason: "an npm module joined the graph",
+    });
+    expect(harness.reloadCount).toBe(1);
+    expect(hot).toEqual([]);
+  });
+
+  test("the dev error page reloads on a client patch or a recovered build, and preloads no refresh runtime", () => {
+    const patched = createHmrHarness({ selfOverrides: { __AKAN_HMR_SYSTEM_PAGE__: true }, runTimers: true });
+    patched.ws?.sendMessage({ type: "ssr-update", generation: 3, url: "/_akan/ssr-dev/patch-3.js" });
+    expect(patched.reloadCount).toBe(1);
+
+    const recovered = createHmrHarness({ selfOverrides: { __AKAN_HMR_SYSTEM_PAGE__: true }, runTimers: true });
+    recovered.ws?.sendMessage({ type: "build-status", status: "ok", generation: 4, phase: "pages" });
+    expect(recovered.reloadCount).toBe(1);
   });
 
   test("clears legacy error overlays with legacy ok messages", () => {

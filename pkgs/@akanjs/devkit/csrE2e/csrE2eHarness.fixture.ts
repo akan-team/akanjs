@@ -46,7 +46,7 @@ const RELOAD_MARKER = "__akanE2eBootMarker";
 //? Longer than the frame's navigation lock (360ms after a transition commits, `webkit/useCsrValues.ts`).
 const SETTLE_MS = 450;
 
-/** Drives a CSR page (`?csr=true` + a mobile target) of a running `akan start` in a headless `Bun.WebView`. */
+/** Drives a page of a running `akan start` in a headless `Bun.WebView`: CSR (`?csr=true` + a mobile target) or SSR. */
 export class CsrE2eHarness {
   readonly origin: string;
   readonly #view: Bun.WebView;
@@ -55,6 +55,7 @@ export class CsrE2eHarness {
   readonly #mobileTarget: string;
   readonly #edited = new Map<string, string>();
   #marker = "";
+  #csr: boolean = true;
 
   private constructor(options: {
     origin: string;
@@ -86,7 +87,13 @@ export class CsrE2eHarness {
       const { width, height } = { width: 390, height: 844, ...options.viewport };
       const backend = options.backend ?? CsrE2eHarness.#defaultBackend();
       //? `url: false` spawns a fresh Chrome instead of attaching to one the developer runs with remote debugging on.
-      const view = new Bun.WebView({ width, height, backend: backend === "chrome" ? { type: "chrome", url: false } : backend });
+      const view = new Bun.WebView({
+        width,
+        height,
+        backend: backend === "chrome" ? { type: "chrome", url: false } : backend,
+        //? AKAN_CSR_E2E_CONSOLE=1 prints the page's console: the only view of a hydration warning or a failed patch.
+        ...(process.env.AKAN_CSR_E2E_CONSOLE === "1" ? { console: globalThis.console } : {}),
+      });
       return new CsrE2eHarness({
         origin,
         view,
@@ -100,11 +107,14 @@ export class CsrE2eHarness {
     }
   }
 
-  /** Loads `path` (without the locale) as a CSR page and plants the marker `reloaded()` checks. */
-  async open(path: string) {
+  /** Loads `path` (without the locale), as CSR unless `csr: false`, and plants the marker `reloaded()` checks. */
+  async open(path: string, { csr = true }: { csr?: boolean } = {}) {
     const url = new URL(`/${this.#lang}${path === "/" ? "" : path}`, this.origin);
-    url.searchParams.set("csr", "true");
-    url.searchParams.set("akanMobileTarget", this.#mobileTarget);
+    if (csr) {
+      url.searchParams.set("csr", "true");
+      url.searchParams.set("akanMobileTarget", this.#mobileTarget);
+    }
+    this.#csr = csr;
     await this.#view.navigate(url.toString());
     await this.#markBoot();
   }
@@ -112,11 +122,24 @@ export class CsrE2eHarness {
   /** Reloads the page where it is, as a WebView does after its content process died, and marks the new boot. */
   async reload() {
     await this.#view.reload();
+    //? On the WebKit backend `reload()` resolves before the old document is gone; its marker going is the reload.
+    await this.waitFor(
+      (key: string, previous: string) => (window as unknown as Record<string, string | undefined>)[key] !== previous,
+      { args: [RELOAD_MARKER, this.#marker], timeout: 30_000 },
+    );
     await this.#markBoot();
   }
 
+  //? An SSR page has no page stack; `rscClient` installs its refresh hook in the root's layout effect, once hydrated.
   async #markBoot() {
-    await this.waitFor(() => document.querySelector('[id^="pageContainer-"]') !== null, { timeout: 30_000 });
+    if (this.#csr)
+      await this.waitFor(() => document.querySelector('[id^="pageContainer-"]') !== null, { timeout: 30_000 });
+    else
+      await this.waitFor(
+        () => typeof (globalThis as unknown as { __AKAN_RSC_REFRESH__?: unknown }).__AKAN_RSC_REFRESH__ === "function",
+        { timeout: 30_000 },
+      );
+    await Bun.sleep(SETTLE_MS);
     this.#marker = Math.random().toString(36).slice(2);
     await this.evaluate(
       (key: string, value: string) => {
@@ -182,7 +205,7 @@ export class CsrE2eHarness {
     return await this.#view.evaluate<Awaited<Result>>(`(${fn.toString()})(...${JSON.stringify(args)})`);
   }
 
-  //? A poll that lands while the page reloads rejects; it is retried, so a wait spans a reload as puppeteer's did.
+  //? A poll that lands while the page reloads rejects; it is retried, so a wait spans a reload.
   async waitFor<Args extends unknown[]>(
     predicate: (...args: Args) => unknown,
     { timeout = 5_000, args = [] as unknown as Args }: { timeout?: number; args?: Args } = {},

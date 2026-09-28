@@ -25,7 +25,10 @@ export interface CsrDevContext {
   define: Record<string, string>;
   optimizeImports: string[];
   configKey: string;
-  refreshFile: string;
+  /** Null when the page already loads the React Refresh runtime (an SSR page's import map). */
+  refreshFile: string | null;
+  /** Bare specifiers the page already loads (an SSR page's import map): required as `vendor:<specifier>`, not compiled. */
+  externals?: readonly string[];
 }
 
 export interface CsrDevSharedHelpers {
@@ -43,4 +46,10 @@ export interface CsrDevCompiledModule {
   deps: string[];
   mtimeMs: number;
   hash: string;
+}
+
+/** Module factories by id and helper definitions by hash, kept in memory so app.js is written without a pass over the disk. */
+export interface CsrDevCode {
+  modules: Map<string, string>;
+  helpers: Map<string, string>;
 }

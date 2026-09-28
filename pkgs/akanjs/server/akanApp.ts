@@ -1069,6 +1069,7 @@ export class AkanApp {
       case "css-updated":
       case "pages-updated":
       case "csr-updated":
+      case "ssr-updated":
       case "build-status":
         this.#fanoutToFederation(message);
         return;
