@@ -4,6 +4,7 @@ import { AsyncDefaultExportDetector } from "../transforms/asyncDefaultExportDete
 
 export class PagesEntrySourceGenerator {
   #pageEntries: PageEntry[];
+  readonly #asyncDefaults = new Map<string, Promise<boolean>>();
 
   constructor(pageEntries: PageEntry[]) {
     this.#pageEntries = pageEntries;
@@ -35,7 +36,7 @@ export class PagesEntrySourceGenerator {
     });
     const entries = await Promise.all(
       this.#pageEntries.map(async ({ key, moduleAbsPath }, index) => {
-        const isAsyncDefault = await AsyncDefaultExportDetector.detect(moduleAbsPath);
+        const isAsyncDefault = await this.#isAsyncDefault(moduleAbsPath);
         return `  ${JSON.stringify(key)}: { loader: async () => page${index}, isAsyncDefault: ${isAsyncDefault} },`;
       }),
     );
@@ -56,7 +57,7 @@ export class PagesEntrySourceGenerator {
     const entries = await Promise.all(
       this.#pageEntries.map(async ({ key, moduleAbsPath }) => {
         const specifier = PagesEntrySourceGenerator.#toRelativeSpecifier(fromDir, moduleAbsPath);
-        const isAsyncDefault = await AsyncDefaultExportDetector.detect(moduleAbsPath);
+        const isAsyncDefault = await this.#isAsyncDefault(moduleAbsPath);
         return `      ${JSON.stringify(key)}: { loader: async () => require(${JSON.stringify(specifier)}), isAsyncDefault: ${isAsyncDefault} },`;
       }),
     );
@@ -68,6 +69,14 @@ ${entries.join("\n")}
     if (replaced === false) throw new Error("the route table no longer matches the pages it was built from");
   });
 `;
+  }
+
+  #isAsyncDefault(moduleAbsPath: string): Promise<boolean> {
+    const known = this.#asyncDefaults.get(moduleAbsPath);
+    if (known) return known;
+    const detected = AsyncDefaultExportDetector.detect(moduleAbsPath);
+    this.#asyncDefaults.set(moduleAbsPath, detected);
+    return detected;
   }
 
   static #toImportSpecifier(moduleAbsPath: string): string {
