@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import fs from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -53,6 +54,22 @@ describe("ServerGraphFile.touches", () => {
       expect(await ServerGraphFile.touches(kept, [at("ui/Card.tsx")], () => ["Card", "CardBody"])).toBe(false);
       const changed = [at("ui/Card.tsx"), ...(kept?.carried ?? [])];
       expect(await ServerGraphFile.touches(kept, changed, () => ["Card", "CardBody"])).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a graph written again inside one mtime tick is read afresh", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "akan-server-graph-"));
+    try {
+      const file = path.join(dir, ServerGraphFile.fileName);
+      const tick = new Date(Math.floor(Date.now() / 1000) * 1000);
+      await ServerGraphFile.write(dir, graph);
+      fs.utimesSync(file, tick, tick);
+      await ServerGraphFile.read(dir);
+      await ServerGraphFile.carry(dir, [at("page/_index.tsx")]);
+      fs.utimesSync(file, tick, tick);
+      expect((await ServerGraphFile.read(dir))?.carried).toEqual([at("page/_index.tsx")]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { FileSys } from "../fileSys";
 import { hasUseClientDirective, scanUseClientExports } from "../transforms/rscUseClientTransform";
@@ -17,18 +18,21 @@ export interface ServerGraph {
 //* good graph and carries its files over, so the fixing save still refreshes what the failed ones changed.
 export class ServerGraphFile {
   static readonly fileName = "server-graph.json";
-  static #cache: { file: string; mtimeMs: number; graph: ServerGraph } | null = null;
+  static #cache: { file: string; stamp: string; graph: ServerGraph } | null = null;
 
   static async read(artifactDir: string): Promise<ServerGraph | null> {
     const file = path.join(artifactDir, ServerGraphFile.fileName);
-    const mtimeMs = CsrDevPaths.mtimeOf(file);
-    if (mtimeMs < 0) return null;
+    const stat = fs.statSync(file, { throwIfNoEntry: false });
+    if (!stat) return null;
+    //? Not the mtime alone: two writes inside one mtime tick (seen on Linux) read back the first. A write replaces the
+    //? file, so its inode moves too.
+    const stamp = `${stat.ino}:${stat.size}:${stat.mtimeMs}`;
     const cached = ServerGraphFile.#cache;
-    if (cached?.file === file && cached.mtimeMs === mtimeMs) return cached.graph;
+    if (cached?.file === file && cached.stamp === stamp) return cached.graph;
     const graph = (await Bun.file(file)
       .json()
       .catch(() => null)) as ServerGraph | null;
-    if (graph) ServerGraphFile.#cache = { file, mtimeMs, graph };
+    if (graph) ServerGraphFile.#cache = { file, stamp, graph };
     return graph;
   }
 
