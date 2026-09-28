@@ -144,6 +144,16 @@
       "import": "./server/logging/logTailClient.ts",
       "types": "./server/logging/logTailClient.ts",
       "default": "./server/logging/logTailClient.ts"
+    },
+    "./server/hmr/csrDevManifest": {
+      "import": "./server/hmr/csrDevManifest.ts",
+      "types": "./server/hmr/csrDevManifest.ts",
+      "default": "./server/hmr/csrDevManifest.ts"
+    },
+    "./server/hmr/runtimeMetadataFile": {
+      "import": "./server/hmr/runtimeMetadataFile.ts",
+      "types": "./server/hmr/runtimeMetadataFile.ts",
+      "default": "./server/hmr/runtimeMetadataFile.ts"
     }
   },
   "dependencies": {
