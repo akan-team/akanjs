@@ -43,16 +43,18 @@ export class CsrDevPaths {
     return (await source.exists()) ? Bun.hash(await source.arrayBuffer()).toString(36) : "";
   }
 
+  //? `.native`: on Windows Bun's `fs.realpathSync` keeps the spelling it was given, where the native call returns the
+  //? disk's (as macOS's plain call does), and a module id must not depend on which spelling reached it first.
   static realpath(file: string): string {
     // A deleted file keeps its own path, so its id still matches the graph entry it leaves behind.
-    return fs.existsSync(file) ? fs.realpathSync(file) : path.resolve(file);
+    return fs.existsSync(file) ? fs.realpathSync.native(file) : path.resolve(file);
   }
 
   //? Present under this very name: on a case-insensitive disk (APFS, NTFS) `ui/card.tsx` still exists after a rename to
   //? `ui/Card.tsx`, but the compiler names the module by the disk's spelling, so the old id is gone.
   static isNamed(file: string): boolean {
     try {
-      return fs.realpathSync(file) === file;
+      return fs.realpathSync.native(file) === file;
     } catch {
       // Missing is an answer here.
       return false;
