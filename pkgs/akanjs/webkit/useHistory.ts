@@ -16,7 +16,10 @@ interface setBackOptions {
   scrollToTop?: boolean;
 }
 
-export const useHistory = (locations: Location[] = []) => {
+export const useHistory = (
+  locations: Location[] = [],
+  { idx = 0, dormant }: { idx?: number; dormant?: Set<string> } = {},
+) => {
   const history = useRef<History>({
     type: "initial",
     locations,
@@ -28,7 +31,8 @@ export const useHistory = (locations: Location[] = []) => {
         .filter((location) => location.pathRoute.pageState.cache)
         .map((location) => [location.pathRoute.path, location]),
     ),
-    idx: 0,
+    idx,
+    ...(dormant ? { dormant } : {}),
   });
   const setHistoryForward = useCallback(({ type, location, scrollTop = 0, scrollToTop = false }: setForwardOptions) => {
     const currentLocation = history.current.locations[history.current.idx] as Location | undefined;
@@ -52,6 +56,13 @@ export const useHistory = (locations: Location[] = []) => {
     if (location.pathRoute.pageState.cache) history.current.cachedLocationMap.set(location.pathRoute.path, location);
     history.current.idx--;
   }, []);
+  //? A popstate that skips entries — a long-press back menu, history.go(-n) — lands several entries away at once.
+  const setHistoryJump = useCallback((idx: number, scrollTop = 0) => {
+    const currentLocation = history.current.locations[history.current.idx] as Location | undefined;
+    if (currentLocation) history.current.scrollMap.set(currentLocation.href, scrollTop);
+    history.current.type = idx < history.current.idx ? "back" : "forward";
+    history.current.idx = idx;
+  }, []);
   const getNextLocation = useCallback(() => {
     return (history.current.locations[history.current.idx + 1] ?? null) as Location | null;
   }, []);
@@ -73,6 +84,7 @@ export const useHistory = (locations: Location[] = []) => {
     history,
     setHistoryForward,
     setHistoryBack,
+    setHistoryJump,
     getNextLocation,
     getCurrentLocation,
     getPrevLocation,

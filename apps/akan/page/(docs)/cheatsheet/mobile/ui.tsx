@@ -747,6 +747,26 @@ export default page()
                 ),
               })}
             </li>
+            <li>
+              {l.trans({
+                en: (
+                  <>
+                    <strong>The stack outlives a reload.</strong> After a reload — or a WebView whose content process
+                    died and reloaded — the current page and the one under it come back, the rest of the stack waits
+                    until you go back to it, and back walks it as before. While the app is in the background, the page
+                    under the current one pauses too.
+                  </>
+                ),
+                ko: (
+                  <>
+                    <strong>스택은 리로드 뒤에도 남습니다.</strong> 리로드하거나 WebView의 콘텐츠 프로세스가 죽어 다시
+                    로드되면 현재 페이지와 그 아래 페이지가 돌아옵니다. 나머지 스택은 뒤로 가서 닿을 때까지 기다리고,
+                    뒤로가기는 전과 같이 스택을 따라갑니다. 앱이 백그라운드에 있는 동안에는 현재 페이지 아래 페이지도
+                    멈춥니다.
+                  </>
+                ),
+              })}
+            </li>
           </ul>
 
           <Docs.SubSubTitle>{l.trans({ en: "The frame as CSS variables", ko: "CSS 변수로 쓰기" })}</Docs.SubSubTitle>

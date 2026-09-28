@@ -251,6 +251,7 @@ export interface History {
   idxMap: Map<string, number>;
   cachedLocationMap: Map<string, Location>;
   idx: number;
+  dormant?: Set<string>; // entry ids a restored stack holds without a page until one is visited
 }
 
 export interface RouterProps {
@@ -277,6 +278,7 @@ export interface RouteState {
   stackEntries: CsrStackEntry[];
   navigationIntent: NavigationIntent | null;
   phase: CsrNavigationPhase;
+  isBackgrounded: boolean;
   history: RefObject<History>;
   topSafeAreaRef: RefObject<HTMLDivElement | null>;
   bottomSafeAreaRef: RefObject<HTMLDivElement | null>;

@@ -1,6 +1,6 @@
 "use client";
 import { router as clientRouter, debugFrame, normalizeDeepLinkHref } from "akanjs/client";
-import { app, isNativeApp, push } from "akanjs/client/native";
+import { app, desktopPlatform, isNativeApp, push } from "akanjs/client/native";
 
 export interface NativeBackState {
   path: string;
@@ -25,6 +25,8 @@ export class NativeNavigation {
   constructor(readonly options: NativeNavigationOptions) {}
 
   listen() {
+    //? WebView2 walks history on Alt+← and the mouse back button by itself; WKWebView leaves both to the app.
+    if (desktopPlatform() === "macos") return this.#listenMacBack();
     if (!isNativeApp()) return () => undefined;
     //? The runtime hides a push that arrives with the app in front unless asked; shown, it can be tapped like any other.
     if (push.isSupported("setForegroundPresentation"))
@@ -98,6 +100,42 @@ export class NativeNavigation {
       return;
     }
     clientRouter.backOrFallback(fallbackPath, { scrollToTop: false });
+  }
+
+  #listenMacBack() {
+    const onKey = (event: KeyboardEvent) => {
+      if (!NativeNavigation.isMacBackKey(event) || NativeNavigation.#isEditing(event.target)) return;
+      event.preventDefault();
+      this.options.backState().router.back();
+    };
+    const onMouse = (event: MouseEvent) => {
+      if (event.button !== 3) return;
+      event.preventDefault();
+      this.options.backState().router.back();
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mouseup", onMouse);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mouseup", onMouse);
+    };
+  }
+
+  static isMacBackKey({
+    key,
+    metaKey,
+    altKey,
+    ctrlKey,
+    shiftKey,
+  }: Pick<KeyboardEvent, "key" | "metaKey" | "altKey" | "ctrlKey" | "shiftKey">) {
+    return metaKey && !altKey && !ctrlKey && !shiftKey && (key === "[" || key === "ArrowLeft");
+  }
+
+  //? ⌘← moves the caret to the start of the line and ⌘[ outdents in an editor, so a field keeps both.
+  static #isEditing(target: EventTarget | null) {
+    return (
+      target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
+    );
   }
 
   //* The frame reports its route pattern (`/:lang/<basePath>/…`); the target's indexPath is relative to the basePath.

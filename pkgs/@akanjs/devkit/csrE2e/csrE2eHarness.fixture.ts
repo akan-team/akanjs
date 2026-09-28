@@ -109,6 +109,16 @@ export class CsrE2eHarness {
     url.searchParams.set("csr", "true");
     url.searchParams.set("akanMobileTarget", this.#mobileTarget);
     await this.page.goto(url.toString(), { waitUntil: "load" });
+    await this.#markBoot();
+  }
+
+  /** Reloads the page where it is, as a WebView does after its content process died, and marks the new boot. */
+  async reload() {
+    await this.page.reload({ waitUntil: "load" });
+    await this.#markBoot();
+  }
+
+  async #markBoot() {
     await this.waitFor(() => document.querySelector('[id^="pageContainer-"]') !== null, { timeout: 30_000 });
     this.#marker = Math.random().toString(36).slice(2);
     await this.page.evaluate(
@@ -118,6 +128,15 @@ export class CsrE2eHarness {
       RELOAD_MARKER,
       this.#marker,
     );
+  }
+
+  /** Reports the document as `state` and tells the page, as an app moving to or from the background does. */
+  async setVisibility(state: "hidden" | "visible") {
+    await this.page.evaluate((next) => {
+      Object.defineProperty(document, "visibilityState", { value: next, configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    }, state);
+    await Bun.sleep(50);
   }
 
   //? The CSR frame's own dev sync-navigation event: it calls the app router's push/replace, as a click would.
@@ -144,10 +163,14 @@ export class CsrE2eHarness {
 
   /** A history back through popstate, the path a native back button or a browser back takes. */
   async back({ settleMs = SETTLE_MS } = {}) {
+    await this.go(-1, { settleMs });
+  }
+
+  async go(delta: number, { settleMs = SETTLE_MS } = {}) {
     const before = await this.currentPath();
-    await this.page.evaluate(() => {
-      window.history.back();
-    });
+    await this.page.evaluate((steps) => {
+      window.history.go(steps);
+    }, delta);
     await this.waitFor((path: string) => window.location.pathname + window.location.search !== path, {
       args: [before],
       timeout: 10_000,
@@ -212,6 +235,19 @@ export class CsrE2eHarness {
           .map((element) => element.textContent ?? ""),
       selector,
       mounted,
+    );
+  }
+
+  /** Waits until the rendered matches read `expected`, for a step whose cost is a mount rather than a transition. */
+  async waitForText(selector: string, expected: string[], { timeout = 5_000 } = {}) {
+    await this.waitFor(
+      (target: string, want: string[]) =>
+        JSON.stringify(
+          [...document.querySelectorAll<HTMLElement>(target)]
+            .filter((element) => element.checkVisibility())
+            .map((element) => element.textContent ?? ""),
+        ) === JSON.stringify(want),
+      { args: [selector, expected], timeout },
     );
   }
 

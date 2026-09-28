@@ -407,11 +407,13 @@ const CSRPageContainer = ({ entry, prefix, layoutStyle }: CSRPageContainerProps)
       : pageType === "prev"
         ? { page: prevPage, pageContentRef: prevPageContentRef, pageClassName: "", pageBind: () => ({}) }
         : { page: null, pageContentRef: null, pageClassName: "", pageBind: () => ({}) };
-  //? A page nobody sees keeps its state and DOM but not its effects: a cached page, and the page a transition-less
-  //? switch left once it settled. The page under an animated transition stays live, since a swipe back shows it.
+  //? A page nobody sees keeps its state and DOM but not its effects: a cached page, the page a transition-less switch
+  //? left once it settled, and the page under the current one while the app is in the background. Otherwise the page
+  //? under an animated transition stays live, since a swipe back shows it.
   const activity: PageActivity =
     pageType === "cached" ||
-    (pageType === "prev" && currentLocation.pathRoute.pageState.transition === "none" && csr.phase === "idle")
+    (pageType === "prev" &&
+      (csr.isBackgrounded || (currentLocation.pathRoute.pageState.transition === "none" && csr.phase === "idle")))
       ? "hidden"
       : pageType;
   return (

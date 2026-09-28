@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import "../test/registerDom";
+import { afterEach, describe, expect, test } from "bun:test";
 import type { CsrNavigationPhase, History, Location, PathRoute } from "akanjs/client";
 import { CsrStack } from "./CsrStack";
 
@@ -85,5 +86,59 @@ describe("CsrStack", () => {
     expect(CsrStack.keyOf(loose)).toBe("/item?id=9");
     expect(CsrStack.keyOf(at(tab, "t9"))).toBe("/tab");
     expect(CsrStack.nextEntryId()).not.toBe(CsrStack.nextEntryId());
+  });
+});
+
+describe("CsrStack across a reload", () => {
+  afterEach(() => {
+    sessionStorage.clear();
+    window.history.replaceState(null, "");
+  });
+
+  const historyOf = (locations: Location[], idx = locations.length - 1): History => ({
+    type: "forward",
+    locations,
+    idx,
+    scrollMap: new Map(),
+    idxMap: new Map(),
+    cachedLocationMap: new Map(),
+  });
+  const locate = (href: string) =>
+    ({ href, pathRoute: href.startsWith("/tab") ? tab : item, entryId: "fresh" }) as unknown as Location;
+
+  test("the tab gets its stack back, with only the current and previous entries mounted", () => {
+    const saved = [at(tab, "t1"), at(item, "i1"), at(item, "i2"), at(item, "i3")];
+    CsrStack.save(historyOf(saved));
+    window.history.replaceState({ akanEntryId: "i3" }, "");
+
+    const restored = CsrStack.restore({ ...at(item, "i3"), entryId: "booted" }, locate);
+    expect(restored?.idx).toBe(3);
+    expect(restored?.locations.map((location) => location.entryId)).toEqual(["t1", "i1", "i2", "i3"]);
+    expect([...(restored?.dormant ?? [])]).toEqual(["t1", "i1"]);
+
+    const history: History = {
+      ...historyOf(restored?.locations ?? []),
+      cachedLocationMap: new Map([["/tab", restored?.locations[0] as Location]]),
+      dormant: restored?.dormant,
+    };
+    const entries = CsrStack.entriesOf({
+      history,
+      location: history.locations[3],
+      prevLocation: history.locations[2],
+      pendingLocation: null,
+      phase: "idle",
+    });
+    expect(entries.map(({ key, pageType }) => `${key}:${pageType}`)).toEqual(["i2:prev", "i3:current"]);
+  });
+
+  test("a stack the tab was not on is not restored", () => {
+    CsrStack.save(historyOf([at(item, "i1"), at(item, "i2")]));
+    expect(CsrStack.restore(at(item, "i2"), locate)).toBeNull();
+    window.history.replaceState({ akanEntryId: "i1" }, "");
+    expect(CsrStack.restore(at(item, "i2"), locate)).toBeNull();
+    window.history.replaceState({ akanEntryId: "i2" }, "");
+    expect(CsrStack.restore(at(item, "i1"), locate)).toBeNull();
+    sessionStorage.setItem("akan.csr.stack", "{not json");
+    expect(CsrStack.restore(at(item, "i2"), locate)).toBeNull();
   });
 });

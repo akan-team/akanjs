@@ -599,15 +599,21 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
   const lastBroadcastSyncHref = useRef<string | null>(null);
 
   const { getLocation } = useLocation({ rootRouteGuide });
+  const [initialStack] = useState(() => {
+    const current = getLocation(window.location.href.replace(window.location.origin, ""));
+    return CsrStack.restore(current, getLocation) ?? { locations: [current], idx: 0 };
+  });
   const {
     history,
     setHistoryForward,
     setHistoryBack,
+    setHistoryJump,
     getNextLocation,
     getCurrentLocation,
     getPrevLocation,
     getScrollTop,
-  } = useHistory([getLocation(window.location.href.replace(window.location.origin, ""))]);
+  } = useHistory(initialStack.locations, initialStack);
+  const [isBackgrounded, setIsBackgrounded] = useState(() => document.visibilityState === "hidden");
   const [locationState, setLocationState] = useState<LocationState>({
     location: getCurrentLocation(),
     prevLocation: getPrevLocation(),
@@ -1046,15 +1052,36 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
         window.history.back();
       },
     };
-    window.onpopstate = async () => {
+    window.onpopstate = async (event) => {
       const href = window.location.href.replace(window.location.origin, "");
       const entryId = (window.history.state as { akanEntryId?: string } | null)?.akanEntryId;
-      const isAt = (target: Location | null) =>
+      const isAt = (target: Location | null | undefined) =>
         !!target && (entryId ? target.entryId === entryId : target.href === href);
       const routeType = isAt(getNextLocation()) ? "forward" : isAt(getPrevLocation()) ? "back" : null;
       const scrollTop = pageContentRef.current?.scrollTop ?? 0;
+      //? Safari's own swipe back has already slid the page away; playing ours as well would show the back twice.
+      const isUaAnimated =
+        (event as PopStateEvent & { hasUAVisualTransition?: boolean }).hasUAVisualTransition === true;
       debugFrame("router.popstate", { href, routeType, scrollTop });
-      if (!routeType) return;
+      if (!routeType) {
+        const target = history.current.locations.findIndex((candidate) => isAt(candidate));
+        if (target === history.current.idx) return;
+        if (target >= 0) setHistoryJump(target, scrollTop);
+        else {
+          //? An entry this stack never saw: one from before a reload that kept no stack, or a hash the browser pushed.
+          const found = getLocation(href);
+          const current = getCurrentLocation();
+          const inPlace = found.pathRoute.path === current.pathRoute.path;
+          setHistoryForward({
+            type: "replace",
+            location: inPlace ? { ...found, entryId: current.entryId } : found,
+            scrollTop,
+          });
+        }
+        settle(getPrevLocation());
+        broadcastSyncNavigation("pop", getSyncRouteHref(getLocation(href)));
+        return;
+      }
       if (routeType === "forward") {
         if (shouldPrepareFrameTransition(href)) await startFrameTransition();
         const location = getCurrentLocation();
@@ -1064,7 +1091,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
       } else {
         const location = getCurrentLocation();
         if (shouldPrepareFrameTransition(href)) await startFrameTransition();
-        await onBack.current[location.pathRoute.pageState.transition]?.();
+        if (!isUaAnimated) await onBack.current[location.pathRoute.pageState.transition]?.();
         setHistoryBack({ type: "popBack", location, scrollTop });
         settle(getPrevLocation());
         broadcastSyncNavigation("pop", getSyncRouteHref(getLocation(href)));
@@ -1126,6 +1153,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
     stackEntries,
     navigationIntent,
     phase,
+    isBackgrounded,
     history,
     topSafeAreaRef,
     bottomSafeAreaRef,
@@ -1186,6 +1214,17 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
     if (prevPageContentRef.current)
       prevPageContentRef.current.scrollTop = prevLocation ? getScrollTop(prevLocation) : 0;
   }, [location.href]);
+
+  useEffect(() => {
+    for (const shown of [location, prevLocation]) if (shown?.entryId) history.current.dormant?.delete(shown.entryId);
+    CsrStack.save(history.current);
+  }, [location, prevLocation]);
+
+  useEffect(() => {
+    const sync = () => setIsBackgrounded(document.visibilityState === "hidden");
+    document.addEventListener("visibilitychange", sync);
+    return () => document.removeEventListener("visibilitychange", sync);
+  }, []);
 
   useEffect(() => {
     nativeBackStateRef.current = {

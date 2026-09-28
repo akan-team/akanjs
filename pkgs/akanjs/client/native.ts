@@ -34,6 +34,9 @@ export const isNativeApp = () => isNative && (platform === "ios" || platform ===
 
 export const nativePlatform = () => (isNativeApp() ? (platform as "ios" | "android") : null);
 
+export const desktopPlatform = () =>
+  isNative && (platform === "macos" || platform === "windows" || platform === "linux") ? platform : null;
+
 /** http(s) in the in-app browser, anything else (mailto:, tel:) in the app the system picks. */
 export const openExternalUrl = async (url: string) => {
   if (!isNativeApp()) {

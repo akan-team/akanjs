@@ -140,6 +140,42 @@ describe.skipIf(!CsrE2eHarness.enabled)("CSR page stack (minimal, /e2e/stack)", 
     expect(await csr.probe("tab-a")).toMatchObject({ activity: "current", focused: true, focusCount: focusCount + 1 });
   }, 60_000);
 
+  test("a reload keeps the stack: the page under the current one is back, the rest waits, and back walks it", async () => {
+    const runtimeItem = (id: string) => `${item(id)}&csr=true&akanMobileTarget=e2e`;
+    await csr.open(TAB_A);
+    await csr.navigate(runtimeItem("31"));
+    await csr.navigate(runtimeItem("32"));
+    await csr.reload();
+    expect(await itemIdsIn(CURRENT)).toEqual(["32"]);
+    expect(await itemIdsIn(UNDER)).toEqual(["31"]);
+    expect((await csr.containers()).some((container) => container.path.endsWith("/tab-a"))).toBe(false);
+    //? The first back after a reload mounts the entry under the one it reveals, which a boot left dormant.
+    await csr.back();
+    await csr.waitForText(`${CURRENT} [data-e2e-probe="item"] [data-e2e="item-id"]`, ["31"]);
+    await csr.back();
+    expect(routeOf(await csr.currentPath())).toBe("/:lang/e2e/stack/tab-a");
+    expect((await csr.probe("tab-a"))?.mounted).toBe(true);
+    expect(await csr.reloaded()).toBe(false);
+  }, 90_000);
+
+  test("a popstate several entries away lands on that entry", async () => {
+    await csr.open(TAB_A);
+    for (const id of ["41", "42", "43"]) await csr.navigate(item(id));
+    await csr.go(-2);
+    expect(await itemIdsIn(CURRENT)).toEqual(["41"]);
+    expect(await csr.reloaded()).toBe(false);
+  }, 60_000);
+
+  test("the page under the current one pauses while the app is in the background", async () => {
+    await csr.open(TAB_A);
+    await csr.navigate(item("51"));
+    expect(await csr.ticksOver("tab-a")).toBeGreaterThan(0);
+    await csr.setVisibility("hidden");
+    expect(await csr.ticksOver("tab-a")).toBe(0);
+    await csr.setVisibility("visible");
+    expect(await csr.ticksOver("tab-a")).toBeGreaterThan(0);
+  }, 60_000);
+
   test("back returns to the previous entry without a reload", async () => {
     await csr.open(TAB_A);
     await csr.navigate(item("6"));
