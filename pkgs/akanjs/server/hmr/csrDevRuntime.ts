@@ -7,7 +7,7 @@ interface RefreshRuntime {
   getFamilyByType(value: unknown): unknown;
 }
 
-export type CsrAcceptCallback = (updated: string[]) => void | Promise<void>;
+export type CsrAcceptCallback = (updated: string[]) => void;
 
 export interface CsrHotContext {
   readonly data: Record<string, unknown> | undefined;
