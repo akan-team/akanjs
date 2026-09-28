@@ -207,7 +207,8 @@ export class CsrDevBundler {
   ): Promise<CsrDevUpdate | null> {
     const entries = await this.#writeEntries(context);
     const entryIds = this.#entryIds(entries.files);
-    const changed = new Set<string>(graph.pending);
+    await this.#forgetDeletedModules(graph);
+    const changed = new Set<string>(graph.pending.filter((id) => graph.modules[id]));
     for (const file of changedFiles) {
       const id = this.#idOf(file);
       if (graph.modules[id]) changed.add(id);
@@ -276,6 +277,21 @@ export class CsrDevBundler {
       changedIds,
       moduleCount: Object.keys(graph.modules).length,
     };
+  }
+
+  // A deleted module leaves the graph instead of being rebuilt: rebuilding a missing file fails every save after it.
+  // An importer that still names it fails on its own rebuild, with the resolution error that says why.
+  async #forgetDeletedModules(graph: CsrDevGraph): Promise<void> {
+    const deleted = Object.keys(graph.modules).filter(
+      (id) => !graph.modules[id]?.vendor && !fs.existsSync(this.#fileOf(id)),
+    );
+    for (const id of deleted) delete graph.modules[id];
+    await Promise.all(
+      deleted.flatMap((id) => [
+        rm(this.#modulePath(id, ".js"), { force: true }),
+        rm(this.#modulePath(id, ".js.map"), { force: true }),
+      ]),
+    );
   }
 
   async #writeEntries(context: BundleContext): Promise<{ files: Record<string, string>; changed: string[] }> {
