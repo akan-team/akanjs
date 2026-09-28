@@ -3,6 +3,7 @@ import path from "node:path";
 import type { BaseBuildArtifact, ClientManifest, SsrManifest } from "akanjs/server";
 import type { App } from "../commandDecorators";
 import { createBarrelImportsPlugin } from "../transforms/barrelImportsPlugin";
+import { loaderFor } from "../transforms/moduleSyntax";
 import { scanUseClientExports, toClientReferencePath } from "../transforms/rscUseClientTransform";
 import type { ClientBundleTarget, ClientEntryDiscovery } from "./clientBuildTypes";
 import { ClientEntriesBundler } from "./clientEntriesBundler";
@@ -199,19 +200,55 @@ export class RouteClientBuilder {
     return scanUseClientExports(await Bun.file(absEntry).text(), absEntry, this.#app.workspace.workspaceRoot);
   }
 
-  static normalizeNamedDefaultFunctionForFastRefresh(source: string): string | null {
-    let changed = false;
-    const defaultNames: string[] = [];
-    const next = source.replace(
-      /(^|\n)(\s*)export\s+default\s+(async\s+)?function\s+([A-Za-z_$][\w$]*)(?=\s*(?:<|\())/g,
-      (match, lineStart: string, indent: string, asyncKeyword: string | undefined, name: string) => {
-        changed = true;
-        defaultNames.push(name);
-        return `${lineStart}${indent}${asyncKeyword ?? ""}function ${name}`;
-      },
-    );
-    if (!changed) return null;
-    return `${next}\n${defaultNames.map((name) => `export default ${name};`).join("\n")}\n`;
+  static normalizeNamedDefaultFunctionForFastRefresh(
+    source: string,
+    { path: filePath }: { path?: string } = {},
+  ): string | null {
+    const declared = RouteClientBuilder.#declaredNamedDefaultFunctions(source, filePath);
+    if (declared.length === 0) return null;
+    let next = "";
+    let cursor = 0;
+    for (const { index, text, lineStart, indent, asyncKeyword, name } of declared) {
+      next += `${source.slice(cursor, index)}${lineStart}${indent}${asyncKeyword}function ${name}`;
+      cursor = index + text.length;
+    }
+    next += source.slice(cursor);
+    return `${next}\n${declared.map(({ name }) => `export default ${name};`).join("\n")}\n`;
+  }
+
+  //? The pattern also matches inside strings and comments (a docs page quoting code), so every candidate is renamed to
+  //? a probe export and only the ones the parser reports as exports are declarations.
+  static #declaredNamedDefaultFunctions(source: string, filePath?: string) {
+    const candidates = [
+      ...source.matchAll(/(^|\n)(\s*)export\s+default\s+(async\s+)?function\s+([A-Za-z_$][\w$]*)(?=\s*(?:<|\())/g),
+    ].map((match) => ({
+      index: match.index,
+      text: match[0],
+      lineStart: match[1] ?? "",
+      indent: match[2] ?? "",
+      asyncKeyword: match[3] ?? "",
+      name: match[4] ?? "",
+    }));
+    if (candidates.length === 0) return [];
+    const probeName = (idx: number) => `__akanNamedDefault${idx}`;
+    let probe = "";
+    let cursor = 0;
+    candidates.forEach(({ index, text, lineStart, indent, asyncKeyword }, idx) => {
+      probe += `${source.slice(cursor, index)}${lineStart}${indent}export ${asyncKeyword}function ${probeName(idx)}`;
+      cursor = index + text.length;
+    });
+    probe += source.slice(cursor);
+    const exported = RouteClientBuilder.#scanExports(probe, filePath);
+    return candidates.filter((_, idx) => exported.has(probeName(idx)));
+  }
+
+  static #scanExports(source: string, filePath?: string): Set<string> {
+    try {
+      return new Set(new Bun.Transpiler({ loader: filePath ? loaderFor(filePath) : "tsx" }).scan(source).exports);
+    } catch {
+      // Unparseable source is left alone, so the bundler reports its syntax error at the real line.
+      return new Set();
+    }
   }
 
   static resolveSsrClientRuntimeAliases(): Record<string, string> {

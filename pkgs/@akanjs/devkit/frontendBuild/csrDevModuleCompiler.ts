@@ -167,6 +167,7 @@ export class CsrDevModuleCompiler {
             if (CsrDevPaths.isVendorFile(args.path)) return undefined;
             const normalized = RouteClientBuilder.normalizeNamedDefaultFunctionForFastRefresh(
               await Bun.file(args.path).text(),
+              { path: args.path },
             );
             return normalized ? { contents: normalized, loader: "tsx" } : undefined;
           });
