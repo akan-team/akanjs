@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { BuilderMessage, BuildPhase, DevBuildStatus, DevChangeAction } from "akanjs/server";
+//? The source itself, not the package: the published akanjs exports no such subpath, and tests are not bundled.
+import { DevBuildRecovery } from "../../../akanjs/server/artifact/devBuildRecovery";
 import {
   backendRestartReasonFromMessage,
   buildStatusReplaySequence,
@@ -378,6 +380,36 @@ describe("build status helpers", () => {
     expect(shouldKeepBuildFailure(previousByPhase, routeB(true))).toBe(true);
     expect(shouldMarkBuildPhaseRecovered(previousByPhase, routeB(true, 5))).toBe(true);
     expect(shouldKeepBuildFailure(previousByPhase, routeA(true, 3))).toBe(true);
+  });
+
+  test("judges recovery as the backend does (akanjs DevBuildRecovery), case for case", () => {
+    const at = (phase: BuildPhase, generation: number, ok: boolean, scope?: string): DevBuildStatus => ({
+      ...status(phase, generation, ok),
+      ...(scope ? { scope } : {}),
+    });
+    const cases: [DevBuildStatus | undefined, DevBuildStatus][] = [];
+    for (const phase of ["backend", "route", "scan", "pages", "ssr"] as BuildPhase[])
+      for (const [previousOk, ok] of [
+        [false, true],
+        [true, true],
+        [false, false],
+      ])
+        for (const generation of [3, 4, 5])
+          for (const [previousScope, scope] of [
+            [undefined, undefined],
+            ["/a", "/a"],
+            ["/a", "/b"],
+          ])
+            cases.push([at(phase, 4, previousOk, previousScope), at(phase, generation, ok, scope)]);
+    cases.push([undefined, at("pages", 4, true)]);
+    for (const [previous, next] of cases) {
+      const previousByPhase = new Map<BuildPhase, DevBuildStatus>(previous ? [[previous.phase, previous]] : []);
+      expect([previous, next, shouldMarkBuildPhaseRecovered(previousByPhase, next)]).toEqual([
+        previous,
+        next,
+        DevBuildRecovery.recovers(previous, next),
+      ]);
+    }
   });
 
   test("a builder that came back clears no config change still on hold, or one that failed to apply", () => {

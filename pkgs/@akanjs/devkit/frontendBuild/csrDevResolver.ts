@@ -34,6 +34,7 @@ export class CsrDevResolver {
   readonly #resolution = new Map<string, Map<string, string>>();
   readonly #fallbacks = new Set<string>();
   readonly #runtimeResolved = new Map<string, Set<string>>();
+  readonly #browserMaps = new Map<string, boolean>();
   #prepassDone = false;
 
   constructor({ paths, context, entryFiles, resolution = {}, runtimeResolved = {} }: CsrDevResolverOptions) {
@@ -105,12 +106,14 @@ export class CsrDevResolver {
 
   //? A relative record in app code stands while the disk still resolves it to the same file, as Bun would: a sibling
   //? with a stronger extension (`x.tsx` beside `x.ts`), a file beside the folder it went into, or a record a CommonJS
-  //? re-export folded onto another file (`./a` → `x.js`) resolves anew. A package's files keep the prepass's answer,
-  //? which a disk lookup would only approximate (the `browser` object form, export conditions).
+  //? re-export folded onto another file (`./a` → `x.js`) resolves anew. A package's files, and app code under a
+  //? package.json that maps files with a `browser` object, keep the prepass's answer, which a disk lookup would only
+  //? approximate.
   #stillAnswers(importer: string, specifier: string, known: string, kind: "import" | "require"): boolean {
     if (CsrDevPaths.isStub(known)) return true;
     if (!fs.existsSync(known)) return false;
     if (!specifier.startsWith(".") || CsrDevPaths.isVendorFile(importer)) return true;
+    if (this.#hasBrowserMap(path.dirname(importer))) return true;
     const onDisk = CsrDevPaths.resolveRelative(path.dirname(importer), specifier, kind);
     return onDisk !== null && CsrDevPaths.realpath(onDisk) === known;
   }
@@ -123,6 +126,31 @@ export class CsrDevResolver {
       const base = CsrDevResolver.#patternBase(pattern);
       return base === packageName || base.startsWith(`${packageName}/`);
     });
+  }
+
+  #hasBrowserMap(dir: string): boolean {
+    const cached = this.#browserMaps.get(dir);
+    if (cached !== undefined) return cached;
+    const pkgFile = path.join(dir, "package.json");
+    const parent = path.dirname(dir);
+    let mapped: boolean;
+    if (fs.existsSync(pkgFile)) {
+      try {
+        const browser = (JSON.parse(fs.readFileSync(pkgFile, "utf8")) as { browser?: unknown }).browser;
+        mapped = typeof browser === "object" && browser !== null;
+      } catch {
+        // An unreadable package.json maps nothing; Bun's build fails on it anyway.
+        mapped = false;
+      }
+    } else mapped = parent !== dir && this.#hasBrowserMap(parent);
+    this.#browserMaps.set(dir, mapped);
+    return mapped;
+  }
+
+  /** A module that left the graph takes its records with it. */
+  forget(importer: string): void {
+    this.#resolution.delete(importer);
+    this.#runtimeResolved.delete(importer);
   }
 
   serializeRuntimeResolved(): Record<string, string[]> {
@@ -167,13 +195,19 @@ export class CsrDevResolver {
     if (sibling) return sibling;
     const resolved = CsrDevPaths.tryResolve(specifier, path.dirname(importer));
     const moved = resolved !== null && path.isAbsolute(resolved) && !fs.existsSync(resolved);
+    //? Bun keeps a process's node_modules listings: a package installed while the builder runs (`bun add`) resolves only
+    //? in a fresh process, so one that is on disk goes to a worker rather than failing as a typo.
+    const installed = resolved === null && CsrDevPaths.isInstalled(specifier, path.dirname(importer));
     if (!this.#prepassDone || moved) {
       //? A specifier no resolver finds in the user's own code is a typo, failed here like a missing relative file: the
       //? resolution build a worker would run for it fails the same way. A package's `browser` field may map one away.
-      if (resolved === null && !CsrDevPaths.isVendorFile(importer)) throw cannotResolve();
+      if (resolved === null && !installed && !CsrDevPaths.isVendorFile(importer)) throw cannotResolve();
       return null;
     }
-    if (!resolved) throw cannotResolve();
+    if (!resolved) {
+      if (installed) return null;
+      throw cannotResolve();
+    }
     if (!path.isAbsolute(resolved)) return `${CsrDevPaths.stubPrefix}${specifier}`;
     this.#fallbacks.add(specifier);
     this.#runtimeResolved.set(importer, (this.#runtimeResolved.get(importer) ?? new Set<string>()).add(specifier));

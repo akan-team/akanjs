@@ -35,9 +35,9 @@ export class CsrDevPatcher {
   readonly #bundler: DevRegistryBundler;
   readonly #resident: boolean;
   #state: CsrDevPatcherState | null = null;
-  //? A pending root handed to a worker, by the hash it had: one that fails there too waits for its next edit instead of
-  //? sending every save to a worker.
-  readonly #delegated = new Map<string, string>();
+  //? A pending root handed to a worker, by the hash it had: one that fails there too waits for an edit of its own or of
+  //? a file the worker failed in, instead of sending every save to a worker.
+  readonly #delegated = new Map<string, { hash: string; failed?: Record<string, string> }>();
 
   constructor(bundler: DevRegistryBundler, { resident = false }: { resident?: boolean } = {}) {
     this.#bundler = bundler;
@@ -107,7 +107,10 @@ export class CsrDevPatcher {
     for (const id of this.#withoutFactory(state, present)) changed.add(id);
     for (const file of entries.changed) changed.add(paths.idOf(file));
     const rootFiles = [...Object.values(entries.files), ...roots.filter((file) => fs.existsSync(file))];
-    for (const file of rootFiles) if (!graph.modules[paths.idOf(file)]) changed.add(paths.idOf(file));
+    for (const file of rootFiles) {
+      const id = paths.idOf(file);
+      if (!graph.modules[id] && !(onlyRoots && (await this.#parked(graph, id)))) changed.add(id);
+    }
     const carried = onlyRoots ? [] : await this.#carriedRoots(graph, changed, present);
     const routesMoved =
       this.#bundler.reloadsOnEntryChange &&
@@ -137,9 +140,12 @@ export class CsrDevPatcher {
     let orphans: string[];
     try {
       ({ result, orphans } = await this.#compileLeavingOrphans(compile, graph, changed));
+      for (const module of result.modules) known.add(module.file);
+      result = await this.#withTwinImporters(compile, graph, result);
     } catch (error) {
       //? Joined, not replaced: a route's root another round failed stays pending for its own retry.
       graph.pending = [...new Set([...graph.pending, ...changed, ...carried])];
+      if (!this.#resident) graph.failed = await CsrDevPatcher.#hashesOf(paths, CsrDevPatcher.#failingFiles(error));
       await writer.writeJson("graph.json", graph);
       throw error;
     }
@@ -155,7 +161,7 @@ export class CsrDevPatcher {
       if (routesMoved) await writer.writeJson("graph.json", { ...graph, entries: {} });
       if (onlyRoots)
         for (const id of changed)
-          if (!graph.modules[id]) this.#delegated.set(id, await CsrDevPaths.hashOf(paths.fileOf(id)));
+          if (!graph.modules[id]) this.#delegated.set(id, { hash: await CsrDevPaths.hashOf(paths.fileOf(id)) });
       return this.#handBack(refusal, generation, context);
     }
     const compiled = result.modules;
@@ -164,12 +170,13 @@ export class CsrDevPatcher {
     const code = await this.#code(state);
     for (const id of [...orphans, ...this.#caseTwins(graph, compiled)]) {
       delete graph.modules[id];
-      delete graph.resolution[id];
+      resolver.forget(paths.fileOf(id));
       code?.modules.delete(id);
       forgotten.push(id);
     }
     graph.pending = graph.pending.filter((id) => !orphans.includes(id));
     this.#bundler.merge(graph, resolver, compiled);
+    if (!this.#resident) delete graph.failed;
     for (const module of compiled) this.#delegated.delete(module.id);
     graph.entries = entryIds;
     for (const module of compiled) {
@@ -187,6 +194,13 @@ export class CsrDevPatcher {
         : constantId
           ? `${path.basename(constantId)} changed`
           : undefined;
+    //? Only orphans left the graph: nothing a tab holds changed, so no patch goes out.
+    if (compiled.length === 0 && !reason) {
+      await writer.writeJson("graph.json", graph);
+      await writer.forgetModules(forgotten);
+      if (carried.length === 0) return { kind: "unchanged" };
+      return await this.#retryCarried(context, state, carried, { announce, allowWholeAppBuilds });
+    }
     const previous = state.manifest;
     const next: CsrDevManifest = { ...previous, generation, entries: entryIds };
     const update = (patchUrl?: string): CsrDevUpdate => ({
@@ -259,8 +273,9 @@ export class CsrDevPatcher {
     return retried;
   }
 
-  //? One Bun.build fails whole: a module that fails to compile and that nothing wants any more (its last importer
+  //? One Bun.build fails whole: a module that fails to compile and that nothing reaches any more (its last importer
   //? dropped the import in this very save) leaves the graph, where it would fail every later save until fixed itself.
+  //? Everything else the roots stopped reaching goes with it, or an importer left behind would bring it back.
   async #compileLeavingOrphans(
     compile: (ids: string[]) => Promise<CsrDevCompileResult>,
     graph: CsrDevGraph,
@@ -271,13 +286,17 @@ export class CsrDevPatcher {
       return { result: await compile([...changed]), orphans: [] };
     } catch (error) {
       const failing = new Set(CsrDevPatcher.#failingFiles(error).map((file) => paths.idOf(file)));
-      const orphans = [...changed].filter((id) => failing.has(id) && graph.modules[id]);
-      if (orphans.length === 0 || orphans.length === changed.size) throw error;
-      const result = await compile([...changed].filter((id) => !orphans.includes(id))).catch(() => {
-        throw error;
-      });
+      const broken = [...changed].filter((id) => failing.has(id) && graph.modules[id]);
+      if (broken.length === 0) throw error;
+      const rest = [...changed].filter((id) => !broken.includes(id));
+      const empty: CsrDevCompileResult = { modules: [], refusedVendors: [], unresolved: [] };
+      const result =
+        rest.length === 0
+          ? empty
+          : await compile(rest).catch(() => {
+              throw error;
+            });
       const modules = { ...graph.modules };
-      for (const id of orphans) delete modules[id];
       for (const module of result.modules)
         modules[module.id] = {
           vendor: module.vendor,
@@ -285,11 +304,9 @@ export class CsrDevPatcher {
           hash: module.hash,
           deps: module.deps.map((dep) => (CsrDevPaths.isStub(dep) ? dep : paths.idOf(dep))),
         };
-      const wanted = await this.#bundler.wantedRoots(
-        orphans.map((id) => paths.fileOf(id)),
-        { ...graph, modules },
-      );
-      if (orphans.some((id) => wanted.has(paths.fileOf(id)))) throw error;
+      const reached = await this.#bundler.reachable({ ...graph, modules });
+      if (broken.some((id) => reached.has(id))) throw error;
+      const orphans = Object.keys(modules).filter((id) => !reached.has(id) && !modules[id]?.vendor);
       return { result, orphans };
     }
   }
@@ -307,6 +324,29 @@ export class CsrDevPatcher {
         (id) => id !== module.id && !graph.modules[id]?.vendor && !CsrDevPaths.isNamed(paths.fileOf(id)),
       ),
     );
+  }
+
+  //? Their importers compile in the same round: one still importing the old spelling (valid on a disk that folds case)
+  //? would otherwise require a module app.js no longer defines.
+  async #withTwinImporters(
+    compile: (ids: string[]) => Promise<CsrDevCompileResult>,
+    graph: CsrDevGraph,
+    result: CsrDevCompileResult,
+  ): Promise<CsrDevCompileResult> {
+    const twins = new Set(this.#caseTwins(graph, result.modules));
+    if (twins.size === 0) return result;
+    const compiledIds = new Set(result.modules.map((module) => module.id));
+    const importers = Object.entries(graph.modules)
+      .filter(([id, module]) => !module.vendor && !compiledIds.has(id) && !twins.has(id))
+      .filter(([, module]) => module.deps.some((dep) => twins.has(dep)))
+      .map(([id]) => id);
+    if (importers.length === 0) return result;
+    const more = await compile(importers);
+    return {
+      modules: [...result.modules, ...more.modules],
+      refusedVendors: [...result.refusedVendors, ...more.refusedVendors],
+      unresolved: [...result.unresolved, ...more.unresolved],
+    };
   }
 
   static #failingFiles(error: unknown): string[] {
@@ -330,11 +370,26 @@ export class CsrDevPatcher {
     const kept = outside.filter((id) => wanted.has(paths.fileOf(id)));
     graph.pending = graph.pending.filter((id) => graph.modules[id] || kept.includes(id));
     const carried: string[] = [];
-    for (const id of kept) {
-      const handedOver = this.#delegated.get(id);
-      if (handedOver === undefined || handedOver !== (await CsrDevPaths.hashOf(paths.fileOf(id)))) carried.push(id);
-    }
+    for (const id of kept) if (!(await this.#parked(graph, id))) carried.push(id);
     return carried;
+  }
+
+  //? The worker's failure is read from the graph it wrote, once: later rounds here overwrite nothing of it.
+  async #parked(graph: CsrDevGraph, id: string): Promise<boolean> {
+    const { paths } = this.#bundler;
+    const handedOver = this.#delegated.get(id);
+    if (!handedOver || handedOver.hash !== (await CsrDevPaths.hashOf(paths.fileOf(id)))) return false;
+    handedOver.failed ??= graph.failed;
+    if (!handedOver.failed) return false;
+    for (const [failedId, hash] of Object.entries(handedOver.failed))
+      if ((await CsrDevPaths.hashOf(paths.fileOf(failedId))) !== hash) return false;
+    return true;
+  }
+
+  static async #hashesOf(paths: CsrDevPaths, files: string[]): Promise<Record<string, string>> {
+    return Object.fromEntries(
+      await Promise.all(files.map(async (file) => [paths.idOf(file), await CsrDevPaths.hashOf(file)] as const)),
+    );
   }
 
   // Missing factory files are recompiled, not read: a registry whose graph outlived them would fail every read. The
@@ -409,7 +464,9 @@ export class CsrDevPatcher {
       if (changed.has(id)) continue;
       for (const dep of module.deps) {
         if (graph.modules[dep] || CsrDevPaths.isStub(dep)) continue;
-        if (present(paths.fileOf(dep))) changed.add(dep);
+        //? Named, not only present: a dep a case rename replaced still exists under its old spelling.
+        const file = paths.fileOf(dep);
+        if (present(file) && CsrDevPaths.isNamed(file)) changed.add(dep);
         else if (!module.vendor) changed.add(id);
       }
     }

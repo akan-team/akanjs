@@ -923,9 +923,19 @@ export class RscWorker {
     }
     // A replaced proc's late exit must not schedule a second restart.
     if (proc !== this.#proc) return;
-    //? Exiting while it imports the pages bundle (a `process.exit` at a module's top level) fails the boot like a throw.
-    if (proc === this.#booting && this.#readyResolved && !this.#killed) {
-      if (this.#bootFailed(proc, `rsc worker exited with code ${code} while loading the pages bundle`)) return;
+    //? Exiting while it imports the pages bundle (a `process.exit` at a module's top level) fails the boot like a throw:
+    //? a first boot rejects `ready`, as its init error would, instead of restarting into the same exit forever.
+    if (proc === this.#booting && !this.#killed) {
+      const message = `rsc worker exited with code ${code} while loading the pages bundle`;
+      if (this.#readyResolved && this.#bootFailed(proc, message)) return;
+      if (!this.#readyResolved) {
+        this.#booting = null;
+        this.#status = "stopped";
+        this.#failRequests(new Error(message));
+        this.#rejectReload(message);
+        this.#rejectReady(new Error(message));
+        return;
+      }
     }
 
     const err = new Error(`rsc worker exited with code ${code}`);

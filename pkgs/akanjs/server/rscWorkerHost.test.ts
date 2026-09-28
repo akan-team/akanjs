@@ -1049,6 +1049,25 @@ export const pages = {
     });
   }, 20_000);
 
+  test("a first boot whose bundle exits while it imports fails ready instead of restarting into it forever", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "akan-rsc-first-exit-"));
+    const exiting = path.join(dir, "exiting.ts");
+    fs.writeFileSync(exiting, bundleSource("never", "process.exit(3);"));
+    const saved = process.env.AKAN_RSC_WORKER_PATH;
+    process.env.AKAN_RSC_WORKER_PATH = path.join(import.meta.dir, "rscWorker.tsx");
+    const rsc = new RscWorker({ pagesBundlePath: exiting, pagesBundleBuildId: 1 } as unknown as BaseBuildArtifact);
+    try {
+      const failed = await rsc.ready.catch((e) => e);
+      expect(String(failed)).toContain("while loading the pages bundle");
+      expect(rsc.getMetrics()).toMatchObject({ rscWorkerStatus: "stopped", rscWorkerRestartCount: 0 });
+    } finally {
+      rsc.kill();
+      if (saved === undefined) delete process.env.AKAN_RSC_WORKER_PATH;
+      else process.env.AKAN_RSC_WORKER_PATH = saved;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
   test("a recycle waits for a page prompt call in flight, whose answer the worker being replaced would carry", async () => {
     await withBundles(async (rsc) => {
       const call = rsc.listPagePrompts();

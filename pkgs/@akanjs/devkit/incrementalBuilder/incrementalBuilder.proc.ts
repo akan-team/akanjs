@@ -660,8 +660,12 @@ class IncrementalBuilder {
 
   // Runs the worker directly, under the SSR lock its callers hold: queueing it could wait on a batch that waits on them.
   async #runSsrWorker(generation: number): Promise<void> {
-    const result = await this.#runBatch({ generation, needs: ["ssr"], changedFiles: [] });
-    this.#ssrPatcher?.forget();
+    let result: BuildBatchResult;
+    try {
+      result = await this.#runBatch({ generation, needs: ["ssr"], changedFiles: [] });
+    } finally {
+      this.#ssrPatcher?.forget();
+    }
     this.#noteSsrWorker(result);
     if (result.errors.ssr) throw new Error(result.errors.ssr);
   }

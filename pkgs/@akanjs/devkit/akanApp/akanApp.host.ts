@@ -894,7 +894,8 @@ export class AkanAppHost {
     const wantsDevHostRestart = shouldRestartDevHostByDevPlan(message);
     const pending = this.#pendingRecycle;
     // A deferred recycle resumes on the next code batch; a css-only batch cannot heal a compile error.
-    if (wantsDevHostRestart || shouldRestartBuilderByDevPlan(message) || (pending && message.kinds.includes("code"))) {
+    const resumes = !!pending && message.kinds.includes("code") && this.#touchesFailedRecycle(message.files);
+    if (wantsDevHostRestart || shouldRestartBuilderByDevPlan(message) || resumes) {
       const refreshConfig = wantsDevHostRestart || (pending?.refreshConfig ?? false);
       const merged = pending ? mergeInvalidateMessages(pending.message, message) : message;
       const generation = message.devPlan?.generation ?? message.generation;
@@ -924,11 +925,18 @@ export class AkanAppHost {
       this.#resurrectDevChildren(message);
     }
   }
-  //? The first green pages build after a failed restart is the fix: the change applies then.
+  //? The first green pages build after a failed restart that touches its change is the fix: the change applies then. A
+  //? cause no save fixes (an env value) waits for the next change of those files, not for every green save.
   async #resumeFailedRecycle(status: DevBuildStatus): Promise<void> {
     const pending = this.#pendingRecycle;
-    if (!pending?.failed || !status.ok || status.phase !== "pages") return;
+    if (!pending?.failed || !status.ok || status.phase !== "pages" || !this.#touchesFailedRecycle(status.files)) return;
     await this.#applyRecycle(pending.message, pending.refreshConfig);
+  }
+  #touchesFailedRecycle(files: string[]): boolean {
+    const pending = this.#pendingRecycle;
+    if (!pending?.failed) return true;
+    const changed = new Set(pending.message.files);
+    return files.some((file) => changed.has(file));
   }
   #deferRecycle(
     message: Extract<BuilderMessage, { type: "invalidate" }>,

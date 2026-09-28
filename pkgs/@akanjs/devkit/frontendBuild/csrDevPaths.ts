@@ -73,10 +73,11 @@ export class CsrDevPaths {
     return CsrDevPaths.#asFile(base, kind) ?? CsrDevPaths.#asFolder(base, kind);
   }
 
-  //? A specifier ending in `/` names the folder alone, for Bun too: `./Foo/` never takes a `Foo.tsx` beside it.
+  //? A specifier ending in `/`, `.` or `..` names the folder alone, for Bun too: `./Foo/` never takes a `Foo.tsx`.
   static resolveRelative(dir: string, specifier: string, kind: "import" | "require" = "import"): string | null {
     const base = path.resolve(dir, specifier);
-    return /[\\/]$/.test(specifier) ? CsrDevPaths.#asFolder(base, kind) : CsrDevPaths.resolveOnDisk(base, kind);
+    const folder = /(^|[\\/])\.\.?$|[\\/]$/.test(specifier);
+    return folder ? CsrDevPaths.#asFolder(base, kind) : CsrDevPaths.resolveOnDisk(base, kind);
   }
 
   static #asFile(base: string, kind: "import" | "require"): string | null {
@@ -107,6 +108,17 @@ export class CsrDevPaths {
     } catch {
       // No package.json, or one that names no entry: the folder's index answers.
       return null;
+    }
+  }
+
+  /** A bare specifier whose package is on disk in a `node_modules` at or above `from`. */
+  static isInstalled(specifier: string, from: string): boolean {
+    const [first = "", second = ""] = specifier.split("/");
+    const name = first.startsWith("@") ? `${first}/${second}` : first;
+    if (!name || name.startsWith(".")) return false;
+    for (let dir = path.resolve(from); ; dir = path.dirname(dir)) {
+      if (fs.existsSync(path.join(dir, "node_modules", name, "package.json"))) return true;
+      if (path.dirname(dir) === dir) return false;
     }
   }
 

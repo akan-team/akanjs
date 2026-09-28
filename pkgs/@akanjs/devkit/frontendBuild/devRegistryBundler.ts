@@ -81,10 +81,23 @@ export abstract class DevRegistryBundler {
     return update;
   }
 
-  /** Of these roots outside the graph, the ones something still reaches (an entry, a module's import): those stay pending. */
+  /** Of these files, the ones the registry still reaches from its roots through imports: those it keeps building. */
   async wantedRoots(files: string[], graph: CsrDevGraph): Promise<Set<string>> {
-    const reached = new Set([...Object.values(graph.entries), ...Object.values(graph.modules).flatMap((m) => m.deps)]);
+    const reached = await this.reachable(graph);
     return new Set(files.filter((file) => reached.has(this.paths.idOf(file))));
+  }
+
+  /** The ids its roots reach through imports, the refresh runtime included. */
+  async reachable(graph: CsrDevGraph): Promise<Set<string>> {
+    const roots = await this.rootFiles(Object.values(graph.entries).map((id) => this.paths.fileOf(id)));
+    const reached = new Set<string>();
+    const stack = [graph.refresh, ...roots.map((file) => this.paths.idOf(file))];
+    for (let id = stack.pop(); id !== undefined; id = stack.pop()) {
+      if (reached.has(id)) continue;
+      reached.add(id);
+      stack.push(...(graph.modules[id]?.deps ?? []));
+    }
+    return reached;
   }
 
   async holds(files: string[]): Promise<boolean> {

@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { SOURCE_EXTS } from "../akanApp/devHostPolicy";
 import type { App } from "../commandDecorators";
@@ -17,6 +18,12 @@ interface FileFacts {
   imports: ScannedImport[];
 }
 
+interface Lookup<T> {
+  epoch: number;
+  promise: Promise<T>;
+  found?: boolean;
+}
+
 interface DiscoveryWalk {
   visiting: Set<string>;
   //? Walked below a file the walk was already inside (an import cycle): their result lacks what that file reaches.
@@ -31,12 +38,13 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   #resolvePackage: PackageResolver;
   #analyzer: BarrelAnalyzer;
   #tsTranspiler = new Bun.Transpiler({ loader: "tsx" });
-  #fileExistsCache = new Map<string, Promise<boolean>>();
+  #fileExistsCache = new Map<string, Lookup<boolean>>();
   // Facts, never source text: this instance lives as long as the builder process, so texts would pin every file walked.
   #factsCache = new Map<string, Promise<FileFacts | null>>();
-  #resolvedFileCache = new Map<string, Promise<string | null>>();
-  #resolvedSpecifierCache = new Map<string, Promise<string | null>>();
+  #resolvedFileCache = new Map<string, Lookup<string | null>>();
+  #resolvedSpecifierCache = new Map<string, Lookup<string | null>>();
   #reachableEntriesCache = new Map<string, Set<string>>();
+  #readFiles = new Set<string>();
   //? Bumped by every invalidation: a walk that began before one computed from facts it may have read stale, so it
   //? answers its caller but caches nothing (a registry check walks this instance beside the slow lane's route builds).
   #epoch = 0;
@@ -61,32 +69,54 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   }
 
   invalidate(files: string[]): void {
+    if (files.length === 0) return;
+    let moved = false;
     for (const file of files) {
       const absPath = path.resolve(file);
+      const exists = fs.existsSync(absPath);
+      if (exists !== this.#readFiles.has(absPath)) moved = true;
+      if (!exists) this.#readFiles.delete(absPath);
       this.#factsCache.delete(absPath);
       this.#fileExistsCache.delete(absPath);
-      this.#reachableEntriesCache.delete(absPath);
     }
-    if (files.length === 0) return;
     this.#epoch += 1;
     // Reachable-entry results are transitive, so a changed child invalidates every ancestor.
     this.#reachableEntriesCache.clear();
-    //? Every resolution goes, not only the misses: a found one outlives its target's move (`Chart.tsx` to
-    //? `Chart/index.tsx`), and one still in flight would land after this epoch began. They refill from stats; the
-    //? parsed facts, the costly part, stay.
+    //? A file gone, or one never read, can leave a found resolution on its old target (`Chart.tsx` to
+    //? `Chart/index.tsx`), so a move drops them all; a save of a file already read keeps them (a walk re-resolving
+    //? every package cost 3x). Misses lapse with the epoch on their own (#lookup).
+    if (!moved) return;
     this.#fileExistsCache.clear();
     this.#resolvedFileCache.clear();
     this.#resolvedSpecifierCache.clear();
   }
 
+  //? A found answer outlives later epochs; a miss, or a lookup still in flight, answers only walks of its own epoch, so
+  //? a file created meanwhile is looked up again.
+  #lookup<T>(cache: Map<string, Lookup<T>>, key: string, run: () => Promise<T>, isFound: (value: T) => boolean) {
+    const cached = cache.get(key);
+    if (cached && (cached.found || cached.epoch === this.#epoch)) return cached.promise;
+    const entry: Lookup<T> = { epoch: this.#epoch, promise: run() };
+    entry.promise.then(
+      (value) => {
+        entry.found = isFound(value);
+      },
+      () => {
+        entry.found = false;
+      },
+    );
+    cache.set(key, entry);
+    return entry.promise;
+  }
+
   async #fileExists(p: string): Promise<boolean> {
     const absPath = path.resolve(p);
-    let cached = this.#fileExistsCache.get(absPath);
-    if (!cached) {
-      cached = Bun.file(absPath).exists();
-      this.#fileExistsCache.set(absPath, cached);
-    }
-    return cached;
+    return await this.#lookup(
+      this.#fileExistsCache,
+      absPath,
+      () => Bun.file(absPath).exists(),
+      (exists) => exists,
+    );
   }
 
   #facts(file: string): Promise<FileFacts | null> {
@@ -98,6 +128,7 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
           .text()
           .catch(() => null);
         if (content === null) return null;
+        this.#readFiles.add(absPath);
         if (USE_CLIENT_RE.test(content)) return { isClientEntry: true, imports: [] };
         return { isClientEntry: false, imports: this.#scanImports(await this.#rewrite(content)) };
       })();
@@ -125,38 +156,40 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
 
   async #resolveFileCandidate(absPathNoExt: string): Promise<string | null> {
     const cacheKey = path.resolve(absPathNoExt);
-    let cached = this.#resolvedFileCache.get(cacheKey);
-    if (cached) return cached;
-    cached = (async () => {
-      if (await this.#fileExists(cacheKey)) return cacheKey;
-      for (const ext of SOURCE_EXTS) {
-        const f = `${cacheKey}${ext}`;
-        if (await this.#fileExists(f)) return f;
-      }
-      for (const ext of SOURCE_EXTS) {
-        const f = path.join(cacheKey, `index${ext}`);
-        if (await this.#fileExists(f)) return f;
-      }
-      return null;
-    })();
-    this.#resolvedFileCache.set(cacheKey, cached);
-    return cached;
+    return await this.#lookup(
+      this.#resolvedFileCache,
+      cacheKey,
+      async () => {
+        if (await this.#fileExists(cacheKey)) return cacheKey;
+        for (const ext of SOURCE_EXTS) {
+          const f = `${cacheKey}${ext}`;
+          if (await this.#fileExists(f)) return f;
+        }
+        for (const ext of SOURCE_EXTS) {
+          const f = path.join(cacheKey, `index${ext}`);
+          if (await this.#fileExists(f)) return f;
+        }
+        return null;
+      },
+      (file) => file !== null,
+    );
   }
 
   async #resolveSpecifier(spec: string, importerDir: string): Promise<string | null> {
     const cacheKey = `${importerDir}\0${spec}`;
-    let cached = this.#resolvedSpecifierCache.get(cacheKey);
-    if (cached) return cached;
-    cached = (async () => {
-      if (spec.startsWith(".") || spec.startsWith("/")) {
-        const abs = spec.startsWith("/") ? spec : path.resolve(importerDir, spec);
-        return this.#resolveFileCandidate(abs);
-      }
-      const pkg = await this.#resolvePackage(spec);
-      return pkg ? pkg.entryFile : null;
-    })();
-    this.#resolvedSpecifierCache.set(cacheKey, cached);
-    return cached;
+    return await this.#lookup(
+      this.#resolvedSpecifierCache,
+      cacheKey,
+      async () => {
+        if (spec.startsWith(".") || spec.startsWith("/")) {
+          const abs = spec.startsWith("/") ? spec : path.resolve(importerDir, spec);
+          return await this.#resolveFileCandidate(abs);
+        }
+        const pkg = await this.#resolvePackage(spec);
+        return pkg ? pkg.entryFile : null;
+      },
+      (file) => file !== null,
+    );
   }
 
   async #discoverFromFile(file: string, walk: DiscoveryWalk): Promise<Set<string>> {

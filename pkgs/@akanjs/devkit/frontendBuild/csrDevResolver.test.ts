@@ -136,12 +136,19 @@ describe("CsrDevPaths.resolveOnDisk", () => {
       "req/m.js",
       "modonly/index.js",
       "modonly/m.js",
+      "dot/Foo.tsx",
+      "dot/Foo/index.tsx",
+      "dot/Foo/Sub/x.ts",
+      "bmap/lib/server.ts",
+      "bmap/lib/client.ts",
+      "bmap/entry.ts",
     ])
       await Bun.write(at(relative), "export {};\n");
     await Bun.write(at("fields/package.json"), '{ "browser": "b.js", "module": "m.js", "main": "main.js" }');
     await Bun.write(at("dirmain/package.json"), '{ "main": "lib" }');
     await Bun.write(at("req/package.json"), '{ "module": "m.js", "main": "main.js" }');
     await Bun.write(at("modonly/package.json"), '{ "module": "m.js" }');
+    await Bun.write(at("bmap/package.json"), '{ "browser": { "./lib/server.ts": "./lib/client.ts" } }');
   });
 
   afterAll(async () => {
@@ -162,6 +169,31 @@ describe("CsrDevPaths.resolveOnDisk", () => {
     expect(CsrDevPaths.resolveOnDisk(at("req"))).toBe(at("req/m.js"));
     expect(CsrDevPaths.resolveOnDisk(at("req"), "require")).toBe(at("req/main.js"));
     expect(CsrDevPaths.resolveOnDisk(at("modonly"), "require")).toBe(at("modonly/index.js"));
+  });
+
+  test("a bare import Bun cannot resolve here, whose package is on disk, is left to a worker instead of failing", async () => {
+    //? A package Bun's resolver misses in this process: it keeps node_modules listings, so one added by `bun add` while
+    //? the builder runs looks like this until a fresh process reads it.
+    await Bun.write(at("inst/node_modules/half/package.json"), '{ "name": "half", "main": "missing.js" }');
+    await Bun.write(at("inst/src/a.ts"), 'import "half";\n');
+    const resolver = new CsrDevResolver({ paths: new CsrDevPaths(root), context, entryFiles: [] });
+    expect(resolver.resolve(at("inst/src/a.ts"), "half")).toBeNull();
+    expect(() => resolver.resolve(at("inst/src/a.ts"), "nowhere-to-be-found")).toThrow("cannot resolve");
+  });
+
+  test('"." and ".." name the folder alone, as a trailing slash does', () => {
+    expect(CsrDevPaths.resolveRelative(at("dot/Foo"), ".")).toBe(at("dot/Foo/index.tsx"));
+    expect(CsrDevPaths.resolveRelative(at("dot/Foo/Sub"), "..")).toBe(at("dot/Foo/index.tsx"));
+  });
+
+  test("app code under a package.json that maps files with a browser object keeps the recorded answer", () => {
+    const resolver = new CsrDevResolver({
+      paths: new CsrDevPaths(root),
+      context,
+      entryFiles: [],
+      resolution: { "bmap/entry.ts": { "./lib/server": "bmap/lib/client.ts" } },
+    });
+    expect(resolver.resolve(at("bmap/entry.ts"), "./lib/server")).toBe(at("bmap/lib/client.ts"));
   });
 
   test("a specifier ending in a slash names the folder alone", () => {
