@@ -4,7 +4,7 @@ import type { BaseBuildArtifact } from "akanjs/server";
 import { type PageEntry, resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import type { App } from "../commandDecorators";
 import { bundleDefine } from "./bundleDefine";
-import { getPageKeyBasePath } from "./cssCompiler";
+import { CsrEntryFiles } from "./csrEntryFiles";
 import { PagesBundleBuilder } from "./pagesBundleBuilder";
 import { PagesEntrySourceGenerator } from "./pagesEntrySourceGenerator";
 
@@ -80,10 +80,7 @@ export class CsrArtifactBuilder {
 
   /** The routes one basePath's HTML boots: its own plus every route outside any basePath, matching `bootCsr`. */
   static pageEntriesForBasePath(pageEntries: PageEntry[], basePath: string, basePaths: string[]): PageEntry[] {
-    return pageEntries.filter((entry) => {
-      const entryBasePath = getPageKeyBasePath(entry.key, basePaths);
-      return entryBasePath === null || entryBasePath === basePath;
-    });
+    return CsrEntryFiles.pageEntriesForBasePath(pageEntries, basePath, basePaths);
   }
 
   static htmlFilename(basePath: string): string {
@@ -91,7 +88,7 @@ export class CsrArtifactBuilder {
   }
 
   static entryFilename(basePath: string): string {
-    return `${basePath || "index"}.csr.tsx`;
+    return CsrEntryFiles.entryFilename(basePath);
   }
 
   static basePathOfHtml(htmlPath: string): string {

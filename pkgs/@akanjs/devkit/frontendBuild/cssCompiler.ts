@@ -5,6 +5,7 @@ import { SOURCE_EXTS } from "../akanApp/devHostPolicy";
 import type { App } from "../commandDecorators";
 import { BarrelAnalyzer } from "../transforms/barrelAnalyzer";
 import { createTsconfigPackageResolver, rewriteBarrelImports } from "../transforms/barrelImportsPlugin";
+import { CsrEntryFiles } from "./csrEntryFiles";
 import { CssCandidateCache } from "./cssCandidateCache";
 import { CssImportResolver } from "./cssImportResolver";
 
@@ -393,8 +394,5 @@ export function declaredCustomProperties(css: string): string[] {
 }
 
 export function getPageKeyBasePath(pageKey: string, basePaths: string[]): string | null {
-  const normalized = pageKey.split(path.sep).join("/").replace(/^\.\//, "");
-  const segments = normalized.split("/");
-  const firstPublicSegment = segments.find((segment) => segment !== "[lang]" && !/^\(.+\)$/.test(segment));
-  return firstPublicSegment && basePaths.includes(firstPublicSegment) ? firstPublicSegment : null;
+  return CsrEntryFiles.basePathOfPageKey(pageKey, basePaths);
 }
