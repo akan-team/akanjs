@@ -3,7 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { type DevBuildStatus, ROUTE_SEED_INDEX_JSON, type RouteSeedIndex } from "../artifact";
-import type { RscWorker, RscWorkerReloadInput } from "../rscWorkerHost";
+import type { RscAdoptedBundle, RscWorker, RscWorkerReloadInput } from "../rscWorkerHost";
 import type { RenderState } from "../types";
 import {
   DevHmrController,
@@ -19,7 +19,12 @@ const artifactDirWith = async (seedIndex: RouteSeedIndex) => {
   return artifactDir;
 };
 
-const fakeRsc = (reload = async (input: RscWorkerReloadInput) => input.pagesBundlePath ?? "/repo/pages.js") =>
+const adoptedOf = (input: RscWorkerReloadInput, fallback = "/repo/pages.js"): RscAdoptedBundle => ({
+  pagesBundlePath: input.pagesBundlePath ?? fallback,
+  buildId: input.buildId,
+});
+
+const fakeRsc = (reload = async (input: RscWorkerReloadInput) => adoptedOf(input)) =>
   ({ reload, updateCssAssets: () => undefined }) as unknown as RscWorker;
 
 describe("DevHmrController runtime metadata detection", () => {
@@ -173,8 +178,8 @@ describe("DevHmrController SSR registry updates", () => {
     ) => Promise<void>,
     {
       pagesBundlePath = "/repo/pages.js",
-      reload = async (input: RscWorkerReloadInput) => input.pagesBundlePath ?? pagesBundlePath,
-    }: { pagesBundlePath?: string; reload?: (input: RscWorkerReloadInput) => Promise<string> } = {},
+      reload = async (input: RscWorkerReloadInput) => adoptedOf(input, pagesBundlePath),
+    }: { pagesBundlePath?: string; reload?: (input: RscWorkerReloadInput) => Promise<RscAdoptedBundle> } = {},
   ) => {
     const originalSend = process.send;
     process.send = ((): boolean => true) as typeof process.send;
@@ -323,7 +328,7 @@ describe("DevHmrController SSR registry updates", () => {
       {
         reload: async (input) => {
           await imported;
-          return input.pagesBundlePath ?? "/repo/pages.js";
+          return adoptedOf(input);
         },
       },
     );
@@ -363,7 +368,6 @@ describe("DevHmrController SSR registry updates", () => {
     const failed = new Promise<{ pagesBundlePath: string; buildId: number }>((resolve) => {
       fail = resolve;
     });
-    let calls = 0;
     await withRegistryController(
       async (emit, types, renderState) => {
         const pages = (generation: number, buildId: number) =>
@@ -382,9 +386,12 @@ describe("DevHmrController SSR registry updates", () => {
       {
         pagesBundlePath: "/repo/pages-boot.js",
         reload: async () => {
-          const superseded = calls++ === 0;
           const adopted = await failed;
-          throw Object.assign(new Error("broken at import"), { adopted, superseded });
+          //? The host rejects every waiter with the latest state it asked for.
+          throw Object.assign(new Error("broken at import"), {
+            adopted,
+            failed: { pagesBundlePath: "/repo/pages-10.js", buildId: 3 },
+          });
         },
       },
     );
@@ -405,7 +412,10 @@ describe("DevHmrController SSR registry updates", () => {
         expect(reloads.length).toBe(2);
         expect(renderState.buildId).toBe(9);
       },
-      { pagesBundlePath: "/repo/pages-boot.js", reload: async () => "/repo/pages-boot.js" },
+      {
+        pagesBundlePath: "/repo/pages-boot.js",
+        reload: async (input) => ({ pagesBundlePath: "/repo/pages-boot.js", buildId: input.buildId }),
+      },
     );
   });
 
@@ -426,14 +436,26 @@ describe("DevHmrController SSR registry updates", () => {
     });
   });
 
-  test("a route built again at the failure's generation clears it, as a builder that came back clears scan", async () => {
+  test("a route built again at the failure's generation clears it, and another route's ok does not", async () => {
     await withRegistryController(async (emit, types) => {
-      for (const phase of ["route", "scan"]) {
-        emit({ type: "build-status", data: { generation: 4, phase, ok: false, files: [], message: "x" } });
-        emit({ type: "build-status", data: { generation: 4, phase, ok: true, files: [] } });
-      }
+      const route = (scope: string, ok: boolean) =>
+        emit({ type: "build-status", data: { generation: 4, phase: "route", ok, files: [], message: "x", scope } });
+      route("/:lang/a", false);
+      route("/:lang/b", true);
       await settle();
-      expect(types()).toEqual(["build-status", "build-status", "build-status", "build-status"]);
+      expect(types()).toEqual(["build-status"]);
+      route("/:lang/a", true);
+      await settle();
+      expect(types()).toEqual(["build-status", "build-status"]);
+    });
+  });
+
+  test("a builder that came back leaves a config change that failed to apply on the overlay", async () => {
+    await withRegistryController(async (emit, types) => {
+      emit({ type: "build-status", data: { generation: 4, phase: "scan", ok: false, files: [], message: "x" } });
+      emit({ type: "build-status", data: { generation: 4, phase: "scan", ok: true, files: [] } });
+      await settle();
+      expect(types()).toEqual(["build-status"]);
     });
   });
 

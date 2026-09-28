@@ -214,7 +214,7 @@ export class CsrDevModuleCompiler {
           const target = this.#resolver.resolve(
             importer,
             args.path,
-            args.kind === "require-call" ? "require" : "import",
+            args.kind === "require-call" || args.kind === "require-resolve" ? "require" : "import",
           );
           if (target === CsrDevResolver.inline) return undefined;
           if (target === null) {

@@ -17,6 +17,12 @@ interface FileFacts {
   imports: ScannedImport[];
 }
 
+interface DiscoveryWalk {
+  visiting: Set<string>;
+  //? Walked below a file the walk was already inside (an import cycle): their result lacks what that file reaches.
+  partial: Set<string>;
+}
+
 const shouldSkipNodeModule = (absPath: string) => NODE_MODULES_RE.test(absPath) && !AKANJS_NODE_MODULE_RE.test(absPath);
 
 /** `"use client"` discovery over the import graph (dynamic imports included), flattening barrels as the bundler does. */
@@ -31,9 +37,6 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   #resolvedFileCache = new Map<string, Promise<string | null>>();
   #resolvedSpecifierCache = new Map<string, Promise<string | null>>();
   #reachableEntriesCache = new Map<string, Set<string>>();
-  #missingFiles = new Set<string>();
-  #unresolvedPaths = new Set<string>();
-  #unresolvedSpecifiers = new Set<string>();
   //? Bumped by every invalidation: a walk that began before one computed from facts it may have read stale, so it
   //? answers its caller but caches nothing (a registry check walks this instance beside the slow lane's route builds).
   #epoch = 0;
@@ -51,7 +54,8 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   async discover(seeds: string[]): Promise<string[]> {
     const entries = new Set<string>();
     for (const seed of seeds) {
-      for (const entry of await this.#discoverFromFile(seed, new Set())) entries.add(entry);
+      const walk: DiscoveryWalk = { visiting: new Set(), partial: new Set() };
+      for (const entry of await this.#discoverFromFile(seed, walk)) entries.add(entry);
     }
     return Array.from(entries).sort();
   }
@@ -67,29 +71,19 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
     this.#epoch += 1;
     // Reachable-entry results are transitive, so a changed child invalidates every ancestor.
     this.#reachableEntriesCache.clear();
-    this.#forgetMissing();
-  }
-
-  // Negatives are keyed by extension-less path or `dir\0specifier`, which a new file's path cannot reach, so all go.
-  #forgetMissing(): void {
-    for (const key of this.#missingFiles) this.#fileExistsCache.delete(key);
-    for (const key of this.#unresolvedPaths) this.#resolvedFileCache.delete(key);
-    for (const key of this.#unresolvedSpecifiers) this.#resolvedSpecifierCache.delete(key);
-    this.#missingFiles.clear();
-    this.#unresolvedPaths.clear();
-    this.#unresolvedSpecifiers.clear();
+    //? Every resolution goes, not only the misses: a found one outlives its target's move (`Chart.tsx` to
+    //? `Chart/index.tsx`), and one still in flight would land after this epoch began. They refill from stats; the
+    //? parsed facts, the costly part, stay.
+    this.#fileExistsCache.clear();
+    this.#resolvedFileCache.clear();
+    this.#resolvedSpecifierCache.clear();
   }
 
   async #fileExists(p: string): Promise<boolean> {
     const absPath = path.resolve(p);
     let cached = this.#fileExistsCache.get(absPath);
     if (!cached) {
-      cached = Bun.file(absPath)
-        .exists()
-        .then((exists) => {
-          if (!exists) this.#missingFiles.add(absPath);
-          return exists;
-        });
+      cached = Bun.file(absPath).exists();
       this.#fileExistsCache.set(absPath, cached);
     }
     return cached;
@@ -143,7 +137,6 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
         const f = path.join(cacheKey, `index${ext}`);
         if (await this.#fileExists(f)) return f;
       }
-      this.#unresolvedPaths.add(cacheKey);
       return null;
     })();
     this.#resolvedFileCache.set(cacheKey, cached);
@@ -160,29 +153,35 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
         return this.#resolveFileCandidate(abs);
       }
       const pkg = await this.#resolvePackage(spec);
-      if (pkg) return pkg.entryFile;
-      this.#unresolvedSpecifiers.add(cacheKey);
-      return null;
+      return pkg ? pkg.entryFile : null;
     })();
     this.#resolvedSpecifierCache.set(cacheKey, cached);
     return cached;
   }
 
-  async #discoverFromFile(file: string, visiting: Set<string>): Promise<Set<string>> {
+  async #discoverFromFile(file: string, walk: DiscoveryWalk): Promise<Set<string>> {
     const epoch = this.#epoch;
     const absPath = path.resolve(file);
     const cached = this.#reachableEntriesCache.get(absPath);
     if (cached) return new Set(cached);
-    if (visiting.has(absPath) || shouldSkipNodeModule(absPath)) return new Set();
+    if (walk.visiting.has(absPath)) {
+      let below = false;
+      for (const onPath of walk.visiting) {
+        if (below) walk.partial.add(onPath);
+        else below = onPath === absPath;
+      }
+      return new Set();
+    }
+    if (shouldSkipNodeModule(absPath)) return new Set();
 
-    visiting.add(absPath);
+    walk.visiting.add(absPath);
     const entries = new Set<string>();
     const facts = await this.#facts(absPath);
-    if (!facts) return this.#finishDiscovery(absPath, visiting, entries, epoch);
+    if (!facts) return this.#finishDiscovery(absPath, walk, entries, epoch);
 
     if (facts.isClientEntry) {
       entries.add(absPath);
-      return this.#finishDiscovery(absPath, visiting, entries, epoch);
+      return this.#finishDiscovery(absPath, walk, entries, epoch);
     }
 
     const importerDir = path.dirname(absPath);
@@ -193,15 +192,15 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
       const resolved = await this.#resolveSpecifier(spec, importerDir);
       if (!resolved) continue;
       if (shouldSkipNodeModule(resolved)) continue;
-      for (const entry of await this.#discoverFromFile(resolved, visiting)) entries.add(entry);
+      for (const entry of await this.#discoverFromFile(resolved, walk)) entries.add(entry);
     }
 
-    return this.#finishDiscovery(absPath, visiting, entries, epoch);
+    return this.#finishDiscovery(absPath, walk, entries, epoch);
   }
 
-  #finishDiscovery(absPath: string, visiting: Set<string>, entries: Set<string>, epoch: number): Set<string> {
-    visiting.delete(absPath);
-    if (epoch === this.#epoch) this.#reachableEntriesCache.set(absPath, entries);
+  #finishDiscovery(absPath: string, walk: DiscoveryWalk, entries: Set<string>, epoch: number): Set<string> {
+    walk.visiting.delete(absPath);
+    if (epoch === this.#epoch && !walk.partial.has(absPath)) this.#reachableEntriesCache.set(absPath, entries);
     return new Set(entries);
   }
 }

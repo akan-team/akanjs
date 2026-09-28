@@ -166,7 +166,9 @@ export abstract class DevRegistryBundler {
         deps: module.deps.map((dep) => (CsrDevPaths.isStub(dep) ? dep : this.paths.idOf(dep))),
         ...(module.helpers ? { helpers: module.helpers.hash } : {}),
       };
-    graph.pending = [];
+    //? Only what this round compiled leaves pending: a root another route's check failed on stays for its retry.
+    const compiledIds = new Set(compiled.map((module) => module.id));
+    graph.pending = graph.pending.filter((id) => !compiledIds.has(id));
     graph.resolution = resolver.serialize();
     graph.runtimeResolved = resolver.serializeRuntimeResolved();
   }

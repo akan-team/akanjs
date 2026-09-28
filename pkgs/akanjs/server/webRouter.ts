@@ -19,6 +19,7 @@ import {
   RouteClientCache,
   type RouteSeedIndex,
   RouteSeedIndexStore,
+  type RoutesManifest,
   RoutesManifestStore,
 } from "./artifact";
 import {
@@ -253,6 +254,8 @@ interface WebRouterOptions {
   rsc: RscWorker;
   seedIndex: RouteSeedIndex;
   upgradeHmrWs: (req: Request, data: HmrWsData) => boolean;
+  /** The production build's route manifest, which the worker was already handed at boot. */
+  prebuilt?: RoutesManifest | null;
 }
 
 interface CachedHtmlResult {
@@ -303,7 +306,8 @@ export class WebRouter {
   /** What this router actually mounts, already intersected with what the artifact carries. */
   readonly web: AkanWebConfig;
   #seedIndex: RouteSeedIndex;
-  constructor({ artifact, web, cssBytesByUrl, rsc, seedIndex, upgradeHmrWs }: WebRouterOptions) {
+  readonly #prebuilt: RoutesManifest | null;
+  constructor({ artifact, web, cssBytesByUrl, rsc, seedIndex, upgradeHmrWs, prebuilt = null }: WebRouterOptions) {
     this.#logger.verbose(`[SSR] loaded ${Object.keys(cssBytesByUrl).length} CSS assets`);
     this.web = web;
     if (process.env.NODE_ENV === "production" && !this.#prodMode)
@@ -323,6 +327,7 @@ export class WebRouter {
       cssBytesByUrl,
     };
     this.#seedIndex = seedIndex;
+    this.#prebuilt = prebuilt;
     if (this.#prodMode) {
       this.#builderRpc = null;
       this.#routeCache = new RouteClientCache({
@@ -353,16 +358,7 @@ export class WebRouter {
   }
 
   async initializeRoute() {
-    const prebuilt = this.#prodMode ? await RoutesManifestStore.read(this.#artifactDir) : null;
-    if (prebuilt) {
-      this.#routeCache.seed(prebuilt);
-      await this.#rsc.reload({
-        clientManifest: this.#mergeRuntimeManifest().clientManifest,
-        cssAssets: this.renderState.cssAssets,
-        // The worker's boot id: any other is a fresh `?v=` URL, and Bun keeps both bundle copies in its ESM registry.
-        buildId: this.#artifact.pagesBundleBuildId,
-      });
-    }
+    if (this.#prebuilt) this.#routeCache.seed(this.#prebuilt);
 
     const clientServePrefix = `/_akan/client`;
     const clientOutputDir = `${this.#artifactDir}/client`;
@@ -1054,7 +1050,18 @@ export class WebRouter {
     const prodMode = process.env.NODE_ENV === "production" && process.env.AKAN_COMMAND_TYPE !== "start";
     //* Production listens before the bundle loads (renders queue until `ready`) and exits if it cannot load rather
     //* than restart-loop behind a healthy API; dev awaits, as the next rebuild hands the worker a fixed bundle.
-    const rsc = new RscWorker(artifact, { failBeforeReady: prodMode });
+    //? The prebuilt route manifest rides the worker's first init: a reload onto it would wait for `ready`, and so would
+    //? `listen`.
+    const prebuilt = prodMode ? await RoutesManifestStore.read(artifactDir) : null;
+    const rsc = new RscWorker(
+      prebuilt
+        ? {
+            ...artifact,
+            rscRuntimeClientManifest: { ...artifact.rscRuntimeClientManifest, ...prebuilt.clientManifest },
+          }
+        : artifact,
+      { failBeforeReady: prodMode },
+    );
     if (prodMode)
       void rsc.ready.catch((error: unknown) => {
         new Logger("WebRouter").error(`RSC worker failed to load the pages bundle: ${String(error)}`);
@@ -1069,6 +1076,7 @@ export class WebRouter {
       rsc,
       seedIndex,
       upgradeHmrWs,
+      prebuilt,
     });
   }
 

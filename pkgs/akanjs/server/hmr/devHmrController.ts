@@ -4,6 +4,7 @@ import { Logger } from "akanjs/common";
 import {
   BuilderRpc,
   type ClientManifest,
+  DevBuildRecovery,
   type DevBuildStatus,
   type HmrTrace,
   RouteClientCache,
@@ -49,11 +50,7 @@ export function devBuildStatusToHmrMessage(
       files: status.files.length,
     };
   }
-  if (!previous || previous.ok) return null;
-  //? A backend or builder that came back, and a route built again, report the failure's own generation.
-  const sameGeneration = status.phase === "backend" || status.phase === "scan" || status.phase === "route";
-  const recovered = sameGeneration ? status.generation >= previous.generation : status.generation > previous.generation;
-  if (!recovered) return null;
+  if (!DevBuildRecovery.recovers(previous, status)) return null;
   return {
     type: "build-status",
     status: "ok",
@@ -274,6 +271,7 @@ export class DevHmrController {
         //? server renders. Running the same bundle, byte for byte, it keeps the build id every tab holds (the hello
         //? check, the router's partial navigation) instead of stranding them on one no refresh ever sent.
         const running = bundlePath ? path.resolve(bundlePath) : null;
+        let tabBuildId = buildId;
         if (serverTouched === false && !clearAll && running === this.#runningBundlePath) {
           this.#logger.verbose(
             `[SSR] pages bundle unchanged for the server; buildId ${this.#renderState.buildId} kept`,
@@ -283,14 +281,15 @@ export class DevHmrController {
           this.#renderState.buildId = buildId;
           const reloadStarted = Date.now();
           try {
-            this.#runningBundlePath = path.resolve(
-              await this.#rsc.reload({
-                clientManifest: manifest.clientManifest,
-                cssAssets: this.#renderState.cssAssets,
-                buildId,
-                pagesBundlePath: bundlePath,
-              }),
-            );
+            const adopted = await this.#rsc.reload({
+              clientManifest: manifest.clientManifest,
+              cssAssets: this.#renderState.cssAssets,
+              buildId,
+              pagesBundlePath: bundlePath,
+            });
+            this.#runningBundlePath = path.resolve(adopted.pagesBundlePath);
+            //? A later pages build that superseded this one is what the worker runs, and the id a tab must hold.
+            tabBuildId = adopted.buildId;
           } catch (error) {
             const failure = DevHmrController.#reloadFailure(error);
             //? What the worker serves now, which a later pages-updated may already have moved past this one's own id.
@@ -298,8 +297,9 @@ export class DevHmrController {
               this.#renderState.buildId = failure.adopted.buildId;
               this.#runningBundlePath = path.resolve(failure.adopted.pagesBundlePath);
             } else if (this.#renderState.buildId === buildId) this.#renderState.buildId = previousBuildId;
-            // The reload that superseded this one failed in its place and reports it; this batch's patches still go out.
-            if (failure?.superseded) this.#ssrUpdates.release(generation);
+            //? A newer pages bundle failed in this one's place and reports it; this batch's patches still go out. A route
+            //? merge that rode along carries this bundle, so this one reports.
+            if (failure && failure.failed.buildId !== buildId) this.#ssrUpdates.release(generation);
             else this.#failPagesReload(generation, files, error);
             return;
           }
@@ -309,7 +309,7 @@ export class DevHmrController {
         const broadcastTrace = DevHmrController.#broadcastTrace(trace);
         if (shouldReload) this.#ssrUpdates.clear(generation);
         const released = shouldReload ? { released: 0, reload: false } : this.#ssrUpdates.release(generation);
-        if (shouldReload) this.#hub.broadcast({ type: "reload", buildId });
+        if (shouldReload) this.#hub.broadcast({ type: "reload", buildId: tabBuildId });
         else if (released.reload)
           this.#logger.verbose(`[hmr] generation=${generation} released a registry reload; no RSC refresh needed`);
         // The SSR registry already patched the tabs: a client module is only references by name to the server.
@@ -320,7 +320,7 @@ export class DevHmrController {
         else
           this.#hub.broadcast({
             type: "rsc-refresh",
-            buildId,
+            buildId: tabBuildId,
             generation,
             changedFiles,
             routeIds,
@@ -400,13 +400,12 @@ export class DevHmrController {
         if (delta.newEntries.length === 0 && removedEntries.size === 0) return;
         this.#rememberClientDeps(routeId, delta.clientDeps, delta.clientDepsByEntry);
         try {
-          this.#runningBundlePath = path.resolve(
-            await this.#rsc.reload({
-              clientManifest: nextMerged.clientManifest,
-              cssAssets: this.#renderState.cssAssets,
-              buildId: this.#renderState.buildId,
-            }),
-          );
+          const adopted = await this.#rsc.reload({
+            clientManifest: nextMerged.clientManifest,
+            cssAssets: this.#renderState.cssAssets,
+            buildId: this.#renderState.buildId,
+          });
+          this.#runningBundlePath = path.resolve(adopted.pagesBundlePath);
         } catch (error) {
           //? The pages reload it rode with failed and says so; the route still renders, and the next reload carries the
           //? merged manifest.

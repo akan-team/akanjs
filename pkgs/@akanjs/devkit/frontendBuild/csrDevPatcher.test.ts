@@ -286,6 +286,92 @@ describe("CsrDevPatcher", () => {
     expect(changedIds(await patcher.update([file("ui/Card.tsx")]))).toEqual(["apps/demo/ui/Card.tsx"]);
   });
 
+  test("a broken module in the graph whose last importer drops it leaves the graph instead of failing every save", async () => {
+    const { bundler, patcher, file, changedIds } = await movedRegistry({
+      "ui/X.tsx": "export const x = 1;\n",
+      "ui/C.tsx": 'export const C = () => "c1";\n',
+      "ui/I.tsx": 'import { x } from "./X";\nexport const I = () => x;\n',
+      "entry.ts": 'import { C } from "./ui/C";\nimport { I } from "./ui/I";\nexport const run = [C, I];\n',
+    });
+    await Bun.write(file("ui/X.tsx"), "export const x = ;\n");
+    await expect(patcher.update([file("ui/X.tsx")])).rejects.toThrow();
+    await Bun.write(file("ui/I.tsx"), 'import { x } from "./X";\nexport const I = () => x + 1;\n');
+    await expect(patcher.update([file("ui/I.tsx")])).rejects.toThrow();
+
+    await Bun.write(file("ui/I.tsx"), "export const I = () => 0;\n");
+    expect(changedIds(await patcher.update([file("ui/I.tsx")]))).toEqual(["apps/demo/ui/I.tsx"]);
+    await Bun.write(file("ui/C.tsx"), 'export const C = () => "c2";\n');
+    expect(changedIds(await patcher.update([file("ui/C.tsx")]))).toEqual(["apps/demo/ui/C.tsx"]);
+    const graph = (await bundler.writer.readJson<CsrDevGraph>("graph.json")) as CsrDevGraph;
+    expect(graph.modules["apps/demo/ui/X.tsx"]).toBeUndefined();
+    expect(graph.pending).toEqual([]);
+  });
+
+  test("a route's check that adds its own root leaves another route's failed root pending", async () => {
+    const { bundler, patcher, file, changedIds } = await movedRegistry({
+      "ui/Card.tsx": 'export const card = () => "v1";\n',
+      "ui/E1.tsx": 'import { gone } from "./missingHelper";\nexport const e1 = () => gone;\n',
+      "ui/E3.tsx": "export const e3 = 3;\n",
+      "entry.ts": 'import { card } from "./ui/Card";\nexport const run = card;\n',
+    });
+    bundler.wanted = new Set([file("ui/E1.tsx"), file("ui/E3.tsx")]);
+    await expect(patcher.update([], { roots: [file("ui/E1.tsx")], onlyRoots: true })).rejects.toThrow();
+    await patcher.update([], { roots: [file("ui/E3.tsx")], onlyRoots: true });
+    const graph = (await bundler.writer.readJson<CsrDevGraph>("graph.json")) as CsrDevGraph;
+    expect(graph.pending).toEqual(["apps/demo/ui/E1.tsx"]);
+
+    await Bun.write(file("ui/E1.tsx"), "export const e1 = () => 1;\n");
+    expect(changedIds(await patcher.update([file("ui/E1.tsx")]))).toEqual(["apps/demo/ui/E1.tsx"]);
+  });
+
+  test("a pending root a worker took and failed on waits for its next edit, not every save", async () => {
+    const { bundler, patcher, file, changedIds } = await movedRegistry({
+      "ui/Card.tsx": 'export const card = () => "v1";\n',
+      "ui/Broken.tsx": 'import { gone } from "./missingHelper";\nexport const broken = () => gone;\n',
+      "entry.ts": 'import { card } from "./ui/Card";\nexport const run = card;\n',
+      "../../node_modules/fake-pkg/package.json": '{"name":"fake-pkg","main":"index.js"}',
+      "../../node_modules/fake-pkg/index.js": "export const gone = 1;\n",
+    });
+    bundler.wanted = new Set([file("ui/Broken.tsx")]);
+    await expect(patcher.update([], { roots: [file("ui/Broken.tsx")], onlyRoots: true })).rejects.toThrow();
+    await Bun.write(file("ui/Broken.tsx"), 'import { gone } from "fake-pkg";\nexport const broken = () => gone;\n');
+    expect((await patcher.update([file("ui/Broken.tsx")])).kind).toBe("delegate");
+
+    await Bun.write(file("ui/Card.tsx"), 'export const card = () => "v2";\n');
+    expect(changedIds(await patcher.update([file("ui/Card.tsx")]))).toEqual(["apps/demo/ui/Card.tsx"]);
+    const graph = (await bundler.writer.readJson<CsrDevGraph>("graph.json")) as CsrDevGraph;
+    expect(graph.pending).toContain("apps/demo/ui/Broken.tsx");
+
+    await Bun.write(file("ui/Broken.tsx"), 'import { gone } from "fake-pkg";\nexport const broken = () => gone + 1;\n');
+    expect((await patcher.update([file("ui/Broken.tsx")])).kind).toBe("delegate");
+  });
+
+  test.skipIf(!foldsCase)(
+    "a case-only rename the patcher never saw moves the module once, and later saves leave it alone",
+    async () => {
+      for (const resident of [false, true]) {
+        const { bundler, patcher, file, changedIds } = await movedRegistry({
+          "ui/card.tsx": 'export const card = () => "v1";\n',
+          "ui/Page.tsx": 'import { card } from "./card";\nexport const page = () => card();\n',
+          "entry.ts": 'import { page } from "./ui/Page";\nexport const run = page;\n',
+        });
+        fs.renameSync(file("ui/card.tsx"), file("ui/Card.tsx"));
+        await Bun.write(file("ui/Page.tsx"), 'import { card } from "./Card";\nexport const page = () => card();\n');
+        const later = resident ? patcher : new CsrDevPatcher(bundler, { resident: true });
+        expect(changedIds(await later.update([file("ui/Page.tsx")]))).toEqual([
+          "apps/demo/ui/Card.tsx",
+          "apps/demo/ui/Page.tsx",
+        ]);
+        await Bun.write(file("ui/Card.tsx"), 'export const card = () => "v2";\n');
+        expect(changedIds(await later.update([file("ui/Card.tsx")]))).toEqual(["apps/demo/ui/Card.tsx"]);
+        await Bun.write(file("ui/Other.tsx"), "export const other = 1;\n");
+        expect(await later.update([file("ui/Other.tsx")])).toEqual({ kind: "unchanged" });
+        const graph = (await bundler.writer.readJson<CsrDevGraph>("graph.json")) as CsrDevGraph;
+        expect(graph.modules["apps/demo/ui/card.tsx"]).toBeUndefined();
+      }
+    },
+  );
+
   test("by default a pending root counts as reached only while an entry or a module imports it", async () => {
     const { bundler, patcher, file, changedIds } = await movedRegistry({
       "ui/Card.tsx": 'export const card = () => "v1";\n',

@@ -101,7 +101,11 @@ export class AkanAppHost {
   #backendGaveUp = false;
   #backendLifecycleState: BackendLifecycleState = "stopped";
   #pendingRestartReason: BackendRestartReason | null = null;
-  #pendingRecycle: { message: Extract<BuilderMessage, { type: "invalidate" }>; refreshConfig: boolean } | null = null;
+  #pendingRecycle: {
+    message: Extract<BuilderMessage, { type: "invalidate" }>;
+    refreshConfig: boolean;
+    failed?: boolean;
+  } | null = null;
   #builderRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
   #builderRecoveryAttempts = 0;
   #backendStartStatus: { generation?: number; files: string[] } | null = null;
@@ -436,6 +440,7 @@ export class AkanAppHost {
       this.#recordBuildStatus(message.data);
       this.#sendOrQueueBuildStatus(message.data);
       this.#reviveBackendAfterGreenBuild(message.data);
+      await this.#resumeFailedRecycle(message.data);
       return;
     }
     if (message.type === "builder-metrics") {
@@ -897,14 +902,7 @@ export class AkanAppHost {
         this.#deferRecycle(merged, { refreshConfig, generation });
         return;
       }
-      this.#pendingRecycle = null;
-      try {
-        if (refreshConfig) await this.#restartDevHost(merged);
-        else await this.#restartDevChildren(merged);
-      } catch (err) {
-        this.#recordDevHostRestartFailure(merged, err, refreshConfig ? "Config" : "Runtime metadata");
-        this.#resurrectDevChildren(merged);
-      }
+      await this.#applyRecycle(merged, refreshConfig);
       return;
     }
     if (await this.#shouldRestartBackend(message)) {
@@ -912,6 +910,25 @@ export class AkanAppHost {
       return;
     }
     this.#sendToBackend(message);
+  }
+  async #applyRecycle(message: Extract<BuilderMessage, { type: "invalidate" }>, refreshConfig: boolean): Promise<void> {
+    this.#pendingRecycle = null;
+    try {
+      if (refreshConfig) await this.#restartDevHost(message);
+      else await this.#restartDevChildren(message);
+    } catch (err) {
+      this.#recordDevHostRestartFailure(message, err, refreshConfig ? "Config" : "Runtime metadata");
+      //? Kept: a builder that booted degraded (a broken akan.config.ts) takes the fixing save itself and sends no
+      //? invalidate, so without this the old config would keep running after the fix.
+      this.#pendingRecycle = { message, refreshConfig, failed: true };
+      this.#resurrectDevChildren(message);
+    }
+  }
+  //? The first green pages build after a failed restart is the fix: the change applies then.
+  async #resumeFailedRecycle(status: DevBuildStatus): Promise<void> {
+    const pending = this.#pendingRecycle;
+    if (!pending?.failed || !status.ok || status.phase !== "pages") return;
+    await this.#applyRecycle(pending.message, pending.refreshConfig);
   }
   #deferRecycle(
     message: Extract<BuilderMessage, { type: "invalidate" }>,

@@ -35,6 +35,9 @@ export class CsrDevPatcher {
   readonly #bundler: DevRegistryBundler;
   readonly #resident: boolean;
   #state: CsrDevPatcherState | null = null;
+  //? A pending root handed to a worker, by the hash it had: one that fails there too waits for its next edit instead of
+  //? sending every save to a worker.
+  readonly #delegated = new Map<string, string>();
 
   constructor(bundler: DevRegistryBundler, { resident = false }: { resident?: boolean } = {}) {
     this.#bundler = bundler;
@@ -124,15 +127,19 @@ export class CsrDevPatcher {
       runtimeResolved: graph.runtimeResolved,
     });
     const known = new Set(Object.keys(graph.modules).map((id) => paths.fileOf(id)));
-    let result: CsrDevCompileResult;
-    try {
-      result = await this.#bundler.compiler(context, resolver).compile(
-        [...changed].map((id) => paths.fileOf(id)),
+    const compile = async (ids: string[]) =>
+      await this.#bundler.compiler(context, resolver).compile(
+        ids.map((id) => paths.fileOf(id)),
         known,
         { refuseNewVendor: !allowWholeAppBuilds, refusePrepass: !allowWholeAppBuilds },
       );
+    let result: CsrDevCompileResult;
+    let orphans: string[];
+    try {
+      ({ result, orphans } = await this.#compileLeavingOrphans(compile, graph, changed));
     } catch (error) {
-      graph.pending = [...new Set([...changed, ...carried])];
+      //? Joined, not replaced: a route's root another round failed stays pending for its own retry.
+      graph.pending = [...new Set([...graph.pending, ...changed, ...carried])];
       await writer.writeJson("graph.json", graph);
       throw error;
     }
@@ -146,13 +153,24 @@ export class CsrDevPatcher {
       //? The entry files are already rewritten, so the worker would see them unchanged and patch a moved route table:
       //? a graph whose entries name none makes it reload instead.
       if (routesMoved) await writer.writeJson("graph.json", { ...graph, entries: {} });
+      if (onlyRoots)
+        for (const id of changed)
+          if (!graph.modules[id]) this.#delegated.set(id, await CsrDevPaths.hashOf(paths.fileOf(id)));
       return this.#handBack(refusal, generation, context);
     }
     const compiled = result.modules;
     const vendorJoined = compiled.some((module) => module.vendor && !graph.modules[module.id]);
     //? Read before the merge: a new module's file is written after announcing, and one without a file is compiled now.
     const code = await this.#code(state);
+    for (const id of [...orphans, ...this.#caseTwins(graph, compiled)]) {
+      delete graph.modules[id];
+      delete graph.resolution[id];
+      code?.modules.delete(id);
+      forgotten.push(id);
+    }
+    graph.pending = graph.pending.filter((id) => !orphans.includes(id));
     this.#bundler.merge(graph, resolver, compiled);
+    for (const module of compiled) this.#delegated.delete(module.id);
     graph.entries = entryIds;
     for (const module of compiled) {
       if (module.vendor || !code) continue;
@@ -241,6 +259,64 @@ export class CsrDevPatcher {
     return retried;
   }
 
+  //? One Bun.build fails whole: a module that fails to compile and that nothing wants any more (its last importer
+  //? dropped the import in this very save) leaves the graph, where it would fail every later save until fixed itself.
+  async #compileLeavingOrphans(
+    compile: (ids: string[]) => Promise<CsrDevCompileResult>,
+    graph: CsrDevGraph,
+    changed: Set<string>,
+  ): Promise<{ result: CsrDevCompileResult; orphans: string[] }> {
+    const { paths } = this.#bundler;
+    try {
+      return { result: await compile([...changed]), orphans: [] };
+    } catch (error) {
+      const failing = new Set(CsrDevPatcher.#failingFiles(error).map((file) => paths.idOf(file)));
+      const orphans = [...changed].filter((id) => failing.has(id) && graph.modules[id]);
+      if (orphans.length === 0 || orphans.length === changed.size) throw error;
+      const result = await compile([...changed].filter((id) => !orphans.includes(id))).catch(() => {
+        throw error;
+      });
+      const modules = { ...graph.modules };
+      for (const id of orphans) delete modules[id];
+      for (const module of result.modules)
+        modules[module.id] = {
+          vendor: module.vendor,
+          mtimeMs: module.mtimeMs,
+          hash: module.hash,
+          deps: module.deps.map((dep) => (CsrDevPaths.isStub(dep) ? dep : paths.idOf(dep))),
+        };
+      const wanted = await this.#bundler.wantedRoots(
+        orphans.map((id) => paths.fileOf(id)),
+        { ...graph, modules },
+      );
+      if (orphans.some((id) => wanted.has(paths.fileOf(id)))) throw error;
+      return { result, orphans };
+    }
+  }
+
+  //? A case-only rename the patcher never saw (made while CSR was unarmed) compiles under the disk's spelling: the old
+  //? id goes, or its stale mtime would compile it again on every save. Only where the disk folds case: on ext4 the two
+  //? spellings are two files.
+  #caseTwins(graph: CsrDevGraph, compiled: CsrDevCompileResult["modules"]): string[] {
+    const { paths } = this.#bundler;
+    const idsByFold = new Map<string, string[]>();
+    for (const id of Object.keys(graph.modules))
+      idsByFold.set(id.toLowerCase(), [...(idsByFold.get(id.toLowerCase()) ?? []), id]);
+    return compiled.flatMap((module) =>
+      (idsByFold.get(module.id.toLowerCase()) ?? []).filter(
+        (id) => id !== module.id && !graph.modules[id]?.vendor && !CsrDevPaths.isNamed(paths.fileOf(id)),
+      ),
+    );
+  }
+
+  static #failingFiles(error: unknown): string[] {
+    const messages: unknown[] = error instanceof AggregateError ? error.errors : [];
+    return messages
+      .map((message) => (message as { position?: { file?: unknown } | null }).position?.file)
+      .filter((file): file is string => typeof file === "string" && path.isAbsolute(file))
+      .map((file) => CsrDevPaths.realpath(file));
+  }
+
   //? A pending root outside the graph (a route's entry that failed to compile) is retried while a route still reaches
   //? it; one no route names any more (the page stopped importing it) leaves the pending list instead.
   async #carriedRoots(graph: CsrDevGraph, changed: Set<string>, present: (file: string) => boolean): Promise<string[]> {
@@ -251,8 +327,13 @@ export class CsrDevPatcher {
       outside.map((id) => paths.fileOf(id)),
       graph,
     );
-    const carried = outside.filter((id) => wanted.has(paths.fileOf(id)));
-    graph.pending = graph.pending.filter((id) => graph.modules[id] || carried.includes(id));
+    const kept = outside.filter((id) => wanted.has(paths.fileOf(id)));
+    graph.pending = graph.pending.filter((id) => graph.modules[id] || kept.includes(id));
+    const carried: string[] = [];
+    for (const id of kept) {
+      const handedOver = this.#delegated.get(id);
+      if (handedOver === undefined || handedOver !== (await CsrDevPaths.hashOf(paths.fileOf(id)))) carried.push(id);
+    }
     return carried;
   }
 
@@ -268,7 +349,8 @@ export class CsrDevPatcher {
 
   //? A case-only rename is the one move `existsSync` misses (`ui/card.tsx` still exists after a rename to
   //? `ui/Card.tsx` on APFS and NTFS), and it reaches the patcher as a save of both names: the realpath of every
-  //? module is paid for only then (2.2ms a save on a 385-module registry, against 0.3ms).
+  //? module is paid for only then (2.2ms a save on a 385-module registry, against 0.3ms). One it never saw goes with
+  //? the compile that meets the new spelling (#caseTwins).
   static #presence(changedFiles: string[]): (file: string) => boolean {
     const caseMoved = changedFiles.some((file) => fs.existsSync(file) && !CsrDevPaths.isNamed(file));
     return caseMoved ? (file) => CsrDevPaths.isNamed(file) : (file) => fs.existsSync(file);

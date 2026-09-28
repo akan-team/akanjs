@@ -300,7 +300,7 @@ export function createRscHostRenderStream(input: {
 type RscInMsg =
   | { type: "hello" }
   | { type: "ready" }
-  | { type: "reloaded"; buildId: number; reloadId?: number }
+  | { type: "reloaded"; buildId: number; reloadId?: number; pagesBundlePath?: string }
   | { type: "meta"; requestId: string; theme?: AkanTheme; status?: number; trace?: RscTraceMetadata }
   | { type: "cache-state"; requestId: string; state: RouteCacheRenderState }
   | { type: "chunk"; requestId: string; data: Uint8Array }
@@ -318,7 +318,14 @@ type RscInMsg =
   | { type: "log.records"; records: LogRecord[]; dropped?: number }
   | { type: "page-prompts.result"; requestId: string; result: PagePromptEntry[] }
   | { type: "page-prompt.result"; requestId: string; result: PagePromptRun }
-  | { type: "error"; requestId: string; message: string; buildId?: number; reloadId?: number };
+  | {
+      type: "error";
+      requestId: string;
+      message: string;
+      buildId?: number;
+      reloadId?: number;
+      running?: RscAdoptedBundle;
+    };
 
 export interface RscWorkerReloadInput {
   clientManifest: ClientManifest;
@@ -328,20 +335,22 @@ export interface RscWorkerReloadInput {
   pagesBundlePath?: string;
 }
 
-interface RscAdoptedBundle {
+export interface RscAdoptedBundle {
   pagesBundlePath: string;
   buildId: number;
 }
 
 interface RscReloadWaiter {
-  resolve: (pagesBundlePath: string) => void;
+  resolve: (adopted: RscAdoptedBundle) => void;
   reject: (err: RscReloadFailure) => void;
 }
 
 /** A reload the worker did not take: what it runs instead, and whether a later reload failed in this one's place. */
 export interface RscReloadFailure extends Error {
+  /** What the worker runs now. */
   adopted: RscAdoptedBundle;
-  superseded: boolean;
+  /** The latest state it was asked to take, which a later reload may have moved past the caller's own. */
+  failed: RscAdoptedBundle;
 }
 
 type WorkerStatus = "starting" | "ready" | "restarting" | "stopped";
@@ -382,7 +391,7 @@ export class RscWorker {
 
   #status: WorkerStatus = "starting";
   #killed = false;
-  #queuedSends: Array<() => void> = [];
+  #queuedSends: { requestId: string; send: () => void }[] = [];
   #restartAttempts = 0;
   #restartCount = 0;
   #recycleCount = 0;
@@ -395,7 +404,8 @@ export class RscWorker {
   #hostPendingChunkOverflowCount = 0;
   #restartTimer: ReturnType<typeof setTimeout> | null = null;
   #recycleTimer: ReturnType<typeof setTimeout> | null = null;
-  #rollingRecycle: { oldProc: RscProcess; reason: string } | null = null;
+  #rollingRecycle: { oldProc: RscProcess; reason: string; reloadsSinceSpawn: number } | null = null;
+  #booting: RscProcess | null = null;
 
   readonly #failBeforeReady: boolean;
 
@@ -466,7 +476,7 @@ export class RscWorker {
       if (this.#status === "ready") send();
       else if (this.#status === "stopped")
         this.#settleCall(requestId, (call) => call.reject(new Error("rsc worker is stopped")));
-      else this.#queuedSends.push(send);
+      else this.#queuedSends.push({ requestId, send });
     });
   }
 
@@ -532,7 +542,7 @@ export class RscWorker {
     if (this.#killed || this.#status === "stopped" || this.#status === "starting" || this.#status === "restarting") {
       return false;
     }
-    if (this.#pending.size > 0 || this.#queuedSends.length > 0) {
+    if (this.#pending.size > 0 || this.#calls.size > 0 || this.#queuedSends.length > 0) {
       if (!this.#recycleTimer) {
         const graceMs = MemoryLimit.parsePositiveIntEnv("AKAN_RSC_WORKER_RECYCLE_GRACE_MS") ?? 5_000;
         this.#recycleTimer = setTimeout(() => {
@@ -547,7 +557,7 @@ export class RscWorker {
     this.#lastRecycleAtMono = performance.now();
     this.#logger.info(`[rsc] rolling recycle worker reason=${reason} oldPid=${this.#proc.pid}`);
     this.#status = "restarting";
-    this.#rollingRecycle = { oldProc: this.#proc, reason };
+    this.#rollingRecycle = { oldProc: this.#proc, reason, reloadsSinceSpawn: this.#reloadsSinceSpawn };
     this.#proc = this.#spawn();
     return true;
   }
@@ -563,13 +573,14 @@ export class RscWorker {
   }
 
   /** Resolves with the pages bundle the worker runs once it has taken this reload, or a later one. */
-  reload(input: RscWorkerReloadInput): Promise<string> {
+  reload(input: RscWorkerReloadInput): Promise<RscAdoptedBundle> {
+    if (this.#killed) return Promise.reject(new Error("rsc worker is stopped"));
     this.#reloadState += 1;
     this.#clientManifest = input.clientManifest;
     this.#cssAssets = input.cssAssets ?? this.#cssAssets;
     this.#pagesBundleBuildId = input.buildId;
     if (input.pagesBundlePath) this.#pagesBundlePath = input.pagesBundlePath;
-    return new Promise<string>((resolve, reject) => {
+    return new Promise<RscAdoptedBundle>((resolve, reject) => {
       //? A superseded reload settles with the one that superseded it: the worker drops it unadopted, so resolving it
       //? at once let its caller refresh the tabs while the worker still ran the bundle before both.
       this.#pendingReload = {
@@ -613,7 +624,7 @@ export class RscWorker {
     const pending = this.#pendingReload;
     if (!pending) return;
     this.#pendingReload = null;
-    for (const waiter of pending.waiters) waiter.resolve(adopted.pagesBundlePath);
+    for (const waiter of pending.waiters) waiter.resolve(adopted);
   }
 
   //? The worker did not take the latest state, so the host goes back to what it runs: the next respawn then boots a
@@ -624,10 +635,9 @@ export class RscWorker {
     const pending = this.#pendingReload;
     if (!pending) return;
     this.#pendingReload = null;
-    for (const [idx, waiter] of pending.waiters.entries())
-      waiter.reject(
-        Object.assign(new Error(message), { adopted: this.#adopted, superseded: idx < pending.waiters.length - 1 }),
-      );
+    const failed = { pagesBundlePath: pending.pagesBundlePath, buildId: pending.buildId };
+    for (const waiter of pending.waiters)
+      waiter.reject(Object.assign(new Error(message), { adopted: this.#adopted, failed }));
   }
 
   #spawn(): RscProcess {
@@ -706,6 +716,7 @@ export class RscWorker {
     switch (message.type) {
       case "hello":
         // A respawned worker asks for config first; this is what carries the latest reload(...) state across a crash.
+        this.#booting = proc;
         this.#init = {
           pagesBundlePath: this.#pagesBundlePath,
           buildId: this.#pagesBundleBuildId,
@@ -722,6 +733,7 @@ export class RscWorker {
         });
         return;
       case "ready":
+        this.#booting = null;
         this.#status = "ready";
         this.#restartAttempts = 0;
         this.#resolveReady();
@@ -736,6 +748,10 @@ export class RscWorker {
         else this.#sendPendingReload();
         return;
       case "reloaded": {
+        //? The worker adopts in the order it was sent, so its latest answer is what it runs, even one a newer reload
+        //? overtook on the way here: a failure of that newer one goes back to it, not to the bundle before.
+        if (proc === this.#proc && message.pagesBundlePath)
+          this.#adopted = { pagesBundlePath: message.pagesBundlePath, buildId: message.buildId };
         const pending = this.#pendingReload;
         if (pending && pending.reloadId !== null && pending.reloadId === message.reloadId)
           this.#resolveReload({ pagesBundlePath: pending.pagesBundlePath, buildId: pending.buildId });
@@ -782,24 +798,13 @@ export class RscWorker {
             this.#rejectReload(String(message.message));
             this.#rejectReady(new Error(String(message.message)));
           } else {
-            this.#logger.error(`[rsc] worker init error on restart: ${message.message}`);
-            //? Only a state no reload has moved on from since this hello: a newer one (the fix) boots the next respawn.
-            const covered = !this.#pendingReload || this.#pendingReload.reloadState <= this.#init.reloadState;
-            if (covered) this.#rejectReload(String(message.message));
-            const rolling = this.#rollingRecycle;
-            if (covered && rolling && proc === this.#proc) {
-              //? The worker it was to replace still runs the bundle the host went back to: it keeps serving, renders
-              //? queued for the replacement included, and a later reload recycles again.
-              this.#rollingRecycle = null;
-              this.#proc = rolling.oldProc;
-              this.#status = "ready";
-              this.#flushQueuedSends();
-            }
+            this.#bootFailed(proc, String(message.message));
             proc.kill();
           }
           return;
         }
         if (message.requestId === "__reload__") {
+          if (proc === this.#proc && message.running) this.#adopted = message.running;
           const pending = this.#pendingReload;
           if (pending && pending.reloadId !== null && pending.reloadId === message.reloadId)
             this.#rejectReload(String(message.message));
@@ -837,7 +842,7 @@ export class RscWorker {
     else if (this.#status === "stopped") {
       this.#resolvePending(requestId, (p) => p.onError("rsc worker is stopped"));
     } else {
-      this.#queuedSends.push(send);
+      this.#queuedSends.push({ requestId, send });
     }
   }
 
@@ -853,13 +858,50 @@ export class RscWorker {
   #flushQueuedSends(): void {
     const queue = this.#queuedSends;
     this.#queuedSends = [];
-    for (const send of queue) {
+    for (const { send } of queue) {
       try {
         send();
       } catch (err) {
         this.#logger.error(`[rsc] queued send failed: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
+  }
+
+  #failRequests(err: Error, which: (requestId: string) => boolean = () => true): void {
+    for (const [requestId, pending] of this.#pending) {
+      if (!which(requestId)) continue;
+      this.#pending.delete(requestId);
+      pending.onError(err.message);
+    }
+    for (const [requestId, call] of this.#calls) {
+      if (!which(requestId)) continue;
+      this.#calls.delete(requestId);
+      call.reject(err);
+    }
+    this.#queuedSends = this.#queuedSends.filter((entry) => !which(entry.requestId));
+  }
+
+  //* A respawned or replacement worker that could not boot its hello's state. Covered (no reload came since), the host
+  //* goes back to the bundle that runs; newer, the fix boots next. A replacement hands its queue back to the worker it
+  //* was to replace while that one lives, which then takes the fix in place or recycles again; otherwise it is a crash.
+  #bootFailed(proc: RscProcess, message: string): boolean {
+    this.#booting = null;
+    this.#logger.error(`[rsc] worker init error on restart: ${message}`);
+    const covered = !this.#pendingReload || this.#pendingReload.reloadState <= this.#init.reloadState;
+    if (covered) this.#rejectReload(message);
+    const rolling = proc === this.#proc ? this.#rollingRecycle : null;
+    this.#rollingRecycle = null;
+    if (!rolling || !RscWorker.#isAlive(rolling.oldProc)) return false;
+    this.#proc = rolling.oldProc;
+    this.#status = "ready";
+    this.#reloadsSinceSpawn = rolling.reloadsSinceSpawn;
+    this.#flushQueuedSends();
+    if (!covered) this.#sendPendingReload();
+    return true;
+  }
+
+  static #isAlive(proc: RscProcess): boolean {
+    return proc.exitCode === null && proc.signalCode === null && !proc.killed;
   }
 
   #finishRollingRecycle(): void {
@@ -874,23 +916,32 @@ export class RscWorker {
   }
 
   #handleExit(proc: RscProcess, code: number | null): void {
+    //? The worker a recycle was replacing died first: the replacement boots on, with nothing to fall back to.
+    if (proc === this.#rollingRecycle?.oldProc) {
+      this.#rollingRecycle = null;
+      return;
+    }
     // A replaced proc's late exit must not schedule a second restart.
     if (proc !== this.#proc) return;
+    //? Exiting while it imports the pages bundle (a `process.exit` at a module's top level) fails the boot like a throw.
+    if (proc === this.#booting && this.#readyResolved && !this.#killed) {
+      if (this.#bootFailed(proc, `rsc worker exited with code ${code} while loading the pages bundle`)) return;
+    }
 
     const err = new Error(`rsc worker exited with code ${code}`);
-    for (const [, p] of this.#pending) p.onError(err.message);
-    this.#pending.clear();
-    for (const [, call] of this.#calls) call.reject(err);
-    this.#calls.clear();
-    this.#queuedSends = [];
+    //? Only what this worker was sent: a request still queued never reached it, and the respawn takes it.
+    const queued = new Set(this.#queuedSends.map((entry) => entry.requestId));
+    this.#failRequests(err, (requestId) => !queued.has(requestId));
 
     if (this.#killed) {
       this.#status = "stopped";
+      this.#failRequests(err);
       this.#rejectReload(err.message);
       return;
     }
     if (this.#failBeforeReady && !this.#readyResolved) {
       this.#status = "stopped";
+      this.#failRequests(err);
       this.#rejectReload(err.message);
       this.#rejectReady(err);
       return;
@@ -927,7 +978,7 @@ export class RscWorker {
   }
 
   #maybeRecycleFromMetrics(metrics: AkanMetricsReport): void {
-    if (this.#pending.size > 0) return;
+    if (this.#pending.size > 0 || this.#calls.size > 0) return;
     const maxRssBytes = RscWorker.#getRscMaxRssBytes();
     if (maxRssBytes && metrics.rssBytes && metrics.rssBytes >= maxRssBytes) {
       this.restartWhenIdle(`rss>${Math.round(maxRssBytes / 1024 / 1024)}MiB`);

@@ -827,13 +827,20 @@ export const pages = {
   "./x.tsx": async () => ({ default: page().render(() => ${JSON.stringify(body)}) }),
 };
 `;
+  const until = async (condition: () => boolean) => {
+    const deadline = Date.now() + 10_000;
+    while (!condition()) {
+      if (Date.now() > deadline) throw new Error("timed out waiting for the worker");
+      await Bun.sleep(20);
+    }
+  };
   const withBundles = async (
     run: (
       rsc: RscWorker,
-      bundles: { a: string; b: string; c: string; broken: string; brokenSlow: string },
+      bundles: { a: string; b: string; c: string; broken: string; brokenSlow: string; exiting: string },
       body: () => Promise<string>,
     ) => Promise<void>,
-    { maxReloads }: { maxReloads?: number } = {},
+    { maxReloads, minRecycleIntervalMs }: { maxReloads?: number; minRecycleIntervalMs?: number } = {},
   ) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "akan-rsc-reload-"));
     const bundles = {
@@ -842,6 +849,7 @@ export const pages = {
       c: path.join(dir, "pages-c.ts"),
       broken: path.join(dir, "broken.ts"),
       brokenSlow: path.join(dir, "broken-slow.ts"),
+      exiting: path.join(dir, "exiting.ts"),
     };
     fs.writeFileSync(bundles.a, bundleSource("body A"));
     fs.writeFileSync(bundles.b, bundleSource("body B", "await Bun.sleep(300);"));
@@ -851,14 +859,18 @@ export const pages = {
       bundles.brokenSlow,
       bundleSource("never", 'await Bun.sleep(300);\nthrow new Error("broken at import");'),
     );
+    fs.writeFileSync(bundles.exiting, bundleSource("never", "process.exit(3);"));
     const saved = {
       workerPath: process.env.AKAN_RSC_WORKER_PATH,
       cache: process.env.AKAN_RSC_RESULT_CACHE,
       maxReloads: process.env.AKAN_RSC_WORKER_MAX_RELOADS,
+      minRecycleInterval: process.env.AKAN_RSC_WORKER_MIN_RECYCLE_INTERVAL_MS,
     };
     process.env.AKAN_RSC_WORKER_PATH = path.join(import.meta.dir, "rscWorker.tsx");
     process.env.AKAN_RSC_RESULT_CACHE = "0";
     if (maxReloads !== undefined) process.env.AKAN_RSC_WORKER_MAX_RELOADS = String(maxReloads);
+    if (minRecycleIntervalMs !== undefined)
+      process.env.AKAN_RSC_WORKER_MIN_RECYCLE_INTERVAL_MS = String(minRecycleIntervalMs);
     const rsc = new RscWorker({ pagesBundlePath: bundles.a, pagesBundleBuildId: 1 } as unknown as BaseBuildArtifact);
     const body = async () => {
       const result = await rsc.renderWithMeta(new Request("http://localhost/en/x"));
@@ -877,6 +889,8 @@ export const pages = {
       else process.env.AKAN_RSC_RESULT_CACHE = saved.cache;
       if (saved.maxReloads === undefined) delete process.env.AKAN_RSC_WORKER_MAX_RELOADS;
       else process.env.AKAN_RSC_WORKER_MAX_RELOADS = saved.maxReloads;
+      if (saved.minRecycleInterval === undefined) delete process.env.AKAN_RSC_WORKER_MIN_RECYCLE_INTERVAL_MS;
+      else process.env.AKAN_RSC_WORKER_MIN_RECYCLE_INTERVAL_MS = saved.minRecycleInterval;
       fs.rmSync(dir, { recursive: true, force: true });
     }
   };
@@ -892,9 +906,9 @@ export const pages = {
       const merge = rsc.reload({ clientManifest: {}, buildId: 2 });
       await Bun.sleep(20);
       expect(settled).toEqual([]);
-      expect(await pages).toBe(b);
+      expect(await pages).toEqual({ pagesBundlePath: b, buildId: 2 });
       expect(await body()).toBe("B");
-      expect(await merge).toBe(b);
+      expect(await merge).toEqual({ pagesBundlePath: b, buildId: 2 });
     });
   }, 20_000);
 
@@ -902,9 +916,13 @@ export const pages = {
     await withBundles(async (rsc, { a, broken }, body) => {
       //? Caught, not `expect(...).rejects`: on Windows bun:test's matcher waits without reading the worker's ipc channel.
       const failed = await rsc.reload({ clientManifest: {}, buildId: 2, pagesBundlePath: broken }).catch((e) => e);
-      expect(failed).toMatchObject({ message: "broken at import", adopted: { pagesBundlePath: a, buildId: 1 } });
+      expect(failed).toMatchObject({
+        message: "broken at import",
+        adopted: { pagesBundlePath: a, buildId: 1 },
+        failed: { pagesBundlePath: broken, buildId: 2 },
+      });
       expect(await body()).toBe("A");
-      expect(await rsc.reload({ clientManifest: {}, buildId: 3 })).toBe(a);
+      expect(await rsc.reload({ clientManifest: {}, buildId: 3 })).toEqual({ pagesBundlePath: a, buildId: 3 });
       expect(await body()).toBe("A");
     });
   }, 20_000);
@@ -912,31 +930,132 @@ export const pages = {
   test("a reload that recycles the worker settles when the new worker runs it, and rejects onto the old bundle if it throws", async () => {
     await withBundles(
       async (rsc, { a, c, broken }, body) => {
-        expect(await rsc.reload({ clientManifest: {}, buildId: 2, pagesBundlePath: a })).toBe(a);
+        expect(await rsc.reload({ clientManifest: {}, buildId: 2, pagesBundlePath: a })).toMatchObject({ buildId: 2 });
         const failed = await rsc.reload({ clientManifest: {}, buildId: 3, pagesBundlePath: broken }).catch((e) => e);
-        expect(failed).toMatchObject({ adopted: { pagesBundlePath: a, buildId: 2 }, superseded: false });
+        expect(failed).toMatchObject({
+          adopted: { pagesBundlePath: a, buildId: 2 },
+          failed: { pagesBundlePath: broken, buildId: 3 },
+        });
         expect(await body()).toBe("A");
-        expect(await rsc.reload({ clientManifest: {}, buildId: 4, pagesBundlePath: c })).toBe(c);
+        //? The worker it fell back to is still past the threshold, so the fix recycles rather than reloading in place.
+        const recycles = Number(rsc.getMetrics().rscWorkerRecycleCount);
+        expect(await rsc.reload({ clientManifest: {}, buildId: 4, pagesBundlePath: c })).toMatchObject({ buildId: 4 });
+        expect(rsc.getMetrics().rscWorkerRecycleCount).toBe(recycles + 1);
         expect(await body()).toBe("C");
       },
-      { maxReloads: 1 },
+      { maxReloads: 1, minRecycleIntervalMs: 1 },
     );
   }, 30_000);
 
   test("a fix saved while a recycled worker fails on the broken bundle is what the next worker boots", async () => {
     await withBundles(
       async (rsc, { a, c, brokenSlow }, body) => {
-        expect(await rsc.reload({ clientManifest: {}, buildId: 2, pagesBundlePath: a })).toBe(a);
+        expect(await rsc.reload({ clientManifest: {}, buildId: 2, pagesBundlePath: a })).toMatchObject({ buildId: 2 });
         const broken = rsc.reload({ clientManifest: {}, buildId: 3, pagesBundlePath: brokenSlow });
         await Bun.sleep(100);
         const fixed = rsc.reload({ clientManifest: {}, buildId: 4, pagesBundlePath: c });
-        expect(await broken).toBe(c);
-        expect(await fixed).toBe(c);
+        expect(await broken).toEqual({ pagesBundlePath: c, buildId: 4 });
+        expect(await fixed).toEqual({ pagesBundlePath: c, buildId: 4 });
         expect(await body()).toBe("C");
       },
       { maxReloads: 1 },
     );
   }, 30_000);
+
+  test("a route merge riding on a pages reload that fails leaves the pages reload its failure to report", async () => {
+    await withBundles(async (rsc, { a, brokenSlow }) => {
+      const pages = rsc.reload({ clientManifest: {}, buildId: 2, pagesBundlePath: brokenSlow }).catch((e) => e);
+      await Bun.sleep(50);
+      const merge = rsc.reload({ clientManifest: {}, buildId: 2 }).catch((e) => e);
+      const failure = {
+        adopted: { pagesBundlePath: a, buildId: 1 },
+        failed: { pagesBundlePath: brokenSlow, buildId: 2 },
+      };
+      expect(await pages).toMatchObject(failure);
+      expect(await merge).toMatchObject(failure);
+    });
+  }, 20_000);
+
+  test("a reload the worker took, answered after the next one was sent, is what that next one's failure goes back to", async () => {
+    await withBundles(async (rsc, { c, broken }, body) => {
+      const taken = rsc.reload({ clientManifest: {}, buildId: 2, pagesBundlePath: c }).catch((e) => e);
+      //? The host is busy while the worker takes C and answers, so that answer is read after the next reload is sent.
+      Bun.sleepSync(600);
+      const failed = await rsc.reload({ clientManifest: {}, buildId: 3, pagesBundlePath: broken }).catch((e) => e);
+      expect(failed).toMatchObject({ adopted: { pagesBundlePath: c, buildId: 2 } });
+      expect(await taken).toMatchObject({ adopted: { pagesBundlePath: c, buildId: 2 } });
+      expect(await body()).toBe("C");
+      process.kill(Number(rsc.getMetrics().rscWorkerPid), "SIGKILL");
+      await until(() => rsc.getMetrics().rscWorkerStatus !== "ready");
+      await until(() => rsc.getMetrics().rscWorkerStatus === "ready");
+      expect(await body()).toBe("C");
+    });
+  }, 20_000);
+
+  test("a replacement worker that fails while a fix is on its way hands its queued renders back to the worker it replaces", async () => {
+    await withBundles(
+      async (rsc, { a, c, brokenSlow }, body) => {
+        expect(await rsc.reload({ clientManifest: {}, buildId: 2, pagesBundlePath: a })).toMatchObject({ buildId: 2 });
+        const broken = rsc.reload({ clientManifest: {}, buildId: 3, pagesBundlePath: brokenSlow }).catch((e) => e);
+        await Bun.sleep(80);
+        const queued = body();
+        await Bun.sleep(40);
+        const fixed = rsc.reload({ clientManifest: {}, buildId: 4, pagesBundlePath: c });
+        expect(await queued).toBe("A");
+        expect(await fixed).toEqual({ pagesBundlePath: c, buildId: 4 });
+        expect(await broken).toEqual({ pagesBundlePath: c, buildId: 4 });
+        expect(await body()).toBe("C");
+        expect(rsc.getMetrics().rscWorkerRestartCount).toBe(0);
+      },
+      { maxReloads: 1 },
+    );
+  }, 30_000);
+
+  test("a worker that dies while its replacement boots leaves nothing to fall back to, so a failed boot restarts", async () => {
+    await withBundles(
+      async (rsc, { a, c, brokenSlow }, body) => {
+        expect(await rsc.reload({ clientManifest: {}, buildId: 2, pagesBundlePath: a })).toMatchObject({ buildId: 2 });
+        const oldPid = Number(rsc.getMetrics().rscWorkerPid);
+        const broken = rsc.reload({ clientManifest: {}, buildId: 3, pagesBundlePath: brokenSlow }).catch((e) => e);
+        await Bun.sleep(100);
+        process.kill(oldPid, "SIGKILL");
+        expect(await broken).toMatchObject({ adopted: { pagesBundlePath: a, buildId: 2 } });
+        await until(() => rsc.getMetrics().rscWorkerStatus === "ready" && rsc.getMetrics().rscWorkerPid !== oldPid);
+        expect(await body()).toBe("A");
+        expect(await rsc.reload({ clientManifest: {}, buildId: 4, pagesBundlePath: c })).toMatchObject({ buildId: 4 });
+        expect(await body()).toBe("C");
+      },
+      { maxReloads: 1 },
+    );
+  }, 30_000);
+
+  test("a bundle that exits while it imports rejects its reload onto the bundle that ran, instead of crash-looping", async () => {
+    await withBundles(async (rsc, { a, exiting }, body) => {
+      const failed = await rsc.reload({ clientManifest: {}, buildId: 2, pagesBundlePath: exiting }).catch((e) => e);
+      expect(failed).toMatchObject({ adopted: { pagesBundlePath: a, buildId: 1 }, failed: { buildId: 2 } });
+      await until(() => rsc.getMetrics().rscWorkerStatus === "ready");
+      expect(await body()).toBe("A");
+    });
+  }, 20_000);
+
+  test("a render queued while a respawn fails to boot is served by the next respawn, never having reached either", async () => {
+    await withBundles(async (rsc, { a, brokenSlow }, body) => {
+      process.kill(Number(rsc.getMetrics().rscWorkerPid), "SIGKILL");
+      await until(() => rsc.getMetrics().rscWorkerStatus !== "ready");
+      const failed = rsc.reload({ clientManifest: {}, buildId: 2, pagesBundlePath: brokenSlow }).catch((e) => e);
+      const queued = body();
+      expect(await failed).toMatchObject({ adopted: { pagesBundlePath: a, buildId: 1 } });
+      expect(await queued).toBe("A");
+    });
+  }, 20_000);
+
+  test("a recycle waits for a page prompt call in flight, whose answer the worker being replaced would carry", async () => {
+    await withBundles(async (rsc) => {
+      const call = rsc.listPagePrompts();
+      expect(rsc.restartWhenIdle("test")).toBe(false);
+      expect(Array.isArray(await call)).toBe(true);
+    });
+  }, 20_000);
 });
 
 describe("RscWorker respawn lifecycle", () => {

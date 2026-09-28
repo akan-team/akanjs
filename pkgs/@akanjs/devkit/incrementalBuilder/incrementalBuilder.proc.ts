@@ -165,7 +165,7 @@ class IncrementalBuilder {
       this.#logger.verbose(`build-route ok routeId=${msg.routeId} newEntries=${delta.newEntries.length}`);
       //? The builder's generation, not the route cache's: the cache's does not move when a fixed file maps to no entry,
       //? so the rebuild's ok would carry the failure's own number.
-      this.#sendBuildStatus("route", { generation: this.#generation, ok: true, files: msg.seeds });
+      this.#sendBuildStatus("route", { generation: this.#generation, ok: true, files: msg.seeds, scope: msg.routeId });
       return {
         type: "build-route-res",
         id: msg.id,
@@ -185,24 +185,30 @@ class IncrementalBuilder {
     } catch (err) {
       const errMsg = ApplicationBuildReporter.formatError(err, this.#app.workspace.workspaceRoot);
       this.#logger.error(`build-route failed routeId=${msg.routeId}: ${errMsg}`);
-      this.#sendBuildStatus("route", { generation: this.#generation, ok: false, files: msg.seeds, message: errMsg });
+      this.#sendBuildStatus("route", {
+        generation: this.#generation,
+        ok: false,
+        files: msg.seeds,
+        message: errMsg,
+        scope: msg.routeId,
+      });
       return { type: "build-route-res", id: msg.id, ok: false, error: errMsg };
     }
   }
   #sendBuildStatus(
     phase: BuildPhase,
-    { generation, ok, files, message }: { generation?: number; ok: boolean; files?: string[]; message?: string },
+    {
+      generation,
+      ok,
+      files,
+      message,
+      scope,
+    }: { generation?: number; ok: boolean; files?: string[]; message?: string; scope?: string },
   ): void {
     if (typeof generation !== "number") return;
     BuilderChannel.emit({
       type: "build-status",
-      data: {
-        generation,
-        phase,
-        ok,
-        files: files ?? [],
-        message,
-      },
+      data: { generation, phase, ok, files: files ?? [], message, ...(scope !== undefined ? { scope } : {}) },
     });
   }
   async #enqueueFast<T>(label: string, fn: () => Promise<T>): Promise<T> {
@@ -445,11 +451,8 @@ class IncrementalBuilder {
       if (ssrToWorker) needs.unshift("ssr");
       const batch: BatchJob = { generation, needs, changedFiles: files, trace, ...(discovery ? { discovery } : {}) };
       // A worker's registry build rewrites the directory its patcher reads, so the next save waits for it.
-      if (needs.includes("csr") || needs.includes("ssr")) {
-        await this.#workQueue.enqueueBatch(batch);
-        if (needs.includes("csr")) this.#patcher?.forget();
-        if (needs.includes("ssr")) this.#ssrPatcher?.forget();
-      } else void this.#workQueue.enqueueBatch(batch).catch(this.#slowLaneFailed("batch"));
+      if (needs.includes("csr") || needs.includes("ssr")) await this.#workQueue.enqueueBatch(batch);
+      else void this.#workQueue.enqueueBatch(batch).catch(this.#slowLaneFailed("batch"));
       return;
     }
     if (discovery)
@@ -525,6 +528,9 @@ class IncrementalBuilder {
     const hold = await ServerGraphFile.touches(await ServerGraphFile.read(this.#artifactDir), files, (file) =>
       ServerGraphFile.clientExportsOf(file),
     );
+    //? Ahead of this save's own discovery job in the slow lane: which client entries a page still names decides which
+    //? pending roots this patch keeps.
+    this.#discovery.invalidate?.(files);
     return await this.#withSsrLock(
       async () => await this.#runSsrPatcher(patcher, files, { trace, hold, batchGeneration: generation }),
     );
@@ -741,9 +747,20 @@ class IncrementalBuilder {
     //? The slow lane runs in order, so every batch up to this one has had its discovery job.
     this.#discoveredThrough = Math.max(this.#discoveredThrough, work.generation);
     // A worker writing ssr-dev must not overlap the boot build, which no longer runs in this lane.
-    if (work.needs.includes("ssr"))
-      await this.#withSsrLock(async () => this.#noteSsrWorker(await this.#runBatch(work)));
-    else await this.#runBatch(work);
+    //? Forgotten inside the lock: a route build's check waiting on it would patch the old state over the worker's.
+    try {
+      if (work.needs.includes("ssr"))
+        await this.#withSsrLock(async () => {
+          try {
+            this.#noteSsrWorker(await this.#runBatch(work));
+          } finally {
+            this.#ssrPatcher?.forget();
+          }
+        });
+      else await this.#runBatch(work);
+    } finally {
+      if (work.needs.includes("csr")) this.#patcher?.forget();
+    }
   }
 
   async #refreshDiscovery({ files, refresh, generation }: DiscoveryJob): Promise<void> {

@@ -77,7 +77,7 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
       error: expect.stringContaining(reason),
     });
     expect(messages.find((message) => message.type === "build-status")).toMatchObject({
-      data: { generation: 6, phase: "route", ok: false, message: expect.stringContaining(reason) },
+      data: { generation: 6, phase: "route", ok: false, message: expect.stringContaining(reason), scope: "page:/" },
     });
     expect(log).toContain(reason);
   }, 30_000);

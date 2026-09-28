@@ -408,7 +408,7 @@ export const HMR_CLIENT_SCRIPT = `(function(){
     var current = buildErrorStates[phase];
     if (!current) return;
     var generation = typeof msg.generation === "number" ? msg.generation : 0;
-    var sameGeneration = phase === "backend" || phase === "scan" || phase === "route";
+    var sameGeneration = phase === "backend" || phase === "route";
     var recovered = sameGeneration ? generation >= current.generation : generation > current.generation;
     if (!recovered) return;
     delete buildErrorStates[phase];
@@ -486,9 +486,12 @@ export const HMR_CLIENT_SCRIPT = `(function(){
   }
 
   // After the registry applied every patch it was handed: the payload names the client modules those patches brought.
+  var rscRefreshSeq = 0;
   function refreshRsc(msg){
     var receivedAt = Date.now();
-    var refresh = function(){ doRefreshRsc(msg, receivedAt); };
+    // A newer refresh supersedes this one: it waits for the patches that came with it, which this wait did not.
+    var seq = ++rscRefreshSeq;
+    var refresh = function(){ if (seq === rscRefreshSeq) doRefreshRsc(msg, receivedAt); };
     var settle = function(){
       return self.__akan && typeof self.__akan.whenSettled === "function" ? self.__akan.whenSettled() : null;
     };

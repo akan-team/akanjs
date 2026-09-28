@@ -388,7 +388,12 @@ export class RscRenderer {
       this.#resultCache.clear();
       this.#patchResultCache.clear();
       this.#logger.verbose(`reload complete buildId=${msg.buildId} in ${Date.now() - startedAt}ms`);
-      this.#send({ type: "reloaded", buildId: msg.buildId, reloadId: msg.reloadId });
+      this.#send({
+        type: "reloaded",
+        buildId: msg.buildId,
+        reloadId: msg.reloadId,
+        pagesBundlePath: nextPagesBundlePath,
+      });
     } catch (error) {
       this.#logger.error(
         `reload failed buildId=${msg.buildId}: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
@@ -400,6 +405,7 @@ export class RscRenderer {
         requestId: "__reload__",
         buildId: msg.buildId,
         reloadId: msg.reloadId,
+        running: { pagesBundlePath: this.#pagesBundlePath, buildId: this.#pagesBundleBuildId },
         message: error instanceof Error ? error.message : String(error),
       });
     }

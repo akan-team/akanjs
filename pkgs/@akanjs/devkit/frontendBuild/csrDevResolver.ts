@@ -95,7 +95,7 @@ export class CsrDevResolver {
   resolve(importer: string, specifier: string, kind: "import" | "require" = "import"): string | null {
     if (this.#isInlineSpecifier(specifier)) return CsrDevResolver.inline;
     const known = this.#resolution.get(importer)?.get(specifier);
-    const usable = known && this.#stillAnswers(importer, specifier, known) ? known : null;
+    const usable = known && this.#stillAnswers(importer, specifier, known, kind) ? known : null;
     const target = usable ?? this.#resolveUnknown(importer, specifier, kind);
     if (target === null || CsrDevPaths.isStub(target)) return target;
     if (!CsrDevPaths.isScript(target)) return CsrDevResolver.inline;
@@ -103,14 +103,16 @@ export class CsrDevResolver {
     return target;
   }
 
-  //? A record stands until its file is gone, or until a file created beside the folder it went into takes the import
-  //? over (`Foo.tsx` next to `Foo/index.tsx`), as it does for Bun and every other build. Nothing else overturns it: the
-  //? prepass chose between sibling files and package fields as Bun does, which a disk lookup would only approximate.
-  #stillAnswers(importer: string, specifier: string, known: string): boolean {
+  //? A relative record in app code stands while the disk still resolves it to the same file, as Bun would: a sibling
+  //? with a stronger extension (`x.tsx` beside `x.ts`), a file beside the folder it went into, or a record a CommonJS
+  //? re-export folded onto another file (`./a` → `x.js`) resolves anew. A package's files keep the prepass's answer,
+  //? which a disk lookup would only approximate (the `browser` object form, export conditions).
+  #stillAnswers(importer: string, specifier: string, known: string, kind: "import" | "require"): boolean {
     if (CsrDevPaths.isStub(known)) return true;
     if (!fs.existsSync(known)) return false;
     if (!specifier.startsWith(".") || CsrDevPaths.isVendorFile(importer)) return true;
-    return !CsrDevPaths.isShadowed(path.resolve(path.dirname(importer), specifier), known);
+    const onDisk = CsrDevPaths.resolveRelative(path.dirname(importer), specifier, kind);
+    return onDisk !== null && CsrDevPaths.realpath(onDisk) === known;
   }
 
   isRegistryModule(file: string): boolean {
@@ -154,7 +156,7 @@ export class CsrDevResolver {
     const cannotResolve = () => new Error(`[csr-dev] cannot resolve "${specifier}" from ${this.#paths.idOf(importer)}`);
     if (relative) {
       const onDisk =
-        CsrDevPaths.resolveOnDisk(path.resolve(path.dirname(importer), specifier), kind) ??
+        CsrDevPaths.resolveRelative(path.dirname(importer), specifier, kind) ??
         CsrDevResolver.#onDisk(CsrDevPaths.tryResolve(specifier, path.dirname(importer)));
       if (!onDisk) throw cannotResolve();
       return CsrDevPaths.realpath(onDisk);

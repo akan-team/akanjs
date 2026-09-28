@@ -126,10 +126,22 @@ describe("CsrDevPaths.resolveOnDisk", () => {
       "dirmain/index.js",
       "shadow/Foo/index.tsx",
       "shadow/Page.tsx",
+      "sibling/x.ts",
+      "sibling/Page.tsx",
+      "slash/Foo/index.ts",
+      "slash/Foo.ts",
+      "slash/Page.tsx",
+      "req/index.js",
+      "req/main.js",
+      "req/m.js",
+      "modonly/index.js",
+      "modonly/m.js",
     ])
       await Bun.write(at(relative), "export {};\n");
     await Bun.write(at("fields/package.json"), '{ "browser": "b.js", "module": "m.js", "main": "main.js" }');
     await Bun.write(at("dirmain/package.json"), '{ "main": "lib" }');
+    await Bun.write(at("req/package.json"), '{ "module": "m.js", "main": "main.js" }');
+    await Bun.write(at("modonly/package.json"), '{ "module": "m.js" }');
   });
 
   afterAll(async () => {
@@ -146,7 +158,18 @@ describe("CsrDevPaths.resolveOnDisk", () => {
     expect(CsrDevPaths.resolveOnDisk(at("dirmain"))).toBe(at("dirmain/lib/index.js"));
   });
 
-  test("a recorded resolution is overturned only by a file created beside the folder it went into", async () => {
+  test("a require call reads no module field: main when there is one, otherwise the index", () => {
+    expect(CsrDevPaths.resolveOnDisk(at("req"))).toBe(at("req/m.js"));
+    expect(CsrDevPaths.resolveOnDisk(at("req"), "require")).toBe(at("req/main.js"));
+    expect(CsrDevPaths.resolveOnDisk(at("modonly"), "require")).toBe(at("modonly/index.js"));
+  });
+
+  test("a specifier ending in a slash names the folder alone", () => {
+    expect(CsrDevPaths.resolveRelative(at("slash"), "./Foo/")).toBe(at("slash/Foo/index.ts"));
+    expect(CsrDevPaths.resolveRelative(at("slash"), "./Foo")).toBe(at("slash/Foo.ts"));
+  });
+
+  test("a recorded relative resolution stands while the disk resolves it the same way", async () => {
     const paths = new CsrDevPaths(root);
     const resolver = new CsrDevResolver({
       paths,
@@ -157,9 +180,22 @@ describe("CsrDevPaths.resolveOnDisk", () => {
         "pair/entry.ts": { "./x": "pair/x.js" },
       },
     });
-    expect(resolver.resolve(at("pair/entry.ts"), "./x")).toBe(at("pair/x.js"));
+    expect(resolver.resolve(at("pair/entry.ts"), "./x", "require")).toBe(at("pair/x.js"));
+    expect(resolver.resolve(at("pair/entry.ts"), "./x")).toBe(at("pair/x.mjs"));
     expect(resolver.resolve(at("shadow/Page.tsx"), "./Foo")).toBe(at("shadow/Foo/index.tsx"));
     await Bun.write(at("shadow/Foo.tsx"), "export {};\n");
     expect(resolver.resolve(at("shadow/Page.tsx"), "./Foo")).toBe(at("shadow/Foo.tsx"));
+  });
+
+  test("a sibling with a stronger extension takes over a recorded import", async () => {
+    const resolver = new CsrDevResolver({
+      paths: new CsrDevPaths(root),
+      context,
+      entryFiles: [],
+      resolution: { "sibling/Page.tsx": { "./x": "sibling/x.ts" } },
+    });
+    expect(resolver.resolve(at("sibling/Page.tsx"), "./x")).toBe(at("sibling/x.ts"));
+    await Bun.write(at("sibling/x.tsx"), "export {};\n");
+    expect(resolver.resolve(at("sibling/Page.tsx"), "./x")).toBe(at("sibling/x.tsx"));
   });
 });

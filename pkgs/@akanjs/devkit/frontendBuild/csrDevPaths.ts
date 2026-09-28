@@ -71,15 +71,21 @@ export class CsrDevPaths {
     return CsrDevPaths.#asFile(base, kind) ?? CsrDevPaths.#asFolder(base, kind);
   }
 
+  //? A specifier ending in `/` names the folder alone, for Bun too: `./Foo/` never takes a `Foo.tsx` beside it.
+  static resolveRelative(dir: string, specifier: string, kind: "import" | "require" = "import"): string | null {
+    const base = path.resolve(dir, specifier);
+    return /[\\/]$/.test(specifier) ? CsrDevPaths.#asFolder(base, kind) : CsrDevPaths.resolveOnDisk(base, kind);
+  }
+
   static #asFile(base: string, kind: "import" | "require"): string | null {
     const isFile = (candidate: string) => fs.statSync(candidate, { throwIfNoEntry: false })?.isFile() ?? false;
     return [base, ...CsrDevPaths.#extensions[kind].map((extension) => `${base}${extension}`)].find(isFile) ?? null;
   }
 
-  //? A folder's package.json names its entry as a browser build reads it: `browser` (the string form), then `module`,
-  //? then `main`, which may itself name a folder; without one, its `index`.
+  //? A folder's package.json names its entry as a browser build reads it: `browser` (the string form), then `module`
+  //? (an import only), then `main`, which may itself name a folder; without one, its `index`.
   static #asFolder(dir: string, kind: "import" | "require"): string | null {
-    const entry = CsrDevPaths.#packageEntryOf(dir);
+    const entry = CsrDevPaths.#packageEntryOf(dir, kind);
     const named = entry
       ? (CsrDevPaths.#asFile(path.join(dir, entry), kind) ?? CsrDevPaths.#indexOf(path.join(dir, entry), kind))
       : null;
@@ -90,21 +96,16 @@ export class CsrDevPaths {
     return CsrDevPaths.#asFile(path.join(dir, "index"), kind);
   }
 
-  static #packageEntryOf(dir: string): string | null {
+  static #packageEntryOf(dir: string, kind: "import" | "require"): string | null {
     try {
       const pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8")) as Record<string, unknown>;
-      const entry = [pkg.browser, pkg.module, pkg.main].find((field) => typeof field === "string");
+      const fields = kind === "require" ? [pkg.browser, pkg.main] : [pkg.browser, pkg.module, pkg.main];
+      const entry = fields.find((field) => typeof field === "string");
       return typeof entry === "string" ? entry : null;
     } catch {
       // No package.json, or one that names no entry: the folder's index answers.
       return null;
     }
-  }
-
-  /** True when `known`, a file inside the folder `base` names, would lose to a file `base` names directly. */
-  static isShadowed(base: string, known: string): boolean {
-    const dir = CsrDevPaths.realpath(base);
-    return known.startsWith(`${dir}${path.sep}`) && CsrDevPaths.#asFile(base, "import") !== null;
   }
 
   static tryResolve(specifier: string, from: string): string | null {

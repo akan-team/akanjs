@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_AKAN_I18N } from "akanjs/common";
 import { createRequestStore } from "akanjs/fetch";
+import type { RoutesManifest } from "./artifact";
 import {
   createRouteCacheEntry,
   isPublicRouteCacheableRequest,
@@ -64,10 +65,10 @@ interface FakeRscWorker {
   renderCalls: Request[];
   invalidations: Array<string | RouteCacheInvalidation | undefined>;
   ready: Promise<void>;
-  renderWithMeta(req: Request): Promise<RscRenderResult>;
+  renderWithMeta(req: Request, input?: { clientManifest?: Record<string, unknown> }): Promise<RscRenderResult>;
   invalidateRouteResultCache(invalidation?: string | RouteCacheInvalidation): void;
   kill(): void;
-  reload(): Promise<void>;
+  reload(): Promise<unknown>;
   getMetrics(): Record<string, unknown>;
 }
 
@@ -141,6 +142,7 @@ async function withFullSsrCacheHarness<T>(
     htmlCacheMaxBodyBytes?: string;
     appDir?: string;
     web?: { ssr: boolean; csr: boolean };
+    prebuilt?: RoutesManifest;
     onRenderInput?: (input: Parameters<SsrFromRscRenderer["render"]>[0]) => void;
   } = {},
 ): Promise<T> {
@@ -190,6 +192,7 @@ async function withFullSsrCacheHarness<T>(
     rsc: fakeWorker as never,
     seedIndex: { entries: [], globalLayoutFiles: [] },
     upgradeHmrWs: () => false,
+    prebuilt: options.prebuilt,
   });
 
   try {
@@ -1012,6 +1015,40 @@ describe("WebRouter HTML cache streaming", () => {
     await sleep(0);
 
     expect(cancelledReason).toBe(reason);
+  });
+});
+
+describe("WebRouter production boot", () => {
+  test("serves the prebuilt route manifest without waiting on a worker that has not loaded yet", async () => {
+    const worker = createFakeRscWorker();
+    let reloads = 0;
+    worker.reload = () => {
+      reloads += 1;
+      return new Promise(() => {});
+    };
+    const manifests: (Record<string, unknown> | undefined)[] = [];
+    const render = worker.renderWithMeta.bind(worker);
+    worker.renderWithMeta = async (req, input) => {
+      manifests.push(input?.clientManifest);
+      return await render(req);
+    };
+    const entry = { id: "/_akan/client/card.js", chunks: [], name: "Card", async: true };
+    await withFullSsrCacheHarness(
+      async ({ fullSsr }) => {
+        await fullSsr(new Request("https://example.test/docs"));
+        expect(reloads).toBe(0);
+        expect(manifests[0]).toMatchObject({ "apps/a/ui/Card.tsx#Card": entry });
+      },
+      {
+        worker,
+        prebuilt: {
+          routeIds: [],
+          clientManifest: { "apps/a/ui/Card.tsx#Card": entry },
+          ssrManifest: { moduleLoading: null, moduleMap: {} },
+          knownEntries: [],
+        },
+      },
+    );
   });
 });
 

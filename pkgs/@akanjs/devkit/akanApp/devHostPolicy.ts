@@ -7,6 +7,7 @@ import type {
   DevChangePlan,
   DevChangeRole,
 } from "akanjs/server";
+import { DevBuildRecovery } from "akanjs/server/artifact/devBuildRecovery";
 import type { IncrementalBuilderStatus } from "../incrementalBuilder";
 
 const BACKEND_RECOVERY_MAX_ATTEMPTS = 5;
@@ -120,21 +121,11 @@ export const isLegacyBackendFallbackFile = (file: string, workspaceRoot: string)
   );
 };
 
-const recoversOnSameGeneration = (phase: BuildPhase): boolean =>
-  phase === "backend" || phase === "scan" || phase === "route";
-
-//? A newer generation, as the backend and the tabs judge it: an ok of the failure's own generation (a route build's
-//? registry check that had nothing to add) says nothing about the failure. The phases whose retry reports the
-//? failure's generation again (a backend or builder that came back, a route built again) recover on it.
+/** As the backend and the tabs judge it. */
 export const shouldMarkBuildPhaseRecovered = (
   previousByPhase: ReadonlyMap<BuildPhase, DevBuildStatus>,
   status: DevBuildStatus,
-): boolean => {
-  const previous = previousByPhase.get(status.phase);
-  if (!previous || !status.ok || previous.ok) return false;
-  const generation = generationValue(status.generation);
-  return recoversOnSameGeneration(status.phase) ? generation >= previous.generation : generation > previous.generation;
-};
+): boolean => DevBuildRecovery.recovers(previousByPhase.get(status.phase), status);
 
 /** An ok that recovers nothing leaves the failure standing, for hello and for whatever waits on a clean build. */
 export const shouldKeepBuildFailure = (
@@ -205,7 +196,8 @@ export const hasBuildFailureForGeneration = (
 ): boolean => {
   if (typeof generation !== "number") return false;
   for (const status of statusByPhase.values()) {
-    if (!status.ok && status.generation === generation) return true;
+    //? Not a route's: a replacement builder or a restarted dev host boots without building one, so it cannot hit it.
+    if (!status.ok && status.phase !== "route" && status.generation === generation) return true;
   }
   return false;
 };

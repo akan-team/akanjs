@@ -589,6 +589,7 @@ describe("dev resource budgets", () => {
     // A ceiling the replacement is back over within the interval is reported, and still enforced (recycles are
     // throttled), never disabled for the session. Whether it is back over depends on the machine's allocator, so the
     // warning is asserted only when it is; the decision itself is unit-tested (devHostPolicy).
+    const settledFrom = host.markLog();
     for (let i = 1; i <= 3; i++) {
       const { mark } = await harness.editUntilSeen(host, (attempt) =>
         harness.replaceText("ui/ClientMarker.tsx", /marker(-[\w-]+)?/, `marker-settled-${i}-${attempt}`),
@@ -596,8 +597,14 @@ describe("dev resource budgets", () => {
       await host.waitForLogSince(mark, /pages-rebundle ok/, WAIT_MS).catch(() => undefined);
     }
     const settled = await DevStabilityHarness.builderProcess(host.proc.pid);
-    if ((settled?.rssBytes ?? 0) >= 200 * MB)
-      await host.waitForLogSince(start, /ceiling costs about one boot build per interval/, WAIT_MS);
+    const warned = /ceiling costs about one boot build per interval/.test(host.logs.join("").slice(start));
+    //? Past the interval (a slow machine) the next report recycles instead of warning: either answer settles it.
+    if ((settled?.rssBytes ?? 0) >= 200 * MB && !warned)
+      await host.waitForLogSince(
+        settledFrom,
+        /ceiling costs about one boot build per interval|recycling builder pid=\d+/,
+        WAIT_MS,
+      );
     expect(host.logs.join("").slice(start)).not.toMatch(/no longer enforcing it this session/);
   });
 

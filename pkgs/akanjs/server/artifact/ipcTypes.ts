@@ -52,6 +52,8 @@ export interface DevBuildStatus {
   ok: boolean;
   files: string[];
   message?: string;
+  /** The route a route build's status speaks for. */
+  scope?: string;
 }
 
 export type BuilderReq = {

@@ -439,6 +439,28 @@ describe("HMR_CLIENT_SCRIPT", () => {
     expect(refreshes).toEqual([{ buildId: 2 }]);
   });
 
+  test("an RSC refresh overtaken while it waits for the registry leaves the refresh to the newer one", async () => {
+    let settle = (): void => undefined;
+    const settled = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    const refreshes: unknown[] = [];
+    const harness = createHmrHarness({
+      selfOverrides: {
+        __akan: { generation: 5, whenSettled: () => settled },
+        __AKAN_RSC_REFRESH__: (input: unknown) => {
+          refreshes.push(input);
+          return Promise.resolve();
+        },
+      },
+    });
+    harness.ws?.sendMessage({ type: "rsc-refresh", buildId: 3, generation: 7 });
+    harness.ws?.sendMessage({ type: "rsc-refresh", buildId: 4, generation: 8 });
+    settle();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(refreshes).toEqual([{ buildId: 4 }]);
+  });
+
   test("an RSC refresh still runs when the registry's boot failed, though its updates never replay", async () => {
     const boot = Promise.reject(new Error("app.js failed to load"));
     boot.catch(() => undefined);
