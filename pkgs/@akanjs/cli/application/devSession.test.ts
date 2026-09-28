@@ -368,7 +368,8 @@ describe("DevBootConcurrency", () => {
   });
 
   test("memory bounds it independently of cores", () => {
-    expect(DevBootConcurrency.resolve(8, null, { memoryBytes: 4 * 1024 ** 3, cores: 64 }).concurrency).toBe(2);
+    expect(DevBootConcurrency.resolve(8, null, { memoryBytes: 4 * 1024 ** 3, cores: 64 }).concurrency).toBe(1);
+    expect(DevBootConcurrency.resolve(8, null, { memoryBytes: 8 * 1024 ** 3, cores: 64 }).concurrency).toBe(2);
     expect(DevBootConcurrency.resolve(8, null, { memoryBytes: 256 * 1024 ** 3, cores: 8 }).concurrency).toBe(2);
   });
 

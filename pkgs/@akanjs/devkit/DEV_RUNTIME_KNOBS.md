@@ -101,11 +101,12 @@ sized against idle suspend being on**; setting it to `0` keeps every builder res
 Two things bound the peak rather than the floor:
 
 - **`--concurrency` (default: what the machine allows).** Apps boot in waves, and the next wave starts only
-  once the previous one reports ready. A cold boot build is the builder's peak, so booting `n` apps at once
-  means `n` overlapping peaks — which is what OOM-kills a container that would have been fine with them
-  staggered. Unset, the wave is `min(apps, half the memory budget / 900MB per app, cores / 4)`, never below
-  one, and the session prints which — so a laptop boots its apps together and a 1.2GB container still
-  staggers them. The memory budget is the smaller of the host's RAM and `AKAN_MEMORY_LIMIT` / the cgroup
+  once the previous one reports ready — which an app does once its backend answers and its SSR registry's boot
+  build has settled, since that build's worker is the largest process of a boot. Booting `n` apps at once means
+  `n` overlapping peaks — which is what OOM-kills a container that would have been fine with them staggered.
+  Unset, the wave is `min(apps, half the memory budget / 1.8GB per app, cores / 4)`, never below one, and the
+  session prints which — so a laptop boots its apps together and a 1.2GB container still staggers them. The
+  1.8GB is apps/akan's measured boot peak across all its processes; before the SSR registry it was 900MB. The memory budget is the smaller of the host's RAM and `AKAN_MEMORY_LIMIT` / the cgroup
   limit; `os.freemem()` is not consulted, because it counts free pages rather than reclaimable ones and
   reports ~0.3GB on an idle 48GB laptop.
 - **`AKAN_MEMORY_LIMIT` is per process, not per session.** Each dev host derives its builder and RSC-worker

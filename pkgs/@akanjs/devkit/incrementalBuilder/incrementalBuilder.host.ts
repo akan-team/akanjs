@@ -17,6 +17,7 @@ const builderMsgTypeSet = new Set<BuilderMessage["type"]>([
   "ssr-updated",
   "build-status",
   "builder-metrics",
+  "ssr-armed",
 ]);
 /** Prefer `"pipe"` under a TUI: a Bun child that inherits the terminal restores its spawn-time termios on exit. */
 export type DevStdioMode = "inherit" | "pipe";

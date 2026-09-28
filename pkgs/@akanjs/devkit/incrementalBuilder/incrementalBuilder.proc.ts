@@ -532,6 +532,7 @@ class IncrementalBuilder {
     this.#ssrArming = arming;
     await arming;
     this.#ssrArming = null;
+    BuilderChannel.emit({ type: "ssr-armed" });
   }
 
   //? A save the user broke fails the same way in a worker, so it is reported here and the patcher keeps its state: the

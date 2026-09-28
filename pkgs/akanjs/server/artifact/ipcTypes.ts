@@ -153,7 +153,9 @@ export type BuilderEvent =
   | { type: "csr-updated"; data: CsrUpdatedPayload }
   | { type: "ssr-updated"; data: SsrUpdatedPayload }
   | { type: "build-status"; data: DevBuildStatus }
-  | { type: "builder-metrics"; data: BuilderMetrics };
+  | { type: "builder-metrics"; data: BuilderMetrics }
+  /** The SSR registry's boot build settled (built, already current, or failed): its worker is a boot's largest peak. */
+  | { type: "ssr-armed" };
 
 export type BuilderMessage = BuilderReq | BuilderRes | BuilderCsrReq | BuilderCsrRes | BuilderControl | BuilderEvent;
 

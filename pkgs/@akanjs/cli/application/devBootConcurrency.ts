@@ -14,8 +14,11 @@ export interface DevBootConcurrencyPlan {
 // n apps booting at once are n overlapping builder RSS peaks, which OOM-kills a small container.
 // `os.freemem()` is not consulted: it counts free pages, not reclaimable ones, and would pin every machine to one.
 export class DevBootConcurrency {
-  /** Right after boot, per app: builder ~600MB, dev host ~100MB, RSC worker ~190MB, backend ~35MB. */
-  static readonly perAppBytes = 900 * 1024 * 1024;
+  /**
+   * The peak of one app's boot, all of its processes: apps/akan measured 1.76GB (2026-09-28), most of it the build
+   * worker (the base build, then the SSR registry's) beside the builder, RSC worker, backend and dev host.
+   */
+  static readonly perAppBytes = 1_800 * 1024 * 1024;
   /** The other half is the editor, the browser, and whatever else the session was already running. */
   static readonly memoryShare = 0.5;
   /** A dev host is a builder, an RSC worker and a backend, and the boot build is the CPU-hungry one. */

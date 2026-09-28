@@ -44,6 +44,7 @@ import {
   shouldRestartDevHostByDevPlan,
   shouldWarnBuilderRssCeilingTight,
 } from "./devHostPolicy";
+import { DevReadyGate } from "./devReadyGate";
 
 const backendMsgTypeSet = new Set<BuilderMessage["type"]>(["build-route", "build-csr"]);
 
@@ -88,6 +89,7 @@ export class AkanAppHost {
   readonly env: Record<string, string>;
   readonly #onDevEvent: ((event: DevHostEvent) => void) | null;
   #lastDevState: DevHostState | null = null;
+  readonly #readyGate = new DevReadyGate((state, detail) => this.#forwardDevEvent(state, detail));
   #backend: Bun.Subprocess<"ignore", "inherit" | "pipe", "inherit" | "pipe"> | null = null;
   #builder: IncrementalBuilderHost | null = null;
   #backendReady = false;
@@ -140,6 +142,9 @@ export class AkanAppHost {
     this.#backendGraph = new BackendImportGraph(app, this.logger);
   }
   #emitDevEvent(state: DevHostState, detail?: string) {
+    if (this.#onDevEvent) this.#readyGate.report(state, detail);
+  }
+  #forwardDevEvent(state: DevHostState, detail?: string) {
     if (!this.#onDevEvent || state === this.#lastDevState) return;
     this.#lastDevState = state;
     this.#onDevEvent({ app: this.app.name, state, ...(detail ? { detail } : {}) });
@@ -433,6 +438,10 @@ export class AkanAppHost {
     }
     if (message.type === "builder-metrics") {
       this.#handleBuilderMetrics(message.data);
+      return;
+    }
+    if (message.type === "ssr-armed") {
+      this.#readyGate.armed();
       return;
     }
     if (message.type === "pages-updated" || message.type === "css-updated") {
