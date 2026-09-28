@@ -43,8 +43,7 @@ export class PagesEntrySourceGenerator {
     return `${imports.join("\n")}\nexport const pages = {\n${entries.join("\n")}\n};\n`;
   }
 
-  // Route HMR in the dev registry bundle: `akanWebkit` is the entry's namespace import of `akanjs/webkit`, and the
-  // block stays inert until the frame exports `replacePages`, so a page edit reloads before then.
+  // Route HMR in the dev registry bundle: `akanWebkit` is the entry's namespace import of `akanjs/webkit`.
   async generateHotReplace({
     fromDir,
     ownerId,
@@ -58,16 +57,15 @@ export class PagesEntrySourceGenerator {
       this.#pageEntries.map(async ({ key, moduleAbsPath }) => {
         const specifier = PagesEntrySourceGenerator.#toRelativeSpecifier(fromDir, moduleAbsPath);
         const isAsyncDefault = await this.#isAsyncDefault(moduleAbsPath);
-        return `      ${JSON.stringify(key)}: { loader: async () => require(${JSON.stringify(specifier)}), isAsyncDefault: ${isAsyncDefault} },`;
+        return `    ${JSON.stringify(key)}: { loader: async () => require(${JSON.stringify(specifier)}), isAsyncDefault: ${isAsyncDefault} },`;
       }),
     );
-    return `if (typeof akanWebkit.replacePages === "function")
-  __akan.accept(${JSON.stringify(ownerId)}, ${JSON.stringify(moduleIds)}, async () => {
-    const replaced = await akanWebkit.replacePages({
+    return `__akan.accept(${JSON.stringify(ownerId)}, ${JSON.stringify(moduleIds)}, async () => {
+  const replaced = await akanWebkit.replacePages({
 ${entries.join("\n")}
-    });
-    if (replaced === false) throw new Error("the route table no longer matches the pages it was built from");
   });
+  if (!replaced) throw new Error("the route table no longer matches the pages it was built from");
+});
 `;
   }
 
