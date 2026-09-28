@@ -120,8 +120,6 @@ export class CsrDevPatcher {
       state.code.modules.set(module.id, module.factory);
       if (module.helpers) state.code.helpers.set(module.helpers.hash, module.helpers.definition);
     }
-    await writer.writeModules(compiled);
-    const vendorFile = vendorJoined ? await writer.writeVendor(graph) : state.manifest.vendorFile;
     const changedIds = compiled.filter((module) => !module.vendor).map((module) => module.id);
     const constantId = changedIds.find((id) => id.endsWith(".constant.ts"));
     // A model class swapped under live store state would mix old and new instances; reload instead.
@@ -133,7 +131,7 @@ export class CsrDevPatcher {
           ? `${path.basename(constantId)} changed`
           : undefined;
     const previous = state.manifest;
-    const next: CsrDevManifest = { ...previous, generation, vendorFile, entries: entryIds };
+    const next: CsrDevManifest = { ...previous, generation, entries: entryIds };
     const update = (patchUrl?: string): CsrDevUpdate => ({
       generation,
       reload: !!reason,
@@ -144,8 +142,10 @@ export class CsrDevPatcher {
     });
     // A reload rewrites app.js first: the tabs are about to boot from it.
     if (reason) {
+      await writer.writeModules(compiled);
+      const vendorFile = vendorJoined ? await writer.writeVendor(graph) : previous.vendorFile;
       await writer.writeApp(graph, generation, await this.#code(state));
-      state.manifest = { ...next, appGeneration: generation };
+      state.manifest = { ...next, vendorFile, appGeneration: generation };
       await writer.writeState(graph, state.manifest);
       await writer.prune(vendorFile, generation);
       const reloaded = update();
@@ -159,14 +159,12 @@ export class CsrDevPatcher {
       ),
     );
     const code = await this.#code(state);
-    await writer.commitPatch(
-      graph,
-      { ...next, appGeneration: appGenerationOf(previous) },
-      () => announce?.(patched),
+    await writer.commitPatch(graph, { ...next, appGeneration: appGenerationOf(previous) }, () => announce?.(patched), {
+      modules: compiled,
       code,
-    );
+    });
     state.manifest = { ...next, appGeneration: generation };
-    await writer.prune(vendorFile, generation);
+    await writer.prune(previous.vendorFile, generation);
     return { kind: "update", update: patched };
   }
 

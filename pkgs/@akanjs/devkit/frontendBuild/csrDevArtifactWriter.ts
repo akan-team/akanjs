@@ -120,17 +120,21 @@ export class CsrDevArtifactWriter {
     await this.writeJson(CSR_DEV_MANIFEST_FILE, manifest);
   }
 
-  //? The open tabs need only the patch, so they hear of it before app.js (a full rewrite) catches up; the manifest says
-  //? which generation app.js holds, and the shell holds a tab booting in that gap until it does.
+  //? The open tabs need only the patch file and the manifest naming it, so they hear of a patch before the rest lands:
+  //? the module files and graph.json (read only by the next build), then app.js (a full rewrite). The manifest says
+  //? which generation app.js holds, and the shell holds a tab booting in that gap until it does. A crash in the gap is
+  //? recovered by the next build, which sees the edited files' mtimes differ from graph.json and compiles them again.
   async commitPatch(
     graph: CsrDevGraph,
     manifest: CsrDevManifest,
     announce: () => void,
-    code?: CsrDevCode,
+    { modules, code }: { modules: CsrDevCompiledModule[]; code?: CsrDevCode },
   ): Promise<void> {
-    await this.writeState(graph, manifest);
+    await this.writeJson(CSR_DEV_MANIFEST_FILE, manifest);
     announce();
     await CsrDevArtifactWriter.#appWriteDelay();
+    await this.writeModules(modules);
+    await this.writeJson("graph.json", graph);
     await this.writeApp(graph, manifest.generation, code);
     await this.writeJson(CSR_DEV_MANIFEST_FILE, { ...manifest, appGeneration: manifest.generation });
   }

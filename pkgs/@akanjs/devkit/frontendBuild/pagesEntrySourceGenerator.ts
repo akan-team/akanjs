@@ -2,12 +2,19 @@ import path from "node:path";
 import type { PageEntry } from "../artifact/implicitRootLayout";
 import { AsyncDefaultExportDetector } from "../transforms/asyncDefaultExportDetector";
 
+export interface PagesEntrySourceOptions {
+  /** Detects an async default export; a caller that outlives one generation keeps its own cache across saves. */
+  isAsyncDefault?: (moduleAbsPath: string) => Promise<boolean>;
+}
+
 export class PagesEntrySourceGenerator {
   #pageEntries: PageEntry[];
   readonly #asyncDefaults = new Map<string, Promise<boolean>>();
+  readonly #detect: (moduleAbsPath: string) => Promise<boolean>;
 
-  constructor(pageEntries: PageEntry[]) {
+  constructor(pageEntries: PageEntry[], { isAsyncDefault }: PagesEntrySourceOptions = {}) {
     this.#pageEntries = pageEntries;
+    this.#detect = isAsyncDefault ?? ((moduleAbsPath) => AsyncDefaultExportDetector.detect(moduleAbsPath));
   }
 
   static generate(pageEntries: PageEntry[]): string {
@@ -72,7 +79,7 @@ ${entries.join("\n")}
   #isAsyncDefault(moduleAbsPath: string): Promise<boolean> {
     const known = this.#asyncDefaults.get(moduleAbsPath);
     if (known) return known;
-    const detected = AsyncDefaultExportDetector.detect(moduleAbsPath);
+    const detected = this.#detect(moduleAbsPath);
     this.#asyncDefaults.set(moduleAbsPath, detected);
     return detected;
   }

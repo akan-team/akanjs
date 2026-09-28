@@ -1,13 +1,24 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { CSR_DEV_MANIFEST_FILE, type CsrDevManifest } from "akanjs/server/hmr/csrDevManifest";
+import { CSR_DEV_MANIFEST_FILE, type CsrDevManifest, csrDevModuleFile } from "akanjs/server/hmr/csrDevManifest";
 import { CsrDevArtifactWriter } from "./csrDevArtifactWriter";
-import type { CsrDevGraph } from "./csrDevTypes";
+import type { CsrDevCompiledModule, CsrDevGraph } from "./csrDevTypes";
 
 const dirs: string[] = [];
+const module: CsrDevCompiledModule = {
+  id: "a.ts",
+  file: "/a.ts",
+  vendor: false,
+  factory: "function () {}",
+  helpers: null,
+  deps: [],
+  mtimeMs: 0,
+  hash: "",
+};
+const readModule = (dir: string) => readFileSync(path.join(dir, csrDevModuleFile("a.ts", ".js")), "utf8");
 const makeWriter = async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "akan-csr-dev-writer-"));
   dirs.push(dir);
@@ -22,23 +33,12 @@ const makeWriter = async () => {
     resolution: {},
     pending: [],
   };
-  await writer.writeModules([
-    {
-      id: "a.ts",
-      file: "/a.ts",
-      vendor: false,
-      factory: "function () {}",
-      helpers: null,
-      deps: [],
-      mtimeMs: 0,
-      hash: "",
-    },
-  ]);
+  await writer.writeModules([module]);
   const read = () => ({
     manifest: JSON.parse(readFileSync(path.join(dir, CSR_DEV_MANIFEST_FILE), "utf8")) as CsrDevManifest,
     app: readFileSync(path.join(dir, "app.js"), "utf8"),
   });
-  return { writer, graph, read };
+  return { writer, graph, read, dir };
 };
 
 afterAll(async () => {
@@ -46,22 +46,27 @@ afterAll(async () => {
 });
 
 describe("CsrDevArtifactWriter", () => {
-  test("announces a patch while app.js still holds the previous generation, then brings app.js up to it", async () => {
-    const { writer, graph, read } = await makeWriter();
+  test("announces a patch before the module files, graph.json and app.js catch up", async () => {
+    const { writer, graph, read, dir } = await makeWriter();
     await writer.writeApp(graph, 4);
-    let atAnnounce: ReturnType<typeof read> | null = null;
+    const edited = { ...module, factory: "function () { edited(); }" };
+    let atAnnounce: (ReturnType<typeof read> & { graph: boolean; module: string }) | null = null;
     await writer.commitPatch(
       graph,
       { version: 1, generation: 5, appGeneration: 4, vendorFile: "v.js", entries: {} },
       () => {
-        atAnnounce = read();
+        atAnnounce = { ...read(), graph: existsSync(path.join(dir, "graph.json")), module: readModule(dir) };
       },
+      { modules: [edited] },
     );
-    expect(atAnnounce).toMatchObject({ manifest: { generation: 5, appGeneration: 4 } });
-    expect((atAnnounce as ReturnType<typeof read> | null)?.app).toContain('"generation":4');
+    expect(atAnnounce).toMatchObject({ manifest: { generation: 5, appGeneration: 4 }, graph: false });
+    expect((atAnnounce as { app: string } | null)?.app).toContain('"generation":4');
+    expect((atAnnounce as { module: string } | null)?.module).not.toContain("edited");
     const after = read();
     expect(after.manifest).toMatchObject({ generation: 5, appGeneration: 5 });
     expect(after.app).toContain('"generation":5');
+    expect(after.app).toContain("edited()");
+    expect(existsSync(path.join(dir, "graph.json"))).toBe(true);
   });
 
   test("rewrites an app.js a crash left behind the manifest's generation", async () => {

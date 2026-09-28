@@ -3,6 +3,7 @@ import path from "node:path";
 import { CSR_DEV_DIRNAME } from "akanjs/server/hmr/csrDevManifest";
 import { resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import type { App } from "../commandDecorators";
+import { AsyncDefaultExportDetector } from "../transforms/asyncDefaultExportDetector";
 import { bundleDefine } from "./bundleDefine";
 import { CsrDevArtifactWriter } from "./csrDevArtifactWriter";
 import { CsrDevModuleCompiler } from "./csrDevModuleCompiler";
@@ -33,6 +34,8 @@ export class CsrDevBundler {
   static readonly #formatVersion = 3;
   readonly #app: App;
   readonly #entryDir: string;
+  //? Detecting a page's async default parses it with TypeScript: on apps/akan every page each save cost ~100ms.
+  readonly #asyncDefaults = new Map<string, { mtimeMs: number; detected: Promise<boolean> }>();
   readonly outDir: string;
   readonly paths: CsrDevPaths;
   readonly writer: CsrDevArtifactWriter;
@@ -111,7 +114,9 @@ export class CsrDevBundler {
     for (const basePath of context.htmlBasePaths) {
       const file = path.join(this.#entryDir, CsrEntryFiles.entryFilename(basePath));
       const entryPages = CsrEntryFiles.pageEntriesForBasePath(context.pageEntries, basePath, context.basePaths);
-      const generator = new PagesEntrySourceGenerator(entryPages);
+      const generator = new PagesEntrySourceGenerator(entryPages, {
+        isAsyncDefault: (moduleAbsPath) => this.#isAsyncDefault(moduleAbsPath),
+      });
       const pages = await generator.generateStatic({ fromDir: this.#entryDir });
       const hot = await generator.generateHotReplace({
         fromDir: this.#entryDir,
@@ -147,6 +152,15 @@ export class CsrDevBundler {
 
   entryIds(files: Record<string, string>): Record<string, string> {
     return Object.fromEntries(Object.entries(files).map(([basePath, file]) => [basePath, this.paths.idOf(file)]));
+  }
+
+  #isAsyncDefault(moduleAbsPath: string): Promise<boolean> {
+    const mtimeMs = CsrDevPaths.mtimeOf(moduleAbsPath);
+    const cached = this.#asyncDefaults.get(moduleAbsPath);
+    if (cached?.mtimeMs === mtimeMs) return cached.detected;
+    const detected = AsyncDefaultExportDetector.detect(moduleAbsPath);
+    this.#asyncDefaults.set(moduleAbsPath, { mtimeMs, detected });
+    return detected;
   }
 
   #resolveRefreshRuntime(): string {
