@@ -512,6 +512,35 @@ describe("DevHmrController SSR registry updates", () => {
     });
   });
 
+  test("a green that arrives while a failed route rebuilds runs that rebuild once more", async () => {
+    await withRegistryController(async (emit, _types, _renderState, _reloads, _sent, toHost) => {
+      const routeBuilds = () =>
+        toHost().filter((message) => message.type === "build-route") as { type: string; id?: number }[];
+      const failure = (generation: number) =>
+        emit({
+          type: "build-status",
+          data: {
+            generation,
+            phase: "route",
+            ok: false,
+            files: ["/repo/apps/a/page/a.tsx"],
+            message: "x",
+            scope: "/:lang/a",
+          },
+        });
+      failure(7);
+      emit({ type: "build-status", data: { generation: 8, phase: "pages", ok: true, files: [] } });
+      await settle();
+      expect(routeBuilds()).toHaveLength(1);
+      //? The real fix lands while that rebuild still reads the old source, which then fails at the newer generation.
+      emit({ type: "build-status", data: { generation: 9, phase: "pages", ok: true, files: [] } });
+      failure(9);
+      emit({ type: "build-route-res", id: routeBuilds()[0]?.id, ok: false, error: "x" });
+      await settle();
+      expect(routeBuilds()).toHaveLength(2);
+    });
+  });
+
   test("a builder that came back leaves a config change that failed to apply on the overlay", async () => {
     await withRegistryController(async (emit, types) => {
       emit({ type: "build-status", data: { generation: 4, phase: "scan", ok: false, files: [], message: "x" } });

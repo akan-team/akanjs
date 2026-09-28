@@ -83,6 +83,7 @@ export class DevHmrController {
   readonly #builderRpc: BuilderRpc;
   readonly routeCache: RouteClientCache;
   #recheckingRoute = false;
+  #recheckAgain: DevBuildStatus | null = null;
   readonly #recentClientEntries = new Set<string>();
   /** File to the newest save that invalidated its routes already: that save's pages build must not drop them again. */
   readonly #earlyInvalidated = new Map<string, number>();
@@ -384,16 +385,25 @@ export class DevHmrController {
   //? A route builds only when requested, and a module another route shares is the usual cause of its failure: once
   //? that module is fixed, no tab may ask for the failed route again, and only its own ok clears it. A newer green
   //? build of the app rebuilds it once, which clears it or records the failure anew at the newer generation.
-  #recheckFailedRoute(status: DevBuildStatus): void {
-    if (!status.ok || (status.phase !== "pages" && status.phase !== "ssr") || this.#recheckingRoute) return;
+  //? A green that arrives while it runs may carry the fix the rebuild read too early, and the rebuild's failure is
+  //? stamped with the builder's generation at its end, so that green passes once more without the generation check.
+  #recheckFailedRoute(status: DevBuildStatus, { again = false }: { again?: boolean } = {}): void {
+    if (!status.ok || (status.phase !== "pages" && status.phase !== "ssr")) return;
+    if (this.#recheckingRoute) {
+      this.#recheckAgain = status;
+      return;
+    }
     const failed = this.#buildStatusByPhase.get("route");
-    if (!failed || failed.ok || !failed.scope || failed.generation >= status.generation) return;
+    if (!failed || failed.ok || !failed.scope || (!again && failed.generation >= status.generation)) return;
     this.#recheckingRoute = true;
     void this.routeCache
       .ensure(failed.scope, failed.files)
       .catch(() => undefined)
       .finally(() => {
         this.#recheckingRoute = false;
+        const next = this.#recheckAgain;
+        this.#recheckAgain = null;
+        if (next) this.#recheckFailedRoute(next, { again: true });
       });
   }
 
