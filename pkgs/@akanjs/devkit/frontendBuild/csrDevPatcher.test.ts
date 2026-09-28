@@ -13,6 +13,15 @@ import type { CsrDevContext, CsrDevGraph } from "./csrDevTypes";
 import { DevRegistryBundler } from "./devRegistryBundler";
 
 const dirs: string[] = [];
+//? A rename that changes only the case is one only where the disk folds case (APFS, NTFS); ext4 keeps both names.
+const foldsCase = (() => {
+  const probe = fs.mkdtempSync(path.join(os.tmpdir(), "akan-case-"));
+  try {
+    return fs.existsSync(path.join(path.dirname(probe), path.basename(probe).toUpperCase()));
+  } finally {
+    fs.rmSync(probe, { recursive: true, force: true });
+  }
+})();
 const context: CsrDevContext = {
   pageEntries: [],
   basePaths: [],
@@ -189,23 +198,26 @@ describe("CsrDevPatcher", () => {
     expect(app).not.toContain('__akan.define("apps/demo/ui/util.ts"');
   });
 
-  test("a rename that changes only the case moves the module to its new id, and later saves leave it alone", async () => {
-    const { patcher, file, app, changedIds } = await movedRegistry({
-      "ui/card.tsx": 'export const card = () => "v1";\n',
-      "ui/Page.tsx": 'import { card } from "./Card";\nexport const page = () => card();\n',
-      "entry.ts": 'import { page } from "./ui/Page";\nexport const run = page;\n',
-    });
-    fs.renameSync(file("ui/card.tsx"), file("ui/Card.tsx"));
-    await Bun.write(file("ui/Page.tsx"), 'import { card } from "./Card";\nexport const page = () => card() + "!";\n');
-    const renamed = await patcher.update([file("ui/card.tsx"), file("ui/Card.tsx"), file("ui/Page.tsx")]);
-    expect(changedIds(renamed)).toEqual(["apps/demo/ui/Card.tsx", "apps/demo/ui/Page.tsx"]);
-    expect(await app()).toContain('__akan.define("apps/demo/ui/Card.tsx"');
-    expect(await app()).not.toContain('__akan.define("apps/demo/ui/card.tsx"');
-    expect(await patcher.update([])).toEqual({ kind: "unchanged" });
-    await Bun.write(file("ui/Card.tsx"), 'export const card = () => "v2";\n');
-    expect(changedIds(await patcher.update([file("ui/Card.tsx")]))).toEqual(["apps/demo/ui/Card.tsx"]);
-    expect(await app()).toContain('"v2"');
-  });
+  test.skipIf(!foldsCase)(
+    "a rename that changes only the case moves the module to its new id, and later saves leave it alone",
+    async () => {
+      const { patcher, file, app, changedIds } = await movedRegistry({
+        "ui/card.tsx": 'export const card = () => "v1";\n',
+        "ui/Page.tsx": 'import { card } from "./Card";\nexport const page = () => card();\n',
+        "entry.ts": 'import { page } from "./ui/Page";\nexport const run = page;\n',
+      });
+      fs.renameSync(file("ui/card.tsx"), file("ui/Card.tsx"));
+      await Bun.write(file("ui/Page.tsx"), 'import { card } from "./Card";\nexport const page = () => card() + "!";\n');
+      const renamed = await patcher.update([file("ui/card.tsx"), file("ui/Card.tsx"), file("ui/Page.tsx")]);
+      expect(changedIds(renamed)).toEqual(["apps/demo/ui/Card.tsx", "apps/demo/ui/Page.tsx"]);
+      expect(await app()).toContain('__akan.define("apps/demo/ui/Card.tsx"');
+      expect(await app()).not.toContain('__akan.define("apps/demo/ui/card.tsx"');
+      expect(await patcher.update([])).toEqual({ kind: "unchanged" });
+      await Bun.write(file("ui/Card.tsx"), 'export const card = () => "v2";\n');
+      expect(changedIds(await patcher.update([file("ui/Card.tsx")]))).toEqual(["apps/demo/ui/Card.tsx"]);
+      expect(await app()).toContain('"v2"');
+    },
+  );
 
   test("a new root that fails to compile holds no later save, and leaves pending once no route reaches it", async () => {
     const { bundler, patcher, file, changedIds } = await movedRegistry({

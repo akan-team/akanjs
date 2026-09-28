@@ -900,9 +900,9 @@ export const pages = {
 
   test("a bundle that throws on import rejects its reload and leaves the worker, and the next reload, on the one it ran", async () => {
     await withBundles(async (rsc, { a, broken }, body) => {
-      await expect(rsc.reload({ clientManifest: {}, buildId: 2, pagesBundlePath: broken })).rejects.toThrow(
-        "broken at import",
-      );
+      //? Caught, not `expect(...).rejects`: on Windows bun:test's matcher waits without reading the worker's ipc channel.
+      const failed = await rsc.reload({ clientManifest: {}, buildId: 2, pagesBundlePath: broken }).catch((e) => e);
+      expect(failed).toMatchObject({ message: "broken at import", adopted: { pagesBundlePath: a, buildId: 1 } });
       expect(await body()).toBe("A");
       expect(await rsc.reload({ clientManifest: {}, buildId: 3 })).toBe(a);
       expect(await body()).toBe("A");

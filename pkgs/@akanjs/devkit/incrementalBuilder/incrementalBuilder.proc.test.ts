@@ -65,6 +65,8 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
       await until(proc, "build-route-res", () => messages.some((message) => message.type === "build-route-res"));
     } finally {
       proc.kill();
+      //? Windows refuses to remove a directory a live process has as its cwd.
+      await proc.exited;
     }
     const log = await new Response(proc.stderr).text();
 
@@ -142,6 +144,7 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
       expect(third - retried).toBeGreaterThanOrEqual(9_500);
     } finally {
       proc.kill();
+      await proc.exited;
     }
   }, 60_000);
 
@@ -199,6 +202,7 @@ else process.send({ type: "build-batch-result", data: { generation, errors: {}, 
       expect(ssrStatuses().length).toBe(before);
     } finally {
       proc.kill();
+      await proc.exited;
     }
   }, 60_000);
 });
