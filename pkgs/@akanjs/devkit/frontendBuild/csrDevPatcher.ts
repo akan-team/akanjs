@@ -49,6 +49,11 @@ export class CsrDevPatcher {
     this.#state = null;
   }
 
+  /** Roots handed to a worker that died before it wrote their failure: the next round hands them over again. */
+  releaseHandedOver(): void {
+    for (const [id, handedOver] of this.#delegated) if (!handedOver.failed) this.#delegated.delete(id);
+  }
+
   async update(
     changedFiles: string[] = [],
     { announce, roots = [], onlyRoots = false, allowWholeAppBuilds = false }: CsrDevPatchOptions = {},

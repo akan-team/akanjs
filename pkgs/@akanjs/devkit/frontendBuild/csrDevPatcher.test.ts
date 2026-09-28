@@ -433,6 +433,24 @@ describe("CsrDevPatcher", () => {
     });
   });
 
+  test("a root handed to a worker that died before writing its failure is handed over again", async () => {
+    const { bundler, patcher, file } = await movedRegistry({
+      "ui/Card.tsx": 'export const card = () => "v1";\n',
+      "entry.ts": 'import { card } from "./ui/Card";\nexport const run = card;\n',
+      "../../node_modules/fake-pkg/package.json": '{"name":"fake-pkg","main":"index.js"}',
+      "../../node_modules/fake-pkg/index.js": "export const gone = 1;\n",
+    });
+    await Bun.write(file("ui/B.tsx"), 'import { gone } from "fake-pkg";\nexport const b = () => gone;\n');
+    bundler.wanted = new Set([file("ui/B.tsx")]);
+    const check = async () => await patcher.update([], { roots: [file("ui/B.tsx")], onlyRoots: true });
+    expect((await check()).kind).toBe("delegate");
+    expect(await check()).toEqual({ kind: "unchanged" });
+    //? What the builder does when that worker is killed (an OOM) before it writes anything.
+    patcher.releaseHandedOver();
+    patcher.forget();
+    expect((await check()).kind).toBe("delegate");
+  });
+
   test("a pending root a worker failed on because of another file is tried again once that file is fixed", async () => {
     const { bundler, patcher, file } = await movedRegistry({
       "ui/Card.tsx": 'export const card = () => "v1";\n',

@@ -783,8 +783,12 @@ class IncrementalBuilder {
     if (result.cssAssets) this.#artifact = { ...this.#artifact, cssAssets: result.cssAssets };
     // A need the worker died before reporting goes red here instead of looking silently successful.
     if (result.crashed) {
+      const crashedNeeds = result.crashedNeeds ?? needs;
+      //? A worker that died wrote no failure for the roots handed to it: they must not wait on one that never comes.
+      if (crashedNeeds.includes("csr")) this.#patcher?.releaseHandedOver();
+      if (crashedNeeds.includes("ssr")) this.#ssrPatcher?.releaseHandedOver();
       // `base` is not a `BuildPhase` and never comes through here: `#buildBootDeps` throws into the degraded boot.
-      for (const need of result.crashedNeeds ?? needs)
+      for (const need of crashedNeeds)
         if (need !== "base")
           this.#sendBuildStatus(need, {
             generation,
