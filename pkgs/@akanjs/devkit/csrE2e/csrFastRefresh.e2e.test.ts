@@ -6,6 +6,7 @@ const TAB_A = "/e2e/stack/tab-a";
 const workspaceRoot = path.resolve(import.meta.dir, "../../../..");
 const probeFile = path.join(workspaceRoot, "apps/minimal/ui/StackProbe.tsx");
 const tabAFile = path.join(workspaceRoot, "apps/minimal/page/(home)/e2e/stack/tab-a.tsx");
+const tabBFile = path.join(workspaceRoot, "apps/minimal/page/(home)/e2e/stack/tab-b.tsx");
 const itemFile = path.join(workspaceRoot, "apps/minimal/page/(home)/e2e/stack/item.tsx");
 const layoutFile = path.join(workspaceRoot, "apps/minimal/page/(home)/e2e/_layout.tsx");
 const storeFile = path.join(workspaceRoot, "apps/minimal/lib/_minimal/minimal.store.ts");
@@ -133,6 +134,25 @@ describe.skipIf(!CsrE2eHarness.enabled)("CSR Fast Refresh (minimal, AKAN_DEV_CSR
     );
     await tabAItemIdIs("");
     expect(await csr.reloaded()).toBe(false);
+  }, 90_000);
+
+  test("an edit to another page leaves the current page's render alone", async () => {
+    await csr.open(TAB_A);
+    const before = (await generation()) ?? 0;
+    const renders = (await csr.probe("tab-a"))?.renders;
+    const edited = await csr.editSource(
+      tabBFile,
+      (source) => source.replace('name="tab-b"', 'name="tab-b" itemId="edited"'),
+      async () => {
+        await generationPasses(before);
+        await Bun.sleep(300);
+        expect((await lastUpdate())?.executed).toEqual(["apps/minimal/page/(home)/e2e/stack/tab-b.tsx"]);
+        expect((await csr.probe("tab-a"))?.renders).toBe(renders);
+        expect(await csr.reloaded()).toBe(false);
+        return (await generation()) ?? 0;
+      },
+    );
+    await generationPasses(edited);
   }, 90_000);
 
   test("a layout edit swaps the layout in place, keeping the page under it", async () => {
