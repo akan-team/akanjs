@@ -66,6 +66,13 @@ describe("page() chain", () => {
     expect(() => layout().search("lang", String)).toThrow('receives "lang" on every route');
   });
 
+  test("keeps its render function across unfoldings until a stage changes, so a module swap re-renders only its own layer", () => {
+    const definition = page().search("id", String);
+    const first = definition.render(({ id }) => `a:${id}`).toRouteModule().default;
+    expect(definition.toRouteModule().default).toBe(first);
+    expect(definition.render(({ id }) => `b:${id}`).toRouteModule().default).not.toBe(first);
+  });
+
   test("answers not-found for a path value the type refuses and drops a bad search value", async () => {
     const mod = page()
       .param("count", Int)

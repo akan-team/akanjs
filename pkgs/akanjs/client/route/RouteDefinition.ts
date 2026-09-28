@@ -47,6 +47,11 @@ export abstract class RouteDefinition<
   #head?: HeadStage<never>;
   #loading?: (args: never) => PromiseOrObject<ReactNode>;
   #render?: (args: never) => PromiseOrObject<ReactNode>;
+  #renderRoute?: {
+    render: (args: never) => PromiseOrObject<ReactNode>;
+    argCount: number;
+    route: (props: RouteRenderProps) => Promise<ReactNode>;
+  };
 
   config(config: PageConfig) {
     this.#config = config;
@@ -124,12 +129,8 @@ export abstract class RouteDefinition<
       throw new Error(`[route-convention] a ${this.kind}() chain ends with .render(), and this one has none`);
     const head = this.#head;
     const loading = this.#loading;
-    const renderRoute = async (props: RouteRenderProps) => await render(this.#argsOf(props) as never);
-    Object.defineProperty(renderRoute, routeArgsMarker, {
-      value: this.args.map(({ kind, name }) => ({ kind, name })),
-    });
     const module: PageModule & LayoutModule = {
-      default: renderRoute as never,
+      default: this.#renderRouteOf(render) as never,
       ...(this.#config ? { pageConfig: this.#config } : {}),
       ...(head === undefined
         ? {}
@@ -148,6 +149,17 @@ export abstract class RouteDefinition<
 
   protected extendModule(module: PageModule & LayoutModule): PageModule & LayoutModule {
     return module;
+  }
+
+  //? Kept while the render stage and the arguments are the same: a dev server swapping route modules unfolds every
+  //? route again, and a new function per call would make each mounted layer render again, not just the edited one.
+  #renderRouteOf(render: (args: never) => PromiseOrObject<ReactNode>) {
+    const kept = this.#renderRoute;
+    if (kept?.render === render && kept.argCount === this.args.length) return kept.route;
+    const route = async (props: RouteRenderProps) => await render(this.#argsOf(props) as never);
+    Object.defineProperty(route, routeArgsMarker, { value: this.args.map(({ kind, name }) => ({ kind, name })) });
+    this.#renderRoute = { render, argCount: this.args.length, route };
+    return route;
   }
 
   /**
