@@ -59,9 +59,10 @@ export class CsrDevResolver {
 
   async prepass(): Promise<void> {
     const result = await Bun.build({
-      entrypoints: [...this.#entryFiles, this.#context.refreshFile],
+      entrypoints: [...this.#entryFiles, ...(this.#context.refreshFile ? [this.#context.refreshFile] : [])],
       target: "browser",
       metafile: true,
+      external: [...(this.#context.externals ?? [])],
       env: "AKAN_PUBLIC_*",
       define: this.#context.define,
       optimizeImports: this.#context.optimizeImports,

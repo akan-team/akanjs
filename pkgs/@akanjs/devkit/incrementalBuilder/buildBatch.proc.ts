@@ -12,6 +12,7 @@ import {
   FontOptimizer,
   PagesBundleBuilder,
   SsrBaseArtifactBuilder,
+  SsrDevBundler,
 } from "@akanjs/devkit/frontendBuild";
 import { Logger } from "akanjs/common";
 import type { BuilderMessage, BuildPhase, HmrTrace } from "akanjs/server";
@@ -33,6 +34,7 @@ class BuildBatch {
   async run(): Promise<BuildBatchResult> {
     if (this.#request.needs.includes("base")) await this.#buildBase();
     if (this.#request.needs.includes("csr")) await this.#buildCsr();
+    if (this.#request.needs.includes("ssr")) await this.#buildSsrRegistry();
     // Css before pages: it scans the sources and reads nothing pages produces, so a class edit need not wait for pages.
     if (this.#request.needs.includes("css")) await this.#buildCss();
     if (this.#request.needs.includes("pages")) await this.#buildPages();
@@ -130,6 +132,37 @@ class BuildBatch {
     this.#logger.verbose(
       `csr-dev generation=${update.generation} ${update.reload ? `reload (${update.reason})` : `patch modules=${update.changedIds.length}`} graph=${update.moduleCount} (${Date.now() - started}ms)`,
     );
+  }
+
+  // Takes every entry the routes reach as a root, so a route build naming any of them finds it in the registry.
+  async #buildSsrRegistry(): Promise<void> {
+    const started = Date.now();
+    try {
+      const bundler = new SsrDevBundler(this.#app);
+      const update = await bundler.update(this.#request.changedFiles, {
+        roots: await bundler.clientEntries(),
+        announce: (announced) =>
+          this.#emit({
+            type: "ssr-updated",
+            data: {
+              generation: announced.generation,
+              reload: announced.reload,
+              reason: announced.reason,
+              patchUrl: announced.patchUrl,
+              changedIds: announced.changedIds,
+              trace: this.#sentTrace(),
+            },
+          }),
+      });
+      this.#emitStatus("ssr");
+      this.#logger.verbose(
+        update
+          ? `ssr-dev generation=${update.generation} ${update.reload ? `reload (${update.reason})` : `patch modules=${update.changedIds.length}`} graph=${update.moduleCount} (${Date.now() - started}ms)`
+          : `ssr-dev unchanged (${Date.now() - started}ms)`,
+      );
+    } catch (err) {
+      this.#fail("ssr", "ssr-dev", err);
+    }
   }
 
   // Rewritten with the bundle: the backend rereads it on `pages-updated` to pick up added, moved or deleted routes.

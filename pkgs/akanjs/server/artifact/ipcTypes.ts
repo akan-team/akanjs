@@ -42,7 +42,7 @@ export interface DevChangePlan {
   reasonByFile: Record<string, string[]>;
 }
 
-export type BuildPhase = "scan" | "barrel" | "csr" | "pages" | "css" | "route" | "backend";
+export type BuildPhase = "scan" | "barrel" | "csr" | "ssr" | "pages" | "css" | "route" | "backend";
 
 export interface DevBuildStatus {
   generation: number;
@@ -118,6 +118,16 @@ export interface CsrUpdatedPayload {
   trace?: HmrTrace;
 }
 
+/** A new generation of the SSR dev registry (`AKAN_DEV_SSR_CLIENT=registry`): a patch, or a reload. */
+export interface SsrUpdatedPayload {
+  generation: number;
+  reload: boolean;
+  reason?: string;
+  patchUrl?: string;
+  changedIds?: string[];
+  trace?: HmrTrace;
+}
+
 export type BuilderEvent =
   // No builder sends `buildId`: readiness is the whole signal, and the build id travels with `pages-updated`.
   | { type: "builder-ready"; buildId?: string }
@@ -132,6 +142,7 @@ export type BuilderEvent =
   | { type: "css-updated"; data: CssPayload }
   | { type: "pages-updated"; data: PagesBundlePayload }
   | { type: "csr-updated"; data: CsrUpdatedPayload }
+  | { type: "ssr-updated"; data: SsrUpdatedPayload }
   | { type: "build-status"; data: DevBuildStatus }
   | { type: "builder-metrics"; data: BuilderMetrics };
 

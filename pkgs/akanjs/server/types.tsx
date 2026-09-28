@@ -142,4 +142,6 @@ export interface RenderState {
   cssBytesByUrl: Record<string, Uint8Array>;
   /** The newest CSR dev bundle generation; a CSR tab whose own generation differs has missed an update. */
   csrGeneration?: number;
+  /** The newest SSR dev registry generation sent to the tabs; a tab whose registry differs has missed an update. */
+  ssrGeneration?: number;
 }

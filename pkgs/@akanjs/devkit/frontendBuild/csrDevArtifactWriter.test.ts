@@ -3,8 +3,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { CSR_DEV_MANIFEST_FILE, type CsrDevManifest, csrDevModuleFile } from "akanjs/server/hmr/csrDevManifest";
-import { CsrDevArtifactWriter } from "./csrDevArtifactWriter";
+import {
+  CSR_DEV_MANIFEST_FILE,
+  CSR_DEV_ROUTE_PREFIX,
+  type CsrDevManifest,
+  csrDevModuleFile,
+} from "akanjs/server/hmr/csrDevManifest";
+import { CsrDevArtifactWriter, type CsrDevArtifactWriterOptions } from "./csrDevArtifactWriter";
 import type { CsrDevCompiledModule, CsrDevGraph } from "./csrDevTypes";
 
 const dirs: string[] = [];
@@ -19,16 +24,19 @@ const module: CsrDevCompiledModule = {
   hash: "",
 };
 const readModule = (dir: string) => readFileSync(path.join(dir, csrDevModuleFile("a.ts", ".js")), "utf8");
-const makeWriter = async () => {
+const makeWriter = async (
+  options: CsrDevArtifactWriterOptions = { routePrefix: CSR_DEV_ROUTE_PREFIX },
+  entries: Record<string, string> = {},
+) => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "akan-csr-dev-writer-"));
   dirs.push(dir);
-  const writer = new CsrDevArtifactWriter(dir);
+  const writer = new CsrDevArtifactWriter(dir, options);
   await writer.reset();
   const graph: CsrDevGraph = {
     version: 1,
     configKey: "key",
     refresh: "refresh.js",
-    entries: {},
+    entries,
     modules: { "a.ts": { vendor: false, mtimeMs: 0, hash: "", deps: [] } },
     resolution: {},
     pending: [],
@@ -84,5 +92,17 @@ describe("CsrDevArtifactWriter", () => {
     const { writer, graph } = await makeWriter();
     const current: CsrDevManifest = { version: 1, generation: 3, vendorFile: "v.js", entries: {} };
     expect(await writer.healApp(graph, current)).toBe(current);
+  });
+
+  test("a library app.js starts its bootstrap module, and a patch is announced under the writer's route", async () => {
+    const { writer, graph, dir } = await makeWriter(
+      { routePrefix: "/_akan/ssr-dev/", library: true },
+      { "": "boot.ts" },
+    );
+    await writer.writeApp(graph, 2);
+    expect(readFileSync(path.join(dir, "app.js"), "utf8")).toContain(
+      '__akan.startLibrary({"generation":2,"refresh":"refresh.js","bootstrap":"boot.ts"});',
+    );
+    expect(await writer.writePatch(3, [module])).toBe("/_akan/ssr-dev/patch-3.js");
   });
 });

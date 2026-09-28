@@ -2,11 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { appGenerationOf, CSR_DEV_MANIFEST_FILE, type CsrDevManifest } from "akanjs/server/hmr/csrDevManifest";
 import { isAkanRuntimeMetadataFile } from "akanjs/server/hmr/runtimeMetadataFile";
-import type { CsrDevBundler, CsrDevUpdate, CsrDevUpdateOptions } from "./csrDevBundler";
 import type { CsrDevCompileResult } from "./csrDevModuleCompiler";
 import { CsrDevPaths } from "./csrDevPaths";
 import { CsrDevResolver } from "./csrDevResolver";
 import type { CsrDevCode, CsrDevContext, CsrDevGraph } from "./csrDevTypes";
+import type { CsrDevUpdate, CsrDevUpdateOptions, DevRegistryBundler } from "./devRegistryBundler";
 
 interface CsrDevPatcherState {
   graph: CsrDevGraph;
@@ -28,15 +28,16 @@ export interface CsrDevPatchOptions extends CsrDevUpdateOptions {
   allowWholeAppBuilds?: boolean;
 }
 
-//* The incremental path of the dev CSR registry. The resident builder keeps one, so the graph, the manifest and every
-//* module's factory stay in memory between saves; a build worker makes a throwaway one that starts from the disk.
-//* A save it hands back leaves the graph on disk as it was, so a worker still sees those files as changed.
+//* The incremental path of a dev module registry (CSR, or the client code of SSR pages). The resident builder keeps
+//* one, so the graph, the manifest and every module's factory stay in memory between saves; a build worker makes a
+//* throwaway one that starts from the disk. A save it hands back leaves the graph on disk as it was, so a worker still
+//* sees those files as changed.
 export class CsrDevPatcher {
-  readonly #bundler: CsrDevBundler;
+  readonly #bundler: DevRegistryBundler;
   readonly #resident: boolean;
   #state: CsrDevPatcherState | null = null;
 
-  constructor(bundler: CsrDevBundler, { resident = false }: { resident?: boolean } = {}) {
+  constructor(bundler: DevRegistryBundler, { resident = false }: { resident?: boolean } = {}) {
     this.#bundler = bundler;
     this.#resident = resident;
   }
@@ -48,10 +49,10 @@ export class CsrDevPatcher {
 
   async update(
     changedFiles: string[] = [],
-    { announce, allowWholeAppBuilds = false }: CsrDevPatchOptions = {},
+    { announce, roots = [], allowWholeAppBuilds = false }: CsrDevPatchOptions = {},
   ): Promise<CsrDevPatchResult> {
     const context = await this.#bundler.context();
-    if (context.pageEntries.length === 0) return { kind: "unchanged" };
+    if (!context) return { kind: "unchanged" };
     const state = this.#state ?? (await this.#load());
     if (!state) {
       const manifest = await this.#bundler.writer.readJson<CsrDevManifest>(CSR_DEV_MANIFEST_FILE);
@@ -67,7 +68,7 @@ export class CsrDevPatcher {
     this.#state = this.#resident ? state : null;
     if (appGenerationOf(state.manifest) < state.manifest.generation)
       state.manifest = await this.#bundler.writer.healApp(state.graph, state.manifest, await this.#code(state));
-    return await this.#patch(context, state, changedFiles, generation, { announce, allowWholeAppBuilds });
+    return await this.#patch(context, state, changedFiles, generation, { announce, roots, allowWholeAppBuilds });
   }
 
   async #patch(
@@ -75,7 +76,7 @@ export class CsrDevPatcher {
     state: CsrDevPatcherState,
     changedFiles: string[],
     generation: number,
-    { announce, allowWholeAppBuilds }: CsrDevPatchOptions,
+    { announce, roots = [], allowWholeAppBuilds }: CsrDevPatchOptions,
   ): Promise<CsrDevPatchResult> {
     const { paths, writer } = this.#bundler;
     const { graph } = state;
@@ -84,7 +85,11 @@ export class CsrDevPatcher {
     await this.#forgetDeletedModules(state);
     const changed = await this.#changedModules(graph, changedFiles);
     for (const file of entries.changed) changed.add(paths.idOf(file));
-    const routesMoved = entries.changed.length > 0 || JSON.stringify(entryIds) !== JSON.stringify(graph.entries);
+    const rootFiles = [...Object.values(entries.files), ...roots.filter((file) => fs.existsSync(file))];
+    for (const file of rootFiles) if (!graph.modules[paths.idOf(file)]) changed.add(paths.idOf(file));
+    const routesMoved =
+      this.#bundler.reloadsOnEntryChange &&
+      (entries.changed.length > 0 || JSON.stringify(entryIds) !== JSON.stringify(graph.entries));
     if (changed.size === 0) return { kind: "unchanged" };
 
     // A fresh resolver per save: one kept across saves would stay past its prepass, and resolve the next new bare
@@ -92,7 +97,7 @@ export class CsrDevPatcher {
     const resolver = new CsrDevResolver({
       paths,
       context,
-      entryFiles: Object.values(entries.files),
+      entryFiles: rootFiles.map((file) => CsrDevPaths.realpath(file)),
       resolution: graph.resolution,
     });
     const known = new Set(Object.keys(graph.modules).map((id) => paths.fileOf(id)));

@@ -12,7 +12,13 @@ import {
 } from "../artifact";
 import type { RscWorker } from "../rscWorkerHost";
 import type { RenderState } from "../types";
-import { CSR_DEV_DIRNAME, CSR_DEV_MANIFEST_FILE, type CsrDevManifest } from "./csrDevManifest";
+import {
+  CSR_DEV_DIRNAME,
+  CSR_DEV_MANIFEST_FILE,
+  type CsrDevManifest,
+  resolveDevSsrClientMode,
+  SSR_DEV_DIRNAME,
+} from "./csrDevManifest";
 import { isAkanRuntimeMetadataFile } from "./runtimeMetadataFile";
 import { type ChangeKind, type HmrMessage, type HmrWsData, HmrWsHub } from "./wsHub";
 
@@ -78,6 +84,8 @@ export class DevHmrController {
   readonly #seedIndex: RouteSeedIndex;
   readonly #upgradeHmrWs: (req: Request, data: HmrWsData) => boolean;
   readonly #fastRefreshEnabled = process.env.AKAN_REACT_FAST_REFRESH !== "0";
+  /** SSR pages take their client code from the dev module registry, which patches it itself (`ssr-update`). */
+  readonly #ssrRegistry = resolveDevSsrClientMode() === "registry";
   readonly #hub = new HmrWsHub();
   readonly #builderRpc: BuilderRpc;
   readonly routeCache: RouteClientCache;
@@ -99,16 +107,18 @@ export class DevHmrController {
     this.#seedIndex = seedIndex;
     this.#graphSeeds = DevHmrController.#graphSeedsOf(seedIndex);
     this.#upgradeHmrWs = upgradeHmrWs;
-    this.#renderState.csrGeneration ??= DevHmrController.#readCsrGeneration(artifactDir);
+    this.#renderState.csrGeneration ??= DevHmrController.#readGeneration(artifactDir, CSR_DEV_DIRNAME);
+    if (this.#ssrRegistry)
+      this.#renderState.ssrGeneration ??= DevHmrController.#readGeneration(artifactDir, SSR_DEV_DIRNAME);
     this.#builderRpc = this.#createBuilderRpc();
     this.routeCache = this.#createRouteCache();
   }
 
-  // A restarted backend must still tell an open CSR tab which generation is current, before any new build lands.
-  static #readCsrGeneration(artifactDir: string): number | undefined {
+  // A restarted backend must still tell an open tab which registry generation is current, before any new build lands.
+  static #readGeneration(artifactDir: string, dirName: string): number | undefined {
     try {
       const manifest = JSON.parse(
-        fs.readFileSync(path.join(artifactDir, CSR_DEV_DIRNAME, CSR_DEV_MANIFEST_FILE), "utf8"),
+        fs.readFileSync(path.join(artifactDir, dirName, CSR_DEV_MANIFEST_FILE), "utf8"),
       ) as Partial<CsrDevManifest>;
       return typeof manifest.generation === "number" ? manifest.generation : undefined;
     } catch {
@@ -221,6 +231,21 @@ export class DevHmrController {
           `[csr] ${update.mode} generation=${update.generation} ${update.reload ? `reload (${update.reason ?? "no reason"})` : `patch modules=${update.changedIds?.length ?? 0}`}`,
         );
       },
+      onSsrUpdated: (update) => {
+        this.#renderState.ssrGeneration = update.generation;
+        this.#hub.broadcast({
+          type: "ssr-update",
+          generation: update.generation,
+          url: update.patchUrl,
+          changedIds: update.changedIds,
+          reload: update.reload,
+          reason: update.reason,
+          trace: DevHmrController.#broadcastTrace(update.trace),
+        });
+        this.#logger.verbose(
+          `[ssr] registry generation=${update.generation} ${update.reload ? `reload (${update.reason ?? "no reason"})` : `patch modules=${update.changedIds?.length ?? 0}`}`,
+        );
+      },
       onCssUpdated: (css) => {
         const started = Date.now();
         const cssBytesByUrl = Object.fromEntries(
@@ -246,6 +271,7 @@ export class DevHmrController {
         const staleClientEntries = clearAll ? new Set<string>() : this.#staleClientEntriesForFiles(files);
         const routeIds = clearAll ? undefined : this.#routeIdsForFiles(files, staleClientEntries);
         const fastRefreshCandidate = !clearAll && this.#isFastRefreshCandidate(files);
+        const clientEntriesOnly = fastRefreshCandidate && this.#touchesClientEntriesOnly(files);
         this.#logger.verbose(
           `[SSR] pages-updated bundlePath=${bundlePath} buildId=${buildId} generation=${generation ?? "(unknown)"} files=${files.length} routes=${routeIds?.length ?? 0} fastRefresh=${fastRefreshCandidate} staleEntries=${staleClientEntries.size} runtimeMetadata=${runtimeMetadataChanged} routeTree=${routeTreeChanged}`,
         );
@@ -263,7 +289,12 @@ export class DevHmrController {
         const shouldReload = clearAll || this.#shouldFullReloadForFiles(files, routeIds);
         const broadcastTrace = DevHmrController.#broadcastTrace(trace);
         if (shouldReload) this.#hub.broadcast({ type: "reload", buildId });
-        else if (fastRefreshCandidate)
+        // The registry already patched the tabs; a client entry's module is only a reference on the server side.
+        else if (this.#ssrRegistry && clientEntriesOnly)
+          this.#logger.verbose(
+            `[hmr] generation=${generation} touched client entries only; the SSR registry patched them`,
+          );
+        else if (fastRefreshCandidate && !this.#ssrRegistry)
           this.#hub.broadcast({
             type: "client-refresh",
             buildId,
@@ -421,6 +452,14 @@ export class DevHmrController {
     return files.some((file) => {
       const resolved = path.resolve(file);
       return this.#recentClientEntries.has(resolved) || this.#recentClientFiles.has(resolved);
+    });
+  }
+
+  #touchesClientEntriesOnly(files: string[]): boolean {
+    const manifestEntries = manifestClientEntriesForFiles(files, this.routeCache.merged.clientManifest);
+    return files.every((file) => {
+      const resolved = path.resolve(file);
+      return manifestEntries.has(resolved) || this.#recentClientEntries.has(resolved);
     });
   }
 

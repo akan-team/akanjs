@@ -12,6 +12,7 @@ import type {
   CssPayload,
   DevBuildStatus,
   PagesBundlePayload,
+  SsrUpdatedPayload,
 } from "./ipcTypes";
 
 export interface BuilderRpcEventHandlers {
@@ -21,6 +22,7 @@ export interface BuilderRpcEventHandlers {
   /** A fresh `pages-*.js` bundle: re-import it in the running worker (`RscWorker.reload`) rather than respawning. */
   onPagesUpdated?: (bundle: PagesBundlePayload) => void;
   onCsrUpdated?: (update: CsrUpdatedPayload) => void;
+  onSsrUpdated?: (update: SsrUpdatedPayload) => void;
   onBuildStatus?: (status: DevBuildStatus) => void;
 }
 
@@ -63,6 +65,9 @@ export class BuilderRpc {
           return;
         case "csr-updated":
           handlers.onCsrUpdated?.(ev.data);
+          return;
+        case "ssr-updated":
+          handlers.onSsrUpdated?.(ev.data);
           return;
         case "build-status":
           handlers.onBuildStatus?.(ev.data);

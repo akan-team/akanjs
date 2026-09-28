@@ -5,7 +5,15 @@ export const CSR_DEV_MANIFEST_FILE = "manifest.json";
 /** Present only while the resident builder patches: a builder that dies holding it takes the patcher off. */
 export const CSR_DEV_PATCHING_MARKER = ".patching";
 
+export const SSR_DEV_DIRNAME = "ssr-dev";
+export const SSR_DEV_ROUTE_PREFIX = "/_akan/ssr-dev/";
+/** The one chunk every SSR registry row names: loading it boots the registry in the tab. */
+export const SSR_DEV_CHUNK = "ssr-dev";
+/** Marks a row id as a registry module, so the dev shim tells it from the runtime rows that stay chunk URLs. */
+export const SSR_DEV_ID_PREFIX = "ssr-dev:";
+
 export type DevCsrMode = "registry" | "artifact";
+export type DevSsrClientMode = "registry" | "chunks";
 
 export interface CsrDevManifest {
   version: 1;
@@ -29,3 +37,6 @@ export const csrDevModuleFile = (id: string, extension: ".js" | ".js.map") =>
 
 export const resolveDevCsrMode = (env: Record<string, string | undefined> = process.env): DevCsrMode =>
   env.AKAN_DEV_CSR === "artifact" ? "artifact" : "registry";
+
+export const resolveDevSsrClientMode = (env: Record<string, string | undefined> = process.env): DevSsrClientMode =>
+  env.AKAN_DEV_SSR_CLIENT === "registry" ? "registry" : "chunks";

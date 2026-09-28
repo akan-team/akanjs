@@ -21,8 +21,12 @@ export interface CsrDevShellRenderOptions {
 }
 
 export interface CsrDevShellOptions {
+  /** The registry this serves: the CSR one by default, `ssr-dev` for the client code of SSR pages. */
+  dirName?: string;
+  routePrefix?: string;
   appWaitMs?: number;
   appPollMs?: number;
+  bootWaitMs?: number;
 }
 
 export class CsrDevShell {
@@ -30,13 +34,26 @@ export class CsrDevShell {
   static readonly #servedFile = /^(app\.js|vendor-[\w-]+\.js|patch-\d+\.js|assets\/[\w.-]+)$/;
   static readonly #sourceMapFile = /^(app\.js|patch-\d+\.js)\.map$/;
   readonly #dir: string;
+  readonly #routePrefix: string;
   readonly #appWaitMs: number;
   readonly #appPollMs: number;
+  readonly #bootWaitMs: number;
 
-  constructor(artifactDir: string, { appWaitMs = 2_000, appPollMs = 20 }: CsrDevShellOptions = {}) {
-    this.#dir = path.join(artifactDir, CSR_DEV_DIRNAME);
+  constructor(
+    artifactDir: string,
+    {
+      dirName = CSR_DEV_DIRNAME,
+      routePrefix = CSR_DEV_ROUTE_PREFIX,
+      appWaitMs = 2_000,
+      appPollMs = 20,
+      bootWaitMs = 60_000,
+    }: CsrDevShellOptions = {},
+  ) {
+    this.#dir = path.join(artifactDir, dirName);
+    this.#routePrefix = routePrefix;
     this.#appWaitMs = appWaitMs;
     this.#appPollMs = appPollMs;
+    this.#bootWaitMs = bootWaitMs;
   }
 
   async readManifest(): Promise<CsrDevManifest | null> {
@@ -62,9 +79,9 @@ export class CsrDevShell {
 ${stylesheet}  </head>
   <body>
     <div id="root"></div>
-    <script src="${CSR_DEV_ROUTE_PREFIX}runtime.js?v=${CsrDevShell.#runtimeHash}"></script>
-    <script src="${CSR_DEV_ROUTE_PREFIX}${CsrDevShell.#attr(manifest.vendorFile)}"></script>
-    <script src="${CSR_DEV_ROUTE_PREFIX}${CSR_DEV_APP_FILE}?g=${manifest.generation}" data-akan-csr-entry="${CsrDevShell.#attr(entry)}"></script>
+    <script src="${this.#routePrefix}runtime.js?v=${CsrDevShell.#runtimeHash}"></script>
+    <script src="${this.#routePrefix}${CsrDevShell.#attr(manifest.vendorFile)}"></script>
+    <script src="${this.#routePrefix}${CSR_DEV_APP_FILE}?g=${manifest.generation}" data-akan-csr-entry="${CsrDevShell.#attr(entry)}"></script>
   </body>
 </html>
 `;
@@ -73,8 +90,9 @@ ${stylesheet}  </head>
   // Only the vendor file is content-hashed; generations restart at 1 when `.akan` is wiped, so a cached patch could lie.
   async serve(req: Request): Promise<Response> {
     const url = new URL(req.url);
-    const name = url.pathname.slice(CSR_DEV_ROUTE_PREFIX.length);
+    const name = url.pathname.slice(this.#routePrefix.length);
     if (name === "runtime.js") return CsrDevShell.#js(CSR_DEV_RUNTIME_SCRIPT, "public, max-age=31536000, immutable");
+    if (name === "boot.json") return await this.#serveBoot();
     if (CsrDevShell.#sourceMapFile.test(name)) return await this.#serveSourceMap(name);
     if (!CsrDevShell.#servedFile.test(name)) return new Response("Not Found", { status: 404 });
     if (name === CSR_DEV_APP_FILE) await this.#waitForApp(Number(url.searchParams.get("g")));
@@ -96,6 +114,20 @@ ${stylesheet}  </head>
       const manifest = await this.readManifest();
       if (!manifest || appGenerationOf(manifest) >= generation || Date.now() >= deadline) return;
       await Bun.sleep(this.#appPollMs);
+    }
+  }
+
+  //? An SSR page rendered before the boot build of its registry finished asks here what to load; held until it exists.
+  async #serveBoot(): Promise<Response> {
+    const deadline = Date.now() + this.#bootWaitMs;
+    for (;;) {
+      const manifest = await this.readManifest();
+      if (manifest) {
+        const body = JSON.stringify({ generation: manifest.generation, vendorFile: manifest.vendorFile });
+        return new Response(body, { headers: CsrDevShell.#headers("application/json", "no-store") });
+      }
+      if (Date.now() >= deadline) return new Response("Service Unavailable", { status: 503 });
+      await Bun.sleep(this.#appPollMs * 5);
     }
   }
 

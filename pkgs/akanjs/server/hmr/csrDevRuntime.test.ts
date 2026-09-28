@@ -388,6 +388,61 @@ describe("installCsrDevRuntime", () => {
     expect(harness.warnings.at(-1)).toContain("the route table changed");
   });
 
+  describe("library mode (an SSR page)", () => {
+    const REFRESH_VENDOR = "vendor:react-refresh/runtime";
+
+    test("startLibrary runs the bootstrap with the provided refresh runtime and injects nothing", () => {
+      const order: string[] = [];
+      const harness = createHarness({
+        "app/boot.ts": () => {
+          order.push("boot");
+        },
+        "app/Counter.tsx": component("Counter"),
+      });
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" });
+      expect(order).toEqual(["boot"]);
+      expect(harness.refresh.calls.inject).toBe(0);
+      expect(harness.api.generation).toBe(2);
+      expect(Object.keys(harness.api.require("app/Counter.tsx") as object)).toEqual(["Counter"]);
+    });
+
+    test("a provided namespace reads as a compiled ESM module", () => {
+      const harness = createHarness({});
+      const useState = () => undefined;
+      const namespace = { default: { useState }, useState };
+      harness.api.provide("vendor:react", namespace);
+      const view = harness.api.require("vendor:react") as Record<string, unknown>;
+      expect(view.__esModule).toBe(true);
+      expect(view.default).toBe(namespace.default);
+      expect(view.useState).toBe(useState);
+      expect(harness.api.toESM(view, 1)).toBe(view);
+    });
+
+    test("whenDefined settles once a patch defines the module", async () => {
+      const harness = createHarness({ "app/boot.ts": () => undefined });
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" });
+      const defined = harness.api.whenDefined("app/New.tsx");
+      expect(harness.api.has("app/New.tsx")).toBe(false);
+      harness.api.update(3, { "app/New.tsx": component("New") });
+      await defined;
+      expect(Object.keys(harness.api.require("app/New.tsx") as object)).toEqual(["New"]);
+    });
+
+    test("an update that arrives before the start waits for it, and one the app already holds is dropped", async () => {
+      const harness = createHarness({ "app/boot.ts": () => undefined });
+      harness.api.hot({ generation: 2, url: "/_akan/ssr-dev/patch-2.js" });
+      harness.api.hot({ generation: 3, url: "/_akan/ssr-dev/patch-3.js" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(harness.scripts).toEqual([]);
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(harness.scripts.map((script) => script.src)).toEqual(["/_akan/ssr-dev/patch-3.js"]);
+    });
+  });
+
   test("the serialized script installs the runtime with nothing from this module in scope", () => {
     const host = { document: {}, location: {}, console: {} } as unknown as CsrDevRuntimeHost;
     new Function("self", CSR_DEV_RUNTIME_SCRIPT)(host);

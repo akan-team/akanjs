@@ -73,6 +73,10 @@ export const HMR_CLIENT_SCRIPT = `(function(){
           location.reload();
           return;
         }
+        if (ssrRegistryBehind(msg.ssrGeneration)) {
+          reloadForCsr("missed an SSR registry update while disconnected");
+          return;
+        }
         lastBuildId = msg.buildId;
         return;
       }
@@ -92,6 +96,10 @@ export const HMR_CLIENT_SCRIPT = `(function(){
       }
       if (msg.type === "csr-update") {
         applyCsrUpdate(msg);
+        return;
+      }
+      if (msg.type === "ssr-update") {
+        applySsrUpdate(msg);
         return;
       }
       if (msg.type === "css-update") {
@@ -155,6 +163,24 @@ export const HMR_CLIENT_SCRIPT = `(function(){
       return;
     }
     self.__akan.hot(msg);
+  }
+
+  // Behind only: a tab that booted from an app.js newer than the last update sent is ahead, not stale.
+  function ssrRegistryBehind(generation){
+    if (typeof generation !== "number" || !self.__akan || !self.__akan.generation) return false;
+    return self.__akan.generation < generation;
+  }
+
+  // An SSR page in registry mode. One that has not loaded its registry yet keeps the update for the registry's start.
+  function applySsrUpdate(msg){
+    recordTrace("ssr", msg, Date.now(), null);
+    if (self.__akan && typeof self.__akan.hot === "function") {
+      self.__akan.hot(msg);
+      return;
+    }
+    var early = self.__AKAN_SSR_EARLY_UPDATES__ = self.__AKAN_SSR_EARLY_UPDATES__ || [];
+    early.push(msg);
+    if (early.length > 64) early.shift();
   }
 
   function schedule(){

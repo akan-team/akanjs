@@ -45,6 +45,14 @@ export interface CsrDevRuntimeApi {
   defineHelpers(hash: string, factory: () => Record<string, unknown>): void;
   helpers(hash: string): Record<string, unknown>;
   start(options: { generation: number; refresh: string }): void;
+  /** No entry to run: an SSR page requires the modules its RSC payload names, after the bootstrap has run. */
+  startLibrary(options: { generation: number; refresh: string; bootstrap: string }): void;
+  /** Registers a module the page already loaded outside the registry (an import map vendor). */
+  provide(id: string, namespace: unknown): void;
+  require(id: string): unknown;
+  has(id: string): boolean;
+  /** Settles once a patch defines `id`: the RSC payload can name a module whose patch is still on its way. */
+  whenDefined(id: string): Promise<void>;
   update(generation: number, factories: Record<string, CsrModuleFactory>): void;
   accept(ownerId: string, deps: string[], callback: CsrAcceptCallback): void;
   hot(message: CsrUpdateMessage): void;
@@ -118,6 +126,9 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
 
   class CsrDevRegistry implements CsrDevRuntimeApi {
     #factories = new Map<string, CsrModuleFactory>();
+    #waiters = new Map<string, (() => void)[]>();
+    #started = false;
+    #early: CsrUpdateMessage[] = [];
     #helperFactories = new Map<string, () => Record<string, unknown>>();
     #helperValues = new Map<string, Record<string, unknown>>();
     #cache = new Map<string, ModuleRecord>();
@@ -136,6 +147,7 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
 
     define(id: string, factory: CsrModuleFactory) {
       this.#factories.set(id, factory);
+      this.#settleWaiters([id]);
     }
 
     //? Bun repeats its interop helpers in every module; the bundle defines each distinct set once and modules share it.
@@ -162,6 +174,55 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       // Before the entry runs: react-dom looks for the DevTools hook once, when it is first evaluated.
       this.#refresh.injectIntoGlobalHook(host);
       this.#load(entry);
+      this.#begin();
+    }
+
+    //? The page's own HMR script already put this refresh runtime into React's hook; a second inject would wrap it.
+    startLibrary({ generation, refresh, bootstrap }: { generation: number; refresh: string; bootstrap: string }) {
+      this.#generation = generation;
+      this.#refresh = this.#load(refresh).exports as RefreshRuntime;
+      this.#load(bootstrap);
+      this.#begin();
+    }
+
+    //? Seen as a compiled ESM module: named exports read through, and `default` stays the package's own default.
+    provide(id: string, namespace: unknown) {
+      if (this.#cache.has(id)) return;
+      const view: Record<string, unknown> = {};
+      Object.defineProperty(view, "__esModule", { value: true });
+      if (namespace != null && (typeof namespace === "object" || typeof namespace === "function"))
+        for (const key of Object.keys(namespace))
+          Object.defineProperty(view, key, {
+            get: () => (namespace as Record<string, unknown>)[key],
+            enumerable: true,
+          });
+      const record = new ModuleRecord(id, undefined);
+      record.exports = view;
+      this.#cache.set(id, record);
+    }
+
+    require(id: string) {
+      return this.#load(id).exports;
+    }
+
+    has(id: string) {
+      return this.#cache.has(id) || this.#factories.has(id);
+    }
+
+    whenDefined(id: string) {
+      if (this.has(id)) return Promise.resolve();
+      return new Promise<void>((resolve, reject) => {
+        const timer = host.setTimeout(
+          () => reject(new Error(`[akan-csr] no module registered as ${id}, and no update brought one`)),
+          10_000,
+        );
+        const waiters = this.#waiters.get(id) ?? [];
+        waiters.push(() => {
+          host.clearTimeout(timer);
+          resolve();
+        });
+        this.#waiters.set(id, waiters);
+      });
     }
 
     update(generation: number, factories: Record<string, CsrModuleFactory>) {
@@ -172,6 +233,7 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       }
       const ids = Object.keys(factories);
       for (const id of ids) this.#factories.set(id, factories[id] as CsrModuleFactory);
+      this.#settleWaiters(ids);
       this.#generation = generation;
       this.#executed = [];
       const threw = (error: unknown) =>
@@ -196,6 +258,11 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
     }
 
     hot(message: CsrUpdateMessage) {
+      //? An SSR page loads the registry after its WebSocket may already carry updates; they wait for the start.
+      if (!this.#started) {
+        this.#early.push(message);
+        return;
+      }
       if (message.reload) {
         this.#reload(message.reason ?? "the dev server asked for a reload");
         return;
@@ -212,6 +279,22 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
 
     inspect() {
       return { generation: this.#generation, executed: this.#executed.slice(), modules: this.#cache.size };
+    }
+
+    #begin() {
+      this.#started = true;
+      const early = this.#early;
+      this.#early = [];
+      for (const message of early) this.hot(message);
+    }
+
+    #settleWaiters(ids: string[]) {
+      for (const id of ids) {
+        const waiters = this.#waiters.get(id);
+        if (!waiters) continue;
+        this.#waiters.delete(id);
+        for (const settle of waiters) settle();
+      }
     }
 
     readonly toESM = (mod: unknown, _isNodeMode?: number): unknown => {

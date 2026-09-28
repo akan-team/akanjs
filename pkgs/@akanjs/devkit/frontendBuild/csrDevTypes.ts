@@ -25,7 +25,10 @@ export interface CsrDevContext {
   define: Record<string, string>;
   optimizeImports: string[];
   configKey: string;
-  refreshFile: string;
+  /** Null when the page already loads the React Refresh runtime (an SSR page's import map). */
+  refreshFile: string | null;
+  /** Bare specifiers the page already loads (an SSR page's import map): required as `vendor:<specifier>`, not compiled. */
+  externals?: readonly string[];
 }
 
 export interface CsrDevSharedHelpers {

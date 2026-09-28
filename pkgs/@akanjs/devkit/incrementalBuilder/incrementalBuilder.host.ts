@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Logger } from "akanjs/common";
 import type { BuilderMessage } from "akanjs/server";
-import { CSR_DEV_DIRNAME, CSR_DEV_PATCHING_MARKER } from "akanjs/server/hmr/csrDevManifest";
+import { CSR_DEV_DIRNAME, CSR_DEV_PATCHING_MARKER, SSR_DEV_DIRNAME } from "akanjs/server/hmr/csrDevManifest";
 import { MemoryLimit } from "akanjs/server/memoryLimit";
 import type { App } from "../commandDecorators";
 
@@ -14,6 +14,7 @@ const builderMsgTypeSet = new Set<BuilderMessage["type"]>([
   "css-updated",
   "pages-updated",
   "csr-updated",
+  "ssr-updated",
   "build-status",
   "builder-metrics",
 ]);
@@ -165,15 +166,17 @@ export class IncrementalBuilderHost {
   //? with it. A builder that died holding the marker hands every later CSR save to build workers for this session;
   //? a marker any other exit left behind (Ctrl-C mid-patch) is cleared so it cannot turn the patcher off next session.
   #checkPatchingMarker(afterCrash: boolean): void {
-    const marker = path.join(this.app.cwdPath, ".akan/artifact", CSR_DEV_DIRNAME, CSR_DEV_PATCHING_MARKER);
-    if (!fs.existsSync(marker)) return;
+    const markers = [CSR_DEV_DIRNAME, SSR_DEV_DIRNAME]
+      .map((dirName) => path.join(this.app.cwdPath, ".akan/artifact", dirName, CSR_DEV_PATCHING_MARKER))
+      .filter((marker) => fs.existsSync(marker));
+    if (markers.length === 0) return;
     if (afterCrash && !this.#patcherOff) {
       this.#patcherOff = true;
       this.logger.warn(
-        "the builder died while patching the dev CSR bundle; CSR saves go to a build worker for the rest of this session (AKAN_DEV_CSR_PATCHER=off)",
+        "the builder died while patching a dev module registry; registry saves go to a build worker for the rest of this session (AKAN_DEV_CSR_PATCHER=off)",
       );
     }
-    fs.rmSync(marker, { force: true });
+    for (const marker of markers) fs.rmSync(marker, { force: true });
   }
 
   async #drain(stream: ReadableStream<Uint8Array> | undefined | null, kind: "stdout" | "stderr") {

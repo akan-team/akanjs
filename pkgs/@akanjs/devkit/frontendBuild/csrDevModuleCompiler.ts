@@ -1,5 +1,4 @@
 import path from "node:path";
-import { CSR_DEV_ROUTE_PREFIX } from "akanjs/server/hmr/csrDevManifest";
 import type { BunPlugin } from "bun";
 import type { App } from "../commandDecorators";
 import { CsrDevPaths } from "./csrDevPaths";
@@ -23,6 +22,8 @@ export interface CsrDevModuleCompilerOptions {
   resolver: CsrDevResolver;
   context: CsrDevContext;
   outDir: string;
+  /** Where the dev server serves `outDir`: an imported asset's URL starts with it. */
+  routePrefix: string;
 }
 
 export interface CsrDevCompileOptions {
@@ -53,13 +54,15 @@ export class CsrDevModuleCompiler {
   readonly #resolver: CsrDevResolver;
   readonly #context: CsrDevContext;
   readonly #outDir: string;
+  readonly #routePrefix: string;
 
-  constructor({ app, paths, resolver, context, outDir }: CsrDevModuleCompilerOptions) {
+  constructor({ app, paths, resolver, context, outDir, routePrefix }: CsrDevModuleCompilerOptions) {
     this.#app = app;
     this.#paths = paths;
     this.#resolver = resolver;
     this.#context = context;
     this.#outDir = outDir;
+    this.#routePrefix = routePrefix;
   }
 
   async compile(
@@ -134,7 +137,7 @@ export class CsrDevModuleCompiler {
       reactFastRefresh: !vendor,
       sourcemap: vendor ? "none" : "external",
       naming: { entry: "[dir]/[name].[ext]", asset: "assets/[name]-[hash].[ext]" },
-      publicPath: CSR_DEV_ROUTE_PREFIX,
+      publicPath: this.#routePrefix,
       metafile: true,
       env: "AKAN_PUBLIC_*",
       define: this.#context.define,
@@ -194,6 +197,8 @@ export class CsrDevModuleCompiler {
           });
         build.onResolve({ filter: /.*/ }, (args) => {
           if (args.kind === "entry-point-build" || !args.importer) return undefined;
+          if (this.#context.externals?.includes(args.path))
+            return { path: `${CsrDevPaths.vendorPrefix}${args.path}`, external: true };
           const importer = CsrDevPaths.realpath(args.importer);
           const target = this.#resolver.resolve(importer, args.path);
           if (target === CsrDevResolver.inline) return undefined;

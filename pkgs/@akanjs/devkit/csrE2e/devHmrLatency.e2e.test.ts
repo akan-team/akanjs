@@ -125,6 +125,7 @@ describe.skipIf(!enabled)("dev HMR latency (minimal)", () => {
       loadavg: { before: loadBefore, after: os.loadavg() },
       debounceMs: process.env.AKAN_DEV_WATCH_DEBOUNCE_MS ?? "default",
       csrPatcher: process.env.AKAN_DEV_CSR_PATCHER ?? "on",
+      ssrClient: process.env.AKAN_DEV_SSR_CLIENT ?? "chunks",
       backend: process.env.AKAN_CSR_E2E_BACKEND ?? (process.platform === "darwin" ? "webkit" : "chrome"),
       runs,
       ...report,
@@ -217,7 +218,7 @@ describe.skipIf(!enabled)("dev HMR latency (minimal)", () => {
   //? Component edits never return to a version the page already loaded: a client-refresh re-imports content-hashed
   //? chunk URLs, and a URL the browser imported before resolves to the module it already ran, so an undo is a no-op.
   test("SSR tab: component and page edits", async () => {
-    const ssrKinds = ["client-refresh", "rsc-refresh"];
+    const ssrKinds = ["client-refresh", "rsc-refresh", "ssr"];
     await harness().open("/e2e/stack/tab-a", { csr: false });
     await Bun.sleep(1_000);
     const component: Sample[] = [];

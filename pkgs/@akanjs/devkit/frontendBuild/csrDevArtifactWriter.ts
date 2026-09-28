@@ -4,7 +4,6 @@ import {
   appGenerationOf,
   CSR_DEV_APP_FILE,
   CSR_DEV_MANIFEST_FILE,
-  CSR_DEV_ROUTE_PREFIX,
   type CsrDevLayout,
   type CsrDevManifest,
   csrDevModuleFile,
@@ -12,13 +11,24 @@ import {
 import { CsrDevPaths } from "./csrDevPaths";
 import type { CsrDevCode, CsrDevCompiledModule, CsrDevGraph } from "./csrDevTypes";
 
+export interface CsrDevArtifactWriterOptions {
+  /** Where the dev server serves `outDir`; a patch is announced by its URL. */
+  routePrefix: string;
+  /** `app.js` starts no entry: an SSR page requires the modules its RSC payload names, one at a time. */
+  library?: boolean;
+}
+
 export class CsrDevArtifactWriter {
   static readonly #keptPatches = 40;
   static readonly #keptVendors = 3;
   readonly #outDir: string;
+  readonly #routePrefix: string;
+  readonly #library: boolean;
 
-  constructor(outDir: string) {
+  constructor(outDir: string, { routePrefix, library = false }: CsrDevArtifactWriterOptions) {
     this.#outDir = outDir;
+    this.#routePrefix = routePrefix;
+    this.#library = library;
   }
 
   async reset(): Promise<void> {
@@ -93,7 +103,9 @@ export class CsrDevArtifactWriter {
       .sort();
     const lines = await this.#defineLines(ids, code);
     const blocks = ids.map((id, index) => [id, lines[index] ?? ""] as [string, string]);
-    const start = `__akan.start(${JSON.stringify({ generation, refresh: graph.refresh })});\n`;
+    const start = this.#library
+      ? `__akan.startLibrary(${JSON.stringify({ generation, refresh: graph.refresh, bootstrap: graph.entries[""] })});\n`
+      : `__akan.start(${JSON.stringify({ generation, refresh: graph.refresh })});\n`;
     await this.#writeWithSourceMap(CSR_DEV_APP_FILE, await this.#helperDefinitions(graph, ids, code), blocks, start);
   }
 
@@ -111,7 +123,7 @@ export class CsrDevArtifactWriter {
     );
     const header = `${[...helpers.values()].map((shared) => shared.definition).join("")}__akan.update(${generation}, {\n`;
     await this.#writeWithSourceMap(patchFile, header, blocks, "});\n");
-    return `${CSR_DEV_ROUTE_PREFIX}${patchFile}`;
+    return `${this.#routePrefix}${patchFile}`;
   }
 
   // The manifest goes last: the server renders shells from it, so it must never name a file not yet written.

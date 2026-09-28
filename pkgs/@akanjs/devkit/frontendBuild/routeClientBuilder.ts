@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import type { BaseBuildArtifact, ClientManifest, SsrManifest } from "akanjs/server";
+import type { BaseBuildArtifact, ClientManifest, ClientManifestEntry, SsrManifest } from "akanjs/server";
+import { SSR_DEV_CHUNK, SSR_DEV_ID_PREFIX } from "akanjs/server/hmr/csrDevManifest";
 import type { App } from "../commandDecorators";
 import { createBarrelImportsPlugin } from "../transforms/barrelImportsPlugin";
 import { loaderFor } from "../transforms/moduleSyntax";
@@ -8,6 +9,7 @@ import { scanUseClientExports, toClientReferencePath } from "../transforms/rscUs
 import type { ClientBundleTarget, ClientEntryDiscovery } from "./clientBuildTypes";
 import { ClientEntriesBundler } from "./clientEntriesBundler";
 import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
+import { CsrDevPaths } from "./csrDevPaths";
 import { VENDOR_SPECIFIERS } from "./vendorSpecifiers";
 
 const SSR_CLIENT_ALIAS_EXTERNALS = [
@@ -31,6 +33,8 @@ export interface BuildRouteClientOptions {
   discovery?: ClientEntryDiscovery;
   /** Pre-resolved client entries: skips discovery and bundles exactly this list. */
   entries?: string[];
+  /** `registry` (dev, `AKAN_DEV_SSR_CLIENT=registry`): the browser loads each entry from the SSR dev registry. */
+  browser?: "chunks" | "registry";
 }
 
 export interface BuildRouteClientResult {
@@ -40,6 +44,8 @@ export interface BuildRouteClientResult {
   discoveredEntries?: string[];
   clientDeps: string[];
   clientDepsByEntry?: Record<string, string[]>;
+  /** Registry mode: the entries the manifest rows name, which the SSR dev registry must hold before they are served. */
+  registryEntries?: string[];
 }
 
 interface BootstrapEntries {
@@ -55,6 +61,7 @@ export class RouteClientBuilder {
   #command: "build" | "start";
   #discovery?: ClientEntryDiscovery;
   #entries?: string[];
+  #browser: "chunks" | "registry";
 
   constructor(options: BuildRouteClientOptions) {
     this.#app = options.app;
@@ -64,6 +71,7 @@ export class RouteClientBuilder {
     this.#command = options.command ?? "start";
     this.#discovery = options.discovery;
     this.#entries = options.entries;
+    this.#browser = options.browser ?? "chunks";
   }
 
   async build(): Promise<BuildRouteClientResult> {
@@ -74,8 +82,11 @@ export class RouteClientBuilder {
       : discovered.filter((e) => !this.#knownEntries.has(e));
 
     const bootstrapEntries = await this.#createBootstrapEntries(entries);
-    const browserBundle = await this.#buildBrowserBundle(bootstrapEntries);
+    //? Registry mode builds no browser bundle: the SSR bundle has the same entries, exports and imports to read.
+    const registry = this.#browser === "registry" ? new CsrDevPaths(this.#app.workspace.workspaceRoot) : null;
+    const browserBundle = registry ? null : await this.#buildBrowserBundle(bootstrapEntries);
     const ssrBundle = await this.#buildSsrBundle(bootstrapEntries);
+    const referenceBundle = browserBundle ?? ssrBundle;
 
     const acceptedEntries = new Set(entries);
     const routeEntries = new Set(discovered);
@@ -83,15 +94,18 @@ export class RouteClientBuilder {
     const ssrModuleMap: SsrManifest["moduleMap"] = {};
     const clientDeps = new Set<string>();
     const clientDepsByEntry: Record<string, string[]> = {};
-    for (const [key, row] of Object.entries(browserBundle.manifest)) {
+    for (const [key, bundleRow] of Object.entries(referenceBundle.manifest)) {
       const manifestEntry = RouteClientBuilder.resolveOriginalManifestEntry(
         key,
         bootstrapEntries.originalByBuildEntry,
-        browserBundle.clientReferenceIdByAbsPath,
+        referenceBundle.clientReferenceIdByAbsPath,
         this.#app.workspace.workspaceRoot,
       );
       if (!manifestEntry) continue;
       if (!acceptedEntries.has(manifestEntry.originalEntry)) continue;
+      const row = registry
+        ? RouteClientBuilder.#registryRow(registry, manifestEntry.originalEntry, bundleRow)
+        : bundleRow;
       manifestDelta[manifestEntry.key] = row;
 
       const ssrOutput = ssrBundle.entryOutputAbsByAbsPath.get(manifestEntry.buildEntry);
@@ -105,7 +119,7 @@ export class RouteClientBuilder {
       const originalEntry = path.resolve(bootstrapEntries.originalByBuildEntry.get(buildEntry) ?? buildEntry);
       if (!acceptedEntries.has(originalEntry)) continue;
       const deps = new Set<string>([originalEntry]);
-      for (const dep of browserBundle.entryDepsByAbsPath.get(buildEntry) ?? []) deps.add(path.resolve(dep));
+      for (const dep of referenceBundle.entryDepsByAbsPath.get(buildEntry) ?? []) deps.add(path.resolve(dep));
       const sortedDeps = [...deps].sort();
       clientDepsByEntry[originalEntry] = sortedDeps;
       if (routeEntries.has(originalEntry)) for (const dep of sortedDeps) clientDeps.add(dep);
@@ -118,6 +132,16 @@ export class RouteClientBuilder {
       discoveredEntries: discovered,
       clientDeps: [...clientDeps].sort(),
       clientDepsByEntry,
+      ...(registry ? { registryEntries: [...acceptedEntries].sort() } : {}),
+    };
+  }
+
+  static #registryRow(paths: CsrDevPaths, entry: string, row: ClientManifestEntry): ClientManifestEntry {
+    return {
+      id: `${SSR_DEV_ID_PREFIX}${paths.idOf(entry)}`,
+      chunks: [SSR_DEV_CHUNK, SSR_DEV_CHUNK],
+      name: row.name,
+      async: true,
     };
   }
 

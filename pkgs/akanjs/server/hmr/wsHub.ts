@@ -24,10 +24,20 @@ export type HmrMessage =
       buildId: number;
       cssAssets?: Record<string, { cssUrl: string; cssRelPath: string }>;
       csrGeneration?: number;
+      ssrGeneration?: number;
     }
   | { type: "reload"; buildId: number }
   | {
       type: "csr-update";
+      generation: number;
+      url?: string;
+      changedIds?: string[];
+      reload?: boolean;
+      reason?: string;
+      trace?: HmrTrace;
+    }
+  | {
+      type: "ssr-update";
       generation: number;
       url?: string;
       changedIds?: string[];
@@ -98,6 +108,7 @@ export class HmrWsHub {
   static #audienceOf(msg: HmrMessage): HmrClientKind | "all" {
     if (msg.type === "csr-update") return "csr";
     if (msg.type === "reload" || msg.type === "rsc-refresh" || msg.type === "client-refresh") return "ssr";
+    if (msg.type === "ssr-update") return "ssr";
     return "all";
   }
 
