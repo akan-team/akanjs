@@ -36,13 +36,7 @@ import {
 } from "./cachePolicy";
 import { encodedFileResponse } from "./contentEncoding";
 import { HMR_CLIENT_SCRIPT } from "./hmr/clientScript";
-import {
-  CSR_DEV_ROUTE_PREFIX,
-  resolveDevCsrMode,
-  resolveDevSsrClientMode,
-  SSR_DEV_DIRNAME,
-  SSR_DEV_ROUTE_PREFIX,
-} from "./hmr/csrDevManifest";
+import { CSR_DEV_ROUTE_PREFIX, resolveDevCsrMode, SSR_DEV_DIRNAME, SSR_DEV_ROUTE_PREFIX } from "./hmr/csrDevManifest";
 import { CsrDevShell } from "./hmr/csrDevShell";
 import { DevHmrController } from "./hmr/devHmrController";
 import { SsrDevShim } from "./hmr/ssrDevShim";
@@ -282,7 +276,7 @@ export class WebRouter {
   #routeCache: RouteClientCache;
   #devHmr: DevHmrController | null = null;
   #csrDevShell: CsrDevShell | null = null;
-  /** Set under `AKAN_DEV_SSR_CLIENT=registry`: SSR pages then load their client code from the dev module registry. */
+  /** Dev only: SSR pages load their client code from the dev module registry it serves. */
   #ssrDevShell: CsrDevShell | null = null;
   #csrArmed = false;
   #csrOnDemandBuild: Promise<unknown> | null = null;
@@ -350,11 +344,10 @@ export class WebRouter {
       this.#routeCache = this.#devHmr.routeCache;
       this.#hub = this.#devHmr.hub;
       if (resolveDevCsrMode() === "registry") this.#csrDevShell = new CsrDevShell(this.#artifactDir);
-      if (resolveDevSsrClientMode() === "registry")
-        this.#ssrDevShell = new CsrDevShell(this.#artifactDir, {
-          dirName: SSR_DEV_DIRNAME,
-          routePrefix: SSR_DEV_ROUTE_PREFIX,
-        });
+      this.#ssrDevShell = new CsrDevShell(this.#artifactDir, {
+        dirName: SSR_DEV_DIRNAME,
+        routePrefix: SSR_DEV_ROUTE_PREFIX,
+      });
     }
   }
 
@@ -478,8 +471,6 @@ export class WebRouter {
         ? {
             "/_akan/hmr": (req: Request) =>
               this.#devHmr?.handleWs(req) ?? new Response("HMR unavailable", { status: 404 }),
-            "/_akan/hmr/client-refresh": (req: Request) =>
-              this.#devHmr?.handleClientRefresh(req) ?? new Response("HMR unavailable", { status: 404 }),
           }
         : {}),
       "/__rsc": async (req) => {

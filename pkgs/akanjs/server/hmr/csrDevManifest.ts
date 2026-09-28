@@ -13,7 +13,6 @@ export const SSR_DEV_CHUNK = "ssr-dev";
 export const SSR_DEV_ID_PREFIX = "ssr-dev:";
 
 export type DevCsrMode = "registry" | "artifact";
-export type DevSsrClientMode = "registry" | "chunks";
 
 export interface CsrDevManifest {
   version: 1;
@@ -22,6 +21,8 @@ export interface CsrDevManifest {
   appGeneration?: number;
   vendorFile: string;
   entries: Record<string, string>;
+  /** When the registry was last built whole: a tab from an earlier registry must reload, whatever its generation. */
+  epoch?: number;
 }
 
 export const appGenerationOf = (manifest: CsrDevManifest): number => manifest.appGeneration ?? manifest.generation;
@@ -37,6 +38,3 @@ export const csrDevModuleFile = (id: string, extension: ".js" | ".js.map") =>
 
 export const resolveDevCsrMode = (env: Record<string, string | undefined> = process.env): DevCsrMode =>
   env.AKAN_DEV_CSR === "artifact" ? "artifact" : "registry";
-
-export const resolveDevSsrClientMode = (env: Record<string, string | undefined> = process.env): DevSsrClientMode =>
-  env.AKAN_DEV_SSR_CLIENT === "registry" ? "registry" : "chunks";

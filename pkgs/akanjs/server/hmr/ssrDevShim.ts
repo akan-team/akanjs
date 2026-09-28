@@ -36,6 +36,7 @@ export class SsrDevShim {
         self.__AKAN_SSR_EARLY_UPDATES__ = null;
         for (var i = 0; i < early.length; i++) self.__akan.hot(early[i]);
       }).then(state).then(function (built) {
+        self.__AKAN_SSR_EPOCH__ = built.epoch;
         return Promise.all([
           Promise.all(c.vendors.map(function (specifier) {
             return import(specifier).then(function (ns) { self.__akan.provide("vendor:" + specifier, ns); });
@@ -65,6 +66,7 @@ export class SsrDevShim {
       runtime: SsrDevShim.runtimeUrl,
       generation: manifest?.generation ?? 0,
       vendorFile: manifest?.vendorFile ?? null,
+      epoch: manifest?.epoch ?? null,
       vendors,
     };
     return `(function (c) {\n  ${SsrDevShim.#body}\n})(${JSON.stringify(config)});`;

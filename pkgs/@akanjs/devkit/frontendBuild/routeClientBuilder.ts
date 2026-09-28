@@ -33,7 +33,7 @@ export interface BuildRouteClientOptions {
   discovery?: ClientEntryDiscovery;
   /** Pre-resolved client entries: skips discovery and bundles exactly this list. */
   entries?: string[];
-  /** `registry` (dev, `AKAN_DEV_SSR_CLIENT=registry`): the browser loads each entry from the SSR dev registry. */
+  /** `registry` (the dev builder): the browser loads each entry from the SSR dev registry, so only `client-ssr` builds. */
   browser?: "chunks" | "registry";
 }
 

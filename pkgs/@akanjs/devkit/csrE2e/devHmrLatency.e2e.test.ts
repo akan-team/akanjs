@@ -125,7 +125,6 @@ describe.skipIf(!enabled)("dev HMR latency (minimal)", () => {
       loadavg: { before: loadBefore, after: os.loadavg() },
       debounceMs: process.env.AKAN_DEV_WATCH_DEBOUNCE_MS ?? "default",
       csrPatcher: process.env.AKAN_DEV_CSR_PATCHER ?? "on",
-      ssrClient: process.env.AKAN_DEV_SSR_CLIENT ?? "chunks",
       backend: process.env.AKAN_CSR_E2E_BACKEND ?? (process.platform === "darwin" ? "webkit" : "chrome"),
       runs,
       ...report,
@@ -215,10 +214,10 @@ describe.skipIf(!enabled)("dev HMR latency (minimal)", () => {
   });
 
   //? SSR first: the first CSR page arms per-save CSR builds, which would then run ahead of pages in every batch.
-  //? Component edits never return to a version the page already loaded: a client-refresh re-imports content-hashed
-  //? chunk URLs, and a URL the browser imported before resolves to the module it already ran, so an undo is a no-op.
+  //? Component edits each start from the pristine source and are not undone between samples; the undo to it is timed
+  //? once, after them.
   test("SSR tab: component and page edits", async () => {
-    const ssrKinds = ["client-refresh", "rsc-refresh", "ssr"];
+    const ssrKinds = ["rsc-refresh", "ssr"];
     await harness().open("/e2e/stack/tab-a", { csr: false });
     await Bun.sleep(1_000);
     const component: Sample[] = [];

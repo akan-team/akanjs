@@ -123,7 +123,11 @@ ${stylesheet}  </head>
     for (;;) {
       const manifest = await this.readManifest();
       if (manifest) {
-        const body = JSON.stringify({ generation: manifest.generation, vendorFile: manifest.vendorFile });
+        const body = JSON.stringify({
+          generation: manifest.generation,
+          vendorFile: manifest.vendorFile,
+          epoch: manifest.epoch ?? null,
+        });
         return new Response(body, { headers: CsrDevShell.#headers("application/json", "no-store") });
       }
       if (Date.now() >= deadline) return new Response("Service Unavailable", { status: 503 });

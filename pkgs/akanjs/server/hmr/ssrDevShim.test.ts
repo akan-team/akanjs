@@ -63,7 +63,7 @@ const createPage = () => {
   return { self, scripts, baseLoads, baseRequire, install, load, settle };
 };
 
-const manifest = { version: 1 as const, generation: 7, vendorFile: "vendor-abc.js", entries: {} };
+const manifest = { version: 1 as const, generation: 7, vendorFile: "vendor-abc.js", entries: {}, epoch: 42 };
 
 describe("SsrDevShim", () => {
   test("the registry chunk boots runtime, vendor file and app.js in order; other chunks keep the base loader", async () => {
@@ -89,6 +89,7 @@ describe("SsrDevShim", () => {
     page.load(2);
     await boot;
     expect(booted).toBe(true);
+    expect(page.self.__AKAN_SSR_EPOCH__).toBe(42);
   });
 
   test("a registry id reads the module's exports now, or waits for the patch that brings it", async () => {

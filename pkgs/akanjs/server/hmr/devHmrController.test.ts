@@ -164,9 +164,7 @@ describe("DevHmrController SSR registry updates", () => {
     run: (emit: (message: unknown) => void, types: () => string[]) => Promise<void>,
   ) => {
     const originalSend = process.send;
-    const originalMode = process.env.AKAN_DEV_SSR_CLIENT;
     process.send = ((): boolean => true) as typeof process.send;
-    process.env.AKAN_DEV_SSR_CLIENT = "registry";
     const controller = new DevHmrController({
       artifactDir: await artifactDirWith({ entries: [], globalLayoutFiles: [] }),
       renderState: { buildId: 0, cssAssets: {}, cssBytesByUrl: {} },
@@ -189,8 +187,6 @@ describe("DevHmrController SSR registry updates", () => {
     } finally {
       controller.dispose();
       process.send = originalSend;
-      if (originalMode === undefined) delete process.env.AKAN_DEV_SSR_CLIENT;
-      else process.env.AKAN_DEV_SSR_CLIENT = originalMode;
     }
   };
   const settle = async () => {
@@ -238,6 +234,18 @@ describe("DevHmrController SSR registry updates", () => {
       });
       await settle();
       expect(types()).toEqual(["ssr-update:4"]);
+    });
+  });
+
+  test("the registry's first build reaches no tab: none holds a module of it", async () => {
+    await withRegistryController(async (emit, types) => {
+      emit({
+        type: "ssr-updated",
+        data: { generation: 1, reload: true, reason: "first build", first: true, epoch: 5 },
+      });
+      emit({ type: "ssr-updated", data: { generation: 2, reload: false, patchUrl: "/p2.js" } });
+      await settle();
+      expect(types()).toEqual(["ssr-update:2"]);
     });
   });
 

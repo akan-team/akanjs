@@ -16,7 +16,6 @@ export const HMR_CLIENT_SCRIPT = `(function(){
   var refreshRuntimePromise = null;
   var refreshRuntime = null;
   var pendingRefreshRegistrations = [];
-  var refreshQueue = Promise.resolve();
   var overlayEl = null;
   var overlayLabelEl = null;
   var overlayDetailEl = null;
@@ -27,7 +26,6 @@ export const HMR_CLIENT_SCRIPT = `(function(){
   var overlayJobs = {};
   var buildErrorStates = {};
   var traces = self.__AKAN_HMR_TRACES__ = self.__AKAN_HMR_TRACES__ || [];
-  self.__AKAN_HMR_PHASE__ = null;
   self.__AKAN_DEV_SYNC_NAVIGATION__ = function(href, kind){
     if (self.__AKAN_DEV_SYNC_NAVIGATION_APPLYING__ || !syncNavigationEnabled || !socket || socket.readyState !== WebSocket.OPEN) return;
     try {
@@ -66,15 +64,19 @@ export const HMR_CLIENT_SCRIPT = `(function(){
       if (!msg || typeof msg.type !== "string") return;
       if (msg.type === "hello") {
         if (clientKind === "csr") {
-          if (csrGenerationMoved(msg.csrGeneration)) reloadForCsr("missed a CSR update while disconnected");
+          if (csrGenerationMoved(msg.csrGeneration)) reloadForUpdate("missed a CSR update while disconnected");
           return;
         }
         if (lastBuildId !== null && msg.buildId !== lastBuildId) {
           location.reload();
           return;
         }
+        if (ssrRegistryReplaced(msg.ssrEpoch)) {
+          reloadForUpdate("the dev server rebuilt the SSR registry while this tab held the previous one");
+          return;
+        }
         if (ssrRegistryBehind(msg.ssrGeneration)) {
-          reloadForCsr("missed an SSR registry update while disconnected");
+          reloadForUpdate("missed an SSR registry update while disconnected");
           return;
         }
         lastBuildId = msg.buildId;
@@ -88,10 +90,6 @@ export const HMR_CLIENT_SCRIPT = `(function(){
       }
       if (msg.type === "rsc-refresh") {
         refreshRsc(msg);
-        return;
-      }
-      if (msg.type === "client-refresh") {
-        refreshClient(msg);
         return;
       }
       if (msg.type === "csr-update") {
@@ -143,8 +141,8 @@ export const HMR_CLIENT_SCRIPT = `(function(){
     return typeof current === "number" && current !== generation;
   }
 
-  function reloadForCsr(reason){
-    console.warn("[akan-hmr] reloading the CSR page: " + reason);
+  function reloadForUpdate(reason){
+    console.warn("[akan-hmr] reloading the page: " + reason);
     beginHmrOverlay("Reloading...", true);
     setTimeout(function(){ location.reload(); }, 30);
   }
@@ -159,10 +157,16 @@ export const HMR_CLIENT_SCRIPT = `(function(){
   function applyCsrUpdate(msg){
     recordTrace("csr", msg, Date.now(), null);
     if (msg.reload || !self.__akan || typeof self.__akan.hot !== "function") {
-      reloadForCsr(msg.reason || "the CSR bundle was rebuilt");
+      reloadForUpdate(msg.reason || "the CSR bundle was rebuilt");
       return;
     }
     self.__akan.hot(msg);
+  }
+
+  // A new dev server builds its registry from scratch, restarting the generations a tab would compare.
+  function ssrRegistryReplaced(epoch){
+    var own = self.__AKAN_SSR_EPOCH__;
+    return typeof epoch === "number" && typeof own === "number" && own !== epoch;
   }
 
   // Behind only: a tab that booted from an app.js newer than the last update sent is ahead, not stale.
@@ -460,77 +464,6 @@ export const HMR_CLIENT_SCRIPT = `(function(){
       return runtime;
     });
     return refreshRuntimePromise;
-  }
-
-  function refreshClient(msg){
-    refreshQueue = refreshQueue.then(function(){ return doRefreshClient(msg); }, function(){ return doRefreshClient(msg); });
-  }
-
-  function setHmrPhase(phase){
-    self.__AKAN_HMR_PHASE__ = phase;
-  }
-
-  function doRefreshClient(msg){
-    var started = performance.now();
-    var receivedAt = Date.now();
-    var metadataAt = started;
-    var importAt = started;
-    var refreshAt = started;
-    var overlayToken = beginHmrOverlay("Updating...");
-    var fallbackToRsc = false;
-    return ensureRefreshRuntime().then(function(runtime){
-      setHmrOverlayLabel(overlayToken, "Fetching update...");
-      var endpoint = new URL("/_akan/hmr/client-refresh", location.origin);
-      endpoint.searchParams.set("url", location.href);
-      if (msg.buildId != null) endpoint.searchParams.set("buildId", String(msg.buildId));
-      return fetch(endpoint, { credentials: "same-origin", cache: "no-store" })
-        .then(function(res){
-          if (!res.ok) throw new Error("client-refresh metadata failed " + res.status + " " + res.statusText);
-          return res.json();
-        })
-        .then(function(info){
-          metadataAt = performance.now();
-          var chunks = Array.isArray(info.chunks) ? info.chunks : [];
-          if (chunks.length === 0) throw new Error("no client chunks returned");
-          setHmrPhase("refresh-import");
-          setHmrOverlayLabel(overlayToken, "Importing update...");
-          return Promise.all(chunks.map(function(chunk){ return import(chunk); })).then(function(){
-            importAt = performance.now();
-            setHmrPhase("react-refresh");
-            setHmrOverlayLabel(overlayToken, "Applying update...");
-            try {
-              runtime.performReactRefresh();
-            } finally {
-              setHmrPhase(null);
-            }
-            refreshAt = performance.now();
-            lastBuildId = msg.buildId;
-            recordTrace("client-refresh", msg, receivedAt, Date.now());
-            console.debug && console.debug("[akan-hmr] React Fast Refresh applied", {
-              buildId: msg.buildId,
-              generation: msg.generation,
-              chunks: chunks.length,
-              routeIds: info.routeIds || msg.routeIds,
-              changedFiles: msg.changedFiles && msg.changedFiles.length,
-              metadataMs: Math.round(metadataAt - started),
-              importMs: Math.round(importAt - metadataAt),
-              refreshMs: Math.round(refreshAt - importAt),
-              durationMs: Math.round(refreshAt - started)
-            });
-            endHmrOverlay(overlayToken);
-          }, function(err){
-            setHmrPhase(null);
-            throw err;
-          });
-        });
-    }).catch(function(err){
-      console.warn("[akan-hmr] React Fast Refresh failed, falling back to RSC refresh", err);
-      fallbackToRsc = true;
-      endHmrOverlay(overlayToken);
-      refreshRsc(msg);
-    }).finally(function(){
-      if (!fallbackToRsc) endHmrOverlay(overlayToken);
-    });
   }
 
   function swapCss(href){

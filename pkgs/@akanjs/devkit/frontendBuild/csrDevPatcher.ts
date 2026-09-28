@@ -17,7 +17,7 @@ interface CsrDevPatcherState {
 export type CsrDevPatchResult =
   | { kind: "unchanged" }
   | { kind: "update"; update: CsrDevUpdate }
-  | { kind: "delegate"; reason: string; generation: number; context: CsrDevContext };
+  | { kind: "delegate"; reason: string; generation: number; context: CsrDevContext; first?: boolean };
 
 export interface CsrDevPatchOptions extends CsrDevUpdateOptions {
   /**
@@ -57,7 +57,7 @@ export class CsrDevPatcher {
     if (!state) {
       const manifest = await this.#bundler.writer.readJson<CsrDevManifest>(CSR_DEV_MANIFEST_FILE);
       const reason = manifest ? "the dev bundle config changed" : "first build";
-      return this.#handBack(reason, (manifest?.generation ?? 0) + 1, context);
+      return this.#handBack(reason, (manifest?.generation ?? 0) + 1, context, { first: !manifest });
     }
     const generation = state.manifest.generation + 1;
     if (state.graph.configKey !== context.configKey)
@@ -144,6 +144,7 @@ export class CsrDevPatcher {
       patchUrl,
       changedIds,
       moduleCount: Object.keys(graph.modules).length,
+      epoch: previous.epoch,
     });
     // A reload rewrites app.js first: the tabs are about to boot from it.
     if (reason) {
@@ -173,9 +174,14 @@ export class CsrDevPatcher {
     return { kind: "update", update: patched };
   }
 
-  #handBack(reason: string, generation: number, context: CsrDevContext): CsrDevPatchResult {
+  #handBack(
+    reason: string,
+    generation: number,
+    context: CsrDevContext,
+    { first = false }: { first?: boolean } = {},
+  ): CsrDevPatchResult {
     this.#state = null;
-    return { kind: "delegate", reason, generation, context };
+    return { kind: "delegate", reason, generation, context, ...(first ? { first } : {}) };
   }
 
   async #load(): Promise<CsrDevPatcherState | null> {

@@ -154,7 +154,8 @@ const createHmrHarness = ({
 describe("HMR_CLIENT_SCRIPT", () => {
   test("routes incremental refresh messages without forcing a document reload", () => {
     expect(HMR_CLIENT_SCRIPT).toContain('if (msg.type === "rsc-refresh") {\n        refreshRsc(msg);');
-    expect(HMR_CLIENT_SCRIPT).toContain('if (msg.type === "client-refresh") {\n        refreshClient(msg);');
+    expect(HMR_CLIENT_SCRIPT).toContain('if (msg.type === "ssr-update") {\n        applySsrUpdate(msg);');
+    expect(HMR_CLIENT_SCRIPT).not.toContain("client-refresh");
     expect(HMR_CLIENT_SCRIPT).toContain('if (msg.type === "build-status") { handleBuildStatus(msg); return; }');
     expect(HMR_CLIENT_SCRIPT).toContain("pendingRefreshRegistrations.push([type, id]);");
     expect(HMR_CLIENT_SCRIPT).toContain("React Refresh runtime preload failed");

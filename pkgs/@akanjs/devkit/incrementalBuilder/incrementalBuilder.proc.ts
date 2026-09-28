@@ -31,7 +31,7 @@ import type {
   ChangeBatch,
   HmrTrace,
 } from "akanjs/server";
-import { CSR_DEV_PATCHING_MARKER, resolveDevSsrClientMode } from "akanjs/server/hmr/csrDevManifest";
+import { CSR_DEV_PATCHING_MARKER } from "akanjs/server/hmr/csrDevManifest";
 import type { BuildBatchNeed, BuildBatchRequest, BuildBatchResult, OptimizedFonts } from "./buildBatchProtocol";
 import { BuildBatchRunner } from "./buildBatchRunner";
 import { BuilderChannel } from "./builderChannel";
@@ -70,8 +70,9 @@ class IncrementalBuilder {
   #patcher: CsrDevPatcher | null;
   /** A worker's full CSR build (arming, re-arming) that a patch must not race for the csr-dev directory. */
   #csrGate: Promise<void> = Promise.resolve();
-  /** Set under `AKAN_DEV_SSR_CLIENT=registry`: SSR pages load their client code from this registry, not route chunks. */
-  #ssrBundler: SsrDevBundler | null;
+  /** Where SSR pages load their client code from in dev; route builds bundle only its server half. */
+  #ssrBundler: SsrDevBundler;
+  /** Null when `AKAN_DEV_CSR_PATCHER=off`: every registry save then goes to a build worker. */
   #ssrPatcher: CsrDevPatcher | null;
   //* Serializes everything that writes ssr-dev: a save's patch (fast lane), a route build adding the entries it names,
   //* and a worker's full build (slow lane). Never held while awaiting the slow lane, which a route build may be in.
@@ -103,11 +104,9 @@ class IncrementalBuilder {
     this.#csrBundler = new CsrDevBundler(options.app);
     this.#patcher =
       process.env.AKAN_DEV_CSR_PATCHER === "off" ? null : new CsrDevPatcher(this.#csrBundler, { resident: true });
-    this.#ssrBundler = resolveDevSsrClientMode() === "registry" ? new SsrDevBundler(options.app) : null;
+    this.#ssrBundler = new SsrDevBundler(options.app);
     this.#ssrPatcher =
-      this.#ssrBundler && process.env.AKAN_DEV_CSR_PATCHER !== "off"
-        ? new CsrDevPatcher(this.#ssrBundler, { resident: true })
-        : null;
+      process.env.AKAN_DEV_CSR_PATCHER === "off" ? null : new CsrDevPatcher(this.#ssrBundler, { resident: true });
     this.#workQueue = new BuilderWorkQueue({
       runBatch: async (batch) => await this.#runQueuedBatch(batch),
       onSettled: (label, ms) => {
@@ -139,7 +138,7 @@ class IncrementalBuilder {
         artifact: this.#artifact,
         knownEntries: new Set<string>(msg.knownEntries),
         discovery: this.#discovery,
-        browser: this.#ssrBundler ? "registry" : "chunks",
+        browser: "registry",
       }).build();
       await this.#ensureSsrEntries(delta.registryEntries ?? [], msg.generation);
       this.#logger.verbose(`build-route ok routeId=${msg.routeId} newEntries=${delta.newEntries.length}`);
@@ -381,7 +380,7 @@ class IncrementalBuilder {
           `csr-rebundle skipped; request /__csr or ?csr=true (or set AKAN_DEV_CSR_REBUILD=1) to enable per-save CSR rebuilds`,
         );
       else if (!this.#patcher || (await this.#patchCsr(generation, files, trace))) needs.unshift("csr");
-      if (this.#ssrBundler && (await this.#patchSsr(generation, files, trace))) needs.unshift("ssr");
+      if (await this.#patchSsr(generation, files, trace)) needs.unshift("ssr");
       const batch: BatchJob = { generation, needs, changedFiles: files, trace, ...(discovery ? { discovery } : {}) };
       // A worker's registry build rewrites the directory its patcher reads, so the next save waits for it.
       if (needs.includes("csr") || needs.includes("ssr")) {
@@ -474,7 +473,7 @@ class IncrementalBuilder {
 
   // A route build answers only once the registry holds every entry its rows name: the tab requires them by id.
   async #ensureSsrEntries(entries: string[], generation?: number): Promise<void> {
-    if (!this.#ssrBundler || entries.length === 0) return;
+    if (entries.length === 0) return;
     await this.#withSsrLock(async () => {
       if (this.#ssrPatcher && !(await this.#runSsrPatcher(this.#ssrPatcher, [], { roots: entries }))) return;
       await this.#runSsrWorker(generation ?? this.#generation);
@@ -483,7 +482,6 @@ class IncrementalBuilder {
 
   // The boot build of the SSR registry: a worker in the slow lane, so the first route builds queue behind it.
   async armSsrRegistry(): Promise<void> {
-    if (!this.#ssrBundler) return;
     await this.#workQueue
       .enqueue("ssr-arm", async () => {
         await this.#withSsrLock(async () => {
@@ -524,10 +522,8 @@ class IncrementalBuilder {
       batchGeneration,
     }: { roots?: string[]; trace?: HmrTrace; hold?: boolean; batchGeneration?: number } = {},
   ): Promise<boolean> {
-    const outDir = this.#ssrBundler?.outDir;
-    if (!outDir) return false;
     const started = Date.now();
-    const marker = path.join(outDir, CSR_DEV_PATCHING_MARKER);
+    const marker = path.join(this.#ssrBundler.outDir, CSR_DEV_PATCHING_MARKER);
     await Bun.write(marker, String(process.pid));
     try {
       const result = await patcher.update(files, {
@@ -545,6 +541,8 @@ class IncrementalBuilder {
               ...(trace ? { trace: { ...trace, patchAt: now, sentAt: now } } : {}),
               ...(hold ? { hold } : {}),
               ...(batchGeneration !== undefined ? { batchGeneration } : {}),
+              ...(update.epoch !== undefined ? { epoch: update.epoch } : {}),
+              ...(update.first ? { first: true } : {}),
             },
           });
         },

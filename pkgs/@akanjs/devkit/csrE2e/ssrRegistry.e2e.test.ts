@@ -21,7 +21,7 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
   let ssr: CsrE2eHarness;
 
   beforeAll(async () => {
-    ssr = await CsrE2eHarness.start({ app: "minimal", port, env: { AKAN_DEV_SSR_CLIENT: "registry" } });
+    ssr = await CsrE2eHarness.start({ app: "minimal", port });
   }, 240_000);
 
   afterAll(async () => {

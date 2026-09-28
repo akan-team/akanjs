@@ -25,6 +25,7 @@ export type HmrMessage =
       cssAssets?: Record<string, { cssUrl: string; cssRelPath: string }>;
       csrGeneration?: number;
       ssrGeneration?: number;
+      ssrEpoch?: number;
     }
   | { type: "reload"; buildId: number }
   | {
@@ -47,14 +48,6 @@ export type HmrMessage =
     }
   | {
       type: "rsc-refresh";
-      buildId: number;
-      generation?: number;
-      changedFiles?: string[];
-      routeIds?: string[];
-      trace?: HmrTrace;
-    }
-  | {
-      type: "client-refresh";
       buildId: number;
       generation?: number;
       changedFiles?: string[];
@@ -107,8 +100,7 @@ export class HmrWsHub {
   // A CSR tab renders no RSC and loads its own bundle, which its builder answers with `csr-update` when it changes.
   static #audienceOf(msg: HmrMessage): HmrClientKind | "all" {
     if (msg.type === "csr-update") return "csr";
-    if (msg.type === "reload" || msg.type === "rsc-refresh" || msg.type === "client-refresh") return "ssr";
-    if (msg.type === "ssr-update") return "ssr";
+    if (msg.type === "reload" || msg.type === "rsc-refresh" || msg.type === "ssr-update") return "ssr";
     return "all";
   }
 

@@ -152,6 +152,8 @@ class BuildBatch {
               patchUrl: announced.patchUrl,
               changedIds: announced.changedIds,
               trace: this.#sentTrace(),
+              ...(announced.epoch !== undefined ? { epoch: announced.epoch } : {}),
+              ...(announced.first ? { first: true } : {}),
             },
           }),
       });

@@ -120,7 +120,7 @@ export interface CsrUpdatedPayload {
   trace?: HmrTrace;
 }
 
-/** A new generation of the SSR dev registry (`AKAN_DEV_SSR_CLIENT=registry`): a patch, or a reload. */
+/** A new generation of the SSR dev registry, where SSR pages load their client code from: a patch, or a reload. */
 export interface SsrUpdatedPayload {
   generation: number;
   reload: boolean;
@@ -132,6 +132,9 @@ export interface SsrUpdatedPayload {
   hold?: boolean;
   /** The watch batch this patch came from, which the `pages-updated` releasing it names as its generation. */
   batchGeneration?: number;
+  epoch?: number;
+  /** The registry's first build: no tab holds a module of it, so there is nothing to send them. */
+  first?: boolean;
 }
 
 export type BuilderEvent =

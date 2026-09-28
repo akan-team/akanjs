@@ -24,7 +24,7 @@ const isRefreshMessage = (msg: unknown): boolean =>
   typeof msg === "object" &&
   msg !== null &&
   "type" in msg &&
-  (msg.type === "client-refresh" || msg.type === "rsc-refresh" || msg.type === "reload");
+  (msg.type === "ssr-update" || msg.type === "rsc-refresh" || msg.type === "reload");
 
 const isBuildStatus =
   (status: "error" | "ok") =>
@@ -148,7 +148,7 @@ describe("dev stability integration harness", () => {
     await host.waitForLogSince(mark, /\[backend-reload\]|Shutting down gracefully|stopping backend/);
     await host.waitForLogSince(mark, /backend ready pid=(\d+)|AkanApp gateway is running on port/);
     expect(host.proc.killed).toBe(false);
-    expect(host.logs.join("").slice(mark)).not.toMatch(/\[hmr\].*(client-refresh|rsc-refresh)/);
+    expect(host.logs.join("").slice(mark)).not.toMatch(/\[hmr\].*rsc-refresh|\[ssr\] registry generation/);
     await hmr?.waitForNoMessageSince(hmrMark, isRefreshMessage);
     hmr?.close();
   });
@@ -179,7 +179,10 @@ describe("dev stability integration harness", () => {
     if (hmr) {
       await expectHmrMessage(hmr, hmrMark, isRefreshMessage, "a client refresh");
     } else {
-      await host.waitForLogSince(mark, /\[hmr\].*(client-refresh|rsc-refresh|reload)|\[SSR\] pages-updated/);
+      await host.waitForLogSince(
+        mark,
+        /\[hmr\].*(rsc-refresh|reload)|\[ssr\] registry generation|\[SSR\] pages-updated/,
+      );
     }
     expect(host.logs.join("").slice(mark)).not.toMatch(/\[backend-reload\]/);
     hmr?.close();

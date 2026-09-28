@@ -144,4 +144,6 @@ export interface RenderState {
   csrGeneration?: number;
   /** The newest SSR dev registry generation sent to the tabs; a tab whose registry differs has missed an update. */
   ssrGeneration?: number;
+  /** When the SSR dev registry was last built whole; a tab booted from an earlier one reloads. */
+  ssrEpoch?: number;
 }

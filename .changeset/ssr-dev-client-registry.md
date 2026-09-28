@@ -3,12 +3,12 @@
 "@akanjs/devkit": patch
 ---
 
-feat(dev): SSR pages can load their client code from a dev module registry (`AKAN_DEV_SSR_CLIENT=registry`)
+feat(dev): SSR pages load their client code from a dev module registry
 
-- Opt-in for now; the default stays `chunks`. Under `akan start` with `AKAN_DEV_SSR_CLIENT=registry`, an SSR page's
-  `"use client"` code comes from a module registry under `.akan/artifact/ssr-dev`, the same machinery the dev CSR
-  registry uses, instead of the route chunks. React and the akanjs vendor facets stay the import map's, so the page
-  keeps one React and one store registry.
+- Under `akan start`, an SSR page's `"use client"` code now comes from a module registry under
+  `.akan/artifact/ssr-dev`, the same machinery the dev CSR registry uses, instead of the route chunks. React and the
+  akanjs vendor facets stay the import map's, so the page keeps one React and one store registry. The route chunks and
+  the `client-refresh` that re-imported all of them are gone from dev; `akan build` is unchanged.
 - A save patches the changed module in place with React Fast Refresh: state stays, and on minimal a component edit
   shows in about 110ms instead of 900ms. Undoing an edit now shows too; with chunks the browser kept the module it had
   already imported for that URL.
@@ -17,4 +17,5 @@ feat(dev): SSR pages can load their client code from a dev module registry (`AKA
   constant — holds its client patch until that save's pages build lands, then sends the patch and the RSC refresh
   together, so the page never runs new client code against old server props for the length of a pages build.
 - The registry builds once in a build worker after the dev server boots, and a route build answers only once the
-  registry holds every entry its manifest names. Route builds no longer bundle the browser chunks in this mode.
+  registry holds every entry its manifest names. Route builds no longer bundle browser chunks in dev, which took about
+  240MB off the builder's peak on apps/akan.

@@ -14,6 +14,9 @@ export interface CsrDevUpdate {
   patchUrl?: string;
   changedIds: string[];
   moduleCount: number;
+  epoch?: number;
+  /** The registry did not exist before this build, so no tab holds a module of it. */
+  first?: boolean;
 }
 
 export interface CsrDevUpdateOptions {
@@ -63,7 +66,8 @@ export abstract class DevRegistryBundler {
     const result = await new CsrDevPatcher(this).update(changedFiles, { ...options, allowWholeAppBuilds: true });
     if (result.kind === "unchanged") return null;
     if (result.kind === "update") return result.update;
-    const update = await this.fullBuild(result.context, result.generation, result.reason);
+    const built = await this.fullBuild(result.context, result.generation, result.reason);
+    const update = result.first ? { ...built, first: true } : built;
     options.announce?.(update);
     return update;
   }
@@ -93,9 +97,10 @@ export abstract class DevRegistryBundler {
     await this.writer.writeModules(compiled);
     const vendorFile = await this.writer.writeVendor(graph);
     await this.writer.writeApp(graph, generation);
-    await this.writer.writeState(graph, { version: 1, generation, vendorFile, entries: graph.entries });
+    const epoch = Date.now();
+    await this.writer.writeState(graph, { version: 1, generation, vendorFile, entries: graph.entries, epoch });
     await this.writer.prune(vendorFile, generation);
-    return { generation, reload: true, reason, changedIds: [], moduleCount: Object.keys(graph.modules).length };
+    return { generation, reload: true, reason, changedIds: [], moduleCount: Object.keys(graph.modules).length, epoch };
   }
 
   compiler(context: CsrDevContext, resolver: CsrDevResolver): CsrDevModuleCompiler {

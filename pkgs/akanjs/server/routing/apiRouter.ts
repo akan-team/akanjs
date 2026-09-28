@@ -15,6 +15,7 @@ export interface HmrStateSource {
     cssAssets?: Record<string, { cssUrl: string; cssRelPath: string }>;
     csrGeneration?: number;
     ssrGeneration?: number;
+    ssrEpoch?: number;
   };
 }
 
@@ -108,6 +109,7 @@ export class ApiRouter {
               cssAssets: hmrState.state.cssAssets,
               csrGeneration: hmrState.state.csrGeneration,
               ssrGeneration: hmrState.state.ssrGeneration,
+              ssrEpoch: hmrState.state.ssrEpoch,
             }),
           );
           return;
