@@ -66,7 +66,11 @@ export const HMR_CLIENT_SCRIPT = `(function(){
       try { msg = JSON.parse(ev.data); } catch (e){ return; }
       if (!msg || typeof msg.type !== "string") return;
       if (msg.type === "hello") {
-        if (Array.isArray(msg.failingPhases)) dropBuildErrorsExcept(msg.failingPhases);
+        var dropped = Array.isArray(msg.failingPhases) && dropBuildErrorsExcept(msg.failingPhases);
+        if (dropped && systemPage) {
+          reloadForUpdate("the build that failed to render this page recovered");
+          return;
+        }
         if (clientKind === "csr") {
           if (csrGenerationMoved(msg.csrGeneration)) reloadForUpdate("missed a CSR update while disconnected");
           return;
@@ -404,7 +408,8 @@ export const HMR_CLIENT_SCRIPT = `(function(){
     var current = buildErrorStates[phase];
     if (!current) return;
     var generation = typeof msg.generation === "number" ? msg.generation : 0;
-    var recovered = phase === "backend" ? generation >= current.generation : generation > current.generation;
+    var sameGeneration = phase === "backend" || phase === "scan" || phase === "route";
+    var recovered = sameGeneration ? generation >= current.generation : generation > current.generation;
     if (!recovered) return;
     delete buildErrorStates[phase];
     showBuildRecovered(msg);
@@ -419,7 +424,8 @@ export const HMR_CLIENT_SCRIPT = `(function(){
       delete buildErrorStates[phase];
       dropped = true;
     }
-    if (dropped) showBuildRecovered({});
+    if (dropped && !systemPage) showBuildRecovered({});
+    return dropped;
   }
 
   function showBuildRecovered(msg){
@@ -486,9 +492,10 @@ export const HMR_CLIENT_SCRIPT = `(function(){
     var settle = function(){
       return self.__akan && typeof self.__akan.whenSettled === "function" ? self.__akan.whenSettled() : null;
     };
-    // A registry still booting holds the updates that came first; the payload may name what they bring.
+    // A registry still booting holds the updates that came first; the payload may name what they bring. One whose boot
+    // failed never starts, so it has nothing to wait for.
     var booting = self.__AKAN_SSR_BOOT__;
-    var settled = booting ? Promise.resolve(booting).then(settle, settle) : settle();
+    var settled = booting ? Promise.resolve(booting).then(settle, function(){ return null; }) : settle();
     if (!settled) {
       refresh();
       return;

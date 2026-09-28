@@ -830,28 +830,41 @@ export const pages = {
   const withBundles = async (
     run: (
       rsc: RscWorker,
-      bundles: { a: string; b: string; broken: string },
+      bundles: { a: string; b: string; c: string; broken: string; brokenSlow: string },
       body: () => Promise<string>,
     ) => Promise<void>,
+    { maxReloads }: { maxReloads?: number } = {},
   ) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "akan-rsc-reload-"));
     const bundles = {
       a: path.join(dir, "pages-a.ts"),
       b: path.join(dir, "pages-b.ts"),
+      c: path.join(dir, "pages-c.ts"),
       broken: path.join(dir, "broken.ts"),
+      brokenSlow: path.join(dir, "broken-slow.ts"),
     };
     fs.writeFileSync(bundles.a, bundleSource("body A"));
     fs.writeFileSync(bundles.b, bundleSource("body B", "await Bun.sleep(300);"));
+    fs.writeFileSync(bundles.c, bundleSource("body C"));
     fs.writeFileSync(bundles.broken, bundleSource("never", 'throw new Error("broken at import");'));
-    const saved = { workerPath: process.env.AKAN_RSC_WORKER_PATH, cache: process.env.AKAN_RSC_RESULT_CACHE };
+    fs.writeFileSync(
+      bundles.brokenSlow,
+      bundleSource("never", 'await Bun.sleep(300);\nthrow new Error("broken at import");'),
+    );
+    const saved = {
+      workerPath: process.env.AKAN_RSC_WORKER_PATH,
+      cache: process.env.AKAN_RSC_RESULT_CACHE,
+      maxReloads: process.env.AKAN_RSC_WORKER_MAX_RELOADS,
+    };
     process.env.AKAN_RSC_WORKER_PATH = path.join(import.meta.dir, "rscWorker.tsx");
     process.env.AKAN_RSC_RESULT_CACHE = "0";
+    if (maxReloads !== undefined) process.env.AKAN_RSC_WORKER_MAX_RELOADS = String(maxReloads);
     const rsc = new RscWorker({ pagesBundlePath: bundles.a, pagesBundleBuildId: 1 } as unknown as BaseBuildArtifact);
     const body = async () => {
       const result = await rsc.renderWithMeta(new Request("http://localhost/en/x"));
       if (result.type !== "stream") return result.type;
       const text = decoder.decode(await new Response(result.stream).arrayBuffer());
-      return text.includes("body B") ? "B" : text.includes("body A") ? "A" : "?";
+      return (["A", "B", "C"] as const).find((name) => text.includes(`body ${name}`)) ?? "?";
     };
     try {
       await rsc.ready;
@@ -862,6 +875,8 @@ export const pages = {
       else process.env.AKAN_RSC_WORKER_PATH = saved.workerPath;
       if (saved.cache === undefined) delete process.env.AKAN_RSC_RESULT_CACHE;
       else process.env.AKAN_RSC_RESULT_CACHE = saved.cache;
+      if (saved.maxReloads === undefined) delete process.env.AKAN_RSC_WORKER_MAX_RELOADS;
+      else process.env.AKAN_RSC_WORKER_MAX_RELOADS = saved.maxReloads;
       fs.rmSync(dir, { recursive: true, force: true });
     }
   };
@@ -893,6 +908,35 @@ export const pages = {
       expect(await body()).toBe("A");
     });
   }, 20_000);
+
+  test("a reload that recycles the worker settles when the new worker runs it, and rejects onto the old bundle if it throws", async () => {
+    await withBundles(
+      async (rsc, { a, c, broken }, body) => {
+        expect(await rsc.reload({ clientManifest: {}, buildId: 2, pagesBundlePath: a })).toBe(a);
+        const failed = await rsc.reload({ clientManifest: {}, buildId: 3, pagesBundlePath: broken }).catch((e) => e);
+        expect(failed).toMatchObject({ adopted: { pagesBundlePath: a, buildId: 2 }, superseded: false });
+        expect(await body()).toBe("A");
+        expect(await rsc.reload({ clientManifest: {}, buildId: 4, pagesBundlePath: c })).toBe(c);
+        expect(await body()).toBe("C");
+      },
+      { maxReloads: 1 },
+    );
+  }, 30_000);
+
+  test("a fix saved while a recycled worker fails on the broken bundle is what the next worker boots", async () => {
+    await withBundles(
+      async (rsc, { a, c, brokenSlow }, body) => {
+        expect(await rsc.reload({ clientManifest: {}, buildId: 2, pagesBundlePath: a })).toBe(a);
+        const broken = rsc.reload({ clientManifest: {}, buildId: 3, pagesBundlePath: brokenSlow });
+        await Bun.sleep(100);
+        const fixed = rsc.reload({ clientManifest: {}, buildId: 4, pagesBundlePath: c });
+        expect(await broken).toBe(c);
+        expect(await fixed).toBe(c);
+        expect(await body()).toBe("C");
+      },
+      { maxReloads: 1 },
+    );
+  }, 30_000);
 });
 
 describe("RscWorker respawn lifecycle", () => {

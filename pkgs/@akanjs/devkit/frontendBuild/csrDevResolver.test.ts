@@ -108,3 +108,58 @@ describe("CsrDevResolver before its resolution build", () => {
     expect(resolver().resolve(file("node_modules/pkg/b.js"), "frseh")).toBeNull();
   });
 });
+
+describe("CsrDevPaths.resolveOnDisk", () => {
+  let root: string;
+  const at = (relative: string) => path.join(root, relative);
+
+  beforeAll(async () => {
+    root = CsrDevPaths.realpath(await mkdtemp(path.join(os.tmpdir(), "akan-csr-dev-disk-")));
+    for (const relative of [
+      "pair/x.js",
+      "pair/x.mjs",
+      "fields/b.js",
+      "fields/m.js",
+      "fields/main.js",
+      "fields/index.js",
+      "dirmain/lib/index.js",
+      "dirmain/index.js",
+      "shadow/Foo/index.tsx",
+      "shadow/Page.tsx",
+    ])
+      await Bun.write(at(relative), "export {};\n");
+    await Bun.write(at("fields/package.json"), '{ "browser": "b.js", "module": "m.js", "main": "main.js" }');
+    await Bun.write(at("dirmain/package.json"), '{ "main": "lib" }');
+  });
+
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  test("weighs extensions as Bun's browser build does, a require call apart from an import", () => {
+    expect(CsrDevPaths.resolveOnDisk(at("pair/x"))).toBe(at("pair/x.mjs"));
+    expect(CsrDevPaths.resolveOnDisk(at("pair/x"), "require")).toBe(at("pair/x.js"));
+  });
+
+  test("enters a folder through browser, then module, then main (which may name a folder), then index", () => {
+    expect(CsrDevPaths.resolveOnDisk(at("fields"))).toBe(at("fields/b.js"));
+    expect(CsrDevPaths.resolveOnDisk(at("dirmain"))).toBe(at("dirmain/lib/index.js"));
+  });
+
+  test("a recorded resolution is overturned only by a file created beside the folder it went into", async () => {
+    const paths = new CsrDevPaths(root);
+    const resolver = new CsrDevResolver({
+      paths,
+      context,
+      entryFiles: [],
+      resolution: {
+        "shadow/Page.tsx": { "./Foo": "shadow/Foo/index.tsx" },
+        "pair/entry.ts": { "./x": "pair/x.js" },
+      },
+    });
+    expect(resolver.resolve(at("pair/entry.ts"), "./x")).toBe(at("pair/x.js"));
+    expect(resolver.resolve(at("shadow/Page.tsx"), "./Foo")).toBe(at("shadow/Foo/index.tsx"));
+    await Bun.write(at("shadow/Foo.tsx"), "export {};\n");
+    expect(resolver.resolve(at("shadow/Page.tsx"), "./Foo")).toBe(at("shadow/Foo.tsx"));
+  });
+});

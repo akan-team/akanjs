@@ -92,26 +92,25 @@ export class CsrDevResolver {
     this.#prepassDone = true;
   }
 
-  resolve(importer: string, specifier: string): string | null {
+  resolve(importer: string, specifier: string, kind: "import" | "require" = "import"): string | null {
     if (this.#isInlineSpecifier(specifier)) return CsrDevResolver.inline;
     const known = this.#resolution.get(importer)?.get(specifier);
     const usable = known && this.#stillAnswers(importer, specifier, known) ? known : null;
-    const target = usable ?? this.#resolveUnknown(importer, specifier);
+    const target = usable ?? this.#resolveUnknown(importer, specifier, kind);
     if (target === null || CsrDevPaths.isStub(target)) return target;
     if (!CsrDevPaths.isScript(target)) return CsrDevResolver.inline;
     if (!usable) this.#remember(importer, specifier, target);
     return target;
   }
 
-  //? A relative record of the user's own code is checked against the disk: a file created beside it (`Foo.tsx` next to
-  //? `Foo/index.tsx`) takes the import over for Bun and every other build, the registry included. A package's own
-  //? relative imports are left as recorded, since its `browser` field may map one elsewhere.
+  //? A record stands until its file is gone, or until a file created beside the folder it went into takes the import
+  //? over (`Foo.tsx` next to `Foo/index.tsx`), as it does for Bun and every other build. Nothing else overturns it: the
+  //? prepass chose between sibling files and package fields as Bun does, which a disk lookup would only approximate.
   #stillAnswers(importer: string, specifier: string, known: string): boolean {
     if (CsrDevPaths.isStub(known)) return true;
     if (!fs.existsSync(known)) return false;
     if (!specifier.startsWith(".") || CsrDevPaths.isVendorFile(importer)) return true;
-    const onDisk = CsrDevPaths.resolveOnDisk(path.resolve(path.dirname(importer), specifier));
-    return onDisk === null || CsrDevPaths.realpath(onDisk) === known;
+    return !CsrDevPaths.isShadowed(path.resolve(path.dirname(importer), specifier), known);
   }
 
   isRegistryModule(file: string): boolean {
@@ -149,13 +148,13 @@ export class CsrDevResolver {
   //? Bun.resolveSync keeps what it found per directory until a build walks that directory again, so in the resident
   //? builder it may hand back a file moved away since (`Foo.tsx` → `Foo/index.tsx`, `.ts` → `.tsx`). A relative import
   //? is therefore looked up on the disk as it is now, and a bare one it names a missing file for goes to a fresh worker.
-  #resolveUnknown(importer: string, specifier: string): string | null {
+  #resolveUnknown(importer: string, specifier: string, kind: "import" | "require"): string | null {
     if (specifier.startsWith("node:")) return `${CsrDevPaths.stubPrefix}${specifier}`;
     const relative = specifier.startsWith(".") || path.isAbsolute(specifier);
     const cannotResolve = () => new Error(`[csr-dev] cannot resolve "${specifier}" from ${this.#paths.idOf(importer)}`);
     if (relative) {
       const onDisk =
-        CsrDevPaths.resolveOnDisk(path.resolve(path.dirname(importer), specifier)) ??
+        CsrDevPaths.resolveOnDisk(path.resolve(path.dirname(importer), specifier), kind) ??
         CsrDevResolver.#onDisk(CsrDevPaths.tryResolve(specifier, path.dirname(importer)));
       if (!onDisk) throw cannotResolve();
       return CsrDevPaths.realpath(onDisk);

@@ -16,7 +16,7 @@ const until = async (proc: Bun.Subprocess, what: string, condition: () => boolea
 };
 
 describe("incremental builder process", () => {
-  test("says why and where a route's client bundle failed, in its answer, its build status and its log", async () => {
+  test("says why and where a route's client bundle failed, in its answer, its build status and its log, at the builder's generation", async () => {
     const { root } = track(await createTempApp("demo"));
     const appDir = path.join(root, "apps/demo");
     // The batch runner looks under the workspace root first: a stand-in for the boot build, which needs a whole app.
@@ -44,6 +44,7 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
         AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
         AKAN_PUBLIC_ENV: "local",
         AKAN_WATCH: "0",
+        AKAN_BUILDER_INITIAL_GENERATION: "5",
       },
       stdio: ["ignore", "ignore", "pipe"],
       serialization: "advanced",
@@ -74,23 +75,24 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
       error: expect.stringContaining(reason),
     });
     expect(messages.find((message) => message.type === "build-status")).toMatchObject({
-      data: { generation: 3, phase: "route", ok: false, message: expect.stringContaining(reason) },
+      data: { generation: 6, phase: "route", ok: false, message: expect.stringContaining(reason) },
     });
     expect(log).toContain(reason);
   }, 30_000);
 
-  test("a registry build whose worker was killed is built again once the crash window closes, for the route that asked", async () => {
+  test("a killed boot build is tried again after the crash window, before boot-armed; a route build's check waits likewise", async () => {
     // Inside the checkout so the route's client bundle resolves the framework from its source.
     const { root } = track(await createTempApp("demo", path.join(import.meta.dir, "..", "local")));
     const appDir = path.join(root, "apps/demo");
     const runs = path.join(root, "ssr-runs.log");
+    // The first two registry builds are killed (the boot build and its retry), the third succeeds.
     await writeText(
       path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
       `import fs from "node:fs";
 const { generation, needs } = JSON.parse(process.argv[2]);
 if (needs.includes("ssr")) {
-  fs.appendFileSync(${JSON.stringify(runs)}, "ssr\\n");
-  if (fs.readFileSync(${JSON.stringify(runs)}, "utf8").split("\\n").length === 2) process.exit(1);
+  fs.appendFileSync(${JSON.stringify(runs)}, Date.now() + "\\n");
+  if (fs.readFileSync(${JSON.stringify(runs)}, "utf8").trim().split("\\n").length <= 2) process.exit(1);
 }
 process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
 `,
@@ -118,10 +120,12 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
       },
     });
     const ssrRuns = async () =>
-      (await Bun.file(runs).exists()) ? (await Bun.file(runs).text()).trim().split("\n") : [];
+      (await Bun.file(runs).exists()) ? (await Bun.file(runs).text()).trim().split("\n").map(Number) : [];
     try {
       await until(proc, "boot-armed", () => messages.some((message) => message.type === "boot-armed"));
-      expect(await ssrRuns()).toHaveLength(1);
+      const [first = 0, second = 0] = await ssrRuns();
+      expect(await ssrRuns()).toHaveLength(2);
+      expect(second - first).toBeGreaterThanOrEqual(9_500);
       proc.send({
         type: "build-route",
         id: 1,
@@ -132,14 +136,14 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
       } satisfies BuilderReq);
       await until(proc, "build-route-res", () => messages.some((message) => message.type === "build-route-res"));
       expect(messages.find((message) => message.type === "build-route-res")).toMatchObject({ ok: true });
-      expect(await ssrRuns()).toHaveLength(1);
       const deadline = Date.now() + 15_000;
-      while ((await ssrRuns()).length < 2 && Date.now() < deadline) await wait(100);
-      expect(await ssrRuns()).toHaveLength(2);
+      while ((await ssrRuns()).length < 3 && Date.now() < deadline) await wait(100);
+      const [, retried = 0, third = 0] = await ssrRuns();
+      expect(third - retried).toBeGreaterThanOrEqual(9_500);
     } finally {
       proc.kill();
     }
-  }, 40_000);
+  }, 60_000);
 
   test("a route build's registry check that has nothing to add reports no ssr status, so it cannot hide a failure", async () => {
     const { root } = track(await createTempApp("demo", path.join(import.meta.dir, "..", "local")));

@@ -358,6 +358,38 @@ describe("DevHmrController SSR registry updates", () => {
     );
   });
 
+  test("a failed reload leaves the build id the worker runs, and only the reload that failed reports it", async () => {
+    let fail: (adopted: { pagesBundlePath: string; buildId: number }) => void = () => undefined;
+    const failed = new Promise<{ pagesBundlePath: string; buildId: number }>((resolve) => {
+      fail = resolve;
+    });
+    let calls = 0;
+    await withRegistryController(
+      async (emit, types, renderState) => {
+        const pages = (generation: number, buildId: number) =>
+          emit({
+            type: "pages-updated",
+            data: { bundlePath: `/repo/pages-${generation}.js`, buildId, generation, changedFiles: ["/repo/a.ts"] },
+          });
+        pages(9, 2);
+        pages(10, 3);
+        await settle();
+        fail({ pagesBundlePath: "/repo/pages-boot.js", buildId: 1 });
+        await settle();
+        expect(types()).toEqual(["build-status"]);
+        expect(renderState.buildId).toBe(1);
+      },
+      {
+        pagesBundlePath: "/repo/pages-boot.js",
+        reload: async () => {
+          const superseded = calls++ === 0;
+          const adopted = await failed;
+          throw Object.assign(new Error("broken at import"), { adopted, superseded });
+        },
+      },
+    );
+  });
+
   test("the bundle the worker settled on is what the next pages build compares against", async () => {
     await withRegistryController(
       async (emit, _types, renderState, reloads) => {
@@ -391,6 +423,17 @@ describe("DevHmrController SSR registry updates", () => {
       ssr(8, true);
       await settle();
       expect(types()).toEqual(["build-status", "build-status"]);
+    });
+  });
+
+  test("a route built again at the failure's generation clears it, as a builder that came back clears scan", async () => {
+    await withRegistryController(async (emit, types) => {
+      for (const phase of ["route", "scan"]) {
+        emit({ type: "build-status", data: { generation: 4, phase, ok: false, files: [], message: "x" } });
+        emit({ type: "build-status", data: { generation: 4, phase, ok: true, files: [] } });
+      }
+      await settle();
+      expect(types()).toEqual(["build-status", "build-status", "build-status", "build-status"]);
     });
   });
 

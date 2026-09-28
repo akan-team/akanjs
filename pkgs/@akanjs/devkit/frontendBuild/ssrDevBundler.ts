@@ -8,7 +8,7 @@ import { bundleDefine } from "./bundleDefine";
 import type { ClientEntryDiscovery } from "./clientBuildTypes";
 import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
 import { CsrDevPaths } from "./csrDevPaths";
-import type { CsrDevContext } from "./csrDevTypes";
+import type { CsrDevContext, CsrDevGraph } from "./csrDevTypes";
 import { DevRegistryBundler } from "./devRegistryBundler";
 import { VENDOR_SPECIFIERS } from "./vendorSpecifiers";
 
@@ -79,9 +79,10 @@ export class SsrDevBundler extends DevRegistryBundler {
     return this.#discovery;
   }
 
-  override async wantedRoots(files: string[]): Promise<Set<string>> {
+  override async wantedRoots(files: string[], graph: CsrDevGraph): Promise<Set<string>> {
     const entries = new Set(await this.clientEntries());
-    return new Set(files.filter((file) => entries.has(CsrDevPaths.realpath(file))));
+    const reached = await super.wantedRoots(files, graph);
+    return new Set(files.filter((file) => reached.has(file) || entries.has(CsrDevPaths.realpath(file))));
   }
 
   protected async rootFiles(entryFiles: string[]): Promise<string[]> {

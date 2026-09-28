@@ -34,6 +34,9 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   #missingFiles = new Set<string>();
   #unresolvedPaths = new Set<string>();
   #unresolvedSpecifiers = new Set<string>();
+  //? Bumped by every invalidation: a walk that began before one computed from facts it may have read stale, so it
+  //? answers its caller but caches nothing (a registry check walks this instance beside the slow lane's route builds).
+  #epoch = 0;
 
   constructor(akanConfig: Pick<AkanConfig, "barrelImports">, resolvePackage: PackageResolver) {
     this.#akanConfig = akanConfig;
@@ -61,6 +64,7 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
       this.#reachableEntriesCache.delete(absPath);
     }
     if (files.length === 0) return;
+    this.#epoch += 1;
     // Reachable-entry results are transitive, so a changed child invalidates every ancestor.
     this.#reachableEntriesCache.clear();
     this.#forgetMissing();
@@ -165,6 +169,7 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   }
 
   async #discoverFromFile(file: string, visiting: Set<string>): Promise<Set<string>> {
+    const epoch = this.#epoch;
     const absPath = path.resolve(file);
     const cached = this.#reachableEntriesCache.get(absPath);
     if (cached) return new Set(cached);
@@ -173,11 +178,11 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
     visiting.add(absPath);
     const entries = new Set<string>();
     const facts = await this.#facts(absPath);
-    if (!facts) return this.#finishDiscovery(absPath, visiting, entries);
+    if (!facts) return this.#finishDiscovery(absPath, visiting, entries, epoch);
 
     if (facts.isClientEntry) {
       entries.add(absPath);
-      return this.#finishDiscovery(absPath, visiting, entries);
+      return this.#finishDiscovery(absPath, visiting, entries, epoch);
     }
 
     const importerDir = path.dirname(absPath);
@@ -191,12 +196,12 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
       for (const entry of await this.#discoverFromFile(resolved, visiting)) entries.add(entry);
     }
 
-    return this.#finishDiscovery(absPath, visiting, entries);
+    return this.#finishDiscovery(absPath, visiting, entries, epoch);
   }
 
-  #finishDiscovery(absPath: string, visiting: Set<string>, entries: Set<string>): Set<string> {
+  #finishDiscovery(absPath: string, visiting: Set<string>, entries: Set<string>, epoch: number): Set<string> {
     visiting.delete(absPath);
-    this.#reachableEntriesCache.set(absPath, entries);
+    if (epoch === this.#epoch) this.#reachableEntriesCache.set(absPath, entries);
     return new Set(entries);
   }
 }

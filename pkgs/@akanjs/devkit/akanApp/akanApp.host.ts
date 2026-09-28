@@ -474,11 +474,10 @@ export class AkanAppHost {
     this.#builderGeneration = generation;
     Object.assign(this.env, { AKAN_BUILDER_INITIAL_GENERATION: String(generation) });
   }
-  // Not `csr-updated` / `ssr-updated`: their generation is the registry's. Nor a `route` status: the backend's route cache.
+  // Not `csr-updated` / `ssr-updated`: their generation is the registry's.
   static #builderGenerationOf(message: BuilderMessage): number | undefined {
     if (message.type === "invalidate") return message.generation;
-    if (message.type === "build-status") return message.data.phase === "route" ? undefined : message.data.generation;
-    if (message.type === "builder-metrics") return message.data.generation;
+    if (message.type === "build-status" || message.type === "builder-metrics") return message.data.generation;
     if (message.type === "pages-updated" || message.type === "css-updated") return message.data.generation;
     return undefined;
   }
@@ -1077,8 +1076,8 @@ export class AkanAppHost {
     }
     this.#sendToBackend({ type: "build-status", data: status });
   }
-  //? A route status belongs to the route cache of the backend that asked for the build, whose generations restart with
-  //? the next one: replayed, a failure it held would outlive every fix the new backend's route builds report.
+  //? A route status belongs to the route cache of the backend that asked for the build: a new backend builds its routes
+  //? again, and reports each one itself.
   #forgetRouteBuildStatus(): void {
     this.#buildStatusByPhase.delete("route");
     this.#pendingBuildStatusReplay = this.#pendingBuildStatusReplay.filter((status) => status.phase !== "route");

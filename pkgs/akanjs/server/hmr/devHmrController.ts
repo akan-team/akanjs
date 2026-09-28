@@ -10,7 +10,7 @@ import {
   type RouteSeedIndex,
   RouteSeedIndexStore,
 } from "../artifact";
-import type { RscWorker } from "../rscWorkerHost";
+import type { RscReloadFailure, RscWorker } from "../rscWorkerHost";
 import type { RenderState } from "../types";
 import { CSR_DEV_DIRNAME, CSR_DEV_MANIFEST_FILE, type CsrDevManifest, SSR_DEV_DIRNAME } from "./csrDevManifest";
 import { isAkanRuntimeMetadataFile } from "./runtimeMetadataFile";
@@ -50,8 +50,9 @@ export function devBuildStatusToHmrMessage(
     };
   }
   if (!previous || previous.ok) return null;
-  const recovered =
-    status.phase === "backend" ? status.generation >= previous.generation : status.generation > previous.generation;
+  //? A backend or builder that came back, and a route built again, report the failure's own generation.
+  const sameGeneration = status.phase === "backend" || status.phase === "scan" || status.phase === "route";
+  const recovered = sameGeneration ? status.generation >= previous.generation : status.generation > previous.generation;
   if (!recovered) return null;
   return {
     type: "build-status",
@@ -291,8 +292,15 @@ export class DevHmrController {
               }),
             );
           } catch (error) {
-            this.#renderState.buildId = previousBuildId;
-            this.#failPagesReload(generation, files, error);
+            const failure = DevHmrController.#reloadFailure(error);
+            //? What the worker serves now, which a later pages-updated may already have moved past this one's own id.
+            if (failure) {
+              this.#renderState.buildId = failure.adopted.buildId;
+              this.#runningBundlePath = path.resolve(failure.adopted.pagesBundlePath);
+            } else if (this.#renderState.buildId === buildId) this.#renderState.buildId = previousBuildId;
+            // The reload that superseded this one failed in its place and reports it; this batch's patches still go out.
+            if (failure?.superseded) this.#ssrUpdates.release(generation);
+            else this.#failPagesReload(generation, files, error);
             return;
           }
           this.#logger.verbose(`[SSR] rsc reload buildId=${buildId} in ${Date.now() - reloadStarted}ms`);
@@ -323,6 +331,10 @@ export class DevHmrController {
         );
       },
     });
+  }
+
+  static #reloadFailure(error: unknown): RscReloadFailure | null {
+    return error instanceof Error && "adopted" in error ? (error as RscReloadFailure) : null;
   }
 
   //? A bundle that builds but throws while the worker imports it (a TDZ read at a module's top level): the worker keeps
@@ -387,13 +399,21 @@ export class DevHmrController {
         }
         if (delta.newEntries.length === 0 && removedEntries.size === 0) return;
         this.#rememberClientDeps(routeId, delta.clientDeps, delta.clientDepsByEntry);
-        this.#runningBundlePath = path.resolve(
-          await this.#rsc.reload({
-            clientManifest: nextMerged.clientManifest,
-            cssAssets: this.#renderState.cssAssets,
-            buildId: this.#renderState.buildId,
-          }),
-        );
+        try {
+          this.#runningBundlePath = path.resolve(
+            await this.#rsc.reload({
+              clientManifest: nextMerged.clientManifest,
+              cssAssets: this.#renderState.cssAssets,
+              buildId: this.#renderState.buildId,
+            }),
+          );
+        } catch (error) {
+          //? The pages reload it rode with failed and says so; the route still renders, and the next reload carries the
+          //? merged manifest.
+          const failure = DevHmrController.#reloadFailure(error);
+          if (failure) this.#runningBundlePath = path.resolve(failure.adopted.pagesBundlePath);
+          this.#logger.warn(`[SSR] route ${routeId} merged, but the worker did not reload: ${String(error)}`);
+        }
         this.#logger.verbose(
           `[SSR] route manifest merged routeId=${routeId} generation=${generation} entries=+${delta.newEntries.length} deps=${delta.clientDeps.length}`,
         );

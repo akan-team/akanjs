@@ -368,6 +368,18 @@ describe("build status helpers", () => {
     expect(shouldMarkBuildPhaseRecovered(previousByPhase, status("backend", 7, true))).toBe(true);
   });
 
+  test("a route built again and a builder that came back recover on the failure's own generation", () => {
+    const previousByPhase = new Map<DevBuildStatus["phase"], DevBuildStatus>([
+      ["route", status("route", 4, false)],
+      ["scan", status("scan", 42, false)],
+    ]);
+    expect(shouldMarkBuildPhaseRecovered(previousByPhase, status("route", 4, true))).toBe(true);
+    expect(shouldKeepBuildFailure(previousByPhase, status("route", 4, true))).toBe(false);
+    expect(shouldMarkBuildPhaseRecovered(previousByPhase, status("scan", 42, true))).toBe(true);
+    expect(shouldKeepBuildFailure(previousByPhase, status("scan", 42, true))).toBe(false);
+    expect(shouldKeepBuildFailure(previousByPhase, status("route", 3, true))).toBe(true);
+  });
+
   test("creates backend build-status payloads for lifecycle test hooks", () => {
     expect(
       createBackendBuildStatus({

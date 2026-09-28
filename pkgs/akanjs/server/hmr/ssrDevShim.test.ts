@@ -91,6 +91,8 @@ describe("SsrDevShim", () => {
       booted = true;
     });
     expect(chunkLoad("ssr-dev")).toBe(chunkLoad("ssr-dev"));
+    //? What an RSC refresh waits on: the updates that came before the start replay only once it boots.
+    expect(page.self.__AKAN_SSR_BOOT__).toBe(chunkLoad("ssr-dev"));
     expect(page.scripts.map((script) => script.src)).toEqual([SsrDevShim.runtimeUrl]);
     page.load(0);
     await page.settle();

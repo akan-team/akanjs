@@ -163,7 +163,9 @@ class IncrementalBuilder {
       }).build();
       await this.#ensureSsrEntries(delta.registryEntries ?? []);
       this.#logger.verbose(`build-route ok routeId=${msg.routeId} newEntries=${delta.newEntries.length}`);
-      this.#sendBuildStatus("route", { generation: msg.generation, ok: true, files: msg.seeds });
+      //? The builder's generation, not the route cache's: the cache's does not move when a fixed file maps to no entry,
+      //? so the rebuild's ok would carry the failure's own number.
+      this.#sendBuildStatus("route", { generation: this.#generation, ok: true, files: msg.seeds });
       return {
         type: "build-route-res",
         id: msg.id,
@@ -183,7 +185,7 @@ class IncrementalBuilder {
     } catch (err) {
       const errMsg = ApplicationBuildReporter.formatError(err, this.#app.workspace.workspaceRoot);
       this.#logger.error(`build-route failed routeId=${msg.routeId}: ${errMsg}`);
-      this.#sendBuildStatus("route", { generation: msg.generation, ok: false, files: msg.seeds, message: errMsg });
+      this.#sendBuildStatus("route", { generation: this.#generation, ok: false, files: msg.seeds, message: errMsg });
       return { type: "build-route-res", id: msg.id, ok: false, error: errMsg };
     }
   }
@@ -383,7 +385,8 @@ class IncrementalBuilder {
     );
     for (const error of indexSync.errors) this.#logger.error(error);
 
-    // Route builds are the only reader, and they run in the slow lane: invalidating there keeps it still under them.
+    // Invalidated in the slow lane, under the route builds that read it; a registry check reading it beside them caches
+    // nothing a walk began before the invalidation (the discovery's epoch).
     const discovery = kinds.includes("code") ? { files, refresh: kinds.includes("config"), generation } : undefined;
 
     if (hasSyncErrors) {
@@ -591,8 +594,8 @@ class IncrementalBuilder {
     //? `AKAN_DEV_SSR_ARM_DELAY_MS` is a test hook: an E2E has a tab reconnect before the boot build has run.
     const delayMs = Number(process.env.AKAN_DEV_SSR_ARM_DELAY_MS);
     if (Number.isInteger(delayMs) && delayMs > 0) await Bun.sleep(delayMs);
-    const arming = this.#runBeside(
-      this.#withSsrLock(async () => {
+    const arm = async () =>
+      await this.#withSsrLock(async () => {
         const generation = this.#generation;
         if (this.#ssrPatcher && !(await this.#runSsrPatcher(this.#ssrPatcher, [], { batchGeneration: generation })))
           return;
@@ -601,7 +604,17 @@ class IncrementalBuilder {
         this.#logger.error(
           `ssr-registry boot build failed; the next save retries it: ${ApplicationBuildReporter.formatError(err, this.#app.workspace.workspaceRoot)}`,
         );
-      }),
+      });
+    const arming = this.#runBeside(
+      (async () => {
+        await arm();
+        //? A boot build whose worker was killed (a small container's OOM) is tried once more before `boot-armed` lets
+        //? the next app boot: retried after that, the two biggest workers of a boot would run side by side.
+        const crashedAt = this.#ssrCrashedAt;
+        if (crashedAt === null) return;
+        while (!this.shuttingDown && Date.now() < crashedAt + IncrementalBuilder.#crashRetryMs) await Bun.sleep(250);
+        if (!this.shuttingDown) await arm();
+      })(),
     );
     this.#ssrArming = arming;
     await arming;

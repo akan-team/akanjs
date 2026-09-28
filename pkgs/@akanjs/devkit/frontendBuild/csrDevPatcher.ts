@@ -74,7 +74,10 @@ export class CsrDevPatcher {
       return this.#handBack("signal or dictionary metadata changed since the registry was built", generation, context);
     this.#state = this.#resident ? state : null;
     //? Not over a module whose factory file is missing: this patch compiles it, and its commit writes app.js whole.
-    if (appGenerationOf(state.manifest) < state.manifest.generation && this.#withoutFactory(state.graph).length === 0)
+    const healable =
+      appGenerationOf(state.manifest) < state.manifest.generation &&
+      this.#withoutFactory(state, (file) => fs.existsSync(file)).length === 0;
+    if (healable)
       state.manifest = await this.#bundler.writer.healApp(state.graph, state.manifest, await this.#code(state));
     return await this.#patch(context, state, changedFiles, generation, {
       announce,
@@ -95,13 +98,14 @@ export class CsrDevPatcher {
     const { graph } = state;
     const entries = await this.#bundler.writeEntries(context);
     const entryIds = this.#bundler.entryIds(entries.files);
-    const forgotten = this.#forgetDeletedModules(state);
-    const changed = onlyRoots ? new Set<string>() : await this.#changedModules(graph, changedFiles);
-    for (const id of this.#withoutFactory(graph)) changed.add(id);
+    const present = CsrDevPatcher.#presence(changedFiles);
+    const forgotten = this.#forgetDeletedModules(state, present);
+    const changed = onlyRoots ? new Set<string>() : await this.#changedModules(graph, changedFiles, present);
+    for (const id of this.#withoutFactory(state, present)) changed.add(id);
     for (const file of entries.changed) changed.add(paths.idOf(file));
     const rootFiles = [...Object.values(entries.files), ...roots.filter((file) => fs.existsSync(file))];
     for (const file of rootFiles) if (!graph.modules[paths.idOf(file)]) changed.add(paths.idOf(file));
-    const carried = onlyRoots ? [] : await this.#carriedRoots(graph, changed);
+    const carried = onlyRoots ? [] : await this.#carriedRoots(graph, changed, present);
     const routesMoved =
       this.#bundler.reloadsOnEntryChange &&
       (entries.changed.length > 0 || JSON.stringify(entryIds) !== JSON.stringify(graph.entries));
@@ -208,8 +212,9 @@ export class CsrDevPatcher {
     }
     // Only now that graph.json no longer names them: a crash before it left a graph pointing at missing files.
     await writer.forgetModules(forgotten);
-    if (carried.length > 0) await this.#retryCarried(context, state, carried, { announce, allowWholeAppBuilds });
-    return outcome;
+    if (carried.length === 0) return outcome;
+    const retried = await this.#retryCarried(context, state, carried, { announce, allowWholeAppBuilds });
+    return retried.kind === "delegate" ? retried : outcome;
   }
 
   //? Compiled apart from the save: a new root that failed to compile, and that no module imports, must not fail every
@@ -220,35 +225,53 @@ export class CsrDevPatcher {
     carried: string[],
     { announce, allowWholeAppBuilds }: CsrDevPatchOptions,
   ): Promise<CsrDevPatchResult> {
-    const { paths } = this.#bundler;
-    return await this.#patch(context, state, [], state.manifest.generation + 1, {
+    const { paths, writer } = this.#bundler;
+    const retried = await this.#patch(context, state, [], state.manifest.generation + 1, {
       announce,
       roots: carried.map((id) => paths.fileOf(id)),
       onlyRoots: true,
       allowWholeAppBuilds,
     });
+    //? Handed to a worker (a new npm import in the fixed root): the graph keeps them pending, so the worker retries
+    //? them with whole-app builds allowed instead of never hearing of them.
+    if (retried.kind === "delegate") {
+      state.graph.pending = [...new Set([...state.graph.pending, ...carried])];
+      await writer.writeJson("graph.json", state.graph);
+    }
+    return retried;
   }
 
   //? A pending root outside the graph (a route's entry that failed to compile) is retried while a route still reaches
   //? it; one no route names any more (the page stopped importing it) leaves the pending list instead.
-  async #carriedRoots(graph: CsrDevGraph, changed: Set<string>): Promise<string[]> {
+  async #carriedRoots(graph: CsrDevGraph, changed: Set<string>, present: (file: string) => boolean): Promise<string[]> {
     const { paths } = this.#bundler;
-    const outside = graph.pending.filter(
-      (id) => !graph.modules[id] && !changed.has(id) && CsrDevPaths.isNamed(paths.fileOf(id)),
-    );
+    const outside = graph.pending.filter((id) => !graph.modules[id] && !changed.has(id) && present(paths.fileOf(id)));
     if (outside.length === 0) return [];
-    const wanted = await this.#bundler.wantedRoots(outside.map((id) => paths.fileOf(id)));
+    const wanted = await this.#bundler.wantedRoots(
+      outside.map((id) => paths.fileOf(id)),
+      graph,
+    );
     const carried = outside.filter((id) => wanted.has(paths.fileOf(id)));
     graph.pending = graph.pending.filter((id) => graph.modules[id] || carried.includes(id));
     return carried;
   }
 
-  // Missing factory files are recompiled, not read: a registry whose graph outlived them would fail every read.
-  #withoutFactory(graph: CsrDevGraph): string[] {
+  // Missing factory files are recompiled, not read: a registry whose graph outlived them would fail every read. The
+  // resident patcher holds every factory it has read or written, so only a registry just read from disk is stat'ed.
+  #withoutFactory({ graph, code }: CsrDevPatcherState, present: (file: string) => boolean): string[] {
     const { paths, writer } = this.#bundler;
+    const hasFactory = (id: string) => (code ? code.modules.has(id) : writer.hasModule(id));
     return Object.entries(graph.modules)
-      .filter(([id, module]) => !module.vendor && !writer.hasModule(id) && CsrDevPaths.isNamed(paths.fileOf(id)))
+      .filter(([id, module]) => !module.vendor && !hasFactory(id) && present(paths.fileOf(id)))
       .map(([id]) => id);
+  }
+
+  //? A case-only rename is the one move `existsSync` misses (`ui/card.tsx` still exists after a rename to
+  //? `ui/Card.tsx` on APFS and NTFS), and it reaches the patcher as a save of both names: the realpath of every
+  //? module is paid for only then (2.2ms a save on a 385-module registry, against 0.3ms).
+  static #presence(changedFiles: string[]): (file: string) => boolean {
+    const caseMoved = changedFiles.some((file) => fs.existsSync(file) && !CsrDevPaths.isNamed(file));
+    return caseMoved ? (file) => CsrDevPaths.isNamed(file) : (file) => fs.existsSync(file);
   }
 
   #handBack(
@@ -275,7 +298,11 @@ export class CsrDevPatcher {
     return state.code;
   }
 
-  async #changedModules(graph: CsrDevGraph, changedFiles: string[]): Promise<Set<string>> {
+  async #changedModules(
+    graph: CsrDevGraph,
+    changedFiles: string[],
+    present: (file: string) => boolean,
+  ): Promise<Set<string>> {
     const { paths } = this.#bundler;
     const changed = new Set<string>(graph.pending.filter((id) => graph.modules[id]));
     for (const file of changedFiles) {
@@ -294,12 +321,16 @@ export class CsrDevPatcher {
     // A dependency the graph lost: deleted and brought back (an undo in the file explorer), it compiles again; moved
     // away (`Foo.tsx` → `Foo/index.tsx`), its importers do, since their own text did not change and app.js would name
     // a module no longer defined.
-    for (const [id, module] of Object.entries(graph.modules))
+    //? Not through an importer compiling anyway: its deps in the graph are the ones before this save, and its own
+    //? compile follows whatever it still imports, where a dropped import would keep a broken file failing every save.
+    for (const [id, module] of Object.entries(graph.modules)) {
+      if (changed.has(id)) continue;
       for (const dep of module.deps) {
         if (graph.modules[dep] || CsrDevPaths.isStub(dep)) continue;
-        if (CsrDevPaths.isNamed(paths.fileOf(dep))) changed.add(dep);
+        if (present(paths.fileOf(dep))) changed.add(dep);
         else if (!module.vendor) changed.add(id);
       }
+    }
     return changed;
   }
 
@@ -331,11 +362,9 @@ export class CsrDevPatcher {
   // A deleted module leaves the graph instead of being rebuilt: rebuilding a missing file fails every save after it.
   // Its importers compile again with the next save (#changedModules): a move resolves anew, a deletion fails with the
   // error that says why. Its files stay until the graph on disk stops naming them.
-  #forgetDeletedModules({ graph, code }: CsrDevPatcherState): string[] {
+  #forgetDeletedModules({ graph, code }: CsrDevPatcherState, present: (file: string) => boolean): string[] {
     const { paths } = this.#bundler;
-    const deleted = Object.keys(graph.modules).filter(
-      (id) => !graph.modules[id]?.vendor && !CsrDevPaths.isNamed(paths.fileOf(id)),
-    );
+    const deleted = Object.keys(graph.modules).filter((id) => !graph.modules[id]?.vendor && !present(paths.fileOf(id)));
     for (const id of deleted) {
       delete graph.modules[id];
       code?.modules.delete(id);

@@ -120,8 +120,12 @@ export const isLegacyBackendFallbackFile = (file: string, workspaceRoot: string)
   );
 };
 
+const recoversOnSameGeneration = (phase: BuildPhase): boolean =>
+  phase === "backend" || phase === "scan" || phase === "route";
+
 //? A newer generation, as the backend and the tabs judge it: an ok of the failure's own generation (a route build's
-//? registry check that had nothing to add) says nothing about the failure. A backend restart reports its own generation.
+//? registry check that had nothing to add) says nothing about the failure. The phases whose retry reports the
+//? failure's generation again (a backend or builder that came back, a route built again) recover on it.
 export const shouldMarkBuildPhaseRecovered = (
   previousByPhase: ReadonlyMap<BuildPhase, DevBuildStatus>,
   status: DevBuildStatus,
@@ -129,7 +133,7 @@ export const shouldMarkBuildPhaseRecovered = (
   const previous = previousByPhase.get(status.phase);
   if (!previous || !status.ok || previous.ok) return false;
   const generation = generationValue(status.generation);
-  return status.phase === "backend" ? generation >= previous.generation : generation > previous.generation;
+  return recoversOnSameGeneration(status.phase) ? generation >= previous.generation : generation > previous.generation;
 };
 
 /** An ok that recovers nothing leaves the failure standing, for hello and for whatever waits on a clean build. */

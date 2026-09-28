@@ -81,9 +81,10 @@ export abstract class DevRegistryBundler {
     return update;
   }
 
-  /** Of these roots outside the graph, the ones a route still reaches: only those stay pending. */
-  async wantedRoots(files: string[]): Promise<Set<string>> {
-    return new Set(files);
+  /** Of these roots outside the graph, the ones something still reaches (an entry, a module's import): those stay pending. */
+  async wantedRoots(files: string[], graph: CsrDevGraph): Promise<Set<string>> {
+    const reached = new Set([...Object.values(graph.entries), ...Object.values(graph.modules).flatMap((m) => m.deps)]);
+    return new Set(files.filter((file) => reached.has(this.paths.idOf(file))));
   }
 
   async holds(files: string[]): Promise<boolean> {

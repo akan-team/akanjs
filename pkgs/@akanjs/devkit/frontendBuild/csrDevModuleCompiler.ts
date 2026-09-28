@@ -211,7 +211,11 @@ export class CsrDevModuleCompiler {
           if (this.#context.externals?.includes(args.path))
             return { path: `${CsrDevPaths.vendorPrefix}${args.path}`, external: true };
           const importer = CsrDevPaths.realpath(args.importer);
-          const target = this.#resolver.resolve(importer, args.path);
+          const target = this.#resolver.resolve(
+            importer,
+            args.path,
+            args.kind === "require-call" ? "require" : "import",
+          );
           if (target === CsrDevResolver.inline) return undefined;
           if (target === null) {
             misses.push(`${args.path} from ${this.#paths.idOf(importer)}`);

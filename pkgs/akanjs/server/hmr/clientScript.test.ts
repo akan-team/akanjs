@@ -213,6 +213,14 @@ describe("HMR_CLIENT_SCRIPT", () => {
     expect(hmr.reloadCount).toBe(0);
   });
 
+  test("a route built again at its failure's generation clears the overlay", () => {
+    const hmr = createHmrHarness();
+    hmr.ws.sendMessage({ type: "build-status", status: "error", generation: 4, phase: "route", message: "x" });
+    expect(hmr.label()).toBe("Build failed: route");
+    hmr.ws.sendMessage({ type: "build-status", status: "ok", generation: 4, phase: "route", files: 0 });
+    expect(hmr.overlay().getAttribute("data-status")).toBe("ok");
+  });
+
   test("a hello naming the phases failing now drops an error the tab holds for any other", () => {
     const hmr = createHmrHarness();
     for (const [phase, generation] of [
@@ -431,6 +439,25 @@ describe("HMR_CLIENT_SCRIPT", () => {
     expect(refreshes).toEqual([{ buildId: 2 }]);
   });
 
+  test("an RSC refresh still runs when the registry's boot failed, though its updates never replay", async () => {
+    const boot = Promise.reject(new Error("app.js failed to load"));
+    boot.catch(() => undefined);
+    const refreshes: unknown[] = [];
+    const harness = createHmrHarness({
+      selfOverrides: {
+        __AKAN_SSR_BOOT__: boot,
+        __akan: { generation: 5, whenSettled: () => new Promise(() => undefined) },
+        __AKAN_RSC_REFRESH__: (input: unknown) => {
+          refreshes.push(input);
+          return Promise.resolve();
+        },
+      },
+    });
+    harness.ws?.sendMessage({ type: "rsc-refresh", buildId: 3, generation: 7 });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(refreshes).toEqual([{ buildId: 3 }]);
+  });
+
   test("an SSR registry reload reloads the tab itself, even when its runtime never started", () => {
     const hot: unknown[] = [];
     const harness = createHmrHarness({
@@ -455,6 +482,12 @@ describe("HMR_CLIENT_SCRIPT", () => {
     const recovered = createHmrHarness({ selfOverrides: { __AKAN_HMR_SYSTEM_PAGE__: true }, runTimers: true });
     recovered.ws?.sendMessage({ type: "build-status", status: "ok", generation: 4, phase: "pages" });
     expect(recovered.reloadCount).toBe(1);
+
+    //? Fixed while its socket was down: the hello that follows names no failing phase, and the page reloads onto it.
+    const reconnected = createHmrHarness({ selfOverrides: { __AKAN_HMR_SYSTEM_PAGE__: true }, runTimers: true });
+    reconnected.ws?.sendMessage({ type: "build-status", status: "error", generation: 4, phase: "pages", message: "x" });
+    reconnected.ws?.sendMessage({ type: "hello", buildId: 1, failingPhases: [] });
+    expect(reconnected.reloadCount).toBe(1);
   });
 
   test("clears legacy error overlays with legacy ok messages", () => {

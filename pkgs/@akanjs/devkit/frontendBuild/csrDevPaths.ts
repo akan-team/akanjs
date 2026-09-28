@@ -59,31 +59,52 @@ export class CsrDevPaths {
     }
   }
 
-  //? Bun's own precedence, measured: the registry must pick the file the pages bundle and client-ssr build pick.
-  static readonly #scriptExtensions = [".tsx", ".jsx", ".mts", ".ts", ".mjs", ".js", ".cts", ".cjs"];
+  //? Bun's own precedence for a browser build, measured (Bun 1.4.2): the registry must pick the file every other build
+  //? picks, and a `require` call weighs the extensions differently from an import.
+  static readonly #extensions = {
+    import: [".tsx", ".jsx", ".mts", ".ts", ".mjs", ".js", ".cts", ".cjs"],
+    require: [".tsx", ".ts", ".jsx", ".cts", ".cjs", ".js", ".mjs", ".mts"],
+  } as const;
 
   /** A relative import resolved against the disk as it is now: the file, a script extension, or a folder's entry. */
-  static resolveOnDisk(base: string): string | null {
-    const isFile = (candidate: string) => fs.statSync(candidate, { throwIfNoEntry: false })?.isFile() ?? false;
-    const file = [base, ...CsrDevPaths.#scriptExtensions.map((extension) => `${base}${extension}`)].find(isFile);
-    if (file) return file;
-    const main = CsrDevPaths.#packageMainOf(base);
-    const fromMain = main ? [main, ...CsrDevPaths.#scriptExtensions.map((extension) => `${main}${extension}`)] : [];
-    return (
-      [...fromMain, ...CsrDevPaths.#scriptExtensions.map((extension) => path.join(base, `index${extension}`))].find(
-        isFile,
-      ) ?? null
-    );
+  static resolveOnDisk(base: string, kind: "import" | "require" = "import"): string | null {
+    return CsrDevPaths.#asFile(base, kind) ?? CsrDevPaths.#asFolder(base, kind);
   }
 
-  static #packageMainOf(dir: string): string | null {
+  static #asFile(base: string, kind: "import" | "require"): string | null {
+    const isFile = (candidate: string) => fs.statSync(candidate, { throwIfNoEntry: false })?.isFile() ?? false;
+    return [base, ...CsrDevPaths.#extensions[kind].map((extension) => `${base}${extension}`)].find(isFile) ?? null;
+  }
+
+  //? A folder's package.json names its entry as a browser build reads it: `browser` (the string form), then `module`,
+  //? then `main`, which may itself name a folder; without one, its `index`.
+  static #asFolder(dir: string, kind: "import" | "require"): string | null {
+    const entry = CsrDevPaths.#packageEntryOf(dir);
+    const named = entry
+      ? (CsrDevPaths.#asFile(path.join(dir, entry), kind) ?? CsrDevPaths.#indexOf(path.join(dir, entry), kind))
+      : null;
+    return named ?? CsrDevPaths.#indexOf(dir, kind);
+  }
+
+  static #indexOf(dir: string, kind: "import" | "require"): string | null {
+    return CsrDevPaths.#asFile(path.join(dir, "index"), kind);
+  }
+
+  static #packageEntryOf(dir: string): string | null {
     try {
-      const { main } = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8")) as { main?: unknown };
-      return typeof main === "string" ? path.join(dir, main) : null;
+      const pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8")) as Record<string, unknown>;
+      const entry = [pkg.browser, pkg.module, pkg.main].find((field) => typeof field === "string");
+      return typeof entry === "string" ? entry : null;
     } catch {
-      // No package.json, or one without a usable main: the folder's index answers.
+      // No package.json, or one that names no entry: the folder's index answers.
       return null;
     }
+  }
+
+  /** True when `known`, a file inside the folder `base` names, would lose to a file `base` names directly. */
+  static isShadowed(base: string, known: string): boolean {
+    const dir = CsrDevPaths.realpath(base);
+    return known.startsWith(`${dir}${path.sep}`) && CsrDevPaths.#asFile(base, "import") !== null;
   }
 
   static tryResolve(specifier: string, from: string): string | null {
