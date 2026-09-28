@@ -184,7 +184,8 @@ describe("SsrDevShim", () => {
   }, 10_000);
 
   test("an app.js that failed to start beside the vendor file of the build before reloads onto the current pair", async () => {
-    const page = createPage();
+    const current = { generation: 8, vendorFile: "vendor-next.js", epoch: 42 };
+    const page = createPage((async () => Response.json(current)) as unknown as typeof fetch);
     let reloads = 0;
     page.self.location = { reload: () => (reloads += 1) };
     page.self.__AKAN_SSR_HELLO_GENERATION__ = 9;
@@ -208,7 +209,7 @@ describe("SsrDevShim", () => {
     expect(reloads).toBe(1);
     expect(registry.caughtUp).toEqual([]);
 
-    const sameVendor = createPage();
+    const sameVendor = createPage((async () => Response.json(current)) as unknown as typeof fetch);
     sameVendor.self.location = { reload: () => (reloads += 1) };
     sameVendor.install(SsrDevShim.script(manifest, []));
     const bootSame = (sameVendor.self.__webpack_chunk_load__ as (id: string) => Promise<void>)("ssr-dev");
@@ -228,6 +229,35 @@ describe("SsrDevShim", () => {
     await bootSame;
     expect(reloads).toBe(1);
   });
+
+  test("a vendor file the manifest does not name yet waits rather than reloading every new document", async () => {
+    const behind = { generation: 7, vendorFile: "vendor-abc.js", epoch: 42 };
+    let asked = 0;
+    const page = createPage((async () => {
+      asked += 1;
+      return Response.json(behind);
+    }) as unknown as typeof fetch);
+    let reloads = 0;
+    page.self.location = { reload: () => (reloads += 1) };
+    page.install(SsrDevShim.script(manifest, []));
+    const boot = (page.self.__webpack_chunk_load__ as (id: string) => Promise<void>)("ssr-dev");
+    page.load(0);
+    (page.self.__akan as FakeRegistry).inspect = () => ({
+      generation: 8,
+      target: 8,
+      started: true,
+      failed: true,
+      vendorFile: "vendor-next.js",
+      epoch: 43,
+    });
+    await page.settle();
+    page.load(1);
+    await page.settle();
+    page.load(2);
+    await boot;
+    expect(reloads).toBe(0);
+    expect(asked).toBe(5);
+  }, 10_000);
 
   test("updates that arrived before the runtime loaded are handed to it", async () => {
     const page = createPage();

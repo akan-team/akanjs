@@ -379,6 +379,66 @@ describe("DevHmrController route ensure", () => {
   });
 });
 
+describe("DevHmrController saves during a route's first build", () => {
+  //? The route's first build is the first to reach its client files, so no entry maps a file it read yet: only the
+  //? file the save names can tell whether the build's result is still good.
+  const buildsFor = async (clientDeps: string[]) => {
+    const originalSend = process.send;
+    const requests: number[] = [];
+    process.send = ((message: { type?: string; id?: number }): boolean => {
+      if (message.type === "build-route" && typeof message.id === "number") requests.push(message.id);
+      return true;
+    }) as typeof process.send;
+    const seedIndex: RouteSeedIndex = {
+      entries: [{ routeId: "/:lang/blog", pattern: "/:lang/blog", seeds: ["/repo/apps/demo/page/blog.tsx"] }],
+      globalLayoutFiles: [],
+    };
+    const controller = new DevHmrController({
+      artifactDir: await artifactDirWith(seedIndex),
+      renderState: { buildId: 0, cssAssets: {}, cssBytesByUrl: {} },
+      rsc: { reload: async () => undefined, updateCssAssets: () => undefined } as unknown as RscWorker,
+      seedIndex,
+      upgradeHmrWs: () => true,
+    });
+    const requested = async (count: number) => {
+      for (let tick = 0; tick < 200 && requests.length < count; tick++) await Bun.sleep(1);
+    };
+    const answer = (id: number | undefined) => {
+      const data = {
+        manifestDelta: {},
+        ssrManifestDelta: {},
+        newEntries: ["/repo/apps/demo/ui/Card.tsx"],
+        discoveredEntries: ["/repo/apps/demo/ui/Card.tsx"],
+        clientDeps,
+      };
+      process.emit("message", { type: "build-route-res", id, ok: true, data } as never);
+    };
+    try {
+      const ensured = controller.ensureRoute(new URL("https://example.test/en/blog"));
+      await requested(1);
+      process.emit("message", {
+        type: "invalidate",
+        kinds: ["code"],
+        files: ["/repo/apps/demo/ui/Button.tsx"],
+        generation: 3,
+      } as never);
+      answer(requests[0]);
+      await requested(2);
+      if (requests.length > 1) answer(requests[1]);
+      await ensured;
+      return requests.length;
+    } finally {
+      controller.dispose();
+      process.send = originalSend;
+    }
+  };
+
+  test("builds the route again when the save names a file the build read, and keeps it when it does not", async () => {
+    expect(await buildsFor(["/repo/apps/demo/ui/Card.tsx", "/repo/apps/demo/ui/Button.tsx"])).toBe(2);
+    expect(await buildsFor(["/repo/apps/demo/ui/Card.tsx"])).toBe(1);
+  });
+});
+
 describe("DevHmrController route tree changes", () => {
   test("adopts the rebuilt seed index so a moved override seeds route builds from where it went", async () => {
     const page = "/repo/apps/demo/page";

@@ -171,23 +171,23 @@ export class RouteClientCache {
 
   invalidate(predicate: (routeId: string) => boolean, { files = [] }: { files?: Iterable<string> } = {}): string[] {
     const dropped = this.#dropBuilt(predicate);
-    if (dropped.length === 0 && !this.#isBuilding(predicate)) return dropped;
+    const touched = RouteClientCache.#normalizeAll(files);
+    if (dropped.length === 0 && !this.#mayOvertake(predicate, touched)) return dropped;
     this.#rebuildKnownEntriesPreservingManifest(this.merged.generation + 1);
-    this.#record({ routePredicate: predicate, touched: RouteClientCache.#normalizeAll(files) });
+    this.#record({ routePredicate: predicate, touched });
     this.#logger.verbose(`[route-cache] invalidated ${dropped.length} routes: ${dropped.join(", ")}`);
     return dropped;
   }
 
   invalidateClientEntries({ routePredicate, staleEntries, files = [] }: InvalidateClientEntriesOptions): string[] {
     const normalizedStaleEntries = RouteClientCache.#normalizeAll(staleEntries);
+    const touched = new Set([...normalizedStaleEntries, ...RouteClientCache.#normalizeAll(files)]);
     const dropped = this.#dropBuilt(routePredicate);
-    if (dropped.length === 0 && normalizedStaleEntries.size === 0 && !this.#isBuilding(routePredicate)) return dropped;
+    if (dropped.length === 0 && normalizedStaleEntries.size === 0 && !this.#mayOvertake(routePredicate, touched))
+      return dropped;
 
     this.#rebuildKnownEntriesPreservingManifest(this.merged.generation + 1, normalizedStaleEntries);
-    this.#record({
-      routePredicate,
-      touched: new Set([...normalizedStaleEntries, ...RouteClientCache.#normalizeAll(files)]),
-    });
+    this.#record({ routePredicate, touched });
     this.#logger.verbose(
       `[route-cache] client invalidated routes=${dropped.join(",") || "(none)"} entries=${normalizedStaleEntries.size}`,
     );
@@ -204,8 +204,10 @@ export class RouteClientCache {
     return dropped;
   }
 
-  #isBuilding(predicate: (routeId: string) => boolean): boolean {
-    return [...this.#building.keys()].some(predicate);
+  //? With nothing dropped only a running build can be affected: one the predicate names, or one that read a saved
+  //? file, which as the first build to reach it no entry maps yet.
+  #mayOvertake(predicate: (routeId: string) => boolean, touched: Set<string>): boolean {
+    return this.#building.size > 0 && (touched.size > 0 || [...this.#building.keys()].some(predicate));
   }
 
   #record({

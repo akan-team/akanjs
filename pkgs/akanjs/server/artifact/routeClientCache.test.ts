@@ -315,6 +315,22 @@ describe("RouteClientCache", () => {
     expect(merged.clientManifest["/repo/b.tsx#default"]?.id).toBe("ssr-dev:/b#0");
   });
 
+  test("a save no entry is known to read is kept for a running build to check, and costs nothing with none running", async () => {
+    const { cache, held, settle } = heldBuilds();
+    const pending = cache.ensure("/b", []);
+    await settle(1);
+    cache.invalidateClientEntries({ routePredicate: () => false, staleEntries: [], files: ["/repo/ui/Other.tsx"] });
+    held[0]?.finish();
+    const merged = await pending;
+    expect(held).toHaveLength(1);
+    expect(merged.generation).toBe(1);
+
+    const revision = cache.revision;
+    cache.invalidateClientEntries({ routePredicate: () => false, staleEntries: [], files: ["/repo/ui/Button.tsx"] });
+    expect(cache.snapshot().generation).toBe(1);
+    expect(cache.revision).toBe(revision);
+  });
+
   test("a running build is built again when a save drops its route, stales an entry it reached, or edits a dep", async () => {
     const invalidations: [string, (cache: RouteClientCache) => void][] = [
       ["its route", (cache) => cache.invalidate((routeId) => routeId === "/b")],
@@ -323,13 +339,17 @@ describe("RouteClientCache", () => {
         (cache) => cache.invalidateClientEntries({ routePredicate: () => false, staleEntries: ["/repo/b.tsx"] }),
       ],
       [
-        "a file it bundled",
+        "a file it bundled that no entry is known to read",
         (cache) =>
           cache.invalidateClientEntries({
             routePredicate: () => false,
-            staleEntries: ["/repo/other.tsx"],
+            staleEntries: [],
             files: ["/repo/ui/Button.tsx"],
           }),
+      ],
+      [
+        "a file it bundled, for a server-only route",
+        (cache) => cache.invalidate(() => false, { files: ["/repo/ui/Button.tsx"] }),
       ],
       ["everything", (cache) => cache.clear()],
     ];

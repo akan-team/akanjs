@@ -412,7 +412,12 @@ export class DevHmrController {
   //? its HTML from client-ssr chunks older than the registry it hydrates with, so its route builds again first.
   #invalidateClientEntriesEarly(files: string[], generation: number): void {
     const staleClientEntries = this.#staleClientEntriesForFiles(files);
-    if (staleClientEntries.size === 0) return;
+    //? No entry is known to read these yet, but a route's first build may be reading them now. Not marked early:
+    //? the pages build's own invalidation still covers them.
+    if (staleClientEntries.size === 0) {
+      this.routeCache.invalidateClientEntries({ routePredicate: () => false, staleEntries: [], files });
+      return;
+    }
     for (const file of files) this.#earlyInvalidated.set(path.resolve(file), generation);
     const routeIds = this.#routeIdsForFiles(files, staleClientEntries);
     this.routeCache.invalidateClientEntries({

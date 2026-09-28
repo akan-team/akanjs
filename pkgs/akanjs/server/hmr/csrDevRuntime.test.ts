@@ -573,6 +573,54 @@ describe("installCsrDevRuntime", () => {
       expect(harness.warnings.at(-1)).toContain("app/Broken.tsx failed to run");
     });
 
+    test("a failure its importer caught is not held against the page, so the next update still patches in place", () => {
+      const harness = createHarness({
+        "stub:crypto": () => {
+          throw new Error("crypto is a Node built-in the browser does not have");
+        },
+        "node_modules/iso-lib/index.js": (require, record) => {
+          let hasCrypto = true;
+          try {
+            require("akan-module:stub:crypto");
+          } catch {
+            hasCrypto = false;
+          }
+          record.exports = { hasCrypto };
+        },
+        "app/boot.ts": (require) => {
+          require("akan-module:node_modules/iso-lib/index.js");
+        },
+        "app/Other.tsx": component("Other"),
+      });
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" });
+      harness.api.require("app/Other.tsx");
+      harness.api.update(3, { "app/Other.tsx": component("Other") });
+      expect(harness.reloads).toBe(0);
+    });
+
+    test("a lazy import that failed reloads on the next update, which may carry its fix", async () => {
+      let imported: Promise<unknown> = Promise.resolve();
+      const harness = createHarness({
+        "app/boot.ts": () => undefined,
+        "app/Lazy.tsx": () => {
+          throw new Error("lazy failure");
+        },
+        "app/Route.tsx": (_require, record, _exports, _register, _signature, importLazy) => {
+          imported = importLazy("akan-module:app/Lazy.tsx");
+          record.exports = { Route: () => null };
+        },
+        "app/Other.tsx": component("Other"),
+      });
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" });
+      harness.api.require("app/Route.tsx");
+      await expect(imported).rejects.toThrow("lazy failure");
+      harness.api.update(3, { "app/Other.tsx": component("Other") });
+      expect(harness.reloads).toBe(1);
+      expect(harness.warnings.at(-1)).toContain("app/Lazy.tsx failed to run");
+    });
+
     test("a start that failed reloads on a reload of its own generation, and names the build app.js came from", () => {
       const harness = createHarness({
         "app/boot.ts": () => {

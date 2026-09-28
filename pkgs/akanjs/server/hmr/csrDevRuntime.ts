@@ -157,7 +157,7 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
     #roots = new Set<string>();
     #started = false;
     #startFailed = false;
-    //? Modules whose factory threw: the cache drops them, so an update defining one again re-runs nothing on its own.
+    //? Modules whose failure reached the page: the cache drops them, so an update defining one again re-runs nothing.
     #failed = new Set<string>();
     #library: { vendorFile?: string; epoch?: number } = {};
     #target = 0;
@@ -247,7 +247,20 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
 
     require(id: string) {
       this.#roots.add(id);
-      return this.#load(id).exports;
+      return this.#surfaced(id, () => this.#load(id)).exports;
+    }
+
+    //? Recorded where a failure reaches the page, never where an importer caught it (an optional dependency probed in
+    //? a try, as isomorphic packages do with a Node built-in's stub), and never for a vendor or stub no save can fix.
+    #surfaced<T>(id: string, load: () => T): T {
+      try {
+        const loaded = load();
+        this.#failed.delete(id);
+        return loaded;
+      } catch (error) {
+        if (!id.startsWith("stub:") && !id.includes("node_modules/")) this.#failed.add(id);
+        throw error;
+      }
     }
 
     has(id: string) {
@@ -472,15 +485,17 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       const requireFromHere = this.#requireFrom(id);
       const register = (type: unknown, localId: string) => this.#refresh?.register(type, `${id} ${localId}`);
       const signature = () => this.#refresh?.createSignatureFunctionForTransform() ?? ((type: unknown) => type);
-      const importFromHere = (specifier: string) => new Promise((resolve) => resolve(requireFromHere(specifier)));
+      const importFromHere = (specifier: string) =>
+        new Promise((resolve) => {
+          const target = specifier.startsWith(modulePrefix) ? specifier.slice(modulePrefix.length) : specifier;
+          resolve(this.#surfaced(target, () => requireFromHere(specifier)));
+        });
       try {
         factory.call(record.exports, requireFromHere, record, record.exports, register, signature, importFromHere);
       } catch (error) {
         this.#cache.delete(id);
-        this.#failed.add(id);
         throw error;
       }
-      this.#failed.delete(id);
       this.#executed.push(id);
       if (!id.startsWith("stub:") && !id.includes("node_modules/")) this.#afterExecute(record);
       return record;
