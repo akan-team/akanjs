@@ -538,14 +538,16 @@ class IncrementalBuilder {
 
   //* Adds the entries a route build names to the registry, since the tab requires them by id. A registry that cannot
   //* take them fails no route build: the page answers, and its tab waits for the registry while the overlay says why.
-  async #ensureSsrEntries(entries: string[]): Promise<void> {
+  async #ensureSsrEntries(entries: string[], { crashRetry = false }: { crashRetry?: boolean } = {}): Promise<void> {
     if (entries.length === 0) return;
     //? The boot build takes every entry the routes reach, so the first page answers now and its tab waits for the
     //? registry (boot.json) instead; whatever that build missed is added right after it lands.
     const arming = this.#ssrArming;
     if (arming) {
       void this.#runBeside(
-        arming.then(async () => await this.#ensureSsrEntries(entries)).catch(this.#slowLaneFailed("ssr-ensure")),
+        arming
+          .then(async () => await this.#ensureSsrEntries(entries, { crashRetry }))
+          .catch(this.#slowLaneFailed("ssr-ensure")),
       );
       return;
     }
@@ -564,6 +566,8 @@ class IncrementalBuilder {
       //? the SSR lock that save's patch waits on.
       if (this.#ssrBroken) return;
       if (this.#ssrCrashedAt !== null && Date.now() - this.#ssrCrashedAt < IncrementalBuilder.#crashRetryMs) {
+        //? Handed over just now with nothing run for them: the retry must find them to hand over again.
+        patcher?.releaseHandedOver();
         this.#retryAfterCrash(this.#ssrCrashedAt, entries);
         return;
       }
@@ -572,6 +576,9 @@ class IncrementalBuilder {
           `ssr-registry could not take a route's entries; the save that fixes it rebuilds it: ${ApplicationBuildReporter.formatError(err, this.#app.workspace.workspaceRoot)}`,
         );
       });
+      //? A worker that died took these entries with it and left them pending nowhere: they are tried once more after the
+      //? crash window, but a retry that crashes again waits for the next route build or save.
+      if (this.#ssrCrashedAt !== null && !crashRetry) this.#retryAfterCrash(this.#ssrCrashedAt, entries);
     });
   }
 
@@ -586,7 +593,9 @@ class IncrementalBuilder {
         const retried = [...this.#crashRetryEntries];
         this.#crashRetryEntries.clear();
         if (this.shuttingDown || retried.length === 0) return;
-        void this.#runBeside(this.#ensureSsrEntries(retried)).catch(this.#slowLaneFailed("ssr-crash-retry"));
+        void this.#runBeside(this.#ensureSsrEntries(retried, { crashRetry: true })).catch(
+          this.#slowLaneFailed("ssr-crash-retry"),
+        );
       },
       Math.max(0, crashedAt + IncrementalBuilder.#crashRetryMs - Date.now()),
     );
