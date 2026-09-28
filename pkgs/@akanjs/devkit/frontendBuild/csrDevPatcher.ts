@@ -37,7 +37,7 @@ export class CsrDevPatcher {
   #state: CsrDevPatcherState | null = null;
   //? A pending root handed to a worker, by the hash it had: one that fails there too waits for an edit of its own or of
   //? a file the worker failed in, instead of sending every save to a worker.
-  readonly #delegated = new Map<string, { hash: string; failed?: Record<string, string> }>();
+  readonly #delegated = new Map<string, { hash: string; failed?: Record<string, string>; before: string }>();
 
   constructor(bundler: DevRegistryBundler, { resident = false }: { resident?: boolean } = {}) {
     this.#bundler = bundler;
@@ -165,7 +165,11 @@ export class CsrDevPatcher {
       if (routesMoved) await writer.writeJson("graph.json", { ...graph, entries: {} });
       if (onlyRoots)
         for (const id of changed)
-          if (!graph.modules[id]) this.#delegated.set(id, { hash: await CsrDevPaths.hashOf(paths.fileOf(id)) });
+          if (!graph.modules[id])
+            this.#delegated.set(id, {
+              hash: await CsrDevPaths.hashOf(paths.fileOf(id)),
+              before: JSON.stringify(graph.failed ?? null),
+            });
       return this.#handBack(refusal, generation, context);
     }
     const compiled = result.modules;
@@ -396,12 +400,16 @@ export class CsrDevPatcher {
     return carried;
   }
 
-  //? The worker's failure is read from the graph it wrote, once, and only a round that built this root.
+  //? The worker's failure is read from the graph it wrote, once, and only a round that built this root. Until that
+  //? worker writes, the record on disk is the one from before the hand-over, and the root waits for it.
   async #parked(graph: CsrDevGraph, id: string): Promise<boolean> {
     const { paths } = this.#bundler;
     const handedOver = this.#delegated.get(id);
     if (!handedOver || handedOver.hash !== (await CsrDevPaths.hashOf(paths.fileOf(id)))) return false;
-    if (graph.failed?.roots.includes(id)) handedOver.failed ??= graph.failed.files;
+    if (!handedOver.failed) {
+      if (JSON.stringify(graph.failed ?? null) === handedOver.before) return true;
+      if (graph.failed?.roots.includes(id)) handedOver.failed = graph.failed.files;
+    }
     if (!handedOver.failed) return false;
     for (const [failedId, hash] of Object.entries(handedOver.failed))
       if ((await CsrDevPaths.hashOf(paths.fileOf(failedId))) !== hash) return false;

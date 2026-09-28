@@ -427,6 +427,10 @@ describe("CsrDevPatcher", () => {
 
     await Bun.write(file("ui/Card.tsx"), 'export const card = () => "v2";\nexport const nope = 1;\n');
     expect((await patcher.update([file("ui/Card.tsx")])).kind).toBe("delegate");
+    //? Its worker has not run yet: a route's check waits for it rather than handing the root over again.
+    expect(await patcher.update([], { roots: [file("ui/Broken.tsx")], onlyRoots: true })).toEqual({
+      kind: "unchanged",
+    });
   });
 
   test("a pending root a worker failed on because of another file is tried again once that file is fixed", async () => {
