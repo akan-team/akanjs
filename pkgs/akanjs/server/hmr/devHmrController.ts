@@ -5,6 +5,7 @@ import {
   BuilderRpc,
   type ClientManifest,
   type DevBuildStatus,
+  type HmrTrace,
   RouteClientCache,
   type RouteSeedIndex,
   RouteSeedIndexStore,
@@ -182,6 +183,10 @@ export class DevHmrController {
     return matched ? [matched.entry.routeId] : undefined;
   }
 
+  static #broadcastTrace(trace: HmrTrace | undefined): HmrTrace | undefined {
+    return trace ? { ...trace, broadcastAt: Date.now() } : undefined;
+  }
+
   static clientChunkUrls(clientManifest: ClientManifest): string[] {
     const urls = new Set<string>();
     for (const row of Object.values(clientManifest)) {
@@ -210,6 +215,7 @@ export class DevHmrController {
           changedIds: update.changedIds,
           reload: update.reload,
           reason: update.reason,
+          trace: DevHmrController.#broadcastTrace(update.trace),
         });
         this.#logger.verbose(
           `[csr] ${update.mode} generation=${update.generation} ${update.reload ? `reload (${update.reason ?? "no reason"})` : `patch modules=${update.changedIds?.length ?? 0}`}`,
@@ -231,7 +237,7 @@ export class DevHmrController {
           `css-update assets=${Object.keys(this.#renderState.cssAssets).length} generation=${css.generation ?? "(unknown)"} files=${css.changedFiles?.length ?? 0} in ${Date.now() - started}ms (ipc)`,
         );
       },
-      onPagesUpdated: async ({ bundlePath, buildId, generation, changedFiles }) => {
+      onPagesUpdated: async ({ bundlePath, buildId, generation, changedFiles, trace }) => {
         const started = Date.now();
         const files = changedFiles ?? [];
         const routeTreeChanged = await this.#reloadSeedIndex();
@@ -255,10 +261,26 @@ export class DevHmrController {
         });
         this.#logger.verbose(`[SSR] rsc reload buildId=${buildId} in ${Date.now() - reloadStarted}ms`);
         const shouldReload = clearAll || this.#shouldFullReloadForFiles(files, routeIds);
+        const broadcastTrace = DevHmrController.#broadcastTrace(trace);
         if (shouldReload) this.#hub.broadcast({ type: "reload", buildId });
         else if (fastRefreshCandidate)
-          this.#hub.broadcast({ type: "client-refresh", buildId, generation, changedFiles, routeIds });
-        else this.#hub.broadcast({ type: "rsc-refresh", buildId, generation, changedFiles, routeIds });
+          this.#hub.broadcast({
+            type: "client-refresh",
+            buildId,
+            generation,
+            changedFiles,
+            routeIds,
+            trace: broadcastTrace,
+          });
+        else
+          this.#hub.broadcast({
+            type: "rsc-refresh",
+            buildId,
+            generation,
+            changedFiles,
+            routeIds,
+            trace: broadcastTrace,
+          });
         this.#logger.verbose(
           `[hmr] backend apply buildId=${buildId} dropped=${dropped.length} routeGeneration=${manifest.generation} in ${Date.now() - started}ms`,
         );

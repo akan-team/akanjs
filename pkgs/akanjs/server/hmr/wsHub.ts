@@ -1,5 +1,5 @@
 import { Logger } from "akanjs/common";
-import type { BuildPhase } from "../artifact";
+import type { BuildPhase, HmrTrace } from "../artifact";
 
 // Sent over IPC by devkit's fs watcher.
 export type ChangeKind = "code" | "css" | "config" | "ignore";
@@ -7,6 +7,7 @@ export type ChangeKind = "code" | "css" | "config" | "ignore";
 export interface ChangeBatch {
   files: string[];
   kinds: Set<Exclude<ChangeKind, "ignore">>;
+  trace?: HmrTrace;
 }
 
 export type HmrClientKind = "ssr" | "csr";
@@ -32,14 +33,23 @@ export type HmrMessage =
       changedIds?: string[];
       reload?: boolean;
       reason?: string;
+      trace?: HmrTrace;
     }
-  | { type: "rsc-refresh"; buildId: number; generation?: number; changedFiles?: string[]; routeIds?: string[] }
+  | {
+      type: "rsc-refresh";
+      buildId: number;
+      generation?: number;
+      changedFiles?: string[];
+      routeIds?: string[];
+      trace?: HmrTrace;
+    }
   | {
       type: "client-refresh";
       buildId: number;
       generation?: number;
       changedFiles?: string[];
       routeIds?: string[];
+      trace?: HmrTrace;
     }
   | { type: "css-update"; cssAssets?: Record<string, { cssUrl: string; cssRelPath: string }> }
   | { type: "sync-navigation"; clientId: string; href: string; kind?: "push" | "replace" | "back" | "pop" }

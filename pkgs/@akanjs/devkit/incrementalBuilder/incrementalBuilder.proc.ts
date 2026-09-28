@@ -39,7 +39,7 @@ interface IncrementalBuilderOptions {
 }
 
 type IncrementalBuilderBootDeps = Pick<IncrementalBuilderOptions, "artifact" | "optimizedFonts" | "discovery">;
-type BatchWork = Pick<BuildBatchRequest, "generation" | "needs" | "changedFiles">;
+type BatchWork = Pick<BuildBatchRequest, "generation" | "needs" | "changedFiles" | "trace">;
 
 class IncrementalBuilder {
   #logger = new Logger("IncrementalBuilder");
@@ -276,6 +276,7 @@ class IncrementalBuilder {
     const rawKinds = new Set(batch.kinds);
     if (rawKinds.size === 0) return;
     const generation = ++this.#generation;
+    const trace = { ...batch.trace, batchAt: Date.now() };
     //* Auto-import edits touch only this batch's files, so they rebuild in this same generation.
     const [autoImport, indexSync] = await CodegenLock.run(
       this.#app.workspace.workspaceRoot,
@@ -347,7 +348,7 @@ class IncrementalBuilder {
 
     BuilderChannel.emit(event);
 
-    if (needs.length > 0) await this.#runBatch({ generation, needs, changedFiles: files });
+    if (needs.length > 0) await this.#runBatch({ generation, needs, changedFiles: files, trace });
     // Css-only batches keep the debounce: they arrive in bursts while a stylesheet is edited.
     else if (kinds.includes("css")) {
       this.scheduleCssRebuild({ generation, changedFiles: files });
@@ -372,7 +373,7 @@ class IncrementalBuilder {
     return result;
   }
 
-  async #batchRequest({ generation, needs, changedFiles }: BatchWork): Promise<BuildBatchRequest> {
+  async #batchRequest({ generation, needs, changedFiles, trace }: BatchWork): Promise<BuildBatchRequest> {
     return {
       appName: this.#app.name,
       workspaceRoot: this.#app.workspace.workspaceRoot,
@@ -384,6 +385,7 @@ class IncrementalBuilder {
       optimizedFonts: this.#optimizedFonts,
       cssAssets: this.#artifact.cssAssets ?? null,
       artifactDir: path.resolve(this.#artifactDir),
+      ...(trace ? { trace } : {}),
     };
   }
 

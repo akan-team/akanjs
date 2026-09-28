@@ -38,8 +38,9 @@ export class BuildBatchRunner {
     const started = Date.now();
     const entry = await this.#resolveEntry();
     let result: BuildBatchResult | null = null;
+    const payload = request.trace ? { ...request, trace: { ...request.trace, spawnAt: Date.now() } } : request;
     // argv rather than IPC, so the worker starts on its first tick instead of waiting for a handshake.
-    const proc = Bun.spawn(["bun", entry, JSON.stringify(request)], {
+    const proc = Bun.spawn(["bun", entry, JSON.stringify(payload)], {
       cwd: this.#cwd,
       env: process.env,
       stdio: ["ignore", "inherit", "inherit"],

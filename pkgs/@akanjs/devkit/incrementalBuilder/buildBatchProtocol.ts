@@ -1,5 +1,5 @@
 import type { FontOptimizer } from "@akanjs/devkit/frontendBuild";
-import type { BaseBuildArtifact, CssPayload, PagesBundlePayload } from "akanjs/server";
+import type { BaseBuildArtifact, CssPayload, HmrTrace, PagesBundlePayload } from "akanjs/server";
 
 export type OptimizedFonts = Awaited<ReturnType<FontOptimizer["optimize"]>>;
 
@@ -18,6 +18,7 @@ export interface BuildBatchRequest {
   optimizedFonts: OptimizedFonts | null; // reused unless this batch touched one of its files
   cssAssets: PagesBatchCssAssets | null; // an unchanged compile skips the broadcast instead of busting hashes
   artifactDir: string;
+  trace?: HmrTrace;
 }
 
 export type PagesBatchCssAssets = CssPayload["cssAssets"];

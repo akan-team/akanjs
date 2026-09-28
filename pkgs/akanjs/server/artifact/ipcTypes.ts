@@ -76,12 +76,26 @@ export type BuilderCsrRes =
 /** Drain and exit (the only way bundler memory returns to the OS); draining, not killing, keeps a rebuild whole. */
 export type BuilderControl = { type: "builder-shutdown"; reason: string };
 
+/** Epoch-ms marks a save picks up on its way to the page, so a slow update says which hop it waited in. */
+export interface HmrTrace {
+  eventAt?: number; // first fs event of the watcher window
+  flushAt?: number; // the watcher handed the batch over
+  batchAt?: number; // the builder started on it (after its queue)
+  spawnAt?: number; // the build worker was spawned
+  workerStartAt?: number; // the worker process started
+  workerAt?: number; // the worker finished its imports
+  patchAt?: number; // the update (CSR patch or pages bundle) was on disk
+  sentAt?: number; // the build side sent the update
+  broadcastAt?: number; // the backend sent it to the tabs
+}
+
 export interface PagesBundlePayload {
   bundlePath: string;
   buildId: number;
   generation?: number;
   changedFiles?: string[];
   reason?: BuilderStateReason;
+  trace?: HmrTrace;
 }
 
 /** `Bun.build` keeps native arenas `Bun.gc(true)` never frees (macOS returns none when idle): hence recycling. */
@@ -101,6 +115,7 @@ export interface CsrUpdatedPayload {
   reason?: string;
   patchUrl?: string;
   changedIds?: string[];
+  trace?: HmrTrace;
 }
 
 export type BuilderEvent =

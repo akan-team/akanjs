@@ -14,7 +14,7 @@ import {
   SsrBaseArtifactBuilder,
 } from "@akanjs/devkit/frontendBuild";
 import { Logger } from "akanjs/common";
-import type { BuilderMessage, BuildPhase } from "akanjs/server";
+import type { BuilderMessage, BuildPhase, HmrTrace } from "akanjs/server";
 import { resolveDevCsrMode } from "akanjs/server/hmr/csrDevManifest";
 import type { BuildBatchRequest, BuildBatchResult, OptimizedFonts, PagesBatchCssAssets } from "./buildBatchProtocol";
 
@@ -43,6 +43,12 @@ class BuildBatch {
   // an explicit `process.exit` after an emit would silently drop payloads (route through BuilderChannel then).
   #emit(message: BuilderMessage): void {
     process.send?.(message);
+  }
+
+  #sentTrace(): HmrTrace | undefined {
+    if (!this.#request.trace) return undefined;
+    const now = Date.now();
+    return { ...this.#request.trace, patchAt: now, sentAt: now };
   }
 
   #emitStatus(phase: BuildPhase, message?: string): void {
@@ -119,6 +125,7 @@ class BuildBatch {
         reason: update.reason,
         patchUrl: update.patchUrl,
         changedIds: update.changedIds,
+        trace: this.#sentTrace(),
       },
     });
   }
@@ -138,6 +145,7 @@ class BuildBatch {
           buildId: next.buildId,
           generation: this.#request.generation,
           changedFiles: this.#request.changedFiles,
+          trace: this.#sentTrace(),
         },
       });
       this.#emitStatus("pages");
@@ -213,7 +221,13 @@ class BuildBatch {
   static async main(): Promise<void> {
     const raw = process.argv[2];
     if (!raw) throw new Error("[build-batch] missing request argument");
-    const request = JSON.parse(raw) as BuildBatchRequest;
+    const parsed = JSON.parse(raw) as BuildBatchRequest;
+    const request = parsed.trace
+      ? {
+          ...parsed,
+          trace: { ...parsed.trace, workerStartAt: Math.round(performance.timeOrigin), workerAt: Date.now() },
+        }
+      : parsed;
     const workspace = WorkspaceExecutor.fromRoot({
       workspaceRoot: request.workspaceRoot,
       repoName: request.repoName,

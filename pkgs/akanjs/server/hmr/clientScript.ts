@@ -26,6 +26,7 @@ export const HMR_CLIENT_SCRIPT = `(function(){
   var overlayNextToken = 1;
   var overlayJobs = {};
   var buildErrorStates = {};
+  var traces = self.__AKAN_HMR_TRACES__ = self.__AKAN_HMR_TRACES__ || [];
   self.__AKAN_HMR_PHASE__ = null;
   self.__AKAN_DEV_SYNC_NAVIGATION__ = function(href, kind){
     if (self.__AKAN_DEV_SYNC_NAVIGATION_APPLYING__ || !syncNavigationEnabled || !socket || socket.readyState !== WebSocket.OPEN) return;
@@ -140,8 +141,15 @@ export const HMR_CLIENT_SCRIPT = `(function(){
     setTimeout(function(){ location.reload(); }, 30);
   }
 
+  // Kept in the page so a latency probe can line up the build side's marks with when the page took the update.
+  function recordTrace(kind, msg, receivedAt, appliedAt){
+    traces.push({ kind: kind, generation: msg.generation, trace: msg.trace || null, receivedAt: receivedAt, appliedAt: appliedAt });
+    if (traces.length > 64) traces.shift();
+  }
+
   // A registry page (self.__akan) patches itself; a single-file CSR artifact can only reload.
   function applyCsrUpdate(msg){
+    recordTrace("csr", msg, Date.now(), null);
     if (msg.reload || !self.__akan || typeof self.__akan.hot !== "function") {
       reloadForCsr(msg.reason || "the CSR bundle was rebuilt");
       return;
@@ -370,6 +378,7 @@ export const HMR_CLIENT_SCRIPT = `(function(){
 
   function refreshRsc(msg){
     var started = performance.now();
+    var receivedAt = Date.now();
     var overlayToken = beginHmrOverlay("Refreshing page...");
     try { self.__AKAN_RSC_CLEAR_CACHE__ && self.__AKAN_RSC_CLEAR_CACHE__(); } catch(e){}
     if (!self.__AKAN_RSC_REFRESH__) {
@@ -380,6 +389,7 @@ export const HMR_CLIENT_SCRIPT = `(function(){
     }
     Promise.resolve(self.__AKAN_RSC_REFRESH__({ buildId: msg.buildId })).then(function(){
       lastBuildId = msg.buildId;
+      recordTrace("rsc-refresh", msg, receivedAt, Date.now());
       endHmrOverlay(overlayToken);
       console.debug && console.debug("[akan-hmr] RSC refreshed", {
         buildId: msg.buildId,
@@ -426,6 +436,7 @@ export const HMR_CLIENT_SCRIPT = `(function(){
 
   function doRefreshClient(msg){
     var started = performance.now();
+    var receivedAt = Date.now();
     var metadataAt = started;
     var importAt = started;
     var refreshAt = started;
@@ -458,6 +469,7 @@ export const HMR_CLIENT_SCRIPT = `(function(){
             }
             refreshAt = performance.now();
             lastBuildId = msg.buildId;
+            recordTrace("client-refresh", msg, receivedAt, Date.now());
             console.debug && console.debug("[akan-hmr] React Fast Refresh applied", {
               buildId: msg.buildId,
               generation: msg.generation,

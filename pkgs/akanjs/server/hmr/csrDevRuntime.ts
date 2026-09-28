@@ -63,7 +63,7 @@ interface CsrScriptElement {
 
 export interface CsrDevRuntimeHost {
   __akan?: CsrDevRuntimeApi;
-  __AKAN_CSR_LAST_UPDATE__?: { generation: number; executed: string[] };
+  __AKAN_CSR_LAST_UPDATE__?: { generation: number; executed: string[]; appliedAt?: number; refreshedAt?: number };
   document: {
     currentScript: unknown;
     head: { appendChild(node: unknown): unknown };
@@ -184,7 +184,7 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       } catch (error) {
         threw(error);
       }
-      host.__AKAN_CSR_LAST_UPDATE__ = { generation, executed: this.#executed.slice() };
+      host.__AKAN_CSR_LAST_UPDATE__ = { generation, executed: this.#executed.slice(), appliedAt: Date.now() };
       if (pending.length > 0) this.#settling = Promise.all(pending).then(() => this.#scheduleRefresh(), threw);
     }
 
@@ -365,6 +365,7 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       this.#refreshTimer = host.setTimeout(() => {
         this.#refreshTimer = null;
         this.#refresh?.performReactRefresh();
+        if (host.__AKAN_CSR_LAST_UPDATE__) host.__AKAN_CSR_LAST_UPDATE__.refreshedAt = Date.now();
       }, 16);
     }
 
