@@ -176,6 +176,7 @@ describe("DevHmrController SSR registry updates", () => {
       renderState: RenderState,
       reloads: { pagesBundlePath?: string }[],
       sent: () => HmrMessage[],
+      toHost: () => { type?: string; routeId?: string }[],
     ) => Promise<void>,
     {
       pagesBundlePath = "/repo/pages.js",
@@ -183,7 +184,11 @@ describe("DevHmrController SSR registry updates", () => {
     }: { pagesBundlePath?: string; reload?: (input: RscWorkerReloadInput) => Promise<RscAdoptedBundle> } = {},
   ) => {
     const originalSend = process.send;
-    process.send = ((): boolean => true) as typeof process.send;
+    const toHost: { type?: string; routeId?: string }[] = [];
+    process.send = ((message: { type?: string; routeId?: string }): boolean => {
+      toHost.push(message);
+      return true;
+    }) as typeof process.send;
     const renderState: RenderState = { buildId: 0, cssAssets: {}, cssBytesByUrl: {} };
     const reloads: { pagesBundlePath?: string }[] = [];
     const controller = new DevHmrController({
@@ -211,6 +216,7 @@ describe("DevHmrController SSR registry updates", () => {
         renderState,
         reloads,
         () => messages,
+        () => toHost,
       );
     } finally {
       controller.dispose();
@@ -489,6 +495,20 @@ describe("DevHmrController SSR registry updates", () => {
       route("/:lang/a", true);
       await settle();
       expect(types()).toEqual(["build-status", "build-status"]);
+    });
+  });
+
+  test("a route that failed is built again once a newer build of the app goes green", async () => {
+    await withRegistryController(async (emit, _types, _renderState, _reloads, _sent, toHost) => {
+      const routeBuilds = () => toHost().filter((message) => message.type === "build-route");
+      const failed = { generation: 7, phase: "route", ok: false, files: ["/repo/apps/a/page/a.tsx"], message: "x" };
+      emit({ type: "build-status", data: { ...failed, scope: "/:lang/a" } });
+      emit({ type: "build-status", data: { generation: 7, phase: "pages", ok: true, files: [] } });
+      await settle();
+      expect(routeBuilds()).toEqual([]);
+      emit({ type: "build-status", data: { generation: 8, phase: "pages", ok: true, files: [] } });
+      await settle();
+      expect(routeBuilds()).toMatchObject([{ routeId: "/:lang/a" }]);
     });
   });
 

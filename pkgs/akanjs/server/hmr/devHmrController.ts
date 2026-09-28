@@ -82,6 +82,7 @@ export class DevHmrController {
   readonly #ssrUpdates = new SsrUpdateQueue((message) => this.#sendSsrUpdate(message));
   readonly #builderRpc: BuilderRpc;
   readonly routeCache: RouteClientCache;
+  #recheckingRoute = false;
   readonly #recentClientEntries = new Set<string>();
   /** File to the newest save that invalidated its routes already: that save's pages build must not drop them again. */
   readonly #earlyInvalidated = new Map<string, number>();
@@ -366,6 +367,7 @@ export class DevHmrController {
   }
 
   #recordBuildStatus(status: DevBuildStatus): void {
+    this.#recheckFailedRoute(status);
     const previous = this.#buildStatusByPhase.get(status.phase);
     const message = devBuildStatusToHmrMessage(status, previous);
     //? An ok that recovers nothing keeps the failure: hello re-sends it to a tab opened after, and the fix's own ok is
@@ -377,6 +379,22 @@ export class DevHmrController {
     this.#logger.verbose(
       `[hmr] build-status status=${message.status} generation=${message.generation} phase=${message.phase} files=${message.files ?? 0}`,
     );
+  }
+
+  //? A route builds only when requested, and a module another route shares is the usual cause of its failure: once
+  //? that module is fixed, no tab may ask for the failed route again, and only its own ok clears it. A newer green
+  //? build of the app rebuilds it once, which clears it or records the failure anew at the newer generation.
+  #recheckFailedRoute(status: DevBuildStatus): void {
+    if (!status.ok || (status.phase !== "pages" && status.phase !== "ssr") || this.#recheckingRoute) return;
+    const failed = this.#buildStatusByPhase.get("route");
+    if (!failed || failed.ok || !failed.scope || failed.generation >= status.generation) return;
+    this.#recheckingRoute = true;
+    void this.routeCache
+      .ensure(failed.scope, failed.files)
+      .catch(() => undefined)
+      .finally(() => {
+        this.#recheckingRoute = false;
+      });
   }
 
   #createRouteCache() {
