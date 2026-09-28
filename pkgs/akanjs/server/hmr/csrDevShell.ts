@@ -5,9 +5,12 @@ import {
   CSR_DEV_DIRNAME,
   CSR_DEV_MANIFEST_FILE,
   CSR_DEV_ROUTE_PREFIX,
+  type CsrDevLayout,
   type CsrDevManifest,
+  csrDevModuleFile,
 } from "./csrDevManifest";
 import { CSR_DEV_RUNTIME_SCRIPT } from "./csrDevRuntime";
+import { CsrDevSourceMap, type RawSourceMap } from "./csrDevSourceMap";
 
 export interface CsrDevShellRenderOptions {
   basePath: string;
@@ -19,6 +22,7 @@ export interface CsrDevShellRenderOptions {
 export class CsrDevShell {
   static readonly #runtimeHash = Bun.hash(CSR_DEV_RUNTIME_SCRIPT).toString(36);
   static readonly #servedFile = /^(app\.js|vendor-[\w-]+\.js|patch-\d+\.js|assets\/[\w.-]+)$/;
+  static readonly #sourceMapFile = /^(app\.js|patch-\d+\.js)\.map$/;
   readonly #dir: string;
 
   constructor(artifactDir: string) {
@@ -60,6 +64,7 @@ ${stylesheet}  </head>
   async serve(req: Request): Promise<Response> {
     const name = new URL(req.url).pathname.slice(CSR_DEV_ROUTE_PREFIX.length);
     if (name === "runtime.js") return CsrDevShell.#js(CSR_DEV_RUNTIME_SCRIPT, "public, max-age=31536000, immutable");
+    if (CsrDevShell.#sourceMapFile.test(name)) return await this.#serveSourceMap(name);
     if (!CsrDevShell.#servedFile.test(name)) return new Response("Not Found", { status: 404 });
     const filePath = resolveStaticPath(this.#dir, name);
     const file = filePath ? Bun.file(filePath) : null;
@@ -68,6 +73,26 @@ ${stylesheet}  </head>
     if (name.startsWith("assets/"))
       return new Response(file, { headers: CsrDevShell.#headers(file.type, cacheControl) });
     return CsrDevShell.#js(file, cacheControl);
+  }
+
+  // Composed when DevTools asks, not on every save: most saves are never debugged.
+  async #serveSourceMap(name: string): Promise<Response> {
+    const generatedFile = name.slice(0, -".map".length);
+    const layoutFile = Bun.file(path.join(this.#dir, `${generatedFile}.layout.json`));
+    if (!(await layoutFile.exists())) return new Response("Not Found", { status: 404 });
+    const layout = (await layoutFile.json()) as CsrDevLayout;
+    const sections = await Promise.all(
+      layout.modules.map(async ([id, line]) => {
+        const file = Bun.file(path.join(this.#dir, csrDevModuleFile(id, ".js.map")));
+        return (await file.exists()) ? { line, map: (await file.json()) as RawSourceMap } : null;
+      }),
+    );
+    const map = CsrDevSourceMap.merge(
+      generatedFile,
+      sections.filter((section) => section !== null),
+      layout.lineCount,
+    );
+    return new Response(JSON.stringify(map), { headers: CsrDevShell.#headers("application/json", "no-store") });
   }
 
   static #js(body: string | Blob, cacheControl: string): Response {

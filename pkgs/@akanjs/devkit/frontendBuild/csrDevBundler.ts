@@ -6,7 +6,9 @@ import {
   CSR_DEV_DIRNAME,
   CSR_DEV_MANIFEST_FILE,
   CSR_DEV_ROUTE_PREFIX,
+  type CsrDevLayout,
   type CsrDevManifest,
+  csrDevModuleFile,
 } from "akanjs/server/hmr/csrDevManifest";
 import { isAkanRuntimeMetadataFile } from "akanjs/server/hmr/runtimeMetadataFile";
 import type { BunPlugin } from "bun";
@@ -59,6 +61,7 @@ interface CompiledModule {
   file: string;
   vendor: boolean;
   factory: string;
+  sourceMap?: string;
   deps: string[];
   mtimeMs: number;
   hash: string;
@@ -87,7 +90,7 @@ interface Metafile {
 //* Dev-only CSR as a module registry: every module is its own CJS factory (Bun.build with each import external),
 //* so a save re-executes only the changed modules instead of reloading one scope-hoisted HTML file.
 export class CsrDevBundler {
-  static readonly #formatVersion = 1;
+  static readonly #formatVersion = 2;
   static readonly #modulePrefix = "akan-module:";
   static readonly #stubPrefix = "stub:";
   static readonly #inline = "inline";
@@ -416,6 +419,7 @@ export class CsrDevBundler {
       target: "browser",
       format: "cjs",
       reactFastRefresh: !vendor,
+      sourcemap: vendor ? "none" : "external",
       naming: { entry: "[dir]/[name].[ext]", asset: "assets/[name]-[hash].[ext]" },
       publicPath: CSR_DEV_ROUTE_PREFIX,
       metafile: true,
@@ -425,6 +429,9 @@ export class CsrDevBundler {
       plugins: [plugin],
     });
     const { outputs } = result.metafile as unknown as Metafile;
+    const sourceMaps = new Map(
+      result.outputs.filter((artifact) => artifact.kind === "sourcemap").map((artifact) => [artifact.path, artifact]),
+    );
     const modules: CompiledModule[] = [];
     const tangled: string[] = [];
     for (const artifact of result.outputs) {
@@ -443,17 +450,31 @@ export class CsrDevBundler {
       }
       const code = await artifact.text();
       const id = this.#idOf(file);
+      const sourceMap = sourceMaps.get(`${artifact.path}.map`);
       modules.push({
         id,
         file,
         vendor,
         factory: CsrDevBundler.#factory(id, code),
+        sourceMap: sourceMap ? this.#rebaseSourceMap(await sourceMap.text()) : undefined,
         deps: this.#emittedDeps(code),
         mtimeMs: mtimes.get(file) ?? CsrDevBundler.#mtimeOf(file),
         hash: hashes.get(file) ?? "",
       });
     }
     return { modules, misses, tangled };
+  }
+
+  //? Bun writes sources relative to the working directory; the page shows them by workspace path instead. A package
+  //? barrel inlined into its importer (react-icons) would carry its whole text into every importer's map.
+  #rebaseSourceMap(text: string): string {
+    const map = JSON.parse(text) as { sources: string[]; sourcesContent?: (string | null)[] };
+    const files = map.sources.map((source) => path.resolve(source));
+    map.sources = files.map((file) => `/${this.#idOf(file)}`);
+    map.sourcesContent = files.map((file, index) =>
+      CsrDevBundler.#isVendorFile(file) ? null : (map.sourcesContent?.[index] ?? null),
+    );
+    return JSON.stringify(map);
   }
 
   // Read off the emitted code rather than onResolve: Bun resolves both arms of `NODE_ENV ? require(a) : require(b)`
@@ -588,13 +609,34 @@ export class CsrDevBundler {
 
   async #writeModules(compiled: CompiledModule[]): Promise<void> {
     await mkdir(path.join(this.#outDir, "modules"), { recursive: true });
-    await Promise.all(compiled.map((module) => Bun.write(this.#modulePath(module.id), module.factory)));
+    await Promise.all(
+      compiled.flatMap((module) => [
+        Bun.write(this.#modulePath(module.id, ".js"), module.factory),
+        ...(module.sourceMap ? [Bun.write(this.#modulePath(module.id, ".js.map"), module.sourceMap)] : []),
+      ]),
+    );
   }
 
   async #defineLines(ids: string[]): Promise<string[]> {
     return await Promise.all(
-      ids.map(async (id) => `__akan.define(${JSON.stringify(id)}, ${await Bun.file(this.#modulePath(id)).text()});\n`),
+      ids.map(
+        async (id) => `__akan.define(${JSON.stringify(id)}, ${await Bun.file(this.#modulePath(id, ".js")).text()});\n`,
+      ),
     );
+  }
+
+  //? A factory's code starts on the line after its header, so each module's map is placed one line below it.
+  async #writeWithSourceMap(name: string, header: string, blocks: [id: string, text: string][], footer: string) {
+    const layout: CsrDevLayout = { lineCount: 0, modules: [] };
+    let line = CsrDevBundler.#lineCount(header);
+    for (const [id, text] of blocks) {
+      layout.modules.push([id, line + 1]);
+      line += CsrDevBundler.#lineCount(text);
+    }
+    const code = `${header}${blocks.map(([, text]) => text).join("")}${footer}//# sourceMappingURL=${name}.map\n`;
+    layout.lineCount = CsrDevBundler.#lineCount(code);
+    await this.#writeJson(`${name}.layout.json`, layout);
+    await this.#writeAtomic(name, code);
   }
 
   async #writeVendor(graph: CsrDevGraph): Promise<string> {
@@ -624,14 +666,21 @@ export class CsrDevBundler {
       .filter((id) => !graph.modules[id]?.vendor)
       .sort();
     const lines = await this.#defineLines(ids);
-    lines.push(`__akan.start(${JSON.stringify({ generation, refresh: graph.refresh })});\n`);
-    await this.#writeAtomic(CSR_DEV_APP_FILE, lines.join(""));
+    const blocks = ids.map((id, index) => [id, lines[index] ?? ""] as [string, string]);
+    const start = `__akan.start(${JSON.stringify({ generation, refresh: graph.refresh })});\n`;
+    await this.#writeWithSourceMap(CSR_DEV_APP_FILE, "", blocks, start);
   }
 
   async #writePatch(generation: number, modules: CompiledModule[]): Promise<string> {
-    const factories = modules.map((module) => `${JSON.stringify(module.id)}: ${module.factory}`).join(",\n");
     const patchFile = `patch-${generation}.js`;
-    await this.#writeAtomic(patchFile, `__akan.update(${generation}, {\n${factories}\n});\n`);
+    const blocks = modules.map(
+      (module, index) =>
+        [module.id, `${JSON.stringify(module.id)}: ${module.factory}${index < modules.length - 1 ? ",\n" : "\n"}`] as [
+          string,
+          string,
+        ],
+    );
+    await this.#writeWithSourceMap(patchFile, `__akan.update(${generation}, {\n`, blocks, "});\n");
     return `${CSR_DEV_ROUTE_PREFIX}${patchFile}`;
   }
 
@@ -644,7 +693,7 @@ export class CsrDevBundler {
   async #prune(vendorFile: string, generation: number): Promise<void> {
     const names = await readdir(this.#outDir);
     const stale = names.filter((name) => {
-      const patch = /^patch-(\d+)\.js$/.exec(name);
+      const patch = /^patch-(\d+)\.js(?:\.layout\.json)?$/.exec(name);
       return patch ? Number(patch[1]) <= generation - CsrDevBundler.#keptPatches : false;
     });
     const vendors = names
@@ -674,8 +723,14 @@ export class CsrDevBundler {
     await rename(temp, target);
   }
 
-  #modulePath(id: string): string {
-    return path.join(this.#outDir, "modules", `${Bun.hash(id).toString(36)}.js`);
+  #modulePath(id: string, extension: ".js" | ".js.map"): string {
+    return path.join(this.#outDir, csrDevModuleFile(id, extension));
+  }
+
+  static #lineCount(text: string): number {
+    let count = 0;
+    for (let index = text.indexOf("\n"); index !== -1; index = text.indexOf("\n", index + 1)) count += 1;
+    return count;
   }
 
   #idOf(file: string): string {
@@ -689,13 +744,14 @@ export class CsrDevBundler {
     return path.isAbsolute(id) ? id : path.join(this.#root, id);
   }
 
+  // Every rewrite keeps the line count, so a module's source map still lines up inside the factory.
   static #factory(id: string, code: string): string {
     const prefix = CsrDevBundler.#modulePrefix;
-    let patched = code.replaceAll(`import("${prefix}`, `__akanImport("${prefix}`);
+    let patched = code.replaceAll(`import("${prefix}`, `__akanImport("${prefix}`).replace(/^\/\/# debugId=.*$/m, "");
     for (const [name, params, method] of CsrDevBundler.#helperPatches) {
       const definition = `var ${name} = ${params} => {`;
       if (patched.includes(definition))
-        patched = patched.replace(definition, `var ${name} = __akan.${method};\nvar __bun${name} = ${params} => {`);
+        patched = patched.replace(definition, `var ${name} = __akan.${method}, __bun${name} = ${params} => {`);
       else if (patched.includes(`${name}(`))
         throw new Error(
           `[csr-dev] ${id}: Bun's ${name} helper no longer reads "${definition}"; CsrDevBundler must follow`,
