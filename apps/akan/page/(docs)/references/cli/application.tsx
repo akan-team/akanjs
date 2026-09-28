@@ -462,8 +462,8 @@ akan plan-slice myapp --format json`,
           name: "--concurrency",
           type: "Number",
           desc: l.trans({
-            en: "Apps booted at a time. Unset: the lower of half the memory ÷ 900MB and cores ÷ 4.",
-            ko: "동시에 부팅할 앱 수입니다. 비우면 (메모리 절반 ÷ 900MB)와 (코어 수 ÷ 4) 중 작은 값입니다.",
+            en: "Apps booted at a time. Unset: the lower of half the memory ÷ 1.8GB and cores ÷ 4.",
+            ko: "동시에 부팅할 앱 수입니다. 비우면 (메모리 절반 ÷ 1.8GB)와 (코어 수 ÷ 4) 중 작은 값입니다.",
           }),
         },
         {

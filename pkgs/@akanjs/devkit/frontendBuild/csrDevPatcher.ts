@@ -140,12 +140,14 @@ export class CsrDevPatcher {
     }
     const compiled = result.modules;
     const vendorJoined = compiled.some((module) => module.vendor && !graph.modules[module.id]);
+    //? Read before the merge, while the graph names only modules on disk: a new one's file is written after announcing.
+    const code = await this.#code(state);
     this.#bundler.merge(graph, resolver, compiled);
     graph.entries = entryIds;
     for (const module of compiled) {
-      if (module.vendor || !state.code) continue;
-      state.code.modules.set(module.id, module.factory);
-      if (module.helpers) state.code.helpers.set(module.helpers.hash, module.helpers.definition);
+      if (module.vendor || !code) continue;
+      code.modules.set(module.id, module.factory);
+      if (module.helpers) code.helpers.set(module.helpers.hash, module.helpers.definition);
     }
     const changedIds = compiled.filter((module) => !module.vendor).map((module) => module.id);
     const constantId = changedIds.find((id) => id.endsWith(".constant.ts"));
@@ -173,7 +175,7 @@ export class CsrDevPatcher {
       await writer.forgetPatch(generation);
       await writer.writeModules(compiled);
       const vendorFile = vendorJoined ? await writer.writeVendor(graph) : previous.vendorFile;
-      await writer.writeApp(graph, generation, await this.#code(state));
+      await writer.writeApp(graph, { generation, vendorFile, epoch: previous.epoch }, code);
       state.manifest = { ...next, vendorFile, appGeneration: generation };
       await writer.writeState(graph, state.manifest);
       await writer.prune(vendorFile, generation);
@@ -187,7 +189,6 @@ export class CsrDevPatcher {
         compiled.filter((module) => !module.vendor),
       ),
     );
-    const code = await this.#code(state);
     await writer.commitPatch(graph, { ...next, appGeneration: appGenerationOf(previous) }, () => announce?.(patched), {
       modules: compiled,
       code,
@@ -223,7 +224,8 @@ export class CsrDevPatcher {
 
   async #changedModules(graph: CsrDevGraph, changedFiles: string[]): Promise<Set<string>> {
     const { paths } = this.#bundler;
-    const changed = new Set<string>(graph.pending.filter((id) => graph.modules[id]));
+    // A new root (a route's entry) that failed to compile is pending without being in the graph yet: retried too.
+    const changed = new Set<string>(graph.pending.filter((id) => graph.modules[id] || fs.existsSync(paths.fileOf(id))));
     for (const file of changedFiles) {
       const id = paths.idOf(file);
       if (graph.modules[id]) changed.add(id);
@@ -236,15 +238,20 @@ export class CsrDevPatcher {
       if (CsrDevPaths.mtimeOf(file) === module.mtimeMs) continue;
       if ((await CsrDevPaths.hashOf(file)) !== module.hash) changed.add(id);
     }
-    // A module deleted and brought back (an undo in the file explorer) left the graph while its importers still name it.
-    for (const module of Object.values(graph.modules))
-      for (const dep of module.deps)
-        if (!graph.modules[dep] && !CsrDevPaths.isStub(dep) && fs.existsSync(paths.fileOf(dep))) changed.add(dep);
+    // A dependency the graph lost: deleted and brought back (an undo in the file explorer), it compiles again; moved
+    // away (`Foo.tsx` → `Foo/index.tsx`), its importers do, since their own text did not change and app.js would name
+    // a module no longer defined.
+    for (const [id, module] of Object.entries(graph.modules))
+      for (const dep of module.deps) {
+        if (graph.modules[dep] || CsrDevPaths.isStub(dep)) continue;
+        if (fs.existsSync(paths.fileOf(dep))) changed.add(dep);
+        else if (!module.vendor) changed.add(id);
+      }
     return changed;
   }
 
   // A deleted module leaves the graph instead of being rebuilt: rebuilding a missing file fails every save after it.
-  // An importer that still names it fails on its own rebuild, with the resolution error that says why.
+  // Its importers compile again (#changedModules): a move resolves anew, a deletion fails with the error that says why.
   async #forgetDeletedModules({ graph, code }: CsrDevPatcherState): Promise<void> {
     const { paths, writer } = this.#bundler;
     const deleted = Object.keys(graph.modules).filter(

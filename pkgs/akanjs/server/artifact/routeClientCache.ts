@@ -30,6 +30,16 @@ type PendingBuild = { generation: number; promise: Promise<BuildRouteClientResul
 export interface InvalidateClientEntriesOptions {
   routePredicate: (routeId: string) => boolean;
   staleEntries: Iterable<string>;
+  /** The saved files behind it: a build still running that bundled one of them is built again. */
+  files?: Iterable<string>;
+}
+interface Invalidation {
+  /** The generation it moved the cache to: only a build started before it is checked against it. */
+  generation: number;
+  cleared: boolean;
+  routePredicate: (routeId: string) => boolean;
+  /** Its stale entries and saved files, normalized. */
+  touched: Set<string>;
 }
 
 export class RouteClientCache {
@@ -42,6 +52,7 @@ export class RouteClientCache {
   readonly #buildRoute: RouteBuildFn;
   readonly #onMerge?: OnMergeFn;
   #revision = 0;
+  #invalidations: Invalidation[] = [];
 
   constructor({ buildRoute, onMerge }: RouteClientCacheOptions) {
     this.#buildRoute = buildRoute;
@@ -77,8 +88,8 @@ export class RouteClientCache {
     this.#revision += 1;
   }
 
-  //? An invalidation that lands mid-build drops that build, and a render from the manifest it leaves would name client
-  //? references the manifest no longer holds (an RSC error row): so the route builds again at the new generation.
+  //? A build an invalidation overtook is dropped, since a render from the manifest it leaves would name client references
+  //? the manifest no longer holds (an RSC error row): so the route builds again at the new generation.
   async ensure(routeId: string, seeds: string[]): Promise<MergedManifest> {
     const started = Date.now();
     const deadline = started + RouteClientCache.#ensureBudgetMs;
@@ -86,8 +97,10 @@ export class RouteClientCache {
     let attempt = 0;
     for (; within(attempt) && !this.#built.has(routeId); attempt += 1) {
       const existing = this.#building.get(routeId);
-      if (existing && existing.generation === this.merged.generation) {
-        await existing.promise;
+      if (existing) {
+        // A build from before a save that failed is not this caller's error: the loop builds again at this generation.
+        if (existing.generation === this.merged.generation) await existing.promise;
+        else await existing.promise.catch(() => undefined);
         continue;
       }
       const generation = this.merged.generation;
@@ -98,6 +111,7 @@ export class RouteClientCache {
       } finally {
         const current = this.#building.get(routeId);
         if (current?.promise === promise) this.#building.delete(routeId);
+        this.#prune();
       }
     }
     if (attempt > 1)
@@ -126,7 +140,7 @@ export class RouteClientCache {
     const knownEntries = new Set(this.merged.knownEntries);
     this.#logger.verbose(`[route-cache] build start routeId=${routeId} generation=${generation} seeds=${seeds.length}`);
     const delta = await this.#buildRoute(routeId, { seeds, knownEntries, generation });
-    if (this.merged.generation !== generation) {
+    if (this.merged.generation !== generation && this.#overtaken(routeId, generation, delta)) {
       this.#logger.verbose(
         `[route-cache] stale build ignored routeId=${routeId} generation=${generation} current=${this.merged.generation}`,
       );
@@ -155,23 +169,25 @@ export class RouteClientCache {
     return dropped;
   }
 
-  invalidate(predicate: (routeId: string) => boolean): string[] {
+  invalidate(predicate: (routeId: string) => boolean, { files = [] }: { files?: Iterable<string> } = {}): string[] {
     const dropped = this.#dropBuilt(predicate);
-    if (dropped.length > 0) {
-      this.#rebuildKnownEntriesPreservingManifest(this.merged.generation + 1);
-      this.#building.clear();
-      this.#logger.verbose(`[route-cache] invalidated ${dropped.length} routes: ${dropped.join(", ")}`);
-    }
+    if (dropped.length === 0 && !this.#isBuilding(predicate)) return dropped;
+    this.#rebuildKnownEntriesPreservingManifest(this.merged.generation + 1);
+    this.#record({ routePredicate: predicate, touched: RouteClientCache.#normalizeAll(files) });
+    this.#logger.verbose(`[route-cache] invalidated ${dropped.length} routes: ${dropped.join(", ")}`);
     return dropped;
   }
 
-  invalidateClientEntries({ routePredicate, staleEntries }: InvalidateClientEntriesOptions): string[] {
-    const normalizedStaleEntries = new Set([...staleEntries].map((entry) => RouteClientCache.#normalizePath(entry)));
+  invalidateClientEntries({ routePredicate, staleEntries, files = [] }: InvalidateClientEntriesOptions): string[] {
+    const normalizedStaleEntries = RouteClientCache.#normalizeAll(staleEntries);
     const dropped = this.#dropBuilt(routePredicate);
-    if (dropped.length === 0 && normalizedStaleEntries.size === 0) return dropped;
+    if (dropped.length === 0 && normalizedStaleEntries.size === 0 && !this.#isBuilding(routePredicate)) return dropped;
 
     this.#rebuildKnownEntriesPreservingManifest(this.merged.generation + 1, normalizedStaleEntries);
-    this.#building.clear();
+    this.#record({
+      routePredicate,
+      touched: new Set([...normalizedStaleEntries, ...RouteClientCache.#normalizeAll(files)]),
+    });
     this.#logger.verbose(
       `[route-cache] client invalidated routes=${dropped.join(",") || "(none)"} entries=${normalizedStaleEntries.size}`,
     );
@@ -183,9 +199,48 @@ export class RouteClientCache {
     const nextGeneration = this.merged.generation + 1;
     this.merged = this.#getEmptyMerged(nextGeneration);
     this.#revision += 1;
-    this.#building.clear();
+    this.#record({ cleared: true, routePredicate: () => true, touched: new Set() });
     this.#logger.verbose(`[route-cache] cleared generation=${nextGeneration} dropped=${dropped.length}`);
     return dropped;
+  }
+
+  #isBuilding(predicate: (routeId: string) => boolean): boolean {
+    return [...this.#building.keys()].some(predicate);
+  }
+
+  #record({
+    cleared = false,
+    routePredicate,
+    touched,
+  }: Omit<Invalidation, "generation" | "cleared"> & { cleared?: boolean }) {
+    this.#invalidations.push({ generation: this.merged.generation, cleared, routePredicate, touched });
+    this.#prune();
+  }
+
+  // Only a running build is checked against the log, and none of them started before the oldest one.
+  #prune(): void {
+    let oldest = Number.POSITIVE_INFINITY;
+    for (const pending of this.#building.values()) oldest = Math.min(oldest, pending.generation);
+    this.#invalidations = this.#invalidations.filter((invalidation) => invalidation.generation > oldest);
+  }
+
+  //? A save that dropped neither this route nor anything the build reached leaves its result good: merged, not thrown
+  //? away, so a save during a navigation no longer costs an unrelated route a second build (about 1.5s on apps/akan).
+  #overtaken(routeId: string, since: number, delta: BuildRouteClientResult): boolean {
+    const reached = RouteClientCache.#normalizeAll([
+      ...(delta.discoveredEntries ?? []),
+      ...delta.newEntries,
+      ...delta.clientDeps,
+      ...Object.values(delta.clientDepsByEntry ?? {}).flat(),
+    ]);
+    return this.#invalidations.some(
+      (invalidation) =>
+        invalidation.generation > since &&
+        (invalidation.cleared ||
+          invalidation.routePredicate(routeId) ||
+          (!delta.discoveredEntries && invalidation.touched.size > 0) ||
+          [...invalidation.touched].some((file) => reached.has(file))),
+    );
   }
 
   #rebuildKnownEntriesPreservingManifest(generation: number, staleEntries: Set<string> = new Set()): void {
@@ -221,6 +276,10 @@ export class RouteClientCache {
 
   static #normalizePath(filePath: string): string {
     return filePath.split("\\").join("/");
+  }
+
+  static #normalizeAll(filePaths: Iterable<string>): Set<string> {
+    return new Set([...filePaths].map((filePath) => RouteClientCache.#normalizePath(filePath)));
   }
 
   static #manifestKeyMatchesEntries(key: string, entries: Set<string>): boolean {

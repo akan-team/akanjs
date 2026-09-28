@@ -1023,10 +1023,10 @@ actions and state (see `<model>.store.ts` above).
 - **How many apps boot at once is the machine's answer, not a constant.** A cold boot is an app's RSS peak
   (~1.8GB per app, most of it the build worker — the base build, then the SSR registry's), so the default wave
   is what memory and cores allow — half the memory budget divided by that peak, and one app per four cores —
-  which boots a laptop's apps together and still staggers them inside a small container. An app counts as
-  ready once its SSR registry's boot build has settled, so the next wave never overlaps that build. The
-  session says which in one line. `--concurrency <n>` overrides it, and `AKAN_MEMORY_LIMIT` lowers the budget
-  it derives from.
+  which boots a laptop's apps together and still staggers them inside a small container. The session says
+  which in one line. The next wave starts once an app serves and its boot builds have settled, or 30 seconds
+  after it serves, while the app shows as ready — and `--open` opens it — as soon as it serves.
+  `--concurrency <n>` overrides the wave size, and `AKAN_MEMORY_LIMIT` lowers the budget it derives from.
 - `--kill` frees the dev ports first — it resolves each port's listener, walks up to the top of that akan dev
   tree and signals it, so another checkout's server or a stale orphan on the same port is reclaimed. A holder
   that is not recognisably an akan process is reported and left alone.

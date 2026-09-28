@@ -46,7 +46,7 @@ export interface CsrDevRuntimeApi {
   helpers(hash: string): Record<string, unknown>;
   start(options: { generation: number; refresh: string }): void;
   /** No entry to run: an SSR page requires the modules its RSC payload names, after the bootstrap has run. */
-  startLibrary(options: { generation: number; refresh: string; bootstrap: string }): void;
+  startLibrary(options: LibraryStart): void;
   /** Registers a module the page already loaded outside the registry (an import map vendor). */
   provide(id: string, namespace: unknown): void;
   require(id: string): unknown;
@@ -70,7 +70,18 @@ export interface CsrDevRuntimeApi {
     failed: boolean;
     executed: string[];
     modules: number;
+    /** What the library app.js was built with; undefined for a CSR page. */
+    vendorFile?: string;
+    epoch?: number;
   };
+}
+
+export interface LibraryStart {
+  generation: number;
+  refresh: string;
+  bootstrap: string;
+  vendorFile?: string;
+  epoch?: number;
 }
 
 interface CsrScriptElement {
@@ -101,6 +112,8 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
   if (host.__akan) return;
   const modulePrefix = "akan-module:";
   const maxInvalidateRounds = 8;
+  //? Past this many missed generations a reload is cheaper than applying each patch in turn.
+  const maxCatchUp = 50;
 
   class HotContext implements CsrHotContext {
     selfAccepted = false;
@@ -144,6 +157,9 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
     #roots = new Set<string>();
     #started = false;
     #startFailed = false;
+    //? Modules whose factory threw: the cache drops them, so an update defining one again re-runs nothing on its own.
+    #failed = new Set<string>();
+    #library: { vendorFile?: string; epoch?: number } = {};
     #target = 0;
     #early: CsrUpdateMessage[] = [];
     #helperFactories = new Map<string, () => Record<string, unknown>>();
@@ -194,7 +210,8 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
     }
 
     //? The page's own HMR script already put this refresh runtime into React's hook; a second inject would wrap it.
-    startLibrary({ generation, refresh, bootstrap }: { generation: number; refresh: string; bootstrap: string }) {
+    startLibrary({ generation, refresh, bootstrap, vendorFile, epoch }: LibraryStart) {
+      this.#library = { vendorFile, epoch };
       this.#generation = generation;
       this.#refresh = this.#load(refresh).exports as RefreshRuntime;
       this.#run(bootstrap);
@@ -263,6 +280,13 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       for (const id of ids) this.#factories.set(id, factories[id] as CsrModuleFactory);
       this.#settleWaiters(ids);
       this.#generation = generation;
+      //? Whatever required a module that threw (an RSC payload, a lazy route) holds its error, not a module to swap,
+      //? and the fix may be in one of its dependencies: any update while one is broken reloads onto it.
+      const [broken] = this.#failed;
+      if (broken) {
+        this.#reload(`${broken} failed to run, and generation ${generation} may fix it`);
+        return;
+      }
       this.#executed = [];
       const threw = (error: unknown) =>
         this.#reload(
@@ -291,6 +315,11 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
         this.#early.push(message);
         return;
       }
+      //? A start that failed can be this generation's own: an app.js booted beside the vendor file of the build before.
+      if (this.#startFailed && message.reload && message.generation >= this.#generation) {
+        this.#reload(`the app failed to start, and generation ${message.generation} was rebuilt`);
+        return;
+      }
       if (message.generation <= this.#generation) return;
       if (message.reload || this.#startFailed) {
         this.#reload(
@@ -316,7 +345,12 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
     //? its generation, and a generation that was a reload or a whole build has none, so loading it reloads the tab.
     catchUp(generation: number, prefix: string) {
       if (!this.#started) return;
-      for (let next = Math.max(this.#generation, this.#target) + 1; next <= generation; next += 1)
+      const from = Math.max(this.#generation, this.#target) + 1;
+      if (generation - from >= maxCatchUp) {
+        this.#reload(`missed ${generation - from + 1} updates while disconnected`);
+        return;
+      }
+      for (let next = from; next <= generation; next += 1)
         this.hot({ generation: next, url: `${prefix}patch-${next}.js` });
     }
 
@@ -326,6 +360,8 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
         target: Math.max(this.#generation, this.#target),
         started: this.#started,
         failed: this.#startFailed,
+        vendorFile: this.#library.vendorFile,
+        epoch: this.#library.epoch,
         executed: this.#executed.slice(),
         modules: this.#cache.size,
       };
@@ -400,7 +436,11 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
           if (!probe) return failed();
           probe.then(
             (response) => (response.ok && !retried ? resolve(this.#loadPatch(url, true)) : failed()),
-            () => resolve(),
+            // Still owed: the reconnect's hello catches up from the generation this tab really holds.
+            () => {
+              this.#target = this.#generation;
+              resolve();
+            },
           );
         };
         host.document.head.appendChild(script);
@@ -437,8 +477,10 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
         factory.call(record.exports, requireFromHere, record, record.exports, register, signature, importFromHere);
       } catch (error) {
         this.#cache.delete(id);
+        this.#failed.add(id);
         throw error;
       }
+      this.#failed.delete(id);
       this.#executed.push(id);
       if (!id.startsWith("stub:") && !id.includes("node_modules/")) this.#afterExecute(record);
       return record;

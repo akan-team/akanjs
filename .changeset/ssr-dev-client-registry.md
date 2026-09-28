@@ -16,6 +16,6 @@ feat(dev): SSR pages load their client code from a dev module registry
   client code imports) no longer refetches the page's RSC payload. One that does — a component both sides render, a
   constant — holds its client patch until that save's pages build lands, then sends the patch and the RSC refresh
   together, so the page never runs new client code against old server props for the length of a pages build.
-- The registry builds once in a build worker after the dev server boots, and a route build answers only once the
-  registry holds every entry its manifest names. Route builds no longer bundle browser chunks in dev, which took about
-  240MB off the builder's peak on apps/akan.
+- The registry builds once in a build worker after the dev server boots, and each route build adds the entries its
+  page names that the registry lacks; a page served before the registry exists waits for it in the browser. Route
+  builds no longer bundle browser chunks in dev, which took about 240MB off the builder's peak on apps/akan.

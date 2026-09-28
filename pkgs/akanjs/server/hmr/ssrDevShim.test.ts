@@ -10,7 +10,14 @@ interface FakeScript {
 
 interface FakeRegistry {
   modules: Map<string, unknown>;
-  inspect: () => { generation: number; target: number; started: boolean; failed: boolean };
+  inspect: () => {
+    generation: number;
+    target: number;
+    started: boolean;
+    failed: boolean;
+    vendorFile?: string;
+    epoch?: number;
+  };
   hot: (message: unknown) => void;
   catchUp: (generation: number, prefix: string) => void;
   caughtUp: [number, string][];
@@ -175,6 +182,52 @@ describe("SsrDevShim", () => {
     ).toBe("failed");
     expect(page.self.__AKAN_SSR_BOOT_FAILED__).toEqual({ generation: 8, epoch: 43 });
   }, 10_000);
+
+  test("an app.js that failed to start beside the vendor file of the build before reloads onto the current pair", async () => {
+    const page = createPage();
+    let reloads = 0;
+    page.self.location = { reload: () => (reloads += 1) };
+    page.self.__AKAN_SSR_HELLO_GENERATION__ = 9;
+    page.install(SsrDevShim.script(manifest, []));
+    const boot = (page.self.__webpack_chunk_load__ as (id: string) => Promise<void>)("ssr-dev");
+    page.load(0);
+    const registry = page.self.__akan as FakeRegistry;
+    registry.inspect = () => ({
+      generation: 8,
+      target: 8,
+      started: true,
+      failed: true,
+      vendorFile: "vendor-next.js",
+      epoch: 42,
+    });
+    await page.settle();
+    page.load(1);
+    await page.settle();
+    page.load(2);
+    await boot;
+    expect(reloads).toBe(1);
+    expect(registry.caughtUp).toEqual([]);
+
+    const sameVendor = createPage();
+    sameVendor.self.location = { reload: () => (reloads += 1) };
+    sameVendor.install(SsrDevShim.script(manifest, []));
+    const bootSame = (sameVendor.self.__webpack_chunk_load__ as (id: string) => Promise<void>)("ssr-dev");
+    sameVendor.load(0);
+    (sameVendor.self.__akan as FakeRegistry).inspect = () => ({
+      generation: 7,
+      target: 7,
+      started: true,
+      failed: true,
+      vendorFile: "vendor-abc.js",
+      epoch: 42,
+    });
+    await sameVendor.settle();
+    sameVendor.load(1);
+    await sameVendor.settle();
+    sameVendor.load(2);
+    await bootSame;
+    expect(reloads).toBe(1);
+  });
 
   test("updates that arrived before the runtime loaded are handed to it", async () => {
     const page = createPage();

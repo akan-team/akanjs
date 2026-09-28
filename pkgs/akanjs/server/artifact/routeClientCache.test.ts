@@ -265,4 +265,115 @@ describe("RouteClientCache", () => {
     ]);
     expect(cache.snapshot().knownEntries).toEqual(new Set(["/repo/Shared.tsx"]));
   });
+
+  const heldBuilds = () => {
+    const held: { routeId: string; generation: number; finish: () => void }[] = [];
+    const cache = new RouteClientCache({
+      buildRoute: async (routeId, { generation }) =>
+        await new Promise<BuildRouteClientResult>((resolve) => {
+          held.push({
+            routeId,
+            generation,
+            finish: () =>
+              resolve({
+                manifestDelta: {
+                  [`/repo${routeId}.tsx#default`]: {
+                    id: `ssr-dev:${routeId}#${generation}`,
+                    chunks: [],
+                    name: "default",
+                  },
+                },
+                ssrManifestDelta: emptySsrManifest,
+                newEntries: [`/repo${routeId}.tsx`],
+                discoveredEntries: [`/repo${routeId}.tsx`],
+                clientDeps: [`/repo${routeId}.tsx`, "/repo/ui/Button.tsx"],
+                clientDepsByEntry: { [`/repo${routeId}.tsx`]: [`/repo${routeId}.tsx`, "/repo/ui/Button.tsx"] },
+              }),
+          });
+        }),
+    });
+    const settle = async (count: number) => {
+      for (let tick = 0; tick < 200 && held.length < count; tick++) await Bun.sleep(1);
+    };
+    return { cache, held, settle };
+  };
+
+  test("a save that concerns neither the route nor what its build reached leaves that build merged", async () => {
+    const { cache, held, settle } = heldBuilds();
+    const pending = cache.ensure("/b", []);
+    await settle(1);
+    cache.invalidateClientEntries({
+      routePredicate: (routeId) => routeId === "/a",
+      staleEntries: ["/repo/a.tsx"],
+      files: ["/repo/a.tsx"],
+    });
+    held[0]?.finish();
+    const merged = await pending;
+
+    expect(held.map(({ routeId }) => routeId)).toEqual(["/b"]);
+    expect(merged.generation).toBe(1);
+    expect(merged.clientManifest["/repo/b.tsx#default"]?.id).toBe("ssr-dev:/b#0");
+  });
+
+  test("a running build is built again when a save drops its route, stales an entry it reached, or edits a dep", async () => {
+    const invalidations: [string, (cache: RouteClientCache) => void][] = [
+      ["its route", (cache) => cache.invalidate((routeId) => routeId === "/b")],
+      [
+        "an entry it reached",
+        (cache) => cache.invalidateClientEntries({ routePredicate: () => false, staleEntries: ["/repo/b.tsx"] }),
+      ],
+      [
+        "a file it bundled",
+        (cache) =>
+          cache.invalidateClientEntries({
+            routePredicate: () => false,
+            staleEntries: ["/repo/other.tsx"],
+            files: ["/repo/ui/Button.tsx"],
+          }),
+      ],
+      ["everything", (cache) => cache.clear()],
+    ];
+    for (const [label, invalidate] of invalidations) {
+      const { cache, held, settle } = heldBuilds();
+      const pending = cache.ensure("/b", []);
+      await settle(1);
+      invalidate(cache);
+      held[0]?.finish();
+      await settle(2);
+      held[1]?.finish();
+      const merged = await pending;
+      expect({ label, builds: held.map(({ generation }) => generation) }).toEqual({ label, builds: [0, 1] });
+      expect(merged.clientManifest["/repo/b.tsx#default"]?.id).toBe("ssr-dev:/b#1");
+    }
+  });
+
+  test("a caller that came after a save retries a build from before it that failed, rather than failing", async () => {
+    let attempts = 0;
+    let failFirst: (error: Error) => void = () => undefined;
+    const cache = new RouteClientCache({
+      buildRoute: async (routeId) => {
+        attempts += 1;
+        if (attempts === 1)
+          return await new Promise<BuildRouteClientResult>((_, reject) => {
+            failFirst = reject;
+          });
+        return {
+          manifestDelta: { [`/repo${routeId}.tsx#default`]: { id: "fixed.js", chunks: [], name: "default" } },
+          ssrManifestDelta: emptySsrManifest,
+          newEntries: [`/repo${routeId}.tsx`],
+          discoveredEntries: [`/repo${routeId}.tsx`],
+          clientDeps: [],
+        };
+      },
+    });
+    const first = cache.ensure("/b", []);
+    for (let tick = 0; tick < 200 && attempts < 1; tick++) await Bun.sleep(1);
+    cache.invalidate((routeId) => routeId === "/b", { files: ["/repo/b.tsx"] });
+    const second = cache.ensure("/b", []);
+    failFirst(new Error("broken before the save"));
+
+    await expect(first).rejects.toThrow("broken before the save");
+    expect((await second).clientManifest["/repo/b.tsx#default"]?.id).toBe("fixed.js");
+    expect(attempts).toBe(2);
+  });
 });

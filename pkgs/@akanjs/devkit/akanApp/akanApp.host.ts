@@ -9,6 +9,7 @@ import { WatchRootResolver } from "../frontendBuild/watchRootResolver";
 import { type DevStdioMode, IncrementalBuilderHost } from "../incrementalBuilder";
 import { BuilderRequestRouter } from "../incrementalBuilder/builderRequestRouter";
 import { BackendImportGraph } from "./BackendImportGraph";
+import { DevBootLatch } from "./devBootLatch";
 import {
   type BackendLifecycleState,
   type BackendRestartReason,
@@ -44,7 +45,6 @@ import {
   shouldRestartDevHostByDevPlan,
   shouldWarnBuilderRssCeilingTight,
 } from "./devHostPolicy";
-import { DevReadyGate } from "./devReadyGate";
 
 const backendMsgTypeSet = new Set<BuilderMessage["type"]>(["build-route", "build-csr"]);
 
@@ -89,7 +89,7 @@ export class AkanAppHost {
   readonly env: Record<string, string>;
   readonly #onDevEvent: ((event: DevHostEvent) => void) | null;
   #lastDevState: DevHostState | null = null;
-  readonly #readyGate = new DevReadyGate((state, detail) => this.#forwardDevEvent(state, detail));
+  readonly #bootLatch = new DevBootLatch(() => this.#onDevEvent?.({ app: this.app.name, booted: true }));
   #backend: Bun.Subprocess<"ignore", "inherit" | "pipe", "inherit" | "pipe"> | null = null;
   #builder: IncrementalBuilderHost | null = null;
   #backendReady = false;
@@ -128,6 +128,7 @@ export class AkanAppHost {
   #builderGapStamp: Promise<SourceFingerprints | null> | null = null;
   #pendingBuilderMessages: BuilderMessage[] = [];
   readonly #builderRequests = new BuilderRequestRouter();
+  #builderGeneration = 0;
   constructor(
     private readonly app: App,
     {
@@ -142,12 +143,10 @@ export class AkanAppHost {
     this.#backendGraph = new BackendImportGraph(app, this.logger);
   }
   #emitDevEvent(state: DevHostState, detail?: string) {
-    if (this.#onDevEvent) this.#readyGate.report(state, detail);
-  }
-  #forwardDevEvent(state: DevHostState, detail?: string) {
     if (!this.#onDevEvent || state === this.#lastDevState) return;
     this.#lastDevState = state;
     this.#onDevEvent({ app: this.app.name, state, ...(detail ? { detail } : {}) });
+    if (state === "ready") this.#bootLatch.ready();
   }
   async start() {
     if (this.#backend) await this.#stopBackend();
@@ -430,6 +429,7 @@ export class AkanAppHost {
   }
   async #handleBuilderMessage(message: BuilderMessage) {
     this.#markDevActivity();
+    this.#trackBuilderGeneration(message);
     if (message.type === "build-status") {
       this.#recordBuildStatus(message.data);
       this.#sendOrQueueBuildStatus(message.data);
@@ -440,8 +440,9 @@ export class AkanAppHost {
       this.#handleBuilderMetrics(message.data);
       return;
     }
-    if (message.type === "ssr-armed") {
-      this.#readyGate.armed();
+    if (message.type === "boot-armed") {
+      this.logger.verbose("[builder] boot builds settled");
+      this.#bootLatch.armed();
       return;
     }
     if (message.type === "pages-updated" || message.type === "css-updated") {
@@ -463,6 +464,20 @@ export class AkanAppHost {
       return;
     }
     this.#sendToBackend(message);
+  }
+  // In `env`, which every builder spawn re-reads: a replacement (recycled, crashed, restarted) continues from here.
+  #trackBuilderGeneration(message: BuilderMessage): void {
+    const generation = AkanAppHost.#builderGenerationOf(message);
+    if (generation === undefined || generation <= this.#builderGeneration) return;
+    this.#builderGeneration = generation;
+    Object.assign(this.env, { AKAN_BUILDER_INITIAL_GENERATION: String(generation) });
+  }
+  // Not `csr-updated` / `ssr-updated`: their generation is the registry's.
+  static #builderGenerationOf(message: BuilderMessage): number | undefined {
+    if (message.type === "invalidate") return message.generation;
+    if (message.type === "build-status" || message.type === "builder-metrics") return message.data.generation;
+    if (message.type === "pages-updated" || message.type === "css-updated") return message.data.generation;
+    return undefined;
   }
   // The backend reads `base-artifact.json` once, so a recycled builder re-announces it; unchanged hashes are dropped.
   #shouldRelayRecycledState(
@@ -1004,7 +1019,7 @@ export class AkanAppHost {
     await this.#startBuilder();
     this.#startBackend({ generation, files: message.files });
   }
-  // `supersede`: a replacement builder's generation restarts at 0, so its announcement would look stale.
+  // `supersede`: a recycled builder's re-announcement is what is on disk now, whatever generation it carries.
   #recordLastGood(
     message: Extract<BuilderMessage, { type: "pages-updated" }> | Extract<BuilderMessage, { type: "css-updated" }>,
     { supersede = false }: { supersede?: boolean } = {},

@@ -63,6 +63,14 @@ export class SsrDevShim {
           return import(specifier).then(function (ns) { self.__akan.provide("vendor:" + specifier, ns); });
         })), 0);
       }).then(function () {
+        // app.js names the build it came from, which a whole build between the render and this load may have replaced.
+        var started = self.__akan.inspect();
+        if (typeof started.epoch === "number") self.__AKAN_SSR_EPOCH__ = started.epoch;
+        // Its vendor file too: one written after the render's names vendors the file this page loaded lacks.
+        if (started.failed && started.vendorFile && started.vendorFile !== built.vendorFile) {
+          self.location.reload();
+          return;
+        }
         // A patch broadcast before this tab's WebSocket connected reached only hello's generation.
         var hello = self.__AKAN_SSR_HELLO_GENERATION__;
         if (typeof hello === "number") self.__akan.catchUp(hello, c.prefix);

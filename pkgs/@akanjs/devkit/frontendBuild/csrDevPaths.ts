@@ -48,6 +48,18 @@ export class CsrDevPaths {
     return fs.existsSync(file) ? fs.realpathSync(file) : path.resolve(file);
   }
 
+  static readonly #scriptExtensions = [".tsx", ".ts", ".jsx", ".js", ".mjs", ".cjs", ".mts", ".cts"];
+
+  /** A relative import resolved against the disk as it is now: the file, a script extension, or a folder's index. */
+  static resolveOnDisk(base: string): string | null {
+    const candidates = [
+      base,
+      ...CsrDevPaths.#scriptExtensions.map((extension) => `${base}${extension}`),
+      ...CsrDevPaths.#scriptExtensions.map((extension) => path.join(base, `index${extension}`)),
+    ];
+    return candidates.find((candidate) => fs.statSync(candidate, { throwIfNoEntry: false })?.isFile()) ?? null;
+  }
+
   static tryResolve(specifier: string, from: string): string | null {
     try {
       return Bun.resolveSync(specifier, from);

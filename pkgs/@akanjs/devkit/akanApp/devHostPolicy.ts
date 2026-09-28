@@ -61,11 +61,19 @@ export type BackendLifecycleState = "starting" | "ready" | "restart-pending" | "
 /** Reported, not scraped: in interleaved child output "this app is up" reads like any line mentioning it. */
 export type DevHostState = "starting" | "ready" | "restarting" | "recovering" | "suspended" | "failed" | "stopped";
 
-export interface DevHostEvent {
+export interface DevHostStateEvent {
   app: string;
   state: DevHostState;
   detail?: string;
 }
+
+/** Sent once: the app serves and its boot builds have settled, which is what the next boot wave waits for. */
+export interface DevHostBootEvent {
+  app: string;
+  booted: true;
+}
+
+export type DevHostEvent = DevHostStateEvent | DevHostBootEvent;
 
 const devHostStateByBackendState = {
   starting: "starting",

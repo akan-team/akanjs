@@ -557,6 +557,67 @@ describe("installCsrDevRuntime", () => {
       expect(harness.scripts.slice(3).map((script) => script.src)).toEqual(["/_akan/ssr-dev/patch-6.js"]);
     });
 
+    test("a module that threw is not swapped by the update fixing it or its dependency: the page reloads", () => {
+      const harness = createHarness({
+        "app/boot.ts": () => undefined,
+        "app/Broken.tsx": () => {
+          throw new Error("top-level failure");
+        },
+        "app/Other.tsx": component("Other"),
+      });
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" });
+      expect(() => harness.api.require("app/Broken.tsx")).toThrow("top-level failure");
+      harness.api.update(3, { "app/Other.tsx": component("Other") });
+      expect(harness.reloads).toBe(1);
+      expect(harness.warnings.at(-1)).toContain("app/Broken.tsx failed to run");
+    });
+
+    test("a start that failed reloads on a reload of its own generation, and names the build app.js came from", () => {
+      const harness = createHarness({
+        "app/boot.ts": () => {
+          throw new Error("vendor:new-dep is not provided");
+        },
+      });
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      expect(() =>
+        harness.api.startLibrary({
+          generation: 4,
+          refresh: REFRESH_VENDOR,
+          bootstrap: "app/boot.ts",
+          vendorFile: "vendor-b.js",
+          epoch: 9,
+        }),
+      ).toThrow();
+      expect(harness.api.inspect()).toMatchObject({ failed: true, vendorFile: "vendor-b.js", epoch: 9 });
+      harness.api.hot({ generation: 3, reload: true });
+      expect(harness.reloads).toBe(0);
+      harness.api.hot({ generation: 4, reload: true, reason: "an npm module joined the graph" });
+      expect(harness.reloads).toBe(1);
+    });
+
+    test("a patch whose load and probe both went unanswered stays owed to the next catch-up", async () => {
+      const harness = createHarness({ "app/boot.ts": () => undefined });
+      harness.host.fetch = async () => {
+        throw new Error("offline");
+      };
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" });
+      harness.api.hot({ generation: 3, url: "/_akan/ssr-dev/patch-3.js" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      harness.scripts[0]?.onerror?.();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(harness.api.inspect().target).toBe(2);
+      harness.api.catchUp(3, "/_akan/ssr-dev/");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(harness.scripts.map((script) => script.src)).toEqual([
+        "/_akan/ssr-dev/patch-3.js",
+        "/_akan/ssr-dev/patch-3.js",
+      ]);
+      harness.api.catchUp(200, "/_akan/ssr-dev/");
+      expect(harness.reloads).toBe(1);
+    });
+
     test("an update that arrives before the start waits for it, and one the app already holds is dropped", async () => {
       const harness = createHarness({ "app/boot.ts": () => undefined });
       harness.api.hot({ generation: 2, url: "/_akan/ssr-dev/patch-2.js" });

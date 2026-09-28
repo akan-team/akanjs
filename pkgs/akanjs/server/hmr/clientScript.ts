@@ -223,8 +223,10 @@ export const HMR_CLIENT_SCRIPT = `(function(){
       reloadForUpdate("the SSR registry this tab failed to load was updated");
       return;
     }
-    // Directly: a registry whose app.js never started would only queue it.
-    if (msg.reload && self.__akan && !(msg.generation <= self.__akan.generation)) {
+    // Directly: a registry whose app.js never started would only queue it, and one that failed to start takes a reload
+    // of its own generation too (its app.js may have booted beside the vendor file of the build before).
+    var startFailed = !!(self.__akan && typeof self.__akan.inspect === "function" && self.__akan.inspect().failed);
+    if (msg.reload && self.__akan && (!(msg.generation <= self.__akan.generation) || (startFailed && msg.generation >= self.__akan.generation))) {
       reloadForUpdate(msg.reason || "the SSR registry was rebuilt");
       return;
     }

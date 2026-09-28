@@ -73,11 +73,13 @@ describe.skipIf(!CsrE2eHarness.enabled)("CSR patch before app.js (minimal, app.j
           { timeout: 20_000 },
         );
         const target = await generation();
-        await harness().reload();
+        //? The first document after the reload: a second reload inside the harness's settle would take the marker.
+        const booted = await harness().reload();
         expect(await generation()).toBe(target);
         expect(await hot()).toBe("booted");
         await Bun.sleep(2_000);
         expect(await harness().reloaded()).toBe(false);
+        expect(await harness().evaluate(() => performance.timeOrigin)).toBe(booted);
         expect(await generation()).toBe(target);
       },
     );

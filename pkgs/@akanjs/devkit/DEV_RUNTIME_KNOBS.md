@@ -65,12 +65,16 @@ which is the one case where replacing it again cannot help; it says that too, an
 
 | variable | default | what it does |
 |---|---|---|
-| `AKAN_DEV_CSR_REBUILD` | off | Rebuild the CSR artifact on every save. Armed automatically by the first `/__csr` or `?csr=true` request, which is what a mobile WebView session does — set it explicitly only to have it from boot. |
+| `AKAN_DEV_CSR_REBUILD` | off | Rebuild the CSR artifact on every save. Armed automatically by the first `/__csr` or `?csr=true` request, which is what a mobile WebView session does — set it explicitly only to have it from boot. Set at boot, its CSR build runs beside the SSR registry's: on apps/akan the builder and its workers peak at about 2.7GB instead of 1.3GB, and the next boot wave waits for both builds. |
 | `AKAN_DEV_CSR` | `registry` | How the dev CSR page is built. `registry` serves it as a module registry that patches the modules a save changed; `artifact` brings back the single-file bundle, which reloads on every save. |
-| `AKAN_DEV_CSR_PATCHER` | on | `off` sends every save of a dev module registry — the CSR page's, and the one SSR pages load their client code from (`.akan/artifact/ssr-dev`) — to a disposable build worker instead of patching it in the resident builder. The patcher keeps each registry in memory (on minimal the CSR one adds about 170MB to the builder's median RSS and 210MB to its peak, flat across saves) and hands whole-app builds — a first build, a new npm module, a new bare import, a config change — to a worker. A builder that dies mid-patch turns it off until the dev server next replaces its builder and backend together (a config, signal or dictionary change). |
+| `AKAN_DEV_CSR_PATCHER` | on | `off` sends every save of a dev module registry — the CSR page's, and the one SSR pages load their client code from (`.akan/artifact/ssr-dev`) — to a disposable build worker instead of patching it in the resident builder. The patcher keeps each registry in memory (on minimal the CSR one adds about 170MB to the builder's median RSS and 210MB to its peak, flat across saves) and hands whole-app builds to a worker: a first build, a new npm module, a bare import no file of its package resolved before, a config change, a signal or dictionary save (their metadata is inlined at build time), and a registry whose last whole build was cut short. A misspelled import fails in the builder, like a missing file. A builder that dies mid-patch turns it off until the dev server next replaces its builder and backend together (a config, signal or dictionary change). |
 | `AKAN_DEV_WATCH_DEBOUNCE_MS` | `30` | How long the file watcher collects changes before it hands a batch over. Every save waits this long before anything builds. A second write inside the window joins the same batch; one after it starts another batch, which reads the file's latest content, so a format-on-save costs a second build rather than a wrong one. |
 | `AKAN_BUILDER_RPC_TIMEOUT_MS` | `120000` | How long the backend waits for a builder answer. Generous on purpose: a cold CSR build of every page legitimately takes tens of seconds. |
 | `AKAN_SERVER_PAGES_SPLITTING` | off | Emit the server pages bundle as chunks instead of one file. Experimental — the memory/latency trade has not been measured on a real app. |
+
+Two more are read by the dev server for its end-to-end tests only; never set them. `AKAN_DEV_SSR_ARM_DELAY_MS`
+holds the SSR registry's boot build back, and `AKAN_CSR_DEV_APP_WRITE_DELAY_MS` holds a registry's `app.js`
+back after a patch is announced.
 
 ## Observability
 
@@ -83,32 +87,36 @@ which is the one case where replacing it again cannot help; it says that too, an
 ## Several apps at once
 
 `akan start a,b` runs one dev host per app under a supervisor, so **every number above multiplies by the number
-of apps** — there is no shared builder and no shared RSC worker. Measured on this repo, right after both apps
+of apps** — there is no shared builder and no shared RSC worker. Measured on this repo 8 seconds after both apps
 finished booting:
 
 | process | akan | minimal |
 |---|---|---|
-| dev host | 101MB | 94MB |
-| incremental builder | 596MB | 532MB |
-| backend | 35MB | 38MB |
-| RSC worker | 190MB | 81MB |
+| dev host | 279MB | 196MB |
+| incremental builder | 182MB | 114MB |
+| backend (gateway and replica) | 123MB | 130MB |
+| RSC worker | 162MB | 75MB |
 
-Plus ~51MB for the supervisor itself: **~1.7GB for two apps at their peak.** The builders are almost all of
-that, and they are also the part that goes away — `AKAN_DEV_IDLE_SUSPEND_MS` releases each one independently, so
-a session where you are editing one app settles to roughly one builder plus ~190MB per idle app. **Multi-app is
-sized against idle suspend being on**; setting it to `0` keeps every builder resident for the whole session.
+Plus ~75MB for the supervisor itself: **~1.3GB for two apps at rest.** The peak is the boot, not the rest: the
+build workers — the base build, then the SSR registry's — take a whole akan dev host to ~1.9GB and minimal's to
+~1.4GB, and booted one after the other the two peaked at 2.2GB. The builders are also the part that goes away —
+`AKAN_DEV_IDLE_SUSPEND_MS` releases each one independently, so a session where you are editing one app keeps one
+builder, and every idle app keeps only its dev host, backend and RSC worker. **Multi-app is sized against idle
+suspend being on**; setting it to `0` keeps every builder resident for the whole session.
 
 Two things bound the peak rather than the floor:
 
-- **`--concurrency` (default: what the machine allows).** Apps boot in waves, and the next wave starts only
-  once the previous one reports ready — which an app does once its backend answers and its SSR registry's boot
-  build has settled, since that build's worker is the largest process of a boot. Booting `n` apps at once means
-  `n` overlapping peaks — which is what OOM-kills a container that would have been fine with them staggered.
-  Unset, the wave is `min(apps, half the memory budget / 1.8GB per app, cores / 4)`, never below one, and the
-  session prints which — so a laptop boots its apps together and a 1.2GB container still staggers them. The
-  1.8GB is apps/akan's measured boot peak across all its processes; before the SSR registry it was 900MB. The memory budget is the smaller of the host's RAM and `AKAN_MEMORY_LIMIT` / the cgroup
-  limit; `os.freemem()` is not consulted, because it counts free pages rather than reclaimable ones and
-  reports ~0.3GB on an idle 48GB laptop.
+- **`--concurrency` (default: what the machine allows).** Apps boot in waves. The next wave starts once each
+  app of the previous one serves and its builder's boot builds have settled — the SSR registry's, and CSR's when
+  `AKAN_DEV_CSR_REBUILD=1` arms it — since those workers are the largest processes of a boot. An app that never
+  reports them starts the next wave 30 seconds after it serves. It shows as ready, and `--open` opens it, as
+  soon as it serves. Booting `n` apps at once means `n` overlapping peaks — which is what OOM-kills a container
+  that would have been fine with them staggered. Unset, the wave is
+  `min(apps, half the memory budget / 1.8GB per app, cores / 4)`, never below one, and the session prints
+  which — so a laptop boots its apps together and a small container boots them one at a time. The 1.8GB is
+  apps/akan's boot peak across all its processes (measured 1.73–1.9GB). The memory budget is the smaller of
+  the host's RAM and `AKAN_MEMORY_LIMIT` / the cgroup limit; `os.freemem()` is not consulted, because it counts
+  free pages rather than reclaimable ones and reports ~0.3GB on an idle 48GB laptop.
 - **`AKAN_MEMORY_LIMIT` is per process, not per session.** Each dev host derives its builder and RSC-worker
   ceilings from it independently, so a limit sized for one app does not become a budget for four. Divide it
   yourself, or leave it unset on a laptop. The one place it is read as a session ceiling is the boot wave
@@ -117,7 +125,8 @@ Two things bound the peak rather than the floor:
 
 ## Sizing a small sandbox
 
-A worked example, for a 1.2GB container:
+A worked example, for a 1.2GB container running an app the size of `apps/minimal` (apps/akan's boot alone
+peaks near 1.8GB):
 
 ```bash
 AKAN_MEMORY_LIMIT=1200mb          # builder gets ~420MB, rsc worker ~660MB
@@ -128,7 +137,9 @@ Two things to expect at that size. The builder crosses 420MB during ordinary wor
 costs ~247MB on top of its floor — so it is replaced roughly once per 30s while you keep building, each
 replacement costing a boot build that requests wait through rather than fail. And the build worker's
 peak is not covered by any of these ceilings; if the kernel OOM-kills it, the dev server survives with a
-red build for that generation and the log names the signal.
+red build for that generation and the log names the signal. On a boot whose `.akan` was cleared, the SSR
+registry's first build is such a worker: a killed one leaves no registry, and every later save retries that
+same whole build, so a container that cannot fit it once cannot fit it at all.
 
 Raising `AKAN_BUILDER_MAX_RSS_MB` above the derived share trades memory for fewer boot builds. Setting
 it to `0` trades the bound away entirely, which on a container this size means the kernel decides

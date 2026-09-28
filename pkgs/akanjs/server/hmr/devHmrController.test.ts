@@ -162,17 +162,30 @@ describe("DevHmrController pages-updated broadcast", () => {
 
 describe("DevHmrController SSR registry updates", () => {
   const withRegistryController = async (
-    run: (emit: (message: unknown) => void, types: () => string[], renderState: RenderState) => Promise<void>,
+    run: (
+      emit: (message: unknown) => void,
+      types: () => string[],
+      renderState: RenderState,
+      reloads: { pagesBundlePath?: string }[],
+    ) => Promise<void>,
+    { pagesBundlePath = "/repo/pages.js" }: { pagesBundlePath?: string } = {},
   ) => {
     const originalSend = process.send;
     process.send = ((): boolean => true) as typeof process.send;
     const renderState: RenderState = { buildId: 0, cssAssets: {}, cssBytesByUrl: {} };
+    const reloads: { pagesBundlePath?: string }[] = [];
     const controller = new DevHmrController({
       artifactDir: await artifactDirWith({ entries: [], globalLayoutFiles: [] }),
       renderState,
-      rsc: { reload: async () => undefined, updateCssAssets: () => undefined } as unknown as RscWorker,
+      rsc: {
+        reload: async (input: { pagesBundlePath?: string }) => {
+          reloads.push({ pagesBundlePath: input.pagesBundlePath });
+        },
+        updateCssAssets: () => undefined,
+      } as unknown as RscWorker,
       seedIndex: { entries: [], globalLayoutFiles: [] },
       upgradeHmrWs: () => true,
+      pagesBundlePath,
     });
     const messages: HmrMessage[] = [];
     controller.hub.setPublisher((topic, payload) => {
@@ -186,6 +199,7 @@ describe("DevHmrController SSR registry updates", () => {
             message.type === "ssr-update" ? `ssr-update:${message.generation}` : message.type,
           ),
         renderState,
+        reloads,
       );
     } finally {
       controller.dispose();
@@ -239,6 +253,28 @@ describe("DevHmrController SSR registry updates", () => {
       expect(types()).toEqual(["ssr-update:4"]);
       expect(renderState.buildId).toBe(0);
     });
+  });
+
+  test("a restarted backend moves its worker onto the replayed bundle, though that save changed nothing the server renders", async () => {
+    await withRegistryController(
+      async (emit, types, renderState, reloads) => {
+        emit({
+          type: "pages-updated",
+          data: {
+            bundlePath: "/repo/pages-2.js",
+            buildId: 8,
+            generation: 9,
+            changedFiles: ["/repo/apps/a/ui/Card.tsx"],
+            serverTouched: false,
+          },
+        });
+        await settle();
+        expect(reloads).toEqual([{ pagesBundlePath: "/repo/pages-2.js" }]);
+        expect(renderState.buildId).toBe(8);
+        expect(types()).toEqual([]);
+      },
+      { pagesBundlePath: "/repo/pages-boot.js" },
+    );
   });
 
   test("the registry's first build reaches no tab: none holds a module of it", async () => {

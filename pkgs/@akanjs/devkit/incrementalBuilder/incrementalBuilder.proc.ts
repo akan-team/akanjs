@@ -81,8 +81,15 @@ class IncrementalBuilder {
   readonly #delegations = new Map<string, number>();
   /** The boot build of the SSR registry while it runs; it holds every entry the routes reach once it lands. */
   #ssrArming: Promise<void> | null = null;
-  /** The save generation a build worker last failed to update ssr-dev at: until a newer save, it would fail again. */
-  #ssrFailedAt: number | null = null;
+  //* A registry build that failed on the user's code fails again until the code changes, so route builds do not retry
+  //* it; the next attempt that touches the registry (a save's patch, a worker batch) settles it. A worker that died
+  //* before reporting (an OOM kill) route builds do retry, at most every `#crashRetryMs`.
+  #ssrBroken = false;
+  #ssrCrashedAt: number | null = null;
+  static readonly #crashRetryMs = 10_000;
+  /** Arming and the route entries deferred behind it run beside both lanes; a recycle waits for them too. */
+  readonly #beside = new Set<Promise<void>>();
+  #barrelFailed = false;
   //* Two lanes: a save's codegen and CSR patch in the fast one, which the watcher waits for; build workers, route
   //* builds and discovery in the slow one, which folds queued batches. A save no longer waits behind pages and css.
   #fastQueue: Promise<void> = Promise.resolve();
@@ -206,6 +213,18 @@ class IncrementalBuilder {
     return this.#inFlight === 0 && this.#workQueue.size === 0 && this.#cssRebuildTimer === null;
   }
 
+  // Callers catch their own errors: the promise handed in never rejects.
+  #runBeside(work: Promise<void>): Promise<void> {
+    this.#inFlight += 1;
+    const tracked: Promise<void> = work.finally(() => {
+      this.#inFlight -= 1;
+      this.#beside.delete(tracked);
+      this.#reportMetrics();
+    });
+    this.#beside.add(tracked);
+    return tracked;
+  }
+
   // Idle only: the host recycles on these metrics, and a recycle decided mid-work would truncate it or race the drain.
   #reportMetrics(): void {
     if (!this.#idle || this.#shuttingDown) return;
@@ -234,6 +253,7 @@ class IncrementalBuilder {
     await this.#fastQueue.catch(() => undefined);
     await this.#workQueue.drain();
     await this.#cssRebuildQueue.catch(() => undefined);
+    while (this.#beside.size > 0) await Promise.all([...this.#beside]);
     if (this.#delegations.size > 0)
       this.#logger.verbose(
         `registry saves handed to build workers this session: ${[...this.#delegations].map(([reason, count]) => `${reason}=${count}`).join(", ")}`,
@@ -358,6 +378,7 @@ class IncrementalBuilder {
     const discovery = kinds.includes("code") ? { files, refresh: kinds.includes("config") } : undefined;
 
     if (hasSyncErrors) {
+      this.#barrelFailed = true;
       this.#sendBuildStatus("barrel", { generation, ok: false, files, message: indexSync.errors.join("\n") });
       BuilderChannel.emit(event);
       if (discovery)
@@ -366,7 +387,10 @@ class IncrementalBuilder {
           .catch(this.#slowLaneFailed("discovery"));
       return;
     }
-    if (indexSync.changedFiles.length > 0) this.#sendBuildStatus("barrel", { generation, ok: true, files });
+    // After a failure too, where nothing changed on disk: the host re-sends a phase still failing to every new tab.
+    if (indexSync.changedFiles.length > 0 || this.#barrelFailed)
+      this.#sendBuildStatus("barrel", { generation, ok: true, files });
+    this.#barrelFailed = false;
 
     // Server-only generations skip the client: a fresh pages buildId would rsc-refresh browsers for no visible change.
     const rebuildClient = devPlan.actions.includes("rebuild-client");
@@ -494,24 +518,39 @@ class IncrementalBuilder {
     );
   }
 
-  // A route build answers only once the registry holds every entry its rows name: the tab requires them by id.
+  //* Adds the entries a route build names to the registry, since the tab requires them by id. A registry that cannot
+  //* take them fails no route build: the page answers, and its tab waits for the registry while the overlay says why.
   async #ensureSsrEntries(entries: string[]): Promise<void> {
     if (entries.length === 0) return;
     //? The boot build takes every entry the routes reach, so the first page answers now and its tab waits for the
     //? registry (boot.json) instead; whatever that build missed is added right after it lands.
     const arming = this.#ssrArming;
     if (arming) {
-      void arming.then(async () => await this.#ensureSsrEntries(entries)).catch(this.#slowLaneFailed("ssr-ensure"));
+      void this.#runBeside(
+        arming.then(async () => await this.#ensureSsrEntries(entries)).catch(this.#slowLaneFailed("ssr-ensure")),
+      );
       return;
     }
     await this.#withSsrLock(async () => {
-      if (this.#ssrPatcher && !(await this.#runSsrPatcher(this.#ssrPatcher, [], { roots: entries, onlyRoots: true })))
+      const patcher = this.#ssrPatcher;
+      // The builder's generation, not the request's: its build-status joins the saves' `ssr` ones.
+      const generation = this.#generation;
+      if (
+        patcher &&
+        !(await this.#runSsrPatcher(patcher, [], { roots: entries, onlyRoots: true, batchGeneration: generation }))
+      )
         return;
-      //? Not retried per route build: the page answers, its tab waits for the registry, and the save that fixes the
-      //? error rebuilds it, where each route build retrying held the SSR lock that save's patch waits on.
-      if (this.#ssrFailedAt === this.#generation) return;
-      // The builder's generation, not the request's: the worker's build-status joins the saves' `ssr` ones.
-      await this.#runSsrWorker(this.#generation);
+      //? Read, not compiled: with the patcher off, the save's own worker batch already built every entry.
+      if (!patcher && (await this.#ssrBundler.holds(entries))) return;
+      //? Not retried per route build: the save that fixes the error rebuilds it, where each route build retrying held
+      //? the SSR lock that save's patch waits on.
+      if (this.#ssrBroken) return;
+      if (this.#ssrCrashedAt !== null && Date.now() - this.#ssrCrashedAt < IncrementalBuilder.#crashRetryMs) return;
+      await this.#runSsrWorker(generation).catch((err: unknown) => {
+        this.#logger.error(
+          `ssr-registry could not take a route's entries; the save that fixes it rebuilds it: ${ApplicationBuildReporter.formatError(err, this.#app.workspace.workspaceRoot)}`,
+        );
+      });
     });
   }
 
@@ -521,18 +560,19 @@ class IncrementalBuilder {
     //? `AKAN_DEV_SSR_ARM_DELAY_MS` is a test hook: an E2E has a tab reconnect before the boot build has run.
     const delayMs = Number(process.env.AKAN_DEV_SSR_ARM_DELAY_MS);
     if (Number.isInteger(delayMs) && delayMs > 0) await Bun.sleep(delayMs);
-    const arming = this.#withSsrLock(async () => {
-      if (this.#ssrPatcher && !(await this.#runSsrPatcher(this.#ssrPatcher, []))) return;
-      await this.#runSsrWorker(this.#generation);
-    }).catch((err: unknown) => {
-      this.#logger.error(
-        `ssr-registry boot build failed; the next save retries it: ${ApplicationBuildReporter.formatError(err, this.#app.workspace.workspaceRoot)}`,
-      );
-    });
+    const arming = this.#runBeside(
+      this.#withSsrLock(async () => {
+        if (this.#ssrPatcher && !(await this.#runSsrPatcher(this.#ssrPatcher, []))) return;
+        await this.#runSsrWorker(this.#generation);
+      }).catch((err: unknown) => {
+        this.#logger.error(
+          `ssr-registry boot build failed; the next save retries it: ${ApplicationBuildReporter.formatError(err, this.#app.workspace.workspaceRoot)}`,
+        );
+      }),
+    );
     this.#ssrArming = arming;
     await arming;
     this.#ssrArming = null;
-    BuilderChannel.emit({ type: "ssr-armed" });
   }
 
   //? A save the user broke fails the same way in a worker, so it is reported here and the patcher keeps its state: the
@@ -575,7 +615,8 @@ class IncrementalBuilder {
   }
 
   #noteSsrWorker(result: BuildBatchResult): void {
-    this.#ssrFailedAt = result.errors.ssr ? this.#generation : null;
+    this.#ssrBroken = !!result.errors.ssr && !result.crashed;
+    this.#ssrCrashedAt = result.crashed ? Date.now() : null;
   }
 
   async #runSsrPatcher(
@@ -621,6 +662,8 @@ class IncrementalBuilder {
         );
         return true;
       }
+      this.#ssrBroken = false;
+      this.#ssrCrashedAt = null;
       this.#sendBuildStatus("ssr", { generation: batchGeneration, ok: true, files });
       this.#logger.verbose(
         result.kind === "unchanged"
@@ -743,17 +786,24 @@ class IncrementalBuilder {
     this.#csrActive = true;
     const armed = this.#workQueue.enqueue("build-csr", async (): Promise<void> => {
       const started = Date.now();
-      // Not relayed: an on-demand CSR build is request/response, and its error travels in the response.
-      const result = await this.#batchRunner.run(
-        await this.#batchRequest({ generation: this.#generation, needs: ["csr"], changedFiles: [] }),
-      );
-      const error = result.errors.csr;
+      let error: string | undefined;
+      try {
+        // Not relayed: an on-demand CSR build is request/response, and its error travels in the response.
+        const result = await this.#batchRunner.run(
+          await this.#batchRequest({ generation: this.#generation, needs: ["csr"], changedFiles: [] }),
+        );
+        error = result.errors.csr;
+      } catch (err) {
+        error = ApplicationBuildReporter.formatError(err, this.#app.workspace.workspaceRoot);
+      }
       if (error) {
         this.#csrActive = wasActive;
         this.#logger.error(`csr-build failed: ${error}`);
         await BuilderChannel.send({ type: "build-csr-res", id: msg.id, ok: false, error });
         return;
       }
+      //? Again, not only up front: a request that failed while this one waited put the flag back to its own start.
+      this.#csrActive = true;
       this.#patcher?.forget();
       this.#logger.info(`csr-build ok on demand (${Date.now() - started}ms); rebuilding CSR on every save now`);
       await BuilderChannel.send({ type: "build-csr-res", id: msg.id, ok: true });
@@ -815,7 +865,11 @@ class IncrementalBuilder {
       else this.#logger.verbose("csr-rearm ok; this session had CSR armed before the builder restarted");
     });
     this.#csrGate = this.#armingCsr(rearmed);
-    await rearmed;
+    await rearmed.catch((err: unknown) =>
+      this.#logger.error(
+        `csr-rearm failed: ${ApplicationBuildReporter.formatError(err, this.#app.workspace.workspaceRoot)}`,
+      ),
+    );
   }
 
   // A boot compile error must not kill the builder, the dev server's only file watcher: report it, emit builder-ready
@@ -825,10 +879,11 @@ class IncrementalBuilder {
     bootError: unknown,
     logger: Logger,
     runner: BuildBatchRunner,
+    initialGeneration: number,
   ): Promise<{ builder: IncrementalBuilder; changedFiles: string[] }> {
     const firstMessage = bootError instanceof Error ? bootError.message : String(bootError);
     logger.error(`boot build failed; entering degraded watch mode until the error is fixed: ${firstMessage}`);
-    let generation = 0;
+    let generation = initialGeneration;
     const sendFailure = (files: string[], message: string) => {
       BuilderChannel.emit({
         type: "build-status",
@@ -837,6 +892,8 @@ class IncrementalBuilder {
     };
     sendFailure([], firstMessage);
     BuilderChannel.emit({ type: "builder-ready" });
+    // Nothing builds until a save fixes the boot, so the next app's boot need not wait for this one.
+    BuilderChannel.emit({ type: "boot-armed" });
     return new Promise((resolve, reject) => {
       void (async () => {
         const roots = await new WatchRootResolver(app).resolve();
@@ -894,8 +951,11 @@ class IncrementalBuilder {
         BuilderChannel.emit({ type: `${msg.type}-res`, id: msg.id, ok: false, error });
         return;
       }
-      if (msg.type === "build-route") void builder.handleBuildRoute(msg);
-      else void builder.handleBuildCsr(msg);
+      const handled = msg.type === "build-route" ? builder.handleBuildRoute(msg) : builder.handleBuildCsr(msg);
+      // Unhandled, a rejection (an ipc write that failed) would exit the builder and drop the watcher with it.
+      void handled.catch((err: unknown) =>
+        logger.error(`${msg.type} failed: ${err instanceof Error ? err.message : String(err)}`),
+      );
     });
     // Closes when the host dies (even by SIGKILL): nothing left to drain, and an orphan would rebuild for nobody.
     process.on("disconnect", () => {
@@ -904,11 +964,13 @@ class IncrementalBuilder {
     });
     let recoveredFiles: string[] | null = null;
     const bootRunner = new BuildBatchRunner({ workspaceRoot, cwd: app.cwdPath });
+    const initialGeneration = IncrementalBuilder.#initialGeneration();
     try {
-      builder = new IncrementalBuilder({ app, watch, ...(await IncrementalBuilder.#buildBootDeps(app, bootRunner)) });
+      const deps = await IncrementalBuilder.#buildBootDeps(app, bootRunner);
+      builder = new IncrementalBuilder({ app, watch, initialGeneration, ...deps });
     } catch (err) {
       if (!watch) throw err;
-      const recovered = await IncrementalBuilder.#recoverBoot(app, err, logger, bootRunner);
+      const recovered = await IncrementalBuilder.#recoverBoot(app, err, logger, bootRunner, initialGeneration);
       builder = recovered.builder;
       recoveredFiles = recovered.changedFiles;
     }
@@ -916,6 +978,14 @@ class IncrementalBuilder {
     if (recoveredFiles) await builder.announceRecoveredState(recoveredFiles);
     else if (process.env.AKAN_BUILDER_ANNOUNCE_BOOT === "1") await builder.announceBootState();
     await Promise.all([builder.rearmCsrFromEnv(), builder.armSsrRegistry()]);
+    BuilderChannel.emit({ type: "boot-armed" });
+  }
+
+  //? A replacement builder continues the host's generations: from 0, the save fixing an error reads older than the
+  //? failure the tabs hold, so the overlay stays (and hello re-sends it to every new tab).
+  static #initialGeneration(): number {
+    const generation = Number(process.env.AKAN_BUILDER_INITIAL_GENERATION);
+    return Number.isInteger(generation) && generation > 0 ? generation : 0;
   }
 }
 

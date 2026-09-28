@@ -1,4 +1,4 @@
-import type { DevHostEvent, DevHostState } from "@akanjs/devkit/akanApp";
+import type { DevHostEvent, DevHostState, DevHostStateEvent } from "@akanjs/devkit/akanApp";
 import type { App } from "@akanjs/devkit/commandDecorators";
 import { openBrowser } from "../openBrowser";
 import { DevBootConcurrency } from "./devBootConcurrency";
@@ -42,8 +42,8 @@ export interface DevSupervisorView {
 interface DevChild {
   status: DevAppStatus;
   proc: Bun.Subprocess<"ignore", "pipe", "pipe"> | null;
-  ready: Promise<void>;
-  markReady: () => void;
+  booted: Promise<void>;
+  markBooted: () => void;
   opened: boolean;
 }
 
@@ -80,8 +80,8 @@ export class DevSupervisor {
       },
     };
   }
-  /** Past this, boot order stops being enforced: a child that never reports ready must not block the rest. */
-  static readonly readyTimeoutMs = 180_000;
+  /** Past this, boot order stops being enforced: a child that never reports its boot over must not block the rest. */
+  static readonly bootTimeoutMs = 180_000;
   static readonly shutdownGraceMs = 12_000;
 
   readonly #options: DevSupervisorOptions;
@@ -138,7 +138,7 @@ export class DevSupervisor {
   }
 
   #makeChild(app: App, port: number): DevChild {
-    const { promise: ready, resolve: markReady } = Promise.withResolvers<void>();
+    const { promise: booted, resolve: markBooted } = Promise.withResolvers<void>();
     return {
       status: {
         app,
@@ -151,8 +151,8 @@ export class DevSupervisor {
         exitCode: null,
       },
       proc: null,
-      ready,
-      markReady,
+      booted,
+      markBooted,
       opened: false,
     };
   }
@@ -169,14 +169,14 @@ export class DevSupervisor {
       if (this.#stopping) return;
       for (const child of wave) this.#spawnChild(child);
       this.#publishStatus();
-      await Promise.all(wave.map(async (child) => await this.#waitForReady(child)));
+      await Promise.all(wave.map(async (child) => await this.#waitForBoot(child)));
     }
   }
 
-  async #waitForReady(child: DevChild) {
-    if (await DevSupervisor.timesOut(child.ready, DevSupervisor.readyTimeoutMs))
+  async #waitForBoot(child: DevChild) {
+    if (await DevSupervisor.timesOut(child.booted, DevSupervisor.bootTimeoutMs))
       this.#note(
-        `${child.status.name} has not reported ready after ${Math.round(DevSupervisor.readyTimeoutMs / 1000)}s; starting the next app anyway`,
+        `${child.status.name} has not finished booting after ${Math.round(DevSupervisor.bootTimeoutMs / 1000)}s; starting the next app anyway`,
         "warn",
       );
   }
@@ -223,8 +223,9 @@ export class DevSupervisor {
       },
       stdio: ["ignore", "pipe", "pipe"],
       ipc: (message: DevHostEvent) => {
-        if (!message || typeof message !== "object" || typeof message.state !== "string") return;
-        this.#applyChildEvent(child, message);
+        if (!message || typeof message !== "object") return;
+        if ("booted" in message) child.markBooted();
+        else if (typeof message.state === "string") this.#applyChildEvent(child, message);
       },
       serialization: "advanced",
       onExit: (_proc, exitCode, signalCode) => {
@@ -233,8 +234,8 @@ export class DevSupervisor {
         if (this.#stopping) return;
         child.status.state = "stopped";
         child.status.detail = signalCode ? `killed by ${signalCode}` : `exited with ${exitCode}`;
-        // Unblocks a wave waiting on an app that will never report ready.
-        child.markReady();
+        // Unblocks a wave waiting on an app that will never finish booting.
+        child.markBooted();
         this.#publishStatus();
       },
     });
@@ -245,11 +246,10 @@ export class DevSupervisor {
     void this.#drain(proc.stderr, name, "stderr");
   }
 
-  #applyChildEvent(child: DevChild, event: DevHostEvent) {
+  #applyChildEvent(child: DevChild, event: DevHostStateEvent) {
     child.status.state = event.state;
     child.status.detail = event.detail ?? "";
     if (event.state === "ready") {
-      child.markReady();
       // Once per session, not once per restart: a crash loop would otherwise open a tab per recovery.
       if (this.#options.open && !child.opened) {
         child.opened = true;
@@ -257,7 +257,7 @@ export class DevSupervisor {
       }
     }
     // A child that gave up is not coming back on its own, so the next wave must not wait for it.
-    if (event.state === "failed") child.markReady();
+    if (event.state === "failed") child.markBooted();
     this.#publishStatus();
   }
 

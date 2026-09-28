@@ -15,5 +15,5 @@ fix(dev): a typo's fix patches at once, a constant edit reloads onto its new ser
 - The SSR registry's boot build runs beside the builder's slow lane: on apps/akan the first page after `akan start` is
   interactive about a second sooner. A save during a CSR build being armed no longer holds up the SSR patch.
 - The dev error page reloads on a client patch or a recovered build, and preloads no React Refresh runtime. A tab that
-  missed a patch before its WebSocket connected reloads once it has started. Registry writes retry a rename Windows
+  missed a patch before its WebSocket connected catches up on it once it has started. Registry writes retry a rename Windows
   refuses while a reader holds the file.

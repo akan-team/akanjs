@@ -55,6 +55,7 @@ export class CsrDevModuleCompiler {
   readonly #context: CsrDevContext;
   readonly #outDir: string;
   readonly #routePrefix: string;
+  readonly #assets = new Set<string>();
 
   constructor({ app, paths, resolver, context, outDir, routePrefix }: CsrDevModuleCompilerOptions) {
     this.#app = app;
@@ -63,6 +64,11 @@ export class CsrDevModuleCompiler {
     this.#context = context;
     this.#outDir = outDir;
     this.#routePrefix = routePrefix;
+  }
+
+  /** Every asset file this compiler wrote into the registry directory. */
+  get assets(): string[] {
+    return [...this.#assets];
   }
 
   async compile(
@@ -152,7 +158,9 @@ export class CsrDevModuleCompiler {
     const tangled: string[] = [];
     for (const artifact of result.outputs) {
       if (artifact.kind === "asset") {
-        await Bun.write(path.join(this.#outDir, artifact.path), artifact);
+        const assetPath = path.join(this.#outDir, artifact.path);
+        await Bun.write(assetPath, artifact);
+        this.#assets.add(assetPath);
         continue;
       }
       if (artifact.kind !== "entry-point") continue;

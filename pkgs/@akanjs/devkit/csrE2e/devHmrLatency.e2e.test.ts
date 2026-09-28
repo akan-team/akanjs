@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, rename } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -110,10 +110,18 @@ describe.skipIf(!enabled)("dev HMR latency (minimal)", () => {
   };
   const loadBefore = os.loadavg();
   const report: Record<string, unknown> = {};
+  //? The page stack, patch-first and fast-refresh suites edit these files too: a sample that times out mid-edit must not
+  //? leave them changed.
+  const pristine = new Map<string, string>();
 
   beforeAll(async () => {
+    for (const file of [probeFile, pageFile, layoutFile]) pristine.set(file, await Bun.file(file).text());
     csr = await CsrE2eHarness.start({ app: "minimal", port, workspaceRoot });
   }, 240_000);
+
+  afterEach(async () => {
+    for (const [file, source] of pristine) if ((await Bun.file(file).text()) !== source) await Bun.write(file, source);
+  });
 
   afterAll(async () => {
     await csr?.close();

@@ -81,6 +81,11 @@ export abstract class DevRegistryBundler {
     return update;
   }
 
+  async holds(files: string[]): Promise<boolean> {
+    const graph = await this.writer.readJson<CsrDevGraph>("graph.json");
+    return graph !== null && files.every((file) => graph.modules[this.paths.idOf(file)] !== undefined);
+  }
+
   /** A save of one goes to a whole build: `lib/useClient.ts` inlines what they declare through macros. */
   isMetadataFile(file: string): boolean {
     return isAkanRuntimeMetadataFile(file);
@@ -101,13 +106,13 @@ export abstract class DevRegistryBundler {
   //? Compiled before anything is written: a build that fails (a module the user broke) leaves the registry the tabs
   //? and the next patch read as it was, where clearing the directory first left no registry at all.
   async fullBuild(context: CsrDevContext, generation: number, reason: string): Promise<CsrDevUpdate> {
-    const startedAt = Date.now();
     const metadata = await this.metadataFingerprint();
     const entries = await this.writeEntries(context);
     const roots = await this.rootFiles(Object.values(entries.files));
     const resolver = new CsrDevResolver({ paths: this.paths, context, entryFiles: roots });
     await resolver.prepass();
-    const { modules: compiled } = await this.compiler(context, resolver).compile(
+    const compiler = this.compiler(context, resolver);
+    const { modules: compiled } = await compiler.compile(
       [...roots, ...(context.refreshFile ? [context.refreshFile] : [])],
       new Set(),
     );
@@ -127,10 +132,10 @@ export abstract class DevRegistryBundler {
     await this.writer.markBuilding();
     await this.writer.writeModules(compiled);
     const vendorFile = await this.writer.writeVendor(graph);
-    await this.writer.writeApp(graph, generation);
     const epoch = Date.now();
+    await this.writer.writeApp(graph, { generation, vendorFile, epoch });
     await this.writer.writeState(graph, { version: 1, generation, vendorFile, entries: graph.entries, epoch });
-    await this.writer.pruneAfterFullBuild(graph, vendorFile, { generation, startedAt });
+    await this.writer.pruneAfterFullBuild(graph, vendorFile, { generation, assets: compiler.assets });
     await this.writer.clearBuilding();
     return { generation, reload: true, reason, changedIds: [], moduleCount: Object.keys(graph.modules).length, epoch };
   }

@@ -339,6 +339,7 @@ export class WebRouter {
         rsc: this.#rsc,
         seedIndex: this.#seedIndex,
         upgradeHmrWs,
+        pagesBundlePath: this.#artifact.pagesBundlePath,
       });
       this.#builderRpc = this.#devHmr.builderRpc;
       this.#routeCache = this.#devHmr.routeCache;

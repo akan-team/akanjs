@@ -148,7 +148,7 @@ Print prefixed, interleaved lines instead of the full-screen view.
 
 Free the dev ports first. A holder that is not an akan process is reported and left alone.
 
-Apps booted at a time. Unset: the lower of half the memory ÷ 900MB and cores ÷ 4.
+Apps booted at a time. Unset: the lower of half the memory ÷ 1.8GB and cores ÷ 4.
 
 Start the local services of the mode each app runs in first. On exit it stops only what it started.
 

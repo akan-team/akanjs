@@ -121,51 +121,67 @@ export class CsrDevResolver {
     );
   }
 
+  // A target moved away is left out, so the graph does not carry it past a builder restart.
   serialize(): Record<string, Record<string, string>> {
     return Object.fromEntries(
       [...this.#resolution].map(([importer, bySpecifier]) => [
         this.#paths.idOf(importer),
         Object.fromEntries(
-          [...bySpecifier].map(([specifier, target]) => [
-            specifier,
-            CsrDevPaths.isStub(target) ? target : this.#paths.idOf(target),
-          ]),
+          [...bySpecifier]
+            .filter(([, target]) => CsrDevPaths.isStub(target) || fs.existsSync(target))
+            .map(([specifier, target]) => [specifier, CsrDevPaths.isStub(target) ? target : this.#paths.idOf(target)]),
         ),
       ]),
     );
   }
 
+  //? Bun.resolveSync keeps what it found for the life of the process, so in the resident builder it hands back a file
+  //? moved away since (`Foo.tsx` → `Foo/index.tsx`, `.ts` → `.tsx`); a new file it does find. A relative import is
+  //? therefore looked up on the disk as it is now, and a bare one it names a missing file for goes to a fresh worker.
   #resolveUnknown(importer: string, specifier: string): string | null {
     if (specifier.startsWith("node:")) return `${CsrDevPaths.stubPrefix}${specifier}`;
     const relative = specifier.startsWith(".") || path.isAbsolute(specifier);
+    const cannotResolve = () => new Error(`[csr-dev] cannot resolve "${specifier}" from ${this.#paths.idOf(importer)}`);
+    if (relative) {
+      const onDisk =
+        CsrDevPaths.resolveOnDisk(path.resolve(path.dirname(importer), specifier)) ??
+        CsrDevResolver.#onDisk(CsrDevPaths.tryResolve(specifier, path.dirname(importer)));
+      if (!onDisk) throw cannotResolve();
+      return CsrDevPaths.realpath(onDisk);
+    }
     //? Ahead of the prepass too: a new file's bare imports (`akanjs/ui`, `@apps/<app>/client`) are ones its package
     //? already resolved, and asking for the prepass would hand every such save to a build worker.
-    if (!relative) {
-      const sibling = this.#resolvedBySibling(importer, specifier);
-      if (sibling) return sibling;
+    const sibling = this.#resolvedBySibling(importer, specifier);
+    if (sibling) return sibling;
+    const resolved = CsrDevPaths.tryResolve(specifier, path.dirname(importer));
+    const moved = resolved !== null && path.isAbsolute(resolved) && !fs.existsSync(resolved);
+    if (!this.#prepassDone || moved) {
       //? A specifier no resolver finds in the user's own code is a typo, failed here like a missing relative file: the
       //? resolution build a worker would run for it fails the same way. A package's `browser` field may map one away.
-      const typo = !CsrDevPaths.isVendorFile(importer) && !CsrDevPaths.tryResolve(specifier, path.dirname(importer));
-      if (!this.#prepassDone && !typo) return null;
+      if (resolved === null && !CsrDevPaths.isVendorFile(importer)) throw cannotResolve();
+      return null;
     }
-    const resolved = CsrDevPaths.tryResolve(specifier, path.dirname(importer));
-    if (!resolved) throw new Error(`[csr-dev] cannot resolve "${specifier}" from ${this.#paths.idOf(importer)}`);
+    if (!resolved) throw cannotResolve();
     if (!path.isAbsolute(resolved)) return `${CsrDevPaths.stubPrefix}${specifier}`;
-    if (!relative) {
-      this.#fallbacks.add(specifier);
-      this.#runtimeResolved.set(importer, (this.#runtimeResolved.get(importer) ?? new Set<string>()).add(specifier));
-    }
+    this.#fallbacks.add(specifier);
+    this.#runtimeResolved.set(importer, (this.#runtimeResolved.get(importer) ?? new Set<string>()).add(specifier));
     return CsrDevPaths.realpath(resolved);
+  }
+
+  static #onDisk(resolved: string | null): string | null {
+    return resolved && path.isAbsolute(resolved) && fs.existsSync(resolved) ? resolved : null;
   }
 
   //? The browser build tree-shakes the unused re-exports of a side-effect-free barrel, so their imports have no
   //? recorded resolution; a file of the same package resolves a bare specifier to the same target, conditions included.
-  //? Not one the runtime resolver found: it ignores the `browser` condition the prepass exists to honour.
+  //? Not one the runtime resolver found (it ignores the `browser` condition the prepass exists to honour), not the
+  //? importer's own record, and not a target moved away since.
   #resolvedBySibling(importer: string, specifier: string): string | null {
     const scope = CsrDevResolver.#packageScopeOf(importer);
     for (const [other, bySpecifier] of this.#resolution) {
       const target = bySpecifier.get(specifier);
-      if (!target || this.#runtimeResolved.get(other)?.has(specifier)) continue;
+      if (!target || other === importer || this.#runtimeResolved.get(other)?.has(specifier)) continue;
+      if (!CsrDevPaths.isStub(target) && !fs.existsSync(target)) continue;
       if (CsrDevResolver.#packageScopeOf(other) === scope) return target;
     }
     return null;

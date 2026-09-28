@@ -69,6 +69,8 @@ export interface DevHmrControllerOptions {
   rsc: RscWorker;
   seedIndex: RouteSeedIndex;
   upgradeHmrWs: (req: Request, data: HmrWsData) => boolean;
+  /** The pages bundle the RSC worker booted with: the base build's, however many pages builds came after it. */
+  pagesBundlePath?: string;
 }
 
 export class DevHmrController {
@@ -93,9 +95,11 @@ export class DevHmrController {
   readonly #dirtyFiles = new Set<string>();
   readonly #buildStatusByPhase = new Map<DevBuildStatus["phase"], DevBuildStatus>();
   #graphSeeds: string[];
+  #runningBundlePath: string | null;
 
-  constructor({ artifactDir, renderState, rsc, seedIndex, upgradeHmrWs }: DevHmrControllerOptions) {
+  constructor({ artifactDir, renderState, rsc, seedIndex, upgradeHmrWs, pagesBundlePath }: DevHmrControllerOptions) {
     this.#artifactDir = artifactDir;
+    this.#runningBundlePath = pagesBundlePath ? path.resolve(pagesBundlePath) : null;
     this.#renderState = renderState;
     this.#rsc = rsc;
     this.#seedIndex = seedIndex;
@@ -266,9 +270,12 @@ export class DevHmrController {
               )
             : [];
         const manifest = this.routeCache.snapshot();
-        //? The bundle it built is the one the worker runs, byte for byte: keeping its build id keeps every tab's (the
-        //? hello check, the router's partial navigation) instead of stranding them on one no refresh ever sent.
-        if (serverTouched === false && !clearAll) {
+        //? Whether the worker reloads is whether it runs this bundle, not what the save touched: a backend that
+        //? restarted booted the base build's bundle, and the build replayed to it may be one that changed nothing the
+        //? server renders. Running the same bundle, byte for byte, it keeps the build id every tab holds (the hello
+        //? check, the router's partial navigation) instead of stranding them on one no refresh ever sent.
+        const running = bundlePath ? path.resolve(bundlePath) : null;
+        if (serverTouched === false && !clearAll && running === this.#runningBundlePath) {
           this.#logger.verbose(
             `[SSR] pages bundle unchanged for the server; buildId ${this.#renderState.buildId} kept`,
           );
@@ -281,6 +288,7 @@ export class DevHmrController {
             buildId,
             pagesBundlePath: bundlePath,
           });
+          if (running) this.#runningBundlePath = running;
           this.#logger.verbose(`[SSR] rsc reload buildId=${buildId} in ${Date.now() - reloadStarted}ms`);
         }
         const shouldReload = clearAll || this.#shouldFullReloadForFiles(files, routeIds);
@@ -410,6 +418,7 @@ export class DevHmrController {
     this.routeCache.invalidateClientEntries({
       routePredicate: (routeId) => !routeIds || routeIds.includes(routeId),
       staleEntries: this.#clientEntryManifestKeys(staleClientEntries),
+      files,
     });
   }
 
@@ -427,10 +436,11 @@ export class DevHmrController {
       return this.routeCache.invalidateClientEntries({
         routePredicate: (routeId) => !routeIds || routeIds.includes(routeId),
         staleEntries: staleKeys,
+        files,
       });
     }
     if (!routeIds || this.#shouldClearAllRoutes(files, routeIds)) return this.routeCache.clear();
-    return this.routeCache.invalidate((routeId) => routeIds.includes(routeId));
+    return this.routeCache.invalidate((routeId) => routeIds.includes(routeId), { files });
   }
 
   #routeIdsForFiles(files: string[], staleClientEntries = new Set<string>()): string[] | undefined {

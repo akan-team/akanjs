@@ -41,7 +41,7 @@ export class CsrDevArtifactWriter {
   }
 
   async clearBuilding(): Promise<void> {
-    await rm(path.join(this.#outDir, CsrDevArtifactWriter.#buildingMarker), { force: true });
+    await CsrDevArtifactWriter.#remove(path.join(this.#outDir, CsrDevArtifactWriter.#buildingMarker));
   }
 
   async isBuilding(): Promise<boolean> {
@@ -53,7 +53,7 @@ export class CsrDevArtifactWriter {
   async forgetPatch(generation: number): Promise<void> {
     await Promise.all(
       [`patch-${generation}.js`, `patch-${generation}.js.layout.json`].map((name) =>
-        rm(path.join(this.#outDir, name), { force: true }),
+        CsrDevArtifactWriter.#remove(path.join(this.#outDir, name)),
       ),
     );
   }
@@ -95,8 +95,8 @@ export class CsrDevArtifactWriter {
   async forgetModules(ids: string[]): Promise<void> {
     await Promise.all(
       ids.flatMap((id) => [
-        rm(this.#modulePath(id, ".js"), { force: true }),
-        rm(this.#modulePath(id, ".js.map"), { force: true }),
+        CsrDevArtifactWriter.#remove(this.#modulePath(id, ".js")),
+        CsrDevArtifactWriter.#remove(this.#modulePath(id, ".js.map")),
       ]),
     );
   }
@@ -119,14 +119,20 @@ export class CsrDevArtifactWriter {
     return vendorFile;
   }
 
-  async writeApp(graph: CsrDevGraph, generation: number, code?: CsrDevCode): Promise<void> {
+  //? A library app.js names the vendor file and epoch it was built with: a tab that booted it beside another build's
+  //? vendor file (a whole build landing between its render and its load) tells, and keeps the right epoch for hello.
+  async writeApp(
+    graph: CsrDevGraph,
+    { generation, vendorFile, epoch }: Pick<CsrDevManifest, "generation" | "vendorFile" | "epoch">,
+    code?: CsrDevCode,
+  ): Promise<void> {
     const ids = Object.keys(graph.modules)
       .filter((id) => !graph.modules[id]?.vendor)
       .sort();
     const lines = await this.#defineLines(ids, code);
     const blocks = ids.map((id, index) => [id, lines[index] ?? ""] as [string, string]);
     const start = this.#library
-      ? `__akan.startLibrary(${JSON.stringify({ generation, refresh: graph.refresh, bootstrap: graph.entries[""] })});\n`
+      ? `__akan.startLibrary(${JSON.stringify({ generation, refresh: graph.refresh, bootstrap: graph.entries[""], vendorFile, epoch })});\n`
       : `__akan.start(${JSON.stringify({ generation, refresh: graph.refresh })});\n`;
     await this.#writeWithSourceMap(CSR_DEV_APP_FILE, await this.#helperDefinitions(graph, ids, code), blocks, start);
   }
@@ -169,14 +175,14 @@ export class CsrDevArtifactWriter {
     await CsrDevArtifactWriter.#appWriteDelay();
     await this.writeModules(modules);
     await this.writeJson("graph.json", graph);
-    await this.writeApp(graph, manifest.generation, code);
+    await this.writeApp(graph, manifest, code);
     await this.writeJson(CSR_DEV_MANIFEST_FILE, { ...manifest, appGeneration: manifest.generation });
   }
 
   // A process that died between announcing a patch and rewriting app.js left every booting tab one generation behind.
   async healApp(graph: CsrDevGraph, manifest: CsrDevManifest, code?: CsrDevCode): Promise<CsrDevManifest> {
     if (appGenerationOf(manifest) >= manifest.generation) return manifest;
-    await this.writeApp(graph, manifest.generation, code);
+    await this.writeApp(graph, manifest, code);
     const healed = { ...manifest, appGeneration: manifest.generation };
     await this.writeJson(CSR_DEV_MANIFEST_FILE, healed);
     return healed;
@@ -194,38 +200,39 @@ export class CsrDevArtifactWriter {
       .sort((a, b) => b.mtimeMs - a.mtimeMs)
       .slice(CsrDevArtifactWriter.#keptVendors - 1)
       .map(({ name }) => name);
-    await Promise.all([...stale, ...vendors].map((name) => rm(path.join(this.#outDir, name), { force: true })));
+    await Promise.all(
+      [...stale, ...vendors].map((name) => CsrDevArtifactWriter.#remove(path.join(this.#outDir, name))),
+    );
   }
 
   //? A whole build writes over the registry before it instead of clearing it first, so it clears what that one left:
   //? the modules and helpers it no longer holds, every patch (each was made against the previous registry), the assets
-  //? no module wrote this time, temp files of a write cut short, and the marker of a builder that died mid-patch.
+  //? this build did not write (by path: a file's mtime and this process's clock need not agree on a mounted volume),
+  //? temp files of a write cut short, and the marker of a builder that died mid-patch.
   async pruneAfterFullBuild(
     graph: CsrDevGraph,
     vendorFile: string,
-    { generation, startedAt }: { generation: number; startedAt: number },
+    { generation, assets }: { generation: number; assets: string[] },
   ): Promise<void> {
     const kept = new Set(
       Object.keys(graph.modules).flatMap((id) => [this.#modulePath(id, ".js"), this.#modulePath(id, ".js.map")]),
     );
     for (const module of Object.values(graph.modules)) if (module.helpers) kept.add(this.#helpersPath(module.helpers));
+    for (const asset of assets) kept.add(path.resolve(asset));
     const listed = async (dir: string) =>
       (await readdir(path.join(this.#outDir, dir)).catch(() => [] as string[])).map((name) =>
         path.join(this.#outDir, dir, name),
       );
     const stale = [
       ...(await listed("modules")).filter((file) => !kept.has(file)),
-      ...(await listed("assets")).filter((file) => CsrDevPaths.mtimeOf(file) < startedAt),
+      ...(await listed("assets")).filter((file) => !kept.has(file)),
       ...(await listed(".")).filter((file) => {
         const name = path.basename(file);
-        return (
-          /^patch-\d+\.js(?:\.layout\.json)?$/.test(name) ||
-          (name.endsWith(".tmp") && CsrDevPaths.mtimeOf(file) < startedAt)
-        );
+        return /^patch-\d+\.js(?:\.layout\.json)?$/.test(name) || name.endsWith(".tmp");
       }),
       path.join(this.#outDir, CSR_DEV_PATCHING_MARKER),
     ];
-    await Promise.all(stale.map((file) => rm(file, { force: true })));
+    await Promise.all(stale.map((file) => CsrDevArtifactWriter.#remove(file)));
     await this.prune(vendorFile, generation);
   }
 
@@ -265,6 +272,13 @@ export class CsrDevArtifactWriter {
     const temp = `${target}.${process.pid}.tmp`;
     await Bun.write(temp, content);
     await FileSys.replace(temp, target);
+  }
+
+  //? Best effort, after the tabs already have the update: Windows refuses to delete a file a reader holds open (the
+  //? server streaming it to a tab), and throwing here would send a patch that already went out to a build worker.
+  //? A file that stays is removed by a later prune.
+  static async #remove(file: string): Promise<void> {
+    await rm(file, { force: true }).catch(() => undefined);
   }
 
   //? A test-only hook that widens the gap between the patch and app.js, so an E2E can boot a tab inside it.

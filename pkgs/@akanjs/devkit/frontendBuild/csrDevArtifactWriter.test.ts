@@ -55,7 +55,7 @@ afterAll(async () => {
 describe("CsrDevArtifactWriter", () => {
   test("announces a patch before the module files, graph.json and app.js catch up", async () => {
     const { writer, graph, read, dir } = await makeWriter();
-    await writer.writeApp(graph, 4);
+    await writer.writeApp(graph, { generation: 4, vendorFile: "v.js" });
     const edited = { ...module, factory: "function () { edited(); }" };
     let atAnnounce: (ReturnType<typeof read> & { graph: boolean; module: string }) | null = null;
     await writer.commitPatch(
@@ -78,7 +78,7 @@ describe("CsrDevArtifactWriter", () => {
 
   test("rewrites an app.js a crash left behind the manifest's generation", async () => {
     const { writer, graph, read } = await makeWriter();
-    await writer.writeApp(graph, 5);
+    await writer.writeApp(graph, { generation: 5, vendorFile: "v.js" });
     const behind: CsrDevManifest = { version: 1, generation: 6, appGeneration: 5, vendorFile: "v.js", entries: {} };
     await writer.writeJson(CSR_DEV_MANIFEST_FILE, behind);
     const healed = await writer.healApp(graph, behind);
@@ -98,9 +98,9 @@ describe("CsrDevArtifactWriter", () => {
       { routePrefix: "/_akan/ssr-dev/", library: true },
       { "": "boot.ts" },
     );
-    await writer.writeApp(graph, 2);
+    await writer.writeApp(graph, { generation: 2, vendorFile: "v.js", epoch: 7 });
     expect(readFileSync(path.join(dir, "app.js"), "utf8")).toContain(
-      '__akan.startLibrary({"generation":2,"refresh":"refresh.js","bootstrap":"boot.ts"});',
+      '__akan.startLibrary({"generation":2,"refresh":"refresh.js","bootstrap":"boot.ts","vendorFile":"v.js","epoch":7});',
     );
     expect(await writer.writePatch(3, [module])).toBe("/_akan/ssr-dev/patch-3.js");
   });
@@ -112,10 +112,12 @@ describe("CsrDevArtifactWriter", () => {
     await writer.writePatch(7, [module]);
     await Bun.write(path.join(dir, "assets/old-abc.png"), "old");
     await Bun.write(path.join(dir, ".patching"), "123");
-    const startedAt = Date.now() + 5;
-    await Bun.sleep(10);
+    await Bun.write(path.join(dir, "manifest.json.4242.tmp"), "{");
     await Bun.write(path.join(dir, "assets/new-def.png"), "new");
-    await writer.pruneAfterFullBuild(graph, "vendor-a.js", { generation: 8, startedAt });
+    await writer.pruneAfterFullBuild(graph, "vendor-a.js", {
+      generation: 8,
+      assets: [path.join(dir, "assets/new-def.png")],
+    });
     expect(existsSync(path.join(dir, csrDevModuleFile("a.ts", ".js")))).toBe(true);
     expect(existsSync(path.join(dir, csrDevModuleFile("gone.ts", ".js")))).toBe(false);
     expect(existsSync(path.join(dir, "patch-7.js"))).toBe(false);
@@ -123,6 +125,7 @@ describe("CsrDevArtifactWriter", () => {
     expect(existsSync(path.join(dir, "assets/old-abc.png"))).toBe(false);
     expect(existsSync(path.join(dir, "assets/new-def.png"))).toBe(true);
     expect(existsSync(path.join(dir, ".patching"))).toBe(false);
+    expect(existsSync(path.join(dir, "manifest.json.4242.tmp"))).toBe(false);
   });
 
   test("a reload drops a patch file left under its generation, and a whole build is marked while it writes", async () => {

@@ -4,7 +4,7 @@
 
 `akan start` sizes its boot wave against the machine instead of always booting one app at a time.
 
-- With no `--concurrency`, the wave is `min(apps, half the memory budget / ~900MB per app, cores / 4)` and never
+- With no `--concurrency`, the wave is `min(apps, half the memory budget / ~1.8GB per app, cores / 4)` and never
   below one, so a laptop boots its apps together while a small container still staggers them — which is the case
   the old default of 1 existed for. Measured on a 14-core laptop, two warm apps: the last one is ready at +3.3s
   rather than +4.7s.

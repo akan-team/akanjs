@@ -104,7 +104,7 @@ export interface PagesBundlePayload {
 export interface BuilderMetrics {
   /** A peak sampled when the queues drain; stale within seconds on Linux, so the host re-reads RSS from the OS. */
   rssBytes: number;
-  /** The builder's newest generation; 0 until it has processed a watch batch since spawning. */
+  /** The builder's newest generation; a replacement builder continues from the last one its host saw. */
   generation: number;
   /** Work items completed since this builder spawned, so a host can require real work before recycling. */
   workCount: number;
@@ -154,8 +154,8 @@ export type BuilderEvent =
   | { type: "ssr-updated"; data: SsrUpdatedPayload }
   | { type: "build-status"; data: DevBuildStatus }
   | { type: "builder-metrics"; data: BuilderMetrics }
-  /** The SSR registry's boot build settled (built, already current, or failed): its worker is a boot's largest peak. */
-  | { type: "ssr-armed" };
+  /** The boot builds settled (the SSR registry's, and CSR's when the env arms it): their workers are a boot's peak. */
+  | { type: "boot-armed" };
 
 export type BuilderMessage = BuilderReq | BuilderRes | BuilderCsrReq | BuilderCsrRes | BuilderControl | BuilderEvent;
 

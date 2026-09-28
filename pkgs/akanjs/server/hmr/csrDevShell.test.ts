@@ -99,6 +99,33 @@ describe("CsrDevShell", () => {
       expect(capped.status).toBe(503);
       expect(capped.ms).toBeGreaterThanOrEqual(140);
       expect(capped.ms).toBeLessThan(1_000);
+      const negative = await timed("http://localhost/_akan/csr-dev/boot.json?wait=-5");
+      expect(negative.status).toBe(503);
+      expect(negative.ms).toBeLessThan(100);
+    } finally {
+      await rm(empty, { recursive: true, force: true });
+    }
+  });
+
+  test("stops holding a boot.json or app.js ask once the tab that made it goes away", async () => {
+    const empty = await mkdtemp(path.join(os.tmpdir(), "akan-csr-dev-abort-"));
+    try {
+      const options = { bootWaitMs: 5_000, appWaitMs: 5_000, appPollMs: 10 };
+      await writeManifest({ version: 1, generation: 9, appGeneration: 8, vendorFile: "vendor-abc.js", entries: {} });
+      await Bun.write(path.join(artifactDir, CSR_DEV_DIRNAME, "app.js"), "generation 8");
+      const closed = new AbortController();
+      const started = Date.now();
+      const boot = new CsrDevShell(empty, options).serve(
+        new Request("http://localhost/_akan/csr-dev/boot.json", { signal: closed.signal }),
+      );
+      const app = new CsrDevShell(artifactDir, options).serve(
+        new Request("http://localhost/_akan/csr-dev/app.js?g=9", { signal: closed.signal }),
+      );
+      await Bun.sleep(50);
+      closed.abort();
+      expect((await boot).status).toBe(503);
+      expect(await (await app).text()).toBe("generation 8");
+      expect(Date.now() - started).toBeLessThan(1_000);
     } finally {
       await rm(empty, { recursive: true, force: true });
     }

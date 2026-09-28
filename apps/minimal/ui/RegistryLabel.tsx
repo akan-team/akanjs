@@ -1,4 +1,4 @@
-import { registryValue } from "./registryValue.constant";
+import { registryValue } from "../common/registryValue.constant";
 
 interface RegistryLabelProps {
   className?: string;

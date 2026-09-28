@@ -92,10 +92,10 @@ ${stylesheet}  </head>
     const url = new URL(req.url);
     const name = url.pathname.slice(this.#routePrefix.length);
     if (name === "runtime.js") return CsrDevShell.#js(CSR_DEV_RUNTIME_SCRIPT, "public, max-age=31536000, immutable");
-    if (name === "boot.json") return await this.#serveBoot(url.searchParams.get("wait"));
+    if (name === "boot.json") return await this.#serveBoot(url.searchParams.get("wait"), req.signal);
     if (CsrDevShell.#sourceMapFile.test(name)) return await this.#serveSourceMap(name);
     if (!CsrDevShell.#servedFile.test(name)) return new Response("Not Found", { status: 404 });
-    if (name === CSR_DEV_APP_FILE) await this.#waitForApp(Number(url.searchParams.get("g")));
+    if (name === CSR_DEV_APP_FILE) await this.#waitForApp(Number(url.searchParams.get("g")), req.signal);
     const filePath = resolveStaticPath(this.#dir, name);
     const file = filePath ? Bun.file(filePath) : null;
     if (!file || !(await file.exists())) return new Response("Not Found", { status: 404 });
@@ -107,21 +107,21 @@ ${stylesheet}  </head>
 
   //? A patch is announced before app.js is rewritten, so a tab booting in that gap asks for a generation app.js does not
   //? hold yet. Held until it does, or until the wait runs out: then it boots behind, and hello's generation reloads it.
-  async #waitForApp(generation: number): Promise<void> {
+  async #waitForApp(generation: number, signal?: AbortSignal): Promise<void> {
     if (!Number.isInteger(generation) || generation <= 0) return;
     const deadline = Date.now() + this.#appWaitMs;
     for (;;) {
       const manifest = await this.readManifest();
-      if (!manifest || appGenerationOf(manifest) >= generation || Date.now() >= deadline) return;
+      if (!manifest || appGenerationOf(manifest) >= generation || Date.now() >= deadline || signal?.aborted) return;
       await Bun.sleep(this.#appPollMs);
     }
   }
 
   //? An SSR page rendered before the boot build of its registry finished asks here what to load; held until it exists,
   //? or for the `wait` it asked (at most the boot wait), since a held request takes one of the browser's six sockets.
-  async #serveBoot(wait: string | null): Promise<Response> {
+  async #serveBoot(wait: string | null, signal?: AbortSignal): Promise<Response> {
     const asked = wait === null ? Number.NaN : Number(wait);
-    const waitMs = Number.isInteger(asked) && asked >= 0 ? Math.min(asked, this.#bootWaitMs) : this.#bootWaitMs;
+    const waitMs = Number.isInteger(asked) ? Math.min(Math.max(asked, 0), this.#bootWaitMs) : this.#bootWaitMs;
     const deadline = Date.now() + waitMs;
     for (;;) {
       const manifest = await this.readManifest();
@@ -133,7 +133,7 @@ ${stylesheet}  </head>
         });
         return new Response(body, { headers: CsrDevShell.#headers("application/json", "no-store") });
       }
-      if (Date.now() >= deadline) return new Response("Service Unavailable", { status: 503 });
+      if (Date.now() >= deadline || signal?.aborted) return new Response("Service Unavailable", { status: 503 });
       await Bun.sleep(this.#appPollMs * 5);
     }
   }

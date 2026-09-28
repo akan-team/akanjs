@@ -79,6 +79,11 @@ export class CsrE2eHarness {
   static async start(options: CsrE2eOptions): Promise<CsrE2eHarness> {
     const workspaceRoot = options.workspaceRoot ?? CsrE2eHarness.#findWorkspaceRoot();
     const url = options.url ?? process.env.AKAN_CSR_E2E_URL;
+    //? A running server took its env when it started: a suite's hooks would be dropped and its checks pass for nothing.
+    if (url && Object.keys(options.env ?? {}).length > 0)
+      throw new Error(
+        `[csr-e2e] this suite starts its dev server with ${Object.keys(options.env ?? {}).join(", ")}, which the server at ${url} does not have; unset AKAN_CSR_E2E_URL`,
+      );
     const port = options.port ?? Number(process.env.AKAN_CSR_E2E_PORT ?? DEFAULT_PORT);
     const server = url ? null : await CsrE2eHarness.#startServer({ ...options, workspaceRoot, port });
     const origin = new URL(url ?? `http://localhost:${port}`).origin;
@@ -119,15 +124,20 @@ export class CsrE2eHarness {
     await this.#markBoot();
   }
 
-  /** Reloads the page where it is, as a WebView does after its content process died, and marks the new boot. */
-  async reload() {
+  /**
+   * Reloads the page where it is, as a WebView does after its content process died, and marks the new boot. Returns
+   * the `performance.timeOrigin` of the first document seen after it: one that differs later was reloaded again.
+   */
+  async reload(): Promise<number> {
     await this.#view.reload();
     //? On the WebKit backend `reload()` resolves before the old document is gone; its marker going is the reload.
     await this.waitFor(
       (key: string, previous: string) => (window as unknown as Record<string, string | undefined>)[key] !== previous,
       { args: [RELOAD_MARKER, this.#marker], timeout: 30_000 },
     );
+    const timeOrigin = await this.evaluate(() => performance.timeOrigin);
     await this.#markBoot();
+    return timeOrigin;
   }
 
   //? An SSR page has no page stack; `rscClient` installs its refresh hook in the root's layout effect, once hydrated.
@@ -309,6 +319,33 @@ export class CsrE2eHarness {
     await this.#view.type(text);
   }
 
+  /** The process group of the `akan start` this harness spawned; null when it drives a running one. */
+  get serverGroup(): number | null {
+    return this.#server?.proc.pid ?? null;
+  }
+
+  /** Where the spawned `akan start`'s stdout and stderr end now, for `serverLogSince`. */
+  async serverLogMark(): Promise<{ out: number; err: number }> {
+    const [out, err] = await this.#serverLogs();
+    return { out: out.length, err: err.length };
+  }
+
+  /** What the spawned `akan start` wrote to stdout and stderr since `mark`; empty when it drives a running one. */
+  async serverLogSince(mark: { out: number; err: number } = { out: 0, err: 0 }): Promise<string> {
+    const [out, err] = await this.#serverLogs();
+    return `${out.slice(mark.out)}${err.slice(mark.err)}`;
+  }
+
+  async #serverLogs(): Promise<[string, string]> {
+    if (!this.#server) return ["", ""];
+    const read = async (file: string) =>
+      await Bun.file(file)
+        .text()
+        .catch(() => "");
+    const { logPath } = this.#server;
+    return [await read(logPath), await read(logPath.replace(/\.log$/, ".err.log"))];
+  }
+
   /** Whether the page reloaded since `open()`: the boot marker lives only in the page `open()` loaded. */
   async reloaded() {
     const marker = await this.evaluate(
@@ -363,18 +400,23 @@ export class CsrE2eHarness {
     env = {},
     workspaceRoot,
   }: CsrE2eOptions & { port: number; workspaceRoot: string }): Promise<CsrE2eServer> {
+    //? The dev host runs from the CLI's dist bundle while the builder runs from source: a stale dist tests an old host.
+    //? The build is a no-op when its stamp matches the sources.
+    const built = Bun.spawnSync(["bun", path.join(workspaceRoot, "pkgs/@akanjs/cli/build.ts")], { cwd: workspaceRoot });
+    if (built.exitCode !== 0) throw new Error(`[csr-e2e] building the CLI failed: ${built.stderr.toString()}`);
     const cli = path.join(workspaceRoot, "dist/pkgs/@akanjs/cli/index.js");
-    if (!(await Bun.file(cli).exists()))
-      throw new Error(`[csr-e2e] ${cli} is missing; build the CLI first (bun pkgs/@akanjs/cli/build.ts)`);
     const logDir = path.join(workspaceRoot, "local", "csr-e2e");
     await mkdir(logDir, { recursive: true });
     const logPath = path.join(logDir, `${app}-${port}.log`);
+    const errPath = logPath.replace(/\.log$/, ".err.log");
+    //? A `Bun.file` sink writes from offset 0 without truncating, so the last run's tail would outlive this one's start.
+    await Promise.all([Bun.write(logPath, ""), Bun.write(errPath, "")]);
     //? Its own process group, so stopping it reaches the gateway, the builder and every replica it spawned.
     const proc = Bun.spawn(["bun", cli, "start", app, "--plain"], {
       cwd: workspaceRoot,
       env: { ...process.env, AKAN_DEV_PORT: String(port), ...env },
       stdout: Bun.file(logPath),
-      stderr: Bun.file(logPath.replace(/\.log$/, ".err.log")),
+      stderr: Bun.file(errPath),
       detached: true,
     });
     return { proc, logPath };

@@ -14,4 +14,5 @@ perf(dev): a CSR dev save is patched by the resident builder, without spawning a
   build workers, route builds and client-entry discovery run in the other, where a batch queued behind another folds
   into it. Consecutive saves no longer wait behind each other's pages and css builds, and css now builds before pages.
 - `AKAN_DEV_CSR_PATCHER=off` sends every CSR save to a build worker as before. A builder that dies mid-patch turns the
-  patcher off for the rest of the session and says so.
+  patcher off until the dev server next replaces its builder and backend together (a config, signal or dictionary
+  change), and says so.

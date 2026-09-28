@@ -12,28 +12,32 @@ const lazyFile = uiFile("RegistryLazy_Dynamic.tsx");
 const serverPartFile = uiFile("RegistryServerPart.tsx");
 const pageFile = path.join(workspaceRoot, "apps/minimal/page/(home)/e2e/registry.tsx");
 const storeFile = path.join(workspaceRoot, "apps/minimal/lib/_minimal/minimal.store.ts");
-const valueFile = uiFile("registryValue.constant.ts");
+const valueFile = path.join(workspaceRoot, "apps/minimal/common/registryValue.constant.ts");
 //? Read only by client code (the probe), so breaking it fails the registry's builds and no server bundle.
 const contextFile = uiFile("registryContext.ts");
 const registryManifest = path.join(workspaceRoot, "apps/minimal/.akan/artifact/ssr-dev/manifest.json");
 const configFile = path.join(workspaceRoot, "apps/minimal/akan.config.ts");
 const sharedFile = path.join(workspaceRoot, "apps/minimal/common/registrySharedText.ts");
 const signalFile = path.join(workspaceRoot, "apps/minimal/lib/_minimal/minimal.signal.ts");
+const serviceFile = path.join(workspaceRoot, "apps/minimal/lib/_minimal/minimal.service.ts");
+const bootLogPrefix = "akan-e2e-boots:";
 const workerEntry = path.join(workspaceRoot, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts");
 const port = Number(process.env.AKAN_CSR_E2E_SSR_REGISTRY_PORT ?? 8494);
 
-//? Build workers of this workspace that outlived the builder that spawned them (reparented to init), sampled until
-//? stopped: one left running would keep writing a registry the replacement builder is rebuilding. Seen twice, so a
-//? worker caught in the moment between its builder's exit and its own is not counted.
-const sampleOrphanWorkers = () => {
+//? Build workers of the dev server this suite started (its process group, so another session's leftovers in the same
+//? worktree do not count) that outlived the builder that spawned them (reparented to init), sampled until stopped: one
+//? left running would keep writing a registry the replacement builder is rebuilding. Seen twice, so a worker caught in
+//? the moment between its builder's exit and its own is not counted.
+const sampleOrphanWorkers = (group: number | null) => {
   const seen = new Map<string, number>();
   let sampling = true;
   const loop = (async () => {
     while (sampling) {
-      const listing = Bun.spawnSync(["ps", "-axo", "pid=,ppid=,command="]).stdout.toString();
+      const listing = Bun.spawnSync(["ps", "-axo", "pid=,ppid=,pgid=,command="]).stdout.toString();
       for (const line of listing.split("\n")) {
-        const [pid, ppid] = line.trim().split(/\s+/);
-        if (ppid === "1" && pid && line.includes(workerEntry)) seen.set(pid, (seen.get(pid) ?? 0) + 1);
+        const [pid, ppid, pgid] = line.trim().split(/\s+/);
+        if (ppid !== "1" || !pid || (group !== null && pgid !== String(group))) continue;
+        if (line.includes(workerEntry)) seen.set(pid, (seen.get(pid) ?? 0) + 1);
       }
       await Bun.sleep(200);
     }
@@ -47,6 +51,7 @@ const sampleOrphanWorkers = () => {
 
 interface RegistryWindow {
   __akan?: { generation: number; inspect(): { started: boolean; failed: boolean } };
+  __akanE2eBroken?: boolean;
   __akanRegistryProbe?: { effects: number; contextId: string };
   __AKAN_CSR_LAST_UPDATE__?: { generation: number; executed: string[] };
   __AKAN_HMR_TRACES__?: { kind: string; generation: number; trace: { broadcastAt?: number } | null }[];
@@ -94,8 +99,23 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
         (document.querySelector('[data-e2e="registry-probe"]')?.getAttribute("data-e2e-hot") === "1") === expected,
       { args: [marked], timeout: 20_000 },
     );
-  const markProbe = (source: string) =>
-    source.replace('data-e2e="registry-probe">', 'data-e2e="registry-probe" data-e2e-hot="1">');
+  const markProbe = (source: string, value = "1") =>
+    source.replace('data-e2e="registry-probe">', `data-e2e="registry-probe" data-e2e-hot="${value}">`);
+  const probeHot = (value: string) =>
+    ssr.waitFor(
+      (expected: string) =>
+        document.querySelector('[data-e2e="registry-probe"]')?.getAttribute("data-e2e-hot") === expected,
+      { args: [value], timeout: 20_000 },
+    );
+  const fetchPage = async (pathname = REGISTRY) =>
+    await fetch(new URL(`/en${pathname}`, ssr.origin)).then((res) => res.text());
+  const waitForServerLog = async (mark: { out: number; err: number }, pattern: RegExp, timeout = 90_000) => {
+    const deadline = Date.now() + timeout;
+    while (!pattern.test(await ssr.serverLogSince(mark))) {
+      if (Date.now() > deadline) throw new Error(`[ssr-registry-e2e] the dev server never logged ${pattern}`);
+      await Bun.sleep(250);
+    }
+  };
 
   test("the page hydrates from the registry, with the bootstrap run ahead of its modules", async () => {
     await open();
@@ -206,8 +226,9 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
   test("a page loaded right after a save renders the saved client code, so hydration matches", async () => {
     await open();
     await ssr.editSource(probeFile, markProbe, async () => {
-      await Bun.sleep(150);
-      const html = await fetch(new URL("/en/e2e/registry", ssr.origin)).then((res) => res.text());
+      //? The patch reaches the tab after the backend took the save's invalidation, which dropped the stale entries.
+      await probeMarked(true);
+      const html = await fetchPage();
       expect(html).toContain('data-e2e-hot="1"');
       await ssr.open(REGISTRY, { csr: false });
       await probeMarked(true);
@@ -215,18 +236,45 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
     await probeMarked(false);
   }, 90_000);
 
-  test("a save while the page's route builds still renders the saved code", async () => {
+  test("a save landing while the page's route builds is in the page that build answers", async () => {
     await open();
     const original = await Bun.file(probeFile).text();
     try {
-      const navigation = ssr.open(REGISTRY, { csr: false });
+      //? A client entry's save drops the route and refreshes no tab, so the request below builds the route again.
+      await Bun.write(probeFile, markProbe(original, "1"));
+      await probeHot("1");
+      const mark = await ssr.serverLogMark();
+      const html = fetchPage();
       await Bun.sleep(40);
-      await Bun.write(probeFile, markProbe(original));
-      await navigation;
-      await probeMarked(true);
+      await Bun.write(probeFile, markProbe(original, "2"));
+      expect(await html).toContain('data-e2e-hot="2"');
+      expect(await ssr.serverLogSince(mark)).toMatch(/stale build ignored routeId=\/:lang\/e2e\/registry/);
     } finally {
       await Bun.write(probeFile, original);
     }
+    await probeMarked(false);
+  }, 90_000);
+
+  test("saves to another page's component while a route builds leave that build standing", async () => {
+    await open();
+    const original = await Bun.file(probeFile).text();
+    const mark = await ssr.serverLogMark();
+    let answered = false;
+    const html = fetchPage("/lab/buttons").finally(() => {
+      answered = true;
+    });
+    try {
+      for (let save = 1; !answered && save <= 20; save += 1) {
+        await Bun.write(probeFile, markProbe(original, String(save)));
+        await Bun.sleep(300);
+      }
+      expect(await html).not.toContain("React Client Manifest");
+    } finally {
+      await Bun.write(probeFile, original);
+    }
+    const log = await ssr.serverLogSince(mark);
+    expect(log.match(/build done routeId=\/:lang\/lab\/buttons/g) ?? []).toHaveLength(1);
+    expect(log).not.toMatch(/stale build ignored routeId=\/:lang\/lab\/buttons/);
     await probeMarked(false);
   }, 90_000);
 
@@ -321,10 +369,17 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
       storeFile,
       (source) => `${source}\nif (typeof window !== "undefined") throw new Error("e2e store failure");\n`,
       async () => {
-        await Bun.sleep(3_000);
+        //? The patch re-runs the store and reloads; the reloaded page's registry fails to start on it.
+        await ssr.waitFor(() => (window as unknown as RegistryWindow).__akan?.inspect().failed === true, {
+          timeout: 30_000,
+        });
+        await ssr.evaluate(() => {
+          (window as unknown as RegistryWindow).__akanE2eBroken = true;
+        });
       },
     );
     await pageRecovered();
+    expect(await ssr.evaluate(() => (window as unknown as RegistryWindow).__akanE2eBroken ?? false)).toBe(false);
     await ssr.evaluate(() => document.querySelector<HTMLButtonElement>('[data-e2e="bump"]')?.click());
     await textIs('[data-e2e="count"]', "1");
   }, 120_000);
@@ -341,30 +396,38 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
     await pageRecovered();
   }, 120_000);
 
-  test("a constant both copies render reaches the server and the client copy, in one reload", async () => {
+  test("a constant both copies render reloads the tab once, onto the server output it changed", async () => {
     await open();
-    await ssr.editSource(
-      valueFile,
-      (source) => source.replace("value-0", "value-1"),
-      async () => {
-        for (const where of ["server", "client"])
-          await ssr.waitFor(
-            (target: string) =>
-              document.querySelector(`[data-e2e="label-${target}"]`)?.getAttribute("data-e2e-value") === "value-1",
-            { args: [where], timeout: 30_000 },
-          );
-        const html = await fetch(new URL("/en/e2e/registry", ssr.origin)).then((res) => res.text());
-        expect(html).toContain('data-e2e-value="value-1"');
-        expect(await ssr.reloaded()).toBe(true);
-        await ssr.evaluate(() => {
-          (window as unknown as { __akanE2eAfterReload?: boolean }).__akanE2eAfterReload = true;
-        });
-        await Bun.sleep(3_000);
-        expect(
-          await ssr.evaluate(() => (window as unknown as { __akanE2eAfterReload?: boolean }).__akanE2eAfterReload),
-        ).toBe(true);
-      },
-    );
+    const bootLog = async () =>
+      await ssr.evaluate(
+        (prefix: string) => (window.name.startsWith(prefix) ? JSON.parse(window.name.slice(prefix.length)) : null),
+        bootLogPrefix,
+      );
+    await ssr.evaluate((prefix: string) => {
+      window.name = `${prefix}${JSON.stringify({ boots: 0, values: [] })}`;
+    }, bootLogPrefix);
+    try {
+      await ssr.editSource(
+        valueFile,
+        (source) => source.replace("value-0", "value-1"),
+        async () => {
+          for (const where of ["server", "client"])
+            await ssr.waitFor(
+              (target: string) =>
+                document.querySelector(`[data-e2e="label-${target}"]`)?.getAttribute("data-e2e-value") === "value-1",
+              { args: [where], timeout: 30_000 },
+            );
+          expect(await fetchPage()).toContain('data-e2e-value="value-1"');
+          //? A reload sent before the save's pages build would boot on value-0 and need the refresh after it.
+          await Bun.sleep(3_000);
+          expect(await bootLog()).toEqual({ boots: 1, values: ["value-1"] });
+        },
+      );
+    } finally {
+      await ssr.evaluate(() => {
+        window.name = "";
+      });
+    }
     for (const where of ["server", "client"])
       await ssr.waitFor(
         (target: string) =>
@@ -401,12 +464,12 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
         return typeof runtime?.runtime?.fetch?.[name] === "function";
       }, endpoint)
       .catch(() => false);
-  //? A tab opened after the restart a metadata save causes: reopened until the dev server is back with the registry
-  //? its builder rebuilt, since the one before stays served until that build lands.
+  //? A new tab, reopened until one passes: after a metadata save's restart the dev server serves the registry before
+  //? until its builder rebuilds it, and a restarting backend refuses connections for a moment.
   const reopenUntil = async (check: () => Promise<boolean>, timeout = 120_000) => {
     const deadline = Date.now() + timeout;
     while (!(await ssr.open(REGISTRY, { csr: false }).then(check, () => false))) {
-      if (Date.now() > deadline) throw new Error("[ssr-registry-e2e] the registry never took the metadata save");
+      if (Date.now() > deadline) throw new Error("[ssr-registry-e2e] no page opened within the wait passed the check");
       await Bun.sleep(1_000);
     }
   };
@@ -417,13 +480,21 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
       '  e2eRegistryPing: query(String, { guards: [Public], mcp: false }).exec(() => "pong"),\n  benchPing: query(',
     );
 
-  test("a signal save restarts the builder, and a tab opened afterwards has the new endpoint", async () => {
+  test("a signal save restarts the builder, and the open tab and a new one both get the new endpoint", async () => {
     await open();
-    const orphans = sampleOrphanWorkers();
+    const orphans = sampleOrphanWorkers(ssr.serverGroup);
     //? The component save first keeps the slow lane busy, so the restart lands while a batch is in flight.
     await ssr.editSource(probeFile, markProbe, async () => {
       await Bun.sleep(200);
       await ssr.editSource(signalFile, addEndpoint, async () => {
+        //? Not reopened: the rebuilt registry's reload, or hello's epoch once the backend is back, moves it on.
+        await ssr.waitFor(
+          () =>
+            typeof (globalThis as unknown as Record<symbol, { runtime?: { fetch?: Record<string, unknown> } }>)[
+              Symbol.for("akanjs.client.runtime")
+            ]?.runtime?.fetch?.e2eRegistryPing === "function",
+          { timeout: 120_000 },
+        );
         await reopenUntil(async () => await fetchHas("e2eRegistryPing"));
       });
     });
@@ -441,9 +512,10 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
         await ssr.waitFor(() => document.querySelector(".__akan_hmr_overlay[data-status=error]") !== null, {
           timeout: 20_000,
         });
+        const mark = await ssr.serverLogMark();
         await ssr.editSource(signalFile, addEndpoint, async () => {
-          //? Time for the restart and the replacement builder's whole build, which fails on the broken module.
-          await Bun.sleep(8_000);
+          //? The replacement builder's whole build fails on the broken module, and says so before anything is written.
+          await waitForServerLog(mark, /ssr-registry boot build failed/);
           expect(((await Bun.file(registryManifest).json()) as { epoch: number }).epoch).toBe(epoch);
           await Bun.write(
             contextFile,
@@ -455,6 +527,69 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
     );
     await reopenUntil(async () => !(await fetchHas("e2eRegistryPing")) && (await fetchHas("benchPing")));
   }, 300_000);
+
+  test("a server-only save after server and client edits keeps rendering the server edit", async () => {
+    await open();
+    await ssr.editSource(
+      serverPartFile,
+      (source) => source.replace("part-0", "part-view"),
+      async () => {
+        await textIs('[data-e2e="server-part"]', "part-view");
+        await ssr.editSource(probeFile, markProbe, async () => {
+          await probeMarked(true);
+          const mark = await ssr.serverLogMark();
+          //? A service restarts the backend alone: its RSC worker boots the boot build's bundle, and only the build
+          //? replayed to it (the probe's, which changed nothing the server renders) says which bundle is current.
+          await ssr.editSource(
+            serviceFile,
+            (source) => `${source}\n`,
+            async () => {
+              await waitForServerLog(mark, /\[backend-reload\] restarting backend[\s\S]*backend ready pid=\d+/);
+              const deadline = Date.now() + 20_000;
+              while (!(await fetchPage().catch(() => "")).includes("part-view")) {
+                if (Date.now() > deadline) throw new Error("[ssr-registry-e2e] the restarted backend lost the edit");
+                await Bun.sleep(250);
+              }
+              await textIs('[data-e2e="server-part"]', "part-view");
+            },
+          );
+        });
+      },
+    );
+    await textIs('[data-e2e="server-part"]', "part-0");
+    await probeMarked(false);
+  }, 180_000);
+
+  test("a client module moved into a folder keeps a new tab hydrating, and so does moving it back", async () => {
+    await open();
+    const original = await Bun.file(labelFile).text();
+    const movedFile = uiFile("RegistryLabel/index.tsx");
+    //? A tab that stopped hydrating shows the label but never counts: a new document is tried until one does.
+    const hydratesWith = async (label: string) =>
+      await reopenUntil(async () => {
+        const hydrated = async () => {
+          await textIs('[data-e2e="label-client"]', label);
+          await ssr.evaluate(() => document.querySelector<HTMLButtonElement>('[data-e2e="bump"]')?.click());
+          await textIs('[data-e2e="count"]', "1");
+        };
+        return await hydrated().then(
+          () => true,
+          () => false,
+        );
+      }, 90_000);
+    try {
+      await rm(labelFile);
+      await Bun.write(
+        movedFile,
+        original.replace("label-0", "label-moved").replace('from "../common/', 'from "../../common/'),
+      );
+      await hydratesWith("label-moved");
+    } finally {
+      await rm(path.dirname(movedFile), { recursive: true, force: true });
+      await Bun.write(labelFile, original);
+    }
+    await hydratesWith("label-0");
+  }, 180_000);
 
   test("a tab that reconnects to a restarted dev host before its registry exists reloads onto the new one", async () => {
     await open();

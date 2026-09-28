@@ -17,7 +17,7 @@ const builderMsgTypeSet = new Set<BuilderMessage["type"]>([
   "ssr-updated",
   "build-status",
   "builder-metrics",
-  "ssr-armed",
+  "boot-armed",
 ]);
 /** Prefer `"pipe"` under a TUI: a Bun child that inherits the terminal restores its spawn-time termios on exit. */
 export type DevStdioMode = "inherit" | "pipe";
@@ -49,7 +49,8 @@ export class IncrementalBuilderHost {
   static readonly #restartBaseDelayMs = 1_000;
   static readonly #restartMaxDelayMs = 30_000;
   static readonly #recycleDrainTimeoutMs = 30_000;
-  // apps/akan's builder has idled at up to 1.5GB with the CSR patcher resident; this leaves a route build above it.
+  // apps/akan's builder peaks near 950MB holding the SSR registry's patcher through a route build, and arming CSR adds
+  // a second patcher: this recycles only a builder grown well past both.
   static readonly #devMaxRssBytes = 2_048 * 1024 * 1024;
   logger = new Logger("IncrementalBuilderHost");
   entry: string;
