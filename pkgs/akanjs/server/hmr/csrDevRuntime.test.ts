@@ -293,6 +293,53 @@ describe("installCsrDevRuntime", () => {
       expect(harness.reloads).toBe(1);
       expect(harness.warnings[0]).toContain("route table rejected");
     });
+
+    test("reloads when its async callback rejects", async () => {
+      const modules = routeModules([]);
+      modules["app/entry.ts"] = (require, record) => {
+        require("akan-module:app/page.tsx");
+        record.hot.accept(["app/page.tsx"], async () => {
+          throw new Error("route table rejected later");
+        });
+      };
+      const harness = createHarness(modules);
+      harness.api.start({ generation: 1, refresh: REFRESH_ID });
+      harness.api.update(2, { "app/page.tsx": pageModule("v2") });
+      expect(harness.reloads).toBe(0);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(harness.reloads).toBe(1);
+      expect(harness.warnings[0]).toContain("route table rejected later");
+    });
+
+    test("holds the next patch until its async callback settles", async () => {
+      let release: () => void = () => undefined;
+      const modules = routeModules([]);
+      modules["app/entry.ts"] = (require, record) => {
+        require("akan-module:app/page.tsx");
+        record.hot.accept(
+          ["app/page.tsx"],
+          () =>
+            new Promise<void>((resolve) => {
+              release = () => resolve();
+            }),
+        );
+      };
+      const harness = createHarness(modules);
+      harness.api.start({ generation: 1, refresh: REFRESH_ID });
+      const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+      const loaded = () => harness.scripts.map((script) => script.src);
+      harness.api.hot({ generation: 2, url: "/_akan/csr-dev/patch-2.js" });
+      harness.api.hot({ generation: 3, url: "/_akan/csr-dev/patch-3.js" });
+      await settle();
+      harness.api.update(2, { "app/page.tsx": pageModule("v2") });
+      harness.scripts[0]?.onload?.();
+      await settle();
+      expect(loaded()).toEqual(["/_akan/csr-dev/patch-2.js"]);
+      release();
+      await settle();
+      expect(loaded()).toEqual(["/_akan/csr-dev/patch-2.js", "/_akan/csr-dev/patch-3.js"]);
+      expect(harness.reloads).toBe(0);
+    });
   });
 
   test("a module never loaded takes its new factory without running", () => {

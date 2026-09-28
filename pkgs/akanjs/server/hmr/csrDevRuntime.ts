@@ -7,9 +7,11 @@ interface RefreshRuntime {
   getFamilyByType(value: unknown): unknown;
 }
 
+export type CsrAcceptCallback = (updated: string[]) => void | Promise<void>;
+
 export interface CsrHotContext {
   readonly data: Record<string, unknown> | undefined;
-  accept(deps?: string | string[], callback?: (updated: string[]) => void): void;
+  accept(deps?: string | string[], callback?: CsrAcceptCallback): void;
   dispose(callback: (data: Record<string, unknown>) => void): void;
   invalidate(): void;
 }
@@ -44,7 +46,7 @@ export interface CsrDevRuntimeApi {
   helpers(hash: string): Record<string, unknown>;
   start(options: { generation: number; refresh: string }): void;
   update(generation: number, factories: Record<string, CsrModuleFactory>): void;
-  accept(ownerId: string, deps: string[], callback: (updated: string[]) => void): void;
+  accept(ownerId: string, deps: string[], callback: CsrAcceptCallback): void;
   hot(message: CsrUpdateMessage): void;
   toESM(mod: unknown, isNodeMode?: number): unknown;
   reExport(target: object, mod: unknown, secondTarget?: object): object | undefined;
@@ -83,9 +85,9 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
     selfAccepted = false;
     invalidated = false;
     readonly disposers: ((data: Record<string, unknown>) => void)[] = [];
-    readonly acceptedDeps = new Map<string, (updated: string[]) => void>();
+    readonly acceptedDeps = new Map<string, CsrAcceptCallback>();
     constructor(readonly data: Record<string, unknown> | undefined) {}
-    accept(deps?: string | string[], callback: (updated: string[]) => void = () => undefined) {
+    accept(deps?: string | string[], callback: CsrAcceptCallback = () => undefined) {
       if (deps === undefined) {
         this.selfAccepted = true;
         return;
@@ -125,6 +127,7 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
     #generation = 0;
     #executed: string[] = [];
     #patchQueue: Promise<void> = Promise.resolve();
+    #settling: Promise<void> = Promise.resolve();
     #reloading = false;
 
     get generation() {
@@ -171,18 +174,22 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       for (const id of ids) this.#factories.set(id, factories[id] as CsrModuleFactory);
       this.#generation = generation;
       this.#executed = [];
-      try {
-        this.#apply(ids.filter((id) => this.#cache.has(id)));
-      } catch (error) {
+      const threw = (error: unknown) =>
         this.#reload(
           `generation ${generation} threw while applying: ${error instanceof Error ? error.message : error}`,
         );
+      let pending: Promise<void>[] = [];
+      try {
+        pending = this.#apply(ids.filter((id) => this.#cache.has(id)));
+      } catch (error) {
+        threw(error);
       }
       host.__AKAN_CSR_LAST_UPDATE__ = { generation, executed: this.#executed.slice() };
+      if (pending.length > 0) this.#settling = Promise.all(pending).then(() => this.#scheduleRefresh(), threw);
     }
 
     // For generated ESM: Bun renames a free `module` in an ESM file to a `module_<name>` it never defines.
-    accept(ownerId: string, deps: string[], callback: (updated: string[]) => void) {
+    accept(ownerId: string, deps: string[], callback: CsrAcceptCallback) {
       const owner = this.#cache.get(ownerId);
       if (!owner) throw new Error(`[akan-csr] ${ownerId} accepts updates before it is loaded`);
       owner.hot.accept(deps, callback);
@@ -199,7 +206,8 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
         this.#reload(`generation ${message.generation} arrived without a patch`);
         return;
       }
-      this.#patchQueue = this.#patchQueue.then(() => this.#loadPatch(url));
+      //? The next patch waits for the last one's async accept callbacks, so the route table is never swapped twice at once.
+      this.#patchQueue = this.#patchQueue.then(() => this.#loadPatch(url)).then(() => this.#settling);
     }
 
     inspect() {
@@ -360,17 +368,18 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       }, 16);
     }
 
-    #apply(changed: string[]) {
+    #apply(changed: string[]): Promise<void>[] {
+      const settling: Promise<void>[] = [];
       let pending = changed;
       for (let round = 0; pending.length > 0; round += 1) {
         if (round === maxInvalidateRounds) {
           this.#reload("updates kept invalidating their boundaries");
-          return;
+          return [];
         }
         const plan = this.#collectOutdated(pending);
         if ("reload" in plan) {
           this.#reload(plan.reload);
-          return;
+          return [];
         }
         const parentsOf = new Map(
           [...plan.boundaries].map((id) => [id, [...(this.#cache.get(id)?.parents ?? [])]] as const),
@@ -382,34 +391,40 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
           for (const parent of parentsOf.get(id) ?? []) this.#link(parent, record);
           if (record.hot.invalidated) invalidated.push(id);
         }
-        this.#runAcceptedDeps(plan.accepted);
+        settling.push(...this.#runAcceptedDeps(plan.accepted));
         pending = [];
         for (const id of invalidated) {
           const parents = [...(this.#cache.get(id)?.parents ?? [])];
           if (parents.length === 0) {
             this.#reload(`${id} changed its exports and nothing above it can take the update`);
-            return;
+            return [];
           }
           pending.push(...parents);
         }
       }
+      return settling;
     }
 
     //? A parent that accepts a dependency stops the bubbling on that edge: the dependency re-runs and the parent is told,
     //? instead of re-running itself. That is how the dev entry takes a page module without rebooting the router.
-    #runAcceptedDeps(accepted: Map<string, Set<string>>) {
+    #runAcceptedDeps(accepted: Map<string, Set<string>>): Promise<void>[] {
+      const settling: Promise<void>[] = [];
       for (const [parentId, deps] of accepted) {
         const parent = this.#cache.get(parentId);
         if (!parent) continue;
-        const updatedBy = new Map<(updated: string[]) => void, string[]>();
+        const updatedBy = new Map<CsrAcceptCallback, string[]>();
         for (const dep of deps) {
           this.#link(parentId, this.#load(dep));
           const callback = parent.hot.acceptedDeps.get(dep);
           if (callback) updatedBy.set(callback, [...(updatedBy.get(callback) ?? []), dep]);
         }
-        for (const [callback, updated] of updatedBy) callback(updated);
+        for (const [callback, updated] of updatedBy) {
+          const result: unknown = callback(updated);
+          if (result instanceof Promise) settling.push(result);
+        }
       }
       if (accepted.size > 0) this.#scheduleRefresh();
+      return settling;
     }
 
     #collectOutdated(

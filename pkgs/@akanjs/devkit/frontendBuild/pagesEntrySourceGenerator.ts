@@ -62,8 +62,8 @@ export class PagesEntrySourceGenerator {
       }),
     );
     return `if (typeof akanWebkit.replacePages === "function")
-  __akan.accept(${JSON.stringify(ownerId)}, ${JSON.stringify(moduleIds)}, () => {
-    const replaced = akanWebkit.replacePages({
+  __akan.accept(${JSON.stringify(ownerId)}, ${JSON.stringify(moduleIds)}, async () => {
+    const replaced = await akanWebkit.replacePages({
 ${entries.join("\n")}
     });
     if (replaced === false) throw new Error("the route table no longer matches the pages it was built from");
