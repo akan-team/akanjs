@@ -103,6 +103,9 @@ export type LayoutErrorRender = (props: LayoutErrorProps) => PromiseOrObject<Rea
 export interface RouteRender {
   render: LayoutRender | PageRender;
   isAsync?: boolean;
+  /** CSR: a page's render reads the query; a layout's reads only the params of its own path (`paramNames`). */
+  kind?: "page" | "layout";
+  paramNames?: string[];
   Loading?: LayoutLoadingRender | PageLoadingRender;
   /** Loads the module and fills `Loading` without running `render`/`resolveHead` (the suffix compose path). */
   resolveLoading?: () => void | Promise<void>;
@@ -221,6 +224,7 @@ export interface Location {
   searchParams: { [key: string]: string | string[] };
   pathRoute: PathRoute;
   hash: string;
+  entryId?: string; // the history entry this location is; a replace within one route keeps it
 }
 export type CsrNavigationPhase = "idle" | "preparing" | "transitioning";
 export type CsrNavigationKind = "push" | "replace" | "back" | "popForward" | "popBack";
@@ -247,6 +251,7 @@ export interface History {
   idxMap: Map<string, number>;
   cachedLocationMap: Map<string, Location>;
   idx: number;
+  dormant?: Set<string>; // entry ids a restored stack holds without a page until one is visited
 }
 
 export interface RouterProps {
@@ -256,14 +261,24 @@ export interface RouterProps {
   back: () => void | Promise<void>;
 }
 
+export type CsrPageType = "current" | "prev" | "pending" | "cached";
+export interface CsrStackEntry {
+  key: string; // the page container's identity: the entry, or the route itself for a `cache` page
+  location: Location;
+  pageType: CsrPageType;
+  zIndex: number;
+}
+
 export interface RouteState {
   clientWidth: number;
   clientHeight: number;
   location: Location;
   prevLocation: Location | null;
   pendingLocation: Location | null;
+  stackEntries: CsrStackEntry[];
   navigationIntent: NavigationIntent | null;
   phase: CsrNavigationPhase;
+  isBackgrounded: boolean;
   history: RefObject<History>;
   topSafeAreaRef: RefObject<HTMLDivElement | null>;
   bottomSafeAreaRef: RefObject<HTMLDivElement | null>;
@@ -304,7 +319,8 @@ export const useCsr = () => {
 };
 
 export interface PathContextType {
-  pageType: "current" | "prev" | "cached" | "pending";
+  pageType: CsrPageType;
+  pageKey?: string;
   location: Location;
   prefix?: string;
   gestureEnabled: boolean;
@@ -316,6 +332,17 @@ export const usePathCtx = () => {
   const contextValues = useContext(pathContext);
   return contextValues;
 };
+
+//? `prev` is shown under the current page for a swipe back; `hidden` is parked, its effects stopped.
+export type PageActivity = "current" | "prev" | "pending" | "hidden";
+export interface PageActivityState {
+  activity: PageActivity;
+  focused: boolean;
+}
+export const pageActivityContext = sharedContext<PageActivityState>("pageActivity", {
+  activity: "current",
+  focused: true,
+});
 
 export interface PathRoute {
   path: string;

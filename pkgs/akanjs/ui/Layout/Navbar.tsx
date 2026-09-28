@@ -25,7 +25,7 @@ export const Navbar = ({ back = false, className, height, children, title, left,
   const path = pathRoute?.path;
   const BackIcon = closeIconTransitions.has(pathRoute?.pageState.transition ?? "none") ? BiX : BiChevronLeft;
   const registerFrameSlot = pathCtx.registerFrameSlot ?? (() => () => undefined);
-  const suffix = getEnv().renderMode === "csr" && path ? `-${path}` : "";
+  const suffix = getEnv().renderMode === "csr" && path ? `-${pathCtx.pageKey ?? path}` : "";
   useLayoutEffect(() => {
     if (!path) return;
     debugFrame("navbar.mount", { path, height });

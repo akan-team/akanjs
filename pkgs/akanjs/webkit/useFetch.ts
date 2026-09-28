@@ -4,7 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 
 export const useFetch = <Return>(
   fnOrPromise: Promise<Return> | Return,
-  { onError }: { onError?: (err: string) => void } = {},
+  {
+    onError,
+    keepPrevious = false,
+  }: {
+    onError?: (err: string) => void;
+    /** While a new promise is pending, answer the last settled value instead of `null`. */
+    keepPrevious?: boolean;
+  } = {},
 ): { fulfilled: boolean; value: Return | null } => {
   const [settled, setSettled] = useState<{ source: unknown; value: Return } | null>(null);
   useEffect(() => {
@@ -29,7 +36,7 @@ export const useFetch = <Return>(
   }
   return settled?.source === fnOrPromise
     ? { fulfilled: true, value: settled.value }
-    : { fulfilled: false, value: null };
+    : { fulfilled: false, value: keepPrevious ? (settled?.value ?? null) : null };
 };
 
 /** Calls `factory` once per `deps` change, so a re-render does not start another request. */

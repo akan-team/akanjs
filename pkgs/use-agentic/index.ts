@@ -1,4 +1,6 @@
 export * from "./AgentAbort";
+export * from "./AgentActivity";
+export * from "./AgentGate";
 export * from "./Agentic";
 export * from "./AgenticSurface";
 export * from "./AgentProgress";

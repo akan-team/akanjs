@@ -2,6 +2,8 @@ package com.akanjs.plugins.appstate
 
 import android.app.Activity
 import android.app.Application
+import android.content.ComponentCallbacks2
+import android.content.res.Configuration
 import android.os.Bundle
 import com.akanjs.runtime.AkanNativePluginContext
 import com.akanjs.runtime.AkanNativeReply
@@ -15,7 +17,28 @@ import com.akanjs.runtime.AkanNativeReply
 class AppStatePlugin(private val context: AkanNativePluginContext) : AppStatePluginSpec {
     private var state = AppStateValue.ACTIVE // the shell creates plugins while the activity is being resumed
     private var listening = false
+    private var memoryListening = false
     private val events = AppStateEvents(context)
+
+    // Android 14 stopped sending the RUNNING_* levels to a foreground app; below it they are the only early signal.
+    @Suppress("DEPRECATION")
+    private val memoryCallbacks = object : ComponentCallbacks2 {
+        override fun onTrimMemory(level: Int) {
+            val warning = when {
+                level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND -> AppStateMemoryWarningLevel.CRITICAL
+                level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL -> AppStateMemoryWarningLevel.CRITICAL
+                level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> AppStateMemoryWarningLevel.MODERATE
+                else -> return
+            }
+            if (memoryListening) events.memoryWarning(AppStateMemoryWarningEvent(level = warning))
+        }
+
+        override fun onLowMemory() {
+            if (memoryListening) events.memoryWarning(AppStateMemoryWarningEvent(level = AppStateMemoryWarningLevel.CRITICAL))
+        }
+
+        override fun onConfigurationChanged(newConfig: Configuration) {}
+    }
 
     private val callbacks = object : Application.ActivityLifecycleCallbacks {
         override fun onActivityResumed(activity: Activity) = update(AppStateValue.ACTIVE)
@@ -41,14 +64,27 @@ class AppStatePlugin(private val context: AkanNativePluginContext) : AppStatePlu
     override fun getState(reply: AkanNativeReply<AppStateGetStateResult>) = reply.resolve(AppStateGetStateResult(state = state))
 
     override fun startListening(event: String) {
-        if (event == "change") listening = true
+        when (event) {
+            "change" -> listening = true
+            "memoryWarning" -> if (!memoryListening) {
+                memoryListening = true
+                context.activity.registerComponentCallbacks(memoryCallbacks)
+            }
+        }
     }
 
     override fun stopListening(event: String) {
-        if (event == "change") listening = false
+        when (event) {
+            "change" -> listening = false
+            "memoryWarning" -> if (memoryListening) {
+                memoryListening = false
+                context.activity.unregisterComponentCallbacks(memoryCallbacks)
+            }
+        }
     }
 
     override fun destroy() {
         context.activity.unregisterActivityLifecycleCallbacks(callbacks)
+        if (memoryListening) context.activity.unregisterComponentCallbacks(memoryCallbacks)
     }
 }

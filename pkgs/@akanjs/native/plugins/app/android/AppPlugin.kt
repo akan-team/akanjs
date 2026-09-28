@@ -1,6 +1,7 @@
 package com.akanjs.plugins.app
 
 import com.akanjs.runtime.AkanNativeActivity
+import com.akanjs.runtime.AkanNativeBackProgress
 import com.akanjs.runtime.AkanNativeLinks
 import com.akanjs.runtime.AkanNativePluginContext
 import com.akanjs.runtime.AkanNativeReply
@@ -13,6 +14,8 @@ import com.akanjs.runtime.AkanNativeVoidReply
  *   listens (C2). react-native IntentModule / capacitor-plugins/app only take ACTION_VIEW intents too.
  * - backButton: while the page listens, the shell hands back gestures to us instead of going back
  *   in the WebView history (capacitor-plugins/app AppPlugin.java does the same with AndroidX).
+ *   setBackEnabled(false) gives back to the system while the page has nothing to go back to, and
+ *   backProgress follows the swipe (API 34+) of a back the page will take.
  * The result and event types come from the generated AppPluginSpec (PL-10).
  */
 class AppPlugin(private val context: AkanNativePluginContext) : AppPluginSpec {
@@ -44,6 +47,21 @@ class AppPlugin(private val context: AkanNativePluginContext) : AppPluginSpec {
         reply.resolve()
     }
 
+    override fun setBackEnabled(args: AppSetBackEnabledArgs, reply: AkanNativeVoidReply) {
+        context.setBackEnabled(args.enabled)
+        reply.resolve()
+    }
+
+    private fun backProgressEvent(progress: AkanNativeBackProgress) = AppBackProgressEvent(
+        phase = when (progress.phase) {
+            AkanNativeBackProgress.Phase.STARTED -> AppBackProgressPhase.STARTED
+            AkanNativeBackProgress.Phase.PROGRESSED -> AppBackProgressPhase.PROGRESSED
+            AkanNativeBackProgress.Phase.CANCELLED -> AppBackProgressPhase.CANCELLED
+        },
+        progress = progress.progress.toDouble(),
+        swipeEdge = if (progress.fromRightEdge) AppBackProgressEventSwipeEdge.RIGHT else AppBackProgressEventSwipeEdge.LEFT,
+    )
+
     override fun startListening(event: String) {
         when (event) {
             "urlOpen" -> {
@@ -57,6 +75,7 @@ class AppPlugin(private val context: AkanNativePluginContext) : AppPluginSpec {
                 val canGoBack = (context.activity as? AkanNativeActivity)?.canGoBack() ?: false
                 events.backButton(AppBackButtonEvent(canGoBack = canGoBack))
             }
+            "backProgress" -> context.setBackProgressListener { progress -> events.backProgress(backProgressEvent(progress)) }
         }
     }
 
@@ -67,6 +86,7 @@ class AppPlugin(private val context: AkanNativePluginContext) : AppPluginSpec {
                 AkanNativeLinks.unlisten(this)
             }
             "backButton" -> context.setBackInterceptor(null)
+            "backProgress" -> context.setBackProgressListener(null)
         }
     }
 }

@@ -15,7 +15,7 @@ export const TopInset = ({ className, children, estimatedHeight = DEFAULT_TOP_IN
   const pathCtx = usePathCtx();
   const path = pathCtx.location?.pathRoute?.path;
   const registerFrameSlot = pathCtx.registerFrameSlot ?? (() => () => undefined);
-  const suffix = getEnv().renderMode === "csr" && path ? `-${path}` : "";
+  const suffix = getEnv().renderMode === "csr" && path ? `-${pathCtx.pageKey ?? path}` : "";
 
   useLayoutEffect(() => {
     if (!path) return;
@@ -48,8 +48,9 @@ export interface TopLeftActionProps {
 
 export const TopLeftAction = ({ className, children }: TopLeftActionProps) => {
   const [render, setRender] = useState(false);
-  const path = usePathCtx().location?.pathRoute?.path;
-  const suffix = getEnv().renderMode === "csr" && path ? `-${path}` : "";
+  const pathCtx = usePathCtx();
+  const path = pathCtx.location?.pathRoute?.path;
+  const suffix = getEnv().renderMode === "csr" && path ? `-${pathCtx.pageKey ?? path}` : "";
   useEffect(() => {
     setRender(true);
   }, []);

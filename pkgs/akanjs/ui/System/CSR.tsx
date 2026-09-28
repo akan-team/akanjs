@@ -2,11 +2,12 @@
 
 import { getEnv } from "akanjs/base";
 import {
+  type CsrStackEntry,
   cn,
   Device,
   debugFrame,
   getPathInfo,
-  type PathRoute,
+  type PageActivity,
   type ReactFont,
   router,
   useCsr,
@@ -14,7 +15,7 @@ import {
 } from "akanjs/client";
 import { st } from "akanjs/store";
 import { animated } from "akanjs/ui";
-import { type ComponentProps, type ReactNode, type RefObject, useEffect } from "react";
+import { Activity, type ComponentProps, type ReactNode, type RefObject, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { RenderLayer } from "../../webkit/RenderLayer";
 
@@ -114,6 +115,7 @@ const CSRWrapper = ({
     topSafeArea,
     bottomSafeArea,
     pathRoutes,
+    stackEntries,
   } = useCsr();
   const csrLoaded = st.use.csrLoaded({ agent: false });
   const { router: reactRouter } = useCsr();
@@ -170,8 +172,8 @@ const CSRWrapper = ({
       >
         <PageLayerRoot />
         {csrLoaded
-          ? pathRoutes.map((pathRoute) => (
-              <CSRPageContainer key={pathRoute.path} pathRoute={pathRoute} prefix={prefix} layoutStyle={layoutStyle} />
+          ? stackEntries.map((entry) => (
+              <CSRPageContainer key={entry.key} entry={entry} prefix={prefix} layoutStyle={layoutStyle} />
             ))
           : null}
         <TopChromeLayer
@@ -292,35 +294,11 @@ const KeyboardLayer = ({
 
 type FrameSlotTarget = "topInset" | "topLeftAction" | "bottomInset" | "keyboardInset";
 
-const pageTypeOf = (
-  { location, prevLocation, pendingLocation, phase, history }: ReturnType<typeof useCsr>,
-  pathRoute: PathRoute,
-): "current" | "prev" | "cached" | "pending" | null =>
-  pathRoute === location.pathRoute
-    ? "current"
-    : pathRoute === prevLocation?.pathRoute
-      ? "prev"
-      : pathRoute === pendingLocation?.pathRoute && phase === "preparing"
-        ? "pending"
-        : pathRoute.pageState.cache && history.current.cachedLocationMap.has(pathRoute.path)
-          ? "cached"
-          : null;
-
 const CSRFrameSlotTargets = ({ slot }: { slot: FrameSlotTarget }) => {
-  const csr = useCsr();
-  const { history, prevLocation, pathRoutes, topInset, topLeftAction, bottomInset } = csr;
+  const { stackEntries, topInset, topLeftAction, bottomInset } = useCsr();
   return (
     <>
-      {pathRoutes.map((pathRoute) => {
-        const pageType = pageTypeOf(csr, pathRoute);
-        const zIndex =
-          pageType === "current"
-            ? history.current.idx
-            : pageType === "prev"
-              ? (history.current.idxMap.get(prevLocation?.pathname ?? "") ?? 0)
-              : pageType === "pending"
-                ? history.current.idx + 1
-                : 0;
+      {stackEntries.map(({ key, location, pageType, zIndex }) => {
         const slotInset = slot === "topInset" ? topInset : slot === "topLeftAction" ? topLeftAction : bottomInset;
         const style =
           pageType === "current"
@@ -328,16 +306,18 @@ const CSRFrameSlotTargets = ({ slot }: { slot: FrameSlotTarget }) => {
             : pageType === "prev"
               ? slotInset?.prevContentStyle
               : undefined;
-        const id = `${slot}Content-${pathRoute.path}`;
+        const id = `${slot}Content-${key}`;
         return (
           <animated.div
             key={id}
             id={id}
+            inert={pageType !== "current"}
+            aria-hidden={pageType === "current" ? undefined : true}
             className={cn(
               slot === "topInset" && "absolute top-0 left-0 isolate size-full",
               slot === "topLeftAction" && "absolute left-0 isolate flex h-full items-center justify-center",
               (slot === "bottomInset" || slot === "keyboardInset") && "absolute inset-x-0 bottom-0 isolate h-full",
-              (!pageType || pageType === "cached") && "hidden",
+              pageType === "cached" && "hidden",
               ((slot === "topInset" && pageType !== "current") ||
                 (slot === "topLeftAction" && pageType !== "current") ||
                 (pageType === "prev" && (slot === "bottomInset" || slot === "keyboardInset"))) &&
@@ -346,7 +326,7 @@ const CSRFrameSlotTargets = ({ slot }: { slot: FrameSlotTarget }) => {
             )}
             style={
               {
-                ...getFrameCssVars(pathRoute.pageState),
+                ...getFrameCssVars(location.pathRoute.pageState),
                 ...(style ?? {}),
                 zIndex: pageType === "pending" ? -1 : zIndex,
                 ...(pageType === "pending" ? { opacity: 0 } : {}),
@@ -393,70 +373,57 @@ const CSRBridge = ({ lang, prefix = "" }: CSRBridgeProps) => {
 CSR.Bridge = CSRBridge;
 
 interface CSRPageContainerProps {
-  pathRoute: PathRoute;
+  entry: CsrStackEntry;
   prefix?: string;
   layoutStyle?: "mobile" | "web";
 }
-const CSRPageContainer = ({ pathRoute, prefix, layoutStyle }: CSRPageContainerProps) => {
+const CSRPageContainer = ({ entry, prefix, layoutStyle }: CSRPageContainerProps) => {
   const csr = useCsr();
   const {
-    history,
     location: currentLocation,
     page: currentPage,
     pageContentRef: currentPageContentRef,
     pageClassName: currentPageClassName,
     pageBind: currentPageBind,
-    prevLocation,
-    pendingLocation,
     prevPage,
     prevPageContentRef,
   } = csr;
-  const pageType = pageTypeOf(csr, pathRoute);
-  if (!pageType) return null;
+  const { key, location, pageType, zIndex } = entry;
+  const { pathRoute } = location;
+  const renders = useMemo(
+    () => [...pathRoute.renderLayouts, pathRoute.renderPage],
+    [pathRoute.renderLayouts, pathRoute.renderPage],
+  );
   const pageContainers = document.getElementById("pageContainers");
   if (!pageContainers) return null;
-  const { location, page, pageContentRef, pageClassName, pageBind, zIndex } =
+  const { page, pageContentRef, pageClassName, pageBind } =
     pageType === "current"
       ? {
-          location: currentLocation,
           page: currentPage,
           pageContentRef: currentPageContentRef,
           pageClassName: currentPageClassName,
           pageBind: currentPageBind,
-          zIndex: history.current.idx,
         }
       : pageType === "prev"
-        ? {
-            location: prevLocation,
-            page: prevPage,
-            pageContentRef: prevPageContentRef,
-            pageClassName: "",
-            pageBind: () => ({}),
-            zIndex: history.current.idxMap.get(prevLocation?.pathname ?? "") ?? 0,
-          }
-        : pageType === "pending"
-          ? {
-              location: pendingLocation,
-              page: null,
-              pageContentRef: null,
-              pageClassName: "",
-              pageBind: () => ({}),
-              zIndex: history.current.idx + 1,
-            }
-          : {
-              location: history.current.cachedLocationMap.get(pathRoute.path),
-              page: null,
-              pageContentRef: null,
-              pageClassName: "",
-              pageBind: () => ({}),
-              zIndex: 0,
-            };
-  if (!location) return null;
+        ? { page: prevPage, pageContentRef: prevPageContentRef, pageClassName: "", pageBind: () => ({}) }
+        : { page: null, pageContentRef: null, pageClassName: "", pageBind: () => ({}) };
+  //? A page nobody sees keeps its state and DOM but not its effects: a cached page, the page a transition-less switch
+  //? left once it settled, and the page under the current one while the app is in the background. Otherwise the page
+  //? under an animated transition stays live, since a swipe back shows it.
+  const activity: PageActivity =
+    pageType === "cached" ||
+    (pageType === "prev" &&
+      (csr.isBackgrounded || (currentLocation.pathRoute.pageState.transition === "none" && csr.phase === "idle")))
+      ? "hidden"
+      : pageType;
   return (
-    <>
+    <Activity mode={activity === "hidden" ? "hidden" : "visible"}>
       {createPortal(
         <animated.div
-          id={`pageContainer-${pathRoute.path}`}
+          id={`pageContainer-${key}`}
+          data-path={pathRoute.path}
+          inert={pageType !== "current"}
+          aria-hidden={pageType === "current" ? undefined : true}
           style={{
             ...(page?.containerStyle ?? {}),
             ...(pageType === "pending"
@@ -483,21 +450,17 @@ const CSRPageContainer = ({ pathRoute, prefix, layoutStyle }: CSRPageContainerPr
             )}
             style={page?.contentStyle}
             pageType={pageType}
+            pageKey={key}
+            activity={activity}
             location={location}
             prefix={prefix}
           >
-            <RenderLayer
-              renders={[...pathRoute.renderLayouts, pathRoute.renderPage]}
-              index={0}
-              params={location.params}
-              searchParams={location.searchParams}
-              leaf={<></>}
-            />
+            <RenderLayer renders={renders} index={0} params={location.params} searchParams={location.searchParams} />
           </ClientPathWrapper>
         </animated.div>,
         pageContainers,
       )}
-    </>
+    </Activity>
   );
 };
 

@@ -1,4 +1,4 @@
-export { bootCsr } from "./bootCsr";
+export { bootCsr, replacePages } from "./bootCsr";
 export { lazy } from "./lazy";
 export { createRobotPage, createSitemapPage } from "./seoPages";
 export type * from "./types";
@@ -12,6 +12,9 @@ export { useGeoLocation } from "./useGeoLocation";
 export { useHistory } from "./useHistory";
 export { useInterval } from "./useInterval";
 export { useLocation } from "./useLocation";
+export { usePageActivity } from "./usePageActivity";
+export { usePageFocusEffect } from "./usePageFocusEffect";
+export { usePageLocation } from "./usePageLocation";
 export { usePageTool } from "./usePageTool";
 export type { ScreenScopeItem } from "./useScreenScope";
 export { useScreenScope } from "./useScreenScope";

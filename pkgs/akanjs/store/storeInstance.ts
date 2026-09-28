@@ -6,7 +6,7 @@ import { ConstantRegistry } from "akanjs/constant";
 import type { SerializedArg } from "akanjs/signal";
 import { enableMapSet, produce } from "immer";
 import type { RefObject } from "react";
-import { useScopePath } from "use-agentic";
+import { type AgentGate, useAgentGate, useScopePath } from "use-agentic";
 import { type ActionOwner, actionTagOf, tagAction } from "./actionTag";
 import { useFormTools } from "./agentic/useFormTools";
 import { DraftStore } from "./draftStore";
@@ -170,43 +170,51 @@ export class StoreInstance {
     );
   };
 
-  retainLive = (key: string, scopeKey = "") => {
-    const scopes = this.#liveKeys.get(key) ?? new Map<string, number>();
-    scopes.set(scopeKey, (scopes.get(scopeKey) ?? 0) + 1);
+  retainLive = (key: string, scopeKey = "", gate: AgentGate | null = null) => {
+    const scopes = this.#liveKeys.get(key) ?? new Map<string, Map<AgentGate | null, number>>();
+    const gates = scopes.get(scopeKey) ?? new Map<AgentGate | null, number>();
+    gates.set(gate, (gates.get(gate) ?? 0) + 1);
+    scopes.set(scopeKey, gates);
     this.#liveKeys.set(key, scopes);
   };
 
-  releaseLive = (key: string, scopeKey = "") => {
+  releaseLive = (key: string, scopeKey = "", gate: AgentGate | null = null) => {
+    const gates = this.#liveKeys.get(key)?.get(scopeKey);
+    if (!gates) return;
+    const count = gates.get(gate) ?? 0;
+    if (count <= 1) gates.delete(gate);
+    else gates.set(gate, count - 1);
+    if (gates.size) return;
     const scopes = this.#liveKeys.get(key);
-    if (!scopes) return;
-    const count = scopes.get(scopeKey) ?? 0;
-    if (count <= 1) scopes.delete(scopeKey);
-    else scopes.set(scopeKey, count - 1);
-    if (!scopes.size) this.#liveKeys.delete(key);
+    scopes?.delete(scopeKey);
+    if (!scopes?.size) this.#liveKeys.delete(key);
   };
 
   #useLive(key: string, count = true) {
-    // Retention is tagged with the ambient agent scope, so a zone session sees only the keys its own subtree reads.
+    // Retention is tagged with the ambient agent scope, so a zone session sees only the keys its own subtree reads,
+    // and with its gate, so a page kept mounted under the current one stops lending the screen its keys.
     const scopeKey = useScopePath().join(".");
+    const gate = useAgentGate();
     useEffect(() => {
       if (!count) return;
-      this.retainLive(key, scopeKey);
+      this.retainLive(key, scopeKey, gate);
       return () => {
-        this.releaseLive(key, scopeKey);
+        this.releaseLive(key, scopeKey, gate);
       };
-    }, [key, count, scopeKey]);
+    }, [key, count, scopeKey, gate]);
   }
 
   // Keys are learned by running the selector over a recording proxy, once at mount: retained must equal released.
   #useLiveSelector(selector: (state: StoreStateRecord) => unknown) {
     const scopeKey = useScopePath().join(".");
+    const gate = useAgentGate();
     useEffect(() => {
       const keys = [...this.#touched(selector)];
-      for (const key of keys) this.retainLive(key, scopeKey);
+      for (const key of keys) this.retainLive(key, scopeKey, gate);
       return () => {
-        for (const key of keys) this.releaseLive(key, scopeKey);
+        for (const key of keys) this.releaseLive(key, scopeKey, gate);
       };
-    }, [scopeKey]);
+    }, [scopeKey, gate]);
   }
 
   #touched(selector: (state: StoreStateRecord) => unknown) {
@@ -246,7 +254,7 @@ export class StoreInstance {
   readonly #sliceStateRoles = new Map<string, SliceStateRole>();
   readonly #actionArity = new Map<string, number>();
   readonly #actionOwners = new Map<string, ActionOwner>();
-  readonly #liveKeys = new Map<string, Map<string, number>>();
+  readonly #liveKeys = new Map<string, Map<string, Map<AgentGate | null, number>>>();
   readonly #generatedSetters = new Set<string>();
 
   /** How many mounted components read each state key right now. */
@@ -254,14 +262,14 @@ export class StoreInstance {
     return this.liveKeysIn("");
   }
 
-  /** Live keys retained at `viewKey`'s scope or below; `""` is the whole screen. */
+  /** Live keys retained at `viewKey`'s scope or below, behind no gate or an active one; `""` is the whole screen. */
   liveKeysIn(viewKey: string): ReadonlyMap<string, number> {
     const keys = new Map<string, number>();
     for (const [key, scopes] of this.#liveKeys) {
       let total = 0;
-      for (const [scopeKey, count] of scopes) {
+      for (const [scopeKey, gates] of scopes) {
         if (viewKey && scopeKey !== viewKey && !scopeKey.startsWith(`${viewKey}.`)) continue;
-        total += count;
+        for (const [gate, count] of gates) if (gate?.active ?? true) total += count;
       }
       if (total > 0) keys.set(key, total);
     }

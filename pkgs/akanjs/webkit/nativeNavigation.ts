@@ -1,6 +1,6 @@
 "use client";
 import { router as clientRouter, debugFrame, normalizeDeepLinkHref } from "akanjs/client";
-import { app, isNativeApp, push } from "akanjs/client/native";
+import { app, appState, desktopPlatform, isNativeApp, push } from "akanjs/client/native";
 
 export interface NativeBackState {
   path: string;
@@ -9,11 +9,19 @@ export interface NativeBackState {
   router: { back: () => void };
 }
 
+export interface NativeBackProgress {
+  phase: "started" | "progressed" | "cancelled";
+  progress: number;
+}
+
 interface NativeNavigationOptions {
   historyIdx: () => number;
   backState: () => NativeBackState;
   /** A back press while the keyboard is up only puts it away. */
   dismissKeyboard: () => unknown;
+  /** Android 14+: the swipe of a back this page will take, before it commits or is let go. */
+  onBackProgress?: (progress: NativeBackProgress) => void;
+  onMemoryWarning?: () => void;
 }
 
 /** A native shell's deep links, push taps and Android back button, for the CSR frame that owns the history. */
@@ -21,10 +29,13 @@ export class NativeNavigation {
   #mountedAt = Date.now();
   #handled: { href: string; handledAt: number } | null = null;
   #didResetStack = false;
+  #backEnabled = true;
 
   constructor(readonly options: NativeNavigationOptions) {}
 
   listen() {
+    //? WebView2 walks history on Alt+← and the mouse back button by itself; WKWebView leaves both to the app.
+    if (desktopPlatform() === "macos") return this.#listenMacBack();
     if (!isNativeApp()) return () => undefined;
     //? The runtime hides a push that arrives with the app in front unless asked; shown, it can be tapped like any other.
     if (push.isSupported("setForegroundPresentation"))
@@ -38,13 +49,37 @@ export class NativeNavigation {
       app.listen("backButton", () => {
         this.back();
       }),
+      app.listen("backProgress", ({ phase, progress }) => {
+        if (phase !== "progressed") debugFrame("native.backProgress", { phase });
+        this.options.onBackProgress?.({ phase, progress });
+      }),
+      appState.listen("memoryWarning", ({ level }) => {
+        debugFrame("native.memoryWarning", { level });
+        this.options.onMemoryWarning?.();
+      }),
       push.listen("action", ({ message }) => {
         this.openPushLink(message.data.url);
       }),
     ];
+    //? After the listen above reaches the shell: a new back listener starts enabled there, and would undo this.
+    const syncing = setTimeout(() => this.syncBack(true), 0);
     return () => {
+      clearTimeout(syncing);
       for (const stop of stops) stop();
     };
+  }
+
+  /**
+   * Tells an Android shell whether back is the page's right now: the keyboard is up, there is history, or the
+   * index is still to come. Otherwise the system takes it and shows its own back-to-home animation.
+   */
+  syncBack(force = false) {
+    if (!isNativeApp() || !app.isSupported("setBackEnabled")) return;
+    const backState = this.options.backState();
+    const enabled = backState.keyboardVisible || this.options.historyIdx() > 0 || !this.#leavesApp(backState.path);
+    if (!force && enabled === this.#backEnabled) return;
+    this.#backEnabled = enabled;
+    void app.setBackEnabled({ enabled }).catch(() => undefined);
   }
 
   //? The runtime holds every link, the launch one included, until a listener takes it; the first one right after
@@ -91,13 +126,53 @@ export class NativeNavigation {
       backState.router.back();
       return;
     }
-    const fallbackPath = window.__AKAN_MOBILE_TARGET__?.indexPath ?? "/";
-    //? a stack a deep link started has nothing under it, so back leaves the app rather than inventing a history
-    if (this.#didResetStack || NativeNavigation.#homeRelative(backState.path) === fallbackPath) {
+    if (this.#leavesApp(backState.path)) {
       void app.exit().catch(() => undefined);
       return;
     }
-    clientRouter.backOrFallback(fallbackPath, { scrollToTop: false });
+    clientRouter.backOrFallback(window.__AKAN_MOBILE_TARGET__?.indexPath ?? "/", { scrollToTop: false });
+  }
+
+  //? a stack a deep link started has nothing under it, so back leaves the app rather than inventing a history
+  #leavesApp(path: string) {
+    const fallbackPath = window.__AKAN_MOBILE_TARGET__?.indexPath ?? "/";
+    return this.#didResetStack || NativeNavigation.#homeRelative(path) === fallbackPath;
+  }
+
+  #listenMacBack() {
+    const onKey = (event: KeyboardEvent) => {
+      if (!NativeNavigation.isMacBackKey(event) || NativeNavigation.#isEditing(event.target)) return;
+      event.preventDefault();
+      this.options.backState().router.back();
+    };
+    const onMouse = (event: MouseEvent) => {
+      if (event.button !== 3) return;
+      event.preventDefault();
+      this.options.backState().router.back();
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mouseup", onMouse);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mouseup", onMouse);
+    };
+  }
+
+  static isMacBackKey({
+    key,
+    metaKey,
+    altKey,
+    ctrlKey,
+    shiftKey,
+  }: Pick<KeyboardEvent, "key" | "metaKey" | "altKey" | "ctrlKey" | "shiftKey">) {
+    return metaKey && !altKey && !ctrlKey && !shiftKey && (key === "[" || key === "ArrowLeft");
+  }
+
+  //? ⌘← moves the caret to the start of the line and ⌘[ outdents in an editor, so a field keeps both.
+  static #isEditing(target: EventTarget | null) {
+    return (
+      target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
+    );
   }
 
   //* The frame reports its route pattern (`/:lang/<basePath>/…`); the target's indexPath is relative to the basePath.

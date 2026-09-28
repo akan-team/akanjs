@@ -234,3 +234,95 @@ describe("AgenticSurface views", () => {
     ).toEqual(["comments", "comments.thread-1"]);
   });
 });
+
+describe("AgenticSurface gates", () => {
+  test("a registration behind an inactive gate is parked: unpublished, uncallable, and shadowing nothing", async () => {
+    const surface = new AgenticSurface();
+    const gate = surface.gate(false);
+    surface.registerTool([], tool("save", { description: "Save the draft.", run: () => "layout" }));
+    surface.registerTool([], tool("save", { description: "Save the draft.", run: () => "page" }), gate);
+    surface.registerTool([], tool("archive"), gate);
+    expect(surface.snapshot().tools.map((entry) => entry.name)).toEqual(["save"]);
+    expect(await surface.call("save")).toBe("layout");
+    await expect(surface.call("archive")).rejects.toThrow("Unknown tool: archive");
+    expect(surface.declares("archive")).toBe(false);
+
+    gate.set(true);
+    expect(surface.snapshot().tools.map((entry) => entry.name)).toEqual(["archive", "save"]);
+    expect(await surface.call("save")).toBe("page");
+  });
+
+  test("resources, scopes and guides follow their gate, and every flip re-publishes", () => {
+    const surface = new AgenticSurface();
+    const gate = surface.gate(true);
+    let published = 0;
+    surface.subscribe(() => {
+      published += 1;
+    });
+    surface.registerResource(["tasks"], { name: "count", read: () => 3 }, gate);
+    surface.openScope([], { id: "tasks", kind: "task" }, gate);
+    surface.registerGuide(["tasks"], "Task rules.", gate);
+    const before = published;
+    gate.set(false);
+    gate.set(false);
+    expect(published).toBe(before + 1);
+    expect(surface.snapshot()).toEqual({ tools: [], resources: [], scopes: [], guides: [] });
+    expect(() => surface.read("tasks.count")).toThrow("Unknown resource");
+
+    gate.set(true);
+    const snapshot = surface.snapshot();
+    expect(snapshot.resources).toEqual([{ name: "tasks.count", value: 3 }]);
+    expect(snapshot.scopes).toEqual([{ path: "tasks", kind: "task" }]);
+    expect(snapshot.guides).toEqual(["Task rules."]);
+  });
+
+  test("a gate under another is active only while its parent is", () => {
+    const surface = new AgenticSurface();
+    const page = surface.gate(true);
+    const panel = surface.gate(true, page);
+    surface.registerTool([], tool("pick"), panel);
+    page.set(false);
+    expect(panel.active).toBe(false);
+    expect(surface.snapshot().tools).toEqual([]);
+    page.set(true);
+    expect(surface.snapshot().tools.map((entry) => entry.name)).toEqual(["pick"]);
+  });
+
+  test("two registrations never published together do not clash", () => {
+    const surface = new AgenticSurface();
+    const warnings: string[] = [];
+    const warn = console.warn;
+    console.warn = (message: string) => warnings.push(message);
+    try {
+      const current = surface.gate(true);
+      const pending = surface.gate(false);
+      surface.registerTool([], tool("refresh", { description: "Reload the task list." }), current);
+      surface.registerTool([], tool("refresh", { description: "Reload this task." }), pending);
+      surface.registerResource([], { name: "items", read: () => [] }, current);
+      surface.registerResource([], { name: "items", read: () => [] }, pending);
+      surface.openScope([], { id: "tasks" }, current);
+      surface.openScope([], { id: "tasks" }, pending);
+      expect(warnings).toEqual([]);
+
+      surface.registerTool([], tool("refresh", { description: "Refresh everything." }));
+      expect(warnings).toHaveLength(1);
+    } finally {
+      console.warn = warn;
+    }
+  });
+
+  test("gated() stamps its gate on every registration and passes every read through", async () => {
+    const surface = new AgenticSurface();
+    const gate = surface.gate(false);
+    const gated = surface.gated(gate);
+    const off = gated.registerTool([], tool("pick"));
+    expect(gated).toBeInstanceOf(AgenticSurface);
+    expect(gated.subscribe).toBe(gated.subscribe);
+    expect(gated.snapshot().tools).toEqual([]);
+    gate.set(true);
+    expect(await gated.call("pick")).toBe("ran-pick");
+    expect(gated.transcript.map((call) => call.name)).toEqual(["pick"]);
+    off();
+    expect(surface.snapshot().tools).toEqual([]);
+  });
+});

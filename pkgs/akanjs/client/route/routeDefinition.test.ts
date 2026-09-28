@@ -3,6 +3,7 @@ import { enumOf, ID, Int } from "akanjs/base";
 import { parseAkanI18nEnv } from "akanjs/common";
 import type { LayoutModule, PageModule, PageProps } from "../csrTypes";
 import { AkanNotFoundError } from "../router";
+import { RouteDefinition } from "./RouteDefinition";
 import { isRouteDefinition, resolveRouteModule } from "./resolveRouteModule";
 import { RouteArgError } from "./routeArgs";
 import { layout, page, rootLayout } from "./routeBuilders";
@@ -63,6 +64,13 @@ describe("page() chain", () => {
     expect(mod.Loading?.({ params: {} })).toBe(`loading:${parseAkanI18nEnv().defaultLocale}`);
     expect(() => page().param("lang", String)).toThrow('receives "lang" on every route');
     expect(() => layout().search("lang", String)).toThrow('receives "lang" on every route');
+  });
+
+  test("keeps its render function across unfoldings until a stage changes, so a module swap re-renders only its own layer", () => {
+    const definition = page().search("id", String);
+    const first = definition.render(({ id }) => `a:${id}`).toRouteModule().default;
+    expect(definition.toRouteModule().default).toBe(first);
+    expect(definition.render(({ id }) => `b:${id}`).toRouteModule().default).not.toBe(first);
   });
 
   test("answers not-found for a path value the type refuses and drops a bad search value", async () => {
@@ -210,5 +218,45 @@ describe("layout() and rootLayout() chains", () => {
       resolveRouteModule({ default: rootLayout().render(() => null) } as never, "./_layout.tsx", { kind: "layout" })
         .definition?.kind,
     ).toBe("rootLayout");
+  });
+});
+
+describe("RouteDefinition.renderArgsKey", () => {
+  const keyOf = (render: unknown, args: PageProps, option: { isPage: boolean; paramNames?: string[] }) =>
+    RouteDefinition.renderArgsKey(render, args, option);
+
+  test("a chain's render changes with its declared args and lang, and with nothing else", () => {
+    const { default: render } = page()
+      .param("projectId", ID)
+      .search("tab", String)
+      .render(() => null)
+      .toRouteModule() as PageModule;
+    const base = keyOf(render, props({ lang: "en", projectId: pid }, { tab: "a", utm: "x" }), { isPage: true });
+    expect(keyOf(render, props({ lang: "en", projectId: pid }, { tab: "a", utm: "y" }), { isPage: true })).toBe(base);
+    expect(keyOf(render, props({ lang: "en", projectId: pid }, { tab: "b" }), { isPage: true })).not.toBe(base);
+    expect(keyOf(render, props({ lang: "ko", projectId: pid }, { tab: "a" }), { isPage: true })).not.toBe(base);
+  });
+
+  test("a chain layout that declares nothing keeps its output across pages and queries", () => {
+    const { default: render } = layout()
+      .render(({ children }) => children)
+      .toRouteModule() as LayoutModule;
+    expect(keyOf(render, props({ lang: "en", id: "1" }, { q: "1" }), { isPage: false })).toBe(
+      keyOf(render, props({ lang: "en", id: "2" }, { q: "2" }), { isPage: false }),
+    );
+  });
+
+  test("a legacy page reads every search value; a legacy layout reads only the params of its own path", () => {
+    const legacy = async () => null;
+    const page1 = keyOf(legacy, props({ lang: "en" }, { q: "1" }), { isPage: true });
+    expect(keyOf(legacy, props({ lang: "en" }, { q: "2" }), { isPage: true })).not.toBe(page1);
+    const layoutKey = (params: Record<string, string>, search: Record<string, string>) =>
+      keyOf(legacy, props(params, search), { isPage: false, paramNames: ["lang", "orgId"] });
+    expect(layoutKey({ lang: "en", orgId: "o1", id: "1" }, { q: "1" })).toBe(
+      layoutKey({ lang: "en", orgId: "o1", id: "2" }, { q: "2" }),
+    );
+    expect(layoutKey({ lang: "en", orgId: "o2", id: "1" }, {})).not.toBe(
+      layoutKey({ lang: "en", orgId: "o1", id: "1" }, {}),
+    );
   });
 });

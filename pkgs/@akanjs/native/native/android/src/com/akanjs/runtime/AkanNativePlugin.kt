@@ -89,6 +89,11 @@ interface AkanNativeDocumentScope {
 /** A keyboard transition: [phase] willShow, didShow, willHide or didHide; the height (dp) once it ends; the animation's length. */
 data class AkanNativeKeyboardTransition(val phase: String, val height: Float, val durationMs: Long)
 
+/** A back swipe in progress (API 34+): [progress] runs 0–1 from [fromRightEdge]'s side; CANCELLED ends one let go. */
+data class AkanNativeBackProgress(val phase: Phase, val progress: Float, val fromRightEdge: Boolean) {
+    enum class Phase { STARTED, PROGRESSED, CANCELLED }
+}
+
 /** A plugin whose manifest needs a newer Android than this device (`android.minSdk`): every call is UNSUPPORTED. */
 class AkanNativeUnsupportedPlugin(private val reason: String) : AkanNativePlugin {
     override fun handle(call: AkanNativeCall) = call.reject(AkanNativeErrorCode.UNSUPPORTED, reason)
@@ -283,6 +288,8 @@ class AkanNativePluginContext internal constructor(
         fun insets(): AkanNativeInsets
         fun onInsetsChanged(listener: (AkanNativeInsets) -> Unit)
         fun setBackInterceptor(interceptor: (() -> Unit)?)
+        fun setBackEnabled(enabled: Boolean)
+        fun setBackProgressListener(listener: ((AkanNativeBackProgress) -> Unit)?)
         fun setImeResize(resize: Boolean)
         fun onKeyboardTransition(listener: (AkanNativeKeyboardTransition) -> Unit)
         fun hideSplash(fadeOutMs: Long)
@@ -342,6 +349,15 @@ class AkanNativePluginContext internal constructor(
      * the system's predictive back-to-home animation.
      */
     fun setBackInterceptor(interceptor: (() -> Unit)?) = runOnMain { host.setBackInterceptor(interceptor) }
+
+    /**
+     * While an interceptor is set: whether back belongs to the page right now. false leaves back to the system, so the
+     * root shows its back-to-home animation. A new interceptor starts at true.
+     */
+    fun setBackEnabled(enabled: Boolean) = runOnMain { host.setBackEnabled(enabled) }
+
+    /** API 34+: the swipe of a back the interceptor will receive, for a page that animates it; null stops them. */
+    fun setBackProgressListener(listener: ((AkanNativeBackProgress) -> Unit)?) = runOnMain { host.setBackProgressListener(listener) }
 
     /**
      * Keyboard mode (O6-1): true (default) shrinks the WebView's container by the keyboard, false lets

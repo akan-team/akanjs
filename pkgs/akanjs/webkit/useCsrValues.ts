@@ -8,6 +8,7 @@ import {
   debugFrame,
   defaultPageState,
   getPathInfo,
+  type Location,
   type LocationState,
   type NavigationIntent,
   type PageState,
@@ -22,7 +23,8 @@ import {
 } from "akanjs/client";
 import { clamp, parseAkanI18nEnv, parseBasePaths } from "akanjs/common";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { NativeNavigation } from "./nativeNavigation";
+import { CsrStack } from "./CsrStack";
+import { type NativeBackProgress, NativeNavigation } from "./nativeNavigation";
 import {
   createFrameSnapshot,
   createTransitionPlan,
@@ -183,7 +185,7 @@ const usePlayOnForward = (
       void transUnit.start(transUnitRange[0], { immediate: true });
       void transUnit.start(transUnitRange[1], { config });
     } else void transUnit.start(transUnitRange[1], { immediate: true });
-  }, [location.pathname]);
+  }, [location.entryId ?? location.pathname]);
 };
 
 const useNoneTrans = (routeState: RouteState): UseCsrTransition => {
@@ -597,15 +599,21 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
   const lastBroadcastSyncHref = useRef<string | null>(null);
 
   const { getLocation } = useLocation({ rootRouteGuide });
+  const [initialStack] = useState(() => {
+    const current = getLocation(window.location.href.replace(window.location.origin, ""));
+    return CsrStack.restore(current, getLocation) ?? { locations: [current], idx: 0 };
+  });
   const {
     history,
     setHistoryForward,
     setHistoryBack,
+    setHistoryJump,
     getNextLocation,
     getCurrentLocation,
     getPrevLocation,
     getScrollTop,
-  } = useHistory([getLocation(window.location.href.replace(window.location.origin, ""))]);
+  } = useHistory(initialStack.locations, initialStack);
+  const [isBackgrounded, setIsBackgrounded] = useState(() => document.visibilityState === "hidden");
   const [locationState, setLocationState] = useState<LocationState>({
     location: getCurrentLocation(),
     prevLocation: getPrevLocation(),
@@ -664,6 +672,16 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
   const resolvedLocation = resolveLocationWithFrameState(location, resolvedPathRouteMap) ?? location;
   const resolvedPrevLocation = resolveLocationWithFrameState(prevLocation, resolvedPathRouteMap);
   const resolvedPendingLocation = resolveLocationWithFrameState(pendingLocation, resolvedPathRouteMap);
+  const stackEntries = CsrStack.entriesOf({
+    history: history.current,
+    location,
+    prevLocation,
+    pendingLocation,
+    phase,
+  }).map((entry) => ({
+    ...entry,
+    location: resolveLocationWithFrameState(entry.location, resolvedPathRouteMap) ?? entry.location,
+  }));
   const platformProfile = getFramePlatformProfile();
   const accessoryHeight = resolveKeyboardAccessoryHeight(resolvedLocation.pathRoute.path, frameSlots);
   const shouldAnchorContentBottom = hasBottomAnchoredKeyboardSlot(resolvedLocation.pathRoute.path, frameSlots);
@@ -821,16 +839,23 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
   const runForwardNavigation = useCallback(
     (kind: "push" | "replace", href: string, { scrollToTop }: RouteOptions = {}) => {
       const fromLocation = getCurrentLocation();
-      const toLocation = getLocation(href);
+      const target = getLocation(href);
+      //? A replace within one route rewrites the entry it is on, so the page on screen stays mounted.
+      const toLocation =
+        kind === "replace" && target.pathRoute.path === fromLocation.pathRoute.path
+          ? { ...target, entryId: fromLocation.entryId }
+          : target;
       const scrollTop = pageContentRef.current?.scrollTop ?? 0;
       const usePendingNavigation =
-        shouldPrepareFrameTransition(href) && toLocation.pathRoute.pageState.transition !== "none";
+        CsrStack.keyOf(toLocation) !== CsrStack.keyOf(fromLocation) &&
+        shouldPrepareFrameTransition(href) &&
+        toLocation.pathRoute.pageState.transition !== "none";
 
       if (!usePendingNavigation) {
         setHistoryForward({ type: kind, location: toLocation, scrollTop, scrollToTop });
         settle(kind === "replace" ? prevLocation : fromLocation);
-        if (kind === "push") window.history.pushState({}, "", href);
-        else window.history.replaceState({}, "", href);
+        if (kind === "push") window.history.pushState({ akanEntryId: toLocation.entryId }, "", href);
+        else window.history.replaceState({ akanEntryId: toLocation.entryId }, "", href);
         return;
       }
 
@@ -904,8 +929,8 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
           navigationIntent: intent,
           phase: "transitioning",
         });
-        if (kind === "push") window.history.pushState({}, "", href);
-        else window.history.replaceState({}, "", href);
+        if (kind === "push") window.history.pushState({ akanEntryId: toLocation.entryId }, "", href);
+        else window.history.replaceState({ akanEntryId: toLocation.entryId }, "", href);
         debugFrame("navigation.commit", { id: intent.id, kind, to: href });
         window.setTimeout(
           () => {
@@ -991,6 +1016,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
   ]);
   useEffect(() => {
     debugFrame("csr.mount", { path: resolvedLocation.pathRoute.path, viewport });
+    window.history.replaceState({ ...(window.history.state ?? {}), akanEntryId: getCurrentLocation().entryId }, "");
     return () => debugFrame("csr.unmount", { lastPath: resolvedLocation.pathRoute.path });
   }, []);
   const getRouter = useCallback((): RouterInstance => {
@@ -1026,12 +1052,36 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
         window.history.back();
       },
     };
-    window.onpopstate = async () => {
+    window.onpopstate = async (event) => {
       const href = window.location.href.replace(window.location.origin, "");
-      const routeType = href === getNextLocation()?.href ? "forward" : href === getPrevLocation()?.href ? "back" : null;
+      const entryId = (window.history.state as { akanEntryId?: string } | null)?.akanEntryId;
+      const isAt = (target: Location | null | undefined) =>
+        !!target && (entryId ? target.entryId === entryId : target.href === href);
+      const routeType = isAt(getNextLocation()) ? "forward" : isAt(getPrevLocation()) ? "back" : null;
       const scrollTop = pageContentRef.current?.scrollTop ?? 0;
+      //? Safari's own swipe back has already slid the page away; playing ours as well would show the back twice.
+      const isUaAnimated =
+        (event as PopStateEvent & { hasUAVisualTransition?: boolean }).hasUAVisualTransition === true;
       debugFrame("router.popstate", { href, routeType, scrollTop });
-      if (!routeType) return;
+      if (!routeType) {
+        const target = history.current.locations.findIndex((candidate) => isAt(candidate));
+        if (target === history.current.idx) return;
+        if (target >= 0) setHistoryJump(target, scrollTop);
+        else {
+          //? An entry this stack never saw: one from before a reload that kept no stack, or a hash the browser pushed.
+          const found = getLocation(href);
+          const current = getCurrentLocation();
+          const inPlace = found.pathRoute.path === current.pathRoute.path;
+          setHistoryForward({
+            type: "replace",
+            location: inPlace ? { ...found, entryId: current.entryId } : found,
+            scrollTop,
+          });
+        }
+        settle(getPrevLocation());
+        broadcastSyncNavigation("pop", getSyncRouteHref(getLocation(href)));
+        return;
+      }
       if (routeType === "forward") {
         if (shouldPrepareFrameTransition(href)) await startFrameTransition();
         const location = getCurrentLocation();
@@ -1041,7 +1091,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
       } else {
         const location = getCurrentLocation();
         if (shouldPrepareFrameTransition(href)) await startFrameTransition();
-        await onBack.current[location.pathRoute.pageState.transition]?.();
+        if (!isUaAnimated) await onBack.current[location.pathRoute.pageState.transition]?.();
         setHistoryBack({ type: "popBack", location, scrollTop });
         settle(getPrevLocation());
         broadcastSyncNavigation("pop", getSyncRouteHref(getLocation(href)));
@@ -1100,8 +1150,10 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
     location: resolvedLocation,
     prevLocation: resolvedPrevLocation,
     pendingLocation: resolvedPendingLocation,
+    stackEntries,
     navigationIntent,
     phase,
+    isBackgrounded,
     history,
     topSafeAreaRef,
     bottomSafeAreaRef,
@@ -1150,6 +1202,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
     contentResizeStyle && csrTransition.page
       ? { ...csrTransition.page, contentStyle: { ...csrTransition.page.contentStyle, ...contentResizeStyle } }
       : csrTransition.page;
+  const nativeNavigation = useRef<NativeNavigation | null>(null);
   const nativeBackStateRef = useRef({
     path: resolvedLocation.pathRoute.path,
     keyboardHeight: keyboardFrame.height,
@@ -1164,23 +1217,66 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
   }, [location.href]);
 
   useEffect(() => {
+    for (const shown of [location, prevLocation]) if (shown?.entryId) history.current.dormant?.delete(shown.entryId);
+    CsrStack.save(history.current);
+  }, [location, prevLocation]);
+
+  useEffect(() => {
+    const sync = () => setIsBackgrounded(document.visibilityState === "hidden");
+    document.addEventListener("visibilitychange", sync);
+    return () => document.removeEventListener("visibilitychange", sync);
+  }, []);
+
+  useEffect(() => {
     nativeBackStateRef.current = {
       path: resolvedLocation.pathRoute.path,
       keyboardHeight: keyboardFrame.height,
       keyboardVisible: keyboardFrame.visible,
       router,
     };
+    nativeNavigation.current?.syncBack();
   }, [keyboardFrame.height, keyboardFrame.visible, resolvedLocation.pathRoute.path, router]);
 
-  useEffect(
-    () =>
-      new NativeNavigation({
-        historyIdx: () => history.current.idx,
-        backState: () => nativeBackStateRef.current,
-        dismissKeyboard: prepareForFrameTransition,
-      }).listen(),
-    [],
-  );
+  const backFollow = useRef(csrTransition);
+  backFollow.current = csrTransition;
+  const followBack = useCallback(({ phase, progress }: NativeBackProgress) => {
+    const { transUnit, transUnitRange } = backFollow.current;
+    const transition = getCurrentLocation().pathRoute.pageState.transition;
+    if (transition === "none" || history.current.idx === 0 || nativeBackStateRef.current.keyboardVisible) return;
+    const [hidden, shown] = transUnitRange;
+    if (phase === "cancelled") {
+      void transUnit.start(shown);
+      return;
+    }
+    //? A slide follows the finger all the way; a fade only half, as the system's own back preview just hints.
+    const follow = transition === "stack" || transition === "bottomUp" ? progress : progress / 2;
+    void transUnit.start(shown + (hidden - shown) * follow, { immediate: true });
+  }, []);
+  const [, setReleased] = useState(0);
+  const latestStackEntries = useRef(stackEntries);
+  latestStackEntries.current = stackEntries;
+  const releaseHidden = useCallback(() => {
+    history.current.dormant ??= new Set();
+    for (const { pageType, location: hidden } of latestStackEntries.current)
+      if (pageType === "cached" && hidden.entryId) history.current.dormant.add(hidden.entryId);
+    setReleased((count) => count + 1);
+  }, []);
+
+  useEffect(() => {
+    const navigation = new NativeNavigation({
+      historyIdx: () => history.current.idx,
+      backState: () => nativeBackStateRef.current,
+      dismissKeyboard: prepareForFrameTransition,
+      onBackProgress: followBack,
+      onMemoryWarning: releaseHidden,
+    });
+    nativeNavigation.current = navigation;
+    const stop = navigation.listen();
+    return () => {
+      stop();
+      nativeNavigation.current = null;
+    };
+  }, []);
 
   return {
     ...routeState,

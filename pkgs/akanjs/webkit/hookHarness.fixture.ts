@@ -72,6 +72,7 @@ export const fakeElement = (tagName = "div") =>
 export const csrClientBase = () => ({
   DEFAULT_BOTTOM_INSET: 34,
   DEFAULT_TOP_INSET: 44,
+  RouteDefinition: { renderArgsKey: () => "" },
   csrContext: { Provider: ({ children }: { children: unknown }) => children },
   defaultPageState: {
     transition: "none",

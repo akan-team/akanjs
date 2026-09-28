@@ -644,8 +644,8 @@ export default page()
                 type: "boolean",
                 default: l.trans({ en: "true at depth ≤ 1, else false", ko: "깊이 ≤ 1이면 true, 그 외 false" }),
                 desc: l.trans({
-                  en: "Keeps the page mounted in a hidden cache layer after you navigate away.",
-                  ko: "다른 화면으로 나가도 페이지를 숨은 캐시 레이어에 마운트된 채로 둡니다.",
+                  en: "Keeps one page for the route, mounted in a hidden cache layer after you navigate away; its effects stop until it is shown again.",
+                  ko: "라우트에 페이지 하나를 두고, 다른 화면으로 나가도 숨은 캐시 레이어에 마운트된 채로 둡니다. 다시 보일 때까지 effect는 멈춥니다.",
                 }),
               },
               {
@@ -697,6 +697,94 @@ export default page()
                   <>
                     <strong>최상위 라우트는 움직이지 않습니다.</strong> 깊이 1 이하에서는 모든 플랫폼이{" "}
                     <code>none</code>, 제스처 없음, <code>cache: true</code>가 기본이라 탭이 즉시 바뀝니다.
+                  </>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <>
+                    <strong>A page nobody sees runs no effects.</strong> A cached page, and the page a transition-less
+                    switch left, keep their state and DOM but stop their effects until shown again. The page under a{" "}
+                    <code>stack</code> transition stays live for a swipe back, so bind a camera, a poll or a key handler
+                    with <code>usePageFocusEffect</code> from <code>akanjs/webkit</code>; <code>usePageActivity()</code>{" "}
+                    says whether the page is <code>current</code>, <code>prev</code>, <code>pending</code> or{" "}
+                    <code>hidden</code>. Only the current page offers its tools and state to the in-page agent.
+                  </>
+                ),
+                ko: (
+                  <>
+                    <strong>아무도 보지 않는 페이지는 effect를 돌리지 않습니다.</strong> 캐시된 페이지와 전환 없이 떠난
+                    페이지는 state와 DOM을 그대로 두고, 다시 보일 때까지 effect를 멈춥니다. <code>stack</code> 전환 아래
+                    페이지는 스와이프 뒤로가기를 위해 살아 있으므로, 카메라·폴링·키 입력은 <code>akanjs/webkit</code>의{" "}
+                    <code>usePageFocusEffect</code>로 묶으세요. <code>usePageActivity()</code>는 페이지가{" "}
+                    <code>current</code>·<code>prev</code>·<code>pending</code>·<code>hidden</code> 중 어디에 있는지
+                    알려 줍니다. 페이지 안 에이전트에는 현재 페이지의 도구와 state만 보입니다.
+                  </>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <>
+                    <strong>Every history entry is a page of its own.</strong> A push to the route you are on mounts a
+                    new page over the old one, which waits under it with its state; a replace within one route updates
+                    the page in place. Below the page a swipe back reveals, three more entries stay mounted and hidden,
+                    and older ones are released — they mount again on back, with their scroll restored. A{" "}
+                    <code>cache</code> route stays one page for the whole session.
+                  </>
+                ),
+                ko: (
+                  <>
+                    <strong>히스토리 항목마다 페이지가 따로 있습니다.</strong> 지금 라우트로 push하면 새 페이지가 기존
+                    페이지 위에 마운트되고, 기존 페이지는 state를 그대로 가진 채 아래에서 기다립니다. 같은 라우트 안의
+                    replace는 페이지를 그 자리에서 갱신합니다. 스와이프 뒤로가기로 드러나는 페이지 아래로 세 항목을 더
+                    숨긴 채 마운트해 두고, 더 오래된 항목은 해제합니다. 해제된 항목은 뒤로 갈 때 다시 마운트되고
+                    스크롤은 복원됩니다. <code>cache</code> 라우트는 세션 내내 페이지 하나로 유지됩니다.
+                  </>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <>
+                    <strong>The stack outlives a reload.</strong> After a reload — or a WebView whose content process
+                    died and reloaded — the current page and the one under it come back, the rest of the stack waits
+                    until you go back to it, and back walks it as before. While the app is in the background, the page
+                    under the current one pauses too.
+                  </>
+                ),
+                ko: (
+                  <>
+                    <strong>스택은 리로드 뒤에도 남습니다.</strong> 리로드하거나 WebView의 콘텐츠 프로세스가 죽어 다시
+                    로드되면 현재 페이지와 그 아래 페이지가 돌아옵니다. 나머지 스택은 뒤로 가서 닿을 때까지 기다리고,
+                    뒤로가기는 전과 같이 스택을 따라갑니다. 앱이 백그라운드에 있는 동안에는 현재 페이지 아래 페이지도
+                    멈춥니다.
+                  </>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <>
+                    <strong>On Android, back is the page's only while it has somewhere to go.</strong> At the index with
+                    nothing under it, the system takes back and shows its own back-to-home animation, and the app stays
+                    warm instead of quitting. On Android 14+ a back swipe moves the page with the finger before it
+                    commits. When the system runs low on memory, on either platform, the hidden pages are released and
+                    mount again when visited.
+                  </>
+                ),
+                ko: (
+                  <>
+                    <strong>Android에서 뒤로가기는 갈 곳이 있을 때만 페이지의 것입니다.</strong> 아래에 아무것도 없는
+                    인덱스에서는 시스템이 뒤로가기를 가져가 홈으로 가는 자체 애니메이션을 보여 주고, 앱은 종료되지 않고
+                    살아 있습니다. Android 14 이상에서는 뒤로가기 스와이프를 하는 동안 페이지가 손가락을 따라 움직인 뒤
+                    확정됩니다. 두 플랫폼 모두 시스템 메모리가 부족해지면 숨은 페이지를 해제하고, 다시 방문할 때
+                    마운트합니다.
                   </>
                 ),
               })}

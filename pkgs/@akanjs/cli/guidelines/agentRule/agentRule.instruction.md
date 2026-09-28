@@ -15,6 +15,13 @@ for. `Load` scopes, the route, and the live keys complete the context. The React
 apps and libs never import it directly (`no-import-external-library`) — everything reaches them through `st.*` and
 `akanjs/ui`.
 
+**Mounted is not published: on a CSR stack only the current page is.** The page kept under the current one for a
+swipe back stays mounted and live, and its declarations stay registered, but its tools, resources, guides and
+`st.use` keys are parked until it is current again — the agent sees the screen the user sees, never two. Each page
+container renders `use-agentic`'s `<AgentActivity active>` for this; a parked registration shadows nothing, two
+pages declaring one name never clash, and a registry kept outside the surface reads the same gate through
+`useAgentGate()`, as the store's live keys do.
+
 ## Mounting The Chat
 - **Mount `<Agent.Chat />` once in a layout.** That is the floating chat, the approval card, and the client-side
   loop. The default runner drives `runAgentTurn`, which the **framework serves on every app** — no lib to mount,

@@ -17,6 +17,8 @@ export type RouteArgsShape = Record<string, unknown>;
 export type RouteKind = "page" | "layout" | "rootLayout";
 /** Interned: a definition built inside the pages bundle must be recognised by a loader bundled apart from it. */
 export const routeDefinitionMarker = Symbol.for("akan.routeDefinition");
+/** Interned like the marker: the declared args ride on the module's render function, read by the CSR render cache. */
+export const routeArgsMarker = Symbol.for("akan.routeArgs");
 
 type HeadStage<Args> = Head | ((args: Args) => PromiseOrObject<Head | null | undefined>);
 
@@ -45,6 +47,11 @@ export abstract class RouteDefinition<
   #head?: HeadStage<never>;
   #loading?: (args: never) => PromiseOrObject<ReactNode>;
   #render?: (args: never) => PromiseOrObject<ReactNode>;
+  #renderRoute?: {
+    render: (args: never) => PromiseOrObject<ReactNode>;
+    argCount: number;
+    route: (props: RouteRenderProps) => Promise<ReactNode>;
+  };
 
   config(config: PageConfig) {
     this.#config = config;
@@ -123,7 +130,7 @@ export abstract class RouteDefinition<
     const head = this.#head;
     const loading = this.#loading;
     const module: PageModule & LayoutModule = {
-      default: (async (props: RouteRenderProps) => await render(this.#argsOf(props) as never)) as never,
+      default: this.#renderRouteOf(render) as never,
       ...(this.#config ? { pageConfig: this.#config } : {}),
       ...(head === undefined
         ? {}
@@ -142,6 +149,41 @@ export abstract class RouteDefinition<
 
   protected extendModule(module: PageModule & LayoutModule): PageModule & LayoutModule {
     return module;
+  }
+
+  //? Kept while the render stage and the arguments are the same: a dev server swapping route modules unfolds every
+  //? route again, and a new function per call would make each mounted layer render again, not just the edited one.
+  #renderRouteOf(render: (args: never) => PromiseOrObject<ReactNode>) {
+    const kept = this.#renderRoute;
+    if (kept?.render === render && kept.argCount === this.args.length) return kept.route;
+    const route = async (props: RouteRenderProps) => await render(this.#argsOf(props) as never);
+    Object.defineProperty(route, routeArgsMarker, { value: this.args.map(({ kind, name }) => ({ kind, name })) });
+    this.#renderRoute = { render, argCount: this.args.length, route };
+    return route;
+  }
+
+  /**
+   * What a route's render output depends on: a chain's declared args plus `lang`. A legacy module declares nothing,
+   * so it depends on the params of its own path (`paramNames`, every param when unknown) and, for a page, every
+   * search value — a layout reads no query.
+   */
+  static renderArgsKey(
+    render: unknown,
+    props: { params: Record<string, string>; searchParams?: Record<string, string | string[]> },
+    { isPage, paramNames }: { isPage: boolean; paramNames?: string[] },
+  ): string {
+    const declared = (render as { [routeArgsMarker]?: Pick<RouteArgInfo, "kind" | "name">[] } | null)?.[
+      routeArgsMarker
+    ];
+    const searchParams = props.searchParams ?? {};
+    if (!declared) {
+      const params = paramNames ? paramNames.map((name) => props.params[name]) : props.params;
+      return JSON.stringify([params, isPage ? searchParams : null]);
+    }
+    return JSON.stringify([
+      props.params.lang,
+      ...declared.map(({ kind, name }) => (kind === "param" ? props.params[name] : searchParams[name])),
+    ]);
   }
 
   #argsOf(props: RouteRenderProps): RouteBaseArgs & Args & Extra {

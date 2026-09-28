@@ -111,6 +111,27 @@ export default page().render(() => {
       }),
     },
     {
+      name: "usePageFocusEffect(effect, deps)",
+      desc: l.trans({
+        en: "Runs `effect` while the user is on this page and cleans it up when they leave. A page kept under the current one for a swipe back stays mounted, so a plain effect there keeps running.",
+        ko: "사용자가 이 페이지에 있는 동안 `effect`를 돌리고, 떠나면 정리합니다. 스와이프 뒤로가기를 위해 현재 페이지 아래 남은 페이지는 마운트된 채라 평범한 effect는 계속 돕니다.",
+      }),
+    },
+    {
+      name: "usePageLocation()",
+      desc: l.trans({
+        en: "`{ pathname, params, searchParams }` of this page. `st.use.searchParams()` follows the page on screen, so a page being prepared or kept under the current one reads its own here.",
+        ko: "이 페이지의 `{ pathname, params, searchParams }`입니다. `st.use.searchParams()`는 화면에 보이는 페이지를 따르므로, 준비 중이거나 현재 페이지 아래 남은 페이지는 여기서 자기 값을 읽습니다.",
+      }),
+    },
+    {
+      name: "usePageActivity()",
+      desc: l.trans({
+        en: '`"current" | "prev" | "pending" | "hidden"` — where this page stands in the CSR stack; always `current` outside one.',
+        ko: '`"current" | "prev" | "pending" | "hidden"` — CSR 스택에서 이 페이지의 위치이며, CSR 밖에서는 늘 `current`입니다.',
+      }),
+    },
+    {
       name: ["usePageTool", "useScreenScope"],
       desc: l.trans({
         en: "Show a pager and on-screen items to the in-page agent. `Load.Units` and `Load.View` call them.",
@@ -125,10 +146,10 @@ export default page().render(() => {
       }),
     },
     {
-      name: ["bootCsr", "useCsrValues"],
+      name: ["bootCsr", "replacePages", "useCsrValues"],
       desc: l.trans({
-        en: "Start the CSR (mobile) bundle and hold its router state. The generated entry calls them.",
-        ko: "CSR(모바일) 번들을 띄우고 라우터 상태를 쥡니다. 자동 생성된 진입 파일이 부르므로 앱 코드에서는 부르지 않습니다.",
+        en: "Start the CSR (mobile) bundle, swap its route modules in place during dev, and hold its router state. The generated entry calls them.",
+        ko: "CSR(모바일) 번들을 띄우고, dev에서는 라우트 모듈을 그 자리에서 바꾸며, 라우터 상태를 쥡니다. 자동 생성된 진입 파일이 부르므로 앱 코드에서는 부르지 않습니다.",
       }),
     },
     {
