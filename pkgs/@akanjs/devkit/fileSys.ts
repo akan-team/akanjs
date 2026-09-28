@@ -49,10 +49,25 @@ export class FileSys {
     const temp = `${filePath}.${process.pid}.${Date.now().toString(36)}.tmp`;
     try {
       await Bun.write(temp, content);
-      await rename(temp, filePath);
+      await FileSys.replace(temp, filePath);
     } catch (error) {
       await rm(temp, { force: true }).catch(() => undefined);
       throw error;
+    }
+  }
+  static readonly #replaceAttempts = 100;
+  // Windows refuses to rename over a file another process has open (EPERM, or EACCES/EBUSY). A reader holds it for one
+  // read, so the rename is retried for a few seconds instead of failing.
+  static async replace(temp: string, target: string) {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await rename(temp, target);
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        const busy = process.platform === "win32" && (code === "EPERM" || code === "EACCES" || code === "EBUSY");
+        if (!busy || attempt >= FileSys.#replaceAttempts) throw error;
+        await Bun.sleep(Math.min(10 * attempt, 50));
+      }
     }
   }
   static async writeJson(path: string, content: object) {

@@ -60,7 +60,15 @@ export interface CsrDevRuntimeApi {
   hot(message: CsrUpdateMessage): void;
   toESM(mod: unknown, isNodeMode?: number): unknown;
   reExport(target: object, mod: unknown, secondTarget?: object): object | undefined;
-  inspect(): { generation: number; executed: string[]; modules: number };
+  /** `target` is the newest generation handed to `hot`, applied or still loading. */
+  inspect(): {
+    generation: number;
+    target: number;
+    started: boolean;
+    failed: boolean;
+    executed: string[];
+    modules: number;
+  };
 }
 
 interface CsrScriptElement {
@@ -134,6 +142,7 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
     #roots = new Set<string>();
     #started = false;
     #startFailed = false;
+    #target = 0;
     #early: CsrUpdateMessage[] = [];
     #helperFactories = new Map<string, () => Record<string, unknown>>();
     #helperValues = new Map<string, Record<string, unknown>>();
@@ -294,12 +303,20 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
         this.#reload(`generation ${message.generation} arrived without a patch`);
         return;
       }
+      this.#target = Math.max(this.#target, message.generation);
       //? The next patch waits for the last one's async accept callbacks, so the route table is never swapped twice at once.
       this.#patchQueue = this.#patchQueue.then(() => this.#loadPatch(url)).then(() => this.#settling);
     }
 
     inspect() {
-      return { generation: this.#generation, executed: this.#executed.slice(), modules: this.#cache.size };
+      return {
+        generation: this.#generation,
+        target: Math.max(this.#generation, this.#target),
+        started: this.#started,
+        failed: this.#startFailed,
+        executed: this.#executed.slice(),
+        modules: this.#cache.size,
+      };
     }
 
     whenSettled() {

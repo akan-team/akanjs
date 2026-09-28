@@ -917,7 +917,7 @@ export class WebRouter {
       stylesheetHref: this.#getStylesheetHref(req, new URL(req.url).pathname),
       showDetails: !this.#prodMode,
       error: err,
-      ...(this.#prodMode ? {} : { script: HMR_CLIENT_SCRIPT }),
+      ...(this.#prodMode ? {} : { script: `self.__AKAN_HMR_SYSTEM_PAGE__=true;${HMR_CLIENT_SCRIPT}` }),
     });
   }
 

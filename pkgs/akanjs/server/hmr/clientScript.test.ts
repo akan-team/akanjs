@@ -268,22 +268,25 @@ describe("HMR_CLIENT_SCRIPT", () => {
   });
 
   test("an SSR tab reloads on reconnect when its registry is behind or from another epoch, never when it is ahead", () => {
-    const behind = createHmrHarness({
-      selfOverrides: { __akan: { generation: 3, hot: () => undefined } },
-      runTimers: true,
+    const registry = (generation: number, target = generation) => ({
+      generation,
+      hot: () => undefined,
+      inspect: () => ({ generation, target, started: true, failed: false }),
     });
+    const behind = createHmrHarness({ selfOverrides: { __akan: registry(3) }, runTimers: true });
     behind.ws?.sendMessage({ type: "hello", buildId: 1, ssrGeneration: 5 });
     expect(behind.reloadCount).toBe(1);
 
-    const ahead = createHmrHarness({
-      selfOverrides: { __akan: { generation: 6, hot: () => undefined } },
-      runTimers: true,
-    });
+    const loading = createHmrHarness({ selfOverrides: { __akan: registry(3, 5) }, runTimers: true });
+    loading.ws?.sendMessage({ type: "hello", buildId: 1, ssrGeneration: 5 });
+    expect(loading.reloadCount).toBe(0);
+
+    const ahead = createHmrHarness({ selfOverrides: { __akan: registry(6) }, runTimers: true });
     ahead.ws?.sendMessage({ type: "hello", buildId: 1, ssrGeneration: 5 });
     expect(ahead.reloadCount).toBe(0);
 
     const replaced = createHmrHarness({
-      selfOverrides: { __akan: { generation: 6, hot: () => undefined }, __AKAN_SSR_EPOCH__: 100 },
+      selfOverrides: { __akan: registry(6), __AKAN_SSR_EPOCH__: 100 },
       runTimers: true,
     });
     replaced.ws?.sendMessage({ type: "hello", buildId: 1, ssrGeneration: 6, ssrEpoch: 200 });
@@ -311,6 +314,16 @@ describe("HMR_CLIENT_SCRIPT", () => {
     });
     expect(harness.reloadCount).toBe(1);
     expect(hot).toEqual([]);
+  });
+
+  test("the dev error page reloads on a client patch or a recovered build, and preloads no refresh runtime", () => {
+    const patched = createHmrHarness({ selfOverrides: { __AKAN_HMR_SYSTEM_PAGE__: true }, runTimers: true });
+    patched.ws?.sendMessage({ type: "ssr-update", generation: 3, url: "/_akan/ssr-dev/patch-3.js" });
+    expect(patched.reloadCount).toBe(1);
+
+    const recovered = createHmrHarness({ selfOverrides: { __AKAN_HMR_SYSTEM_PAGE__: true }, runTimers: true });
+    recovered.ws?.sendMessage({ type: "build-status", status: "ok", generation: 4, phase: "pages" });
+    expect(recovered.reloadCount).toBe(1);
   });
 
   test("clears legacy error overlays with legacy ok messages", () => {

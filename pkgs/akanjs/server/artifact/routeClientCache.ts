@@ -33,7 +33,8 @@ export interface InvalidateClientEntriesOptions {
 }
 
 export class RouteClientCache {
-  static readonly #maxEnsureAttempts = 3;
+  static readonly #minEnsureAttempts = 3;
+  static readonly #ensureBudgetMs = 15_000;
   readonly #logger = new Logger("RouteClientCache");
   readonly #built = new Map<string, BuildRouteClientResult>();
   readonly #building = new Map<string, PendingBuild>();
@@ -79,7 +80,9 @@ export class RouteClientCache {
   //? An invalidation that lands mid-build drops that build, and a render from the manifest it leaves would name client
   //? references the manifest no longer holds (an RSC error row): so the route builds again at the new generation.
   async ensure(routeId: string, seeds: string[]): Promise<MergedManifest> {
-    for (let attempt = 0; attempt < RouteClientCache.#maxEnsureAttempts && !this.#built.has(routeId); attempt += 1) {
+    const deadline = Date.now() + RouteClientCache.#ensureBudgetMs;
+    const within = (attempt: number) => attempt < RouteClientCache.#minEnsureAttempts || Date.now() < deadline;
+    for (let attempt = 0; within(attempt) && !this.#built.has(routeId); attempt += 1) {
       const existing = this.#building.get(routeId);
       if (existing && existing.generation === this.merged.generation) {
         await existing.promise;

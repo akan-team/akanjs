@@ -39,13 +39,17 @@ describe("ServerGraphFile.touches", () => {
     expect(await ServerGraphFile.touches(graph, ["/repo/apps/a/ui/card.ts"], () => null)).toBe(false);
   });
 
-  test("a failed build clears the graph, so the next save counts until one succeeds", async () => {
+  test("a failed build keeps the last good graph and carries its files to the next build's check", async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "akan-server-graph-"));
     try {
       await ServerGraphFile.write(dir, graph);
-      expect((await ServerGraphFile.read(dir))?.inputs).toEqual(graph.inputs);
-      await ServerGraphFile.clear(dir);
-      expect(await ServerGraphFile.read(dir)).toBeNull();
+      await ServerGraphFile.carry(dir, ["/repo/apps/a/page/_index.tsx"]);
+      const kept = await ServerGraphFile.read(dir);
+      expect(kept?.inputs).toEqual(graph.inputs);
+      expect(kept?.carried).toEqual(["/repo/apps/a/page/_index.tsx"]);
+      expect(await ServerGraphFile.touches(kept, ["/repo/apps/a/ui/Card.tsx"], () => ["Card", "CardBody"])).toBe(false);
+      const changed = ["/repo/apps/a/ui/Card.tsx", ...(kept?.carried ?? [])];
+      expect(await ServerGraphFile.touches(kept, changed, () => ["Card", "CardBody"])).toBe(true);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

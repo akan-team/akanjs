@@ -243,6 +243,35 @@ describe.skipIf(!enabled)("dev HMR latency (minimal)", () => {
     expect(await harness().reloaded()).toBe(false);
   }, 600_000);
 
+  //? The loop a typo makes: the error shows, and the fix must patch at the speed of any other edit (a failed build
+  //? neither blocks the fast lane nor makes the fixing save wait for its pages build).
+  test("SSR tab: a syntax error, then its fix", async () => {
+    await harness().open("/e2e/stack/tab-a", { csr: false });
+    await Bun.sleep(1_000);
+    const pristine = await Bun.file(probeFile).text();
+    const samples: number[] = [];
+    try {
+      for (let i = 0; i < runs; i += 1) {
+        await Bun.write(probeFile, pristine.replace("data-e2e-probe={name}>", "data-e2e-probe={name} {>"));
+        await harness().waitFor(() => document.querySelector(".__akan_hmr_overlay[data-status=error]") !== null, {
+          timeout: 20_000,
+        });
+        const fixed = componentEdit(`f${i}`);
+        await armProbe(fixed.applied);
+        const writtenAt = Date.now();
+        await Bun.write(probeFile, fixed.transform(pristine));
+        await waitForHit();
+        const hit = await harness().evaluate(() => (window as unknown as LatencyWindow).__latencyProbe?.hit ?? 0);
+        samples.push(hit - writtenAt);
+        await Bun.sleep(1_500);
+      }
+    } finally {
+      await Bun.write(probeFile, pristine);
+    }
+    report.errorFix = { median: median(samples), samples };
+    expect(await harness().reloaded()).toBe(false);
+  }, 300_000);
+
   test("CSR tab: component, page, layout and Tailwind class edits", async () => {
     await harness().open("/e2e/stack/tab-a");
     await Bun.sleep(1_000);

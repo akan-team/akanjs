@@ -83,6 +83,8 @@ export class DevHmrController {
   readonly #builderRpc: BuilderRpc;
   readonly routeCache: RouteClientCache;
   readonly #recentClientEntries = new Set<string>();
+  /** Files whose routes a save invalidated already; their pages build must not drop the rebuilt routes again. */
+  readonly #earlyInvalidated = new Set<string>();
   readonly #clientFileRouteIds = new Map<string, Set<string>>();
   readonly #clientFileEntries = new Map<string, Set<string>>();
   readonly #clientEntryRouteIds = new Map<string, Set<string>>();
@@ -222,12 +224,24 @@ export class DevHmrController {
         const routeTreeChanged = await this.#reloadSeedIndex();
         const runtimeMetadataChanged = files.some(isAkanRuntimeMetadataFile);
         const clearAll = routeTreeChanged || runtimeMetadataChanged;
-        const staleClientEntries = clearAll ? new Set<string>() : this.#staleClientEntriesForFiles(files);
+        const lateFiles = files.filter((file) => !this.#earlyInvalidated.has(path.resolve(file)));
+        for (const file of files) this.#earlyInvalidated.delete(path.resolve(file));
+        const staleClientEntries = clearAll ? new Set<string>() : this.#staleClientEntriesForFiles(lateFiles);
         const routeIds = clearAll ? undefined : this.#routeIdsForFiles(files, staleClientEntries);
         this.#logger.verbose(
           `[SSR] pages-updated bundlePath=${bundlePath} buildId=${buildId} generation=${generation ?? "(unknown)"} files=${files.length} routes=${routeIds?.length ?? 0} serverTouched=${serverTouched ?? "(unknown)"} staleEntries=${staleClientEntries.size} runtimeMetadata=${runtimeMetadataChanged} routeTree=${routeTreeChanged}`,
         );
-        const dropped = this.#invalidateRoutes(files, routeIds, staleClientEntries, { forceClear: clearAll });
+        const dropped =
+          clearAll || lateFiles.length > 0
+            ? this.#invalidateRoutes(
+                lateFiles,
+                this.#routeIdsForFiles(lateFiles, staleClientEntries),
+                staleClientEntries,
+                {
+                  forceClear: clearAll,
+                },
+              )
+            : [];
         const manifest = this.routeCache.snapshot();
         //? The bundle it built is the one the worker runs, byte for byte: keeping its build id keeps every tab's (the
         //? hello check, the router's partial navigation) instead of stranding them on one no refresh ever sent.
@@ -249,8 +263,10 @@ export class DevHmrController {
         const shouldReload = clearAll || this.#shouldFullReloadForFiles(files, routeIds);
         const broadcastTrace = DevHmrController.#broadcastTrace(trace);
         if (shouldReload) this.#ssrUpdates.clear();
-        else this.#ssrUpdates.release(generation);
+        const released = shouldReload ? { released: 0, reload: false } : this.#ssrUpdates.release(generation);
         if (shouldReload) this.#hub.broadcast({ type: "reload", buildId });
+        else if (released.reload)
+          this.#logger.verbose(`[hmr] generation=${generation} released a registry reload; no RSC refresh needed`);
         // The SSR registry already patched the tabs: a client module is only references by name to the server.
         else if (serverTouched === false)
           this.#logger.verbose(
@@ -366,6 +382,7 @@ export class DevHmrController {
   #invalidateClientEntriesEarly(files: string[]): void {
     const staleClientEntries = this.#staleClientEntriesForFiles(files);
     if (staleClientEntries.size === 0) return;
+    for (const file of files) this.#earlyInvalidated.add(path.resolve(file));
     const routeIds = this.#routeIdsForFiles(files, staleClientEntries);
     this.routeCache.invalidateClientEntries({
       routePredicate: (routeId) => !routeIds || routeIds.includes(routeId),

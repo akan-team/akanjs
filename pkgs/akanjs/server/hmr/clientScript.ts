@@ -8,6 +8,8 @@ export const HMR_CLIENT_SCRIPT = `(function(){
   var syncNavigationEnabled = ${JSON.stringify(isSyncNavigationEnabled())};
   var syncNavigationClientId = Math.random().toString(36).slice(2) + Date.now().toString(36);
   var clientKind = self.__AKAN_HMR_CLIENT__ === "csr" ? "csr" : "ssr";
+  // The dev error page a failed render served: it runs no app, so any sign of a fixed build reloads it.
+  var systemPage = !!self.__AKAN_HMR_SYSTEM_PAGE__;
   var proto = location.protocol === "https:" ? "wss:" : "ws:";
   var url = proto + "//" + location.host + "/_akan/hmr" + (clientKind === "csr" ? "?client=csr" : "");
   var attempts = 0;
@@ -50,7 +52,7 @@ export const HMR_CLIENT_SCRIPT = `(function(){
   // Start installing React Refresh before the application module graph loads.
   // Injecting the runtime only on the first update is too late for React's renderer hook.
   // A CSR page has no import map to load it from; the registry dev bundle installs its own.
-  if (clientKind === "ssr") ensureRefreshRuntime().catch(function(err){
+  if (clientKind === "ssr" && !systemPage) ensureRefreshRuntime().catch(function(err){
     console.warn("[akan-hmr] React Refresh runtime preload failed", err);
   });
 
@@ -75,6 +77,7 @@ export const HMR_CLIENT_SCRIPT = `(function(){
           reloadForUpdate("the dev server rebuilt the SSR registry while this tab held the previous one");
           return;
         }
+        if (typeof msg.ssrGeneration === "number") self.__AKAN_SSR_HELLO_GENERATION__ = msg.ssrGeneration;
         if (ssrRegistryBehind(msg.ssrGeneration)) {
           reloadForUpdate("missed an SSR registry update while disconnected");
           return;
@@ -169,15 +172,21 @@ export const HMR_CLIENT_SCRIPT = `(function(){
     return typeof epoch === "number" && typeof own === "number" && own !== epoch;
   }
 
-  // Behind only: a tab that booted from an app.js newer than the last update sent is ahead, not stale.
+  // Behind only, counting patches still loading: a tab that booted from an app.js newer than the last update sent is
+  // ahead, not stale. A registry that has not started compares in the shim, once it has.
   function ssrRegistryBehind(generation){
-    if (typeof generation !== "number" || !self.__akan || !self.__akan.generation) return false;
-    return self.__akan.generation < generation;
+    if (typeof generation !== "number" || !self.__akan || typeof self.__akan.inspect !== "function") return false;
+    var state = self.__akan.inspect();
+    return state.started && !state.failed && state.target < generation;
   }
 
   // An SSR page in registry mode. One that has not loaded its registry yet keeps the update for the registry's start.
   function applySsrUpdate(msg){
     recordTrace("ssr", msg, Date.now(), null);
+    if (systemPage) {
+      reloadForUpdate("a save changed the client code of the page that failed to render");
+      return;
+    }
     // Directly: a registry whose app.js never started would only queue it.
     if (msg.reload && self.__akan && !(msg.generation <= self.__akan.generation)) {
       reloadForUpdate(msg.reason || "the SSR registry was rebuilt");
@@ -308,6 +317,10 @@ export const HMR_CLIENT_SCRIPT = `(function(){
   function handleBuildStatus(msg){
     if (msg.status === "error") {
       showBuildErrorOverlay(msg);
+      return;
+    }
+    if (msg.status === "ok" && systemPage) {
+      reloadForUpdate("the build that failed to render this page recovered");
       return;
     }
     if (msg.status === "ok") clearBuildErrorOverlay(msg);

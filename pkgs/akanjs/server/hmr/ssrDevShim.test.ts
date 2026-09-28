@@ -10,6 +10,7 @@ interface FakeScript {
 
 interface FakeRegistry {
   modules: Map<string, unknown>;
+  inspect: () => { generation: number; target: number; started: boolean; failed: boolean };
   hot: (message: unknown) => void;
   provide: (id: string, namespace: unknown) => void;
   has: (id: string) => boolean;
@@ -45,6 +46,7 @@ const createPage = () => {
       const waiters = new Map<string, () => void>();
       const registry: FakeRegistry = {
         modules,
+        inspect: () => ({ generation: 7, target: 7, started: true, failed: false }),
         hot: () => undefined,
         provide: (id, namespace) => modules.set(id, namespace),
         has: (id) => modules.has(id),
@@ -107,6 +109,30 @@ describe("SsrDevShim", () => {
     expect(typeof pending.then).toBe("function");
     define("apps/app/ui/New.tsx", { New: "new" });
     expect(await pending).toEqual({ New: "new" });
+  });
+
+  test("a tab whose app.js is behind the generation hello named reloads once it has started", async () => {
+    const page = createPage();
+    let reloads = 0;
+    page.self.location = { reload: () => (reloads += 1) };
+    page.self.__AKAN_SSR_HELLO_GENERATION__ = 9;
+    new Function("self", "document", "fetch", "location", SsrDevShim.script(manifest, []))(
+      page.self,
+      {
+        createElement: () => ({ src: "", async: true, onload: null, onerror: null }),
+        head: { appendChild: (s: FakeScript) => page.scripts.push(s) },
+      },
+      fetch,
+      page.self.location,
+    );
+    const boot = (page.self.__webpack_chunk_load__ as (id: string) => Promise<void>)("ssr-dev");
+    page.load(0);
+    await page.settle();
+    page.load(1);
+    await page.settle();
+    page.load(2);
+    await boot;
+    expect(reloads).toBe(1);
   });
 
   test("updates that arrived before the runtime loaded are handed to it", async () => {

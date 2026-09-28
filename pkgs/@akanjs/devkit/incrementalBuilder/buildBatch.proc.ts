@@ -189,7 +189,7 @@ class BuildBatch {
       const nextGraph = await ServerGraphFile.read(this.#request.artifactDir);
       const serverTouched = await ServerGraphFile.touches(
         previousGraph,
-        this.#request.changedFiles,
+        [...this.#request.changedFiles, ...(previousGraph?.carried ?? [])],
         (file) => nextGraph?.clientExports[file] ?? null,
         nextGraph,
       );
@@ -207,8 +207,10 @@ class BuildBatch {
       this.#emitStatus("pages");
       this.#logger.verbose(`pages-rebundle ok buildId=${next.buildId} (${Date.now() - started}ms)`);
     } catch (err) {
-      await ServerGraphFile.clear(this.#request.artifactDir);
       this.#fail("pages", "pages-rebundle", err);
+      await ServerGraphFile.carry(this.#request.artifactDir, this.#request.changedFiles).catch((carryError: unknown) =>
+        this.#logger.warn(`server graph carry failed; the next save may skip its RSC refresh: ${String(carryError)}`),
+      );
     }
   }
 

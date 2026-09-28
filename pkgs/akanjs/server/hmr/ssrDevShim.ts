@@ -42,7 +42,12 @@ export class SsrDevShim {
             return import(specifier).then(function (ns) { self.__akan.provide("vendor:" + specifier, ns); });
           })),
           script(c.prefix + built.vendorFile)
-        ]).then(function () { return script(c.prefix + "app.js?g=" + built.generation); });
+        ]).then(function () { return script(c.prefix + "app.js?g=" + built.generation); }).then(function () {
+          // A patch broadcast before this tab's WebSocket connected reached only hello's generation.
+          var hello = self.__AKAN_SSR_HELLO_GENERATION__;
+          var state = self.__akan.inspect();
+          if (typeof hello === "number" && state.started && !state.failed && state.target < hello) location.reload();
+        });
       });
     return booting;
   }

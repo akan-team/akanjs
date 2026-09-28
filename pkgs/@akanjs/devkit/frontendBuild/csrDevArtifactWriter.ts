@@ -1,4 +1,4 @@
-import { mkdir, readdir, rename, rm } from "node:fs/promises";
+import { mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import {
   appGenerationOf,
@@ -8,6 +8,7 @@ import {
   type CsrDevManifest,
   csrDevModuleFile,
 } from "akanjs/server/hmr/csrDevManifest";
+import { FileSys } from "../fileSys";
 import { CsrDevPaths } from "./csrDevPaths";
 import type { CsrDevCode, CsrDevCompiledModule, CsrDevGraph } from "./csrDevTypes";
 
@@ -210,7 +211,7 @@ export class CsrDevArtifactWriter {
     const target = path.join(this.#outDir, name);
     const temp = `${target}.${process.pid}.tmp`;
     await Bun.write(temp, content);
-    await rename(temp, target);
+    await FileSys.replace(temp, target);
   }
 
   //? A test-only hook that widens the gap between the patch and app.js, so an E2E can boot a tab inside it.

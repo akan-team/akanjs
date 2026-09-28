@@ -1,5 +1,5 @@
-import { rename, rm } from "node:fs/promises";
 import path from "node:path";
+import { FileSys } from "../fileSys";
 import { hasUseClientDirective, scanUseClientExports } from "../transforms/rscUseClientTransform";
 import { CsrDevPaths } from "./csrDevPaths";
 
@@ -8,10 +8,13 @@ export interface ServerGraph {
   inputs: string[];
   /** Export names of every `"use client"` module among them: the server holds each only as a reference by name. */
   clientExports: Record<string, string[]>;
+  /** Files saved in batches whose pages build failed since this graph was written: the next build's changes too. */
+  carried?: string[];
 }
 
-//* What the dev server bundle read, written by every dev pages build that succeeds and removed by one that fails, so a
-//* save can be told apart as one the server renders (it needs an RSC refresh) or one only the client registry holds.
+//* What the dev server bundle read, written by every dev pages build that succeeds, so a save can be told apart as one
+//* the server renders (it needs an RSC refresh) or one only the client registry holds. A failed build keeps the last
+//* good graph and carries its files over, so the fixing save still refreshes what the failed ones changed.
 export class ServerGraphFile {
   static readonly fileName = "server-graph.json";
   static #cache: { file: string; mtimeMs: number; graph: ServerGraph } | null = null;
@@ -33,13 +36,14 @@ export class ServerGraphFile {
     const file = path.join(artifactDir, ServerGraphFile.fileName);
     const temp = `${file}.${process.pid}.tmp`;
     await Bun.write(temp, JSON.stringify(graph));
-    await rename(temp, file);
+    await FileSys.replace(temp, file);
   }
 
-  //? After a failed build the last graph is older than what the server renders next; without one, the next save counts
-  //? as touching the server, which is always safe.
-  static async clear(artifactDir: string): Promise<void> {
-    await rm(path.join(artifactDir, ServerGraphFile.fileName), { force: true });
+  static async carry(artifactDir: string, files: string[]): Promise<void> {
+    const graph = await ServerGraphFile.read(artifactDir);
+    if (!graph || files.length === 0) return;
+    const carried = [...new Set([...(graph.carried ?? []), ...files.map((file) => CsrDevPaths.realpath(file))])];
+    await ServerGraphFile.write(artifactDir, { ...graph, carried });
   }
 
   // `exportsNow` answers a client module's current export names, or null once it is no longer one. `next` is the graph

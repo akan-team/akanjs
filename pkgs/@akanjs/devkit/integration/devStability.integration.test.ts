@@ -502,6 +502,8 @@ describe("dev resource budgets", () => {
       env: { AKAN_RSC_WORKER_MAX_RELOADS: "1", AKAN_RSC_WORKER_MIN_RECYCLE_INTERVAL_MS: "1" },
     });
     await harness.waitForHttpText("initial-client-marker", WAIT_MS);
+    // The first page no longer waits for the SSR registry's boot build, whose worker is idle only once it lands.
+    await host.waitForLogSince(0, /\[ssr\] registry built generation=\d+/, WAIT_MS);
 
     const idleTotal = await DevStabilityHarness.processTreeRssBytes(host.proc.pid);
     const idleWithoutBuilder = await DevStabilityHarness.processTreeRssBytes(host.proc.pid, { excludeBuilder: true });

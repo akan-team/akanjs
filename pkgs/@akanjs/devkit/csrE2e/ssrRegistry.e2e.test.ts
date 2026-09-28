@@ -12,10 +12,11 @@ const lazyFile = uiFile("RegistryLazy_Dynamic.tsx");
 const serverPartFile = uiFile("RegistryServerPart.tsx");
 const pageFile = path.join(workspaceRoot, "apps/minimal/page/(home)/e2e/registry.tsx");
 const storeFile = path.join(workspaceRoot, "apps/minimal/lib/_minimal/minimal.store.ts");
+const valueFile = uiFile("registryValue.constant.ts");
 const port = Number(process.env.AKAN_CSR_E2E_SSR_REGISTRY_PORT ?? 8494);
 
 interface RegistryWindow {
-  __akan?: { generation: number };
+  __akan?: { generation: number; inspect(): { started: boolean; failed: boolean } };
   __akanRegistryProbe?: { effects: number; contextId: string };
   __AKAN_CSR_LAST_UPDATE__?: { generation: number; executed: string[] };
   __AKAN_HMR_TRACES__?: { kind: string; generation: number; trace: { broadcastAt?: number } | null }[];
@@ -176,9 +177,26 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
     await open();
     await ssr.editSource(probeFile, markProbe, async () => {
       await Bun.sleep(150);
+      const html = await fetch(new URL("/en/e2e/registry", ssr.origin)).then((res) => res.text());
+      expect(html).toContain('data-e2e-hot="1"');
       await ssr.open(REGISTRY, { csr: false });
       await probeMarked(true);
     });
+    await probeMarked(false);
+  }, 90_000);
+
+  test("a save while the page's route builds still renders the saved code", async () => {
+    await open();
+    const original = await Bun.file(probeFile).text();
+    try {
+      const navigation = ssr.open(REGISTRY, { csr: false });
+      await Bun.sleep(40);
+      await Bun.write(probeFile, markProbe(original));
+      await navigation;
+      await probeMarked(true);
+    } finally {
+      await Bun.write(probeFile, original);
+    }
     await probeMarked(false);
   }, 90_000);
 
@@ -260,9 +278,10 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
 
   const pageRecovered = async () =>
     await ssr.waitFor(
-      () =>
-        ((window as unknown as RegistryWindow).__akan?.generation ?? 0) > 0 &&
-        document.querySelector('[data-e2e="lazy"]') !== null,
+      () => {
+        const state = (window as unknown as RegistryWindow).__akan?.inspect();
+        return !!state?.started && !state.failed && document.querySelector('[data-e2e="lazy"]') !== null;
+      },
       { timeout: 30_000 },
     );
 
@@ -291,6 +310,31 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
     );
     await pageRecovered();
   }, 120_000);
+
+  test("a constant both copies render reaches the server and the client copy", async () => {
+    await open();
+    await ssr.editSource(
+      valueFile,
+      (source) => source.replace("value-0", "value-1"),
+      async () => {
+        for (const where of ["server", "client"])
+          await ssr.waitFor(
+            (target: string) =>
+              document.querySelector(`[data-e2e="label-${target}"]`)?.getAttribute("data-e2e-value") === "value-1",
+            { args: [where], timeout: 30_000 },
+          );
+        const html = await fetch(new URL("/en/e2e/registry", ssr.origin)).then((res) => res.text());
+        expect(html).toContain('data-e2e-value="value-1"');
+      },
+    );
+    for (const where of ["server", "client"])
+      await ssr.waitFor(
+        (target: string) =>
+          document.querySelector(`[data-e2e="label-${target}"]`)?.getAttribute("data-e2e-value") === "value-0",
+        { args: [where], timeout: 30_000 },
+      );
+    await pageRecovered();
+  }, 150_000);
 
   test("a build error shows the overlay, and the fix patches the page without a reload", async () => {
     await open();

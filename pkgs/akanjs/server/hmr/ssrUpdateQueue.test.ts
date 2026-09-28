@@ -28,12 +28,12 @@ describe("SsrUpdateQueue", () => {
     queue.push(update(4));
     queue.push(update(5, { hold: true, batchGeneration: 12 }));
     expect(generations()).toEqual([]);
-    expect(queue.release(9)).toBe(0);
-    expect(queue.release(10)).toBe(2);
+    expect(queue.release(9).released).toBe(0);
+    expect(queue.release(10).released).toBe(2);
     expect(generations()).toEqual([3, 4]);
     queue.push(update(6));
     expect(generations()).toEqual([3, 4]);
-    expect(queue.release(12)).toBe(2);
+    expect(queue.release(12).released).toBe(2);
     expect(generations()).toEqual([3, 4, 5, 6]);
     expect(queue.size).toBe(0);
   });
@@ -49,9 +49,19 @@ describe("SsrUpdateQueue", () => {
   test("a reload drops what is held and goes out alone", () => {
     const { queue, sent } = makeQueue();
     queue.push(update(3, { hold: true, batchGeneration: 10 }));
-    queue.push(update(4, { reload: true, reason: "the route table changed" }));
+    queue.push(update(4, { reload: true, reason: "an npm module joined the graph" }));
     expect(sent.map((message) => [message.generation, message.reload])).toEqual([[4, true]]);
-    expect(queue.release(10)).toBe(0);
+    expect(queue.release(10).released).toBe(0);
+  });
+
+  test("a reload whose save changed server output waits for that build, and says so on release", () => {
+    const { queue, sent } = makeQueue();
+    queue.push(update(3, { hold: true, batchGeneration: 10 }));
+    queue.push(update(4, { reload: true, reason: "task.constant.ts changed", hold: true, batchGeneration: 11 }));
+    expect(sent).toEqual([]);
+    expect(queue.release(10)).toEqual({ released: 0, reload: false });
+    expect(queue.release(11)).toEqual({ released: 1, reload: true });
+    expect(sent.map((message) => [message.generation, message.reload])).toEqual([[4, true]]);
   });
 
   test("a pages build that never reports cannot strand held patches", async () => {

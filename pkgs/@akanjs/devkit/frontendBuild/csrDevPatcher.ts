@@ -49,7 +49,7 @@ export class CsrDevPatcher {
 
   async update(
     changedFiles: string[] = [],
-    { announce, roots = [], allowWholeAppBuilds = false }: CsrDevPatchOptions = {},
+    { announce, roots = [], onlyRoots = false, allowWholeAppBuilds = false }: CsrDevPatchOptions = {},
   ): Promise<CsrDevPatchResult> {
     const context = await this.#bundler.context();
     if (!context) return { kind: "unchanged" };
@@ -68,7 +68,12 @@ export class CsrDevPatcher {
     this.#state = this.#resident ? state : null;
     if (appGenerationOf(state.manifest) < state.manifest.generation)
       state.manifest = await this.#bundler.writer.healApp(state.graph, state.manifest, await this.#code(state));
-    return await this.#patch(context, state, changedFiles, generation, { announce, roots, allowWholeAppBuilds });
+    return await this.#patch(context, state, changedFiles, generation, {
+      announce,
+      roots,
+      onlyRoots,
+      allowWholeAppBuilds,
+    });
   }
 
   async #patch(
@@ -76,14 +81,14 @@ export class CsrDevPatcher {
     state: CsrDevPatcherState,
     changedFiles: string[],
     generation: number,
-    { announce, roots = [], allowWholeAppBuilds }: CsrDevPatchOptions,
+    { announce, roots = [], onlyRoots = false, allowWholeAppBuilds }: CsrDevPatchOptions,
   ): Promise<CsrDevPatchResult> {
     const { paths, writer } = this.#bundler;
     const { graph } = state;
     const entries = await this.#bundler.writeEntries(context);
     const entryIds = this.#bundler.entryIds(entries.files);
     await this.#forgetDeletedModules(state);
-    const changed = await this.#changedModules(graph, changedFiles);
+    const changed = onlyRoots ? new Set<string>() : await this.#changedModules(graph, changedFiles);
     for (const file of entries.changed) changed.add(paths.idOf(file));
     const rootFiles = [...Object.values(entries.files), ...roots.filter((file) => fs.existsSync(file))];
     for (const file of rootFiles) if (!graph.modules[paths.idOf(file)]) changed.add(paths.idOf(file));

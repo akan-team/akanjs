@@ -24,6 +24,11 @@ export interface CsrDevUpdateOptions {
   announce?: (update: CsrDevUpdate) => void;
   /** Files the registry must hold once this update is done; the ones it lacks are compiled into it. */
   roots?: string[];
+  /**
+   * Compile only the roots the registry lacks: a route build asks for its entries, and a file saved meanwhile is the
+   * save's own patch to make, with the hold only that patch knows.
+   */
+  onlyRoots?: boolean;
 }
 
 export interface DevRegistryTarget {
