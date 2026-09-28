@@ -22,6 +22,8 @@ export interface CsrDevResolverOptions {
   resolution?: Record<string, Record<string, string>>;
   /** Specifiers per importer id whose recorded resolution came from Bun's runtime resolver, not the browser build. */
   runtimeResolved?: Record<string, string[]>;
+  /** When this process began: a package installed after it is one Bun's resolver here has not seen. */
+  startedAt?: number;
 }
 
 //* Resolution comes from a plain browser build: Bun's runtime resolver ignores the `browser` condition and picks Node
@@ -35,10 +37,19 @@ export class CsrDevResolver {
   readonly #fallbacks = new Set<string>();
   readonly #runtimeResolved = new Map<string, Set<string>>();
   readonly #browserMaps = new Map<string, boolean>();
+  readonly #startedAt: number;
   #prepassDone = false;
 
-  constructor({ paths, context, entryFiles, resolution = {}, runtimeResolved = {} }: CsrDevResolverOptions) {
+  constructor({
+    paths,
+    context,
+    entryFiles,
+    resolution = {},
+    runtimeResolved = {},
+    startedAt = Date.now() - process.uptime() * 1000,
+  }: CsrDevResolverOptions) {
     this.#paths = paths;
+    this.#startedAt = startedAt;
     this.#context = context;
     this.#entryFiles = entryFiles;
     for (const [importer, specifiers] of Object.entries(runtimeResolved))
@@ -196,8 +207,10 @@ export class CsrDevResolver {
     const resolved = CsrDevPaths.tryResolve(specifier, path.dirname(importer));
     const moved = resolved !== null && path.isAbsolute(resolved) && !fs.existsSync(resolved);
     //? Bun keeps a process's node_modules listings: a package installed while the builder runs (`bun add`) resolves only
-    //? in a fresh process, so one that is on disk goes to a worker rather than failing as a typo.
-    const installed = resolved === null && CsrDevPaths.isInstalled(specifier, path.dirname(importer));
+    //? in a fresh process, so one installed since this process began goes to a worker. Any other miss, a subpath typo
+    //? of a package installed long ago included, fails here as the worker would.
+    const installed =
+      resolved === null && CsrDevPaths.installedSince(specifier, path.dirname(importer), this.#startedAt);
     if (!this.#prepassDone || moved) {
       //? A specifier no resolver finds in the user's own code is a typo, failed here like a missing relative file: the
       //? resolution build a worker would run for it fails the same way. A package's `browser` field may map one away.

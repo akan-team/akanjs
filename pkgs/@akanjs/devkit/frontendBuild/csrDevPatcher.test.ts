@@ -399,11 +399,13 @@ describe("CsrDevPatcher", () => {
     expect(changedIds(await patcher.update([file("ui/E1.tsx")]))).toEqual(["apps/demo/ui/E1.tsx"]);
   });
 
-  test("a pending root a worker took and failed on waits for an edit of its own, not every save", async () => {
+  test("a pending root a worker failed on waits for an edit of its own or of a file its failure named", async () => {
     const { bundler, patcher, file, changedIds } = await movedRegistry({
       "ui/Card.tsx": 'export const card = () => "v1";\n',
+      "ui/Other.tsx": 'export const other = () => "o1";\n',
       "ui/Broken.tsx": 'import { gone } from "./missingHelper";\nexport const broken = () => gone;\n',
-      "entry.ts": 'import { card } from "./ui/Card";\nexport const run = card;\n',
+      "entry.ts":
+        'import { card } from "./ui/Card";\nimport { other } from "./ui/Other";\nexport const run = [card, other];\n',
       "../../node_modules/fake-pkg/package.json": '{"name":"fake-pkg","main":"index.js"}',
       "../../node_modules/fake-pkg/index.js": "export const gone = 1;\n",
     });
@@ -413,18 +415,18 @@ describe("CsrDevPatcher", () => {
       'import { gone } from "fake-pkg";\nimport { nope } from "./Card";\nexport const broken = () => gone + nope;\n';
     await Bun.write(file("ui/Broken.tsx"), broken);
     expect((await patcher.update([file("ui/Broken.tsx")])).kind).toBe("delegate");
-    //? The worker the builder runs next: it fails in Broken, and the resident patcher reads the graph it wrote.
+    //? The worker the builder runs next fails in Broken, naming Card: the resident patcher reads the graph it wrote.
     await expect(bundler.update([file("ui/Broken.tsx")])).rejects.toThrow();
     patcher.forget();
 
-    await Bun.write(file("ui/Card.tsx"), 'export const card = () => "v2";\n');
-    expect(changedIds(await patcher.update([file("ui/Card.tsx")]))).toEqual(["apps/demo/ui/Card.tsx"]);
+    await Bun.write(file("ui/Other.tsx"), 'export const other = () => "o2";\n');
+    expect(changedIds(await patcher.update([file("ui/Other.tsx")]))).toEqual(["apps/demo/ui/Other.tsx"]);
     expect(await patcher.update([], { roots: [file("ui/Broken.tsx")], onlyRoots: true })).toEqual({
       kind: "unchanged",
     });
 
-    await Bun.write(file("ui/Broken.tsx"), `${broken}\n`);
-    expect((await patcher.update([file("ui/Broken.tsx")])).kind).toBe("delegate");
+    await Bun.write(file("ui/Card.tsx"), 'export const card = () => "v2";\nexport const nope = 1;\n');
+    expect((await patcher.update([file("ui/Card.tsx")])).kind).toBe("delegate");
   });
 
   test("a pending root a worker failed on because of another file is tried again once that file is fixed", async () => {

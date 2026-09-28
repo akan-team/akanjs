@@ -145,7 +145,11 @@ export class CsrDevPatcher {
     } catch (error) {
       //? Joined, not replaced: a route's root another round failed stays pending for its own retry.
       graph.pending = [...new Set([...graph.pending, ...changed, ...carried])];
-      if (!this.#resident) graph.failed = await CsrDevPatcher.#hashesOf(paths, CsrDevPatcher.#failingFiles(error));
+      if (!this.#resident)
+        graph.failed = {
+          roots: [...changed, ...carried],
+          files: await CsrDevPatcher.#hashesOf(paths, CsrDevPatcher.#implicatedFiles(error)),
+        };
       await writer.writeJson("graph.json", graph);
       throw error;
     }
@@ -349,6 +353,24 @@ export class CsrDevPatcher {
     };
   }
 
+  //? Where it failed, and the files its messages name: Bun puts a missing export at the importer and names the module
+  //? that lacks it only in the text ("No matching export in \"../ui/C.tsx\""), relative to the working directory.
+  static #implicatedFiles(error: unknown): string[] {
+    const failing = CsrDevPatcher.#failingFiles(error);
+    const messages: unknown[] = error instanceof AggregateError ? error.errors : [];
+    const named = messages.flatMap((message) => {
+      const text = String((message as { message?: unknown }).message ?? "");
+      const bases = [process.cwd(), ...failing.map((file) => path.dirname(file))];
+      return [...text.matchAll(/"([^"\n]+)"/g)].flatMap(([, quoted = ""]) => {
+        const found = bases
+          .map((base) => path.resolve(base, quoted))
+          .find((file) => CsrDevPaths.isScript(file) && fs.existsSync(file));
+        return found ? [CsrDevPaths.realpath(found)] : [];
+      });
+    });
+    return [...new Set([...failing, ...named])];
+  }
+
   static #failingFiles(error: unknown): string[] {
     const messages: unknown[] = error instanceof AggregateError ? error.errors : [];
     return messages
@@ -374,12 +396,12 @@ export class CsrDevPatcher {
     return carried;
   }
 
-  //? The worker's failure is read from the graph it wrote, once: later rounds here overwrite nothing of it.
+  //? The worker's failure is read from the graph it wrote, once, and only a round that built this root.
   async #parked(graph: CsrDevGraph, id: string): Promise<boolean> {
     const { paths } = this.#bundler;
     const handedOver = this.#delegated.get(id);
     if (!handedOver || handedOver.hash !== (await CsrDevPaths.hashOf(paths.fileOf(id)))) return false;
-    handedOver.failed ??= graph.failed;
+    if (graph.failed?.roots.includes(id)) handedOver.failed ??= graph.failed.files;
     if (!handedOver.failed) return false;
     for (const [failedId, hash] of Object.entries(handedOver.failed))
       if ((await CsrDevPaths.hashOf(paths.fileOf(failedId))) !== hash) return false;

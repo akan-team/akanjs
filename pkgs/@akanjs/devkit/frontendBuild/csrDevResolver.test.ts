@@ -171,14 +171,20 @@ describe("CsrDevPaths.resolveOnDisk", () => {
     expect(CsrDevPaths.resolveOnDisk(at("modonly"), "require")).toBe(at("modonly/index.js"));
   });
 
-  test("a bare import Bun cannot resolve here, whose package is on disk, is left to a worker instead of failing", async () => {
+  test("a bare import Bun cannot resolve here goes to a worker only when its package landed after this process began", async () => {
     //? A package Bun's resolver misses in this process: it keeps node_modules listings, so one added by `bun add` while
     //? the builder runs looks like this until a fresh process reads it.
     await Bun.write(at("inst/node_modules/half/package.json"), '{ "name": "half", "main": "missing.js" }');
     await Bun.write(at("inst/src/a.ts"), 'import "half";\n');
-    const resolver = new CsrDevResolver({ paths: new CsrDevPaths(root), context, entryFiles: [] });
-    expect(resolver.resolve(at("inst/src/a.ts"), "half")).toBeNull();
-    expect(() => resolver.resolve(at("inst/src/a.ts"), "nowhere-to-be-found")).toThrow("cannot resolve");
+    const started = (startedAt: number) =>
+      new CsrDevResolver({ paths: new CsrDevPaths(root), context, entryFiles: [], startedAt });
+    const before = started(Date.now() - 60_000);
+    expect(before.resolve(at("inst/src/a.ts"), "half")).toBeNull();
+    expect(before.resolve(at("inst/src/a.ts"), "half/formatt")).toBeNull();
+    expect(() => before.resolve(at("inst/src/a.ts"), "nowhere-to-be-found")).toThrow("cannot resolve");
+    //? Installed before the builder started: its listing is Bun's, so a miss is a typo or a half-typed import.
+    const after = started(Date.now() + 60_000);
+    expect(() => after.resolve(at("inst/src/a.ts"), "half/formatt")).toThrow("cannot resolve");
   });
 
   test('"." and ".." name the folder alone, as a trailing slash does', () => {

@@ -111,13 +111,16 @@ export class CsrDevPaths {
     }
   }
 
-  /** A bare specifier whose package is on disk in a `node_modules` at or above `from`. */
-  static isInstalled(specifier: string, from: string): boolean {
+  //? ctime, not mtime: Bun installs by cloning from its cache, which keeps the cached file's mtime (days old) and
+  //? stamps only ctime with the install.
+  /** A bare specifier whose package landed in a `node_modules` at or above `from` after `since`. */
+  static installedSince(specifier: string, from: string, since: number): boolean {
     const [first = "", second = ""] = specifier.split("/");
     const name = first.startsWith("@") ? `${first}/${second}` : first;
     if (!name || name.startsWith(".")) return false;
     for (let dir = path.resolve(from); ; dir = path.dirname(dir)) {
-      if (fs.existsSync(path.join(dir, "node_modules", name, "package.json"))) return true;
+      const pkgFile = fs.statSync(path.join(dir, "node_modules", name, "package.json"), { throwIfNoEntry: false });
+      if (pkgFile) return pkgFile.ctimeMs > since;
       if (path.dirname(dir) === dir) return false;
     }
   }

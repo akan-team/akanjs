@@ -18,8 +18,8 @@ export interface CsrDevGraph {
   /** Specifiers per importer id `resolution` holds from Bun's runtime resolver rather than the browser build. */
   runtimeResolved?: Record<string, string[]>;
   pending: string[];
-  /** Where a build worker's failed round failed, by id and hash: a root handed to it waits until one of them changes. */
-  failed?: Record<string, string>;
+  /** A build worker's failed round: the ids it built, and the files it failed in or named, by hash. */
+  failed?: { roots: string[]; files: Record<string, string> };
   /** The stamp of the signal and dictionary sources the last whole build inlined; see `RegistryMetadataFingerprint`. */
   metadata?: string;
 }

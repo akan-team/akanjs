@@ -1,3 +1,4 @@
+import path from "node:path";
 import { Logger } from "akanjs/common";
 import type { BuilderMessage, BuilderMetrics, BuildPhase, ChangeBatch, DevBuildStatus } from "akanjs/server";
 import type { App } from "../commandDecorators";
@@ -1073,12 +1074,14 @@ export class AkanAppHost {
     const generation = message.devPlan?.generation ?? message.generation ?? this.#nextBackendBuildStatusGeneration();
     const detail = err instanceof Error ? err.message : String(err);
     this.logger.warn(`[dev-host] ${kind.toLowerCase()} restart failed generation=${generation}: ${detail}`);
+    const names = message.files.slice(0, 3).map((file) => path.basename(file));
+    const saved = names.length > 0 ? names.join(", ") : "the changed file";
     const status: DevBuildStatus = {
       generation,
       phase: "scan",
       ok: false,
       files: message.files,
-      message: `${kind} change failed to apply; recovering the dev server automatically: ${detail}`,
+      message: `${kind} change failed to apply: ${detail}. The dev server keeps running on the previous ${kind.toLowerCase()}; once it is fixed, save ${saved} again or restart the dev server to apply it.`,
     };
     this.#recordBuildStatus(status);
     this.#sendOrQueueBuildStatus(status);
