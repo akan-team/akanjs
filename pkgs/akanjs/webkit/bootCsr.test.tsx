@@ -250,4 +250,33 @@ describe("bootCsr", () => {
     expect(window.location.pathname).toBe("/en/inbox");
     expect(window.location.search).toBe("?tab=1");
   });
+
+  test("replacePages rebuilds the route table in place, and refuses another set of routes", async () => {
+    installWindow({ href: "https://example.test/en/home" });
+    const { bootCsr, replacePages } = await import("./bootCsr");
+    const { CsrRouteTable } = await import("./CsrRouteTable");
+    const [index, first, second] = [() => null, () => null, () => null];
+    await bootCsr({ "./_index.tsx": async () => ({ default: index }), "./home.tsx": async () => ({ default: first }) });
+    const table = CsrRouteTable.active;
+    let published = 0;
+    table?.subscribe(() => {
+      published += 1;
+    });
+    const renders = () => table?.snapshot().pathRoutes.map((pathRoute) => pathRoute.renderPage.render) ?? [];
+    expect(renders()).toContain(first);
+
+    expect(
+      await replacePages({
+        "./home.tsx": async () => ({ default: second }),
+        "./_index.tsx": async () => ({ default: index }),
+      }),
+    ).toBe(true);
+    expect(renders()).toContain(second);
+    expect(renders()).not.toContain(first);
+    expect(published).toBe(1);
+
+    expect(await replacePages({ "./_index.tsx": async () => ({ default: index }) })).toBe(false);
+    expect(renders()).toContain(second);
+    expect(published).toBe(1);
+  });
 });

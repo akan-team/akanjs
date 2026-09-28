@@ -8,6 +8,7 @@ import {
   debugFrame,
   defaultPageState,
   getPathInfo,
+  type Location,
   type LocationState,
   type NavigationIntent,
   type PageState,
@@ -22,6 +23,7 @@ import {
 } from "akanjs/client";
 import { clamp, parseAkanI18nEnv, parseBasePaths } from "akanjs/common";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { CsrStack } from "./CsrStack";
 import { NativeNavigation } from "./nativeNavigation";
 import {
   createFrameSnapshot,
@@ -183,7 +185,7 @@ const usePlayOnForward = (
       void transUnit.start(transUnitRange[0], { immediate: true });
       void transUnit.start(transUnitRange[1], { config });
     } else void transUnit.start(transUnitRange[1], { immediate: true });
-  }, [location.pathname]);
+  }, [location.entryId ?? location.pathname]);
 };
 
 const useNoneTrans = (routeState: RouteState): UseCsrTransition => {
@@ -664,6 +666,16 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
   const resolvedLocation = resolveLocationWithFrameState(location, resolvedPathRouteMap) ?? location;
   const resolvedPrevLocation = resolveLocationWithFrameState(prevLocation, resolvedPathRouteMap);
   const resolvedPendingLocation = resolveLocationWithFrameState(pendingLocation, resolvedPathRouteMap);
+  const stackEntries = CsrStack.entriesOf({
+    history: history.current,
+    location,
+    prevLocation,
+    pendingLocation,
+    phase,
+  }).map((entry) => ({
+    ...entry,
+    location: resolveLocationWithFrameState(entry.location, resolvedPathRouteMap) ?? entry.location,
+  }));
   const platformProfile = getFramePlatformProfile();
   const accessoryHeight = resolveKeyboardAccessoryHeight(resolvedLocation.pathRoute.path, frameSlots);
   const shouldAnchorContentBottom = hasBottomAnchoredKeyboardSlot(resolvedLocation.pathRoute.path, frameSlots);
@@ -821,16 +833,23 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
   const runForwardNavigation = useCallback(
     (kind: "push" | "replace", href: string, { scrollToTop }: RouteOptions = {}) => {
       const fromLocation = getCurrentLocation();
-      const toLocation = getLocation(href);
+      const target = getLocation(href);
+      //? A replace within one route rewrites the entry it is on, so the page on screen stays mounted.
+      const toLocation =
+        kind === "replace" && target.pathRoute.path === fromLocation.pathRoute.path
+          ? { ...target, entryId: fromLocation.entryId }
+          : target;
       const scrollTop = pageContentRef.current?.scrollTop ?? 0;
       const usePendingNavigation =
-        shouldPrepareFrameTransition(href) && toLocation.pathRoute.pageState.transition !== "none";
+        CsrStack.keyOf(toLocation) !== CsrStack.keyOf(fromLocation) &&
+        shouldPrepareFrameTransition(href) &&
+        toLocation.pathRoute.pageState.transition !== "none";
 
       if (!usePendingNavigation) {
         setHistoryForward({ type: kind, location: toLocation, scrollTop, scrollToTop });
         settle(kind === "replace" ? prevLocation : fromLocation);
-        if (kind === "push") window.history.pushState({}, "", href);
-        else window.history.replaceState({}, "", href);
+        if (kind === "push") window.history.pushState({ akanEntryId: toLocation.entryId }, "", href);
+        else window.history.replaceState({ akanEntryId: toLocation.entryId }, "", href);
         return;
       }
 
@@ -904,8 +923,8 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
           navigationIntent: intent,
           phase: "transitioning",
         });
-        if (kind === "push") window.history.pushState({}, "", href);
-        else window.history.replaceState({}, "", href);
+        if (kind === "push") window.history.pushState({ akanEntryId: toLocation.entryId }, "", href);
+        else window.history.replaceState({ akanEntryId: toLocation.entryId }, "", href);
         debugFrame("navigation.commit", { id: intent.id, kind, to: href });
         window.setTimeout(
           () => {
@@ -991,6 +1010,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
   ]);
   useEffect(() => {
     debugFrame("csr.mount", { path: resolvedLocation.pathRoute.path, viewport });
+    window.history.replaceState({ ...(window.history.state ?? {}), akanEntryId: getCurrentLocation().entryId }, "");
     return () => debugFrame("csr.unmount", { lastPath: resolvedLocation.pathRoute.path });
   }, []);
   const getRouter = useCallback((): RouterInstance => {
@@ -1028,7 +1048,10 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
     };
     window.onpopstate = async () => {
       const href = window.location.href.replace(window.location.origin, "");
-      const routeType = href === getNextLocation()?.href ? "forward" : href === getPrevLocation()?.href ? "back" : null;
+      const entryId = (window.history.state as { akanEntryId?: string } | null)?.akanEntryId;
+      const isAt = (target: Location | null) =>
+        !!target && (entryId ? target.entryId === entryId : target.href === href);
+      const routeType = isAt(getNextLocation()) ? "forward" : isAt(getPrevLocation()) ? "back" : null;
       const scrollTop = pageContentRef.current?.scrollTop ?? 0;
       debugFrame("router.popstate", { href, routeType, scrollTop });
       if (!routeType) return;
@@ -1100,6 +1123,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
     location: resolvedLocation,
     prevLocation: resolvedPrevLocation,
     pendingLocation: resolvedPendingLocation,
+    stackEntries,
     navigationIntent,
     phase,
     history,

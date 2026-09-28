@@ -18,6 +18,7 @@ export interface CsrE2eOptions {
 }
 
 export interface CsrE2ePageContainer {
+  key: string;
   path: string;
   hidden: boolean;
   inert: boolean;
@@ -168,7 +169,8 @@ export class CsrE2eHarness {
   async containers(): Promise<CsrE2ePageContainer[]> {
     return await this.page.evaluate(() =>
       [...document.querySelectorAll<HTMLElement>('[id^="pageContainer-"]')].map((element) => ({
-        path: element.id.slice("pageContainer-".length),
+        key: element.id.slice("pageContainer-".length),
+        path: element.dataset.path ?? element.id.slice("pageContainer-".length),
         hidden: getComputedStyle(element).display === "none",
         inert: element.inert || element.closest("[inert]") !== null,
         ariaHidden: element.closest('[aria-hidden="true"]') !== null,
@@ -201,14 +203,27 @@ export class CsrE2eHarness {
     });
   }
 
-  async text(selector: string) {
+  /** Text of every rendered match; `{ mounted: true }` reads hidden ones too, which is how a parked page is seen. */
+  async text(selector: string, { mounted = false }: { mounted?: boolean } = {}) {
     return await this.page.evaluate(
-      (target) =>
+      (target, all) =>
         [...document.querySelectorAll<HTMLElement>(target)]
-          .filter((element) => element.checkVisibility())
+          .filter((element) => all || element.checkVisibility())
           .map((element) => element.textContent ?? ""),
       selector,
+      mounted,
     );
+  }
+
+  async values(selector: string) {
+    return await this.page.evaluate(
+      (target) => [...document.querySelectorAll<HTMLInputElement>(target)].map((element) => element.value),
+      selector,
+    );
+  }
+
+  async type(selector: string, text: string) {
+    await this.page.type(selector, text);
   }
 
   /** Whether the page reloaded since `open()`: the boot marker lives only in the page `open()` loaded. */

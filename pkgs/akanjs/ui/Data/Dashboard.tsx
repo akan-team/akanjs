@@ -2,7 +2,7 @@
 import { cn, usePage } from "akanjs/client";
 import { fieldQueryMetaOf } from "akanjs/constant";
 import type { QuerySetting, SliceMeta } from "akanjs/fetch";
-import { st } from "akanjs/store";
+import { usePageLocation } from "akanjs/webkit";
 import { useState } from "react";
 
 import { dictLabel, formatStat } from "./dataText";
@@ -40,7 +40,7 @@ export default function Dashboard<T extends string, State>({
   hidePresents,
 }: DashboardProps<T, State>) {
   const { l } = usePage();
-  const searchParams = st.use.searchParams({ agent: false });
+  const { searchParams } = usePageLocation();
   const filter = Array.isArray(searchParams.filter) ? searchParams.filter[0] : searchParams.filter;
   // Seeded from `?filter=` (a link that opens the listing narrowed); clicks then filter in place, not by navigation.
   const [selected, setSelected] = useState(typeof filter === "string" ? filter : undefined);

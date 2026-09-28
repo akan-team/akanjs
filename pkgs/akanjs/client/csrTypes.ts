@@ -224,6 +224,7 @@ export interface Location {
   searchParams: { [key: string]: string | string[] };
   pathRoute: PathRoute;
   hash: string;
+  entryId?: string; // the history entry this location is; a replace within one route keeps it
 }
 export type CsrNavigationPhase = "idle" | "preparing" | "transitioning";
 export type CsrNavigationKind = "push" | "replace" | "back" | "popForward" | "popBack";
@@ -259,12 +260,21 @@ export interface RouterProps {
   back: () => void | Promise<void>;
 }
 
+export type CsrPageType = "current" | "prev" | "pending" | "cached";
+export interface CsrStackEntry {
+  key: string; // the page container's identity: the entry, or the route itself for a `cache` page
+  location: Location;
+  pageType: CsrPageType;
+  zIndex: number;
+}
+
 export interface RouteState {
   clientWidth: number;
   clientHeight: number;
   location: Location;
   prevLocation: Location | null;
   pendingLocation: Location | null;
+  stackEntries: CsrStackEntry[];
   navigationIntent: NavigationIntent | null;
   phase: CsrNavigationPhase;
   history: RefObject<History>;
@@ -298,7 +308,8 @@ export const useCsr = () => {
 };
 
 export interface PathContextType {
-  pageType: "current" | "prev" | "cached" | "pending";
+  pageType: CsrPageType;
+  pageKey?: string;
   location: Location;
   prefix?: string;
   gestureEnabled: boolean;

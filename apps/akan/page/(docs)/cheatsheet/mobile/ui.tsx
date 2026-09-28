@@ -644,8 +644,8 @@ export default page()
                 type: "boolean",
                 default: l.trans({ en: "true at depth ≤ 1, else false", ko: "깊이 ≤ 1이면 true, 그 외 false" }),
                 desc: l.trans({
-                  en: "Keeps the page mounted in a hidden cache layer after you navigate away; its effects stop until it is shown again.",
-                  ko: "다른 화면으로 나가도 페이지를 숨은 캐시 레이어에 마운트된 채로 두며, 다시 보일 때까지 effect는 멈춥니다.",
+                  en: "Keeps one page for the route, mounted in a hidden cache layer after you navigate away; its effects stop until it is shown again.",
+                  ko: "라우트에 페이지 하나를 두고, 다른 화면으로 나가도 숨은 캐시 레이어에 마운트된 채로 둡니다. 다시 보일 때까지 effect는 멈춥니다.",
                 }),
               },
               {
@@ -721,6 +721,28 @@ export default page()
                     <code>usePageFocusEffect</code>로 묶으세요. <code>usePageActivity()</code>는 페이지가{" "}
                     <code>current</code>·<code>prev</code>·<code>pending</code>·<code>hidden</code> 중 어디에 있는지
                     알려 줍니다. 페이지 안 에이전트에는 현재 페이지의 도구와 state만 보입니다.
+                  </>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <>
+                    <strong>Every history entry is a page of its own.</strong> A push to the route you are on mounts a
+                    new page over the old one, which waits under it with its state; a replace within one route updates
+                    the page in place. Below the page a swipe back reveals, three more entries stay mounted and hidden,
+                    and older ones are released — they mount again on back, with their scroll restored. A{" "}
+                    <code>cache</code> route stays one page for the whole session.
+                  </>
+                ),
+                ko: (
+                  <>
+                    <strong>히스토리 항목마다 페이지가 따로 있습니다.</strong> 지금 라우트로 push하면 새 페이지가 기존
+                    페이지 위에 마운트되고, 기존 페이지는 state를 그대로 가진 채 아래에서 기다립니다. 같은 라우트 안의
+                    replace는 페이지를 그 자리에서 갱신합니다. 스와이프 뒤로가기로 드러나는 페이지 아래로 세 항목을 더
+                    숨긴 채 마운트해 두고, 더 오래된 항목은 해제합니다. 해제된 항목은 뒤로 갈 때 다시 마운트되고
+                    스크롤은 복원됩니다. <code>cache</code> 라우트는 세션 내내 페이지 하나로 유지됩니다.
                   </>
                 ),
               })}

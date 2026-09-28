@@ -6,6 +6,8 @@ const TAB_B = "/e2e/stack/tab-b";
 const item = (id: string) => `/e2e/stack/item?id=${id}`;
 
 const routeOf = (pathWithSearch: string) => pathWithSearch.split("?")[0].replace(/^\/[^/]+/, "/:lang");
+const CURRENT = '[id^="pageContainer-"]:not([aria-hidden="true"])';
+const UNDER = '[id^="pageContainer-"][aria-hidden="true"]';
 
 describe.skipIf(!CsrE2eHarness.enabled)("CSR page stack (minimal, /e2e/stack)", () => {
   let csr: CsrE2eHarness;
@@ -19,14 +21,55 @@ describe.skipIf(!CsrE2eHarness.enabled)("CSR page stack (minimal, /e2e/stack)", 
     await csr?.close();
   }, 60_000);
 
-  const visibleItemIds = async () => await csr.text('[data-e2e-probe="item"] [data-e2e="item-id"]');
+  const itemIdsIn = async (scope: string, options?: { mounted?: boolean }) =>
+    await csr.text(`${scope} [data-e2e-probe="item"] [data-e2e="item-id"]`, options);
+  const currentInput = `${CURRENT} [data-e2e-probe="item"] [data-e2e="input"]`;
 
-  test("an entry of the same route shows its own content, not the previous entry's", async () => {
+  test("an entry of the same route is its own page, and the one it covers waits under it with its state", async () => {
     await csr.open(TAB_A);
     await csr.navigate(item("1"));
-    expect(await visibleItemIds()).toEqual(["1"]);
+    await csr.type(currentInput, "first");
     await csr.navigate(item("2"));
-    expect(await visibleItemIds()).toEqual(["2"]);
+    expect(await itemIdsIn(CURRENT)).toEqual(["2"]);
+    expect(await itemIdsIn(UNDER)).toEqual(["1"]);
+    expect(await csr.values(currentInput)).toEqual([""]);
+    await csr.back();
+    expect(await itemIdsIn(CURRENT)).toEqual(["1"]);
+    expect(await csr.values(currentInput)).toEqual(["first"]);
+    expect(await csr.reloaded()).toBe(false);
+  }, 60_000);
+
+  test("the stack keeps three hidden entries under the previous one, releases older ones, and reveals each on back", async () => {
+    await csr.open(TAB_A);
+    for (const id of ["11", "12", "13"]) await csr.navigate(item(id));
+    await csr.type(currentInput, "thirteen");
+    for (const id of ["14", "15", "16"]) await csr.navigate(item(id));
+    expect((await itemIdsIn('[id^="pageContainer-"]', { mounted: true })).sort()).toEqual([
+      "12",
+      "13",
+      "14",
+      "15",
+      "16",
+    ]);
+    for (const expected of ["15", "14", "13"]) {
+      await csr.back();
+      expect(await itemIdsIn(CURRENT)).toEqual([expected]);
+    }
+    expect(await csr.values(currentInput)).toEqual(["thirteen"]);
+    await csr.back();
+    await csr.back();
+    expect(await itemIdsIn(CURRENT)).toEqual(["11"]);
+    expect(await csr.values(currentInput)).toEqual([""]);
+    expect(await csr.reloaded()).toBe(false);
+  }, 90_000);
+
+  test("a replace within one route updates the page in place", async () => {
+    await csr.open(item("21"));
+    await csr.type(currentInput, "kept");
+    await csr.navigate(item("22"), "replace");
+    expect(await itemIdsIn(CURRENT)).toEqual(["22"]);
+    expect(await csr.values(currentInput)).toEqual(["kept"]);
+    expect((await csr.containers()).filter((container) => container.path.endsWith("/item"))).toHaveLength(1);
   }, 60_000);
 
   test("the page the session opened on is cached like any other cached page", async () => {
@@ -68,10 +111,8 @@ describe.skipIf(!CsrE2eHarness.enabled)("CSR page stack (minimal, /e2e/stack)", 
     await csr.navigate(item("5"));
     const current = routeOf(await csr.currentPath());
     const containers = await csr.containers();
-    expect(containers.map((container) => container.path)).toContain(current);
-    expect(containers.map(({ path, inert, ariaHidden }) => ({ path, inert, ariaHidden }))).toEqual(
-      containers.map(({ path }) => ({ path, inert: path !== current, ariaHidden: path !== current })),
-    );
+    expect(containers.filter((container) => !container.inert).map((container) => container.path)).toEqual([current]);
+    expect(containers.every((container) => container.inert === container.ariaHidden)).toBe(true);
   }, 60_000);
 
   test("only the current page offers the agent its tools, not the page kept under it for a swipe back", async () => {

@@ -34,7 +34,7 @@ export const BottomInset = ({
   const pathRoute = pathCtx.location?.pathRoute;
   const path = pathCtx.location?.pathRoute?.path;
   const registerFrameSlot = pathCtx.registerFrameSlot ?? (() => () => undefined);
-  const suffix = getEnv().renderMode === "csr" && path ? `-${path}` : "";
+  const suffix = getEnv().renderMode === "csr" && path ? `-${pathCtx.pageKey ?? path}` : "";
   const frameRole = !role && keyboardSticky ? "keyboardAccessory" : (role ?? "bottomChrome");
   const portalId = frameRole === "keyboardAccessory" ? `keyboardInsetContent${suffix}` : `bottomInsetContent${suffix}`;
   const resolvedEstimatedHeight = estimatedHeight ?? pathRoute?.pageState.bottomInset ?? DEFAULT_BOTTOM_INSET;

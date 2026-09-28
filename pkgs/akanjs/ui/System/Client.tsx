@@ -1,6 +1,7 @@
 "use client";
 import { type ClientEnv, dayjs, getEnv, logo } from "akanjs/base";
 import {
+  type CsrPageType,
   cn,
   Device,
   debugFrame,
@@ -91,7 +92,8 @@ Client.Wrapper = ClientWrapper;
 interface ClientPathWrapperProps extends Omit<HTMLAttributes<HTMLDivElement>, "style"> {
   bind?: () => HTMLAttributes<HTMLDivElement>;
   wrapperRef?: RefObject<HTMLDivElement | null> | null;
-  pageType?: "current" | "prev" | "cached" | "pending";
+  pageType?: CsrPageType;
+  pageKey?: string;
   activity?: PageActivity;
   location?: Location;
   initialHref?: string;
@@ -112,6 +114,7 @@ export const ClientPathWrapper = ({
   bind,
   wrapperRef,
   pageType = "current",
+  pageKey,
   activity = "current",
   location,
   initialHref,
@@ -167,6 +170,7 @@ export const ClientPathWrapper = ({
     <pathContext.Provider
       value={{
         pageType,
+        pageKey,
         location: {
           href,
           hash,

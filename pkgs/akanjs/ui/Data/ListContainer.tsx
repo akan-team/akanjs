@@ -13,7 +13,7 @@ import {
 import { type BaseInsight, ConstantRegistry, labelOf } from "akanjs/constant";
 import type { FetchInitForm, QuerySetting, SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
-import { useScreenScope } from "akanjs/webkit";
+import { usePageLocation, useScreenScope } from "akanjs/webkit";
 import { type ReactNode, useEffect, useState } from "react";
 import {
   AiOutlineAppstore,
@@ -131,7 +131,7 @@ export default function ListContainer<
   const sortOfModel = storeUse[namesOfSlice.sortOfModel]() as string;
   const modelInsight = storeUse[namesOfSlice.modelInsight]() as BaseInsight;
   const modelListLoading = storeUse[namesOfSlice.modelListLoading]() as string | boolean;
-  const searchParams = st.use.searchParams({ agent: false });
+  const { searchParams } = usePageLocation();
   const filter = Array.isArray(searchParams.filter) ? searchParams.filter[0] : searchParams.filter;
   const initQuery = query ?? (filter ? queryMap?.[filter] : undefined);
   const queryState = useQueryMaker({ slice, query: initQuery });

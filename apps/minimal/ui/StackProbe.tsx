@@ -13,19 +13,22 @@ interface StackProbeRecord {
   focusCount: number;
 }
 
+const emptyRecord = (): StackProbeRecord => ({
+  renders: 0,
+  ticks: 0,
+  mountId: "",
+  mounted: false,
+  activity: "",
+  focused: false,
+  focusCount: 0,
+});
+
 //? The devOnly `/e2e/stack/*` fixture that `pkgs/@akanjs/devkit/csrE2e` reads to tell a paused page from a live one.
 const probeRecordOf = (name: string): StackProbeRecord => {
+  if (typeof window === "undefined") return emptyRecord();
   const host = window as unknown as { __akanE2eProbes?: Record<string, StackProbeRecord> };
   host.__akanE2eProbes ??= {};
-  host.__akanE2eProbes[name] ??= {
-    renders: 0,
-    ticks: 0,
-    mountId: "",
-    mounted: false,
-    activity: "",
-    focused: false,
-    focusCount: 0,
-  };
+  host.__akanE2eProbes[name] ??= emptyRecord();
   return host.__akanE2eProbes[name];
 };
 
