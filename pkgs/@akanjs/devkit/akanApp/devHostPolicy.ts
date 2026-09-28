@@ -7,7 +7,6 @@ import type {
   DevChangePlan,
   DevChangeRole,
 } from "akanjs/server";
-import { DevBuildRecovery } from "akanjs/server/artifact/devBuildRecovery";
 import type { IncrementalBuilderStatus } from "../incrementalBuilder";
 
 const BACKEND_RECOVERY_MAX_ATTEMPTS = 5;
@@ -121,11 +120,18 @@ export const isLegacyBackendFallbackFile = (file: string, workspaceRoot: string)
   );
 };
 
-/** As the backend and the tabs judge it. */
+//? The backend's rule (akanjs `DevBuildRecovery`), copied: no exported akanjs subpath reaches it from the CLI bundle.
 export const shouldMarkBuildPhaseRecovered = (
   previousByPhase: ReadonlyMap<BuildPhase, DevBuildStatus>,
   status: DevBuildStatus,
-): boolean => DevBuildRecovery.recovers(previousByPhase.get(status.phase), status);
+): boolean => {
+  const previous = previousByPhase.get(status.phase);
+  if (!previous || previous.ok || !status.ok) return false;
+  const generation = generationValue(status.generation);
+  if (generation !== previous.generation) return generation > previous.generation;
+  if (status.phase === "backend") return true;
+  return status.phase === "route" && status.scope !== undefined && status.scope === previous.scope;
+};
 
 /** An ok that recovers nothing leaves the failure standing, for hello and for whatever waits on a clean build. */
 export const shouldKeepBuildFailure = (
