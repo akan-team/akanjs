@@ -107,7 +107,14 @@ export class WsClient {
   #connect() {
     if (this.#destroyed) return;
 
-    this.#ws = new WebSocket(this.url);
+    //? The constructor throws only for a URL no retry can fix (a scheme or port the browser refuses), and thrown from
+    //? ClientBridge's effect it unmounts the whole React root; so it is logged, and the page runs without a socket.
+    try {
+      this.#ws = new WebSocket(this.url);
+    } catch (error) {
+      this.logger.error(`Cannot open a WebSocket to ${this.url}: ${error instanceof Error ? error.message : error}`);
+      return;
+    }
     this.#ws.binaryType = "arraybuffer";
     this.#ws.onopen = (e) => {
       this.#reconnectAttempts = 0;

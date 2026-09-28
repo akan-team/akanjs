@@ -14,8 +14,8 @@ export interface LivePlacementProps {
   sorts: { [key: string]: { [path: string]: 1 | -1 } } | undefined;
 }
 
-// Null means refetch. Needs an allowlisted sort (JS and SQL order agree only on real columns), page 1 (a later
-// page's boundary would shift unseen), and every sorted field on the row (a missing one sorts to an end).
+// Null means refetch. Needs an allowlisted sort, page 1 (a later page's boundary would shift unseen), and every sorted
+// field on the row (a missing one has no place).
 export const livePlacementIndex = ({
   list,
   row,
@@ -32,32 +32,57 @@ export const livePlacementIndex = ({
   const sort = sorts?.[sortKey];
   if (!sort || !Object.keys(sort).length) return null;
   const paths = Object.entries(sort);
-  if (paths.some(([path]) => comparableOf(row[path]) === null)) return null;
-  const index = list.findIndex((item) => compareRows(row, item, paths) < 0);
+  if (paths.some(([path]) => comparableOf(row[path]) === undefined)) return null;
+  let orderable = true;
+  const index = list.findIndex((item) => {
+    const order = compareRows(row, item, paths);
+    orderable = order !== null;
+    return order === null || order < 0;
+  });
+  if (!orderable) return null;
   if (index !== -1) return index;
   // Past the rows in hand: a full paged window is followed by the next page, a cumulative list by `hasMore` rows.
   if (cumulative) return hasMore ? null : list.length;
   return list.length < limit ? list.length : null;
 };
 
-const compareRows = (left: LiveSortableRow, right: LiveSortableRow, paths: [string, 1 | -1][]): number => {
+// The order `QueryCompiler.orderBy` asks SQL for: NULL below every value, then `id` in the last key's direction.
+const compareRows = (left: LiveSortableRow, right: LiveSortableRow, paths: [string, 1 | -1][]): number | null => {
   for (const [path, direction] of paths) {
-    const a = comparableOf(left[path]);
-    const b = comparableOf(right[path]);
-    if (a === null || b === null) continue;
-    if (a === b) continue;
-    return (a < b ? -1 : 1) * direction;
+    const order = compareValues(comparableOf(left[path]), comparableOf(right[path]));
+    if (order !== 0) return order === null ? null : order * direction;
   }
-  return 0;
+  const order = compareValues(comparableOf(left.id), comparableOf(right.id));
+  return order === null ? null : order * (paths.at(-1)?.[1] ?? -1);
 };
 
-// Dayjs dates go through `valueOf`: `<` on two objects compares their string forms.
-const comparableOf = (value: unknown): number | string | null => {
-  if (value === null || value === undefined) return null;
+const compareValues = (a: Comparable | undefined, b: Comparable | undefined): number | null => {
+  if (a === undefined || b === undefined) return null;
+  if (a === b) return 0;
+  if (a === null) return -1;
+  if (b === null) return 1;
+  if (typeof a === "string" && typeof b === "string") return compareText(a, b);
+  if (typeof a === "number" && typeof b === "number") return a < b ? -1 : 1;
+  return null;
+};
+
+// SQL compares text as UTF-8 bytes, which is code point order; `<` compares UTF-16 units, putting "😀" below "ｱ".
+const compareText = (a: string, b: string) => {
+  let idx = 0;
+  while (idx < a.length && idx < b.length && a[idx] === b[idx]) idx += 1;
+  return (a.codePointAt(idx) ?? -1) < (b.codePointAt(idx) ?? -1) ? -1 : 1;
+};
+
+type Comparable = number | string | null;
+
+// Undefined when the value has no place in a SQL order. Dayjs dates go through `valueOf`: `<` on two objects compares
+// their string forms.
+const comparableOf = (value: unknown): Comparable | undefined => {
+  if (value === null) return null;
   if (typeof value === "number" || typeof value === "string") return value;
   if (typeof value === "boolean") return value ? 1 : 0;
   if (value instanceof Date) return value.getTime();
-  const valued: unknown = (value as { valueOf?: () => unknown }).valueOf?.();
+  const valued: unknown = (value as { valueOf?: () => unknown } | undefined)?.valueOf?.();
   if (typeof valued === "number" || typeof valued === "string") return valued;
-  return null;
+  return undefined;
 };

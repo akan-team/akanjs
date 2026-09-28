@@ -750,6 +750,8 @@ export class AkanApp {
   async #proxyHttp(req: Request, server: Bun.Server<GatewayWsData>): Promise<Response> {
     const child = await this.#pickReadyFederationChild(req);
     if (!child?.upstream || child.upstream.type !== "unix") return this.#respondWithUnavailable(req);
+    // Read once: a concurrent request's failure can clear `child.upstream` while this one awaits the child.
+    const { socketPath } = child.upstream;
     const url = new URL(req.url);
     const upstreamUrl = `http://akan-child${url.pathname}${url.search}`;
     const headers = makeAkanChildProxyHeaders(req, child.idx, server.requestIP(req));
@@ -759,7 +761,7 @@ export class AkanApp {
     const hopStart = traced ? performance.now() : 0;
     try {
       const upstreamRes = await fetch(upstreamUrl, {
-        unix: child.upstream.socketPath,
+        unix: socketPath,
         method: req.method,
         headers,
         body: req.method === "GET" || req.method === "HEAD" ? undefined : req.body,
@@ -769,9 +771,7 @@ export class AkanApp {
       return await this.#proxyResponse(req, upstreamRes);
     } catch (error) {
       if (AkanApp.#isUpstreamOpenFailure(error)) {
-        this.logger.error(
-          `Child ${child.idx}/${child.role} upstream is unreachable (${child.upstream.socketPath}); restarting`,
-        );
+        this.logger.error(`Child ${child.idx}/${child.role} upstream is unreachable (${socketPath}); restarting`);
         this.#scheduleChildRestart(child, child.proc, "upstream-open-failed");
         return AkanApp.#unavailableResponse(req, "Federation child upstream is unreachable; restarting");
       }

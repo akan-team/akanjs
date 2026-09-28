@@ -211,9 +211,9 @@ export default page().render(() => {
     },
     {
       permission: "contacts",
-      plugin: l.trans({ en: "None yet: the app ships without it", ko: "아직 없음. 없이 빌드됩니다" }),
-      ios: l.trans({ en: "What a lib's plugin declares", ko: "lib 플러그인이 선언한 것" }),
-      android: l.trans({ en: "What a lib's plugin declares", ko: "lib 플러그인이 선언한 것" }),
+      plugin: l.trans({ en: "`contacts` (read-only)", ko: "`contacts` (읽기 전용)" }),
+      ios: l.trans({ en: "Contacts usage text", ko: "연락처 사용 안내 문구" }),
+      android: "`READ_CONTACTS`",
     },
     {
       permission: "location",
@@ -1024,8 +1024,8 @@ export default config;`}
           </Docs.SubSubTitle>
           <div>
             {l.trans({
-              en: "A permission brings the feature's plugin and writes its native settings on the next run. For contacts and speech the runtime has no plugin yet: the build says so and ships without it, and a lib that claims the permission adds only its own entries.",
-              ko: "권한을 적으면 다음 실행 때 그 기능의 플러그인이 들어가고 네이티브 설정이 쓰입니다. 연락처와 음성은 런타임에 아직 플러그인이 없어, 빌드가 그렇게 알리고 없이 빌드합니다. 그 권한을 맡은 lib는 자기 항목만 더합니다.",
+              en: "A permission brings the feature's plugin and writes its native settings on the next run. For speech the runtime has no plugin yet: the build says so and ships without it, and a lib that claims the permission adds only its own entries.",
+              ko: "권한을 적으면 다음 실행 때 그 기능의 플러그인이 들어가고 네이티브 설정이 쓰입니다. 음성은 런타임에 아직 플러그인이 없어, 빌드가 그렇게 알리고 없이 빌드합니다. 그 권한을 맡은 lib는 자기 항목만 더합니다.",
             })}
           </div>
           <Docs.Table

@@ -1,9 +1,9 @@
 "use client";
 import { usePage } from "@libs/util/client";
-import { useCamera } from "@libs/util/webkit";
 import { cn, Device } from "akanjs/client";
 import type { ProtoLightFile } from "akanjs/constant";
 import { BottomSheet, type BottomSheetRef, Image } from "akanjs/ui";
+import { useCamera } from "akanjs/webkit";
 import { type ChangeEvent, useRef, useState } from "react";
 import { AiFillFileImage, AiFillFileText, AiOutlineDelete, AiOutlineLoading } from "react-icons/ai";
 import { GiFiles } from "react-icons/gi";

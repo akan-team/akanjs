@@ -36,10 +36,12 @@ export class QueryCompiler {
     return { where: compiled.sql || "1 = 1", params: compiled.params, joins };
   }
 
+  // Rows the keys tie on would come back in plan order, which varies per query: a row repeats or vanishes across
+  // `loadMore` pages, and a live client has no order to reproduce. `id` last, in the last key's direction, settles it.
   orderBy(sort: Record<string, 1 | -1> = { createdAt: -1 }) {
-    return Object.entries(sort)
-      .map(([path, direction]) => this.dialect.orderTerm(this.fieldExpr(path), direction))
-      .join(", ");
+    const terms = Object.entries(sort);
+    if (!terms.some(([path]) => path === "id")) terms.push(["id", terms.at(-1)?.[1] ?? -1]);
+    return terms.map(([path, direction]) => this.dialect.orderTerm(this.fieldExpr(path), direction)).join(", ");
   }
 
   fieldExpr(path: string) {

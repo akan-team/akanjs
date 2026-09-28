@@ -1,0 +1,22 @@
+{
+  "id": "contacts",
+  "apiVersion": 1,
+  "methods": ["checkPermission", "requestPermission", "getContacts"],
+  "events": [],
+  "codegen": true,
+  "web": null,
+  "desktop": null,
+  "ios": {
+    "sources": ["ios/*.swift"],
+    "class": "ContactsPlugin",
+    "frameworks": ["Contacts"],
+    "infoPlist": {
+      "NSContactsUsageDescription": "Read your contacts."
+    }
+  },
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.contacts.ContactsPlugin",
+    "permissions": ["android.permission.READ_CONTACTS"]
+  }
+}

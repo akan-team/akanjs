@@ -1,5 +1,6 @@
 import path from "node:path";
 import { optimize } from "@tailwindcss/node";
+import type { AkanWebConfig } from "akanjs";
 import type { BaseBuildArtifact } from "akanjs/server";
 import { resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import { computeRouteSeedIndex, type RouteSeedIndex, saveRouteSeedIndex } from "../artifact/routeSeedIndex";
@@ -34,6 +35,12 @@ export class SsrBaseArtifactBuilder {
     this.#command = command;
     this.#artifactDir = `${command === "build" ? app.dist.cwdPath : app.cwdPath}/.akan/artifact`;
     this.#absArtifactDir = path.resolve(this.#artifactDir);
+  }
+
+  //? The web router reads this, so `akan start` writes the whole surface: a native shell asks the dev server for the
+  //? CSR page even when the app ships none, and a narrowed dev artifact hands it the SSR page, which cannot run there.
+  static servedWeb(command: "build" | "start", web: AkanWebConfig): AkanWebConfig {
+    return command === "start" ? { ssr: true, csr: true } : web;
   }
 
   async build(): Promise<BuildSsrBaseArtifactResult> {
@@ -77,7 +84,7 @@ export class SsrBaseArtifactBuilder {
       branches: [...akanConfig.branches],
       i18n: akanConfig.i18n,
       imageConfig: akanConfig.images,
-      web: akanConfig.web,
+      web: SsrBaseArtifactBuilder.servedWeb(this.#command, akanConfig.web),
       deepLinkAssociations: Object.values(akanConfig.mobile.targets)
         .filter((target) => (target.deepLinks?.domains?.length ?? 0) > 0)
         .map((target) => ({

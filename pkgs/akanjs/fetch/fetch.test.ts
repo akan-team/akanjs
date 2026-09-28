@@ -1653,6 +1653,16 @@ describe("FetchClient database signal helpers", () => {
 });
 
 describe("WsClient", () => {
+  test("a URL the WebSocket constructor refuses is logged, not thrown into the caller's effect", () => {
+    const client = new WsClient("app://localhost:80/api/ws");
+    const errors: string[] = [];
+    client.logger.error = ((message: string) => errors.push(message)) as typeof client.logger.error;
+
+    expect(() => client.connect()).not.toThrow();
+    expect(errors).toEqual([expect.stringContaining("app://localhost:80/api/ws")]);
+    expect(client.connected).toBe(false);
+  });
+
   test("warns when realtime APIs are used and nothing ever connects", async () => {
     setFakeWebSocket();
     await captureWarnings(async (warnings) => {

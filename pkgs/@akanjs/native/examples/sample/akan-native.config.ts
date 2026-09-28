@@ -24,6 +24,7 @@ const PLUGINS = [
   "secure-storage",
   "biometric",
   "geolocation",
+  "contacts",
   "local-notifications",
   "splash-screen",
   "window-state",

@@ -288,7 +288,16 @@ export type UseCsrTransition = CsrTransitionStyles & {
 };
 
 export type CsrContextType = RouteState & UseCsrTransition;
-export const csrContext = sharedContext<CsrContextType>("csr", {} as unknown as CsrContextType);
+// The web's SSR tree has no CSR shell, so no provider: its refs still exist, empty, as a mounted page's are before commit.
+export const csrContext = sharedContext<CsrContextType>("csr", {
+  history: { current: null },
+  topSafeAreaRef: { current: null },
+  bottomSafeAreaRef: { current: null },
+  prevPageContentRef: { current: null },
+  pageContentRef: { current: null },
+  frameRootRef: { current: null },
+  onBack: { current: {} },
+} as unknown as CsrContextType);
 export const useCsr = () => {
   const contextValues = useContext(csrContext);
   return contextValues;

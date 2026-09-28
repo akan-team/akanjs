@@ -21,6 +21,7 @@ import { biometric } from "@akanjs/native/plugins/biometric";
 import { browser } from "@akanjs/native/plugins/browser";
 import { camera } from "@akanjs/native/plugins/camera";
 import { clipboard } from "@akanjs/native/plugins/clipboard";
+import { contacts } from "@akanjs/native/plugins/contacts";
 import { device } from "@akanjs/native/plugins/device";
 import { dialog } from "@akanjs/native/plugins/dialog";
 import { dock } from "@akanjs/native/plugins/dock";
@@ -971,6 +972,25 @@ export async function runSelftest(): Promise<{ pass: boolean; platform: string; 
       "bad timeout",
     );
     return `${p.location}${p.precise === null ? "" : p.precise ? ", precise" : ", approximate"} (${geolocation.implementation("getCurrentPosition")})`;
+  });
+
+  await check("contacts", async () => {
+    if (!contacts.isSupported("checkPermission")) {
+      assert(isAkanNativeError(await rejects(contacts.checkPermission()), "UNSUPPORTED"), "expected UNSUPPORTED");
+      return "UNSUPPORTED";
+    }
+    const { contacts: state } = await contacts.checkPermission();
+    assert(["granted", "denied", "prompt", "prompt-with-rationale"].includes(state), `state ${state}`);
+    // Reads only when granted outside the app (simctl privacy, pm grant): asking would stop the run at the prompt.
+    if (state !== "granted") return state;
+    const { contacts: book } = await contacts.getContacts();
+    assert(
+      book.every((c) => typeof c.id === "string" && Array.isArray(c.phones) && c.phones.every((p) => !!p.number)),
+      "shape",
+    );
+    const { contacts: phonesOnly } = await contacts.getContacts({ projection: { name: false } });
+    assert(phonesOnly.length === book.length && phonesOnly.every((c) => c.name === null), "name left out");
+    return `${book.length} contacts, ${book.reduce((n, c) => n + c.phones.length, 0)} phones`;
   });
 
   await check("local-notifications", async () => {

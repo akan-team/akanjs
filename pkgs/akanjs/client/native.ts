@@ -6,6 +6,7 @@ export { AkanNativeError, fileBlob, releaseFile } from "@akanjs/native/core";
 export { app } from "@akanjs/native/plugins/app";
 export { appState } from "@akanjs/native/plugins/app-state";
 export type { Photo } from "@akanjs/native/plugins/camera";
+export type { Contact } from "@akanjs/native/plugins/contacts";
 export type { DeviceInfo } from "@akanjs/native/plugins/device";
 export { device } from "@akanjs/native/plugins/device";
 export { dialog } from "@akanjs/native/plugins/dialog";
@@ -26,6 +27,7 @@ export { browser, opener };
 
 //* Kept out of the page's first chunk: a photo is re-encoded in the page on the web, and few screens ask for any.
 export const loadCamera = () => import("@akanjs/native/plugins/camera");
+export const loadContacts = () => import("@akanjs/native/plugins/contacts");
 export const loadGeolocation = () => import("@akanjs/native/plugins/geolocation");
 export const loadIap = () => import("@akanjs/native/plugins/iap");
 

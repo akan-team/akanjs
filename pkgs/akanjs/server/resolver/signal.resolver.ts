@@ -5,6 +5,7 @@ import {
   type Cls,
   ENDPOINT_META,
   FIELD_META,
+  Float,
   getEnv,
   ID,
   INTERNAL_META,
@@ -14,7 +15,7 @@ import {
   SLICE_META,
 } from "akanjs/base";
 import { capitalize, cookieHeaderHasAuthToken, Logger } from "akanjs/common";
-import { deserialize, resolvePageLimit, resolvePageSkip, serialize } from "akanjs/constant";
+import { type ConstantField, deserialize, resolvePageLimit, resolvePageSkip, serialize } from "akanjs/constant";
 import { baseDocumentColumns, documentQueryHelper, getFilterSortByKey, type QueryFieldMap } from "akanjs/document";
 import {
   type AkanJob,
@@ -479,9 +480,12 @@ export class SignalResolver {
     }) {}
     return SliceEndpoint;
   }
-  // A `_doc` sort only warns: the dialects order JSON fields differently, so whether that matters is the author's call.
+  // A client places a row as SQLite and Postgres order these, NULL included; any other value is ordered by each
+  // dialect's own JSON rules. That only warns, since whether it matters is the author's call.
+  static readonly #clientOrderableTypes = new Set<unknown>([Int, Float, String, ID, Boolean, Date]);
   static #assertLiveSort(refName: string, key: string, sliceInfo: SliceInfo) {
-    const lightFields = (sliceInfo.light as unknown as { [FIELD_META]?: Record<string, unknown> })[FIELD_META] ?? {};
+    const lightFields =
+      (sliceInfo.light as unknown as { [FIELD_META]?: Record<string, ConstantField> })[FIELD_META] ?? {};
     for (const sortKey of sliceInfo.liveOption?.sort ?? []) {
       const sort = getFilterSortByKey(sliceInfo.filter, sortKey);
       if (!sort)
@@ -493,9 +497,12 @@ export class SignalResolver {
             `Live slice "${refName}.${key}" declares sort "${sortKey}" on "${path}", which is not in ` +
               `Light${capitalize(refName)}. A subscriber cannot order by a field it never receives.`,
           );
+        const { modelRef, isArray, isMap } = lightFields[path].getProps();
+        if (!isArray && !isMap && SignalResolver.#clientOrderableTypes.has(modelRef)) continue;
         SignalResolver.logger.warn(
-          `Live slice "${refName}.${key}" sorts by "${path}", which is stored inside the document rather than in a ` +
-            `column. SQLite and Postgres order those differently, so a client placing a row may disagree with the server.`,
+          `Live slice "${refName}.${key}" sorts "${sortKey}" by "${path}", which is not an Int, Float, String, ID, ` +
+            `Boolean or Date field, so a client placing a new row may disagree with the server. Sort by one of ` +
+            `those, or leave "${sortKey}" out of .live({ sort }) so the list refetches when a row arrives.`,
         );
       }
     }

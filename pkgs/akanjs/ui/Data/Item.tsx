@@ -1,5 +1,5 @@
 "use client";
-import type { Dayjs } from "akanjs/base";
+import { type Dayjs, dayjs } from "akanjs/base";
 import { cn, type DataAction, type DataColumn, usePage } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import type { BaseObject } from "akanjs/constant";
@@ -15,6 +15,10 @@ import { Popconfirm } from "../Popconfirm";
 import { RecentTime } from "../RecentTime";
 import { dictLabel, formatCell } from "./dataText";
 
+// By the value, not the column name: a date field under any name is a Dayjs, which React refuses as a child.
+const renderCell = (value: unknown) =>
+  value instanceof Date || dayjs.isDayjs(value) ? <RecentTime date={value} /> : formatCell(value);
+
 export const convToAntdColumn = (column: DataColumn<any>) => {
   if (typeof column !== "string")
     return {
@@ -22,7 +26,7 @@ export const convToAntdColumn = (column: DataColumn<any>) => {
       dataIndex: column.key as string,
       title: capitalize(column.key as string),
       responsive: column.responsive ? (["md", "lg", "xl"] as const) : undefined,
-      render: column.render,
+      render: column.render ?? renderCell,
     };
   else if (
     [
@@ -62,7 +66,7 @@ export const convToAntdColumn = (column: DataColumn<any>) => {
       title: capitalize(column),
       render: (role: string) => <RoleTags role={role} />,
     };
-  else return { key: column, dataIndex: column, title: capitalize(column) };
+  else return { key: column, dataIndex: column, title: capitalize(column), render: renderCell };
 };
 
 interface ItemProps<T extends string, Full extends { id: string }, Light extends { id: string }> {

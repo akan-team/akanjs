@@ -37,7 +37,7 @@ export class NativeConfig {
     "secure-storage",
     "haptics",
   ] as const;
-  //* Used when no plugin of the app or its libs claims the permission; contacts and speech have no native plugin yet.
+  //* Used when no plugin of the app or its libs claims the permission; speech has no native plugin yet.
   static readonly builtinContributions: { [permission in MobilePermission]: AkanPluginNativeConfig } = {
     camera: {
       permission: "camera",
@@ -48,7 +48,13 @@ export class NativeConfig {
         photoUsageDescription: "$(PRODUCT_NAME) requires access to the photo library to take photos.",
       },
     },
-    contacts: { permission: "contacts" },
+    contacts: {
+      permission: "contacts",
+      plugins: ["contacts"],
+      usageDescriptions: {
+        contactsUsageDescription: "$(PRODUCT_NAME) requires access to the contacts to find people you know.",
+      },
+    },
     location: {
       permission: "location",
       plugins: ["geolocation"],

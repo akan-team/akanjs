@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { dayjs } from "akanjs/base";
-import { livePlacementIndex } from "./liveInsert";
+import { type LiveSortableRow, livePlacementIndex } from "./liveInsert";
 
 const sorts = { latest: { createdAt: -1 as const }, oldest: { createdAt: 1 as const }, byAt: { at: 1 as const } };
 const row = (id: string, at: number) => ({ id, createdAt: dayjs(at), at });
@@ -58,11 +58,49 @@ describe("livePlacementIndex", () => {
 
   test("a row missing the sorted field refuses to guess", () => {
     expect(place({ row: { id: "new" } })).toBeNull();
-    expect(place({ row: { id: "new", createdAt: null } })).toBeNull();
+    expect(place({ row: { id: "new", createdAt: { at: 1 } } })).toBeNull();
   });
 
-  test("ties keep the incoming row after the rows already placed", () => {
-    expect(place({ row: row("new", 200) })).toBe(2);
+  test("ties break by id in the direction of the last sort key, as the server's ORDER BY does", () => {
+    expect(place({ row: row("bz", 200) })).toBe(1);
+    expect(place({ row: row("a0", 200) })).toBe(2);
+    expect(place({ row: row("bz", 200), sortKey: "oldest", allowedSorts: ["oldest"], list: [...list].reverse() })).toBe(
+      2,
+    );
+  });
+
+  test("null sorts below every value: last when descending, first when ascending", () => {
+    const byScore = { desc: { score: -1 as const }, asc: { score: 1 as const } };
+    const scored = (id: string, score: number | null) => ({ id, score });
+    const at = (sortKey: "desc" | "asc", items: LiveSortableRow[], score: number | null) =>
+      place({ list: items, row: scored("new", score), sortKey, allowedSorts: [sortKey], sorts: byScore });
+    const descending = [scored("a", 0.5), scored("b", 0.2), scored("c", null)];
+    expect(at("desc", descending, 0.1)).toBe(2);
+    expect(at("desc", descending, null)).toBe(2);
+    const ascending = [scored("c", null), scored("b", 0.2), scored("a", 0.5)];
+    expect(at("asc", ascending, 0.1)).toBe(1);
+    expect(at("asc", ascending, null)).toBe(1);
+  });
+
+  test("strings order by code point, as SQL's byte order does, not by UTF-16 unit", () => {
+    const byName = { name: { name: 1 as const } };
+    const named = [
+      { id: "a", name: "B" },
+      { id: "b", name: "a" },
+      { id: "c", name: "ｱ" },
+      { id: "d", name: "😀" },
+    ];
+    const at = (name: string) =>
+      place({ list: named, row: { id: "new", name }, sortKey: "name", allowedSorts: ["name"], sorts: byName });
+    expect(at("C")).toBe(1);
+    expect(at("😁")).toBe(4);
+    expect(at("ｲ")).toBe(3);
+  });
+
+  test("a row that would pass a value it cannot order refuses to guess", () => {
+    const odd = [row("c", 300), { id: "b", createdAt: { at: 200 } }, row("a", 100)];
+    expect(place({ list: odd, row: row("new", 400) })).toBe(0);
+    expect(place({ list: odd, row: row("new", 250) })).toBeNull();
   });
 
   test("a multi-field sort falls through to the next field", () => {

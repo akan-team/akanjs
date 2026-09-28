@@ -408,7 +408,8 @@ Expo SDK는 클론하지 않았다. Expo에만 있는 기능에는 †를 붙였
 | `biometric` | P2 ✓ | `isAvailable() → { available, type: face \| fingerprint \| iris \| none, deviceCredential }`, `authenticate({ reason })` | – | – | ✓ | ✓ |
 | `nfc` | P3 | `scan`, `write` | – | – | ✓ | ✓ |
 | `bluetooth` | P3 | BLE scan·connect·read·write | △ | ✓ | ✓ | ✓ |
-| `contacts`†, `calendar`† | P3 | 읽기·추가 | – | ✓ | ✓ | ✓ |
+| `contacts`† | P3 ✓(읽기) | `checkPermission`·`requestPermission` → `{ contacts }`, `getContacts({ projection: { name, phones } }) → { contacts: [{ id, name, phones: [{ number, label }] }] }` | – | – | ✓ | ✓ |
+| `calendar`† | P3 | 읽기·추가 | – | ✓ | ✓ | ✓ |
 
 - **geolocation**
   - WebView의 `navigator.geolocation`
@@ -421,6 +422,10 @@ Expo SDK는 클론하지 않았다. Expo에만 있는 기능에는 †를 붙였
 - **biometric**
   - iOS·macOS: `LAContext`. `NSFaceIDUsageDescription`이 필요하다. 시뮬레이터에서는 Features > Face ID로 시험한다.
   - Android: 프레임워크 `BiometricPrompt`를 쓴다. Tauri는 androidx.biometric을 쓴다.
+- **contacts**: 읽기만 한다. 추가와 macOS는 아직이다.
+  - iOS: `CNContactStore`. `NSContactsUsageDescription`이 필요하다. iOS 18의 제한 접근은 `granted`로 알리고, 사용자가 공유한 연락처만 읽힌다.
+  - Android: `ContactsContract`와 `READ_CONTACTS`. 연락처와 전화번호를 두 번의 쿼리로 읽어 메모리에서 합친다.
+  - 번호는 주소록에 적힌 그대로다(정규화하지 않는다).
 - **nfc**: iOS CoreNFC는 entitlement와 실기기가 필요하다. Android는 `android.nfc`를 쓴다.
 - **센서**: 웹 표준(devicemotion)으로 충분하다. Capacitor motion도 순수 JS다. iOS에서는 사용자 제스처 안에서 `DeviceMotionEvent.requestPermission()`을 불러야 한다.
 

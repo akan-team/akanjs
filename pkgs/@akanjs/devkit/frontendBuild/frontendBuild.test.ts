@@ -13,7 +13,7 @@ import { HmrChangeClassifier } from "./hmrChangeClassifier";
 import { PagesBundleBuilder } from "./pagesBundleBuilder";
 import { PagesEntrySourceGenerator } from "./pagesEntrySourceGenerator";
 import { RoutesManifestArtifactSerializer } from "./routesManifestArtifactSerializer";
-import { prepareCssAsset } from "./ssrBaseArtifactBuilder";
+import { prepareCssAsset, SsrBaseArtifactBuilder } from "./ssrBaseArtifactBuilder";
 
 const makeTempRoot = tempDirs("akan-devkit-frontend-");
 
@@ -252,6 +252,16 @@ describe("CsrArtifactBuilder", () => {
 });
 
 describe("SsrBaseArtifactBuilder", () => {
+  test("a dev artifact serves every web surface, and a build the one akan.config.ts keeps", () => {
+    for (const web of [
+      { ssr: true, csr: false },
+      { ssr: false, csr: false },
+    ]) {
+      expect(SsrBaseArtifactBuilder.servedWeb("start", web)).toEqual({ ssr: true, csr: true });
+      expect(SsrBaseArtifactBuilder.servedWeb("build", web)).toEqual(web);
+    }
+  });
+
   test("minifies CSS assets only for production builds", async () => {
     const css = [
       ".card {",

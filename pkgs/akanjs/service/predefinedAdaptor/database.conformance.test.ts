@@ -251,6 +251,25 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(titlesOf(await store.find({}, { sort: { note: 1 } }))).toEqual(["none", "a", "b"]);
     });
 
+    test("a descending sort puts a missing value last", async () => {
+      await store.create({ title: "b", note: "b" });
+      await store.create({ title: "none" });
+      await store.create({ title: "a", note: "a" });
+      expect(titlesOf(await store.find({}, { sort: { note: -1 } }))).toEqual(["b", "a", "none"]);
+    });
+
+    test("rows the sort ties on come back by id in the last key's direction, page after page", async () => {
+      const ids: string[] = [];
+      for (const title of ["t1", "t2", "t3", "t4", "t5"]) ids.push((await store.create({ title, score: 1 })).id);
+      const ascending = [...ids].sort();
+      const paged = async (sort: { [path: string]: 1 | -1 }) => {
+        const pages = await Promise.all([0, 2, 4].map((skip) => store.find({}, { sort, skip, limit: 2 })));
+        return pages.flat().map(({ id }) => id);
+      };
+      expect(await paged({ score: -1 })).toEqual([...ascending].reverse());
+      expect(await paged({ score: 1 })).toEqual(ascending);
+    });
+
     test("[DI-8] strings sort in byte order, capitals first", async () => {
       await store.create({ title: "lower", note: "a" });
       await store.create({ title: "upper", note: "B" });

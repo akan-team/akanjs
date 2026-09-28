@@ -35,7 +35,7 @@ const adminTarget: AkanMobileTargetConfig = {
   version: "2.1.0",
   buildNum: 42,
   assets: { icon: "assets/icon.png", splash: "assets/splash.png" },
-  permissions: ["camera", "location", "contacts"],
+  permissions: ["camera", "location", "contacts", "speech"],
   deepLinks: { domains: ["portal.example"] },
   files: { "android/res/raw/chime.mp3": "assets/chime.mp3" },
   native: {
@@ -85,16 +85,16 @@ describe("NativeConfig.build", () => {
       locales: ["en", "ko"],
     });
 
-    expect(warnings).toEqual(["Permission 'contacts' has no native plugin yet; the app ships without it."]);
+    expect(warnings).toEqual(["Permission 'speech' has no native plugin yet; the app ships without it."]);
     expect(config).toEqual({
       app: { id: "com.portal.admin", name: "Portal Admin", fileName: "portal-admin", version: "2.1.0", build: 42 },
       web: { dir: "/repo/apps/portal/.akan/mobile/admin/web" },
-      plugins: [...NativeConfig.basePlugins, "camera", "geolocation", "iap"],
+      plugins: [...NativeConfig.basePlugins, "camera", "geolocation", "contacts", "iap"],
       capabilities: [
         {
           identifier: "app",
           description: "The plugins Portal Admin ships, each with its default permissions",
-          permissions: [...NativeConfig.basePlugins, "camera", "geolocation", "iap"].map(
+          permissions: [...NativeConfig.basePlugins, "camera", "geolocation", "contacts", "iap"].map(
             (plugin) => `${plugin}:default`,
           ),
         },
@@ -107,6 +107,7 @@ describe("NativeConfig.build", () => {
           "Portal Admin requires access to the location to get the user's location.",
         NSLocationAlwaysUsageDescription: "Portal Admin requires access to the location to get the user's location.",
         NSLocationWhenInUseUsageDescription: "Portal Admin requires access to the location to get the user's location.",
+        NSContactsUsageDescription: "Portal Admin requires access to the contacts to find people you know.",
       },
       deepLinks: { domains: [{ host: "portal.example", pathPrefixes: ["/en/admin", "/ko/admin"] }] },
       native: {

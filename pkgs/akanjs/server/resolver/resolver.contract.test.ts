@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -1291,6 +1291,25 @@ describe("SignalResolver declaration contracts", () => {
     expect(() => SignalResolver.resolveSlice(build(["nope"]))).toThrow(/not one of its arguments/);
     expect(() => SignalResolver.resolveSlice(build(["category"]))).toThrow(/always present/);
     expect(() => SignalResolver.resolveSlice(build(["text"]))).not.toThrow();
+  });
+
+  test("a live sort on a field the client orders as SQL does resolves without a warning", () => {
+    const warn = spyOn(SignalResolver.logger, "warn");
+    try {
+      SignalResolver.resolveSlice(
+        class extends slice(serverResolverTestServiceModel, { guards: { root: Public, get: Public } }, (init) => ({
+          inCategory: init()
+            .param("category", String)
+            .live({ sort: ["titleAsc"] })
+            .exec(function (category) {
+              return this.serverResolverTestItemService.queryInCategory(category);
+            }),
+        })) {},
+      );
+      expect(warn.mock.calls.filter(([message]) => String(message).startsWith("Live slice"))).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   test("refuses a live root slice and a live sort the model does not have", () => {

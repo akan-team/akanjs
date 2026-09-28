@@ -31,6 +31,10 @@ with it. `conventions` carries the invariants — this is the full contract behi
   A model with none renders ids and says so in the picker.
 - A slice's `exec` returns a `QueryOf` (an opaque query descriptor, `pkgs/akanjs/constant/types.ts`); you **cannot** chain `.sort()`/`.limit()` on it.
 - Apply ordering/paging via the store `init` fetch option instead: `initX(..., { sort, page, limit })` (`pkgs/akanjs/fetch/fetchType/sliceFetch.type.ts`).
+- **Every sort ends with `id`, in the direction of its last key, and a missing value sorts below every other** —
+  first ascending, last descending, in every database mode and in the client placing a live row. Rows the declared
+  keys tie on (a midpoint priority dragged into one gap until the float runs out, two rows saved in one millisecond)
+  therefore keep one order across `loadMoreOf<Model>()` pages and live insertions.
 - **A slice list is either one window or an accumulated one, and the store says which.** `setPageOf<Model>` swaps
   the window and `pageOf<Model>` names it; `loadMoreOf<Model>()` appends the rows *after* the ones already loaded
   and takes no page number, because in an accumulated list no page number names anything. It skips by
