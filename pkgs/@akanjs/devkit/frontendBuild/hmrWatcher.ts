@@ -40,7 +40,7 @@ export class HmrWatcher {
 
   constructor(opts: WatcherOptions) {
     this.#roots = [...new Set(opts.roots.map((r) => path.resolve(r)))];
-    this.#debounceMs = opts.debounceMs ?? HmrWatcher.#envDebounceMs() ?? 80;
+    this.#debounceMs = opts.debounceMs ?? HmrWatcher.#envDebounceMs() ?? 30;
     this.#verifyDelayMs = opts.verifyDelayMs ?? 250;
     this.#onBatch = opts.onBatch;
     this.#logger = opts.logger;
