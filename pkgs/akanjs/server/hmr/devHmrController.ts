@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { Logger } from "akanjs/common";
 import {
@@ -10,23 +11,11 @@ import {
 } from "../artifact";
 import type { RscWorker } from "../rscWorkerHost";
 import type { RenderState } from "../types";
+import { CSR_DEV_DIRNAME, CSR_DEV_MANIFEST_FILE, type CsrDevManifest } from "./csrDevManifest";
+import { isAkanRuntimeMetadataFile } from "./runtimeMetadataFile";
 import { type ChangeKind, type HmrMessage, type HmrWsData, HmrWsHub } from "./wsHub";
 
-const APP_RUNTIME_METADATA_BASENAMES = new Set(["dict.ts", "sig.ts", "useClient.ts"]);
-
-export function isAkanRuntimeMetadataFile(file: string): boolean {
-  const resolved = path.resolve(file);
-  const parts = resolved.split(/[\\/]+/).filter(Boolean);
-  const base = parts.at(-1);
-  if (!base) return false;
-
-  const parent = parts.at(-2);
-  if (parent === "lib" && APP_RUNTIME_METADATA_BASENAMES.has(base)) return true;
-
-  const libIndex = parts.lastIndexOf("lib");
-  if (libIndex < 0 || parts.length <= libIndex + 1) return false;
-  return base.endsWith(".dictionary.ts") || base.endsWith(".signal.ts");
-}
+export { isAkanRuntimeMetadataFile };
 
 export function manifestClientEntriesForFiles(
   files: string[],
@@ -109,8 +98,22 @@ export class DevHmrController {
     this.#seedIndex = seedIndex;
     this.#graphSeeds = DevHmrController.#graphSeedsOf(seedIndex);
     this.#upgradeHmrWs = upgradeHmrWs;
+    this.#renderState.csrGeneration ??= DevHmrController.#readCsrGeneration(artifactDir);
     this.#builderRpc = this.#createBuilderRpc();
     this.routeCache = this.#createRouteCache();
+  }
+
+  // A restarted backend must still tell an open CSR tab which generation is current, before any new build lands.
+  static #readCsrGeneration(artifactDir: string): number | undefined {
+    try {
+      const manifest = JSON.parse(
+        fs.readFileSync(path.join(artifactDir, CSR_DEV_DIRNAME, CSR_DEV_MANIFEST_FILE), "utf8"),
+      ) as Partial<CsrDevManifest>;
+      return typeof manifest.generation === "number" ? manifest.generation : undefined;
+    } catch {
+      // No registry bundle has been built yet.
+      return undefined;
+    }
   }
 
   get hub(): HmrWsHub {
@@ -126,7 +129,8 @@ export class DevHmrController {
   }
 
   handleWs(req: Request): Response | undefined {
-    if (this.#upgradeHmrWs(req, { kind: "akan-hmr", openedAt: Date.now() })) return;
+    const client = new URL(req.url).searchParams.get("client") === "csr" ? "csr" : "ssr";
+    if (this.#upgradeHmrWs(req, { kind: "akan-hmr", openedAt: Date.now(), client })) return;
     return new Response("Failed to upgrade HMR WebSocket", { status: 500 });
   }
 
@@ -196,6 +200,20 @@ export class DevHmrController {
       },
       onBuildStatus: (status) => {
         this.#recordBuildStatus(status);
+      },
+      onCsrUpdated: (update) => {
+        this.#renderState.csrGeneration = update.generation;
+        this.#hub.broadcast({
+          type: "csr-update",
+          generation: update.generation,
+          url: update.patchUrl,
+          changedIds: update.changedIds,
+          reload: update.reload,
+          reason: update.reason,
+        });
+        this.#logger.verbose(
+          `[csr] ${update.mode} generation=${update.generation} ${update.reload ? `reload (${update.reason ?? "no reason"})` : `patch modules=${update.changedIds?.length ?? 0}`}`,
+        );
       },
       onCssUpdated: (css) => {
         const started = Date.now();

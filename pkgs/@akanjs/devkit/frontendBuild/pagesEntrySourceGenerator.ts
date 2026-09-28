@@ -4,6 +4,7 @@ import { AsyncDefaultExportDetector } from "../transforms/asyncDefaultExportDete
 
 export class PagesEntrySourceGenerator {
   #pageEntries: PageEntry[];
+  readonly #asyncDefaults = new Map<string, Promise<boolean>>();
 
   constructor(pageEntries: PageEntry[]) {
     this.#pageEntries = pageEntries;
@@ -21,25 +22,67 @@ export class PagesEntrySourceGenerator {
     return `export const pages = {\n${lines.join("\n")}\n};\n`;
   }
 
-  static async generateStatic(pageEntries: PageEntry[]): Promise<string> {
-    return await new PagesEntrySourceGenerator(pageEntries).generateStatic();
+  static async generateStatic(pageEntries: PageEntry[], { fromDir }: { fromDir?: string } = {}): Promise<string> {
+    return await new PagesEntrySourceGenerator(pageEntries).generateStatic({ fromDir });
   }
 
-  async generateStatic(): Promise<string> {
+  // `fromDir` makes the specifiers relative: Bun inlines an absolute import of a file that is also an entrypoint.
+  async generateStatic({ fromDir }: { fromDir?: string } = {}): Promise<string> {
     const imports = this.#pageEntries.map(({ moduleAbsPath }, index) => {
-      const specifier = PagesEntrySourceGenerator.#toImportSpecifier(moduleAbsPath);
+      const specifier = fromDir
+        ? PagesEntrySourceGenerator.#toRelativeSpecifier(fromDir, moduleAbsPath)
+        : PagesEntrySourceGenerator.#toImportSpecifier(moduleAbsPath);
       return `import * as page${index} from ${JSON.stringify(specifier)};`;
     });
     const entries = await Promise.all(
       this.#pageEntries.map(async ({ key, moduleAbsPath }, index) => {
-        const isAsyncDefault = await AsyncDefaultExportDetector.detect(moduleAbsPath);
+        const isAsyncDefault = await this.#isAsyncDefault(moduleAbsPath);
         return `  ${JSON.stringify(key)}: { loader: async () => page${index}, isAsyncDefault: ${isAsyncDefault} },`;
       }),
     );
     return `${imports.join("\n")}\nexport const pages = {\n${entries.join("\n")}\n};\n`;
   }
 
+  // Route HMR in the dev registry bundle: `akanWebkit` is the entry's namespace import of `akanjs/webkit`.
+  async generateHotReplace({
+    fromDir,
+    ownerId,
+    moduleIds,
+  }: {
+    fromDir: string;
+    ownerId: string;
+    moduleIds: string[];
+  }): Promise<string> {
+    const entries = await Promise.all(
+      this.#pageEntries.map(async ({ key, moduleAbsPath }) => {
+        const specifier = PagesEntrySourceGenerator.#toRelativeSpecifier(fromDir, moduleAbsPath);
+        const isAsyncDefault = await this.#isAsyncDefault(moduleAbsPath);
+        return `    ${JSON.stringify(key)}: { loader: async () => require(${JSON.stringify(specifier)}), isAsyncDefault: ${isAsyncDefault} },`;
+      }),
+    );
+    return `__akan.accept(${JSON.stringify(ownerId)}, ${JSON.stringify(moduleIds)}, async () => {
+  const replaced = await akanWebkit.replacePages({
+${entries.join("\n")}
+  });
+  if (!replaced) throw new Error("the route table no longer matches the pages it was built from");
+});
+`;
+  }
+
+  #isAsyncDefault(moduleAbsPath: string): Promise<boolean> {
+    const known = this.#asyncDefaults.get(moduleAbsPath);
+    if (known) return known;
+    const detected = AsyncDefaultExportDetector.detect(moduleAbsPath);
+    this.#asyncDefaults.set(moduleAbsPath, detected);
+    return detected;
+  }
+
   static #toImportSpecifier(moduleAbsPath: string): string {
     return path.resolve(moduleAbsPath).split(path.sep).join("/");
+  }
+
+  static #toRelativeSpecifier(fromDir: string, moduleAbsPath: string): string {
+    const relative = path.relative(fromDir, path.resolve(moduleAbsPath)).split(path.sep).join("/");
+    return relative.startsWith(".") ? relative : `./${relative}`;
   }
 }

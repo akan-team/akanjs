@@ -11,6 +11,7 @@ const builderMsgTypeSet = new Set<BuilderMessage["type"]>([
   "invalidate",
   "css-updated",
   "pages-updated",
+  "csr-updated",
   "build-status",
   "builder-metrics",
 ]);

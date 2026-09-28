@@ -1,0 +1,169 @@
+import { mkdir, readdir, rename, rm } from "node:fs/promises";
+import path from "node:path";
+import {
+  CSR_DEV_APP_FILE,
+  CSR_DEV_MANIFEST_FILE,
+  CSR_DEV_ROUTE_PREFIX,
+  type CsrDevLayout,
+  type CsrDevManifest,
+  csrDevModuleFile,
+} from "akanjs/server/hmr/csrDevManifest";
+import { CsrDevPaths } from "./csrDevPaths";
+import type { CsrDevCompiledModule, CsrDevGraph } from "./csrDevTypes";
+
+export class CsrDevArtifactWriter {
+  static readonly #keptPatches = 40;
+  static readonly #keptVendors = 3;
+  readonly #outDir: string;
+
+  constructor(outDir: string) {
+    this.#outDir = outDir;
+  }
+
+  async reset(): Promise<void> {
+    await rm(this.#outDir, { recursive: true, force: true });
+    await mkdir(path.join(this.#outDir, "modules"), { recursive: true });
+  }
+
+  async readJson<T>(name: string): Promise<T | null> {
+    const file = Bun.file(path.join(this.#outDir, name));
+    if (!(await file.exists())) return null;
+    return (await file.json().catch(() => null)) as T | null;
+  }
+
+  async writeJson(name: string, value: unknown): Promise<void> {
+    await this.#writeAtomic(name, JSON.stringify(value));
+  }
+
+  async writeModules(compiled: CsrDevCompiledModule[]): Promise<void> {
+    await mkdir(path.join(this.#outDir, "modules"), { recursive: true });
+    const helpers = new Map(
+      compiled.flatMap((module) => (module.helpers ? [[module.helpers.hash, module.helpers]] : [])),
+    );
+    await Promise.all([
+      ...compiled.flatMap((module) => [
+        Bun.write(this.#modulePath(module.id, ".js"), module.factory),
+        ...(module.sourceMap ? [Bun.write(this.#modulePath(module.id, ".js.map"), module.sourceMap)] : []),
+      ]),
+      ...[...helpers.values()].map((shared) => Bun.write(this.#helpersPath(shared.hash), shared.definition)),
+    ]);
+  }
+
+  async forgetModules(ids: string[]): Promise<void> {
+    await Promise.all(
+      ids.flatMap((id) => [
+        rm(this.#modulePath(id, ".js"), { force: true }),
+        rm(this.#modulePath(id, ".js.map"), { force: true }),
+      ]),
+    );
+  }
+
+  async writeVendor(graph: CsrDevGraph): Promise<string> {
+    const ids = Object.keys(graph.modules)
+      .filter((id) => graph.modules[id]?.vendor)
+      .sort();
+    const stubs = new Set(Object.values(graph.modules).flatMap((module) => module.deps.filter(CsrDevPaths.isStub)));
+    const lines = [await this.#helperDefinitions(graph, ids), ...(await this.#defineLines(ids))];
+    for (const stub of [...stubs].sort()) {
+      const message = `[akan-csr] ${stub.slice(CsrDevPaths.stubPrefix.length)} is a Node built-in the browser does not have`;
+      lines.push(
+        `__akan.define(${JSON.stringify(stub)}, function () {\n  throw new Error(${JSON.stringify(message)});\n});\n`,
+      );
+    }
+    const code = lines.join("");
+    const vendorFile = `vendor-${Bun.hash(code).toString(36)}.js`;
+    await this.#writeAtomic(vendorFile, code);
+    return vendorFile;
+  }
+
+  async writeApp(graph: CsrDevGraph, generation: number): Promise<void> {
+    const ids = Object.keys(graph.modules)
+      .filter((id) => !graph.modules[id]?.vendor)
+      .sort();
+    const lines = await this.#defineLines(ids);
+    const blocks = ids.map((id, index) => [id, lines[index] ?? ""] as [string, string]);
+    const start = `__akan.start(${JSON.stringify({ generation, refresh: graph.refresh })});\n`;
+    await this.#writeWithSourceMap(CSR_DEV_APP_FILE, await this.#helperDefinitions(graph, ids), blocks, start);
+  }
+
+  async writePatch(generation: number, modules: CsrDevCompiledModule[]): Promise<string> {
+    const patchFile = `patch-${generation}.js`;
+    const blocks = modules.map(
+      (module, index) =>
+        [module.id, `${JSON.stringify(module.id)}: ${module.factory}${index < modules.length - 1 ? ",\n" : "\n"}`] as [
+          string,
+          string,
+        ],
+    );
+    const helpers = new Map(
+      modules.flatMap((module) => (module.helpers ? [[module.helpers.hash, module.helpers]] : [])),
+    );
+    const header = `${[...helpers.values()].map((shared) => shared.definition).join("")}__akan.update(${generation}, {\n`;
+    await this.#writeWithSourceMap(patchFile, header, blocks, "});\n");
+    return `${CSR_DEV_ROUTE_PREFIX}${patchFile}`;
+  }
+
+  // The manifest goes last: the server renders shells from it, so it must never name a file not yet written.
+  async writeState(graph: CsrDevGraph, manifest: CsrDevManifest): Promise<void> {
+    await this.writeJson("graph.json", graph);
+    await this.writeJson(CSR_DEV_MANIFEST_FILE, manifest);
+  }
+
+  async prune(vendorFile: string, generation: number): Promise<void> {
+    const names = await readdir(this.#outDir);
+    const stale = names.filter((name) => {
+      const patch = /^patch-(\d+)\.js(?:\.layout\.json)?$/.exec(name);
+      return patch ? Number(patch[1]) <= generation - CsrDevArtifactWriter.#keptPatches : false;
+    });
+    const vendors = names
+      .filter((name) => /^vendor-[\w-]+\.js$/.test(name) && name !== vendorFile)
+      .map((name) => ({ name, mtimeMs: CsrDevPaths.mtimeOf(path.join(this.#outDir, name)) }))
+      .sort((a, b) => b.mtimeMs - a.mtimeMs)
+      .slice(CsrDevArtifactWriter.#keptVendors - 1)
+      .map(({ name }) => name);
+    await Promise.all([...stale, ...vendors].map((name) => rm(path.join(this.#outDir, name), { force: true })));
+  }
+
+  async #helperDefinitions(graph: CsrDevGraph, ids: string[]): Promise<string> {
+    const hashes = [...new Set(ids.flatMap((id) => graph.modules[id]?.helpers ?? []))].sort();
+    return (await Promise.all(hashes.map((hash) => Bun.file(this.#helpersPath(hash)).text()))).join("");
+  }
+
+  async #defineLines(ids: string[]): Promise<string[]> {
+    return await Promise.all(
+      ids.map(
+        async (id) => `__akan.define(${JSON.stringify(id)}, ${await Bun.file(this.#modulePath(id, ".js")).text()});\n`,
+      ),
+    );
+  }
+
+  //? A factory's code starts on the line after its header, so each module's map is placed one line below it.
+  async #writeWithSourceMap(name: string, header: string, blocks: [id: string, text: string][], footer: string) {
+    const layout: CsrDevLayout = { lineCount: 0, modules: [] };
+    let line = CsrDevPaths.lineCount(header);
+    for (const [id, text] of blocks) {
+      layout.modules.push([id, line + 1]);
+      line += CsrDevPaths.lineCount(text);
+    }
+    const code = `${header}${blocks.map(([, text]) => text).join("")}${footer}//# sourceMappingURL=${name}.map\n`;
+    layout.lineCount = CsrDevPaths.lineCount(code);
+    await this.writeJson(`${name}.layout.json`, layout);
+    await this.#writeAtomic(name, code);
+  }
+
+  // A rename is atomic: the dev server may be streaming the previous app.js to a reloading page right now.
+  async #writeAtomic(name: string, content: string): Promise<void> {
+    const target = path.join(this.#outDir, name);
+    const temp = `${target}.${process.pid}.tmp`;
+    await Bun.write(temp, content);
+    await rename(temp, target);
+  }
+
+  #modulePath(id: string, extension: ".js" | ".js.map"): string {
+    return path.join(this.#outDir, csrDevModuleFile(id, extension));
+  }
+
+  #helpersPath(hash: string): string {
+    return path.join(this.#outDir, "modules", `helpers-${hash}.js`);
+  }
+}

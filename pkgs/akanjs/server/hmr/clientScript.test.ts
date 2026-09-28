@@ -56,7 +56,13 @@ class FakeElement {
   }
 }
 
-const createHmrHarness = () => {
+const createHmrHarness = ({
+  selfOverrides = {},
+  runTimers = false,
+}: {
+  selfOverrides?: Record<string, unknown>;
+  runTimers?: boolean;
+} = {}) => {
   const sockets: FakeWebSocket[] = [];
   const document = {
     body: new FakeElement("body"),
@@ -78,6 +84,7 @@ const createHmrHarness = () => {
   const self = {
     __AKAN_RSC_CLEAR_CACHE__: () => undefined,
     __AKAN_RSC_REFRESH__: () => Promise.resolve(),
+    ...selfOverrides,
   };
   class FakeWebSocket {
     readonly listeners = new Map<string, ((event?: { data: string }) => void)[]>();
@@ -119,7 +126,10 @@ const createHmrHarness = () => {
     location,
     FakeWebSocket,
     document,
-    () => 1,
+    (callback: () => void) => {
+      if (runTimers) callback();
+      return 1;
+    },
     () => undefined,
     (callback: () => void) => callback(),
     { now: () => 0 },
@@ -220,6 +230,40 @@ describe("HMR_CLIENT_SCRIPT", () => {
     expect(hmr.overlay().getAttribute("data-status")).toBe("error");
     expect(hmr.label()).toBe("Build failed: pages");
     expect(hmr.detail()).toContain("Pages failed");
+  });
+
+  test("a CSR page connects as a CSR client and reloads when hello names another generation", () => {
+    const hmr = createHmrHarness({
+      selfOverrides: { __AKAN_HMR_CLIENT__: "csr", __AKAN_CSR_GENERATION__: 4 },
+      runTimers: true,
+    });
+
+    expect(hmr.ws.url).toBe("ws://localhost:3000/_akan/hmr?client=csr");
+    hmr.ws.sendMessage({ type: "hello", buildId: 1, csrGeneration: 4 });
+    hmr.ws.sendMessage({ type: "hello", buildId: 2, csrGeneration: 4 });
+    expect(hmr.reloadCount).toBe(0);
+
+    hmr.ws.sendMessage({ type: "hello", buildId: 2, csrGeneration: 5 });
+    expect(hmr.reloadCount).toBe(1);
+  });
+
+  test("a registry CSR page hands csr-update to its runtime, while an artifact page reloads", () => {
+    const received: unknown[] = [];
+    const registry = createHmrHarness({
+      selfOverrides: {
+        __AKAN_HMR_CLIENT__: "csr",
+        __akan: { generation: 1, hot: (msg: unknown) => received.push(msg) },
+      },
+      runTimers: true,
+    });
+    const update = { type: "csr-update", generation: 2, url: "/_akan/csr-dev/patch-2.js" };
+    registry.ws.sendMessage(update);
+    expect(received).toEqual([update]);
+    expect(registry.reloadCount).toBe(0);
+
+    const artifact = createHmrHarness({ selfOverrides: { __AKAN_HMR_CLIENT__: "csr" }, runTimers: true });
+    artifact.ws.sendMessage({ type: "csr-update", generation: 1_700_000_000_000, reload: true });
+    expect(artifact.reloadCount).toBe(1);
   });
 
   test("clears legacy error overlays with legacy ok messages", () => {

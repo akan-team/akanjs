@@ -8,6 +8,7 @@ import type {
   BuilderRes,
   BuildRouteClientResult,
   BuildRouteResultPayload,
+  CsrUpdatedPayload,
   CssPayload,
   DevBuildStatus,
   PagesBundlePayload,
@@ -19,6 +20,7 @@ export interface BuilderRpcEventHandlers {
   onCssUpdated?: (css: CssPayload) => void;
   /** A fresh `pages-*.js` bundle: re-import it in the running worker (`RscWorker.reload`) rather than respawning. */
   onPagesUpdated?: (bundle: PagesBundlePayload) => void;
+  onCsrUpdated?: (update: CsrUpdatedPayload) => void;
   onBuildStatus?: (status: DevBuildStatus) => void;
 }
 
@@ -58,6 +60,9 @@ export class BuilderRpc {
           return;
         case "pages-updated":
           handlers.onPagesUpdated?.(ev.data);
+          return;
+        case "csr-updated":
+          handlers.onCsrUpdated?.(ev.data);
           return;
         case "build-status":
           handlers.onBuildStatus?.(ev.data);

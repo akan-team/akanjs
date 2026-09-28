@@ -13,6 +13,7 @@ export interface HmrStateSource {
   readonly state: {
     buildId: number;
     cssAssets?: Record<string, { cssUrl: string; cssRelPath: string }>;
+    csrGeneration?: number;
   };
 }
 
@@ -104,6 +105,7 @@ export class ApiRouter {
               type: "hello",
               buildId: hmrState.state.buildId,
               cssAssets: hmrState.state.cssAssets,
+              csrGeneration: hmrState.state.csrGeneration,
             }),
           );
           return;

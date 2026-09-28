@@ -94,6 +94,15 @@ export interface BuilderMetrics {
   workCount: number;
 }
 
+export interface CsrUpdatedPayload {
+  generation: number;
+  mode: "registry" | "artifact";
+  reload: boolean;
+  reason?: string;
+  patchUrl?: string;
+  changedIds?: string[];
+}
+
 export type BuilderEvent =
   // No builder sends `buildId`: readiness is the whole signal, and the build id travels with `pages-updated`.
   | { type: "builder-ready"; buildId?: string }
@@ -107,6 +116,7 @@ export type BuilderEvent =
     }
   | { type: "css-updated"; data: CssPayload }
   | { type: "pages-updated"; data: PagesBundlePayload }
+  | { type: "csr-updated"; data: CsrUpdatedPayload }
   | { type: "build-status"; data: DevBuildStatus }
   | { type: "builder-metrics"; data: BuilderMetrics };
 
