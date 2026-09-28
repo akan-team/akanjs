@@ -196,7 +196,7 @@ describe("IncrementalBuilderHost.maxRssBytes", () => {
     withEnv(
       { AKAN_BUILDER_MAX_RSS_MB: undefined, AKAN_BUILDER_MAX_RSS: undefined, AKAN_MEMORY_LIMIT: undefined },
       () => {
-        expect(IncrementalBuilderHost.maxRssBytes()).toBe(1_200 * 1024 * 1024);
+        expect(IncrementalBuilderHost.maxRssBytes()).toBe(2_048 * 1024 * 1024);
       },
     );
   });

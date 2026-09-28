@@ -48,8 +48,8 @@ export class IncrementalBuilderHost {
   static readonly #restartBaseDelayMs = 1_000;
   static readonly #restartMaxDelayMs = 30_000;
   static readonly #recycleDrainTimeoutMs = 30_000;
-  // A fresh boot is ~300-600MB; this leaves room for one full rebuild on top.
-  static readonly #devMaxRssBytes = 1_200 * 1024 * 1024;
+  // apps/akan's builder has idled at up to 1.5GB with the CSR patcher resident; this leaves a route build above it.
+  static readonly #devMaxRssBytes = 2_048 * 1024 * 1024;
   logger = new Logger("IncrementalBuilderHost");
   entry: string;
   env: Record<string, string>;

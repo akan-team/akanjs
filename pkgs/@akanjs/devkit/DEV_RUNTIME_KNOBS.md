@@ -22,7 +22,7 @@ crosses its ceiling is replaced when it is next idle — never mid-work.
 
 | process | explicit (MiB) | explicit (bytes) | share of the limit | fallback with no limit |
 |---|---|---|---|---|
-| incremental builder | `AKAN_BUILDER_MAX_RSS_MB` | `AKAN_BUILDER_MAX_RSS` | **0.35** | 1200MB (dev) |
+| incremental builder | `AKAN_BUILDER_MAX_RSS_MB` | `AKAN_BUILDER_MAX_RSS` | **0.35** | 2048MB (dev) |
 | RSC worker | `AKAN_RSC_WORKER_MAX_RSS_MB` | `AKAN_RSC_WORKER_MAX_RSS` | **0.55** | 768MB (dev), unbounded (production) |
 
 `AKAN_BUILDER_MAX_RSS_MB=0` leaves the builder unbounded, which is the escape hatch for an app whose

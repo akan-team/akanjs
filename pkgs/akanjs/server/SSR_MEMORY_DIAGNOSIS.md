@@ -130,8 +130,8 @@ that no GC reclaims, so the process only returns that memory by exiting. `AkanAp
 recycles it — gracefully, after its queues drain and once it has stayed quiet — past a ceiling:
 
 ```sh
-AKAN_BUILDER_MAX_RSS_MB=1200   # 0 leaves the builder unbounded; default is 1200 in dev
-AKAN_BUILDER_MAX_RSS=1200mb    # same ceiling with a unit suffix
+AKAN_BUILDER_MAX_RSS_MB=2048   # 0 leaves the builder unbounded; default is 2048 in dev
+AKAN_BUILDER_MAX_RSS=2gb       # same ceiling with a unit suffix
 ```
 
 Both resolve through `MemoryLimit.resolveMaxRssBytes`, so `AKAN_MEMORY_LIMIT` or a cgroup limit also
