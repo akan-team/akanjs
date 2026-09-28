@@ -4,6 +4,8 @@ export const CSR_DEV_APP_FILE = "app.js";
 export const CSR_DEV_MANIFEST_FILE = "manifest.json";
 /** Present only while the resident builder patches: a builder that dies holding it takes the patcher off. */
 export const CSR_DEV_PATCHING_MARKER = ".patching";
+/** Patches kept on disk behind the newest, and as many as a reconnecting tab catches up on before it reloads instead. */
+export const CSR_DEV_KEPT_PATCHES = 40;
 
 export const SSR_DEV_DIRNAME = "ssr-dev";
 export const SSR_DEV_ROUTE_PREFIX = "/_akan/ssr-dev/";

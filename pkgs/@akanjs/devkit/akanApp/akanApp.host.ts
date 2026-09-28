@@ -35,6 +35,7 @@ import {
   type SourceFingerprints,
   shouldAbandonBackendRecovery,
   shouldHoldForReturningBuilder,
+  shouldKeepBuildFailure,
   shouldMarkBuildPhaseRecovered,
   shouldQueueBuildStatusReplay,
   shouldRefreshConfigOnIdleWake,
@@ -206,6 +207,7 @@ export class AkanAppHost {
           this.#setBackendLifecycleState("ready", `pid=${msg.pid}`);
           this.#recordBackendReadyStatus();
           this.logger.verbose(`backend ready pid=${msg.pid}`);
+          this.#forgetRouteBuildStatus();
           this.#replayBuilderState();
           return;
         }
@@ -472,10 +474,11 @@ export class AkanAppHost {
     this.#builderGeneration = generation;
     Object.assign(this.env, { AKAN_BUILDER_INITIAL_GENERATION: String(generation) });
   }
-  // Not `csr-updated` / `ssr-updated`: their generation is the registry's.
+  // Not `csr-updated` / `ssr-updated`: their generation is the registry's. Nor a `route` status: the backend's route cache.
   static #builderGenerationOf(message: BuilderMessage): number | undefined {
     if (message.type === "invalidate") return message.generation;
-    if (message.type === "build-status" || message.type === "builder-metrics") return message.data.generation;
+    if (message.type === "build-status") return message.data.phase === "route" ? undefined : message.data.generation;
+    if (message.type === "builder-metrics") return message.data.generation;
     if (message.type === "pages-updated" || message.type === "css-updated") return message.data.generation;
     return undefined;
   }
@@ -1058,6 +1061,7 @@ export class AkanAppHost {
   }
   #recordBuildStatus(status: DevBuildStatus): void {
     const recovered = shouldMarkBuildPhaseRecovered(this.#buildStatusByPhase, status);
+    if (shouldKeepBuildFailure(this.#buildStatusByPhase, status)) return;
     this.#buildStatusByPhase.set(status.phase, status);
     const label = `[build-status] generation=${status.generation} phase=${status.phase} ok=${status.ok} files=${status.files.length}`;
     if (status.ok) this.logger.verbose(`${label}${recovered ? " recovered=1" : ""}`);
@@ -1072,6 +1076,12 @@ export class AkanAppHost {
       return;
     }
     this.#sendToBackend({ type: "build-status", data: status });
+  }
+  //? A route status belongs to the route cache of the backend that asked for the build, whose generations restart with
+  //? the next one: replayed, a failure it held would outlive every fix the new backend's route builds report.
+  #forgetRouteBuildStatus(): void {
+    this.#buildStatusByPhase.delete("route");
+    this.#pendingBuildStatusReplay = this.#pendingBuildStatusReplay.filter((status) => status.phase !== "route");
   }
   #replayBuilderState(): void {
     if (!this.#backendReady) return;

@@ -205,9 +205,11 @@ describe("SsrDevShim", () => {
     page.load(1);
     await page.settle();
     page.load(2);
-    await boot;
+    for (let tick = 0; tick < 50 && reloads === 0; tick++) await page.settle();
     expect(reloads).toBe(1);
     expect(registry.caughtUp).toEqual([]);
+    //? Left pending: RSDW must not require from the registry that failed while the page goes down.
+    expect(await Promise.race([boot.then(() => "settled"), page.settle().then(() => "pending")])).toBe("pending");
 
     const sameVendor = createPage((async () => Response.json(current)) as unknown as typeof fetch);
     sameVendor.self.location = { reload: () => (reloads += 1) };
@@ -228,6 +230,40 @@ describe("SsrDevShim", () => {
     sameVendor.load(2);
     await bootSame;
     expect(reloads).toBe(1);
+  });
+
+  test("an app.js that started beside the vendor file of the build before takes the newer one before it catches up", async () => {
+    for (const vendorLoads of [true, false]) {
+      const current = { generation: 8, vendorFile: "vendor-next.js", epoch: 42 };
+      const page = createPage((async () => Response.json(current)) as unknown as typeof fetch);
+      let reloads = 0;
+      page.self.location = { reload: () => (reloads += 1) };
+      page.self.__AKAN_SSR_HELLO_GENERATION__ = 9;
+      page.install(SsrDevShim.script(manifest, []));
+      void (page.self.__webpack_chunk_load__ as (id: string) => Promise<void>)("ssr-dev");
+      page.load(0);
+      const registry = page.self.__akan as FakeRegistry;
+      registry.inspect = () => ({
+        generation: 8,
+        target: 8,
+        started: true,
+        failed: false,
+        vendorFile: "vendor-next.js",
+        epoch: 42,
+      });
+      await page.settle();
+      page.load(1);
+      await page.settle();
+      page.load(2);
+      await page.settle();
+      expect(page.scripts.map((script) => script.src)).toContain("/_akan/ssr-dev/vendor-next.js");
+      const newer = page.scripts.findIndex((script) => script.src === "/_akan/ssr-dev/vendor-next.js");
+      if (vendorLoads) page.load(newer);
+      else page.scripts[newer]?.onerror?.();
+      for (let tick = 0; tick < 50 && reloads === 0 && registry.caughtUp.length === 0; tick++) await page.settle();
+      expect(registry.caughtUp).toEqual(vendorLoads ? [[9, "/_akan/ssr-dev/"]] : []);
+      expect(reloads).toBe(vendorLoads ? 0 : 1);
+    }
   });
 
   test("a vendor file the manifest does not name yet waits rather than reloading every new document", async () => {

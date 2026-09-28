@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
+import fs from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -125,7 +126,26 @@ describe("CsrDevPatcher", () => {
     override async metadataFingerprint() {
       return "same";
     }
+    wanted: Set<string> | null = null;
+    override async wantedRoots(files: string[]) {
+      return new Set(files.filter((file) => !this.wanted || this.wanted.has(file)));
+    }
   }
+
+  const movedRegistry = async (files: Record<string, string>) => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "akan-csr-dev-move-"));
+    dirs.push(root);
+    const file = (relative: string) => path.join(CsrDevPaths.realpath(root), "apps/demo", relative);
+    for (const [relative, text] of Object.entries(files)) await Bun.write(file(relative), text);
+    const bundler = new MovedRegistry(root, file("entry.ts"));
+    expect(await bundler.update([])).toMatchObject({ generation: 1, reload: true, first: true });
+    const patcher = new CsrDevPatcher(bundler, { resident: true });
+    expect(await patcher.update([])).toEqual({ kind: "unchanged" });
+    const app = async () => await Bun.file(path.join(bundler.outDir, "app.js")).text();
+    const changedIds = (result: Awaited<ReturnType<CsrDevPatcher["update"]>>) =>
+      result.kind === "update" ? result.update.changedIds.sort((a, b) => a.localeCompare(b)) : [];
+    return { bundler, patcher, file, app, changedIds };
+  };
 
   test("a dependency moved into a folder or renamed recompiles its importer, so app.js defines the new file", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "akan-csr-dev-move-"));
@@ -165,6 +185,74 @@ describe("CsrDevPatcher", () => {
     expect(app).toContain('__akan.define("apps/demo/ui/util.tsx"');
     expect(app).not.toContain('__akan.define("apps/demo/ui/Foo.tsx"');
     expect(app).not.toContain('__akan.define("apps/demo/ui/util.ts"');
+  });
+
+  test("a rename that changes only the case moves the module to its new id, and later saves leave it alone", async () => {
+    const { patcher, file, app, changedIds } = await movedRegistry({
+      "ui/card.tsx": 'export const card = () => "v1";\n',
+      "ui/Page.tsx": 'import { card } from "./Card";\nexport const page = () => card();\n',
+      "entry.ts": 'import { page } from "./ui/Page";\nexport const run = page;\n',
+    });
+    fs.renameSync(file("ui/card.tsx"), file("ui/Card.tsx"));
+    await Bun.write(file("ui/Page.tsx"), 'import { card } from "./Card";\nexport const page = () => card() + "!";\n');
+    const renamed = await patcher.update([file("ui/card.tsx"), file("ui/Card.tsx"), file("ui/Page.tsx")]);
+    expect(changedIds(renamed)).toEqual(["apps/demo/ui/Card.tsx", "apps/demo/ui/Page.tsx"]);
+    expect(await app()).toContain('__akan.define("apps/demo/ui/Card.tsx"');
+    expect(await app()).not.toContain('__akan.define("apps/demo/ui/card.tsx"');
+    expect(await patcher.update([])).toEqual({ kind: "unchanged" });
+    await Bun.write(file("ui/Card.tsx"), 'export const card = () => "v2";\n');
+    expect(changedIds(await patcher.update([file("ui/Card.tsx")]))).toEqual(["apps/demo/ui/Card.tsx"]);
+    expect(await app()).toContain('"v2"');
+  });
+
+  test("a new root that fails to compile holds no later save, and leaves pending once no route reaches it", async () => {
+    const { bundler, patcher, file, changedIds } = await movedRegistry({
+      "ui/Card.tsx": 'export const card = () => "v1";\n',
+      "ui/Broken.tsx": 'import { gone } from "./missingHelper";\nexport const broken = () => gone;\n',
+      "entry.ts": 'import { card } from "./ui/Card";\nexport const run = card;\n',
+    });
+    await expect(patcher.update([], { roots: [file("ui/Broken.tsx")], onlyRoots: true })).rejects.toThrow();
+
+    await Bun.write(file("ui/Card.tsx"), 'export const card = () => "v2";\n');
+    const announced: string[][] = [];
+    await expect(
+      patcher.update([file("ui/Card.tsx")], { announce: (update) => announced.push(update.changedIds) }),
+    ).rejects.toThrow();
+    expect(announced).toEqual([["apps/demo/ui/Card.tsx"]]);
+
+    bundler.wanted = new Set();
+    await Bun.write(file("ui/Card.tsx"), 'export const card = () => "v3";\n');
+    expect(changedIds(await patcher.update([file("ui/Card.tsx")]))).toEqual(["apps/demo/ui/Card.tsx"]);
+    const graph = (await bundler.writer.readJson<CsrDevGraph>("graph.json")) as CsrDevGraph;
+    expect(graph.pending).toEqual([]);
+  });
+
+  test("a module whose factory file is missing is compiled again instead of failing every read", async () => {
+    const { bundler, patcher, app, changedIds } = await movedRegistry({
+      "ui/Page.tsx": 'export const page = () => "page";\n',
+      "entry.ts": 'import { page } from "./ui/Page";\nexport const run = page;\n',
+    });
+    const manifest = (await bundler.writer.readJson<CsrDevManifest>(CSR_DEV_MANIFEST_FILE)) as CsrDevManifest;
+    await bundler.writer.writeJson(CSR_DEV_MANIFEST_FILE, { ...manifest, generation: 2, appGeneration: 1 });
+    await rm(path.join(bundler.outDir, "modules"), { recursive: true, force: true });
+    patcher.forget();
+    const healed = await patcher.update([]);
+    expect(changedIds(healed)).toEqual(["apps/demo/entry.ts", "apps/demo/ui/Page.tsx"]);
+    expect(await app()).toContain('__akan.define("apps/demo/ui/Page.tsx"');
+  });
+
+  test("a file created beside a folder a relative import resolved to takes that import over", async () => {
+    const { patcher, file, app, changedIds } = await movedRegistry({
+      "ui/Foo/index.tsx": 'export const foo = () => "folder";\n',
+      "ui/Page.tsx": 'import { foo } from "./Foo";\nexport const page = () => foo();\n',
+      "entry.ts": 'import { page } from "./ui/Page";\nexport const run = page;\n',
+    });
+    await Bun.write(file("ui/Foo.tsx"), 'export const foo = () => "file";\n');
+    expect(changedIds(await patcher.update([file("ui/Foo.tsx")]))).toEqual([
+      "apps/demo/ui/Foo.tsx",
+      "apps/demo/ui/Page.tsx",
+    ]);
+    expect(await app()).toContain('__akan.define("apps/demo/ui/Foo.tsx"');
   });
 
   test("a registry with no manifest is a first build, which no tab holds a module of", async () => {

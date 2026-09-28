@@ -7,6 +7,7 @@ interface HeldUpdate {
   message: SsrUpdateMessage;
   hold: boolean;
   batchGeneration?: number;
+  heldAt: number;
 }
 
 //* Holds an SSR registry patch whose save also changed what the server renders until that save's pages build lands,
@@ -37,15 +38,30 @@ export class SsrUpdateQueue {
       reason: update.reason,
       trace: update.trace,
     };
-    //? A reload supersedes every patch ahead of it; one whose save also changed server output still waits for that
-    //? build, or the reloaded page would render from the pages bundle the save has not replaced yet.
-    if (update.reload) this.clear();
-    if (!update.hold && this.#held.length === 0) {
+    const entry: HeldUpdate = {
+      message,
+      hold: !!update.hold,
+      batchGeneration: update.batchGeneration,
+      heldAt: Date.now(),
+    };
+    //? A reload supersedes every patch ahead of it and inherits their holds: the reloaded page renders from the pages
+    //? bundle, which must hold the newest save that changed server output, not only the reload's own.
+    if (update.reload) {
+      for (const held of this.#held.splice(0)) {
+        if (!held.hold) continue;
+        entry.hold = true;
+        entry.heldAt = Math.min(entry.heldAt, held.heldAt);
+        if (held.batchGeneration !== undefined)
+          entry.batchGeneration = Math.max(entry.batchGeneration ?? held.batchGeneration, held.batchGeneration);
+      }
+    }
+    if (!entry.hold && this.#held.length === 0) {
+      this.#stopTimer();
       this.#send(message);
       return;
     }
-    this.#held.push({ message, hold: !!update.hold, batchGeneration: update.batchGeneration });
-    this.#timer ??= setTimeout(() => this.#releaseAll(), this.#maxHoldMs);
+    this.#held.push(entry);
+    this.#arm();
   }
 
   /**
@@ -53,30 +69,45 @@ export class SsrUpdateQueue {
    * says whether a reload went out (the tabs then need no RSC refresh).
    */
   release(generation: number | undefined): { released: number; reload: boolean } {
+    return this.#shift((held) => !this.#waitsPast(held, generation), true);
+  }
+
+  /** Drops what the pages batch of `generation` covers, or everything without one: the tabs are about to reload. */
+  clear(generation?: number): void {
+    if (generation === undefined) this.#held.length = 0;
+    else this.#shift((held) => !this.#waitsPast(held, generation), false);
+    this.#arm();
+  }
+
+  #waitsPast(held: HeldUpdate, generation: number | undefined): boolean {
+    return held.hold && held.batchGeneration !== undefined && (generation ?? -1) < held.batchGeneration;
+  }
+
+  #shift(due: (held: HeldUpdate) => boolean, send: boolean): { released: number; reload: boolean } {
     let released = 0;
     let reload = false;
-    for (let next = this.#held[0]; next; next = this.#held[0]) {
-      const waiting = next.hold && next.batchGeneration !== undefined && (generation ?? -1) < next.batchGeneration;
-      if (waiting) break;
+    for (let next = this.#held[0]; next && due(next); next = this.#held[0]) {
       this.#held.shift();
-      this.#send(next.message);
+      if (send) this.#send(next.message);
       released += 1;
       reload ||= !!next.message.reload;
     }
-    if (this.#held.length === 0) this.#stopTimer();
+    this.#arm();
     return { released, reload };
   }
 
-  /** Drops what is held: the tabs are about to reload onto the newest registry anyway. */
-  clear(): void {
-    this.#held.length = 0;
+  //? A pages build that never reports (a worker killed mid-batch) must not strand client edits behind it. Each held
+  //? patch waits at most that long from when it was held, so a partial release re-arms for the one now at the head.
+  #arm(): void {
     this.#stopTimer();
-  }
-
-  //? A pages build that never reports (a worker killed mid-batch) must not strand client edits behind it.
-  #releaseAll(): void {
-    this.#timer = null;
-    for (const { message } of this.#held.splice(0)) this.#send(message);
+    const head = this.#held[0];
+    if (!head) return;
+    const delay = Math.max(0, head.heldAt + this.#maxHoldMs - Date.now());
+    this.#timer = setTimeout(() => {
+      this.#timer = null;
+      const now = Date.now();
+      this.#shift((held) => !held.hold || now - held.heldAt >= this.#maxHoldMs, true);
+    }, delay);
   }
 
   #stopTimer(): void {

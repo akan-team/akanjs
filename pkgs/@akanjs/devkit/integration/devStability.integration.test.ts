@@ -550,8 +550,9 @@ describe("dev resource budgets", () => {
 
   budgetTest("recycles the builder at an unmeetable ceiling and keeps developing through it", async () => {
     const harness = await createHarness();
-    // Deliberately below the post-boot builder: it no longer grows into a ceiling, so it must start over one.
-    const host = await harness.startHost({ timeoutMs: BOOT_MS, env: { AKAN_BUILDER_MAX_RSS_MB: "200" } });
+    // Deliberately below the post-boot builder: it no longer grows into a ceiling, so it must start over one. Above a
+    // fresh builder (about 105MiB), below one that has served the route again (about 160MiB; macOS, 2026-09-28).
+    const host = await harness.startHost({ timeoutMs: BOOT_MS, env: { AKAN_BUILDER_MAX_RSS_MB: "130" } });
     const start = host.markLog();
     await harness.waitForHttpText("initial-client-marker", WAIT_MS);
 
@@ -563,7 +564,7 @@ describe("dev resource budgets", () => {
 
     const recycleLog = await host.waitForLogSince(
       start,
-      /recycling builder pid=(\d+) \((rss=\d+MiB>=200MiB after \d+ build\(s\))\)/,
+      /recycling builder pid=(\d+) \((rss=\d+MiB>=130MiB after \d+ build\(s\))\)/,
       WAIT_MS,
     );
     await host.waitForLogSince(start, /exiting for recycle/, WAIT_MS);

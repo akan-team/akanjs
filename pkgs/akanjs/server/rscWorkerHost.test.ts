@@ -817,6 +817,84 @@ describe("RscWorker route head", () => {
   }, 20_000);
 });
 
+describe("RscWorker reloads", () => {
+  const bundleSource = (body: string, prelude = "") => `import { page } from ${JSON.stringify(
+    path.join(import.meta.dir, "../client/route/routeBuilders"),
+  )};
+${prelude}
+export const pages = {
+  "./__root_layout.tsx": async () => ({ default: ({ children }) => children }),
+  "./x.tsx": async () => ({ default: page().render(() => ${JSON.stringify(body)}) }),
+};
+`;
+  const withBundles = async (
+    run: (
+      rsc: RscWorker,
+      bundles: { a: string; b: string; broken: string },
+      body: () => Promise<string>,
+    ) => Promise<void>,
+  ) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "akan-rsc-reload-"));
+    const bundles = {
+      a: path.join(dir, "pages-a.ts"),
+      b: path.join(dir, "pages-b.ts"),
+      broken: path.join(dir, "broken.ts"),
+    };
+    fs.writeFileSync(bundles.a, bundleSource("body A"));
+    fs.writeFileSync(bundles.b, bundleSource("body B", "await Bun.sleep(300);"));
+    fs.writeFileSync(bundles.broken, bundleSource("never", 'throw new Error("broken at import");'));
+    const saved = { workerPath: process.env.AKAN_RSC_WORKER_PATH, cache: process.env.AKAN_RSC_RESULT_CACHE };
+    process.env.AKAN_RSC_WORKER_PATH = path.join(import.meta.dir, "rscWorker.tsx");
+    process.env.AKAN_RSC_RESULT_CACHE = "0";
+    const rsc = new RscWorker({ pagesBundlePath: bundles.a, pagesBundleBuildId: 1 } as unknown as BaseBuildArtifact);
+    const body = async () => {
+      const result = await rsc.renderWithMeta(new Request("http://localhost/en/x"));
+      if (result.type !== "stream") return result.type;
+      const text = decoder.decode(await new Response(result.stream).arrayBuffer());
+      return text.includes("body B") ? "B" : text.includes("body A") ? "A" : "?";
+    };
+    try {
+      await rsc.ready;
+      await run(rsc, bundles, body);
+    } finally {
+      rsc.kill();
+      if (saved.workerPath === undefined) delete process.env.AKAN_RSC_WORKER_PATH;
+      else process.env.AKAN_RSC_WORKER_PATH = saved.workerPath;
+      if (saved.cache === undefined) delete process.env.AKAN_RSC_RESULT_CACHE;
+      else process.env.AKAN_RSC_RESULT_CACHE = saved.cache;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  test("a reload without a bundle, sent while a new bundle imports, neither returns the worker to the old one nor settles the first early", async () => {
+    await withBundles(async (rsc, { b }, body) => {
+      const settled: string[] = [];
+      const pages = rsc.reload({ clientManifest: {}, buildId: 2, pagesBundlePath: b }).then((running) => {
+        settled.push("pages");
+        return running;
+      });
+      await Bun.sleep(40);
+      const merge = rsc.reload({ clientManifest: {}, buildId: 2 });
+      await Bun.sleep(20);
+      expect(settled).toEqual([]);
+      expect(await pages).toBe(b);
+      expect(await body()).toBe("B");
+      expect(await merge).toBe(b);
+    });
+  }, 20_000);
+
+  test("a bundle that throws on import rejects its reload and leaves the worker, and the next reload, on the one it ran", async () => {
+    await withBundles(async (rsc, { a, broken }, body) => {
+      await expect(rsc.reload({ clientManifest: {}, buildId: 2, pagesBundlePath: broken })).rejects.toThrow(
+        "broken at import",
+      );
+      expect(await body()).toBe("A");
+      expect(await rsc.reload({ clientManifest: {}, buildId: 3 })).toBe(a);
+      expect(await body()).toBe("A");
+    });
+  }, 20_000);
+});
+
 describe("RscWorker respawn lifecycle", () => {
   const workerSource = `import fs from "node:fs";
 const spawnsFile = process.env.AKAN_TEST_RSC_SPAWNS ?? "";

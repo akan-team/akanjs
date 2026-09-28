@@ -3,7 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { type DevBuildStatus, ROUTE_SEED_INDEX_JSON, type RouteSeedIndex } from "../artifact";
-import type { RscWorker } from "../rscWorkerHost";
+import type { RscWorker, RscWorkerReloadInput } from "../rscWorkerHost";
 import type { RenderState } from "../types";
 import {
   DevHmrController,
@@ -18,6 +18,9 @@ const artifactDirWith = async (seedIndex: RouteSeedIndex) => {
   await Bun.write(path.join(artifactDir, ROUTE_SEED_INDEX_JSON), JSON.stringify(seedIndex));
   return artifactDir;
 };
+
+const fakeRsc = (reload = async (input: RscWorkerReloadInput) => input.pagesBundlePath ?? "/repo/pages.js") =>
+  ({ reload, updateCssAssets: () => undefined }) as unknown as RscWorker;
 
 describe("DevHmrController runtime metadata detection", () => {
   test("detects generated app client runtime metadata files", () => {
@@ -130,7 +133,7 @@ describe("DevHmrController pages-updated broadcast", () => {
     const controller = new DevHmrController({
       artifactDir: await artifactDirWith({ entries: [], globalLayoutFiles: [] }),
       renderState: { buildId: 0, cssAssets: {}, cssBytesByUrl: {} },
-      rsc: { reload: async () => undefined, updateCssAssets: () => undefined } as unknown as RscWorker,
+      rsc: fakeRsc(),
       seedIndex: { entries: [], globalLayoutFiles: [] },
       upgradeHmrWs: () => true,
     });
@@ -168,7 +171,10 @@ describe("DevHmrController SSR registry updates", () => {
       renderState: RenderState,
       reloads: { pagesBundlePath?: string }[],
     ) => Promise<void>,
-    { pagesBundlePath = "/repo/pages.js" }: { pagesBundlePath?: string } = {},
+    {
+      pagesBundlePath = "/repo/pages.js",
+      reload = async (input: RscWorkerReloadInput) => input.pagesBundlePath ?? pagesBundlePath,
+    }: { pagesBundlePath?: string; reload?: (input: RscWorkerReloadInput) => Promise<string> } = {},
   ) => {
     const originalSend = process.send;
     process.send = ((): boolean => true) as typeof process.send;
@@ -177,12 +183,10 @@ describe("DevHmrController SSR registry updates", () => {
     const controller = new DevHmrController({
       artifactDir: await artifactDirWith({ entries: [], globalLayoutFiles: [] }),
       renderState,
-      rsc: {
-        reload: async (input: { pagesBundlePath?: string }) => {
-          reloads.push({ pagesBundlePath: input.pagesBundlePath });
-        },
-        updateCssAssets: () => undefined,
-      } as unknown as RscWorker,
+      rsc: fakeRsc(async (input) => {
+        reloads.push({ pagesBundlePath: input.pagesBundlePath });
+        return await reload(input);
+      }),
       seedIndex: { entries: [], globalLayoutFiles: [] },
       upgradeHmrWs: () => true,
       pagesBundlePath,
@@ -289,6 +293,107 @@ describe("DevHmrController SSR registry updates", () => {
     });
   });
 
+  test("a held patch and its RSC refresh wait for the worker to run the new bundle", async () => {
+    let finish = (): void => undefined;
+    const imported = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    await withRegistryController(
+      async (emit, types) => {
+        emit({
+          type: "ssr-updated",
+          data: { generation: 4, reload: false, patchUrl: "/p4.js", hold: true, batchGeneration: 9 },
+        });
+        emit({
+          type: "pages-updated",
+          data: {
+            bundlePath: "/repo/pages-2.js",
+            buildId: 8,
+            generation: 9,
+            changedFiles: ["/repo/apps/a/lib/x.constant.ts"],
+            serverTouched: true,
+          },
+        });
+        await settle();
+        expect(types()).toEqual([]);
+        finish();
+        await settle();
+        expect(types()).toEqual(["ssr-update:4", "rsc-refresh"]);
+      },
+      {
+        reload: async (input) => {
+          await imported;
+          return input.pagesBundlePath ?? "/repo/pages.js";
+        },
+      },
+    );
+  });
+
+  test("a bundle that throws on import keeps the tabs' build id, says why, and releases the held patch", async () => {
+    await withRegistryController(
+      async (emit, types, renderState) => {
+        emit({
+          type: "ssr-updated",
+          data: { generation: 4, reload: false, patchUrl: "/p4.js", hold: true, batchGeneration: 9 },
+        });
+        emit({
+          type: "pages-updated",
+          data: {
+            bundlePath: "/repo/pages-2.js",
+            buildId: 8,
+            generation: 9,
+            changedFiles: ["/repo/apps/a/common/format.ts"],
+            serverTouched: true,
+          },
+        });
+        await settle();
+        expect(types()).toEqual(["build-status", "ssr-update:4"]);
+        expect(renderState.buildId).toBe(0);
+      },
+      {
+        reload: async () => {
+          throw new Error("undefined is not an object");
+        },
+      },
+    );
+  });
+
+  test("the bundle the worker settled on is what the next pages build compares against", async () => {
+    await withRegistryController(
+      async (emit, _types, renderState, reloads) => {
+        const clientOnly = (bundlePath: string, buildId: number, generation: number) =>
+          emit({
+            type: "pages-updated",
+            data: { bundlePath, buildId, generation, changedFiles: ["/repo/apps/a/ui/Card.tsx"], serverTouched: false },
+          });
+        clientOnly("/repo/pages-2.js", 8, 9);
+        await settle();
+        clientOnly("/repo/pages-2.js", 9, 10);
+        await settle();
+        expect(reloads.length).toBe(2);
+        expect(renderState.buildId).toBe(9);
+      },
+      { pagesBundlePath: "/repo/pages-boot.js", reload: async () => "/repo/pages-boot.js" },
+    );
+  });
+
+  test("an ok of a failure's own generation keeps it for hello, and the fix's ok still clears the overlay", async () => {
+    await withRegistryController(async (emit, types) => {
+      const ssr = (generation: number, ok: boolean) =>
+        emit({
+          type: "build-status",
+          data: { generation, phase: "ssr", ok, files: [], message: ok ? undefined : "x" },
+        });
+      ssr(7, false);
+      ssr(7, true);
+      await settle();
+      expect(types()).toEqual(["build-status"]);
+      ssr(8, true);
+      await settle();
+      expect(types()).toEqual(["build-status", "build-status"]);
+    });
+  });
+
   test("a failed pages build releases the held patch without an RSC refresh", async () => {
     await withRegistryController(async (emit, types) => {
       emit({
@@ -311,7 +416,7 @@ describe("DevHmrController registry state for hello", () => {
     const controller = new DevHmrController({
       artifactDir,
       renderState,
-      rsc: { reload: async () => undefined, updateCssAssets: () => undefined } as unknown as RscWorker,
+      rsc: fakeRsc(),
       seedIndex: { entries: [], globalLayoutFiles: [] },
       upgradeHmrWs: () => true,
     });
@@ -365,7 +470,7 @@ describe("DevHmrController route ensure", () => {
     const controller = new DevHmrController({
       artifactDir: await artifactDirWith(seedIndex),
       renderState: { buildId: 0, cssAssets: {}, cssBytesByUrl: {} },
-      rsc: { reload: async () => undefined, updateCssAssets: () => undefined } as unknown as RscWorker,
+      rsc: fakeRsc(),
       seedIndex,
       upgradeHmrWs: () => true,
     });
@@ -396,7 +501,7 @@ describe("DevHmrController saves during a route's first build", () => {
     const controller = new DevHmrController({
       artifactDir: await artifactDirWith(seedIndex),
       renderState: { buildId: 0, cssAssets: {}, cssBytesByUrl: {} },
-      rsc: { reload: async () => undefined, updateCssAssets: () => undefined } as unknown as RscWorker,
+      rsc: fakeRsc(),
       seedIndex,
       upgradeHmrWs: () => true,
     });
@@ -439,6 +544,126 @@ describe("DevHmrController saves during a route's first build", () => {
   });
 });
 
+describe("DevHmrController route builds that took a save's batch in", () => {
+  const card = "/repo/apps/demo/ui/Card.tsx";
+  const page = "/repo/apps/demo/page/x.tsx";
+  const withRoute = async (
+    run: (tools: {
+      ensure: () => Promise<unknown>;
+      answer: (seenGeneration: number, clientDeps?: string[]) => Promise<void>;
+      emit: (message: unknown) => void;
+      builds: () => number;
+    }) => Promise<void>,
+  ) => {
+    const originalSend = process.send;
+    const requests: number[] = [];
+    process.send = ((message: { type?: string; id?: number }): boolean => {
+      if (message.type === "build-route" && typeof message.id === "number") requests.push(message.id);
+      return true;
+    }) as typeof process.send;
+    const seedIndex: RouteSeedIndex = {
+      entries: [{ routeId: "/:lang/x", pattern: "/:lang/x", seeds: [page] }],
+      globalLayoutFiles: [],
+    };
+    const controller = new DevHmrController({
+      artifactDir: await artifactDirWith(seedIndex),
+      renderState: { buildId: 0, cssAssets: {}, cssBytesByUrl: {} },
+      rsc: fakeRsc(),
+      seedIndex,
+      upgradeHmrWs: () => true,
+    });
+    let answered = 0;
+    try {
+      await run({
+        ensure: () => controller.ensureRoute(new URL("https://example.test/en/x")),
+        answer: async (seenGeneration, clientDeps = [card]) => {
+          for (let tick = 0; tick < 200 && requests.length <= answered; tick++) await Bun.sleep(1);
+          const data = {
+            manifestDelta: { [`${card}#Card`]: { id: "ssr-dev:apps/demo/ui/Card.tsx", chunks: [], name: "Card" } },
+            ssrManifestDelta: {},
+            newEntries: [card],
+            discoveredEntries: [card],
+            clientDeps,
+            clientDepsByEntry: { [card]: clientDeps },
+            seenGeneration,
+          };
+          process.emit("message", { type: "build-route-res", id: requests[answered], ok: true, data } as never);
+          answered += 1;
+        },
+        emit: (message) => process.emit("message", message as never),
+        builds: () => requests.length,
+      });
+    } finally {
+      controller.dispose();
+      process.send = originalSend;
+    }
+  };
+  const settle = async () => {
+    for (let tick = 0; tick < 20; tick++) await Bun.sleep(1);
+  };
+
+  test("a route's first build that a save overtook builds once more, not again at that save's pages build", async () => {
+    for (const [seen, builds] of [
+      [3, 2],
+      [2, 3],
+    ] as const)
+      await withRoute(async ({ ensure, answer, emit, builds: count }) => {
+        const button = "/repo/apps/demo/ui/Button.tsx";
+        const first = ensure();
+        emit({ type: "invalidate", kinds: ["code"], files: [button], generation: 3 });
+        await answer(2, [card, button]);
+        await answer(seen, [card, button]);
+        await first;
+        emit({
+          type: "pages-updated",
+          data: {
+            bundlePath: "/repo/pages.js",
+            buildId: 2,
+            generation: 3,
+            changedFiles: [button],
+            serverTouched: true,
+          },
+        });
+        await settle();
+        const again = ensure();
+        if (count() > 2) await answer(3, [card, button]);
+        await again;
+        expect(count()).toBe(builds);
+      });
+  });
+
+  test("a server file saved beside a known entry still drops a route built before the builder took their batch in", async () => {
+    for (const [seen, builds] of [
+      [8, 3],
+      [9, 2],
+    ] as const)
+      await withRoute(async ({ ensure, answer, emit, builds: count }) => {
+        const first = ensure();
+        await answer(0);
+        await first;
+        emit({ type: "invalidate", kinds: ["code"], files: [card, page], generation: 9 });
+        const reloaded = ensure();
+        await answer(seen);
+        await reloaded;
+        emit({
+          type: "pages-updated",
+          data: {
+            bundlePath: "/repo/pages.js",
+            buildId: 2,
+            generation: 9,
+            changedFiles: [card, page],
+            serverTouched: true,
+          },
+        });
+        await settle();
+        const again = ensure();
+        if (count() > 2) await answer(9);
+        await again;
+        expect(count()).toBe(builds);
+      });
+  });
+});
+
 describe("DevHmrController route tree changes", () => {
   test("adopts the rebuilt seed index so a moved override seeds route builds from where it went", async () => {
     const page = "/repo/apps/demo/page";
@@ -470,7 +695,7 @@ describe("DevHmrController route tree changes", () => {
     const controller = new DevHmrController({
       artifactDir,
       renderState: { buildId: 0, cssAssets: {}, cssBytesByUrl: {} },
-      rsc: { reload: async () => undefined, updateCssAssets: () => undefined } as unknown as RscWorker,
+      rsc: fakeRsc(),
       seedIndex: structuredClone(bootIndex),
       upgradeHmrWs: () => true,
     });

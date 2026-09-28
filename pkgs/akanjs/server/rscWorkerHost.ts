@@ -300,7 +300,7 @@ export function createRscHostRenderStream(input: {
 type RscInMsg =
   | { type: "hello" }
   | { type: "ready" }
-  | { type: "reloaded"; buildId: number }
+  | { type: "reloaded"; buildId: number; reloadId?: number }
   | { type: "meta"; requestId: string; theme?: AkanTheme; status?: number; trace?: RscTraceMetadata }
   | { type: "cache-state"; requestId: string; state: RouteCacheRenderState }
   | { type: "chunk"; requestId: string; data: Uint8Array }
@@ -318,14 +318,24 @@ type RscInMsg =
   | { type: "log.records"; records: LogRecord[]; dropped?: number }
   | { type: "page-prompts.result"; requestId: string; result: PagePromptEntry[] }
   | { type: "page-prompt.result"; requestId: string; result: PagePromptRun }
-  | { type: "error"; requestId: string; message: string; buildId?: number };
+  | { type: "error"; requestId: string; message: string; buildId?: number; reloadId?: number };
 
 export interface RscWorkerReloadInput {
   clientManifest: ClientManifest;
   cssAssets?: Record<string, CssAsset>;
   buildId: number;
-  /** Undefined keeps the current bundle (e.g. a client-manifest-only reload after a lazy route build). */
+  /** Undefined keeps the latest bundle a reload named (e.g. a client-manifest-only reload after a lazy route build). */
   pagesBundlePath?: string;
+}
+
+interface RscAdoptedBundle {
+  pagesBundlePath: string;
+  buildId: number;
+}
+
+interface RscReloadWaiter {
+  resolve: (pagesBundlePath: string) => void;
+  reject: (err: Error) => void;
 }
 
 type WorkerStatus = "starting" | "ready" | "restarting" | "stopped";
@@ -349,7 +359,17 @@ export class RscWorker {
   #resolveReady!: () => void;
   #rejectReady!: (err: Error) => void;
   #readyResolved = false;
-  #pendingReload: { resolve: () => void; reject: (err: Error) => void; targetBuildId: number } | null = null;
+  #pendingReload: {
+    waiters: RscReloadWaiter[];
+    reloadId: number;
+    pagesBundlePath: string;
+    buildId: number;
+  } | null = null;
+  #nextReloadId = 1;
+  #reloadState = 0;
+  #init: RscAdoptedBundle & { reloadState: number } = { pagesBundlePath: "", buildId: 0, reloadState: 0 };
+  /** What the worker runs: a respawn falls back to it when the bundle a reload named failed to import. */
+  #adopted: RscAdoptedBundle;
 
   #status: WorkerStatus = "starting";
   #killed = false;
@@ -375,6 +395,7 @@ export class RscWorker {
     this.#clientManifest = artifact.rscRuntimeClientManifest ?? {};
     this.#pagesBundlePath = artifact.pagesBundlePath;
     this.#pagesBundleBuildId = artifact.pagesBundleBuildId;
+    this.#adopted = { pagesBundlePath: artifact.pagesBundlePath, buildId: artifact.pagesBundleBuildId };
     this.#cssAssets = artifact.cssAssets ?? {};
     this.#basePaths = artifact.basePaths ?? [];
     this.#i18n = artifact.i18n ?? DEFAULT_AKAN_I18N;
@@ -532,36 +553,61 @@ export class RscWorker {
     }
   }
 
-  reload(input: RscWorkerReloadInput): Promise<void> {
+  /** Resolves with the pages bundle the worker runs once it has taken this reload, or a later one. */
+  reload(input: RscWorkerReloadInput): Promise<string> {
+    this.#reloadState += 1;
     this.#clientManifest = input.clientManifest;
     this.#cssAssets = input.cssAssets ?? this.#cssAssets;
     this.#pagesBundleBuildId = input.buildId;
     if (input.pagesBundlePath) this.#pagesBundlePath = input.pagesBundlePath;
+    const pagesBundlePath = this.#pagesBundlePath;
     // A starting worker receives all of this through the init reply to its hello; there is no reloaded ack to await.
-    if (this.#status !== "ready") return Promise.resolve();
+    if (this.#status !== "ready") return Promise.resolve(pagesBundlePath);
     // Bun's ESM registry never evicts an old `?v=<buildId>` import, so in-place reloads ratchet RSS; recycle (rolling)
     // past a threshold — recycling on every reload would throw away every lazily-warmed route module.
     if (this.#shouldRecycleForReloadAccumulation() && this.restartWhenIdle("pages-reload-accumulation")) {
-      return Promise.resolve();
+      return Promise.resolve(pagesBundlePath);
     }
     this.#reloadsSinceSpawn += 1;
-    return new Promise<void>((resolve, reject) => {
-      // Supersede an in-flight reload: to its caller, the latest build implies the earlier one.
-      if (this.#pendingReload) this.#pendingReload.resolve();
-      this.#pendingReload = { resolve, reject, targetBuildId: input.buildId };
+    return new Promise<string>((resolve, reject) => {
+      //? A superseded reload settles with the one that superseded it: the worker drops it unadopted, so resolving it
+      //? at once let its caller refresh the tabs while the worker still ran the bundle before both.
+      const waiters = [...(this.#pendingReload?.waiters ?? []), { resolve, reject }];
+      const reloadId = this.#nextReloadId++;
+      this.#pendingReload = { waiters, reloadId, pagesBundlePath, buildId: input.buildId };
       try {
+        //? The latest bundle, never the request's own: one sent without a path made the worker fall back to the
+        //? bundle it had adopted, while the reload it superseded was still importing the newer one.
         this.#proc.send({
           type: "reload",
           clientManifest: input.clientManifest,
           cssAssets: this.#cssAssets,
           buildId: input.buildId,
-          pagesBundlePath: input.pagesBundlePath,
+          pagesBundlePath,
+          reloadId,
         });
       } catch (err) {
-        this.#pendingReload?.reject(err instanceof Error ? err : new Error(String(err)));
-        this.#pendingReload = null;
+        this.#settleReload({ error: err instanceof Error ? err : new Error(String(err)) });
       }
     });
+  }
+
+  //? Without a reload id the outcome is the worker's as a whole: a respawn that booted from the init reply, or one
+  //? that failed to. A failure puts the host back on what the worker ran, so the next respawn boots a bundle that loads.
+  #settleReload(outcome: { adopted: RscAdoptedBundle } | { error: Error }, reloadId?: number): void {
+    const pending = this.#pendingReload;
+    if (reloadId !== undefined && pending?.reloadId !== reloadId) return;
+    if ("adopted" in outcome) this.#adopted = outcome.adopted;
+    else {
+      this.#pagesBundlePath = this.#adopted.pagesBundlePath;
+      this.#pagesBundleBuildId = this.#adopted.buildId;
+    }
+    if (!pending) return;
+    this.#pendingReload = null;
+    for (const waiter of pending.waiters) {
+      if ("error" in outcome) waiter.reject(outcome.error);
+      else waiter.resolve(outcome.adopted.pagesBundlePath);
+    }
   }
 
   #spawn(): RscProcess {
@@ -640,6 +686,11 @@ export class RscWorker {
     switch (message.type) {
       case "hello":
         // A respawned worker asks for config first; this is what carries the latest reload(...) state across a crash.
+        this.#init = {
+          pagesBundlePath: this.#pagesBundlePath,
+          buildId: this.#pagesBundleBuildId,
+          reloadState: this.#reloadState,
+        };
         this.#proc.send({
           type: "init",
           clientManifest: this.#clientManifest,
@@ -654,15 +705,25 @@ export class RscWorker {
         this.#status = "ready";
         this.#restartAttempts = 0;
         this.#resolveReady();
+        //? A worker that booted from the init reply runs the reload state of its hello, so a reload the crashed or
+        //? recycled one never answered is taken; one that came between that hello and now is sent again.
+        this.#settleReload({ adopted: { pagesBundlePath: this.#init.pagesBundlePath, buildId: this.#init.buildId } });
         this.#finishRollingRecycle();
         this.#flushQueuedSends();
         if (this.#logLevel !== null) this.#sendLogLevel();
+        if (this.#init.reloadState !== this.#reloadState)
+          void this.reload({ clientManifest: this.#clientManifest, buildId: this.#pagesBundleBuildId }).catch(
+            (err: unknown) => this.#logger.error(`[rsc] reload after restart failed: ${String(err)}`),
+          );
         return;
       case "reloaded":
-        if (this.#pendingReload && this.#pendingReload.targetBuildId === message.buildId) {
-          this.#pendingReload.resolve();
-          this.#pendingReload = null;
-        }
+        if (this.#pendingReload)
+          this.#settleReload(
+            {
+              adopted: { pagesBundlePath: this.#pendingReload.pagesBundlePath, buildId: this.#pendingReload.buildId },
+            },
+            message.reloadId,
+          );
         return;
       case "chunk":
         this.#pending.get(message.requestId)?.onChunk(message.data);
@@ -704,18 +765,13 @@ export class RscWorker {
           if (!this.#readyResolved) this.#rejectReady(new Error(String(message.message)));
           else {
             this.#logger.error(`[rsc] worker init error on restart: ${message.message}`);
+            this.#settleReload({ error: new Error(String(message.message)) });
             proc.kill();
           }
           return;
         }
         if (message.requestId === "__reload__") {
-          if (
-            this.#pendingReload &&
-            (message.buildId === undefined || this.#pendingReload.targetBuildId === message.buildId)
-          ) {
-            this.#pendingReload.reject(new Error(String(message.message)));
-            this.#pendingReload = null;
-          }
+          this.#settleReload({ error: new Error(String(message.message)) }, message.reloadId);
           return;
         }
         if (this.#settleCall(message.requestId, (call) => call.reject(new Error(String(message.message))))) return;
@@ -795,18 +851,16 @@ export class RscWorker {
     this.#pending.clear();
     for (const [, call] of this.#calls) call.reject(err);
     this.#calls.clear();
-    if (this.#pendingReload) {
-      this.#pendingReload.reject(err);
-      this.#pendingReload = null;
-    }
     this.#queuedSends = [];
 
     if (this.#killed) {
       this.#status = "stopped";
+      this.#settleReload({ error: err });
       return;
     }
     if (this.#failBeforeReady && !this.#readyResolved) {
       this.#status = "stopped";
+      this.#settleReload({ error: err });
       this.#rejectReady(err);
       return;
     }

@@ -101,6 +101,7 @@ interface ReloadMsg {
   cssAssets?: Record<string, { cssUrl: string; cssRelPath: string }>;
   buildId: number;
   pagesBundlePath?: string;
+  reloadId?: number;
 }
 interface UpdateCssAssetsMsg {
   type: "updateCssAssets";
@@ -387,15 +388,18 @@ export class RscRenderer {
       this.#resultCache.clear();
       this.#patchResultCache.clear();
       this.#logger.verbose(`reload complete buildId=${msg.buildId} in ${Date.now() - startedAt}ms`);
-      this.#send({ type: "reloaded", buildId: msg.buildId });
+      this.#send({ type: "reloaded", buildId: msg.buildId, reloadId: msg.reloadId });
     } catch (error) {
       this.#logger.error(
         `reload failed buildId=${msg.buildId}: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
       );
+      // The host settles on the latest reload alone; a superseded one's failure says nothing about it.
+      if (seq !== this.#reloadSeq) return;
       this.#send({
         type: "error",
         requestId: "__reload__",
         buildId: msg.buildId,
+        reloadId: msg.reloadId,
         message: error instanceof Error ? error.message : String(error),
       });
     }

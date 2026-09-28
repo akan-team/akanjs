@@ -106,7 +106,8 @@ ${stylesheet}  </head>
   }
 
   //? A patch is announced before app.js is rewritten, so a tab booting in that gap asks for a generation app.js does not
-  //? hold yet. Held until it does, or until the wait runs out: then it boots behind, and hello's generation reloads it.
+  //? hold yet. Held until it does, or until the wait runs out: then it boots behind, and hello's generation catches it
+  //? up (an SSR tab) or reloads it (a CSR tab).
   async #waitForApp(generation: number, signal?: AbortSignal): Promise<void> {
     if (!Number.isInteger(generation) || generation <= 0) return;
     const deadline = Date.now() + this.#appWaitMs;

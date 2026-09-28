@@ -20,7 +20,7 @@ export interface BuilderRpcEventHandlers {
   onInvalidate?: (event: { kinds: ("code" | "css" | "config")[]; files: string[]; generation?: number }) => void;
   onCssUpdated?: (css: CssPayload) => void;
   /** A fresh `pages-*.js` bundle: re-import it in the running worker (`RscWorker.reload`) rather than respawning. */
-  onPagesUpdated?: (bundle: PagesBundlePayload) => void;
+  onPagesUpdated?: (bundle: PagesBundlePayload) => void | Promise<void>;
   onCsrUpdated?: (update: CsrUpdatedPayload) => void;
   onSsrUpdated?: (update: SsrUpdatedPayload) => void;
   onBuildStatus?: (status: DevBuildStatus) => void;
@@ -61,7 +61,12 @@ export class BuilderRpc {
           handlers.onCssUpdated?.(ev.data);
           return;
         case "pages-updated":
-          handlers.onPagesUpdated?.(ev.data);
+          // Unhandled, a rejection here would reach the process as an unhandledRejection and say nothing to the tabs.
+          void Promise.resolve(handlers.onPagesUpdated?.(ev.data)).catch((error: unknown) =>
+            this.#logger.error(
+              `[builder] pages-updated failed: ${error instanceof Error ? error.message : String(error)}`,
+            ),
+          );
           return;
         case "csr-updated":
           handlers.onCsrUpdated?.(ev.data);
@@ -95,6 +100,7 @@ export class BuilderRpc {
       discoveredEntries: payload.discoveredEntries,
       clientDeps: payload.clientDeps,
       clientDepsByEntry: payload.clientDepsByEntry,
+      ...(payload.seenGeneration !== undefined ? { seenGeneration: payload.seenGeneration } : {}),
     };
   }
 

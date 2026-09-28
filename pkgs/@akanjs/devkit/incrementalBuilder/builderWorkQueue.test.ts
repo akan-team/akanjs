@@ -41,7 +41,7 @@ describe("BuilderWorkQueue", () => {
       generation: 2,
       needs: ["pages", "css"],
       changedFiles: ["b.tsx"],
-      discovery: { files: ["b.tsx"], refresh: false },
+      discovery: { files: ["b.tsx"], refresh: false, generation: 2 },
     });
     const third = queue.enqueueBatch({ generation: 3, needs: ["csr", "pages"], changedFiles: ["a.tsx", "c.tsx"] });
     expect(second).toBe(third);
@@ -52,7 +52,7 @@ describe("BuilderWorkQueue", () => {
       generation: 3,
       needs: ["pages", "css", "csr"],
       changedFiles: ["b.tsx", "a.tsx", "c.tsx"],
-      discovery: { files: ["b.tsx"], refresh: false },
+      discovery: { files: ["b.tsx"], refresh: false, generation: 2 },
     });
   });
 

@@ -48,16 +48,42 @@ export class CsrDevPaths {
     return fs.existsSync(file) ? fs.realpathSync(file) : path.resolve(file);
   }
 
-  static readonly #scriptExtensions = [".tsx", ".ts", ".jsx", ".js", ".mjs", ".cjs", ".mts", ".cts"];
+  //? Present under this very name: on a case-insensitive disk (APFS, NTFS) `ui/card.tsx` still exists after a rename to
+  //? `ui/Card.tsx`, but the compiler names the module by the disk's spelling, so the old id is gone.
+  static isNamed(file: string): boolean {
+    try {
+      return fs.realpathSync(file) === file;
+    } catch {
+      // Missing is an answer here.
+      return false;
+    }
+  }
 
-  /** A relative import resolved against the disk as it is now: the file, a script extension, or a folder's index. */
+  //? Bun's own precedence, measured: the registry must pick the file the pages bundle and client-ssr build pick.
+  static readonly #scriptExtensions = [".tsx", ".jsx", ".mts", ".ts", ".mjs", ".js", ".cts", ".cjs"];
+
+  /** A relative import resolved against the disk as it is now: the file, a script extension, or a folder's entry. */
   static resolveOnDisk(base: string): string | null {
-    const candidates = [
-      base,
-      ...CsrDevPaths.#scriptExtensions.map((extension) => `${base}${extension}`),
-      ...CsrDevPaths.#scriptExtensions.map((extension) => path.join(base, `index${extension}`)),
-    ];
-    return candidates.find((candidate) => fs.statSync(candidate, { throwIfNoEntry: false })?.isFile()) ?? null;
+    const isFile = (candidate: string) => fs.statSync(candidate, { throwIfNoEntry: false })?.isFile() ?? false;
+    const file = [base, ...CsrDevPaths.#scriptExtensions.map((extension) => `${base}${extension}`)].find(isFile);
+    if (file) return file;
+    const main = CsrDevPaths.#packageMainOf(base);
+    const fromMain = main ? [main, ...CsrDevPaths.#scriptExtensions.map((extension) => `${main}${extension}`)] : [];
+    return (
+      [...fromMain, ...CsrDevPaths.#scriptExtensions.map((extension) => path.join(base, `index${extension}`))].find(
+        isFile,
+      ) ?? null
+    );
+  }
+
+  static #packageMainOf(dir: string): string | null {
+    try {
+      const { main } = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8")) as { main?: unknown };
+      return typeof main === "string" ? path.join(dir, main) : null;
+    } catch {
+      // No package.json, or one without a usable main: the folder's index answers.
+      return null;
+    }
   }
 
   static tryResolve(specifier: string, from: string): string | null {

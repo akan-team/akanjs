@@ -139,7 +139,7 @@ export class DevHmrController {
   }
 
   /** The phases failing now, for a socket that connects after their status went out (a page opened after a failed boot). */
-  buildErrorMessages(): HmrMessage[] {
+  buildErrorMessages(): Extract<HmrMessage, { type: "build-status" }>[] {
     return [...this.#buildStatusByPhase.values()].flatMap((status) => {
       const message = status.ok ? null : devBuildStatusToHmrMessage(status);
       return message ? [message] : [];
@@ -264,9 +264,7 @@ export class DevHmrController {
                 lateFiles,
                 this.#routeIdsForFiles(lateFiles, staleClientEntries),
                 staleClientEntries,
-                {
-                  forceClear: clearAll,
-                },
+                { forceClear: clearAll, batch: generation },
               )
             : [];
         const manifest = this.routeCache.snapshot();
@@ -280,20 +278,28 @@ export class DevHmrController {
             `[SSR] pages bundle unchanged for the server; buildId ${this.#renderState.buildId} kept`,
           );
         } else {
+          const previousBuildId = this.#renderState.buildId;
           this.#renderState.buildId = buildId;
           const reloadStarted = Date.now();
-          await this.#rsc.reload({
-            clientManifest: manifest.clientManifest,
-            cssAssets: this.#renderState.cssAssets,
-            buildId,
-            pagesBundlePath: bundlePath,
-          });
-          if (running) this.#runningBundlePath = running;
+          try {
+            this.#runningBundlePath = path.resolve(
+              await this.#rsc.reload({
+                clientManifest: manifest.clientManifest,
+                cssAssets: this.#renderState.cssAssets,
+                buildId,
+                pagesBundlePath: bundlePath,
+              }),
+            );
+          } catch (error) {
+            this.#renderState.buildId = previousBuildId;
+            this.#failPagesReload(generation, files, error);
+            return;
+          }
           this.#logger.verbose(`[SSR] rsc reload buildId=${buildId} in ${Date.now() - reloadStarted}ms`);
         }
         const shouldReload = clearAll || this.#shouldFullReloadForFiles(files, routeIds);
         const broadcastTrace = DevHmrController.#broadcastTrace(trace);
-        if (shouldReload) this.#ssrUpdates.clear();
+        if (shouldReload) this.#ssrUpdates.clear(generation);
         const released = shouldReload ? { released: 0, reload: false } : this.#ssrUpdates.release(generation);
         if (shouldReload) this.#hub.broadcast({ type: "reload", buildId });
         else if (released.reload)
@@ -319,6 +325,15 @@ export class DevHmrController {
     });
   }
 
+  //? A bundle that builds but throws while the worker imports it (a TDZ read at a module's top level): the worker keeps
+  //? the one it ran, the overlay says why, and the client patches this save held go out instead of waiting 15 seconds.
+  #failPagesReload(generation: number | undefined, files: string[], error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    this.#logger.error(`[SSR] rsc reload failed generation=${generation ?? "(unknown)"}: ${message}`);
+    if (generation !== undefined) this.#recordBuildStatus({ generation, phase: "pages", ok: false, files, message });
+    this.#ssrUpdates.release(generation);
+  }
+
   // Adopted in place: WebRouter matches requests against this same object.
   async #reloadSeedIndex(): Promise<boolean> {
     const next = await RouteSeedIndexStore.load(this.#artifactDir).catch((err: unknown) => {
@@ -337,8 +352,11 @@ export class DevHmrController {
 
   #recordBuildStatus(status: DevBuildStatus): void {
     const previous = this.#buildStatusByPhase.get(status.phase);
-    this.#buildStatusByPhase.set(status.phase, status);
     const message = devBuildStatusToHmrMessage(status, previous);
+    //? An ok that recovers nothing keeps the failure: hello re-sends it to a tab opened after, and the fix's own ok is
+    //? then compared against the failure instead of against an ok that never cleared an overlay.
+    if (status.ok && previous && !previous.ok && !message) return;
+    this.#buildStatusByPhase.set(status.phase, status);
     if (!message) return;
     this.#hub.broadcast(message);
     this.#logger.verbose(
@@ -369,11 +387,13 @@ export class DevHmrController {
         }
         if (delta.newEntries.length === 0 && removedEntries.size === 0) return;
         this.#rememberClientDeps(routeId, delta.clientDeps, delta.clientDepsByEntry);
-        await this.#rsc.reload({
-          clientManifest: nextMerged.clientManifest,
-          cssAssets: this.#renderState.cssAssets,
-          buildId: this.#renderState.buildId,
-        });
+        this.#runningBundlePath = path.resolve(
+          await this.#rsc.reload({
+            clientManifest: nextMerged.clientManifest,
+            cssAssets: this.#renderState.cssAssets,
+            buildId: this.#renderState.buildId,
+          }),
+        );
         this.#logger.verbose(
           `[SSR] route manifest merged routeId=${routeId} generation=${generation} entries=+${delta.newEntries.length} deps=${delta.clientDeps.length}`,
         );
@@ -415,15 +435,24 @@ export class DevHmrController {
     //? No entry is known to read these yet, but a route's first build may be reading them now. Not marked early:
     //? the pages build's own invalidation still covers them.
     if (staleClientEntries.size === 0) {
-      this.routeCache.invalidateClientEntries({ routePredicate: () => false, staleEntries: [], files });
+      this.routeCache.invalidateClientEntries({
+        routePredicate: () => false,
+        staleEntries: [],
+        files,
+        batch: generation,
+      });
       return;
     }
-    for (const file of files) this.#earlyInvalidated.set(path.resolve(file), generation);
+    //? Only the entries themselves: a client entry's edit cannot move which entries a route reaches, but a server file
+    //? saved with it can, and a route built before the builder took the batch into its discovery missed that.
+    for (const file of files)
+      if (staleClientEntries.has(path.resolve(file))) this.#earlyInvalidated.set(path.resolve(file), generation);
     const routeIds = this.#routeIdsForFiles(files, staleClientEntries);
     this.routeCache.invalidateClientEntries({
       routePredicate: (routeId) => !routeIds || routeIds.includes(routeId),
       staleEntries: this.#clientEntryManifestKeys(staleClientEntries),
       files,
+      batch: generation,
     });
   }
 
@@ -431,7 +460,7 @@ export class DevHmrController {
     files: string[],
     routeIds: string[] | undefined,
     staleClientEntries = new Set<string>(),
-    { forceClear = false }: { forceClear?: boolean } = {},
+    { forceClear = false, batch }: { forceClear?: boolean; batch?: number } = {},
   ): string[] {
     this.#dirty.clear();
     this.#dirtyFiles.clear();
@@ -442,10 +471,14 @@ export class DevHmrController {
         routePredicate: (routeId) => !routeIds || routeIds.includes(routeId),
         staleEntries: staleKeys,
         files,
+        batch,
       });
     }
-    if (!routeIds || this.#shouldClearAllRoutes(files, routeIds)) return this.routeCache.clear();
-    return this.routeCache.invalidate((routeId) => routeIds.includes(routeId), { files });
+    //? Every route, for a file none is known to reach (the first build that reads it may still be running) or one all
+    //? of them do: but not those built after the builder took the batch in, which a full clear dropped as well.
+    if (!routeIds || this.#shouldClearAllRoutes(files, routeIds))
+      return batch === undefined ? this.routeCache.clear() : this.routeCache.invalidate(() => true, { files, batch });
+    return this.routeCache.invalidate((routeId) => routeIds.includes(routeId), { files, batch });
   }
 
   #routeIdsForFiles(files: string[], staleClientEntries = new Set<string>()): string[] | undefined {

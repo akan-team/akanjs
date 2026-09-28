@@ -19,11 +19,13 @@ export class SsrDevBundler extends DevRegistryBundler {
   static readonly #formatVersion = 1;
   static readonly bootstrapKey = "";
   readonly reloadsOnEntryChange = false;
-  #discovery: ClientEntryDiscovery | null;
+  #discovery: ClientEntryDiscovery | null = null;
+  readonly #sharedDiscovery: (() => ClientEntryDiscovery) | null;
 
-  constructor(app: App, { discovery }: { discovery?: ClientEntryDiscovery } = {}) {
+  /** `discovery` is the resident builder's, which it keeps current with every save; a worker discovers afresh. */
+  constructor(app: App, { discovery }: { discovery?: () => ClientEntryDiscovery } = {}) {
     super(app, { dirName: SSR_DEV_DIRNAME, routePrefix: SSR_DEV_ROUTE_PREFIX, library: true });
-    this.#discovery = discovery ?? null;
+    this.#sharedDiscovery = discovery ?? null;
   }
 
   async context(): Promise<CsrDevContext> {
@@ -68,8 +70,18 @@ export class SsrDevBundler extends DevRegistryBundler {
     const pageEntries = await resolveSsrPageEntriesForApp(this.app, await this.app.getPageKeys());
     const seedIndex = computeRouteSeedIndex(pageEntries);
     const seeds = [...new Set([...seedIndex.globalLayoutFiles, ...seedIndex.entries.flatMap((entry) => entry.seeds)])];
+    const discovery = this.#sharedDiscovery?.() ?? (await this.#ownDiscovery());
+    return (await discovery.discover(seeds)).map((file) => CsrDevPaths.realpath(file));
+  }
+
+  async #ownDiscovery(): Promise<ClientEntryDiscovery> {
     this.#discovery ??= await GraphClientEntryDiscovery.create(this.app);
-    return (await this.#discovery.discover(seeds)).map((file) => CsrDevPaths.realpath(file));
+    return this.#discovery;
+  }
+
+  override async wantedRoots(files: string[]): Promise<Set<string>> {
+    const entries = new Set(await this.clientEntries());
+    return new Set(files.filter((file) => entries.has(CsrDevPaths.realpath(file))));
   }
 
   protected async rootFiles(entryFiles: string[]): Promise<string[]> {

@@ -1,13 +1,20 @@
 import type { HmrTrace } from "akanjs/server";
 import type { BuildBatchNeed } from "./buildBatchProtocol";
 
+export interface DiscoveryJob {
+  files: string[];
+  refresh: boolean;
+  /** The newest batch these files came from: a route build that starts after has taken it in. */
+  generation: number;
+}
+
 export interface BatchJob {
   generation: number;
   needs: BuildBatchNeed[];
   changedFiles: string[];
   trace?: HmrTrace;
   /** Code files whose client-entry discovery goes stale before this batch builds; `refresh` rebuilds it whole. */
-  discovery?: { files: string[]; refresh: boolean };
+  discovery?: DiscoveryJob;
 }
 
 interface QueuedJob {
@@ -73,6 +80,7 @@ export class BuilderWorkQueue {
         ? {
             files: [...new Set([...(into.discovery?.files ?? []), ...(next.discovery?.files ?? [])])],
             refresh: !!into.discovery?.refresh || !!next.discovery?.refresh,
+            generation: Math.max(into.discovery?.generation ?? 0, next.discovery?.generation ?? 0),
           }
         : undefined;
     return {

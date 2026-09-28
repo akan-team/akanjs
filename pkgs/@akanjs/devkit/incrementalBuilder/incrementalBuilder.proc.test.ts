@@ -78,4 +78,123 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
     });
     expect(log).toContain(reason);
   }, 30_000);
+
+  test("a registry build whose worker was killed is built again once the crash window closes, for the route that asked", async () => {
+    // Inside the checkout so the route's client bundle resolves the framework from its source.
+    const { root } = track(await createTempApp("demo", path.join(import.meta.dir, "..", "local")));
+    const appDir = path.join(root, "apps/demo");
+    const runs = path.join(root, "ssr-runs.log");
+    await writeText(
+      path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
+      `import fs from "node:fs";
+const { generation, needs } = JSON.parse(process.argv[2]);
+if (needs.includes("ssr")) {
+  fs.appendFileSync(${JSON.stringify(runs)}, "ssr\\n");
+  if (fs.readFileSync(${JSON.stringify(runs)}, "utf8").split("\\n").length === 2) process.exit(1);
+}
+process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
+`,
+    );
+    const page = path.join(appDir, "page/_index.tsx");
+    await writeText(page, 'import { Card } from "../ui/Card";\nexport default Card;\n');
+    await writeText(path.join(appDir, "ui/Card.tsx"), '"use client";\nexport const Card = () => null;\n');
+
+    const messages: BuilderMessage[] = [];
+    const proc = Bun.spawn(["bun", path.join(import.meta.dir, "incrementalBuilder.proc.ts")], {
+      cwd: appDir,
+      env: {
+        ...process.env,
+        AKAN_WORKSPACE_ROOT: root,
+        AKAN_PUBLIC_APP_NAME: "demo",
+        AKAN_PUBLIC_REPO_NAME: "repo",
+        AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
+        AKAN_PUBLIC_ENV: "local",
+        AKAN_WATCH: "0",
+      },
+      stdio: ["ignore", "ignore", "ignore"],
+      serialization: "advanced",
+      ipc: (message: BuilderMessage) => {
+        messages.push(message);
+      },
+    });
+    const ssrRuns = async () =>
+      (await Bun.file(runs).exists()) ? (await Bun.file(runs).text()).trim().split("\n") : [];
+    try {
+      await until(proc, "boot-armed", () => messages.some((message) => message.type === "boot-armed"));
+      expect(await ssrRuns()).toHaveLength(1);
+      proc.send({
+        type: "build-route",
+        id: 1,
+        routeId: "page:/",
+        seeds: [page],
+        knownEntries: [],
+        generation: 3,
+      } satisfies BuilderReq);
+      await until(proc, "build-route-res", () => messages.some((message) => message.type === "build-route-res"));
+      expect(messages.find((message) => message.type === "build-route-res")).toMatchObject({ ok: true });
+      expect(await ssrRuns()).toHaveLength(1);
+      const deadline = Date.now() + 15_000;
+      while ((await ssrRuns()).length < 2 && Date.now() < deadline) await wait(100);
+      expect(await ssrRuns()).toHaveLength(2);
+    } finally {
+      proc.kill();
+    }
+  }, 40_000);
+
+  test("a route build's registry check that has nothing to add reports no ssr status, so it cannot hide a failure", async () => {
+    const { root } = track(await createTempApp("demo", path.join(import.meta.dir, "..", "local")));
+    const appDir = path.join(root, "apps/demo");
+    // The registry's own build is the real worker's; the rest is stood in for, as a boot build needs a whole app.
+    await writeText(
+      path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
+      `const { generation, needs } = JSON.parse(process.argv[2]);
+if (needs.includes("ssr")) await import(${JSON.stringify(path.join(import.meta.dir, "buildBatch.proc.ts"))});
+else process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
+`,
+    );
+    await writeText(path.join(appDir, "env/env.client.ts"), "export const env = {} as const;\n");
+    const page = path.join(appDir, "page/_index.tsx");
+    await writeText(page, 'import { Card } from "../ui/Card";\nexport default Card;\n');
+    await writeText(path.join(appDir, "ui/Card.tsx"), '"use client";\nexport const Card = () => null;\n');
+
+    const messages: BuilderMessage[] = [];
+    const proc = Bun.spawn(["bun", path.join(import.meta.dir, "incrementalBuilder.proc.ts")], {
+      cwd: appDir,
+      env: {
+        ...process.env,
+        AKAN_WORKSPACE_ROOT: root,
+        AKAN_PUBLIC_APP_NAME: "demo",
+        AKAN_PUBLIC_REPO_NAME: "repo",
+        AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
+        AKAN_PUBLIC_ENV: "local",
+        AKAN_WATCH: "0",
+      },
+      stdio: ["ignore", "ignore", "ignore"],
+      serialization: "advanced",
+      ipc: (message: BuilderMessage) => {
+        messages.push(message);
+      },
+    });
+    const ssrStatuses = () =>
+      messages.filter((message) => message.type === "build-status" && message.data.phase === "ssr");
+    try {
+      await until(proc, "boot-armed", () => messages.some((message) => message.type === "boot-armed"));
+      expect(messages.some((message) => message.type === "ssr-updated")).toBe(true);
+      const before = ssrStatuses().length;
+      proc.send({
+        type: "build-route",
+        id: 1,
+        routeId: "page:/",
+        seeds: [page],
+        knownEntries: [],
+        generation: 3,
+      } satisfies BuilderReq);
+      await until(proc, "build-route-res", () => messages.some((message) => message.type === "build-route-res"));
+      expect(messages.find((message) => message.type === "build-route-res")).toMatchObject({ ok: true });
+      await wait(200);
+      expect(ssrStatuses().length).toBe(before);
+    } finally {
+      proc.kill();
+    }
+  }, 60_000);
 });

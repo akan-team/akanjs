@@ -31,4 +31,35 @@ describe("BuildBatchRunner", () => {
 
     expect(result.errors.base).toContain('"./not-there" (apps/demo/page/_index.tsx:1:22)');
   }, 30_000);
+
+  test("a worker that dies mid-batch keeps what each need reported, and fails only the needs it never reached", async () => {
+    const { root } = track(await createTempApp("demo"));
+    const appDir = path.join(root, "apps/demo");
+    await writeText(
+      path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
+      `const { generation } = JSON.parse(process.argv[2]);
+const status = (phase, message) =>
+  process.send({ type: "build-status", data: { generation, phase, ok: !message, files: [], message } });
+status("ssr");
+status("css", "css broke");
+setTimeout(() => process.exit(1), 50);
+`,
+    );
+    const result = await new BuildBatchRunner({ workspaceRoot: root, cwd: appDir }).run({
+      appName: "demo",
+      workspaceRoot: root,
+      repoName: "repo",
+      generation: 7,
+      needs: ["ssr", "css", "pages"],
+      changedFiles: [],
+      pageKeys: null,
+      optimizedFonts: null,
+      cssAssets: null,
+      artifactDir: path.join(appDir, ".akan/artifact"),
+    });
+    expect(result).toMatchObject({ crashed: true, crashedNeeds: ["pages"] });
+    expect(result.errors.ssr).toBeUndefined();
+    expect(result.errors.css).toBe("css broke");
+    expect(result.errors.pages).toContain("exited with code 1");
+  }, 30_000);
 });

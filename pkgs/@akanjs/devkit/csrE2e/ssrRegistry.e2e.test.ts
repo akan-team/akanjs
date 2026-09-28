@@ -564,7 +564,8 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
     await open();
     const original = await Bun.file(labelFile).text();
     const movedFile = uiFile("RegistryLabel/index.tsx");
-    //? A tab that stopped hydrating shows the label but never counts: a new document is tried until one does.
+    //? A tab that stopped hydrating shows the label but never counts: a new document is tried until one does. Within
+    //? the save's own patch and pages build, not whenever a later build happens to heal the registry.
     const hydratesWith = async (label: string) =>
       await reopenUntil(async () => {
         const hydrated = async () => {
@@ -576,7 +577,7 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
           () => true,
           () => false,
         );
-      }, 90_000);
+      }, 15_000);
     try {
       await rm(labelFile);
       await Bun.write(

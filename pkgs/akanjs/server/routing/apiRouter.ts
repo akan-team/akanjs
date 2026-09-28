@@ -20,7 +20,7 @@ export interface HmrStateSource {
   /** Called before each hello: brings what the state says about the dev registries up to what is on disk. */
   refresh?: () => void;
   /** Sent right after hello: the build statuses failing now, which the socket connected too late to hear. */
-  errors?: () => unknown[];
+  errors?: () => { phase: string }[];
 }
 
 export type NonNullHttpRoutes = NonNullable<HttpRoutes>;
@@ -107,6 +107,7 @@ export class ApiRouter {
         if (data?.kind === "akan-hmr" && hmrHub && hmrState) {
           hmrHub.attach(ws as unknown as Bun.ServerWebSocket<HmrWsData>);
           hmrState.refresh?.();
+          const errors = hmrState.errors?.() ?? [];
           ws.send(
             JSON.stringify({
               type: "hello",
@@ -115,9 +116,10 @@ export class ApiRouter {
               csrGeneration: hmrState.state.csrGeneration,
               ssrGeneration: hmrState.state.ssrGeneration,
               ssrEpoch: hmrState.state.ssrEpoch,
+              ...(hmrState.errors ? { failingPhases: errors.map((status) => status.phase) } : {}),
             }),
           );
-          for (const status of hmrState.errors?.() ?? []) ws.send(JSON.stringify(status));
+          for (const status of errors) ws.send(JSON.stringify(status));
           return;
         }
         SignalResolver.handleWsOpen(ws, registry);

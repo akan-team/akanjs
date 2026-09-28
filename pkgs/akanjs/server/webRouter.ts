@@ -728,7 +728,7 @@ export class WebRouter {
   refreshHmrState(): void {
     this.#devHmr?.refreshRegistryState();
   }
-  hmrBuildErrors(): unknown[] {
+  hmrBuildErrors(): { phase: string }[] {
     return this.#devHmr?.buildErrorMessages() ?? [];
   }
   dispose() {
@@ -821,6 +821,12 @@ export class WebRouter {
   }
 
   #getHtmlCacheEntry(req: Request, url: URL): { entry: RouteCacheEntry | null; reason?: string } {
+    //? The dev registry's shim config is part of the HTML: a cached page would boot every reload beside the vendor file
+    //? it was rendered with, and a tab that reloads onto the current pair would reload again until the entry expired.
+    if (this.#ssrDevShell) {
+      this.#htmlCacheBypass += 1;
+      return { entry: null, reason: "dev-registry" };
+    }
     const decision = resolvePublicRouteCacheEntryDecision({
       request: req,
       url,

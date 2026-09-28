@@ -112,8 +112,13 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
   if (host.__akan) return;
   const modulePrefix = "akan-module:";
   const maxInvalidateRounds = 8;
-  //? Past this many missed generations a reload is cheaper than applying each patch in turn.
-  const maxCatchUp = 50;
+  //? Past this many missed generations a reload is cheaper than applying each patch in turn; it is also as many patches
+  //? as the artifact writer keeps (CSR_DEV_KEPT_PATCHES), so none of them is fetched only to find it pruned.
+  const maxCatchUp = 40;
+
+  //? What a save can fix even inside node_modules: a factory the tab lacks, because it booted from the vendor file of
+  //? the build before the one that added the package.
+  class MissingModuleError extends Error {}
 
   class HotContext implements CsrHotContext {
     selfAccepted = false;
@@ -173,6 +178,10 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
     #patchQueue: Promise<void> = Promise.resolve();
     #settling: Promise<void> = Promise.resolve();
     #reloading = false;
+    #markStarted: () => void = () => undefined;
+    readonly #whenStarted = new Promise<void>((resolve) => {
+      this.#markStarted = resolve;
+    });
 
     get generation() {
       return this.#generation;
@@ -250,15 +259,17 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       return this.#surfaced(id, () => this.#load(id)).exports;
     }
 
-    //? Recorded where a failure reaches the page, never where an importer caught it (an optional dependency probed in
-    //? a try, as isomorphic packages do with a Node built-in's stub), and never for a vendor or stub no save can fix.
+    //? Recorded where a failure reaches the page: a require from the RSC payload, or a dynamic import, whose importer
+    //? may still catch it. Never a synchronous require an importer wraps in a try (an optional dependency probed, as
+    //? isomorphic packages do with a Node built-in's stub), and never a vendor or stub no save can fix.
     #surfaced<T>(id: string, load: () => T): T {
       try {
         const loaded = load();
         this.#failed.delete(id);
         return loaded;
       } catch (error) {
-        if (!id.startsWith("stub:") && !id.includes("node_modules/")) this.#failed.add(id);
+        const fixable = error instanceof MissingModuleError || !id.includes("node_modules/");
+        if (!id.startsWith("stub:") && fixable) this.#failed.add(id);
         throw error;
       }
     }
@@ -270,10 +281,11 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
     whenDefined(id: string) {
       if (this.has(id)) return Promise.resolve();
       return new Promise<void>((resolve, reject) => {
-        const timer = host.setTimeout(
-          () => reject(new Error(`[akan-csr] no module registered as ${id}, and no update brought one`)),
-          20_000,
-        );
+        //? Failed like a throwing module: the update that finally defines it reloads the tab, which waits no more.
+        const timer = host.setTimeout(() => {
+          this.#failed.add(id);
+          reject(new MissingModuleError(`[akan-csr] no module registered as ${id}, and no update brought one`));
+        }, 20_000);
         const waiters = this.#waiters.get(id) ?? [];
         waiters.push(() => {
           host.clearTimeout(timer);
@@ -349,9 +361,14 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
         this.#reload(`generation ${message.generation} arrived without a patch`);
         return;
       }
-      this.#target = Math.max(this.#target, message.generation);
+      const generation = message.generation;
+      this.#target = Math.max(this.#target, generation);
       //? The next patch waits for the last one's async accept callbacks, so the route table is never swapped twice at once.
-      this.#patchQueue = this.#patchQueue.then(() => this.#loadPatch(url)).then(() => this.#settling);
+      //? One queued behind a patch that failed to load is past the target it left, and waits for the reconnect instead:
+      //? applied now, it would find its predecessor missing and reload the tab.
+      this.#patchQueue = this.#patchQueue
+        .then(() => (generation > this.#target ? undefined : this.#loadPatch(url)))
+        .then(() => this.#settling);
     }
 
     //? For updates sent while the tab had no WebSocket (a backend restart drops them): every patch stays on disk under
@@ -380,7 +397,10 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       };
     }
 
-    whenSettled() {
+    //? Updates that came before the start are queued only when it replays them: a refresh fetched first would name
+    //? exports the running generation lacks, and RSDW keeps the undefined it resolved them to.
+    whenSettled(): Promise<void> {
+      if (!this.#started && this.#early.length > 0) return this.#whenStarted.then(() => this.whenSettled());
       return this.#patchQueue.then(() => this.#settling);
     }
 
@@ -389,6 +409,7 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       const early = this.#early;
       this.#early = [];
       for (const message of early) this.hot(message);
+      this.#markStarted();
     }
 
     #settleWaiters(ids: string[]) {
@@ -479,7 +500,7 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       const cached = this.#cache.get(id);
       if (cached) return cached;
       const factory = this.#factories.get(id);
-      if (!factory) throw new Error(`[akan-csr] no module registered as ${id}`);
+      if (!factory) throw new MissingModuleError(`[akan-csr] no module registered as ${id}`);
       const record = new ModuleRecord(id, this.#hotData.get(id));
       this.#cache.set(id, record);
       const requireFromHere = this.#requireFrom(id);

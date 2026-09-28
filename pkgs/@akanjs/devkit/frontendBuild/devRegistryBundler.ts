@@ -81,6 +81,11 @@ export abstract class DevRegistryBundler {
     return update;
   }
 
+  /** Of these roots outside the graph, the ones a route still reaches: only those stay pending. */
+  async wantedRoots(files: string[]): Promise<Set<string>> {
+    return new Set(files);
+  }
+
   async holds(files: string[]): Promise<boolean> {
     const graph = await this.writer.readJson<CsrDevGraph>("graph.json");
     return graph !== null && files.every((file) => graph.modules[this.paths.idOf(file)] !== undefined);

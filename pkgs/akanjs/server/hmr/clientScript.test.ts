@@ -213,6 +213,23 @@ describe("HMR_CLIENT_SCRIPT", () => {
     expect(hmr.reloadCount).toBe(0);
   });
 
+  test("a hello naming the phases failing now drops an error the tab holds for any other", () => {
+    const hmr = createHmrHarness();
+    for (const [phase, generation] of [
+      ["route", 37],
+      ["ssr", 5],
+    ] as const)
+      hmr.ws.sendMessage({ type: "build-status", status: "error", generation, phase, message: `${phase} failed` });
+    expect(hmr.label()).toBe("Build failed: route, ssr");
+
+    hmr.ws.sendMessage({ type: "hello", buildId: 1, failingPhases: ["ssr"] });
+    expect(hmr.label()).toBe("Build failed: ssr");
+
+    hmr.ws.sendMessage({ type: "hello", buildId: 1, failingPhases: [] });
+    expect(hmr.overlay().getAttribute("data-status")).toBe("ok");
+    expect(hmr.reloadCount).toBe(0);
+  });
+
   test("keeps error label when an HMR overlay job finishes during a build error", async () => {
     const hmr = createHmrHarness();
 
@@ -375,6 +392,43 @@ describe("HMR_CLIENT_SCRIPT", () => {
     const patched = createHmrHarness({ selfOverrides: failed, runTimers: true });
     patched.ws?.sendMessage({ type: "ssr-update", generation: 5, url: "/_akan/ssr-dev/patch-5.js" });
     expect(patched.reloadCount).toBe(1);
+  });
+
+  test("a registry that failed to start reloads on a reload of its own generation, and one that started does not", () => {
+    for (const failed of [true, false]) {
+      const hot: unknown[] = [];
+      const registry = {
+        generation: 5,
+        hot: (message: unknown) => hot.push(message),
+        inspect: () => ({ generation: 5, target: 5, started: true, failed }),
+      };
+      const harness = createHmrHarness({ selfOverrides: { __akan: registry }, runTimers: true });
+      harness.ws?.sendMessage({ type: "ssr-update", generation: 5, reload: true, reason: "an npm module joined" });
+      expect(harness.reloadCount).toBe(failed ? 1 : 0);
+    }
+  });
+
+  test("an RSC refresh waits for a registry still booting, whose start replays the updates that came first", async () => {
+    let booted = (): void => undefined;
+    const boot = new Promise<void>((resolve) => {
+      booted = resolve;
+    });
+    const refreshes: unknown[] = [];
+    const harness = createHmrHarness({
+      selfOverrides: {
+        __AKAN_SSR_BOOT__: boot,
+        __AKAN_RSC_REFRESH__: (input: unknown) => {
+          refreshes.push(input);
+          return Promise.resolve();
+        },
+      },
+    });
+    harness.ws?.sendMessage({ type: "rsc-refresh", buildId: 2, generation: 6 });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(refreshes).toEqual([]);
+    booted();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(refreshes).toEqual([{ buildId: 2 }]);
   });
 
   test("an SSR registry reload reloads the tab itself, even when its runtime never started", () => {

@@ -9,6 +9,8 @@ export interface BuildRouteResultPayload {
   clientDepsByEntry?: Record<string, string[]>;
   routeId?: string;
   generation?: number;
+  /** The newest save batch whose files its client-entry discovery had taken in when it started. */
+  seenGeneration?: number;
 }
 
 /** Re-announces a recycled builder's artifact (not an edit); the host drops it when the hashed output did not move. */
@@ -175,4 +177,6 @@ export interface BuildRouteClientResult {
   discoveredEntries?: string[];
   clientDeps: string[];
   clientDepsByEntry?: Record<string, string[]>;
+  /** The newest save batch whose files its client-entry discovery had taken in when it started. */
+  seenGeneration?: number;
 }

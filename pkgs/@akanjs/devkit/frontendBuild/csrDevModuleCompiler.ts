@@ -130,9 +130,12 @@ export class CsrDevModuleCompiler {
   }
 
   async #bunBuild(files: string[], vendor: boolean): Promise<BuildRound> {
-    const mtimes = new Map(files.map((file) => [file, CsrDevPaths.mtimeOf(file)]));
+    //? Keyed as the output is: by the disk's spelling, which a case-only rename leaves apart from the requested path.
+    const mtimes = new Map(files.map((file) => [CsrDevPaths.realpath(file), CsrDevPaths.mtimeOf(file)]));
     const hashes = new Map(
-      await Promise.all(files.map(async (file) => [file, vendor ? "" : await CsrDevPaths.hashOf(file)] as const)),
+      await Promise.all(
+        files.map(async (file) => [CsrDevPaths.realpath(file), vendor ? "" : await CsrDevPaths.hashOf(file)] as const),
+      ),
     );
     const misses: string[] = [];
     const result = await Bun.build({

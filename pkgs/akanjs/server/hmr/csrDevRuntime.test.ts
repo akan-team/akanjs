@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { CSR_DEV_KEPT_PATCHES } from "./csrDevManifest";
 import {
   CSR_DEV_RUNTIME_SCRIPT,
   type CsrDevRuntimeApi,
@@ -621,6 +622,112 @@ describe("installCsrDevRuntime", () => {
       expect(harness.warnings.at(-1)).toContain("app/Lazy.tsx failed to run");
     });
 
+    test("a module that threw and then loaded is no longer held against the page", () => {
+      let runs = 0;
+      const harness = createHarness({
+        "app/boot.ts": () => undefined,
+        "app/Flaky.tsx": (_require, record) => {
+          runs += 1;
+          if (runs === 1) throw new Error("first run failed");
+          record.exports = { Flaky: () => null };
+        },
+        "app/Other.tsx": component("Other"),
+      });
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" });
+      expect(() => harness.api.require("app/Flaky.tsx")).toThrow("first run failed");
+      harness.api.require("app/Flaky.tsx");
+      harness.api.require("app/Other.tsx");
+      harness.api.update(3, { "app/Other.tsx": component("Other") });
+      expect(harness.reloads).toBe(0);
+    });
+
+    test("a stub or a package the payload required is not held when it throws, but a package factory the tab lacks is", async () => {
+      const failures = {
+        "stub:node:fs": () => {
+          throw new Error("fs is a Node built-in the browser does not have");
+        },
+        "node_modules/throws/index.js": () => {
+          throw new Error("the package threw");
+        },
+      };
+      for (const id of Object.keys(failures)) {
+        const harness = createHarness({
+          "app/boot.ts": () => undefined,
+          "app/Other.tsx": component("Other"),
+          ...failures,
+        });
+        harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+        harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" });
+        harness.api.require("app/Other.tsx");
+        expect(() => harness.api.require(id)).toThrow();
+        harness.api.update(3, { "app/Other.tsx": component("Other") });
+        expect(harness.reloads).toBe(0);
+      }
+
+      let imported: Promise<unknown> = Promise.resolve();
+      const harness = createHarness({
+        "app/boot.ts": () => undefined,
+        "app/Globe.tsx": (_require, record, _exports, _register, _signature, importLazy) => {
+          imported = importLazy("akan-module:node_modules/new-pkg/index.js");
+          record.exports = { Globe: () => null };
+        },
+        "app/Other.tsx": component("Other"),
+      });
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" });
+      harness.api.require("app/Globe.tsx");
+      await expect(imported).rejects.toThrow("no module registered as node_modules/new-pkg/index.js");
+      harness.api.update(3, { "app/Other.tsx": component("Other") });
+      expect(harness.reloads).toBe(1);
+    });
+
+    test("a patch queued behind one that went unanswered waits for the catch-up instead of reloading the tab", async () => {
+      const harness = createHarness({ "app/boot.ts": () => undefined });
+      harness.host.fetch = async () => {
+        throw new Error("offline");
+      };
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" });
+      harness.api.hot({ generation: 3, url: "/_akan/ssr-dev/patch-3.js" });
+      harness.api.hot({ generation: 4, url: "/_akan/ssr-dev/patch-4.js" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      harness.scripts[0]?.onerror?.();
+      for (let tick = 0; tick < 5; tick++) await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(harness.scripts.map((script) => script.src)).toEqual(["/_akan/ssr-dev/patch-3.js"]);
+      expect(harness.reloads).toBe(0);
+      expect(harness.api.inspect().target).toBe(2);
+    });
+
+    test("whenSettled waits for the start to replay an update that came before it", async () => {
+      const harness = createHarness({ "app/boot.ts": () => undefined });
+      harness.api.hot({ generation: 3, url: "/_akan/ssr-dev/patch-3.js" });
+      let settled = false;
+      void harness.api.whenSettled().then(() => {
+        settled = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(settled).toBe(false);
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(settled).toBe(false);
+      harness.scripts[0]?.onload?.();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(settled).toBe(true);
+    });
+
+    test("a module no update brought in time is held like one that threw, so the update defining it reloads", async () => {
+      const harness = createHarness({ "app/boot.ts": () => undefined });
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" });
+      const waiting = harness.api.whenDefined("app/Late.tsx");
+      harness.flushTimers();
+      await expect(waiting).rejects.toThrow("no update brought one");
+      harness.api.update(3, { "app/Late.tsx": component("Late") });
+      expect(harness.reloads).toBe(1);
+    });
+
     test("a start that failed reloads on a reload of its own generation, and names the build app.js came from", () => {
       const harness = createHarness({
         "app/boot.ts": () => {
@@ -677,6 +784,10 @@ describe("installCsrDevRuntime", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(harness.scripts.map((script) => script.src)).toEqual(["/_akan/ssr-dev/patch-3.js"]);
     });
+  });
+
+  test("a reconnecting tab catches up on as many patches as the artifact writer keeps", () => {
+    expect(CSR_DEV_RUNTIME_SCRIPT).toContain(`maxCatchUp = ${CSR_DEV_KEPT_PATCHES};`);
   });
 
   test("the serialized script installs the runtime with nothing from this module in scope", () => {

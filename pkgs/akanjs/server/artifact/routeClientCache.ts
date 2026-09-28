@@ -32,6 +32,8 @@ export interface InvalidateClientEntriesOptions {
   staleEntries: Iterable<string>;
   /** The saved files behind it: a build still running that bundled one of them is built again. */
   files?: Iterable<string>;
+  /** The save batch behind it: a route build whose discovery had taken that batch in is neither dropped nor rebuilt. */
+  batch?: number;
 }
 interface Invalidation {
   /** The generation it moved the cache to: only a build started before it is checked against it. */
@@ -40,6 +42,7 @@ interface Invalidation {
   routePredicate: (routeId: string) => boolean;
   /** Its stale entries and saved files, normalized. */
   touched: Set<string>;
+  batch?: number;
 }
 
 export class RouteClientCache {
@@ -169,29 +172,63 @@ export class RouteClientCache {
     return dropped;
   }
 
-  invalidate(predicate: (routeId: string) => boolean, { files = [] }: { files?: Iterable<string> } = {}): string[] {
-    const dropped = this.#dropBuilt(predicate);
+  invalidate(
+    predicate: (routeId: string) => boolean,
+    { files = [], batch }: { files?: Iterable<string>; batch?: number } = {},
+  ): string[] {
+    const spared = this.#sparedBy(batch);
+    const routePredicate = (routeId: string) => predicate(routeId) && !spared.has(routeId);
+    const dropped = this.#dropBuilt(routePredicate);
     const touched = RouteClientCache.#normalizeAll(files);
-    if (dropped.length === 0 && !this.#mayOvertake(predicate, touched)) return dropped;
+    if (dropped.length === 0 && !this.#mayOvertake(routePredicate, touched)) return dropped;
     this.#rebuildKnownEntriesPreservingManifest(this.merged.generation + 1);
-    this.#record({ routePredicate: predicate, touched });
+    this.#record({ routePredicate, touched, batch });
     this.#logger.verbose(`[route-cache] invalidated ${dropped.length} routes: ${dropped.join(", ")}`);
     return dropped;
   }
 
-  invalidateClientEntries({ routePredicate, staleEntries, files = [] }: InvalidateClientEntriesOptions): string[] {
-    const normalizedStaleEntries = RouteClientCache.#normalizeAll(staleEntries);
+  invalidateClientEntries({
+    routePredicate,
+    staleEntries,
+    files = [],
+    batch,
+  }: InvalidateClientEntriesOptions): string[] {
+    const spared = this.#sparedBy(batch);
+    //? A spared build wrote those entries' rows after the save, so they stay; a key may be workspace-relative.
+    const fresh = [...spared.values()].flatMap((delta) => [...RouteClientCache.#reachedOf(delta)]);
+    const normalizedStaleEntries = new Set(
+      [...RouteClientCache.#normalizeAll(staleEntries)].filter(
+        (entry) => !fresh.some((file) => file === entry || file.endsWith(`/${entry}`)),
+      ),
+    );
     const touched = new Set([...normalizedStaleEntries, ...RouteClientCache.#normalizeAll(files)]);
-    const dropped = this.#dropBuilt(routePredicate);
-    if (dropped.length === 0 && normalizedStaleEntries.size === 0 && !this.#mayOvertake(routePredicate, touched))
+    const predicate = (routeId: string) => routePredicate(routeId) && !spared.has(routeId);
+    const dropped = this.#dropBuilt(predicate);
+    if (dropped.length === 0 && normalizedStaleEntries.size === 0 && !this.#mayOvertake(predicate, touched))
       return dropped;
 
     this.#rebuildKnownEntriesPreservingManifest(this.merged.generation + 1, normalizedStaleEntries);
-    this.#record({ routePredicate, touched });
+    this.#record({ routePredicate: predicate, touched, batch });
     this.#logger.verbose(
-      `[route-cache] client invalidated routes=${dropped.join(",") || "(none)"} entries=${normalizedStaleEntries.size}`,
+      `[route-cache] client invalidated routes=${dropped.join(",") || "(none)"} entries=${normalizedStaleEntries.size}${spared.size > 0 ? ` kept=${[...spared.keys()].join(",")}` : ""}`,
     );
     return dropped;
+  }
+
+  //? Built after the builder had taken this batch's files into its client-entry discovery: it read every file of the
+  //? batch as saved, so dropping it would build the same result again (about 1.5s on apps/akan before a first page).
+  #sparedBy(batch: number | undefined): Map<string, BuildRouteClientResult> {
+    if (batch === undefined) return new Map();
+    return new Map([...this.#built].filter(([, delta]) => (delta.seenGeneration ?? -1) >= batch));
+  }
+
+  static #reachedOf(delta: BuildRouteClientResult): Set<string> {
+    return RouteClientCache.#normalizeAll([
+      ...(delta.discoveredEntries ?? []),
+      ...delta.newEntries,
+      ...delta.clientDeps,
+      ...Object.values(delta.clientDepsByEntry ?? {}).flat(),
+    ]);
   }
 
   clear(): string[] {
@@ -214,8 +251,9 @@ export class RouteClientCache {
     cleared = false,
     routePredicate,
     touched,
+    batch,
   }: Omit<Invalidation, "generation" | "cleared"> & { cleared?: boolean }) {
-    this.#invalidations.push({ generation: this.merged.generation, cleared, routePredicate, touched });
+    this.#invalidations.push({ generation: this.merged.generation, cleared, routePredicate, touched, batch });
     this.#prune();
   }
 
@@ -229,15 +267,11 @@ export class RouteClientCache {
   //? A save that dropped neither this route nor anything the build reached leaves its result good: merged, not thrown
   //? away, so a save during a navigation no longer costs an unrelated route a second build (about 1.5s on apps/akan).
   #overtaken(routeId: string, since: number, delta: BuildRouteClientResult): boolean {
-    const reached = RouteClientCache.#normalizeAll([
-      ...(delta.discoveredEntries ?? []),
-      ...delta.newEntries,
-      ...delta.clientDeps,
-      ...Object.values(delta.clientDepsByEntry ?? {}).flat(),
-    ]);
+    const reached = RouteClientCache.#reachedOf(delta);
     return this.#invalidations.some(
       (invalidation) =>
         invalidation.generation > since &&
+        !(invalidation.batch !== undefined && (delta.seenGeneration ?? -1) >= invalidation.batch) &&
         (invalidation.cleared ||
           invalidation.routePredicate(routeId) ||
           (!delta.discoveredEntries && invalidation.touched.size > 0) ||

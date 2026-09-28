@@ -27,6 +27,19 @@ describe("transformUseClient", () => {
     ).toBeNull();
   });
 
+  test("a client module with no exports stays server code and is not reported as a client module", () => {
+    const reported: string[] = [];
+    const onClientModule = (file: string) => reported.push(file);
+    expect(
+      transformUseClient('"use client";\nimport "./side-effect";\n', { path: "/repo/ui/Fx.tsx", onClientModule }),
+    ).toBeNull();
+    expect(reported).toEqual([]);
+    expect(
+      transformUseClient('"use client"; export const value = 1;', { path: "/repo/ui/V.tsx", onClientModule }),
+    ).not.toBeNull();
+    expect(reported).toEqual(["/repo/ui/V.tsx"]);
+  });
+
   test("stubs named and default exports as RSC client references", () => {
     const source = [
       "// comment before directive",

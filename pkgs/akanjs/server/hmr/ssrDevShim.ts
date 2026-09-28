@@ -51,16 +51,24 @@ export class SsrDevShim {
     });
   }
   // Only once the manifest names that vendor file too: a write cut short between app.js and the manifest would otherwise
-  // reload every new document until the next build.
+  // reload every new document until the next build. Never settled when it reloads, so nothing requires from this one.
   function reloadOnto(vendorFile, attempt) {
     return state().then(function (current) {
-      if (current.vendorFile === vendorFile) self.location.reload();
-      else if (attempt < 4) return wait(500).then(function () { return reloadOnto(vendorFile, attempt + 1); });
+      if (current.vendorFile === vendorFile) {
+        self.location.reload();
+        return new Promise(function () {});
+      }
+      if (attempt < 4) return wait(500).then(function () { return reloadOnto(vendorFile, attempt + 1); });
     });
+  }
+  // A patch broadcast before this tab's WebSocket connected reached only hello's generation.
+  function catchUp() {
+    var hello = self.__AKAN_SSR_HELLO_GENERATION__;
+    if (typeof hello === "number") self.__akan.catchUp(hello, c.prefix);
   }
   function boot() {
     if (!booting)
-      booting = script(c.runtime).then(function () {
+      booting = self.__AKAN_SSR_BOOT__ = script(c.runtime).then(function () {
         var early = self.__AKAN_SSR_EARLY_UPDATES__ || [];
         self.__AKAN_SSR_EARLY_UPDATES__ = null;
         for (var i = 0; i < early.length; i++) self.__akan.hot(early[i]);
@@ -74,12 +82,13 @@ export class SsrDevShim {
         // app.js names the build it came from, which a whole build between the render and this load may have replaced.
         var started = self.__akan.inspect();
         if (typeof started.epoch === "number") self.__AKAN_SSR_EPOCH__ = started.epoch;
-        // Its vendor file too: one written after the render's names vendors the file this page loaded lacks.
-        if (started.failed && started.vendorFile && started.vendorFile !== built.vendorFile)
-          return reloadOnto(started.vendorFile, 0);
-        // A patch broadcast before this tab's WebSocket connected reached only hello's generation.
-        var hello = self.__AKAN_SSR_HELLO_GENERATION__;
-        if (typeof hello === "number") self.__akan.catchUp(hello, c.prefix);
+        // Its vendor file too: one written after the render's names vendors the file this page loaded lacks. A start
+        // that succeeded (the new package is a leaf's import) takes that file as well, which adds only the factories
+        // this one lacked, since both are named by their content.
+        var vendorFile = started.vendorFile;
+        if (!vendorFile || vendorFile === built.vendorFile) return catchUp();
+        if (started.failed) return reloadOnto(vendorFile, 0);
+        return script(c.prefix + vendorFile).then(catchUp, function () { return reloadOnto(vendorFile, 0); });
       }).catch(function (error) {
         // What clientScript compares a newer registry against: this document reloads onto one, and only onto one.
         var failed = built || c;

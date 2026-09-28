@@ -17,6 +17,7 @@ import {
   resolveIdleSuspendMs,
   shouldAbandonBackendRecovery,
   shouldHoldForReturningBuilder,
+  shouldKeepBuildFailure,
   shouldMarkBuildPhaseRecovered,
   shouldQueueBuildStatusReplay,
   shouldRefreshConfigOnIdleWake,
@@ -353,6 +354,18 @@ describe("build status helpers", () => {
 
     expect(shouldMarkBuildPhaseRecovered(previousByPhase, status("css", 12, true))).toBe(false);
     expect(shouldMarkBuildPhaseRecovered(previousByPhase, status("pages", 12, true))).toBe(true);
+  });
+
+  test("an ok of the failure's own generation neither recovers nor replaces it, except a backend's", () => {
+    const previousByPhase = new Map<DevBuildStatus["phase"], DevBuildStatus>([
+      ["ssr", status("ssr", 7, false)],
+      ["backend", status("backend", 7, false)],
+    ]);
+    expect(shouldMarkBuildPhaseRecovered(previousByPhase, status("ssr", 7, true))).toBe(false);
+    expect(shouldKeepBuildFailure(previousByPhase, status("ssr", 7, true))).toBe(true);
+    expect(shouldKeepBuildFailure(previousByPhase, status("ssr", 8, true))).toBe(false);
+    expect(shouldKeepBuildFailure(previousByPhase, status("ssr", 7, false))).toBe(false);
+    expect(shouldMarkBuildPhaseRecovered(previousByPhase, status("backend", 7, true))).toBe(true);
   });
 
   test("creates backend build-status payloads for lifecycle test hooks", () => {

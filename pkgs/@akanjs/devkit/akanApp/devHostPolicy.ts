@@ -120,13 +120,26 @@ export const isLegacyBackendFallbackFile = (file: string, workspaceRoot: string)
   );
 };
 
+//? A newer generation, as the backend and the tabs judge it: an ok of the failure's own generation (a route build's
+//? registry check that had nothing to add) says nothing about the failure. A backend restart reports its own generation.
 export const shouldMarkBuildPhaseRecovered = (
   previousByPhase: ReadonlyMap<BuildPhase, DevBuildStatus>,
   status: DevBuildStatus,
 ): boolean => {
   const previous = previousByPhase.get(status.phase);
-  return Boolean(previous && status.ok && !previous.ok && generationValue(status.generation) >= previous.generation);
+  if (!previous || !status.ok || previous.ok) return false;
+  const generation = generationValue(status.generation);
+  return status.phase === "backend" ? generation >= previous.generation : generation > previous.generation;
 };
+
+/** An ok that recovers nothing leaves the failure standing, for hello and for whatever waits on a clean build. */
+export const shouldKeepBuildFailure = (
+  previousByPhase: ReadonlyMap<BuildPhase, DevBuildStatus>,
+  status: DevBuildStatus,
+): boolean =>
+  status.ok &&
+  previousByPhase.get(status.phase)?.ok === false &&
+  !shouldMarkBuildPhaseRecovered(previousByPhase, status);
 
 export const createBackendBuildStatus = ({
   generation,

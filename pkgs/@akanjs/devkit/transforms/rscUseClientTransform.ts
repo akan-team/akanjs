@@ -55,8 +55,10 @@ export function transformUseClient(source: string, args: UseClientTransformArgs)
   if (!USE_CLIENT_RE.test(source)) return null;
   if (IMPLICIT_ROOT_LAYOUT_RE.test(args.path)) return null;
   const exports = scanUseClientExports(source, args.path, args.workspaceRoot);
-  args.onClientModule?.(args.path, exports);
+  //? Not reported without exports: the module then stays in the server bundle as it is, so a save of it changes what
+  //? the server runs, which a client module's edit that kept its export names does not.
   if (exports.length === 0) return null;
+  args.onClientModule?.(args.path, exports);
 
   const referencePath = args.workspaceRoot ? toClientReferencePath(args.path, args.workspaceRoot) : args.path;
   const filePathLit = JSON.stringify(referencePath);

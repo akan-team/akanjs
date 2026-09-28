@@ -1,8 +1,10 @@
+import fs from "node:fs";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import {
   appGenerationOf,
   CSR_DEV_APP_FILE,
+  CSR_DEV_KEPT_PATCHES,
   CSR_DEV_MANIFEST_FILE,
   CSR_DEV_PATCHING_MARKER,
   type CsrDevLayout,
@@ -21,7 +23,6 @@ export interface CsrDevArtifactWriterOptions {
 }
 
 export class CsrDevArtifactWriter {
-  static readonly #keptPatches = 40;
   static readonly #keptVendors = 3;
   static readonly #buildingMarker = ".building";
   readonly #outDir: string;
@@ -82,14 +83,19 @@ export class CsrDevArtifactWriter {
     ]);
   }
 
+  //? A module whose file is missing is left out rather than failing the read: the patcher compiles it again.
   async readCode(graph: CsrDevGraph): Promise<CsrDevCode> {
-    const ids = Object.keys(graph.modules).filter((id) => !graph.modules[id]?.vendor);
+    const ids = Object.keys(graph.modules).filter((id) => !graph.modules[id]?.vendor && this.hasModule(id));
     const hashes = [...new Set(ids.flatMap((id) => graph.modules[id]?.helpers ?? []))];
     const [modules, helpers] = await Promise.all([
       Promise.all(ids.map(async (id) => [id, await Bun.file(this.#modulePath(id, ".js")).text()] as const)),
       Promise.all(hashes.map(async (hash) => [hash, await Bun.file(this.#helpersPath(hash)).text()] as const)),
     ]);
     return { modules: new Map(modules), helpers: new Map(helpers) };
+  }
+
+  hasModule(id: string): boolean {
+    return fs.existsSync(this.#modulePath(id, ".js"));
   }
 
   async forgetModules(ids: string[]): Promise<void> {
@@ -192,7 +198,7 @@ export class CsrDevArtifactWriter {
     const names = await readdir(this.#outDir);
     const stale = names.filter((name) => {
       const patch = /^patch-(\d+)\.js(?:\.layout\.json)?$/.exec(name);
-      return patch ? Number(patch[1]) <= generation - CsrDevArtifactWriter.#keptPatches : false;
+      return patch ? Number(patch[1]) <= generation - CSR_DEV_KEPT_PATCHES : false;
     });
     const vendors = names
       .filter((name) => /^vendor-[\w-]+\.js$/.test(name) && name !== vendorFile)

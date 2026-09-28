@@ -95,12 +95,23 @@ export class CsrDevResolver {
   resolve(importer: string, specifier: string): string | null {
     if (this.#isInlineSpecifier(specifier)) return CsrDevResolver.inline;
     const known = this.#resolution.get(importer)?.get(specifier);
-    const usable = known && (CsrDevPaths.isStub(known) || fs.existsSync(known)) ? known : null;
+    const usable = known && this.#stillAnswers(importer, specifier, known) ? known : null;
     const target = usable ?? this.#resolveUnknown(importer, specifier);
     if (target === null || CsrDevPaths.isStub(target)) return target;
     if (!CsrDevPaths.isScript(target)) return CsrDevResolver.inline;
     if (!usable) this.#remember(importer, specifier, target);
     return target;
+  }
+
+  //? A relative record of the user's own code is checked against the disk: a file created beside it (`Foo.tsx` next to
+  //? `Foo/index.tsx`) takes the import over for Bun and every other build, the registry included. A package's own
+  //? relative imports are left as recorded, since its `browser` field may map one elsewhere.
+  #stillAnswers(importer: string, specifier: string, known: string): boolean {
+    if (CsrDevPaths.isStub(known)) return true;
+    if (!fs.existsSync(known)) return false;
+    if (!specifier.startsWith(".") || CsrDevPaths.isVendorFile(importer)) return true;
+    const onDisk = CsrDevPaths.resolveOnDisk(path.resolve(path.dirname(importer), specifier));
+    return onDisk === null || CsrDevPaths.realpath(onDisk) === known;
   }
 
   isRegistryModule(file: string): boolean {
@@ -135,9 +146,9 @@ export class CsrDevResolver {
     );
   }
 
-  //? Bun.resolveSync keeps what it found for the life of the process, so in the resident builder it hands back a file
-  //? moved away since (`Foo.tsx` → `Foo/index.tsx`, `.ts` → `.tsx`); a new file it does find. A relative import is
-  //? therefore looked up on the disk as it is now, and a bare one it names a missing file for goes to a fresh worker.
+  //? Bun.resolveSync keeps what it found per directory until a build walks that directory again, so in the resident
+  //? builder it may hand back a file moved away since (`Foo.tsx` → `Foo/index.tsx`, `.ts` → `.tsx`). A relative import
+  //? is therefore looked up on the disk as it is now, and a bare one it names a missing file for goes to a fresh worker.
   #resolveUnknown(importer: string, specifier: string): string | null {
     if (specifier.startsWith("node:")) return `${CsrDevPaths.stubPrefix}${specifier}`;
     const relative = specifier.startsWith(".") || path.isAbsolute(specifier);

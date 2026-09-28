@@ -39,6 +39,7 @@ export class BuildBatchRunner {
     const started = Date.now();
     const entry = await this.#resolveEntry();
     let result: BuildBatchResult | null = null;
+    const reported = new Map<string, string | undefined>();
     const payload = request.trace ? { ...request, trace: { ...request.trace, spawnAt: Date.now() } } : request;
     // argv rather than IPC, so the worker starts on its first tick instead of waiting for a handshake.
     const proc = Bun.spawn(["bun", entry, JSON.stringify(payload)], {
@@ -49,7 +50,10 @@ export class BuildBatchRunner {
       ipc: (message: BuildBatchMessage | BuilderMessage) => {
         if (!message || typeof message !== "object") return;
         if (message.type === "build-batch-result") result = message.data;
-        else onMessage(message);
+        else {
+          if (message.type === "build-status") reported.set(message.data.phase, message.data.message);
+          onMessage(message);
+        }
       },
     });
     const exitCode = await proc.exited;
@@ -66,10 +70,13 @@ export class BuildBatchRunner {
         }`
       : `build worker exited with code ${exitCode} before reporting a result`;
     this.#logger.error(`[build-batch] generation=${request.generation} ${message}`);
-    return {
-      generation: request.generation,
-      errors: Object.fromEntries(request.needs.map((need) => [need, message])),
-      crashed: true,
-    };
+    //? A need that reported before the crash keeps what it reported: a worker killed during pages built ssr and css.
+    const crashedNeeds = request.needs.filter((need) => !reported.has(need));
+    const failed = request.needs.flatMap((need) => {
+      if (!reported.has(need)) return [[need, message] as const];
+      const error = reported.get(need);
+      return error ? [[need, error] as const] : [];
+    });
+    return { generation: request.generation, errors: Object.fromEntries(failed), crashed: true, crashedNeeds };
   }
 }

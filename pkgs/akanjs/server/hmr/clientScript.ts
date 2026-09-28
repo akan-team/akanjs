@@ -66,6 +66,7 @@ export const HMR_CLIENT_SCRIPT = `(function(){
       try { msg = JSON.parse(ev.data); } catch (e){ return; }
       if (!msg || typeof msg.type !== "string") return;
       if (msg.type === "hello") {
+        if (Array.isArray(msg.failingPhases)) dropBuildErrorsExcept(msg.failingPhases);
         if (clientKind === "csr") {
           if (csrGenerationMoved(msg.csrGeneration)) reloadForUpdate("missed a CSR update while disconnected");
           return;
@@ -406,6 +407,22 @@ export const HMR_CLIENT_SCRIPT = `(function(){
     var recovered = phase === "backend" ? generation >= current.generation : generation > current.generation;
     if (!recovered) return;
     delete buildErrorStates[phase];
+    showBuildRecovered(msg);
+  }
+
+  //? A backend that restarted since these went out, and sends each phase failing now right after its hello, never
+  //? recovers the others: its route builds and statuses start over, so the fix of one is nothing it would report.
+  function dropBuildErrorsExcept(failing){
+    var dropped = false;
+    for (var phase in buildErrorStates) {
+      if (failing.indexOf(phase) >= 0) continue;
+      delete buildErrorStates[phase];
+      dropped = true;
+    }
+    if (dropped) showBuildRecovered({});
+  }
+
+  function showBuildRecovered(msg){
     if (hasBuildErrors()) {
       renderBuildErrorOverlay();
       return;
@@ -465,12 +482,18 @@ export const HMR_CLIENT_SCRIPT = `(function(){
   // After the registry applied every patch it was handed: the payload names the client modules those patches brought.
   function refreshRsc(msg){
     var receivedAt = Date.now();
-    var settled = self.__akan && typeof self.__akan.whenSettled === "function" ? self.__akan.whenSettled() : null;
+    var refresh = function(){ doRefreshRsc(msg, receivedAt); };
+    var settle = function(){
+      return self.__akan && typeof self.__akan.whenSettled === "function" ? self.__akan.whenSettled() : null;
+    };
+    // A registry still booting holds the updates that came first; the payload may name what they bring.
+    var booting = self.__AKAN_SSR_BOOT__;
+    var settled = booting ? Promise.resolve(booting).then(settle, settle) : settle();
     if (!settled) {
-      doRefreshRsc(msg, receivedAt);
+      refresh();
       return;
     }
-    settled.then(function(){ doRefreshRsc(msg, receivedAt); }, function(){ doRefreshRsc(msg, receivedAt); });
+    settled.then(refresh, refresh);
   }
 
   function doRefreshRsc(msg, receivedAt){
