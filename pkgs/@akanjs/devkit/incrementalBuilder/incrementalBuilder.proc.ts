@@ -18,7 +18,6 @@ import { RouteClientBuilder } from "@akanjs/devkit/frontendBuild/routeClientBuil
 import { ServerGraphFile } from "@akanjs/devkit/frontendBuild/serverGraphFile";
 import { SsrDevBundler } from "@akanjs/devkit/frontendBuild/ssrDevBundler";
 import { WatchRootResolver } from "@akanjs/devkit/frontendBuild/watchRootResolver";
-import { hasUseClientDirective, scanUseClientExports } from "@akanjs/devkit/transforms/rscUseClientTransform";
 import { Logger } from "akanjs/common";
 import type {
   BaseBuildArtifact,
@@ -77,6 +76,8 @@ class IncrementalBuilder {
   //* Serializes everything that writes ssr-dev: a save's patch (fast lane), a route build adding the entries it names,
   //* and a worker's full build (slow lane). Never held while awaiting the slow lane, which a route build may be in.
   #ssrLock: Promise<void> = Promise.resolve();
+  /** How often each reason sent a registry save to a build worker this session: the resident patcher's miss rate. */
+  readonly #delegations = new Map<string, number>();
   //* Two lanes: a save's codegen and CSR patch in the fast one, which the watcher waits for; build workers, route
   //* builds and discovery in the slow one, which folds queued batches. A save no longer waits behind pages and css.
   #fastQueue: Promise<void> = Promise.resolve();
@@ -350,7 +351,10 @@ class IncrementalBuilder {
     if (hasSyncErrors) {
       this.#sendBuildStatus("barrel", { generation, ok: false, files, message: indexSync.errors.join("\n") });
       BuilderChannel.emit(event);
-      if (discovery) void this.#workQueue.enqueue("discovery", async () => await this.#refreshDiscovery(discovery));
+      if (discovery)
+        void this.#workQueue
+          .enqueue("discovery", async () => await this.#refreshDiscovery(discovery))
+          .catch(this.#slowLaneFailed("discovery"));
       return;
     }
     if (indexSync.changedFiles.length > 0) this.#sendBuildStatus("barrel", { generation, ok: true, files });
@@ -387,10 +391,13 @@ class IncrementalBuilder {
         await this.#workQueue.enqueueBatch(batch);
         if (needs.includes("csr")) this.#patcher?.forget();
         if (needs.includes("ssr")) this.#ssrPatcher?.forget();
-      } else void this.#workQueue.enqueueBatch(batch);
+      } else void this.#workQueue.enqueueBatch(batch).catch(this.#slowLaneFailed("batch"));
       return;
     }
-    if (discovery) void this.#workQueue.enqueue("discovery", async () => await this.#refreshDiscovery(discovery));
+    if (discovery)
+      void this.#workQueue
+        .enqueue("discovery", async () => await this.#refreshDiscovery(discovery))
+        .catch(this.#slowLaneFailed("discovery"));
     // Css-only batches keep the debounce: they arrive in bursts while a stylesheet is edited.
     if (kinds.includes("css")) {
       this.scheduleCssRebuild({ generation, changedFiles: files });
@@ -425,7 +432,9 @@ class IncrementalBuilder {
         },
       });
       if (result.kind === "delegate") {
-        this.#logger.verbose(`csr-patch handed to a build worker: ${result.reason}`);
+        this.#logger.verbose(
+          `csr-patch handed to a build worker (${this.#countDelegation("csr", result.reason)}): ${result.reason}`,
+        );
         return true;
       }
       this.#sendBuildStatus("csr", { generation, ok: true, files });
@@ -451,24 +460,11 @@ class IncrementalBuilder {
     const patcher = this.#ssrPatcher;
     if (!patcher) return true;
     const hold = await ServerGraphFile.touches(await ServerGraphFile.read(this.#artifactDir), files, (file) =>
-      IncrementalBuilder.#clientExportsOf(file),
+      ServerGraphFile.clientExportsOf(file),
     );
     return await this.#withSsrLock(
       async () => await this.#runSsrPatcher(patcher, files, { trace, hold, batchGeneration: generation }),
     );
-  }
-
-  static async #clientExportsOf(file: string): Promise<string[] | null> {
-    const source = await Bun.file(file)
-      .text()
-      .catch(() => null);
-    if (source === null || !hasUseClientDirective(source)) return null;
-    try {
-      return scanUseClientExports(source, file);
-    } catch {
-      // A module the server can no longer read as client references is a server change; the pages build says why.
-      return null;
-    }
   }
 
   // A route build answers only once the registry holds every entry its rows name: the tab requires them by id.
@@ -494,6 +490,22 @@ class IncrementalBuilder {
           `ssr-registry boot build failed; the next save retries it: ${ApplicationBuildReporter.formatError(err, this.#app.workspace.workspaceRoot)}`,
         );
       });
+  }
+
+  // Voided so the fast lane need not wait; unhandled, a rejection would exit the builder and drop the watcher with it.
+  #slowLaneFailed(label: string) {
+    return (error: unknown) =>
+      this.#logger.error(
+        `${label} failed in the slow lane: ${ApplicationBuildReporter.formatError(error, this.#app.workspace.workspaceRoot)}`,
+      );
+  }
+
+  // A reason's own detail (which import) follows its first colon, so saves of one kind count together.
+  #countDelegation(registry: "csr" | "ssr", reason: string): string {
+    const key = `${registry}:${reason.split(":")[0]}`;
+    const count = (this.#delegations.get(key) ?? 0) + 1;
+    this.#delegations.set(key, count);
+    return `#${count} for this reason`;
   }
 
   async #withSsrLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -548,7 +560,9 @@ class IncrementalBuilder {
         },
       });
       if (result.kind === "delegate") {
-        this.#logger.verbose(`ssr-patch handed to a build worker: ${result.reason}`);
+        this.#logger.verbose(
+          `ssr-patch handed to a build worker (${this.#countDelegation("ssr", result.reason)}): ${result.reason}`,
+        );
         return true;
       }
       this.#sendBuildStatus("ssr", { generation: batchGeneration, ok: true, files });
@@ -662,6 +676,9 @@ class IncrementalBuilder {
 
   // On demand: dev serves CSR only via the opt-in `/__csr` and `?csr=true` routes; once built, it rebuilds every save.
   async handleBuildCsr(msg: BuilderCsrReq): Promise<void> {
+    //? Armed now, not when the build lands: a save handled meanwhile then patches CSR behind #csrGate instead of skipping.
+    const wasActive = this.#csrActive;
+    this.#csrActive = true;
     const armed = this.#workQueue.enqueue("build-csr", async (): Promise<void> => {
       const started = Date.now();
       // Not relayed: an on-demand CSR build is request/response, and its error travels in the response.
@@ -670,11 +687,11 @@ class IncrementalBuilder {
       );
       const error = result.errors.csr;
       if (error) {
+        this.#csrActive = wasActive;
         this.#logger.error(`csr-build failed: ${error}`);
         await BuilderChannel.send({ type: "build-csr-res", id: msg.id, ok: false, error });
         return;
       }
-      this.#csrActive = true;
       this.#patcher?.forget();
       this.#logger.info(`csr-build ok on demand (${Date.now() - started}ms); rebuilding CSR on every save now`);
       await BuilderChannel.send({ type: "build-csr-res", id: msg.id, ok: true });

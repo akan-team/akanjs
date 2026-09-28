@@ -162,6 +162,7 @@ describe("route client store bootstrap", () => {
         knownEntries,
         discovery,
         artifact: {} as never,
+        browser: "chunks",
       }).build();
 
     const first = await build([pageA], new Set());

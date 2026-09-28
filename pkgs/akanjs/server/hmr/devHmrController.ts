@@ -228,16 +228,24 @@ export class DevHmrController {
           `[SSR] pages-updated bundlePath=${bundlePath} buildId=${buildId} generation=${generation ?? "(unknown)"} files=${files.length} routes=${routeIds?.length ?? 0} serverTouched=${serverTouched ?? "(unknown)"} staleEntries=${staleClientEntries.size} runtimeMetadata=${runtimeMetadataChanged} routeTree=${routeTreeChanged}`,
         );
         const dropped = this.#invalidateRoutes(files, routeIds, staleClientEntries, { forceClear: clearAll });
-        this.#renderState.buildId = buildId;
         const manifest = this.routeCache.snapshot();
-        const reloadStarted = Date.now();
-        await this.#rsc.reload({
-          clientManifest: manifest.clientManifest,
-          cssAssets: this.#renderState.cssAssets,
-          buildId,
-          pagesBundlePath: bundlePath,
-        });
-        this.#logger.verbose(`[SSR] rsc reload buildId=${buildId} in ${Date.now() - reloadStarted}ms`);
+        //? The bundle it built is the one the worker runs, byte for byte: keeping its build id keeps every tab's (the
+        //? hello check, the router's partial navigation) instead of stranding them on one no refresh ever sent.
+        if (serverTouched === false && !clearAll) {
+          this.#logger.verbose(
+            `[SSR] pages bundle unchanged for the server; buildId ${this.#renderState.buildId} kept`,
+          );
+        } else {
+          this.#renderState.buildId = buildId;
+          const reloadStarted = Date.now();
+          await this.#rsc.reload({
+            clientManifest: manifest.clientManifest,
+            cssAssets: this.#renderState.cssAssets,
+            buildId,
+            pagesBundlePath: bundlePath,
+          });
+          this.#logger.verbose(`[SSR] rsc reload buildId=${buildId} in ${Date.now() - reloadStarted}ms`);
+        }
         const shouldReload = clearAll || this.#shouldFullReloadForFiles(files, routeIds);
         const broadcastTrace = DevHmrController.#broadcastTrace(trace);
         if (shouldReload) this.#ssrUpdates.clear();

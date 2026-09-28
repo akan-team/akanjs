@@ -113,9 +113,18 @@ export class CsrDevPatcher {
       await writer.writeJson("graph.json", graph);
       throw error;
     }
-    if (result.refusedVendors.length > 0) return this.#handBack("an npm module joined the graph", generation, context);
-    if (result.unresolved.length > 0)
-      return this.#handBack(`a new import needs the resolution build: ${result.unresolved[0]}`, generation, context);
+    const refusal =
+      result.refusedVendors.length > 0
+        ? "an npm module joined the graph"
+        : result.unresolved.length > 0
+          ? `a new import needs the resolution build: ${result.unresolved[0]}`
+          : null;
+    if (refusal) {
+      //? The entry files are already rewritten, so the worker would see them unchanged and patch a moved route table:
+      //? a graph whose entries name none makes it reload instead.
+      if (routesMoved) await writer.writeJson("graph.json", { ...graph, entries: {} });
+      return this.#handBack(refusal, generation, context);
+    }
     const compiled = result.modules;
     const vendorJoined = compiled.some((module) => module.vendor && !graph.modules[module.id]);
     this.#bundler.merge(graph, resolver, compiled);
@@ -213,6 +222,10 @@ export class CsrDevPatcher {
       if (CsrDevPaths.mtimeOf(file) === module.mtimeMs) continue;
       if ((await CsrDevPaths.hashOf(file)) !== module.hash) changed.add(id);
     }
+    // A module deleted and brought back (an undo in the file explorer) left the graph while its importers still name it.
+    for (const module of Object.values(graph.modules))
+      for (const dep of module.deps)
+        if (!graph.modules[dep] && !CsrDevPaths.isStub(dep) && fs.existsSync(paths.fileOf(dep))) changed.add(dep);
     return changed;
   }
 

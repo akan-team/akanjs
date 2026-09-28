@@ -178,6 +178,11 @@ export const HMR_CLIENT_SCRIPT = `(function(){
   // An SSR page in registry mode. One that has not loaded its registry yet keeps the update for the registry's start.
   function applySsrUpdate(msg){
     recordTrace("ssr", msg, Date.now(), null);
+    // Directly: a registry whose app.js never started would only queue it.
+    if (msg.reload && self.__akan && !(msg.generation <= self.__akan.generation)) {
+      reloadForUpdate(msg.reason || "the SSR registry was rebuilt");
+      return;
+    }
     if (self.__akan && typeof self.__akan.hot === "function") {
       self.__akan.hot(msg);
       return;

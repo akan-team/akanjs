@@ -267,6 +267,52 @@ describe("HMR_CLIENT_SCRIPT", () => {
     expect(artifact.reloadCount).toBe(1);
   });
 
+  test("an SSR tab reloads on reconnect when its registry is behind or from another epoch, never when it is ahead", () => {
+    const behind = createHmrHarness({
+      selfOverrides: { __akan: { generation: 3, hot: () => undefined } },
+      runTimers: true,
+    });
+    behind.ws?.sendMessage({ type: "hello", buildId: 1, ssrGeneration: 5 });
+    expect(behind.reloadCount).toBe(1);
+
+    const ahead = createHmrHarness({
+      selfOverrides: { __akan: { generation: 6, hot: () => undefined } },
+      runTimers: true,
+    });
+    ahead.ws?.sendMessage({ type: "hello", buildId: 1, ssrGeneration: 5 });
+    expect(ahead.reloadCount).toBe(0);
+
+    const replaced = createHmrHarness({
+      selfOverrides: { __akan: { generation: 6, hot: () => undefined }, __AKAN_SSR_EPOCH__: 100 },
+      runTimers: true,
+    });
+    replaced.ws?.sendMessage({ type: "hello", buildId: 1, ssrGeneration: 6, ssrEpoch: 200 });
+    expect(replaced.reloadCount).toBe(1);
+  });
+
+  test("an SSR tab that reconnects to the same build stays", () => {
+    const harness = createHmrHarness({ runTimers: true });
+    harness.ws?.sendMessage({ type: "hello", buildId: 7 });
+    harness.ws?.sendMessage({ type: "hello", buildId: 7 });
+    expect(harness.reloadCount).toBe(0);
+  });
+
+  test("an SSR registry reload reloads the tab itself, even when its runtime never started", () => {
+    const hot: unknown[] = [];
+    const harness = createHmrHarness({
+      selfOverrides: { __akan: { generation: 0, hot: (message: unknown) => hot.push(message) } },
+      runTimers: true,
+    });
+    harness.ws?.sendMessage({
+      type: "ssr-update",
+      generation: 4,
+      reload: true,
+      reason: "an npm module joined the graph",
+    });
+    expect(harness.reloadCount).toBe(1);
+    expect(hot).toEqual([]);
+  });
+
   test("clears legacy error overlays with legacy ok messages", () => {
     const hmr = createHmrHarness();
 

@@ -33,7 +33,7 @@ export interface BuildRouteClientOptions {
   discovery?: ClientEntryDiscovery;
   /** Pre-resolved client entries: skips discovery and bundles exactly this list. */
   entries?: string[];
-  /** `registry` (the dev builder): the browser loads each entry from the SSR dev registry, so only `client-ssr` builds. */
+  /** Defaults to `registry` under `start`: the browser loads each entry from the SSR dev registry, so only `client-ssr` builds. */
   browser?: "chunks" | "registry";
 }
 
@@ -71,7 +71,7 @@ export class RouteClientBuilder {
     this.#command = options.command ?? "start";
     this.#discovery = options.discovery;
     this.#entries = options.entries;
-    this.#browser = options.browser ?? "chunks";
+    this.#browser = options.browser ?? (this.#command === "start" ? "registry" : "chunks");
   }
 
   async build(): Promise<BuildRouteClientResult> {

@@ -140,6 +140,12 @@ class BuildBatch {
     const started = Date.now();
     try {
       const bundler = new SsrDevBundler(this.#app);
+      //? Runs before pages, so the graph is the last build's, as in the resident builder: a save it holds still waits.
+      const hold = await ServerGraphFile.touches(
+        await ServerGraphFile.read(this.#request.artifactDir),
+        this.#request.changedFiles,
+        (file) => ServerGraphFile.clientExportsOf(file),
+      );
       const update = await bundler.update(this.#request.changedFiles, {
         roots: await bundler.clientEntries(),
         announce: (announced) =>
@@ -154,6 +160,9 @@ class BuildBatch {
               trace: this.#sentTrace(),
               ...(announced.epoch !== undefined ? { epoch: announced.epoch } : {}),
               ...(announced.first ? { first: true } : {}),
+              ...(hold && this.#request.changedFiles.length > 0
+                ? { hold, batchGeneration: this.#request.generation }
+                : {}),
             },
           }),
       });
@@ -182,6 +191,7 @@ class BuildBatch {
         previousGraph,
         this.#request.changedFiles,
         (file) => nextGraph?.clientExports[file] ?? null,
+        nextGraph,
       );
       this.#emit({
         type: "pages-updated",
@@ -197,6 +207,7 @@ class BuildBatch {
       this.#emitStatus("pages");
       this.#logger.verbose(`pages-rebundle ok buildId=${next.buildId} (${Date.now() - started}ms)`);
     } catch (err) {
+      await ServerGraphFile.clear(this.#request.artifactDir);
       this.#fail("pages", "pages-rebundle", err);
     }
   }

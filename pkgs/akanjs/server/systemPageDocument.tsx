@@ -12,6 +12,8 @@ export interface SystemPageOptions {
   stylesheetHref?: string | null;
   showDetails?: boolean;
   error?: unknown;
+  /** Dev only: the HMR client, so a page that failed to render reloads once a later build fixes it. */
+  script?: string;
 }
 
 export interface SystemPageHomeHrefOptions {
@@ -102,6 +104,10 @@ export function createSystemPageDocument(options: SystemPageOptions): ReactNode 
             ) : null}
           </section>
         </main>
+        {options.script ? (
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: the dev HMR client, a constant the server owns
+          <script dangerouslySetInnerHTML={{ __html: options.script }} />
+        ) : null}
       </body>
     </html>
   );

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { rm } from "node:fs/promises";
 import path from "node:path";
 import { CsrE2eHarness } from "./csrE2eHarness.fixture";
 
@@ -8,6 +9,9 @@ const uiFile = (name: string) => path.join(workspaceRoot, "apps/minimal/ui", nam
 const probeFile = uiFile("RegistryProbe.tsx");
 const labelFile = uiFile("RegistryLabel.tsx");
 const lazyFile = uiFile("RegistryLazy_Dynamic.tsx");
+const serverPartFile = uiFile("RegistryServerPart.tsx");
+const pageFile = path.join(workspaceRoot, "apps/minimal/page/(home)/e2e/registry.tsx");
+const storeFile = path.join(workspaceRoot, "apps/minimal/lib/_minimal/minimal.store.ts");
 const port = Number(process.env.AKAN_CSR_E2E_SSR_REGISTRY_PORT ?? 8494);
 
 interface RegistryWindow {
@@ -177,6 +181,116 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
     });
     await probeMarked(false);
   }, 90_000);
+
+  test("a page opened after several patches hydrates from the registry that holds them", async () => {
+    await open();
+    for (let round = 0; round < 3; round += 1) {
+      await ssr.editSource(probeFile, markProbe, async () => {
+        await probeMarked(true);
+      });
+      await probeMarked(false);
+    }
+    await open();
+    await ssr.evaluate(() => document.querySelector<HTMLButtonElement>('[data-e2e="bump"]')?.click());
+    await textIs('[data-e2e="count"]', "1");
+  }, 120_000);
+
+  test("a server component whose missing import is created afterwards shows it without a reload", async () => {
+    await open();
+    const extraFile = uiFile("registryExtra.ts");
+    try {
+      await ssr.editSource(
+        serverPartFile,
+        (source) =>
+          `import { registryExtraText } from "./registryExtra";\n${source.replace("part-0", "{registryExtraText}")}`,
+        async () => {
+          await ssr.waitFor(() => document.querySelector(".__akan_hmr_overlay[data-status=error]") !== null, {
+            timeout: 20_000,
+          });
+          await Bun.write(extraFile, 'export const registryExtraText = "extra-1";\n');
+          await textIs('[data-e2e="server-part"]', "extra-1");
+        },
+      );
+    } finally {
+      await rm(extraFile, { force: true });
+    }
+    await textIs('[data-e2e="server-part"]', "part-0");
+    expect(await ssr.reloaded()).toBe(false);
+  }, 120_000);
+
+  test("a client component added in the session renders through the registry once the server names it", async () => {
+    await open();
+    const newFile = uiFile("RegistryNew.tsx");
+    try {
+      await Bun.write(
+        newFile,
+        [
+          '"use client";',
+          'import { useState } from "react";',
+          "",
+          "interface RegistryNewProps {",
+          "  className?: string;",
+          "}",
+          "export const RegistryNew = ({ className }: RegistryNewProps) => {",
+          '  const [value] = useState("new-0");',
+          "  return (",
+          '    <output className={className} data-e2e="registry-new">',
+          "      {value}",
+          "    </output>",
+          "  );",
+          "};",
+          "",
+        ].join("\n"),
+      );
+      await ssr.editSource(
+        pageFile,
+        (source) =>
+          source
+            .replace("RegistryServerPart }", "RegistryServerPart, RegistryNew }")
+            .replace("<RegistryLazy />", "<RegistryLazy />\n      <RegistryNew />"),
+        async () => {
+          await textIs('[data-e2e="registry-new"]', "new-0");
+        },
+      );
+    } finally {
+      await rm(newFile, { force: true });
+    }
+    expect(await ssr.reloaded()).toBe(false);
+  }, 120_000);
+
+  const pageRecovered = async () =>
+    await ssr.waitFor(
+      () =>
+        ((window as unknown as RegistryWindow).__akan?.generation ?? 0) > 0 &&
+        document.querySelector('[data-e2e="lazy"]') !== null,
+      { timeout: 30_000 },
+    );
+
+  test("a store error only the browser hits leaves the page to reload onto the save that fixes it", async () => {
+    await open();
+    await ssr.editSource(
+      storeFile,
+      (source) => `${source}\nif (typeof window !== "undefined") throw new Error("e2e store failure");\n`,
+      async () => {
+        await Bun.sleep(3_000);
+      },
+    );
+    await pageRecovered();
+    await ssr.evaluate(() => document.querySelector<HTMLButtonElement>('[data-e2e="bump"]')?.click());
+    await textIs('[data-e2e="count"]', "1");
+  }, 120_000);
+
+  test("a server error page reloads once the save that fixes it lands", async () => {
+    await open();
+    await ssr.editSource(
+      storeFile,
+      (source) => `${source}\nthrow new Error("e2e store failure");\n`,
+      async () => {
+        await ssr.waitFor(() => document.title.startsWith("500"), { timeout: 20_000 });
+      },
+    );
+    await pageRecovered();
+  }, 120_000);
 
   test("a build error shows the overlay, and the fix patches the page without a reload", async () => {
     await open();

@@ -81,6 +81,7 @@ export interface CsrDevRuntimeHost {
   };
   location: { reload(): void };
   console: { warn(...args: unknown[]): void };
+  fetch?(url: string, init: { method: string; cache: "no-store" }): Promise<{ ok: boolean }>;
   setTimeout(callback: () => void, ms: number): unknown;
   clearTimeout(handle: unknown): void;
 }
@@ -132,6 +133,7 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
     //? Modules RSDW required for a payload's client references: nothing in the registry imports them.
     #roots = new Set<string>();
     #started = false;
+    #startFailed = false;
     #early: CsrUpdateMessage[] = [];
     #helperFactories = new Map<string, () => Record<string, unknown>>();
     #helperValues = new Map<string, Record<string, unknown>>();
@@ -177,16 +179,26 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       this.#refresh = this.#load(refresh).exports as RefreshRuntime;
       // Before the entry runs: react-dom looks for the DevTools hook once, when it is first evaluated.
       this.#refresh.injectIntoGlobalHook(host);
-      this.#load(entry);
-      this.#begin();
+      this.#run(entry);
     }
 
     //? The page's own HMR script already put this refresh runtime into React's hook; a second inject would wrap it.
     startLibrary({ generation, refresh, bootstrap }: { generation: number; refresh: string; bootstrap: string }) {
       this.#generation = generation;
       this.#refresh = this.#load(refresh).exports as RefreshRuntime;
-      this.#load(bootstrap);
-      this.#begin();
+      this.#run(bootstrap);
+    }
+
+    //? An entry that throws leaves no module to patch, so any newer update then reloads onto the fixed code.
+    #run(entry: string) {
+      try {
+        this.#load(entry);
+      } catch (error) {
+        this.#startFailed = true;
+        throw error;
+      } finally {
+        this.#begin();
+      }
     }
 
     //? Seen as a compiled ESM module: named exports read through, and `default` stays the package's own default.
@@ -219,7 +231,7 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       return new Promise<void>((resolve, reject) => {
         const timer = host.setTimeout(
           () => reject(new Error(`[akan-csr] no module registered as ${id}, and no update brought one`)),
-          10_000,
+          20_000,
         );
         const waiters = this.#waiters.get(id) ?? [];
         waiters.push(() => {
@@ -268,11 +280,15 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
         this.#early.push(message);
         return;
       }
-      if (message.reload) {
-        this.#reload(message.reason ?? "the dev server asked for a reload");
+      if (message.generation <= this.#generation) return;
+      if (message.reload || this.#startFailed) {
+        this.#reload(
+          this.#startFailed
+            ? `the app failed to start, and generation ${message.generation} arrived`
+            : (message.reason ?? "the dev server asked for a reload"),
+        );
         return;
       }
-      if (message.generation <= this.#generation) return;
       const url = message.url;
       if (!url) {
         this.#reload(`generation ${message.generation} arrived without a patch`);
@@ -334,8 +350,9 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       return secondTarget;
     };
 
-    //? A navigation away cancels an in-flight patch load, and reloading from its error would cancel that navigation:
-    //? the retry runs only if this document is still alive by then, and only a second failure reloads.
+    //? A navigation away cancels every load this document starts, and reloading from that error would cancel the
+    //? navigation too: so a failed patch asks the server first. A cancelled probe means the page is leaving (or the
+    //? server is gone) and the next document or the reconnect decides; an answer says whether a reload is due.
     #loadPatch(url: string, retried = false): Promise<void> {
       return new Promise<void>((resolve) => {
         const script = host.document.createElement("script");
@@ -346,12 +363,16 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
         };
         script.onerror = () => {
           script.remove();
-          if (retried) {
+          const failed = () => {
             this.#reload(`patch ${url} failed to load`);
             resolve();
-            return;
-          }
-          host.setTimeout(() => resolve(this.#loadPatch(url, true)), 300);
+          };
+          const probe = host.fetch?.(url, { method: "HEAD", cache: "no-store" });
+          if (!probe) return failed();
+          probe.then(
+            (response) => (response.ok && !retried ? resolve(this.#loadPatch(url, true)) : failed()),
+            () => resolve(),
+          );
         };
         host.document.head.appendChild(script);
       });

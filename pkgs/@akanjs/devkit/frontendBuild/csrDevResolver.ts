@@ -123,10 +123,12 @@ export class CsrDevResolver {
   #resolveUnknown(importer: string, specifier: string): string | null {
     if (specifier.startsWith("node:")) return `${CsrDevPaths.stubPrefix}${specifier}`;
     const relative = specifier.startsWith(".") || path.isAbsolute(specifier);
-    if (!relative && !this.#prepassDone) return null;
+    //? Ahead of the prepass too: a new file's bare imports (`akanjs/ui`, `@apps/<app>/client`) are ones its package
+    //? already resolved, and asking for the prepass would hand every such save to a build worker.
     if (!relative) {
       const sibling = this.#resolvedBySibling(importer, specifier);
       if (sibling) return sibling;
+      if (!this.#prepassDone) return null;
     }
     const resolved = CsrDevPaths.tryResolve(specifier, path.dirname(importer));
     if (!resolved) throw new Error(`[csr-dev] cannot resolve "${specifier}" from ${this.#paths.idOf(importer)}`);

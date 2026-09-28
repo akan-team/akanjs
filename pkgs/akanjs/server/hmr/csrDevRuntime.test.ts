@@ -388,20 +388,32 @@ describe("installCsrDevRuntime", () => {
     expect(harness.warnings.at(-1)).toContain("the route table changed");
   });
 
-  test("a patch that fails to load is retried once before the page reloads", async () => {
-    const harness = createHarness(baseModules());
-    harness.api.start({ generation: 1, refresh: REFRESH_ID });
-    harness.api.hot({ generation: 2, url: "/_akan/csr-dev/patch-2.js" });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    harness.scripts[0]?.onerror?.();
-    expect(harness.reloads).toBe(0);
-    harness.flushTimers();
-    expect(harness.scripts.map((script) => script.src)).toEqual([
+  test("a patch that fails to load asks the server: gone reloads, there retries once, no answer leaves the page", async () => {
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const run = async (answer: () => Promise<{ ok: boolean }>) => {
+      const harness = createHarness(baseModules());
+      harness.host.fetch = answer;
+      harness.api.start({ generation: 1, refresh: REFRESH_ID });
+      harness.api.hot({ generation: 2, url: "/_akan/csr-dev/patch-2.js" });
+      await settle();
+      harness.scripts[0]?.onerror?.();
+      await settle();
+      return harness;
+    };
+    expect((await run(async () => ({ ok: false }))).reloads).toBe(1);
+    const leaving = await run(async () => {
+      throw new Error("cancelled");
+    });
+    expect(leaving.reloads).toBe(0);
+    const there = await run(async () => ({ ok: true }));
+    expect(there.reloads).toBe(0);
+    expect(there.scripts.map((script) => script.src)).toEqual([
       "/_akan/csr-dev/patch-2.js",
       "/_akan/csr-dev/patch-2.js",
     ]);
-    harness.scripts[1]?.onerror?.();
-    expect(harness.reloads).toBe(1);
+    there.scripts[1]?.onerror?.();
+    await settle();
+    expect(there.reloads).toBe(1);
   });
 
   test("whenSettled waits for the patch it was handed to load and apply", async () => {
@@ -460,6 +472,23 @@ describe("installCsrDevRuntime", () => {
       harness.api.update(3, { "app/New.tsx": component("New") });
       await defined;
       expect(Object.keys(harness.api.require("app/New.tsx") as object)).toEqual(["New"]);
+    });
+
+    test("a bootstrap that throws leaves the page to reload on the next newer update, not to queue it", () => {
+      const harness = createHarness({
+        "app/boot.ts": () => {
+          throw new Error("store top-level error");
+        },
+      });
+      harness.api.provide(REFRESH_VENDOR, harness.refresh.runtime);
+      expect(() =>
+        harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" }),
+      ).toThrow("store top-level error");
+      harness.api.hot({ generation: 2, url: "/_akan/ssr-dev/patch-2.js" });
+      expect(harness.reloads).toBe(0);
+      harness.api.hot({ generation: 3, url: "/_akan/ssr-dev/patch-3.js" });
+      expect(harness.reloads).toBe(1);
+      expect(harness.warnings.at(-1)).toContain("failed to start");
     });
 
     test("a payload root that also exports non-components re-runs in place and refreshes its components", () => {

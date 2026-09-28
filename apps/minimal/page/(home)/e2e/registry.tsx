@@ -1,4 +1,4 @@
-import { RegistryLabel, RegistryLazy, RegistryProbe } from "@apps/minimal/ui";
+import { RegistryLabel, RegistryLazy, RegistryProbe, RegistryServerPart } from "@apps/minimal/ui";
 import { page } from "akanjs/client";
 
 export default page()
@@ -6,6 +6,7 @@ export default page()
   .render(() => (
     <main>
       <RegistryLabel where="server" />
+      <RegistryServerPart />
       <RegistryProbe />
       <RegistryLazy />
     </main>

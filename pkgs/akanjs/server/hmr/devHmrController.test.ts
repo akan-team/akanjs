@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { type DevBuildStatus, ROUTE_SEED_INDEX_JSON, type RouteSeedIndex } from "../artifact";
 import type { RscWorker } from "../rscWorkerHost";
+import type { RenderState } from "../types";
 import {
   DevHmrController,
   devBuildStatusToHmrMessage,
@@ -161,13 +162,14 @@ describe("DevHmrController pages-updated broadcast", () => {
 
 describe("DevHmrController SSR registry updates", () => {
   const withRegistryController = async (
-    run: (emit: (message: unknown) => void, types: () => string[]) => Promise<void>,
+    run: (emit: (message: unknown) => void, types: () => string[], renderState: RenderState) => Promise<void>,
   ) => {
     const originalSend = process.send;
     process.send = ((): boolean => true) as typeof process.send;
+    const renderState: RenderState = { buildId: 0, cssAssets: {}, cssBytesByUrl: {} };
     const controller = new DevHmrController({
       artifactDir: await artifactDirWith({ entries: [], globalLayoutFiles: [] }),
-      renderState: { buildId: 0, cssAssets: {}, cssBytesByUrl: {} },
+      renderState,
       rsc: { reload: async () => undefined, updateCssAssets: () => undefined } as unknown as RscWorker,
       seedIndex: { entries: [], globalLayoutFiles: [] },
       upgradeHmrWs: () => true,
@@ -183,6 +185,7 @@ describe("DevHmrController SSR registry updates", () => {
           messages.map((message) =>
             message.type === "ssr-update" ? `ssr-update:${message.generation}` : message.type,
           ),
+        renderState,
       );
     } finally {
       controller.dispose();
@@ -217,8 +220,8 @@ describe("DevHmrController SSR registry updates", () => {
     });
   });
 
-  test("a save that changed nothing the server renders gets its patch at once and no RSC refresh", async () => {
-    await withRegistryController(async (emit, types) => {
+  test("a save that changed nothing the server renders gets its patch at once, and keeps the build id tabs hold", async () => {
+    await withRegistryController(async (emit, types, renderState) => {
       emit({ type: "ssr-updated", data: { generation: 4, reload: false, patchUrl: "/p4.js", batchGeneration: 9 } });
       await settle();
       expect(types()).toEqual(["ssr-update:4"]);
@@ -234,6 +237,7 @@ describe("DevHmrController SSR registry updates", () => {
       });
       await settle();
       expect(types()).toEqual(["ssr-update:4"]);
+      expect(renderState.buildId).toBe(0);
     });
   });
 
