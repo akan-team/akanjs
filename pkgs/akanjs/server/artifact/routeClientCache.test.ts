@@ -67,7 +67,7 @@ describe("RouteClientCache", () => {
     expect(cache.snapshot().knownEntries.has("/repo/retry.tsx")).toBe(true);
   });
 
-  test("invalidates built routes, ignores stale builds, and clears generations", async () => {
+  test("invalidates built routes, rebuilds a route whose build an invalidation overtook, and clears generations", async () => {
     // An array, not `let x = null`: TS ignores the executor's assignment and narrows the call below to `null`.
     const resolveBuild: (() => void)[] = [];
     const cache = new RouteClientCache({
@@ -87,10 +87,12 @@ describe("RouteClientCache", () => {
     const pending = cache.ensure("/slow", []);
     expect(cache.clear()).toEqual([]);
     resolveBuild[0]?.();
+    for (let tick = 0; tick < 100 && resolveBuild.length < 2; tick++) await Bun.sleep(1);
+    resolveBuild[1]?.();
     await pending;
 
-    expect(cache.snapshot().clientManifest).toEqual({});
-    expect(cache.snapshot().knownEntries.size).toBe(0);
+    expect(Object.keys(cache.snapshot().clientManifest)).toEqual(["/slow#1"]);
+    expect(cache.snapshot().knownEntries).toEqual(new Set(["/repo//slow-1.tsx"]));
 
     const immediate = new RouteClientCache({
       buildRoute: async (routeId) => ({

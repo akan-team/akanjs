@@ -11,6 +11,7 @@ import {
   CssCompiler,
   FontOptimizer,
   PagesBundleBuilder,
+  ServerGraphFile,
   SsrBaseArtifactBuilder,
   SsrDevBundler,
 } from "@akanjs/devkit/frontendBuild";
@@ -171,8 +172,15 @@ class BuildBatch {
     try {
       const pageEntries = await resolveSsrPageEntriesForApp(this.#app, await this.#app.getPageKeys());
       const seedIndex = computeRouteSeedIndex(pageEntries);
+      const previousGraph = await ServerGraphFile.read(this.#request.artifactDir);
       const next = await new PagesBundleBuilder(this.#app, "start", pageEntries).build();
       await saveRouteSeedIndex(this.#request.artifactDir, seedIndex);
+      const nextGraph = await ServerGraphFile.read(this.#request.artifactDir);
+      const serverTouched = await ServerGraphFile.touches(
+        previousGraph,
+        this.#request.changedFiles,
+        (file) => nextGraph?.clientExports[file] ?? null,
+      );
       this.#emit({
         type: "pages-updated",
         data: {
@@ -181,6 +189,7 @@ class BuildBatch {
           generation: this.#request.generation,
           changedFiles: this.#request.changedFiles,
           trace: this.#sentTrace(),
+          serverTouched,
         },
       });
       this.#emitStatus("pages");

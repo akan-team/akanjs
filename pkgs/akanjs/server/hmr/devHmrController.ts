@@ -20,6 +20,7 @@ import {
   SSR_DEV_DIRNAME,
 } from "./csrDevManifest";
 import { isAkanRuntimeMetadataFile } from "./runtimeMetadataFile";
+import { type SsrUpdateMessage, SsrUpdateQueue } from "./ssrUpdateQueue";
 import { type ChangeKind, type HmrMessage, type HmrWsData, HmrWsHub } from "./wsHub";
 
 export { isAkanRuntimeMetadataFile };
@@ -87,6 +88,7 @@ export class DevHmrController {
   /** SSR pages take their client code from the dev module registry, which patches it itself (`ssr-update`). */
   readonly #ssrRegistry = resolveDevSsrClientMode() === "registry";
   readonly #hub = new HmrWsHub();
+  readonly #ssrUpdates = new SsrUpdateQueue((message) => this.#sendSsrUpdate(message));
   readonly #builderRpc: BuilderRpc;
   readonly routeCache: RouteClientCache;
   readonly #recentClientEntries = new Set<string>();
@@ -193,6 +195,11 @@ export class DevHmrController {
     return matched ? [matched.entry.routeId] : undefined;
   }
 
+  #sendSsrUpdate(message: SsrUpdateMessage): void {
+    this.#renderState.ssrGeneration = message.generation;
+    this.#hub.broadcast({ ...message, trace: DevHmrController.#broadcastTrace(message.trace) });
+  }
+
   static #broadcastTrace(trace: HmrTrace | undefined): HmrTrace | undefined {
     return trace ? { ...trace, broadcastAt: Date.now() } : undefined;
   }
@@ -215,6 +222,8 @@ export class DevHmrController {
       },
       onBuildStatus: (status) => {
         this.#recordBuildStatus(status);
+        // The server output cannot change now; the overlay says why, and client edits must not wait for a fix.
+        if (status.phase === "pages" && !status.ok) this.#ssrUpdates.release(status.generation);
       },
       onCsrUpdated: (update) => {
         this.#renderState.csrGeneration = update.generation;
@@ -232,18 +241,9 @@ export class DevHmrController {
         );
       },
       onSsrUpdated: (update) => {
-        this.#renderState.ssrGeneration = update.generation;
-        this.#hub.broadcast({
-          type: "ssr-update",
-          generation: update.generation,
-          url: update.patchUrl,
-          changedIds: update.changedIds,
-          reload: update.reload,
-          reason: update.reason,
-          trace: DevHmrController.#broadcastTrace(update.trace),
-        });
+        this.#ssrUpdates.push(update);
         this.#logger.verbose(
-          `[ssr] registry generation=${update.generation} ${update.reload ? `reload (${update.reason ?? "no reason"})` : `patch modules=${update.changedIds?.length ?? 0}`}`,
+          `[ssr] registry generation=${update.generation} ${update.reload ? `reload (${update.reason ?? "no reason"})` : `patch modules=${update.changedIds?.length ?? 0}`}${this.#ssrUpdates.size > 0 ? ` held=${this.#ssrUpdates.size} until the pages build of batch ${update.batchGeneration ?? "?"}` : ""}`,
         );
       },
       onCssUpdated: (css) => {
@@ -262,7 +262,7 @@ export class DevHmrController {
           `css-update assets=${Object.keys(this.#renderState.cssAssets).length} generation=${css.generation ?? "(unknown)"} files=${css.changedFiles?.length ?? 0} in ${Date.now() - started}ms (ipc)`,
         );
       },
-      onPagesUpdated: async ({ bundlePath, buildId, generation, changedFiles, trace }) => {
+      onPagesUpdated: async ({ bundlePath, buildId, generation, changedFiles, trace, serverTouched }) => {
         const started = Date.now();
         const files = changedFiles ?? [];
         const routeTreeChanged = await this.#reloadSeedIndex();
@@ -271,7 +271,6 @@ export class DevHmrController {
         const staleClientEntries = clearAll ? new Set<string>() : this.#staleClientEntriesForFiles(files);
         const routeIds = clearAll ? undefined : this.#routeIdsForFiles(files, staleClientEntries);
         const fastRefreshCandidate = !clearAll && this.#isFastRefreshCandidate(files);
-        const clientEntriesOnly = fastRefreshCandidate && this.#touchesClientEntriesOnly(files);
         this.#logger.verbose(
           `[SSR] pages-updated bundlePath=${bundlePath} buildId=${buildId} generation=${generation ?? "(unknown)"} files=${files.length} routes=${routeIds?.length ?? 0} fastRefresh=${fastRefreshCandidate} staleEntries=${staleClientEntries.size} runtimeMetadata=${runtimeMetadataChanged} routeTree=${routeTreeChanged}`,
         );
@@ -288,11 +287,12 @@ export class DevHmrController {
         this.#logger.verbose(`[SSR] rsc reload buildId=${buildId} in ${Date.now() - reloadStarted}ms`);
         const shouldReload = clearAll || this.#shouldFullReloadForFiles(files, routeIds);
         const broadcastTrace = DevHmrController.#broadcastTrace(trace);
+        if (shouldReload) this.#ssrUpdates.clear();
+        else this.#ssrUpdates.release(generation);
         if (shouldReload) this.#hub.broadcast({ type: "reload", buildId });
-        // The registry already patched the tabs; a client entry's module is only a reference on the server side.
-        else if (this.#ssrRegistry && clientEntriesOnly)
+        else if (this.#ssrRegistry && serverTouched === false)
           this.#logger.verbose(
-            `[hmr] generation=${generation} touched client entries only; the SSR registry patched them`,
+            `[hmr] generation=${generation} changed nothing the server renders; the registry patched it`,
           );
         else if (fastRefreshCandidate && !this.#ssrRegistry)
           this.#hub.broadcast({
@@ -452,14 +452,6 @@ export class DevHmrController {
     return files.some((file) => {
       const resolved = path.resolve(file);
       return this.#recentClientEntries.has(resolved) || this.#recentClientFiles.has(resolved);
-    });
-  }
-
-  #touchesClientEntriesOnly(files: string[]): boolean {
-    const manifestEntries = manifestClientEntriesForFiles(files, this.routeCache.merged.clientManifest);
-    return files.every((file) => {
-      const resolved = path.resolve(file);
-      return manifestEntries.has(resolved) || this.#recentClientEntries.has(resolved);
     });
   }
 

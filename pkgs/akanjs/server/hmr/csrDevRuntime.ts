@@ -53,6 +53,8 @@ export interface CsrDevRuntimeApi {
   has(id: string): boolean;
   /** Settles once a patch defines `id`: the RSC payload can name a module whose patch is still on its way. */
   whenDefined(id: string): Promise<void>;
+  /** Settles once every update handed to `hot` so far is applied, its accept callbacks included. */
+  whenSettled(): Promise<void>;
   update(generation: number, factories: Record<string, CsrModuleFactory>): void;
   accept(ownerId: string, deps: string[], callback: CsrAcceptCallback): void;
   hot(message: CsrUpdateMessage): void;
@@ -279,6 +281,10 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
 
     inspect() {
       return { generation: this.#generation, executed: this.#executed.slice(), modules: this.#cache.size };
+    }
+
+    whenSettled() {
+      return this.#patchQueue.then(() => this.#settling);
     }
 
     #begin() {

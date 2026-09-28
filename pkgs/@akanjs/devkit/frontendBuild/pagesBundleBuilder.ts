@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import type { BunPlugin } from "bun";
 import type { PageEntry } from "../artifact/implicitRootLayout";
@@ -9,7 +10,9 @@ import { loaderFor } from "../transforms/moduleSyntax";
 import { transformUseClient } from "../transforms/rscUseClientTransform";
 import { createUseClientBundlePlugin } from "../transforms/useClientBundlePlugin";
 import { bundleDefine } from "./bundleDefine";
+import { CsrDevPaths } from "./csrDevPaths";
 import { PagesEntrySourceGenerator } from "./pagesEntrySourceGenerator";
+import { ServerGraphFile } from "./serverGraphFile";
 
 export interface BuildPagesBundleResult {
   bundlePath: string;
@@ -42,6 +45,13 @@ export class PagesBundleBuilder {
       this.#pageEntries ?? (await resolveSsrPageEntriesForApp(this.#app, await this.#app.getPageKeys()));
     const entrySource = PagesEntrySourceGenerator.generate(resolvedEntries);
     const workspaceRoot = this.#app.workspace.workspaceRoot;
+    const dev = this.#command === "start";
+    const clientExports: Record<string, string[]> = {};
+    const onClientModule = dev
+      ? (file: string, exports: string[]) => {
+          clientExports[CsrDevPaths.realpath(file)] = exports;
+        }
+      : undefined;
     const result = await Bun.build({
       entrypoints: [VIRTUAL_PAGES_ENTRY],
       outdir: `${this.#artifactDir}/server`,
@@ -55,6 +65,7 @@ export class PagesBundleBuilder {
         asset: "assets/[name]-[hash].[ext]",
       },
       define: bundleDefine(this.#app, this.#command, "ssr"),
+      metafile: dev,
       plugins: [
         PagesBundleBuilder.createPagesEntryPlugin(entrySource),
         PagesBundleBuilder.createCssStubPlugin(),
@@ -66,9 +77,10 @@ export class PagesBundleBuilder {
                 transformUseClient(source, {
                   path: args.path,
                   workspaceRoot,
+                  onClientModule,
                 }),
             })
-          : createUseClientBundlePlugin({ workspaceRoot }),
+          : createUseClientBundlePlugin({ workspaceRoot, onClientModule }),
       ],
     });
 
@@ -79,6 +91,8 @@ export class PagesBundleBuilder {
 
     const bundlePath = path.resolve(entryArtifact.path);
     const buildId = Date.now();
+    if (dev && result.metafile)
+      await ServerGraphFile.write(this.#artifactDir, this.#serverGraph(result.metafile, clientExports));
     const outputBytes = result.outputs.reduce((sum, output) => sum + output.size, 0);
     const chunkCount = result.outputs.filter((output) => output.kind === "chunk").length;
     this.#app.verbose(
@@ -93,6 +107,15 @@ export class PagesBundleBuilder {
       outputCount: result.outputs.length,
       chunkCount,
     };
+  }
+
+  #serverGraph(metafile: Bun.BuildMetafile, clientExports: Record<string, string[]>) {
+    const inputs = Object.keys(metafile.inputs)
+      .filter((input) => !input.includes("node_modules"))
+      .map((input) => path.resolve(input))
+      .filter((input) => fs.existsSync(input))
+      .map((input) => CsrDevPaths.realpath(input));
+    return { inputs, clientExports };
   }
 
   get #artifactDir(): string {

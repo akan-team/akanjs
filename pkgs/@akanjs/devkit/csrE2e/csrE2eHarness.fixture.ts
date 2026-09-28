@@ -91,6 +91,8 @@ export class CsrE2eHarness {
         width,
         height,
         backend: backend === "chrome" ? { type: "chrome", url: false } : backend,
+        //? AKAN_CSR_E2E_CONSOLE=1 prints the page's console: the only view of a hydration warning or a failed patch.
+        ...(process.env.AKAN_CSR_E2E_CONSOLE === "1" ? { console: globalThis.console } : {}),
       });
       return new CsrE2eHarness({
         origin,

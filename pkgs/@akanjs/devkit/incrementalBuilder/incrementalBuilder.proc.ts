@@ -15,8 +15,10 @@ import { DevChangePlanner } from "@akanjs/devkit/frontendBuild/devChangePlanner"
 import { DevGeneratedIndexSync } from "@akanjs/devkit/frontendBuild/devGeneratedIndexSync";
 import { HmrWatcher } from "@akanjs/devkit/frontendBuild/hmrWatcher";
 import { RouteClientBuilder } from "@akanjs/devkit/frontendBuild/routeClientBuilder";
+import { ServerGraphFile } from "@akanjs/devkit/frontendBuild/serverGraphFile";
 import { SsrDevBundler } from "@akanjs/devkit/frontendBuild/ssrDevBundler";
 import { WatchRootResolver } from "@akanjs/devkit/frontendBuild/watchRootResolver";
+import { hasUseClientDirective, scanUseClientExports } from "@akanjs/devkit/transforms/rscUseClientTransform";
 import { Logger } from "akanjs/common";
 import type {
   BaseBuildArtifact,
@@ -379,7 +381,7 @@ class IncrementalBuilder {
           `csr-rebundle skipped; request /__csr or ?csr=true (or set AKAN_DEV_CSR_REBUILD=1) to enable per-save CSR rebuilds`,
         );
       else if (!this.#patcher || (await this.#patchCsr(generation, files, trace))) needs.unshift("csr");
-      if (this.#ssrBundler && (await this.#patchSsr(files, trace))) needs.unshift("ssr");
+      if (this.#ssrBundler && (await this.#patchSsr(generation, files, trace))) needs.unshift("ssr");
       const batch: BatchJob = { generation, needs, changedFiles: files, trace, ...(discovery ? { discovery } : {}) };
       // A worker's registry build rewrites the directory its patcher reads, so the next save waits for it.
       if (needs.includes("csr") || needs.includes("ssr")) {
@@ -446,10 +448,28 @@ class IncrementalBuilder {
   }
 
   // True when the save has to go to a build worker, as for CSR.
-  async #patchSsr(files: string[], trace: HmrTrace): Promise<boolean> {
+  async #patchSsr(generation: number, files: string[], trace: HmrTrace): Promise<boolean> {
     const patcher = this.#ssrPatcher;
     if (!patcher) return true;
-    return await this.#withSsrLock(async () => await this.#runSsrPatcher(patcher, files, { trace }));
+    const hold = await ServerGraphFile.touches(await ServerGraphFile.read(this.#artifactDir), files, (file) =>
+      IncrementalBuilder.#clientExportsOf(file),
+    );
+    return await this.#withSsrLock(
+      async () => await this.#runSsrPatcher(patcher, files, { trace, hold, batchGeneration: generation }),
+    );
+  }
+
+  static async #clientExportsOf(file: string): Promise<string[] | null> {
+    const source = await Bun.file(file)
+      .text()
+      .catch(() => null);
+    if (source === null || !hasUseClientDirective(source)) return null;
+    try {
+      return scanUseClientExports(source, file);
+    } catch {
+      // A module the server can no longer read as client references is a server change; the pages build says why.
+      return null;
+    }
   }
 
   // A route build answers only once the registry holds every entry its rows name: the tab requires them by id.
@@ -497,7 +517,12 @@ class IncrementalBuilder {
   async #runSsrPatcher(
     patcher: CsrDevPatcher,
     files: string[],
-    { roots, trace }: { roots?: string[]; trace?: HmrTrace } = {},
+    {
+      roots,
+      trace,
+      hold,
+      batchGeneration,
+    }: { roots?: string[]; trace?: HmrTrace; hold?: boolean; batchGeneration?: number } = {},
   ): Promise<boolean> {
     const outDir = this.#ssrBundler?.outDir;
     if (!outDir) return false;
@@ -518,6 +543,8 @@ class IncrementalBuilder {
               patchUrl: update.patchUrl,
               changedIds: update.changedIds,
               ...(trace ? { trace: { ...trace, patchAt: now, sentAt: now } } : {}),
+              ...(hold ? { hold } : {}),
+              ...(batchGeneration !== undefined ? { batchGeneration } : {}),
             },
           });
         },
@@ -526,6 +553,7 @@ class IncrementalBuilder {
         this.#logger.verbose(`ssr-patch handed to a build worker: ${result.reason}`);
         return true;
       }
+      this.#sendBuildStatus("ssr", { generation: batchGeneration, ok: true, files });
       this.#logger.verbose(
         result.kind === "unchanged"
           ? `ssr-patch unchanged (${Date.now() - started}ms)`

@@ -10,7 +10,7 @@ import {
   isAkanRuntimeMetadataFile,
   manifestClientEntriesForFiles,
 } from "./devHmrController";
-import type { HmrMessage } from "./wsHub";
+import { HMR_WS_TOPIC, type HmrMessage } from "./wsHub";
 
 const artifactDirWith = async (seedIndex: RouteSeedIndex) => {
   const artifactDir = await mkdtemp(path.join(os.tmpdir(), "akan-dev-hmr-"));
@@ -156,6 +156,101 @@ describe("DevHmrController pages-updated broadcast", () => {
 
   test("refreshes RSC in place for an ordinary non-client source change", async () => {
     expect(await broadcastTypesFor("/repo/apps/demo/lib/task/task.service.ts")).toEqual(["rsc-refresh"]);
+  });
+});
+
+describe("DevHmrController SSR registry updates", () => {
+  const withRegistryController = async (
+    run: (emit: (message: unknown) => void, types: () => string[]) => Promise<void>,
+  ) => {
+    const originalSend = process.send;
+    const originalMode = process.env.AKAN_DEV_SSR_CLIENT;
+    process.send = ((): boolean => true) as typeof process.send;
+    process.env.AKAN_DEV_SSR_CLIENT = "registry";
+    const controller = new DevHmrController({
+      artifactDir: await artifactDirWith({ entries: [], globalLayoutFiles: [] }),
+      renderState: { buildId: 0, cssAssets: {}, cssBytesByUrl: {} },
+      rsc: { reload: async () => undefined, updateCssAssets: () => undefined } as unknown as RscWorker,
+      seedIndex: { entries: [], globalLayoutFiles: [] },
+      upgradeHmrWs: () => true,
+    });
+    const messages: HmrMessage[] = [];
+    controller.hub.setPublisher((topic, payload) => {
+      if (topic === HMR_WS_TOPIC) messages.push(JSON.parse(payload) as HmrMessage);
+    });
+    try {
+      await run(
+        (message) => process.emit("message", message as never),
+        () =>
+          messages.map((message) =>
+            message.type === "ssr-update" ? `ssr-update:${message.generation}` : message.type,
+          ),
+      );
+    } finally {
+      controller.dispose();
+      process.send = originalSend;
+      if (originalMode === undefined) delete process.env.AKAN_DEV_SSR_CLIENT;
+      else process.env.AKAN_DEV_SSR_CLIENT = originalMode;
+    }
+  };
+  const settle = async () => {
+    for (let tick = 0; tick < 20; tick++) await Bun.sleep(1);
+  };
+
+  test("a patch whose save changed server output goes out with that batch's RSC refresh, ahead of it", async () => {
+    await withRegistryController(async (emit, types) => {
+      emit({
+        type: "ssr-updated",
+        data: { generation: 4, reload: false, patchUrl: "/p4.js", hold: true, batchGeneration: 9 },
+      });
+      emit({ type: "ssr-updated", data: { generation: 5, reload: false, patchUrl: "/p5.js" } });
+      await settle();
+      expect(types()).toEqual([]);
+      emit({
+        type: "pages-updated",
+        data: {
+          bundlePath: "/repo/pages.js",
+          buildId: 8,
+          generation: 9,
+          changedFiles: ["/repo/apps/a/lib/x.constant.ts"],
+          serverTouched: true,
+        },
+      });
+      await settle();
+      expect(types()).toEqual(["ssr-update:4", "ssr-update:5", "rsc-refresh"]);
+    });
+  });
+
+  test("a save that changed nothing the server renders gets its patch at once and no RSC refresh", async () => {
+    await withRegistryController(async (emit, types) => {
+      emit({ type: "ssr-updated", data: { generation: 4, reload: false, patchUrl: "/p4.js", batchGeneration: 9 } });
+      await settle();
+      expect(types()).toEqual(["ssr-update:4"]);
+      emit({
+        type: "pages-updated",
+        data: {
+          bundlePath: "/repo/pages.js",
+          buildId: 8,
+          generation: 9,
+          changedFiles: ["/repo/apps/a/ui/Card.tsx"],
+          serverTouched: false,
+        },
+      });
+      await settle();
+      expect(types()).toEqual(["ssr-update:4"]);
+    });
+  });
+
+  test("a failed pages build releases the held patch without an RSC refresh", async () => {
+    await withRegistryController(async (emit, types) => {
+      emit({
+        type: "ssr-updated",
+        data: { generation: 4, reload: false, patchUrl: "/p4.js", hold: true, batchGeneration: 9 },
+      });
+      emit({ type: "build-status", data: { generation: 9, phase: "pages", ok: false, files: [], message: "boom" } });
+      await settle();
+      expect(types()).toEqual(["build-status", "ssr-update:4"]);
+    });
   });
 });
 

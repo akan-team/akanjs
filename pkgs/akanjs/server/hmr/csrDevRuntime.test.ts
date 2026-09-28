@@ -388,6 +388,22 @@ describe("installCsrDevRuntime", () => {
     expect(harness.warnings.at(-1)).toContain("the route table changed");
   });
 
+  test("whenSettled waits for the patch it was handed to load and apply", async () => {
+    const harness = createHarness(baseModules());
+    harness.api.start({ generation: 1, refresh: REFRESH_ID });
+    harness.api.hot({ generation: 2, url: "/_akan/csr-dev/patch-2.js" });
+    let settled = false;
+    const done = harness.api.whenSettled().then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(settled).toBe(false);
+    harness.api.update(2, { "app/Counter.tsx": component("Counter") });
+    harness.scripts[0]?.onload?.();
+    await done;
+    expect(settled).toBe(true);
+  });
+
   describe("library mode (an SSR page)", () => {
     const REFRESH_VENDOR = "vendor:react-refresh/runtime";
 

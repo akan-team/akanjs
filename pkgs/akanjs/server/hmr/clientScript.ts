@@ -402,9 +402,19 @@ export const HMR_CLIENT_SCRIPT = `(function(){
     return prefix ? prefix + "\\n" + msg.message : msg.message;
   }
 
+  // After the registry applied every patch it was handed: the payload names the client modules those patches brought.
   function refreshRsc(msg){
-    var started = performance.now();
     var receivedAt = Date.now();
+    var settled = self.__akan && typeof self.__akan.whenSettled === "function" ? self.__akan.whenSettled() : null;
+    if (!settled) {
+      doRefreshRsc(msg, receivedAt);
+      return;
+    }
+    settled.then(function(){ doRefreshRsc(msg, receivedAt); }, function(){ doRefreshRsc(msg, receivedAt); });
+  }
+
+  function doRefreshRsc(msg, receivedAt){
+    var started = performance.now();
     var overlayToken = beginHmrOverlay("Refreshing page...");
     try { self.__AKAN_RSC_CLEAR_CACHE__ && self.__AKAN_RSC_CLEAR_CACHE__(); } catch(e){}
     if (!self.__AKAN_RSC_REFRESH__) {

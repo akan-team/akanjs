@@ -96,6 +96,8 @@ export interface PagesBundlePayload {
   changedFiles?: string[];
   reason?: BuilderStateReason;
   trace?: HmrTrace;
+  /** False when no changed file is one the server renders (a `"use client"` edit that kept its export names). */
+  serverTouched?: boolean;
 }
 
 /** `Bun.build` keeps native arenas `Bun.gc(true)` never frees (macOS returns none when idle): hence recycling. */
@@ -126,6 +128,10 @@ export interface SsrUpdatedPayload {
   patchUrl?: string;
   changedIds?: string[];
   trace?: HmrTrace;
+  /** The save also changed what the server renders: the tabs get this patch with that batch's RSC refresh. */
+  hold?: boolean;
+  /** The watch batch this patch came from, which the `pages-updated` releasing it names as its generation. */
+  batchGeneration?: number;
 }
 
 export type BuilderEvent =

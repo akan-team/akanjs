@@ -19,6 +19,7 @@ export * from "./pagesEntrySourceGenerator";
 export * from "./precompressArtifacts";
 export * from "./routeClientBuilder";
 export * from "./routesManifestArtifactSerializer";
+export * from "./serverGraphFile";
 export * from "./sourceMtimeIndex";
 export * from "./ssrBaseArtifactBuilder";
 export * from "./ssrDevBundler";

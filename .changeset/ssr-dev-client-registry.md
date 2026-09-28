@@ -12,6 +12,9 @@ feat(dev): SSR pages can load their client code from a dev module registry (`AKA
 - A save patches the changed module in place with React Fast Refresh: state stays, and on minimal a component edit
   shows in about 110ms instead of 900ms. Undoing an edit now shows too; with chunks the browser kept the module it had
   already imported for that URL.
-- A save that touches `"use client"` entries only no longer refetches the page's RSC payload.
+- A save that changes nothing the server renders (a `"use client"` module that keeps its export names, or a module only
+  client code imports) no longer refetches the page's RSC payload. One that does — a component both sides render, a
+  constant — holds its client patch until that save's pages build lands, then sends the patch and the RSC refresh
+  together, so the page never runs new client code against old server props for the length of a pages build.
 - The registry builds once in a build worker after the dev server boots, and a route build answers only once the
   registry holds every entry its manifest names. Route builds no longer bundle the browser chunks in this mode.
