@@ -1070,9 +1070,15 @@ describe("AkanApp solo", () => {
     return { root, serverPath, reportPath, runtimeDir };
   };
 
+  // The child creates the file before it writes it, and on Windows a poll lands in between: an empty file is no report.
   const readReport = async (reportPath: string) =>
     await waitFor(
-      async () => ((await Bun.file(reportPath).exists()) ? await Bun.file(reportPath).json() : null),
+      async () =>
+        (await Bun.file(reportPath).exists())
+          ? await Bun.file(reportPath)
+              .json()
+              .catch(() => null)
+          : null,
       6_000,
       "timed out waiting for the server to report how it was started",
     );
