@@ -47,6 +47,16 @@ describe("Bun output the CSR registry bundle relies on", () => {
     expect(code).toContain('import("akan-module:./a")');
   });
 
+  test("the helper preamble ends at the first path comment and names no factory argument", async () => {
+    const [output] = (await build(["entry.ts"])).outputs;
+    const code = (await output?.text()) ?? "";
+    const marker = code.search(/^\/\/ /m);
+    expect(marker).toBeGreaterThan(0);
+    const preamble = code.slice(0, marker);
+    expect(preamble).toMatch(/^var __toESM = /m);
+    expect(preamble).not.toMatch(/(?<![\w$.])(?:require|module|exports)(?![\w$]|\s*:)/);
+  });
+
   test("a relative import of another entrypoint in the same build stays external", async () => {
     const outputs = (await build(["entry.ts", "a.ts"])).outputs;
     const entry = await outputs.find((output) => output.path.includes("entry"))?.text();

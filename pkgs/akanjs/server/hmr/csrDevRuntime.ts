@@ -40,6 +40,8 @@ export interface CsrUpdateMessage {
 export interface CsrDevRuntimeApi {
   readonly generation: number;
   define(id: string, factory: CsrModuleFactory): void;
+  defineHelpers(hash: string, factory: () => Record<string, unknown>): void;
+  helpers(hash: string): Record<string, unknown>;
   start(options: { generation: number; refresh: string }): void;
   update(generation: number, factories: Record<string, CsrModuleFactory>): void;
   accept(ownerId: string, deps: string[], callback: (updated: string[]) => void): void;
@@ -114,6 +116,8 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
 
   class CsrDevRegistry implements CsrDevRuntimeApi {
     #factories = new Map<string, CsrModuleFactory>();
+    #helperFactories = new Map<string, () => Record<string, unknown>>();
+    #helperValues = new Map<string, Record<string, unknown>>();
     #cache = new Map<string, ModuleRecord>();
     #hotData = new Map<string, Record<string, unknown>>();
     #refresh: RefreshRuntime | null = null;
@@ -129,6 +133,21 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
 
     define(id: string, factory: CsrModuleFactory) {
       this.#factories.set(id, factory);
+    }
+
+    //? Bun repeats its interop helpers in every module; the bundle defines each distinct set once and modules share it.
+    defineHelpers(hash: string, factory: () => Record<string, unknown>) {
+      if (!this.#helperFactories.has(hash)) this.#helperFactories.set(hash, factory);
+    }
+
+    helpers(hash: string) {
+      const cached = this.#helperValues.get(hash);
+      if (cached) return cached;
+      const factory = this.#helperFactories.get(hash);
+      if (!factory) throw new Error(`[akan-csr] no helpers registered as ${hash}`);
+      const value = factory();
+      this.#helperValues.set(hash, value);
+      return value;
     }
 
     start({ generation, refresh }: { generation: number; refresh: string }) {

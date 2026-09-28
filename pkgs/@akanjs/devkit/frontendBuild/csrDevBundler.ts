@@ -34,6 +34,7 @@ interface CsrDevGraphModule {
   mtimeMs: number;
   hash: string;
   deps: string[];
+  helpers?: string;
 }
 
 interface CsrDevGraph {
@@ -61,10 +62,16 @@ interface CompiledModule {
   file: string;
   vendor: boolean;
   factory: string;
+  helpers: SharedHelpers | null;
   sourceMap?: string;
   deps: string[];
   mtimeMs: number;
   hash: string;
+}
+
+interface SharedHelpers {
+  hash: string;
+  definition: string;
 }
 
 interface CompileSession {
@@ -90,13 +97,15 @@ interface Metafile {
 //* Dev-only CSR as a module registry: every module is its own CJS factory (Bun.build with each import external),
 //* so a save re-executes only the changed modules instead of reloading one scope-hoisted HTML file.
 export class CsrDevBundler {
-  static readonly #formatVersion = 2;
+  static readonly #formatVersion = 3;
   static readonly #modulePrefix = "akan-module:";
   static readonly #stubPrefix = "stub:";
   static readonly #inline = "inline";
   static readonly #keptPatches = 40;
   static readonly #keptVendors = 3;
   static readonly #storeRoot = /(?:^|\/)lib\/st\.ts$/;
+  static readonly #factoryArgument =
+    /(?<![\w$.])(?:require|module|exports|__akanImport|\$RefreshReg\$|\$RefreshSig\$)(?![\w$]|\s*:)/;
   static readonly #helperPatches = [
     ["__toESM", "(mod, isNodeMode, target)", "toESM"],
     ["__reExport", "(target, mod, secondTarget)", "reExport"],
@@ -455,7 +464,7 @@ export class CsrDevBundler {
         id,
         file,
         vendor,
-        factory: CsrDevBundler.#factory(id, code),
+        ...CsrDevBundler.#factory(id, code),
         sourceMap: sourceMap ? this.#rebaseSourceMap(await sourceMap.text()) : undefined,
         deps: this.#emittedDeps(code),
         mtimeMs: mtimes.get(file) ?? CsrDevBundler.#mtimeOf(file),
@@ -574,6 +583,7 @@ export class CsrDevBundler {
         mtimeMs: module.mtimeMs,
         hash: module.hash,
         deps: module.deps.map((dep) => (dep.startsWith(CsrDevBundler.#stubPrefix) ? dep : this.#idOf(dep))),
+        ...(module.helpers ? { helpers: module.helpers.hash } : {}),
       };
     graph.pending = [];
     graph.resolution = Object.fromEntries(
@@ -609,12 +619,21 @@ export class CsrDevBundler {
 
   async #writeModules(compiled: CompiledModule[]): Promise<void> {
     await mkdir(path.join(this.#outDir, "modules"), { recursive: true });
-    await Promise.all(
-      compiled.flatMap((module) => [
+    const helpers = new Map(
+      compiled.flatMap((module) => (module.helpers ? [[module.helpers.hash, module.helpers]] : [])),
+    );
+    await Promise.all([
+      ...compiled.flatMap((module) => [
         Bun.write(this.#modulePath(module.id, ".js"), module.factory),
         ...(module.sourceMap ? [Bun.write(this.#modulePath(module.id, ".js.map"), module.sourceMap)] : []),
       ]),
-    );
+      ...[...helpers.values()].map((shared) => Bun.write(this.#helpersPath(shared.hash), shared.definition)),
+    ]);
+  }
+
+  async #helperDefinitions(graph: CsrDevGraph, ids: string[]): Promise<string> {
+    const hashes = [...new Set(ids.flatMap((id) => graph.modules[id]?.helpers ?? []))].sort();
+    return (await Promise.all(hashes.map((hash) => Bun.file(this.#helpersPath(hash)).text()))).join("");
   }
 
   async #defineLines(ids: string[]): Promise<string[]> {
@@ -648,7 +667,7 @@ export class CsrDevBundler {
         module.deps.filter((dep) => dep.startsWith(CsrDevBundler.#stubPrefix)),
       ),
     );
-    const lines = await this.#defineLines(ids);
+    const lines = [await this.#helperDefinitions(graph, ids), ...(await this.#defineLines(ids))];
     for (const stub of [...stubs].sort()) {
       const message = `[akan-csr] ${stub.slice(CsrDevBundler.#stubPrefix.length)} is a Node built-in the browser does not have`;
       lines.push(
@@ -668,7 +687,7 @@ export class CsrDevBundler {
     const lines = await this.#defineLines(ids);
     const blocks = ids.map((id, index) => [id, lines[index] ?? ""] as [string, string]);
     const start = `__akan.start(${JSON.stringify({ generation, refresh: graph.refresh })});\n`;
-    await this.#writeWithSourceMap(CSR_DEV_APP_FILE, "", blocks, start);
+    await this.#writeWithSourceMap(CSR_DEV_APP_FILE, await this.#helperDefinitions(graph, ids), blocks, start);
   }
 
   async #writePatch(generation: number, modules: CompiledModule[]): Promise<string> {
@@ -680,7 +699,11 @@ export class CsrDevBundler {
           string,
         ],
     );
-    await this.#writeWithSourceMap(patchFile, `__akan.update(${generation}, {\n`, blocks, "});\n");
+    const helpers = new Map(
+      modules.flatMap((module) => (module.helpers ? [[module.helpers.hash, module.helpers]] : [])),
+    );
+    const header = `${[...helpers.values()].map((shared) => shared.definition).join("")}__akan.update(${generation}, {\n`;
+    await this.#writeWithSourceMap(patchFile, header, blocks, "});\n");
     return `${CSR_DEV_ROUTE_PREFIX}${patchFile}`;
   }
 
@@ -727,6 +750,10 @@ export class CsrDevBundler {
     return path.join(this.#outDir, csrDevModuleFile(id, extension));
   }
 
+  #helpersPath(hash: string): string {
+    return path.join(this.#outDir, "modules", `helpers-${hash}.js`);
+  }
+
   static #lineCount(text: string): number {
     let count = 0;
     for (let index = text.indexOf("\n"); index !== -1; index = text.indexOf("\n", index + 1)) count += 1;
@@ -745,7 +772,7 @@ export class CsrDevBundler {
   }
 
   // Every rewrite keeps the line count, so a module's source map still lines up inside the factory.
-  static #factory(id: string, code: string): string {
+  static #factory(id: string, code: string): { factory: string; helpers: SharedHelpers | null } {
     const prefix = CsrDevBundler.#modulePrefix;
     let patched = code.replaceAll(`import("${prefix}`, `__akanImport("${prefix}`).replace(/^\/\/# debugId=.*$/m, "");
     for (const [name, params, method] of CsrDevBundler.#helperPatches) {
@@ -760,7 +787,32 @@ export class CsrDevBundler {
     // StoreRegistry.build merges into one global store instance, so every importer already holds the updated `st`:
     // re-running the store root is the whole update, and bubbling past it would only reach the page modules.
     if (CsrDevBundler.#storeRoot.test(id)) patched += "\nmodule.hot.accept();";
-    return `function (require, module, exports, $RefreshReg$, $RefreshSig$, __akanImport) {\n${patched}\n}`;
+    const shared = CsrDevBundler.#shareHelpers(patched);
+    return {
+      factory: `function (require, module, exports, $RefreshReg$, $RefreshSig$, __akanImport) {\n${shared?.code ?? patched}\n}`,
+      helpers: shared?.helpers ?? null,
+    };
+  }
+
+  //? Bun's interop helpers are everything before its first `// <path>` comment. One naming a factory argument would
+  //? bind to whichever module ran it first, so only a self-contained preamble is shared.
+  static #shareHelpers(code: string): { code: string; helpers: SharedHelpers } | null {
+    const marker = code.search(/^\/\/ /m);
+    if (marker <= 0) return null;
+    const preamble = code.slice(0, marker);
+    const names = [...preamble.matchAll(/^(?:var|let|const|function)\s+([\w$]+)/gm)]
+      .map(([, name]) => name)
+      .filter((name): name is string => !!name);
+    if (names.length === 0 || CsrDevBundler.#factoryArgument.test(preamble)) return null;
+    const hash = Bun.hash(preamble).toString(36);
+    const binding = `var { ${names.join(", ")} } = __akan.helpers(${JSON.stringify(hash)});`;
+    return {
+      code: `${binding}${"\n".repeat(CsrDevBundler.#lineCount(preamble))}${code.slice(marker)}`,
+      helpers: {
+        hash,
+        definition: `__akan.defineHelpers(${JSON.stringify(hash)}, function () {\n${preamble}return { ${names.join(", ")} };\n});\n`,
+      },
+    };
   }
 
   static #isVendorFile(file: string): boolean {
