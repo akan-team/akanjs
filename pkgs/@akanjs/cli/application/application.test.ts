@@ -133,6 +133,7 @@ describe("ApplicationCommand", () => {
     const mobileCommandKeys = [
       "buildIos",
       "buildAndroid",
+      "buildDesktop",
       "startIos",
       "startAndroid",
       "startDesktop",
@@ -396,6 +397,33 @@ describe("ApplicationScript desktop", () => {
     });
     const optionNames = getArgMetas(ApplicationCommand, "startDesktop")[1].map((meta) => meta.name);
     expect(optionNames).toEqual(["target", "env", "release", "write"]);
+  });
+
+  test("buildDesktop builds the targets for this computer's desktop platform", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const recorder = createCallRecorder();
+    const app = createFakeExecutor(
+      "demo",
+      { scanSync: async (...args: unknown[]) => recorder.record("scanSync", ...args) },
+      recorder,
+    );
+    const buildMobile = script.applicationRunner.buildMobile;
+    script.applicationRunner.buildMobile = async (...args: unknown[]) => {
+      recorder.record("runner.buildMobile", ...args);
+    };
+    try {
+      await script.buildDesktop(app as never, { target: "default", env: "develop", profile: "debug", write: false });
+    } finally {
+      script.applicationRunner.buildMobile = buildMobile;
+    }
+
+    expect(recorder.calls).toContainEqual({ name: "scanSync", args: [{ write: false }] });
+    expect(recorder.calls).toContainEqual({
+      name: "runner.buildMobile",
+      args: [app, NativeApp.desktopPlatform(), { target: "default", env: "develop", profile: "debug" }],
+    });
+    const optionNames = getArgMetas(ApplicationCommand, "buildDesktop")[1].map((meta) => meta.name);
+    expect(optionNames).toEqual(["target", "env", "debug", "write"]);
   });
 });
 

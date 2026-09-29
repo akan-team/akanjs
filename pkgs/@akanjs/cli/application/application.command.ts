@@ -144,6 +144,15 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .exec(async function (app, target, env, debug, write) {
       await this.applicationScript.buildAndroid(app, { target, env, profile: debug ? "debug" : "release", write });
     }),
+  buildDesktop: target({ short: true, desc: "Build the desktop app for this computer (macOS, Windows or Linux)" })
+    .with(App)
+    .option("target", String, mobileTargetOption)
+    .option("env", String, buildEnvOption)
+    .option("debug", Boolean, { desc: "debug build instead of release", default: false })
+    .option("write", Boolean, { desc: "write code generation", default: true })
+    .exec(async function (app, target, env, debug, write) {
+      await this.applicationScript.buildDesktop(app, { target, env, profile: debug ? "debug" : "release", write });
+    }),
   start: target({ short: true, desc: "Start development server(s) (frontend SSR + backend)" })
     .with(Apps)
     .option("plain", Boolean, { desc: "print prefixed lines instead of the full-screen view", default: false })

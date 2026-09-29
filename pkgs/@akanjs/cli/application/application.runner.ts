@@ -6,13 +6,7 @@ import { resolveSignalTestPreloadPath } from "@akanjs/devkit/applicationTestPrel
 import { type App, type Exec, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor } from "@akanjs/devkit/executors";
 import type { DevStdioMode } from "@akanjs/devkit/incrementalBuilder";
-import {
-  type MobilePlatform,
-  NativeApp,
-  type NativePlatform,
-  type ResolvedMobileTarget,
-  resolveMobileTargets,
-} from "@akanjs/devkit/mobile";
+import { NativeApp, type NativePlatform, type ResolvedMobileTarget, resolveMobileTargets } from "@akanjs/devkit/mobile";
 import { SlicePlanner } from "@akanjs/devkit/slicePlanner";
 import { Logger, type LogRecord } from "akanjs/common";
 import { openBrowser } from "../openBrowser";
@@ -267,7 +261,7 @@ try {
 
   async buildMobile(
     app: App,
-    platform: MobilePlatform,
+    platform: NativePlatform,
     { target, env = "debug", profile = "release" }: MobileBuildOptions = {},
   ) {
     const targets = await resolveMobileTargets(app, target);
@@ -275,6 +269,9 @@ try {
     await this.#runMobileTargets(targets, async (mobileTarget) => {
       this.#reportBuild(app, mobileTarget, await new NativeApp(app, mobileTarget).build(platform, { profile }));
     });
+  }
+  async buildDesktop(app: App, options: MobileBuildOptions = {}) {
+    await this.buildMobile(app, NativeApp.desktopPlatform(), options);
   }
 
   //* A dev build loads its pages from `akan start`, so it follows every save; a release build carries its own bundle.
