@@ -813,7 +813,8 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
   - 데이터: `<app data>/server`(작업 폴더, `db/`, `runtime/logs`, `jwt.secret` 0600). FileRef가 서빙하지 않는 예약 폴더다(L4).
   - IPC `ready`를 최대 8초 기다린다. 넘기면 창을 먼저 띄우고, 서버는 계속 뜬다.
 - 크래시: 같은 포트로 다시 띄운다. 1초에서 두 배씩 30초까지. 연속 5회면 멈추고 `alert.show`로 알린다. 60초 이상 떠 있던 실행의 크래시는 횟수를 처음부터 센다.
-- 종료: `onQuit`에서 IPC `shutdown` → 1.5초 안에 안 끝나면 SIGTERM. 셸이 먼저 죽으면(SIGKILL) 서버가 IPC 끊김을 보고 스스로 내려간다(akanjs `AkanServer`). macOS에서 확인: SIGTERM 뒤 graceful 종료, `kill -9` 뒤 약 200ms 안에 서버 종료, 두 번째 인스턴스는 서버 없이 넘기고 끝남.
+- 종료: `onQuit`에서 IPC `shutdown` → 1.5초 안에 안 끝나면 SIGTERM. 셸이 먼저 죽으면 macOS·Linux에서는 서버가 IPC 끊김을 보고 스스로 내려간다(akanjs `AkanServer`). Windows에서는 Bun이 자식을 넣는 job object가 셸과 함께 서버를 바로 끝낸다(서버 로그에 종료 줄이 없다). SQLite WAL이 있어 데이터는 남는다.
+- 확인(E2E `pkgs/@akanjs/cli/application/desktopServer.e2e.test.ts`, 2026-09-29): macOS, Linux 컨테이너(WebKitGTK), Windows 11 ARM VM(WebView2) 모두 통과. 생성·목록·업로드와 되읽기, rebinding Host·외부 Origin·LAN 주소 거부, 두 번째 실행은 서버 없이 넘김, 종료(SIGTERM, Windows는 stdin quit) 뒤 graceful 종료와 데이터 유지, 강제 종료 뒤 서버도 내려감. 세 OS 모두 서버는 127.0.0.1에만 LISTEN하고 WebView(WebKit, msedgewebview2)가 그 포트에 연결한다. 네트워크 없는 Linux 컨테이너(`--network none`)에서도 동작했다.
 - 로그: 서버의 stdout·stderr를 줄마다 `[server] ` 접두사로 셸 stdout·stderr에 넘긴다. 파일 로그는 `<app data>/server/runtime/logs`.
 
 ### macOS 네이티브 시트 (file-picker, dialog, D7)
