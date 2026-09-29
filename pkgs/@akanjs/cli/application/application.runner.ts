@@ -16,6 +16,7 @@ import {
 import { SlicePlanner } from "@akanjs/devkit/slicePlanner";
 import { Logger, type LogRecord } from "akanjs/common";
 import { openBrowser } from "../openBrowser";
+import type { InterruptTeardown } from "./interruptTeardown";
 
 export interface LogsOptions {
   level?: string | null;
@@ -48,6 +49,8 @@ export interface MobileStartOptions extends MobileTargetOptions {
   teamId?: string;
   /** A desktop release build that carries the app's server. */
   server?: boolean;
+  /** Stops a dev session along with what the caller started for it, instead of this command's own Ctrl+C exit. */
+  interrupt?: InterruptTeardown;
 }
 export interface IosReleaseOptions extends MobileTargetOptions {
   teamId?: string;
@@ -294,7 +297,7 @@ try {
   async startMobile(
     app: App,
     platform: NativePlatform,
-    { target, env = "local", operation = "local", device, teamId, server = false }: MobileStartOptions = {},
+    { target, env = "local", operation = "local", device, teamId, server = false, interrupt }: MobileStartOptions = {},
   ) {
     const targets = await resolveMobileTargets(app, target);
     const [mobileTarget] = targets;
@@ -317,20 +320,23 @@ try {
       return;
     }
     const upstream = `http://localhost:${await app.getDevPort()}`;
-    if (!(await ApplicationRunner.#answers(upstream)))
+    if (!(await ApplicationRunner.answers(upstream)))
       throw new Error(`No dev server answers on ${upstream}; run \`akan start ${app.name}\` first.`);
     const { i18n } = await app.getConfig();
     const session = await nativeApp.dev(platform, { upstream, lang: i18n.defaultLocale, ...selection });
     app.log(`${app.name}/${mobileTarget.name} on ${platform} follows ${upstream} through ${session.gateway}.`);
-    process.once("SIGINT", () => {
-      void session.stop().finally(() => process.exit(130));
-    });
+    if (interrupt)
+      interrupt.add(async () => await session.stop(), "Abandoning the app's shutdown; its window may stay open.");
+    else
+      process.once("SIGINT", () => {
+        void session.stop().finally(() => process.exit(130));
+      });
     await session.exited;
   }
   async startDesktop(app: App, options: Omit<MobileStartOptions, "device" | "teamId"> = {}) {
     await this.startMobile(app, NativeApp.desktopPlatform(), options);
   }
-  static async #answers(url: string) {
+  static async answers(url: string) {
     try {
       await fetch(url, { signal: AbortSignal.timeout(3_000) });
       return true;

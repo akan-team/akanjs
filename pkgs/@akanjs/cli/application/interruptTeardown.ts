@@ -9,7 +9,7 @@ export interface InterruptTeardownHooks {
 // The session's only SIGINT listener: a listener replaces Ctrl+C's default exit, and two that each exit cut one
 // another short, so teardowns collect here and the exit runs once, after all of them.
 export class InterruptTeardown {
-  readonly #teardowns: { run: () => Promise<void>; abandoned: string; running: boolean }[] = [];
+  readonly #teardowns: { run: () => Promise<void>; abandoned: string; running: boolean; done?: Promise<void> }[] = [];
   readonly #exit: (code: number) => void;
   readonly #listen: (onSignal: () => void) => void;
   readonly #report: (message: string) => void;
@@ -32,6 +32,11 @@ export class InterruptTeardown {
     if (this.#teardowns.length === 1) this.#listen(() => this.#onSignal());
   }
 
+  /** Runs the teardowns, as Ctrl+C would, for a session that ended on its own; the caller exits. */
+  async runAll() {
+    await this.#runTeardowns();
+  }
+
   #onSignal() {
     if (this.#interrupted) {
       for (const one of this.#teardowns) if (one.running) this.#report(one.abandoned);
@@ -39,15 +44,23 @@ export class InterruptTeardown {
       return;
     }
     this.#interrupted = true;
-    void Promise.all(
-      // Caught per teardown: `Promise.all` rejects on the first failure and would exit mid-teardown.
-      this.#teardowns.map(async (one) => {
-        one.running = true;
-        await one.run().catch(() => undefined);
-        one.running = false;
-      }),
-    ).finally(() => {
+    void this.#runTeardowns().finally(() => {
       if (this.ownsExit) this.#exit(0);
     });
+  }
+
+  //? Each teardown runs once: a Ctrl+C while a finished session tears down waits for that same run.
+  async #runTeardowns() {
+    await Promise.all(
+      this.#teardowns.map((one) => {
+        one.done ??= (async () => {
+          one.running = true;
+          // Caught per teardown: `Promise.all` rejects on the first failure and would exit mid-teardown.
+          await one.run().catch(() => undefined);
+          one.running = false;
+        })();
+        return one.done;
+      }),
+    );
   }
 }

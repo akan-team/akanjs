@@ -393,10 +393,114 @@ describe("ApplicationScript desktop", () => {
     expect(recorder.calls).toContainEqual({ name: "scanSync", args: [{ write: false }] });
     expect(recorder.calls).toContainEqual({
       name: "runner.startMobile",
-      args: [app, NativeApp.desktopPlatform(), { target: "default", operation: "release" }],
+      args: [app, NativeApp.desktopPlatform(), { target: "default", operation: "release", server: false }],
     });
     const optionNames = getArgMetas(ApplicationCommand, "startDesktop")[1].map((meta) => meta.name);
     expect(optionNames).toEqual(["target", "env", "release", "server", "write"]);
+  });
+
+  const desktopDevHarness = ({ answers }: { answers: boolean }) => {
+    const script = CommandContainer.get(ApplicationScript);
+    const recorder = createCallRecorder();
+    const app = createFakeExecutor(
+      "demo",
+      {
+        scanSync: async () => undefined,
+        getDevPort: async () => 8482,
+        log: () => undefined,
+      },
+      recorder,
+    );
+    const saved = {
+      answers: ApplicationRunner.answers,
+      startOne: script.startOne,
+      startDesktop: script.applicationRunner.startDesktop,
+      timeout: ApplicationScript.devServerReadyTimeoutMs,
+    };
+    ApplicationRunner.answers = async (url: string) => {
+      recorder.record("answers", url);
+      return answers;
+    };
+    script.applicationRunner.startDesktop = async (...args: unknown[]) => {
+      recorder.record("runner.startDesktop", ...args);
+    };
+    const restore = () => {
+      ApplicationRunner.answers = saved.answers;
+      script.startOne = saved.startOne;
+      script.applicationRunner.startDesktop = saved.startDesktop;
+      ApplicationScript.devServerReadyTimeoutMs = saved.timeout;
+    };
+    return { script, recorder, app, restore };
+  };
+
+  test("start-desktop --server follows a dev server that already answers, and starts none", async () => {
+    const { script, recorder, app, restore } = desktopDevHarness({ answers: true });
+    script.startOne = async () => {
+      recorder.record("startOne");
+      return undefined as never;
+    };
+    try {
+      await script.startDesktop(app as never, { target: "default", server: true, write: false });
+    } finally {
+      restore();
+    }
+
+    expect(recorder.names()).toEqual(["answers", "runner.startDesktop"]);
+    expect(recorder.calls[0]?.args).toEqual(["http://localhost:8482"]);
+    expect(recorder.calls[1]?.args[1]).toMatchObject({ target: "default", interrupt: expect.any(Object) });
+  });
+
+  test("start-desktop --server starts akan start, opens the app once it serves, and stops it when the app ends", async () => {
+    const { script, recorder, app, restore } = desktopDevHarness({ answers: false });
+    script.startOne = async (_app, options) => {
+      recorder.record("startOne", options?.write);
+      setTimeout(() => options?.onDevEvent?.({ app: "demo", state: "ready" }), 5);
+      return {
+        stop: async () => {
+          recorder.record("devServer.stop");
+        },
+      } as never;
+    };
+    try {
+      await script.startDesktop(app as never, { target: "default", server: true, write: false });
+    } finally {
+      restore();
+    }
+
+    expect(recorder.names()).toEqual(["answers", "startOne", "runner.startDesktop", "devServer.stop"]);
+    expect(recorder.calls[1]?.args).toEqual([false]);
+  });
+
+  test("start-desktop --server stops the dev server it started when that never serves", async () => {
+    const { script, recorder, app, restore } = desktopDevHarness({ answers: false });
+    ApplicationScript.devServerReadyTimeoutMs = 20;
+    script.startOne = async () =>
+      ({
+        stop: async () => {
+          recorder.record("devServer.stop");
+        },
+      }) as never;
+    try {
+      await expect(script.startDesktop(app as never, { server: true, write: false })).rejects.toThrow(
+        "akan start demo did not answer within",
+      );
+    } finally {
+      restore();
+    }
+
+    expect(recorder.names()).toEqual(["answers", "devServer.stop"]);
+  });
+
+  test("start-desktop --release --server builds the server into the app instead", async () => {
+    const { script, recorder, app, restore } = desktopDevHarness({ answers: false });
+    try {
+      await script.startDesktop(app as never, { operation: "release", server: true, write: false });
+    } finally {
+      restore();
+    }
+
+    expect(recorder.names()).toEqual(["runner.startDesktop"]);
+    expect(recorder.calls[0]?.args[1]).toEqual({ operation: "release", server: true });
   });
 
   test("buildDesktop builds the targets for this computer's desktop platform", async () => {

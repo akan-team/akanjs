@@ -107,6 +107,26 @@ describe("InterruptTeardown", () => {
     expect(exits).toEqual([130]);
   });
 
+  test("runs every teardown once for a session that ended on its own, and never exits for it", async () => {
+    const { interrupt, exits, press } = harness();
+    const ran: string[] = [];
+    interrupt.add(async () => {
+      ran.push("session");
+    }, "session abandoned");
+    interrupt.add(async () => {
+      ran.push("dev server");
+    }, "dev server abandoned");
+
+    await interrupt.runAll();
+    await interrupt.runAll();
+    expect(exits).toEqual([]);
+    press();
+    await settle();
+
+    expect(ran).toEqual(["session", "dev server"]);
+    expect(exits).toEqual([0]);
+  });
+
   test("leaves the exit to the supervisor when it does not own it", async () => {
     const { interrupt, exits, press } = harness();
     interrupt.ownsExit = false;
