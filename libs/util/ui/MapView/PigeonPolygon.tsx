@@ -4,6 +4,7 @@ import { GeoJson, type PigeonProps } from "pigeon-maps";
 import { type CSSProperties, useContext } from "react";
 
 import { PigeonMapPropsContext } from "./context";
+import { pigeonSvgAttributes } from "./pigeonSvg.util";
 
 interface PigeonPolygonProps extends PigeonProps {
   className?: string;
@@ -28,7 +29,7 @@ export default function PigeonPolygon({ className, coordinates, ...props }: Pige
         ],
       }}
       styleCallback={() => {
-        return props.style;
+        return pigeonSvgAttributes(props.style);
       }}
     />
   );

@@ -5,6 +5,7 @@ import { memo, useContext, useMemo } from "react";
 
 import { MapView } from ".";
 import { PigeonMapPropsContext } from "./context";
+import { pigeonSvgAttributes } from "./pigeonSvg.util";
 
 interface PigeonPolylineProps {
   className?: string;
@@ -74,7 +75,11 @@ export default memo(
           {...contextProps}
           data={polyline}
           styleCallback={(feature: typeof polyline) => {
-            return { ...style, strokeWidth: style?.strokeWidth ?? "1", stroke: style?.stroke ?? "black" };
+            return pigeonSvgAttributes({
+              ...style,
+              strokeWidth: style?.strokeWidth ?? "1",
+              stroke: style?.stroke ?? "black",
+            });
           }}
         />
         {/* 화살표 마커들 */}

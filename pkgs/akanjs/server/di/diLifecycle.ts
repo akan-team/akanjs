@@ -119,7 +119,7 @@ export class DiLifecycle {
   constructor({ env, modules = [], disableModules = [], disableLibs = [] }: DiLifecycleProps, ...libs: AkanLib[]) {
     this.#env = env;
     const databaseMode = DiLifecycle.#databaseMode();
-    this.logger.info(`Database mode: ${DatabaseModes.describe(databaseMode)}`);
+    this.logger.debug(`Database mode: ${DatabaseModes.describe(databaseMode)}`);
     // Copied: "single" mode hands back the shared module-scope object, and applyAdaptor overrides mutate per app.
     this.#predefinedAdaptor = { ...getPredefinedAdaptor(databaseMode) };
     this.#libs = libs;
