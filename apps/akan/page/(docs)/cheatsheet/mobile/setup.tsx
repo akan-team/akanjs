@@ -1197,6 +1197,57 @@ export default config;`}
               <li key={idx}>{note}</li>
             ))}
           </ul>
+          <Docs.SubSubTitle>{l.trans({ en: "Your Own Plugins", ko: "앱이 가진 플러그인" })}</Docs.SubSubTitle>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  A device feature no builtin covers — a kiosk's boot receiver, a Windows registry setting — is a plugin
+                  in the app's own <code>native/</code> folder, one folder per plugin, named after its id. It is not
+                  listed anywhere: every target of the app ships it, and its manifest says what runs on each platform. A
+                  lib's <code>native/</code> plugins reach the apps that depend on it, and an app's own plugin wins an
+                  id a lib also uses.
+                </span>
+              ),
+              ko: (
+                <span>
+                  빌트인에 없는 장치 기능(키오스크의 부팅 수신, Windows 레지스트리 설정 같은 것)은 앱의{" "}
+                  <code>native/</code> 폴더에 플러그인으로 둡니다. 플러그인 하나가 폴더 하나이고, 폴더 이름은 그
+                  id입니다. 어디에도 적지 않습니다. 앱의 모든 타깃에 들어가고, 플랫폼마다 무엇이 도는지는 manifest가
+                  정합니다. lib의 <code>native/</code> 플러그인은 그 lib에 의존하는 앱에 들어가며, 같은 id를 앱도 가지면
+                  앱 것이 쓰입니다.
+                </span>
+              ),
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="apps/myapp/native/kiosk"
+            code={`native-plugin.json   { "id": "kiosk", "apiVersion": 1, "methods": ["hideTaskbar"], "desktop": "./src/desktop.ts", … }
+src/index.ts         export const kiosk = definePlugin<KioskApi>("kiosk", { methods: ["hideTaskbar"] });
+src/desktop.ts       export default defineDesktopPlugin<KioskApi>({ id: "kiosk", methods: { hideTaskbar: … } });
+android/KioskPlugin.kt`}
+          />
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  <code>definePlugin</code> comes from <code>akanjs/client/native</code> and{" "}
+                  <code>defineDesktopPlugin</code> from <code>akanjs/native/desktop</code>; the runtime's own package is
+                  not installed in an app's workspace. A <code>webkit/</code> hook imports the plugin's API from{" "}
+                  <code>../native/kiosk/src</code>, and pages call the hook.
+                </span>
+              ),
+              ko: (
+                <span>
+                  <code>definePlugin</code>은 <code>akanjs/client/native</code>에서, <code>defineDesktopPlugin</code>은{" "}
+                  <code>akanjs/native/desktop</code>에서 가져옵니다. 런타임 패키지 자체는 앱의 작업 공간에 설치되지
+                  않습니다. 플러그인 API는 <code>webkit/</code> 훅이 <code>../native/kiosk/src</code>에서 가져오고,
+                  페이지는 그 훅을 부릅니다.
+                </span>
+              ),
+            })}
+          </div>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />

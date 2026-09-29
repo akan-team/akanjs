@@ -261,3 +261,22 @@ const host = installMockHost({ platform: "ios", plugins: { clipboard: { methods:
 host.uninstall();
 ```
 - web 구현은 DOM이 없는 `bun test`에서 부분만 테스트할 수 있다. 전체 동작은 샘플 앱의 자가 테스트(`examples/sample/src/selftest.ts`, `akan-native test all`)로 확인한다.
+
+## 9. akanjs 앱·lib이 가진 플러그인
+
+빌트인에 없는 장치 기능(키오스크의 부팅 수신, Windows 레지스트리 설정 같은 것)은 앱이 자기 플러그인으로 만든다. 폴더와 파일은 §1~§7과 같고, 두는 곳과 import 경로만 다르다.
+
+```
+apps/<app>/native/<id>/        (lib이면 libs/<lib>/native/<id>/)
+├─ native-plugin.json           id는 폴더 이름과 같다
+├─ src/index.ts                 definePlugin — akanjs/client/native
+├─ src/desktop.ts               defineDesktopPlugin — akanjs/native/desktop
+├─ android/<Name>Plugin.kt
+└─ ios/<Name>Plugin.swift
+```
+- 설정에 적지 않는다. akanjs가 `native/` 아래 폴더를 찾아 앱의 모든 모바일·데스크톱 타깃에 폴더 경로로 넘긴다(`pkgs/@akanjs/devkit/mobile/nativePluginFolders.ts`). 플랫폼마다 무엇이 도는지는 manifest가 정한다(null이면 그 플랫폼에서 `UNSUPPORTED`).
+- lib의 `native/` 플러그인은 그 lib에 의존하는 앱에만 들어간다. 앱이 같은 id의 플러그인을 가지면 앱 것이 쓰이고, 두 lib이 같은 id를 가지면 빌드가 멈춘다. 같은 id의 빌트인이 함께 들어가면 이 런타임이 "provided by both"로 거절한다.
+- 앱 쪽 코드는 `@akanjs/native`를 직접 import하지 않는다. 배포된 akanjs 안에 복사본(vendor)으로만 있어서, 앱의 작업 공간에서는 그 이름이 풀리지 않는다. 페이지 쪽은 `akanjs/client/native`(`definePlugin`, `defineWebPlugin`, `AkanNativeError`, `createLiveValue`, `useLiveValue`, `usePluginEvent`), 데스크톱 쪽은 `akanjs/native/desktop`(`defineDesktopPlugin`, `DesktopContext`, `AkanNativeError`, `createPageVeto`)에서 가져온다.
+- 페이지 API는 앱의 `webkit/` 훅이 `../native/<id>/src`에서 가져오고, 페이지와 컴포넌트는 그 훅을 부른다.
+- 린트: `native/` 폴더는 `no-throw-raw-error`(에러는 `AkanNativeError`로 던진다)와 `no-web-only-api-outside-webkit`의 범위 밖이다.
+- 예: `apps/minimal/native/probe`(데스크톱만). 데스크톱 E2E(`pkgs/@akanjs/cli/application/desktopServer.e2e.test.ts`)가 셸에 실렸는지 확인한다.

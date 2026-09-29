@@ -176,12 +176,44 @@ describe("NativeConfig.build", () => {
     }
   });
 
+  test("ships the app's own native plugins by folder and names each by its id in the capability", async () => {
+    const root = await makeTempRoot();
+    const kiosk = await writeManifest(path.join(root, "native", "kiosk"), "kiosk");
+    await writeManifest(path.join(root, "vendor", "led-panel"), "led-panel");
+    const { config } = NativeConfig.build({
+      appPath: root,
+      target: { ...minimalTarget, permissions: [], native: { plugins: ["./vendor/led-panel"] }, deepLinks: undefined },
+      webDir: path.join(root, "web"),
+      contributions: [],
+      locales: ["en"],
+      nativePlugins: [{ id: "kiosk", dir: kiosk, owner: "apps/board" }],
+    });
+
+    expect(config.plugins).toEqual([...NativeConfig.basePlugins, "./vendor/led-panel", kiosk]);
+    expect(config.capabilities?.[0]?.permissions).toEqual(
+      [...NativeConfig.basePlugins, "led-panel", "kiosk"].map((id) => `${id}:default`),
+    );
+    await mkdir(path.join(root, "web"), { recursive: true });
+    await writeFile(path.join(root, "web/index.html"), "<html><head></head><body></body></html>");
+    const api = await NativeApi.load(repoApp);
+    expect(api.validateConfig(config, { appDir: root })).toEqual([]);
+  });
+
   test("keeps a file name the runtime accepts", () => {
     expect(NativeConfig.fileNameOf("minimal")).toBe("minimal");
     expect(NativeConfig.fileNameOf("my app!")).toBe("my-app");
     expect(NativeConfig.fileNameOf("...")).toBe("app");
   });
 });
+
+const writeManifest = async (dir: string, id: string) => {
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    path.join(dir, "native-plugin.json"),
+    JSON.stringify({ id, apiVersion: 1, methods: [], events: [], web: null, desktop: null, ios: null, android: null }),
+  );
+  return dir;
+};
 
 const onePixelPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
 

@@ -38,7 +38,12 @@ class DesktopApp {
   static start() {
     return new DesktopApp(
       Bun.spawn([DesktopApp.executable], {
-        env: { ...process.env, AKAN_NATIVE_ACTIVATION: "prohibited", AKAN_NATIVE_QUIT_ON_STDIN: "1" },
+        env: {
+          ...process.env,
+          AKAN_NATIVE_ACTIVATION: "prohibited",
+          AKAN_NATIVE_QUIT_ON_STDIN: "1",
+          AKAN_NATIVE_PROBE: "1",
+        },
         stdin: "pipe",
         stdout: "pipe",
         stderr: "pipe",
@@ -143,6 +148,10 @@ describe.skipIf(!enabled)("a desktop app carrying its server (build-desktop mini
       id: string;
     }[];
     expect(list.map((memo) => memo.id)).toContain(memoId);
+  });
+
+  test("ships the app's own native plugin (apps/minimal/native/probe) into the shell", async () => {
+    await DesktopApp.until(async () => app.lines.join("\n").includes("probe: apps/minimal/native/probe is loaded"));
   });
 
   test("refuses a rebound Host, a foreign origin, and every interface but loopback", async () => {

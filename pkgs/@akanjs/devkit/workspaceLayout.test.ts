@@ -21,6 +21,11 @@ describe("app root layout allowlist", () => {
     }
   });
 
+  test("admits the native plugins an app owns, and a lib too", () => {
+    expect(appRootAllowedDirs.has("native")).toBe(true);
+    expect(libRootAllowedDirs.has("native")).toBe(true);
+  });
+
   test("rejects an app root entry no facet owns", () => {
     expect(appRootAllowedFiles.has("helper.ts")).toBe(false);
     expect(appRootAllowedDirs.has("base")).toBe(false);

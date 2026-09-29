@@ -12,6 +12,7 @@ import {
 } from "./mobileTarget";
 import { NativeApi, type NativeBuildApiModule } from "./nativeApi";
 import { NativeConfig } from "./nativeConfig";
+import { NativePluginFolders } from "./nativePluginFolders";
 import { NativeWebDir } from "./nativeWebDir";
 
 type TaskOptions = Parameters<NativeBuildApiModule["build"]>[0];
@@ -66,13 +67,18 @@ export class NativeApp {
   }
 
   async config(server?: DesktopServerBundle) {
-    const [appConfig, plugins] = await Promise.all([this.app.getConfig(), this.app.collectPlugins()]);
+    const [appConfig, plugins, nativePlugins] = await Promise.all([
+      this.app.getConfig(),
+      this.app.collectPlugins(),
+      NativePluginFolders.of(this.app),
+    ]);
     return NativeConfig.build({
       appPath: this.app.cwdPath,
       target: this.target.config,
       webDir: this.web.dir,
       contributions: plugins.flatMap((plugin) => (plugin.native ? [plugin.native] : [])),
       locales: appConfig.i18n.locales,
+      nativePlugins,
       ...(server ? { desktopServer: server } : {}),
     });
   }

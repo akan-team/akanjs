@@ -4,6 +4,7 @@ export * from "./mobileTarget";
 export * from "./nativeApi";
 export * from "./nativeApp";
 export * from "./nativeConfig";
+export * from "./nativePluginFolders";
 export * from "./nativeWebDir";
 export * from "./placeholderAppId";
 export * from "./usageDescriptions";

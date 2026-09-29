@@ -137,7 +137,8 @@
         "!**/*.spec.tsx",
         "!**/*.constant.ts",
         "!**/common/**",
-        "!**/env/**"
+        "!**/env/**",
+        "!{apps,libs}/*/native/**"
       ],
       "plugins": ["./node_modules/@akanjs/devkit/lint/no-throw-raw-error.grit"]
     },
@@ -225,6 +226,7 @@
         "{apps,libs}/**/*.ts",
         "{apps,libs}/**/*.tsx",
         "!{apps,libs}/**/webkit/**",
+        "!{apps,libs}/*/native/**",
         "!**/*.test.ts",
         "!**/*.test.tsx",
         "!**/*.spec.ts",

@@ -22,7 +22,10 @@ const appDir = "/repo/apps/portal";
 
 const fakeApp = (plugins: AkanPlugin[] = []) =>
   ({
+    name: "portal",
     cwdPath: appDir,
+    workspace: { workspaceRoot: "/repo" },
+    getScanInfo: () => ({ getLibs: () => [] }),
     dist: { cwdPath: "/repo/dist/apps/portal" },
     getConfig: async () => ({ i18n: { locales: ["en", "ko"] }, api: { prefix: "/api", websocketPrefix: "/ws" } }),
     collectPlugins: async () => plugins,

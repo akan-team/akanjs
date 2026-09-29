@@ -1,7 +1,9 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { AkanNativeConfig } from "@akanjs/native/config";
 import type { AkanMobileTargetConfig, AkanNativeValue, AkanPluginNativeConfig, MobilePermission } from "akanjs";
 import type { DesktopServerBundle } from "./desktopServerStage";
+import type { NativePluginFolder } from "./nativePluginFolders";
 import { toIosInfoPlistUsageDescriptions } from "./usageDescriptions";
 
 export interface NativeConfigInput {
@@ -15,6 +17,8 @@ export interface NativeConfigInput {
   locales: readonly string[];
   /** A desktop build that carries its server (`--server`). */
   desktopServer?: DesktopServerBundle;
+  /** The plugins in the app's and its libs' `native/` folders. */
+  nativePlugins?: NativePluginFolder[];
 }
 
 export interface NativeConfigResult {
@@ -78,6 +82,7 @@ export class NativeConfig {
     contributions,
     locales,
     desktopServer,
+    nativePlugins = [],
   }: NativeConfigInput): NativeConfigResult {
     const warnings: string[] = [];
     const applied = (target.permissions ?? []).flatMap((permission) => {
@@ -95,8 +100,12 @@ export class NativeConfig {
         //? A second copy of the app would start a second server on the same data.
         ...(desktopServer ? ["single-instance"] : []),
         ...(target.native?.plugins ?? []),
+        ...nativePlugins.map((plugin) => plugin.dir),
       ]),
     ];
+    const pluginIds = plugins.map(
+      (spec) => nativePlugins.find((plugin) => plugin.dir === spec)?.id ?? NativeConfig.#pluginId(appPath, spec),
+    );
     const usageDescriptions = Object.fromEntries(
       Object.entries(
         toIosInfoPlistUsageDescriptions(
@@ -147,7 +156,7 @@ export class NativeConfig {
         {
           identifier: "app",
           description: `The plugins ${target.appName} ships, each with its default permissions`,
-          permissions: plugins.map((plugin) => `${plugin}:default`),
+          permissions: pluginIds.map((id) => `${id}:default`),
         },
       ],
       ...(Object.keys(usageDescriptions).length ? { usageDescriptions } : {}),
@@ -168,6 +177,18 @@ export class NativeConfig {
   /** Letters, digits, `.`, `_` and `-` only; the folder name of an akan app already is one almost always. */
   static fileNameOf(name: string) {
     return name.replace(/[^A-Za-z0-9._-]/g, "-").replace(/^[-.]+|[-.]+$/g, "") || "app";
+  }
+
+  //? A permission names a plugin by its id, and a plugin given by folder is named in its manifest; a spec the runtime
+  //? cannot read is left as it is for the runtime to report.
+  static #pluginId(appPath: string, spec: string) {
+    if (!spec.startsWith(".") && !path.isAbsolute(spec)) return spec;
+    try {
+      const { id } = JSON.parse(readFileSync(path.join(path.resolve(appPath, spec), "native-plugin.json"), "utf8"));
+      return typeof id === "string" ? id : spec;
+    } catch {
+      return spec;
+    }
   }
 
   /** Drops empty arrays and objects, and answers undefined when nothing is left. */
