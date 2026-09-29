@@ -336,9 +336,11 @@ try {
   async startDesktop(app: App, options: Omit<MobileStartOptions, "device" | "teamId"> = {}) {
     await this.startMobile(app, NativeApp.desktopPlatform(), options);
   }
+  //? The gateway answers its health route itself: the root path waits for a cold page render, which took a Windows VM
+  //? longer than these 3 s.
   static async answers(url: string) {
     try {
-      await fetch(url, { signal: AbortSignal.timeout(3_000) });
+      await fetch(`${url}/_akan/app/health`, { signal: AbortSignal.timeout(3_000) });
       return true;
     } catch {
       // Nothing listening, which the caller turns into what to run.
