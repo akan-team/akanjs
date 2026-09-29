@@ -1,0 +1,17 @@
+@import "tailwindcss";
+@import "akanjs/ui/styles.css";
+
+/* The theme system (brand-neutral default palette, @theme inline mapping, dark variant, and runtime
+   data-theme switching) is fully provided by akanjs/ui/styles.css. This app works from the import alone.
+
+   To use this app's own brand colors, override the tokens like this:
+
+   :root,
+   [data-theme="dark"] {
+     --primary: #xxxxxx;
+     --primary-foreground: #ffffff;
+   }
+   [data-theme="light"] {
+     --primary: #xxxxxx;
+   }
+*/
