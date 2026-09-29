@@ -17,7 +17,7 @@ export class NativeFile {
   static timeoutMs = 5_000;
   static operationMode: () => string = () => getEnv().operationMode;
   static readonly #waiting = new Map<string, (answer: Resolved) => void>();
-  static #listening = false;
+  static #listener: ((message: unknown) => void) | null = null;
 
   /** The path behind `grant`, which the user must have given for `mode`. */
   static async resolve(grant: string, mode: NativeFileMode): Promise<string> {
@@ -57,12 +57,12 @@ export class NativeFile {
   }
 
   static #listen() {
-    if (NativeFile.#listening) return;
-    NativeFile.#listening = true;
-    process.on("message", (message) => {
+    if (NativeFile.#listener) return;
+    NativeFile.#listener = (message) => {
       const answer = message as AkanIpcMessage | null;
       if (answer?.type === "file.resolved") NativeFile.#waiting.get(answer.id)?.(answer);
-    });
+    };
+    process.on("message", NativeFile.#listener);
   }
 
   static #devGrant(grant: string): { path: string; mode: NativeFileMode } {
