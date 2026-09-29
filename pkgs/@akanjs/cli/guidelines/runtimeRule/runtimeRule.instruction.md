@@ -258,7 +258,9 @@ and nothing else, and no page ever holds a path. Behind a dev build `akan start`
 against a key in `~/.akan/native` instead, in `operationMode` local only; every other server refuses a grant.
 
 **Devices belong to the shell, not the server.** Displays and their changes (`screen`), windows placed on them
-(`window`), global shortcuts, keep-awake and launch at login are native runtime plugins. A capability the shell
+(`window`), the system volume and mute (`volume`), global shortcuts, keep-awake and launch at login are native
+runtime plugins, each added to the target's `native.plugins`: `volume` and `filePicker` come from
+`akanjs/client/native`, the rest from `@akanjs/native/plugins/<id>` in a `webkit/` hook. A capability the shell
 lacks is added there: an app's own plugin runs as Bun code in the plugin host and cannot add a native shell op.
 
 ## Database Modes — `database` In `akan.config.ts`

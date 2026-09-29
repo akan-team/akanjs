@@ -1,0 +1,10 @@
+{
+  "id": "volume",
+  "apiVersion": 1,
+  "methods": ["getVolume", "setVolume", "setMuted"],
+  "events": ["change"],
+  "web": null,
+  "desktop": "./src/desktop.ts",
+  "ios": null,
+  "android": null
+}

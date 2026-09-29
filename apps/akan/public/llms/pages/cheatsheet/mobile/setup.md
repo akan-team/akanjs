@@ -312,6 +312,8 @@ start-desktop is for development and testing, and build-desktop makes an app for
 
 Carry a static LGPL build. A build that loads its own shared libraries runs only where it was built, and one configured with --enable-nonfree (the macOS binary npm's ffmpeg-static downloads) may not be redistributed.
 
+Devices belong to native plugins, not to the server: displays and their changes (screen), windows placed on them (window), the system volume and mute (volume), global shortcuts, keep-awake and launch at login. Add each to the target's native.plugins; volume and filePicker come from akanjs/client/native.
+
 Verify Setup
 
 A green build is not the finish line. On a real device, check that plugins load, native files are in place, permission prompts appear, and push arrives and opens the right screen.

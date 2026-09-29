@@ -1653,6 +1653,12 @@ await fetch.trimVideo(files[0].grant, 0, 30);
 const input = await NativeFile.resolve(grant, "read");
 const output = await NativeFile.resolve(saveGrant, "write"); // from filePicker.saveFile({ name, forServer: true })`}
           />
+          <Docs.Alert type="info">
+            {l.trans({
+              en: "Devices belong to native plugins, not to the server: displays and their changes (screen), windows placed on them (window), the system volume and mute (volume), global shortcuts, keep-awake and launch at login. Add each to the target's native.plugins; volume and filePicker come from akanjs/client/native.",
+              ko: "장치는 서버가 아니라 네이티브 플러그인이 다룹니다. 디스플레이와 그 변경(screen), 디스플레이에 놓는 창(window), 시스템 볼륨과 음소거(volume), 전역 단축키, 절전 막기, 로그인 시 실행이 있습니다. 각각 타깃의 native.plugins에 추가하고, volume과 filePicker는 akanjs/client/native에서 가져옵니다.",
+            })}
+          </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />

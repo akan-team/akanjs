@@ -48,6 +48,8 @@ mod dock;
 #[cfg(target_os = "macos")]
 mod screen;
 #[cfg(target_os = "macos")]
+mod volume;
+#[cfg(target_os = "macos")]
 mod autostart;
 #[cfg(target_os = "macos")]
 mod keychain;
@@ -1573,14 +1575,15 @@ impl Windows {
       "debug.stats" if self.shell.devtools => return Ok(stats_json()),
       _ => {}
     }
-    // App-wide ops, not a window's: menu, tray, global shortcut, dock and screen plugins
-    // (menu.rs, tray.rs, hotkey.rs, dock.rs, screen.rs).
+    // App-wide ops, not a window's: menu, tray, global shortcut, dock, screen and volume plugins
+    // (menu.rs, tray.rs, hotkey.rs, dock.rs, screen.rs, volume.rs).
     #[cfg(target_os = "macos")]
     if let Some(result) = menu::shell_op(op, &cmd)
       .or_else(|| tray::shell_op(op, &cmd, &self.shell.app_dir))
       .or_else(|| hotkey::shell_op(op, &cmd))
       .or_else(|| dock::shell_op(op, &cmd, target))
       .or_else(|| screen::shell_op(op, target))
+      .or_else(|| volume::shell_op(op, &cmd))
     {
       return result;
     }

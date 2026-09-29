@@ -33,6 +33,8 @@ export type {
 } from "@akanjs/native/plugins/push";
 export { push } from "@akanjs/native/plugins/push";
 export { secureStorage } from "@akanjs/native/plugins/secure-storage";
+export type { VolumeState } from "@akanjs/native/plugins/volume";
+export { volume } from "@akanjs/native/plugins/volume";
 export { browser, opener };
 
 //* Kept out of the page's first chunk: a photo is re-encoded in the page on the web, and few screens ask for any.

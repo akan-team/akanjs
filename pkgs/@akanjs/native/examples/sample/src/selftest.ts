@@ -48,6 +48,7 @@ import { sqlite } from "@akanjs/native/plugins/sqlite";
 import { toast } from "@akanjs/native/plugins/toast";
 import { tray } from "@akanjs/native/plugins/tray";
 import { updates } from "@akanjs/native/plugins/updates";
+import { volume } from "@akanjs/native/plugins/volume";
 import {
   appWindow,
   createWindow,
@@ -1306,6 +1307,37 @@ export async function runSelftest(): Promise<{ pass: boolean; platform: string; 
     if (!c) return `${ds.length} display(s); no cursor position on Wayland`;
     assert(Number.isFinite(c.x) && Number.isFinite(c.y), "cursor");
     return `${ds.length} display(s), cursor on ${displayAt(c, ds)?.name}`;
+  });
+  await check("volume", async () => {
+    if (!desktop) {
+      assert(isAkanNativeError(await rejects(volume.getVolume()), "UNSUPPORTED"), "expected UNSUPPORTED");
+      return "UNSUPPORTED";
+    }
+    let missing = "";
+    // No audio server answers (NOT_FOUND), or on Linux no pactl to ask (UNSUPPORTED): a container or a headless box.
+    const before = await volume.getVolume().catch((e) => {
+      if (!isAkanNativeError(e, "NOT_FOUND") && !(platform === "linux" && isAkanNativeError(e, "UNSUPPORTED")))
+        return Promise.reject(e);
+      missing = (e as Error).message;
+      return null;
+    });
+    if (!before) return `no audio output (${missing})`;
+    volume.listen("change", () => {})();
+    if (!before.settable || before.level === null) return `level ${before.level}, not settable`;
+    const level = before.level;
+    // Bluetooth outputs keep 16 steps of volume, so a level reads back within 1/32 of what was set.
+    const target = level > 0.5 ? level - 0.1 : level + 0.1;
+    try {
+      const set = await volume.setVolume({ level: target });
+      assert(Math.abs((set.level ?? -1) - target) < 0.05, `set ${target}, read ${set.level}`);
+      assert((await volume.setMuted({ muted: !before.muted })).muted === !before.muted, "mute toggled");
+    } finally {
+      await volume.setMuted({ muted: before.muted });
+      await volume.setVolume({ level });
+    }
+    const after = await volume.getVolume();
+    assert(after.muted === before.muted && Math.abs((after.level ?? -1) - level) < 0.05, "restored");
+    return `level ${level}; set, muted and restored`;
   });
   await check("autostart", async () => {
     if (!autostart.isSupported("isEnabled")) {
