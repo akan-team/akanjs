@@ -15,7 +15,6 @@ import {
   getRouteExports,
   Logger,
   matchRoutePattern,
-  parseBasePaths,
   parseRouteModuleKey,
   type RouteLayer,
   RouteLayering,
@@ -56,15 +55,12 @@ export class RouteTreeBuilder {
   };
 
   readonly #context: PagesContext;
-  readonly #baseLayoutPaths: string[];
   readonly #routeMap = new Map<string, Route>();
   readonly #pagePatterns: { key: string; pattern: string }[] = [];
   readonly #fallbackRoutes: LayoutFallbackRoute[] = [];
 
   constructor(context: PagesContext) {
     this.#context = context;
-    const basePaths = process.env.AKAN_PUBLIC_BASE_PATHS ? parseBasePaths(process.env.AKAN_PUBLIC_BASE_PATHS) : null;
-    this.#baseLayoutPaths = ["/", "/:lang", ...(basePaths?.map((bp) => `/:lang/${bp}`) ?? [])];
     this.#routeMap.set("/", { path: "/", children: new Map() });
   }
 
@@ -171,7 +167,7 @@ export class RouteTreeBuilder {
     targetRouteMap.set(targetPath, {
       ...(targetRouteMap.get(targetPath) ?? { path: targetPath, children: new Map<string, Route>() }),
       ...(parsed.kind === "layout"
-        ? { renderLayout: routeRender }
+        ? { renderLayout: routeRender, isRootLayout: parsed.isInternalRootLayout }
         : {
             renderPage: routeRender,
             pageIncludesOwnLayout: parsed.leaf === "_index",
@@ -181,7 +177,7 @@ export class RouteTreeBuilder {
   }
 
   #getPathRoutes(route: Route, parent: RouteLayer<RouteRender> | null = null, parentHead?: ResolveHead): PathRoute[] {
-    const layer = RouteLayering.of(route, parent, this.#baseLayoutPaths);
+    const layer = RouteLayering.of(route, parent);
     if (route.renderLayout) {
       this.#fallbackRoutes.push({
         path: layer.path,

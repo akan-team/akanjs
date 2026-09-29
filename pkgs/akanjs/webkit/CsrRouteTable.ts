@@ -96,7 +96,6 @@ export class CsrRouteTable {
 
   async #build(context: CsrRouteContext): Promise<CsrRoutes> {
     const { device, basePaths, currentBasePath } = this.#options;
-    const baseLayoutPaths = ["/", "/:lang", ...(currentBasePath ? [`/:lang/${currentBasePath}`] : [])];
     const otherBasePaths = basePaths?.filter((path) => path !== currentBasePath) ?? [];
     const pages: { [key: string]: RouteModule } = {};
     const asyncDefaultMap: { [key: string]: boolean | undefined } = {};
@@ -170,7 +169,11 @@ export class CsrRouteTable {
       targetRouteMap.set(targetPath, {
         ...(targetRouteMap.get(targetPath) ?? { path: targetPath, children: new Map<string, Route>() }),
         ...(parsed.kind === "layout"
-          ? { renderLayout: routeRender, layoutPageConfig: (page as RouteModuleWithConfig).pageConfig }
+          ? {
+              renderLayout: routeRender,
+              isRootLayout: parsed.isInternalRootLayout,
+              layoutPageConfig: (page as RouteModuleWithConfig).pageConfig,
+            }
           : {
               renderPage: routeRender,
               pageIncludesOwnLayout: parsed.leaf === "_index",
@@ -186,7 +189,7 @@ export class CsrRouteTable {
       parent: RouteLayer<RouteRender> | null = null,
       parentPageConfigChain: PageConfig[] = [],
     ): PathRoute[] => {
-      const layer = RouteLayering.of(route, parent, baseLayoutPaths);
+      const layer = RouteLayering.of(route, parent);
       const { path, pathSegments } = layer;
       const currentLayoutConfig = route.renderLayout && route.layoutPageConfig ? route.layoutPageConfig : null;
       const pageConfigChain = [...parentPageConfigChain, ...(currentLayoutConfig ? [currentLayoutConfig] : [])];

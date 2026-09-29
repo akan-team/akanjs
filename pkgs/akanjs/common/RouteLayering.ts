@@ -2,6 +2,8 @@ interface LayeredRoute<Render> {
   /** The tree segment: `/`, `/:lang`, `/(group)`, `/foo`. */
   path: string;
   renderLayout?: Render;
+  /** A generated `__root_layout`: one of the root boundaries the page generator found. */
+  isRootLayout?: boolean;
   renderOverrides?: Render;
   /** `false` for a named page file, which sits beside its directory's layout rather than under it. */
   pageIncludesOwnLayout?: boolean;
@@ -12,7 +14,7 @@ export interface RouteLayer<Render> {
   path: string;
   pathSegments: string[];
   isRoot: boolean;
-  /** The real root layouts from the top down to this node, overrides left out: what the depth limit counts. */
+  /** The root layout above or at this node, overrides left out: once there is one, nothing below is a root. */
   rootLayouts: Render[];
   renderRootLayouts: Render[];
   renderLayouts: Render[];
@@ -26,21 +28,18 @@ export interface RouteLayer<Render> {
 export class RouteLayering {
   static readonly #group = /^\/\(.*\)$/;
 
-  //? A root layout sits on the app's own path (`/`, `/:lang`) or a basePath's (`/:lang/<basePath>`), and a route group
-  //? adds nothing to the path, so `page/(app)/_layout.tsx` is the app's root. At most two deep: the app's, then a
-  //? basePath's or a group's directly under it.
-  static of<Render>(
-    route: LayeredRoute<Render>,
-    parent: RouteLayer<Render> | null,
-    baseLayoutPaths: readonly string[],
-  ): RouteLayer<Render> {
+  //? The root layout is the first generated `__root_layout` from the top, the one boundary the generator gives
+  //? `System.Provider`: in CSR that provider renders the pages in its own frame and hides whatever it wraps, so a
+  //? layout under it at the root (`page/(app)/(public)/_layout.tsx`, a nested boundary) would wrap no page. The nodes
+  //? above it hold no layout of their own; their overrides stay outside it.
+  static of<Render>(route: LayeredRoute<Render>, parent: RouteLayer<Render> | null): RouteLayer<Render> {
     const parentSegments = parent?.pathSegments ?? [];
     const parentRootLayouts = parent?.rootLayouts ?? [];
     const parentRootRenders = parent?.renderRootLayouts ?? [];
     const parentLayouts = parent?.renderLayouts ?? [];
     const segment = RouteLayering.#group.test(route.path) ? "" : route.path;
     const path = parentSegments.filter((part) => part !== "/").join("") + segment;
-    const isRoot = baseLayoutPaths.includes(path) && parentRootLayouts.length < 2;
+    const isRoot = parentRootLayouts.length === 0 && (route.isRootLayout === true || !route.renderLayout);
     const overrideRenders = route.renderOverrides ? [route.renderOverrides] : [];
     //? A manifest sits just outside its own directory's layout, never higher: hoisted above shared layouts, it would
     //? change the tree's top on crossing its boundary and remount the whole app.

@@ -174,6 +174,8 @@ export interface Route {
   path: string;
   renderPage?: RouteRender;
   renderLayout?: RouteRender;
+  /** `renderLayout` is a generated `__root_layout`: a root boundary the page generator found. */
+  isRootLayout?: boolean;
   /** Synthetic layout render from a `_overrides.tsx` at this node; wraps the subtree in a UI-override provider. */
   renderOverrides?: RouteRender;
   pageIncludesOwnLayout?: boolean;
