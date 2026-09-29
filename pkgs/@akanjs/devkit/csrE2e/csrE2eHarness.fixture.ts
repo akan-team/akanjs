@@ -54,6 +54,7 @@ export class CsrE2eHarness {
   readonly #lang: string;
   readonly #mobileTarget: string;
   readonly #edited = new Map<string, string>();
+  readonly #console: string[];
   #marker = "";
   #csr: boolean = true;
 
@@ -63,12 +64,37 @@ export class CsrE2eHarness {
     server: CsrE2eServer | null;
     lang: string;
     mobileTarget: string;
+    console: string[];
   }) {
     this.origin = options.origin;
     this.#view = options.view;
+    this.#console = options.console;
     this.#server = options.server;
     this.#lang = options.lang;
     this.#mobileTarget = options.mobileTarget;
+  }
+
+  /** What keeps this host from driving a page, or null when a `Bun.WebView` opens one and answers. */
+  static async preflight(backend = CsrE2eHarness.#defaultBackend()): Promise<string | null> {
+    if (typeof (Bun as { WebView?: unknown }).WebView !== "function") return `Bun ${Bun.version} has no Bun.WebView`;
+    let view: Bun.WebView | null = null;
+    try {
+      const opened = new Bun.WebView({
+        width: 320,
+        height: 240,
+        backend: backend === "chrome" ? { type: "chrome", url: false } : backend,
+      });
+      view = opened;
+      const answer = await Promise.race([
+        opened.navigate("about:blank").then(async () => await opened.evaluate<number>("1 + 1")),
+        Bun.sleep(30_000).then(() => null),
+      ]);
+      return answer === 2 ? null : `a ${backend} Bun.WebView did not answer within 30s`;
+    } catch (error) {
+      return `a ${backend} Bun.WebView cannot start: ${error instanceof Error ? error.message : String(error)}`;
+    } finally {
+      view?.close();
+    }
   }
 
   /** E2E suites run only with `AKAN_CSR_E2E=1`: they boot a dev server and a browser. */
@@ -91,13 +117,19 @@ export class CsrE2eHarness {
       await CsrE2eHarness.#waitForHealth(origin, server, options.startTimeoutMs ?? 180_000);
       const { width, height } = { width: 390, height: 844, ...options.viewport };
       const backend = options.backend ?? CsrE2eHarness.#defaultBackend();
+      const messages: string[] = [];
+      const print = process.env.AKAN_CSR_E2E_CONSOLE === "1";
       //? `url: false` spawns a fresh Chrome instead of attaching to one the developer runs with remote debugging on.
       const view = new Bun.WebView({
         width,
         height,
         backend: backend === "chrome" ? { type: "chrome", url: false } : backend,
-        //? AKAN_CSR_E2E_CONSOLE=1 prints the page's console: the only view of a hydration warning or a failed patch.
-        ...(process.env.AKAN_CSR_E2E_CONSOLE === "1" ? { console: globalThis.console } : {}),
+        //? Kept for `consoleMessages()`; AKAN_CSR_E2E_CONSOLE=1 also prints it, the only view of a hydration warning or
+        //? a failed patch. An uncaught error is not a console call and never arrives here.
+        console: (type: string, ...args: unknown[]) => {
+          messages.push(`[${type}] ${args.map(CsrE2eHarness.#formatArg).join(" ")}`);
+          if (print) globalThis.console.info(`[page ${type}]`, ...args);
+        },
       });
       return new CsrE2eHarness({
         origin,
@@ -105,6 +137,7 @@ export class CsrE2eHarness {
         server,
         lang: options.lang ?? "en",
         mobileTarget: options.mobileTarget ?? "e2e",
+        console: messages,
       });
     } catch (error) {
       await CsrE2eHarness.#stopServer(server);
@@ -120,6 +153,7 @@ export class CsrE2eHarness {
       url.searchParams.set("akanMobileTarget", this.#mobileTarget);
     }
     this.#csr = csr;
+    this.#console.length = 0;
     await this.#view.navigate(url.toString());
     await this.#markBoot();
   }
@@ -346,6 +380,11 @@ export class CsrE2eHarness {
     return [await read(logPath), await read(logPath.replace(/\.log$/, ".err.log"))];
   }
 
+  /** The page's console calls since `open()`, as `[type] text`. */
+  consoleMessages(): string[] {
+    return [...this.#console];
+  }
+
   /** Whether the page reloaded since `open()`: the boot marker lives only in the page `open()` loaded. */
   async reloaded() {
     const marker = await this.evaluate(
@@ -378,7 +417,17 @@ export class CsrE2eHarness {
     await CsrE2eHarness.#stopServer(this.#server);
   }
 
-  static #defaultBackend() {
+  static #formatArg(arg: unknown): string {
+    if (typeof arg === "string") return arg;
+    try {
+      return JSON.stringify(arg) ?? String(arg);
+    } catch {
+      // A circular descriptor still names itself.
+      return String(arg);
+    }
+  }
+
+  static #defaultBackend(): "webkit" | "chrome" {
     const requested = process.env.AKAN_CSR_E2E_BACKEND;
     if (requested === "webkit" || requested === "chrome") return requested;
     return process.platform === "darwin" ? "webkit" : "chrome";
@@ -411,8 +460,9 @@ export class CsrE2eHarness {
     const errPath = logPath.replace(/\.log$/, ".err.log");
     //? A `Bun.file` sink writes from offset 0 without truncating, so the last run's tail would outlive this one's start.
     await Promise.all([Bun.write(logPath, ""), Bun.write(errPath, "")]);
-    //? Its own process group, so stopping it reaches the gateway, the builder and every replica it spawned.
-    const proc = Bun.spawn(["bun", cli, "start", app, "--plain"], {
+    //? Its own process group, so stopping it reaches the gateway, the builder and every replica it spawned. That group
+    //? outlives a run killed before it could stop it, so `--kill` takes the suite's own port back from it first.
+    const proc = Bun.spawn(["bun", cli, "start", app, "--plain", "--kill"], {
       cwd: workspaceRoot,
       env: { ...process.env, AKAN_DEV_PORT: String(port), ...env },
       stdout: Bun.file(logPath),

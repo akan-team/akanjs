@@ -154,6 +154,36 @@ pipeline {
                 }
             }
         }
+        stage("Dev Registry E2E"){
+            steps {
+                // `akan start` in a real browser, both dev CSR modes: a package the dev module registry compiles
+                // wrong kills its whole vendor file there, and a unit suite cannot show it. The host must run the Bun
+                // the root package.json pins (`engines.bun`), so a Bun upgrade is a change to that pin, landed with
+                // the host's own upgrade, and either one alone fails here naming both versions.
+                //
+                // `testDevRegistryE2e` exits 2 for that mismatch and 3 when the host cannot drive a browser (off
+                // macOS, `Bun.WebView` needs an installed Chrome), so a missing browser is a skip, never a failure.
+                //
+                // TODO: gate on it, a plain `sh` as in "Test", once it has passed on this host in 10 consecutive
+                // builds with no environment skip.
+                catchError(buildResult: "UNSTABLE", stageResult: "FAILURE") {
+                    timeout(time: 20, unit: "MINUTES") {
+                        script {
+                            def status = sh(returnStatus: true, script: "ssh -i $SSH_KEY $BUILD_USER@$BUILD_HOST -p $BUILD_PORT \"cd $REPO_NAME/$BRANCH && bun run testDevRegistryE2e\"")
+                            if (status == 3) {
+                                catchError(buildResult: "SUCCESS", stageResult: "NOT_BUILT") {
+                                    error("Dev Registry E2E skipped: the build host cannot drive a browser; see the [dev-registry-e2e] line above")
+                                }
+                            } else if (status == 2) {
+                                error("Dev Registry E2E: the build host's Bun is not the one package.json pins; see the [dev-registry-e2e] line above")
+                            } else if (status != 0) {
+                                error("Dev Registry E2E failed")
+                            }
+                        }
+                    }
+                }
+            }
+        }
         stage("Lib Suites"){
             steps {
                 // TEST_LIBS in the default (single) database mode, with the testing credentials Prepare Build
