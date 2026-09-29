@@ -620,6 +620,44 @@ describe("AkanAppConfig lib docker runs", () => {
   });
 });
 
+describe("AkanAppConfig trustedDependencies", () => {
+  test("the production package.json trusts the app's and its libs' packages, and nothing when none are named", () => {
+    const withTrusted = new AkanAppConfig(
+      app,
+      [],
+      packageJson,
+      { trustedDependencies: [" rclnodejs ", "sharp"] },
+      baseDevEnv,
+      [],
+      {
+        externalLibs: [],
+        trustedDependencies: ["sharp", "@serialport/bindings-cpp"],
+        docker: { preRuns: [], postRuns: [] },
+      },
+    );
+    expect(withTrusted.getProductionPackageJson().trustedDependencies).toEqual([
+      "rclnodejs",
+      "sharp",
+      "@serialport/bindings-cpp",
+    ]);
+    expect(new AkanAppConfig(app, [], packageJson, {}, baseDevEnv).getProductionPackageJson()).not.toHaveProperty(
+      "trustedDependencies",
+    );
+    expect(() => new AkanAppConfig(app, [], packageJson, { trustedDependencies: [""] }, baseDevEnv)).toThrow(
+      "apps/portal/akan.config.ts: trustedDependencies lists package names",
+    );
+  });
+
+  test("reads them off every workspace lib config on load", async () => {
+    const config = await loadExtAppConfig(
+      "akan-config-libtrusted-",
+      "export default { trustedDependencies: ['sharp'] };\n",
+      "export default { trustedDependencies: ['rclnodejs'] };\n",
+    );
+    expect(config.trustedDependencies).toEqual(["sharp", "rclnodejs"]);
+  });
+});
+
 describe("AkanLibConfig", () => {
   test("uses empty external libs by default and preserves explicit libs", () => {
     const lib = { name: "shared" } as never;

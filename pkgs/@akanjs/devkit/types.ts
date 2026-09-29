@@ -10,6 +10,7 @@ export interface PackageJson {
   peerDependencies?: Record<string, string>;
   peerDependenciesMeta?: Record<string, { optional?: boolean }>;
   optionalDependencies?: Record<string, string>;
+  trustedDependencies?: string[];
   overrides?: Record<string, string>;
   engines?: Record<string, string>;
   exports?: Record<string, string | Record<string, string>>;

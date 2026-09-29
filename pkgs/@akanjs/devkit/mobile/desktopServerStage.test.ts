@@ -58,6 +58,13 @@ describe("DesktopServerStage", () => {
     for (const driver of drivers) expect(Object.keys(built.dependencies ?? {})).toContain(driver);
   });
 
+  test("keeps the image's trusted packages, so their install scripts run in the app's server too", () => {
+    const config = appConfig({ trustedDependencies: ["@external/runtime"], externalLibs: ["@external/runtime"] });
+    expect(DesktopServerStage.packageJson(config, config.getProductionPackageJson()).trustedDependencies).toEqual([
+      "@external/runtime",
+    ]);
+  });
+
   test("refuses an app whose database modes leave out single", () => {
     expect(() => DesktopServerStage.assertCarriable(appConfig({ database: { modes: ["cluster"] } }))).toThrow(
       "only database mode single runs",

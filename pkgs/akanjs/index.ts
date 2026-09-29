@@ -230,6 +230,8 @@ export interface AppConfigResult {
    */
   syncPageLibs?: string[] | boolean;
   externalLibs: string[];
+  /** Dependencies whose install scripts `bun install --production` runs, in the image and in a desktop app's server. */
+  trustedDependencies: string[];
   barrelImports: string[];
   optimizeImports: string[];
   images: AkanImageConfig;
@@ -242,6 +244,7 @@ export interface AppConfigResult {
 
 export interface LibConfigResult {
   externalLibs: string[];
+  trustedDependencies: string[];
   /** Image steps every app that mounts this lib inherits, unless that app declares a whole Dockerfile. */
   docker: LibDockerConfig;
   /** Which of this lib's own public fonts every app that mounts it must keep. */
