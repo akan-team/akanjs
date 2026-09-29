@@ -381,6 +381,8 @@ enum UserEvent {
   ThemeChanged,
   /// A window's web content process ended (crashed, killed, out of memory): its document is gone (N2).
   WebviewGone { window: u32, reason: &'static str },
+  /// desktop.recovery "reload": the wait after a window's page ended in a row is over; load it again.
+  ReloadGone(u32),
 }
 
 // ───────────────────────── C ABI ─────────────────────────
@@ -761,6 +763,13 @@ struct Config {
   app_id: String,
   /// security.shell.externalSchemes (L0): schemes links may also hand to the OS (navigation.rs).
   external_schemes: Vec<String>,
+  /// desktop.recovery "reload": a page that ends is always loaded again, and a browser process that ends
+  /// is the host's to relaunch (host.ts), instead of an error page and a quit.
+  recovery_reload: bool,
+  /// The main window from its first frame (desktop.window, or the launch phase): borderless fullscreen on
+  /// the display it is placed on, and no taskbar button (Windows, Linux).
+  fullscreen: bool,
+  skip_taskbar: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -823,6 +832,13 @@ fn parse_config(s: &str) -> Result<Config, String> {
       Some(json::V::Arr(a)) => a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect(),
       _ => Vec::new(),
     },
+    recovery_reload: match get_s("recovery").as_deref() {
+      None | Some("errorPage") => false,
+      Some("reload") => true,
+      Some(other) => return Err(format!("recovery must be \"errorPage\" or \"reload\", not {other:?}")),
+    },
+    fullscreen: get_b("fullscreen", false),
+    skip_taskbar: get_b("skipTaskbar", false),
   })
 }
 
@@ -1086,6 +1102,7 @@ struct Shell {
   icon: Option<tao::window::Icon>,
   #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
   app_id: String,
+  recovery_reload: bool,
 }
 
 /// The CLI's icon.rgba (icons.ts windowIcon) as a tao icon.
@@ -1103,15 +1120,22 @@ struct WindowOptions {
   size: Option<(f64, f64)>,
   position: Option<(f64, f64)>,
   maximized: bool,
+  fullscreen: bool,
+  /// macOS has no taskbar: its Dock shows apps, not windows.
+  #[cfg_attr(target_os = "macos", allow(dead_code))]
+  skip_taskbar: bool,
 }
 
 /// One window. The webview is declared first so that it is dropped before its window.
 struct Win {
   webview: WebView,
   window: tao::window::Window,
-  /// When its web content process last ended: a second end within a minute shows an error page
-  /// instead of reloading again (a page that crashes on load would loop).
-  gone_at: Option<std::time::Instant>,
+  /// When its page was last loaded again after its web content process ended: an end within a minute
+  /// of that shows an error page (a page that crashes on load would loop), or with desktop.recovery
+  /// "reload" waits longer before the next load (recovery_wait).
+  reloaded_at: Option<std::time::Instant>,
+  /// Ends in a row, each within a minute of the load before (desktop.recovery "reload").
+  gone_streak: u32,
 }
 
 struct Windows {
@@ -1135,14 +1159,27 @@ fn is_dark() -> bool {
 }
 
 fn monitors(target: &EventLoopWindowTarget<UserEvent>) -> Vec<placement::Rect> {
-  target
-    .available_monitors()
-    .map(|m| {
-      let scale = m.scale_factor();
-      let (p, s) = (m.position().to_logical::<f64>(scale), m.size().to_logical::<f64>(scale));
-      placement::Rect { x: p.x, y: p.y, width: s.width, height: s.height }
-    })
-    .collect()
+  target.available_monitors().map(|m| logical_rect(&m)).collect()
+}
+
+fn logical_rect(m: &tao::monitor::MonitorHandle) -> placement::Rect {
+  let scale = m.scale_factor();
+  let (p, s) = (m.position().to_logical::<f64>(scale), m.size().to_logical::<f64>(scale));
+  placement::Rect { x: p.x, y: p.y, width: s.width, height: s.height }
+}
+
+/// The display holding a logical point.
+fn monitor_at(target: &EventLoopWindowTarget<UserEvent>, x: f64, y: f64) -> Option<tao::monitor::MonitorHandle> {
+  target.available_monitors().find(|m| {
+    let r = logical_rect(m);
+    x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height
+  })
+}
+
+/// desktop.recovery "reload": how long to wait before loading a page again after `streak` ends in a
+/// row. The first end reloads at once; then 1 s, doubling to a minute.
+fn recovery_wait(streak: u32) -> Option<std::time::Duration> {
+  (streak > 0).then(|| std::time::Duration::from_secs((1u64 << (streak - 1).min(6)).min(60)))
 }
 
 /// Drops the webview's pending bridge calls (main thread): its document is gone.
@@ -1275,15 +1312,32 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
   // (tao/src/platform_impl/macos/window.rs:202-208), so the title bar would end up above it;
   // window.getState reports the outer position, and set_outer_position takes one.
   let mut outer_position = None;
+  let mut placed = None;
   if let Some((x, y)) = opts.position {
     let wanted = placement::Rect { x, y, width, height };
     match placement::place(wanted, &monitors(target), MIN_INNER) {
       Some(r) => {
         builder = builder.with_inner_size(LogicalSize::new(r.width, r.height));
         outer_position = Some(tao::dpi::LogicalPosition::new(r.x, r.y));
+        placed = Some(r);
       }
       None => log!("window {id}: position ({x}, {y}) is on no display; using the default"),
     }
+  }
+  if opts.fullscreen {
+    // Set before the first frame, on the display the window was placed on (else the primary one).
+    let monitor = placed.and_then(|r| monitor_at(target, r.x + r.width / 2.0, r.y + r.height / 2.0));
+    builder = builder.with_fullscreen(Some(tao::window::Fullscreen::Borderless(monitor)));
+  }
+  #[cfg(target_os = "windows")]
+  if opts.skip_taskbar {
+    use tao::platform::windows::WindowBuilderExtWindows;
+    builder = builder.with_skip_taskbar(true);
+  }
+  #[cfg(target_os = "linux")]
+  if opts.skip_taskbar {
+    use tao::platform::unix::WindowBuilderExtUnix;
+    builder = builder.with_skip_taskbar(true);
   }
   let window = builder.build(target).map_err(|e| format!("window: {e}"))?;
   // Windows and Linux: the system theme is known once a window exists (tao reads it then).
@@ -1437,7 +1491,7 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
     std::thread::sleep(Duration::from_millis(3000));
     send(UserEvent::Show(id));
   });
-  Ok(Win { webview, window, gone_at: None })
+  Ok(Win { webview, window, reloaded_at: None, gone_streak: 0 })
 }
 
 /// A `window` argument: a positive whole number.
@@ -1526,7 +1580,7 @@ impl Windows {
     };
     let id = self.next;
     self.next += 1;
-    let win = open_window(target, &self.shell, &mut self.web_context, id, WindowOptions { path: app_path(cmd)?, title, size, position, maximized: false })?;
+    let win = open_window(target, &self.shell, &mut self.web_context, id, WindowOptions { path: app_path(cmd)?, title, size, position, maximized: false, fullscreen: false, skip_taskbar: false })?;
     let state = self.state(id, &win);
     self.insert(id, win);
     push_event(&format!(r#"{{"type":"window","event":"created","window":{id}}}"#));
@@ -1778,6 +1832,7 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
       activate: cfg.activation != "prohibited",
       icon: cfg.icon.as_deref().and_then(read_icon),
       app_id: cfg.app_id.clone(),
+      recovery_reload: cfg.recovery_reload,
     },
     web_context: wry::WebContext::new(cfg.data_dir.clone()),
     map: HashMap::new(),
@@ -1786,7 +1841,15 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
     focus: Vec::new(),
     next: 2,
   };
-  let main = WindowOptions { path: cfg.start_path.clone(), title: None, size: None, position: cfg.position, maximized: cfg.maximized };
+  let main = WindowOptions {
+    path: cfg.start_path.clone(),
+    title: None,
+    size: None,
+    position: cfg.position,
+    maximized: cfg.maximized,
+    fullscreen: cfg.fullscreen,
+    skip_taskbar: cfg.skip_taskbar,
+  };
   match open_window(&event_loop, &windows.shell, &mut windows.web_context, 1, main) {
     Ok(win) => windows.insert(1, win),
     Err(e) => {
@@ -1887,20 +1950,41 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
         // The page and every call it had made are gone: the host ends its document (dispatcher.reset).
         drop_pending(window);
         push_event(&format!(r#"{{"type":"webview","event":"processTerminated","window":{window},"reason":"{reason}"}}"#));
-        if reason == "browserExited" {
+        if reason == "browserExited" && windows.shell.recovery_reload {
+          // The host relaunches the app on the event above (host.ts); should it not, this quits.
+          log!("the webview's browser process ended; the app relaunches");
+          std::thread::spawn(|| {
+            std::thread::sleep(std::time::Duration::from_secs(10));
+            send(UserEvent::Quit(1));
+          });
+        } else if reason == "browserExited" {
           log!("the webview's browser process ended; quitting");
           send(UserEvent::Quit(1));
         } else if let Some(win) = windows.map.get_mut(&window) {
           let now = std::time::Instant::now();
-          let again = win.gone_at.is_some_and(|t| now.duration_since(t) < std::time::Duration::from_secs(60));
-          win.gone_at = Some(now);
-          if again {
+          let again = win.reloaded_at.is_some_and(|t| now.duration_since(t) < std::time::Duration::from_secs(60));
+          win.gone_streak = if again { win.gone_streak + 1 } else { 0 };
+          let wait = recovery_wait(win.gone_streak).filter(|_| windows.shell.recovery_reload);
+          if again && !windows.shell.recovery_reload {
             log!("window {window}: the page stopped again ({reason}) within a minute; showing an error page");
             let _ = win.webview.load_html(&gone_page());
+          } else if let Some(wait) = wait {
+            log!("window {window}: the page stopped again ({reason}); loading it again in {} s", wait.as_secs());
+            std::thread::spawn(move || {
+              std::thread::sleep(wait);
+              send(UserEvent::ReloadGone(window));
+            });
           } else {
             log!("window {window}: the page stopped ({reason}); loading it again");
+            win.reloaded_at = Some(now);
             let _ = win.webview.reload();
           }
+        }
+      }
+      Event::UserEvent(UserEvent::ReloadGone(window)) => {
+        if let Some(win) = windows.map.get_mut(&window) {
+          win.reloaded_at = Some(std::time::Instant::now());
+          let _ = win.webview.reload();
         }
       }
       Event::UserEvent(UserEvent::Emit { webview_id, js }) => {
@@ -2184,5 +2268,26 @@ mod drag_drop_tests {
     let files = std::cell::Cell::new(false);
     let enter = drag_drop_event(1, &files, DragDropEvent::Enter { paths: vec![PathBuf::from("/a")], position: (150, 301) }, 1.5).unwrap();
     assert!(enter.ends_with(r#""x":100,"y":200.67}"#), "{enter}");
+  }
+}
+
+#[cfg(test)]
+mod recovery_tests {
+  use super::recovery_wait;
+  use std::time::Duration;
+
+  #[test]
+  fn waits_longer_after_each_end_in_a_row_up_to_a_minute() {
+    let secs: Vec<u64> = (0..10).map(|streak| recovery_wait(streak).map_or(0, |d| d.as_secs())).collect();
+    assert_eq!(secs, [0, 1, 2, 4, 8, 16, 32, 60, 60, 60]);
+    assert_eq!(recovery_wait(u32::MAX), Some(Duration::from_secs(60)));
+  }
+
+  #[test]
+  fn reads_the_recovery_policy_and_refuses_an_unknown_one() {
+    let base = r#""appDir":"/a","initJs":"x""#;
+    assert!(!super::parse_config(&format!("{{{base}}}")).unwrap().recovery_reload);
+    assert!(super::parse_config(&format!(r#"{{{base},"recovery":"reload","fullscreen":true}}"#)).unwrap().recovery_reload);
+    assert!(super::parse_config(&format!(r#"{{{base},"recovery":"always"}}"#)).is_err());
   }
 }

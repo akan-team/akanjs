@@ -182,6 +182,11 @@ export interface AkanNativeConfig {
      */
     minWebViewVersion?: number;
     /**
+     * Media plays with sound without a tap first, as it does on iOS and the desktop (WebView's
+     * mediaPlaybackRequiresUserGesture off): an app nobody taps, such as a signage screen. Default false.
+     */
+    autoplay?: boolean;
+    /**
      * Appended to app.id in debug builds (e.g. ".debug"), so a debug build installs next to the
      * release app. Deep links and app links must list the suffixed id for debug builds.
      */
@@ -227,6 +232,21 @@ export interface AkanNativeConfig {
      * hides the window: the app keeps running, a Dock click shows it again, Cmd+Q quits. Default true.
      */
     quitOnLastWindowClosed?: boolean;
+    /**
+     * What a window does when its page's web process ends: a crash, a hang, out of memory. "errorPage"
+     * (default) loads the page again once and shows an error page when it ends again within a minute, so a
+     * page that crashes on load does not loop; the app quits when the webview's browser process ends
+     * (Windows). "reload" loads it again every time, waiting longer after each end in a row (1 s, doubling
+     * to a minute), and relaunches the app when the browser process ends: an app nobody attends, such as a
+     * kiosk or a signage screen. iOS and Android always start the page over.
+     */
+    recovery?: "errorPage" | "reload";
+    /**
+     * The main window from its first frame: `fullscreen` (borderless, on the display the window opens on)
+     * and `skipTaskbar` (no taskbar button; Windows and Linux). A plugin's launch phase may still decide
+     * otherwise (DesktopContext.launch.setWindow). Default false for both.
+     */
+    window?: { fullscreen?: boolean; skipTaskbar?: boolean };
     /**
      * A server the app starts beside its window (akanjs `build-desktop --server`). `dir` is copied to
      * the app's resources (`server/`), and `entry` there runs on the app's own Bun with `env`, bound to

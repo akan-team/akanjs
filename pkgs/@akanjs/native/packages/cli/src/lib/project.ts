@@ -27,7 +27,12 @@ export interface ResolvedConfig extends Omit<AkanNativeConfig, "icon" | "splash"
   usageDescriptions: Record<string, string>;
   permissions: PermissionsConfig;
   deepLinks: { schemes: string[]; domains: { host: string; pathPrefixes: string[] }[] };
-  desktop: { quitOnLastWindowClosed: boolean; server?: DesktopServerConfig };
+  desktop: {
+    quitOnLastWindowClosed: boolean;
+    recovery: "errorPage" | "reload";
+    window: { fullscreen: boolean; skipTaskbar: boolean };
+    server?: DesktopServerConfig;
+  };
   updates: UpdatesConfig | null;
   /** Absolute image path. */
   icon: { image: string; backgroundColor?: string } | null;
@@ -187,6 +192,15 @@ export function projectFromConfig(raw: AkanNativeConfig, appDir: string, options
   if (raw.desktop?.quitOnLastWindowClosed !== undefined && typeof raw.desktop.quitOnLastWindowClosed !== "boolean") {
     problems.push("desktop.quitOnLastWindowClosed must be a boolean");
   }
+  const recovery = raw.desktop?.recovery;
+  if (recovery !== undefined && recovery !== "errorPage" && recovery !== "reload")
+    problems.push(`desktop.recovery must be "errorPage" or "reload" (got ${JSON.stringify(recovery)})`);
+  for (const key of ["fullscreen", "skipTaskbar"] as const) {
+    const value = raw.desktop?.window?.[key];
+    if (value !== undefined && typeof value !== "boolean") problems.push(`desktop.window.${key} must be a boolean`);
+  }
+  if (raw.android?.autoplay !== undefined && typeof raw.android.autoplay !== "boolean")
+    problems.push("android.autoplay must be a boolean");
   const desktopServer = validateDesktopServer(raw.desktop, appDir, problems);
   if (raw.keyboard?.resize !== undefined && raw.keyboard.resize !== "resize" && raw.keyboard.resize !== "none") {
     problems.push(`keyboard.resize must be "resize" or "none" (got ${JSON.stringify(raw.keyboard.resize)})`);
@@ -249,6 +263,11 @@ export function projectFromConfig(raw: AkanNativeConfig, appDir: string, options
     },
     desktop: {
       quitOnLastWindowClosed: raw.desktop?.quitOnLastWindowClosed ?? true,
+      recovery: raw.desktop?.recovery === "reload" ? "reload" : "errorPage",
+      window: {
+        fullscreen: raw.desktop?.window?.fullscreen === true,
+        skipTaskbar: raw.desktop?.window?.skipTaskbar === true,
+      },
       ...(desktopServer ? { server: desktopServer } : {}),
     },
     updates,

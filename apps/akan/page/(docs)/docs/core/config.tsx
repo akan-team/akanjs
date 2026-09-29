@@ -242,9 +242,15 @@ const mobileFields = [
   },
   {
     key: "native.android",
-    type: "{ manifest, application, activity, googleServices }",
-    en: "XML added at <manifest>, inside <application> and inside the activity (root and target joined, the applicationId placeholder filled in), and the google-services.json path FCM push reads.",
-    ko: "<manifest> 수준, <application> 안, activity 안에 넣을 XML(root와 target을 합치고 applicationId 자리표시자를 채움)과 FCM 푸시가 읽는 google-services.json 경로입니다.",
+    type: "{ manifest, application, activity, googleServices, autoplay }",
+    en: "XML added at <manifest>, inside <application> and inside the activity (root and target joined, the applicationId placeholder filled in), the google-services.json path FCM push reads, and autoplay: media plays with sound without a tap first, as on iOS and the desktop.",
+    ko: "<manifest> 수준, <application> 안, activity 안에 넣을 XML(root와 target을 합치고 applicationId 자리표시자를 채움), FCM 푸시가 읽는 google-services.json 경로, 그리고 autoplay입니다. autoplay를 켜면 iOS·데스크톱처럼 소리 있는 미디어가 터치 없이 재생됩니다.",
+  },
+  {
+    key: "native.desktop",
+    type: '{ recovery?: "errorPage" | "reload", window?: { fullscreen?, skipTaskbar? } }',
+    en: 'For a desktop app nobody attends, such as a kiosk or a signage screen. recovery "reload" loads a page whose process ended again every time, waiting longer after each end in a row, and relaunches the app when the webview\'s browser process ends; the default "errorPage" reloads once, then shows an error page. window opens the main window fullscreen and without a taskbar button from its first frame.',
+    ko: '키오스크나 전광판처럼 지키는 사람이 없는 데스크톱 앱용입니다. recovery "reload"는 프로세스가 끝난 페이지를 매번 다시 불러오되 연달아 끝날수록 오래 기다리고, webview 브라우저 프로세스가 끝나면 앱을 다시 띄웁니다. 기본값 "errorPage"는 한 번 다시 불러온 뒤 오류 화면을 보여 줍니다. window는 주 창을 첫 프레임부터 전체화면, 작업 표시줄 버튼 없이 엽니다.',
   },
 ];
 

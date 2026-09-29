@@ -140,6 +140,11 @@ export class NativeConfig {
     const resources = Object.entries(target.files ?? {}).map(([to, from]) => ({ from: abs(from), to }));
     const native = NativeConfig.#compact({ ios, android, resources });
     const googleServices = target.native?.android?.googleServices;
+    const desktop = NativeConfig.#compact<NonNullable<AkanNativeConfig["desktop"]>>({
+      recovery: target.native?.desktop?.recovery,
+      window: NativeConfig.#compact({ ...target.native?.desktop?.window }),
+      server: desktopServer,
+    });
     const config: AkanNativeConfig = {
       app: {
         id: target.appId,
@@ -165,9 +170,13 @@ export class NativeConfig {
         : {}),
       ...(native ? { native } : {}),
       //? assetlinks.json vouches for `<appId>.debug` outside main, the suffix a debug build installs under.
-      android: { debugAppIdSuffix: ".debug", ...(googleServices ? { googleServices: abs(googleServices) } : {}) },
+      android: {
+        debugAppIdSuffix: ".debug",
+        ...(googleServices ? { googleServices: abs(googleServices) } : {}),
+        ...(target.native?.android?.autoplay ? { autoplay: true } : {}),
+      },
       keyboard: { resize: "none" },
-      ...(desktopServer ? { desktop: { server: desktopServer } } : {}),
+      ...(desktop ? { desktop } : {}),
       ...(target.assets?.icon ? { icon: abs(target.assets.icon) } : {}),
       ...(target.assets?.splash ? { splash: { image: abs(target.assets.splash) } } : {}),
     };

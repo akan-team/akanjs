@@ -175,10 +175,10 @@ export default page().render(() => {
     },
     {
       key: "targets.*.native",
-      type: "{ plugins?, ios?, android? }",
+      type: "{ plugins?, ios?, android?, desktop? }",
       desc: l.trans({
-        en: "Native settings: more `plugins`, `ios.infoPlist` and `ios.entitlements` keys, `android.manifest` / `application` / `activity` XML, and `android.googleServices` for FCM.",
-        ko: "네이티브 설정입니다. 추가 `plugins`, `ios.infoPlist`·`ios.entitlements` 키, `android.manifest`·`application`·`activity` XML, FCM용 `android.googleServices`를 적습니다.",
+        en: "Native settings: more `plugins`, `ios.infoPlist` and `ios.entitlements` keys, `android.manifest` / `application` / `activity` XML, `android.googleServices` for FCM, `android.autoplay`, and for an unattended desktop app `desktop.recovery` and `desktop.window`.",
+        ko: "네이티브 설정입니다. 추가 `plugins`, `ios.infoPlist`·`ios.entitlements` 키, `android.manifest`·`application`·`activity` XML, FCM용 `android.googleServices`, `android.autoplay`, 그리고 지키는 사람이 없는 데스크톱 앱용 `desktop.recovery`·`desktop.window`를 적습니다.",
       }),
     },
     {
@@ -1706,10 +1706,47 @@ const output = await NativeFile.resolve(saveGrant, "write"); // from filePicker.
           />
           <Docs.Alert type="info">
             {l.trans({
-              en: "Devices belong to native plugins, not to the server: displays and their changes (screen), windows placed on them (window), the system volume and mute (volume), global shortcuts, keep-awake and launch at login. Add each to the target's native.plugins; volume and filePicker come from akanjs/client/native.",
-              ko: "장치는 서버가 아니라 네이티브 플러그인이 다룹니다. 디스플레이와 그 변경(screen), 디스플레이에 놓는 창(window), 시스템 볼륨과 음소거(volume), 전역 단축키, 절전 막기, 로그인 시 실행이 있습니다. 각각 타깃의 native.plugins에 추가하고, volume과 filePicker는 akanjs/client/native에서 가져옵니다.",
+              en: "Devices belong to native plugins, not to the server: displays and their changes (screen), windows placed on them (window), the system volume and mute (volume, on Android the media volume too), global shortcuts, keep-awake and launch at login. Add each to the target's native.plugins; volume and filePicker come from akanjs/client/native.",
+              ko: "장치는 서버가 아니라 네이티브 플러그인이 다룹니다. 디스플레이와 그 변경(screen), 디스플레이에 놓는 창(window), 시스템 볼륨과 음소거(volume, Android는 미디어 볼륨), 전역 단축키, 절전 막기, 로그인 시 실행이 있습니다. 각각 타깃의 native.plugins에 추가하고, volume과 filePicker는 akanjs/client/native에서 가져옵니다.",
             })}
           </Docs.Alert>
+          <Docs.SubSubTitle>{l.trans({ en: "An App Nobody Attends", ko: "지키는 사람이 없는 앱" })}</Docs.SubSubTitle>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  A kiosk or a signage screen has nobody to click Reload. <code>desktop.recovery: "reload"</code> loads
+                  a page whose process ended again every time, waiting longer after each end in a row, and relaunches
+                  the app when the webview's browser process ends. <code>desktop.window</code> opens the main window
+                  fullscreen and without a taskbar button from its first frame, and <code>app.relaunch()</code> starts
+                  the app over in a new process on the desktop and Android.
+                </span>
+              ),
+              ko: (
+                <span>
+                  키오스크나 전광판에는 새로고침을 누를 사람이 없습니다. <code>desktop.recovery: "reload"</code>는
+                  프로세스가 끝난 페이지를 매번 다시 불러오되 연달아 끝날수록 오래 기다리고, webview 브라우저 프로세스가
+                  끝나면 앱을 다시 띄웁니다. <code>desktop.window</code>는 주 창을 첫 프레임부터 전체화면, 작업 표시줄
+                  버튼 없이 열고, <code>app.relaunch()</code>는 데스크톱과 Android에서 앱을 새 프로세스로 다시
+                  시작합니다.
+                </span>
+              ),
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="apps/board/akan.config.ts"
+            code={`mobile: {
+  targets: {
+    default: {
+      native: {
+        desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true } },
+        android: { autoplay: true },
+      },
+    },
+  },
+},`}
+          />
         </Docs.Description>
       </Scroll.Slide>
       <Divider />

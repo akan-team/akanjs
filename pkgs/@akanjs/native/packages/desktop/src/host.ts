@@ -21,6 +21,7 @@ import { cstr, FRAME_EVENT, FRAME_HEADER, FRAME_IPC, openNative, resolvePaths } 
 import { createLifecycle } from "./lifecycle.ts";
 import { appDataDir, reservedDirs } from "./paths.ts";
 import { type DesktopPlugin, useShellOpenLimit } from "./plugin.ts";
+import { relaunchAfterExit } from "./relaunch.ts";
 import { createDesktopServer, readServerManifest } from "./server.ts";
 
 declare const self: Worker;
@@ -114,6 +115,7 @@ export function startHost(plugins: DesktopPlugin[]): void {
     quitOnLastWindowClosed?: boolean;
     deepLinks?: string[];
     externalSchemes?: string[];
+    recovery?: "errorPage" | "reload";
   };
   const deepLinkSchemes = (shellConfig.deepLinks ?? []).map((s) => s.toLowerCase());
   // D6 on Windows and Linux (deeplinks.ts): a link is a launch argument, delivered like macOS's Event::Opened.
@@ -284,6 +286,9 @@ export function startHost(plugins: DesktopPlugin[]): void {
       gone++;
       console.error(`[akan-native] window ${window}: the page's process ended (${String(event.reason)})`);
       dispatcher.reset(window);
+      // desktop.recovery "reload": every window lost its page for good; the shell quits by itself if this fails.
+      if (event.reason === "browserExited" && shellConfig.recovery === "reload")
+        void relaunchAfterExit(process.execPath).then(() => lifecycle.quit(0));
     } else if (event.type === "window" && event.event === "destroyed") dispatcher.reset(window);
     else if (event.type === "window" && event.event === "closeRequested") void lifecycle.closeRequested(window);
     else if (event.type === "quitRequested")

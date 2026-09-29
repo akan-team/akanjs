@@ -491,6 +491,26 @@ describe("AkanAppConfig", () => {
     });
   });
 
+  test("merges the desktop settings field by field, the target winning", () => {
+    const config = new AkanAppConfig(
+      app,
+      [],
+      packageJson,
+      {
+        mobile: {
+          native: { desktop: { recovery: "reload", window: { fullscreen: true } } },
+          targets: { default: { native: { desktop: { window: { skipTaskbar: true } } } } },
+        },
+      },
+      baseDevEnv,
+    );
+
+    expect(config.mobile.targets.default?.native?.desktop).toEqual({
+      recovery: "reload",
+      window: { fullscreen: true, skipTaskbar: true },
+    });
+  });
+
   test("refuses the Capacitor-era keys with the setting that replaces them", () => {
     const make = (mobile: Record<string, unknown>) => () =>
       new AkanAppConfig(app, [], packageJson, { mobile } as never, baseDevEnv);

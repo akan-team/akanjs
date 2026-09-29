@@ -110,6 +110,26 @@ describe("programmatic API", () => {
     ]);
   });
 
+  test("desktop.recovery, desktop.window and android.autoplay are checked", () => {
+    const kiosk = config({
+      desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true } },
+      android: { autoplay: true },
+    });
+    expect(validateConfig(kiosk, { appDir: app("kiosk") })).toEqual([]);
+    const problems = validateConfig(
+      config({
+        desktop: { recovery: "always" as never, window: { fullscreen: "yes" as never } },
+        android: { autoplay: 1 as never },
+      }),
+      { appDir: app("kiosk2") },
+    );
+    expect(problems).toEqual([
+      'desktop.recovery must be "errorPage" or "reload" (got "always")',
+      "desktop.window.fullscreen must be a boolean",
+      "android.autoplay must be a boolean",
+    ]);
+  });
+
   test("push.android: channel, small icon and color are checked, then become Firebase's manifest meta-data", async () => {
     const dir = app("push");
     writeFileSync(join(dir, "bell.png"), "png");

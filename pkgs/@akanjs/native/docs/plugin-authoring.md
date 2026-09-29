@@ -117,7 +117,7 @@ export default defineDesktopPlugin<ClipboardApi>({ id: "clipboard", methods: { a
   - `ctx.document.own(() => close())`: 부른 페이지(문서)가 끝날 때 닫을 자원. 끝난 뒤 늦게 `own`하면 바로 닫힌다. 반환 함수는 닫지 않고 잊는다(요청으로 이미 닫았을 때).
   - 모듈 최상위 변수는 App 범위다. 페이지·창별 상태는 `ctx.document`나 창별 표 + `onDocumentEnd`(플러그인 필드) / `ctx.onDocumentEnd(fn)`에 둔다.
 - launch 단계: `setup`은 창이 만들어지기 전에 불리고 async여도 된다. 호스트는 모든 플러그인의 `setup`을 기다린 뒤(플러그인마다 최대 3초, 넘으면 경고 후 진행) main 스레드에 창을 만들라고 알린다. 이 동안만 쓸 수 있는 것:
-  - `ctx.launch.setWindow({ x, y, width, height, maximized })`: 설정 크기 대신 이 bounds(논리 포인트, x·y는 바깥 프레임 왼쪽 위)로 창을 만든다. 제목 표시줄을 잡을 수 있는 디스플레이가 없으면 셸이 위치를 버리고 가운데에 연다(`plugins/window-state`).
+  - `ctx.launch.setWindow({ x, y, width, height, maximized, fullscreen, skipTaskbar })`: 설정 크기 대신 이 bounds(논리 포인트, x·y는 바깥 프레임 왼쪽 위)로 창을 만든다. `fullscreen`은 첫 프레임부터 x·y가 있는 디스플레이에서 테두리 없는 전체화면, `skipTaskbar`는 작업 표시줄 버튼 없음(Windows·Linux)이다. 둘 다 설정 `desktop.window`보다 우선한다. 제목 표시줄을 잡을 수 있는 디스플레이가 없으면 셸이 위치를 버리고 가운데에 연다(`plugins/window-state`).
   - `ctx.launch.exit(code)`: 창을 만들지 않고 종료한다. `onQuit` 훅은 돌지 않는다(`plugins/single-instance`).
   - `setup`이 끝난 뒤의 호출은 경고만 남기고 무시된다. launch 단계에서는 창이 없으므로 `ctx.shell`을 기다리지 않는다.
 - 종료 흐름(plugins.md D4, 등록 함수는 모두 해제 함수를 반환한다)

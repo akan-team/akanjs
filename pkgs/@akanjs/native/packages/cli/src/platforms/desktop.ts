@@ -246,6 +246,9 @@ export function writeDesktopResources(
       backgroundColorDark: config.shell.backgroundColorDark,
       devtools: ctx.dev,
       quitOnLastWindowClosed: config.desktop.quitOnLastWindowClosed,
+      recovery: config.desktop.recovery,
+      fullscreen: config.desktop.window.fullscreen,
+      skipTaskbar: config.desktop.window.skipTaskbar,
       // Windows and Linux register them at startup (packages/desktop/src/deeplinks.ts); macOS has Info.plist.
       deepLinks: config.deepLinks.schemes,
       // L0: schemes the app adds to what links and the opener may hand to the OS.

@@ -140,6 +140,18 @@ export interface AkanMobileNativeConfig {
     activity?: string[];
     /** The Firebase project's google-services.json, relative to the app folder, for FCM push on Android. */
     googleServices?: string;
+    /** Media plays with sound without a tap first, as it does on iOS and the desktop: a signage screen. */
+    autoplay?: boolean;
+  };
+  desktop?: {
+    /**
+     * `"reload"`: a window whose page's process ends (a crash, a hang) loads it again every time, waiting
+     * longer after each end in a row, and the app relaunches when the webview's browser process ends — for an
+     * app nobody attends. `"errorPage"` (default): one reload, then an error page, and a quit for the browser.
+     */
+    recovery?: "errorPage" | "reload";
+    /** The main window from its first frame: borderless fullscreen, and no taskbar button (Windows, Linux). */
+    window?: { fullscreen?: boolean; skipTaskbar?: boolean };
   };
 }
 

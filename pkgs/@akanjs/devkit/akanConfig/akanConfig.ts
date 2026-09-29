@@ -380,10 +380,17 @@ export class AkanAppConfig implements AppConfigResult {
       if (merged.length) android[key] = merged;
       else delete android[key];
     }
+    const window = { ...base?.desktop?.window, ...override?.desktop?.window };
+    const desktop = {
+      ...base?.desktop,
+      ...override?.desktop,
+      ...(Object.keys(window).length ? { window } : {}),
+    };
     return {
       ...(plugins.length ? { plugins } : {}),
       ...(Object.keys(ios).length ? { ios } : {}),
       ...(Object.keys(android).length ? { android } : {}),
+      ...(Object.keys(desktop).length ? { desktop } : {}),
     };
   }
   #defaultMobileTargetName(rawTargets: DeepPartial<AkanMobileConfig>["targets"] | undefined) {

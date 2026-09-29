@@ -115,6 +115,8 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
             setSupportMultipleWindows(false)
             javaScriptCanOpenWindowsAutomatically = false
             setSupportZoom(false)
+            // android.autoplay: media plays without a tap first, as it does on iOS and the desktop.
+            mediaPlaybackRequiresUserGesture = !shell.optBoolean("autoplay")
         }
         // The page follows prefers-color-scheme itself: no darkening by WebView.
         if (Build.VERSION.SDK_INT >= 33) Api33.noAlgorithmicDarkening(webView.settings)

@@ -199,6 +199,31 @@ describe("NativeConfig.build", () => {
     expect(api.validateConfig(config, { appDir: root })).toEqual([]);
   });
 
+  test("hands an unattended app's settings on: page recovery, a kiosk window and Android autoplay", async () => {
+    const root = await makeTempRoot();
+    const { config } = NativeConfig.build({
+      appPath: root,
+      target: {
+        ...minimalTarget,
+        permissions: [],
+        deepLinks: undefined,
+        native: {
+          android: { autoplay: true },
+          desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true } },
+        },
+      },
+      webDir: path.join(root, "web"),
+      contributions: [],
+      locales: ["en"],
+    });
+
+    expect(config.desktop).toEqual({ recovery: "reload", window: { fullscreen: true, skipTaskbar: true } });
+    expect(config.android).toEqual({ debugAppIdSuffix: ".debug", autoplay: true });
+    await mkdir(path.join(root, "web"), { recursive: true });
+    await writeFile(path.join(root, "web/index.html"), "<html><head></head><body></body></html>");
+    expect((await NativeApi.load(repoApp)).validateConfig(config, { appDir: root })).toEqual([]);
+  });
+
   test("keeps a file name the runtime accepts", () => {
     expect(NativeConfig.fileNameOf("minimal")).toBe("minimal");
     expect(NativeConfig.fileNameOf("my app!")).toBe("my-app");

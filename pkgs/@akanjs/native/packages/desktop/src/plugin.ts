@@ -132,6 +132,10 @@ export interface LaunchWindow {
   width?: number;
   height?: number;
   maximized?: boolean;
+  /** Borderless fullscreen from the first frame, on the display x and y are on (else the primary one). */
+  fullscreen?: boolean;
+  /** No taskbar button (Windows, Linux; macOS has none). */
+  skipTaskbar?: boolean;
 }
 
 /** What the launch phase decided; sent to the main thread with "ready". */

@@ -757,8 +757,9 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
   - 엔진별 신호: macOS는 wry `with_on_web_content_process_terminate_handler`, Windows는 WebView2 `ProcessFailed`, Linux는 `web-process-terminated`다.
   - 셸은 그 창의 대기 중인 IPC를 끝내고 `webview/processTerminated` 이벤트를 보낸다.
   - 호스트는 문서를 끝낸다(`dispatcher.reset`).
-  - 셸은 같은 페이지를 한 번 다시 불러온다. 1분 안에 또 죽으면 내장 오류 화면을 보여 준다.
+  - 셸은 같은 페이지를 한 번 다시 불러온다. 다시 불러온 뒤 1분 안에 또 죽으면 내장 오류 화면을 보여 준다.
   - WebView2 브라우저 프로세스가 죽으면 앱을 끝낸다. 알림과 크래시 표식을 남기는 fail-fast는 감독 단계에서 한다.
+  - `desktop.recovery: "reload"`(지키는 사람이 없는 앱, 2026-09-30): 오류 화면 대신 매번 다시 불러온다. 다시 불러온 뒤 1분 안에 또 죽으면 연달아 죽은 것으로 세고, 1초부터 두 배씩 최대 1분까지 기다렸다 불러온다(`lib.rs` `recovery_wait`). 브라우저 프로세스가 죽으면 호스트가 `relaunchAfterExit`(`packages/desktop/src/relaunch.ts`, 업데이터와 같은 도우미)로 앱을 다시 띄우고 종료한다. 호스트가 못 하면 셸이 10초 뒤 코드 1로 끝난다.
   - 셀프 테스트 "a page whose process ended loads again": dev 전용 `$host.crash`로 프로세스를 끝낸다. macOS는 `_killWebContentProcess`(dev 빌드만), Linux는 `terminate_web_process`를 쓴다. 다시 불러온 페이지가 호스트가 종료를 본 것을 확인한다. Windows는 자동 확인이 없다.
   - 같이 고친 것: 다시 불러온 페이지의 IPC가 `Referer: app://localhost`(끝 `/` 없음)로 거절되던 것. 이제 Referer가 오리진과 정확히 같아도 받는다.
   - 절전 복귀 알림(`app-state` `resumed`, `window.reloadWebview`)은 아직이다.

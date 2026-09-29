@@ -46,6 +46,11 @@ interface ShellConfig {
   startPath?: string;
   /** security.shell.externalSchemes (L0): schemes links may also hand to the OS. */
   externalSchemes?: string[];
+  /** desktop.recovery: what a window does when its page's process ends. */
+  recovery?: "errorPage" | "reload";
+  /** desktop.window: the main window from its first frame, unless the launch phase says otherwise. */
+  fullscreen?: boolean;
+  skipTaskbar?: boolean;
 }
 
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -57,6 +62,8 @@ export function launchBounds(window: LaunchWindow): LaunchWindow {
   if (finite(window.width) && window.width >= 1) out.width = window.width;
   if (finite(window.height) && window.height >= 1) out.height = window.height;
   if (window.maximized === true) out.maximized = true;
+  if (typeof window.fullscreen === "boolean") out.fullscreen = window.fullscreen;
+  if (typeof window.skipTaskbar === "boolean") out.skipTaskbar = window.skipTaskbar;
   return out;
 }
 
@@ -131,6 +138,8 @@ export async function startMain(workerUrl: string): Promise<never> {
     title: shell.title,
     width: shell.width ?? 1024,
     height: shell.height ?? 720,
+    fullscreen: shell.fullscreen === true,
+    skipTaskbar: shell.skipTaskbar === true,
     ...bounds,
     appDir: paths.appDir,
     initJs,
@@ -139,6 +148,7 @@ export async function startMain(workerUrl: string): Promise<never> {
     backgroundColor: shell.backgroundColor,
     backgroundColorDark: shell.backgroundColorDark,
     externalSchemes: shell.externalSchemes ?? [],
+    ...(shell.recovery ? { recovery: shell.recovery } : {}),
     // Tests start the app without stealing focus from the user.
     activation: process.env.AKAN_NATIVE_ACTIVATION ?? "regular",
     // Only a dev build may load its pages from elsewhere.
