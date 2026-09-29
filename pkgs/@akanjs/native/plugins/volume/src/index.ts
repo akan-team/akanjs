@@ -22,9 +22,9 @@ export interface VolumeEvents {
 }
 
 /**
- * The system's output volume, on the desktop: CoreAudio's default output device (macOS), the default render
- * endpoint the taskbar slider moves (Windows), the default sink of PulseAudio or PipeWire through pactl (Linux).
- * A phone or the web answers UNSUPPORTED.
+ * The system's output volume: CoreAudio's default output device (macOS), the default render endpoint the taskbar
+ * slider moves (Windows), the default sink of PulseAudio or PipeWire through pactl (Linux), and on Android the
+ * media volume the volume keys move while the app plays. iOS and the web answer UNSUPPORTED.
  */
 export const volume = definePlugin<VolumeApi, VolumeEvents>("volume", {
   methods: ["getVolume", "setVolume", "setMuted"],

@@ -8,10 +8,11 @@ import { createDesktopVolume } from "../src/desktop.ts";
 const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
 
 describe("volume plugin", () => {
-  test("desktop only", () => {
+  test("the desktop and Android, not iOS", () => {
     const plugin = { spec: "volume", dir: `${import.meta.dir}/..`, manifest: manifest as never };
     expect(pluginDecls([plugin], "ios")).toEqual({});
     expect(pluginDecls([plugin], "macos")).toEqual({ volume: { methods: manifest.methods, events: ["change"] } });
+    expect(pluginDecls([plugin], "android")).toEqual({ volume: { methods: manifest.methods, events: ["change"] } });
   });
 
   test("reads pactl's output: the channels' mean, boosts read as full, and the mute", () => {

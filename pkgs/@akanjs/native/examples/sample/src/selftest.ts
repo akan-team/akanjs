@@ -1309,7 +1309,7 @@ export async function runSelftest(): Promise<{ pass: boolean; platform: string; 
     return `${ds.length} display(s), cursor on ${displayAt(c, ds)?.name}`;
   });
   await check("volume", async () => {
-    if (!desktop) {
+    if (!desktop && platform !== "android") {
       assert(isAkanNativeError(await rejects(volume.getVolume()), "UNSUPPORTED"), "expected UNSUPPORTED");
       return "UNSUPPORTED";
     }
