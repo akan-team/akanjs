@@ -11,7 +11,7 @@
 
 | 항목 | 상태 |
 |---|---|
-| `build`, `run`, `validateConfig`, `AkanNativeError`, `API_VERSION` 0.1.0 | 구현(`packages/cli/src/api.ts`, `@akanjs/native/api`). 테스트 `packages/cli/test/api.test.ts` |
+| `build`, `run`, `validateConfig`, `AkanNativeError`, `API_VERSION` 0.2.0 (0.2.0: `desktop.server`) | 구현(`packages/cli/src/api.ts`, `@akanjs/native/api`). 테스트 `packages/cli/test/api.test.ts` |
 | 로그 싱크 | 구현. 호출마다 AsyncLocalStorage로 분리한다. 동시 호출의 로그가 섞이지 않고, 이벤트에는 터미널 색이 없다. 자식 프로세스 출력(웹 빌드 등)은 `tool` 줄이다 |
 | `signal` | 구현. 실행 중인 도구를 죽이고 `CANCELLED`로 거절한다 |
 | `outDir`, `env`, `envFiles`, `resolveFrom`, `skipWebBuild` | 구현. 같은 `outDir`의 두 작업은 차례로 돈다(프로세스 안 잠금) |
@@ -331,6 +331,7 @@ API는 설정을 그대로 받으므로, 새 기능은 설정 필드로 들어�
 | `keyboard.resize: "resize" \| "none"` | O6-1 | 첫 프레임부터의 키보드 모드(기본 "resize"). 두 셸이 shell.json에서 읽으므로, JS가 돌기 전에도 그 모드다. 실행 중에는 `keyboard.setResizeMode()`로 바꾼다. Android 매니페스트는 `adjustResize` 그대로다: 셸이 IME inset만큼 직접 줄이며, API 29는 `adjustResize`일 때만 IME inset을 준다 |
 | `push.android: { channel?: { id, name, importance?, description? }, smallIcon?, color? }` | N13 | Firebase가 앱이 앞에 없을 때 직접 띄우는 알림의 기본 채널·상태 표시줄 아이콘(흰색·투명 PNG)·색. 빌드가 매니페스트 meta-data와 리소스로 바꾸고, 플러그인이 시작할 때 채널을 만든다(사용자가 바꾼 중요도는 유지). 앞에서 띄우는 플러그인 자신의 알림도 같은 채널·아이콘·색을 쓴다. push 플러그인이 없으면 경고 |
 | `ios.hideFormAccessoryBar` | N18 | 폼 필드 키보드 위의 이전·다음·완료 막대를 숨긴다. 기본 false |
+| `desktop.server: { dir, entry, env? }` | akanjs `build-desktop --server` | 데스크톱 앱이 창 옆에서 띄우는 서버. 빌드가 `dir`을 `resources/server/`로 복사하고 `server.json`(entry, env)과 빈 `server.bunfig.toml`을 쓴다. 플러그인 호스트가 실행 파일 자신을 `BUN_BE_BUN=1`로 다시 띄워 `entry`를 돌리고(`--no-env-file`, `--no-install`, `--config`), 127.0.0.1의 빈 포트를 세션 동안 고정해 페이지 env `PUBLIC_AKAN_SERVER_URL`로 넘긴다. launcher가 정하는 키(`PORT`, `JWT_SECRET`, `AKAN_LISTEN_HOST`, `AKAN_ALLOWED_HOSTS`, `AKAN_SQLITE_DIR`, `AKAN_WORKSPACE_ROOT`, `AKAN_RUNTIME_DIR`, `BUN_BE_BUN`)는 `env`에 둘 수 없다. 데이터는 `<app data>/server`. single-instance 플러그인이 없으면 경고 |
 
 서명 정보는 설정에 넣지 않고 `release()`와 iPhone용 `run`·`dev`의 옵션으로만 받는다(파일로 남지 않게).
 

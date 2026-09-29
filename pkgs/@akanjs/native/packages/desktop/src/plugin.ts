@@ -136,6 +136,8 @@ export interface LaunchWindow {
 export interface Launch {
   window: LaunchWindow;
   exit?: number;
+  /** PUBLIC_* values for the page known only at launch (the carried server's URL), under AKAN_NATIVE_PUBLIC_*. */
+  env?: Record<string, string>;
 }
 
 export interface NativeEvent {

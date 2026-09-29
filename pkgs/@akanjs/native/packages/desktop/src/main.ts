@@ -10,13 +10,24 @@ import { renderInitScript } from "../../core/src/protocol.ts";
 import { ABI_MAJOR, cstr, lastError, openNative, resolvePaths } from "./ffi.ts";
 import { webviewDataDir } from "./paths.ts";
 import type { Launch, LaunchWindow } from "./plugin.ts";
+import { READY_TIMEOUT } from "./server.ts";
 
 const ENV_OVERRIDE_PREFIX = "AKAN_NATIVE_PUBLIC_";
 
-/** env.runtime.json, overlaid with AKAN_NATIVE_PUBLIC_* process variables (ENV-1, highest precedence). */
-function runtimeEnv(resources: string): Record<string, string> {
-  const env = JSON.parse(readFileSync(join(resources, "env.runtime.json"), "utf8")) as Record<string, string>;
-  for (const [key, value] of Object.entries(process.env)) {
+/** How long the main thread waits for the launch phase: the plugins' setups, then the carried server. */
+const LAUNCH_TIMEOUT = 10_000 + READY_TIMEOUT;
+
+/**
+ * env.runtime.json, overlaid with what the launch phase learned (the carried server's URL), then with
+ * AKAN_NATIVE_PUBLIC_* process variables (ENV-1, highest precedence).
+ */
+export function runtimeEnv(
+  file: Record<string, string>,
+  launched: Record<string, string> = {},
+  processEnv: Record<string, string | undefined> = process.env,
+): Record<string, string> {
+  const env = { ...file, ...launched };
+  for (const [key, value] of Object.entries(processEnv)) {
     if (key.startsWith(ENV_OVERRIDE_PREFIX) && value !== undefined) env[key.slice("AKAN_NATIVE_".length)] = value;
   }
   return env;
@@ -57,13 +68,14 @@ function fail(message: string, error?: unknown): never {
 export async function startMain(workerUrl: string): Promise<never> {
   const paths = resolvePaths();
   let shell: ShellConfig;
-  let initJs: string;
+  let boot: string;
+  let fileEnv: Record<string, string>;
   let dev = false;
   let appId = "";
   try {
     shell = JSON.parse(readFileSync(join(paths.resources, "shell.json"), "utf8"));
-    const boot = readFileSync(join(paths.resources, "boot.json"), "utf8");
-    initJs = renderInitScript(boot.trim(), JSON.stringify(runtimeEnv(paths.resources)));
+    boot = readFileSync(join(paths.resources, "boot.json"), "utf8");
+    fileEnv = JSON.parse(readFileSync(join(paths.resources, "env.runtime.json"), "utf8")) as Record<string, string>;
     const parsed = JSON.parse(boot) as { dev?: boolean; app?: { id?: string } };
     dev = parsed.dev === true;
     appId = parsed.app?.id ?? "";
@@ -91,7 +103,7 @@ export async function startMain(workerUrl: string): Promise<never> {
   const worker = new Worker(workerUrl, { argv: process.argv.slice(2) } as WorkerOptions);
   // "ready" ends the plugins' launch phase (DesktopContext.launch): initial bounds, or exit.
   const launch = await new Promise<Launch>((resolve) => {
-    const timer = setTimeout(() => fail("plugin host did not start within 10 s"), 10_000);
+    const timer = setTimeout(() => fail(`plugin host did not start within ${LAUNCH_TIMEOUT / 1000} s`), LAUNCH_TIMEOUT);
     worker.addEventListener("error", (event) =>
       fail("plugin host failed to start", (event as ErrorEvent).message ?? event),
     );
@@ -99,7 +111,7 @@ export async function startMain(workerUrl: string): Promise<never> {
       const data = (event as MessageEvent).data as { type?: string } & Partial<Launch>;
       if (data?.type === "ready") {
         clearTimeout(timer);
-        resolve({ window: data.window ?? {}, exit: data.exit });
+        resolve({ window: data.window ?? {}, exit: data.exit, env: data.env });
       }
     });
   });
@@ -108,6 +120,12 @@ export async function startMain(workerUrl: string): Promise<never> {
     process.exit(launch.exit);
   }
   const bounds = launchBounds(launch.window);
+  let initJs: string;
+  try {
+    initJs = renderInitScript(boot.trim(), JSON.stringify(runtimeEnv(fileEnv, launch.env)));
+  } catch (error) {
+    fail(`cannot render the page's init script from ${paths.resources}`, error);
+  }
 
   const config = {
     title: shell.title,

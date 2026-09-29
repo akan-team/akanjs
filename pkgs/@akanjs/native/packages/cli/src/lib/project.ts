@@ -7,6 +7,7 @@ import type { AkanNativeConfig } from "../config.ts";
 import { manifestPermissionProblems, type PermissionSet, resolveAcl } from "./acl.ts";
 import { unknownConfigKeys } from "./configkeys.ts";
 import { validateCsp, validateExternalSchemes } from "./csp.ts";
+import { type DesktopServerConfig, validateDesktopServer } from "./desktop-server.ts";
 import { type EnvConfig, validateEnvConfig } from "./env.ts";
 import { CliError } from "./log.ts";
 import { type PermissionsConfig, validatePermissions } from "./permissions.ts";
@@ -26,7 +27,7 @@ export interface ResolvedConfig extends Omit<AkanNativeConfig, "icon" | "splash"
   usageDescriptions: Record<string, string>;
   permissions: PermissionsConfig;
   deepLinks: { schemes: string[]; domains: { host: string; pathPrefixes: string[] }[] };
-  desktop: { quitOnLastWindowClosed: boolean };
+  desktop: { quitOnLastWindowClosed: boolean; server?: DesktopServerConfig };
   updates: UpdatesConfig | null;
   /** Absolute image path. */
   icon: { image: string; backgroundColor?: string } | null;
@@ -186,6 +187,7 @@ export function projectFromConfig(raw: AkanNativeConfig, appDir: string, options
   if (raw.desktop?.quitOnLastWindowClosed !== undefined && typeof raw.desktop.quitOnLastWindowClosed !== "boolean") {
     problems.push("desktop.quitOnLastWindowClosed must be a boolean");
   }
+  const desktopServer = validateDesktopServer(raw.desktop, appDir, problems);
   if (raw.keyboard?.resize !== undefined && raw.keyboard.resize !== "resize" && raw.keyboard.resize !== "none") {
     problems.push(`keyboard.resize must be "resize" or "none" (got ${JSON.stringify(raw.keyboard.resize)})`);
   }
@@ -245,7 +247,10 @@ export function projectFromConfig(raw: AkanNativeConfig, appDir: string, options
         typeof d === "string" ? { host: d, pathPrefixes: [] } : { host: d.host, pathPrefixes: d.pathPrefixes ?? [] },
       ),
     },
-    desktop: { quitOnLastWindowClosed: raw.desktop?.quitOnLastWindowClosed ?? true },
+    desktop: {
+      quitOnLastWindowClosed: raw.desktop?.quitOnLastWindowClosed ?? true,
+      ...(desktopServer ? { server: desktopServer } : {}),
+    },
     updates,
     icon: icon ? { ...icon, image: resolve(appDir, icon.image) } : null,
     splash: {

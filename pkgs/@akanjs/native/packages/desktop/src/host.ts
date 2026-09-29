@@ -21,6 +21,7 @@ import { cstr, FRAME_EVENT, FRAME_HEADER, FRAME_IPC, openNative, resolvePaths } 
 import { createLifecycle } from "./lifecycle.ts";
 import { appDataDir, reservedDirs } from "./paths.ts";
 import { type DesktopPlugin, useShellOpenLimit } from "./plugin.ts";
+import { createDesktopServer, readServerManifest } from "./server.ts";
 
 declare const self: Worker;
 
@@ -356,9 +357,34 @@ export function startHost(plugins: DesktopPlugin[]): void {
   }
   // JSCallback does not keep the event loop alive.
   setInterval(() => {}, 2 ** 31 - 1);
-  // The main thread creates the window (or exits) once the launch phase is over.
-  void dispatcher.launched.then((launch) => {
-    self.postMessage({ type: "ready", ...launch });
+  const startServer = async (): Promise<Record<string, string> | undefined> => {
+    try {
+      const manifest = readServerManifest(paths.resources);
+      if (!manifest) return undefined;
+      const server = createDesktopServer({
+        resources: paths.resources,
+        appDataDir: appDataDir(boot.app.id),
+        manifest,
+        onGiveUp: (message) =>
+          void shell("alert.show", {
+            title: boot.app.name,
+            message,
+            buttons: [{ title: "OK" }],
+            tag: "akan-server",
+          }).catch((error: unknown) => console.error("[akan-native] cannot show the server alert", error)),
+      });
+      lifecycle.onQuit(() => server.stop());
+      return { PUBLIC_AKAN_SERVER_URL: (await server.start()).url };
+    } catch (error) {
+      console.error("[akan-native] the app's server could not start", error);
+      return undefined;
+    }
+  };
+  // The main thread creates the window (or exits) once the launch phase is over. The server starts
+  // after it: a second instance handing over to the first (single-instance) must not open its data.
+  void dispatcher.launched.then(async (launch) => {
+    const env = typeof launch.exit === "number" ? undefined : await startServer();
+    self.postMessage({ type: "ready", ...launch, ...(env ? { env } : {}) });
     if (typeof launch.exit === "number") return;
     // A cold start by deep link (Windows, Linux); the app plugin keeps it for the page (C2).
     openLinks(process.argv.slice(2));

@@ -152,3 +152,53 @@ describe("validation", () => {
     );
   });
 });
+
+describe("desktop.server", () => {
+  const dir = mkdtempSync(join(tmpdir(), "akan-native-server-config-"));
+  mkdirSync(join(dir, "web"), { recursive: true });
+  writeFileSync(join(dir, "web", "index.html"), "<!doctype html>");
+  mkdirSync(join(dir, "server", "node_modules", "addon", "build"), { recursive: true });
+  writeFileSync(join(dir, "server", "main.js"), "");
+  writeFileSync(join(dir, "server", "node_modules", "addon", "build", "addon.node"), "");
+  writeFileSync(join(dir, "server", "node_modules", "addon", "index.js"), "");
+  const base: AkanNativeConfig = { app: { id: "com.akanjs.x", name: "X", version: "1.0.0" }, web: { dir: "web" } };
+
+  test("a folder with its entry and string env values is a server the app can carry", () => {
+    expect(
+      validateConfig(
+        { ...base, desktop: { server: { dir: "server", entry: "main.js", env: { AKAN_PUBLIC_ENV: "main" } } } },
+        { appDir: dir },
+      ),
+    ).toEqual([]);
+  });
+
+  test("names a missing folder or entry, an entry outside the folder, and the variables the launcher owns", () => {
+    const problems = (server: unknown) =>
+      validateConfig({ ...base, desktop: { server } } as AkanNativeConfig, { appDir: dir });
+    expect(problems({ dir: "nowhere", entry: "main.js" })).toEqual([expect.stringContaining("is not a folder")]);
+    expect(problems({ dir: "server", entry: "missing.js" })).toEqual([expect.stringContaining("not found")]);
+    expect(problems({ dir: "server", entry: "../web/index.html" })).toEqual([
+      expect.stringContaining("must be a file inside desktop.server.dir"),
+    ]);
+    expect(problems({ dir: "server", entry: "main.js", env: { PORT: "8282", JWT_SECRET: "x", A: 1 } })).toEqual([
+      "desktop.server.env.PORT: the launcher sets it at every start",
+      "desktop.server.env.JWT_SECRET: the launcher sets it at every start",
+      "desktop.server.env.A must be a string",
+    ]);
+    expect(problems({ dir: "server", entry: "main.js", cwd: "/" })).toEqual([
+      expect.stringContaining("unknown key desktop.server.cwd"),
+    ]);
+  });
+
+  test("macOS signs the native addons the server's packages bring", async () => {
+    const { serverNativeCode } = await import("../src/platforms/macos.ts");
+    const resources = join(dir, "Resources");
+    mkdirSync(resources, { recursive: true });
+    expect(serverNativeCode(resources)).toEqual([]);
+    const { cpSync } = await import("node:fs");
+    cpSync(join(dir, "server"), join(resources, "server"), { recursive: true });
+    expect(serverNativeCode(resources)).toEqual([
+      join(resources, "server", "node_modules", "addon", "build", "addon.node"),
+    ]);
+  });
+});

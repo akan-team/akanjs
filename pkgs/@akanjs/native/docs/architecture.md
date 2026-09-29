@@ -94,9 +94,10 @@ env.runtime.json = { PUBLIC_...: "..." }                                        
 ```
  Akan Native Sample.app  (프로세스 1개)
  ├─ main 스레드 ─ main-entry.ts → @akanjs/native/desktop main.ts (bun build --compile 결과물)
- │    1. Resources/boot.json·env.runtime.json(+AKAN_NATIVE_PUBLIC_*)·shell.json 읽기 → init.js 문자열
+ │    1. Resources/boot.json·env.runtime.json·shell.json 읽기
  │    2. dlopen(Frameworks/libakan_native_desktop.dylib)
- │    3. new Worker(host-entry.ts) → "ready" 대기 (10초, error 이벤트는 여기서만 볼 수 있다)
+ │    3. new Worker(host-entry.ts) → "ready" 대기 (18초 = 플러그인 10초 + 서버 8초, error 이벤트는 여기서만 볼 수 있다)
+ │       → init.js 문자열: env.runtime.json < ready의 env(내장 서버 URL) < AKAN_NATIVE_PUBLIC_*
  │    4. akan_native_run(configJson)  ← 반환하지 않음. TAO EventLoop가 main 스레드를 차지. 이후 main의 JS는 돌지 않는다
  │         └ WRY WebView: app://localhost (첫 로드가 끝날 때까지 창을 숨김, D2)
  │              ├ 정적 파일·/__akan_native/file/<id> → Rust가 백그라운드 스레드에서 읽고 main에서 응답
@@ -109,6 +110,8 @@ env.runtime.json = { PUBLIC_...: "..." }                                        
       drain(): while (frame = akan_native_poll(buf)) → dispatcher → akan_native_respond(reqId, JSON)  ← 즉시 반환, 응답은 main에서
       네이티브 이벤트(kind 2): pageLoad started → 그 창의 구독 초기화, window closeRequested → 종료 흐름(§12 D4)
       이벤트 push: 구독한 창마다 akan_native_emit(창 id, "window.__AKAN_NATIVE__.receive({...})") → EventLoopProxy → evaluate_script
+      내장 서버(desktop.server, server.ts): launch 단계 뒤 자식 프로세스로 띄운다 → IPC ready(최대 8초) → ready에 env
+         └ 자식 프로세스: 이 실행 파일 자신 + BUN_BE_BUN=1 → Resources/server/<entry>, 127.0.0.1:<세션 동안 고정한 포트>
 ```
 
 설계 근거 (검증: [research/desktop-macos.md](research/desktop-macos.md) §1)
@@ -127,6 +130,7 @@ Akan Native Sample.app/Contents/
 ├─ MacOS/akan-native-sample                bun build --compile gen/main-entry.ts gen/host-entry.ts (Worker 엔트리도 넘겨야 한다, Q2)
 ├─ Frameworks/libakan_native_desktop.dylib install_name @rpath/…, 절대 경로로 dlopen
 └─ Resources/ app/ · boot.json · env.runtime.json · shell.json
+             server/ · server.json · server.bunfig.toml   desktop.server가 있을 때(내장 서버, §12 "데스크톱 내장 서버")
 ```
 서명은 안쪽부터(`xattr -cr` → dylib → 번들, ad-hoc). 실행 파일은 약 62MB(Bun 런타임), dylib는 0.87MB.
 
@@ -600,6 +604,7 @@ akan-native.config.ts env.defaults
 - 명령마다 아는 플래그만 받는다. 모르는 플래그(`--relase` 같은 오타)는 오류다.
 - 데스크톱 컴파일: `bun build --compile`은 PATH의 bun이 아니라 CLI를 실행 중인 bun(`process.execPath`)을 쓰고, `--no-compile-autoload-dotenv --no-compile-autoload-bunfig`를 붙인다. Bun의 standalone 실행 파일은 기본으로 실행 폴더의 `.env`·`bunfig.toml`을 읽어서, 앱 옆의 `.env`가 환경을 바꿀 수 있었다(예전 `AKAN_NATIVE_LIB`로 다른 라이브러리를 로드시키는 것까지 재현됨). 앱은 환경 변수로 라이브러리·리소스 경로를 바꾸지 않는다(`resolvePaths`).
   - 알려진 한계: `BUN_BE_BUN=1`로 앱 실행 파일을 띄우면 Bun CLI처럼 동작해 임의 JS를 실행한다(Electron의 `ELECTRON_RUN_AS_NODE`와 같은 부류). Bun 1.4.2에는 끄는 옵션이 없다. 환경 변수를 정할 수 있는 쪽은 이미 그 사용자 권한으로 코드를 실행할 수 있으므로 경계를 넘지는 않지만, 서명된 앱의 신뢰를 빌리는 경로가 된다.
+  - 내장 서버(`desktop.server`)는 이 동작으로 서버를 띄운다. 런타임을 하나 더 넣으면 앱이 약 60MB 커진다. Bun CLI처럼 작업 폴더의 `.env`·`bunfig.toml`(preload 포함)을 읽고 없는 패키지를 설치하므로, `--no-env-file`, `--config=<Resources>/server.bunfig.toml`(빈 파일), `--no-install`로 모두 끈다(Bun 1.4.2에서 확인).
 - 데스크톱 플러그인 모듈 검사: 빌드와 `akan-native plugin check`가 desktop 모듈을 불러 manifest(또는 `desktop` subset)의 메서드·이벤트와 비교한다. 선언한 이벤트의 source가 없으면 페이지의 `$listen`이 NOT_FOUND가 된다. 이 검사로 updates의 `progress`(다운로드 진행률이 페이지에 가지 않았다), app의 `backButton`, browser의 쓰이지 않는 `close`를 고쳤다.
 
 ## 9. 데스크톱 FFI 경계 (C ABI v0.2)
@@ -799,6 +804,17 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
 - macOS inner size는 WebView 프레임에서 읽는다. WRY가 contentView를 바꿔서 TAO `inner_size()`는 처음 크기에 머문다(Tauri도 같은 우회). 셸 op 응답은 TAO의 비동기 적용 때문에 요청한 크기·위치·최대화·전체 화면 값을 보고한다.
 - Bun Worker의 `process.argv`에는 실행 인자가 없다. main이 `new Worker(url, { argv: process.argv.slice(2) })`로 넘긴다.
 - Worker는 main이 막혀 있는 동안 SIGTERM 핸들러를 받지 못한다(확인). 그래서 셸이 SIGTERM을 받아(libc `signal` + self-pipe, `lib.rs` `sigterm`) `signal` 이벤트로 넘기고, 호스트는 veto 없이 `onQuit` 훅을 돌린 뒤 끝낸다. 두 번째 SIGTERM이나 5초 초과면 바로 종료한다.
+
+### 데스크톱 내장 서버 (desktop.server, akanjs `build-desktop --server`)
+- 빌드: `desktop.server.dir`를 `resources/server/`로 복사하고 `server.json`(entry, env)과 빈 `server.bunfig.toml`을 쓴다. macOS는 그 안의 `.node`·`.dylib`·`.so`를 dylib보다 먼저 서명한다. single-instance가 없으면 경고한다.
+- 시작(`packages/desktop/src/server.ts`): 플러그인 호스트가 launch 단계(`dispatcher.launched`) 뒤에 띄운다. `exit`이면(다른 인스턴스로 넘겼으면) 띄우지 않는다. 두 번째 인스턴스가 서버를 잠깐이라도 띄우면 같은 DB와 cron을 건드린다.
+  - 포트: 127.0.0.1에서 0번 포트로 listen해 번호를 받고 닫는다. init.js가 이 포트를 담아 `akan_native_run`에 한 번 넘어가므로 세션 동안 바꾸지 않고, 재시작도 같은 포트로 한다.
+  - env: 셸의 환경은 넘기지 않는다(`akan start-desktop`이 띄운 셸에는 CLI의 `AKAN_PUBLIC_*`·`PORT`가 있다). PATH·HOME 같은 시스템 변수 몇 개 + `server.json` env + launcher 값(`PORT`, `AKAN_LISTEN_HOST=127.0.0.1`, `AKAN_ALLOWED_HOSTS`, `JWT_SECRET`, `AKAN_SQLITE_DIR`, `AKAN_WORKSPACE_ROOT`, `AKAN_RUNTIME_DIR`, `BUN_BE_BUN`). launcher 값이 이긴다.
+  - 데이터: `<app data>/server`(작업 폴더, `db/`, `runtime/logs`, `jwt.secret` 0600). FileRef가 서빙하지 않는 예약 폴더다(L4).
+  - IPC `ready`를 최대 8초 기다린다. 넘기면 창을 먼저 띄우고, 서버는 계속 뜬다.
+- 크래시: 같은 포트로 다시 띄운다. 1초에서 두 배씩 30초까지. 연속 5회면 멈추고 `alert.show`로 알린다. 60초 이상 떠 있던 실행의 크래시는 횟수를 처음부터 센다.
+- 종료: `onQuit`에서 IPC `shutdown` → 1.5초 안에 안 끝나면 SIGTERM. 셸이 먼저 죽으면(SIGKILL) 서버가 IPC 끊김을 보고 스스로 내려간다(akanjs `AkanServer`). macOS에서 확인: SIGTERM 뒤 graceful 종료, `kill -9` 뒤 약 200ms 안에 서버 종료, 두 번째 인스턴스는 서버 없이 넘기고 끝남.
+- 로그: 서버의 stdout·stderr를 줄마다 `[server] ` 접두사로 셸 stdout·stderr에 넘긴다. 파일 로그는 `<app data>/server/runtime/logs`.
 
 ### macOS 네이티브 시트 (file-picker, dialog, D7)
 - 셸 op `panel.open`·`panel.save`·`panel.mime`·`panel.types`·`alert.show`는 `native/desktop/src/panels.rs`가 처리한다. 시트는 나중에 답하므로 이 op들은 요청 id를 받아 완료 핸들러에서 `reply`한다(`lib.rs`의 Shell 이벤트에서 notify·camera와 함께 먼저 분기). 창이 숨어 있으면 먼저 보인다(숨은 창의 시트는 뜨지 않고 핸들러도 불리지 않는다).
