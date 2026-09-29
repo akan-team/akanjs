@@ -396,7 +396,7 @@ describe("ApplicationScript desktop", () => {
       args: [app, NativeApp.desktopPlatform(), { target: "default", operation: "release" }],
     });
     const optionNames = getArgMetas(ApplicationCommand, "startDesktop")[1].map((meta) => meta.name);
-    expect(optionNames).toEqual(["target", "env", "release", "write"]);
+    expect(optionNames).toEqual(["target", "env", "release", "server", "write"]);
   });
 
   test("buildDesktop builds the targets for this computer's desktop platform", async () => {
@@ -423,7 +423,7 @@ describe("ApplicationScript desktop", () => {
       args: [app, NativeApp.desktopPlatform(), { target: "default", env: "develop", profile: "debug" }],
     });
     const optionNames = getArgMetas(ApplicationCommand, "buildDesktop")[1].map((meta) => meta.name);
-    expect(optionNames).toEqual(["target", "env", "debug", "write"]);
+    expect(optionNames).toEqual(["target", "env", "debug", "server", "write"]);
   });
 });
 
@@ -458,6 +458,24 @@ describe("ApplicationRunner mobile", () => {
     const app = mobileApp({ store: target("store"), admin: target("admin") });
     await expect(new ApplicationRunner().startDesktop(app, { target: "all" })).rejects.toThrow(
       "start-desktop runs one mobile target at a time",
+    );
+  });
+
+  test("a desktop app carries its server only in database mode single, and says so before it builds", async () => {
+    const app = {
+      name: "demo",
+      cwdPath: "/repo/apps/demo",
+      getConfig: async () => ({
+        app: { name: "demo" },
+        database: { modes: ["cluster"] },
+        mobile: { targets: { default: target("default") } },
+      }),
+    } as unknown as AppExecutor;
+    await expect(new ApplicationRunner().buildDesktop(app, { server: true })).rejects.toThrow(
+      "only database mode single runs (no Redis or Postgres); apps/demo/akan.config.ts declares cluster",
+    );
+    await expect(new ApplicationRunner().startDesktop(app, { operation: "release", server: true })).rejects.toThrow(
+      "only database mode single runs",
     );
   });
 

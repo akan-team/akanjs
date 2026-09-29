@@ -405,18 +405,36 @@ export class AkanAppConfig implements AppConfigResult {
       command: docker?.command ?? ["bun", "main.js"],
     };
   }
+  /** What the built server runs with in its image; a desktop app's carried server starts from the same values. */
+  getProductionEnv(): Record<string, string> {
+    return {
+      PORT: "8282",
+      NODE_ENV: "production",
+      AKAN_PUBLIC_REPO_NAME: this.baseDevEnv.repoName,
+      AKAN_PUBLIC_SERVE_DOMAIN: this.baseDevEnv.serveDomain,
+      AKAN_PUBLIC_APP_NAME: this.app.name,
+      AKAN_PUBLIC_ENV: this.baseDevEnv.env,
+      ...(this.basePaths.size ? { AKAN_PUBLIC_BASE_PATHS: [...this.basePaths].join(",") } : {}),
+      AKAN_PUBLIC_DEFAULT_LOCALE: this.i18n.defaultLocale,
+      AKAN_PUBLIC_LOCALES: this.i18n.locales.join(","),
+      AKAN_PUBLIC_API_PREFIX: this.api.prefix,
+      AKAN_PUBLIC_WS_PREFIX: this.api.websocketPrefix,
+      AKAN_PUBLIC_OPERATION_MODE: "cloud",
+      AKAN_DATABASE_MODES: this.database.modes.join(","),
+      // File logging is off: a container's writable layer is ephemeral and stdout is the collection path.
+      AKAN_LOG_TO_FILE: "0",
+      // The web env matches what was built (a deployment can only narrow it).
+      ...(this.web.ssr ? {} : { AKAN_SSR: "false" }),
+      ...(this.web.csr ? {} : { AKAN_CSR: "false" }),
+    };
+  }
   #makeDockerfile(): string {
     if (typeof this.docker === "string") return this.docker;
     const { image, preRuns, postRuns, command } = this.docker;
     const preRunScripts = this.#getDockerRunScripts(preRuns);
     const postRunScripts = this.#getDockerRunScripts(postRuns);
     const imageScript = this.#getDockerImageScript(image, DEFAULT_DOCKER_IMAGE);
-    // The web env matches what was built (a deployment can only narrow it). File logging is off: a container's
-    // writable layer is ephemeral and stdout is the collection path.
-    const webEnvLines = [
-      ...(this.web.ssr ? [] : ["ENV AKAN_SSR=false"]),
-      ...(this.web.csr ? [] : ["ENV AKAN_CSR=false"]),
-    ].join("\n");
+    const envLines = Object.entries(this.getProductionEnv()).map(([key, value]) => `ENV ${key}=${value}`);
     return `${imageScript}
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates tzdata && rm -rf /var/lib/apt/lists/*
 RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime
@@ -428,21 +446,7 @@ COPY ./package.json ./package.json
 RUN bun install --production
 ${postRunScripts.join("\n")}
 COPY . .
-ENV PORT=8282
-ENV NODE_ENV=production
-ENV AKAN_PUBLIC_REPO_NAME=${this.baseDevEnv.repoName}
-ENV AKAN_PUBLIC_SERVE_DOMAIN=${this.baseDevEnv.serveDomain}
-ENV AKAN_PUBLIC_APP_NAME=${this.app.name}
-ENV AKAN_PUBLIC_ENV=${this.baseDevEnv.env}
-${this.basePaths.size ? `ENV AKAN_PUBLIC_BASE_PATHS=${[...this.basePaths].join(",")}` : ""}
-ENV AKAN_PUBLIC_DEFAULT_LOCALE=${this.i18n.defaultLocale}
-ENV AKAN_PUBLIC_LOCALES=${this.i18n.locales.join(",")}
-ENV AKAN_PUBLIC_API_PREFIX=${this.api.prefix}
-ENV AKAN_PUBLIC_WS_PREFIX=${this.api.websocketPrefix}
-ENV AKAN_PUBLIC_OPERATION_MODE=cloud
-ENV AKAN_DATABASE_MODES=${this.database.modes.join(",")}
-ENV AKAN_LOG_TO_FILE=0
-${webEnvLines}
+${envLines.join("\n")}
 CMD [${command.map((c) => `"${c}"`).join(",")}]`;
   }
   static #importGeneration = 0;

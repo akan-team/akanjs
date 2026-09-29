@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { AkanNativeConfig } from "@akanjs/native/config";
 import type { AkanMobileTargetConfig, AkanNativeValue, AkanPluginNativeConfig, MobilePermission } from "akanjs";
+import type { DesktopServerBundle } from "./desktopServerStage";
 import { toIosInfoPlistUsageDescriptions } from "./usageDescriptions";
 
 export interface NativeConfigInput {
@@ -12,6 +13,8 @@ export interface NativeConfigInput {
   /** What the app's and its libs' plugins declare. */
   contributions: AkanPluginNativeConfig[];
   locales: readonly string[];
+  /** A desktop build that carries its server (`--server`). */
+  desktopServer?: DesktopServerBundle;
 }
 
 export interface NativeConfigResult {
@@ -68,7 +71,14 @@ export class NativeConfig {
     speech: { permission: "speech" },
   };
 
-  static build({ appPath, target, webDir, contributions, locales }: NativeConfigInput): NativeConfigResult {
+  static build({
+    appPath,
+    target,
+    webDir,
+    contributions,
+    locales,
+    desktopServer,
+  }: NativeConfigInput): NativeConfigResult {
     const warnings: string[] = [];
     const applied = (target.permissions ?? []).flatMap((permission) => {
       const claimed = contributions.filter((contribution) => contribution.permission === permission);
@@ -82,6 +92,8 @@ export class NativeConfig {
       ...new Set([
         ...NativeConfig.basePlugins,
         ...applied.flatMap((contribution) => contribution.plugins ?? []),
+        //? A second copy of the app would start a second server on the same data.
+        ...(desktopServer ? ["single-instance"] : []),
         ...(target.native?.plugins ?? []),
       ]),
     ];
@@ -146,6 +158,7 @@ export class NativeConfig {
       //? assetlinks.json vouches for `<appId>.debug` outside main, the suffix a debug build installs under.
       android: { debugAppIdSuffix: ".debug", ...(googleServices ? { googleServices: abs(googleServices) } : {}) },
       keyboard: { resize: "none" },
+      ...(desktopServer ? { desktop: { server: desktopServer } } : {}),
       ...(target.assets?.icon ? { icon: abs(target.assets.icon) } : {}),
       ...(target.assets?.splash ? { splash: { image: abs(target.assets.splash) } } : {}),
     };

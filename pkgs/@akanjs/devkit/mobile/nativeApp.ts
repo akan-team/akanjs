@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { AkanNativeConfig } from "@akanjs/native/config";
 import type { App } from "../commandDecorators";
+import type { DesktopServerBundle } from "./desktopServerStage";
 import {
   type DesktopPlatform,
   type MobilePlatform,
@@ -22,6 +23,12 @@ export interface NativeRunOptions {
   device?: DeviceSelector;
   /** Narrows the iPhone signing to one Apple team. */
   teamId?: string;
+}
+
+export interface NativeBuildOptions {
+  profile?: "debug" | "release";
+  /** The server a desktop app carries (`--server`), staged by DesktopServerStage. */
+  server?: DesktopServerBundle;
 }
 
 export interface NativeDevOptions extends NativeRunOptions {
@@ -58,7 +65,7 @@ export class NativeApp {
     });
   }
 
-  async config() {
+  async config(server?: DesktopServerBundle) {
     const [appConfig, plugins] = await Promise.all([this.app.getConfig(), this.app.collectPlugins()]);
     return NativeConfig.build({
       appPath: this.app.cwdPath,
@@ -66,12 +73,13 @@ export class NativeApp {
       webDir: this.web.dir,
       contributions: plugins.flatMap((plugin) => (plugin.native ? [plugin.native] : [])),
       locales: appConfig.i18n.locales,
+      ...(server ? { desktopServer: server } : {}),
     });
   }
 
   /** The API and the config it is about to build, refused here when the runtime would refuse it later. */
-  async prepare() {
-    const [api, { config, warnings }] = await Promise.all([NativeApi.load(this.app.cwdPath), this.config()]);
+  async prepare(server?: DesktopServerBundle) {
+    const [api, { config, warnings }] = await Promise.all([NativeApi.load(this.app.cwdPath), this.config(server)]);
     for (const warning of warnings) this.app.logger.warn(warning);
     const problems = api.validateConfig(config, { appDir: this.app.cwdPath });
     if (problems.length)
@@ -104,18 +112,20 @@ export class NativeApp {
     };
   }
 
-  async build(platform: NativePlatform, { profile = "release" }: { profile?: "debug" | "release" } = {}) {
+  async build(platform: NativePlatform, { profile = "release", server }: NativeBuildOptions = {}) {
+    NativeApp.#assertServerPlatform(platform, server);
     await this.assembleWeb();
-    const { api, config } = await this.prepare();
+    const { api, config } = await this.prepare(server);
     return await api.build({ ...this.#task(platform, config), profile });
   }
 
   async run(
     platform: NativePlatform,
-    { device, teamId, profile = "debug" }: NativeRunOptions & { profile?: "debug" | "release" } = {},
+    { device, teamId, profile = "debug", server }: NativeRunOptions & NativeBuildOptions = {},
   ) {
+    NativeApp.#assertServerPlatform(platform, server);
     await this.assembleWeb();
-    const { api, config } = await this.prepare();
+    const { api, config } = await this.prepare(server);
     return await api.run({
       ...this.#task(platform, config),
       profile,
@@ -190,6 +200,12 @@ export class NativeApp {
       .flatMap((part) => (part ?? "").split("/"))
       .filter((segment) => segment.length > 0);
     return `/${home.join("/")}?${params}`;
+  }
+
+  //? A phone runs no Bun, so only a desktop app can carry the server.
+  static #assertServerPlatform(platform: NativePlatform, server: DesktopServerBundle | undefined) {
+    if (server && (platform === "ios" || platform === "android"))
+      throw new Error(`Only a desktop app carries its server; ${platform} cannot run one.`);
   }
 
   //* A desktop app builds only on its own OS, so the platform is this computer's.

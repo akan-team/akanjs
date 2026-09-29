@@ -172,6 +172,39 @@ describe("AkanAppConfig", () => {
     expect(new AkanAppConfig(app, [], packageJson, { web: true }, baseDevEnv).web).toEqual({ ssr: true, csr: true });
   });
 
+  test("writes the image env from getProductionEnv, one ENV line per key in its order", () => {
+    const config = new AkanAppConfig(
+      app,
+      [],
+      packageJson,
+      { routes: [{ basePath: "admin", domains: {} }], web: false, database: { modes: ["single", "cluster"] } },
+      baseDevEnv,
+    );
+
+    expect(config.getProductionEnv()).toEqual({
+      PORT: "8282",
+      NODE_ENV: "production",
+      AKAN_PUBLIC_REPO_NAME: "akanjs",
+      AKAN_PUBLIC_SERVE_DOMAIN: "akanjs.com",
+      AKAN_PUBLIC_APP_NAME: "portal",
+      AKAN_PUBLIC_ENV: "debug",
+      AKAN_PUBLIC_BASE_PATHS: "admin",
+      AKAN_PUBLIC_DEFAULT_LOCALE: "en",
+      AKAN_PUBLIC_LOCALES: config.i18n.locales.join(","),
+      AKAN_PUBLIC_API_PREFIX: "/api",
+      AKAN_PUBLIC_WS_PREFIX: "/ws",
+      AKAN_PUBLIC_OPERATION_MODE: "cloud",
+      AKAN_DATABASE_MODES: "single,cluster",
+      AKAN_LOG_TO_FILE: "0",
+      AKAN_SSR: "false",
+      AKAN_CSR: "false",
+    });
+    const envBlock = Object.entries(config.getProductionEnv())
+      .map(([key, value]) => `ENV ${key}=${value}`)
+      .join("\n");
+    expect(config.dockerfile).toContain(`COPY . .\n${envBlock}\nCMD ["bun","main.js"]`);
+  });
+
   test("refuses a csr-less build that ships a mobile app", () => {
     expect(
       () => new AkanAppConfig(app, [], packageJson, { web: { csr: false }, mobile: { appName: "portal" } }, baseDevEnv),

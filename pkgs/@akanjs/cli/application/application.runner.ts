@@ -6,7 +6,13 @@ import { resolveSignalTestPreloadPath } from "@akanjs/devkit/applicationTestPrel
 import { type App, type Exec, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor } from "@akanjs/devkit/executors";
 import type { DevStdioMode } from "@akanjs/devkit/incrementalBuilder";
-import { NativeApp, type NativePlatform, type ResolvedMobileTarget, resolveMobileTargets } from "@akanjs/devkit/mobile";
+import {
+  DesktopServerStage,
+  NativeApp,
+  type NativePlatform,
+  type ResolvedMobileTarget,
+  resolveMobileTargets,
+} from "@akanjs/devkit/mobile";
 import { SlicePlanner } from "@akanjs/devkit/slicePlanner";
 import { Logger, type LogRecord } from "akanjs/common";
 import { openBrowser } from "../openBrowser";
@@ -31,6 +37,8 @@ export interface MobileTargetOptions {
 }
 export interface MobileBuildOptions extends MobileTargetOptions {
   profile?: "debug" | "release";
+  /** A desktop build that carries the app's server. */
+  server?: boolean;
 }
 export interface MobileStartOptions extends MobileTargetOptions {
   operation?: "local" | "release";
@@ -38,6 +46,8 @@ export interface MobileStartOptions extends MobileTargetOptions {
   device?: string;
   /** Narrows an iPhone's signing to one Apple team. */
   teamId?: string;
+  /** A desktop release build that carries the app's server. */
+  server?: boolean;
 }
 export interface IosReleaseOptions extends MobileTargetOptions {
   teamId?: string;
@@ -262,12 +272,18 @@ try {
   async buildMobile(
     app: App,
     platform: NativePlatform,
-    { target, env = "debug", profile = "release" }: MobileBuildOptions = {},
+    { target, env = "debug", profile = "release", server = false }: MobileBuildOptions = {},
   ) {
     const targets = await resolveMobileTargets(app, target);
+    if (server) DesktopServerStage.assertCarriable(await app.getConfig());
     await this.#buildMobileCsr(app, env);
+    const carried = server ? await new DesktopServerStage(app).prepare(env) : undefined;
     await this.#runMobileTargets(targets, async (mobileTarget) => {
-      this.#reportBuild(app, mobileTarget, await new NativeApp(app, mobileTarget).build(platform, { profile }));
+      this.#reportBuild(
+        app,
+        mobileTarget,
+        await new NativeApp(app, mobileTarget).build(platform, { profile, ...(carried ? { server: carried } : {}) }),
+      );
     });
   }
   async buildDesktop(app: App, options: MobileBuildOptions = {}) {
@@ -278,7 +294,7 @@ try {
   async startMobile(
     app: App,
     platform: NativePlatform,
-    { target, env = "local", operation = "local", device, teamId }: MobileStartOptions = {},
+    { target, env = "local", operation = "local", device, teamId, server = false }: MobileStartOptions = {},
   ) {
     const targets = await resolveMobileTargets(app, target);
     const [mobileTarget] = targets;
@@ -289,8 +305,14 @@ try {
     const nativeApp = new NativeApp(app, mobileTarget);
     const selection = { ...(device ? { device } : {}), ...(teamId ? { teamId } : {}) };
     if (operation === "release") {
+      if (server) DesktopServerStage.assertCarriable(await app.getConfig());
       await this.#buildMobileCsr(app, env);
-      const running = await nativeApp.run(platform, { ...selection, profile: "release" });
+      const carried = server ? await new DesktopServerStage(app).prepare(env) : undefined;
+      const running = await nativeApp.run(platform, {
+        ...selection,
+        profile: "release",
+        ...(carried ? { server: carried } : {}),
+      });
       await running.exited;
       return;
     }

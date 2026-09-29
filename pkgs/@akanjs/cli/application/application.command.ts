@@ -17,6 +17,10 @@ const teamOption = { flag: "T", desc: "Apple team id the signing is narrowed to"
 const devEnvs = ["local", "debug", "develop", "main"] as const;
 const buildEnvOption = { enum: devEnvs, desc: "backend environment", default: "debug" } as const;
 const startEnvOption = { enum: devEnvs, desc: "backend environment", default: "local" } as const;
+const serverOption = {
+  desc: "also carry the app's server in the desktop app (database mode single, API only, on loopback)",
+  default: false,
+};
 const releaseEnvOption = {
   enum: ["debug", "develop", "main", "local"],
   desc: "backend environment",
@@ -149,9 +153,16 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .option("target", String, mobileTargetOption)
     .option("env", String, buildEnvOption)
     .option("debug", Boolean, { desc: "debug build instead of release", default: false })
+    .option("server", Boolean, serverOption)
     .option("write", Boolean, { desc: "write code generation", default: true })
-    .exec(async function (app, target, env, debug, write) {
-      await this.applicationScript.buildDesktop(app, { target, env, profile: debug ? "debug" : "release", write });
+    .exec(async function (app, target, env, debug, server, write) {
+      await this.applicationScript.buildDesktop(app, {
+        target,
+        env,
+        profile: debug ? "debug" : "release",
+        server,
+        write,
+      });
     }),
   start: target({ short: true, desc: "Start development server(s) (frontend SSR + backend)" })
     .with(Apps)
@@ -213,9 +224,19 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .option("target", String, mobileTargetOption)
     .option("env", String, startEnvOption)
     .option("release", Boolean, { desc: "run a release build of its own bundle instead", default: false })
+    .option("server", Boolean, {
+      ...serverOption,
+      desc: "with --release, carry the app's server in the app; without it, start `akan start` alongside",
+    })
     .option("write", Boolean, { desc: "write code generation", default: true })
-    .exec(async function (app, target, env, release, write) {
-      await this.applicationScript.startDesktop(app, { target, env, operation: release ? "release" : "local", write });
+    .exec(async function (app, target, env, release, server, write) {
+      await this.applicationScript.startDesktop(app, {
+        target,
+        env,
+        operation: release ? "release" : "local",
+        server,
+        write,
+      });
     }),
   releaseIos: target({ desc: "Build and sign the iOS app for the App Store (.ipa)" })
     .with(App)
