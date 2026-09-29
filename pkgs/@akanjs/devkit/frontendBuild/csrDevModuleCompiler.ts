@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { BunPlugin } from "bun";
 import type { App } from "../commandDecorators";
+import { CsrDevFactoryCheck } from "./csrDevFactoryCheck";
 import { CsrDevPaths } from "./csrDevPaths";
 import { CsrDevResolver } from "./csrDevResolver";
 import type { CsrDevCompiledModule, CsrDevContext, CsrDevSharedHelpers } from "./csrDevTypes";
@@ -82,6 +83,7 @@ export class CsrDevModuleCompiler {
     while (frontier.length > 0) {
       const refusedVendors = refuseNewVendor ? frontier.filter((file) => CsrDevPaths.isVendorFile(file)) : [];
       if (refusedVendors.length > 0) return { modules: [...compiled.values()], refusedVendors, unresolved: [] };
+      await this.#resolver.cover(frontier);
       const round = await this.#compileRound(frontier);
       if (round.misses.length > 0 && !this.#resolver.prepassDone && refusePrepass)
         return { modules: [...compiled.values()], refusedVendors: [], unresolved: round.misses };
@@ -138,21 +140,29 @@ export class CsrDevModuleCompiler {
       ),
     );
     const misses: string[] = [];
-    const result = await Bun.build({
-      entrypoints: files,
-      root: this.#paths.root,
-      target: "browser",
-      format: "cjs",
-      reactFastRefresh: !vendor,
-      sourcemap: vendor ? "none" : "external",
-      naming: { entry: "[dir]/[name].[ext]", asset: "assets/[name]-[hash].[ext]" },
-      publicPath: this.#routePrefix,
-      metafile: true,
-      env: "AKAN_PUBLIC_*",
-      define: this.#context.define,
-      optimizeImports: this.#context.optimizeImports,
-      plugins: [this.#registryPlugin(vendor, misses)],
-    });
+    let result: Awaited<ReturnType<typeof Bun.build>>;
+    try {
+      result = await Bun.build({
+        entrypoints: files,
+        root: this.#paths.root,
+        target: "browser",
+        format: "cjs",
+        reactFastRefresh: !vendor,
+        sourcemap: vendor ? "none" : "external",
+        naming: { entry: "[dir]/[name].[ext]", asset: "assets/[name]-[hash].[ext]" },
+        publicPath: this.#routePrefix,
+        metafile: true,
+        env: "AKAN_PUBLIC_*",
+        //? A factory runs as a classic script, where `import.meta` is a SyntaxError that takes the whole vendor file
+        //? down, and Bun's cjs output keeps `import.meta.env` and spells `import.meta.url` as this disk's `file://` path.
+        define: { ...this.#context.define, "import.meta": "__akanMeta" },
+        optimizeImports: this.#context.optimizeImports,
+        plugins: [this.#registryPlugin(vendor, misses)],
+      });
+    } catch (error) {
+      if (vendor && error instanceof AggregateError) return await this.#withoutFailed(files, error);
+      throw error;
+    }
     const { outputs } = result.metafile as unknown as OutputMetafile;
     const sourceMaps = new Map(
       result.outputs.filter((artifact) => artifact.kind === "sourcemap").map((artifact) => [artifact.path, artifact]),
@@ -177,12 +187,20 @@ export class CsrDevModuleCompiler {
       }
       const code = await artifact.text();
       const id = this.#paths.idOf(file);
+      const built = CsrDevModuleCompiler.#factory(id, code);
+      const problem = CsrDevFactoryCheck.problemOf(built.factory, built.helpers?.definition);
+      if (problem && !vendor)
+        throw new Error(`[csr-dev] ${id}: its factory does not parse as a classic script: ${problem}`);
+      if (problem) {
+        modules.push(this.#leftOut(file, problem));
+        continue;
+      }
       const sourceMap = sourceMaps.get(`${artifact.path}.map`);
       modules.push({
         id,
         file,
         vendor,
-        ...CsrDevModuleCompiler.#factory(id, code),
+        ...built,
         sourceMap: sourceMap ? this.#rebaseSourceMap(await sourceMap.text()) : undefined,
         deps: this.#emittedDeps(code),
         mtimeMs: mtimes.get(file) ?? CsrDevPaths.mtimeOf(file),
@@ -190,6 +208,50 @@ export class CsrDevModuleCompiler {
       });
     }
     return { modules, misses, tangled };
+  }
+
+  //? A package file that cannot be a CommonJS factory would fail every module built beside it, and no save fixes a
+  //? package: it is left out and named in the log, and the module requiring it gets the reason. App code still fails.
+  async #withoutFailed(files: string[], error: AggregateError): Promise<BuildRound> {
+    const reasons = new Map<string, string[]>();
+    for (const message of error.errors as {
+      message?: unknown;
+      position?: { file?: unknown; line?: number } | null;
+    }[]) {
+      const file = message.position?.file;
+      if (typeof file !== "string" || !path.isAbsolute(file)) continue;
+      const real = CsrDevPaths.realpath(file);
+      const at = message.position?.line ? `:${message.position.line}` : "";
+      reasons.set(real, [...(reasons.get(real) ?? []), `${String(message.message)} (${this.#paths.idOf(real)}${at})`]);
+    }
+    const failed = new Set(files.filter((file) => reasons.has(CsrDevPaths.realpath(file))));
+    if (failed.size === 0) throw error;
+    const rest = files.filter((file) => !failed.has(file));
+    const round = rest.length > 0 ? await this.#bunBuild(rest, true) : { modules: [], misses: [], tangled: [] };
+    for (const file of failed) {
+      const text = (reasons.get(CsrDevPaths.realpath(file)) ?? []).join("; ");
+      const awaits = text.includes('"await" can only be used');
+      round.modules.push(
+        this.#leftOut(file, awaits ? `a top-level await, which a CommonJS factory cannot wait on: ${text}` : text),
+      );
+    }
+    return round;
+  }
+
+  #leftOut(file: string, problem: string): CsrDevCompiledModule {
+    const real = CsrDevPaths.realpath(file);
+    const id = this.#paths.idOf(real);
+    this.#app.logger.error(`[csr-dev] ${id} is left out of the dev registry: ${problem}`);
+    return {
+      id,
+      file: real,
+      vendor: true,
+      factory: CsrDevFactoryCheck.thrower(id, problem),
+      helpers: null,
+      deps: [],
+      mtimeMs: CsrDevPaths.mtimeOf(real),
+      hash: "",
+    };
   }
 
   #registryPlugin(vendor: boolean, misses: string[]): BunPlugin {
@@ -261,12 +323,20 @@ export class CsrDevModuleCompiler {
   // Every rewrite keeps the line count, so a module's source map still lines up inside the factory.
   static #factory(id: string, code: string): { factory: string; helpers: CsrDevSharedHelpers | null } {
     const prefix = CsrDevPaths.modulePrefix;
-    let patched = code.replaceAll(`import("${prefix}`, `__akanImport("${prefix}`).replace(/^\/\/# debugId=.*$/m, "");
+    //? Bun keeps a package's `#!` line atop its output, where a script inside a function cannot have one.
+    let patched = code
+      .replace(/^#!/, "//")
+      .replaceAll(`import("${prefix}`, `__akanImport("${prefix}`)
+      .replace(/^\/\/# debugId=.*$/m, "");
+    //? A file esbuild already bundled (mermaid's parser chunks) defines its own helper under the same name, below Bun's
+    //? preamble, and Bun then emits none. Only a copy there is exempt: one in the preamble is Bun's own, changed.
+    const marker = patched.search(/^\/\/ /m);
+    const body = marker < 0 ? "" : patched.slice(marker);
     for (const [name, params, method] of CsrDevModuleCompiler.#helperPatches) {
       const definition = `var ${name} = ${params} => {`;
       if (patched.includes(definition))
         patched = patched.replace(definition, `var ${name} = __akan.${method}, __bun${name} = ${params} => {`);
-      else if (patched.includes(`${name}(`))
+      else if (patched.includes(`${name}(`) && !new RegExp(`\\b(?:var|let|const|function)\\s+${name}\\b`).test(body))
         throw new Error(
           `[csr-dev] ${id}: Bun's ${name} helper no longer reads "${definition}"; CsrDevModuleCompiler must follow`,
         );
@@ -275,8 +345,13 @@ export class CsrDevModuleCompiler {
     // re-running the store root is the whole update, and bubbling past it would only reach the page modules.
     if (CsrDevModuleCompiler.#storeRoot.test(id)) patched += "\nmodule.hot.accept();";
     const shared = CsrDevModuleCompiler.#shareHelpers(patched);
+    //? What `import.meta` is in a browser module: a `url` and no `env`, so `import.meta.env` checks (jotai, zustand)
+    //? branch as they do in the ESM bundle. On the header line, outside the preamble that modules share.
+    const meta = /(?<![\w$.])__akanMeta(?![\w$])/.test(patched)
+      ? ` var __akanMeta = { url: new URL(${JSON.stringify(id.startsWith("/") ? id : `/${id}`)}, self.location.href).href };`
+      : "";
     return {
-      factory: `function (require, module, exports, $RefreshReg$, $RefreshSig$, __akanImport) {\n${shared?.code ?? patched}\n}`,
+      factory: `function (require, module, exports, $RefreshReg$, $RefreshSig$, __akanImport) {${meta}\n${shared?.code ?? patched}\n}`,
       helpers: shared?.helpers ?? null,
     };
   }

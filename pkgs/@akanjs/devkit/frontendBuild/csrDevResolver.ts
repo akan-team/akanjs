@@ -15,6 +15,12 @@ interface PrepassMetafile {
   inputs: Record<string, { imports: MetafileImport[] }>;
 }
 
+interface BrowserMap {
+  /** What the `browser` object maps to `false`: an empty module in a browser build. */
+  offFiles: Set<string>;
+  offNames: Set<string>;
+}
+
 export interface CsrDevResolverOptions {
   paths: CsrDevPaths;
   context: CsrDevContext;
@@ -36,7 +42,9 @@ export class CsrDevResolver {
   readonly #resolution = new Map<string, Map<string, string>>();
   readonly #fallbacks = new Set<string>();
   readonly #runtimeResolved = new Map<string, Set<string>>();
-  readonly #browserMaps = new Map<string, boolean>();
+  readonly #browserMaps = new Map<string, BrowserMap | null>();
+  /** Files a browser build loaded, so every import they make has its browser resolution recorded. */
+  readonly #loaded = new Set<string>();
   readonly #startedAt: number;
   #prepassDone = false;
 
@@ -85,9 +93,52 @@ export class CsrDevResolver {
       optimizeImports: this.#context.optimizeImports,
       plugins: [PagesBundleBuilder.createCssStubPlugin()],
     });
-    const { inputs } = result.metafile as unknown as PrepassMetafile;
+    this.#record((result.metafile as unknown as PrepassMetafile).inputs);
+    this.#prepassDone = true;
+  }
+
+  //? The browser build drops a side-effect-free barrel's unused re-exports without loading them, yet the registry
+  //? compiles every file an import names. Such a file's own imports are resolved by a browser build of its own, one
+  //? level deep, not by the runtime resolver's Node conditions (vfile's `#minpath` would reach `node:path`).
+  async cover(files: string[]): Promise<void> {
+    if (!this.#prepassDone) return;
+    const pending = files.filter((file) => CsrDevPaths.isScript(file) && !this.#loaded.has(file));
+    if (pending.length === 0) return;
+    for (const file of pending) this.#loaded.add(file);
+    const entries = new Set(pending);
+    const result = await Bun.build({
+      entrypoints: pending,
+      target: "browser",
+      metafile: true,
+      throw: false,
+      external: [...(this.#context.externals ?? [])],
+      env: "AKAN_PUBLIC_*",
+      define: this.#context.define,
+      plugins: [
+        {
+          name: "akan-csr-cover",
+          //? What an entry imports is resolved, never parsed: a CommonJS stub, since an empty ESM module fails a named
+          //? import ("No matching export") and a failed build hands back no metafile at all.
+          setup: (build) => {
+            build.onLoad({ filter: /.*/ }, (args) =>
+              entries.has(CsrDevPaths.realpath(args.path))
+                ? undefined
+                : { contents: "module.exports = {};", loader: "js" },
+            );
+          },
+        },
+      ],
+    });
+    //? Left unrecorded when the build fails: those imports keep the runtime resolver's answer, as before.
+    if (result.metafile) this.#record((result.metafile as unknown as PrepassMetafile).inputs, entries);
+  }
+
+  #record(inputs: PrepassMetafile["inputs"], only?: Set<string>): void {
     for (const [input, { imports }] of Object.entries(inputs)) {
       const importer = CsrDevPaths.realpath(path.resolve(input));
+      if (only && !only.has(importer)) continue;
+      //? A re-export the build tree-shook keeps no specifier, so its file is resolved again as an entry of its own.
+      if (imports.every((record) => record.original)) this.#loaded.add(importer);
       for (const record of imports) {
         if (!record.original) continue;
         if (record.external) {
@@ -101,11 +152,12 @@ export class CsrDevResolver {
         this.#runtimeResolved.get(importer)?.delete(record.original);
       }
     }
-    this.#prepassDone = true;
   }
 
   resolve(importer: string, specifier: string, kind: "import" | "require" = "import"): string | null {
     if (this.#isInlineSpecifier(specifier)) return CsrDevResolver.inline;
+    const disabled = this.#disabledInBrowser(importer, specifier, kind);
+    if (disabled) return disabled;
     const known = this.#resolution.get(importer)?.get(specifier);
     const usable = known && this.#stillAnswers(importer, specifier, known, kind) ? known : null;
     const target = usable ?? this.#resolveUnknown(importer, specifier, kind);
@@ -139,23 +191,51 @@ export class CsrDevResolver {
     });
   }
 
+  //? `false` in a package's `browser` object is an empty module to a browser build (object-inspect's
+  //? `./util.inspect.js`, which requires `util`). Its record carries no specifier, so the field is read here.
+  #disabledInBrowser(importer: string, specifier: string, kind: "import" | "require"): string | null {
+    const map = this.#browserMapOf(path.dirname(importer));
+    if (!map || (map.offFiles.size === 0 && map.offNames.size === 0)) return null;
+    if (!specifier.startsWith(".") && !path.isAbsolute(specifier))
+      return map.offNames.has(specifier) ? `${CsrDevPaths.emptyStubPrefix}${specifier}` : null;
+    const target = CsrDevPaths.resolveRelative(path.dirname(importer), specifier, kind);
+    return target && map.offFiles.has(CsrDevPaths.realpath(target))
+      ? `${CsrDevPaths.emptyStubPrefix}${this.#paths.idOf(target)}`
+      : null;
+  }
+
   #hasBrowserMap(dir: string): boolean {
+    return this.#browserMapOf(dir) !== null;
+  }
+
+  #browserMapOf(dir: string): BrowserMap | null {
     const cached = this.#browserMaps.get(dir);
     if (cached !== undefined) return cached;
     const pkgFile = path.join(dir, "package.json");
     const parent = path.dirname(dir);
-    let mapped: boolean;
+    let map: BrowserMap | null = null;
     if (fs.existsSync(pkgFile)) {
       try {
         const browser = (JSON.parse(fs.readFileSync(pkgFile, "utf8")) as { browser?: unknown }).browser;
-        mapped = typeof browser === "object" && browser !== null;
+        if (typeof browser === "object" && browser !== null) {
+          const off = Object.entries(browser)
+            .filter(([, target]) => target === false)
+            .map(([key]) => key);
+          const files = off
+            .filter((key) => key.startsWith("."))
+            .map((key) => CsrDevPaths.resolveRelative(dir, key))
+            .filter((file): file is string => !!file);
+          map = {
+            offFiles: new Set(files.map((file) => CsrDevPaths.realpath(file))),
+            offNames: new Set(off.filter((key) => !key.startsWith("."))),
+          };
+        }
       } catch {
         // An unreadable package.json maps nothing; Bun's build fails on it anyway.
-        mapped = false;
       }
-    } else mapped = parent !== dir && this.#hasBrowserMap(parent);
-    this.#browserMaps.set(dir, mapped);
-    return mapped;
+    } else if (parent !== dir) map = this.#browserMapOf(parent);
+    this.#browserMaps.set(dir, map);
+    return map;
   }
 
   /** A module that left the graph takes its records with it. */

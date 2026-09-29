@@ -4,6 +4,7 @@ import path from "node:path";
 export class CsrDevPaths {
   static readonly modulePrefix = "akan-module:";
   static readonly stubPrefix = "stub:";
+  static readonly emptyStubPrefix = "stub:empty:";
   static readonly vendorPrefix = "vendor:";
   readonly root: string;
 

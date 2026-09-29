@@ -114,6 +114,10 @@ export class CsrDevArtifactWriter {
     const stubs = new Set(Object.values(graph.modules).flatMap((module) => module.deps.filter(CsrDevPaths.isStub)));
     const lines = [await this.#helperDefinitions(graph, ids), ...(await this.#defineLines(ids))];
     for (const stub of [...stubs].sort()) {
+      if (stub.startsWith(CsrDevPaths.emptyStubPrefix)) {
+        lines.push(`__akan.define(${JSON.stringify(stub)}, function () {});\n`);
+        continue;
+      }
       const message = `[akan-csr] ${stub.slice(CsrDevPaths.stubPrefix.length)} is a Node built-in the browser does not have`;
       lines.push(
         `__akan.define(${JSON.stringify(stub)}, function () {\n  throw new Error(${JSON.stringify(message)});\n});\n`,

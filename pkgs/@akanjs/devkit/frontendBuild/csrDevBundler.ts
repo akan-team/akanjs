@@ -13,7 +13,7 @@ import { PagesEntrySourceGenerator } from "./pagesEntrySourceGenerator";
 
 //* Dev-only CSR as a module registry, under `.akan/artifact/csr-dev`: one entry per basePath boots every page.
 export class CsrDevBundler extends DevRegistryBundler {
-  static readonly #formatVersion = 3;
+  static readonly #formatVersion = 4;
   readonly reloadsOnEntryChange = true;
   //? Detecting a page's async default parses it with TypeScript: on apps/akan every page each save cost ~100ms.
   readonly #asyncDefaults = new Map<string, { mtimeMs: number; detected: Promise<boolean> }>();

@@ -76,6 +76,14 @@ describe("CsrDevArtifactWriter", () => {
     expect(existsSync(path.join(dir, "graph.json"))).toBe(true);
   });
 
+  test("a module a package's browser field turns off is written empty, and a Node built-in still throws", async () => {
+    const { writer, graph, dir } = await makeWriter();
+    graph.modules["a.ts"] = { vendor: false, mtimeMs: 0, hash: "", deps: ["stub:empty:fs", "stub:path"] };
+    const vendor = readFileSync(path.join(dir, await writer.writeVendor(graph)), "utf8");
+    expect(vendor).toContain('__akan.define("stub:empty:fs", function () {});');
+    expect(vendor).toContain("[akan-csr] path is a Node built-in the browser does not have");
+  });
+
   test("rewrites an app.js a crash left behind the manifest's generation", async () => {
     const { writer, graph, read } = await makeWriter();
     await writer.writeApp(graph, { generation: 5, vendorFile: "v.js" });
