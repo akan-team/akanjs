@@ -67,6 +67,11 @@
       "types": "./client/native.ts",
       "default": "./client/native.ts"
     },
+    "./client/native/*": {
+      "import": "./client/native/*.ts",
+      "types": "./client/native/*.ts",
+      "default": "./client/native/*.ts"
+    },
     "./native/desktop": {
       "import": "./native/desktop.ts",
       "types": "./native/desktop.ts",

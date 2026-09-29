@@ -262,8 +262,9 @@ against a key in `~/.akan/native` instead, in `operationMode` local only; every 
 
 **Devices belong to the shell, not the server.** Displays and their changes (`screen`), windows placed on them
 (`window`), the system volume and mute (`volume`), global shortcuts, keep-awake and launch at login are native
-runtime plugins, each added to the target's `native.plugins`: `volume` and `filePicker` come from
-`akanjs/client/native`, the rest from `@akanjs/native/plugins/<id>` in a `webkit/` hook. A capability the shell
+runtime plugins, each added to the target's `native.plugins`. Every builtin plugin's page API is
+`akanjs/client/native/<id>` (`akanjs/client/native/window`, `…/screen`, `…/global-shortcut`), imported in a `webkit/`
+hook; `volume` and `filePicker` also come from `akanjs/client/native` itself. A capability the shell
 lacks is added there: an app's own plugin runs as Bun code in the plugin host and cannot add a native shell op.
 
 ## Database Modes — `database` In `akan.config.ts`

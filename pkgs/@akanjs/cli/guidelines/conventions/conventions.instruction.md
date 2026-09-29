@@ -949,7 +949,7 @@ export default page()
 | Folder | Admission test | Naming |
 |---|---|---|
 | `common/` | pure, isomorphic, zero-dependency; may import only sibling `common/*` and `akanjs/base`. Cannot import `Err`, so keep throwing code out of it. | camelCase file, filename equals the single export |
-| `webkit/` | touches `window` / `navigator` / the native bridge (`akanjs/client/native`), or is a React hook | `use<Thing>.tsx` — `.tsx` even with no JSX |
+| `webkit/` | touches `window` / `navigator` / the native bridge (`akanjs/client/native`, or `akanjs/client/native/<plugin id>` for any builtin plugin), or is a React hook | `use<Thing>.tsx` — `.tsx` even with no JSX |
 | `srvkit/` | touches `node:*`, `Bun`, `process.env`, a secret, or a server SDK | camelCase file, PascalCase class |
 | `ui/` | renders JSX, or defines a look (a recipe in `Recipe/`, a lib's `tokens.css`), and is not bound to one model | PascalCase component, camelCase sidecar (`swipeCard.util.ts`), `Recipe/<name>.ts` |
 | `plugin/` | build- or CLI-time `AkanPlugin` | `<name>.plugin.ts`, registered in `akan.config.ts` |
