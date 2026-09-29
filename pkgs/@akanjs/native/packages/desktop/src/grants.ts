@@ -19,8 +19,9 @@ export interface FileGrant {
 
 const grants = new Map<string, FileGrant>();
 
+//? AKAN_NATIVE_DEV_GRANT_KEY moves it; a changed HOME does not, since Bun reads homedir() once per process.
 export function devGrantKeyFile(home = homedir()): string {
-  return join(home, ".akan", "native", "dev-file-grant.key");
+  return process.env.AKAN_NATIVE_DEV_GRANT_KEY || join(home, ".akan", "native", "dev-file-grant.key");
 }
 
 export function grantFile(path: string, mode: GrantMode, { dev = false }: { dev?: boolean } = {}): string {

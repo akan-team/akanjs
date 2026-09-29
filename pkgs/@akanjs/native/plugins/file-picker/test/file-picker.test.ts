@@ -296,8 +296,7 @@ describe("desktop", () => {
 
   test("a dev build's grant carries the path, since its server is not the shell's child", async () => {
     const home = mkdtempSync(join(tmpdir(), "akan-native-grant-home-"));
-    const realHome = process.env.HOME;
-    process.env.HOME = home;
+    process.env.AKAN_NATIVE_DEV_GRANT_KEY = join(home, "dev-file-grant.key");
     try {
       mkdirSync(join(root, "grant-src"), { recursive: true });
       writeFileSync(join(root, "grant-src", "b.txt"), "hello");
@@ -313,7 +312,7 @@ describe("desktop", () => {
       expect(signature.length).toBeGreaterThan(40);
       expect(resolveGrant(picked.files[0].grant)).toBeNull();
     } finally {
-      process.env.HOME = realHome;
+      delete process.env.AKAN_NATIVE_DEV_GRANT_KEY;
       rmSync(home, { recursive: true, force: true });
     }
   });

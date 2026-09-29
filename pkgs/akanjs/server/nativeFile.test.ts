@@ -8,21 +8,17 @@ import type { AkanIpcMessage } from "../service/ipcTypes";
 import { NativeFile } from "./nativeFile";
 
 const home = mkdtempSync(path.join(tmpdir(), "akan-native-file-"));
-const realHome = process.env.HOME;
-const realProfile = process.env.USERPROFILE;
 const realSend = process.send;
 const realMode = NativeFile.operationMode;
 beforeAll(() => {
-  process.env.HOME = home;
-  process.env.USERPROFILE = home;
+  process.env.AKAN_NATIVE_DEV_GRANT_KEY = path.join(home, "dev-file-grant.key");
 });
 afterEach(() => {
   process.send = realSend;
   NativeFile.operationMode = realMode;
 });
 afterAll(() => {
-  process.env.HOME = realHome;
-  process.env.USERPROFILE = realProfile;
+  delete process.env.AKAN_NATIVE_DEV_GRANT_KEY;
   rmSync(home, { recursive: true, force: true });
 });
 

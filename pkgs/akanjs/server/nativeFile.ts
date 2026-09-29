@@ -71,7 +71,9 @@ export class NativeFile {
       throw new Error("A dev build's file grant resolves only on akan start, in operationMode local.");
     const [, mode, encoded = "", signature = ""] = grant.split(":");
     if (mode !== "read" && mode !== "write" && mode !== "folder") throw new Error("The file grant is malformed.");
-    const key = readFileSync(path.join(homedir(), ".akan", "native", "dev-file-grant.key"));
+    const key = readFileSync(
+      process.env.AKAN_NATIVE_DEV_GRANT_KEY || path.join(homedir(), ".akan", "native", "dev-file-grant.key"),
+    );
     const expected = createHmac("sha256", key).update(`${mode}:${encoded}`).digest();
     const given = Buffer.from(signature, "base64url");
     if (given.length !== expected.length || !timingSafeEqual(given, expected))
