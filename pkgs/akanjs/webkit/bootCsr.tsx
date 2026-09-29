@@ -45,16 +45,20 @@ export const bootCsr = async (context: CsrRouteContext) => {
     const { pathRoutes, routeGuide } = useSyncExternalStore(table.subscribe, table.snapshot);
     const csrValues = useCsrValues(routeGuide, pathRoutes);
     const { location } = csrValues;
+    //? An unmatched path never gets here (useLocation sends it to /404), and every app has a root layout, generated if
+    //? need be: none means the table misplaced them, which used to render an empty page with nothing in the console.
+    if (location.pathRoute.renderRootLayouts.length === 0)
+      throw new Error(
+        `[csr] no root layout for ${location.pathRoute.path}: the route table put none of its layouts at the root`,
+      );
     return (
       <csrContext.Provider value={csrValues}>
-        {location.pathRoute.renderRootLayouts.length > 0 ? (
-          <RenderLayer
-            renders={location.pathRoute.renderRootLayouts}
-            index={0}
-            params={location.params}
-            searchParams={location.searchParams}
-          />
-        ) : null}
+        <RenderLayer
+          renders={location.pathRoute.renderRootLayouts}
+          index={0}
+          params={location.params}
+          searchParams={location.searchParams}
+        />
       </csrContext.Provider>
     );
   };

@@ -17,6 +17,8 @@ import {
   matchRoutePattern,
   parseBasePaths,
   parseRouteModuleKey,
+  type RouteLayer,
+  RouteLayering,
   routeSegmentToTreePath,
 } from "akanjs/common";
 import { createElement } from "react";
@@ -178,49 +180,27 @@ export class RouteTreeBuilder {
     } as Route);
   }
 
-  #getPathRoutes(
-    route: Route,
-    parentRootLayouts: RouteRender[] = [],
-    parentLayouts: RouteRender[] = [],
-    parentPaths: string[] = [],
-    parentHead?: ResolveHead,
-    parentRootRenders: RouteRender[] = [],
-  ): PathRoute[] {
-    const parentPath = parentPaths.filter((p) => p !== "/").join("");
-    const currentPathSegment = /^\/\(.*\)$/.test(route.path) ? "" : route.path;
-    const isRoot = this.#baseLayoutPaths.includes(parentPath + currentPathSegment) && parentRootLayouts.length < 2;
-    const routePath = parentPath + currentPathSegment;
-    const pathSegments = [...parentPaths, ...(currentPathSegment ? [currentPathSegment] : [])];
-    const currentRootLayout = isRoot && route.renderLayout ? route.renderLayout : null;
-    // A manifest sits just outside its own directory's layout, never higher: hoisted above shared layouts, it would
-    // change the tree's top on crossing its boundary and remount the whole app. `parentRootLayouts` counts real layouts.
-    const currentOverrideRenders = route.renderOverrides ? [route.renderOverrides] : [];
-    const nodeRenders = [...currentOverrideRenders, ...(route.renderLayout ? [route.renderLayout] : [])];
-    const rootLayoutStack = [...parentRootLayouts, ...(currentRootLayout ? [currentRootLayout] : [])];
-    const renderRootLayouts = isRoot ? [...parentRootRenders, ...nodeRenders] : parentRootRenders;
-    const renderLayouts = isRoot ? parentLayouts : [...parentLayouts, ...nodeRenders];
+  #getPathRoutes(route: Route, parent: RouteLayer<RouteRender> | null = null, parentHead?: ResolveHead): PathRoute[] {
+    const layer = RouteLayering.of(route, parent, this.#baseLayoutPaths);
     if (route.renderLayout) {
       this.#fallbackRoutes.push({
-        path: routePath,
-        pathSegments,
-        renderRootLayouts,
-        renderLayouts,
+        path: layer.path,
+        pathSegments: layer.pathSegments,
+        renderRootLayouts: layer.renderRootLayouts,
+        renderLayouts: layer.renderLayouts,
       });
     }
     const routeHead = RouteTreeBuilder.#composeHeadResolvers(route.renderLayout?.resolveHead, parentHead);
-    const pageNodeRenders = route.pageIncludesOwnLayout === false ? currentOverrideRenders : nodeRenders;
-    const pageRenderRootLayouts = isRoot ? [...parentRootRenders, ...pageNodeRenders] : parentRootRenders;
-    const pageRenderLayouts = isRoot ? parentLayouts : [...parentLayouts, ...pageNodeRenders];
     const pageHead = route.pageIncludesOwnLayout === false ? parentHead : routeHead;
     return [
       ...(route.renderPage
         ? [
             {
-              path: routePath,
-              pathSegments,
+              path: layer.path,
+              pathSegments: layer.pathSegments,
               renderPage: route.renderPage,
-              renderRootLayouts: pageRenderRootLayouts,
-              renderLayouts: pageRenderLayouts,
+              renderRootLayouts: layer.pageRenderRootLayouts,
+              renderLayouts: layer.pageRenderLayouts,
               resolveHead: RouteTreeBuilder.#composeHeadResolvers(route.renderPage.resolveHead, pageHead),
               isSpecialRoute: route.isSpecialRoute,
               pageState: route.pageState ?? defaultPageState,
@@ -228,9 +208,7 @@ export class RouteTreeBuilder {
           ]
         : []),
       ...(route.children.size
-        ? [...route.children.values()].flatMap((child) =>
-            this.#getPathRoutes(child, rootLayoutStack, renderLayouts, pathSegments, routeHead, renderRootLayouts),
-          )
+        ? [...route.children.values()].flatMap((child) => this.#getPathRoutes(child, layer, routeHead))
         : []),
     ];
   }

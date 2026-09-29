@@ -128,6 +128,7 @@ export {
 export { deepObjectify, objectify, plainFieldsOf } from "./objectify";
 export { pathGet, pathGetLoose, pathSet, toPathSegments } from "./objectPath";
 export { formatPhone, isPhoneNumber } from "./phone";
+export { type RouteLayer, RouteLayering } from "./RouteLayering";
 export { randomPick, randomPicks } from "./randomPick";
 export { hostFromRequest, isJsonContentType, originFromRequest } from "./requestOrigin";
 export { RestClient, type RestClientOptions, type RestRequestOptions } from "./restClient";

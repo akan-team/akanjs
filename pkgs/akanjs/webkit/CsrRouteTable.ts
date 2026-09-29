@@ -19,6 +19,8 @@ import {
   getRouteExports,
   Logger,
   parseRouteModuleKey,
+  type RouteLayer,
+  RouteLayering,
   routeSegmentToTreePath,
 } from "akanjs/common";
 
@@ -181,38 +183,15 @@ export class CsrRouteTable {
     assertUniqueRoutePatterns(pagePatterns);
     const getPathRoutes = (
       route: Route,
-      parentRootLayouts: RouteRender[] = [],
-      parentLayouts: RouteRender[] = [],
-      parentPaths: string[] = [],
+      parent: RouteLayer<RouteRender> | null = null,
       parentPageConfigChain: PageConfig[] = [],
-      parentRootRenders: RouteRender[] = [],
     ): PathRoute[] => {
-      const parentPath = parentPaths.filter((path) => path !== "/").join("");
-      const isRouteGroup = /^\/\(.*\)$/.test(route.path);
-      const currentPathSegment = isRouteGroup ? "" : route.path;
-      const path = parentPath + currentPathSegment;
-      const isRoot = !isRouteGroup && baseLayoutPaths.includes(path);
-      const pathSegments = [...parentPaths, ...(currentPathSegment ? [currentPathSegment] : [])];
-      const currentRootLayout = isRoot && route.renderLayout ? route.renderLayout : null;
-      const currentLayout = !isRoot && route.renderLayout ? route.renderLayout : null;
+      const layer = RouteLayering.of(route, parent, baseLayoutPaths);
+      const { path, pathSegments } = layer;
       const currentLayoutConfig = route.renderLayout && route.layoutPageConfig ? route.layoutPageConfig : null;
-      // Mirrors RouteTreeBuilder: a manifest sits just outside its own directory's layout, so crossing it keeps the tree.
-      const currentOverrideRenders = route.renderOverrides ? [route.renderOverrides] : [];
-      const nodeRenders = [...currentOverrideRenders, ...(route.renderLayout ? [route.renderLayout] : [])];
-      const rootLayoutStack = [...parentRootLayouts, ...(currentRootLayout ? [currentRootLayout] : [])];
-      const renderRootLayouts = isRoot ? [...parentRootRenders, ...nodeRenders] : parentRootRenders;
-      const renderLayouts = isRoot ? parentLayouts : [...parentLayouts, ...nodeRenders];
-      const pageConfigChain = [
-        ...parentPageConfigChain,
-        ...(currentRootLayout || currentLayout ? (currentLayoutConfig ? [currentLayoutConfig] : []) : []),
-      ];
-      const pageNodeRenders = route.pageIncludesOwnLayout === false ? currentOverrideRenders : nodeRenders;
-      const pageRenderRootLayouts = isRoot ? [...parentRootRenders, ...pageNodeRenders] : parentRootRenders;
-      const pageRenderLayouts = isRoot ? parentLayouts : [...parentLayouts, ...pageNodeRenders];
+      const pageConfigChain = [...parentPageConfigChain, ...(currentLayoutConfig ? [currentLayoutConfig] : [])];
       const pageRenderConfigChain =
-        route.pageIncludesOwnLayout === false && (currentRootLayout || currentLayout)
-          ? parentPageConfigChain
-          : pageConfigChain;
+        route.pageIncludesOwnLayout === false && route.renderLayout ? parentPageConfigChain : pageConfigChain;
       const ownPageConfig = route.renderPage && route.pageConfig ? route.pageConfig : null;
       const finalPageConfigChain = [...pageRenderConfigChain, ...(ownPageConfig ? [ownPageConfig] : [])];
       const pageState = resolvePageState({
@@ -230,8 +209,8 @@ export class CsrRouteTable {
                 path,
                 pathSegments,
                 renderPage: route.renderPage,
-                renderRootLayouts: pageRenderRootLayouts,
-                renderLayouts: pageRenderLayouts,
+                renderRootLayouts: layer.pageRenderRootLayouts,
+                renderLayouts: layer.pageRenderLayouts,
                 isSpecialRoute: route.isSpecialRoute,
                 pageState: route.pageState ?? pageState,
                 pageConfigChain: finalPageConfigChain,
@@ -240,9 +219,7 @@ export class CsrRouteTable {
             ]
           : []),
         ...(route.children.size
-          ? [...route.children.values()].flatMap((child) =>
-              getPathRoutes(child, rootLayoutStack, renderLayouts, pathSegments, pageConfigChain, renderRootLayouts),
-            )
+          ? [...route.children.values()].flatMap((child) => getPathRoutes(child, layer, pageConfigChain))
           : []),
       ];
     };
