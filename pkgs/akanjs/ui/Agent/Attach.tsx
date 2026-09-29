@@ -1,5 +1,5 @@
 "use client";
-import { cn } from "akanjs/client";
+import { cn, resolveServerUrl } from "akanjs/client";
 import { useRef } from "react";
 import { AiOutlineClose, AiOutlinePaperClip } from "react-icons/ai";
 import type { MessageAttachment } from "use-agentic";
@@ -61,7 +61,11 @@ export const Chips = ({ className, attachments, onRemove, removeLabel, pending =
           <img
             alt={attachment.name}
             className="size-6 rounded-field object-cover"
-            src={attachment.data ? `data:${attachment.mimeType};base64,${attachment.data}` : attachment.url}
+            src={
+              attachment.data
+                ? `data:${attachment.mimeType};base64,${attachment.data}`
+                : resolveServerUrl(attachment.url ?? "")
+            }
           />
         ) : null}
         <span className="max-w-32 truncate">{attachment.name}</span>
