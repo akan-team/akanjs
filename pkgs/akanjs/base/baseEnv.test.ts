@@ -216,6 +216,40 @@ describe("getEnv", () => {
     expect(env.serverHttpUri).toBe("https://minimal.example.com/api");
   });
 
+  test("a desktop app's launch env names the server it carries, ahead of the built-in URL and the dev gateway", async () => {
+    const holder = globalThis as {
+      __AKAN_NATIVE__?: { platform: string; env: Record<string, string> };
+      __AKAN_NATIVE_DEV__?: { gateway: string };
+    };
+    try {
+      for (const environment of ["local", "main"]) {
+        resetEnv();
+        Object.assign(process.env, { AKAN_PUBLIC_ENV: environment, AKAN_PUBLIC_SERVER_URL: "https://api.example.com" });
+        holder.__AKAN_NATIVE__ = { platform: "macos", env: { PUBLIC_AKAN_SERVER_URL: "http://127.0.0.1:52345" } };
+        holder.__AKAN_NATIVE_DEV__ = { gateway: "http://localhost:52011" };
+        const env = await asPage("app://localhost/en", async () => (await loadBaseEnv()).getEnv());
+        expect([environment, env.serverHttpUri, env.serverWsUri]).toEqual([
+          environment,
+          "http://127.0.0.1:52345/api",
+          "ws://127.0.0.1:52345",
+        ]);
+      }
+
+      resetEnv();
+      process.env.AKAN_PUBLIC_ENV = "main";
+      holder.__AKAN_NATIVE__ = { platform: "macos", env: { PUBLIC_AKAN_SERVER_URL: "app://localhost" } };
+      delete holder.__AKAN_NATIVE_DEV__;
+      await asPage("app://localhost/", async () => {
+        const { getEnv } = await loadBaseEnv();
+        expect(() => getEnv()).toThrow("PUBLIC_AKAN_SERVER_URL must be an http(s) URL");
+      });
+    } finally {
+      delete holder.__AKAN_NATIVE__;
+      delete holder.__AKAN_NATIVE_DEV__;
+      delete process.env.AKAN_PUBLIC_SERVER_URL;
+    }
+  });
+
   test("AKAN_PUBLIC_SERVER_URL must be an http(s) URL", async () => {
     resetEnv();
     Object.assign(process.env, { AKAN_PUBLIC_ENV: "local", AKAN_PUBLIC_SERVER_URL: "app://localhost" });

@@ -8,6 +8,7 @@ import { copyBunRequestFields, type WebProxyRunner } from "../proxy";
 import { SignalResolver } from "../resolver";
 import type { HttpRoutes, SignalRouteOptions, WebsocketRoutes } from "../types";
 import { AppWsData } from "./appWsData";
+import type { HostAllowlist } from "./hostAllowlist";
 
 export interface HmrStateSource {
   readonly state: {
@@ -34,6 +35,7 @@ export interface ApiRouteInputs {
   renderEnvRoutes: HttpRoutes;
   upgradeAppWs: (req: Request, data: AppWsData) => boolean;
   webProxyRunner?: WebProxyRunner | null;
+  hostAllowlist?: HostAllowlist | null;
 }
 
 type RouteValue = NonNullHttpRoutes[keyof NonNullHttpRoutes];
@@ -62,6 +64,7 @@ export class ApiRouter {
     renderEnvRoutes,
     upgradeAppWs,
     webProxyRunner,
+    hostAllowlist,
   }: ApiRouteInputs): NonNullHttpRoutes {
     const endpointEntries = Object.entries(routes ?? {}).map(
       ([p, handler]) =>
@@ -84,9 +87,10 @@ export class ApiRouter {
       ...Object.fromEntries(builtinEntries),
       ...(renderEnvRoutes ?? {}),
     } as NonNullHttpRoutes;
-    return webProxyRunner
+    const served = webProxyRunner
       ? ApiRouter.#wrapRoutesWithWebProxy(routeTable, webProxyRunner, prefix, endpointPaths)
       : routeTable;
+    return hostAllowlist ? ApiRouter.#guardHosts(served, hostAllowlist) : served;
   }
 
   static buildWebsocketHandlers({
@@ -214,6 +218,15 @@ export class ApiRouter {
     ) as NonNullHttpRoutes;
   }
 
+  static #guardHosts(routes: NonNullHttpRoutes, allowlist: HostAllowlist): NonNullHttpRoutes {
+    return Object.fromEntries(
+      Object.entries(routes).map(([path, route]) => [
+        path,
+        ApiRouter.#mapRoute(route, (handler) => (req) => (allowlist.allows(req) ? handler(req) : allowlist.refuse())),
+      ]),
+    ) as NonNullHttpRoutes;
+  }
+
   static #isApiRoute(path: string, apiPrefix: string): boolean {
     const normalized = apiPrefix.replace(/\/$/, "");
     return path === normalized || path.startsWith(`${normalized}/`);
@@ -243,14 +256,19 @@ export class ApiRouter {
     return { ...(answered as object), OPTIONS: (req: Request) => CrossSiteGuard.preflight(req, methods) } as RouteValue;
   }
 
+  //? A static Response is cloned per request once wrapped: a handler hands the same body out only once.
   static #mapRoute(route: RouteValue, wrap: (handler: RouteHandler) => RouteHandler): RouteValue {
     if (typeof route === "function") return wrap(route as RouteHandler) as RouteValue;
-    if (route instanceof Response) return wrap(() => route) as RouteValue;
+    if (route instanceof Response) return wrap(() => route.clone()) as RouteValue;
     if (!route || typeof route !== "object") return route;
     return Object.fromEntries(
       Object.entries(route).map(([method, handler]) => [
         method,
-        typeof handler === "function" ? wrap(handler as RouteHandler) : handler,
+        typeof handler === "function"
+          ? wrap(handler as RouteHandler)
+          : handler instanceof Response
+            ? wrap(() => handler.clone())
+            : handler,
       ]),
     ) as RouteValue;
   }

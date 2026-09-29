@@ -42,6 +42,7 @@ import { WebProxyRunner } from "./proxy";
 import { SignalResolver } from "./resolver";
 import { type ApiRouteInputs, ApiRouter } from "./routing/apiRouter";
 import type { AppWsData } from "./routing/appWsData";
+import { HostAllowlist } from "./routing/hostAllowlist";
 import { createSoloAppRoutes } from "./routing/soloAppRoutes";
 import {
   getWebConfigFromEnv,
@@ -392,6 +393,9 @@ export class AkanServer {
       }),
       data: {},
     } as Bun.WebSocketHandler<AppWsData | HmrWsData>;
+    //? Behind the gateway the Host a child sees is the gateway's hop, so only a server bound to TCP checks it.
+    const hostAllowlist = unix ? null : HostAllowlist.fromEnv();
+    const hostname = process.env.AKAN_LISTEN_HOST || undefined;
     const buildRoutes = (upgradeAppWs: ApiRouteInputs["upgradeAppWs"]) =>
       ApiRouter.buildRoutes({
         prefix: this.prefix,
@@ -402,10 +406,11 @@ export class AkanServer {
         renderEnvRoutes,
         upgradeAppWs,
         webProxyRunner,
+        hostAllowlist,
       });
     this.#server = Bun.serve({
       idleTimeout: 0,
-      ...(unix ? { unix } : { port }),
+      ...(unix ? { unix } : { port, hostname }),
       routes: buildRoutes((req, data) => this.#server?.upgrade(req, { data }) ?? false),
       websocket: websocketHandlers,
     } as Parameters<typeof Bun.serve>[0]);
@@ -414,6 +419,7 @@ export class AkanServer {
       const wsServeOptions = (port: number) => ({
         idleTimeout: 0,
         port,
+        hostname,
         routes: buildRoutes((req, data) => this.#wsServer?.upgrade(req, { data }) ?? false),
         websocket: websocketHandlers,
       });

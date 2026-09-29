@@ -112,12 +112,18 @@ export const resetEnvCache = () => {
 };
 
 // Read by a CSR bundle only: an SSR tab calls the origin that rendered it, and a server calls itself.
+//* A desktop app that carries its own server learns the loopback port only at launch, so the value the shell hands the
+//* page in `__AKAN_NATIVE__.env` outranks the one built into the bundle.
 const csrServerUrl = (): URL | null => {
-  const value = process.env.AKAN_PUBLIC_SERVER_URL;
+  const runtime = (globalThis as { __AKAN_NATIVE__?: { env?: Record<string, string | undefined> } }).__AKAN_NATIVE__
+    ?.env?.PUBLIC_AKAN_SERVER_URL;
+  const [key, value] = runtime
+    ? ["PUBLIC_AKAN_SERVER_URL", runtime]
+    : ["AKAN_PUBLIC_SERVER_URL", process.env.AKAN_PUBLIC_SERVER_URL];
   if (!value) return null;
   const url = new URL(value);
   if (url.protocol !== "http:" && url.protocol !== "https:")
-    throw new Error(`AKAN_PUBLIC_SERVER_URL must be an http(s) URL, got "${value}".`);
+    throw new Error(`${key} must be an http(s) URL, got "${value}".`);
   return url;
 };
 
@@ -184,8 +190,9 @@ export const getEnv = (): ClientEnv => {
         : "https:";
   const clientHttpUri = `${clientHttpProtocol}//${clientHost}${clientPort === 443 ? "" : `:${clientPort}`}`;
   const csrClient = side === "client" && renderMode === "csr";
-  const pageOrigin = csrClient && !process.env.AKAN_PUBLIC_SERVER_URL ? nativeDevGatewayOrigin() : null;
-  const serverUrl = csrClient && !pageOrigin ? (csrServerUrl() ?? nativeDevServerUrl(operationMode)) : null;
+  const pinnedServerUrl = csrClient ? csrServerUrl() : null;
+  const pageOrigin = csrClient && !pinnedServerUrl ? nativeDevGatewayOrigin() : null;
+  const serverUrl = csrClient && !pageOrigin ? (pinnedServerUrl ?? nativeDevServerUrl(operationMode)) : null;
   // The port belongs to whoever named the host: a cloud CSR bundle's host is not the page's.
   const hostFromPage =
     side === "client" && !serverUrl && (!!pageOrigin || operationMode === "local" || renderMode !== "csr");
