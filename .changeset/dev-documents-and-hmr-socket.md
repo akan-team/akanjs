@@ -13,7 +13,8 @@ fix(dev): dev documents skip the browser's HTTP cache, the HMR socket answers on
   The HMR socket's reconnect backoff starts over at the server's hello rather than when the socket opens, so a
   gateway whose upstream keeps failing is no longer asked every 250ms.
 - A pages build that changes server output no longer leaves the bundle before it in `.akan/artifact/server` for the
-  rest of the session (8MB on minimal, 21MB on apps/akan): a bundle the RSC worker has moved past is removed a minute
-  later, and so is a stylesheet no tab can still link to.
+  rest of the session (8MB on minimal, 21MB on apps/akan): each time the RSC worker takes a new bundle, the ones it
+  has moved past that are over a minute old are removed, so a burst of saves leaves its bundles only until the next
+  server-side save after it. A CSS change removes the stylesheets no tab can still link to the same way.
 - `getAkanHmrPhase()` and `isAkanHmrApplying()` from `akanjs/common` are deprecated: nothing sets the phase any more,
   so they always answer `null` and `false`.
