@@ -59,9 +59,11 @@ class FakeElement {
 const createHmrHarness = ({
   selfOverrides = {},
   runTimers = false,
+  onTimer,
 }: {
   selfOverrides?: Record<string, unknown>;
   runTimers?: boolean;
+  onTimer?: (callback: () => void, delay: number) => void;
 } = {}) => {
   const sockets: FakeWebSocket[] = [];
   const document = {
@@ -126,7 +128,8 @@ const createHmrHarness = ({
     location,
     FakeWebSocket,
     document,
-    (callback: () => void) => {
+    (callback: () => void, delay: number) => {
+      onTimer?.(callback, delay);
       if (runTimers) callback();
       return 1;
     },
@@ -142,6 +145,7 @@ const createHmrHarness = ({
 
   return {
     ws: sockets[0],
+    sockets,
     overlay,
     label,
     detail,
@@ -510,6 +514,60 @@ describe("HMR_CLIENT_SCRIPT", () => {
     reconnected.ws?.sendMessage({ type: "build-status", status: "error", generation: 4, phase: "pages", message: "x" });
     reconnected.ws?.sendMessage({ type: "hello", buildId: 1, failingPhases: [] });
     expect(reconnected.reloadCount).toBe(1);
+  });
+
+  test("a render error clears once this page renders again, while a build phase's error stays", async () => {
+    const hmr = createHmrHarness();
+    hmr.ws.sendMessage({ type: "build-status", status: "error", generation: 4, phase: "css", message: "css broke" });
+    hmr.ws.sendMessage({ type: "error", message: "render broke" });
+    expect(hmr.label()).toBe("Build failed: build, css");
+    hmr.ws.sendMessage({ type: "rsc-refresh", buildId: 2, generation: 5 });
+    for (let tick = 0; tick < 5; tick++) await Promise.resolve();
+    expect(hmr.label()).toBe("Build failed: css");
+  });
+
+  test("a refresh that finishes after a newer one leaves the tab on the newer build", async () => {
+    const pending: (() => void)[] = [];
+    const harness = createHmrHarness({
+      selfOverrides: {
+        __AKAN_SSR_EPOCH__: 5,
+        __AKAN_RSC_REFRESH__: () => new Promise<void>((resolve) => pending.push(resolve)),
+      },
+      runTimers: true,
+    });
+    harness.ws.sendMessage({ type: "hello", buildId: 1, ssrEpoch: 5 });
+    harness.ws.sendMessage({ type: "rsc-refresh", buildId: 2, generation: 2 });
+    harness.ws.sendMessage({ type: "rsc-refresh", buildId: 3, generation: 3 });
+    expect(pending).toHaveLength(2);
+    pending[1]?.();
+    for (let tick = 0; tick < 5; tick++) await Promise.resolve();
+    pending[0]?.();
+    for (let tick = 0; tick < 5; tick++) await Promise.resolve();
+    harness.ws.sendMessage({ type: "hello", buildId: 3, ssrEpoch: 5 });
+    expect(pending).toHaveLength(2);
+    expect(harness.reloadCount).toBe(0);
+  });
+
+  test("backs off a socket that opens and closes before its hello, and starts over once one says hello", () => {
+    const timers: { callback: () => void; delay: number }[] = [];
+    const hmr = createHmrHarness({ onTimer: (callback, delay) => timers.push({ callback, delay }) });
+    const reconnect = () => {
+      const socket = hmr.sockets.at(-1);
+      for (const listener of socket?.listeners.get("open") ?? []) listener();
+      return socket;
+    };
+    const drop = () => {
+      hmr.sockets.at(-1)?.close();
+      const timer = timers.filter((entry) => entry.delay >= 250).at(-1);
+      timer?.callback();
+      return timer?.delay;
+    };
+    reconnect();
+    expect(drop()).toBe(250);
+    reconnect();
+    expect(drop()).toBe(500);
+    reconnect()?.sendMessage({ type: "hello", buildId: 1 });
+    expect(drop()).toBe(250);
   });
 
   test("clears legacy error overlays with legacy ok messages", () => {

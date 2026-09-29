@@ -50,7 +50,7 @@ const createPage = (pageFetch: typeof fetch = fetch) => {
   const load = (index: number) => {
     const script = scripts[index];
     if (!script) throw new Error(`no script ${index} was appended`);
-    if (index === 0) {
+    if (script.src === SsrDevShim.runtimeUrl) {
       const modules = new Map<string, unknown>();
       const waiters = new Map<string, () => void>();
       const caughtUp: [number, string][] = [];
@@ -295,6 +295,27 @@ describe("SsrDevShim", () => {
     await boot;
     expect(reloads).toBe(0);
     expect(asked).toBe(5);
+  }, 10_000);
+
+  test("a runtime that failed to load while the backend restarted is loaded again once the registry answers", async () => {
+    let asked = 0;
+    const page = createPage((async () => {
+      asked += 1;
+      return Response.json(manifest);
+    }) as unknown as typeof fetch);
+    page.install(SsrDevShim.script(manifest, []));
+    const boot = (page.self.__webpack_chunk_load__ as (id: string) => Promise<void>)("ssr-dev");
+    page.scripts[0]?.onerror?.();
+    while (page.scripts.length < 2) await Bun.sleep(20);
+    expect(asked).toBe(1);
+    expect(page.scripts[1]?.src).toBe(SsrDevShim.runtimeUrl);
+    page.load(1);
+    while (page.scripts.length < 3) await page.settle();
+    page.load(2);
+    while (page.scripts.length < 4) await page.settle();
+    page.load(3);
+    await boot;
+    expect(page.self.__AKAN_SSR_BOOT_FAILED__).toBeUndefined();
   }, 10_000);
 
   test("updates that arrived before the runtime loaded are handed to it", async () => {

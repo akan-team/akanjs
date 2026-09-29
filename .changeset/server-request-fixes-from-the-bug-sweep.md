@@ -20,5 +20,3 @@ fix(server): request, render and live-sync fixes from the server bug sweep
   still in, and a socket that subscribed to the same room twice no longer leaves it behind when it closes.
 - **`/mcp` reads the bearer scheme case-insensitively and past repeated spaces** (RFC 7235, RFC 6750), so
   `bearer <token>` is judged like `Bearer <token>` instead of passing as no credential.
-- Dev: a client refresh on a URL only a route prefix matches (a custom not-found) rebuilds that layout's route
-  instead of serving stale chunks.

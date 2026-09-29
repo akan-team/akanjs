@@ -37,8 +37,10 @@ this repo's own `apps/akan`). None of those has a ceiling, and none is subtracte
 
 In practice this holds because the two ceilings are rarely at their limit simultaneously and the build
 worker exits. But if you are sizing a container to a hard number, size it against the *sum of observed
-peaks*, not against these fractions. Measured floors, for reference: builder 134-202MB at rest and
-~490MB after a route build, RSC worker ~142MB after boot, ~247MB per route build.
+peaks*, not against these fractions. Measured on `apps/minimal` (macOS, 2026-09-29), for reference: the
+builder ~120MB at rest after boot, ~540MB right after its first route build (the bundler hands most of it
+back after ~20s idle), ~250MB while it patches saves into the SSR registry; the RSC worker ~75MB after boot
+and ~110MB after route builds; the build worker ~900MB for the SSR registry's boot build.
 
 ## Recycling behaviour
 
@@ -133,13 +135,14 @@ AKAN_MEMORY_LIMIT=1200mb          # builder gets ~420MB, rsc worker ~660MB
 AKAN_DEV_IDLE_SUSPEND_MS=300000   # release the builder after 5 idle minutes
 ```
 
-Two things to expect at that size. The builder crosses 420MB during ordinary work — one route build
-costs ~247MB on top of its floor — so it is replaced roughly once per 30s while you keep building, each
+Two things to expect at that size. The builder crosses 420MB during ordinary work — its first route
+build alone takes it to ~540MB — so it is replaced roughly once per 30s while you keep building, each
 replacement costing a boot build that requests wait through rather than fail. And the build worker's
 peak is not covered by any of these ceilings; if the kernel OOM-kills it, the dev server survives with a
 red build for that generation and the log names the signal. On a boot whose `.akan` was cleared, the SSR
-registry's first build is such a worker: a killed one leaves no registry, and every later save retries that
-same whole build, so a container that cannot fit it once cannot fit it at all.
+registry's first build is such a worker, peaking near 900MB on `apps/minimal`: a killed one leaves no
+registry, and every later save retries that same whole build, so a container that cannot fit it once
+cannot fit it at all.
 
 Raising `AKAN_BUILDER_MAX_RSS_MB` above the derived share trades memory for fewer boot builds. Setting
 it to `0` trades the bound away entirely, which on a container this size means the kernel decides

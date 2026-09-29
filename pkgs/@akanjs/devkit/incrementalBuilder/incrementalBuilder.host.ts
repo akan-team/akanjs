@@ -30,6 +30,8 @@ interface IncrementalBuilderHostOptions {
   onMessage: (message: BuilderMessage) => void;
   /** Required with `stdio: "pipe"` (an undrained pipe blocks the builder); receives decoded chunks, not lines. */
   onOutput?: (kind: "stdout" | "stderr", text: string) => void;
+  /** Carried over from the host this one replaces: a patcher a crash turned off stays off. */
+  patcherOff?: boolean;
 }
 
 /** `recycling`: the builder finishes accepted work but refuses new requests; hold them for the replacement. */
@@ -73,16 +75,28 @@ export class IncrementalBuilderHost {
   // its own exit, so an unanswered page request would spin forever.
   readonly #inFlight = new Map<number, "build-route" | "build-csr">();
   #startOptions: IncrementalBuilderStartOptions = {};
-  constructor({ app, entry, env, stdio = "inherit", onMessage, onOutput }: IncrementalBuilderHostOptions) {
+  constructor({
+    app,
+    entry,
+    env,
+    stdio = "inherit",
+    onMessage,
+    onOutput,
+    patcherOff = false,
+  }: IncrementalBuilderHostOptions) {
     this.app = app;
     this.entry = entry;
     this.env = env;
     this.#stdio = stdio;
     this.#onMessage = onMessage;
     this.#onOutput = onOutput ?? null;
+    this.#patcherOff = patcherOff;
   }
   get status() {
     return this.#status;
+  }
+  get patcherOff(): boolean {
+    return this.#patcherOff;
   }
   /** For reading RSS between builds: the builder's own metrics sample the post-work peak, stale once arenas return. */
   get pid(): number | null {
@@ -292,7 +306,8 @@ export class IncrementalBuilderHost {
     {
       stdio = "inherit",
       onOutput,
-    }: { stdio?: DevStdioMode; onOutput?: (kind: "stdout" | "stderr", text: string) => void } = {},
+      patcherOff = false,
+    }: Pick<IncrementalBuilderHostOptions, "stdio" | "onOutput" | "patcherOff"> = {},
   ) {
     const candidates = [
       path.join(app.workspace.workspaceRoot, "pkgs/@akanjs/devkit/incrementalBuilder/incrementalBuilder.proc.ts"),
@@ -305,7 +320,7 @@ export class IncrementalBuilderHost {
     ];
     for (const c of candidates)
       if (await Bun.file(c).exists())
-        return new IncrementalBuilderHost({ app, entry: c, env, stdio, onMessage, onOutput });
+        return new IncrementalBuilderHost({ app, entry: c, env, stdio, onMessage, onOutput, patcherOff });
     throw new Error(`[cli] frontend builder entry not found; looked in: ${candidates.join(", ")}`);
   }
 }

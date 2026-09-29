@@ -2,7 +2,13 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { CSR_DEV_DIRNAME, CSR_DEV_MANIFEST_FILE, type CsrDevManifest } from "./csrDevManifest";
+import {
+  CSR_DEV_DIRNAME,
+  CSR_DEV_MANIFEST_FILE,
+  type CsrDevLayout,
+  type CsrDevManifest,
+  csrDevModuleFile,
+} from "./csrDevManifest";
 import { CSR_DEV_RUNTIME_SCRIPT } from "./csrDevRuntime";
 import { CsrDevShell } from "./csrDevShell";
 
@@ -81,6 +87,41 @@ describe("CsrDevShell", () => {
     const served = await impatient.serve(new Request("http://localhost/_akan/csr-dev/app.js?g=9"));
     expect(await served.text()).toBe("generation 8");
     expect(Date.now() - started).toBeGreaterThanOrEqual(55);
+  });
+
+  test("never holds an ask for a generation the manifest has not announced", async () => {
+    const waiting = new CsrDevShell(artifactDir, { appWaitMs: 2_000, appPollMs: 10 });
+    await writeManifest({ version: 1, generation: 9, appGeneration: 8, vendorFile: "vendor-abc.js", entries: {} });
+    await Bun.write(path.join(artifactDir, CSR_DEV_DIRNAME, "app.js"), "generation 8");
+    const started = Date.now();
+    const served = await waiting.serve(new Request("http://localhost/_akan/csr-dev/app.js?g=99"));
+    expect(await served.text()).toBe("generation 8");
+    expect(Date.now() - started).toBeLessThan(500);
+  });
+
+  test("merges app.js's source map once per layout, and again once app.js is rewritten", async () => {
+    const dir = path.join(artifactDir, CSR_DEV_DIRNAME);
+    const moduleMap = path.join(dir, csrDevModuleFile("app/Card.tsx", ".js.map"));
+    const writeMap = async (source: string) =>
+      await Bun.write(moduleMap, JSON.stringify({ version: 3, sources: [source], names: [], mappings: "AAAA" }));
+    const writeLayout = async (lineCount: number) =>
+      await Bun.write(
+        path.join(dir, "app.js.layout.json"),
+        JSON.stringify({ lineCount, modules: [["app/Card.tsx", 1]] } satisfies CsrDevLayout),
+      );
+    const sources = async () =>
+      (
+        (await (await shell.serve(new Request("http://localhost/_akan/csr-dev/app.js.map"))).json()) as {
+          sources: string[];
+        }
+      ).sources;
+    await writeMap("/repo/app/Card.tsx");
+    await writeLayout(3);
+    expect(await sources()).toEqual(["/repo/app/Card.tsx"]);
+    await writeMap("/repo/app/Card-renamed.tsx");
+    expect(await sources()).toEqual(["/repo/app/Card.tsx"]);
+    await writeLayout(4);
+    expect(await sources()).toEqual(["/repo/app/Card-renamed.tsx"]);
   });
 
   test("holds a boot.json ask no longer than it asked to wait, and never past the boot wait", async () => {

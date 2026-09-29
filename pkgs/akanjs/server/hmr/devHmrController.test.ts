@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, rm, utimes } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { type DevBuildStatus, ROUTE_SEED_INDEX_JSON, type RouteSeedIndex } from "../artifact";
+import { type DevBuildStatus, ROUTE_SEED_INDEX_JSON, type RouteSeedIndex, RouteSeedIndexStore } from "../artifact";
 import type { RscAdoptedBundle, RscWorker, RscWorkerReloadInput } from "../rscWorkerHost";
 import type { RenderState } from "../types";
 import {
@@ -608,38 +608,6 @@ describe("DevHmrController registry state for hello", () => {
   });
 });
 
-describe("DevHmrController route ensure", () => {
-  test("builds the nearest layout route for a path only a route prefix matches", async () => {
-    const originalSend = process.send;
-    const requestedRouteIds: string[] = [];
-    process.send = ((message: { type?: string; id?: number; routeId?: string }): boolean => {
-      if (message.type !== "build-route" || !message.routeId) return true;
-      requestedRouteIds.push(message.routeId);
-      const data = { manifestDelta: {}, ssrManifestDelta: {}, newEntries: [], clientDeps: [] };
-      queueMicrotask(() => process.emit("message", { type: "build-route-res", id: message.id, ok: true, data }));
-      return true;
-    }) as typeof process.send;
-    const seedIndex: RouteSeedIndex = {
-      entries: [{ routeId: "/:lang/blog", pattern: "/:lang/blog", seeds: ["/repo/apps/demo/page/blog/_layout.tsx"] }],
-      globalLayoutFiles: [],
-    };
-    const controller = new DevHmrController({
-      artifactDir: await artifactDirWith(seedIndex),
-      renderState: { buildId: 0, cssAssets: {}, cssBytesByUrl: {} },
-      rsc: fakeRsc(),
-      seedIndex,
-      upgradeHmrWs: () => true,
-    });
-    try {
-      await controller.ensureRoute(new URL("https://example.test/ko/blog/missing"));
-      expect(requestedRouteIds).toEqual(["/:lang/blog"]);
-    } finally {
-      controller.dispose();
-      process.send = originalSend;
-    }
-  });
-});
-
 describe("DevHmrController saves during a route's first build", () => {
   //? The route's first build is the first to reach its client files, so no entry maps a file it read yet: only the
   //? file the save names can tell whether the build's result is still good.
@@ -675,7 +643,7 @@ describe("DevHmrController saves during a route's first build", () => {
       process.emit("message", { type: "build-route-res", id, ok: true, data } as never);
     };
     try {
-      const ensured = controller.ensureRoute(new URL("https://example.test/en/blog"));
+      const ensured = controller.routeCache.ensure("/:lang/blog", seedIndex.entries[0]?.seeds ?? []);
       await requested(1);
       process.emit("message", {
         type: "invalidate",
@@ -731,7 +699,7 @@ describe("DevHmrController route builds that took a save's batch in", () => {
     let answered = 0;
     try {
       await run({
-        ensure: () => controller.ensureRoute(new URL("https://example.test/en/x")),
+        ensure: () => controller.routeCache.ensure("/:lang/x", [page]),
         answer: async (seenGeneration, clientDeps = [card]) => {
           for (let tick = 0; tick < 200 && requests.length <= answered; tick++) await Bun.sleep(1);
           const data = {
@@ -839,6 +807,7 @@ describe("DevHmrController route tree changes", () => {
       globalLayoutFiles: [],
     };
     const artifactDir = await artifactDirWith(bootIndex);
+    const routerIndex = structuredClone(bootIndex);
     const originalSend = process.send;
     const buildRequests: { seeds: string[]; graphSeeds: string[] }[] = [];
     process.send = ((message: { type?: string; id?: number; seeds?: string[]; graphSeeds?: string[] }): boolean => {
@@ -852,7 +821,7 @@ describe("DevHmrController route tree changes", () => {
       artifactDir,
       renderState: { buildId: 0, cssAssets: {}, cssBytesByUrl: {} },
       rsc: fakeRsc(),
-      seedIndex: structuredClone(bootIndex),
+      seedIndex: routerIndex,
       upgradeHmrWs: () => true,
     });
     const messages: HmrMessage[] = [];
@@ -864,13 +833,79 @@ describe("DevHmrController route tree changes", () => {
         data: { bundlePath: "/repo/pages.js", buildId: 8, changedFiles: [`${page}/b/_overrides.tsx`] },
       });
       for (let tick = 0; tick < 100 && messages.length === 0; tick++) await Bun.sleep(1);
-      await controller.ensureRoute(new URL("https://example.test/en/b/y"));
+      const matched = RouteSeedIndexStore.match("/en/b/y", routerIndex.entries);
+      await controller.routeCache.ensure(matched?.entry.routeId ?? "", matched?.entry.seeds ?? []);
 
       expect(messages.map((message) => message.type)).toEqual(["reload"]);
-      expect(controller.routeIdsForPath("/en/b/y")).toEqual(["/:lang/b/y"]);
+      expect(matched?.entry.routeId).toBe("/:lang/b/y");
       expect(buildRequests).toHaveLength(1);
       expect(buildRequests[0]?.seeds).toContain(wrapperOf("b"));
       expect(buildRequests[0]?.graphSeeds).not.toContain(wrapperOf("a"));
+    } finally {
+      controller.dispose();
+      process.send = originalSend;
+    }
+  });
+});
+
+describe("DevHmrController superseded pages bundles", () => {
+  test("removes the bundle the worker moved past once it adopts a newer one", async () => {
+    const seedIndex: RouteSeedIndex = { entries: [], globalLayoutFiles: [] };
+    const artifactDir = await artifactDirWith(seedIndex);
+    const serverDir = path.join(artifactDir, "server");
+    const booted = path.join(serverDir, "pages-booted.js");
+    const next = path.join(serverDir, "pages-next.js");
+    await Bun.write(booted, "booted");
+    await Bun.write(next, "next");
+    const aged = new Date(Date.now() - 120_000);
+    await utimes(booted, aged, aged);
+    const originalSend = process.send;
+    process.send = ((): boolean => true) as typeof process.send;
+    const controller = new DevHmrController({
+      artifactDir,
+      renderState: { buildId: 0, cssAssets: {}, cssBytesByUrl: {} },
+      rsc: fakeRsc(),
+      seedIndex,
+      upgradeHmrWs: () => true,
+      pagesBundlePath: booted,
+    });
+    try {
+      process.emit("message", {
+        type: "pages-updated",
+        data: { bundlePath: next, buildId: 2, generation: 2, changedFiles: [], serverTouched: true },
+      } as never);
+      for (let tick = 0; tick < 200 && (await Bun.file(booted).exists()); tick++) await Bun.sleep(5);
+      expect(await Bun.file(booted).exists()).toBe(false);
+      expect(await Bun.file(next).exists()).toBe(true);
+    } finally {
+      controller.dispose();
+      process.send = originalSend;
+      await rm(artifactDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("DevHmrController HMR socket origin", () => {
+  test("upgrades the serving host's pages and non-browser callers, and refuses a page on another origin", async () => {
+    const seedIndex: RouteSeedIndex = { entries: [], globalLayoutFiles: [] };
+    const originalSend = process.send;
+    process.send = ((): boolean => true) as typeof process.send;
+    const upgraded: string[] = [];
+    const controller = new DevHmrController({
+      artifactDir: await artifactDirWith(seedIndex),
+      renderState: { buildId: 0, cssAssets: {}, cssBytesByUrl: {} },
+      rsc: fakeRsc(),
+      seedIndex,
+      upgradeHmrWs: (req) => upgraded.push(req.headers.get("origin") ?? "(none)") > 0,
+    });
+    const upgrade = (headers: Record<string, string>) =>
+      controller.handleWs(new Request("http://akan-child/_akan/hmr", { headers }))?.status ?? "upgraded";
+    try {
+      expect(upgrade({ origin: "http://localhost:4200", "x-forwarded-host": "localhost:4200" })).toBe("upgraded");
+      expect(upgrade({ origin: "https://demo.tunnel.test", "x-forwarded-host": "demo.tunnel.test" })).toBe("upgraded");
+      expect(upgrade({})).toBe("upgraded");
+      expect(upgrade({ origin: "https://evil.test", "x-forwarded-host": "localhost:4200" })).toBe(403);
+      expect(upgraded).toEqual(["http://localhost:4200", "https://demo.tunnel.test", "(none)"]);
     } finally {
       controller.dispose();
       process.send = originalSend;

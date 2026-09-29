@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveStaticPath } from "../staticPath";
 import {
@@ -38,6 +39,8 @@ export class CsrDevShell {
   readonly #appWaitMs: number;
   readonly #appPollMs: number;
   readonly #bootWaitMs: number;
+  //? Merging app.js's map reads one map per module (about 1,300 on minimal) into 2.5MB: kept while its layout stands.
+  readonly #sourceMaps = new Map<string, { stamp: string; body: string }>();
 
   constructor(
     artifactDir: string,
@@ -107,13 +110,15 @@ ${stylesheet}  </head>
 
   //? A patch is announced before app.js is rewritten, so a tab booting in that gap asks for a generation app.js does not
   //? hold yet. Held until it does, or until the wait runs out: then it boots behind, and hello's generation catches it
-  //? up (an SSR tab) or reloads it (a CSR tab).
+  //? up (an SSR tab) or reloads it (a CSR tab). A generation the manifest has not announced is never waited for: the
+  //? manifest is written before the announcement, so only a tab from an earlier session (or anyone) can ask for one.
   async #waitForApp(generation: number, signal?: AbortSignal): Promise<void> {
     if (!Number.isInteger(generation) || generation <= 0) return;
     const deadline = Date.now() + this.#appWaitMs;
     for (;;) {
       const manifest = await this.readManifest();
-      if (!manifest || appGenerationOf(manifest) >= generation || Date.now() >= deadline || signal?.aborted) return;
+      if (!manifest || manifest.generation < generation || appGenerationOf(manifest) >= generation) return;
+      if (Date.now() >= deadline || signal?.aborted) return;
       await Bun.sleep(this.#appPollMs);
     }
   }
@@ -142,9 +147,26 @@ ${stylesheet}  </head>
   // Composed when DevTools asks, not on every save: most saves are never debugged.
   async #serveSourceMap(name: string): Promise<Response> {
     const generatedFile = name.slice(0, -".map".length);
-    const layoutFile = Bun.file(path.join(this.#dir, `${generatedFile}.layout.json`));
-    if (!(await layoutFile.exists())) return new Response("Not Found", { status: 404 });
-    const layout = (await layoutFile.json()) as CsrDevLayout;
+    const layoutPath = path.join(this.#dir, `${generatedFile}.layout.json`);
+    const stat = await fs.stat(layoutPath).catch(() => null);
+    if (!stat) return new Response("Not Found", { status: 404 });
+    const stamp = `${stat.ino}:${stat.size}:${stat.mtimeMs}`;
+    const cached = this.#sourceMaps.get(generatedFile);
+    const body = cached?.stamp === stamp ? cached.body : await this.#mergeSourceMap(generatedFile, layoutPath);
+    if (!body) return new Response("Not Found", { status: 404 });
+    this.#sourceMaps.delete(generatedFile);
+    this.#sourceMaps.set(generatedFile, { stamp, body });
+    for (const oldest of this.#sourceMaps.keys()) {
+      if (this.#sourceMaps.size <= 4) break;
+      this.#sourceMaps.delete(oldest);
+    }
+    return new Response(body, { headers: CsrDevShell.#headers("application/json", "no-store") });
+  }
+
+  async #mergeSourceMap(generatedFile: string, layoutPath: string): Promise<string | null> {
+    const layoutText = await fs.readFile(layoutPath, "utf8").catch(() => null);
+    if (!layoutText) return null;
+    const layout = JSON.parse(layoutText) as CsrDevLayout;
     const sections = await Promise.all(
       layout.modules.map(async ([id, line]) => {
         const file = Bun.file(path.join(this.#dir, csrDevModuleFile(id, ".js.map")));
@@ -156,7 +178,7 @@ ${stylesheet}  </head>
       sections.filter((section) => section !== null),
       layout.lineCount,
     );
-    return new Response(JSON.stringify(map), { headers: CsrDevShell.#headers("application/json", "no-store") });
+    return JSON.stringify(map);
   }
 
   static #js(body: string | Blob, cacheControl: string): Response {

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Logger } from "akanjs/common";
+import { CrossSiteGuard } from "../../signal/CrossSiteGuard";
 import {
   BuilderRpc,
   type ClientManifest,
@@ -14,6 +15,7 @@ import {
 import type { RscReloadFailure, RscWorker } from "../rscWorkerHost";
 import type { RenderState } from "../types";
 import { CSR_DEV_DIRNAME, CSR_DEV_MANIFEST_FILE, type CsrDevManifest, SSR_DEV_DIRNAME } from "./csrDevManifest";
+import { DevArtifactPruner } from "./devArtifactPruner";
 import { isAkanRuntimeMetadataFile } from "./runtimeMetadataFile";
 import { type SsrUpdateMessage, SsrUpdateQueue } from "./ssrUpdateQueue";
 import { type ChangeKind, type HmrMessage, type HmrWsData, HmrWsHub } from "./wsHub";
@@ -96,10 +98,12 @@ export class DevHmrController {
   readonly #buildStatusByPhase = new Map<DevBuildStatus["phase"], DevBuildStatus>();
   #graphSeeds: string[];
   #runningBundlePath: string | null;
+  readonly #pruner: DevArtifactPruner;
 
   constructor({ artifactDir, renderState, rsc, seedIndex, upgradeHmrWs, pagesBundlePath }: DevHmrControllerOptions) {
     this.#artifactDir = artifactDir;
     this.#runningBundlePath = pagesBundlePath ? path.resolve(pagesBundlePath) : null;
+    this.#pruner = new DevArtifactPruner(artifactDir);
     this.#renderState = renderState;
     this.#rsc = rsc;
     this.#seedIndex = seedIndex;
@@ -159,26 +163,16 @@ export class DevHmrController {
   }
 
   handleWs(req: Request): Response | undefined {
+    //? Hello carries the failing build's messages and an update names the files being edited, so a page on another
+    //? origin (a `--share` visitor's, or one open in the developer's browser) must not subscribe.
+    try {
+      CrossSiteGuard.assertOrigin(req, new URL(req.url), "hmr");
+    } catch {
+      return new Response("Forbidden", { status: 403 });
+    }
     const client = new URL(req.url).searchParams.get("client") === "csr" ? "csr" : "ssr";
     if (this.#upgradeHmrWs(req, { kind: "akan-hmr", openedAt: Date.now(), client })) return;
     return new Response("Failed to upgrade HMR WebSocket", { status: 500 });
-  }
-
-  async ensureRoute(url: URL) {
-    const started = Date.now();
-    const matched =
-      RouteSeedIndexStore.match(url.pathname, this.#seedIndex.entries) ??
-      RouteSeedIndexStore.matchPrefix(url.pathname, this.#seedIndex.entries);
-    if (matched) await this.routeCache.ensure(matched.entry.routeId, matched.entry.seeds);
-    this.#logger.verbose(
-      `[route-cache] ensure pathname=${url.pathname} routeId=${matched?.entry.routeId ?? "(none)"} in ${Date.now() - started}ms`,
-    );
-    return this.routeCache.snapshot();
-  }
-
-  routeIdsForPath(pathname: string): string[] | undefined {
-    const matched = RouteSeedIndexStore.match(pathname, this.#seedIndex.entries);
-    return matched ? [matched.entry.routeId] : undefined;
   }
 
   #sendSsrUpdate(message: SsrUpdateMessage): void {
@@ -239,6 +233,7 @@ export class DevHmrController {
         this.#renderState.cssBytesByUrl = cssBytesByUrl;
         this.#rsc.updateCssAssets(this.#renderState.cssAssets);
         this.#hub.broadcast({ type: "css-update", cssAssets: this.#renderState.cssAssets });
+        void this.#pruner.pruneStyles(this.#renderState.cssAssets);
         this.#logger.verbose(
           `css-update assets=${Object.keys(this.#renderState.cssAssets).length} generation=${css.generation ?? "(unknown)"} files=${css.changedFiles?.length ?? 0} in ${Date.now() - started}ms (ipc)`,
         );
@@ -289,7 +284,7 @@ export class DevHmrController {
               buildId,
               pagesBundlePath: bundlePath,
             });
-            this.#runningBundlePath = path.resolve(adopted.pagesBundlePath);
+            this.#adoptBundle(adopted.pagesBundlePath);
             //? A later pages build that superseded this one is what the worker runs, and the id a tab must hold.
             tabBuildId = adopted.buildId;
           } catch (error) {
@@ -297,7 +292,7 @@ export class DevHmrController {
             //? What the worker serves now, which a later pages-updated may already have moved past this one's own id.
             if (failure) {
               this.#renderState.buildId = failure.adopted.buildId;
-              this.#runningBundlePath = path.resolve(failure.adopted.pagesBundlePath);
+              this.#adoptBundle(failure.adopted.pagesBundlePath);
             } else if (this.#renderState.buildId === buildId) this.#renderState.buildId = previousBuildId;
             //? The worker took this bundle before a later one failed: the tabs refresh onto it as on success.
             if (failure?.adopted.buildId !== buildId) {
@@ -336,6 +331,13 @@ export class DevHmrController {
         );
       },
     });
+  }
+
+  #adoptBundle(bundlePath: string): void {
+    const running = path.resolve(bundlePath);
+    if (running === this.#runningBundlePath) return;
+    this.#runningBundlePath = running;
+    void this.#pruner.prunePages(running);
   }
 
   static #reloadFailure(error: unknown): RscReloadFailure | null {
@@ -436,12 +438,12 @@ export class DevHmrController {
             cssAssets: this.#renderState.cssAssets,
             buildId: this.#renderState.buildId,
           });
-          this.#runningBundlePath = path.resolve(adopted.pagesBundlePath);
+          this.#adoptBundle(adopted.pagesBundlePath);
         } catch (error) {
           //? The pages reload it rode with failed and says so; the route still renders, and the next reload carries the
           //? merged manifest.
           const failure = DevHmrController.#reloadFailure(error);
-          if (failure) this.#runningBundlePath = path.resolve(failure.adopted.pagesBundlePath);
+          if (failure) this.#adoptBundle(failure.adopted.pagesBundlePath);
           this.#logger.warn(`[SSR] route ${routeId} merged, but the worker did not reload: ${String(error)}`);
         }
         this.#logger.verbose(

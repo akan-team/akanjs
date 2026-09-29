@@ -14,5 +14,5 @@ A CSR dev page — `?csr=true`, `/__csr`, and every native dev build — updates
 - `AKAN_DEV_CSR=artifact` brings back the single-file dev bundle, which reloads on every save. `akan build` and a
   release mobile build are unchanged.
 - HMR sockets now say what they are: a CSR page connects as `/_akan/hmr?client=csr` and gets `csr-update` instead of
-  the SSR `reload`, `rsc-refresh` and `client-refresh`, and a page that missed an update while disconnected reloads
+  the SSR `reload` and `rsc-refresh`, and a page that missed an update while disconnected reloads
   when it reconnects.

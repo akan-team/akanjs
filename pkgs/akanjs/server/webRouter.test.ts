@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_AKAN_I18N } from "akanjs/common";
 import { createRequestStore } from "akanjs/fetch";
-import type { RoutesManifest } from "./artifact";
+import type { RouteSeedIndex, RoutesManifest } from "./artifact";
 import {
   createRouteCacheEntry,
   isPublicRouteCacheableRequest,
@@ -143,6 +143,7 @@ async function withFullSsrCacheHarness<T>(
     appDir?: string;
     web?: { ssr: boolean; csr: boolean };
     prebuilt?: RoutesManifest;
+    seedIndex?: RouteSeedIndex;
     onRenderInput?: (input: Parameters<SsrFromRscRenderer["render"]>[0]) => void;
   } = {},
 ): Promise<T> {
@@ -190,7 +191,7 @@ async function withFullSsrCacheHarness<T>(
     web: options.web ?? { ssr: true, csr: true },
     cssBytesByUrl: {},
     rsc: fakeWorker as never,
-    seedIndex: { entries: [], globalLayoutFiles: [] },
+    seedIndex: options.seedIndex ?? { entries: [], globalLayoutFiles: [] },
     upgradeHmrWs: () => false,
     prebuilt: options.prebuilt,
   });
@@ -438,6 +439,55 @@ describe("WebRouter dev mode selection", () => {
 
   test("stays in production mode when no command claims otherwise", async () => {
     await expect(devRoutes()).resolves.not.toContain("/_akan/hmr");
+  });
+});
+
+describe("WebRouter dev route builds", () => {
+  test("builds the nearest layout route for a path only a route prefix matches", async () => {
+    const originalSend = process.send;
+    const requestedRouteIds: string[] = [];
+    process.send = ((message: { type?: string; id?: number; routeId?: string }): boolean => {
+      if (message.type !== "build-route" || !message.routeId) return true;
+      requestedRouteIds.push(message.routeId);
+      const data = { manifestDelta: {}, ssrManifestDelta: {}, newEntries: [], clientDeps: [] };
+      queueMicrotask(() => process.emit("message", { type: "build-route-res", id: message.id, ok: true, data }));
+      return true;
+    }) as typeof process.send;
+    try {
+      await withFullSsrCacheHarness(
+        async ({ fullSsr }) => await fullSsr(new Request("https://example.test/ko/blog/missing")),
+        {
+          nodeEnv: "development",
+          commandType: "start",
+          seedIndex: {
+            entries: [
+              { routeId: "/:lang/blog", pattern: "/:lang/blog", seeds: ["/repo/apps/demo/page/blog/_layout.tsx"] },
+            ],
+            globalLayoutFiles: [],
+          },
+        },
+      );
+      expect(requestedRouteIds).toEqual(["/:lang/blog"]);
+    } finally {
+      process.send = originalSend;
+    }
+  });
+
+  test("keeps a dev document out of the browser's HTTP cache, and leaves production's to the cache policy", async () => {
+    const cacheControlOf = async (options: { nodeEnv: string; commandType?: string }) =>
+      await withFullSsrCacheHarness(async ({ fullSsr }) => {
+        const response = await fullSsr(new Request("https://example.test/en/page"));
+        expect(response.status).toBe(200);
+        return response.headers.get("Cache-Control");
+      }, options);
+    const originalSend = process.send;
+    process.send = ((): boolean => true) as typeof process.send;
+    try {
+      expect(await cacheControlOf({ nodeEnv: "development", commandType: "start" })).toBe("no-store");
+      expect(await cacheControlOf({ nodeEnv: "production" })).toBeNull();
+    } finally {
+      process.send = originalSend;
+    }
   });
 });
 

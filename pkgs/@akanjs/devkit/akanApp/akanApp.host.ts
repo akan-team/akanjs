@@ -94,6 +94,8 @@ export class AkanAppHost {
   readonly #bootLatch = new DevBootLatch(() => this.#onDevEvent?.({ app: this.app.name, booted: true }));
   #backend: Bun.Subprocess<"ignore", "inherit" | "pipe", "inherit" | "pipe"> | null = null;
   #builder: IncrementalBuilderHost | null = null;
+  //? Outlives the builder host, which idle wake and recovery replace; a config or metadata restart clears it.
+  #patcherOff = false;
   #backendReady = false;
   #plannedBackendStops = new WeakSet<Bun.Subprocess<"ignore", "inherit", "inherit">>();
   #restartTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1056,6 +1058,7 @@ export class AkanAppHost {
     this.#pendingBuildStatusReplay = [];
     await this.#stopBackend();
     this.#stopBuilder();
+    this.#patcherOff = false;
     if (refreshConfig) {
       await this.app.getConfig({ refresh: true });
       // Merge, not replace: `start()` added values prepare does not produce (REDIS_HOST from the tunnel).
@@ -1191,6 +1194,7 @@ export class AkanAppHost {
         {
           stdio: this.stdio,
           onOutput: (kind, text) => void (kind === "stderr" ? process.stderr : process.stdout).write(text),
+          patcherOff: this.#patcherOff,
         },
       );
       try {
@@ -1278,6 +1282,7 @@ export class AkanAppHost {
   #stopBuilder(): void {
     this.#cancelRssRecycle();
     if (!this.#builder) return;
+    if (this.#builder.patcherOff) this.#patcherOff = true;
     this.#builder.stop();
     this.#builder = null;
   }

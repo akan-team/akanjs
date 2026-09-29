@@ -66,9 +66,17 @@ export class SsrDevShim {
     var hello = self.__AKAN_SSR_HELLO_GENERATION__;
     if (typeof hello === "number") self.__akan.catchUp(hello, c.prefix);
   }
+  // A backend restarting between the render and this load answers nothing for a moment; the registry answering again
+  // is when to try once more.
+  function runtime(attempt) {
+    return script(c.runtime).catch(function (error) {
+      if (attempt >= 3) throw error;
+      return wait(500).then(state).then(function () { return runtime(attempt + 1); });
+    });
+  }
   function boot() {
     if (!booting)
-      booting = self.__AKAN_SSR_BOOT__ = script(c.runtime).then(function () {
+      booting = self.__AKAN_SSR_BOOT__ = runtime(0).then(function () {
         var early = self.__AKAN_SSR_EARLY_UPDATES__ || [];
         self.__AKAN_SSR_EARLY_UPDATES__ = null;
         for (var i = 0; i < early.length; i++) self.__akan.hot(early[i]);

@@ -212,23 +212,27 @@ export const installCsrDevRuntime = (host: CsrDevRuntimeHost): void => {
       const entry = script?.dataset.akanCsrEntry;
       if (!entry) throw new Error("[akan-csr] the app script carries no data-akan-csr-entry");
       this.#generation = generation;
-      this.#refresh = this.#load(refresh).exports as RefreshRuntime;
-      // Before the entry runs: react-dom looks for the DevTools hook once, when it is first evaluated.
-      this.#refresh.injectIntoGlobalHook(host);
-      this.#run(entry);
+      this.#run(entry, () => {
+        const runtime = this.#load(refresh).exports as RefreshRuntime;
+        // Before the entry runs: react-dom looks for the DevTools hook once, when it is first evaluated.
+        runtime.injectIntoGlobalHook(host);
+        this.#refresh = runtime;
+      });
     }
 
     //? The page's own HMR script already put this refresh runtime into React's hook; a second inject would wrap it.
     startLibrary({ generation, refresh, bootstrap, vendorFile, epoch }: LibraryStart) {
       this.#library = { vendorFile, epoch };
       this.#generation = generation;
-      this.#refresh = this.#load(refresh).exports as RefreshRuntime;
-      this.#run(bootstrap);
+      this.#run(bootstrap, () => {
+        this.#refresh = this.#load(refresh).exports as RefreshRuntime;
+      });
     }
 
     //? An entry that throws leaves no module to patch, so any newer update then reloads onto the fixed code.
-    #run(entry: string) {
+    #run(entry: string, loadRefresh: () => void) {
       try {
+        loadRefresh();
         this.#load(entry);
       } catch (error) {
         this.#startFailed = true;

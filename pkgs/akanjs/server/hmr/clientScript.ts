@@ -60,12 +60,13 @@ export const HMR_CLIENT_SCRIPT = `(function(){
   function connect(){
     try { socket = new WebSocket(url); }
     catch(e){ console.error("[akan-hmr] ws init failed", e); schedule(); return; }
-    socket.addEventListener("open", function(){ attempts = 0; });
     socket.addEventListener("message", function(ev){
       var msg;
       try { msg = JSON.parse(ev.data); } catch (e){ return; }
       if (!msg || typeof msg.type !== "string") return;
       if (msg.type === "hello") {
+        // Not on open: the gateway takes the socket before its upstream answers, and closes it when that fails.
+        attempts = 0;
         var dropped = Array.isArray(msg.failingPhases) && dropBuildErrorsExcept(msg.failingPhases);
         if (dropped && systemPage) {
           reloadForUpdate("the build that failed to render this page recovered");
@@ -428,6 +429,13 @@ export const HMR_CLIENT_SCRIPT = `(function(){
     return dropped;
   }
 
+  // A render error belongs to no build phase and no status reports its fix; this page rendering again is the only sign.
+  function clearRenderError(){
+    if (!buildErrorStates.build) return;
+    delete buildErrorStates.build;
+    showBuildRecovered({});
+  }
+
   function showBuildRecovered(msg){
     if (hasBuildErrors()) {
       renderBuildErrorOverlay();
@@ -487,11 +495,12 @@ export const HMR_CLIENT_SCRIPT = `(function(){
 
   // After the registry applied every patch it was handed: the payload names the client modules those patches brought.
   var rscRefreshSeq = 0;
+  var rscRefreshedSeq = 0;
   function refreshRsc(msg){
     var receivedAt = Date.now();
     // A newer refresh supersedes this one: it waits for the patches that came with it, which this wait did not.
     var seq = ++rscRefreshSeq;
-    var refresh = function(){ if (seq === rscRefreshSeq) doRefreshRsc(msg, receivedAt); };
+    var refresh = function(){ if (seq === rscRefreshSeq) doRefreshRsc(msg, receivedAt, seq); };
     var settle = function(){
       return self.__akan && typeof self.__akan.whenSettled === "function" ? self.__akan.whenSettled() : null;
     };
@@ -506,7 +515,7 @@ export const HMR_CLIENT_SCRIPT = `(function(){
     settled.then(refresh, refresh);
   }
 
-  function doRefreshRsc(msg, receivedAt){
+  function doRefreshRsc(msg, receivedAt, seq){
     var started = performance.now();
     var overlayToken = beginHmrOverlay("Refreshing page...");
     try { self.__AKAN_RSC_CLEAR_CACHE__ && self.__AKAN_RSC_CLEAR_CACHE__(); } catch(e){}
@@ -517,9 +526,14 @@ export const HMR_CLIENT_SCRIPT = `(function(){
       return;
     }
     Promise.resolve(self.__AKAN_RSC_REFRESH__({ buildId: msg.buildId })).then(function(){
-      lastBuildId = msg.buildId;
+      // One started before a newer refresh can finish after it; the newer one's build is what the page shows.
+      if (!(seq < rscRefreshedSeq)) {
+        rscRefreshedSeq = seq;
+        lastBuildId = msg.buildId;
+      }
       recordTrace("rsc-refresh", msg, receivedAt, Date.now());
       endHmrOverlay(overlayToken);
+      clearRenderError();
       console.debug && console.debug("[akan-hmr] RSC refreshed", {
         buildId: msg.buildId,
         generation: msg.generation,

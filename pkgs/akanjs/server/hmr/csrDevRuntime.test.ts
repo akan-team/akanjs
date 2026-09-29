@@ -492,6 +492,16 @@ describe("installCsrDevRuntime", () => {
       expect(harness.warnings.at(-1)).toContain("failed to start");
     });
 
+    test("a refresh runtime that fails to load fails the start, so the next newer update reloads rather than queues", () => {
+      const harness = createHarness({ "app/boot.ts": () => undefined });
+      expect(() =>
+        harness.api.startLibrary({ generation: 2, refresh: REFRESH_VENDOR, bootstrap: "app/boot.ts" }),
+      ).toThrow();
+      expect(harness.api.inspect().failed).toBe(true);
+      harness.api.hot({ generation: 3, url: "/_akan/ssr-dev/patch-3.js" });
+      expect(harness.reloads).toBe(1);
+    });
+
     test("a payload root that also exports non-components re-runs in place and refreshes its components", () => {
       const harness = createHarness({
         "app/boot.ts": () => undefined,

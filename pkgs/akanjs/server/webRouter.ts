@@ -397,7 +397,7 @@ export class WebRouter {
     <script type="module" src="/csr.js"></script>
   </body>
 </html>`;
-              return new Response(this.#withCsrHmr(htmlText), { headers: WebRouter.#htmlResponseHeaders(200) });
+              return new Response(this.#withCsrHmr(htmlText), { headers: this.#htmlResponseHeaders(200) });
             },
             ...(this.#csrDevShell
               ? {
@@ -549,7 +549,7 @@ export class WebRouter {
             const csrHtml = await this.#resolveCsrHtml(csrOutputDir, url.pathname);
             if (!csrHtml) return this.#csrUnavailableResponse(url.pathname);
             const html = await Bun.file(csrHtml).text();
-            return new Response(this.#withCsrHmr(html), { headers: WebRouter.#htmlResponseHeaders(200) });
+            return new Response(this.#withCsrHmr(html), { headers: this.#htmlResponseHeaders(200) });
           }
 
           const csrAssetPath = path.extname(url.pathname) ? resolveStaticPath(csrOutputDir, url.pathname) : null;
@@ -608,7 +608,7 @@ export class WebRouter {
           const htmlCacheEntry = htmlCacheDecision.entry;
           const cachedHtml = htmlCacheEntry ? this.#getCachedHtml(htmlCacheEntry.key) : null;
           if (cachedHtml) {
-            const cachedHeaders = WebRouter.#htmlResponseHeaders(200);
+            const cachedHeaders = this.#htmlResponseHeaders(200);
             cachedHeaders.set("X-Akan-Cache", "HIT");
             return new Response(cachedHtml, { headers: cachedHeaders });
           }
@@ -649,7 +649,7 @@ export class WebRouter {
             },
           });
           const responseStatus = rscResult.status ?? 200;
-          const responseHeaders = WebRouter.#htmlResponseHeaders(responseStatus);
+          const responseHeaders = this.#htmlResponseHeaders(responseStatus);
           if (req.method === "HEAD") {
             const headers = new Headers(responseHeaders);
             if (htmlCacheEntry && responseStatus === 200) headers.set("X-Akan-Cache", "MISS");
@@ -976,9 +976,11 @@ export class WebRouter {
     return this.renderState.cssAssets[basePath ?? ""]?.cssUrl ?? null;
   }
 
-  static #htmlResponseHeaders(status: number): Headers {
+  //? Dev: a back/forward navigation replays a document from the HTTP cache without asking, which would boot a tab onto
+  //? the RSC payload and registry config of a build the server no longer runs.
+  #htmlResponseHeaders(status: number): Headers {
     const headers = new Headers({ "Content-Type": "text/html; charset=utf-8" });
-    if (status >= 400) headers.set("Cache-Control", "no-store");
+    if (status >= 400 || !this.#prodMode) headers.set("Cache-Control", "no-store");
     return WebRouter.#applySecurityHeaders(headers, { html: true });
   }
   #withCsrHmr(html: string): string {
@@ -999,7 +1001,7 @@ export class WebRouter {
       cssHref: this.#getStylesheetHref(req, pathname),
     });
     if (!html) return this.#csrUnavailableResponse(pathname);
-    return new Response(this.#withCsrHmr(html), { headers: WebRouter.#htmlResponseHeaders(200) });
+    return new Response(this.#withCsrHmr(html), { headers: this.#htmlResponseHeaders(200) });
   }
   async #resolveCsrHtml(csrOutputDir: string, pathname: string): Promise<string | null> {
     const resolved = WebRouter.#resolveCsrHtmlPath(csrOutputDir, pathname, this.#artifact);

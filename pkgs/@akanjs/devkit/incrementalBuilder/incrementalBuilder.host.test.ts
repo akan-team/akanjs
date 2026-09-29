@@ -1,4 +1,8 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { CSR_DEV_PATCHING_MARKER, SSR_DEV_DIRNAME } from "akanjs/server/hmr/csrDevManifest";
 import { MemoryLimit } from "akanjs/server/memoryLimit";
 import { IncrementalBuilderHost } from "./incrementalBuilder.host";
 
@@ -171,6 +175,36 @@ describe("IncrementalBuilderHost", () => {
 
     host.stop();
     expect(host.recycle("after stop")).toBe(false);
+  });
+
+  test("a patcher a crash turned off stays off in the host that replaces this one", async () => {
+    const cwdPath = await mkdtemp(path.join(os.tmpdir(), "akan-builder-patcher-"));
+    try {
+      const spawns = mockSpawns();
+      const app = { cwdPath } as never;
+      const host = new IncrementalBuilderHost({ app, entry: "/tmp/builder.ts", env: {}, onMessage: () => undefined });
+      host.start();
+      spawns[0]?.options.ipc?.({ type: "builder-ready" });
+      const marker = path.join(cwdPath, ".akan/artifact", SSR_DEV_DIRNAME, CSR_DEV_PATCHING_MARKER);
+      await Bun.write(marker, "");
+      spawns[0]?.options.onExit?.();
+      await wait(1_050);
+      expect(spawns[1]?.options.env?.AKAN_DEV_CSR_PATCHER).toBe("off");
+      expect(host.patcherOff).toBe(true);
+      host.stop();
+      const next = new IncrementalBuilderHost({
+        app,
+        entry: "/tmp/builder.ts",
+        env: {},
+        onMessage: () => undefined,
+        patcherOff: host.patcherOff,
+      });
+      next.start();
+      expect(spawns[2]?.options.env?.AKAN_DEV_CSR_PATCHER).toBe("off");
+      next.stop();
+    } finally {
+      await rm(cwdPath, { recursive: true, force: true });
+    }
   });
 });
 
