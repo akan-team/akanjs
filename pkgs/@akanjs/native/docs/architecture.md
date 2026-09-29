@@ -234,7 +234,7 @@ Akan Native Sample.app/Contents/
   ```
   - Windows exe는 `bun build --compile --windows-hide-console`로 만들고, 아이콘(.ico)과 버전 정보를 넣는다.
   - DLL은 C 런타임을 정적으로 링크한다(`+crt-static`). 그래서 VC++ 재배포 패키지가 필요 없다.
-  - 설치 프로그램(MSI·deb·AppImage)과 서명은 CLI-9다.
+  - Windows 설치 프로그램은 `--installer`의 NSIS다(2026-09-30, `platforms/windows-installer.ts`). 사용자 단위로 설치해 업데이터가 관리자 권한 없이 폴더를 바꿀 수 있고, 제거 항목은 app id 키, 시작 메뉴 바로가기는 앱 이름이다. deb·AppImage와 서명은 CLI-9다.
 - 빌드는 그 OS에서만 한다(`requireHost`). Mac에서 테스트하는 방법(Linux는 Docker, Windows는 VM)은 [testing-windows-linux.md](testing-windows-linux.md)에 있다.
 
 ### 3.7 범위 모델 (App · Window · Document · Call)

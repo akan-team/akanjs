@@ -94,6 +94,19 @@ bun scripts/vm/windows.ts desktop 'bun scripts/vm/update-check.ts windows'
 
 주의: 확인이 도중에 실패하면 임시 폴더에 설치한 앱이 남아 있을 수 있다. 그러면 다음 실행의 앱이 single-instance로 넘기고 바로 끝나서 확인이 멈춘다. Windows에서는 `bun scripts/vm/windows.ts ssh 'Get-Process | Where-Object { $_.Path -like "*akan-native-update-check*" } | Stop-Process -Force'`로 먼저 끝낸다.
 
+## 설치 프로그램과 무인 운영 확인
+
+```sh
+bun scripts/vm/windows.ts desktop 'bun scripts/vm/installer-check.ts'   # NSIS가 필요하다(windows-setup.ps1이 설치)
+bun scripts/vm/windows.ts desktop 'bun scripts/vm/kiosk-check.ts'
+```
+
+- installer-check: 샘플을 `--installer`로 빌드해 `/S /RUN`으로 설치(폴더, 시작 메뉴, 제거 항목, 앱 실행) → 실행 중인 앱 위로 다시 설치(설치 폴더에서 도는 앱을 먼저 멈춤) → `/S` 제거까지 본다.
+  - NSIS 설치 프로그램은 32비트라 그 PowerShell도 32비트다. 32비트 프로세스는 64비트 프로세스의 경로를 읽지 못해(`Get-Process`의 Path가 빈다) 앱을 WMI(`Win32_Process.ExecutablePath`)로 찾는다.
+- kiosk-check: `desktop.recovery: "reload"`와 `desktop.window { fullscreen, skipTaskbar }`로 빌드해 DevTools 포트로 확인한다. 첫 화면부터 전체화면, 페이지를 연달아 죽이면(`Page.crash`) 즉시·1초·2초 뒤 다시 불러오기, `app.relaunch()`, WebView2 브라우저 프로세스를 끝내면 앱 재실행.
+- 확인 결과(2026-09-30): Windows 11 ARM VM에서 둘 다 통과. `skipTaskbar`는 전체화면이 작업 표시줄을 가리므로 따로 스크린샷으로 비교했다.
+- macOS에서 update-check는 화면이 잠겨 있으면 멈춘다. 샘플이 `requestAnimationFrame` 안에서 업데이트 확인을 시작하는데, 잠긴 화면에서는 프레임이 오지 않는다.
+
 ## 공통 벡터 (architecture.md §5)
 
 `packages/core/vectors/`에 있는 파일들이다: scope, routes, ranges, ids, bridge, navigation, acl. 모든 구현이 통과해야 한다.

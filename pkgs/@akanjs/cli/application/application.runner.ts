@@ -46,6 +46,8 @@ export interface MobileBuildOptions extends MobileTargetOptions {
   profile?: "debug" | "release";
   /** A desktop build that carries the app's server. */
   server?: boolean;
+  /** A Windows build's setup program too. */
+  installer?: boolean;
 }
 export interface MobileStartOptions extends MobileTargetOptions {
   operation?: "local" | "release";
@@ -281,9 +283,11 @@ try {
   async buildMobile(
     app: App,
     platform: NativePlatform,
-    { target, env = "debug", profile = "release", server = false }: MobileBuildOptions = {},
+    { target, env = "debug", profile = "release", server = false, installer = false }: MobileBuildOptions = {},
   ) {
     const targets = await resolveMobileTargets(app, target);
+    if (installer && platform !== "windows")
+      throw new Error(`--installer builds a Windows setup program; this computer builds for ${platform}.`);
     if (server) DesktopServerStage.assertCarriable(await app.getConfig());
     await this.#buildMobileCsr(app, env);
     const carried = server ? await new DesktopServerStage(app).prepare(env) : undefined;
@@ -291,7 +295,11 @@ try {
       this.#reportBuild(
         app,
         mobileTarget,
-        await new NativeApp(app, mobileTarget).build(platform, { profile, ...(carried ? { server: carried } : {}) }),
+        await new NativeApp(app, mobileTarget).build(platform, {
+          profile,
+          ...(carried ? { server: carried } : {}),
+          ...(installer ? { installer } : {}),
+        }),
       );
     });
   }

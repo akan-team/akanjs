@@ -1067,15 +1067,31 @@ akan start-desktop myapp --release true --server true --env debug`,
     {
       name: "build-desktop",
       signature:
-        "akan build-desktop <app> [--target <target>] [--env <env>] [--debug <boolean>] [--server <boolean>] [--write <boolean>]",
+        "akan build-desktop <app> [--target <target>] [--env <env>] [--debug <boolean>] [--server <boolean>] [--installer <boolean>] [--write <boolean>]",
       desc: l.trans({
-        en: "Build the desktop app for this computer: a `.app` on macOS, an app folder on Windows and Linux, signed ad hoc or with the development identity. Like `build-ios`, it makes a production web build against `--env` first. Distribution signing, notarization and installers are not part of it yet.",
-        ko: "이 컴퓨터용 데스크톱 앱을 빌드합니다. macOS는 `.app`, Windows와 Linux는 앱 폴더이며, ad hoc 또는 개발용 인증서로 서명합니다. `build-ios`처럼 먼저 `--env` 환경으로 배포용 웹 빌드를 만듭니다. 배포 서명, 공증, 설치 프로그램은 아직 포함하지 않습니다.",
+        en: "Build the desktop app for this computer: a `.app` on macOS, an app folder on Windows and Linux, signed ad hoc or with the development identity. Like `build-ios`, it makes a production web build against `--env` first. On Windows, `--installer` adds a setup program; distribution signing and notarization are not part of it yet.",
+        ko: "이 컴퓨터용 데스크톱 앱을 빌드합니다. macOS는 `.app`, Windows와 Linux는 앱 폴더이며, ad hoc 또는 개발용 인증서로 서명합니다. `build-ios`처럼 먼저 `--env` 환경으로 배포용 웹 빌드를 만듭니다. Windows에서는 `--installer`가 설치 프로그램을 더하며, 배포 서명과 공증은 아직 포함하지 않습니다.",
       }),
-      options: [targetOption, debugEnvOption, debugBuildOption, carryServerOption, writeOption],
+      options: [
+        targetOption,
+        debugEnvOption,
+        debugBuildOption,
+        carryServerOption,
+        {
+          name: "--installer",
+          type: "Boolean",
+          defaultValue: "false",
+          desc: l.trans({
+            en: "Windows: also build `<file>-<version>-<arch>-setup.exe` with NSIS (`winget install NSIS.NSIS`). It installs for the current user under `%LOCALAPPDATA%\\Programs`, where updates can swap the app without an administrator; `/S` installs silently and `/RUN` starts the app afterwards; it installs the WebView2 Runtime where it is missing.",
+            ko: "Windows: NSIS로 `<file>-<version>-<arch>-setup.exe`도 만듭니다(`winget install NSIS.NSIS`). 현재 사용자로 `%LOCALAPPDATA%\\Programs` 아래에 설치하므로 업데이트가 관리자 권한 없이 앱을 바꿀 수 있습니다. `/S`는 무인 설치, `/RUN`은 설치 뒤 실행이며, WebView2 Runtime이 없는 PC에는 함께 설치합니다.",
+          }),
+        },
+        writeOption,
+      ],
       notes: [aliasNote("bd"), carriedServerNote, outputNote("<macos|windows|linux>")],
       examples: `akan build-desktop myapp --target default
-akan build-desktop myapp --server true --env main`,
+akan build-desktop myapp --server true --env main
+akan build-desktop myapp --installer true --env main`,
     },
     {
       name: "release-ios",

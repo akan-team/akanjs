@@ -1,5 +1,5 @@
 // akan-native build windows: a folder with the Bun runtime, the TAO/WRY DLL and the web app
-// (docs/architecture.md §3.3, §8). An installer comes with distribution signing (CLI-9).
+// (docs/architecture.md §3.3, §8), and with --installer an NSIS setup program (windows-installer.ts).
 //
 //   <Name>/
 //     <exe>.exe          bun build --compile (main + plugin host Worker), with icon and version info
@@ -23,6 +23,7 @@ import {
   runExecutable,
   writeDesktopResources,
 } from "./desktop.ts";
+import { buildWindowsInstaller } from "./windows-installer.ts";
 
 /** Characters left for the app id under C:\Users\<name>\AppData\Local\ before WebView2's own paths reach MAX_PATH. */
 const WEBVIEW2_ID_BUDGET = 40;
@@ -77,6 +78,7 @@ export async function buildWindows(ctx: BuildContext): Promise<string> {
   const resources = resourcesOf("windows", dir);
   writeDesktopResources(ctx, resources, "windows");
   if (art) writeFileSync(join(resources, "icon.rgba"), windowIcon(art.master));
+  if (ctx.windows?.installer) ctx.artifacts.push({ kind: "installer", path: await buildWindowsInstaller(ctx, dir) });
   return dir;
 }
 

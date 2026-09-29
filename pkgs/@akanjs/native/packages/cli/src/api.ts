@@ -21,6 +21,7 @@ import {
   SigningError,
   WebBuildError,
   WebInputError,
+  type WindowsBuild,
 } from "./lib/prepare.ts";
 import { ConfigError, type Project, projectFromConfig } from "./lib/project.ts";
 import { publishRelease } from "./lib/publish.ts";
@@ -40,6 +41,7 @@ export type {
   IosSigningResult,
   LogEvent,
   TargetPlatform,
+  WindowsBuild,
 };
 
 /** semver of this API. A caller checks the major before it relies on anything here. */
@@ -101,7 +103,7 @@ export interface TaskOptions {
 }
 
 export interface Artifact {
-  kind: "app" | "apk" | "aab" | "ipa" | "folder" | "web";
+  kind: "app" | "apk" | "aab" | "ipa" | "folder" | "web" | "installer";
   path: string;
   signing: "none" | "adhoc" | "debug" | "development" | "distribution";
   device?: "simulator" | "device";
@@ -145,18 +147,17 @@ export function validateConfig(config: AkanNativeConfig, options: { appDir: stri
 }
 
 /** Builds the app. Default profile release (like `akan-native build`). `ios.device`: an iPhone build (signed; release adds an .ipa). */
-export function build(options: TaskOptions & { profile?: BuildProfile; ios?: IosBuild }): Promise<BuildResult> {
+export function build(
+  options: TaskOptions & { profile?: BuildProfile; ios?: IosBuild; windows?: WindowsBuild },
+): Promise<BuildResult> {
   return task(
     options,
     async (warnings) =>
       (
-        await buildIn(
-          options,
-          options.profile ?? "release",
-          options.mode ?? "production",
-          warnings,
-          options.ios ? { ios: options.ios } : {},
-        )
+        await buildIn(options, options.profile ?? "release", options.mode ?? "production", warnings, {
+          ...(options.ios ? { ios: options.ios } : {}),
+          ...(options.windows ? { windows: options.windows } : {}),
+        })
       ).result,
   );
 }
@@ -540,7 +541,7 @@ async function buildIn(
   profile: BuildProfile,
   mode: string,
   warnings: string[],
-  extra: Pick<BuildOptions, "android" | "ios" | "devServer" | "startPath"> = {},
+  extra: Pick<BuildOptions, "android" | "ios" | "windows" | "devServer" | "startPath"> = {},
 ): Promise<{ ctx: BuildContext; artifact: string; result: BuildResult }> {
   const started = performance.now();
   const appDir = resolve(options.appDir);

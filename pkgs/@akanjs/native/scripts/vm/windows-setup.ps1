@@ -12,7 +12,7 @@
 #   1. OpenSSH server on (PowerShell as its shell), the Mac's akan-native VM key trusted
 #   2. No sleep and no display timeout: tests open real windows in the logged-in session
 #   3. Visual Studio 2022 Build Tools (C++ for ARM64 and x64, Windows SDK), rustup (no toolchain:
-#      akan-native pins one per project), Bun
+#      akan-native pins one per project), Bun, NSIS (build windows --installer)
 #   4. Reports this machine's addresses and user name back to the Mac
 #
 # Safe to run again: finished steps are skipped.
@@ -52,6 +52,7 @@ akan-native VM setup will install and configure:
   - Visual Studio 2022 Build Tools with the C++ tools and a Windows SDK (Microsoft license terms)
   - rustup, the Rust installer (MIT / Apache-2.0)
   - Bun $BunVersion (MIT)
+  - NSIS, the installer builder, through winget (zlib/libpng license)
 It also turns off sleep and the display timeout while plugged in.
 "@
 $answer = Read-Host "Accept these tools' licenses and continue? (y/N)"
@@ -113,6 +114,12 @@ try {
   $bun = "$env:USERPROFILE\.bun\bin\bun.exe"
   if (-not ((Test-Path $bun) -and ((& $bun --version) -eq $BunVersion))) {
     & ([scriptblock]::Create((Invoke-RestMethod "https://bun.sh/install.ps1"))) -Version $BunVersion
+  } else { Write-Host "already installed" }
+
+  Step "NSIS"
+  if (-not (Test-Path "${env:ProgramFiles(x86)}\NSIS\makensis.exe")) {
+    winget install --id NSIS.NSIS -e --silent --accept-package-agreements --accept-source-agreements --source winget
+    if ($LASTEXITCODE -ne 0) { throw "winget could not install NSIS (exit code $LASTEXITCODE)" }
   } else { Write-Host "already installed" }
 
   Report "done" ""

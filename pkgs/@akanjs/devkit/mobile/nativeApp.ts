@@ -30,6 +30,8 @@ export interface NativeBuildOptions {
   profile?: "debug" | "release";
   /** The server a desktop app carries (`--server`), staged by DesktopServerStage. */
   server?: DesktopServerBundle;
+  /** Windows: an NSIS setup program beside the app folder. */
+  installer?: boolean;
 }
 
 export interface NativeDevOptions extends NativeRunOptions {
@@ -118,11 +120,16 @@ export class NativeApp {
     };
   }
 
-  async build(platform: NativePlatform, { profile = "release", server }: NativeBuildOptions = {}) {
+  async build(platform: NativePlatform, { profile = "release", server, installer = false }: NativeBuildOptions = {}) {
     NativeApp.#assertServerPlatform(platform, server);
+    if (installer && platform !== "windows") throw new Error(`An installer is built for Windows, not for ${platform}.`);
     await this.assembleWeb();
     const { api, config } = await this.prepare(server);
-    return await api.build({ ...this.#task(platform, config), profile });
+    return await api.build({
+      ...this.#task(platform, config),
+      profile,
+      ...(installer ? { windows: { installer } } : {}),
+    });
   }
 
   async run(

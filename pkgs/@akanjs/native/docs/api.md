@@ -70,7 +70,7 @@ interface TaskOptions {
 ### build — 개발·배포용 빌드
 
 ```ts
-function build(o: TaskOptions & { profile?: "debug" | "release" }): Promise<BuildResult>;
+function build(o: TaskOptions & { profile?: "debug" | "release"; ios?: IosBuild; windows?: { installer?: boolean } }): Promise<BuildResult>;
 
 interface BuildResult {
   platform: TaskOptions["platform"];
@@ -99,8 +99,8 @@ interface IosSigningResult {
 }
 
 interface Artifact {
-  /** app: macOS·iOS 번들, folder: Windows·Linux 앱 폴더. 설치 프로그램(exe·deb·tar.gz)은 배포 작업 때 더한다 */
-  kind: "app" | "apk" | "aab" | "ipa" | "folder" | "web";
+  /** app: macOS·iOS 번들, folder: Windows·Linux 앱 폴더, installer: Windows NSIS 설치 프로그램(windows.installer) */
+  kind: "app" | "apk" | "aab" | "ipa" | "folder" | "web" | "installer";
   path: string;
   /** 누가 서명했는지: 서명하지 않음, adhoc(macOS dev), debug 키(Android), 개발(iOS 실기기), 배포 */
   signing: "none" | "adhoc" | "debug" | "development" | "distribution";
@@ -111,6 +111,7 @@ interface Artifact {
 
 - 기본 profile은 release다(CLI `akan-native build`와 같다). run과 dev는 debug로 빌드한다.
 - iOS: 기본은 시뮬레이터 .app이다. `ios: { device: true, signing? }`(아래 release와 같은 `IosSigning`)를 주면 실기기 .app(O1-2)을 만든다.
+- Windows: `windows: { installer: true }`(CLI `--installer`)면 앱 폴더 옆에 NSIS 설치 프로그램 `<fileName>-<version>-<arch>-setup.exe`도 만든다(`platforms/windows-installer.ts`). 사용자 단위(`%LOCALAPPDATA%\Programs\<name>`, 관리자 불필요), `/S` 무인 설치, `/RUN`이면 설치 뒤 실행, WebView2가 없으면 내장한 Evergreen Bootstrapper로 설치, 설치 폴더에서 도는 앱은 경로로 찾아 멈춘다. makensis가 필요하다(`winget install NSIS.NSIS`, `AKAN_NATIVE_MAKENSIS`). 코드 서명은 아직 없다(CLI-9).
 
 ### run — 빌드하고 띄우기
 

@@ -1747,6 +1747,30 @@ const output = await NativeFile.resolve(saveGrant, "write"); // from filePicker.
   },
 },`}
           />
+          <Docs.SubSubTitle>{l.trans({ en: "Installing On Windows", ko: "Windows에 설치하기" })}</Docs.SubSubTitle>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  <code>akan build-desktop myapp --installer true</code> on Windows adds a setup program next to the app
+                  folder (NSIS: <code>winget install NSIS.NSIS</code>). It installs for the current user, so updates
+                  swap the app without an administrator; <code>/S</code> installs silently and <code>/RUN</code> starts
+                  the app afterwards, which is what a remote install passes; a PC without the WebView2 Runtime gets it
+                  too. The program is not code-signed yet, so a copy downloaded in a browser meets a SmartScreen
+                  warning.
+                </span>
+              ),
+              ko: (
+                <span>
+                  Windows에서 <code>akan build-desktop myapp --installer true</code>를 실행하면 앱 폴더 옆에 설치
+                  프로그램이 생깁니다(NSIS: <code>winget install NSIS.NSIS</code>). 현재 사용자로 설치하므로 업데이트가
+                  관리자 권한 없이 앱을 바꿉니다. <code>/S</code>는 무인 설치, <code>/RUN</code>은 설치 뒤 실행으로,
+                  원격 설치가 넘기는 인자입니다. WebView2 Runtime이 없는 PC에는 함께 설치합니다. 아직 코드 서명이
+                  없어서, 브라우저로 받은 파일은 SmartScreen 경고를 만납니다.
+                </span>
+              ),
+            })}
+          </div>
           <Docs.SubSubTitle>{l.trans({ en: "Updates", ko: "업데이트" })}</Docs.SubSubTitle>
           <div>
             {l.trans({

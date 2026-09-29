@@ -154,13 +154,18 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .option("env", String, buildEnvOption)
     .option("debug", Boolean, { desc: "debug build instead of release", default: false })
     .option("server", Boolean, serverOption)
+    .option("installer", Boolean, {
+      desc: "Windows: also an NSIS setup program (per user, /S for a silent install)",
+      default: false,
+    })
     .option("write", Boolean, { desc: "write code generation", default: true })
-    .exec(async function (app, target, env, debug, server, write) {
+    .exec(async function (app, target, env, debug, server, installer, write) {
       await this.applicationScript.buildDesktop(app, {
         target,
         env,
         profile: debug ? "debug" : "release",
         server,
+        installer,
         write,
       });
     }),
