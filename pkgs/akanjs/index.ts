@@ -56,8 +56,9 @@ export interface AkanBinPathSource {
 export type AkanBinSource = AkanBinUrlSource | AkanBinPathSource;
 
 /**
- * Executables a desktop app's server carries (`build-desktop --server`), by the name its code spawns and then by
- * platform. Their folder comes first on the server's PATH, so `spawn("ffmpeg")` runs the carried file.
+ * Executables a desktop app carries, by the name its code spawns and then by platform. Their folder comes first on
+ * the app's PATH, so the carried server's `spawn("ffmpeg")` runs the carried file; a native plugin finds it in
+ * `ctx.binDir`.
  */
 export type AkanBinConfig = Record<string, { [platform in BinPlatform]?: AkanBinSource }>;
 

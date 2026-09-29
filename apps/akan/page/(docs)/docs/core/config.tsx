@@ -279,8 +279,8 @@ const buildFields = [
     key: "bin",
     type: "Record<string, { [platform]: AkanBinSource }>",
     default: "{}",
-    en: "{ url, sha256, file? } or { path, file? } per platform, put first on a desktop server's PATH.",
-    ko: "플랫폼마다 { url, sha256, file? } 또는 { path, file? }이며, 데스크톱 서버의 PATH 맨 앞에 놓입니다.",
+    en: "{ url, sha256, file? } or { path, file? } per platform, carried in a desktop app and put first on its PATH.",
+    ko: "플랫폼마다 { url, sha256, file? } 또는 { path, file? }이며, 데스크톱 앱에 실려 그 PATH 맨 앞에 놓입니다.",
   },
   {
     key: "optimizeImports",
@@ -1001,16 +1001,16 @@ const config: AppConfig = {
               en: (
                 <span>
                   <strong>A desktop app carries its own executables.</strong> Its server gets none of the image's{" "}
-                  <code>docker</code> steps, so <code>bin</code> puts ffmpeg, or anything else the server spawns, into
-                  the app for the computer it is built on and first on the server's PATH. Carry a static LGPL build: a{" "}
+                  <code>docker</code> steps, so <code>bin</code> puts ffmpeg, or anything else the app spawns, into the
+                  app for the computer it is built on and first on the app's PATH. Carry a static LGPL build: a{" "}
                   <code>--enable-nonfree</code> build may not be redistributed.
                 </span>
               ),
               ko: (
                 <span>
                   <strong>데스크톱 앱은 실행 파일을 직접 싣고 갑니다.</strong> 앱 안의 서버에는 이미지의{" "}
-                  <code>docker</code> 단계가 하나도 들어가지 않습니다. 그래서 <code>bin</code>이 ffmpeg처럼 서버가
-                  실행하는 파일을 빌드하는 컴퓨터용으로 앱에 넣고 서버 PATH 맨 앞에 둡니다. 정적 LGPL 빌드를 넣으세요.{" "}
+                  <code>docker</code> 단계가 하나도 들어가지 않습니다. 그래서 <code>bin</code>이 ffmpeg처럼 앱이
+                  실행하는 파일을 빌드하는 컴퓨터용으로 앱에 넣고 앱의 PATH 맨 앞에 둡니다. 정적 LGPL 빌드를 넣으세요.{" "}
                   <code>--enable-nonfree</code>로 빌드한 것은 재배포할 수 없습니다.
                 </span>
               ),

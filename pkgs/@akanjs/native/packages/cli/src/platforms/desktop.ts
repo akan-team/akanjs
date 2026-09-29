@@ -7,7 +7,8 @@
 //   resources/env.runtime.json  replaceable runtime env (ENV-4)
 //   resources/shell.json        window and shell settings for main.ts and the plugin host
 //   resources/server/           desktop.server.dir, when the app carries a server (packages/desktop/src/server.ts)
-//   resources/server.json       its entry, env and bin folder
+//   resources/server.json       its entry and env
+//   resources/bin/              desktop.bin: executables put first on the app's PATH (packages/desktop/src/main.ts)
 //   resources/server.bunfig.toml  empty: the server's Bun reads it instead of a bunfig.toml in its data folder
 //
 // Where each OS puts the executable, the library and the resources: macos.ts, windows.ts, linux.ts
@@ -232,12 +233,11 @@ export function writeDesktopResources(
         "desktop.server without the single-instance plugin: every launch starts another server on the same data",
       );
     cpSync(server.dir, join(resources, "server"), { recursive: true, verbatimSymlinks: true });
-    writeFileSync(
-      join(resources, "server.json"),
-      JSON.stringify({ entry: server.entry, env: server.env, ...(server.bin ? { bin: server.bin } : {}) }),
-    );
+    writeFileSync(join(resources, "server.json"), JSON.stringify({ entry: server.entry, env: server.env }));
     writeFileSync(join(resources, "server.bunfig.toml"), "");
   }
+  if (config.desktop.bin)
+    cpSync(config.desktop.bin, join(resources, "bin"), { recursive: true, verbatimSymlinks: true });
   writeFileSync(
     join(resources, "shell.json"),
     JSON.stringify({

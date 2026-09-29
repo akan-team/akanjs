@@ -150,8 +150,10 @@ describe.skipIf(!enabled)("a desktop app carrying its server (build-desktop mini
     expect(list.map((memo) => memo.id)).toContain(memoId);
   });
 
-  test("ships the app's own native plugin (apps/minimal/native/probe) into the shell", async () => {
-    await DesktopApp.until(async () => app.lines.join("\n").includes("probe: apps/minimal/native/probe is loaded"));
+  test("ships the app's own native plugin (apps/minimal/native/probe), which finds the app's bin first", async () => {
+    await DesktopApp.until(async () =>
+      app.lines.join("\n").includes("probe: apps/minimal/native/probe is loaded; probe-tool is in the app's bin"),
+    );
   });
 
   test("refuses a rebound Host, a foreign origin, and every interface but loopback", async () => {

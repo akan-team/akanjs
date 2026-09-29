@@ -105,6 +105,7 @@ export default defineDesktopPlugin<ClipboardApi>({ id: "clipboard", methods: { a
 ```
 - Bun API와 macOS 명령(`Bun.spawn(["open", url])` 등)을 쓸 수 있다. Finder에서 띄운 앱은 PATH와 LANG이 최소라서 명령은 절대 경로로 부르고 로캘을 지정한다(clipboard, device 참고).
 - `ctx.appDataDir`, `ctx.emit(event, data)`, `ctx.registerFile(path, mime)`(MIME은 `@akanjs/native/core`의 `mimeFor(name)`), `ctx.quit(code)`.
+- `ctx.binDir`: 앱이 싣는 실행 파일 폴더(설정 `desktop.bin`, akanjs `bin`), 없으면 null. 호스트가 이 폴더를 `process.env.PATH` 맨 앞에 붙이지만, Bun의 `spawn`·`which`는 `env` 없이 부르면 앱이 시작할 때의 환경을 읽는다(Bun 1.4.2). 이름으로 실행하려면 `Bun.spawn(["svcl", …], { env: process.env })`처럼 환경을 넘기거나 `join(ctx.binDir, "svcl.exe")`로 부른다. `node:child_process`는 바뀐 `process.env`를 쓴다.
 - 네이티브 셸: `ctx.shell("window.setTitle", { title })`(main 스레드에서 실행, 결과는 Promise), `ctx.onNativeEvent("window" | "opened" | "pageLoad", cb)`. 새 창 op가 필요하면 `native/desktop/src/lib.rs`의 `window_op`에 추가한다. 나중에 답하는 op(시트, 권한 요청)는 모듈 파일에 두고 요청 id로 `reply`한다(`panels.rs`: `panel.open`·`panel.save`·`alert.show`, 부른 창의 시트). macOS UI는 새 crate 없이 objc2·objc2-app-kit·block2, 그 밖의 Apple 프레임워크는 objc2 런타임(`msg_send!`)으로 부른다(plugins.md Q-P6).
 - 다중 창(SH-6): 앱에는 창이 여러 개일 수 있다(창 id, 1은 앱이 연 창).
   - 메서드 호출의 `ctx.window`는 부른 페이지의 창이다(setup·이벤트 소스에서는 undefined). 그 호출 안의 `ctx.shell`은 `args.window`가 없으면 그 창에 적용되므로, 창 op를 부르는 기존 플러그인은 부른 창을 대상으로 한다. 다른 창은 `ctx.shell(op, { window: 2 })`.

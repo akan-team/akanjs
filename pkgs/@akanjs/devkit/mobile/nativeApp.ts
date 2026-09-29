@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { AkanNativeConfig } from "@akanjs/native/config";
 import type { App } from "../commandDecorators";
+import { DesktopBin } from "./desktopBin";
 import type { DesktopServerBundle } from "./desktopServerStage";
 import {
   type DesktopPlatform,
@@ -68,12 +69,19 @@ export class NativeApp {
     });
   }
 
-  async config(server?: DesktopServerBundle) {
+  /** Where a desktop build stages the executables it carries (akan.config.ts `bin`). */
+  get binDir() {
+    return path.join(this.targetRoot, "bin");
+  }
+
+  async config({ server, platform }: { server?: DesktopServerBundle; platform?: NativePlatform } = {}) {
     const [appConfig, plugins, nativePlugins] = await Promise.all([
       this.app.getConfig(),
       this.app.collectPlugins(),
       NativePluginFolders.of(this.app),
     ]);
+    const desktop = platform === "macos" || platform === "windows" || platform === "linux";
+    const carried = desktop ? await new DesktopBin(this.app, appConfig).stage(this.binDir) : [];
     return NativeConfig.build({
       appPath: this.app.cwdPath,
       target: this.target.config,
@@ -82,12 +90,16 @@ export class NativeApp {
       locales: appConfig.i18n.locales,
       nativePlugins,
       ...(server ? { desktopServer: server } : {}),
+      ...(carried.length ? { desktopBin: this.binDir } : {}),
     });
   }
 
   /** The API and the config it is about to build, refused here when the runtime would refuse it later. */
-  async prepare(server?: DesktopServerBundle) {
-    const [api, { config, warnings }] = await Promise.all([NativeApi.load(this.app.cwdPath), this.config(server)]);
+  async prepare(platform: NativePlatform, server?: DesktopServerBundle) {
+    const [api, { config, warnings }] = await Promise.all([
+      NativeApi.load(this.app.cwdPath),
+      this.config({ platform, ...(server ? { server } : {}) }),
+    ]);
     for (const warning of warnings) this.app.logger.warn(warning);
     const problems = api.validateConfig(config, { appDir: this.app.cwdPath });
     if (problems.length)
@@ -124,7 +136,7 @@ export class NativeApp {
     NativeApp.#assertServerPlatform(platform, server);
     if (installer && platform !== "windows") throw new Error(`An installer is built for Windows, not for ${platform}.`);
     await this.assembleWeb();
-    const { api, config } = await this.prepare(server);
+    const { api, config } = await this.prepare(platform, server);
     return await api.build({
       ...this.#task(platform, config),
       profile,
@@ -138,7 +150,7 @@ export class NativeApp {
   ) {
     NativeApp.#assertServerPlatform(platform, server);
     await this.assembleWeb();
-    const { api, config } = await this.prepare(server);
+    const { api, config } = await this.prepare(platform, server);
     return await api.run({
       ...this.#task(platform, config),
       profile,
@@ -152,7 +164,7 @@ export class NativeApp {
   //* which an Android device reaches through the reversed port.
   async dev(platform: NativePlatform, { upstream, lang, device, teamId }: NativeDevOptions) {
     await mkdir(this.web.dir, { recursive: true });
-    const [{ api, config }, { api: routes }] = await Promise.all([this.prepare(), this.app.getConfig()]);
+    const [{ api, config }, { api: routes }] = await Promise.all([this.prepare(platform), this.app.getConfig()]);
     return await api.dev({
       ...this.#task(platform, config),
       upstream,
@@ -168,7 +180,7 @@ export class NativeApp {
 
   async releaseIos({ teamId, adHoc = false }: { teamId?: string; adHoc?: boolean } = {}) {
     await this.assembleWeb();
-    const { api, config } = await this.prepare();
+    const { api, config } = await this.prepare("ios");
     return await api.release({
       ...this.#task("ios", config),
       platform: "ios",
@@ -192,7 +204,7 @@ export class NativeApp {
         `Mobile target '${this.target.name}' has no updates: { url, publicKey } in akan.config.ts; \`akan update-keygen ${this.app.name}\` prints the key.`,
       );
     await this.assembleWeb();
-    const { api, config } = await this.prepare(server);
+    const { api, config } = await this.prepare(platform, server);
     return await api.publishUpdate({
       ...this.#task(platform, config),
       platform,
@@ -210,7 +222,7 @@ export class NativeApp {
   async releaseAndroid({ formats = ["aab"] }: { formats?: ("aab" | "apk")[] } = {}) {
     const signing = NativeApp.androidSigning();
     await this.assembleWeb();
-    const { api, config } = await this.prepare();
+    const { api, config } = await this.prepare("android");
     return await api.release({ ...this.#task("android", config), platform: "android", signing, formats });
   }
 

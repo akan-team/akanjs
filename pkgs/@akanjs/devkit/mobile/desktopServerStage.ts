@@ -3,15 +3,13 @@ import path from "node:path";
 import type { AkanAppConfig, MobileEnv } from "../akanConfig";
 import type { App } from "../commandDecorators";
 import type { PackageJson } from "../types";
-import { DesktopServerBin } from "./desktopServerBin";
+import { DesktopBin } from "./desktopBin";
 
 /** What a desktop build hands the native runtime as `desktop.server`. */
 export interface DesktopServerBundle {
   dir: string;
   entry: string;
   env: Record<string, string>;
-  /** The folder in `dir` whose executables the server finds first on its PATH. */
-  bin?: string;
 }
 
 //* A desktop app's carried server is the backend `akan build` wrote into dist, installed on its own as the image's
@@ -114,14 +112,10 @@ export class DesktopServerStage {
     await this.app.spawn(process.execPath, ["install", "--production"], { cwd: this.dir });
     //? Launcher links only: a link out of the app bundle breaks its signature, and the server runs none of them.
     await rm(path.join(this.dir, "node_modules", ".bin"), { recursive: true, force: true });
-    const carried = await new DesktopServerBin(this.app, config).stage(this.dir);
+    const scanInfo = this.app.getScanInfo({ allowEmpty: true }) ?? (await this.app.scan({ write: false }));
+    const carried = [...DesktopBin.select(config, scanInfo.getLibs()).keys()];
     const notice = DesktopServerStage.imageStepsNotice(config, carried);
     if (notice) this.app.logger[notice.level](notice.message);
-    return {
-      dir: this.dir,
-      entry: "main.js",
-      env: DesktopServerStage.env(config, environment),
-      ...(carried.length ? { bin: DesktopServerBin.folder } : {}),
-    };
+    return { dir: this.dir, entry: "main.js", env: DesktopServerStage.env(config, environment) };
   }
 }

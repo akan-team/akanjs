@@ -43,6 +43,12 @@ export interface DesktopContext {
   readonly document?: DocumentScope;
   /** Per-app data folder, e.g. ~/Library/Application Support/<app id>. Created on first access. */
   readonly appDataDir: string;
+  /**
+   * The executables the app carries (desktop.bin, akanjs `bin`), or null. The host puts the folder first on
+   * process.env.PATH, which node:child_process and `Bun.spawn(cmd, { env: process.env })` use; a Bun.spawn or
+   * Bun.which without `env` reads the environment the app started with, so name a file here or pass the env.
+   */
+  readonly binDir: string | null;
   /** Pushes an event of this plugin to the pages that listen. Returns the windows reached. */
   emit(event: string, data?: unknown, target?: EmitTarget): number[];
   /** Serves a local file at /__akan_native/file/<id> for the rest of the session (PL-7). */

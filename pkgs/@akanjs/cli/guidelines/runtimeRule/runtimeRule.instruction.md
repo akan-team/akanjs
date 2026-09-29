@@ -212,7 +212,8 @@ const config: AppConfig = {
 };
 ```
 
-- **An executable the server's code spawns goes in `bin`**, keyed by the name the code spawns and then by
+- **An executable the desktop app spawns goes in `bin`** — its server's code or its native plugins, with or without
+  `--server` — keyed by the name the code spawns and then by
   `${process.platform}-${process.arch}` (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `win32-arm64`,
   `win32-x64`). A source is `{ url, sha256, file? }` — downloaded when the app is built, refused unless it hashes
   to `sha256` (so plain http is as safe as https), kept in `apps/<app>/.akan/cache/bin/<sha256>` — or
@@ -220,9 +221,11 @@ const config: AppConfig = {
   (`.zip`, `.tar.gz`, `.tgz`, `.tar.xz`, `.tar.bz2`, `.tar`), unpacked with the OS's own `tar` (`unzip` for a zip
   on Linux).
 - Only the building computer's platform is fetched, and an entry without it fails the build instead of the user's
-  call. The file is copied into the server's `bin/` (keeping `.exe` on Windows), signed with the app on macOS, and
-  that folder goes first on the server's PATH. `spawn("ffmpeg")` needs no change and finds the carried file even
-  in an app launched from the Finder, whose PATH is only `/usr/bin:/bin:/usr/sbin:/sbin`.
+  call. `build-desktop` and `start-desktop` copy the file into the app's `bin/` (keeping `.exe` on Windows), sign it
+  with the app on macOS, and put that folder first on the app's PATH. The server's `spawn("ffmpeg")` needs no change
+  and finds the carried file even in an app launched from the Finder, whose PATH is only
+  `/usr/bin:/bin:/usr/sbin:/sbin`. A native plugin finds the folder in `ctx.binDir`: Bun's own `spawn` and `which`
+  without `env` read the environment the app started with, so a plugin passes `env: process.env` to run one by name.
 - **One file per entry, so carry a static build.** A build that loads its own shared libraries — a `-shared`
   archive, or Homebrew's ffmpeg with its 55 dylibs — runs on the computer that built it and nowhere else.
 - **A lib's `bin` reaches only the apps that depend on it**, unlike its `docker` steps; the app's own entry of the

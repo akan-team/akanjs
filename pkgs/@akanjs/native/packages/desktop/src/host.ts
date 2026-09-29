@@ -10,7 +10,7 @@
 import { JSCallback } from "bun:ffi";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, statSync, watch } from "node:fs";
-import { extname, join, sep } from "node:path";
+import { delimiter, extname, join, sep } from "node:path";
 import { ID_FILE_REF } from "../../core/src/contract.ts";
 import type { AppInfo, ErrorCode } from "../../core/src/index.ts";
 import { AkanNativeError, aclCheck, loadAcl } from "../../core/src/index.ts";
@@ -58,6 +58,10 @@ export function shellError(message: string): AkanNativeError {
 
 export function startHost(plugins: DesktopPlugin[]): void {
   const paths = resolvePaths();
+  //? A Worker keeps its own copy of process.env, and Bun.spawn without `env` ignores it anyway: the server launcher
+  //? and plugins that pass process.env get the app's executables first.
+  const binDir = existsSync(join(paths.resources, "bin")) ? join(paths.resources, "bin") : null;
+  if (binDir) process.env.PATH = process.env.PATH ? `${binDir}${delimiter}${process.env.PATH}` : binDir;
   const lib = openNative(paths.lib);
   const native = lib.symbols;
   // One limit for every external open (L0): the page's links (shell) and the plugins' (here).
@@ -142,6 +146,7 @@ export function startHost(plugins: DesktopPlugin[]): void {
       app: boot.app,
       dev: boot.dev === true,
       appDataDir: appDataDir(boot.app.id),
+      binDir,
       emit(window, message) {
         emitJs(window, `window.__AKAN_NATIVE__&&window.__AKAN_NATIVE__.receive(${JSON.stringify(message)})`);
       },

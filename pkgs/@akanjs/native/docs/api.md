@@ -11,7 +11,7 @@
 
 | 항목 | 상태 |
 |---|---|
-| `build`, `run`, `validateConfig`, `AkanNativeError`, `API_VERSION` 0.5.0 (0.2.0: `desktop.server`; 0.3.0: `desktop.server.bin`; 0.4.0: `desktop.recovery`, `desktop.window`, `android.autoplay`; 0.5.0: `publishUpdate`, `updateKeygen`) | 구현(`packages/cli/src/api.ts`, `@akanjs/native/api`). 테스트 `packages/cli/test/api.test.ts` |
+| `build`, `run`, `validateConfig`, `AkanNativeError`, `API_VERSION` 0.6.0 (0.2.0: `desktop.server`; 0.3.0: `desktop.server.bin`; 0.4.0: `desktop.recovery`, `desktop.window`, `android.autoplay`; 0.5.0: `publishUpdate`, `updateKeygen`; 0.6.0: `desktop.bin`, `desktop.server.bin` 없앰) | 구현(`packages/cli/src/api.ts`, `@akanjs/native/api`). 테스트 `packages/cli/test/api.test.ts` |
 | 로그 싱크 | 구현. 호출마다 AsyncLocalStorage로 분리한다. 동시 호출의 로그가 섞이지 않고, 이벤트에는 터미널 색이 없다. 자식 프로세스 출력(웹 빌드 등)은 `tool` 줄이다 |
 | `signal` | 구현. 실행 중인 도구를 죽이고 `CANCELLED`로 거절한다 |
 | `outDir`, `env`, `envFiles`, `resolveFrom`, `skipWebBuild` | 구현. 같은 `outDir`의 두 작업은 차례로 돈다(프로세스 안 잠금) |
@@ -345,7 +345,8 @@ API는 설정을 그대로 받으므로, 새 기능은 설정 필드로 들어�
 | `desktop.recovery: "errorPage" \| "reload"` | 전광판(F3) | 페이지 프로세스가 끝났을 때(크래시, 멈춤, 메모리 부족). "errorPage"(기본)는 한 번 다시 불러오고 1분 안에 또 끝나면 오류 화면, WebView2 브라우저 프로세스가 끝나면 앱 종료. "reload"는 매번 다시 불러오되 연달아 끝날수록 오래 기다리고(1초부터 두 배씩, 최대 1분), 브라우저 프로세스가 끝나면 호스트가 앱을 다시 띄운다(못 하면 셸이 10초 뒤 종료). 지키는 사람이 없는 앱(키오스크, 전광판)용 |
 | `desktop.window: { fullscreen?, skipTaskbar? }` | 전광판(F6) | 첫 프레임부터의 주 창: 테두리 없는 전체화면(창이 열리는 디스플레이), 작업 표시줄 버튼 없음(Windows·Linux). 플러그인의 launch 단계(`ctx.launch.setWindow`)가 다르게 정할 수 있다 |
 | `android.autoplay` | 전광판(F6) | 소리 있는 미디어를 터치 없이 재생한다(WebView `mediaPlaybackRequiresUserGesture` 끔). iOS·데스크톱은 원래 그렇다. 기본 false |
-| `desktop.server: { dir, entry, env?, bin? }` | akanjs `build-desktop --server` | 데스크톱 앱이 창 옆에서 띄우는 서버. 빌드가 `dir`을 `resources/server/`로 복사하고 `server.json`(entry, env, bin)과 빈 `server.bunfig.toml`을 쓴다. `bin`은 `dir` 안의 폴더로, 서버 PATH 맨 앞에 붙어 앱이 싣고 온 실행 파일이 컴퓨터의 것보다 먼저 쓰인다(akanjs `bin`). macOS 빌드는 `resources/server`의 Mach-O 파일을 이름과 상관없이 모두 서명한다. 플러그인 호스트가 실행 파일 자신을 `BUN_BE_BUN=1`로 다시 띄워 `entry`를 돌리고(`--no-env-file`, `--no-install`, `--config`), 127.0.0.1의 빈 포트를 세션 동안 고정해 페이지 env `PUBLIC_AKAN_SERVER_URL`로 넘긴다. launcher가 정하는 키(`PORT`, `JWT_SECRET`, `AKAN_LISTEN_HOST`, `AKAN_ALLOWED_HOSTS`, `AKAN_SQLITE_DIR`, `AKAN_WORKSPACE_ROOT`, `AKAN_RUNTIME_DIR`, `BUN_BE_BUN`)는 `env`에 둘 수 없다. 데이터는 `<app data>/server`. single-instance 플러그인이 없으면 경고 |
+| `desktop.server: { dir, entry, env? }` | akanjs `build-desktop --server` | 데스크톱 앱이 창 옆에서 띄우는 서버. 빌드가 `dir`을 `resources/server/`로 복사하고 `server.json`(entry, env)과 빈 `server.bunfig.toml`을 쓴다. macOS 빌드는 `resources/server`와 `resources/bin`의 Mach-O 파일을 이름과 상관없이 모두 서명한다. 플러그인 호스트가 실행 파일 자신을 `BUN_BE_BUN=1`로 다시 띄워 `entry`를 돌리고(`--no-env-file`, `--no-install`, `--config`), 127.0.0.1의 빈 포트를 세션 동안 고정해 페이지 env `PUBLIC_AKAN_SERVER_URL`로 넘긴다. launcher가 정하는 키(`PORT`, `JWT_SECRET`, `AKAN_LISTEN_HOST`, `AKAN_ALLOWED_HOSTS`, `AKAN_SQLITE_DIR`, `AKAN_WORKSPACE_ROOT`, `AKAN_RUNTIME_DIR`, `BUN_BE_BUN`)는 `env`에 둘 수 없다. 데이터는 `<app data>/server`. single-instance 플러그인이 없으면 경고 |
+| `desktop.bin` | akanjs `bin` | 앱이 싣는 실행 파일 폴더. `resources/bin/`으로 복사되고, 플러그인 호스트가 시작할 때 `process.env.PATH` 맨 앞에 붙인다. 서버는 그 환경으로 뜨므로 이름으로 찾고, 플러그인은 `ctx.binDir`로 찾는다. Bun의 `spawn`·`which`는 `env` 없이 부르면 앱이 시작할 때의 환경을 읽으므로 이름으로 실행하려면 `env: process.env`를 넘긴다(Bun 1.4.2에서 확인) |
 
 서명 정보는 설정에 넣지 않고 `release()`와 iPhone용 `run`·`dev`의 옵션으로만 받는다(파일로 남지 않게).
 

@@ -191,36 +191,39 @@ describe("desktop.server", () => {
     ]);
   });
 
-  test("bin is a folder inside the server's folder", () => {
+  test("desktop.bin is a folder, with or without a server", () => {
     const problems = (bin: unknown) =>
-      validateConfig({ ...base, desktop: { server: { dir: "server", entry: "main.js", bin } } } as AkanNativeConfig, {
+      validateConfig({ ...base, desktop: { bin } } as AkanNativeConfig, { appDir: dir });
+    expect(problems("server/bin")).toEqual([]);
+    expect(problems("server/main.js")).toEqual([expect.stringContaining("desktop.bin must be a folder")]);
+    expect(problems("missing")).toEqual([expect.stringContaining("desktop.bin must be a folder")]);
+    expect(
+      validateConfig({ ...base, desktop: { server: { dir: "server", entry: "main.js", bin: "bin" } } } as never, {
         appDir: dir,
-      });
-    expect(problems("bin")).toEqual([]);
-    expect(problems("../web")).toEqual([expect.stringContaining("must be a folder inside desktop.server.dir")]);
-    expect(problems("main.js")).toEqual([expect.stringContaining("is not a folder")]);
-    expect(problems("missing")).toEqual([expect.stringContaining("is not a folder")]);
+      }),
+    ).toEqual([expect.stringContaining("unknown key desktop.server.bin")]);
   });
 
-  test("macOS signs every Mach-O file the server carries, whatever its name, and nothing else", async () => {
-    const { serverNativeCode } = await import("../src/platforms/macos.ts");
+  test("macOS signs every Mach-O file the server and bin carry, whatever its name, and nothing else", async () => {
+    const { carriedNativeCode } = await import("../src/platforms/macos.ts");
     const resources = join(dir, "Resources");
     mkdirSync(resources, { recursive: true });
-    expect(serverNativeCode(resources)).toEqual([]);
+    expect(carriedNativeCode(resources)).toEqual([]);
     const server = join(resources, "server");
     const file = (rel: string, head: number[]) => {
       mkdirSync(join(server, rel, ".."), { recursive: true });
       writeFileSync(join(server, rel), Buffer.concat([Buffer.from(head), Buffer.alloc(64)]));
     };
     file("node_modules/addon/build/addon.node", [0xcf, 0xfa, 0xed, 0xfe]);
-    file("bin/ffmpeg", [0xcf, 0xfa, 0xed, 0xfe]);
+    file("../bin/ffmpeg", [0xcf, 0xfa, 0xed, 0xfe]);
+    file("../bin/run.sh", [0x23, 0x21, 0x2f, 0x62]);
     file("node_modules/tool/universal", [0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 2]);
     file("node_modules/addon/prebuilds/linux-x64/addon.node", [0x7f, 0x45, 0x4c, 0x46]);
     file("node_modules/tool/Main.class", [0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 52]);
     file("main.js", [0xcf, 0xfa, 0xed, 0xfe]);
-    expect(serverNativeCode(resources).sort()).toEqual(
+    expect(carriedNativeCode(resources).sort()).toEqual(
       [
-        join(server, "bin", "ffmpeg"),
+        join(resources, "bin", "ffmpeg"),
         join(server, "node_modules", "addon", "build", "addon.node"),
         join(server, "node_modules", "tool", "universal"),
       ].sort(),

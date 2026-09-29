@@ -13,10 +13,9 @@ import type { App } from "../commandDecorators";
 type BinPlatforms = AkanBinConfig[string];
 
 //* A desktop app is built on the computer it runs on, so only that platform's file is fetched. It is copied byte for
-//* byte into the server's `bin/`: no extended attribute, so no quarantine flag, travels into the bundle.
-export class DesktopServerBin {
-  static readonly folder = "bin";
-
+//* byte into the folder the app carries as `desktop.bin`: no extended attribute, so no quarantine flag, travels
+//* into the bundle.
+export class DesktopBin {
   constructor(
     readonly app: App,
     readonly config: AkanAppConfig,
@@ -69,17 +68,17 @@ export class DesktopServerBin {
     return path.join(this.app.cwdPath, ".akan", "cache", "bin");
   }
 
-  /** Copies each chosen executable into `<serverDir>/bin` and answers the names it carries. */
-  async stage(serverDir: string): Promise<string[]> {
+  /** Copies each chosen executable into `dir`, emptied first, and answers the names it carries. */
+  async stage(dir: string): Promise<string[]> {
     const scanInfo = this.app.getScanInfo({ allowEmpty: true }) ?? (await this.app.scan({ write: false }));
-    const chosen = DesktopServerBin.select(this.config, scanInfo.getLibs());
+    const chosen = DesktopBin.select(this.config, scanInfo.getLibs());
     if (!chosen.size) return [];
-    const platform = DesktopServerBin.platform();
+    const platform = DesktopBin.platform();
     if (!platform)
       throw new Error(
         `bin: this computer is ${process.platform}-${process.arch}, and a bin names only ${binPlatforms.join(", ")}.`,
       );
-    const dir = path.join(serverDir, DesktopServerBin.folder);
+    await rm(dir, { recursive: true, force: true });
     await mkdir(dir, { recursive: true });
     for (const [name, { owner, platforms }] of chosen) {
       const source = platforms[platform];
@@ -88,10 +87,10 @@ export class DesktopServerBin {
           `${owner}: bin.${name} names no ${platform} file, the platform this desktop app is built for (it names ${Object.keys(platforms).join(", ") || "none"}).`,
         );
       const executable = await this.#executable(`${owner}: bin.${name}.${platform}`, source);
-      const target = path.join(dir, DesktopServerBin.fileName(name, executable));
+      const target = path.join(dir, DesktopBin.fileName(name, executable));
       await Bun.write(target, Bun.file(executable));
       await chmod(target, 0o755);
-      this.app.logger.info(`The desktop server carries ${name} from ${"url" in source ? source.url : source.path}`);
+      this.app.logger.info(`The desktop app carries ${name} from ${"url" in source ? source.url : source.path}`);
     }
     return [...chosen.keys()];
   }
@@ -100,7 +99,7 @@ export class DesktopServerBin {
     const file = "url" in source ? await this.#download(at, source) : source.path;
     if (!(await Bun.file(file).exists())) throw new Error(`${at}: ${file} does not exist`);
     if (!source.file) return file;
-    const key = "url" in source ? source.sha256 : await DesktopServerBin.sha256(file);
+    const key = "url" in source ? source.sha256 : await DesktopBin.sha256(file);
     const executable = path.join(await this.#extract(file, key), ...source.file.split("/"));
     if (!(await Bun.file(executable).exists())) throw new Error(`${at}: the archive holds no ${source.file}`);
     return executable;
@@ -127,7 +126,7 @@ export class DesktopServerBin {
     if (await Bun.file(`${dir}.done`).exists()) return dir;
     await rm(dir, { recursive: true, force: true });
     await mkdir(dir, { recursive: true });
-    const [command = "tar", ...args] = DesktopServerBin.extractCommand(archive, dir);
+    const [command = "tar", ...args] = DesktopBin.extractCommand(archive, dir);
     if (command === "unzip" && !Bun.which("unzip"))
       throw new Error(`${archive} is a zip, and this computer has no unzip: install it, or use a .tar.gz or .tar.xz.`);
     await this.app.spawn(command, args, { cwd: dir });

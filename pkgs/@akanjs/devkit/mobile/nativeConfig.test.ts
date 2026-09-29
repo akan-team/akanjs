@@ -215,9 +215,10 @@ describe("NativeConfig.build", () => {
       webDir: path.join(root, "web"),
       contributions: [],
       locales: ["en"],
+      desktopBin: root,
     });
 
-    expect(config.desktop).toEqual({ recovery: "reload", window: { fullscreen: true, skipTaskbar: true } });
+    expect(config.desktop).toEqual({ recovery: "reload", window: { fullscreen: true, skipTaskbar: true }, bin: root });
     expect(config.android).toEqual({ debugAppIdSuffix: ".debug", autoplay: true });
     await mkdir(path.join(root, "web"), { recursive: true });
     await writeFile(path.join(root, "web/index.html"), "<html><head></head><body></body></html>");

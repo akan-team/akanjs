@@ -252,9 +252,14 @@ export interface AkanNativeConfig {
      * the app's resources (`server/`), and `entry` there runs on the app's own Bun with `env`, bound to
      * a loopback port picked at launch; the page reads its URL as PUBLIC_AKAN_SERVER_URL. The launcher
      * sets PORT, JWT_SECRET, the data folders (`<app data>/server`) and the listen host itself.
-     * `bin` names a folder in `dir` whose executables come first on the server's PATH (akanjs `bin`).
      */
-    server?: { dir: string; entry: string; env?: Record<string, string>; bin?: string };
+    server?: { dir: string; entry: string; env?: Record<string, string> };
+    /**
+     * A folder of executables the app carries (akanjs `bin`): copied to the app's resources (`bin/`) and put
+     * first on the app's PATH at launch, so its plugins and its server find them by name before the computer's.
+     * macOS builds sign every Mach-O file in it.
+     */
+    bin?: string;
   };
   /**
    * App icon for every platform, generated from one square PNG, ideally 1024×1024 (CLI-8).

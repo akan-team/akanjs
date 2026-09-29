@@ -1633,9 +1633,10 @@ akan build-desktop myapp --server true --env main`}
                   The carried server gets none of the image's <code>docker</code> steps. An executable its code spawns,
                   such as ffmpeg, goes in <code>bin</code> in <code>akan.config.ts</code>: per platform, a download
                   checked against its <code>sha256</code> or a file next to the config. The build fetches the one for
-                  this computer, puts it in the app and its folder first on the server's PATH, so{" "}
-                  <code>spawn("ffmpeg")</code> runs it and the user installs nothing. A package that builds itself at
-                  install goes in <code>trustedDependencies</code>.
+                  this computer, puts it in the app and its folder first on the app's PATH, so the server's{" "}
+                  <code>spawn("ffmpeg")</code> runs it and the user installs nothing; a native plugin finds it in{" "}
+                  <code>ctx.binDir</code>. A package that builds itself at install goes in{" "}
+                  <code>trustedDependencies</code>.
                 </span>
               ),
               ko: (
@@ -1643,9 +1644,9 @@ akan build-desktop myapp --server true --env main`}
                   앱에 넣은 서버에는 이미지의 <code>docker</code> 단계가 하나도 들어가지 않습니다. 서버 코드가 실행하는
                   ffmpeg 같은 실행 파일은 <code>akan.config.ts</code>의 <code>bin</code>에 적습니다. 플랫폼마다{" "}
                   <code>sha256</code>로 확인하는 다운로드나 설정 파일 옆의 파일을 적으면, 빌드가 이 컴퓨터용 파일을 앱에
-                  넣고 그 폴더를 서버 PATH 맨 앞에 둡니다. 그래서 <code>spawn("ffmpeg")</code>가 그 파일을 실행하고,
-                  사용자는 아무것도 설치하지 않습니다. 설치하면서 스스로 빌드하는 패키지는{" "}
-                  <code>trustedDependencies</code>에 적습니다.
+                  넣고 그 폴더를 앱의 PATH 맨 앞에 둡니다. 그래서 서버의 <code>spawn("ffmpeg")</code>가 그 파일을
+                  실행하고 사용자는 아무것도 설치하지 않으며, 네이티브 플러그인은 <code>ctx.binDir</code>에서 찾습니다.
+                  설치하면서 스스로 빌드하는 패키지는 <code>trustedDependencies</code>에 적습니다.
                 </span>
               ),
             })}

@@ -101,7 +101,7 @@ export async function buildMacos(ctx: BuildContext): Promise<string> {
   log.step(`sign: ${identity ? identity.name : "ad-hoc"}`);
   // Extended attributes break signing (Tauri clears them too, QA1940). Inner code first, then the bundle (no --deep).
   await execOrThrow(["xattr", "-cr", appPath], { echo: false });
-  for (const addon of serverNativeCode(resources))
+  for (const addon of carriedNativeCode(resources))
     await execOrThrow(["codesign", "--force", "--sign", sign, addon], { echo: false });
   await execOrThrow(["codesign", "--force", "--sign", sign, join(contents, "Frameworks", NATIVE_LIB.macos)], {
     echo: false,
@@ -113,16 +113,18 @@ export async function buildMacos(ctx: BuildContext): Promise<string> {
 }
 
 /**
- * Mach-O files in the carried server, whatever their names (native addons, `bin` executables, a package's own
- * executable): nested code the bundle's signature does not sign.
+ * Mach-O files the app carries in its server and its `bin`, whatever their names (native addons, executables, a
+ * package's own executable): nested code the bundle's signature does not sign.
  */
-export function serverNativeCode(resources: string): string[] {
-  const dir = join(resources, "server");
-  if (!existsSync(dir)) return [];
-  return (readdirSync(dir, { recursive: true }) as string[])
-    .filter((file) => !/\.(c?js|mjs|ts|json|map|md|txt|html|css)$/i.test(file))
-    .map((file) => join(dir, file))
-    .filter(isMachO);
+export function carriedNativeCode(resources: string): string[] {
+  return ["server", "bin"].flatMap((folder) => {
+    const dir = join(resources, folder);
+    if (!existsSync(dir)) return [];
+    return (readdirSync(dir, { recursive: true }) as string[])
+      .filter((file) => !/\.(c?js|mjs|ts|json|map|md|txt|html|css)$/i.test(file))
+      .map((file) => join(dir, file))
+      .filter(isMachO);
+  });
 }
 
 function isMachO(file: string): boolean {

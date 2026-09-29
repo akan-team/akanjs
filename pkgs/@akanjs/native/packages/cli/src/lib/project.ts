@@ -32,6 +32,8 @@ export interface ResolvedConfig extends Omit<AkanNativeConfig, "icon" | "splash"
     recovery: "errorPage" | "reload";
     window: { fullscreen: boolean; skipTaskbar: boolean };
     server?: DesktopServerConfig;
+    /** Absolute. */
+    bin?: string;
   };
   updates: UpdatesConfig | null;
   /** Absolute image path. */
@@ -201,6 +203,10 @@ export function projectFromConfig(raw: AkanNativeConfig, appDir: string, options
   }
   if (raw.android?.autoplay !== undefined && typeof raw.android.autoplay !== "boolean")
     problems.push("android.autoplay must be a boolean");
+  const bin = raw.desktop?.bin;
+  const binDir = typeof bin === "string" && bin ? resolve(appDir, bin) : null;
+  if (bin !== undefined && !(binDir && existsSync(binDir) && statSync(binDir).isDirectory()))
+    problems.push(`desktop.bin must be a folder (got ${JSON.stringify(bin)})`);
   const desktopServer = validateDesktopServer(raw.desktop, appDir, problems);
   if (raw.keyboard?.resize !== undefined && raw.keyboard.resize !== "resize" && raw.keyboard.resize !== "none") {
     problems.push(`keyboard.resize must be "resize" or "none" (got ${JSON.stringify(raw.keyboard.resize)})`);
@@ -269,6 +275,7 @@ export function projectFromConfig(raw: AkanNativeConfig, appDir: string, options
         skipTaskbar: raw.desktop?.window?.skipTaskbar === true,
       },
       ...(desktopServer ? { server: desktopServer } : {}),
+      ...(binDir ? { bin: binDir } : {}),
     },
     updates,
     icon: icon ? { ...icon, image: resolve(appDir, icon.image) } : null,

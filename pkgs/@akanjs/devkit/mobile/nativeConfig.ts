@@ -19,6 +19,8 @@ export interface NativeConfigInput {
   desktopServer?: DesktopServerBundle;
   /** The plugins in the app's and its libs' `native/` folders. */
   nativePlugins?: NativePluginFolder[];
+  /** A desktop build's staged `bin` executables (DesktopBin). */
+  desktopBin?: string;
 }
 
 export interface NativeConfigResult {
@@ -83,6 +85,7 @@ export class NativeConfig {
     locales,
     desktopServer,
     nativePlugins = [],
+    desktopBin,
   }: NativeConfigInput): NativeConfigResult {
     const warnings: string[] = [];
     const applied = (target.permissions ?? []).flatMap((permission) => {
@@ -145,6 +148,7 @@ export class NativeConfig {
       recovery: target.native?.desktop?.recovery,
       window: NativeConfig.#compact({ ...target.native?.desktop?.window }),
       server: desktopServer,
+      bin: desktopBin,
     });
     const config: AkanNativeConfig = {
       app: {

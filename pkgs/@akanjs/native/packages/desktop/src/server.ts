@@ -5,8 +5,8 @@
 // thread cannot own the child, since no JavaScript runs there after that call.
 //
 // - The child gets none of the shell's environment but a few system variables: an app started by
-//   `akan start-desktop` carries the CLI's AKAN_PUBLIC_*, PORT and the like. The manifest's bin folder
-//   goes first on its PATH, so the executables the app carries win over the computer's.
+//   `akan start-desktop` carries the CLI's AKAN_PUBLIC_*, PORT and the like. PATH is one of them, so the
+//   app's own bin folder, which main.ts put first on it, comes first for the server too.
 // - Bun as a CLI reads .env and bunfig.toml from its working folder (<app data>/server, writable by
 //   any process of the user) and installs missing packages; the flags turn all three off.
 // - A crash restarts it on the same port, 1 s → 30 s apart; MAX_FAILURES in a row give up.
@@ -18,15 +18,13 @@
 import { randomBytes } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
-import { delimiter, join } from "node:path";
+import { join } from "node:path";
 import { resolveGrant } from "./grants.ts";
 
 export interface ServerManifest {
   /** The file in resources/server that starts the server. */
   entry: string;
   env: Record<string, string>;
-  /** A folder in resources/server whose executables the server finds first on its PATH. */
-  bin?: string;
 }
 
 /** Set by the launcher at every start, so desktop.server.env may not name them (cli lib/desktop-server.ts). */
@@ -107,16 +105,14 @@ export interface DesktopServer {
 export function readServerManifest(resources: string): ServerManifest | null {
   const file = join(resources, "server.json");
   if (!existsSync(file)) return null;
-  const raw = JSON.parse(readFileSync(file, "utf8")) as { entry?: unknown; env?: unknown; bin?: unknown };
+  const raw = JSON.parse(readFileSync(file, "utf8")) as { entry?: unknown; env?: unknown };
   if (typeof raw.entry !== "string" || !raw.entry) throw new Error(`${file}: entry must name a file`);
-  if (raw.bin !== undefined && (typeof raw.bin !== "string" || raw.bin.split(/[\\/]/).includes("..")))
-    throw new Error(`${file}: bin must name a folder in resources/server`);
   const env = Object.fromEntries(
     Object.entries((raw.env ?? {}) as Record<string, unknown>).filter(
       (entry): entry is [string, string] => typeof entry[1] === "string",
     ),
   );
-  return { entry: raw.entry, env, ...(typeof raw.bin === "string" ? { bin: raw.bin } : {}) };
+  return { entry: raw.entry, env };
 }
 
 export function serverArgv(execPath: string, resources: string, entry: string): string[] {
@@ -136,19 +132,14 @@ export function serverEnv(
     secret,
     dataDir,
     env,
-    binDir,
-  }: { port: number; secret: string; dataDir: string; env: Record<string, string | undefined>; binDir?: string },
+  }: { port: number; secret: string; dataDir: string; env: Record<string, string | undefined> },
 ): Record<string, string> {
   const system = Object.fromEntries(
     SYSTEM_ENV_KEYS.flatMap((key) => (env[key] === undefined ? [] : [[key, env[key]] as [string, string]])),
   );
-  //? Windows names it Path, and a plain object (not process.env) keeps that case.
-  const inherited = env.PATH ?? Object.entries(env).find(([key]) => key.toUpperCase() === "PATH")?.[1];
-  const path = "PATH" in manifest.env ? manifest.env.PATH : inherited;
   return {
     ...system,
     ...manifest.env,
-    ...(binDir ? { PATH: path ? `${binDir}${delimiter}${path}` : binDir } : {}),
     BUN_BE_BUN: "1",
     PORT: String(port),
     AKAN_LISTEN_HOST: "127.0.0.1",
@@ -276,7 +267,6 @@ export function createDesktopServer(options: DesktopServerOptions): DesktopServe
         secret: jwtSecret(dataDir),
         dataDir,
         env: options.env ?? process.env,
-        ...(options.manifest.bin ? { binDir: join(options.resources, "server", options.manifest.bin) } : {}),
       });
       run();
       const timeout = options.readyTimeout ?? READY_TIMEOUT;
