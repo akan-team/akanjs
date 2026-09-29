@@ -3,12 +3,15 @@ import path from "node:path";
 import type { AkanAppConfig, MobileEnv } from "../akanConfig";
 import type { App } from "../commandDecorators";
 import type { PackageJson } from "../types";
+import { DesktopServerBin } from "./desktopServerBin";
 
 /** What a desktop build hands the native runtime as `desktop.server`. */
 export interface DesktopServerBundle {
   dir: string;
   entry: string;
   env: Record<string, string>;
+  /** The folder in `dir` whose executables the server finds first on its PATH. */
+  bin?: string;
 }
 
 //* A desktop app's carried server is the backend `akan build` wrote into dist, installed on its own as the image's
@@ -52,6 +55,29 @@ export class DesktopServerStage {
     };
   }
 
+  //? The image's steps install into a Linux image the desktop app never runs in, so its server has none of it.
+  static imageStepsNotice(
+    config: Pick<AkanAppConfig, "app" | "docker">,
+    carried: string[],
+  ): { level: "warn" | "info"; message: string } | null {
+    const steps =
+      typeof config.docker === "string" ? null : config.docker.preRuns.length + config.docker.postRuns.length;
+    if (steps === 0) return null;
+    const image =
+      steps === null
+        ? `apps/${config.app.name}/akan.config.ts writes its own Dockerfile`
+        : `The image runs ${steps} docker step${steps === 1 ? "" : "s"} from the app and its libs`;
+    return carried.length
+      ? {
+          level: "info",
+          message: `${image}; the desktop app's server runs none of them and carries only bin: ${carried.join(", ")}.`,
+        }
+      : {
+          level: "warn",
+          message: `${image}, and a desktop app's server runs none of them: declare in bin the executables its code spawns, or those calls fail on the user's computer.`,
+        };
+  }
+
   static packageJson(config: AkanAppConfig, built: PackageJson): PackageJson {
     const otherDrivers = new Set(
       config.database.modes
@@ -88,6 +114,14 @@ export class DesktopServerStage {
     await this.app.spawn(process.execPath, ["install", "--production"], { cwd: this.dir });
     //? Launcher links only: a link out of the app bundle breaks its signature, and the server runs none of them.
     await rm(path.join(this.dir, "node_modules", ".bin"), { recursive: true, force: true });
-    return { dir: this.dir, entry: "main.js", env: DesktopServerStage.env(config, environment) };
+    const carried = await new DesktopServerBin(this.app, config).stage(this.dir);
+    const notice = DesktopServerStage.imageStepsNotice(config, carried);
+    if (notice) this.app.logger[notice.level](notice.message);
+    return {
+      dir: this.dir,
+      entry: "main.js",
+      env: DesktopServerStage.env(config, environment),
+      ...(carried.length ? { bin: DesktopServerBin.folder } : {}),
+    };
   }
 }

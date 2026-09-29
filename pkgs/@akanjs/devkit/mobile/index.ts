@@ -1,3 +1,4 @@
+export * from "./desktopServerBin";
 export * from "./desktopServerStage";
 export * from "./mobileTarget";
 export * from "./nativeApi";

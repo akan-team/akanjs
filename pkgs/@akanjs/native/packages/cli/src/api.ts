@@ -41,7 +41,7 @@ export type {
 };
 
 /** semver of this API. A caller checks the major before it relies on anything here. */
-export const API_VERSION = "0.2.0";
+export const API_VERSION = "0.3.0";
 
 export type AkanNativeErrorCode =
   | "CONFIG_INVALID"

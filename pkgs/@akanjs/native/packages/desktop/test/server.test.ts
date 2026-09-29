@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { runtimeEnv } from "../src/main.ts";
 import {
   createDesktopServer,
@@ -115,6 +115,24 @@ describe("the server a desktop app carries", () => {
     });
   });
 
+  test("puts the carried bin folder first on the server's PATH, however the shell spelled PATH", async () => {
+    const run = async (env: Record<string, string>) => {
+      const { resources, server, children } = setup({ manifest: { entry: "main.js", env: {}, bin: "bin" }, env });
+      const started = server.start();
+      await until(() => children.length === 1);
+      children[0]?.ready();
+      await started;
+      return { bin: join(resources, "server", "bin"), env: children[0]?.options.env ?? {} };
+    };
+    const posix = await run({ PATH: "/usr/bin:/bin" });
+    expect(posix.env.PATH).toBe(`${posix.bin}${delimiter}/usr/bin:/bin`);
+    const windows = await run({ Path: "C:\\Windows\\System32" });
+    expect(windows.env.PATH).toBe(`${windows.bin}${delimiter}C:\\Windows\\System32`);
+    expect(windows.env.Path).toBeUndefined();
+    const bare = await run({});
+    expect(bare.env.PATH).toBe(bare.bin);
+  });
+
   test("keeps one owner-only JWT secret per installation", () => {
     const dir = mkdtempSync(join(tmpdir(), "akan-native-secret-"));
     const secret = jwtSecret(dir);
@@ -205,6 +223,10 @@ describe("the server a desktop app carries", () => {
     expect(readServerManifest(resources)).toEqual({ entry: "main.js", env: { A: "1" } });
     writeFileSync(join(resources, "server.json"), JSON.stringify({ env: {} }));
     expect(() => readServerManifest(resources)).toThrow("entry");
+    writeFileSync(join(resources, "server.json"), JSON.stringify({ entry: "main.js", env: {}, bin: "bin" }));
+    expect(readServerManifest(resources)).toEqual({ entry: "main.js", env: {}, bin: "bin" });
+    writeFileSync(join(resources, "server.json"), JSON.stringify({ entry: "main.js", env: {}, bin: "../bin" }));
+    expect(() => readServerManifest(resources)).toThrow("bin");
   });
 });
 

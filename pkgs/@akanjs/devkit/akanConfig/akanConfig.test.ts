@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { AppExecutor, WorkspaceExecutor } from "../executors";
 import type { PackageJson } from "../types";
 import { AkanAppConfig, AkanLibConfig, deriveDefaultAppId } from "./akanConfig";
-import type { DeepPartial, LibConfigResult } from "./types";
+import type { LibConfigInput } from "./types";
 
 const akanPackageJson = JSON.parse(
   fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../akanjs/package.json"), "utf8"),
@@ -620,7 +620,10 @@ describe("AkanAppConfig lib docker runs", () => {
   });
 });
 
-describe("AkanAppConfig trustedDependencies", () => {
+describe("AkanAppConfig trustedDependencies and bin", () => {
+  const sha256 = "b".repeat(64);
+  const libBin = { ffmpeg: { "linux-x64": { url: "https://files.test/ffmpeg.tar.xz", sha256, file: "bin/ffmpeg" } } };
+
   test("the production package.json trusts the app's and its libs' packages, and nothing when none are named", () => {
     const withTrusted = new AkanAppConfig(
       app,
@@ -648,13 +651,33 @@ describe("AkanAppConfig trustedDependencies", () => {
     );
   });
 
+  test("keeps the app's bin apart from each lib's, with paths made absolute where they were declared", () => {
+    const config = new AkanAppConfig(
+      { name: "portal", cwdPath: "/repo/apps/portal" } as never,
+      [],
+      packageJson,
+      { bin: { ffmpeg: { "darwin-arm64": { path: "tools/ffmpeg" } } } },
+      baseDevEnv,
+      [],
+      { externalLibs: [], docker: { preRuns: [], postRuns: [] }, bin: [{ lib: "media", bin: libBin }] },
+    );
+    expect(config.bin).toEqual({ ffmpeg: { "darwin-arm64": { path: "/repo/apps/portal/tools/ffmpeg" } } });
+    expect(config.libBins).toEqual([{ lib: "media", bin: libBin }]);
+    expect(
+      new AkanLibConfig({ name: "media", cwdPath: "/repo/libs/media" } as never, {
+        bin: { ffprobe: { "linux-x64": { path: "../../tools/ffprobe" } } },
+      }).bin,
+    ).toEqual({ ffprobe: { "linux-x64": { path: "/repo/tools/ffprobe" } } });
+  });
+
   test("reads them off every workspace lib config on load", async () => {
     const config = await loadExtAppConfig(
-      "akan-config-libtrusted-",
+      "akan-config-libbin-",
       "export default { trustedDependencies: ['sharp'] };\n",
-      "export default { trustedDependencies: ['rclnodejs'] };\n",
+      `export default { trustedDependencies: ['rclnodejs'], bin: ${JSON.stringify(libBin)} };\n`,
     );
     expect(config.trustedDependencies).toEqual(["sharp", "rclnodejs"]);
+    expect(config.libBins).toEqual([{ lib: "extlib", bin: libBin }]);
   });
 });
 
@@ -663,7 +686,7 @@ describe("AkanLibConfig", () => {
     const lib = { name: "shared" } as never;
     expect(new AkanLibConfig(lib, {}).externalLibs).toEqual([]);
 
-    const config: DeepPartial<LibConfigResult> = {
+    const config: LibConfigInput = {
       externalLibs: ["firebase-admin"],
     };
     expect(new AkanLibConfig(lib, config).externalLibs).toEqual(["firebase-admin"]);

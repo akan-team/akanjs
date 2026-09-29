@@ -32,7 +32,7 @@ const KNOWN: Shape = {
   },
   security: { csp: true, shell: { externalSchemes: true } },
   android: { minWebViewVersion: true, debugAppIdSuffix: true, googleServices: true },
-  desktop: { quitOnLastWindowClosed: true, server: { dir: true, entry: true, env: true } },
+  desktop: { quitOnLastWindowClosed: true, server: { dir: true, entry: true, env: true, bin: true } },
   keyboard: { resize: true },
   push: {
     android: { channel: { id: true, name: true, importance: true, description: true }, smallIcon: true, color: true },

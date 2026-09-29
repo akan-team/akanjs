@@ -232,8 +232,9 @@ export interface AkanNativeConfig {
      * the app's resources (`server/`), and `entry` there runs on the app's own Bun with `env`, bound to
      * a loopback port picked at launch; the page reads its URL as PUBLIC_AKAN_SERVER_URL. The launcher
      * sets PORT, JWT_SECRET, the data folders (`<app data>/server`) and the listen host itself.
+     * `bin` names a folder in `dir` whose executables come first on the server's PATH (akanjs `bin`).
      */
-    server?: { dir: string; entry: string; env?: Record<string, string> };
+    server?: { dir: string; entry: string; env?: Record<string, string>; bin?: string };
   };
   /**
    * App icon for every platform, generated from one square PNG, ideally 1024×1024 (CLI-8).

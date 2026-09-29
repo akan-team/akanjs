@@ -11,6 +11,8 @@ export interface DesktopServerConfig {
   dir: string;
   entry: string;
   env: Record<string, string>;
+  /** A folder in dir, put first on the server's PATH. */
+  bin?: string;
 }
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -49,5 +51,12 @@ export function validateDesktopServer(
       else if (typeof value !== "string") problems.push(`desktop.server.env.${key} must be a string`);
       else env[key] = value;
     }
-  return problems.length === before && dir ? { dir, entry, env } : null;
+  const bin = server.bin;
+  if (bin !== undefined) {
+    if (typeof bin !== "string" || !bin || isAbsolute(bin) || bin.split(/[\\/]/).includes(".."))
+      problems.push(`desktop.server.bin must be a folder inside desktop.server.dir (got ${JSON.stringify(bin)})`);
+    else if (dir && existsSync(dir) && !(existsSync(join(dir, bin)) && statSync(join(dir, bin)).isDirectory()))
+      problems.push(`desktop.server.bin: ${join(dir, bin)} is not a folder`);
+  }
+  return problems.length === before && dir ? { dir, entry, env, ...(typeof bin === "string" ? { bin } : {}) } : null;
 }

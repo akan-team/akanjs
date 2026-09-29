@@ -159,6 +159,7 @@ describe("desktop.server", () => {
   writeFileSync(join(dir, "web", "index.html"), "<!doctype html>");
   mkdirSync(join(dir, "server", "node_modules", "addon", "build"), { recursive: true });
   writeFileSync(join(dir, "server", "main.js"), "");
+  mkdirSync(join(dir, "server", "bin"), { recursive: true });
   writeFileSync(join(dir, "server", "node_modules", "addon", "build", "addon.node"), "");
   writeFileSync(join(dir, "server", "node_modules", "addon", "index.js"), "");
   const base: AkanNativeConfig = { app: { id: "com.akanjs.x", name: "X", version: "1.0.0" }, web: { dir: "web" } };
@@ -188,6 +189,17 @@ describe("desktop.server", () => {
     expect(problems({ dir: "server", entry: "main.js", cwd: "/" })).toEqual([
       expect.stringContaining("unknown key desktop.server.cwd"),
     ]);
+  });
+
+  test("bin is a folder inside the server's folder", () => {
+    const problems = (bin: unknown) =>
+      validateConfig({ ...base, desktop: { server: { dir: "server", entry: "main.js", bin } } } as AkanNativeConfig, {
+        appDir: dir,
+      });
+    expect(problems("bin")).toEqual([]);
+    expect(problems("../web")).toEqual([expect.stringContaining("must be a folder inside desktop.server.dir")]);
+    expect(problems("main.js")).toEqual([expect.stringContaining("is not a folder")]);
+    expect(problems("missing")).toEqual([expect.stringContaining("is not a folder")]);
   });
 
   test("macOS signs every Mach-O file the server carries, whatever its name, and nothing else", async () => {

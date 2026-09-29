@@ -8,9 +8,11 @@ import type { AkanImageConfig } from "akanjs/server";
 import type { App, Lib } from "../commandDecorators";
 import { LibExecutor, WorkspaceExecutor } from "../executors";
 import type { BaseDevEnv, PackageJson } from "../types";
+import { AkanBin } from "./akanBin";
 import {
   type AkanApiConfig,
   type AkanAssetsConfig,
+  type AkanBinConfig,
   type AkanDatabaseConfig,
   type AkanMobileConfig,
   type AkanMobileTargetConfig,
@@ -107,14 +109,19 @@ const normalizeDeepLinks = (deepLinks: DeepPartial<AkanMobileTargetConfig["deepL
   } satisfies AkanMobileTargetConfig["deepLinks"];
 };
 
-type AppConfigDeclaration = Omit<DeepPartial<AppConfigResult>, "docker" | "web"> & {
+type AppConfigDeclaration = Omit<DeepPartial<AppConfigResult>, "docker" | "web" | "bin"> & {
   docker?: DockerOption;
   web?: AkanWebOption;
+  bin?: AkanBinConfig;
 };
+
+type LibConfigDeclaration = Omit<DeepPartial<LibConfigResult>, "bin"> & { bin?: AkanBinConfig };
 
 export interface LibContributions {
   externalLibs: string[];
   trustedDependencies?: string[];
+  /** Per lib, since an app carries only the entries of the libs it depends on. */
+  bin?: { lib: string; bin: AkanBinConfig }[];
   docker: LibDockerConfig;
   /** Keep globs rewritten to the app's own `public/`, where `akan sync` mounts each lib's assets. */
   keepFonts?: string[];
@@ -123,6 +130,7 @@ export interface LibContributions {
 const emptyLibContributions = (): LibContributions => ({
   externalLibs: [],
   trustedDependencies: [],
+  bin: [],
   docker: { preRuns: [], postRuns: [] },
   keepFonts: [],
 });
@@ -155,6 +163,9 @@ export class AkanAppConfig implements AppConfigResult {
   web: AkanWebConfig;
   externalLibs: string[];
   trustedDependencies: string[];
+  /** The app's own entries; the libs' are in `libBins`. */
+  bin: AkanBinConfig;
+  libBins: { lib: string; bin: AkanBinConfig }[];
   barrelImports: string[];
   optimizeImports: string[];
   images: AkanImageConfig;
@@ -193,12 +204,15 @@ export class AkanAppConfig implements AppConfigResult {
     this.#applyRoutes(config?.routes);
     this.database = AkanAppConfig.#database(app, config);
     this.externalLibs = [...new Set([...(config?.externalLibs ?? []), ...libContributions.externalLibs])];
+    const owner = `apps/${app.name}/akan.config.ts`;
     this.trustedDependencies = [
       ...new Set([
-        ...normalizePackageNames(config?.trustedDependencies, `apps/${app.name}/akan.config.ts`),
+        ...normalizePackageNames(config?.trustedDependencies, owner),
         ...(libContributions.trustedDependencies ?? []),
       ]),
     ];
+    this.bin = AkanBin.parse(config?.bin, owner, app.cwdPath);
+    this.libBins = libContributions.bin ?? [];
     this.barrelImports = [
       ...DEFAULT_BARREL_IMPORTS,
       ...WORKSPACE_BARREL_FACETS.map((facet) => `@apps/${app.name}/${facet}`),
@@ -506,6 +520,9 @@ CMD [${command.map((c) => `"${c}"`).join(",")}]`;
     return {
       externalLibs: libConfigs.flatMap((libConfig) => libConfig?.externalLibs ?? []),
       trustedDependencies: libConfigs.flatMap((libConfig) => libConfig?.trustedDependencies ?? []),
+      bin: libConfigs.flatMap((libConfig) =>
+        libConfig && Object.keys(libConfig.bin).length ? [{ lib: libConfig.lib.name, bin: libConfig.bin }] : [],
+      ),
       docker: {
         preRuns: libConfigs.flatMap((libConfig) => libConfig?.docker.preRuns ?? []),
         postRuns: libConfigs.flatMap((libConfig) => libConfig?.docker.postRuns ?? []),
@@ -630,14 +647,17 @@ export class AkanLibConfig implements LibConfigResult {
   lib: Lib;
   externalLibs: string[];
   trustedDependencies: string[];
+  bin: AkanBinConfig;
   docker: LibDockerConfig;
   assets: LibAssetsConfig;
   /** Live-only: plugins declared in this lib's `akan.config.ts` (never serialized). */
   plugins: AkanPlugin[];
-  constructor(lib: Lib, config: DeepPartial<LibConfigResult>, plugins: AkanPlugin[] = []) {
+  constructor(lib: Lib, config: LibConfigDeclaration, plugins: AkanPlugin[] = []) {
     this.lib = lib;
     this.externalLibs = config?.externalLibs ?? [];
-    this.trustedDependencies = normalizePackageNames(config?.trustedDependencies, `libs/${lib.name}/akan.config.ts`);
+    const owner = `libs/${lib.name}/akan.config.ts`;
+    this.trustedDependencies = normalizePackageNames(config?.trustedDependencies, owner);
+    this.bin = AkanBin.parse(config?.bin, owner, lib.cwdPath);
     this.docker = { preRuns: config?.docker?.preRuns ?? [], postRuns: config?.docker?.postRuns ?? [] };
     this.assets = { keepFonts: normalizeKeepFonts(config?.assets?.keepFonts as string[] | undefined) };
     this.plugins = plugins;
@@ -645,7 +665,7 @@ export class AkanLibConfig implements LibConfigResult {
   static async from(lib: Lib, { bustImportCache = false }: { bustImportCache?: boolean } = {}) {
     const configImp = await AkanAppConfig.importConfigModule(lib.cwdPath, { bustImportCache });
     const resolved = typeof configImp === "function" ? configImp(lib) : configImp;
-    const { plugins, ...config } = (resolved ?? {}) as DeepPartial<LibConfigResult> & { plugins?: AkanPlugin[] };
+    const { plugins, ...config } = (resolved ?? {}) as LibConfigDeclaration & { plugins?: AkanPlugin[] };
     return new AkanLibConfig(lib, config, plugins ?? []);
   }
 }

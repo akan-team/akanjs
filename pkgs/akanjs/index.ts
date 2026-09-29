@@ -27,6 +27,40 @@ export interface LibDockerConfig {
   postRuns: DockerRun[];
 }
 
+/** `${process.platform}-${process.arch}` of the computer a desktop app is built on, which is the one it runs on. */
+export const binPlatforms = [
+  "darwin-arm64",
+  "darwin-x64",
+  "linux-arm64",
+  "linux-x64",
+  "win32-arm64",
+  "win32-x64",
+] as const;
+export type BinPlatform = (typeof binPlatforms)[number];
+
+/** Downloaded when the desktop app is built; the file must hash to `sha256`, so plain http is as safe as https. */
+export interface AkanBinUrlSource {
+  url: string;
+  sha256: string;
+  /** The executable inside the archive `url` names (.zip, .tar.gz, .tgz, .tar.xz, .tar.bz2, .tar). */
+  file?: string;
+}
+
+/** A file on the building computer, relative to the `akan.config.ts` that declares it. */
+export interface AkanBinPathSource {
+  path: string;
+  /** The executable inside the archive `path` names. */
+  file?: string;
+}
+
+export type AkanBinSource = AkanBinUrlSource | AkanBinPathSource;
+
+/**
+ * Executables a desktop app's server carries (`build-desktop --server`), by the name its code spawns and then by
+ * platform. Their folder comes first on the server's PATH, so `spawn("ffmpeg")` runs the carried file.
+ */
+export type AkanBinConfig = Record<string, { [platform in BinPlatform]?: AkanBinSource }>;
+
 export interface AkanRouteDomains {
   main?: string[];
   develop?: string[];
@@ -232,6 +266,8 @@ export interface AppConfigResult {
   externalLibs: string[];
   /** Dependencies whose install scripts `bun install --production` runs, in the image and in a desktop app's server. */
   trustedDependencies: string[];
+  /** A desktop app's server carries these; the image does not read them and installs through `docker`. */
+  bin: AkanBinConfig;
   barrelImports: string[];
   optimizeImports: string[];
   images: AkanImageConfig;
@@ -245,6 +281,8 @@ export interface AppConfigResult {
 export interface LibConfigResult {
   externalLibs: string[];
   trustedDependencies: string[];
+  /** Carried by the desktop server of every app that depends on this lib; an app's own entry of the same name wins. */
+  bin: AkanBinConfig;
   /** Image steps every app that mounts this lib inherits, unless that app declares a whole Dockerfile. */
   docker: LibDockerConfig;
   /** Which of this lib's own public fonts every app that mounts it must keep. */
@@ -265,12 +303,16 @@ export interface LibConfigContext {
   readonly type: "lib";
 }
 
-export type AppConfigInput = Omit<DeepPartial<AppConfigResult>, "docker" | "web"> & {
+export type AppConfigInput = Omit<DeepPartial<AppConfigResult>, "docker" | "web" | "bin"> & {
   docker?: DockerOption;
   web?: AkanWebOption;
+  bin?: AkanBinConfig;
   plugins?: AkanPlugin[];
 };
-export type LibConfigInput = DeepPartial<LibConfigResult> & { plugins?: AkanPlugin[] };
+export type LibConfigInput = Omit<DeepPartial<LibConfigResult>, "bin"> & {
+  bin?: AkanBinConfig;
+  plugins?: AkanPlugin[];
+};
 export interface SubspaceDeclaration {
   /** Short name used on the command line and as the git remote suffix. */
   name: string;

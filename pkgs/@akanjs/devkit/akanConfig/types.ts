@@ -1,6 +1,10 @@
 export type {
   AkanApiConfig,
   AkanAssetsConfig,
+  AkanBinConfig,
+  AkanBinPathSource,
+  AkanBinSource,
+  AkanBinUrlSource,
   AkanConfigFile,
   AkanDatabaseConfig,
   AkanExecutor,
@@ -20,6 +24,7 @@ export type {
   AppConfigResult,
   AppScanResult,
   Arch,
+  BinPlatform,
   DatabaseMode,
   DeepPartial,
   DockerConfig,
@@ -39,4 +44,4 @@ export type {
   ScanResult,
   WorkspaceScanResult,
 } from "akanjs";
-export { archs } from "akanjs";
+export { archs, binPlatforms } from "akanjs";

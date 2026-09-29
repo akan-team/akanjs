@@ -65,6 +65,26 @@ describe("DesktopServerStage", () => {
     ]);
   });
 
+  test("says what the image installs that the desktop app's server goes without", () => {
+    const notice = (docker: unknown, carried: string[] = []) =>
+      DesktopServerStage.imageStepsNotice({ app: { name: "portal" }, docker } as never, carried);
+    const steps = { image: "oven/bun", preRuns: ["apt-get install -y ffmpeg"], postRuns: [], command: [] };
+    expect(notice({ ...steps, preRuns: [] })).toBeNull();
+    expect(notice(steps)).toEqual({
+      level: "warn",
+      message: expect.stringContaining(
+        "The image runs 1 docker step from the app and its libs, and a desktop app's server runs none of them",
+      ),
+    });
+    expect(notice("FROM ros:humble-ros-core")?.message).toStartWith(
+      "apps/portal/akan.config.ts writes its own Dockerfile",
+    );
+    expect(notice(steps, ["ffmpeg"])).toEqual({
+      level: "info",
+      message: expect.stringContaining("carries only bin: ffmpeg"),
+    });
+  });
+
   test("refuses an app whose database modes leave out single", () => {
     expect(() => DesktopServerStage.assertCarriable(appConfig({ database: { modes: ["cluster"] } }))).toThrow(
       "only database mode single runs",
