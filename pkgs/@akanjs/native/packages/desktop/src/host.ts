@@ -143,9 +143,13 @@ export function startHost(plugins: DesktopPlugin[]): void {
       },
       builtins: {
         // Page console forwarding (dev builds, WV-3): print, do not dispatch.
+        //? One stream and one tag per line, `[page<+><#window> <level>]`: the akan CLI reads the level back from it
+        //? (devkit NativeAppLine), and `+` keeps a stack trace's lines with the message they belong to.
         [CONSOLE_PLUGIN](req, window) {
-          const line = `[page${window === 1 ? "" : ` ${window}`} ${req.method}] ${(req.args as { message?: string } | undefined)?.message ?? ""}`;
-          (req.method === "error" || req.method === "warn" ? console.error : console.info)(line);
+          const message = (req.args as { message?: string } | undefined)?.message ?? "";
+          const scope = window === 1 ? "" : `#${window}`;
+          const lines = message.replace(/\n+$/, "").split("\n");
+          console.info(lines.map((line, i) => `[page${i === 0 ? "" : "+"}${scope} ${req.method}] ${line}`).join("\n"));
         },
         // Shell built-ins the page runtime calls (window.print, plugins.md D8), and the self-test's echo.
         async [HOST_PLUGIN](req, window, signal) {

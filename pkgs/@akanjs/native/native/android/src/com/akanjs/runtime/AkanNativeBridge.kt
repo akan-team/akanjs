@@ -53,6 +53,8 @@ class AkanNativeBridge(private val webView: WebView) {
 
     /** Dev builds: the self-test's \$host methods. */
     var dev = false
+    /** The page's runtime forwards its console here (a dev build's `$console` attach), so the WebView's copy is spare. */
+    @Volatile var consoleForwarded = false
 
     /** Dev builds: \$host.hang calls still open, and how many were cancelled. */
     private val hanging = ArrayList<AkanNativeCall>()
@@ -207,6 +209,7 @@ class AkanNativeBridge(private val webView: WebView) {
         if (pluginId == "\$bridge") return bridgeOp(call, doc)
         doc.running[id] = java.lang.ref.WeakReference(call)
         call.document = doc
+        if (pluginId == "\$console") return console(call)
         if (pluginId == "\$host") return host(call)
         val plugin = plugins[pluginId] ?: return call.reject(AkanNativeErrorCode.NOT_FOUND, "plugin $pluginId is not registered")
         // L2: an undeclared method or event never reaches the plugin, whatever its code handles.
@@ -333,6 +336,22 @@ class AkanNativeBridge(private val webView: WebView) {
         JSONObject().put("v", 1).put("id", id).put("ok", false).put("error", JSONObject().put("code", code).put("message", message))
 
     /** Shell built-ins the page runtime calls. Dev builds only: the self-test's bridge checks. */
+    /** dev builds: the page console at its own priority (WV-3), through the bridge as on iOS and the desktop. */
+    private fun console(call: AkanNativeCall) {
+        if (!dev) return call.reject(AkanNativeErrorCode.NOT_FOUND, "plugin \$console is not registered")
+        consoleForwarded = true
+        if (call.method != "attach") {
+            val priority = when (call.method) {
+                "error" -> Log.ERROR
+                "warn" -> Log.WARN
+                "trace", "verbose", "debug" -> Log.DEBUG
+                else -> Log.INFO
+            }
+            Log.println(priority, "AkanNativeConsole", (call.string("message") ?: "").trimEnd('\n'))
+        }
+        call.resolve()
+    }
+
     private fun host(call: AkanNativeCall) {
         // AkanNativeFeatures.DEV is a constant: release builds (false) lose these methods and what only they
         // reach (AkanNativeVectors) in R8 (architecture review stage 6).

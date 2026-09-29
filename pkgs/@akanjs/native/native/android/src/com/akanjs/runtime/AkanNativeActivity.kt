@@ -396,13 +396,15 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
 
     private inner class ChromeClient : WebChromeClient() {
         override fun onConsoleMessage(message: ConsoleMessage): Boolean { // WV-3
+            // A dev page forwards its console through the bridge once its runtime is up; this copy covers the rest.
+            if (bridge.consoleForwarded) return true
             val priority = when (message.messageLevel()) {
                 ConsoleMessage.MessageLevel.ERROR -> Log.ERROR
                 ConsoleMessage.MessageLevel.WARNING -> Log.WARN
                 ConsoleMessage.MessageLevel.DEBUG -> Log.DEBUG
                 else -> Log.INFO
             }
-            Log.println(priority, "AkanNativeConsole", message.message())
+            Log.println(priority, "AkanNativeConsole", message.message().trimEnd('\n'))
             return true
         }
 

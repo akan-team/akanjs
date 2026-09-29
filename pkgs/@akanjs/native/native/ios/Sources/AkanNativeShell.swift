@@ -13,10 +13,20 @@ enum AkanNativeLog {
         logger.info("\(text, privacy: .public)")
     }
 
+    /// One `[page<+> <level>]` tag per line, the desktop host's grammar, which the akan CLI reads the level back from;
+    /// os_log takes the page's level too, so `log stream` and Console.app filter on it.
     static func page(_ level: String, _ text: String) {
-        print("[page \(level)] \(text)")
+        let lines = text.replacingOccurrences(of: "\\n+$", with: "", options: .regularExpression)
+            .components(separatedBy: "\n")
+        print(lines.enumerated().map { "[page\($0.offset == 0 ? "" : "+") \(level)] \($0.element)" }.joined(separator: "\n"))
         fflush(stdout)
-        logger.info("[page \(level, privacy: .public)] \(text, privacy: .public)")
+        let message = lines.joined(separator: "\n")
+        switch level {
+        case "error": logger.error("\(message, privacy: .public)")
+        case "warn": logger.warning("\(message, privacy: .public)")
+        case "trace", "verbose", "debug": logger.debug("\(message, privacy: .public)")
+        default: logger.info("\(message, privacy: .public)")
+        }
     }
 }
 

@@ -333,7 +333,7 @@ Event    += { doc?: string; seq?: number }
 `@akanjs/native/core`는 `Transport { send(req): Promise<Response> }` 인터페이스 하나 뒤에서 위 구현 중 하나를 고른다. 플랫폼별 부분(`Channel.post`)은 요청을 보내고 답을 돌려줄 뿐이다. 응답(데스크톱·iOS는 `post`의 반환값, Android는 포트)과 이벤트(`__AKAN_NATIVE__.receive`, 문자열·객체 모두 받음)는 모두 같은 `receive()`를 지나며 doc과 seq를 거친다.
 
 - 데스크톱 IPC 출처 확인(SEC-1): WebKit은 같은 오리진 POST에 `Origin`을 붙이지 않고 `Referer`만 보낸다. 그래서 `Origin`이 있으면 `app://localhost`, 없으면 `Referer`가 `app://localhost/`로 시작해야 한다. 커스텀 스킴에는 CORS preflight가 없으므로 `x-akan-native-ipc` 표식은 보안 수단이 아니라 우발적 폼 POST와 구분하는 용도다. `Blob` body는 0바이트로 도착하므로 쓰지 않는다.
-- **dev 빌드의 페이지 console 포워딩(WV-3)**: `@akanjs/native/core`가 console과 잡히지 않은 오류를 예약 플러그인 `$console`(method = 레벨, args = `{ message }`)로 호스트에 보낸다. 호스트는 자기 로그에 `[page <level>] …`로 출력한다. Android는 `WebChromeClient.onConsoleMessage`가 이미 logcat으로 보내므로 포워딩하지 않는다.
+- **dev 빌드의 페이지 console 포워딩(WV-3)**: `@akanjs/native/core`가 console과 잡히지 않은 오류를 예약 플러그인 `$console`(method = 레벨, args = `{ message }`)로 호스트에 보낸다. 호스트(데스크톱, iOS)는 메시지의 줄마다 `[page<+><#창> <level>] …` 태그를 붙여 stdout 한 곳으로 출력한다. `+`는 여러 줄 메시지의 이어지는 줄, `#n`은 첫 창이 아닌 창이다. akan CLI(devkit `NativeAppLine`)가 이 태그에서 레벨을 다시 읽어 자기 로거로 한 번만 찍는다. Android도 dev 빌드에서는 같은 `$console` 경로로 보내고(런타임이 먼저 `attach`를 보낸다), 호스트가 그 레벨을 logcat priority로 쓴다. `attach` 뒤로는 `WebChromeClient.onConsoleMessage`가 비켜서고, 그 전의 출력(런타임이 뜨기 전 오류)과 release 빌드는 여전히 이쪽으로 logcat에 남는다. iOS는 os_log에도 페이지 레벨 그대로 쓴다.
 
 ## 5. 에셋 서빙 규칙
 

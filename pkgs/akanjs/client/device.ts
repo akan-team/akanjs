@@ -13,16 +13,17 @@ const globalWithProcess = globalThis as typeof globalThis & { process?: ProcessE
 const debugSessionId = Math.random().toString(36).slice(2, 8);
 let debugSeq = 0;
 
+//? Opt-in only: every native dev build carries a mobile target, so keying on one traced every visibility change of
+//? every desktop and phone session into its terminal.
 const isFrameDebugEnabled = () => {
   if (typeof window === "undefined") return false;
-  const windowWithTarget = window as typeof window & { __AKAN_MOBILE_TARGET__?: unknown };
-  const search = new URLSearchParams(window.location.search);
-  return (
-    Boolean(windowWithTarget.__AKAN_MOBILE_TARGET__) ||
-    search.has("akanMobileTarget") ||
-    search.get("akanFrameDebug") === "1" ||
-    window.localStorage.getItem("akan:debug:frame") === "1"
-  );
+  if (new URLSearchParams(window.location.search).get("akanFrameDebug") === "1") return true;
+  try {
+    return window.localStorage.getItem("akan:debug:frame") === "1";
+  } catch {
+    // Storage a page cannot read (a sandboxed frame, a stub window) leaves tracing off instead of failing the caller.
+    return false;
+  }
 };
 
 export function debugFrame(event: string, payload: DebugPayload = {}) {
@@ -33,7 +34,8 @@ export function debugFrame(event: string, payload: DebugPayload = {}) {
     now: Math.round(performance.now()),
     ...payload,
   };
-  console.info(`[akan:frame:${debugSessionId}:${debugSeq}] ${event}`, details, JSON.stringify(details));
+  // biome-ignore lint/suspicious/noConsole: opt-in tracing, kept at debug so a native terminal files it under debug
+  console.debug(`[akan:frame:${debugSessionId}:${debugSeq}] ${event}`, details);
 }
 
 interface DeviceInitOption {

@@ -302,7 +302,6 @@ try {
       throw new Error(`No dev server answers on ${upstream}; run \`akan start ${app.name}\` first.`);
     const { i18n } = await app.getConfig();
     const session = await nativeApp.dev(platform, { upstream, lang: i18n.defaultLocale, ...selection });
-    app.log(`${app.name}/${mobileTarget.name} on ${platform} follows ${upstream} through ${session.gateway}.`);
     process.once("SIGINT", () => {
       void session.stop().finally(() => process.exit(130));
     });
@@ -311,9 +310,11 @@ try {
   async startDesktop(app: App, options: Omit<MobileStartOptions, "device" | "teamId"> = {}) {
     await this.startMobile(app, NativeApp.desktopPlatform(), options);
   }
+  //? The health route, not the page: a dev server whose builder idled out renders `/` only after waking it, which
+  //? outlasts the timeout, and any answer at all says a server is there.
   static async #answers(url: string) {
     try {
-      await fetch(url, { signal: AbortSignal.timeout(3_000) });
+      await fetch(new URL("/_akan/app/health", url), { signal: AbortSignal.timeout(3_000) });
       return true;
     } catch {
       // Nothing listening, which the caller turns into what to run.

@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { AkanNativeConfig } from "@akanjs/native/config";
 import type { App } from "../commandDecorators";
+import { Executor } from "../executors";
 import {
   type DesktopPlatform,
   type MobilePlatform,
@@ -10,6 +11,7 @@ import {
   targetHtmlFilename,
 } from "./mobileTarget";
 import { NativeApi, type NativeBuildApiModule } from "./nativeApi";
+import { NativeAppLine, type NativeAppLineRead } from "./nativeAppLine";
 import { NativeConfig } from "./nativeConfig";
 import { NativeWebDir } from "./nativeWebDir";
 
@@ -24,6 +26,11 @@ export interface NativeRunOptions {
   teamId?: string;
 }
 
+interface NativeDevBoot {
+  steps: string[];
+  lines: NativeAppLineRead[];
+}
+
 export interface NativeDevOptions extends NativeRunOptions {
   /** The akan dev server the gateway proxies. */
   upstream: string;
@@ -35,6 +42,8 @@ export interface NativeDevOptions extends NativeRunOptions {
 export class NativeApp {
   readonly targetRoot: string;
   readonly web: NativeWebDir;
+  //? A dev boot holds its steps and the app's first lines back: one line says it is up, all of it when it failed.
+  #boot: NativeDevBoot | null = null;
 
   constructor(
     readonly app: App,
@@ -83,7 +92,9 @@ export class NativeApp {
 
   //? The app's own output: its console (mirrored by a dev build), the simulator log stream or logcat.
   #appLine = (line: string) => {
-    this.app.logger.info(`[${this.target.name}] ${line}`);
+    const read = NativeAppLine.read(line, { verbose: Executor.verbose });
+    if (this.#boot) this.#boot.lines.push(read);
+    else this.app.logger[read.level](read.message);
   };
 
   //* `AKAN_PUBLIC_*` is already inlined into the CSR bundle, so the runtime reads no .env file of its own.
@@ -98,6 +109,7 @@ export class NativeApp {
       log: (event) => {
         if (event.level === "error") this.app.logger.error(event.message);
         else if (event.level === "warn") this.app.logger.warn(event.message);
+        else if (this.#boot) this.#boot.steps.push(event.message);
         else if (event.level === "tool") this.app.logger.verbose(event.message);
         else this.app.logger.info(event.message);
       },
@@ -128,19 +140,47 @@ export class NativeApp {
   //* The gateway serves the page and its HMR socket on the app origin; API calls go to the dev server itself (baseEnv),
   //* which an Android device reaches through the reversed port.
   async dev(platform: NativePlatform, { upstream, lang, device, teamId }: NativeDevOptions) {
-    await mkdir(this.web.dir, { recursive: true });
-    const [{ api, config }, { api: routes }] = await Promise.all([this.prepare(), this.app.getConfig()]);
-    return await api.dev({
-      ...this.#task(platform, config),
-      upstream,
-      hmrPath: "/_akan/hmr",
-      //? A dev page calls its own origin (akanjs baseEnv), so the gateway relays the socket it opens for the API too.
-      wsPaths: [`${routes.prefix}${routes.websocketPrefix}`],
-      onLine: this.#appLine,
-      startPath: this.startPath(lang),
-      ...(device ? { device } : {}),
-      ...(teamId ? { ios: { signing: { teamId } } } : {}),
-    });
+    const startedAt = performance.now();
+    const boot: NativeDevBoot = { steps: [], lines: [] };
+    this.#boot = boot;
+    try {
+      await mkdir(this.web.dir, { recursive: true });
+      const [{ api, config }, { api: routes }] = await Promise.all([this.prepare(), this.app.getConfig()]);
+      const session = await api.dev({
+        ...this.#task(platform, config),
+        upstream,
+        hmrPath: "/_akan/hmr",
+        //? A dev page calls its own origin (akanjs baseEnv), so the gateway relays the socket it opens for the API too.
+        wsPaths: [`${routes.prefix}${routes.websocketPrefix}`],
+        onLine: this.#appLine,
+        startPath: this.startPath(lang),
+        ...(device ? { device } : {}),
+        ...(teamId ? { ios: { signing: { teamId } } } : {}),
+      });
+      this.#boot = null;
+      this.app.logger.info(this.readyLine(platform, { upstream, device: session.device, startedAt }));
+      for (const step of [...boot.steps, `pages through ${session.gateway}`]) this.app.logger.debug(step);
+      for (const line of boot.lines) this.app.logger[line.level](line.message);
+      return session;
+    } catch (error) {
+      this.#boot = null;
+      for (const step of boot.steps) this.app.logger.info(step);
+      for (const line of boot.lines) this.app.logger[line.level === "debug" ? "info" : line.level](line.message);
+      throw error;
+    }
+  }
+
+  /** What a dev boot that came up says, and all it says: `cmdc ios ready · iPhone 16 · http://localhost:8283 · 12.4s`. */
+  readyLine(
+    platform: NativePlatform,
+    { upstream, device, startedAt }: { upstream: string; device?: { name: string }; startedAt: number },
+  ) {
+    const label = platform === "ios" || platform === "android" ? platform : "desktop";
+    const target = this.target.name === "default" ? "" : `/${this.target.name}`;
+    const seconds = ((performance.now() - startedAt) / 1000).toFixed(1);
+    return [`${this.app.name}${target} ${label} ready`, ...(device ? [device.name] : []), upstream, `${seconds}s`].join(
+      " · ",
+    );
   }
 
   async releaseIos({ teamId, adHoc = false }: { teamId?: string; adHoc?: boolean } = {}) {

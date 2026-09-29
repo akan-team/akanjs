@@ -95,8 +95,8 @@ export function runtime(): Runtime {
       location?: { reload(): void };
     };
     if (rt.transport) w.addEventListener?.("pageshow", (e) => e.persisted && w.location?.reload());
-    // Android: WebChromeClient.onConsoleMessage already sends console output to logcat.
-    if (boot.dev && rt.transport && boot.platform !== "android") forwardConsole(rt);
+    // Android too: WebChromeClient.onConsoleMessage sees console output only as text at the WebView's own levels.
+    if (boot.dev && rt.transport) forwardConsole(boot.platform);
   }
   return g.__runtime as Runtime;
 }
@@ -105,7 +105,7 @@ export function runtime(): Runtime {
  * Dev builds on native hosts: mirror console output and uncaught errors to the host,
  * which prints them next to its own logs (WV-3).
  */
-function forwardConsole(_rt: Runtime): void {
+function forwardConsole(platform: AkanNativeBoot["platform"]): void {
   // Patch once per page, whatever copy of @akanjs/native/core asks: the flag lives on the page's global, so a
   // module evaluated again (HMR) does not wrap console twice. Always send through the current
   // runtime (tests re-create it).
@@ -115,12 +115,31 @@ function forwardConsole(_rt: Runtime): void {
   const c = globalThis.console as unknown as Record<string, (...args: unknown[]) => void>;
   const format = (value: unknown): string => {
     if (typeof value === "string") return value;
-    if (value instanceof Error) return value.stack ?? `${value.name}: ${value.message}`;
+    // WebKit's `stack` holds the frames alone, where V8's starts with `Name: message`.
+    if (value instanceof Error) {
+      const head = `${value.name}: ${value.message}`;
+      return value.stack?.startsWith(head) ? value.stack : `${head}${value.stack ? `\n${value.stack}` : ""}`;
+    }
     try {
       return JSON.stringify(value) ?? String(value);
     } catch {
       return String(value);
     }
+  };
+  // `console.error("%s: %s", a, b)`, as React writes its warnings: the substitutions a devtools console applies.
+  const render = (args: unknown[]): string => {
+    const [first, ...rest] = args;
+    if (typeof first !== "string" || !/%[sdifoOc]/.test(first)) return args.map(format).join(" ");
+    const text = first.replace(/%([sdifoOc%])/g, (match, spec: string) => {
+      if (spec === "%") return "%";
+      if (rest.length === 0) return match;
+      const value = rest.shift();
+      if (spec === "c") return "";
+      if (spec === "d" || spec === "i") return String(Number.parseInt(String(value), 10));
+      if (spec === "f") return String(Number(value));
+      return format(value);
+    });
+    return [text, ...rest.map(format)].join(" ");
   };
   const send = (level: string, args: unknown[]) => {
     const rt = akanNativeGlobal().__runtime as Runtime | undefined;
@@ -130,10 +149,12 @@ function forwardConsole(_rt: Runtime): void {
       id: ++rt.nextId,
       plugin: CONSOLE_PLUGIN,
       method: level,
-      args: { message: args.map(format).join(" ") },
+      args: { message: render(args).replace(/\n+$/, "") },
     };
     rt.transport.send(request).catch(() => {});
   };
+  // Android's WebView logs the page console itself until the host hears from the bridge that it is forwarded.
+  if (platform === "android") send("attach", []);
   for (const level of ["log", "info", "warn", "error", "debug"]) {
     const original = c[level]!.bind(globalThis.console);
     c[level] = (...args: unknown[]) => {
@@ -142,7 +163,7 @@ function forwardConsole(_rt: Runtime): void {
     };
   }
   const w = globalThis as { addEventListener?: (type: string, fn: (e: any) => void) => void };
-  w.addEventListener?.("error", (e) => send("error", [`uncaught: ${e.error?.stack ?? e.message}`]));
+  w.addEventListener?.("error", (e) => send("error", ["uncaught:", e.error ?? e.message]));
   w.addEventListener?.("unhandledrejection", (e) => send("error", ["unhandled rejection:", e.reason]));
 }
 

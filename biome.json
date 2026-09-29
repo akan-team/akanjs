@@ -9,6 +9,7 @@
       "**/*.jsonc",
       "!infra/master/createRecords.ts",
       "!pkgs/@akanjs/devkit/lint/__fixtures__",
+      "!!.claude",
       "!!**/node_modules",
       "!!**/dist",
       "!!**/.akan",

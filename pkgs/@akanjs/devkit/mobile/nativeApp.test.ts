@@ -38,6 +38,21 @@ describe("NativeApp", () => {
     expect(admin.outDir("android")).toBe(path.join(appDir, ".akan/mobile/admin/native/android"));
   });
 
+  test("a dev boot that came up says so in one line: platform, device, dev server, time", () => {
+    const app = { ...fakeApp(), name: "portal" } as unknown as App;
+    const startedAt = performance.now() - 12_400;
+    expect(new NativeApp(app, target()).readyLine("macos", { upstream: "http://localhost:8283", startedAt })).toMatch(
+      /^portal desktop ready · http:\/\/localhost:8283 · 12\.\ds$/,
+    );
+    expect(
+      new NativeApp(app, target({ name: "admin" })).readyLine("ios", {
+        upstream: "http://localhost:8283",
+        device: { name: "iPhone 16" },
+        startedAt,
+      }),
+    ).toMatch(/^portal\/admin ios ready · iPhone 16 · http:\/\/localhost:8283 · 12\.\ds$/);
+  });
+
   test("opens a dev build on its target's home, the CSR shell under the locale", () => {
     expect(new NativeApp(fakeApp(), target({ indexPath: "/explore" })).startPath("en")).toBe(
       "/en/explore?csr=true&akanMobileTarget=default&akanMobileIndexPath=%2Fexplore",

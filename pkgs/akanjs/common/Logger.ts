@@ -78,6 +78,15 @@ const colorizeMap: { [key in LogLevel]: (text: string) => string } = {
   error: clc.red,
 };
 
+const consoleMethodMap = {
+  trace: "debug",
+  verbose: "debug",
+  debug: "debug",
+  info: "info",
+  warn: "warn",
+  error: "error",
+} as const satisfies { [key in LogLevel]: "debug" | "info" | "warn" | "error" };
+
 const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
 // Masked before the record exists: a record may leave the process over the network.
 const redactedAttrKey = /password|passwd|token|jwt|authorization|cookie|secret|api[-_]?key|private[-_]?key/i;
@@ -335,8 +344,23 @@ export class Logger {
     if (!Logger.consoleOutput) return;
     if (typeof window === "undefined")
       (process[entry.stream] as unknown as NodeJS.WriteStream | undefined)?.write(entry.message);
-    // biome-ignore lint/suspicious/noConsole: browser fallback
-    else console.log(entry.message);
+    else Logger.#writeBrowserConsole(entry.record, entry.message);
+  }
+  //? A native shell hands the page's console to a terminal that stamps each line itself: there a record is
+  //? `[Name] message` at its own level, where a browser's devtools show the whole rendered line at it.
+  static #writeBrowserConsole(record: LogRecord, rendered: string) {
+    const level = record.level ?? "info";
+    const context = record.context ? `[${record.context}] ` : "";
+    const attrs = record.attrs ? ` ${Logger.formatAttrs(record.attrs)}` : "";
+    const text = Logger.#inNativeShell()
+      ? `[${record.name}] ${context}${record.message}${attrs}`
+      : rendered.replace(/\n+$/, "");
+    // biome-ignore lint/suspicious/noConsole: the browser's console is this logger's output there
+    console[consoleMethodMap[level]](text);
+  }
+  static #inNativeShell() {
+    const platform = (globalThis as { __AKAN_NATIVE__?: { platform?: string } }).__AKAN_NATIVE__?.platform;
+    return platform !== undefined && platform !== "web";
   }
   static #write(name: string | undefined, message: string, context: string, logLevel: LogLevel, attrs?: LogAttrs) {
     const stream = logLevel === "error" ? "stderr" : "stdout";
@@ -371,8 +395,9 @@ export class Logger {
     if (!Logger.consoleOutput) return;
     if (typeof window === "undefined" && method !== "console" && (process as unknown as NodeJS.Process | undefined))
       process[stream].write(msg);
+    //? In a native shell a raw line (the banner) lands in a terminal, not devtools: at debug it stays out of the way.
     // biome-ignore lint/suspicious/noConsole: browser fallback
-    else console[outputStream === "error" ? "error" : "log"](msg.trim());
+    else console[outputStream === "error" ? "error" : Logger.#inNativeShell() ? "debug" : "log"](msg.trim());
   }
   static {
     if (envValue("AKAN_PUBLIC_LOG_LEVEL") === "log" && typeof window === "undefined")
